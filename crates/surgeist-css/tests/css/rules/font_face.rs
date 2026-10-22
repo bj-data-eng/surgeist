@@ -1,6 +1,6 @@
 //! `@font-face` descriptors and font sources.
 
-mod font_env_matched_blocks_existing_fronts;
+mod font_env_matched_blocks;
 mod font_face_authored_validity;
 mod font_face_env_contract;
 mod font_face_env_foundation;

@@ -2,36 +2,11 @@
 //! requires the row/column slash; §7.8 determines auto-flow orientation and
 //! canonical auto-flow/dense order. Existing child numeric/identity contracts
 //! determine operand text. There was no existing aggregate output API for RED.
+use crate::css::support::authored_property::{checked, parsed};
 use surgeist_css::*;
 
 type Limits = CssSpecifiedValueSerializationLimits;
 type Kind = CssSpecifiedValueSerializationErrorKind;
-
-fn parsed(property: CssKnownProperty, text: &str) -> CssDeclaration {
-    let name = if property == CssKnownProperty::Grid {
-        "grid"
-    } else {
-        "grid-template"
-    };
-    let source = format!("{name}:{text}!important");
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    report.syntax()[0].clone()
-}
-
-fn checked(property: CssKnownProperty, text: &str, grammar: bool) -> CssDeclaration {
-    let components = parse_component_values(text).unwrap();
-    if grammar {
-        parse_property_value_for_grammar(property.grammar(), components, CssImportance::Important)
-    } else {
-        parse_property_value(
-            CssPropertyNameRef::Known(property),
-            components,
-            CssImportance::Important,
-        )
-    }
-    .unwrap()
-}
 
 fn serialize(
     value: &CssDeclaration,
@@ -159,7 +134,7 @@ fn aggregate_node_and_byte_thresholds_have_no_enum_carrier_cost() {
 }
 
 #[test]
-fn symbolic_and_exact_numeric_children_use_existing_projection_contract() {
+fn symbolic_and_exact_numeric_children_use_the_projection_contract() {
     output(
         CssKnownProperty::GridTemplate,
         "calc(10px + 5%) / 1e-50fr",

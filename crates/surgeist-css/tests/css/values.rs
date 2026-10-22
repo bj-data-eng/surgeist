@@ -4,6 +4,7 @@ mod identifiers;
 mod substitution;
 mod urls;
 
+mod custom_property_authoring;
 mod function_grammars;
 mod generic_authored_construction;
 mod generic_shell_grammars;

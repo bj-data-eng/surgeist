@@ -4,6 +4,10 @@
 //! The adopted intrinsic enumeration and work accounting are public product
 //! contracts; these tests do not impose used repetition or layout behavior.
 
+use crate::css::support::authored_property::{checked, parsed};
+use crate::css::support::property_admission::{
+    assert_checked_closure_rejected, assert_numeric_rejected,
+};
 use surgeist_css::CssKnownProperty as P;
 use surgeist_css::*;
 
@@ -23,40 +27,6 @@ const GRID: [P; 6] = [
     P::GridAutoColumns,
     P::GridAutoFlow,
 ];
-
-fn parsed(property: P, value: &str) -> CssDeclaration {
-    let css = format!("/*😀*/{}:{value}!important", property.canonical_name());
-    let report = parse_style_attribute(&css);
-    assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
-    assert!(validate_style_attribute(&css).is_ok());
-    let [source] = report.syntax().as_slice() else {
-        panic!("one occurrence");
-    };
-    source.clone()
-}
-
-fn checked(property: P, value: &str, grammar: bool) -> CssDeclaration {
-    let components = parse_component_values(value).unwrap();
-    let before = components.clone();
-    let source = if grammar {
-        parse_property_value_for_grammar(
-            property.grammar(),
-            components.clone(),
-            CssImportance::Important,
-        )
-    } else {
-        parse_property_value(
-            CssPropertyNameRef::Known(property),
-            components.clone(),
-            CssImportance::Important,
-        )
-    }
-    .unwrap_or_else(|error| panic!("{}:{value}: {error:?}", property.canonical_name()));
-    assert_eq!(components, before);
-    assert_eq!(source.value_components(), &components);
-    assert!(source.position().is_none());
-    source
-}
 
 fn fronts(property: P, value: &str) -> [CssDeclaration; 3] {
     [
@@ -367,11 +337,21 @@ fn counted_repeat_constructors_normalize_bare_roots_without_evaluating_functions
             assert_eq!(retained.origin(), original.origin());
         }
     }
-    for text in ["1.5", "calc(1px)", "calc(1 +)", "1 2"] {
-        assert!(
-            CssIntegerCalculation::try_from_components(parse_component_values(text).unwrap())
-                .is_err(),
-            "{text}"
+    for (text, kind) in [
+        ("1.5", CssNumericConstructionErrorKind::RootDomainMismatch),
+        (
+            "calc(1px)",
+            CssNumericConstructionErrorKind::RootDomainMismatch,
+        ),
+        (
+            "calc(1 +)",
+            CssNumericConstructionErrorKind::MalformedExpression,
+        ),
+        ("1 2", CssNumericConstructionErrorKind::MultipleValues),
+    ] {
+        assert_numeric_rejected(
+            CssIntegerCalculation::try_from_components(parse_component_values(text).unwrap()),
+            kind,
         );
     }
     for value in [
@@ -798,7 +778,10 @@ fn recovered_numeric_children_remain_recovered_through_projection_and_typed_comp
     let css = r#".a{grid:"a" "b" calc(2px"#;
     let report = parse_sheet(css);
     assert!(!report.is_clean());
-    assert!(validate_sheet(css).is_err());
+    assert_eq!(
+        validate_sheet(css).unwrap_err().diagnostics(),
+        report.diagnostics()
+    );
     let CssRule::Style(rule) = &report.syntax().rules()[0] else {
         panic!("retained style rule");
     };
@@ -839,14 +822,11 @@ fn recovered_numeric_children_remain_recovered_through_projection_and_typed_comp
         source.to_specified_css().unwrap(),
         r#"grid: "a" "b" calc(2px);"#
     );
-    assert!(
-        parse_property_value_for_grammar(
-            P::Grid.grammar(),
-            source.value_components().clone(),
-            CssImportance::Normal
-        )
-        .is_err()
-    );
+    assert_checked_closure_rejected(parse_property_value_for_grammar(
+        P::Grid.grammar(),
+        source.value_components().clone(),
+        CssImportance::Normal,
+    ));
     let before = report.clone();
     let normalized = normalize_report(&report).unwrap();
     assert!(!normalized.is_clean());

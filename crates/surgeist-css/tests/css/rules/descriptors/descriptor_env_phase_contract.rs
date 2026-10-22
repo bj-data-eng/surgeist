@@ -3,6 +3,7 @@
 //! selected Counter Styles3 §3 and Fonts4 §6.9 with adopted completed-index
 //! cardinalities. No environment lookup, computed value or author store is modeled.
 
+use crate::css::support::rules::assert_origin_bytes as point;
 use surgeist_css::{
     CssComponentValue, CssComponentValueErrorKind as ComponentFailure, CssComponentValueLimits,
     CssComponentValueRef, CssComponentValues, CssCounterStyleDescriptorKind as CounterKind,
@@ -35,11 +36,6 @@ fn display(source: &str) -> Display {
 }
 fn feature(kind: FeatureKind, source: &str) -> Feature {
     Feature::try_from_components(kind, components(source)).unwrap()
-}
-fn point(origin: &CssParsedOrigin, source: &str, start: usize, end: usize) {
-    assert_eq!(origin.source().as_str(), source);
-    assert_eq!(origin.span().start().byte_offset().value(), start);
-    assert_eq!(origin.span().end().byte_offset().value(), end);
 }
 fn counter_grammar(error: CssCounterStyleValueError) {
     assert!(

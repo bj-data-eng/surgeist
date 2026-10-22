@@ -16,12 +16,23 @@ fn extension_names_use_decoded_case_sensitive_identifiers_and_original_origin() 
             name
         );
     }
-    for rejected in ["x", "-x", ""] {
-        assert!(
-            CssSupportsConditionName::try_new(rejected).is_err(),
+    // `<extension-name>` is a dashed ident; the empty string is no ident.
+    for rejected in ["x", "-x"] {
+        assert_eq!(
+            CssSupportsConditionName::try_new(rejected),
+            Err(CssNamedSupportsConstructionError::InvalidName {
+                origin: CssValueOrigin::Programmatic
+            }),
             "{rejected:?}"
         );
     }
+    let Err(CssNamedSupportsConstructionError::Component(error)) =
+        CssSupportsConditionName::try_new("")
+    else {
+        panic!("empty name")
+    };
+    assert_eq!(error.kind(), CssComponentValueErrorKind::InvalidIdentifier);
+    assert_eq!(error.origin(), &CssValueOrigin::Programmatic);
     let source = "@supports-condition --\\54 heme{}";
     let report = parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
@@ -184,10 +195,12 @@ fn lexical_serialization_maps_supplied_tokens_and_generated_delimiters() {
             .as_str(),
         "--x"
     );
-    assert!(
+    assert_eq!(
         CssSupportsConditionName::try_from_component(
             CssComponentValue::try_ident("plain").unwrap()
-        )
-        .is_err()
+        ),
+        Err(CssNamedSupportsConstructionError::InvalidName {
+            origin: CssValueOrigin::Programmatic
+        })
     );
 }

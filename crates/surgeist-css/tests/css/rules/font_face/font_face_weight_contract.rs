@@ -1,5 +1,7 @@
 //! Ordinary font-face weight descriptor contract from Fonts 4 §4.4.
 
+use crate::css::support::rules::invalid_descriptor;
+use crate::css::support::rules::ordinary_font_face_descriptor;
 use surgeist_css::{
     CssAbsoluteFontWeight as Absolute, CssAuthoredFontFaceDescriptorValue as Authored,
     CssComponentValue, CssComponentValues, CssFontFaceDescriptorKind as Kind,
@@ -10,12 +12,10 @@ use surgeist_css::{
 };
 
 fn ordinary(text: &str) -> CssFontFaceWeight {
-    let report = parse_font_face_descriptor_value(text, Kind::FontWeight);
-    assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
-    let Some(Authored::Ordinary(Ordinary::FontWeight(value))) = report.syntax() else {
+    let Ordinary::FontWeight(value) = ordinary_font_face_descriptor(text, Kind::FontWeight) else {
         panic!("ordinary weight descriptor: {text}")
     };
-    value.clone()
+    value
 }
 
 fn numeric(text: &str) -> Absolute {
@@ -303,5 +303,13 @@ fn checked_descriptor_rejects_programmatic_invalid_and_adjacent_number_tokens() 
         CssComponentValue::try_number("00").unwrap(),
     ])
     .unwrap();
-    assert!(pending.reparse_after_substitution(adjacent).is_err());
+    // Separate numbers serialize apart, and Fonts 4 §4.4 bounds each
+    // <font-weight-absolute> number to [1, 1000].
+    let error = pending.reparse_after_substitution(adjacent).unwrap_err();
+    let CssFontFaceValueErrorKind::Grammar(detail) = error.kind() else {
+        panic!("grammar failure: {error:?}")
+    };
+    invalid_descriptor("font-face", "font-weight")
+        .at("00")
+        .assert_kind(detail);
 }

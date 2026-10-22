@@ -21,7 +21,7 @@ fn cause(error: CssFontFaceDeclarationBlockError, expected: E) {
 }
 
 #[test]
-fn public_descriptor_lookup_uses_exact_decoded_names_case_and_existing_alias() {
+fn public_descriptor_lookup_uses_exact_decoded_names_case_and_the_font_stretch_alias() {
     use CssPageDescriptorKind as P;
     for (name, kind) in [
         ("SIZE", P::Size),

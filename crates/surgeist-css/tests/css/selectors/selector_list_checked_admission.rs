@@ -2,6 +2,10 @@
 //! relative list factories. Literal grammar expectations use selected Selectors 4
 //! and the adopted Shadow compound-context restriction.
 
+use crate::css::support::color_and_selector_fixtures::{
+    assert_empty_list_construction, assert_selector_report_rejected,
+    assert_unrepresentable_construction,
+};
 use crate::css::support::validated_selector as parsed;
 use surgeist_css::{
     CssCompoundSelectorArgument, CssErrorCode, CssNamespaceContext, CssNthChildPattern,
@@ -112,9 +116,9 @@ fn assert_unrepresentable(selector: &CssSelector) {
 
 #[test]
 fn strict_nonempty_factories_reject_empty_vectors() {
-    assert!(CssSelectorList::try_new(Vec::new()).is_err());
-    assert!(CssPseudoSelectorList::try_new(Vec::new()).is_err());
-    assert!(CssRelativeSelectorList::try_new(Vec::new()).is_err());
+    assert_empty_list_construction(CssSelectorList::try_new(Vec::new()));
+    assert_empty_list_construction(CssPseudoSelectorList::try_new(Vec::new()));
+    assert_empty_list_construction(CssRelativeSelectorList::try_new(Vec::new()));
 }
 
 #[test]
@@ -256,9 +260,13 @@ fn selected_shadow_compound_has_remains_valid_under_list_admission() {
 
 #[test]
 fn ordinary_parser_rejects_relative_syntax_while_relative_factory_keeps_carrier() {
-    let report = parse_selector_list("> .One", &CssNamespaceContext::default());
-    assert!(report.syntax().is_none());
-    assert!(report.into_validation_result().is_err());
+    // Selectors 4 §4.1: a <complex-selector> begins with a compound, so a
+    // leading combinator invalidates the whole ordinary list.
+    let source = "> .One";
+    assert_selector_report_rejected(
+        source,
+        parse_selector_list(source, &CssNamespaceContext::default()),
+    );
     let member = relative(class());
     let list = CssRelativeSelectorList::try_new(vec![member.clone()]).unwrap();
     assert_eq!(list.selectors(), [member]);
@@ -275,7 +283,7 @@ fn ordinary_factory_rejects_empty_class_member_atomically() {
     assert!(CssSelectorList::try_new(vec![class()]).is_ok());
     let actual =
         CssSelectorList::try_new(vec![class(), CssSelector::Class(String::new()), class()]);
-    assert!(actual.is_err(), "empty class admitted: {actual:?}");
+    assert_unrepresentable_construction(actual);
 }
 
 #[test]
@@ -283,7 +291,7 @@ fn pseudo_factory_rejects_empty_class_member_atomically() {
     assert!(CssPseudoSelectorList::try_new(vec![class()]).is_ok());
     let actual =
         CssPseudoSelectorList::try_new(vec![class(), CssSelector::Class(String::new()), class()]);
-    assert!(actual.is_err(), "empty class admitted: {actual:?}");
+    assert_unrepresentable_construction(actual);
 }
 
 #[test]
@@ -294,7 +302,7 @@ fn relative_factory_rejects_empty_class_member_atomically() {
         relative(CssSelector::Class(String::new())),
         relative(class()),
     ]);
-    assert!(actual.is_err(), "empty relative class admitted: {actual:?}");
+    assert_unrepresentable_construction(actual);
 }
 
 #[test]
@@ -303,7 +311,7 @@ fn ordinary_factory_rejects_nul_identifier_member() {
     let invalid = CssSelector::Key("bad\0name".into());
     assert_unrepresentable(&invalid);
     let actual = CssSelectorList::try_new(vec![invalid]);
-    assert!(actual.is_err(), "NUL identifier admitted: {actual:?}");
+    assert_unrepresentable_construction(actual);
 }
 
 #[test]
@@ -312,7 +320,7 @@ fn pseudo_factory_rejects_nul_identifier_member() {
     let invalid = CssSelector::Class("bad\0name".into());
     assert_unrepresentable(&invalid);
     let actual = CssPseudoSelectorList::try_new(vec![invalid]);
-    assert!(actual.is_err(), "NUL identifier admitted: {actual:?}");
+    assert_unrepresentable_construction(actual);
 }
 
 #[test]
@@ -321,10 +329,7 @@ fn relative_factory_rejects_nul_identifier_member() {
     let invalid = CssSelector::Tag("bad\0name".into());
     assert_unrepresentable(&invalid);
     let actual = CssRelativeSelectorList::try_new(vec![relative(invalid)]);
-    assert!(
-        actual.is_err(),
-        "relative NUL identifier admitted: {actual:?}"
-    );
+    assert_unrepresentable_construction(actual);
 }
 
 #[test]
@@ -333,7 +338,7 @@ fn ordinary_factory_rejects_empty_strict_not_graph() {
     let invalid = empty_not();
     assert_unrepresentable(&invalid);
     let actual = CssSelectorList::try_new(vec![invalid]);
-    assert!(actual.is_err(), "empty strict Not admitted: {actual:?}");
+    assert_unrepresentable_construction(actual);
 }
 
 #[test]
@@ -342,7 +347,7 @@ fn pseudo_factory_rejects_empty_strict_not_graph() {
     let invalid = empty_not();
     assert_unrepresentable(&invalid);
     let actual = CssPseudoSelectorList::try_new(vec![invalid]);
-    assert!(actual.is_err(), "empty strict Not admitted: {actual:?}");
+    assert_unrepresentable_construction(actual);
 }
 
 #[test]
@@ -351,10 +356,7 @@ fn relative_factory_rejects_empty_strict_not_graph() {
     let invalid = empty_not();
     assert_unrepresentable(&invalid);
     let actual = CssRelativeSelectorList::try_new(vec![relative(invalid)]);
-    assert!(
-        actual.is_err(),
-        "relative empty strict Not admitted: {actual:?}"
-    );
+    assert_unrepresentable_construction(actual);
 }
 
 #[test]
@@ -363,7 +365,7 @@ fn ordinary_factory_rejects_empty_nth_of_graph() {
     let invalid = empty_nth_of();
     assert_unrepresentable(&invalid);
     let actual = CssSelectorList::try_new(vec![invalid]);
-    assert!(actual.is_err(), "empty nth of admitted: {actual:?}");
+    assert_unrepresentable_construction(actual);
 }
 
 #[test]
@@ -372,7 +374,7 @@ fn pseudo_factory_rejects_empty_nth_of_graph() {
     let invalid = empty_nth_of();
     assert_unrepresentable(&invalid);
     let actual = CssPseudoSelectorList::try_new(vec![invalid]);
-    assert!(actual.is_err(), "empty nth of admitted: {actual:?}");
+    assert_unrepresentable_construction(actual);
 }
 
 #[test]
@@ -383,10 +385,7 @@ fn relative_factory_rejects_empty_nth_of_graph() {
     let invalid = empty_nth_of();
     assert_unrepresentable(&invalid);
     let actual = CssRelativeSelectorList::try_new(vec![relative(invalid)]);
-    assert!(
-        actual.is_err(),
-        "relative empty nth of admitted: {actual:?}"
-    );
+    assert_unrepresentable_construction(actual);
 }
 
 #[test]
@@ -395,7 +394,7 @@ fn ordinary_factory_rejects_has_nested_through_logical_graph() {
     let invalid = nested_has_through_is();
     assert_unrepresentable(&invalid);
     let actual = CssSelectorList::try_new(vec![invalid]);
-    assert!(actual.is_err(), "nested Has admitted: {actual:?}");
+    assert_unrepresentable_construction(actual);
 }
 
 #[test]
@@ -404,7 +403,7 @@ fn pseudo_factory_rejects_has_nested_through_logical_graph() {
     let invalid = nested_has_through_is();
     assert_unrepresentable(&invalid);
     let actual = CssPseudoSelectorList::try_new(vec![invalid]);
-    assert!(actual.is_err(), "nested Has admitted: {actual:?}");
+    assert_unrepresentable_construction(actual);
 }
 
 #[test]
@@ -413,25 +412,19 @@ fn relative_factory_rejects_has_nested_through_logical_graph() {
     let invalid = nested_has_through_is();
     assert_unrepresentable(&invalid);
     let actual = CssRelativeSelectorList::try_new(vec![relative(invalid)]);
-    assert!(actual.is_err(), "relative nested Has admitted: {actual:?}");
+    assert_unrepresentable_construction(actual);
 }
 
 #[test]
 fn pseudo_factory_rejects_terminal_pseudo_element_member_atomically() {
     assert!(CssPseudoSelectorList::try_new(vec![class()]).is_ok());
     let actual = CssPseudoSelectorList::try_new(vec![class(), parsed(".Cell::before"), class()]);
-    assert!(
-        actual.is_err(),
-        "pseudo-element member admitted: {actual:?}"
-    );
+    assert_unrepresentable_construction(actual);
 }
 
 #[test]
 fn pseudo_factory_rejects_terminal_pseudo_element_in_complex_member() {
     assert!(CssPseudoSelectorList::try_new(vec![parsed(".Parent > .Cell")]).is_ok());
     let actual = CssPseudoSelectorList::try_new(vec![parsed(".Parent > .Cell::before")]);
-    assert!(
-        actual.is_err(),
-        "complex pseudo-element member admitted: {actual:?}"
-    );
+    assert_unrepresentable_construction(actual);
 }

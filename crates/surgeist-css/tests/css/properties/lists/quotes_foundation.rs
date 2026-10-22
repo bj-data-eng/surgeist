@@ -3,17 +3,8 @@
 //! `quotes` accepts `auto | none | match-parent | [<string> <string>]+`.
 //! Its inherited initial `auto` remains symbolic until language is known.
 
+use crate::css::support::important_declaration;
 use surgeist_css::*;
-
-fn declaration(value: &str) -> CssDeclaration {
-    let source = format!("quotes:{value}!important");
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    let [declaration] = report.syntax().as_slice() else {
-        panic!("one quotes declaration: {source}")
-    };
-    declaration.clone()
-}
 
 fn expansion(source: &CssDeclaration) -> CssLonghandContribution {
     let CssExpansion::Contributions(CssContributions::Longhands(items)) =
@@ -47,14 +38,14 @@ fn content_three_quotes_is_an_inherited_auto_longhand_with_stable_identity() {
     let CssInitialValueRef::Value(initial) = initial_value.view() else {
         panic!("quotes has a symbolic auto initial")
     };
-    let auto = declaration("auto");
+    let auto = important_declaration("quotes", "auto");
     assert_eq!(initial, expansion(&auto).ordinary_value().unwrap());
 }
 
 #[test]
 fn three_keywords_and_string_pairs_parse_as_distinct_authored_values() {
     for keyword in ["auto", "none", "match-parent"] {
-        let source = declaration(keyword);
+        let source = important_declaration("quotes", keyword);
         let CssKnownPropertyValueRef::Quotes(value) =
             source.known().unwrap().property_value().unwrap()
         else {
@@ -71,7 +62,7 @@ fn three_keywords_and_string_pairs_parse_as_distinct_authored_values() {
         assert!(item.source().same_occurrence(&source));
         assert_eq!(item.source().importance(), CssImportance::Important);
     }
-    let source = declaration("\"«\" \"»\" \"‹\" \"›\"");
+    let source = important_declaration("quotes", "\"«\" \"»\" \"‹\" \"›\"");
     let CssKnownPropertyValueRef::Quotes(value) = source.known().unwrap().property_value().unwrap()
     else {
         panic!("quotes wrapper")
@@ -88,7 +79,7 @@ fn three_keywords_and_string_pairs_parse_as_distinct_authored_values() {
 
 #[test]
 fn escaped_and_empty_strings_are_values_but_odd_pairs_are_invalid() {
-    let escaped = declaration(r#""\22 " "\27 ""#);
+    let escaped = important_declaration("quotes", r#""\22 " "\27 ""#);
     let CssKnownPropertyValueRef::Quotes(value) =
         escaped.known().unwrap().property_value().unwrap()
     else {
@@ -99,7 +90,7 @@ fn escaped_and_empty_strings_are_values_but_odd_pairs_are_invalid() {
     };
     assert_eq!(pairs.pairs()[0].open().as_str(), "\"");
     assert_eq!(pairs.pairs()[0].close().as_str(), "'");
-    let empty = declaration("\"\" \"\"");
+    let empty = important_declaration("quotes", "\"\" \"\"");
     let CssKnownPropertyValueRef::Quotes(value) = empty.known().unwrap().property_value().unwrap()
     else {
         panic!("empty pair")
@@ -139,26 +130,8 @@ fn escaped_and_empty_strings_are_values_but_odd_pairs_are_invalid() {
 }
 
 #[test]
-fn css_wide_keywords_expand_to_one_symbolic_terminal() {
-    for (spelling, expected) in [
-        ("initial", CssGlobalKeyword::Initial),
-        ("inherit", CssGlobalKeyword::Inherit),
-        ("unset", CssGlobalKeyword::Unset),
-        ("revert", CssGlobalKeyword::Revert),
-        ("revert-layer", CssGlobalKeyword::RevertLayer),
-    ] {
-        let source = declaration(spelling);
-        let item = expansion(&source);
-        assert_eq!(item.property(), CssKnownProperty::Quotes);
-        assert_eq!(item.value(), CssContributionValueRef::Global(expected));
-        assert!(item.source().same_occurrence(&source));
-        assert_eq!(item.source().importance(), CssImportance::Important);
-    }
-}
-
-#[test]
 fn pending_reentry_is_strict_repeatable_and_preserves_replacement_provenance() {
-    let source = declaration("var(--quotes)");
+    let source = important_declaration("quotes", "var(--quotes)");
     let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
         panic!("quotes substitution is pending")
     };

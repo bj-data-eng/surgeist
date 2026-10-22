@@ -85,20 +85,25 @@ fn invalid(value: &str) {
         2,
         "valid neighbors survive: {source}"
     );
-    assert!(validate_style_attribute(&source).is_err());
-    assert!(
+    assert_eq!(
+        validate_style_attribute(&source).unwrap_err().diagnostics(),
+        report.diagnostics()
+    );
+    assert_eq!(
         parse_property_value_for_grammar(
             grammar(),
             parse_component_values(value).unwrap(),
-            CssImportance::Normal,
+            CssImportance::Normal
         )
-        .is_err(),
+        .unwrap_err()
+        .kind(),
+        &CssPropertyValueErrorKind::Grammar(diagnostic.error().kind().clone()),
         "checked construction accepted invalid area: {value}"
     );
 }
 
 #[test]
-fn none_and_existing_rectangular_rows_remain_valid_controls() {
+fn none_and_rectangular_rows_remain_valid_controls() {
     for source in [parsed("none"), checked("none")] {
         let CssKnownPropertyValueRef::GridTemplateAreas(value) =
             source.known().unwrap().property_value().unwrap()

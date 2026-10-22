@@ -179,7 +179,7 @@ pub(super) fn preflight_specialized_eof_limit(
     });
     let rule_production = at_rule.as_deref().and_then(|name| {
         if name.eq_ignore_ascii_case("media") {
-            Some("baseline.media.query-list")
+            Some("official.media.query-list-core")
         } else if name.eq_ignore_ascii_case("supports") {
             Some("baseline.rule.supports")
         } else if name.eq_ignore_ascii_case("container") {

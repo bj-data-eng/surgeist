@@ -1,7 +1,8 @@
 //! Canonical imports preserve the authored clause/media interpretation.
+use crate::css::support::rules::ExpectedRejection;
 use surgeist_css::{
-    CssImportSerializationError, CssMediaSerializationError, CssRule, CssSerializedOrigin,
-    CssValueOrigin, parse_sheet,
+    CssErrorCode, CssImportSerializationError, CssMediaSerializationError, CssRule,
+    CssSerializedOrigin, CssValueOrigin, parse_sheet,
 };
 
 #[test]
@@ -99,7 +100,8 @@ fn emitted_target_and_terminator_keep_original_source_coordinates() {
 #[test]
 fn eof_recovery_closes_output_without_inventing_source_coordinates() {
     let report = parse_sheet("@import \"x\" layer(");
-    assert!(!report.is_clean());
+    // Syntax 3 §5.4.2: EOF before the statement's semicolon is a parse error.
+    ExpectedRejection::new(CssErrorCode::UnexpectedEnd).assert_first(&report);
     let [CssRule::Import(import)] = report.syntax().rules() else {
         panic!("retained import");
     };

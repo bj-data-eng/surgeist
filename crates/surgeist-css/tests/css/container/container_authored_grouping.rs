@@ -3,10 +3,10 @@
 //! https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#the-csscontainerrule-interface
 //! Section 5.4 permits explicit grouped operands and homogeneous operator lists.
 //! https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#container-rule
+use crate::css::support::authored_syntax::{component_list as components, component_token};
 use surgeist_css::{
-    CssBlockKind, CssComponentValue, CssComponentValueRef, CssComponentValues,
-    CssContainerCondition, CssErrorCode, CssGeneralEnclosed, CssRecoveryAction, CssRule,
-    CssValueOrigin, parse_sheet, validate_sheet,
+    CssBlockKind, CssComponentValue, CssComponentValueRef, CssContainerCondition, CssErrorCode,
+    CssGeneralEnclosed, CssRecoveryAction, CssRule, CssValueOrigin, parse_sheet, validate_sheet,
 };
 
 fn parsed_condition(query: &str) -> CssContainerCondition {
@@ -19,25 +19,17 @@ fn parsed_condition(query: &str) -> CssContainerCondition {
     rule.prelude().entries()[0].query().unwrap().clone()
 }
 
-fn token(spelling: &str) -> CssComponentValue {
-    CssComponentValue::try_token(spelling).unwrap()
-}
-
-fn components(items: Vec<CssComponentValue>) -> CssComponentValues {
-    CssComponentValues::try_new(items).unwrap()
-}
-
 fn group(items: Vec<CssComponentValue>) -> CssComponentValue {
     CssComponentValue::try_block(CssBlockKind::Parenthesis, components(items)).unwrap()
 }
 
 fn feature(name: &str, value: &str) -> CssComponentValue {
     group(vec![
-        token(name),
-        token(" "),
-        token(">"),
-        token(" "),
-        token(value),
+        component_token(name),
+        component_token(" "),
+        component_token(">"),
+        component_token(" "),
+        component_token(value),
     ])
 }
 
@@ -101,7 +93,8 @@ fn checked_size_groups_remain_distinct_with_identical_programmatic_origins() {
 #[test]
 fn checked_style_groups_remain_distinct_with_identical_programmatic_origins() {
     let style =
-        CssComponentValue::try_function("style", components(vec![token("--theme")])).unwrap();
+        CssComponentValue::try_function("style", components(vec![component_token("--theme")]))
+            .unwrap();
     let simple = checked(style.clone());
     let grouped = checked(group(vec![style]));
     assert_ne!(
@@ -114,9 +107,9 @@ fn checked_style_groups_remain_distinct_with_identical_programmatic_origins() {
 fn checked_boolean_groups_remain_distinct_with_identical_programmatic_origins() {
     let conjunction = group(vec![
         feature("width", "1px"),
-        token(" "),
-        token("and"),
-        token(" "),
+        component_token(" "),
+        component_token("and"),
+        component_token(" "),
         feature("height", "2px"),
     ]);
     let grouped = checked(conjunction.clone());
@@ -133,12 +126,18 @@ fn checked_repeated_construction_preserves_equality_without_reordering_operands(
     let height = feature("height", "2px");
     let ordered = group(vec![
         width.clone(),
-        token(" "),
-        token("and"),
-        token(" "),
+        component_token(" "),
+        component_token("and"),
+        component_token(" "),
         height.clone(),
     ]);
-    let reordered = group(vec![height, token(" "), token("and"), token(" "), width]);
+    let reordered = group(vec![
+        height,
+        component_token(" "),
+        component_token("and"),
+        component_token(" "),
+        width,
+    ]);
     assert_eq!(checked(ordered.clone()), checked(ordered.clone()));
     assert_ne!(
         checked(ordered),
@@ -157,8 +156,10 @@ fn explicit_grouping_allows_boolean_combinations_without_ungrouped_negation() {
         "((width > 1px) and (height > 2px)) and (inline-size > 3px)",
     ] {
         parsed_condition(query);
-        assert!(
-            validate_sheet(&format!("@container {query} {{}}")).is_ok(),
+        let source = format!("@container {query} {{}}");
+        assert_eq!(
+            validate_sheet(&source).unwrap(),
+            *parse_sheet(&source).syntax(),
             "{query}"
         );
     }

@@ -2,6 +2,7 @@
 //! Pinned WebKit 73aa6c89 CSSFontFeatureValuesRule.cpp setter requires complete
 //! native nongeneric prelude consumption; its getter uses comma-space joining.
 //! Native CSS Syntax EOF recovery is distinct from a clean-report policy.
+use crate::css::support::rules::ExpectedRejection;
 use surgeist_css::*;
 
 fn list(source: &str) -> CssFontFeatureValuesFamilyList {
@@ -150,11 +151,13 @@ fn valid_eof_recovery_retains_literal_names_and_original_source() {
         assert_eq!(origin.source().as_str(), source);
         assert_eq!(value.serialize_specified().unwrap(), "Demo");
     }
-    assert!(
-        parse_font_feature_values_family_list("A, 'bad\n")
-            .syntax()
-            .is_none()
-    );
+    // Syntax 3 §4.3.5: the newline makes a <bad-string-token>, which no
+    // <family-name> admits.
+    let report = parse_font_feature_values_family_list("A, 'bad\n");
+    assert!(report.syntax().is_none());
+    ExpectedRejection::new(CssErrorCode::InvalidAtRulePrelude)
+        .in_rule("font-feature-values")
+        .assert_first(&report);
 }
 
 #[test]

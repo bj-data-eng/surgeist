@@ -2,7 +2,7 @@
 //! component omission. Existing-public preimplementation RED is in
 //! speech_cue_lifecycle.rs; resources stay authored and are never loaded.
 
-use crate::css::support::first_important_declaration as declaration;
+use crate::css::support::important_declaration as declaration;
 use surgeist_css::*;
 
 fn audio(target: &str, offset: Option<&str>) -> CssCue {

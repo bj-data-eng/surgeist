@@ -2,6 +2,7 @@
 //! §§4.5.3, 4.7. Logical 1 issue 3030 leaves complete four-side reset
 //! membership unsettled, while its authored color grammar and roles are defined.
 
+use crate::css::support::property_admission::assert_declaration_rejected as invalid;
 use crate::css::support::{
     checked_grammar_declaration as checked, important_declaration as declaration,
     selected_grammar as grammar,
@@ -63,27 +64,6 @@ fn accepted(name: &str, value: &str) {
             value
         );
     }
-}
-
-fn invalid(name: &str, value: &str) {
-    let source = format!("color:red;{name}:{value};color:blue");
-    let report = parse_style_attribute(&source);
-    let [diagnostic] = report.diagnostics() else {
-        panic!("one invalid-value diagnostic: {source}")
-    };
-    assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    assert_ne!(diagnostic.error().code(), CssErrorCode::UnknownProperty);
-    assert_eq!(report.syntax().len(), 2, "neighbors survive: {source}");
-    assert!(validate_style_attribute(&source).is_err());
-    assert!(
-        parse_property_value_for_grammar(
-            grammar(name),
-            parse_component_values(value).unwrap(),
-            CssImportance::Normal,
-        )
-        .is_err(),
-        "checked construction accepted {name}:{value}"
-    );
 }
 
 fn one_value(name: &str, value: &str) -> CssLonghandValue {
@@ -241,8 +221,15 @@ fn eight_color_longhands_reuse_complete_authored_colors_and_symbolic_initial() {
         ] {
             accepted(name, value);
         }
-        for value in ["", "none", "1px", "red blue", "logical red", "red, blue"] {
-            invalid(name, value);
+        for (value, token) in [
+            ("", None),
+            ("none", Some("none")),
+            ("1px", Some("1px")),
+            ("red blue", Some("blue")),
+            ("logical red", Some("logical")),
+            ("red, blue", Some(",")),
+        ] {
+            invalid(name, value, token);
         }
         let CssPropertyKindRef::Longhand(longhand) = grammar(name).metadata().unwrap().kind()
         else {
@@ -353,8 +340,14 @@ fn logical_color_pairs_assign_exact_start_and_end_with_omission() {
                 assert!(item.replacement_components().is_none());
             }
         }
-        for value in ["", "logical red", "red blue green", "none", "red, blue"] {
-            invalid(pair, value);
+        for (value, token) in [
+            ("", None),
+            ("logical red", Some("logical")),
+            ("red blue green", Some("green")),
+            ("none", Some("none")),
+            ("red, blue", Some(",")),
+        ] {
+            invalid(pair, value, token);
         }
     }
 }
@@ -374,16 +367,16 @@ fn four_side_colors_accept_both_role_modes_and_expand_selected_sides() {
         accepted(FOUR_SIDE, value);
         assert_four_expansion(expand_declaration(&declaration(FOUR_SIDE, value)));
     }
-    for value in [
-        "",
-        "logical",
-        "logical logical red",
-        "red logical",
-        "logical none",
-        "red blue green black white",
-        "logical red blue green black white",
+    for (value, token) in [
+        ("", None),
+        ("logical", Some("logical")),
+        ("logical logical red", Some("logical")),
+        ("red logical", Some("logical")),
+        ("logical none", Some("none")),
+        ("red blue green black white", Some("white")),
+        ("logical red blue green black white", Some("white")),
     ] {
-        invalid(FOUR_SIDE, value);
+        invalid(FOUR_SIDE, value, token);
     }
     let grammar = grammar(FOUR_SIDE);
     assert!(matches!(
@@ -447,7 +440,7 @@ fn globals_all_and_pending_reentry_keep_color_members_and_occurrence() {
     assert!(reset.source().same_occurrence(&all_source));
     for name in names() {
         assert!(!reset.excludes(CssPropertyNameRef::Known(grammar(name).target_property())));
-        invalid(name, "initial red");
+        invalid(name, "initial red", Some("red"));
         for (text, keyword) in [
             ("initial", CssGlobalKeyword::Initial),
             ("inherit", CssGlobalKeyword::Inherit),

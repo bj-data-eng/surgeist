@@ -15,6 +15,9 @@
 use crate::css::support::authored_property;
 use authored_property::{ParserFront, assert_source, checked, invalid, parsed};
 
+use crate::css::support::discoverable_property as property;
+use crate::css::support::named_property::longhand_contributions as completed;
+use crate::css::support::serialization_limits::LimitLadder;
 use surgeist_css::CssKnownProperty as P;
 use surgeist_css::*;
 
@@ -35,16 +38,6 @@ const GLOBALS: [(&str, CssGlobalKeyword); 5] = [
     ("revert-layer", CssGlobalKeyword::RevertLayer),
 ];
 
-fn property(name: &str) -> P {
-    let property = P::from_name(name).unwrap_or_else(|| panic!("selected property {name}"));
-    assert_eq!(property.canonical_name(), name);
-    assert_eq!(
-        CssPropertyGrammar::from_name(name),
-        Some(property.grammar())
-    );
-    assert_eq!(P::from_name(&name.to_ascii_uppercase()), Some(property));
-    property
-}
 const FRONTS: [ParserFront; 3] = [
     ParserFront::StyleAttribute,
     ParserFront::CheckedName,
@@ -61,14 +54,6 @@ fn accepted(property: P, value: &str, expected: &str) {
     }
     checked(property, expected, false);
     checked(property, expected, true);
-}
-fn completed(source: &CssDeclaration) -> CssLonghandContributions {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
-    else {
-        panic!("terminal contributions")
-    };
-    values
 }
 fn names(values: &CssLonghandContributions) -> Vec<&'static str> {
     values
@@ -272,7 +257,7 @@ fn white_space_trim_group_cannot_interleave_mode_or_collapse_constituents() {
 }
 
 #[test]
-fn existing_singleton_wrap_white_space_and_word_break_provider_controls_remain_supported() {
+fn singleton_wrap_white_space_and_word_break_provider_controls_are_supported() {
     for css in ["wrap", "nowrap", "balance", "pretty", "stable"] {
         accepted(P::TextWrap, css, css);
     }
@@ -556,45 +541,6 @@ fn break_word_stays_one_word_break_terminal_without_overflow_wrap_reset() {
     let values = completed(&source);
     assert_payloads(&values, &[("word-break", "break-word")]);
     assert_ordinary(&values, &source);
-}
-
-#[test]
-fn five_css_wide_keywords_propagate_to_exact_shorthand_members() {
-    for (p, expected) in [
-        (P::TextWrap, WRAP.as_slice()),
-        (P::WhiteSpace, SPACE.as_slice()),
-        (P::WordBreak, ["word-break"].as_slice()),
-    ] {
-        for (css, keyword) in GLOBALS {
-            for source in fronts(p, css) {
-                let values = completed(&source);
-                assert_eq!(names(&values), expected);
-                for item in values.items() {
-                    assert_source(item, &source);
-                    assert_eq!(item.value(), CssContributionValueRef::Global(keyword));
-                    assert!(item.ordinary_value().is_none());
-                    assert!(item.replacement_components().is_none());
-                }
-            }
-        }
-    }
-}
-#[test]
-fn five_css_wide_keywords_propagate_to_each_constituent_longhand() {
-    for (name, _, _) in LONGHANDS {
-        let p = property(name);
-        for (css, keyword) in GLOBALS {
-            for source in fronts(p, css) {
-                let values = completed(&source);
-                assert_eq!(names(&values), [name]);
-                assert_eq!(
-                    values.items()[0].value(),
-                    CssContributionValueRef::Global(keyword)
-                );
-                assert_source(&values.items()[0], &source);
-            }
-        }
-    }
 }
 
 fn pending_contract(p: P, value: &str, expected: &[(&str, &str)], invalid_values: &[&str]) {
@@ -1040,56 +986,12 @@ fn typed_output(
     }
 }
 fn provider_limits(p: P, css: &str, expected: &str, work: usize) {
-    use CssSpecifiedValueSerializationErrorKind as Kind;
-    use CssSpecifiedValueSerializationLimits as Limits;
     let declaration_css = format!("{}: {expected} !important;", p.canonical_name());
     for source in fronts(p, css) {
-        let before = source.clone();
-        let exact = Limits::new(work, work, expected.len());
-        assert_eq!(typed_output(&source, exact).unwrap(), expected);
-        assert_eq!(
-            source
-                .to_specified_css_with_limits(Limits::new(
-                    work + 2,
-                    work + 2,
-                    declaration_css.len()
-                ))
-                .unwrap(),
-            declaration_css
-        );
-        for (value_limits, declaration_limits, kind) in [
-            (
-                Limits::new(work - 1, work, expected.len()),
-                Limits::new(work + 1, work + 2, declaration_css.len()),
-                Kind::InputNodeLimit,
-            ),
-            (
-                Limits::new(work, work - 1, expected.len()),
-                Limits::new(work + 2, work + 1, declaration_css.len()),
-                Kind::ProjectionNodeLimit,
-            ),
-            (
-                Limits::new(work, work, expected.len() - 1),
-                Limits::new(work + 2, work + 2, declaration_css.len() - 1),
-                Kind::ByteLimit,
-            ),
-        ] {
-            for _ in 0..2 {
-                assert_eq!(
-                    typed_output(&source, value_limits).unwrap_err().kind(),
-                    kind
-                );
-                assert_eq!(
-                    source
-                        .to_specified_css_with_limits(declaration_limits)
-                        .unwrap_err()
-                        .kind(),
-                    kind
-                );
-                assert_eq!(source, before);
-            }
-        }
-        assert_eq!(typed_output(&source, exact).unwrap(), expected);
+        LimitLadder::new(expected, work, work).assert_unchanged(&source, typed_output);
+        // The declaration adds one input and one projection node to its value.
+        LimitLadder::new(&declaration_css, work + 2, work + 2)
+            .assert_unchanged(&source, CssDeclaration::to_specified_css_with_limits);
         assert_eq!(source.to_specified_css().unwrap(), declaration_css);
     }
 }

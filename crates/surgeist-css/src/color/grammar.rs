@@ -9,7 +9,7 @@ use super::protocol::{
     RecordTable,
 };
 use super::tokens::{ClassifiedToken, TokenAction, TokenReader};
-use crate::tokenization::color_tokens::{NameKind, NumberKind, Span, TokenKind};
+use crate::tokenization::tokenizer::{NameKind, NumberKind, Span, TokenKind};
 use crate::{
     ColorSpace as Space, CssColorInterpolationMethod, CssColorSyntax, CssSystemColor,
     HueInterpolation, PredefinedColorSpace,

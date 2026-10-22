@@ -1,5 +1,6 @@
 //! Values4 WD20240312 Appendix C. Independent number-token -> px expectations.
 //! Unitless admission composes with the selected named shorthand assignment mode.
+use crate::css::support::value_assertions::assert_component_rejected;
 use crate::css::support::{contextual_checked_declaration as checked, known_property as property};
 use surgeist_css::*;
 
@@ -45,15 +46,13 @@ const ELIGIBLE: &[(&str, &str, &str)] = &[
 ];
 
 fn rejected(context: CssParserContext, name: &str, text: &str) {
-    assert!(
-        context
-            .parse_property_value_for_grammar(
-                property(name).grammar(),
-                parse_component_values(text).unwrap(),
-                CssImportance::Normal,
-            )
-            .is_err(),
-        "{name}: {text}"
+    crate::css::support::value_assertions::property_rejection(
+        context.parse_property_value_for_grammar(
+            property(name).grammar(),
+            parse_component_values(text).unwrap(),
+            CssImportance::Normal,
+        ),
+        property(name),
     );
     let css = format!("{name}:{text};color:red");
     let report = context.parse_style_attribute(&css);
@@ -216,14 +215,13 @@ fn fractions_exponents_signed_lengths_and_rust_authored_tokens_keep_exact_origin
                 .unwrap();
         for values in [parsed.clone(), generated.clone()] {
             let before = values.clone();
-            assert!(
-                STANDARDS
-                    .parse_property_value_for_grammar(
-                        CssKnownProperty::MarginTop.grammar(),
-                        values.clone(),
-                        CssImportance::Normal
-                    )
-                    .is_err()
+            crate::css::support::value_assertions::property_rejection(
+                STANDARDS.parse_property_value_for_grammar(
+                    CssKnownProperty::MarginTop.grammar(),
+                    values.clone(),
+                    CssImportance::Normal,
+                ),
+                CssKnownProperty::MarginTop,
             );
             let value = QUIRKS
                 .parse_property_value_for_grammar(
@@ -539,7 +537,10 @@ fn pending_logical_number_replacement_selects_logical_targets_and_retains_both_o
                 let CssExpansion::Pending(handle) = expand_declaration(&standard).unwrap() else {
                     panic!("standard pending")
                 };
-                assert!(handle.reenter(replacement).is_err());
+                crate::css::support::value_assertions::replacement_rejection(
+                    handle.reenter(replacement),
+                    property(name),
+                );
             }
             assert_eq!(source, before);
             assert_eq!(
@@ -646,15 +647,15 @@ fn excluded_properties_references_and_function_interiors_keep_ordinary_grammar()
 
 #[test]
 fn ordinary_zero_dimensions_percentages_numbers_and_css_wide_values_are_controls() {
-    assert!(
-        CssSpecifiedLength::try_from_component(CssComponentValue::try_number("7").unwrap())
-            .is_err()
+    assert_component_rejected(
+        CssSpecifiedLength::try_from_component,
+        CssComponentValue::try_number("7").unwrap(),
+        surgeist_css::CssNumericConstructionErrorKind::RootDomainMismatch,
     );
-    assert!(
-        CssSpecifiedLengthPercentage::try_from_component(
-            CssComponentValue::try_number("7").unwrap()
-        )
-        .is_err()
+    assert_component_rejected(
+        CssSpecifiedLengthPercentage::try_from_component,
+        CssComponentValue::try_number("7").unwrap(),
+        surgeist_css::CssNumericConstructionErrorKind::RootDomainMismatch,
     );
     assert!(!parse_style_attribute("margin-top:7").is_clean());
     for context in [STANDARDS, QUIRKS] {
@@ -785,7 +786,10 @@ fn pending_reentry_retains_document_mode_original_and_replacement_origins_after_
             let CssExpansion::Pending(handle) = expand_declaration(&standard).unwrap() else {
                 panic!("standard pending")
             };
-            assert!(handle.reenter(replacement).is_err());
+            crate::css::support::value_assertions::replacement_rejection(
+                handle.reenter(replacement),
+                property(name),
+            );
         }
     }
 }

@@ -6,6 +6,7 @@
 //! New typed views/constructors and exact initial payloads require functional
 //! tests alongside implementation; no missing-symbol RED is claimed here.
 
+use crate::css::support::property_admission::implicit_closure_origin as implicit_origin;
 use crate::css::support::{
     authored_declaration_through_front as declaration, check_property_components as checked,
     discoverable_property as property,
@@ -85,8 +86,9 @@ fn invalid(name: &str, values: &[&str]) {
         let components = parse_component_values(value).unwrap();
         let original = components.clone();
         for grammar in [false, true] {
-            assert!(
-                checked(p, components.clone(), grammar).is_err(),
+            assert_eq!(
+                checked(p, components.clone(), grammar).unwrap_err().kind(),
+                &CssPropertyValueErrorKind::Grammar(diagnostic.error().kind().clone()),
                 "{name}:{value}"
             );
         }
@@ -502,18 +504,6 @@ lifecycle!(
 );
 lifecycle!(threshold, "shape-image-threshold", "150%", "1px");
 lifecycle!(margin, "shape-margin", "calc(1px + 2%)", "-1e-999px");
-
-fn implicit_origin(components: &CssComponentValues) -> CssValueOrigin {
-    let output = components.serialize().unwrap();
-    (0..output.as_css().len())
-        .find_map(|offset| match output.origin_at(offset) {
-            Some(CssSerializedOrigin::Token(origin @ CssValueOrigin::ImplicitClosure { .. })) => {
-                Some(origin.clone())
-            }
-            _ => None,
-        })
-        .expect("original fixture has implicit closure")
-}
 
 fn strict_original(name: &str, ordinary: &str, unclosed: &str) {
     let p = property(name);

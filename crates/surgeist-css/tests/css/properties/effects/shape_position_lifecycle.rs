@@ -5,6 +5,7 @@
 //! or coordinate evaluation is implied. New model/serialization APIs are tested
 //! separately once available; this target uses existing callable boundaries.
 
+use crate::css::support::property_admission::assert_checked_matches_diagnostic;
 use surgeist_css::*;
 
 fn clip(source: &CssDeclaration) -> &CssClipPath {
@@ -222,13 +223,10 @@ fn reject(position: &str) {
             validate_style_attribute(&source).unwrap_err().diagnostics(),
             report.diagnostics()
         );
-        assert!(
-            parse_property_value(
-                CssPropertyNameRef::Known(CssKnownProperty::ClipPath),
-                parse_component_values(&format!("{function}(at {position})")).unwrap(),
-                CssImportance::Normal,
-            )
-            .is_err()
+        assert_checked_matches_diagnostic(
+            CssKnownProperty::ClipPath,
+            &format!("{function}(at {position})"),
+            diagnostic,
         );
     }
 }

@@ -3,18 +3,13 @@
 //! contract preserves absence/nonrepresentability as None, distinct from a
 //! present empty terminal. CSSOM string APIs collapse those cases to empty text.
 
+use crate::css::support::value_assertions::specified_property_value as read;
 use surgeist_css::*;
 
 fn declarations(source: &str) -> CssDeclarationList {
     let report = parse_style_attribute(source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     report.syntax().clone()
-}
-
-fn read(block: &CssSpecifiedDeclarationBlock, property: CssKnownProperty) -> Option<String> {
-    block
-        .property_value(CssPropertyNameRef::Known(property))
-        .unwrap()
 }
 
 fn custom_read(block: &CssSpecifiedDeclarationBlock, name: &str) -> Option<String> {

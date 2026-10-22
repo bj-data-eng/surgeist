@@ -4,11 +4,9 @@
 //! https://www.w3.org/TR/2021/WD-cssom-1-20210826/#serialize-a-css-value
 //! Size height exception: https://github.com/w3c/csswg-drafts/issues/7802#issuecomment-2770612154
 
-use crate::css::support::style_declaration as declaration;
-use surgeist_css::{
-    CssBackgroundRepeatStyle as R, CssSpecifiedValueSerializationErrorKind as E,
-    CssSpecifiedValueSerializationLimits as L, *,
-};
+use crate::css::support::serialization_limits::assert_limits_with_zero as exact_bounds;
+use crate::css::support::sole_declaration as declaration;
+use surgeist_css::{CssBackgroundRepeatStyle as R, *};
 
 fn size(css: &str) -> CssBackgroundSizeList {
     let source = declaration(&format!("background-size:{css}"));
@@ -346,34 +344,6 @@ fn repeat_aliases_equal_axes_and_directional_pairs_use_shorter_equivalents() {
             panic!("repeat roundtrip")
         };
         assert_eq!(reparsed.repeats().serialize_specified().unwrap(), expected);
-    }
-}
-
-fn exact_bounds(
-    expected: &str,
-    input: usize,
-    projection: usize,
-    serialize: impl Fn(L) -> Result<String, CssSpecifiedValueSerializationError>,
-) {
-    assert_eq!(
-        serialize(L::new(input, projection, expected.len())).unwrap(),
-        expected
-    );
-    for (limits, error) in [
-        (
-            L::new(input - 1, projection, expected.len()),
-            E::InputNodeLimit,
-        ),
-        (
-            L::new(input, projection - 1, expected.len()),
-            E::ProjectionNodeLimit,
-        ),
-        (L::new(input, projection, expected.len() - 1), E::ByteLimit),
-        (L::new(0, projection, expected.len()), E::InputNodeLimit),
-        (L::new(input, 0, expected.len()), E::ProjectionNodeLimit),
-        (L::new(input, projection, 0), E::ByteLimit),
-    ] {
-        assert_eq!(serialize(limits).unwrap_err().kind(), error);
     }
 }
 

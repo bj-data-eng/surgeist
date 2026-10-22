@@ -1,7 +1,7 @@
 //! Bounded lexical input to the original component structural owner.
 use super::*;
 use crate::tokenization::bounded::Scalar;
-use crate::tokenization::color_tokens::{
+use crate::tokenization::tokenizer::{
     NameKind, NumberKind, Record, Request, Span, TokenCursor, TokenKind,
 };
 use crate::utf16_value::{Control, Failure};
@@ -148,12 +148,30 @@ fn consume_snapshot(
             text: copied(raw, Some(control), &origin)?,
             origin: CssValueOrigin::Parsed(origin.clone()),
         };
+        // The same EOF terminations as direct collection. An escaped EOF adds
+        // no code point inside a string (Syntax 3 §4.3.5), so its closure keeps
+        // that effect with an escaped newline; elsewhere it decodes to U+FFFD
+        // (§4.3.7), which the closure spells as an explicit escape.
+        let escaped_eof = odd_trailing_backslashes(raw);
         let implicit_text = match token.kind {
             TokenKind::String { closed: false, .. } => {
-                Some(if raw.starts_with('\'') { "'" } else { "\"" })
+                Some(match (raw.starts_with('\''), escaped_eof) {
+                    (true, false) => "'",
+                    (true, true) => "\n'",
+                    (false, false) => "\"",
+                    (false, true) => "\n\"",
+                })
             }
-            TokenKind::Url { closed: false, .. } => Some(")"),
+            TokenKind::Url { closed: false, .. } => Some(if escaped_eof { "fffd )" } else { ")" }),
             TokenKind::Comment { closed: false } => Some("*/"),
+            TokenKind::Name {
+                kind: NameKind::Ident | NameKind::At | NameKind::Hash { .. },
+                ..
+            }
+            | TokenKind::Number {
+                kind: NumberKind::Dimension,
+                ..
+            } if escaped_eof => Some("fffd "),
             _ => None,
         };
         let implicit_end = implicit_text

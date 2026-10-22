@@ -5,23 +5,18 @@ use crate::css::support::descriptor_phases;
 use descriptor_phases::*;
 
 use serde_json::{Value, json};
-use std::{fs, path::Path};
 use surgeist_css::{
     CssFontFeatureValuesItem, CssNamespaceContext, CssRule, CssSourcePosition, CssSourceSpan,
     ErrorKind, parse_rule,
 };
 
-use crate::css::support::digest;
+use crate::css::support::csstree::adapters::{EntryPoint, Extractor};
+use crate::css::support::csstree::reconciliation::{
+    ObservationRoute, PredictedObservation, Reconciliation, RowPaths, catalog_module, text,
+};
 
-fn expectations() -> Value {
-    serde_json::from_str(include_str!(
-        "../../../csstree/font-singleton-policy-reconciliation.json"
-    ))
-    .unwrap()
-}
-
-fn text<'a>(row: &'a Value, key: &str) -> &'a str {
-    row[key].as_str().unwrap()
+fn reconciliation() -> Reconciliation {
+    Reconciliation::load("font-singleton-policy-reconciliation.json", RowPaths::Crate)
 }
 
 fn position(value: CssSourcePosition) -> Value {
@@ -33,10 +28,10 @@ fn span(value: CssSourceSpan) -> Value {
     json!({"start": position(value.start()), "end": position(value.end())})
 }
 
-#[test]
-fn original_singleton_retains_all_typed_definitions_without_recovery() {
-    let data = expectations();
-    let row = &data["rows"][0];
+/// The retained typed definitions, presence, cleanliness, validation and
+/// detailed descriptor diagnostics for the singleton row. The payload relation
+/// of each diagnostic is reconciled once, through `expected_raw_diagnostics`.
+fn typed_definitions_reconcile(row: &Value) -> Result<(), String> {
     let input = text(row, "input");
     let report = parse_rule(input, &CssNamespaceContext::default());
     assert_eq!(report.syntax().is_some(), row["present"].as_bool().unwrap());
@@ -99,55 +94,69 @@ fn original_singleton_retains_all_typed_definitions_without_recovery() {
             let encountered = detail.encountered().expect("responsible authored identifier");
             let start = diagnostic.span().start().byte_offset().value();
             let end = diagnostic.span().end().byte_offset().value();
-            assert!(error.position().byte_offset().value() < input.len());
-            assert!(start < input.len() && end > 0);
             json!({"error_code": format!("{:?}", error.code()),
                 "error_byte_offset": error.position().byte_offset().value(),
                 "error_position": position(error.position()), "recovery_byte_span": [start, end],
                 "recovery_span": span(diagnostic.span()), "action": format!("{:?}", diagnostic.action()),
-                "payload_relation": "intersects", "detail": {
+                "detail": {
                     "at_rule": detail.at_rule().as_str(), "descriptor": detail.descriptor().as_str(),
                     "expectation": detail.expectation().as_str(),
                     "encountered": {"kind": format!("{:?}", encountered.kind()), "authored": encountered.authored()}
                 }, "recovered_source": &input[start..end]})
         })
         .collect();
-    assert_eq!(diagnostics, *row["diagnostics"].as_array().unwrap());
+    let detailed = row["diagnostics"].as_array().unwrap();
+    let raw = row["expected_raw_diagnostics"].as_array().unwrap();
+    assert_eq!(
+        detailed.len(),
+        raw.len(),
+        "one raw form per detailed diagnostic"
+    );
+    let expected: Vec<_> = detailed
+        .iter()
+        .zip(raw)
+        .map(|(detailed, raw)| {
+            let mut detailed = detailed.clone();
+            let relation = detailed.as_object_mut().unwrap().remove("payload_relation");
+            assert_eq!(relation.as_ref(), Some(&raw["payload_relation"]));
+            detailed
+        })
+        .collect();
+    assert_eq!(diagnostics, expected);
+    Ok(())
+}
+
+#[test]
+fn original_singleton_retains_all_typed_definitions_without_recovery() {
+    let seen = reconciliation().reconcile_observations(
+        ObservationRoute {
+            entry_point: EntryPoint::Rule,
+            extractor: Some(Extractor::AtRule),
+        },
+        |_| true,
+        |row| PredictedObservation {
+            syntax_count: 1,
+            is_clean: row["clean"].as_bool().unwrap(),
+            diagnostics: row["expected_raw_diagnostics"].as_array().unwrap().clone(),
+        },
+        Some(&typed_definitions_reconcile),
+    );
+    assert_eq!(seen, 1);
 }
 
 #[test]
 fn original_singleton_registry_matches_independent_adopted_policy_class() {
-    let data = expectations();
-    let row = &data["rows"][0];
-    let registry: Value =
-        serde_json::from_str(include_str!("../../../csstree/expected-classes.json")).unwrap();
-    let records: Vec<_> = registry["records"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter(|record| record["id"] == row["id"])
-        .collect();
-    assert_eq!(records.len(), 1);
-    assert_eq!(records[0]["expectation_sha256"], row["expectation_sha256"]);
-    assert_eq!(records[0]["class"], row["expected_class"]);
+    reconciliation().assert_registry_classes();
 }
 
 #[test]
 fn original_singleton_identity_options_and_selected_publication_remain_bound() {
-    let data = expectations();
-    let rows = data["rows"].as_array().unwrap();
+    let reconciliation = reconciliation();
+    let data = reconciliation.data();
+    let rows = reconciliation.rows();
     assert_eq!(rows.len(), 1);
-    let row = &rows[0];
-    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let catalog: Value =
-        serde_json::from_slice(&fs::read(root.join("specs/catalog.json")).unwrap()).unwrap();
     for source in data["normative_sources"].as_array().unwrap() {
-        let module = catalog["modules"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|module| module["id"] == source["id"])
-            .unwrap();
+        let module = catalog_module(&source["id"]);
         assert_eq!(module["publication"], source["publication"]);
         assert_eq!(module["authored_scope"], source["authored_scope"]);
         assert_eq!(module["selection"], source["selection"]);
@@ -160,51 +169,15 @@ fn original_singleton_identity_options_and_selected_publication_remain_bound() {
             data["source_policy"]["publication_url"]
         );
     }
-    assert_eq!(
-        digest::sha256_hex(text(row, "input").as_bytes()),
-        text(row, "input_sha256")
-    );
-    assert_eq!(
-        digest::sha256_hex(&serde_json::to_vec(&row["effective_options"]).unwrap()),
-        text(row, "options_sha256")
-    );
-    for (path, hash) in [
-        ("source_path", "source_sha256"),
-        ("expectation_path", "expectation_sha256"),
-    ] {
-        assert_eq!(
-            digest::sha256_hex(&fs::read(root.join(text(row, path))).unwrap()),
-            text(row, hash)
-        );
-    }
-    let neutral: Value =
-        serde_json::from_slice(&fs::read(root.join(text(row, "expectation_path"))).unwrap())
-            .unwrap();
-    let originals: Vec<_> = neutral["cases"]
+    assert_eq!(reconciliation.assert_original_bindings(rows, "atrule"), 1);
+    let row = &rows[0];
+    let source = reconciliation.row_json(row, "source_path");
+    let neutral = reconciliation.row_json(row, "expectation_path");
+    let original = neutral["cases"]
         .as_array()
         .unwrap()
         .iter()
-        .filter(|case| case["id"] == row["id"])
-        .collect();
-    assert_eq!(originals.len(), 1);
-    let original = originals[0];
-    assert_eq!(original, &row["original_expectation"]);
-    for key in ["input", "context", "status"] {
-        assert_eq!(original[key], row[key]);
-    }
-    assert_eq!(
-        original.get("options").is_some(),
-        row["options_present"].as_bool().unwrap()
-    );
-    assert_eq!(original["options"], row["options"]);
-    assert_eq!(
-        original
-            .get("options")
-            .cloned()
-            .unwrap_or_else(|| json!({})),
-        row["effective_options"]
-    );
-    let source: Value =
-        serde_json::from_slice(&fs::read(root.join(text(row, "source_path"))).unwrap()).unwrap();
+        .find(|case| case["id"] == row["id"])
+        .unwrap();
     assert_eq!(source[text(original, "label")]["source"], row["input"]);
 }

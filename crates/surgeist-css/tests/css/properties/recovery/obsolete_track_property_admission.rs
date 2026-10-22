@@ -93,6 +93,6 @@ fn neighboring_alignment_and_custom_property_controls_remain_clean() {
 }
 
 #[test]
-fn existing_unknown_property_control() {
+fn unrecognized_property_reports_unknown_declaration() {
     require_unknown_declarations("not-a-property: center", &["not-a-property"]);
 }

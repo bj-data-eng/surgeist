@@ -4,6 +4,8 @@
 //! Motion1 WD20241105 §2.1.1; CSSOM WD20210826 §2.1 and the public
 //! immutable provenance/resource/whole-production contracts supply the oracles.
 
+use crate::css::support::value_assertions::assert_parsed_span as original;
+use crate::css::support::value_assertions::property_rejection;
 use surgeist_css::*;
 
 const TWENTY: &str =
@@ -25,15 +27,6 @@ fn families(declaration: &CssDeclaration) -> &CssFontFamilyList {
         }
         other => panic!("a family-importing property, got {other:?}"),
     }
-}
-
-fn original(origin: &CssValueOrigin, source: &str, start: usize, end: usize) {
-    let CssValueOrigin::Parsed(origin) = origin else {
-        panic!("an original parsed token origin");
-    };
-    assert_eq!(origin.source().as_str(), source);
-    assert_eq!(origin.span().start().byte_offset().value(), start);
-    assert_eq!(origin.span().end().byte_offset().value(), end);
 }
 
 fn parity(source: &str) -> CssParseReport<CssDeclarationList> {
@@ -319,13 +312,13 @@ fn checked_exact_numeric_origins_survive_whole_declaration_output_failure_and_re
             CssComponentValue::try_ident("auto").unwrap(),
         ])
         .unwrap();
-        assert!(
+        property_rejection(
             parse_property_value(
                 CssPropertyNameRef::Known(CssKnownProperty::Width),
                 residual.clone(),
-                CssImportance::Normal
-            )
-            .is_err()
+                CssImportance::Normal,
+            ),
+            CssKnownProperty::Width,
         );
         assert_eq!(declaration.value_components(), &components);
         assert_eq!(declaration.to_specified_css().unwrap(), EXPECTED);
@@ -337,13 +330,13 @@ fn checked_exact_numeric_origins_survive_whole_declaration_output_failure_and_re
             .kind(),
         &CssNumericConstructionErrorKind::OutOfRange,
     );
-    assert!(
+    property_rejection(
         parse_property_value(
             CssPropertyNameRef::Known(CssKnownProperty::Width),
             CssComponentValues::try_new(vec![negative]).unwrap(),
             CssImportance::Normal,
-        )
-        .is_err()
+        ),
+        CssKnownProperty::Width,
     );
     let report = parity(r"width:+2\50 X!important;width:-1e-999px;height:3px");
     let [width, height] = report.syntax().as_slice() else {
@@ -466,13 +459,13 @@ fn a_greedy_imported_position_stops_before_the_whole_angle_function_and_rejects_
             23 + invalid.len()
         );
         let supplied = parse_component_values(invalid).unwrap();
-        assert!(
+        property_rejection(
             parse_property_value_for_grammar(
                 CssKnownProperty::OffsetPath.grammar(),
                 supplied,
-                CssImportance::Important
-            )
-            .is_err()
+                CssImportance::Important,
+            ),
+            CssKnownProperty::OffsetPath,
         );
     }
 }

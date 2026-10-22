@@ -4,25 +4,13 @@
 //! punctuation, work tariffs, provider failures and occurrence preservation.
 //! These new operations have no claimed executable preimplementation RED.
 
+use crate::css::support::authored_syntax::{
+    grammar_checked_declaration as checked, parsed_declaration as parsed,
+};
 use surgeist_css::*;
 
 type Limits = CssSpecifiedValueSerializationLimits;
 type Kind = CssSpecifiedValueSerializationErrorKind;
-
-fn parsed(source: &str) -> CssDeclaration {
-    let report = parse_declaration(source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    report.syntax().as_ref().unwrap().clone()
-}
-
-fn checked(name: &str, value: &str, importance: CssImportance) -> CssDeclaration {
-    parse_property_value_for_grammar(
-        CssPropertyGrammar::from_name(name).unwrap(),
-        parse_component_values(value).unwrap(),
-        importance,
-    )
-    .unwrap()
-}
 
 fn custom(name: &str, values: CssComponentValues, importance: CssImportance) -> CssDeclaration {
     let name = CssCustomPropertyName::try_new(name).unwrap();

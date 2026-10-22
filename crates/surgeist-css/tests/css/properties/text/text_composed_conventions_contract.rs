@@ -14,6 +14,11 @@
 //! gap from the thirteen active properties.
 //! It establishes no source-count, issue/status, acceptance or execution oracle.
 
+use crate::css::support::authored_checked_declaration as checked;
+use crate::css::support::authored_parsed_declaration as parsed;
+use crate::css::support::check_named_components as checked_components;
+use crate::css::support::known_property as property;
+use crate::css::support::named_property::invalid_named_value as invalid;
 use surgeist_css::*;
 
 struct Witness {
@@ -241,11 +246,6 @@ const GLOBALS: [(&str, CssGlobalKeyword); 5] = [
     ("revert-layer", CssGlobalKeyword::RevertLayer),
 ];
 
-fn property(name: &str) -> CssKnownProperty {
-    CssKnownProperty::from_name(name)
-        .unwrap_or_else(|| panic!("selected property unavailable: {name}"))
-}
-
 fn witness(name: &str) -> &'static Witness {
     WITNESSES
         .iter()
@@ -261,50 +261,6 @@ fn members(name: &str) -> Vec<&str> {
         "text-spacing" => vec!["text-spacing-trim", "text-autospace"],
         _ => vec![name],
     }
-}
-
-fn parsed(name: &str, value: &str) -> CssDeclaration {
-    let css = format!("/*😀*/{name}:{value}!important");
-    let report = parse_style_attribute(&css);
-    assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
-    assert!(validate_style_attribute(&css).is_ok());
-    let [source] = report.syntax().as_slice() else {
-        panic!("one authored occurrence")
-    };
-    assert_eq!(source.known().unwrap().grammar(), property(name).grammar());
-    assert_eq!(source.importance(), CssImportance::Important);
-    assert_eq!(source.parsed_name().unwrap().source().as_str(), css);
-    source.clone()
-}
-
-fn checked_components(
-    name: &str,
-    components: CssComponentValues,
-    grammar: bool,
-) -> Result<CssDeclaration, CssPropertyValueParseError> {
-    let p = property(name);
-    if grammar {
-        parse_property_value_for_grammar(p.grammar(), components, CssImportance::Important)
-    } else {
-        parse_property_value(
-            CssPropertyNameRef::Known(p),
-            components,
-            CssImportance::Important,
-        )
-    }
-}
-
-fn checked(name: &str, value: &str, grammar: bool) -> CssDeclaration {
-    let components = parse_component_values(value).unwrap();
-    let before = components.clone();
-    let source = checked_components(name, components.clone(), grammar).unwrap();
-    assert_eq!(components, before);
-    assert_eq!(source.value_components(), &components);
-    assert_eq!(source.importance(), CssImportance::Important);
-    assert!(source.position().is_none());
-    assert!(source.parsed_name().is_none());
-    assert!(source.parsed_value().is_none());
-    source
 }
 
 fn expanded(source: &CssDeclaration) -> CssLonghandContributions {
@@ -334,45 +290,6 @@ fn assert_terminals(values: &CssLonghandContributions, source: &CssDeclaration) 
         assert_eq!(item.source().parsed_name(), source.parsed_name());
         assert_eq!(item.source().parsed_value(), source.parsed_value());
     }
-}
-
-fn invalid(name: &str, value: &str) {
-    let css = format!("color:red;{name}:{value};color:blue");
-    let report = parse_style_attribute(&css);
-    let [diagnostic] = report.diagnostics() else {
-        panic!("one property grammar failure: {css}")
-    };
-    assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("registered property grammar failure")
-    };
-    assert_eq!(detail.property(), property(name));
-    assert_eq!(
-        report
-            .syntax()
-            .iter()
-            .map(|v| v.known().unwrap().property())
-            .collect::<Vec<_>>(),
-        [CssKnownProperty::Color, CssKnownProperty::Color]
-    );
-    assert_eq!(
-        validate_style_attribute(&css).unwrap_err().diagnostics(),
-        report.diagnostics()
-    );
-    let components = parse_component_values(value).unwrap();
-    let before = components.clone();
-    for grammar in [false, true] {
-        assert!(
-            matches!(
-                checked_components(name, components.clone(), grammar)
-                    .unwrap_err()
-                    .kind(),
-                CssPropertyValueErrorKind::Grammar(_)
-            ),
-            "{name}:{value}"
-        );
-    }
-    assert_eq!(components, before);
 }
 
 #[test]
@@ -862,7 +779,7 @@ fn composed_normalization_and_sheet_bytes_preserve_all_occurrences_and_member_bo
 }
 
 #[test]
-fn prior_owner_complete_components_preserve_existing_value_and_source_contracts() {
+fn owner_complete_components_preserve_value_and_source_contracts() {
     for name in [
         "text-align",
         "text-align-all",

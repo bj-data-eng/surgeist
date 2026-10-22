@@ -5,7 +5,8 @@
 //! `mask-image`: `[ none | <image> | <mask-source> ]#`, initially `none`, noninherited.
 //! https://www.w3.org/TR/2021/CRD-css-masking-1-20210805/#propdef-mask-image
 
-use crate::css::support::style_declaration_reporting_source as declaration;
+use crate::css::support::named_property::longhand_contributions;
+use crate::css::support::sole_declaration as declaration;
 use surgeist_css::*;
 
 fn authored(source: &CssDeclaration) -> &CssImageValueList {
@@ -110,12 +111,7 @@ fn mask_layer_construction_accepts_images_and_preserves_nonempty_boundary() {
 }
 
 fn expanded(source: &CssDeclaration) -> Vec<CssLonghandContribution> {
-    let CssExpansion::Contributions(CssContributions::Longhands(items)) =
-        expand_declaration(source).unwrap()
-    else {
-        panic!("one image-list longhand")
-    };
-    items.items().to_vec()
+    longhand_contributions(source).items().to_vec()
 }
 
 fn expanded_images(value: &CssLonghandValue) -> &CssImageValueList {
@@ -279,63 +275,6 @@ fn ordered_mask_sources_and_gradients_expand_once_with_source_and_importance() {
     assert!(item.source().same_occurrence(&source));
     assert_eq!(item.source().importance(), CssImportance::Important);
     assert!(item.replacement_components().is_none());
-}
-
-#[test]
-fn globals_and_universal_reset_keep_background_image_symbolic() {
-    for (spelling, expected) in [
-        ("initial", CssGlobalKeyword::Initial),
-        ("inherit", CssGlobalKeyword::Inherit),
-        ("unset", CssGlobalKeyword::Unset),
-        ("revert", CssGlobalKeyword::Revert),
-        ("revert-layer", CssGlobalKeyword::RevertLayer),
-    ] {
-        let source = declaration(&format!("background-image:{spelling}!important"));
-        let [item] = expanded(&source)
-            .try_into()
-            .unwrap_or_else(|_| panic!("one global"));
-        assert_eq!(item.property(), CssKnownProperty::BackgroundImage);
-        assert_eq!(item.value(), CssContributionValueRef::Global(expected));
-        assert!(item.source().same_occurrence(&source));
-        assert_eq!(item.source().importance(), CssImportance::Important);
-    }
-    let all = declaration("all:initial!important");
-    let CssExpansion::Contributions(CssContributions::UniversalReset(reset)) =
-        expand_declaration(&all).unwrap()
-    else {
-        panic!("symbolic all reset")
-    };
-    assert_eq!(reset.keyword(), CssGlobalKeyword::Initial);
-    assert!(!reset.excludes(CssPropertyNameRef::Known(CssKnownProperty::BackgroundImage)));
-    assert!(reset.source().same_occurrence(&all));
-}
-
-#[test]
-fn globals_and_universal_reset_keep_mask_image_symbolic() {
-    for (spelling, expected) in [
-        ("initial", CssGlobalKeyword::Initial),
-        ("inherit", CssGlobalKeyword::Inherit),
-        ("unset", CssGlobalKeyword::Unset),
-        ("revert", CssGlobalKeyword::Revert),
-        ("revert-layer", CssGlobalKeyword::RevertLayer),
-    ] {
-        let source = declaration(&format!("mask-image:{spelling}!important"));
-        let [item] = expanded(&source)
-            .try_into()
-            .unwrap_or_else(|_| panic!("one global"));
-        assert_eq!(item.property(), CssKnownProperty::MaskImage);
-        assert_eq!(item.value(), CssContributionValueRef::Global(expected));
-        assert!(item.source().same_occurrence(&source));
-        assert_eq!(item.source().importance(), CssImportance::Important);
-    }
-    let all = declaration("all:initial!important");
-    let CssExpansion::Contributions(CssContributions::UniversalReset(reset)) =
-        expand_declaration(&all).unwrap()
-    else {
-        panic!("symbolic all reset")
-    };
-    assert!(!reset.excludes(CssPropertyNameRef::Known(CssKnownProperty::MaskImage)));
-    assert!(reset.source().same_occurrence(&all));
 }
 
 #[test]

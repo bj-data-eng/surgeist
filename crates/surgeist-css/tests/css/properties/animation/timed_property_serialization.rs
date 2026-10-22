@@ -2,7 +2,9 @@
 //! Expected order and disambiguation follow the selected Transitions 1 §2.5
 //! and Animations 1 §3.10 references. Limits follow the provider node policy.
 
-use crate::css::support::style_declaration as declaration;
+use crate::css::support::property_admission::assert_numeric_rejected;
+use crate::css::support::serialization_limits::assert_limits as budget;
+use crate::css::support::sole_declaration as declaration;
 use surgeist_css::{
     CssSpecifiedValueSerializationErrorKind as K, CssSpecifiedValueSerializationLimits as L, *,
 };
@@ -54,31 +56,6 @@ fn transitions(css: &str) -> CssTransitionList {
         panic!("transition")
     };
     value.transitions().clone()
-}
-
-fn budget(
-    expected: &str,
-    input: usize,
-    projection: usize,
-    serialize: impl Fn(L) -> Result<String, CssSpecifiedValueSerializationError>,
-) {
-    assert_eq!(
-        serialize(L::new(input, projection, expected.len())).unwrap(),
-        expected
-    );
-    for (limits, kind) in [
-        (
-            L::new(input - 1, projection, expected.len()),
-            K::InputNodeLimit,
-        ),
-        (
-            L::new(input, projection - 1, expected.len()),
-            K::ProjectionNodeLimit,
-        ),
-        (L::new(input, projection, expected.len() - 1), K::ByteLimit),
-    ] {
-        assert_eq!(serialize(limits).unwrap_err().kind(), kind);
-    }
 }
 
 macro_rules! check {
@@ -619,7 +596,10 @@ fn late_byte_failure_returns_no_partial_css_and_leaves_large_lists_unchanged() {
 #[test]
 fn exact_duration_admission_and_signed_delay_projection_keep_distinct_domains() {
     let tiny_negative = time("-1e-999");
-    assert!(CssDuration::try_new(tiny_negative.clone()).is_err());
+    assert_numeric_rejected(
+        CssDuration::try_new(tiny_negative.clone()),
+        CssNumericConstructionErrorKind::OutOfRange,
+    );
     let delays = CssDelayList::try_new(vec![tiny_negative]).unwrap();
     check!(&delays, 2, 2, "0s");
     assert_eq!(

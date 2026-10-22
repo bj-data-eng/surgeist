@@ -6,6 +6,7 @@
 //! and a parse error (§4.3.1).
 //! <https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/>
 
+use crate::css::support::authored_syntax::assert_strict_rejection;
 use surgeist_css::{
     CssComponentValueErrorKind, CssComponentValueRef, CssDeclarationList, CssHashFlag,
     CssValueOrigin, CssValueTokenRef, parse_component_values, parse_style_attribute,
@@ -389,7 +390,7 @@ fn raw_string_newlines_are_bad_strings_and_leave_a_surviving_sibling() {
         let report = parse_style_attribute(&source);
         assert_custom_values(report.syntax(), &[("--after", "kept")]);
         assert!(!report.is_clean());
-        assert!(validate_style_attribute(&source).is_err());
+        assert_strict_rejection(validate_style_attribute(&source), report.diagnostics());
     }
 }
 

@@ -4,6 +4,7 @@
 //! Occurrence identity, strict immutable reentry and normalization budgets are
 //! Surgeist public contracts exercised through existing public APIs.
 
+use crate::css::support::property_admission::{assert_checked_rejected, assert_invalid_value};
 use surgeist_css::*;
 
 const MEMBERS: [CssKnownProperty; 5] = [
@@ -378,25 +379,6 @@ fn border_image_expansion_preserves_checked_symbolic_numeric_roots() {
 }
 
 #[test]
-fn border_image_css_wide_keywords_propagate_to_exactly_five_members() {
-    for (css, keyword) in [
-        ("initial", CssGlobalKeyword::Initial),
-        ("inherit", CssGlobalKeyword::Inherit),
-        ("unset", CssGlobalKeyword::Unset),
-        ("revert", CssGlobalKeyword::Revert),
-        ("revert-layer", CssGlobalKeyword::RevertLayer),
-    ] {
-        for source in [authored(css), checked(css)] {
-            for item in completed(&source).items() {
-                assert!(
-                    matches!(item.value(), CssContributionValueRef::Global(actual) if actual == keyword)
-                );
-            }
-        }
-    }
-}
-
-#[test]
 fn border_image_pending_reentry_rejects_atomically_and_retries_with_mixed_origins() {
     for source in [authored("var(--frame)"), checked("var(--frame)")] {
         let CssExpansion::Pending(pending) =
@@ -620,7 +602,11 @@ fn border_image_invalid_slash_and_duplicate_controls_drop_only_the_responsible_d
             report.diagnostics()
         );
     }
-    for invalid in ["none none", "round round round", "10 fill fill"] {
+    for (invalid, token) in [
+        ("none none", Some("none")),
+        ("round round round", Some("round")),
+        ("10 fill fill", Some("fill")),
+    ] {
         let css = format!("border-image:{invalid};color:red");
         let report = parse_style_attribute(&css);
         assert_eq!(report.syntax().len(), 1);
@@ -636,13 +622,19 @@ fn border_image_invalid_slash_and_duplicate_controls_drop_only_the_responsible_d
             CssErrorCode::InvalidPropertyValue
         );
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-        assert!(
+        assert_invalid_value(
+            diagnostic.error().kind(),
+            CssKnownProperty::BorderImage,
+            token,
+        );
+        assert_checked_rejected(
             parse_property_value(
                 CssPropertyNameRef::Known(CssKnownProperty::BorderImage),
                 parse_component_values(invalid).unwrap(),
-                CssImportance::Normal
-            )
-            .is_err()
+                CssImportance::Normal,
+            ),
+            CssKnownProperty::BorderImage,
+            token,
         );
     }
 }

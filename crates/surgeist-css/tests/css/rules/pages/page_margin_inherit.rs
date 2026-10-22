@@ -1,11 +1,9 @@
 //! CSS2.1 Page §§13.2.1/13.4 imports the physical margin grammars, including
 //! Box §8.3's authored inherit alternative. Inheritance remains symbolic.
+use crate::css::support::rules::assert_clean_and_valid as clean;
+use crate::css::support::rules::assert_origin_bytes as span;
+use crate::css::support::rules::page_pseudo;
 use surgeist_css::*;
-
-fn clean<T: Clone>(report: &CssParseReport<T>) {
-    assert!(report.is_clean(), "{:?}", report.diagnostics());
-    assert!(report.clone().into_validation_result().is_ok());
-}
 
 fn recovered<T: Clone>(report: &CssParseReport<T>) {
     assert!(!report.is_clean());
@@ -63,12 +61,6 @@ fn five_margins(list: &CssDeclarationList) {
         CssImportance::Important,
         "margin-left: inherit !important;",
     );
-}
-
-fn span(origin: &CssParsedOrigin, source: &str, start: usize, end: usize) {
-    assert_eq!(origin.source().as_str(), source);
-    assert_eq!(origin.span().start().byte_offset().value(), start);
-    assert_eq!(origin.span().end().byte_offset().value(), end);
 }
 
 #[test]
@@ -566,11 +558,4 @@ fn retained_page_shorthand_expands_symbolically_and_normalization_preserves_the_
         CssImportance::Important,
         "margin: inherit !important;",
     );
-}
-
-fn page_pseudo(page: &surgeist_css::CssPageRule) -> Option<surgeist_css::CssPagePseudo> {
-    page.selectors()
-        .selectors()
-        .first()
-        .and_then(|s| s.pseudos().first().copied())
 }

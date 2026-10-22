@@ -1,6 +1,7 @@
+use crate::css::support::authored_syntax::property_names;
 use surgeist_css::{
-    CssDeclarationList, CssErrorCode, CssImportance, CssParseReport, CssPropertyNameRef,
-    CssRecoveryAction, CssRule, parse_sheet, parse_style_attribute,
+    CssDeclarationList, CssErrorCode, CssImportance, CssParseReport, CssRecoveryAction, CssRule,
+    parse_sheet, parse_style_attribute,
 };
 
 fn style_rule_report(
@@ -12,17 +13,6 @@ fn style_rule_report(
         panic!("expected one retained style rule for `{source}`");
     };
     (rule.declarations().clone(), report.diagnostics().to_vec())
-}
-
-fn property_names(declarations: &CssDeclarationList) -> Vec<&str> {
-    declarations
-        .iter()
-        .map(|declaration| match declaration.property_name() {
-            CssPropertyNameRef::Known(property) => property.canonical_name(),
-            CssPropertyNameRef::Custom(name) => name.as_str(),
-            _ => panic!("unexpected future property-name kind"),
-        })
-        .collect()
 }
 
 #[test]

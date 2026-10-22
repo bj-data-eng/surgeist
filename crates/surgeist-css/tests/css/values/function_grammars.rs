@@ -1,3 +1,8 @@
+use crate::css::support::math_depth::MathDepthBoundary;
+use crate::css::support::value_assertions::assert_component_rejected;
+use crate::css::support::value_assertions::assert_first_property_diagnostic;
+use crate::css::support::value_assertions::exact_dimension;
+use crate::css::support::value_assertions::exact_percentage;
 use surgeist_css::*;
 
 fn parsed_transform_property(value: &str) -> CssTransformPropertyValue {
@@ -352,23 +357,20 @@ fn omitted_shape_branches_are_explicit() {
 
 #[test]
 fn shape_checked_scalars_reject_invalid_public_construction() {
-    assert!(
-        CssSpecifiedNonNegativeLength::try_from_component(
-            CssComponentValue::try_token("10%").unwrap()
-        )
-        .is_err()
+    assert_component_rejected(
+        CssSpecifiedNonNegativeLength::try_from_component,
+        CssComponentValue::try_token("10%").unwrap(),
+        surgeist_css::CssNumericConstructionErrorKind::RootDomainMismatch,
     );
-    assert!(
-        CssSpecifiedNonNegativeLength::try_from_component(
-            CssComponentValue::try_dimension("-1", "px").unwrap()
-        )
-        .is_err()
+    assert_component_rejected(
+        CssSpecifiedNonNegativeLength::try_from_component,
+        CssComponentValue::try_dimension("-1", "px").unwrap(),
+        surgeist_css::CssNumericConstructionErrorKind::OutOfRange,
     );
-    assert!(
-        CssSpecifiedNonNegativeLengthPercentage::try_from_component(
-            CssComponentValue::try_token("-1%").unwrap()
-        )
-        .is_err()
+    assert_component_rejected(
+        CssSpecifiedNonNegativeLengthPercentage::try_from_component,
+        CssComponentValue::try_token("-1%").unwrap(),
+        surgeist_css::CssNumericConstructionErrorKind::OutOfRange,
     );
 }
 
@@ -443,7 +445,7 @@ fn circle_symbolic_length_percentage_radius_remains_typed() {
 }
 
 #[test]
-fn shape_commands_parse_through_the_existing_clip_path_front_door() {
+fn shape_commands_parse_through_the_clip_path_front_door() {
     {
         let value = "shape(from 0 0, line to 1px 1px)";
         let property = parsed_clip_path_property(value);
@@ -455,35 +457,13 @@ fn shape_commands_parse_through_the_existing_clip_path_front_door() {
 
 #[test]
 fn basic_shape_calculations_preserve_the_exact_depth_boundary() {
-    let source = format!(
-        "clip-path: circle({}1px{}); color: red",
-        "calc(".repeat(255),
-        ")".repeat(255),
-    );
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "depth 255: {:?}", report.diagnostics());
-    assert_eq!(report.syntax().len(), 2);
-
-    for depth in [256_usize, 257] {
-        let source = format!(
-            "clip-path: circle({}1px{}); color: red",
-            "calc(".repeat(depth),
-            ")".repeat(depth),
-        );
-        let first_over_limit = source.match_indices("calc(").nth(255).unwrap().0;
-        let report = parse_style_attribute(&source);
-        assert_eq!(report.syntax().len(), 1, "depth {depth}");
-        let [diagnostic] = report.diagnostics() else {
-            panic!("depth {depth}: expected one diagnostic");
-        };
-        assert_eq!(diagnostic.error().code(), CssErrorCode::NestingLimit);
-        assert_eq!(diagnostic.action(), CssRecoveryAction::StopAtNestingLimit);
-        assert_eq!(
-            diagnostic.error().position().byte_offset().value(),
-            first_over_limit,
-            "depth {depth}",
-        );
+    MathDepthBoundary {
+        template: "clip-path: circle({}1px{}); color: red",
+        accepted: &[255],
+        rejected: &[256, 257],
+        sibling_retained: true,
     }
+    .assert();
 }
 
 #[test]
@@ -646,28 +626,46 @@ fn box_shadow_accepts_component_orders_and_rejects_invalid_components() {
 fn box_shadow_rejects_interleaved_color_between_offsets() {
     let source = "box-shadow: 1px red 2px; color: blue";
     let report = parse_style_attribute(source);
-    assert!(!report.is_clean(), "interrupted length group was accepted");
+    // `1px` opens the contiguous length group, which `red` interrupts.
+    assert_first_property_diagnostic(
+        report.diagnostics(),
+        source,
+        CssKnownProperty::BoxShadow,
+        "red",
+    );
     assert_eq!(report.syntax().len(), 1);
     assert_eq!(
         report.syntax()[0].known().unwrap().property(),
         CssKnownProperty::Color
     );
     assert_eq!(report.diagnostics().len(), 1);
-    assert!(validate_style_attribute(source).is_err());
+    assert_eq!(
+        validate_style_attribute(source).unwrap_err().diagnostics(),
+        report.diagnostics()
+    );
 }
 
 #[test]
 fn drop_shadow_rejects_interleaved_color_between_offsets() {
     let source = "filter: drop-shadow(1px red 2px); color: blue";
     let report = parse_style_attribute(source);
-    assert!(!report.is_clean(), "interrupted length group was accepted");
+    // `1px` opens the contiguous length group, which `red` interrupts.
+    assert_first_property_diagnostic(
+        report.diagnostics(),
+        source,
+        CssKnownProperty::Filter,
+        "red",
+    );
     assert_eq!(report.syntax().len(), 1);
     assert_eq!(
         report.syntax()[0].known().unwrap().property(),
         CssKnownProperty::Color
     );
     assert_eq!(report.diagnostics().len(), 1);
-    assert!(validate_style_attribute(source).is_err());
+    assert_eq!(
+        validate_style_attribute(source).unwrap_err().diagnostics(),
+        report.diagnostics()
+    );
 }
 
 #[test]
@@ -726,54 +724,28 @@ fn hue_rotate_accepts_an_omitted_argument_as_an_ordered_filter_function() {
 
 #[test]
 fn filter_checked_scalars_and_lists_reject_unrepresentable_states() {
-    assert!(
-        CssSpecifiedNonNegativeLength::try_from_component(
-            CssComponentValue::try_dimension("-1", "px").unwrap()
-        )
-        .is_err()
+    assert_component_rejected(
+        CssSpecifiedNonNegativeLength::try_from_component,
+        CssComponentValue::try_dimension("-1", "px").unwrap(),
+        surgeist_css::CssNumericConstructionErrorKind::OutOfRange,
     );
-    assert!(
-        CssSpecifiedLength::try_from_component(CssComponentValue::try_token("1%").unwrap())
-            .is_err()
+    assert_component_rejected(
+        CssSpecifiedLength::try_from_component,
+        CssComponentValue::try_token("1%").unwrap(),
+        surgeist_css::CssNumericConstructionErrorKind::RootDomainMismatch,
     );
     assert!(CssFilterFunctionList::try_new(Vec::new()).is_none());
 }
 
 #[test]
 fn filter_calculations_preserve_the_exact_depth_boundary() {
-    let source = format!(
-        "filter: brightness({}1{}); color: red",
-        "calc(".repeat(255),
-        ")".repeat(255),
-    );
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "depth 255: {:?}", report.diagnostics());
-    assert_eq!(report.syntax().len(), 2);
-
-    for depth in [256_usize, 257] {
-        let source = format!(
-            "filter: brightness({}1{}); color: red",
-            "calc(".repeat(depth),
-            ")".repeat(depth),
-        );
-        let first_over_limit = source
-            .match_indices("calc(")
-            .nth(255)
-            .expect("256th authored nested calculation")
-            .0;
-        let report = parse_style_attribute(&source);
-        assert_eq!(report.syntax().len(), 1, "depth {depth}");
-        let [diagnostic] = report.diagnostics() else {
-            panic!("depth {depth}: expected one diagnostic");
-        };
-        assert_eq!(diagnostic.error().code(), CssErrorCode::NestingLimit);
-        assert_eq!(diagnostic.action(), CssRecoveryAction::StopAtNestingLimit);
-        assert_eq!(
-            diagnostic.error().position().byte_offset().value(),
-            first_over_limit,
-            "depth {depth}"
-        );
+    MathDepthBoundary {
+        template: "filter: brightness({}1{}); color: red",
+        accepted: &[255],
+        rejected: &[256, 257],
+        sibling_retained: true,
     }
+    .assert();
 }
 
 #[test]
@@ -999,45 +971,13 @@ fn repeated_easing_failures_recover_to_valid_timing_and_color_siblings() {
 
 #[test]
 fn easing_symbolic_math_preserves_the_exact_depth_boundary() {
-    let source = format!(
-        "transition-timing-function: cubic-bezier(0, {}1{}, 1, 1); color: red",
-        "calc(".repeat(255),
-        ")".repeat(255),
-    );
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "depth 255: {:?}", report.diagnostics());
-    assert_eq!(report.syntax().len(), 2);
-
-    for depth in [256_usize, 257] {
-        let source = format!(
-            "transition-timing-function: cubic-bezier(0, {}1{}, 1, 1); color: red",
-            "calc(".repeat(depth),
-            ")".repeat(depth),
-        );
-        let first_over_limit = source
-            .match_indices("calc(")
-            .nth(255)
-            .expect("256th authored nested calculation")
-            .0;
-        let report = parse_style_attribute(&source);
-        assert_eq!(report.syntax().len(), 1, "depth {depth}");
-        let [diagnostic] = report.diagnostics() else {
-            panic!("depth {depth}: over-limit easing must produce one diagnostic");
-        };
-        assert_eq!(diagnostic.error().code(), CssErrorCode::NestingLimit);
-        assert_eq!(diagnostic.action(), CssRecoveryAction::StopAtNestingLimit);
-        assert_eq!(
-            diagnostic.error().position().byte_offset().value(),
-            first_over_limit,
-            "depth {depth}",
-        );
-
-        {
-            let failure = surgeist_css::validate_style_attribute(&source)
-                .expect_err("strict validation rejects over-limit easing calculations");
-            assert_eq!(failure.diagnostics(), report.diagnostics());
-        }
+    MathDepthBoundary {
+        template: "transition-timing-function: cubic-bezier(0, {}1{}, 1, 1); color: red",
+        accepted: &[255],
+        rejected: &[256, 257],
+        sibling_retained: true,
     }
+    .assert();
 }
 
 fn assert_function_sequence(value: &str, expected: &[CssTransformFunctionKind]) {
@@ -1396,80 +1336,33 @@ fn transform_function_lists_reject_empty_unknown_and_trailing_mutations() {
 
 #[test]
 fn transform_checked_scalars_and_lists_reject_unrepresentable_states() {
-    assert!(
-        CssSpecifiedLengthPercentage::try_from_component(
-            CssComponentValue::try_token("auto").unwrap()
-        )
-        .is_err()
+    assert_component_rejected(
+        CssSpecifiedLengthPercentage::try_from_component,
+        CssComponentValue::try_token("auto").unwrap(),
+        surgeist_css::CssNumericConstructionErrorKind::RootDomainMismatch,
     );
-    assert!(
-        CssSpecifiedLength::try_from_component(CssComponentValue::try_token("10%").unwrap())
-            .is_err()
+    assert_component_rejected(
+        CssSpecifiedLength::try_from_component,
+        CssComponentValue::try_token("10%").unwrap(),
+        surgeist_css::CssNumericConstructionErrorKind::RootDomainMismatch,
     );
-    assert!(
-        CssSpecifiedNonNegativeLength::try_from_component(
-            CssComponentValue::try_dimension("-1", "px").unwrap()
-        )
-        .is_err()
+    assert_component_rejected(
+        CssSpecifiedNonNegativeLength::try_from_component,
+        CssComponentValue::try_dimension("-1", "px").unwrap(),
+        surgeist_css::CssNumericConstructionErrorKind::OutOfRange,
     );
     assert!(CssTransformFunctionList::try_new(Vec::new()).is_none());
 }
 
 #[test]
 fn transform_calculations_preserve_the_exact_depth_boundary() {
-    let source = format!(
-        "transform: rotate({}1deg{}); color: red",
-        "calc(".repeat(255),
-        ")".repeat(255),
-    );
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "depth 255: {:?}", report.diagnostics());
-    assert_eq!(report.syntax().len(), 2);
-
-    for depth in [256_usize, 257] {
-        let source = format!(
-            "transform: rotate({}1deg{}); color: red",
-            "calc(".repeat(depth),
-            ")".repeat(depth),
-        );
-        let first_over_limit = source
-            .match_indices("calc(")
-            .nth(255)
-            .expect("256th authored nested calculation")
-            .0;
-        let report = parse_style_attribute(&source);
-        assert_eq!(report.syntax().len(), 1, "depth {depth}");
-        let [diagnostic] = report.diagnostics() else {
-            panic!("depth {depth}: over-limit transform must produce one diagnostic");
-        };
-        assert_eq!(diagnostic.error().code(), CssErrorCode::NestingLimit);
-        assert_eq!(diagnostic.action(), CssRecoveryAction::StopAtNestingLimit);
-        assert_eq!(
-            diagnostic.error().position().byte_offset().value(),
-            first_over_limit,
-            "depth {depth}",
-        );
-
-        {
-            let failure = surgeist_css::validate_style_attribute(&source)
-                .expect_err("strict validation rejects over-limit transform calculations");
-            assert_eq!(failure.diagnostics(), report.diagnostics());
-        }
+    MathDepthBoundary {
+        template: "transform: rotate({}1deg{}); color: red",
+        accepted: &[255],
+        rejected: &[256, 257],
+        sibling_retained: true,
     }
-}
-
-fn exact_dimension(
-    component: Option<&surgeist_css::CssComponentValue>,
-    representation: &str,
-    expected_unit: &str,
-) -> bool {
-    matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Dimension { number, unit })) if number.representation() == representation && unit == expected_unit)
-}
-fn exact_percentage(
-    component: Option<&surgeist_css::CssComponentValue>,
-    representation: &str,
-) -> bool {
-    matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Percentage(number))) if number.representation() == representation)
+    .assert();
 }
 
 fn signed_length_percentage(css: &str) -> surgeist_css::CssSpecifiedLengthPercentage {
@@ -1514,7 +1407,7 @@ fn checked_number(representation: &str) -> surgeist_css::CssSpecifiedNumber {
 }
 
 #[test]
-fn rectangular_basic_shape_functions_parse_through_the_existing_clip_path_front_door() {
+fn rectangular_basic_shape_functions_parse_through_the_clip_path_front_door() {
     for value in ["rect(0 1px 1px 0)", "xywh(0 0 1px 1px)"] {
         let property = parsed_clip_path_property(value);
         assert_eq!(property.value().serialize_specified().unwrap(), value);
@@ -1522,7 +1415,7 @@ fn rectangular_basic_shape_functions_parse_through_the_existing_clip_path_front_
 }
 
 #[test]
-fn path_shape_uses_the_existing_checked_clip_path_front_door() {
+fn path_shape_uses_the_checked_clip_path_front_door() {
     let property = parsed_clip_path_property("path('M 0 0 L 1 1')");
     assert_eq!(
         property.value().serialize_specified().unwrap(),

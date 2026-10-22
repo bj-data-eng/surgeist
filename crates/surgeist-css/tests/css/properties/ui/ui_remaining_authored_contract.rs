@@ -7,8 +7,8 @@
 //! Generic metadata/catalog/dispatch expectations belong in common records.rs.
 //! New typed models/borrowed variants require functional implementation tests.
 use crate::css::support::{
-    authored_family_property as property, check_named_components as checked_components,
-    detached_checked_declaration as checked,
+    check_named_components as checked_components, detached_checked_declaration as checked,
+    known_property as property,
 };
 use surgeist_css::*;
 
@@ -1150,7 +1150,7 @@ fn composed_ui_normalization_keeps_order_alias_importance_and_exact_terminal_bud
 }
 
 #[test]
-fn existing_caret_color_provider_executes_all_imported_goldens_without_remaining_metadata() {
+fn caret_color_provider_executes_all_imported_goldens_without_remaining_metadata() {
     for &(input, expected) in COLOR_GOLDENS {
         canonical("caret-color", input, expected);
     }
@@ -1173,7 +1173,7 @@ fn caret_shorthand_imports_complete_color_child_without_reordering_its_channels(
     }
 }
 #[test]
-fn existing_signed_time_provider_controls_are_independent_of_interest_registration() {
+fn signed_time_provider_controls_are_independent_of_interest_registration() {
     for (input, expected) in [
         ("-1.250S", "-1.25s"),
         ("+2.000MS", "0.002s"),
@@ -1189,7 +1189,7 @@ fn existing_signed_time_provider_controls_are_independent_of_interest_registrati
     assert!(CssDuration::try_new(time).is_err());
 }
 #[test]
-fn scalar_keyword_declarations_share_existing_three_node_accounting() {
+fn scalar_keyword_declarations_share_three_node_accounting() {
     for (name, word) in [
         ("caret-animation", "manual"),
         ("caret-shape", "block"),

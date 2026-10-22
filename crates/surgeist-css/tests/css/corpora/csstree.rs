@@ -16,7 +16,6 @@ mod csstree_media_query_reconciliation;
 mod csstree_named_pseudo_admission;
 mod csstree_named_pseudo_expectations;
 mod csstree_nth_admission;
-mod csstree_nth_expectations;
 mod csstree_oracle;
 mod csstree_prelude_projection;
 mod csstree_property_values;

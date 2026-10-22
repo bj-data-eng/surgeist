@@ -10,6 +10,7 @@
 //! Explicit units remain distinct; no context-dependent conversion is selected.
 //! Logical role tests assert the adopted authored model, not completed expansion.
 
+use crate::css::support::serialization_limits::assert_node_limits;
 use surgeist_css::*;
 
 type Limits = CssSpecifiedValueSerializationLimits;
@@ -427,20 +428,7 @@ fn exact_limits(
     serialize: impl Fn(Limits) -> Result<String, Error>,
 ) {
     assert_eq!(expected.len(), bytes);
-    for (limits, kind) in [
-        (Limits::new(nodes - 1, nodes, bytes), Kind::InputNodeLimit),
-        (
-            Limits::new(nodes, nodes - 1, bytes),
-            Kind::ProjectionNodeLimit,
-        ),
-        (Limits::new(nodes, nodes, bytes - 1), Kind::ByteLimit),
-    ] {
-        assert_eq!(serialize(limits).unwrap_err().kind(), kind);
-    }
-    assert_eq!(
-        serialize(Limits::new(nodes, nodes, bytes)).unwrap(),
-        expected
-    );
+    assert_node_limits(expected, nodes, serialize);
 }
 #[test]
 fn pair_limits_charge_only_authored_children_and_both_rounded_tokens() {

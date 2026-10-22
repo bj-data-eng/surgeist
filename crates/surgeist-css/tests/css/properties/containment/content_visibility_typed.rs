@@ -1,18 +1,9 @@
 //! Direct typed and bounded specified-value evidence for Containment 2 §4.
 
+use crate::css::support::important_declaration;
 use surgeist_css::*;
 
 const PROPERTY: CssKnownProperty = CssKnownProperty::ContentVisibility;
-
-fn parsed(value: &str) -> CssDeclaration {
-    let source = format!("content-visibility:{value}!important");
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    let [declaration] = report.syntax().as_slice() else {
-        panic!("one parsed declaration")
-    };
-    declaration.clone()
-}
 
 fn terminal(source: &CssDeclaration) -> CssLonghandContribution {
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =
@@ -47,7 +38,7 @@ fn intrinsic_visible_and_each_authored_keyword_have_exact_typed_terminal_values(
         ("hidden", CssContentVisibility::Hidden),
         ("auto", CssContentVisibility::Auto),
     ] {
-        let source = parsed(authored);
+        let source = important_declaration("content-visibility", authored);
         let CssKnownPropertyValueRef::ContentVisibility(value) =
             source.known().unwrap().property_value().unwrap()
         else {
@@ -83,7 +74,7 @@ fn programmatic_identifier_and_parsed_identifier_retain_distinct_origins() {
         constructed.value_components().items()[0].origin(),
         CssValueOrigin::Programmatic
     ));
-    let parsed = parsed("auto");
+    let parsed = important_declaration("content-visibility", "auto");
     assert!(matches!(
         parsed.value_components().items()[0].origin(),
         CssValueOrigin::Parsed(_)

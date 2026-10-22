@@ -212,11 +212,30 @@ fn bare_calc_abs_and_comparison_compound_results_remain_invalid() {
 }
 
 #[test]
-fn sign_keeps_one_argument_and_existing_simple_signed_zero_semantics() {
-    for source in ["sign()", "sign(1,2)", "sign(none)"] {
-        assert!(
+fn sign_keeps_one_argument_and_simple_signed_zero_semantics() {
+    // `sign( <calc-sum> )` takes exactly one argument, and the `none`
+    // keyword is no `<calc-sum>` argument.
+    for (source, kind, responsible) in [
+        ("sign()", CssNumericConstructionErrorKind::Arity, 0),
+        ("sign(1,2)", CssNumericConstructionErrorKind::Arity, 0),
+        (
+            "sign(none)",
+            CssNumericConstructionErrorKind::InvalidArgumentType,
+            5,
+        ),
+    ] {
+        let error =
             CssNumberCalculation::try_from_components(parse_component_values(source).unwrap())
-                .is_err()
+                .unwrap_err();
+        assert_eq!(error.kind(), &kind, "{source}");
+        let CssValueOrigin::Parsed(origin) = error.origin().expect("located failure") else {
+            panic!("{source}: {error:?}")
+        };
+        assert_eq!(origin.source().as_str(), source);
+        assert_eq!(
+            origin.span().start().byte_offset().value(),
+            responsible,
+            "{source}"
         );
     }
     for (source, expected) in [

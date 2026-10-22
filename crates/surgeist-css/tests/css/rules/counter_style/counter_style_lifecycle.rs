@@ -3,18 +3,13 @@
 //! from explicit values. Definition selection, target lookup, marker generation,
 //! grapheme padding and speech execution belong downstream.
 use crate::css::support::descriptor_phases;
+use crate::css::support::rules::sole_counter_style;
 use descriptor_phases::*;
 
 use surgeist_css::*;
 
 fn counter(body: &str) -> CssCounterStyleRule {
-    let source = format!("@counter-style Custom {{ {body} }}");
-    let report = parse_sheet(&source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    let [CssRule::CounterStyle(rule)] = report.syntax().rules() else {
-        panic!("one authored counter rule");
-    };
-    rule.clone()
+    sole_counter_style(&format!("@counter-style Custom {{ {body} }}"))
 }
 
 fn integer(value: &str) -> CssIntegerValue {

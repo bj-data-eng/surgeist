@@ -156,9 +156,28 @@ fn prospective_collection_limits_are_cumulative_and_retry_is_unchanged() {
     let a = value("numeric", K::System);
     let b = value("a b", K::Symbols);
     let entries = vec![Entry::from_value(&a), Entry::from_value(&b)];
-    assert!(Collection::try_new_with_limits(entries.clone(), Limits::new(100, 100, 7)).is_err());
-    for limits in [Limits::new(1, 100, 100), Limits::new(100, 1, 100)] {
-        assert!(Collection::try_new_with_limits(entries.clone(), limits).is_err());
+    assert_eq!(
+        Collection::try_new_with_limits(entries.clone(), Limits::new(100, 100, 7))
+            .unwrap_err()
+            .kind(),
+        surgeist_css::CssSpecifiedValueSerializationErrorKind::ByteLimit
+    );
+    for (limits, kind) in [
+        (
+            Limits::new(1, 100, 100),
+            surgeist_css::CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+        ),
+        (
+            Limits::new(100, 1, 100),
+            surgeist_css::CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+        ),
+    ] {
+        assert_eq!(
+            Collection::try_new_with_limits(entries.clone(), limits)
+                .unwrap_err()
+                .kind(),
+            kind
+        );
         assert_eq!(
             Collection::try_new(entries.clone())
                 .unwrap()

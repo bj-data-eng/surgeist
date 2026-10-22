@@ -2,6 +2,7 @@
 //! prefixes/defaults are nonconforming, but the retained last declaration wins.
 //! https://www.w3.org/TR/2014/REC-css-namespaces-3-20140320/#prefixes
 
+use crate::css::support::rules::ExpectedRejection;
 use surgeist_css::{
     CssErrorCode, CssNamespaceConstraint, CssNamespaceContext, CssNamespacePrefix,
     CssNormalizedItem, CssParseReport, CssRecoveryAction, CssRule, CssRuleContextKindRef,
@@ -191,7 +192,7 @@ fn default_redeclarations_keep_null_and_literal_last_names_while_rejecting_valid
 }
 
 #[test]
-fn identical_named_binding_is_still_a_nonconforming_redeclaration() {
+fn identical_named_binding_is_a_nonconforming_redeclaration() {
     for name in ["urn:same", "", "not a URI"] {
         let declaration = format!("@namespace svg '{name}';");
         let source = format!("{declaration}{declaration}svg|leaf{{}}");
@@ -259,14 +260,17 @@ fn copied_redeclared_context_is_immutable_and_never_inherited_by_other_sheets() 
             1,
             "undeclared prefix in {other}"
         );
+        // Namespaces 3 §3.3: a selector using an undeclared prefix is
+        // invalid. The diagnostic names the local name `leaf` rather than
+        // the prefix, so only the code is checked.
+        let undeclared = ExpectedRejection::new(CssErrorCode::InvalidSelector);
+        undeclared.assert_first(&isolated);
         let isolated_context = CssNamespaceContext::from_sheet(isolated.syntax());
         assert!(isolated_context.named_namespace(&prefix("svg")).is_none());
         assert!(isolated_context.default_namespace().is_none());
-        assert!(
-            parse_selector("svg|leaf", &isolated_context)
-                .syntax()
-                .is_none()
-        );
+        let selector = parse_selector("svg|leaf", &isolated_context);
+        assert!(selector.syntax().is_none());
+        undeclared.assert_first(&selector);
     }
     assert_eq!(context, original);
     assert_eq!(

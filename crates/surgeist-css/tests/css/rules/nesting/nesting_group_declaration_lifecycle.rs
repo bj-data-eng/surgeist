@@ -3,36 +3,9 @@
 //! selected Syntax 3 (2026-10-01) block contents. Eligibility follows
 //! style-containing grammars, rather than an exhaustive at-rule name list.
 //! Conditions, ancestry and pseudo-element identities remain symbolic.
+use crate::css::support::rules::normalized_declarations as declarations;
+use crate::css::support::rules::rule_at;
 use surgeist_css::*;
-
-fn declarations(sheet: &CssNormalizedSheet) -> Vec<&CssNormalizedDeclaration> {
-    sheet
-        .items()
-        .iter()
-        .filter_map(|item| match item {
-            CssNormalizedItem::Declaration(value) => Some(value),
-            _ => None,
-        })
-        .collect()
-}
-
-fn rule_at<'a>(sheet: &'a CssNormalizedSheet, source: &str, marker: &str) -> &'a CssRuleContext {
-    let offset = source.find(marker).unwrap();
-    sheet
-        .items()
-        .iter()
-        .find_map(|item| match item {
-            CssNormalizedItem::Rule(rule)
-                if rule
-                    .position()
-                    .is_some_and(|position| position.byte_offset().value() == offset) =>
-            {
-                Some(rule)
-            }
-            _ => None,
-        })
-        .expect("retained original rule occurrence")
-}
 
 fn selectors(rule: &CssRuleContext) -> &CssSelectorContext {
     match rule.kind() {

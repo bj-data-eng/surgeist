@@ -1,3 +1,5 @@
+use crate::css::support::property_admission::assert_component_rejected;
+use surgeist_css::CssNumericConstructionErrorKind;
 use surgeist_css::{
     CssBoxSize, CssCalcSize, CssKnownPropertyValueRef, CssMaxSizeValue, CssSizeValue,
     CssSpecifiedNonNegativeLengthPercentage, parse_component_values, parse_style_attribute,
@@ -50,8 +52,10 @@ fn checked_literal_preserves_exact_lexeme_and_rejects_tiny_negative() {
     let canonical = box_size.serialize_specified().unwrap();
     assert!(canonical.ends_with("px"));
     assert_eq!(canonical.len(), 1002); // 1 followed by 999 zeroes, then px.
-    assert!(
-        CssSpecifiedNonNegativeLengthPercentage::try_from_component(component("-1e-999%")).is_err()
+    assert_component_rejected(
+        CssSpecifiedNonNegativeLengthPercentage::try_from_component,
+        component("-1e-999%"),
+        CssNumericConstructionErrorKind::OutOfRange,
     );
 }
 

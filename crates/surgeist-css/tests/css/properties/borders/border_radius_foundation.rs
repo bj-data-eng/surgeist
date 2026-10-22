@@ -1,6 +1,7 @@
 //! Backgrounds 3 CRD (2024-03-11) §4.1 and Logical 1 WD (2025-12-04) §4.6:
 //! authored physical and flow-relative corner radii, before box-size resolution.
 
+use crate::css::support::property_admission::assert_declaration_rejected as rejected;
 use crate::css::support::{
     checked_grammar_declaration as checked, important_declaration as declaration,
     selected_grammar as grammar,
@@ -37,27 +38,6 @@ fn accepted(name: &str, value: &str) {
             value
         );
     }
-}
-
-fn invalid(name: &str, value: &str) {
-    let source = format!("color:red;{name}:{value};color:blue");
-    let report = parse_style_attribute(&source);
-    let [diagnostic] = report.diagnostics() else {
-        panic!("one invalid-value diagnostic: {source}")
-    };
-    assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    assert_ne!(diagnostic.error().code(), CssErrorCode::UnknownProperty);
-    assert_eq!(report.syntax().len(), 2, "neighbors survive: {source}");
-    assert!(validate_style_attribute(&source).is_err());
-    assert!(
-        parse_property_value_for_grammar(
-            grammar(name),
-            parse_component_values(value).unwrap(),
-            CssImportance::Normal,
-        )
-        .is_err(),
-        "checked construction accepted {name}:{value}"
-    );
 }
 
 fn one_value(name: &str, value: &str) -> CssLonghandValue {
@@ -141,21 +121,21 @@ fn all_corner_longhands_accept_exact_nonnegative_length_percentages_and_symbolic
         ] {
             accepted(name, value);
         }
-        for value in [
-            "",
-            "-1px",
-            "-1%",
-            "-1e-100px",
-            "-1e-100%",
-            "1",
-            "1fr",
-            "auto",
-            "min-content",
-            "1px 2px 3px",
-            "1px / 2px",
-            "calc(1 + 2)",
+        for (value, token) in [
+            ("", None),
+            ("-1px", Some("-1px")),
+            ("-1%", Some("-1%")),
+            ("-1e-100px", Some("-1e-100px")),
+            ("-1e-100%", Some("-1e-100%")),
+            ("1", Some("1")),
+            ("1fr", Some("1fr")),
+            ("auto", Some("auto")),
+            ("min-content", Some("min-content")),
+            ("1px 2px 3px", Some("3px")),
+            ("1px / 2px", Some("/")),
+            ("calc(1 + 2)", Some("calc(")),
         ] {
-            invalid(name, value);
+            rejected(name, value, token);
         }
     }
 }
@@ -194,22 +174,22 @@ fn shorthand_accepts_one_to_four_radii_on_each_side_of_optional_slash() {
     ] {
         accepted(SHORTHAND, value);
     }
-    for value in [
-        "",
-        "/ 1px",
-        "1px /",
-        "1px / / 2px",
-        "1px / 2px / 3px",
-        "1px 2px 3px 4px 5px",
-        "1px / 2px 3px 4px 5px 6px",
-        "-1e-100px",
-        "1px / -1e-100%",
-        "logical 1px",
-        "auto",
-        "1px 2px / auto",
-        "1px 2px 3px 4px 5px / 6px",
+    for (value, token) in [
+        ("", None),
+        ("/ 1px", Some("/")),
+        ("1px /", Some("/")),
+        ("1px / / 2px", Some("/")),
+        ("1px / 2px / 3px", Some("/")),
+        ("1px 2px 3px 4px 5px", Some("5px")),
+        ("1px / 2px 3px 4px 5px 6px", Some("6px")),
+        ("-1e-100px", Some("-1e-100px")),
+        ("1px / -1e-100%", Some("-1e-100%")),
+        ("logical 1px", Some("logical")),
+        ("auto", Some("auto")),
+        ("1px 2px / auto", Some("auto")),
+        ("1px 2px 3px 4px 5px / 6px", Some("5px")),
     ] {
-        invalid(SHORTHAND, value);
+        rejected(SHORTHAND, value, token);
     }
 }
 
@@ -271,7 +251,7 @@ fn css_wide_all_and_pending_reentry_preserve_members_and_occurrences() {
     assert!(reset.source().same_occurrence(&all_source));
     for name in names() {
         assert!(!reset.excludes(CssPropertyNameRef::Known(grammar(name).target_property())));
-        invalid(name, "initial 1px");
+        rejected(name, "initial 1px", Some("1px"));
         for (text, keyword) in [
             ("initial", CssGlobalKeyword::Initial),
             ("inherit", CssGlobalKeyword::Inherit),

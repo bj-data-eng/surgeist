@@ -138,7 +138,7 @@ fn global_looking_prefixes_keep_case_escape_and_valid_var_tail() {
 }
 
 #[test]
-fn malformed_custom_tails_and_known_property_globals_still_drop_atomically() {
+fn malformed_custom_tails_and_known_property_globals_drop_atomically() {
     for invalid in [
         "--x:inherit var()",
         "--x:inherit var(foo)",

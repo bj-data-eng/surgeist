@@ -1,4 +1,5 @@
 //! Checked media construction and canonical authored output share parsed semantics.
+use crate::css::support::authored_syntax::component_list as values;
 use surgeist_css::{
     CssBlockKind, CssComponentValue, CssComponentValueErrorKind, CssComponentValueLimits,
     CssComponentValues, CssMediaCondition, CssMediaConditionKind, CssMediaConstructionError,
@@ -6,10 +7,6 @@ use surgeist_css::{
     CssSerializedOrigin, CssValueOrigin, parse_component_values, parse_media_query,
     parse_media_query_list,
 };
-
-fn values(items: Vec<CssComponentValue>) -> CssComponentValues {
-    CssComponentValues::try_new(items).unwrap()
-}
 
 fn plain_width(value: CssComponentValue) -> CssComponentValues {
     values(vec![

@@ -1,6 +1,7 @@
 //! Surgeist #644 selects lowest retained recovery ownership and a body-local
 //! first summary. Historical parser diagnostics keep their original order.
 
+use crate::css::support::authored_syntax::assert_diagnostics;
 use surgeist_css::{
     CssRecoveryAction, CssRule, CssSupportsConditionRule, CssSupportsTestBody, CssSupportsTestItem,
     CssValueOrigin, parse_component_values, parse_sheet,
@@ -100,7 +101,13 @@ fn own_missing_body_close_precedes_retained_nested_body_fault_in_summary() {
 fn own_missing_body_close_precedes_retained_declaration_value_closure_in_summary() {
     let source = "@supports-condition --x { color:fn(a";
     let report = parse_sheet(source);
-    assert!(!report.is_clean());
+    // EOF closes both the value function and the definition body.
+    let closure = (
+        surgeist_css::CssErrorCode::UnexpectedEnd,
+        surgeist_css::CssRecoveryAction::RetainWithImplicitClosure,
+        source.len(),
+    );
+    assert_diagnostics(report.diagnostics(), &[closure, closure]);
     let body = definition(report.syntax().rules()).body();
     let [CssSupportsTestItem::Declarations(run)] = body.items() else {
         panic!("retained declaration with implicit value closure: {body:?}")
@@ -142,7 +149,7 @@ fn nested_only_recovery_summary_uses_first_child_without_reordering_history() {
 }
 
 #[test]
-fn empty_semicolons_are_ignored_recursively_by_existing_partition() {
+fn empty_semicolons_are_ignored_recursively_by_the_block_partition() {
     let contents = ";color:red;; & { ; } @future { ;; inner:yes;; } ;";
     let body = CssSupportsTestBody::try_from_components(parse_component_values(contents).unwrap())
         .unwrap();

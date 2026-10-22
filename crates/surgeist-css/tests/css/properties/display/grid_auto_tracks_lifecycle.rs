@@ -54,7 +54,7 @@ fn terminal(source: &CssDeclaration, property: CssKnownProperty) -> CssLonghandC
 }
 
 #[test]
-fn existing_repeat_free_lists_parse_as_nonempty_typed_track_sizes() {
+fn repeat_free_lists_parse_as_nonempty_typed_track_sizes() {
     for (name, property) in PROPERTIES {
         for source in [
             parsed(
@@ -92,14 +92,19 @@ fn existing_repeat_free_lists_parse_as_nonempty_typed_track_sizes() {
                 report.diagnostics()[0].action(),
                 CssRecoveryAction::DropDeclaration
             );
-            assert!(validate_style_attribute(&source).is_err());
-            assert!(
+            assert_eq!(
+                validate_style_attribute(&source).unwrap_err().diagnostics(),
+                report.diagnostics()
+            );
+            assert_eq!(
                 parse_property_value_for_grammar(
                     grammar(name),
                     parse_component_values(invalid).unwrap(),
-                    CssImportance::Normal,
+                    CssImportance::Normal
                 )
-                .is_err(),
+                .unwrap_err()
+                .kind(),
+                &CssPropertyValueErrorKind::Grammar(report.diagnostics()[0].error().kind().clone()),
                 "checked accepted {name}:{invalid}"
             );
         }

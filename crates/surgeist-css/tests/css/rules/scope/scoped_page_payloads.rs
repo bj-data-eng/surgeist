@@ -1,21 +1,9 @@
 //! Page payloads keep page semantics inside an ordinary group under scope.
 //! https://www.w3.org/TR/2011/REC-CSS2-20110607/page.html#page-box
 //! https://www.w3.org/TR/2024/CRD-css-conditional-3-20240815/
+use crate::css::support::rules::normalized_pages as page_rules;
+use crate::css::support::rules::page_pseudo;
 use surgeist_css::*;
-
-fn page_rules(sheet: &CssNormalizedSheet) -> Vec<&CssPageRule> {
-    sheet
-        .items()
-        .iter()
-        .filter_map(|item| match item {
-            CssNormalizedItem::Rule(context) => match context.kind() {
-                CssRuleContextKindRef::Page(page) => Some(page),
-                _ => None,
-            },
-            _ => None,
-        })
-        .collect()
-}
 
 fn assert_margin(page: &CssPageRule) {
     assert_eq!(page.declarations().properties().len(), 1);
@@ -332,11 +320,4 @@ fn excess_scoped_page_preserves_statement_in_its_same_parent() {
         .unwrap()
         .join()
         .unwrap();
-}
-
-fn page_pseudo(page: &surgeist_css::CssPageRule) -> Option<surgeist_css::CssPagePseudo> {
-    page.selectors()
-        .selectors()
-        .first()
-        .and_then(|s| s.pseudos().first().copied())
 }

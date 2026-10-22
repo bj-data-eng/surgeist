@@ -152,24 +152,37 @@ fn keyword_controls_serialize_exactly_and_reject_one_below_limits() {
             text
         );
     }
-    for limits in [
-        CssSpecifiedValueSerializationLimits::new(0, 1, 99),
-        CssSpecifiedValueSerializationLimits::new(1, 0, 99),
+    // One keyword is one input node and one projection node.
+    for (limits, kind) in [
+        (
+            CssSpecifiedValueSerializationLimits::new(0, 1, 99),
+            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+        ),
+        (
+            CssSpecifiedValueSerializationLimits::new(1, 0, 99),
+            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+        ),
     ] {
-        assert!(
+        assert_eq!(
             CssScrollBehavior::Auto
                 .serialize_specified_with_limits(limits)
-                .is_err()
+                .unwrap_err()
+                .kind(),
+            kind
         );
-        assert!(
+        assert_eq!(
             CssScrollbarGutter::Stable
                 .serialize_specified_with_limits(limits)
-                .is_err()
+                .unwrap_err()
+                .kind(),
+            kind
         );
-        assert!(
+        assert_eq!(
             CssTextOverflow::Clip
                 .serialize_specified_with_limits(limits)
-                .is_err()
+                .unwrap_err()
+                .kind(),
+            kind
         );
     }
 }

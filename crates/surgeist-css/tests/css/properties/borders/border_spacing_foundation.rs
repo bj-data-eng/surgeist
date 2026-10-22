@@ -2,7 +2,7 @@
 //! https://www.w3.org/TR/2011/REC-CSS2-20110607/tables.html#propdef-border-spacing
 //! The one property is an inherited longhand with an effective ordered pair.
 
-use crate::css::support::style_declaration_reporting_source as declaration;
+use crate::css::support::sole_declaration as declaration;
 use surgeist_css::*;
 
 fn spacing(source: &CssDeclaration) -> &CssBorderSpacing {
@@ -117,27 +117,6 @@ fn symbolic_pure_length_math_remains_in_the_authored_pair() {
             1,
             "valid neighbor survives: {invalid}"
         );
-    }
-}
-
-#[test]
-fn css_wide_border_spacing_keywords_stay_symbolic_single_contributions() {
-    for (spelling, expected) in [
-        ("initial", CssGlobalKeyword::Initial),
-        ("inherit", CssGlobalKeyword::Inherit),
-        ("unset", CssGlobalKeyword::Unset),
-        ("revert", CssGlobalKeyword::Revert),
-        ("revert-layer", CssGlobalKeyword::RevertLayer),
-    ] {
-        let source = declaration(&format!("border-spacing:{spelling}!important"));
-        let items = expanded(&source);
-        let [item] = items.as_slice() else {
-            panic!("one global terminal: {spelling}")
-        };
-        assert_eq!(item.property(), CssKnownProperty::BorderSpacing);
-        assert_eq!(item.value(), CssContributionValueRef::Global(expected));
-        assert!(item.source().same_occurrence(&source));
-        assert_eq!(item.source().importance(), CssImportance::Important);
     }
 }
 

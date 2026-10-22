@@ -1,6 +1,8 @@
 //! Functional new API expectations from Content 3 WD 2025-12-04's selected
 //! property tables and the bounded named-string disposition recorded in #680.
 
+use crate::css::support::property_admission::assert_checked_closure_rejected;
+use crate::css::support::sole_declaration;
 use surgeist_css::{
     CssSpecifiedValueSerializationErrorKind as K, CssSpecifiedValueSerializationLimits as L, *,
 };
@@ -12,10 +14,7 @@ fn string(value: &str) -> CssContentString {
     CssContentString::try_new(value).unwrap()
 }
 fn declaration(property: &str, value: &str) -> CssDeclaration {
-    let css = format!("/*😀*/{property}:{value}");
-    let report = parse_style_attribute(&css);
-    assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
-    report.syntax()[0].clone()
+    sole_declaration(&format!("/*😀*/{property}:{value}"))
 }
 fn calculation(value: &str) -> CssPositiveIntegerValue {
     CssPositiveIntegerValue::Calculation(
@@ -371,14 +370,11 @@ fn checked_reconstruction_keeps_original_components_and_strict_closure() {
         assert!(value.position().is_none());
         assert_eq!(components, before);
         let incomplete = parse_component_values(&format!("{input}/*unfinished")).unwrap();
-        assert!(
-            parse_property_value(
-                CssPropertyNameRef::Known(property),
-                incomplete,
-                CssImportance::Normal
-            )
-            .is_err()
-        );
+        assert_checked_closure_rejected(parse_property_value(
+            CssPropertyNameRef::Known(property),
+            incomplete,
+            CssImportance::Normal,
+        ));
         assert!(
             parse_property_value(
                 CssPropertyNameRef::Known(property),

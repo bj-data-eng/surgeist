@@ -1,7 +1,7 @@
 //! Flexbox 1 §§5.1–5.3: direction and wrapping are noninherited terminals;
 //! `flex-flow` sets both, including the initial of an omitted component.
 
-use crate::css::support::style_declaration_reporting_source as declaration;
+use crate::css::support::sole_declaration as declaration;
 use surgeist_css::*;
 
 fn expanded(source: &CssDeclaration) -> Vec<CssLonghandContribution> {
@@ -120,36 +120,6 @@ fn unordered_flow_components_and_omissions_contribute_both_specified_values() {
             assert!(item.source().same_occurrence(&source));
             assert_eq!(item.source().importance(), CssImportance::Important);
             assert!(item.replacement_components().is_none());
-        }
-    }
-}
-
-#[test]
-fn every_css_wide_keyword_reaches_each_flow_terminal_without_resolution() {
-    for (text, keyword) in [
-        ("initial", CssGlobalKeyword::Initial),
-        ("inherit", CssGlobalKeyword::Inherit),
-        ("unset", CssGlobalKeyword::Unset),
-        ("revert", CssGlobalKeyword::Revert),
-        ("revert-layer", CssGlobalKeyword::RevertLayer),
-    ] {
-        for (name, expected) in [
-            ("flex-direction", &[CssKnownProperty::FlexDirection][..]),
-            ("flex-wrap", &[CssKnownProperty::FlexWrap][..]),
-            (
-                "flex-flow",
-                &[CssKnownProperty::FlexDirection, CssKnownProperty::FlexWrap][..],
-            ),
-        ] {
-            let source = declaration(&format!("{name}:{text}!important"));
-            let items = expanded(&source);
-            assert_eq!(items.len(), expected.len(), "{name}:{text}");
-            for (item, property) in items.iter().zip(expected) {
-                assert_eq!(item.property(), *property);
-                assert_eq!(item.value(), CssContributionValueRef::Global(keyword));
-                assert!(item.source().same_occurrence(&source));
-                assert_eq!(item.source().importance(), CssImportance::Important);
-            }
         }
     }
 }

@@ -48,7 +48,7 @@ fn empty_declaration_only_and_unknown_test_bodies_remain_clean_nonstyle_rules() 
     );
     let report = parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    assert!(validate_sheet(source).is_ok());
+    assert_eq!(validate_sheet(source).unwrap(), *report.syntax());
     assert_eq!(report.syntax().rules().len(), 3);
 
     let normalized = normalize_sheet(report.syntax()).unwrap();

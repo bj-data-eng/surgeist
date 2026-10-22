@@ -1,6 +1,8 @@
 //! Authored fill, rule, and span from Multicol 1 CR (2024-05-16) §§4, 6.1, 7.1:
 //! https://www.w3.org/TR/2024/CR-css-multicol-1-20240516/
 
+use crate::css::support::property_admission::assert_component_rejected;
+use crate::css::support::property_admission::assert_declaration_rejected as rejected;
 use crate::css::support::{
     checked_grammar_declaration as checked, important_declaration as declaration,
     selected_grammar as grammar,
@@ -29,34 +31,6 @@ fn accepted(name: &str, value: &str) {
         );
         assert_eq!(source.importance(), CssImportance::Important);
     }
-}
-
-fn invalid(name: &str, value: &str) {
-    let source = format!("color:red;{name}:{value};color:blue");
-    let report = parse_style_attribute(&source);
-    let [diagnostic] = report.diagnostics() else {
-        panic!(
-            "one invalid-value diagnostic: {source}: {:?}",
-            report.diagnostics()
-        )
-    };
-    assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    assert_ne!(diagnostic.error().code(), CssErrorCode::UnknownProperty);
-    assert_eq!(
-        report.syntax().len(),
-        2,
-        "valid neighbors survive: {source}"
-    );
-    assert!(validate_style_attribute(&source).is_err());
-    assert!(
-        parse_property_value_for_grammar(
-            grammar(name),
-            parse_component_values(value).unwrap(),
-            CssImportance::Normal,
-        )
-        .is_err(),
-        "checked construction accepted {name}:{value}"
-    );
 }
 
 fn expanded(source: &CssDeclaration) -> Vec<CssLonghandContribution> {
@@ -196,16 +170,16 @@ fn fill_span_and_rule_longhands_accept_their_authored_grammars() {
     ] {
         accepted("column-rule-width", value);
     }
-    for (name, value) in [
-        ("column-fill", "justify"),
-        ("column-span", "2"),
-        ("column-rule-style", "solid dashed"),
-        ("column-rule-color", "none"),
-        ("column-rule-width", "-1px"),
-        ("column-rule-width", "1%"),
-        ("column-rule-width", "calc(1px + 2%)"),
+    for (name, value, token) in [
+        ("column-fill", "justify", "justify"),
+        ("column-span", "2", "2"),
+        ("column-rule-style", "solid dashed", "dashed"),
+        ("column-rule-color", "none", "none"),
+        ("column-rule-width", "-1px", "-1px"),
+        ("column-rule-width", "1%", "1%"),
+        ("column-rule-width", "calc(1px + 2%)", "calc("),
     ] {
-        invalid(name, value);
+        rejected(name, value, Some(token));
     }
     assert_ne!(
         one_value("column-rule-width", "1e100px"),
@@ -238,15 +212,15 @@ fn unordered_rule_components_expand_with_omissions_reset_to_initials() {
             assert!(item.replacement_components().is_none());
         }
     }
-    for value in [
-        "",
-        "solid solid",
-        "1px 2px",
-        "red blue",
-        "-1px solid",
-        "1% solid",
+    for (value, token) in [
+        ("", None),
+        ("solid solid", Some("solid")),
+        ("1px 2px", Some("2px")),
+        ("red blue", Some("blue")),
+        ("-1px solid", Some("-1px")),
+        ("1% solid", Some("1%")),
     ] {
-        invalid("column-rule", value);
+        rejected("column-rule", value, token);
     }
 }
 
@@ -341,7 +315,7 @@ fn globals_and_pending_values_expand_all_six_properties_with_strict_reentry() {
                 );
             }
         }
-        invalid(name, "initial red");
+        rejected(name, "initial red", Some("red"));
     }
 }
 
@@ -403,11 +377,10 @@ fn normalization_keeps_mixed_order_and_fails_atomically_at_contribution_limit() 
 #[test]
 fn direct_rule_construction_keeps_exact_width_and_modern_color_without_legacy_projection() {
     assert!(CssColumnRule::try_new(None, None, None).is_none());
-    assert!(
-        CssSpecifiedNonNegativeLength::try_from_component(
-            CssComponentValue::try_dimension("-1e-100", "px").unwrap()
-        )
-        .is_err()
+    assert_component_rejected(
+        CssSpecifiedNonNegativeLength::try_from_component,
+        CssComponentValue::try_dimension("-1e-100", "px").unwrap(),
+        CssNumericConstructionErrorKind::OutOfRange,
     );
     let width = programmatic_width("1e100");
     let color = authored_color("color-mix(in srgb, red, green, blue)");

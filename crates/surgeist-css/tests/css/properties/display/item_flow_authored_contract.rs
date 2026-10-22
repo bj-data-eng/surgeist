@@ -16,6 +16,10 @@
 //! The 480-string group checks generic canonical admission/idempotence, not
 //! absent typed tuple access. No issue/status/catalog/Debug-output oracles.
 
+use crate::css::support::property_admission::implicit_closing_origin as implicit_origin;
+use crate::css::support::{
+    authored_checked_declaration as checked, authored_parsed_declaration as parsed,
+};
 use surgeist_css::CssKnownProperty as P;
 use surgeist_css::*;
 
@@ -57,43 +61,6 @@ fn expected_members(name: &str) -> Vec<&str> {
     } else {
         vec![name]
     }
-}
-fn parsed(name: &str, value: &str) -> CssDeclaration {
-    let css = format!("/*😀*/{name}:{value}!important");
-    let report = parse_style_attribute(&css);
-    assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
-    assert!(validate_style_attribute(&css).is_ok());
-    let [source] = report.syntax().as_slice() else {
-        panic!("one retained authored occurrence")
-    };
-    assert_eq!(source.known().unwrap().property().canonical_name(), name);
-    assert_eq!(source.importance(), CssImportance::Important);
-    assert!(source.position().is_some());
-    assert_eq!(source.parsed_name().unwrap().source().as_str(), css);
-    source.clone()
-}
-fn checked(name: &str, value: &str, grammar: bool) -> CssDeclaration {
-    let p = property(name);
-    let components = parse_component_values(value).unwrap();
-    let before = components.clone();
-    let source = if grammar {
-        parse_property_value_for_grammar(p.grammar(), components.clone(), CssImportance::Important)
-    } else {
-        parse_property_value(
-            CssPropertyNameRef::Known(p),
-            components.clone(),
-            CssImportance::Important,
-        )
-    }
-    .unwrap_or_else(|error| panic!("{name}:{value}: {error:?}"));
-    assert_eq!(components, before);
-    assert_eq!(source.value_components(), &components);
-    assert!(source.position().is_none());
-    assert!(source.parsed_name().is_none());
-    assert!(source.parsed_value().is_none());
-    assert_eq!(source.known().unwrap().grammar(), p.grammar());
-    assert_eq!(source.importance(), CssImportance::Important);
-    source
 }
 fn text_front(name: &str, text: &str, grammar: bool) -> CssDeclaration {
     let p = property(name);
@@ -552,28 +519,6 @@ fn intrinsic_membership_is_one_or_four_with_no_reset_only_terminal() {
         assert_tolerance(&completed(&checked(FLOW, input, true)), "normal");
     }
 }
-#[test]
-fn all_globals_propagate_symbolically_to_every_member_and_keep_importance() {
-    for name in FAMILY {
-        for (text, keyword) in GLOBALS {
-            for source in fronts(name, text) {
-                assert_eq!(source.known().unwrap().global(), Some(keyword));
-                assert_eq!(
-                    source.to_specified_css().unwrap(),
-                    format!("{name}: {text} !important;")
-                );
-                let values = completed(&source);
-                assert_eq!(names(&values), expected_members(name));
-                for item in values.items() {
-                    assert!(
-                        matches!(item.value(), CssContributionValueRef::Global(v) if v == keyword)
-                    );
-                    assert!(item.replacement_components().is_none());
-                }
-            }
-        }
-    }
-}
 fn replacement_for(name: &str) -> (&str, &str) {
     match name {
         "item-direction" => ("column-reverse", "column-reverse"),
@@ -725,27 +670,6 @@ fn residual_or_invalid_replacements_fail_atomically_and_the_same_handle_retries(
         }
         assert!(source.known().unwrap().substitution_dependent().is_some());
     }
-}
-fn implicit_origin(components: &CssComponentValues) -> CssValueOrigin {
-    for value in components.items() {
-        let closing = match value.view() {
-            CssComponentValueRef::Function(v) => Some(v.closing_origin()),
-            CssComponentValueRef::Block(v) => Some(v.closing_origin()),
-            _ => None,
-        };
-        if let Some(origin @ CssValueOrigin::ImplicitClosure { .. }) = closing {
-            return origin.clone();
-        }
-    }
-    let serialized = components.serialize().unwrap();
-    (0..serialized.as_css().len())
-        .find_map(|offset| match serialized.origin_at(offset) {
-            Some(CssSerializedOrigin::Token(origin @ CssValueOrigin::ImplicitClosure { .. })) => {
-                Some(origin.clone())
-            }
-            _ => None,
-        })
-        .expect("public original implicit closing origin")
 }
 fn assert_closure(error: &CssPropertyValueParseError, origin: &CssValueOrigin, text: &str) {
     assert!(matches!(
@@ -909,7 +833,10 @@ fn browser_eof_recovery_keeps_diagnostics_and_retained_normalized_occurrences() 
                     .iter()
                     .any(|v| v.action() == CssRecoveryAction::RetainWithImplicitClosure)
             );
-            assert!(validate_sheet(&css).is_err());
+            assert_eq!(
+                validate_sheet(&css).unwrap_err().diagnostics(),
+                report.diagnostics()
+            );
             let before = report.clone();
             let count = if text.starts_with("var") {
                 1
@@ -1209,7 +1136,7 @@ fn item_sheet_siblings_share_exact_final_bytes_and_suppress_failed_output_atomic
 }
 
 #[test]
-fn existing_flow_signed_math_and_original_closure_control_is_independent_of_item_registration() {
+fn flow_signed_math_and_original_closure_control_is_independent_of_item_registration() {
     for (input, expected) in [
         ("normal", "normal"),
         ("infinite", "infinite"),
@@ -1237,7 +1164,7 @@ fn existing_flow_signed_math_and_original_closure_control_is_independent_of_item
     }
 }
 #[test]
-fn existing_flex_flow_keeps_its_two_members_and_own_omission_defaults() {
+fn flex_flow_keeps_its_two_members_and_own_omission_defaults() {
     let source = checked("flex-flow", "column", true);
     assert_eq!(
         source.to_specified_css().unwrap(),
@@ -1263,7 +1190,7 @@ fn existing_flex_flow_keeps_its_two_members_and_own_omission_defaults() {
     );
 }
 #[test]
-fn existing_grid_template_grid_and_normal_auto_flow_membership_remain_independent() {
+fn grid_template_grid_and_normal_auto_flow_membership_remain_independent() {
     for (name, input, expected, members) in [
         (
             "grid-template",

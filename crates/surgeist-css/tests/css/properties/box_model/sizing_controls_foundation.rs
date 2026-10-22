@@ -1,6 +1,7 @@
 //! Authored size controls from Sizing 4 WD (2026-09-04) §§3.1, 5.3, 5.5.
 //! Used sizing and CSSOM shorthand ordering are downstream of these declarations.
 
+use crate::css::support::property_admission::assert_declaration_rejected as rejected;
 use crate::css::support::{
     checked_grammar_declaration as checked, important_declaration as declaration,
     selected_grammar as grammar,
@@ -26,27 +27,6 @@ fn accepted(name: &str, value: &str) {
             value
         );
     }
-}
-
-fn invalid(name: &str, value: &str) {
-    let source = format!("color:red;{name}:{value};color:blue");
-    let report = parse_style_attribute(&source);
-    let [diagnostic] = report.diagnostics() else {
-        panic!("one invalid-value diagnostic: {source}")
-    };
-    assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    assert_ne!(diagnostic.error().code(), CssErrorCode::UnknownProperty);
-    assert_eq!(report.syntax().len(), 2, "neighbors survive: {source}");
-    assert!(validate_style_attribute(&source).is_err());
-    assert!(
-        parse_property_value_for_grammar(
-            grammar(name),
-            parse_component_values(value).unwrap(),
-            CssImportance::Normal,
-        )
-        .is_err(),
-        "checked construction accepted {name}:{value}"
-    );
 }
 
 fn one_value(source: &CssDeclaration) -> CssLonghandValue {
@@ -110,13 +90,13 @@ fn sizing_shorthands_follow_their_member_domain_and_exact_one_or_two_values() {
     for name in ["size", "min-size"] {
         accepted(name, "auto");
         accepted(name, "auto 1px");
-        invalid(name, "none");
+        rejected(name, "none", Some("none"));
     }
     accepted("max-size", "none");
     accepted("max-size", "none 1px");
-    invalid("max-size", "auto");
-    invalid("max-size", "1px auto");
-    invalid("max-size", "calc-size(auto, size)");
+    rejected("max-size", "auto", Some("auto"));
+    rejected("max-size", "1px auto", Some("auto"));
+    rejected("max-size", "calc-size(auto, size)", Some("auto"));
 
     for name in SHORTHANDS {
         for value in [
@@ -139,20 +119,20 @@ fn sizing_shorthands_follow_their_member_domain_and_exact_one_or_two_values() {
         ] {
             accepted(name, value);
         }
-        for value in [
-            "",
-            "-1px",
-            "-1e-999%",
-            "1px -1px",
-            "1",
-            "1fr",
-            "1px 2px 3px",
-            "logical 1px",
-            "fit-content(-1px)",
-            "calc(1 + 2)",
-            "initial 1px",
+        for (value, token) in [
+            ("", None),
+            ("-1px", Some("-1px")),
+            ("-1e-999%", Some("-1e-999%")),
+            ("1px -1px", Some("-1px")),
+            ("1", Some("1")),
+            ("1fr", Some("1fr")),
+            ("1px 2px 3px", Some("3px")),
+            ("logical 1px", Some("logical")),
+            ("fit-content(-1px)", Some("-1px")),
+            ("calc(1 + 2)", Some("calc(")),
+            ("initial 1px", Some("1px")),
         ] {
-            invalid(name, value);
+            rejected(name, value, token);
         }
     }
 }
@@ -226,14 +206,14 @@ fn frame_and_min_intrinsic_terminals_have_exact_keyword_sets_and_initials() {
     ] {
         accepted("frame-sizing", value);
     }
-    for value in [
-        "none",
-        "content-size",
-        "content-width content-height",
-        "1px",
-        "initial auto",
+    for (value, token) in [
+        ("none", Some("none")),
+        ("content-size", Some("content-size")),
+        ("content-width content-height", Some("content-height")),
+        ("1px", Some("1px")),
+        ("initial auto", Some("auto")),
     ] {
-        invalid("frame-sizing", value);
+        rejected("frame-sizing", value, token);
     }
     for value in [
         "legacy",
@@ -244,17 +224,20 @@ fn frame_and_min_intrinsic_terminals_have_exact_keyword_sets_and_initials() {
     ] {
         accepted("min-intrinsic-sizing", value);
     }
-    for value in [
-        "",
-        "auto",
-        "zero-if-scroll zero-if-scroll",
-        "zero-if-extrinsic zero-if-extrinsic",
-        "legacy zero-if-scroll",
-        "zero-if-extrinsic legacy",
-        "zero-if-scroll zero-if-extrinsic legacy",
-        "initial legacy",
+    for (value, token) in [
+        ("", None),
+        ("auto", Some("auto")),
+        ("zero-if-scroll zero-if-scroll", Some("zero-if-scroll")),
+        (
+            "zero-if-extrinsic zero-if-extrinsic",
+            Some("zero-if-extrinsic"),
+        ),
+        ("legacy zero-if-scroll", Some("zero-if-scroll")),
+        ("zero-if-extrinsic legacy", Some("legacy")),
+        ("zero-if-scroll zero-if-extrinsic legacy", Some("legacy")),
+        ("initial legacy", Some("legacy")),
     ] {
-        invalid("min-intrinsic-sizing", value);
+        rejected("min-intrinsic-sizing", value, token);
     }
     for (name, initial_text) in [("frame-sizing", "auto"), ("min-intrinsic-sizing", "legacy")] {
         let property = grammar(name).target_property();

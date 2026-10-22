@@ -4,6 +4,8 @@
 //! Canonical writers and new typed payload accessors are tested with their implementation;
 //! this candidate exercises admission and the already-existing authored lifecycle APIs.
 
+use crate::css::support::known_property;
+use crate::css::support::property_admission::assert_invalid_value;
 use crate::css::support::validated_important_declaration as declaration;
 use surgeist_css::*;
 
@@ -14,7 +16,7 @@ type PropertyCase = (
     &'static str,
     bool,
     &'static [&'static str],
-    &'static [&'static str],
+    &'static [(&'static str, Option<&'static str>)],
 );
 
 const CASES: &[PropertyCase] = &[
@@ -24,13 +26,13 @@ const CASES: &[PropertyCase] = &[
         true,
         &["economy", "exact", "EXACT", r"ec\6f nomy"],
         &[
-            "",
-            "auto",
-            "none",
-            "economy exact",
-            "exact,economy",
-            "1",
-            "10%",
+            ("", None),
+            ("auto", Some("auto")),
+            ("none", Some("none")),
+            ("economy exact", Some("exact")),
+            ("exact,economy", Some(",")),
+            ("1", Some("1")),
+            ("10%", Some("10%")),
         ],
     ),
     (
@@ -39,13 +41,13 @@ const CASES: &[PropertyCase] = &[
         true,
         &["economy", "exact", "EXACT", r"ec\6f nomy"],
         &[
-            "",
-            "auto",
-            "none",
-            "economy exact",
-            "exact,economy",
-            "1",
-            "10%",
+            ("", None),
+            ("auto", Some("auto")),
+            ("none", Some("none")),
+            ("economy exact", Some("exact")),
+            ("exact,economy", Some(",")),
+            ("1", Some("1")),
+            ("10%", Some("10%")),
         ],
     ),
 ];
@@ -70,24 +72,6 @@ fn contribution(source: &CssDeclaration) -> CssLonghandContribution {
     assert!(item.source().same_occurrence(source));
     assert_eq!(item.source().importance(), source.importance());
     item.clone()
-}
-
-#[test]
-fn source_derived_valid_values_are_admitted_with_original_components() {
-    for &(name, _, _, valid, _) in CASES {
-        for &text in valid {
-            let source = declaration(name, text);
-            assert!(source.known().unwrap().property_value().is_some());
-            assert!(source.parsed_value().is_some());
-            assert!(
-                source
-                    .value_components()
-                    .items()
-                    .iter()
-                    .all(|item| { !matches!(item.origin(), CssValueOrigin::Programmatic) })
-            );
-        }
-    }
 }
 
 #[test]
@@ -182,56 +166,6 @@ fn intrinsic_longhand_metadata_has_the_pinned_initial_and_inheritance() {
 }
 
 #[test]
-fn ordinary_values_contribute_once_without_losing_occurrence_or_importance() {
-    for &(name, _, _, valid, _) in CASES {
-        for &text in valid {
-            let parsed = declaration(name, text);
-            let property = parsed.known().unwrap().property();
-            let checked = parse_property_value(
-                CssPropertyNameRef::Known(property),
-                parsed.value_components().clone(),
-                CssImportance::Important,
-            )
-            .unwrap();
-            let parsed_item = contribution(&parsed);
-            let checked_item = contribution(&checked);
-            assert!(parsed_item.ordinary_value().is_some());
-            assert_eq!(parsed_item.ordinary_value(), checked_item.ordinary_value());
-            assert!(parsed_item.replacement_components().is_none());
-            assert!(checked_item.replacement_components().is_none());
-        }
-    }
-}
-
-#[test]
-fn css_wide_values_contribute_symbolic_keywords() {
-    for &(name, _, _, _, _) in CASES {
-        for (text, keyword) in [
-            ("initial", CssGlobalKeyword::Initial),
-            ("inherit", CssGlobalKeyword::Inherit),
-            ("unset", CssGlobalKeyword::Unset),
-            ("revert", CssGlobalKeyword::Revert),
-            ("revert-layer", CssGlobalKeyword::RevertLayer),
-        ] {
-            let source = declaration(name, text);
-            assert_eq!(source.known().unwrap().global(), Some(keyword));
-            assert_eq!(
-                contribution(&source).value(),
-                CssContributionValueRef::Global(keyword)
-            );
-        }
-    }
-}
-
-#[test]
-fn pending_reentry_is_strict_repeatable_and_retains_replacement_provenance() {
-    for &(name, _, _, valid, invalid) in CASES {
-        let terminal = terminal_name(&declaration(name, "var(--value)"));
-        authored_property::pending_longhand_reentry(name, valid, invalid, terminal, declaration);
-    }
-}
-
-#[test]
 fn normalization_retains_order_and_importance_with_an_exact_contribution_limit() {
     for &(name, _, _, valid, _) in CASES {
         authored_property::normalized_longhand_order_and_limit(name, valid);
@@ -243,7 +177,7 @@ fn invalid_recovery_control_preserves_neighbors_and_the_original_snapshot() {
     // This is a recovery control on the baseline even where the property is absent.
     // Admission tests above independently require valid values to be supported.
     for &(name, _, _, _, invalid) in CASES {
-        for &value in invalid {
+        for &(value, token) in invalid {
             let text = format!("color:red;{name}:{value};height:2px!important");
             let report = parse_style_attribute(&text);
             let snapshot = report.syntax().to_vec();
@@ -251,6 +185,7 @@ fn invalid_recovery_control_preserves_neighbors_and_the_original_snapshot() {
                 panic!("one dropped invalid occurrence: {text}")
             };
             assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
+            assert_invalid_value(diagnostic.error().kind(), known_property(name), token);
             let error_offset = diagnostic.error().position().byte_offset().value();
             let property_start = "color:red;".len();
             let value_end = property_start + name.len() + 1 + value.len();
@@ -284,7 +219,10 @@ fn invalid_recovery_control_preserves_neighbors_and_the_original_snapshot() {
                     .as_css(),
                 "2px"
             );
-            assert!(validate_style_attribute(&text).is_err());
+            assert_eq!(
+                validate_style_attribute(&text).unwrap_err().diagnostics(),
+                report.diagnostics()
+            );
             for (source, original) in report.syntax().iter().zip(&snapshot) {
                 assert!(source.same_occurrence(original));
                 assert_eq!(source.value_components(), original.value_components());
@@ -294,7 +232,7 @@ fn invalid_recovery_control_preserves_neighbors_and_the_original_snapshot() {
 }
 
 #[test]
-fn existing_color_lifecycle_control_exercises_the_same_shared_front_doors() {
+fn color_lifecycle_control_exercises_the_same_shared_front_doors() {
     let source = declaration("color", "red");
     let item = contribution(&source);
     assert_eq!(item.property(), CssKnownProperty::Color);

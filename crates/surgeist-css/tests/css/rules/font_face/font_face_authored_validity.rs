@@ -53,7 +53,7 @@ fn invalid_descriptor_does_not_discard_accepted_font_face() {
 }
 
 #[test]
-fn invalid_font_face_prelude_still_discards_the_outer_rule() {
+fn invalid_font_face_prelude_discards_the_outer_rule() {
     let source = "@font-face unexpected { src: url(face); } .after { color: red; }";
     let report = parse_sheet(source);
     assert!(matches!(report.syntax().rules(), [CssRule::Style(_)]));

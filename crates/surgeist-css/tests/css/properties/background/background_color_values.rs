@@ -1,7 +1,7 @@
 //! Functional typed lifecycle assertions for Backgrounds 3 §2.2's selected color grammar.
 //! https://www.w3.org/TR/2024/CRD-css-backgrounds-3-20240311/#background-color
 
-use crate::css::support::style_declaration as declaration;
+use crate::css::support::sole_declaration as declaration;
 use surgeist_css::*;
 
 fn typed_color(item: &CssLonghandContribution) -> &CssColor {

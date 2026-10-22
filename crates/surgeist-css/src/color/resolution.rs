@@ -1455,7 +1455,7 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
     }
     pub(crate) fn consumed_source(
         &self,
-    ) -> Result<crate::tokenization::color_tokens::Span, CssColorProtocolError> {
+    ) -> Result<crate::tokenization::tokenizer::Span, CssColorProtocolError> {
         if matches!(self.state, State::Done(_)) {
             self.source
                 .ok_or(CssColorProtocolError::WrongSlot)?

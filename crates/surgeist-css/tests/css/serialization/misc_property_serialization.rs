@@ -1,41 +1,11 @@
 //! Independent specified-value expectations from UI3 caret-color, Containment 1
 //! grammar order and Compositing 1's ordered background-blend-mode list.
 
+use crate::css::support::serialization_limits::assert_node_limits;
 use surgeist_css::*;
 
 type Limits = CssSpecifiedValueSerializationLimits;
 type Kind = CssSpecifiedValueSerializationErrorKind;
-
-fn assert_limits(
-    emit: impl Fn(Limits) -> Result<String, CssSpecifiedValueSerializationError>,
-    expected: &str,
-    nodes: usize,
-) {
-    assert_eq!(
-        emit(Limits::new(nodes, nodes, expected.len())).unwrap(),
-        expected
-    );
-    for (limits, kind) in [
-        (
-            Limits::new(nodes - 1, nodes, expected.len()),
-            Kind::InputNodeLimit,
-        ),
-        (
-            Limits::new(nodes, nodes - 1, expected.len()),
-            Kind::ProjectionNodeLimit,
-        ),
-        (
-            Limits::new(nodes, nodes, expected.len() - 1),
-            Kind::ByteLimit,
-        ),
-    ] {
-        assert_eq!(emit(limits).unwrap_err().kind(), kind);
-        assert_eq!(
-            emit(Limits::new(nodes, nodes, expected.len())).unwrap(),
-            expected
-        );
-    }
-}
 
 fn parsed_caret(source: &str) -> CssCaretColor {
     let report = parse_style_attribute(&format!("caret-color:{source}"));
@@ -64,11 +34,9 @@ fn caret_keyword_and_color_are_transparent_owners_with_exact_limits() {
     ] {
         let before = value.clone();
         assert_eq!(value.serialize_specified().unwrap(), expected);
-        assert_limits(
-            |limits| value.serialize_specified_with_limits(limits),
-            expected,
-            1,
-        );
+        assert_node_limits(expected, 1, |limits| {
+            value.serialize_specified_with_limits(limits)
+        });
         assert_eq!(value, before);
     }
 }
@@ -113,11 +81,9 @@ fn containment_keywords_preserve_their_authored_branch_and_exact_limits() {
         (CssContain::Content, "content"),
     ] {
         assert_eq!(value.serialize_specified().unwrap(), expected);
-        assert_limits(
-            |limits| value.serialize_specified_with_limits(limits),
-            expected,
-            1,
-        );
+        assert_node_limits(expected, 1, |limits| {
+            value.serialize_specified_with_limits(limits)
+        });
     }
 }
 
@@ -145,11 +111,9 @@ fn every_containment_subset_and_order_emits_grammar_order_without_mutation() {
             CssContain::Components(CssContainComponentList::try_new(components.clone()).unwrap());
         let before = value.clone();
         assert_eq!(value.serialize_specified().unwrap(), expected);
-        assert_limits(
-            |limits| value.serialize_specified_with_limits(limits),
-            expected,
-            1 + components.len(),
-        );
+        assert_node_limits(expected, 1 + components.len(), |limits| {
+            value.serialize_specified_with_limits(limits)
+        });
         assert_eq!(value, before);
         let CssContain::Components(retained) = value else {
             panic!("components")
@@ -208,11 +172,9 @@ fn every_blend_primitive_is_available_in_an_ordered_list_with_exact_limits() {
     ] {
         let value = CssBlendModeList::try_new(vec![mode]).unwrap();
         assert_eq!(value.serialize_specified().unwrap(), expected);
-        assert_limits(
-            |limits| value.serialize_specified_with_limits(limits),
-            expected,
-            2,
-        );
+        assert_node_limits(expected, 2, |limits| {
+            value.serialize_specified_with_limits(limits)
+        });
         assert_eq!(value.modes(), &[mode]);
     }
 }
@@ -231,11 +193,9 @@ fn blend_lists_preserve_order_duplicates_and_comma_byte_cost() {
         value.serialize_specified().unwrap(),
         "screen, normal, screen"
     );
-    assert_limits(
-        |limits| value.serialize_specified_with_limits(limits),
-        "screen, normal, screen",
-        4,
-    );
+    assert_node_limits("screen, normal, screen", 4, |limits| {
+        value.serialize_specified_with_limits(limits)
+    });
     assert_eq!(value, before);
     let report = parse_style_attribute("background-blend-mode:SCREEN,normal,SCREEN");
     assert!(report.is_clean());

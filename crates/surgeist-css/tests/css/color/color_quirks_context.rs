@@ -1,5 +1,8 @@
 //! Color4 CRD20260908 Appendix B, selected raw-representation disposition.
 //! Functional new-API evidence with implementation; no missing-symbol RED.
+use crate::css::support::color_and_selector_fixtures::{
+    assert_color_text_rejected, assert_color_value_rejected,
+};
 use crate::css::support::{contextual_checked_declaration as checked, known_property as property};
 use surgeist_css::*;
 const QUIRKS: CssParserContext = CssParserContext::new(CssParserMode::Quirks);
@@ -60,40 +63,53 @@ fn strict_error(error: &CssPropertyValueParseError, original: &str) {
     assert_eq!(at.span().start(), at.span().end());
 }
 #[test]
-fn defaults_and_existing_functions_keep_standards_grammar() {
+fn defaults_and_color_functions_keep_standards_grammar() {
     assert_eq!(CssParserContext::default().mode(), CssParserMode::Standards);
     for name in NAMES {
         for text in ["ABC", "123", "12abc"] {
             let values = parse_component_values(text).unwrap();
             let p = property(name);
-            assert!(
+            // Color 4 Appendix B: standards mode admits no quirky color, so
+            // the sole token is the responsible one.
+            assert_color_value_rejected(
                 parse_property_value(
                     CssPropertyNameRef::Known(p),
                     values.clone(),
-                    CssImportance::Normal
-                )
-                .is_err()
+                    CssImportance::Normal,
+                ),
+                p,
+                text,
+                text,
             );
-            assert!(
-                CssParserContext::default()
-                    .parse_property_value_for_grammar(p.grammar(), values, CssImportance::Normal)
-                    .is_err()
+            assert_color_value_rejected(
+                CssParserContext::default().parse_property_value_for_grammar(
+                    p.grammar(),
+                    values,
+                    CssImportance::Normal,
+                ),
+                p,
+                text,
+                text,
             );
-            assert!(
-                CssParserContext::default()
-                    .parse_property_value_text(
-                        text,
-                        CssPropertyNameRef::Known(p),
-                        CssImportance::Normal
-                    )
-                    .syntax()
-                    .is_none()
+            assert_color_text_rejected(
+                CssParserContext::default().parse_property_value_text(
+                    text,
+                    CssPropertyNameRef::Known(p),
+                    CssImportance::Normal,
+                ),
+                p,
+                text,
+                text,
             );
-            assert!(
-                CssParserContext::default()
-                    .parse_property_value_text_for_grammar(text, p.grammar(), CssImportance::Normal)
-                    .syntax()
-                    .is_none()
+            assert_color_text_rejected(
+                CssParserContext::default().parse_property_value_text_for_grammar(
+                    text,
+                    p.grammar(),
+                    CssImportance::Normal,
+                ),
+                p,
+                text,
+                text,
             );
             let css = format!("{name}:{text};color:red");
             assert_eq!(
@@ -196,14 +212,15 @@ fn raw_quirky_escapes_fail_while_ordinary_escaped_named_colors_win() {
                     .unwrap(),
             ] {
                 let before = values.clone();
-                assert!(
-                    QUIRKS
-                        .parse_property_value_for_grammar(
-                            property(name).grammar(),
-                            values.clone(),
-                            CssImportance::Normal
-                        )
-                        .is_err()
+                assert_color_value_rejected(
+                    QUIRKS.parse_property_value_for_grammar(
+                        property(name).grammar(),
+                        values.clone(),
+                        CssImportance::Normal,
+                    ),
+                    property(name),
+                    text,
+                    text,
                 );
                 assert_eq!(values, before);
             }
@@ -274,23 +291,26 @@ fn rust_authored_number_and_dimension_flags_stay_faithful() {
     for (token, expected) in [
         (
             CssComponentValue::try_number("+000123").unwrap(),
-            Some("rgb(0, 1, 35)"),
+            Ok("rgb(0, 1, 35)"),
         ),
         (
             CssComponentValue::try_number("-0").unwrap(),
-            Some("rgb(0, 0, 0)"),
+            Ok("rgb(0, 0, 0)"),
         ),
-        (CssComponentValue::try_number("1.0").unwrap(), None),
-        (CssComponentValue::try_number("1e0").unwrap(), None),
+        (CssComponentValue::try_number("1.0").unwrap(), Err("1.0")),
+        (CssComponentValue::try_number("1e0").unwrap(), Err("1e0")),
         (
             CssComponentValue::try_dimension("12", "abc").unwrap(),
-            Some("rgb(1, 42, 188)"),
+            Ok("rgb(1, 42, 188)"),
         ),
         (
             CssComponentValue::try_dimension("1.0", "abc").unwrap(),
-            None,
+            Err("1.0abc"),
         ),
-        (CssComponentValue::try_token(r"12\61 bc").unwrap(), None),
+        (
+            CssComponentValue::try_token(r"12\61 bc").unwrap(),
+            Err(r"12\61 bc"),
+        ),
     ] {
         let values = CssComponentValues::try_new(vec![token]).unwrap();
         let before = values.clone();
@@ -299,14 +319,17 @@ fn rust_authored_number_and_dimension_flags_stay_faithful() {
             values.clone(),
             CssImportance::Important,
         );
+        // A rejected programmatic token is named by its authored spelling.
         match expected {
-            Some(text) => {
+            Ok(text) => {
                 let source = result.unwrap();
                 assert_eq!(color(&source).to_specified_css().unwrap(), text);
                 assert_eq!(source.value_components(), &values);
                 assert!(source.position().is_none());
             }
-            None => assert!(result.is_err()),
+            Err(spelling) => {
+                assert_color_value_rejected(result, CssKnownProperty::Color, spelling, spelling)
+            }
         }
         assert_eq!(values, before);
     }
@@ -328,19 +351,30 @@ fn referencing_shorthands_logical_owners_and_color_functions_do_not_acquire_quir
         ("text-decoration-color", "ABC"),
         ("flood-color", "ABC"),
         ("lighting-color", "ABC"),
-        ("border-color", "logical ABC"),
     ] {
-        assert!(
-            QUIRKS
-                .parse_property_value_for_grammar(
-                    property(name).grammar(),
-                    parse_component_values(text).unwrap(),
-                    CssImportance::Normal
-                )
-                .is_err(),
-            "{name}:{text}"
+        // Color 4 Appendix B admits quirky colors only in its listed
+        // properties, so the quirky token is responsible elsewhere.
+        assert_color_value_rejected(
+            QUIRKS.parse_property_value_for_grammar(
+                property(name).grammar(),
+                parse_component_values(text).unwrap(),
+                CssImportance::Normal,
+            ),
+            property(name),
+            text,
+            "ABC",
         );
     }
+    assert!(
+        QUIRKS
+            .parse_property_value_for_grammar(
+                property("border-color").grammar(),
+                parse_component_values("logical ABC").unwrap(),
+                CssImportance::Normal
+            )
+            .is_err(),
+        "border-color:logical ABC"
+    );
     for name in NAMES {
         for text in [
             "color-mix(in oklab, ABC, red)",
@@ -349,15 +383,17 @@ fn referencing_shorthands_logical_owners_and_color_functions_do_not_acquire_quir
             "alpha(from ABC / .5)",
             "rgb(from ABC r g b)",
         ] {
-            assert!(
-                QUIRKS
-                    .parse_property_value_for_grammar(
-                        property(name).grammar(),
-                        parse_component_values(text).unwrap(),
-                        CssImportance::Normal
-                    )
-                    .is_err(),
-                "{name}:{text}"
+            // Appendix B quirks apply only to a whole property value, never
+            // to a color nested in a function.
+            assert_color_value_rejected(
+                QUIRKS.parse_property_value_for_grammar(
+                    property(name).grammar(),
+                    parse_component_values(text).unwrap(),
+                    CssImportance::Normal,
+                ),
+                property(name),
+                text,
+                "ABC",
             );
         }
     }
@@ -582,11 +618,15 @@ fn pending_handles_keep_mode_importance_and_origins_across_failed_successful_ret
             let CssExpansion::Pending(handle) = expand_declaration(&standard).unwrap() else {
                 panic!("standard pending")
             };
-            assert!(
-                handle
-                    .reenter(parse_component_values("ABC").unwrap())
-                    .is_err()
-            );
+            // Standards-mode reentry admits no quirky color, so the sole
+            // replacement token is responsible.
+            let error = handle
+                .reenter(parse_component_values("ABC").unwrap())
+                .unwrap_err();
+            let CssExpansionErrorKind::InvalidReplacement(cause) = error.kind() else {
+                panic!("{name}: invalid replacement: {error:?}")
+            };
+            assert_color_value_rejected(Err(cause.clone()), property(name), "ABC", "ABC");
         }
     }
 }
@@ -898,14 +938,16 @@ fn long_zero_prefixed_integer_is_exact_and_nonrepresentable_magnitudes_and_units
     ] {
         let values = parse_component_values(&text).unwrap();
         let before = values.clone();
-        assert!(
-            QUIRKS
-                .parse_property_value_for_grammar(
-                    CssKnownProperty::Color.grammar(),
-                    values.clone(),
-                    CssImportance::Normal
-                )
-                .is_err()
+        // A quirky hex color has at most six digits.
+        assert_color_value_rejected(
+            QUIRKS.parse_property_value_for_grammar(
+                CssKnownProperty::Color.grammar(),
+                values.clone(),
+                CssImportance::Normal,
+            ),
+            CssKnownProperty::Color,
+            &text,
+            &text,
         );
         assert_eq!(values, before);
     }

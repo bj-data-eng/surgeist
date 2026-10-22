@@ -4,6 +4,10 @@
 //! Published source basis: cfffe14a4e5371a1b09e9a0a37b56dd74cf712e0.
 //! No missing-symbol/constructor RED or execution evidence is claimed.
 
+use crate::css::support::property_admission::Responsible::{self, At, Disputed, End};
+use crate::css::support::property_admission::implicit_closure_origin as implicit_origin;
+use crate::css::support::property_admission::{assert_checked_rejected, assert_invalid_value};
+use crate::css::support::serialization_limits::LimitLadder;
 use crate::css::support::{
     authored_declaration_through_front as declaration, check_property_components as checked,
     discoverable_property as property,
@@ -51,9 +55,9 @@ fn accept(name: &str, cases: &[(&str, &str)]) {
     }
 }
 
-fn invalid(name: &str, values: &[&str]) {
+fn invalid<'a, T: Copy + Into<Responsible<'a>>>(name: &str, values: &[(&str, T)]) {
     let p = property(name);
-    for value in values {
+    for &(value, token) in values {
         let middle = format!("{name}:{value};");
         let css = format!("/*😀*/color:red!important;{middle}color:blue");
         let report = parse_style_attribute(&css);
@@ -71,6 +75,7 @@ fn invalid(name: &str, values: &[&str]) {
             panic!("actual property grammar diagnostic")
         };
         assert_eq!(detail.property(), p);
+        assert_invalid_value(diagnostic.error().kind(), p, token);
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
         let start = css.find(&middle).unwrap();
         assert_eq!(diagnostic.span().start().byte_offset().value(), start);
@@ -89,10 +94,7 @@ fn invalid(name: &str, values: &[&str]) {
         let components = parse_component_values(value).unwrap();
         let original = components.clone();
         for grammar in [false, true] {
-            assert!(
-                checked(p, components.clone(), grammar).is_err(),
-                "{name}:{value}"
-            );
+            assert_checked_rejected(checked(p, components.clone(), grammar), p, token);
         }
         assert_eq!(components, original);
     }
@@ -126,24 +128,24 @@ fn string_sets_reject_missing_leaves_empty_entries_and_reserved_decoded_names() 
     invalid(
         "string-set",
         &[
-            "chapter",
-            "\"text\"",
-            "chapter \"a\",",
-            ",chapter \"a\"",
-            "chapter \"a\",,author \"b\"",
-            "chapter \"a\" author \"b\"",
-            "initial \"a\"",
-            "inherit \"a\"",
-            "unset \"a\"",
-            "revert \"a\"",
-            "revert-layer \"a\"",
-            "default \"a\"",
-            "DEFAULT \"a\"",
-            r#"\64 efault "a""#,
-            r#"\69 nherit "a""#,
-            "chapter 1",
-            "chapter url(\"#x\")",
-            "none none",
+            ("chapter", At("chapter")),
+            ("\"text\"", At("\"text\"")),
+            ("chapter \"a\",", End),
+            (",chapter \"a\"", At(",")),
+            ("chapter \"a\",,author \"b\"", At(",")),
+            ("chapter \"a\" author \"b\"", At("author")),
+            ("initial \"a\"", At("\"a\"")),
+            ("inherit \"a\"", At("\"a\"")),
+            ("unset \"a\"", At("\"a\"")),
+            ("revert \"a\"", At("\"a\"")),
+            ("revert-layer \"a\"", At("\"a\"")),
+            ("default \"a\"", Disputed),
+            ("DEFAULT \"a\"", Disputed),
+            (r#"\64 efault "a""#, Disputed),
+            (r#"\69 nherit "a""#, At("\"a\"")),
+            ("chapter 1", At("1")),
+            ("chapter url(\"#x\")", At("url(")),
+            ("none none", At("none")),
         ],
     );
 }
@@ -155,15 +157,15 @@ fn string_set_selected_table_does_not_silently_adopt_conflicting_content_like_pr
     invalid(
         "string-set",
         &[
-            "chapter contents",
-            "chapter content()",
-            "chapter counter(chapter)",
-            "chapter counters(chapter,\".\")",
-            "chapter string(other)",
-            "chapter leader(dotted)",
-            "chapter target-text(\"#x\")",
-            "chapter open-quote",
-            "chapter \"a\" / \"spoken\"",
+            ("chapter contents", Some("contents")),
+            ("chapter content()", Some("content(")),
+            ("chapter counter(chapter)", Some("counter(")),
+            ("chapter counters(chapter,\".\")", Some("counters(")),
+            ("chapter string(other)", Some("string(")),
+            ("chapter leader(dotted)", Some("leader(")),
+            ("chapter target-text(\"#x\")", Some("target-text(")),
+            ("chapter open-quote", Some("open-quote")),
+            ("chapter \"a\" / \"spoken\"", Some("/")),
         ],
     );
 }
@@ -202,20 +204,20 @@ fn bookmark_level_rejects_zero_negative_noninteger_token_spellings_and_foreign_r
     invalid(
         "bookmark-level",
         &[
-            "0",
-            "+0",
-            "-0",
-            "-0000",
-            "-1",
-            "1.0",
-            "1e2",
-            "1%",
-            "1px",
-            "1 2",
-            "none 1",
-            "open",
-            "calc(1px)",
-            "inherit 1",
+            ("0", Some("0")),
+            ("+0", Some("+0")),
+            ("-0", Some("-0")),
+            ("-0000", Some("-0000")),
+            ("-1", Some("-1")),
+            ("1.0", Some("1.0")),
+            ("1e2", Some("1e2")),
+            ("1%", Some("1%")),
+            ("1px", Some("1px")),
+            ("1 2", Some("2")),
+            ("none 1", Some("1")),
+            ("open", Some("open")),
+            ("calc(1px)", Some("calc(")),
+            ("inherit 1", Some("1")),
         ],
     );
 }
@@ -292,23 +294,23 @@ fn bookmark_labels_reject_content_keywords_slash_alternatives_and_malformed_func
     invalid(
         "bookmark-label",
         &[
-            "normal",
-            "none",
-            "none \"caption\"",
-            "\"caption\" / \"spoken\"",
-            ",",
-            "1",
-            "content(chapter)",
-            "string(chapter,middle)",
-            "counter(none)",
-            "counter(default)",
-            "target-counter(\"#x\")",
-            "target-text(\"#x\",marker)",
-            "counter(chapter,symbols(numeric \"0\"))",
-            "leader()",
-            "leader(dashed)",
-            "url(\"#x\"),url(\"#y\")",
-            "inherit contents",
+            ("normal", At("normal")),
+            ("none", At("none")),
+            ("none \"caption\"", Disputed),
+            ("\"caption\" / \"spoken\"", At("/")),
+            (",", At(",")),
+            ("1", At("1")),
+            ("content(chapter)", At("chapter")),
+            ("string(chapter,middle)", At("middle")),
+            ("counter(none)", At("none")),
+            ("counter(default)", At("default")),
+            ("target-counter(\"#x\")", At("\"#x\"")),
+            ("target-text(\"#x\",marker)", At("marker")),
+            ("counter(chapter,symbols(numeric \"0\"))", At("\"0\"")),
+            ("leader()", End),
+            ("leader(dashed)", At("dashed")),
+            ("url(\"#x\"),url(\"#y\")", At(",")),
+            ("inherit contents", At("contents")),
         ],
     );
 }
@@ -322,13 +324,13 @@ fn bookmark_state_is_an_exclusive_case_insensitive_keyword() {
     invalid(
         "bookmark-state",
         &[
-            "none",
-            "auto",
-            "0",
-            "open closed",
-            "closed \"x\"",
-            "open,closed",
-            "inherit open",
+            ("none", Some("none")),
+            ("auto", Some("auto")),
+            ("0", Some("0")),
+            ("open closed", Some("closed")),
+            ("closed \"x\"", Some("\"x\"")),
+            ("open,closed", Some(",")),
+            ("inherit open", Some("open")),
         ],
     );
 }
@@ -534,18 +536,6 @@ lifecycle!(
     false
 );
 lifecycle!(state, "bookmark-state", "closed", "none", false);
-fn implicit_origin(components: &CssComponentValues) -> CssValueOrigin {
-    let output = components.serialize().unwrap();
-    (0..output.as_css().len())
-        .find_map(|offset| match output.origin_at(offset) {
-            Some(CssSerializedOrigin::Token(origin @ CssValueOrigin::ImplicitClosure { .. })) => {
-                Some(origin.clone())
-            }
-            _ => None,
-        })
-        .expect("original fixture has implicit closure")
-}
-
 fn strict_original(name: &str, ordinary: &str, unclosed: &str) {
     let p = property(name);
     let inputs = [
@@ -768,32 +758,9 @@ fn budget(name: &str, input: &str, value: &str, count: usize) {
     let output = format!("{name}: {value} !important;");
     for front in 0..5 {
         let source = declaration(name, input, front);
-        let original = source.clone();
-        assert_eq!(
-            source
-                .to_specified_css_with_limits(L::new(count, count, output.len()))
-                .unwrap(),
-            output
-        );
-        for (limits, kind) in [
-            (L::new(count - 1, count, output.len()), K::InputNodeLimit),
-            (
-                L::new(count, count - 1, output.len()),
-                K::ProjectionNodeLimit,
-            ),
-            (L::new(count, count, output.len() - 1), K::ByteLimit),
-        ] {
-            for _ in 0..2 {
-                assert_eq!(
-                    source
-                        .to_specified_css_with_limits(limits)
-                        .unwrap_err()
-                        .kind(),
-                    kind
-                );
-                assert_eq!(source, original);
-            }
-        }
+        LimitLadder::new(&output, count, count).assert_unchanged(&source, |source, limits| {
+            source.to_specified_css_with_limits(limits)
+        });
         assert_eq!(source.to_specified_css().unwrap(), output);
     }
 }
@@ -901,7 +868,15 @@ fn accepted_quotes_and_positive_integer_provider_controls_distinguish_authored_p
         "column-count",
         &[("+0001", "1"), ("calc(1 - 2)", "calc(-1)")],
     );
-    invalid("column-count", &["0", "-1", "1.0", "1e2"]);
+    invalid(
+        "column-count",
+        &[
+            ("0", Some("0")),
+            ("-1", Some("-1")),
+            ("1.0", Some("1.0")),
+            ("1e2", Some("1e2")),
+        ],
+    );
 }
 
 #[test]

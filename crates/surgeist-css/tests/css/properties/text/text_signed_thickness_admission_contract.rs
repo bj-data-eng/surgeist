@@ -13,6 +13,8 @@
 //! text-decoration-thickness-valid.html and its expected.txt admit -10px,
 //! -49em, -27%, and mixed calculations. No new serializer API is used here.
 
+use crate::css::support::check_named_components;
+use crate::css::support::important_checked_components as checked_property;
 use surgeist_css::*;
 
 fn ordinary(component: &CssComponentValue, coefficient: &str, suffix: Option<&str>) {
@@ -77,22 +79,8 @@ fn programmatic(tokens: &[&str]) -> CssComponentValues {
     .unwrap()
 }
 
-fn checked_property(property: CssKnownProperty, components: CssComponentValues) -> CssDeclaration {
-    parse_property_value(
-        CssPropertyNameRef::Known(property),
-        components,
-        CssImportance::Important,
-    )
-    .unwrap()
-}
-
 fn checked_grammar(name: &str, components: CssComponentValues) -> CssDeclaration {
-    parse_property_value_for_grammar(
-        CssPropertyGrammar::from_name(name).unwrap(),
-        components,
-        CssImportance::Important,
-    )
-    .unwrap()
+    check_named_components(name, components, true).unwrap()
 }
 
 fn assert_constructed(

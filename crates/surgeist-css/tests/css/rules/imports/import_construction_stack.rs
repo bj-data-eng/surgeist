@@ -1,13 +1,6 @@
 //! Checked imports retain usable owned children at the public component depth.
-use surgeist_css::{CssImportRule, CssNamespaceContext, parse_component_values};
 
-fn construct(source: &str) -> CssImportRule {
-    CssImportRule::try_from_components(
-        parse_component_values(source).unwrap(),
-        &CssNamespaceContext::default(),
-    )
-    .unwrap()
-}
+use crate::css::support::rules::import_from_components as construct;
 
 #[test]
 fn supported_import_construction_and_child_lifetimes_fit_an_ordinary_caller_stack() {

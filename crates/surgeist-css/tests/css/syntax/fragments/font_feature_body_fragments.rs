@@ -4,12 +4,14 @@
 use crate::css::support::descriptor_phases;
 use descriptor_phases::*;
 
+use crate::css::support::authored_syntax::{
+    assert_origin_region as origin, assert_position as position,
+};
 use surgeist_css::{
     CssBlockFragment, CssErrorCode, CssEscapeError, CssFontDisplay, CssFontFeatureValueBlock,
     CssFontFeatureValueDefinition, CssFontFeatureValueKind as Kind,
     CssFontFeatureValuesItem as Item, CssParseReport, CssParsedOrigin, CssRecoveryAction, CssRule,
-    CssSourcePosition, ErrorKind, parse_font_feature_value_block, parse_font_feature_values_block,
-    parse_sheet,
+    ErrorKind, parse_font_feature_value_block, parse_font_feature_values_block, parse_sheet,
 };
 
 type OuterReport = CssParseReport<Option<CssBlockFragment<Vec<Item>>>>;
@@ -56,23 +58,6 @@ fn definition(actual: &CssFontFeatureValueDefinition, name: &str, digits: &[&str
             .collect::<Vec<_>>(),
         digits
     );
-}
-
-fn position(actual: CssSourcePosition, byte: usize, line: u32, column: u32) {
-    assert_eq!(actual.byte_offset().value(), byte);
-    assert_eq!(actual.line().value(), line);
-    assert_eq!(actual.column().value(), column);
-}
-
-fn origin(
-    actual: &CssParsedOrigin,
-    source: &str,
-    start: (usize, u32, u32),
-    end: (usize, u32, u32),
-) {
-    assert_eq!(actual.source().as_str(), source);
-    position(actual.span().start(), start.0, start.1, start.2);
-    position(actual.span().end(), end.0, end.1, end.2);
 }
 
 fn validation<T: Clone + PartialEq + std::fmt::Debug>(

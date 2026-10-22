@@ -2,6 +2,8 @@
 //! Values4 custom-ident and selected Selectors4 attachment/context contracts.
 //! New typed APIs establish functional behavior without absent-symbol RED.
 //! Limits tariffs follow the adopted shared writer convention, not spec mandates.
+use crate::css::support::rules::{ExpectedRejection, unexpected_token};
+use crate::css::support::sole_declaration as declaration;
 use CssPseudoElementSegment::{PseudoClass as P, PseudoElement as E};
 use surgeist_css::*;
 type Limits = CssSpecifiedValueSerializationLimits;
@@ -24,14 +26,6 @@ fn elements(arg: CssViewTransitionNameSelector) -> [CssPseudoElement; 4] {
         CssPseudoElement::ViewTransitionNew(arg),
     ]
 }
-fn declaration(source: &str) -> CssDeclaration {
-    let report = parse_style_attribute(source);
-    assert!(report.is_clean(), "{source}: {report:?}");
-    let [value] = report.syntax().as_slice() else {
-        panic!("one authored declaration")
-    };
-    value.clone()
-}
 fn value(declaration: &CssDeclaration) -> &CssViewTransitionName {
     let CssKnownPropertyValueRef::ViewTransitionName(wrapper) =
         declaration.known().unwrap().property_value().unwrap()
@@ -52,9 +46,15 @@ fn segments(value: &CssSelector) -> &[CssPseudoElementSegment] {
     value.pseudo_elements().unwrap().segments()
 }
 fn rejected(source: &str) {
+    rejected_as(
+        source,
+        &ExpectedRejection::new(CssErrorCode::InvalidSelector),
+    );
+}
+fn rejected_as(source: &str, expected: &ExpectedRejection) {
     let report = parse_selector(source, &CssNamespaceContext::default());
     assert!(report.syntax().is_none(), "{source}: {report:?}");
-    assert!(report.into_validation_result().is_err());
+    expected.assert_first(&report);
 }
 fn suffix_list(value: &CssSelector) -> &CssPseudoSelectorList {
     let [_, P(CssPseudoClass::Is(list))] = segments(value) else {
@@ -291,28 +291,34 @@ fn invalid_property_values_drop_only_their_occurrence_with_original_responsible_
     assert_eq!(detail.property(), CssKnownProperty::ViewTransitionName);
     assert_eq!(detail.encountered().unwrap().authored(), "AUTO");
     assert!(report.into_validation_result().is_err());
-    for invalid in [
-        "",
-        "default",
-        "card other",
-        "card,other",
-        "\"card\"",
-        "5",
-        "50%",
-        "f(card)",
-        "initial card",
+    // VT1 §3.1: none | <custom-ident>, a single identifier other than
+    // `default` (Values 4 §4.2). A CSS-wide keyword followed by another
+    // component matches neither the keyword nor the grammar first.
+    let rejected =
+        ExpectedRejection::new(CssErrorCode::InvalidPropertyValue).named("view-transition-name");
+    for (invalid, expected) in [
+        ("", rejected.clone().at_end()),
+        ("default", rejected.clone().at("default")),
+        ("card other", rejected.clone().at("other")),
+        ("card,other", rejected.clone().at(",")),
+        ("\"card\"", rejected.clone().at("\"card\"")),
+        ("5", rejected.clone().at("5")),
+        ("50%", rejected.clone().at("50%")),
+        ("f(card)", rejected.clone().at("f(")),
+        ("initial card", rejected.clone()),
     ] {
         let components = parse_component_values(invalid).unwrap();
         let before = components.clone();
-        assert!(
-            parse_property_value(
-                CssPropertyNameRef::Known(CssKnownProperty::ViewTransitionName),
-                components.clone(),
-                CssImportance::Normal
-            )
-            .is_err(),
-            "{invalid}"
-        );
+        let error = parse_property_value(
+            CssPropertyNameRef::Known(CssKnownProperty::ViewTransitionName),
+            components.clone(),
+            CssImportance::Normal,
+        )
+        .unwrap_err();
+        let CssPropertyValueErrorKind::Grammar(detail) = error.kind() else {
+            panic!("{invalid}: grammar failure: {error:?}")
+        };
+        expected.assert_kind(detail);
         assert_eq!(components, before);
     }
 }
@@ -325,16 +331,36 @@ fn pending_property_reentry_is_strict_repeatable_and_preserves_source_and_replac
         let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
             panic!("pending name")
         };
-        for invalid in [
-            "auto",
-            "default",
-            "Card other",
-            "var(--again)",
-            "env(again)",
+        // VT1 §3.1: none | <custom-ident>, excluding auto; Values 4 §4.2
+        // excludes `default` from <custom-ident>; substitution must be complete.
+        let rejected = ExpectedRejection::new(CssErrorCode::InvalidPropertyValue)
+            .named("view-transition-name");
+        for (invalid, token) in [
+            ("auto", Some("auto")),
+            ("default", Some("default")),
+            ("Card other", Some("other")),
+            ("var(--again)", None),
+            ("env(again)", None),
         ] {
             let replacement = parse_component_values(invalid).unwrap();
             let before = replacement.clone();
-            assert!(pending.reenter(replacement.clone()).is_err(), "{invalid}");
+            let error = pending.reenter(replacement.clone()).unwrap_err();
+            match token {
+                Some(token) => {
+                    let CssExpansionErrorKind::InvalidReplacement(failure) = error.kind() else {
+                        panic!("{invalid}: invalid replacement: {error:?}")
+                    };
+                    let CssPropertyValueErrorKind::Grammar(detail) = failure.kind() else {
+                        panic!("{invalid}: grammar failure: {failure:?}")
+                    };
+                    rejected.clone().at(token).assert_kind(detail);
+                }
+                None => assert_eq!(
+                    error.kind(),
+                    &CssExpansionErrorKind::ResidualSubstitution,
+                    "{invalid}"
+                ),
+            }
             assert_eq!(replacement, before);
             assert!(pending.source().same_occurrence(&source));
         }
@@ -359,7 +385,10 @@ fn pending_property_reentry_is_strict_repeatable_and_preserves_source_and_replac
             assert_eq!(actual, &name("Card"));
         }
         let recovered = parse_component_values("var(--tag").unwrap();
-        assert!(pending.reenter(recovered).is_err());
+        assert_eq!(
+            pending.reenter(recovered).unwrap_err().kind(),
+            &CssExpansionErrorKind::ResidualSubstitution
+        );
         assert!(
             pending
                 .reenter(parse_component_values("none").unwrap())
@@ -412,15 +441,21 @@ fn malformed_names_reject_and_implicit_function_eof_is_retained_but_not_clean() 
         "::view-transition-group(A,B)",
         "::view-transition-group(default)",
         "::view-transition-group(revert)",
-        "::view-transition-group(\"A\")",
-        "::view-transition-group(1)",
         "::view-transition-group(**)",
         "::view-transition-group(A.x)",
-        "::view-transition-group(.x)",
         "::view-transition-group (A)",
         ":: view-transition-group(A)",
     ] {
         rejected(source);
+    }
+    // A string, a number or a leading `.` cannot begin a <pt-name-selector>,
+    // and the argument front end rejects it before selector parsing.
+    for (source, token) in [
+        ("::view-transition-group(\"A\")", "\"A\""),
+        ("::view-transition-group(1)", "1"),
+        ("::view-transition-group(.x)", "."),
+    ] {
+        rejected_as(source, &unexpected_token(token));
     }
     let source = "::view-transition-old(Card";
     let report = parse_selector(source, &CssNamespaceContext::default());

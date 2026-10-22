@@ -2,6 +2,9 @@
 //! Selected Selectors 4 sections 3.4, 16 and 17.2 define relations, grammar and
 //! atomic contextual rejection. Has attachment retains its narrower context.
 
+use crate::css::support::color_and_selector_fixtures::{
+    assert_selector_input_rejected, assert_strict_validation_rejects,
+};
 use surgeist_css::{
     CssAttributeCaseSensitivity, CssErrorCode, CssNamespaceConstraint, CssNamespaceContext,
     CssNamespaceName, CssNamespacePrefix, CssNthPattern, CssPseudoClass, CssPseudoSelectorListItem,
@@ -23,21 +26,7 @@ fn clean(source: &str) -> CssRelativeSelectorList {
 }
 
 fn rejected_in(source: &str, context: &CssNamespaceContext) {
-    let report = parse_relative_selector_list(source, context);
-    assert!(
-        report.syntax().is_none(),
-        "no partial strict list: {source:?}: {report:?}"
-    );
-    assert!(!report.diagnostics().is_empty());
-    assert_eq!(
-        report.diagnostics().last().unwrap().action(),
-        CssRecoveryAction::RejectInput
-    );
-    let diagnostics = report.diagnostics().to_vec();
-    assert_eq!(
-        report.into_validation_result().unwrap_err().diagnostics(),
-        diagnostics
-    );
+    assert_selector_input_rejected(source, parse_relative_selector_list(source, context));
 }
 
 fn position(actual: CssSourcePosition, expected: (usize, u32, u32)) {
@@ -295,15 +284,14 @@ fn empty_or_malformed_outer_members_reject_the_entire_strict_list() {
 #[test]
 fn ordinary_fronts_reject_explicit_relatives_while_general_front_retains_carriers() {
     for source in ["> .One", "+ .One", "~ .One", "|| .One", ".One, > .Two"] {
-        assert!(
-            parse_selector(source, &CssNamespaceContext::default())
-                .syntax()
-                .is_none()
+        // Selectors 4 §4.1: an ordinary complex selector begins with a compound.
+        assert_selector_input_rejected(
+            source,
+            parse_selector(source, &CssNamespaceContext::default()),
         );
-        assert!(
-            parse_selector_list(source, &CssNamespaceContext::default())
-                .syntax()
-                .is_none()
+        assert_selector_input_rejected(
+            source,
+            parse_selector_list(source, &CssNamespaceContext::default()),
         );
         assert!(!clean(source).selectors().is_empty());
     }
@@ -606,7 +594,7 @@ fn relative_fragments_share_the_exact_256_function_depth_and_257_rejection_bound
         detail.enclosing_production().as_str(),
         "baseline.selector.complex"
     );
-    assert!(report.into_validation_result().is_err());
+    assert_strict_validation_rejects(report);
     assert_eq!(clean("> .After").to_specified_css().unwrap(), "> .After");
 }
 

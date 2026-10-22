@@ -1,6 +1,6 @@
 //! Exact authored float/clear values from CSS2 §§9.5.1–2 and Logical 1 §2.2.
 
-use crate::css::support::first_declaration as parsed;
+use crate::css::support::normal_declaration as parsed;
 use surgeist_css::*;
 
 fn ordinary(source: &CssDeclaration) -> CssLonghandValue {

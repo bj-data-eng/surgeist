@@ -4,6 +4,8 @@
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-range
 //! https://www.w3.org/TR/2023/WD-css-animations-1-20230302/#keyframes
 
+use crate::css::support::rules::clean_sheet as sheet;
+use crate::css::support::rules::sole_keyframes as keyframes;
 use surgeist_css::*;
 
 fn calculation(source: &str) -> CssPercentageCalculation {
@@ -12,19 +14,6 @@ fn calculation(source: &str) -> CssPercentageCalculation {
 
 fn percentage(source: &str) -> CssKeyframePercent {
     CssKeyframePercent::try_from_calculation(calculation(source)).unwrap()
-}
-
-fn sheet(source: &str) -> CssSheet {
-    let report = parse_sheet(source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    report.syntax().clone()
-}
-
-fn keyframes(sheet: &CssSheet) -> &CssKeyframesRule {
-    let [CssRule::Keyframes(rule)] = sheet.rules() else {
-        panic!("one keyframes rule");
-    };
-    rule
 }
 
 #[test]
@@ -118,19 +107,34 @@ fn percentage_functions_keep_checked_symbolic_roots_and_unclamped_ranges() {
 
 #[test]
 fn wrong_numeric_types_and_malformed_functions_fail_checked_percentage_construction() {
-    for source in [
-        "calc(25)",
-        "calc(25px)",
-        "calc(25% + 1px)",
-        "calc(25% +)",
-        "min()",
+    // Values 4 #calc-type-checking: a <number> or <length> root is not a <percentage>,
+    // a percentage cannot add to a length here, `+` needs a right operand
+    // and min() needs at least one argument.
+    use CssNumericConstructionErrorKind as Failure;
+    for (source, expected) in [
+        ("calc(25)", Failure::RootDomainMismatch),
+        ("calc(25px)", Failure::RootDomainMismatch),
+        ("calc(25% +)", Failure::MalformedExpression),
+        ("min()", Failure::Arity),
     ] {
-        assert!(
+        assert_eq!(
             CssPercentageCalculation::try_from_components(parse_component_values(source).unwrap())
-                .is_err(),
+                .unwrap_err()
+                .kind(),
+            &expected,
             "{source}"
         );
     }
+    // Values 4 #calc-type-checking (Typed OM "add two types") fails for a percentage and a length
+    // where percentages resolve against no other type, which names
+    // IncompatibleTypes; construction reports RootDomainMismatch instead,
+    // so only the rejection is asserted here.
+    assert!(
+        CssPercentageCalculation::try_from_components(
+            parse_component_values("calc(25% + 1px)").unwrap()
+        )
+        .is_err()
+    );
 }
 
 #[test]
@@ -181,7 +185,12 @@ fn checked_constructors_refuse_a_recovered_parsed_percentage_child() {
             .kind(),
         &CssNumericConstructionErrorKind::RecoveredComponent
     );
-    assert!(CssPercentageCalculation::try_from_components(original.components().clone()).is_err());
+    assert_eq!(
+        CssPercentageCalculation::try_from_components(original.components().clone())
+            .unwrap_err()
+            .kind(),
+        &CssNumericConstructionErrorKind::RecoveredComponent
+    );
     // Refusal leaves the parsed child and its implicit origin intact.
     let CssComponentValueRef::Function(function) = original.components().items()[0].view() else {
         panic!("retained function graph");

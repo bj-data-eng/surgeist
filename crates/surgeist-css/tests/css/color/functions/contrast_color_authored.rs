@@ -3,40 +3,13 @@
 //! role, even under Mix/Origin. Frozen WebKit 73aa6c89 CSSContrastColor.cpp:59–64
 //! independently serializes its stored color; contrast evaluation belongs later.
 //! Resource expectations use the existing cumulative specified-value contract.
-use crate::css::support::style_declaration_reporting_source as declaration;
+use crate::css::support::color_and_selector_fixtures::{
+    background_images as images, expanded_longhands as expanded,
+};
+use crate::css::support::{
+    color_property::color_property_value, parsed_color as color, sole_declaration as declaration,
+};
 use surgeist_css::*;
-
-fn color(css: &str) -> CssColor {
-    let source = declaration(&format!("color:{css}"));
-    let CssKnownPropertyValueRef::Color(value) = source.known().unwrap().property_value().unwrap()
-    else {
-        panic!("typed color")
-    };
-    value.value().clone()
-}
-
-fn images(css: &str) -> CssImageValueList {
-    let source = declaration(&format!("background-image:{css}"));
-    let CssKnownPropertyValueRef::BackgroundImage(value) =
-        source.known().unwrap().property_value().unwrap()
-    else {
-        panic!("typed images")
-    };
-    value.images().clone()
-}
-
-fn expanded(source: &CssDeclaration) -> CssLonghandContributions {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
-    else {
-        panic!("completed expansion")
-    };
-    for value in values.items() {
-        assert!(value.source().same_occurrence(source));
-        assert_eq!(value.source().importance(), source.importance());
-    }
-    values
-}
 
 #[test]
 fn one_symbolic_color_is_retained_with_explicit_canonical_spelling() {
@@ -147,7 +120,7 @@ fn contrast_input_uses_standalone_even_when_its_wrapper_has_origin_or_mix_role()
 }
 
 #[test]
-fn contextual_contrast_exclusion_propagates_through_existing_wrappers() {
+fn contextual_contrast_exclusion_propagates_through_color_wrappers() {
     for source in [
         "contrast-color(red)",
         "contrast-color(currentcolor)",
@@ -661,11 +634,7 @@ fn parsed_and_checked_contrast_chains_obey_the_complete_256_level_ceiling() {
             CssImportance::Normal,
         )
         .expect("complete admitted graph at ceiling");
-        let CssKnownPropertyValueRef::Color(value) =
-            source.known().unwrap().property_value().unwrap()
-        else {
-            panic!("deep color")
-        };
+        let value = color_property_value(&source);
         let expected = if leaf == "red" {
             text.clone()
         } else {

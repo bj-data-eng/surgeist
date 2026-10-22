@@ -870,7 +870,6 @@ fn public_surface_metadata_exposes_every_final_accessor_and_bounded_status() {
     assert_eq!(complete.supported_subset(), None);
     assert_eq!(complete.unsupported_remainder(), None);
     assert_eq!(complete.recognized_unsupported_code(), None);
-    assert!(complete.baseline_alias_targets().is_empty());
     assert!(complete.source().url().is_some());
     assert_eq!(complete.source().repository_provenance(), None);
 
@@ -889,12 +888,10 @@ fn public_surface_metadata_exposes_every_final_accessor_and_bounded_status() {
     assert_eq!(partial.source().id().as_str(), "O-SYNTAX3");
     assert_eq!(partial.source().repository_provenance(), None);
 
-    let alias = feature_metadata("baseline.media.query-list").expect("media baseline alias");
-    assert_eq!(alias.baseline_alias_targets().len(), 3);
-    assert_eq!(
-        alias.baseline_alias_targets()[0].as_str(),
-        "official.media.query-list-core"
-    );
+    let query_list =
+        feature_metadata("official.media.query-list-core").expect("atomic media query-list record");
+    assert_eq!(query_list.status(), CssSupportStatus::Complete);
+    assert_eq!(query_list.source().id().as_str(), "X-MEDIA5");
 
     let namespace = feature_metadata("later.rule.namespace").expect("namespace record");
     assert_eq!(namespace.status(), CssSupportStatus::Complete);

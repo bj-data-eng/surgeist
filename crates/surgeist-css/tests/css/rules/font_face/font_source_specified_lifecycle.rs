@@ -5,20 +5,19 @@
 //! URL emission remains authored and context-free; CSSOM's URL phase question
 //! and resource support do not change the stored model or select this output.
 
+use crate::css::support::rules::ordinary_font_face_descriptor;
 use surgeist_css::*;
 
 type Limits = CssSpecifiedValueSerializationLimits;
 type Kind = CssSpecifiedValueSerializationErrorKind;
 
 fn parsed(text: &str) -> CssFontFaceSourceList {
-    let report = parse_font_face_descriptor_value(text, CssFontFaceDescriptorKind::Src);
-    assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
-    let Some(CssAuthoredFontFaceDescriptorValue::Ordinary(CssFontFaceDescriptorValue::Src(list))) =
-        report.syntax()
+    let CssFontFaceDescriptorValue::Src(list) =
+        ordinary_font_face_descriptor(text, CssFontFaceDescriptorKind::Src)
     else {
         panic!("ordinary source list: {text}")
     };
-    list.clone()
+    list
 }
 
 fn assert_output(value: &CssFontFaceSourceList, expected: &str) {

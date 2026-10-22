@@ -974,6 +974,33 @@ mod tests {
     use crate::color::expression::{EvaluationAction, ExpressionTable, NumericEvaluation};
     use crate::color::grammar::GrammarInput;
 
+    /// The `<color>` the production `color` property parser admits for `source`.
+    fn production_color(source: &str) -> crate::CssColor {
+        let report = crate::parse_property_value_text(
+            source,
+            crate::CssPropertyNameRef::Known(crate::CssKnownProperty::Color),
+            crate::CssImportance::Normal,
+        );
+        // CSS Syntax 3 (CRD 2026-10-01) §5.5.10 closes an unclosed function at
+        // EOF as a parse error that retains the value.
+        assert!(
+            report
+                .diagnostics()
+                .iter()
+                .all(|diagnostic| diagnostic.action()
+                    == crate::CssRecoveryAction::RetainWithImplicitClosure),
+            "{source}: {:?}",
+            report.diagnostics()
+        );
+        let declaration = report.into_parts().0.expect("retained color value");
+        let Some(crate::CssKnownPropertyValueRef::Color(value)) =
+            declaration.known().and_then(|known| known.property_value())
+        else {
+            panic!("typed color: {declaration:?}");
+        };
+        value.value().clone()
+    }
+
     #[test]
     fn typed_children_lower_into_the_single_postorder_evaluator_with_original_optional_arguments() {
         for (source, expected) in [
@@ -987,17 +1014,8 @@ mod tests {
             ("calc(1e-9999)", 0.0),
             ("rgb(0 0 calc(2 + 3", 5.0),
         ] {
-            let source_owner = crate::CssSourceSnapshot::new(source);
             let recovered = if source.starts_with("rgb(") {
-                let mut input = cssparser::ParserInput::new(source);
-                let mut parser = cssparser::Parser::new(&mut input);
-                Some(
-                    crate::color::authored::parse_color(
-                        &mut parser,
-                        &crate::numeric::NumericInputContext::Parsed(&source_owner),
-                    )
-                    .unwrap(),
-                )
+                Some(production_color(source))
             } else {
                 None
             };
@@ -1028,8 +1046,8 @@ mod tests {
                 else {
                     panic!("original implicit closing origin")
                 };
-                assert!(opening.source().same_snapshot(&source_owner));
-                assert!(at.source().same_snapshot(&source_owner));
+                assert_eq!(at.source().as_str(), source);
+                assert!(opening.source().same_snapshot(at.source()));
                 assert_eq!(at.span().start().byte_offset().value(), source.len());
             }
             let owner = CssColorOperationOwner::new();

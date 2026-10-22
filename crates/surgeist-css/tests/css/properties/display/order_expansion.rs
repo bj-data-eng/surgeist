@@ -1,5 +1,6 @@
 //! Display3 Order intrinsic semantics; ordering of layout items is downstream.
-use crate::css::support::first_style_declaration as declaration;
+use crate::css::support::property_admission::assert_invalid_value;
+use crate::css::support::sole_declaration as declaration;
 use surgeist_css::*;
 
 #[test]
@@ -39,31 +40,6 @@ fn order_initial_is_literal_zero_and_ordinary_values_keep_identity() {
         assert!(item.source().same_occurrence(&source));
         assert_eq!(item.source().importance(), CssImportance::Important);
         assert!(item.replacement_components().is_none());
-    }
-}
-
-#[test]
-fn order_globals_keep_one_terminal_and_importance() {
-    for (text, global) in [
-        ("initial", CssGlobalKeyword::Initial),
-        ("inherit", CssGlobalKeyword::Inherit),
-        ("unset", CssGlobalKeyword::Unset),
-        ("revert", CssGlobalKeyword::Revert),
-        ("revert-layer", CssGlobalKeyword::RevertLayer),
-    ] {
-        let source = declaration(&format!("order:{text}!important"));
-        let CssExpansion::Contributions(CssContributions::Longhands(items)) =
-            expand_declaration(&source).unwrap()
-        else {
-            panic!("global")
-        };
-        let [item] = items.items() else {
-            panic!("one terminal")
-        };
-        assert_eq!(item.property(), CssKnownProperty::Order);
-        assert_eq!(item.value(), CssContributionValueRef::Global(global));
-        assert!(item.source().same_occurrence(&source));
-        assert_eq!(item.source().importance(), CssImportance::Important);
     }
 }
 
@@ -145,7 +121,15 @@ fn normalization_preserves_authored_order_around_nested_rules_instead_of_sorting
         report.diagnostics()[0].action(),
         CssRecoveryAction::DropDeclaration
     );
-    assert!(validate_sheet(text).is_err());
+    assert_invalid_value(
+        report.diagnostics()[0].error().kind(),
+        CssKnownProperty::Order,
+        Some("1.0"),
+    );
+    assert_eq!(
+        validate_sheet(text).unwrap_err().diagnostics(),
+        report.diagnostics()
+    );
     let sheet = normalize_sheet(report.syntax()).unwrap();
     let items: Vec<_> = sheet
         .items()

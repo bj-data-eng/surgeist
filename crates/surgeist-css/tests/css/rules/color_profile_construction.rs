@@ -1,13 +1,14 @@
 //! Color 5 WD 2026-09-08 §5.3 and Env 1 WD 2025-09-23 §3.
 //! Construction checks the same authored grammar; callers supply replacements.
+use crate::css::support::rules::{ExpectedRejection, descriptor_rejected_at, unexpected_token};
 use surgeist_css::{
     CssColorProfileDescriptor, CssColorProfileDescriptorKind as Kind,
     CssColorProfileDescriptorValue as Value, CssColorProfileDescriptorValueRef as View,
     CssColorProfileName, CssColorProfileRenderingIntent as Intent, CssColorProfileRule,
     CssColorProfileRuleName as Name, CssColorProfileValueErrorKind as Failure, CssComponentValue,
     CssComponentValueErrorKind, CssComponentValueLimits, CssComponentValueRef, CssComponentValues,
-    CssNormalizedItem, CssRecoveryAction, CssRule, CssRuleContextKindRef, CssSerializedOrigin,
-    CssSpecifiedValueSerializationErrorKind as EmitFailure,
+    CssErrorCode, CssNormalizedItem, CssRecoveryAction, CssRule, CssRuleContextKindRef,
+    CssSerializedOrigin, CssSpecifiedValueSerializationErrorKind as EmitFailure,
     CssSpecifiedValueSerializationLimits as EmitLimits, CssSupportStatus, CssUrlFunction,
     CssValueOrigin, CssValueTokenRef, feature_metadata, normalize_report,
     parse_color_profile_descriptor_value as fragment, parse_component_values, parse_sheet,
@@ -182,17 +183,23 @@ fn environment_only_admission_defers_whole_grammar_without_a_var_veto() {
             ));
             assert!(matches!(value(kind, source).view(), View::Pending(_)));
         }
-        for invalid in [
-            "var(--x)",
-            "env()",
-            "env(selection -1)",
-            "env(selection) env()",
+        // Variables 1 §3 admits var() only in property values; Env 1 §3
+        // requires env( <custom-ident> <integer [0,∞]>* , ... ), and a
+        // malformed env() function is itself the responsible component.
+        for (invalid, expected) in [
+            ("var(--x)", unexpected_token("var(")),
+            ("env()", unexpected_token("env(")),
+            ("env(selection -1)", unexpected_token("env(")),
+            ("env(selection) env()", unexpected_token("env(")),
         ] {
-            assert!(
-                fragment(invalid, kind).syntax().is_none(),
-                "{kind:?}: {invalid}"
-            );
-            assert!(Value::try_new(kind, parse_component_values(invalid).unwrap()).is_err());
+            let report = fragment(invalid, kind);
+            assert!(report.syntax().is_none(), "{kind:?}: {invalid}");
+            expected.assert_first(&report);
+            let error = Value::try_new(kind, parse_component_values(invalid).unwrap()).unwrap_err();
+            let Failure::Grammar(detail) = error.kind() else {
+                panic!("{kind:?}: {invalid}: grammar failure: {error:?}")
+            };
+            expected.assert_kind(detail);
         }
     }
 }
@@ -242,11 +249,24 @@ fn replacement_reentry_returns_ordinary_values_or_typed_errors_never_pending() {
         "nested(var(--x))",
         "{env(x)}",
     ] {
-        assert!(
-            pending(Kind::RenderingIntent)
-                .reparse_after_substitution(parse_component_values(invalid).unwrap())
-                .is_err()
-        );
+        let error = pending(Kind::RenderingIntent)
+            .reparse_after_substitution(parse_component_values(invalid).unwrap())
+            .unwrap_err();
+        // Color 5 §5.3: one rendering-intent keyword, with no substitution
+        // function left anywhere in the replacement.
+        match invalid {
+            "auto" | "perceptual saturation" => {
+                let Failure::Grammar(detail) = error.kind() else {
+                    panic!("{invalid}: grammar failure: {error:?}")
+                };
+                // Reentry reports `auto` as an InvalidQualifiedRule, which
+                // names no descriptor; only its grammar failure is checked.
+                if invalid != "auto" {
+                    unexpected_token("saturation").assert_kind(detail);
+                }
+            }
+            _ => assert_eq!(error.kind(), &Failure::ResidualSubstitution, "{invalid}"),
+        }
     }
 }
 
@@ -327,7 +347,12 @@ fn separately_constructed_adjacent_tokens_do_not_merge_into_an_identifier() {
         CssComponentValue::try_ident("green").unwrap(),
     ])
     .unwrap();
-    assert!(Value::try_new(Kind::Components, components).is_err());
+    // Color 5 §5.3 components: <ident>#; the second identifier needs a comma.
+    let error = Value::try_new(Kind::Components, components).unwrap_err();
+    let Failure::Grammar(detail) = error.kind() else {
+        panic!("grammar failure: {error:?}")
+    };
+    unexpected_token("green").assert_kind(detail);
     let values = CssComponentValues::try_new(vec![
         CssComponentValue::try_ident("red").unwrap(),
         CssComponentValue::try_token(",").unwrap(),
@@ -346,10 +371,24 @@ fn separately_constructed_adjacent_tokens_do_not_merge_into_an_identifier() {
 #[test]
 fn root_annotations_fail_before_environment_deferral() {
     for kind in [Kind::Src, Kind::RenderingIntent, Kind::Components] {
-        for source in ["env(x) !important", "env(x) !other", "env(x) ;", "env(x) }"] {
-            assert!(fragment(source, kind).syntax().is_none(), "{source}");
+        // Syntax 3 <declaration-value> excludes top-level `!`, `;` and
+        // unmatched closers, so the root token rejects before env() defers.
+        let rejected = |token| descriptor_rejected_at("color-profile", kind.css_name(), token);
+        for (source, token) in [
+            ("env(x) !important", "!"),
+            ("env(x) !other", "!"),
+            ("env(x) ;", ";"),
+            ("env(x) }", "}"),
+        ] {
+            let report = fragment(source, kind);
+            assert!(report.syntax().is_none(), "{source}");
+            rejected(token).assert_first(&report);
             if let Ok(components) = parse_component_values(source) {
-                assert!(Value::try_new(kind, components).is_err());
+                let error = Value::try_new(kind, components).unwrap_err();
+                let Failure::Grammar(detail) = error.kind() else {
+                    panic!("{source}: grammar failure: {error:?}")
+                };
+                rejected(token).assert_kind(detail);
             }
         }
         assert!(matches!(
@@ -383,8 +422,11 @@ fn matched_root_blocks_remain_data_under_environment_whole_grammar_deferral() {
             [CssRule::ColorProfile(_), CssRule::Style(_)]
         ));
     }
+    // Without env(), the ordinary keyword grammar rejects the block.
     for ordinary in ["{}", "perceptual {}"] {
-        assert!(fragment(ordinary, Kind::RenderingIntent).syntax().is_none());
+        let report = fragment(ordinary, Kind::RenderingIntent);
+        assert!(report.syntax().is_none());
+        unexpected_token("{").assert_first(&report);
     }
 }
 
@@ -487,13 +529,23 @@ fn descriptor_and_component_limits_are_checked_at_construction_and_emission() {
 
 #[test]
 fn descriptor_and_keyframe_bodies_reject_profile_children_without_losing_following_rule() {
-    for source in [
-        "@font-face { @color-profile --x {} font-family: Demo; src: url(a); } .after { color: red; }",
-        "@keyframes k { from { @color-profile --x {} color: red; } } .after { color: red; }",
+    // Fonts 4 §4.1 and Animations 1 §3 bodies are declaration lists: the
+    // font-face body recognizes no at-rule, and a keyframe block admits
+    // none in its place.
+    for (source, code) in [
+        (
+            "@font-face { @color-profile --x {} font-family: Demo; src: url(a); } .after { color: red; }",
+            CssErrorCode::UnknownAtRule,
+        ),
+        (
+            "@keyframes k { from { @color-profile --x {} color: red; } } .after { color: red; }",
+            CssErrorCode::InvalidAtRulePlacement,
+        ),
     ] {
         let report = parse_sheet(source);
-        assert!(!report.is_clean());
-        assert!(validate_sheet(source).is_err());
+        let expected = ExpectedRejection::new(code).in_rule("color-profile");
+        expected.assert_first(&report);
+        expected.assert_sheet(source);
         assert!(matches!(
             report.syntax().rules().last().unwrap(),
             CssRule::Style(_)

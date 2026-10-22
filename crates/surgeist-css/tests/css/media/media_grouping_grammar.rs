@@ -44,7 +44,10 @@ fn grouped_known_features_and_legal_typed_conditions_are_clean() {
         let report = parse_media_query(source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         assert!(!report.syntax().is_guaranteed_false(), "{source}");
-        assert!(report.into_validation_result().is_ok());
+        assert_eq!(
+            report.clone().into_validation_result().unwrap(),
+            *report.syntax()
+        );
     }
 }
 

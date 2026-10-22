@@ -4,6 +4,7 @@
 //! retained enclosing blocks (§5.5.9), not delimiters within its payload.
 //! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-url-token
 
+use crate::css::support::value_assertions::assert_first_diagnostic;
 use surgeist_css::{
     CssErrorCode, CssFontFaceSource, CssParseReport, CssRecoveryAction, CssRule, CssSheet,
     parse_sheet, validate_sheet,
@@ -115,6 +116,46 @@ fn escaped_final_parentheses_do_not_terminate_unquoted_url_tokens() {
     }
     assert_clean_url(r"@font-face{src:url(a\\)}", r"a\");
     assert_clean_url(r"@font-face{src:url(a\))}", "a)");
+}
+
+// Syntax 3 §3.3 replaces U+0000 with U+FFFD while preprocessing the input
+// stream, before §4.3.6 classifies URL code points, so a raw NUL never reaches
+// the non-printable bad-url branch; U+FFFD is an ordinary URL code point.
+// Genuine non-printable code points still make a bad-url token.
+// https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#input-preprocessing
+#[test]
+fn raw_nul_in_unquoted_urls_is_preprocessed_before_the_bad_url_check() {
+    for (payload, decoded) in [
+        ("a\0b", "a\u{fffd}b"),
+        ("\0", "\u{fffd}"),
+        ("a\0\0", "a\u{fffd}\u{fffd}"),
+    ] {
+        assert_clean_url(&format!("@font-face{{src:url({payload})}}"), decoded);
+        assert_eof_url(&format!("@font-face{{src:url({payload}"), decoded, 0, 2);
+    }
+    for control in [
+        "a\u{1}b", "a\u{8}b", "a\u{b}b", "a\u{e}b", "a\u{1f}b", "a\u{7f}b",
+    ] {
+        let source = format!("@font-face{{src:url({control})}}");
+        let report = parse_sheet(&source);
+        assert_first_diagnostic(
+            report.diagnostics(),
+            &source,
+            CssErrorCode::InvalidDescriptorValue,
+            "url(",
+        );
+        let [CssRule::FontFace(face)] = report.syntax().rules() else {
+            panic!("retained font face: {source:?}: {report:?}")
+        };
+        assert!(
+            ordinary_face!(face.descriptors(), Src).is_none(),
+            "bad-url source: {source:?}: {face:?}"
+        );
+        assert_eq!(
+            validate_sheet(&source).unwrap_err().diagnostics(),
+            report.diagnostics()
+        );
+    }
 }
 
 #[test]

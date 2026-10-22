@@ -3266,11 +3266,6 @@ impl CssKeyframeDeclaration {
             .position()
             .expect("parser-only keyframe source has a name origin")
     }
-
-    #[cfg(test)]
-    pub(crate) fn property(&self) -> crate::test_support::CssProperty {
-        crate::test_support::declaration_body_property(self.body())
-    }
 }
 
 /// The complete importance state of an ordinary authored declaration.
@@ -3598,11 +3593,6 @@ impl CssDeclaration {
     #[must_use]
     pub fn same_occurrence(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.occurrence, &other.occurrence)
-    }
-
-    #[cfg(test)]
-    pub(crate) fn property(&self) -> crate::test_support::CssProperty {
-        crate::test_support::declaration_property(self)
     }
 }
 

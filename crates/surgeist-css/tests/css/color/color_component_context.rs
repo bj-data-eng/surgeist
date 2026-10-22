@@ -9,7 +9,8 @@ use surgeist_css::{
     CssColorProfileName, CssColorSyntax, CssComponentValue, CssContainerCondition,
     CssContainerConditionKind, CssContainerFeatureQuery, CssContainerRatioRef, CssCustomColor,
     CssDeviceCmykColor, CssHslColor, CssHwbColor, CssLabColor, CssLchColor, CssMediaRangeRef,
-    CssNumberCalculation, CssPredefinedColor, CssRgbColor, parse_component_values,
+    CssNumberCalculation, CssNumericConstructionErrorKind, CssPredefinedColor, CssRgbColor,
+    parse_component_values,
 };
 
 fn container_number(expression: &str) -> CssNumberCalculation {
@@ -60,9 +61,11 @@ fn rgb_constructor_rejects_container_tree_counting_calculations() {
         "max(1, sibling-index())",
     ] {
         let calculation = container_number(expression);
-        assert!(
+        assert_eq!(
             CssNumberCalculation::try_from_components(parse_component_values(expression).unwrap())
-                .is_err(),
+                .unwrap_err()
+                .kind(),
+            &CssNumericConstructionErrorKind::UnknownFunction,
             "the pure number boundary must retain its context restriction: {expression}"
         );
         if rgb_with_calculation(calculation).is_ok() {

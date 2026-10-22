@@ -3,18 +3,15 @@
 //! independently by Masking 1 §5.1, the adopted Shapes 1 ellipse/polygon decisions,
 //! and the authored resource contract. No used geometry or defaults are inferred.
 
-use surgeist_css::{
-    CssSpecifiedValueSerializationErrorKind as K, CssSpecifiedValueSerializationLimits as L, *,
-};
+use crate::css::support::normal_declaration;
+use crate::css::support::property_admission::assert_component_rejected;
+use crate::css::support::serialization_limits::assert_limits as budget;
+use surgeist_css::*;
 
-fn parsed(css: &str) -> CssClipPath {
-    let report = parse_style_attribute(&format!("clip-path:{css}"));
-    assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
-    let CssKnownPropertyValueRef::ClipPath(value) = report.syntax()[0]
-        .known()
-        .unwrap()
-        .property_value()
-        .unwrap()
+fn clip_path(css: &str) -> CssClipPath {
+    let declaration = normal_declaration("clip-path", css);
+    let CssKnownPropertyValueRef::ClipPath(value) =
+        declaration.known().unwrap().property_value().unwrap()
     else {
         panic!("clip path")
     };
@@ -22,7 +19,7 @@ fn parsed(css: &str) -> CssClipPath {
 }
 
 fn shape(css: &str) -> CssBasicShape {
-    let CssClipPath::BasicShape(value) = parsed(css) else {
+    let CssClipPath::BasicShape(value) = clip_path(css) else {
         panic!("shape")
     };
     value.shape().clone()
@@ -44,32 +41,6 @@ fn length(css: &str) -> CssSpecifiedLength {
     CssSpecifiedLength::try_from_component(CssComponentValue::try_token(css).unwrap()).unwrap()
 }
 
-fn budget(
-    expected: &str,
-    input: usize,
-    projection: usize,
-    serialize: impl Fn(L) -> Result<String, CssSpecifiedValueSerializationError>,
-) {
-    assert_eq!(
-        serialize(L::new(input, projection, expected.len())).unwrap(),
-        expected
-    );
-    for (limits, kind) in [
-        (
-            L::new(input - 1, projection, expected.len()),
-            K::InputNodeLimit,
-        ),
-        (
-            L::new(input, projection - 1, expected.len()),
-            K::ProjectionNodeLimit,
-        ),
-        (L::new(input, projection, expected.len() - 1), K::ByteLimit),
-    ] {
-        assert_eq!(serialize(limits).unwrap_err().kind(), kind, "{expected}");
-    }
-    assert_eq!(serialize(L::default()).unwrap(), expected);
-}
-
 #[test]
 fn shape_composition_keeps_box_identity_and_omission_separate_from_border_box() {
     let circle = CssBasicShape::Circle(CssCircleShape::new(CssCircleRadius::Default, None));
@@ -85,14 +56,14 @@ fn shape_composition_keeps_box_identity_and_omission_separate_from_border_box() 
         ("stroke-box", CssBoxEdgeKeyword::StrokeBox),
         ("view-box", CssBoxEdgeKeyword::ViewBox),
     ] {
-        assert_eq!(parsed(text), CssClipPath::GeometryBox(edge));
+        assert_eq!(clip_path(text), CssClipPath::GeometryBox(edge));
         let composition = CssClipPathShape::new(circle.clone(), Some(edge));
         assert_eq!(composition.shape(), &circle);
         assert_eq!(composition.reference_box(), Some(edge));
         assert_ne!(composition, omitted);
         let expected = CssClipPath::BasicShape(composition.clone());
-        assert_eq!(parsed(&format!("{text} circle()")), expected);
-        assert_eq!(parsed(&format!("circle() {text}")), expected);
+        assert_eq!(clip_path(&format!("{text} circle()")), expected);
+        assert_eq!(clip_path(&format!("circle() {text}")), expected);
         budget(&format!("circle() {text}"), 3, 3, |limits| {
             composition.serialize_specified_with_limits(limits)
         });
@@ -221,17 +192,20 @@ fn checked_shapes_retain_signed_rounding_offsets_point_lists_and_radius_arity() 
     budget("polygon(nonzero round -1px, -1px 25%)", 7, 7, |limits| {
         polygon.serialize_specified_with_limits(limits)
     });
-    for invalid in ["10%", "1"] {
-        assert!(
-            CssSpecifiedLength::try_from_component(CssComponentValue::try_token(invalid).unwrap())
-                .is_err()
+    for (invalid, kind) in [
+        ("10%", CssNumericConstructionErrorKind::RootDomainMismatch),
+        ("1", CssNumericConstructionErrorKind::RootDomainMismatch),
+    ] {
+        assert_component_rejected(
+            CssSpecifiedLength::try_from_component,
+            CssComponentValue::try_token(invalid).unwrap(),
+            kind,
         );
     }
-    assert!(
-        CssSpecifiedNonNegativeLengthPercentage::try_from_component(
-            CssComponentValue::try_token("-1e-999px").unwrap()
-        )
-        .is_err()
+    assert_component_rejected(
+        CssSpecifiedNonNegativeLengthPercentage::try_from_component,
+        CssComponentValue::try_token("-1e-999px").unwrap(),
+        CssNumericConstructionErrorKind::OutOfRange,
     );
 }
 

@@ -4,8 +4,12 @@
 //! Exact raw time-child provenance and contribution order are Surgeist contracts.
 //! These functional tests exercise the four new borrowed longhand variants.
 
+use crate::css::support::property_admission::Responsible::{At, Disputed, End};
+use crate::css::support::property_admission::{
+    assert_checked_rejected, assert_implicit_closure, assert_style_attribute_rejected,
+};
 use crate::css::support::{
-    checked_property_grammar_declaration as checked, style_declaration as parsed,
+    checked_property_grammar_declaration as checked, sole_declaration as parsed,
 };
 use surgeist_css::CssKnownProperty as P;
 use surgeist_css::*;
@@ -438,7 +442,7 @@ fn late_recovered_time_children_keep_their_implicit_graph_and_source_snapshot() 
         ("transition:opacity 1s, transform 2s calc((-250ms", false),
     ] {
         let report = parse_style_attribute(css);
-        assert!(!report.is_clean());
+        assert_implicit_closure(css, &report);
         let [source] = report.syntax().as_slice() else {
             panic!("one retained shorthand")
         };
@@ -485,7 +489,10 @@ fn late_recovered_time_children_keep_their_implicit_graph_and_source_snapshot() 
             function.closing_origin(),
             CssValueOrigin::ImplicitClosure { .. }
         ));
-        assert!(validate_style_attribute(css).is_err());
+        assert_eq!(
+            validate_style_attribute(css).unwrap_err().diagnostics(),
+            report.diagnostics()
+        );
     }
 }
 
@@ -495,77 +502,76 @@ fn each_property_rejects_intrinsic_negatives_through_all_admission_front_doors()
         (
             P::TransitionProperty,
             vec![
-                "",
-                ",opacity",
-                "opacity,",
-                "opacity,,transform",
-                "none, opacity",
-                "opacity none",
-                "1s",
-                "initial, opacity",
-                "\"opacity\"",
+                ("", End),
+                (",opacity", At(",")),
+                ("opacity,", End),
+                ("opacity,,transform", At(",")),
+                ("none, opacity", Disputed),
+                ("opacity none", At("none")),
+                ("1s", At("1s")),
+                ("initial, opacity", At(",")),
+                ("\"opacity\"", At("\"opacity\"")),
             ],
         ),
         (
             P::TransitionDuration,
             vec![
-                "",
-                "-1s",
-                "0",
-                "1px",
-                "1s,",
-                "1s,,2s",
-                "inherit, 1s",
-                "calc(1px)",
-                "1s 2s",
+                ("", End),
+                ("-1s", At("-1s")),
+                ("0", At("0")),
+                ("1px", At("1px")),
+                ("1s,", End),
+                ("1s,,2s", At(",")),
+                ("inherit, 1s", At(",")),
+                ("calc(1px)", At("calc(")),
+                ("1s 2s", At("2s")),
             ],
         ),
         (
             P::TransitionDelay,
             vec![
-                "",
-                "0",
-                "1px",
-                "1s,",
-                "1s,,2s",
-                "unset, 1s",
-                "calc(1px)",
-                "1s 2s",
+                ("", End),
+                ("0", At("0")),
+                ("1px", At("1px")),
+                ("1s,", End),
+                ("1s,,2s", At(",")),
+                ("unset, 1s", At(",")),
+                ("calc(1px)", At("calc(")),
+                ("1s 2s", At("2s")),
             ],
         ),
         (
             P::TransitionTimingFunction,
             vec![
-                "",
-                "1s",
-                "ease,",
-                "ease,,linear",
-                "ease ease-in",
-                "cubic-bezier(-1,0,1,1)",
-                "steps(1,jump-none)",
-                "revert, ease",
+                ("", End),
+                ("1s", At("1s")),
+                ("ease,", End),
+                ("ease,,linear", At(",")),
+                ("ease ease-in", At("ease-in")),
+                ("cubic-bezier(-1,0,1,1)", At("-1")),
+                ("steps(1,jump-none)", Disputed),
+                ("revert, ease", At(",")),
             ],
         ),
         (
             P::Transition,
             vec![
-                "",
-                "opacity -1s",
-                "opacity 1s 2s 3s",
-                "opacity transform 1s",
-                "opacity 1s ease linear",
-                "opacity 1s,",
-                "opacity 1s,,transform 2s",
-                "none 1s, opacity 2s",
-                "inherit, opacity 1s",
-                "opacity calc(1px)",
+                ("", End),
+                ("opacity -1s", At("-1s")),
+                ("opacity 1s 2s 3s", At("3s")),
+                ("opacity transform 1s", At("transform")),
+                ("opacity 1s ease linear", At("linear")),
+                ("opacity 1s,", End),
+                ("opacity 1s,,transform 2s", At(",")),
+                ("none 1s, opacity 2s", Disputed),
+                ("inherit, opacity 1s", At(",")),
+                ("opacity calc(1px)", At("calc(")),
             ],
         ),
     ] {
-        for invalid in invalid {
+        for (invalid, token) in invalid {
             let css = format!("{}:{invalid}", property.canonical_name());
-            let report = parse_style_attribute(&css);
-            assert!(!report.is_clean(), "{css}");
+            let report = assert_style_attribute_rejected(&css, property, token);
             assert!(
                 report.syntax().is_empty(),
                 "invalid declaration dropped: {css}"
@@ -589,6 +595,7 @@ fn each_property_rejects_intrinsic_negatives_through_all_admission_front_doors()
             )
             .unwrap_err();
             assert_eq!(by_grammar, by_property, "same original grammar: {css}");
+            assert_checked_rejected(Err(by_grammar), property, token);
         }
     }
 }
@@ -673,7 +680,7 @@ fn projected_time_lists_keep_cumulative_specified_limits_and_atomic_failure() {
 }
 
 #[test]
-fn projected_math_retains_raw_graph_and_uses_existing_numeric_provider_budgets() {
+fn projected_math_retains_raw_graph_and_uses_numeric_provider_budgets() {
     let source = checked(P::Transition, "opacity calc(1s + 2s) -250ms");
     let values = completed(&source);
     let (_, durations, _, delays) = lists(&values);

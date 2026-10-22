@@ -1,5 +1,7 @@
 //! Public authored contracts from Color5 color-mix and Values4 calc-range.
+use crate::css::support::color_components::token as component;
 use crate::css::support::color_declaration as parsed;
+use crate::css::support::color_property::color_property_value as wrapper;
 use surgeist_color::{ColorSpace, HueInterpolation, PredefinedColorSpace};
 use surgeist_css::*;
 
@@ -18,23 +20,8 @@ fn checked(text: &str) -> CssDeclaration {
     checked_components(parse_component_values(text).unwrap())
 }
 
-fn wrapper(declaration: &CssDeclaration) -> &CssColorPropertyValue {
-    let CssKnownPropertyValueRef::Color(value) =
-        declaration.known().unwrap().property_value().unwrap()
-    else {
-        panic!("color value")
-    };
-    value
-}
-
 fn color(text: &str) -> CssColor {
     wrapper(&checked(text)).value().clone()
-}
-
-fn component(text: &str) -> CssComponentValue {
-    let values = parse_component_values(text).unwrap();
-    assert_eq!(values.items().len(), 1);
-    values.items()[0].clone()
 }
 
 #[test]

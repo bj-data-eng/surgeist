@@ -2,20 +2,10 @@
 //! Typed angle and authored-value contracts follow with the functional model.
 
 use crate::css::support::important_declaration as declaration;
+use crate::css::support::known_property;
+use crate::css::support::named_property::assert_checked_value_rejected_at;
+use crate::css::support::{checked_grammar_declaration, selected_grammar};
 use surgeist_css::*;
-
-fn grammar() -> CssPropertyGrammar {
-    CssPropertyGrammar::from_name("font-style").expect("font-style grammar")
-}
-
-fn checked(value: &str) -> CssDeclaration {
-    parse_property_value_for_grammar(
-        grammar(),
-        parse_component_values(value).expect("component stream"),
-        CssImportance::Important,
-    )
-    .unwrap_or_else(|error| panic!("checked font-style:{value}: {error:?}"))
-}
 
 #[test]
 fn normal_and_italic_remain_valid_style_controls() {
@@ -27,7 +17,10 @@ fn normal_and_italic_remain_valid_style_controls() {
         );
         assert_eq!(parsed.importance(), CssImportance::Important);
         assert_eq!(
-            checked(value).known().unwrap().property(),
+            checked_grammar_declaration("font-style", value)
+                .known()
+                .unwrap()
+                .property(),
             CssKnownProperty::FontStyle
         );
     }
@@ -45,7 +38,10 @@ fn property_accepts_direction_keywords_bounded_angles_and_symbolic_angle_math() 
         "oblique 1.5707963267948966rad",
         "oblique calc(100deg)",
     ] {
-        for source in [declaration("font-style", value), checked(value)] {
+        for source in [
+            declaration("font-style", value),
+            checked_grammar_declaration("font-style", value),
+        ] {
             assert_eq!(
                 source.known().unwrap().property(),
                 CssKnownProperty::FontStyle
@@ -57,17 +53,26 @@ fn property_accepts_direction_keywords_bounded_angles_and_symbolic_angle_math() 
 
 #[test]
 fn exact_outside_angles_and_wrong_domains_drop_only_the_style_declaration() {
-    for invalid in [
-        "oblique 90.00000000000000000001deg",
-        "oblique 100.00000000000000000001grad",
-        "oblique .25000000000000000001turn",
-        "oblique 1.5707963267948968rad",
-        "oblique 0",
-        "oblique 1px",
-        "oblique 1%",
-        "oblique calc(16px)",
-        "oblique 10deg 20deg",
-        "left right",
+    for (invalid, rest) in [
+        (
+            "oblique 90.00000000000000000001deg",
+            "90.00000000000000000001deg",
+        ),
+        (
+            "oblique 100.00000000000000000001grad",
+            "100.00000000000000000001grad",
+        ),
+        (
+            "oblique .25000000000000000001turn",
+            ".25000000000000000001turn",
+        ),
+        ("oblique 1.5707963267948968rad", "1.5707963267948968rad"),
+        ("oblique 0", "0"),
+        ("oblique 1px", "1px"),
+        ("oblique 1%", "1%"),
+        ("oblique calc(16px)", "calc(16px)"),
+        ("oblique 10deg 20deg", "20deg"),
+        ("left right", "right"),
     ] {
         let source = format!("color:red;font-style:{invalid};color:blue");
         let report = parse_style_attribute(&source);
@@ -75,29 +80,26 @@ fn exact_outside_angles_and_wrong_domains_drop_only_the_style_declaration() {
             panic!("one invalid style diagnostic: {source}: {report:?}");
         };
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-        assert_ne!(diagnostic.error().code(), CssErrorCode::UnknownProperty);
+        assert_eq!(
+            diagnostic.error().code(),
+            CssErrorCode::InvalidPropertyValue
+        );
         assert_eq!(
             report.syntax().len(),
             2,
             "valid neighbors survive: {source}"
         );
         assert!(validate_style_attribute(&source).is_err());
-        assert!(
-            parse_property_value_for_grammar(
-                grammar(),
-                parse_component_values(invalid).unwrap(),
-                CssImportance::Normal,
-            )
-            .is_err(),
-            "checked construction accepted {invalid}"
-        );
+        assert_checked_value_rejected_at(known_property("font-style"), invalid, rest);
     }
 }
 
 #[test]
 fn inherited_normal_style_has_one_longhand_contribution_and_strict_reentry() {
     let property = CssKnownProperty::FontStyle;
-    let CssPropertyKindRef::Longhand(longhand) = grammar().metadata().unwrap().kind() else {
+    let CssPropertyKindRef::Longhand(longhand) =
+        selected_grammar("font-style").metadata().unwrap().kind()
+    else {
         panic!("font-style is a longhand");
     };
     assert!(longhand.inherited_by_default());

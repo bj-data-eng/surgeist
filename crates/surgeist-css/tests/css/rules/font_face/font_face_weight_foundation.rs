@@ -1,6 +1,7 @@
 //! Existing-public-API @font-face weight grammar from CSS Fonts 4 WD
 //! (2026-09-07) §4.4. Typed endpoint contracts follow with the model.
 
+use crate::css::support::rules::invalid_descriptor;
 use surgeist_css::*;
 
 type Kind = CssFontFaceDescriptorKind;
@@ -36,7 +37,7 @@ fn admitted(value: &str) {
 }
 
 #[test]
-fn existing_keywords_integer_singles_and_numeric_pair_remain_admitted() {
+fn weight_keywords_integer_singles_and_numeric_pair_remain_admitted() {
     for value in ["normal", "bold", "1", "1000", "100 900"] {
         admitted(value);
     }
@@ -108,7 +109,7 @@ fn invalid_relative_auto_arity_and_exact_out_of_range_values_drop_locally() {
     ] {
         let raw = parse_font_face_descriptor_value(invalid, Kind::FontWeight);
         assert!(raw.syntax().is_none(), "raw accepted {invalid}: {raw:?}");
-        assert!(!raw.is_clean());
+        invalid_descriptor("font-face", "font-weight").assert_first(&raw);
 
         let source = format!(
             "@font-face{{font-family:Demo;font-weight:normal;src:url(face);font-weight:{invalid};font-display:swap}}"

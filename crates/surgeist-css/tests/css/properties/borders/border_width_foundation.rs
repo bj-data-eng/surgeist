@@ -2,6 +2,7 @@
 //! Logical 1 WD (2025-12-04) §§4.5.1, 4.7. Logical 1 issue 3030 leaves the
 //! complete four-side shorthand reset footprint unsettled.
 
+use crate::css::support::property_admission::assert_declaration_rejected as rejected;
 use crate::css::support::{
     checked_grammar_declaration as checked, important_declaration as declaration,
     selected_grammar as grammar,
@@ -64,27 +65,6 @@ fn accepted(name: &str, value: &str) {
             value
         );
     }
-}
-
-fn invalid(name: &str, value: &str) {
-    let source = format!("color:red;{name}:{value};color:blue");
-    let report = parse_style_attribute(&source);
-    let [diagnostic] = report.diagnostics() else {
-        panic!("one invalid-value diagnostic: {source}")
-    };
-    assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    assert_ne!(diagnostic.error().code(), CssErrorCode::UnknownProperty);
-    assert_eq!(report.syntax().len(), 2, "neighbors survive: {source}");
-    assert!(validate_style_attribute(&source).is_err());
-    assert!(
-        parse_property_value_for_grammar(
-            grammar(name),
-            parse_component_values(value).unwrap(),
-            CssImportance::Normal,
-        )
-        .is_err(),
-        "checked construction accepted {name}:{value}"
-    );
 }
 
 fn one_value(name: &str, value: &str) -> CssLonghandValue {
@@ -168,19 +148,19 @@ fn eight_width_longhands_accept_exact_nonnegative_lengths_and_deferred_pure_math
         ] {
             accepted(name, value);
         }
-        for value in [
-            "-1px",
-            "-1e-100px",
-            "1%",
-            "auto",
-            "none",
-            "1",
-            "1fr",
-            "calc(1px + 2%)",
-            "calc(1 + 2)",
-            "thin thick",
+        for (value, token) in [
+            ("-1px", Some("-1px")),
+            ("-1e-100px", Some("-1e-100px")),
+            ("1%", Some("1%")),
+            ("auto", Some("auto")),
+            ("none", Some("none")),
+            ("1", Some("1")),
+            ("1fr", Some("1fr")),
+            ("calc(1px + 2%)", Some("calc(")),
+            ("calc(1 + 2)", Some("calc(")),
+            ("thin thick", Some("thick")),
         ] {
-            invalid(name, value);
+            rejected(name, value, token);
         }
         let property = grammar(name).target_property();
         let CssPropertyKindRef::Longhand(longhand) = grammar(name).metadata().unwrap().kind()
@@ -242,8 +222,14 @@ fn logical_width_pairs_expand_start_then_end_and_repeat_omitted_end() {
                 assert!(item.replacement_components().is_none());
             }
         }
-        for value in ["", "logical 1px", "1px 2px 3px", "1%", "-1e-100px"] {
-            invalid(pair, value);
+        for (value, token) in [
+            ("", None),
+            ("logical 1px", Some("logical")),
+            ("1px 2px 3px", Some("3px")),
+            ("1%", Some("1%")),
+            ("-1e-100px", Some("-1e-100px")),
+        ] {
+            rejected(pair, value, token);
         }
     }
 }
@@ -263,16 +249,16 @@ fn four_side_width_accepts_both_roles_but_expansion_selects_four_sides() {
         accepted(FOUR_SIDE, value);
         assert_four_expansion(expand_declaration(&declaration(FOUR_SIDE, value)));
     }
-    for value in [
-        "",
-        "logical",
-        "logical logical thin",
-        "thin logical",
-        "logical 1%",
-        "thin medium thick 1px 2px",
-        "logical thin medium thick 1px 2px",
+    for (value, token) in [
+        ("", None),
+        ("logical", Some("logical")),
+        ("logical logical thin", Some("logical")),
+        ("thin logical", Some("logical")),
+        ("logical 1%", Some("1%")),
+        ("thin medium thick 1px 2px", Some("2px")),
+        ("logical thin medium thick 1px 2px", Some("2px")),
     ] {
-        invalid(FOUR_SIDE, value);
+        rejected(FOUR_SIDE, value, token);
     }
     let grammar = grammar(FOUR_SIDE);
     assert!(matches!(
@@ -294,14 +280,14 @@ fn physical_border_triples_share_exact_widths_and_intrinsic_defaults() {
         for value in ["solid", "1e100px", "1e-100px solid red", "red solid 0"] {
             accepted(name, value);
         }
-        for value in [
-            "-1e-100px solid",
-            "1% solid",
-            "thin thick solid",
-            "solid dashed",
-            "red blue",
+        for (value, token) in [
+            ("-1e-100px solid", Some("-1e-100px")),
+            ("1% solid", Some("1%")),
+            ("thin thick solid", Some("thick")),
+            ("solid dashed", Some("dashed")),
+            ("red blue", Some("blue")),
         ] {
-            invalid(name, value);
+            rejected(name, value, token);
         }
         let source = declaration(name, "solid");
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
@@ -394,7 +380,7 @@ fn css_wide_all_and_pending_reentry_preserve_original_grammar_and_occurrence() {
     };
     for name in names() {
         assert!(!reset.excludes(CssPropertyNameRef::Known(grammar(name).target_property())));
-        invalid(name, "initial 1px");
+        rejected(name, "initial 1px", Some("1px"));
         for (text, keyword) in [
             ("initial", CssGlobalKeyword::Initial),
             ("inherit", CssGlobalKeyword::Inherit),

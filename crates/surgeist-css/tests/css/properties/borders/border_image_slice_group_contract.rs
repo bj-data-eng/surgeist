@@ -6,6 +6,9 @@
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#component-combinators
 
 use crate::css::support::check_property_text as checked;
+use crate::css::support::property_admission::{
+    assert_checked_rejected, assert_style_attribute_rejected,
+};
 use surgeist_css::*;
 
 const PROPERTIES: [CssKnownProperty; 2] = [
@@ -44,27 +47,24 @@ fn slice(values: &CssLonghandContributions) -> &CssBorderImageSlice {
     value
 }
 
-fn split_groups() -> [&'static str; 6] {
+/// Each split group with the numeric token that the group cannot extend to.
+fn split_groups() -> [(&'static str, &'static str); 6] {
     [
-        "1 fill 2",
-        "1 fill 2 3",
-        "1 2 fill 3",
-        "1 fill 2 3 4",
-        "1 2 fill 3 4",
-        "1 2 3 fill 4",
+        ("1 fill 2", "2"),
+        ("1 fill 2 3", "2"),
+        ("1 2 fill 3", "3"),
+        ("1 fill 2 3 4", "2"),
+        ("1 2 fill 3 4", "3"),
+        ("1 2 3 fill 4", "4"),
     ]
 }
 
 #[test]
 fn parsed_slice_and_shorthand_reject_fill_inside_the_numeric_group() {
     for property in PROPERTIES {
-        for text in split_groups() {
+        for (text, token) in split_groups() {
             let css = format!("{}: {text};", property.canonical_name());
-            let report = parse_style_attribute(&css);
-            assert!(
-                !report.is_clean(),
-                "split numeric group was admitted: {css}"
-            );
+            let report = assert_style_attribute_rejected(&css, property, Some(token));
             assert!(
                 report.syntax().is_empty(),
                 "invalid declaration retained: {css}"
@@ -80,30 +80,29 @@ fn parsed_slice_and_shorthand_reject_fill_inside_the_numeric_group() {
 #[test]
 fn checked_slice_and_shorthand_reject_fill_inside_the_numeric_group() {
     for property in PROPERTIES {
-        for text in split_groups() {
-            let error = checked(property, text)
-                .expect_err("fill must not divide the repeated numeric group");
-            assert!(matches!(
-                error.kind(),
-                CssPropertyValueErrorKind::Grammar(_)
-            ));
+        for (text, token) in split_groups() {
+            assert_checked_rejected(checked(property, text), property, Some(token));
         }
     }
 }
 
 #[test]
 fn shorthand_slash_suffix_cannot_make_a_split_slice_group_valid() {
-    for text in [
-        "none 1 fill 2 / 3 / 4 round",
-        "round 1 2 fill 3 // 4",
-        "1 2 3 fill 4 / auto space",
+    for (text, token) in [
+        ("none 1 fill 2 / 3 / 4 round", "2"),
+        ("round 1 2 fill 3 // 4", "3"),
+        ("1 2 3 fill 4 / auto space", "4"),
     ] {
-        assert!(
-            checked(CssKnownProperty::BorderImage, text).is_err(),
-            "split group before slash: {text}"
+        assert_checked_rejected(
+            checked(CssKnownProperty::BorderImage, text),
+            CssKnownProperty::BorderImage,
+            Some(token),
         );
-        let report = parse_style_attribute(&format!("border-image: {text};"));
-        assert!(!report.is_clean(), "split group before slash: {text}");
+        assert_style_attribute_rejected(
+            &format!("border-image: {text};"),
+            CssKnownProperty::BorderImage,
+            Some(token),
+        );
     }
 }
 
@@ -119,7 +118,7 @@ fn pending_reentry_rejects_split_groups_atomically_and_remains_reusable() {
             };
             let before = source.to_specified_css().unwrap();
             for _ in 0..2 {
-                for text in split_groups() {
+                for (text, _) in split_groups() {
                     let replacement = parse_component_values(text).unwrap();
                     let error = handle
                         .reenter(replacement)
@@ -252,31 +251,36 @@ fn fill_before_or_after_complete_groups_preserves_edges_and_round_trips() {
 #[test]
 fn range_cardinality_duplicate_and_slash_controls_stay_rejected() {
     for property in PROPERTIES {
-        for text in [
-            "",
-            "fill",
-            "fill fill",
-            "1 fill fill",
-            "fill 1 fill",
-            "1 2 3 4 5",
-            "fill 1 2 3 4 5",
-            "-1",
-            "-1%",
-            "1 -2 fill",
-            "fill -2%",
-            "1 /",
-            "1 //",
-            "1 / 2 /",
-            "1 / -2",
+        // The slice longhand has no slash; the shorthand's slash suffix needs
+        // a nonnegative width or outset after it.
+        let shorthand = property == CssKnownProperty::BorderImage;
+        for (text, slice_token, shorthand_token) in [
+            ("", None, None),
+            ("fill", Some("fill"), Some("fill")),
+            ("fill fill", Some("fill"), Some("fill")),
+            ("1 fill fill", Some("fill"), Some("fill")),
+            ("fill 1 fill", Some("fill"), Some("fill")),
+            ("1 2 3 4 5", Some("5"), Some("5")),
+            ("fill 1 2 3 4 5", Some("5"), Some("5")),
+            ("-1", Some("-1"), Some("-1")),
+            ("-1%", Some("-1%"), Some("-1%")),
+            ("1 -2 fill", Some("-2"), Some("-2")),
+            ("fill -2%", Some("-2%"), Some("-2%")),
+            ("1 /", Some("/"), Some("/")),
+            ("1 //", Some("/"), Some("/")),
+            ("1 / 2 /", Some("/"), Some("/")),
+            ("1 / -2", Some("/"), Some("-2")),
         ] {
-            assert!(
-                checked(property, text).is_err(),
-                "invalid control: {}: {text}",
-                property.canonical_name()
-            );
-            assert!(
-                !parse_style_attribute(&format!("{}: {text};", property.canonical_name()))
-                    .is_clean()
+            let token = if shorthand {
+                shorthand_token
+            } else {
+                slice_token
+            };
+            assert_checked_rejected(checked(property, text), property, token);
+            assert_style_attribute_rejected(
+                &format!("{}: {text};", property.canonical_name()),
+                property,
+                token,
             );
         }
     }
@@ -307,14 +311,17 @@ fn masking_slice_keeps_its_separate_trailing_fill_grammar() {
                     .is_clean()
             );
         }
-        for text in ["fill 1", "1 fill 2", "1 2 fill 3", "1 2 3 fill 4"] {
-            assert!(
-                checked(property, text).is_err(),
-                "mask requires trailing fill: {text}"
-            );
-            assert!(
-                !parse_style_attribute(&format!("{}: {text};", property.canonical_name()))
-                    .is_clean()
+        for (text, token) in [
+            ("fill 1", "fill"),
+            ("1 fill 2", "2"),
+            ("1 2 fill 3", "3"),
+            ("1 2 3 fill 4", "4"),
+        ] {
+            assert_checked_rejected(checked(property, text), property, Some(token));
+            assert_style_attribute_rejected(
+                &format!("{}: {text};", property.canonical_name()),
+                property,
+                Some(token),
             );
         }
     }

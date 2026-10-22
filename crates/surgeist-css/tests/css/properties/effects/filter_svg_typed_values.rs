@@ -1,16 +1,9 @@
 //! Functional tests for new typed fronts; no executable RED preceded these APIs.
 //! Filter1 WD20181218 §§9.13,10,11.5 supplies identities and intrinsic initials;
 //! Values4/CSSOM and the selected exact Color/opacity owners supply projection.
+use crate::css::support::property_admission::assert_reentry_rejected;
+use crate::css::support::retained_checked_declaration as declaration;
 use surgeist_css::*;
-
-fn declaration(property: CssKnownProperty, text: &str) -> CssDeclaration {
-    parse_property_value(
-        CssPropertyNameRef::Known(property),
-        parse_component_values(text).unwrap(),
-        CssImportance::Important,
-    )
-    .unwrap()
-}
 
 fn contributions(source: &CssDeclaration) -> CssLonghandContributions {
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =
@@ -351,10 +344,10 @@ fn normalization_and_pending_retry_expose_property_coupled_typed_payloads() {
     let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
         panic!("pending alpha")
     };
-    assert!(
-        handle
-            .reenter(parse_component_values("red").unwrap())
-            .is_err()
+    assert_reentry_rejected(
+        handle.reenter(parse_component_values("red").unwrap()),
+        CssKnownProperty::FloodOpacity,
+        Some("red"),
     );
     let replacement = parse_component_values("-25%").unwrap();
     let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap() else {

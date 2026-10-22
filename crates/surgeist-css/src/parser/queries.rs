@@ -10,15 +10,11 @@ pub(crate) fn construct_when_media_feature(
 ) -> Result<crate::CssWhenMediaFeature, crate::CssWhenConstructionError> {
     features::construct_when_media_feature(component, limits)
 }
-#[cfg(test)]
-use cssparser::ParserInput;
 use cssparser::{
     BasicParseErrorKind, Delimiter, ParseError, Parser, Token, match_ignore_ascii_case,
 };
 
 use super::boolean_condition::{BooleanConditionGrammar, parse_boolean_condition};
-#[cfg(test)]
-use super::recovery::StyleContextCaptures;
 use super::recovery::{
     RecoveryState, comma_member_span, first_non_trivia_position, recovery_action_for_error,
 };
@@ -217,29 +213,6 @@ pub(super) fn parse_media_query_list_with_closures<'i, 't>(
         queries: CssMediaQueryList::with_comma_origins(queries, comma_origins),
         implicit_closures,
     })
-}
-
-#[cfg(test)]
-pub(crate) fn parse_media_query_list_for_test(
-    source: &str,
-) -> std::result::Result<CssMediaQueryList, Error> {
-    let working_source = crate::tokenization::prepare(source);
-    let mut input = ParserInput::new(&working_source);
-    let mut parser = Parser::new(&mut input);
-    let mut diagnostics = Vec::new();
-    let recovery = RecoveryState::at_depth(source, 0, StyleContextCaptures::default());
-    let list = parse_media_query_list(source, &mut parser, &mut diagnostics, &recovery)
-        .map_err(|error| from_parse_error(source, error))?;
-    if let Some(diagnostic) = diagnostics.into_iter().next() {
-        return Err(diagnostic.error().clone());
-    }
-    if !parser.is_exhausted() {
-        return Err(from_parse_error(
-            source,
-            invalid_syntax(parser.current_source_location()),
-        ));
-    }
-    Ok(list)
 }
 
 pub(super) fn parse_media_query<'i, 't>(
@@ -702,7 +675,7 @@ pub(super) fn check_media_member_components<'i>(
     input: &mut Parser<'i, '_>,
     recovery: &RecoveryState,
 ) -> Result<Vec<usize>, ParseError<'i, Error>> {
-    match recovery.check_comma_member_components(source, input, "baseline.media.query-list") {
+    match recovery.check_comma_member_components(source, input, "official.media.query-list-core") {
         Ok(openings) => Ok(openings),
         Err(error) if is_nesting_limit_error(&error) => Err(error),
         Err(error) => {
@@ -729,7 +702,7 @@ pub(super) fn check_media_import_components<'i>(
     input: &mut Parser<'i, '_>,
     recovery: &RecoveryState,
 ) -> Result<(), ParseError<'i, Error>> {
-    match recovery.check_specialized_components(source, input, "baseline.media.query-list") {
+    match recovery.check_specialized_components(source, input, "official.media.query-list-core") {
         Ok(_) => Ok(()),
         Err(error) if is_nesting_limit_error(&error) => Err(error),
         Err(error) => {

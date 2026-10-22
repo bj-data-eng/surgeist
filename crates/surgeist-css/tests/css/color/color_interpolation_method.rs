@@ -6,6 +6,7 @@
 //! not a preimplementation RED. Replacement checked-method API tests establish
 //! new API behavior without executable preimplementation RED.
 
+use crate::css::support::color_and_selector_fixtures::assert_color_grammar_failure;
 use crate::css::support::declaration_color as color;
 use surgeist_color::{ColorSpace, HueInterpolation, PredefinedColorSpace};
 use surgeist_css::*;
@@ -201,13 +202,13 @@ fn rejected_with_recovery(value: &str, rectangular_hue: Option<(&str, &str)>) {
         validate_style_attribute(&source).unwrap_err().diagnostics(),
         report.diagnostics()
     );
-    assert!(
+    assert_color_grammar_failure(
         parse_property_value(
             CssPropertyNameRef::Known(CssKnownProperty::Color),
             parse_component_values(value).unwrap(),
             CssImportance::Normal,
-        )
-        .is_err()
+        ),
+        value,
     );
 }
 

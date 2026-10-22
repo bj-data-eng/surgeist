@@ -163,7 +163,11 @@ fn signed_zero_has_nonnegative_semantics_and_positive_counts_reject_every_zero_s
     let negative = CssIntegerLiteral::from_i32(-1);
     assert!(negative.is_negative());
     assert!(!negative.is_zero());
-    assert!(CssFontPaletteIndex::try_new(CssIntegerValue::Literal(negative)).is_err());
+    // Fonts 4 @font-palette-values: a palette index is a nonnegative <integer>.
+    assert!(matches!(
+        CssFontPaletteIndex::try_new(CssIntegerValue::Literal(negative)),
+        Err(CssFontPaletteConstructionError::NegativeIndex)
+    ));
     for text in ["+0002", "2147483648", "9999999999999999999999999"] {
         let literal =
             CssIntegerLiteral::try_from_component(CssComponentValue::try_number(text).unwrap())

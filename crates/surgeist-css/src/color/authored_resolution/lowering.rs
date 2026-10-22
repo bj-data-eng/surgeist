@@ -1213,15 +1213,31 @@ mod tests {
     };
     use surgeist_color::{Color, ColorSpace, PredefinedColorSpace};
 
+    /// The `<color>` the production `color` property parser admits for `source`.
     fn parsed(source: &str) -> CssColor {
-        let snapshot = crate::CssSourceSnapshot::new(source);
-        let mut input = cssparser::ParserInput::new(source);
-        let mut parser = cssparser::Parser::new(&mut input);
-        crate::color::authored::parse_color(
-            &mut parser,
-            &crate::numeric::NumericInputContext::Parsed(&snapshot),
-        )
-        .unwrap()
+        let report = crate::parse_property_value_text(
+            source,
+            crate::CssPropertyNameRef::Known(crate::CssKnownProperty::Color),
+            crate::CssImportance::Normal,
+        );
+        // CSS Syntax 3 (CRD 2026-10-01) §5.5.10 closes an unclosed function at
+        // EOF as a parse error that retains the value.
+        assert!(
+            report
+                .diagnostics()
+                .iter()
+                .all(|diagnostic| diagnostic.action()
+                    == crate::CssRecoveryAction::RetainWithImplicitClosure),
+            "{source}: {:?}",
+            report.diagnostics()
+        );
+        let declaration = report.into_parts().0.expect("retained color value");
+        let Some(crate::CssKnownPropertyValueRef::Color(value)) =
+            declaration.known().and_then(|known| known.property_value())
+        else {
+            panic!("typed color: {declaration:?}");
+        };
+        value.value().clone()
     }
     fn resolve(root: &CssColor, facts: &CssColorFacts<'_>) -> Result<Color, core::Error> {
         let owner = CssColorOperationOwner::new();

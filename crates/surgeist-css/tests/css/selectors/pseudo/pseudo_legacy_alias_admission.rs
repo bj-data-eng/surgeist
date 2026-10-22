@@ -84,7 +84,7 @@ fn functional_unknowns_other_prefixes_and_colon_whitespace_remain_invalid() {
 }
 
 #[test]
-fn existing_standard_legacy_colon_and_supported_pseudo_segments_stay_admitted() {
+fn standard_legacy_colon_and_supported_pseudo_segments_stay_admitted() {
     for source in [
         ".field:hover",
         "::before",

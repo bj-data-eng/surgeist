@@ -5,6 +5,9 @@
 //! Update common/property_expectations/records.rs for all generic facts instead.
 
 use crate::css::support::authored_property;
+use crate::css::support::known_property as property;
+use crate::css::support::named_property::sole_completed_contributions as completed;
+use crate::css::support::serialization_limits::LimitLadder;
 use CssSpecifiedValueSerializationErrorKind as K;
 use CssSpecifiedValueSerializationLimits as L;
 use authored_property::{ParserFront, assert_source, checked, checked_components, invalid};
@@ -24,23 +27,6 @@ const GLOBALS: [(&str, CssGlobalKeyword); 5] = [
     ("revert", CssGlobalKeyword::Revert),
     ("revert-layer", CssGlobalKeyword::RevertLayer),
 ];
-fn property(name: &str) -> CssKnownProperty {
-    CssKnownProperty::from_name(name)
-        .unwrap_or_else(|| panic!("selected property {name} must be recognized"))
-}
-fn completed(source: &CssDeclaration) -> CssLonghandContributions {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
-    else {
-        panic!("one intrinsic longhand")
-    };
-    let [item] = values.items() else {
-        panic!("one longhand; no invented axis subproperties")
-    };
-    assert_eq!(item.property(), source.known().unwrap().property());
-    assert_source(item, source);
-    values
-}
 fn admission(name: &str, input: &str, expected: &str) {
     let p = property(name);
     for front in FRONTS {
@@ -511,38 +497,8 @@ fn budgets(source: &CssDeclaration, output: &str, input: usize, projection: usiz
         "{}: {output} !important;",
         source.known().unwrap().property().canonical_name()
     );
-    let exact = L::new(input, projection, expected.len());
-    let before = source.clone();
-    assert_eq!(
-        source.to_specified_css_with_limits(exact).unwrap(),
-        expected
-    );
-    for (limits, kind) in [
-        (
-            L::new(input - 1, projection, expected.len()),
-            K::InputNodeLimit,
-        ),
-        (
-            L::new(input, projection - 1, expected.len()),
-            K::ProjectionNodeLimit,
-        ),
-        (L::new(input, projection, expected.len() - 1), K::ByteLimit),
-    ] {
-        for _ in 0..2 {
-            assert_eq!(
-                source
-                    .to_specified_css_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
-                kind
-            );
-        }
-        assert_eq!(source, &before);
-    }
-    assert_eq!(
-        source.to_specified_css_with_limits(exact).unwrap(),
-        expected
-    );
+    LimitLadder::new(&expected, input, projection)
+        .assert_unchanged(source, CssDeclaration::to_specified_css_with_limits);
 }
 #[test]
 fn retained_provider_controls_charge_suppressed_defaults_and_specified_math_cumulatively() {
@@ -717,13 +673,4 @@ fn checked_programmatic_tokens_and_parsed_numeric_children_keep_exact_original_p
         K::ByteLimit
     );
     assert_eq!(source, &before);
-}
-#[test]
-fn global_output_prices_one_symbolic_keyword_plus_occurrence_and_name_for_every_transform_property()
-{
-    for (name, _, _) in LIFECYCLES {
-        for (text, _) in GLOBALS {
-            budgets(&checked(property(name), text, true), text, 3, 3);
-        }
-    }
 }

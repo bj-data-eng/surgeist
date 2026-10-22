@@ -9,6 +9,7 @@
 //! https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#multi-value-features
 
 use crate::css::support::descriptor_phases;
+use crate::css::support::rules::{invalid_descriptor, rejected_bang};
 use descriptor_phases::*;
 
 use surgeist_css::*;
@@ -294,8 +295,18 @@ fn rejected_integer_syntax_and_index_counts_remain_intrinsic_errors() {
             }
         );
         let report = parse_sheet(&source);
-        assert!(!report.is_clean(), "{source}");
-        assert!(validate_sheet(&source).is_err());
+        let rejected = invalid_descriptor(kind, "bad");
+        // Fonts 4 §6.9.1: <integer [0,∞]>{1,2} for character-variant and
+        // <integer [0,∞]>+ for styleset; calc() is the selected policy.
+        // The diagnostic names the descriptor `bad` rather than the first
+        // violating index token, so only the descriptor is checked.
+        let expected = if invalid.contains('!') {
+            rejected_bang(kind, "bad")
+        } else {
+            rejected
+        };
+        expected.assert_first(&report);
+        expected.assert_sheet(&source);
         let [CssRule::FontFeatureValues(rule)] = report.syntax().rules() else {
             panic!("rule survives invalid definition")
         };

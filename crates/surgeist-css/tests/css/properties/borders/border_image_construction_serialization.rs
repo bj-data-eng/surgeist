@@ -2,10 +2,10 @@
 //! §6.7.2 supply grammar/order/compression oracles. Exact resource formulas and
 //! immutable, branch-preserving checked construction are Surgeist contracts.
 
+use crate::css::support::serialization_limits::assert_limits as exact_limits;
 use surgeist_css::*;
 
 type Limits = CssSpecifiedValueSerializationLimits;
-type Error = CssSpecifiedValueSerializationError;
 type Kind = CssSpecifiedValueSerializationErrorKind;
 
 fn number(text: &str) -> CssSpecifiedNonNegativeNumber {
@@ -82,34 +82,6 @@ fn image(text: &str) -> CssBorderImage {
         panic!("border-image typed value");
     };
     value.border_image().clone()
-}
-
-fn exact_limits(
-    expected: &str,
-    input: usize,
-    projection: usize,
-    serialize: impl Fn(Limits) -> Result<String, Error>,
-) {
-    assert_eq!(
-        serialize(Limits::new(input, projection, expected.len())).unwrap(),
-        expected
-    );
-    for (limits, kind) in [
-        (
-            Limits::new(input - 1, projection, expected.len()),
-            Kind::InputNodeLimit,
-        ),
-        (
-            Limits::new(input, projection - 1, expected.len()),
-            Kind::ProjectionNodeLimit,
-        ),
-        (
-            Limits::new(input, projection, expected.len() - 1),
-            Kind::ByteLimit,
-        ),
-    ] {
-        assert_eq!(serialize(limits).unwrap_err().kind(), kind);
-    }
 }
 
 fn expanded_texts(text: &str) -> Vec<String> {

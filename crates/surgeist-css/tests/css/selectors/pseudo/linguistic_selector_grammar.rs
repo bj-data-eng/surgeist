@@ -4,10 +4,8 @@
 //! Direction takes one identifier; language takes a nonempty comma-separated
 //! list of identifiers or strings. These tests preserve authored syntax without
 //! evaluating directionality, language matching, or document inheritance.
-use surgeist_css::{
-    CssErrorCode, CssNamespaceContext, CssPseudoClass, CssRecoveryAction, CssSelector,
-    parse_selector,
-};
+use crate::css::support::color_and_selector_fixtures::assert_selector_rejected as assert_rejected;
+use surgeist_css::{CssNamespaceContext, CssPseudoClass, CssSelector, parse_selector};
 
 fn assert_clean_pseudo(source: &str) {
     let report = parse_selector(source, &CssNamespaceContext::default());
@@ -18,27 +16,6 @@ fn assert_clean_pseudo(source: &str) {
     );
     assert!(report.into_validation_result().is_ok(), "{source}");
 }
-fn assert_rejected(source: &str) {
-    let report = parse_selector(source, &CssNamespaceContext::default());
-    assert!(report.syntax().is_none(), "{source}: {report:?}");
-    let [diagnostic] = report.diagnostics() else {
-        panic!("one complete rejection: {source}: {report:?}")
-    };
-    assert_eq!(
-        diagnostic.error().code(),
-        CssErrorCode::InvalidSelector,
-        "{source}"
-    );
-    assert_eq!(
-        diagnostic.action(),
-        CssRecoveryAction::RejectInput,
-        "{source}"
-    );
-    assert_eq!(diagnostic.span().start().byte_offset().value(), 0);
-    assert_eq!(diagnostic.span().end().byte_offset().value(), source.len());
-    assert!(report.into_validation_result().is_err(), "{source}");
-}
-
 #[test]
 fn original_direction_identifiers_are_retained_cleanly() {
     for source in [":dir(ltr)", ":dir(  ltr /* test */ )", ":DiR(ltr)"] {

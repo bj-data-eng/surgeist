@@ -12,8 +12,8 @@ struct InvalidDeclaration {
     use_last: bool,
 }
 
-const C13_RECOVERY_CASES: &[InvalidDeclaration] = &[
-    // The nine C13 property records.
+const BACKGROUND_BORDER_IMAGE_RECOVERY_CASES: &[InvalidDeclaration] = &[
+    // The nine background, border and image property records.
     case(
         "official.property.border-image",
         "border-image",
@@ -69,7 +69,7 @@ const C13_RECOVERY_CASES: &[InvalidDeclaration] = &[
         "scale-up",
         "scale-up",
     ),
-    // The eighteen C13 shared-value records, each exercised through a public property boundary.
+    // The eighteen shared-value records, each exercised through a public property boundary.
     case(
         "official.value.background-layer",
         "background",
@@ -178,7 +178,7 @@ const C13_RECOVERY_CASES: &[InvalidDeclaration] = &[
         "radial-gradient(circle closest, red, blue)",
         "closest",
     ),
-    // Existing Partial Backgrounds/Borders rows that C13 promotes.
+    // The Backgrounds and Borders property rows.
     last_case(
         "baseline.property.background",
         "background",
@@ -492,7 +492,7 @@ fn assert_invalid_case(case: InvalidDeclaration) {
 
     assert_eq!(
         surgeist_css::validate_style_attribute(&source)
-            .expect_err("strict validation rejects recovered C13 syntax")
+            .expect_err("strict validation rejects recovered layered syntax")
             .diagnostics(),
         report.diagnostics(),
         "{}",
@@ -501,8 +501,8 @@ fn assert_invalid_case(case: InvalidDeclaration) {
 }
 
 #[test]
-fn c13_layer_separator_recovery_preserves_siblings_and_boundaries() {
-    for &case in C13_RECOVERY_CASES {
+fn background_border_and_image_recovery_preserves_siblings_and_boundaries() {
+    for &case in BACKGROUND_BORDER_IMAGE_RECOVERY_CASES {
         assert_invalid_case(case);
     }
 
@@ -650,7 +650,7 @@ fn c13_layer_separator_recovery_preserves_siblings_and_boundaries() {
 
     assert_eq!(
         surgeist_css::validate_style_attribute(&source)
-            .expect_err("strict validation rejects C13 nesting overflow")
+            .expect_err("strict validation rejects layered nesting overflow")
             .diagnostics(),
         report.diagnostics(),
     );

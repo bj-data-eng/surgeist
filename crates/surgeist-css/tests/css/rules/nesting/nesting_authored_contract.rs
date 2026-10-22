@@ -6,26 +6,14 @@
 //! these characterizations exercise syntax and context without evaluating matching
 //! or specificity.
 
+use crate::css::support::rules::ExpectedRejection;
+use crate::css::support::rules::declaration_text;
 use surgeist_css::{
-    CssDeclaration, CssErrorCode, CssNamespaceContext, CssNormalizedItem, CssNormalizedSheet,
-    CssPseudoClass, CssRecoveryAction, CssRule, CssRuleContextKindRef, CssSelector,
-    CssSelectorBinding, CssSelectorCombinator, CssStyleSelector, CssTokenKind, ErrorKind,
-    normalize_sheet, parse_selector, parse_sheet,
+    CssErrorCode, CssNamespaceContext, CssNormalizedItem, CssNormalizedSheet, CssPseudoClass,
+    CssRecoveryAction, CssRule, CssRuleContextKindRef, CssSelector, CssSelectorBinding,
+    CssSelectorCombinator, CssStyleSelector, CssTokenKind, ErrorKind, normalize_sheet,
+    parse_selector, parse_sheet,
 };
-
-fn declaration_text(declaration: &CssDeclaration) -> (&str, &str) {
-    let name = declaration
-        .parsed_name()
-        .expect("original parsed declaration name");
-    let value = declaration
-        .parsed_value()
-        .expect("original parsed declaration value");
-    let name_text = &name.source().as_str()
-        [name.span().start().byte_offset().value()..name.span().end().byte_offset().value()];
-    let value_text = &value.source().as_str()
-        [value.span().start().byte_offset().value()..value.span().end().byte_offset().value()];
-    (name_text, value_text.trim())
-}
 
 fn stream(sheet: &CssNormalizedSheet) -> Vec<String> {
     sheet
@@ -440,11 +428,13 @@ fn legal_type_first_and_noninitial_repeated_anchors_have_stable_specified_output
             .unwrap(),
         ".Lead > &&.Card"
     );
-    for source in ["&div", "&-suffix"] {
+    // Selectors 4 §3.1: a type selector must start its compound.
+    for (source, token) in [("&div", "div"), ("&-suffix", "-suffix")] {
         let report = parse_selector(source, &namespaces);
         assert!(report.syntax().is_none(), "{source}");
-        assert!(!report.is_clean());
-        assert!(report.into_validation_result().is_err());
+        ExpectedRejection::new(CssErrorCode::InvalidSelector)
+            .at(token)
+            .assert_first(&report);
     }
 }
 

@@ -1,5 +1,9 @@
 //! CSS Syntax preprocessing and Color Adjustment authored-property contracts.
 
+use crate::css::support::property_admission::{
+    ValueTextRejection::{Closure, Component, Grammar, Syntax},
+    assert_value_text_rejected,
+};
 use std::{cell::Cell, sync::Arc};
 use surgeist_css::*;
 
@@ -145,20 +149,29 @@ fn decoded_attr_syntax_treats_escaped_css_newlines_as_whitespace() {
 
 #[test]
 fn invalid_values_and_recovered_components_are_syntax_failures_with_original_source() {
-    for text in [
-        "",
-        " \t\n",
-        "only",
-        "normal dark",
-        "light !important",
-        "light;dark",
-        "light}",
-        "var(--theme",
-        "var(--theme, url(a\"b))",
-        "var(--theme, \"bad\n)",
+    for (text, expected) in [
+        ("", Grammar(None)),
+        (" \t\n", Grammar(None)),
+        ("only", Grammar(Some("only"))),
+        ("normal dark", Grammar(Some("dark"))),
+        ("light !important", Syntax("!")),
+        ("light;dark", Syntax(";")),
+        (
+            "light}",
+            Component(CssComponentValueErrorKind::UnmatchedClosingDelimiter),
+        ),
+        ("var(--theme", Closure),
+        (
+            "var(--theme, url(a\"b))",
+            Component(CssComponentValueErrorKind::BadUrl),
+        ),
+        (
+            "var(--theme, \"bad\n)",
+            Component(CssComponentValueErrorKind::BadString),
+        ),
     ] {
         let report = parse(text);
-        assert!(report.result().is_err(), "{text:?}");
+        assert_value_text_rejected(report.result(), CssKnownProperty::ColorScheme, expected);
         assert_eq!(
             report
                 .source()

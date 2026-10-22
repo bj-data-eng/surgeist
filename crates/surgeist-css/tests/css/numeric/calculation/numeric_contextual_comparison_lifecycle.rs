@@ -9,6 +9,7 @@
 //! magnitudeComparable and fullyResolved. Same-unit contextual dimensions
 //! remain comparable coefficients without resolving their actual magnitudes.
 
+use crate::css::support::serialization_limits::LimitLadder;
 use surgeist_css::*;
 
 type Limits = CssSpecifiedValueSerializationLimits;
@@ -84,7 +85,7 @@ fn nested_comparisons_and_same_unit_sums_do_not_supply_a_percentage_basis() {
 }
 
 #[test]
-fn raw_percentage_comparisons_still_fold_without_a_dimension_hint() {
+fn raw_percentage_comparisons_fold_without_a_dimension_hint() {
     for (source, expected) in [
         ("min(1%,2%)", "calc(1%)"),
         ("max(1%,2%)", "calc(2%)"),
@@ -147,35 +148,28 @@ fn programmatic_comparison_keeps_exact_coefficients_and_programmatic_origin() {
 fn assert_numeric_limits(source: &str, expected: &str, inputs: usize, projections: usize) {
     let value = length_percentage(source);
     let before = value.clone();
-    for (limits, kind) in [
-        (
-            Limits::new(inputs - 1, projections, expected.len()),
-            Kind::InputNodeLimit,
-        ),
-        (
-            Limits::new(inputs, projections - 1, expected.len()),
-            Kind::ProjectionNodeLimit,
-        ),
-        (
-            Limits::new(inputs, projections, expected.len() - 1),
-            Kind::ByteLimit,
-        ),
-        (Limits::new(0, 0, 0), Kind::InputNodeLimit),
-        (Limits::new(inputs, 0, 0), Kind::ProjectionNodeLimit),
-    ] {
-        let error = value.serialize_specified_with_limits(limits).unwrap_err();
-        assert_eq!(error.kind(), kind, "{source}: {limits:?}");
+    let unchanged = || {
         assert_eq!(value, before);
         assert_eq!(value.origin(), before.origin());
         assert_eq!(
             value.calculation().unwrap().components(),
             before.calculation().unwrap().components()
         );
+    };
+    LimitLadder::new(expected, inputs, projections).assert_unchanged_with(
+        &value,
+        |value, limits| value.serialize_specified_with_limits(limits),
+        |_, _, _| unchanged(),
+    );
+    // Several limits exhausted at once.
+    for (limits, kind) in [
+        (Limits::new(0, 0, 0), Kind::InputNodeLimit),
+        (Limits::new(inputs, 0, 0), Kind::ProjectionNodeLimit),
+    ] {
+        let error = value.serialize_specified_with_limits(limits).unwrap_err();
+        assert_eq!(error.kind(), kind, "{source}: {limits:?}");
+        unchanged();
     }
-    let result =
-        value.serialize_specified_with_limits(Limits::new(inputs, projections, expected.len()));
-    assert_eq!(value, before);
-    assert_eq!(result.unwrap(), expected);
 }
 
 #[test]

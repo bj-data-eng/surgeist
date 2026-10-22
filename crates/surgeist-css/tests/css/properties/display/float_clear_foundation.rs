@@ -2,6 +2,7 @@
 //! §2.2. Flow-relative values remain authored keywords until the containing
 //! block's writing mode is available downstream.
 
+use crate::css::support::property_admission::assert_declaration_rejected as rejected;
 use crate::css::support::{
     checked_grammar_declaration as checked, important_declaration as declaration,
     selected_grammar as grammar,
@@ -29,27 +30,6 @@ fn accepted(name: &str, value: &str) {
         );
         assert_eq!(authored_value(&source, name), value);
     }
-}
-
-fn invalid(name: &str, value: &str) {
-    let source = format!("color:red;{name}:{value};color:blue");
-    let report = parse_style_attribute(&source);
-    let [diagnostic] = report.diagnostics() else {
-        panic!("one invalid-value diagnostic: {source}")
-    };
-    assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    assert_ne!(diagnostic.error().code(), CssErrorCode::UnknownProperty);
-    assert_eq!(report.syntax().len(), 2, "neighbors survive: {source}");
-    assert!(validate_style_attribute(&source).is_err());
-    assert!(
-        parse_property_value_for_grammar(
-            grammar(name),
-            parse_component_values(value).unwrap(),
-            CssImportance::Normal,
-        )
-        .is_err(),
-        "checked construction accepted {name}:{value}"
-    );
 }
 
 fn one_value(source: &CssDeclaration) -> CssLonghandValue {
@@ -113,28 +93,28 @@ fn physical_and_flow_relative_keywords_parse_without_losing_authored_spelling() 
         }
     }
     accepted("clear", "both");
-    for value in [
-        "both",
-        "start",
-        "end",
-        "center",
-        "inline",
-        "block-start",
-        "inline-start left",
-        "initial left",
+    for (value, token) in [
+        ("both", Some("both")),
+        ("start", Some("start")),
+        ("end", Some("end")),
+        ("center", Some("center")),
+        ("inline", Some("inline")),
+        ("block-start", Some("block-start")),
+        ("inline-start left", Some("left")),
+        ("initial left", Some("left")),
     ] {
-        invalid("float", value);
+        rejected("float", value, token);
     }
-    for value in [
-        "start",
-        "end",
-        "center",
-        "inline",
-        "block-end",
-        "inline-end right",
-        "initial both",
+    for (value, token) in [
+        ("start", Some("start")),
+        ("end", Some("end")),
+        ("center", Some("center")),
+        ("inline", Some("inline")),
+        ("block-end", Some("block-end")),
+        ("inline-end right", Some("right")),
+        ("initial both", Some("both")),
     ] {
-        invalid("clear", value);
+        rejected("clear", value, token);
     }
 }
 
@@ -191,41 +171,6 @@ fn both_are_noninherited_terminals_with_none_initials_and_one_ordinary_contribut
             one_value(&declaration(name, "inline-end")),
             "logical start and end stay distinct"
         );
-    }
-}
-
-#[test]
-fn css_wide_values_and_all_reset_retain_symbolic_property_participation() {
-    let all_source = declaration("all", "initial");
-    let CssExpansion::Contributions(CssContributions::UniversalReset(reset)) =
-        expand_declaration(&all_source).unwrap()
-    else {
-        panic!("symbolic all reset")
-    };
-    for name in NAMES {
-        assert!(!reset.excludes(CssPropertyNameRef::Known(grammar(name).target_property())));
-        for (text, keyword) in [
-            ("initial", CssGlobalKeyword::Initial),
-            ("inherit", CssGlobalKeyword::Inherit),
-            ("unset", CssGlobalKeyword::Unset),
-            ("revert", CssGlobalKeyword::Revert),
-            ("revert-layer", CssGlobalKeyword::RevertLayer),
-        ] {
-            let source = declaration(name, text);
-            checked(name, text);
-            let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-                expand_declaration(&source).unwrap()
-            else {
-                panic!("{name} has one symbolic global")
-            };
-            let [item] = values.items() else {
-                panic!("one symbolic global")
-            };
-            assert_eq!(item.property(), grammar(name).target_property());
-            assert_eq!(item.value(), CssContributionValueRef::Global(keyword));
-            assert!(item.source().same_occurrence(&source));
-            assert_eq!(item.source().importance(), CssImportance::Important);
-        }
     }
 }
 

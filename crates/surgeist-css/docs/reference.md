@@ -5283,7 +5283,7 @@ or aliasing.
 
 ```rust
 use surgeist_css::{
-    CssExclusionReason, CssSpecificationTier, CssSupportStatus,
+    CssExclusionReason, CssFeatureKind, CssSpecificationTier, CssSupportStatus,
     conformance_exclusion, feature_metadata, specification_source,
 };
 
@@ -5294,14 +5294,10 @@ assert!(specification_source("o-color4").is_none());
 let importance = feature_metadata("foundation.declaration.importance")
     .expect("atomic parser-facing record");
 assert_eq!(importance.status(), CssSupportStatus::Complete);
-assert!(importance.baseline_alias_targets().is_empty());
 
-let pseudo_elements = feature_metadata("baseline.selector.pseudo-element")
-    .expect("preserved aggregate alias");
-assert_eq!(
-    pseudo_elements.baseline_alias_targets()[0].as_str(),
-    "official.selector.generated",
-);
+let generated = feature_metadata("official.selector.generated")
+    .expect("atomic pseudo-element record");
+assert_eq!(generated.kind(), CssFeatureKind::Selector);
 
 let processing = conformance_exclusion("excluded.O-IMAGES3.processing")
     .expect("official source exclusion");
@@ -5311,15 +5307,13 @@ assert_eq!(
 );
 ```
 
-An atomic feature record is parser-facing and carries one truthful
-`CssSupportStatus`. The four preserved baseline aggregate aliases remain
-queryable and expose their immutable atomic target slices, but they do not own
-parser dispatch. A private reserved coverage slot identifies a later grammar
+Every feature record is atomic and parser-facing, and carries one truthful
+`CssSupportStatus`. A private reserved coverage slot identifies a later grammar
 boundary only: it is not a feature record, has no support status, and does not
 make its spelling recognized. An exclusion is a public source-audit fact for an
 informative, superseded, or out-of-boundary source item; it likewise carries no
 support status and never changes parser diagnostics. Adding registry metadata,
-aliases, reserved slots, exclusions, or implementation inventories does not
+reserved slots, exclusions, or implementation inventories does not
 change accepted CSS, retained syntax, diagnostics, positions, spans, or
 recovery actions.
 
@@ -6929,9 +6923,8 @@ and normalization remain available through the enclosing authored graph.
 ### Media, supports and imports
 
 Media support metadata cites the selected published MQ5 edition as the effective
-source for query grammar and all 37 feature definitions. Historical feature IDs
-and baseline alias memberships remain stable; they do not select superseded
-semantics. The five existing range rows describe complete signed, symbolic and
+source for query grammar and all 37 feature definitions. Feature IDs remain
+stable; they do not select superseded semantics. The five existing range rows describe complete signed, symbolic and
 source-ordered comparison grammar. Metadata does not claim query evaluation
 or checked import construction.
 

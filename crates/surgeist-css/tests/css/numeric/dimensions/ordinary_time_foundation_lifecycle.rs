@@ -443,8 +443,14 @@ fn ordinary_range_malformed_unit_and_trailing_junk_controls() {
             let source = format!("{}:{body}", property.canonical_name());
             let report = parse_style_attribute(&source);
             assert!(report.syntax().is_empty(), "{source}");
-            assert!(!report.is_clean(), "{source}");
-            assert!(validate_style_attribute(&source).is_err(), "{source}");
+            crate::css::support::value_assertions::assert_first_property_rejection(
+                report.diagnostics(),
+                property,
+            );
+            crate::css::support::value_assertions::assert_first_property_rejection(
+                validate_style_attribute(&source).unwrap_err().diagnostics(),
+                property,
+            );
         }
     }
     for property in [
@@ -455,8 +461,14 @@ fn ordinary_range_malformed_unit_and_trailing_junk_controls() {
             let source = format!("{}:{invalid}", property.canonical_name());
             let report = parse_style_attribute(&source);
             assert!(report.syntax().is_empty(), "{source}");
-            assert!(!report.is_clean(), "{source}");
-            assert!(validate_style_attribute(&source).is_err());
+            crate::css::support::value_assertions::assert_first_property_rejection(
+                report.diagnostics(),
+                property,
+            );
+            crate::css::support::value_assertions::assert_first_property_rejection(
+                validate_style_attribute(&source).unwrap_err().diagnostics(),
+                property,
+            );
         }
     }
 }
@@ -667,12 +679,24 @@ fn non_time_iteration_and_easing_controls_preserve_exact_values_and_ranges() {
         easing.timing_functions().values(),
         [CssEasing::CubicBezier(_), CssEasing::Steps(_)]
     ));
-    for source in [
-        "animation-iteration-count:-1e-999",
-        "transition-timing-function:cubic-bezier(-0.1,0,0.9,1)",
-        "transition-timing-function:steps(1,jump-none)",
+    for (source, property) in [
+        (
+            "animation-iteration-count:-1e-999",
+            CssKnownProperty::AnimationIterationCount,
+        ),
+        (
+            "transition-timing-function:cubic-bezier(-0.1,0,0.9,1)",
+            CssKnownProperty::TransitionTimingFunction,
+        ),
+        (
+            "transition-timing-function:steps(1,jump-none)",
+            CssKnownProperty::TransitionTimingFunction,
+        ),
     ] {
-        assert!(validate_style_attribute(source).is_err(), "{source}");
+        crate::css::support::value_assertions::assert_first_property_rejection(
+            validate_style_attribute(source).unwrap_err().diagnostics(),
+            property,
+        );
     }
 }
 
@@ -825,8 +849,14 @@ mod construction {
     fn strict_admission_and_aggregate_construction_reject_original_recovery() {
         let source = "transition-duration: calc(1s";
         let report = parse_style_attribute(source);
-        assert!(!report.is_clean());
-        assert!(validate_style_attribute(source).is_err());
+        crate::css::support::value_assertions::assert_first_code(
+            report.diagnostics(),
+            CssErrorCode::UnexpectedEnd,
+        );
+        crate::css::support::value_assertions::assert_first_code(
+            validate_style_attribute(source).unwrap_err().diagnostics(),
+            CssErrorCode::UnexpectedEnd,
+        );
         let duration = parsed_duration(source);
         let raw = duration.time().calculation().unwrap().clone();
         let component = raw.components().items()[0].clone();
@@ -1119,7 +1149,7 @@ mod construction {
     }
 
     #[test]
-    fn calculation_emission_keeps_existing_simplification_and_unfinished_projection() {
+    fn calculation_emission_keeps_simplification_and_unfinished_projection() {
         for (source, expected) in [
             ("calc(1000ms + 1s)", "calc(2s)".to_owned()),
             // An operation-free leaf keeps its exact coefficient; arithmetic

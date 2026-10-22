@@ -3,6 +3,7 @@
 //! https://www.w3.org/TR/2022/CR-css-variables-1-20220616/#using-variables
 //! The public pending transition preserves original occurrence, priority and origins.
 
+use crate::css::support::value_assertions::assert_first_diagnostic;
 use surgeist_css::*;
 
 #[test]
@@ -87,7 +88,12 @@ fn later_var_commas_are_retained_fallback_tokens_in_known_and_custom_values() {
 fn valid_var_calls_cannot_form_property_names_or_selectors() {
     for source in ["var(--side):20px", "var(--side, margin-top):20px"] {
         let report = parse_declaration(source);
-        assert!(!report.is_clean(), "{source}");
+        assert_first_diagnostic(
+            report.diagnostics(),
+            source,
+            CssErrorCode::UnexpectedToken,
+            "var(",
+        );
         assert!(
             report.syntax().is_none(),
             "variable property name: {source}"
@@ -96,10 +102,20 @@ fn valid_var_calls_cannot_form_property_names_or_selectors() {
     let context = CssNamespaceContext::default();
     for selector in ["var(--selector)", ".item var(--selector, .chosen)"] {
         let report = parse_selector(selector, &context);
-        assert!(!report.is_clean(), "{selector}");
+        assert_first_diagnostic(
+            report.diagnostics(),
+            selector,
+            CssErrorCode::InvalidSelector,
+            "var(",
+        );
         assert!(report.syntax().is_none(), "variable selector: {selector}");
         let rule = parse_rule(&format!("{selector}{{color:red}}"), &context);
-        assert!(!rule.is_clean(), "{selector}");
+        assert_first_diagnostic(
+            rule.diagnostics(),
+            &format!("{selector}{{color:red}}"),
+            CssErrorCode::InvalidSelector,
+            "var(",
+        );
         assert!(
             rule.syntax().is_none(),
             "variable rule selector: {selector}"

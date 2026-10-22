@@ -2,7 +2,7 @@
 //! Expectations follow the pinned 2021-12-09 CR §§2–3 and the selected Color 4/5
 //! specified serialization policy; platform scrollbar rendering remains downstream.
 
-use crate::css::support::style_declaration as declaration;
+use crate::css::support::sole_declaration as declaration;
 use surgeist_css::*;
 
 fn color(text: &str) -> CssColor {

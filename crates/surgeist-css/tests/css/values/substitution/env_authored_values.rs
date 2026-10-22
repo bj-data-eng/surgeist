@@ -141,7 +141,10 @@ fn recovered_neighbor_and_pending_normalization_keep_occurrence_order() {
         report.diagnostics()[0].action(),
         CssRecoveryAction::DropDeclaration
     );
-    assert!(validate_sheet(source).is_err());
+    assert_eq!(
+        validate_sheet(source).unwrap_err().diagnostics(),
+        report.diagnostics()
+    );
     let sheet = normalize_sheet_with_limits(
         report.syntax(),
         CssNormalizationLimits::try_new(0, 1, 2, 2).unwrap(),
@@ -185,12 +188,26 @@ fn recovered_neighbor_and_pending_normalization_keep_occurrence_order() {
             }
         );
     }
-    assert!(
-        normalize_sheet_with_limits(
-            report.syntax(),
-            CssNormalizationLimits::try_new(0, 1, 1, 2).unwrap()
-        )
-        .is_err()
+    // The second retained declaration exceeds a one-declaration budget.
+    let error = normalize_sheet_with_limits(
+        report.syntax(),
+        CssNormalizationLimits::try_new(0, 1, 1, 2).unwrap(),
+    )
+    .unwrap_err();
+    assert_eq!(
+        error.kind(),
+        &CssNormalizationErrorKind::LimitExceeded {
+            resource: CssNormalizationResource::Declarations,
+            limit: 1,
+        }
+    );
+    assert_eq!(
+        error
+            .declaration()
+            .and_then(|declaration| declaration.known()?.substitution_dependent())
+            .map(|value| value.as_css().to_owned())
+            .as_deref(),
+        Some("env(second)")
     );
 }
 

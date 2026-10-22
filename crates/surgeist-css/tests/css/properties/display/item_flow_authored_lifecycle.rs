@@ -2,6 +2,7 @@
 //! supplies the finite longhands; the adopted product policy supplies full
 //! D/W/P/T output, authored wrap facet preservation and fixed-child costs.
 
+use crate::css::support::serialization_limits::assert_limits;
 use surgeist_css::*;
 
 const DIRECTIONS: [(CssItemDirection, &str); 5] = [
@@ -77,70 +78,25 @@ fn fronts(text: &str) -> [CssDeclaration; 2] {
     [report.syntax()[0].clone(), constructed]
 }
 
-fn bounded(
-    serialize: impl Fn(
-        CssSpecifiedValueSerializationLimits,
-    ) -> Result<String, CssSpecifiedValueSerializationError>,
-    expected: &str,
-    inputs: usize,
-    projections: usize,
-) {
-    use CssSpecifiedValueSerializationErrorKind as Kind;
-    use CssSpecifiedValueSerializationLimits as Limits;
-    assert_eq!(
-        serialize(Limits::new(inputs, projections, expected.len())).unwrap(),
-        expected
-    );
-    for (limits, kind) in [
-        (
-            Limits::new(inputs - 1, projections, expected.len()),
-            Kind::InputNodeLimit,
-        ),
-        (
-            Limits::new(inputs, projections - 1, expected.len()),
-            Kind::ProjectionNodeLimit,
-        ),
-        (
-            Limits::new(inputs, projections, expected.len() - 1),
-            Kind::ByteLimit,
-        ),
-    ] {
-        assert_eq!(serialize(limits).unwrap_err().kind(), kind);
-    }
-    assert_eq!(
-        serialize(Limits::new(inputs, projections, expected.len())).unwrap(),
-        expected
-    );
-}
-
 #[test]
 fn every_typed_longhand_state_emits_its_independent_text_and_exact_facet_costs() {
     for (value, expected) in DIRECTIONS {
         assert_eq!(value.serialize_specified().unwrap(), expected);
-        bounded(
-            |limits| value.serialize_specified_with_limits(limits),
-            expected,
-            1,
-            1,
-        );
+        assert_limits(expected, 1, 1, |limits| {
+            value.serialize_specified_with_limits(limits)
+        });
     }
     for (value, expected, nodes) in WRAPS {
         assert_eq!(value.serialize_specified().unwrap(), expected);
-        bounded(
-            |limits| value.serialize_specified_with_limits(limits),
-            expected,
-            nodes,
-            nodes,
-        );
+        assert_limits(expected, nodes, nodes, |limits| {
+            value.serialize_specified_with_limits(limits)
+        });
     }
     for (value, expected, nodes) in PACKS {
         assert_eq!(value.serialize_specified().unwrap(), expected);
-        bounded(
-            |limits| value.serialize_specified_with_limits(limits),
-            expected,
-            nodes,
-            nodes,
-        );
+        assert_limits(expected, nodes, nodes, |limits| {
+            value.serialize_specified_with_limits(limits)
+        });
     }
 }
 
@@ -162,12 +118,9 @@ fn all_480_complete_typed_keyword_tuples_reparse_without_erasing_wrap_states() {
                     assert_eq!(value.tolerance(), &tolerance);
                     assert_eq!(value.serialize_specified().unwrap(), expected);
                     let nodes = 2 + wrap_nodes + pack_nodes;
-                    bounded(
-                        |limits| value.serialize_specified_with_limits(limits),
-                        &expected,
-                        nodes,
-                        nodes,
-                    );
+                    assert_limits(&expected, nodes, nodes, |limits| {
+                        value.serialize_specified_with_limits(limits)
+                    });
                     for declaration in fronts(&expected) {
                         let parsed = typed(&declaration);
                         assert_eq!(parsed, value, "{expected}");
@@ -210,12 +163,9 @@ fn intrinsic_initial_payloads_and_omitted_whole_constituents_match_typed_default
         default.serialize_specified().unwrap(),
         "auto auto normal normal"
     );
-    bounded(
-        |limits| default.serialize_specified_with_limits(limits),
-        "auto auto normal normal",
-        4,
-        4,
-    );
+    assert_limits("auto auto normal normal", 4, 4, |limits| {
+        default.serialize_specified_with_limits(limits)
+    });
 
     for property in [
         CssKnownProperty::ItemDirection,
@@ -322,12 +272,9 @@ fn constructed_symbolic_tolerance_composes_without_changing_owning_work_costs() 
         tolerance,
     );
     let expected = "row auto normal calc(2em + 1px)";
-    bounded(
-        |limits| value.serialize_specified_with_limits(limits),
-        expected,
-        7,
-        8,
-    );
+    assert_limits(expected, 7, 8, |limits| {
+        value.serialize_specified_with_limits(limits)
+    });
     for declaration in fronts(expected) {
         let reparsed = typed(&declaration);
         assert_eq!(reparsed.direction(), value.direction());

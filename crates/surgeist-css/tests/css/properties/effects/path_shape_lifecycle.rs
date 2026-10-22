@@ -4,6 +4,8 @@
 //! Signed/zero arc radii follow the adopted F.6.2 interpretation; flags remain
 //! single ASCII 0/1 characters. SVG spelling is retained, never float-normalized.
 
+use crate::css::support::property_admission::assert_checked_matches_diagnostic;
+use crate::css::support::property_admission::validated_declaration;
 use surgeist_css::*;
 
 fn clip(source: &CssDeclaration) -> &CssClipPath {
@@ -15,24 +17,18 @@ fn clip(source: &CssDeclaration) -> &CssClipPath {
     value.value()
 }
 
-fn declaration(value: &str) -> CssDeclaration {
-    let css = format!("clip-path:{value}!important");
-    let report = parse_style_attribute(&css);
-    assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
-    assert_eq!(validate_style_attribute(&css), Ok(report.syntax().clone()));
-    let [source] = report.syntax().as_slice() else {
-        panic!("one declaration")
-    };
+fn clip_path_declaration(value: &str) -> CssDeclaration {
+    let source = validated_declaration("clip-path", value, CssImportance::Important);
     if let Some(CssKnownPropertyValueRef::ClipPath(parsed)) =
         source.known().unwrap().property_value()
     {
         assert_eq!(parsed.as_css(), value, "authored CSS envelope");
     }
-    source.clone()
+    source
 }
 
 fn accept(authored: &str, expected: &str) {
-    let source = declaration(authored);
+    let source = clip_path_declaration(authored);
     assert_eq!(clip(&source).serialize_specified().unwrap(), expected);
     let components = parse_component_values(authored).unwrap();
     let checked = parse_property_value(
@@ -221,14 +217,7 @@ fn reject(value: &str) {
         validate_style_attribute(&css).unwrap_err().diagnostics(),
         report.diagnostics()
     );
-    assert!(
-        parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::ClipPath),
-            parse_component_values(value).unwrap(),
-            CssImportance::Normal
-        )
-        .is_err()
-    );
+    assert_checked_matches_diagnostic(CssKnownProperty::ClipPath, value, diagnostic);
 }
 
 #[test]
@@ -338,7 +327,10 @@ fn strict_recovered(value: &str, expected: &str) {
             .iter()
             .any(|d| d.action() == CssRecoveryAction::RetainWithImplicitClosure)
     );
-    assert!(validate_style_attribute(&css).is_err());
+    assert_eq!(
+        validate_style_attribute(&css).unwrap_err().diagnostics(),
+        report.diagnostics()
+    );
     assert_eq!(
         clip(&report.syntax()[0]).serialize_specified().unwrap(),
         expected
@@ -361,7 +353,7 @@ fn strict_recovered(value: &str, expected: &str) {
     assert_eq!(at.source().as_str(), value);
     assert_eq!(at.span().start().byte_offset().value(), value.len());
     assert_eq!(at.span().end().byte_offset().value(), value.len());
-    let source = declaration("var(--clip)");
+    let source = clip_path_declaration("var(--clip)");
     let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
         panic!("pending clip")
     };
@@ -446,7 +438,7 @@ fn assert_origin(origin: &CssValueOrigin, source: &str, start: usize, length: us
 
 #[test]
 fn pending_path_reentry_is_strict_reusable_and_preserves_authored_replacement_origins() {
-    let source = declaration("var(--path)");
+    let source = clip_path_declaration("var(--path)");
     let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
         panic!("pending path")
     };
@@ -567,7 +559,7 @@ fn normalization_retains_path_family_fill_importance_and_source_order_after_reco
 }
 
 #[test]
-fn existing_clip_serializer_charges_path_string_fill_and_box_cumulatively() {
+fn clip_serializer_charges_path_string_fill_and_box_cumulatively() {
     use CssSpecifiedValueSerializationErrorKind as K;
     use CssSpecifiedValueSerializationLimits as L;
     for (authored, expected, nodes) in [
@@ -579,7 +571,7 @@ fn existing_clip_serializer_charges_path_string_fill_and_box_cumulatively() {
             5,
         ),
     ] {
-        let source = declaration(authored);
+        let source = clip_path_declaration(authored);
         let before = source.clone();
         let value = clip(&source);
         assert_eq!(
@@ -611,7 +603,7 @@ fn existing_clip_serializer_charges_path_string_fill_and_box_cumulatively() {
 
 #[test]
 fn pending_clip_reentry_rejects_recovered_circle_and_rect_before_canonical_closure() {
-    let source = declaration("var(--clip)");
+    let source = clip_path_declaration("var(--clip)");
     let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
         panic!("pending clip")
     };

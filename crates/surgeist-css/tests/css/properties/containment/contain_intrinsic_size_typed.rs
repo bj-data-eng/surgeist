@@ -1,3 +1,5 @@
+use crate::css::support::property_admission::{assert_component_rejected, assert_numeric_rejected};
+use surgeist_css::CssNumericConstructionErrorKind;
 use surgeist_css::{
     CssComponentValue, CssContainIntrinsicSize, CssContainIntrinsicSizeFallback,
     CssContainIntrinsicSizeValue, CssLengthCalculation, CssSpecifiedNonNegativeLength,
@@ -56,10 +58,17 @@ fn checked_nonnegative_length_preserves_exact_literal_domain() {
     let huge = length("1e999px").serialize_specified().unwrap();
     assert_eq!(huge.len(), 1002); // 1 followed by 999 zeroes, then px.
     assert!(huge.starts_with('1') && huge.ends_with("px"));
-    for text in ["1", "1%", "-1px", "-1e-999px", "1fr"] {
-        assert!(
-            CssSpecifiedNonNegativeLength::try_from_component(component(text)).is_err(),
-            "{text}"
+    for (text, kind) in [
+        ("1", CssNumericConstructionErrorKind::RootDomainMismatch),
+        ("1%", CssNumericConstructionErrorKind::RootDomainMismatch),
+        ("-1px", CssNumericConstructionErrorKind::OutOfRange),
+        ("-1e-999px", CssNumericConstructionErrorKind::OutOfRange),
+        ("1fr", CssNumericConstructionErrorKind::RootDomainMismatch),
+    ] {
+        assert_component_rejected(
+            CssSpecifiedNonNegativeLength::try_from_component,
+            component(text),
+            kind,
         );
     }
 }
@@ -74,7 +83,10 @@ fn bare_calculation_roots_reenter_ordinary_admission_but_negative_math_stays_def
     assert_eq!(value.serialize_specified().unwrap(), "2px");
     let negative =
         CssLengthCalculation::try_from_components(parse_component_values("-1px").unwrap()).unwrap();
-    assert!(CssSpecifiedNonNegativeLength::try_from_calculation(negative).is_err());
+    assert_numeric_rejected(
+        CssSpecifiedNonNegativeLength::try_from_calculation(negative),
+        CssNumericConstructionErrorKind::OutOfRange,
+    );
 
     let symbolic = length("calc(1px - 2px)");
     assert!(symbolic.calculation().is_some());

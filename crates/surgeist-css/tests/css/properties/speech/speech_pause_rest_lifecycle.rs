@@ -6,9 +6,10 @@
 //! Component serialization below preserves tokens; canonical typed specified
 //! serialization will accompany the functional new model API.
 
+use crate::css::support::named_property::longhand_contributions as expanded;
 use crate::css::support::{
     important_speech_components as checked, important_speech_declaration as declaration,
-    speech_property as property,
+    known_property as property,
 };
 use surgeist_css::*;
 
@@ -22,15 +23,6 @@ const ALL: [&str; 6] = [
     "rest",
 ];
 const STRENGTHS: [&str; 6] = ["none", "x-weak", "weak", "medium", "strong", "x-strong"];
-
-fn expanded(source: &CssDeclaration) -> CssLonghandContributions {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
-    else {
-        panic!("ordinary/global declaration must complete")
-    };
-    values
-}
 
 fn ordinary(name: &str, text: &str) -> CssLonghandValue {
     let values = expanded(&declaration(name, text));
@@ -402,7 +394,13 @@ fn pause_rest_authored_case_escapes_comments_and_exact_numbers_survive_bounded_s
                 .as_css(),
             text
         );
-        assert!(components.serialize_with_limit(text.len() - 1).is_err());
+        assert_eq!(
+            components
+                .serialize_with_limit(text.len() - 1)
+                .unwrap_err()
+                .kind(),
+            CssComponentValueErrorKind::ByteLimit
+        );
         assert_eq!(components.serialize().unwrap().as_css(), text);
     }
 }

@@ -5,13 +5,15 @@
 //! contribute decoded code points to one identifier token.
 
 use crate::css::support::descriptor_phases;
+use crate::css::support::rules::origin_text;
+use crate::css::support::rules::sole_counter_style as parsed_counter;
 use descriptor_phases::*;
 
 use surgeist_css::{
-    CssComponentValueRef, CssCounterStyleName, CssCounterStyleRule, CssCounterStyleSpeakAs,
-    CssCounterStyleSystem, CssCounterStyleValue, CssCounterSymbol, CssCounterSymbolIdent,
-    CssKnownPropertyValueRef, CssListStyleTypeValue, CssParsedOrigin, CssRecoveryAction, CssRule,
-    CssValueOrigin, CssValueTokenRef, parse_sheet, parse_style_attribute,
+    CssComponentValueRef, CssCounterStyleName, CssCounterStyleSpeakAs, CssCounterStyleSystem,
+    CssCounterStyleValue, CssCounterSymbol, CssCounterSymbolIdent, CssKnownPropertyValueRef,
+    CssListStyleTypeValue, CssRecoveryAction, CssRule, CssValueOrigin, CssValueTokenRef,
+    parse_sheet, parse_style_attribute,
 };
 
 // Independent fixture transcribed from the selected Counter Styles 3 §6 and §7
@@ -102,20 +104,6 @@ const GENERIC_RESERVED: [&str; 8] = [
     "DeFaUlT",
     "InHeRiT",
 ];
-
-fn parsed_counter(source: &str) -> CssCounterStyleRule {
-    let report = parse_sheet(source);
-    assert!(report.is_clean(), "{source:?}: {:?}", report.diagnostics());
-    let [CssRule::CounterStyle(rule)] = report.syntax().rules() else {
-        panic!("expected one counter style for {source:?}");
-    };
-    rule.clone()
-}
-
-fn origin_text(origin: &CssParsedOrigin) -> &str {
-    &origin.source().as_str()
-        [origin.span().start().byte_offset().value()..origin.span().end().byte_offset().value()]
-}
 
 #[test]
 fn checked_counter_names_admit_decoded_identifiers_requiring_escapes() {

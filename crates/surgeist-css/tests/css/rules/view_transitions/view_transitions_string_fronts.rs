@@ -1,19 +1,16 @@
-//! Existing public string fronts only: VT1 CRD20240328 §§2.1,3.1,3.2;
+//! Public string fronts: VT1 CRD20240328 §§2.1,3.1,3.2;
 //! selected Selectors4 §3.6.4 and the adopted scoped attachment disposition.
-//! Unexecuted behavioral RED candidate; no proposed API symbols appear here.
+use crate::css::support::rules::{ExpectedRejection, unexpected_token};
+use crate::css::support::sole_declaration;
 use surgeist_css::*;
 
 fn declaration(source: &str) -> CssDeclaration {
-    let report = parse_style_attribute(source);
-    assert!(report.is_clean(), "{source}: {report:?}");
-    let [value] = report.syntax().as_slice() else {
-        panic!("one authored declaration")
-    };
+    let value = sole_declaration(source);
     let known = value
         .known()
         .expect("supported typed view-transition-name declaration");
     assert_eq!(known.property().canonical_name(), "view-transition-name");
-    value.clone()
+    value
 }
 
 fn exact(source: &str, specified: &str) -> CssSelector {
@@ -97,11 +94,20 @@ fn substitution_values_keep_the_occurrence_and_strict_reentry() {
         let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
             panic!("pending authored name")
         };
-        assert!(
-            pending
-                .reenter(parse_component_values("auto").unwrap())
-                .is_err()
-        );
+        // VT1 §3.1: view-transition-name is none | <custom-ident> without auto.
+        let error = pending
+            .reenter(parse_component_values("auto").unwrap())
+            .unwrap_err();
+        let CssExpansionErrorKind::InvalidReplacement(replacement) = error.kind() else {
+            panic!("{text}: invalid replacement: {error:?}")
+        };
+        let CssPropertyValueErrorKind::Grammar(detail) = replacement.kind() else {
+            panic!("{text}: grammar failure: {replacement:?}")
+        };
+        ExpectedRejection::new(CssErrorCode::InvalidPropertyValue)
+            .named("view-transition-name")
+            .at("auto")
+            .assert_kind(detail);
         let replacement = parse_component_values("Card").unwrap();
         let CssContributions::Longhands(items) = pending.reenter(replacement.clone()).unwrap()
         else {
@@ -165,6 +171,7 @@ fn only_child_permission_is_scoped_and_propagates_to_logical_suffixes() {
     ] {
         let report = parse_selector(source, &CssNamespaceContext::default());
         assert!(report.syntax().is_none(), "{source}: {report:?}");
+        ExpectedRejection::new(CssErrorCode::InvalidSelector).assert_first(&report);
     }
 }
 
@@ -188,29 +195,40 @@ fn defined_compound_chains_and_imported_receiving_permissions_are_admitted() {
 }
 
 #[test]
-fn malformed_function_forms_and_existing_lexical_controls_stay_rejected() {
+fn malformed_function_forms_and_lexical_controls_stay_rejected() {
     exact(".control::before:hover", ".control::before:hover");
-    for source in [
-        ":view-transition",
-        "::view-transition()",
-        "::view-transition-group",
-        "::view-transition-group()",
-        "::view-transition-group(A B)",
-        "::view-transition-group(A,B)",
-        "::view-transition-group(\"A\")",
-        "::view-transition-group(1)",
-        "::view-transition-group(default)",
-        "::view-transition-group(initial)",
-        "::view-transition-group(**)",
-        "::view-transition-group(A.x)",
-        "::view-transition-group(.x)",
-        "::view-transition-group (A)",
-        ":: view-transition",
-        ":unknown()",
-        "::before > .child",
+    // VT1 §3.2: the named pseudo-elements take one <pt-name-selector>,
+    // whose <custom-ident> excludes CSS-wide keywords and `default`, and
+    // Selectors 4 §3.6.3 admits no combinator after a pseudo-element.
+    let invalid = ExpectedRejection::new(CssErrorCode::InvalidSelector);
+    for (source, expected) in [
+        (":view-transition", invalid.clone()),
+        ("::view-transition()", invalid.clone()),
+        ("::view-transition-group", invalid.clone()),
+        ("::view-transition-group()", invalid.clone()),
+        ("::view-transition-group(A B)", invalid.clone().at("B")),
+        ("::view-transition-group(A,B)", invalid.clone().at(",")),
+        ("::view-transition-group(\"A\")", unexpected_token("\"A\"")),
+        ("::view-transition-group(1)", unexpected_token("1")),
+        (
+            "::view-transition-group(default)",
+            invalid.clone().at("default"),
+        ),
+        (
+            "::view-transition-group(initial)",
+            invalid.clone().at("initial"),
+        ),
+        ("::view-transition-group(**)", invalid.clone()),
+        ("::view-transition-group(A.x)", invalid.clone()),
+        ("::view-transition-group(.x)", unexpected_token(".")),
+        ("::view-transition-group (A)", invalid.clone()),
+        (":: view-transition", invalid.clone()),
+        (":unknown()", invalid.clone()),
+        // The diagnostic names `child` rather than the combinator.
+        ("::before > .child", invalid.clone()),
     ] {
         let report = parse_selector(source, &CssNamespaceContext::default());
         assert!(report.syntax().is_none(), "{source}: {report:?}");
-        assert!(!report.is_clean());
+        expected.assert_first(&report);
     }
 }

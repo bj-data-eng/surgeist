@@ -3,6 +3,7 @@
 //! Expected bytes and counts are authored from those contracts, not captured.
 
 use crate::css::support::property_expectations as expectations;
+use crate::css::support::value_assertions::specified_property_value as read;
 use expectations::{CASES, INDEPENDENT_TERMINALS, MetadataExpectation};
 use surgeist_css::*;
 
@@ -64,11 +65,6 @@ fn declarations(source: &str) -> CssDeclarationList {
 }
 fn specified_block(source: &str) -> CssSpecifiedDeclarationBlock {
     CssSpecifiedDeclarationBlock::try_from_declarations(&declarations(source)).unwrap()
-}
-fn read(block: &CssSpecifiedDeclarationBlock, property: CssKnownProperty) -> Option<String> {
-    block
-        .property_value(CssPropertyNameRef::Known(property))
-        .unwrap()
 }
 
 #[test]
@@ -1018,10 +1014,13 @@ fn keyframe_reentry_preserves_quirks_context_and_genuine_programmatic_absence() 
     let CssExpansion::Pending(pending) = expand_declaration(&ordinary[0]).unwrap() else {
         panic!("pending")
     };
-    assert!(
-        pending
-            .reenter(parse_component_values("1").unwrap())
-            .is_err()
+    let detail = crate::css::support::value_assertions::replacement_rejection(
+        pending.reenter(parse_component_values("1").unwrap()),
+        CssKnownProperty::Width,
+    );
+    assert_eq!(
+        detail.encountered().map(CssTokenSummary::authored),
+        Some("1")
     );
 
     let source = parse_property_value(
@@ -1936,7 +1935,7 @@ fn ordinary_time_pair_providers_keep_their_own_comparison_and_projection_tariffs
 }
 
 #[test]
-fn ordinary_numeric_owner_keeps_its_existing_math_and_keyword_tariffs() {
+fn ordinary_numeric_owner_keeps_its_math_and_keyword_tariffs() {
     let calculation =
         CssTimeCalculation::try_from_components(parse_component_values("calc(1s + 2s)").unwrap())
             .unwrap();
@@ -2224,7 +2223,7 @@ fn color_mix_inverse_compares_exact_effective_declared_shares_and_default_interp
 }
 
 #[test]
-fn ordinary_color_owner_keeps_its_existing_exact_coefficient_tariff() {
+fn ordinary_color_owner_keeps_its_exact_coefficient_tariff() {
     let report = parse_style_attribute("color:color(srgb 1 0 0)");
     assert!(report.is_clean());
     let CssKnownPropertyValueRef::Color(value) = report.syntax()[0]
@@ -2377,7 +2376,7 @@ fn exact_color_coefficient_probe_and_output_share_the_whole_new_request_budget()
 }
 
 #[test]
-fn color_pair_and_quad_owners_keep_existing_ordering_and_tariffs() {
+fn color_pair_and_quad_owners_keep_their_ordering_and_tariffs() {
     for property in ["border-block-color", "border-color"] {
         let list = declarations(&format!("{property}:currentcolor color(srgb 1 0 0)"));
         let serialize = |limits| match list[0].known().unwrap().property_value().unwrap() {
@@ -3020,10 +3019,12 @@ fn svg_direct_pending_and_completed_reentry_keep_original_and_replacement_origin
         assert!(value.source().same_occurrence(&original));
         assert_eq!(value.replacement_components(), Some(&replacement));
     }
+    let error = pending
+        .reenter(parse_component_values("var(--G)").unwrap())
+        .unwrap_err();
     assert!(
-        pending
-            .reenter(parse_component_values("var(--G)").unwrap())
-            .is_err()
+        matches!(error.kind(), CssExpansionErrorKind::ResidualSubstitution),
+        "{error:?}"
     );
     assert!(pending.source().same_occurrence(&original));
     assert_eq!(
@@ -3928,7 +3929,7 @@ fn nested_grid_math_verification_admits_selected_leaf_work_and_original_terminal
 }
 
 #[test]
-fn normal_cue_pair_provider_still_visits_explicit_redundant_children() {
+fn normal_cue_pair_provider_visits_explicit_redundant_children() {
     let list = declarations("cue:url(a) 1dB url('a') 01DB");
     let before = list.clone();
     let CssKnownPropertyValueRef::Cue(wrapper) = list[0].known().unwrap().property_value().unwrap()

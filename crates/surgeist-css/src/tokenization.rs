@@ -12,9 +12,9 @@ use std::ops::Range;
 use cssparser::{Parser, ParserInput, Token};
 
 pub(crate) mod bounded;
-pub(crate) mod color_tokens;
 pub(crate) mod name;
 pub(crate) mod number;
+pub(crate) mod tokenizer;
 
 // Test-only work counter: the input bytes walked by `prepare` on this thread.
 #[cfg(test)]

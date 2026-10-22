@@ -280,7 +280,7 @@ fn feature_first_width_rejects_custom_looking_values_with_unknown_truth() {
 }
 
 #[test]
-fn ambiguous_operands_keep_existing_feature_candidate_precedence() {
+fn ambiguous_operands_keep_feature_candidate_precedence() {
     let source = "(--x < width)";
     let report = parse_media_query(source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());

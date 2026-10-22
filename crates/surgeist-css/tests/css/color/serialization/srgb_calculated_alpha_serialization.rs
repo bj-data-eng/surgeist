@@ -4,6 +4,10 @@
 //! Binary64 values are clamped before six-place, positive-tie formatting;
 //! exact unity is tested before rounding. Graph and scratch work precede omission.
 
+use crate::css::support::color_and_selector_fixtures::{
+    assert_bounded_serialization, assert_color_limit_error as assert_error, assert_color_limits,
+    assert_scratch_serialization,
+};
 use crate::css::support::{
     checked_color as color, checked_color_declaration as declaration,
     component_values as components, declaration_color,
@@ -504,84 +508,52 @@ constructor_case!(checked_rgb_programmatic_graph_retained, "rgb", true);
 constructor_case!(checked_hsl_programmatic_graph_retained, "hsl", true);
 constructor_case!(checked_hwb_programmatic_graph_retained, "hwb", true);
 
-fn assert_error(value: &CssColor, limits: Limits, expected: Kind) {
-    let before = value.clone();
-    let result = value.to_specified_css_with_limits(limits);
-    assert_eq!(result, value.to_specified_css_with_limits(limits));
-    assert_eq!(value, &before);
-    assert_eq!(result.unwrap_err().kind(), expected, "{limits:?}");
-}
-
-fn assert_limits(source: &str, expected: &str, inputs: usize, projections: usize, bytes: usize) {
-    let value = color(source);
-    for (limits, kind) in [
-        (
-            Limits::new(inputs - 1, usize::MAX, usize::MAX),
-            Kind::InputNodeLimit,
-        ),
-        (
-            Limits::new(usize::MAX, projections - 1, usize::MAX),
-            Kind::ProjectionNodeLimit,
-        ),
-        (Limits::new(inputs, projections, bytes - 1), Kind::ByteLimit),
-    ] {
-        assert_error(&value, limits, kind);
-    }
-    let limits = Limits::new(inputs, projections, bytes);
-    let before = value.clone();
-    let result = value.to_specified_css_with_limits(limits);
-    assert_eq!(result, value.to_specified_css_with_limits(limits));
-    assert_eq!(value, before);
-    assert_eq!(result.unwrap(), expected);
-}
-
 #[test]
 fn missing_rgb_scalar_tie_exact_cumulative_limits() {
     // Root plus three missing channels = 4/4. Wrapper/product/two leaves
     // = 4 input; leaves/inverse/resolved product = 4 projection. 37 UTF-8 bytes.
-    assert_limits(
-        "rgb(none none none / calc(1 / 128))",
-        "color(srgb none none none / 0.007813)",
+    let expected = "color(srgb none none none / 0.007813)";
+    assert_eq!(expected.len(), 37);
+    assert_color_limits(
+        &color("rgb(none none none / calc(1 / 128))"),
+        expected,
         8,
         8,
-        37,
     );
 }
 
 #[test]
 fn missing_rgb_percentage_tie_charges_scale_nodes() {
     // 4/4 base + 2/1 calc + 0/3 percentage conversion = 6/8.
-    assert_limits(
-        "rgb(none none none / calc(.78125%))",
-        "color(srgb none none none / 0.007813)",
+    let expected = "color(srgb none none none / 0.007813)";
+    assert_eq!(expected.len(), 37);
+    assert_color_limits(
+        &color("rgb(none none none / calc(.78125%))"),
+        expected,
         6,
         8,
-        37,
     );
 }
 
 #[test]
-fn missing_rgb_omission_still_charges_capture() {
+fn missing_rgb_omission_charges_capture() {
     // 4/4 base + wrapper/scalar 2/1, final text 26 bytes.
-    assert_limits(
-        "rgb(none none none / calc(2))",
-        "color(srgb none none none)",
-        6,
-        5,
-        26,
-    );
+    let expected = "color(srgb none none none)";
+    assert_eq!(expected.len(), 26);
+    assert_color_limits(&color("rgb(none none none / calc(2))"), expected, 6, 5);
 }
 
 #[test]
 fn long_opaque_alpha_requires_scratch_before_omission() {
     // calc( + 21 integer digits + ) = 27 scratch bytes. The resulting opaque
     // color is 26 bytes; 26 must fail despite fitting that final output.
-    assert_limits(
-        "rgb(none none none / calc(100000000000000000000))",
+    assert_scratch_serialization(
+        &color("rgb(none none none / calc(100000000000000000000))"),
         "color(srgb none none none)",
         6,
         5,
         27,
+        CssColor::to_specified_css_with_limits,
     );
 }
 
@@ -590,44 +562,14 @@ fn nested_mix_prefixes_share_input_projection_and_final_bytes() {
     // Two Mix roots + named siblings = 4/4, child 8/8, two calculated
     // weights 4/2. Prefixes consume 20 bytes before the child's capture.
     let expected = "color-mix(color-mix(color(srgb none none none / 0.007813) calc(50%), blue) calc(50%), red)";
-    assert_limits(
-        "color-mix(color-mix(rgb(none none none / calc(1 / 128)) calc(50%), blue) calc(50%), red)",
+    assert_color_limits(
+        &color(
+            "color-mix(color-mix(rgb(none none none / calc(1 / 128)) calc(50%), blue) calc(50%), red)",
+        ),
         expected,
         16,
         14,
-        expected.len(),
     );
-}
-
-fn assert_pair_limits(
-    pair: &CssBorderColorPair,
-    expected: &str,
-    inputs: usize,
-    projections: usize,
-    bytes: usize,
-) {
-    let before = pair.clone();
-    for (limits, kind) in [
-        (
-            Limits::new(inputs - 1, usize::MAX, usize::MAX),
-            Kind::InputNodeLimit,
-        ),
-        (
-            Limits::new(usize::MAX, projections - 1, usize::MAX),
-            Kind::ProjectionNodeLimit,
-        ),
-        (Limits::new(inputs, projections, bytes - 1), Kind::ByteLimit),
-    ] {
-        let result = pair.serialize_specified_with_limits(limits);
-        assert_eq!(result, pair.serialize_specified_with_limits(limits));
-        assert_eq!(pair, &before);
-        assert_eq!(result.unwrap_err().kind(), kind);
-    }
-    let limits = Limits::new(inputs, projections, bytes);
-    let result = pair.serialize_specified_with_limits(limits);
-    assert_eq!(result, pair.serialize_specified_with_limits(limits));
-    assert_eq!(pair, &before);
-    assert_eq!(result.unwrap(), expected);
 }
 
 #[test]
@@ -636,7 +578,13 @@ fn sibling_calculations_share_all_three_limits() {
     let child = color("rgb(none none none / calc(1 / 128))");
     let pair = CssBorderColorPair::new(child.clone(), Some(child));
     let expected = "color(srgb none none none / 0.007813) color(srgb none none none / 0.007813)";
-    assert_pair_limits(&pair, expected, 17, 17, expected.len());
+    assert_bounded_serialization(
+        &pair,
+        expected,
+        17,
+        17,
+        CssBorderColorPair::serialize_specified_with_limits,
+    );
 }
 
 #[test]
@@ -649,7 +597,14 @@ fn utf8_prefix_spends_bytes_before_long_opaque_capture() {
         Some(color("rgb(none none none / calc(100000000000000000000))")),
     );
     let expected = "color(--é none) color(srgb none none none)";
-    assert_pair_limits(&pair, expected, 9, 8, expected.len() + 1);
+    assert_scratch_serialization(
+        &pair,
+        expected,
+        9,
+        8,
+        expected.len() + 1,
+        CssBorderColorPair::serialize_specified_with_limits,
+    );
 }
 
 #[test]
@@ -660,13 +615,9 @@ fn mix_prefix_spends_bytes_before_long_opaque_capture() {
     let value =
         color("color-mix(rgb(none none none / calc(100000000000000000000)) calc(50%), blue)");
     assert_error(&value, Limits::new(10, 8, 36), Kind::ByteLimit);
-    assert_limits(
-        "color-mix(rgb(none none none / calc(100000000000000000000)) calc(50%), blue)",
-        "color-mix(color(srgb none none none) calc(50%), blue)",
-        10,
-        8,
-        53,
-    );
+    let expected = "color-mix(color(srgb none none none) calc(50%), blue)";
+    assert_eq!(expected.len(), 53);
+    assert_color_limits(&value, expected, 10, 8);
 }
 
 #[test]

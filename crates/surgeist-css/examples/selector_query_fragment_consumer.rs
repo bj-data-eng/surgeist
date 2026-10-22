@@ -924,7 +924,7 @@ fn exact_depth_and_eof_on_an_ordinary_thread() {
                     520,
                     0,
                     source.len(),
-                    "baseline.media.query-list",
+                    "official.media.query-list-core",
                 );
                 assert_validation_parity(&single);
                 let list = parse_media_query_list(&source);
@@ -969,7 +969,7 @@ fn exact_depth_and_eof_on_an_ordinary_thread() {
                 526,
                 6,
                 6 + nested.len(),
-                "baseline.media.query-list",
+                "official.media.query-list-core",
             );
             assert_validation_parity(&report);
         })

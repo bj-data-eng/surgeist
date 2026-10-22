@@ -4,64 +4,15 @@
 //! distinct roles. Expectations are exact domain/scale and resource oracles,
 //! not browser output or values copied from the implementation under test.
 
-use crate::css::support::lab_direct_component_cases::lab_direct_component_cases;
-use crate::css::support::{
-    checked_color as color, checked_color_declaration as declaration,
-    component_values as components, declaration_color,
+use crate::css::support::lab_direct_component_cases::{
+    assert_specified_text as assert_text, lab_direct_component_cases,
 };
+use crate::css::support::{checked_color as color, component_values as components};
 use surgeist_color::{ColorSpace, HueInterpolation};
 use surgeist_css::*;
 
 type Limits = CssSpecifiedValueSerializationLimits;
 type Kind = CssSpecifiedValueSerializationErrorKind;
-
-fn assert_text(source: &str, expected: &str) {
-    let checked = declaration(source);
-    let source_attribute = format!("color:{source}!important;opacity:.5");
-    let report = parse_style_attribute(&source_attribute);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    assert_eq!(report.syntax().len(), 2);
-    let parsed = &report.syntax()[0];
-    assert_eq!(
-        report.syntax()[1].known().unwrap().property(),
-        CssKnownProperty::Opacity
-    );
-    assert_eq!(checked.importance(), CssImportance::Important);
-    assert_eq!(parsed.importance(), CssImportance::Important);
-    assert_eq!(checked.value_components(), &components(source));
-    assert_eq!(
-        parsed.value_components().serialize().unwrap().as_css(),
-        source
-    );
-    let CssValueOrigin::Parsed(origin) = parsed.value_components().items()[0].origin() else {
-        panic!("real parsed source origin")
-    };
-    assert_eq!(origin.source().as_str(), source_attribute);
-    assert_eq!(origin.span().start().byte_offset().value(), 6);
-    // A function component's public origin is its opening token, including
-    // the authored name and '('; its child and closing tokens own their spans.
-    assert_eq!(
-        origin.span().end().byte_offset().value(),
-        6 + source.find('(').unwrap() + 1
-    );
-    let checked_before = checked.clone();
-    let parsed_before = parsed.clone();
-    // Execute both actual entry routes before asserting either output, so RED
-    // in one route does not prevent the other route's writer from executing.
-    let checked_result = declaration_color(&checked).to_specified_css();
-    let parsed_result = declaration_color(parsed).to_specified_css();
-    assert_eq!(
-        checked_result,
-        declaration_color(&checked).to_specified_css()
-    );
-    assert_eq!(parsed_result, declaration_color(parsed).to_specified_css());
-    assert_eq!(checked, checked_before);
-    assert_eq!(parsed, &parsed_before);
-    assert_eq!(checked_result.unwrap(), expected, "{source}: checked entry");
-    assert_eq!(parsed_result.unwrap(), expected, "{source}: parsed entry");
-    // Reentry complements the explicit independent literal oracle.
-    assert_eq!(color(expected).to_specified_css().unwrap(), expected);
-}
 
 macro_rules! text_case {
     ($name:ident, $source:literal, $expected:literal) => {

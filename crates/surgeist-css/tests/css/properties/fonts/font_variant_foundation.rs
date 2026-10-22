@@ -1,7 +1,11 @@
 //! Font variant grammar from Fonts 4 (2026-09-07), sections 6.8, 6.11 and 9.3.
 //! Expectations come from the pinned specification, not parser output.
 
+use crate::css::support::checked_grammar_declaration as checked;
 use crate::css::support::important_declaration as declaration;
+use crate::css::support::known_property;
+use crate::css::support::named_property::assert_checked_value_rejected_at;
+use crate::css::support::selected_grammar as grammar;
 use surgeist_css::*;
 
 const MEMBERS: [&str; 7] = [
@@ -13,19 +17,6 @@ const MEMBERS: [&str; 7] = [
     "font-variant-position",
     "font-variant-emoji",
 ];
-
-fn grammar(name: &str) -> CssPropertyGrammar {
-    CssPropertyGrammar::from_name(name).unwrap_or_else(|| panic!("missing grammar: {name}"))
-}
-
-fn checked(name: &str, value: &str) -> CssDeclaration {
-    parse_property_value_for_grammar(
-        grammar(name),
-        parse_component_values(value).unwrap(),
-        CssImportance::Important,
-    )
-    .unwrap_or_else(|error| panic!("checked {name}:{value}: {error:?}"))
-}
 
 fn accepted(name: &str, value: &str) {
     let parsed = declaration(name, value);
@@ -40,7 +31,8 @@ fn accepted(name: &str, value: &str) {
     );
 }
 
-fn rejected(name: &str, value: &str) {
+fn rejected<'a>(name: &str, value: &str, rest: impl Into<Option<&'a str>>) {
+    let rest = rest.into();
     let target = grammar(name).target_property();
     let source = format!("color:red;{name}:{value};color:blue");
     let report = parse_style_attribute(&source);
@@ -51,7 +43,10 @@ fn rejected(name: &str, value: &str) {
         )
     };
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    assert_ne!(diagnostic.error().code(), CssErrorCode::UnknownProperty);
+    assert_eq!(
+        diagnostic.error().code(),
+        CssErrorCode::InvalidPropertyValue
+    );
     assert_eq!(
         report.syntax().len(),
         2,
@@ -66,20 +61,12 @@ fn rejected(name: &str, value: &str) {
         CssKnownProperty::Color
     );
     assert!(validate_style_attribute(&source).is_err());
-    assert!(
-        parse_property_value_for_grammar(
-            grammar(name),
-            parse_component_values(value).unwrap(),
-            CssImportance::Normal,
-        )
-        .is_err(),
-        "checked construction accepted {name}:{value}"
-    );
+    assert_checked_value_rejected_at(known_property(name), value, rest);
     assert_eq!(target.canonical_name(), name);
 }
 
 #[test]
-fn existing_family_and_restricted_font_prefix_remain_valid() {
+fn family_and_restricted_font_prefix_are_valid() {
     for (name, value) in [
         ("font-variant-ligatures", "common-ligatures no-contextual"),
         ("font-variant-caps", "small-caps"),
@@ -137,35 +124,43 @@ fn emoji_has_four_independent_keyword_choices() {
 
 #[test]
 fn alternates_reject_empty_extra_duplicate_and_bad_separator_forms() {
-    for value in [
-        "stylistic()",
-        "stylistic(A, B)",
-        "styleset()",
-        "styleset(A B)",
-        "character-variant(A,)",
-        "swash(A B)",
-        "historical-forms historical-forms",
-        "stylistic(A) stylistic(B)",
-        "normal historical-forms",
-        "unknown-function(A)",
+    // The implemented location of these rejections differs from the
+    // grammar-derived token (held for review), so only the kind and
+    // property are asserted.
+    rejected("font-variant-alternates", "stylistic(A, B)", None);
+    for (value, rest) in [
+        ("stylistic()", ")"),
+        ("styleset()", ")"),
+        ("styleset(A B)", "B)"),
+        ("character-variant(A,)", ")"),
+        ("swash(A B)", "B)"),
+        ("historical-forms historical-forms", "historical-forms"),
+        ("stylistic(A) stylistic(B)", "stylistic(B)"),
+        ("normal historical-forms", "historical-forms"),
+        ("unknown-function(A)", "unknown-function(A)"),
     ] {
-        rejected("font-variant-alternates", value);
+        rejected("font-variant-alternates", value, rest);
     }
 }
 
 #[test]
 fn emoji_and_shorthand_reject_conflicting_or_exclusive_choices() {
-    for value in ["emoji text", "normal emoji", "unicode unicode", "none"] {
-        rejected("font-variant-emoji", value);
-    }
-    for value in [
-        "normal stylistic(A)",
-        "none emoji",
-        "emoji text",
-        "stylistic(A) stylistic(B)",
-        "styleset(A B)",
+    for (value, rest) in [
+        ("emoji text", "text"),
+        ("normal emoji", "emoji"),
+        ("unicode unicode", "unicode"),
+        ("none", "none"),
     ] {
-        rejected("font-variant", value);
+        rejected("font-variant-emoji", value, rest);
+    }
+    for (value, rest) in [
+        ("normal stylistic(A)", "stylistic(A)"),
+        ("none emoji", "emoji"),
+        ("emoji text", "text"),
+        ("stylistic(A) stylistic(B)", "stylistic(B)"),
+        ("styleset(A B)", "B)"),
+    ] {
+        rejected("font-variant", value, rest);
     }
 }
 

@@ -1,21 +1,7 @@
 //! Independent exact fixtures for the 19 ordinary / 17 scoped variants at
 //! 31dd36b7. Scope boundary grammar is covered by scope_complete_lifecycle.
+use crate::css::support::rules::assert_exact_specified_sheet as exact;
 use surgeist_css::{CssRule, parse_sheet};
-
-fn exact(source: &str, expected: &str) {
-    let report = parse_sheet(source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    let before = report.clone();
-    assert_eq!(report.syntax().to_specified_css().unwrap(), expected);
-    assert_eq!(report, before);
-    let emitted = parse_sheet(expected);
-    assert!(
-        emitted.is_clean(),
-        "{expected}: {:?}",
-        emitted.diagnostics()
-    );
-    assert_eq!(emitted.syntax().to_specified_css().unwrap(), expected);
-}
 
 macro_rules! ordinary {
     ($name:ident, $source:literal, $expected:literal) => {

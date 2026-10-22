@@ -9,6 +9,7 @@
 //! No test depends on an Image counter-symbol variant or new provenance API.
 
 use crate::css::support::descriptor_phases;
+use crate::css::support::rules::sole_counter_style;
 use descriptor_phases::*;
 
 use surgeist_css::{
@@ -21,13 +22,7 @@ use surgeist_css::{
 };
 
 fn clean_rule(body: &str) -> CssCounterStyleRule {
-    let source = format!("@counter-style ImageCase {{ {body} }}");
-    let report = parse_sheet(&source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    let [CssRule::CounterStyle(rule)] = report.syntax().rules() else {
-        panic!("expected one retained counter definition for {source}");
-    };
-    rule.clone()
+    sole_counter_style(&format!("@counter-style ImageCase {{ {body} }}"))
 }
 
 fn assert_output(rule: &CssCounterStyleRule, descriptor: Descriptor, value: &str, body: &str) {

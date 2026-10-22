@@ -1,6 +1,7 @@
 //! WM4 CR2019-07-30 §9.1: digits <integer>?, literal 2..4, inherited, initial none.
 //! Values4 WD2024-03-12 §§5.2/10.9/10.12: integer-token literals;
 //! number-valued math remains authored valid without computed rounding/clamping.
+use crate::css::support::{important_declaration, retained_checked_declaration};
 use surgeist_css::*;
 
 const PROPERTY: CssKnownProperty = CssKnownProperty::TextCombineUpright;
@@ -13,27 +14,6 @@ const ORDINARY: &[&str] = &[
     "DIGITS 4",
     r"d\69 gits 3",
 ];
-
-fn parsed(text: &str) -> CssDeclaration {
-    let report = parse_style_attribute(&format!("text-combine-upright:{text}!important"));
-    assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
-    let [source] = report.syntax().as_slice() else {
-        panic!("one declaration")
-    };
-    source.clone()
-}
-
-fn checked(text: &str) -> CssDeclaration {
-    let components = parse_component_values(text).unwrap();
-    let source = parse_property_value(
-        CssPropertyNameRef::Known(PROPERTY),
-        components.clone(),
-        CssImportance::Important,
-    )
-    .unwrap();
-    assert_eq!(source.value_components(), &components);
-    source
-}
 
 fn assert_ordinary(source: &CssDeclaration, text: &str) {
     let CssKnownPropertyValueRef::TextCombineUpright(value) =
@@ -52,14 +32,14 @@ fn assert_ordinary(source: &CssDeclaration, text: &str) {
 #[test]
 fn parsed_digits_forms_are_known_ordinary_values() {
     for text in ORDINARY {
-        assert_ordinary(&parsed(text), text);
+        assert_ordinary(&important_declaration("text-combine-upright", text), text);
     }
 }
 
 #[test]
 fn checked_digits_forms_retain_supplied_components() {
     for text in ORDINARY {
-        assert_ordinary(&checked(text), text);
+        assert_ordinary(&retained_checked_declaration(PROPERTY, text), text);
     }
 }
 
@@ -75,8 +55,8 @@ fn integer_math_is_admitted_without_specified_range_or_rounding() {
         "digits calc(infinity)",
         "digits calc(NaN)",
     ] {
-        assert_ordinary(&parsed(text), text);
-        assert_ordinary(&checked(text), text);
+        assert_ordinary(&important_declaration("text-combine-upright", text), text);
+        assert_ordinary(&retained_checked_declaration(PROPERTY, text), text);
     }
 }
 
@@ -93,9 +73,9 @@ fn inherited_longhand_metadata_has_an_ordinary_initial() {
 }
 
 #[test]
-fn existing_keywords_and_globals_expand_once_with_source_importance() {
+fn keywords_and_globals_expand_once_with_source_importance() {
     for text in ["none", "all", "inherit"] {
-        let source = parsed(text);
+        let source = important_declaration("text-combine-upright", text);
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
             expand_declaration(&source).expect("intrinsic longhand expansion")
         else {
@@ -124,7 +104,7 @@ fn existing_keywords_and_globals_expand_once_with_source_importance() {
 
 #[test]
 fn pending_digits_reentry_preserves_property_and_replacement_occurrence() {
-    let source = parsed("var(--combine)");
+    let source = important_declaration("text-combine-upright", "var(--combine)");
     let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
         panic!("pending known property")
     };
@@ -171,7 +151,7 @@ fn pending_digits_reentry_preserves_property_and_replacement_occurrence() {
 }
 
 #[test]
-fn existing_keyword_controls_keep_exact_views_and_programmatic_origin() {
+fn keyword_controls_keep_exact_views_and_programmatic_origin() {
     for (text, expected) in [
         ("none", CssTextCombineUpright::None),
         ("all", CssTextCombineUpright::All),
@@ -190,7 +170,7 @@ fn existing_keyword_controls_keep_exact_views_and_programmatic_origin() {
             components.items()[0].origin(),
             CssValueOrigin::Programmatic
         ));
-        for source in [parsed(text), checked] {
+        for source in [important_declaration("text-combine-upright", text), checked] {
             let CssKnownPropertyValueRef::TextCombineUpright(value) =
                 source.known().unwrap().property_value().unwrap()
             else {

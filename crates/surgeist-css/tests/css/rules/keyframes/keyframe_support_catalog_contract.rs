@@ -22,7 +22,7 @@ fn keyframe_catalog_covers_the_selected_authored_rule_production() {
 }
 
 #[test]
-fn existing_font_face_catalog_remains_complete_for_its_authored_grammar() {
+fn font_face_catalog_remains_complete_for_its_authored_grammar() {
     let css = "@font-face { font-family: Inter; src: url(inter.woff2); }";
     assert!(parse_sheet(css).is_clean());
     assert!(validate_sheet(css).is_ok());

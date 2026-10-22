@@ -5,34 +5,14 @@
 //! Body recovery follows Conditional 3 and Syntax 3; style-ancestor group
 //! contents follow Nesting WD20260122 section 3.3. Conditions remain symbolic.
 
+use crate::css::support::rules::declaration_text;
+use crate::css::support::rules::normalized_declarations as declarations;
+use crate::css::support::rules::rule_at;
 use surgeist_css::{
-    CssDeclaration, CssErrorCode, CssNormalizedDeclaration, CssNormalizedItem, CssNormalizedSheet,
-    CssRecoveryAction, CssRule, CssRuleContext, CssRuleContextKindRef, CssSelector,
-    CssSelectorBinding, CssTokenKind, ErrorKind, normalize_sheet, parse_sheet, validate_sheet,
+    CssErrorCode, CssNormalizedDeclaration, CssNormalizedSheet, CssRecoveryAction, CssRule,
+    CssRuleContextKindRef, CssSelector, CssSelectorBinding, CssTokenKind, ErrorKind,
+    normalize_sheet, parse_sheet, validate_sheet,
 };
-
-fn declaration_text(declaration: &CssDeclaration) -> (&str, &str) {
-    let name = declaration.parsed_name().expect("original parsed name");
-    let value = declaration.parsed_value().expect("original parsed value");
-    (
-        &name.source().as_str()
-            [name.span().start().byte_offset().value()..name.span().end().byte_offset().value()],
-        value.source().as_str()
-            [value.span().start().byte_offset().value()..value.span().end().byte_offset().value()]
-            .trim(),
-    )
-}
-
-fn declarations(sheet: &CssNormalizedSheet) -> Vec<&CssNormalizedDeclaration> {
-    sheet
-        .items()
-        .iter()
-        .filter_map(|item| match item {
-            CssNormalizedItem::Declaration(value) => Some(value),
-            _ => None,
-        })
-        .collect()
-}
 
 fn assert_declarations<'a>(
     source: &str,
@@ -61,24 +41,6 @@ fn assert_declarations<'a>(
         );
     }
     values
-}
-
-fn rule_at<'a>(sheet: &'a CssNormalizedSheet, source: &str, authored: &str) -> &'a CssRuleContext {
-    let offset = source.find(authored).unwrap();
-    sheet
-        .items()
-        .iter()
-        .find_map(|item| match item {
-            CssNormalizedItem::Rule(rule)
-                if rule
-                    .position()
-                    .is_some_and(|position| position.byte_offset().value() == offset) =>
-            {
-                Some(rule)
-            }
-            _ => None,
-        })
-        .expect("retained rule occurrence at its original source position")
 }
 
 #[test]

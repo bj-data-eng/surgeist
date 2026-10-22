@@ -10,32 +10,12 @@
 //! These are representation conversions during math projection, distinct from
 //! target-context computed/used range clamping under §10.12.
 
+use crate::css::support::value_assertions::assert_calculated_number as assert_number;
+use crate::css::support::value_assertions::calculated_number as number;
 use surgeist_css::*;
 
 type Limits = CssSpecifiedValueSerializationLimits;
 type Kind = CssSpecifiedValueSerializationErrorKind;
-
-fn number(source: &str) -> CssSpecifiedNumber {
-    CssSpecifiedNumber::try_from_calculation(
-        CssNumberCalculation::try_from_components(parse_component_values(source).unwrap()).unwrap(),
-    )
-    .unwrap()
-}
-
-fn assert_number(source: &str, expected: &str) {
-    let value = number(source);
-    let before = value.clone();
-    let calculation = value.calculation().unwrap();
-    let components = calculation.components().clone();
-    let ty = calculation.numeric_type();
-    assert_eq!(components.serialize().unwrap().as_css(), source);
-    let result = value.serialize_specified();
-    assert_eq!(value, before);
-    assert_eq!(value.origin(), before.origin());
-    assert_eq!(value.calculation().unwrap().components(), &components);
-    assert_eq!(value.calculation().unwrap().numeric_type(), ty);
-    assert_eq!(result.unwrap(), expected, "{source}");
-}
 
 #[test]
 fn overflowing_grad_coefficients_can_have_supported_canonical_degree_values() {

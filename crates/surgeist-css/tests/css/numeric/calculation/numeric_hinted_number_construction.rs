@@ -3,15 +3,13 @@
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-type-checking
 //! https://www.w3.org/TR/2024/WD-css-typed-om-1-20240321/#cssnumericvalue-match
 
+use crate::css::support::component_values as components;
 use surgeist_color::PredefinedColorSpace;
 use surgeist_css::*;
 
 const SOURCE: &str = "calc((1px + 1%) / 1px)";
 const SPECIFIED: &str = "calc((1% + 1px) / 1px)";
 
-fn components(text: &str) -> CssComponentValues {
-    parse_component_values(text).unwrap()
-}
 fn hinted() -> CssHintedNumberCalculation {
     CssHintedNumberCalculation::try_from_components(components(SOURCE)).unwrap()
 }
@@ -104,14 +102,23 @@ fn programmatic_root_preserves_child_origins_and_constructor_limits() {
         CssHintedNumberCalculation::try_from_components_with_limits(original.clone(), exact)
             .is_ok()
     );
-    for limits in [
-        CssComponentValueLimits::try_new(1, 11, SOURCE.len()).unwrap(),
-        CssComponentValueLimits::try_new(2, 10, SOURCE.len()).unwrap(),
-        CssComponentValueLimits::try_new(2, 11, SOURCE.len() - 1).unwrap(),
+    for (limits, exceeded) in [
+        (
+            CssComponentValueLimits::try_new(1, 11, SOURCE.len()).unwrap(),
+            CssComponentValueErrorKind::NestingLimit,
+        ),
+        (
+            CssComponentValueLimits::try_new(2, 10, SOURCE.len()).unwrap(),
+            CssComponentValueErrorKind::ComponentLimit,
+        ),
+        (
+            CssComponentValueLimits::try_new(2, 11, SOURCE.len() - 1).unwrap(),
+            CssComponentValueErrorKind::ByteLimit,
+        ),
     ] {
-        assert!(
-            CssHintedNumberCalculation::try_from_components_with_limits(original.clone(), limits)
-                .is_err()
+        crate::css::support::value_assertions::assert_numeric_resource(
+            CssHintedNumberCalculation::try_from_components_with_limits(original.clone(), limits),
+            exceeded,
         );
     }
     assert_eq!(value.components(), &original);

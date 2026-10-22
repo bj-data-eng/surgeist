@@ -4,6 +4,9 @@ use surgeist_css::{CssKnownProperty, CssRecoveryAction, CssRule, ErrorKind, pars
 // CSS Syntax token identity is case-insensitive for at-rule names, including
 // escaped spellings: https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#at-rules
 // EOF recovery must retain that identity and the original source coordinates.
+// An @media prelude is a <media-query-list> (Media Queries 5 section 3,
+// https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax), whose atomic catalog
+// record is `official.media.query-list-core`.
 fn assert_eof_limit(at_keyword: &str, condition: &str, production: &str) {
     let prelude = format!("{at_keyword} ");
     assert_eof_limit_after_prelude(&prelude, condition, production);
@@ -48,7 +51,7 @@ fn eof_container_limit_retains_its_rule_production() {
 #[test]
 fn eof_media_limit_uses_decoded_at_keyword_identity() {
     for name in ["@MeDiA", r"@m\65 dia"] {
-        assert_eof_limit(name, "width > 1px", "baseline.media.query-list");
+        assert_eof_limit(name, "width > 1px", "official.media.query-list-core");
     }
 }
 
@@ -61,7 +64,11 @@ fn eof_supports_limit_uses_decoded_at_keyword_identity() {
 
 #[test]
 fn canonical_media_and_supports_eof_limits_keep_their_productions() {
-    assert_eof_limit("@media", "width > 1px", "baseline.media.query-list");
+    assert_eof_limit("@media", "width > 1px", "official.media.query-list-core");
+    let media_list = surgeist_css::feature_metadata("official.media.query-list-core")
+        .expect("the attributed media production is an atomic catalog record");
+    assert_eq!(media_list.kind(), surgeist_css::CssFeatureKind::MediaQuery);
+    assert_eq!(media_list.production(), "#mq-syntax");
     assert_eof_limit("@supports", "display: grid", "baseline.rule.supports");
 }
 
@@ -81,7 +88,7 @@ fn completed_media_and_supports_operands_retain_rule_provenance_at_eof() {
     assert_eof_limit_after_prelude(
         "@media (width > 1px) and ",
         "height > 2px",
-        "baseline.media.query-list",
+        "official.media.query-list-core",
     );
     assert_eof_limit_after_prelude(
         r"@s\75 pports (display: grid) and ",

@@ -1,6 +1,8 @@
 //! Selected Selectors 4 <attr-matcher> consists of optional ~ | ^ $ * then =.
 //! Its components forbid whitespace; Syntax 3 section 9 makes comments inert.
 
+use crate::css::support::color_and_selector_fixtures::assert_selector_input_rejected as assert_whole_input_rejected;
+use crate::css::support::color_and_selector_fixtures::assert_strict_validation_rejects;
 use surgeist_css::{
     CssAttributeCaseSensitivity as Case, CssAttributeMatcher as Matcher,
     CssNamespaceConstraint as Namespace, CssNamespaceContext, CssNamespaceName, CssNamespacePrefix,
@@ -211,31 +213,17 @@ fn reject(front: Front, attribute: &str) {
     match front {
         Front::Selector => {
             let report = parse_selector(attribute, &context);
-            assert!(report.syntax().is_none(), "{attribute:?}");
-            assert_eq!(
-                report.diagnostics().last().unwrap().action(),
-                CssRecoveryAction::RejectInput
-            );
-            assert!(report.into_validation_result().is_err());
+            assert_whole_input_rejected(attribute, report);
         }
         Front::List => {
-            let report = parse_selector_list(&format!(".Lead, {attribute}, .Tail"), &context);
-            assert!(report.syntax().is_none(), "{attribute:?}");
-            assert_eq!(
-                report.diagnostics().last().unwrap().action(),
-                CssRecoveryAction::RejectInput
-            );
-            assert!(report.into_validation_result().is_err());
+            let source = format!(".Lead, {attribute}, .Tail");
+            let report = parse_selector_list(&source, &context);
+            assert_whole_input_rejected(&source, report);
         }
         Front::Relative => {
-            let report =
-                parse_relative_selector_list(&format!("> .Lead, + {attribute}, ~ .Tail"), &context);
-            assert!(report.syntax().is_none(), "{attribute:?}");
-            assert_eq!(
-                report.diagnostics().last().unwrap().action(),
-                CssRecoveryAction::RejectInput
-            );
-            assert!(report.into_validation_result().is_err());
+            let source = format!("> .Lead, + {attribute}, ~ .Tail");
+            let report = parse_relative_selector_list(&source, &context);
+            assert_whole_input_rejected(&source, report);
         }
         Front::Sheet => {
             let source = format!(
@@ -258,13 +246,13 @@ fn reject(front: Front, attribute: &str) {
                 panic!("one complete rule rejection");
             };
             assert_eq!(diagnostic.action(), CssRecoveryAction::DropQualifiedRule);
-            assert!(report.into_validation_result().is_err());
+            assert_strict_validation_rejects(report);
         }
     }
 }
 
 #[test]
-fn all_five_css_whitespace_characters_still_split_and_reject_matchers() {
+fn all_five_css_whitespace_characters_split_and_reject_matchers() {
     for (symbol, _) in OPERATORS {
         for whitespace in [" ", "\t", "\n", "\r", "\u{c}"] {
             for gap in [whitespace.to_owned(), format!("/**/{whitespace}/**/")] {

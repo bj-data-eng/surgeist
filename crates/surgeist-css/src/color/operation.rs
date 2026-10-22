@@ -14,7 +14,7 @@ use super::protocol::{
 use super::resolution::{Action as ResolutionAction, Resolution};
 use super::syntax_pass::{SyntaxAction, SyntaxPass, ValidatedGrammar};
 use crate::tokenization::bounded::InputKind;
-use crate::tokenization::color_tokens::Span;
+use crate::tokenization::tokenizer::Span;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum GrammarRequest {

@@ -7,6 +7,7 @@
 //! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-block
 //! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-block-contents
 //! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#block-contents
+use crate::css::support::authored_syntax::assert_strict_rejection;
 use surgeist_css::{
     CssFontFaceDescriptorKind as Kind, CssFontFeatureValuesItem, CssRecoveryAction, CssRule,
     CssSheet, parse_sheet, validate_sheet,
@@ -23,7 +24,7 @@ fn sheet(source: &str, actions: &[CssRecoveryAction]) -> CssSheet {
         actions,
         "{source}: {report:?}"
     );
-    assert!(validate_sheet(source).is_err(), "{source}");
+    assert_strict_rejection(validate_sheet(source), report.diagnostics());
     report.syntax().clone()
 }
 
@@ -94,7 +95,7 @@ fn keyframe_blocks_drop_nested_rules_and_keep_surrounding_declarations() {
             start + unit.len(),
             "{source}"
         );
-        assert!(validate_sheet(source).is_err(), "{source}");
+        assert_strict_rejection(validate_sheet(source), report.diagnostics());
         let [CssRule::Keyframes(keyframes)] = report.syntax().rules() else {
             panic!("{source}: {report:?}")
         };

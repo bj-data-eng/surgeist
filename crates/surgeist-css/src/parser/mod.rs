@@ -204,8 +204,6 @@ use color::parse_color;
 use color_adjustment::*;
 use contain_intrinsic_size::*;
 use container_properties::*;
-#[cfg(test)]
-pub(crate) use container_query::parse_container_condition_for_test;
 use container_query::{collect_container_components, container_prelude_from_components};
 pub(crate) use container_query::{
     construct_container_condition, construct_container_prelude, container_condition_from_enclosed,
@@ -234,8 +232,6 @@ use overflow_controls::*;
 use page::{parse_page_rule, parse_page_selector};
 use position::*;
 use queries::parse_media_query_list as parse_media_query_list_inner;
-#[cfg(test)]
-pub(crate) use queries::parse_media_query_list_for_test;
 use recovery::{
     RecoveryLoopOutcome, RecoveryProgress, RecoveryState, StyleContextCaptures,
     recovery_action_for_error,

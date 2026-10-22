@@ -69,6 +69,34 @@ fn assert_lifecycle(source: &str, expected: &[(u32, u32)], canonical: &str) {
     assert_eq!(validate_sheet(&sheet_source).unwrap(), *sheet.syntax());
 }
 
+/// Checks that checked construction rejects `source` by the unicode-range
+/// descriptor grammar at a token of `source`, and returns that token's byte
+/// offset, or `None` when the failure is at EOF after the last token.
+#[track_caller]
+fn unicode_range_rejection_offset(source: &str) -> Option<usize> {
+    let error =
+        Authored::try_from_components(Kind::UnicodeRange, parse_component_values(source).unwrap())
+            .unwrap_err();
+    assert!(
+        matches!(
+            error.kind(),
+            CssFontFaceValueErrorKind::Grammar(ErrorKind::InvalidDescriptorValue(_))
+        ),
+        "{source:?}: {error:?}"
+    );
+    let origin = match error.origin() {
+        CssSerializedOrigin::Token(origin) => origin,
+        CssSerializedOrigin::End(_) => return None,
+        CssSerializedOrigin::Separator { after, .. } => after,
+        other => panic!("{source:?}: unexpected failure origin: {other:?}"),
+    };
+    let CssValueOrigin::Parsed(origin) = origin else {
+        panic!("{source:?}: parsed failing component: {error:?}")
+    };
+    assert_eq!(origin.source().as_str(), source);
+    Some(origin.span().start().byte_offset().value())
+}
+
 fn assert_invalid_lifecycle(source: &str) {
     let raw = parse_font_face_descriptor_value(source, Kind::UnicodeRange);
     assert!(raw.syntax().is_none(), "{source:?}: {raw:?}");
@@ -81,11 +109,7 @@ fn assert_invalid_lifecycle(source: &str) {
         "{source:?}: {raw:?}"
     );
 
-    let components = parse_component_values(source).unwrap();
-    assert!(
-        Authored::try_from_components(Kind::UnicodeRange, components).is_err(),
-        "{source:?}"
-    );
+    unicode_range_rejection_offset(source);
     let sheet_source =
         format!("@font-face{{unicode-range:{source};font-display:swap}}.after{{color:red}}");
     let sheet = parse_sheet(&sheet_source);
@@ -327,15 +351,17 @@ fn wildcard_length_and_endpoint_domain_boundaries_are_inclusive() {
 
 #[test]
 fn a_raw_value_requires_a_complete_nonempty_comma_list_and_consumes_no_trailing_syntax() {
-    for source in [
-        ",u+0",
-        "u+0,",
-        "u+0,,u+1",
-        "u+0,u+",
-        "u+0 extra",
-        "u+0;",
-        "u+0{}",
-        "u+0,?",
+    // `<unicode-range-token>#` first fails at the leading, doubled or
+    // trailing-comma gap, at a non-range token, or at EOF after a final comma.
+    for (source, responsible) in [
+        (",u+0", Some(0)),
+        ("u+0,", None),
+        ("u+0,,u+1", Some(4)),
+        ("u+0,u+", None),
+        ("u+0 extra", Some(4)),
+        ("u+0;", Some(3)),
+        ("u+0{}", Some(3)),
+        ("u+0,?", Some(4)),
     ] {
         let report = parse_font_face_descriptor_value(source, Kind::UnicodeRange);
         assert!(report.syntax().is_none(), "{source:?}: {report:?}");
@@ -345,15 +371,23 @@ fn a_raw_value_requires_a_complete_nonempty_comma_list_and_consumes_no_trailing_
         assert_eq!(diagnostic.action(), CssRecoveryAction::RejectInput);
         assert_eq!(diagnostic.span().start().byte_offset().value(), 0);
         assert_eq!(diagnostic.span().end().byte_offset().value(), source.len());
-        assert!(report.into_validation_result().is_err());
-        assert!(
-            Authored::try_from_components(
-                Kind::UnicodeRange,
-                parse_component_values(source).unwrap()
-            )
-            .is_err(),
-            "{source:?}"
+        assert_eq!(
+            report
+                .clone()
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
+            report.diagnostics()
         );
+        // The trailing identifier is located at the whitespace before it
+        // (reported), so its location is not asserted.
+        if source != "u+0 extra" {
+            assert_eq!(
+                unicode_range_rejection_offset(source),
+                responsible,
+                "{source:?}"
+            );
+        }
     }
     assert_lifecycle(
         "u+10FFFF,u+0,u+0-7F,u+0",

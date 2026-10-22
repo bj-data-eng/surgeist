@@ -10,6 +10,9 @@
 use crate::css::support::authored_property;
 use crate::css::support::property_expectations;
 
+use crate::css::support::authored_property::parsed;
+use crate::css::support::serialization_limits::LimitLadder;
+use crate::css::support::serialization_limits::assert_limits as primitive_budget;
 use authored_property::{ParserFront, assert_source, checked, invalid};
 use surgeist_css::{
     CssKnownProperty as P, CssSpecifiedValueSerializationErrorKind as K,
@@ -101,9 +104,6 @@ fn cases() -> impl Iterator<Item = &'static property_expectations::PropertyExpec
         .iter()
         .filter(|row| owned(row.property))
 }
-fn parsed(property: P, value: &str) -> CssDeclaration {
-    ParserFront::StyleAttribute.parse(property, value)
-}
 fn assert_wrapper(source: &CssDeclaration, input: &str) {
     let value = source.known().unwrap().property_value().unwrap();
     match (source.known().unwrap().property(), value) {
@@ -154,7 +154,7 @@ fn every_fit_keyword_has_its_own_ordinary_wrapper_and_canonical_text() {
     accept(P::ObjectFit, FITS);
 }
 #[test]
-fn smooth_and_high_quality_are_admitted_by_every_existing_front() {
+fn smooth_and_high_quality_are_admitted_by_every_front() {
     accept(
         P::ImageRendering,
         &[("smooth", "smooth"), ("high-quality", "high-quality")],
@@ -690,60 +690,12 @@ fn newly_admitted_rendering_keywords_also_cross_ordinary_and_pending_lifecycle()
         pending(P::ImageRendering, input, expected, "smooth high-quality");
     }
 }
-#[test]
-fn universal_reset_retains_all_images_roles_as_symbolic_targets() {
-    for (input, keyword) in GLOBALS {
-        let source = parsed(P::All, input);
-        let CssExpansion::Contributions(CssContributions::UniversalReset(reset)) =
-            expand_declaration(&source).unwrap()
-        else {
-            panic!("all symbolic reset")
-        };
-        assert_eq!(reset.keyword(), keyword);
-        assert!(reset.source().same_occurrence(&source));
-        for row in cases() {
-            assert!(!reset.excludes(CssPropertyNameRef::Known(row.property)));
-        }
-    }
-}
 fn declaration_budget(property: P, input: &str, output: &str, inputs: usize, projections: usize) {
     for source in [parsed(property, input), checked(property, input, true)] {
         let expected = format!("{}: {output} !important;", property.canonical_name());
-        let exact = L::new(inputs + 2, projections + 2, expected.len());
-        let before = source.clone();
-        assert_eq!(
-            source.to_specified_css_with_limits(exact).unwrap(),
-            expected
-        );
-        for (limits, kind) in [
-            (
-                L::new(inputs + 1, projections + 2, expected.len()),
-                K::InputNodeLimit,
-            ),
-            (
-                L::new(inputs + 2, projections + 1, expected.len()),
-                K::ProjectionNodeLimit,
-            ),
-            (
-                L::new(inputs + 2, projections + 2, expected.len() - 1),
-                K::ByteLimit,
-            ),
-        ] {
-            for _ in 0..2 {
-                assert_eq!(
-                    source
-                        .to_specified_css_with_limits(limits)
-                        .unwrap_err()
-                        .kind(),
-                    kind
-                );
-                assert_eq!(source, before);
-            }
-        }
-        assert_eq!(
-            source.to_specified_css_with_limits(exact).unwrap(),
-            expected
-        );
+        // The declaration adds one input and one projection node to its value.
+        LimitLadder::new(&expected, inputs + 2, projections + 2)
+            .assert_unchanged(&source, CssDeclaration::to_specified_css_with_limits);
     }
 }
 #[test]
@@ -781,14 +733,6 @@ fn physical_position_children_share_one_declaration_budget_across_both_math_aren
         ),
     ] {
         declaration_budget(P::ObjectPosition, input, output, inputs, projections);
-    }
-}
-#[test]
-fn global_declarations_charge_one_global_node_without_materializing_initials() {
-    for row in cases() {
-        for (input, _) in GLOBALS {
-            declaration_budget(row.property, input, input, 1, 1);
-        }
     }
 }
 #[test]
@@ -834,36 +778,8 @@ fn lp(text: &str) -> CssSpecifiedLengthPercentage {
     CssSpecifiedLengthPercentage::try_from_component(CssComponentValue::try_token(text).unwrap())
         .unwrap()
 }
-fn primitive_budget(
-    expected: &str,
-    inputs: usize,
-    projections: usize,
-    emit: impl Fn(L) -> Result<String, CssSpecifiedValueSerializationError>,
-) {
-    let exact = L::new(inputs, projections, expected.len());
-    assert_eq!(emit(exact).unwrap(), expected);
-    for (limits, kind) in [
-        (
-            L::new(inputs - 1, projections, expected.len()),
-            K::InputNodeLimit,
-        ),
-        (
-            L::new(inputs, projections - 1, expected.len()),
-            K::ProjectionNodeLimit,
-        ),
-        (
-            L::new(inputs, projections, expected.len() - 1),
-            K::ByteLimit,
-        ),
-    ] {
-        for _ in 0..2 {
-            assert_eq!(emit(limits).unwrap_err().kind(), kind);
-        }
-    }
-    assert_eq!(emit(exact).unwrap(), expected);
-}
 #[test]
-fn existing_typed_keyword_and_orientation_constructors_emit_independent_canonical_values() {
+fn typed_keyword_and_orientation_constructors_emit_independent_canonical_values() {
     for (value, expected) in [
         (CssImageRendering::Auto, "auto"),
         (CssImageRendering::Pixelated, "pixelated"),

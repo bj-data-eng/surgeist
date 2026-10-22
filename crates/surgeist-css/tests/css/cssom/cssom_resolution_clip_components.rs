@@ -192,7 +192,7 @@ fn escaped_resolution_units_and_crlf_non_bmp_provenance_survive_emission() {
 }
 
 #[test]
-fn resolution_calculations_share_existing_projection_without_clamping_or_mutating_storage() {
+fn resolution_calculations_share_the_numeric_projection_without_clamping_or_mutating_storage() {
     for (text, expected) in [
         ("calc(192dpi + 1dppx)", "calc(3dppx)"),
         ("calc(-1dppx)", "calc(-1dppx)"),

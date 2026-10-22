@@ -175,6 +175,9 @@ fn rendering_ancestors_reduce_the_native_child_allowance_without_resets() {
         CssEditedGroupPreludeRef::Media(media.query()),
         &keyframe_children,
     );
-    assert!(format(keyframes, 2).is_ok());
+    assert_eq!(
+        format(keyframes, 2).unwrap(),
+        format(keyframes, usize::MAX).unwrap()
+    );
     depth_failure(keyframes, 1, &[0], Some(0));
 }

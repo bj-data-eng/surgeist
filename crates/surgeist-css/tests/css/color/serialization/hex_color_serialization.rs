@@ -2,24 +2,11 @@
 //! alpha and the rgb() name for opaque hexadecimal colors. Color 5 origin
 //! serialization retains the separate modern punctuation contract.
 
+use crate::css::support::parsed_color;
 use surgeist_css::{
-    CssColor, CssHexColor, CssKnownPropertyValueRef, CssSpecifiedValueSerializationErrorKind,
-    CssSpecifiedValueSerializationLimits, parse_style_attribute,
+    CssColor, CssHexColor, CssSpecifiedValueSerializationErrorKind,
+    CssSpecifiedValueSerializationLimits,
 };
-
-fn parsed_color(value: &str) -> CssColor {
-    let report = parse_style_attribute(&format!("color: {value}"));
-    assert!(report.is_clean(), "{value}: {:?}", report.diagnostics());
-    let CssKnownPropertyValueRef::Color(color) = report.syntax()[0]
-        .known()
-        .unwrap()
-        .property_value()
-        .unwrap()
-    else {
-        panic!("expected a color");
-    };
-    color.value().clone()
-}
 
 #[test]
 fn parsed_opaque_hex_alpha_uses_rgb_with_an_implicit_alpha() {
@@ -82,7 +69,7 @@ fn opaque_hex_fits_the_exact_rgb_byte_budget_without_mutation() {
 }
 
 #[test]
-fn absent_and_zero_hex_alpha_keep_their_existing_forms() {
+fn absent_and_zero_hex_alpha_keep_their_authored_forms() {
     for (source, expected) in [
         ("#123", "rgb(17, 34, 51)"),
         ("#112233", "rgb(17, 34, 51)"),

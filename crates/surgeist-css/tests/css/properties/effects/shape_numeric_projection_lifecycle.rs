@@ -5,15 +5,9 @@
 //! Ordinary coefficients use the shared six-place, ties-away CSSOM policy.
 //! This is coverage of existing integration, without a claimed behavioral RED.
 
-use surgeist_css::{
-    CssSpecifiedValueSerializationErrorKind as K, CssSpecifiedValueSerializationLimits as L, *,
-};
-
-fn declaration(css: &str) -> CssDeclaration {
-    let report = parse_style_attribute(&format!("clip-path:{css}!important"));
-    assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
-    report.syntax()[0].clone()
-}
+use crate::css::support::important_declaration;
+use crate::css::support::serialization_limits::assert_limits as budget;
+use surgeist_css::*;
 
 fn clip(declaration: &CssDeclaration) -> &CssClipPath {
     let CssKnownPropertyValueRef::ClipPath(value) =
@@ -32,7 +26,7 @@ fn basic(value: &CssClipPath) -> &CssBasicShape {
 }
 
 fn assert_projection(authored: &str, expected: &str) {
-    let source = declaration(authored);
+    let source = important_declaration("clip-path", authored);
     let before = source.clone();
     let components = source.value_components().clone();
     let origins: Vec<_> = components
@@ -186,36 +180,12 @@ fn specified_nonfinite_math_is_not_top_level_numeric_censorship_or_radius_clampi
     );
 }
 
-fn budget(
-    expected: &str,
-    input: usize,
-    projection: usize,
-    serialize: impl Fn(L) -> Result<String, CssSpecifiedValueSerializationError>,
-) {
-    assert_eq!(
-        serialize(L::new(input, projection, expected.len())).unwrap(),
-        expected
-    );
-    for (limits, kind) in [
-        (
-            L::new(input - 1, projection, expected.len()),
-            K::InputNodeLimit,
-        ),
-        (
-            L::new(input, projection - 1, expected.len()),
-            K::ProjectionNodeLimit,
-        ),
-        (L::new(input, projection, expected.len() - 1), K::ByteLimit),
-    ] {
-        assert_eq!(serialize(limits).unwrap_err().kind(), kind);
-    }
-    assert_eq!(serialize(L::default()).unwrap(), expected);
-}
-
 #[test]
 fn sibling_numeric_functions_and_position_literals_keep_one_atomic_composed_budget() {
-    let source =
-        declaration("ellipse(abs(-2em) hypot(3em,4em) at -0.0000005px 0.0000005%) border-box");
+    let source = important_declaration(
+        "clip-path",
+        "ellipse(abs(-2em) hypot(3em,4em) at -0.0000005px 0.0000005%) border-box",
+    );
     let before = source.clone();
     let expected = "ellipse(calc(2em) calc(5em) at -0.000001px 0.000001%)";
     // Ellipse and radii pair: two; abs and hypot: two plus three;
@@ -233,8 +203,10 @@ fn sibling_numeric_functions_and_position_literals_keep_one_atomic_composed_budg
 
 #[test]
 fn finite_angle_projection_spends_only_existing_command_and_math_nodes() {
-    let source =
-        declaration("shape(from 0px 0px, arc by 0px 0px of 1px rotate calc(cos(1e400deg) * 1deg))");
+    let source = important_declaration(
+        "clip-path",
+        "shape(from 0px 0px, arc by 0px 0px of 1px rotate calc(cos(1e400deg) * 1deg))",
+    );
     let before = source.clone();
     let expected = "shape(from 0px 0px, arc by 0px 0px of 1px rotate calc(1deg))";
     // Initial shape/from/position/axes/leaves/command list: eight. Arc,

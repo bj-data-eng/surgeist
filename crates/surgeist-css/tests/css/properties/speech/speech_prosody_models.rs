@@ -2,7 +2,7 @@
 //! Independent authority: pinned Speech 1 §§11.2–11.4/12.1, Values 4 §§5.6,
 //! 10.9/10.12, and CSSOM serialize-a-css-value/component-value. These tests
 //! distinguish exact admission, specified projection and downstream voice use.
-use crate::css::support::first_declaration as declaration;
+use crate::css::support::normal_declaration as declaration;
 use surgeist_css::*;
 
 fn pitch(source: &CssDeclaration) -> &CssVoicePitchRange {

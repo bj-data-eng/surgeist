@@ -13,6 +13,9 @@
 //! https://www.w3.org/TR/2011/REC-CSS2-20110607/visudet.html#line-height
 //! https://www.w3.org/TR/2024/WD-css-typed-om-1-20240321/#cssnumericvalue-match
 
+use crate::css::support::authored_property;
+use crate::css::support::component_values as components;
+use crate::css::support::value_assertions::property_rejection;
 use surgeist_css::*;
 
 const HINTED: &str = "calc((1px + 1%) / 1px)";
@@ -26,10 +29,6 @@ const AMOUNTS: [&str; 7] = [
     "saturate",
     "sepia",
 ];
-
-fn components(text: &str) -> CssComponentValues {
-    parse_component_values(text).unwrap()
-}
 
 fn parsed(property: CssKnownProperty, text: &str) -> CssDeclaration {
     let source = format!(
@@ -79,22 +78,9 @@ fn assert_height_provenance(value: &CssDeclaration, source: &str) {
     assert_eq!(origin.span().start().line().value(), 2);
 }
 
-fn checked(property: CssKnownProperty, text: &str) -> CssDeclaration {
-    let original = components(text);
-    let result = parse_property_value(
-        CssPropertyNameRef::Known(property),
-        original.clone(),
-        CssImportance::Important,
-    )
-    .unwrap_or_else(|error| panic!("checked {}:{text}: {error:?}", property.canonical_name()));
-    assert_eq!(result.value_components(), &original);
-    assert!(result.position().is_none());
-    result
-}
-
 fn admits(property: CssKnownProperty, text: &str) {
     let parsed = parsed(property, text);
-    let checked = checked(property, text);
+    let checked = authored_property::checked(property, text, false);
     let CssExpansion::Contributions(CssContributions::Longhands(expected)) =
         expand_declaration(&checked).unwrap()
     else {
@@ -133,7 +119,7 @@ fn admits(property: CssKnownProperty, text: &str) {
 }
 
 fn checked_pending(property: CssKnownProperty) -> CssDeclaration {
-    checked(property, "var(--numeric)")
+    authored_property::checked(property, "var(--numeric)", false)
 }
 
 #[test]
@@ -236,13 +222,13 @@ fn rejects_atomically(property: CssKnownProperty, text: &str) {
         validate_style_attribute(&source).unwrap_err().diagnostics(),
         report.diagnostics()
     );
-    assert!(
+    property_rejection(
         parse_property_value(
             CssPropertyNameRef::Known(property),
             components(text),
-            CssImportance::Normal
-        )
-        .is_err()
+            CssImportance::Normal,
+        ),
+        property,
     );
     let pending_source = checked_pending(property);
     let CssExpansion::Pending(pending) = expand_declaration(&pending_source).unwrap() else {

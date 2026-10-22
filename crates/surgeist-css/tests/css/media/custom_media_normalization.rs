@@ -1,8 +1,10 @@
 //! Authored custom-media definitions remain ordered payloads, not evaluated aliases.
+use crate::css::support::authored_syntax::{assert_diagnostics, parsed_origin};
 use surgeist_css::{
-    CssCustomMediaBody, CssNormalizationErrorKind, CssNormalizationLimits,
-    CssNormalizationResource, CssNormalizedItem, CssRule, CssRuleContextKindRef, normalize_report,
-    normalize_sheet, normalize_sheet_with_limits, parse_sheet,
+    CssCustomMediaBody, CssCustomMediaSerializationError, CssErrorCode, CssMediaSerializationError,
+    CssNormalizationErrorKind, CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+    CssRecoveryAction, CssRule, CssRuleContextKindRef, normalize_report, normalize_sheet,
+    normalize_sheet_with_limits, parse_sheet,
 };
 
 #[test]
@@ -89,9 +91,18 @@ fn scoped_and_conditional_contexts_remain_on_each_definition() {
 
 #[test]
 fn normalized_report_preserves_recovered_definition_and_original_diagnostics() {
-    let report = parse_sheet("@custom-media --x (color), ???, screen;");
-    assert!(!report.is_clean());
-    assert_eq!(report.diagnostics().len(), 1);
+    let source = "@custom-media --x (color), ???, screen;";
+    let report = parse_sheet(source);
+    // The second `<media-query>` member first fails at its `?` delimiter.
+    let malformed = source.find("???").unwrap();
+    assert_diagnostics(
+        report.diagnostics(),
+        &[(
+            CssErrorCode::InvalidMediaQuery,
+            CssRecoveryAction::ReplaceMediaQueryWithNever,
+            malformed,
+        )],
+    );
     let normalized = normalize_report(&report).unwrap();
     assert!(!normalized.is_clean());
     assert_eq!(normalized.diagnostics(), report.diagnostics());
@@ -105,7 +116,15 @@ fn normalized_report_preserves_recovered_definition_and_original_diagnostics() {
         panic!("authored definition");
     };
     assert_eq!(definition, original);
-    assert!(definition.serialize().is_err());
+    let Err(CssCustomMediaSerializationError::Media(CssMediaSerializationError::RecoveredNever {
+        origin,
+    })) = definition.serialize()
+    else {
+        panic!("recovered member: {:?}", definition.serialize())
+    };
+    let origin = parsed_origin(&origin);
+    assert_eq!(origin.source().as_str(), source);
+    assert_eq!(origin.span().start().byte_offset().value(), malformed);
 }
 
 #[test]

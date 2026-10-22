@@ -1,16 +1,7 @@
 //! Wrapper consumption of provider owners #621 and #553/#555. These tests get
 //! behavior RED through existing CssSheet emission, not through missing leaf APIs.
 //! Their initial UnsupportedRule failure does not prove direct leaf-provider RED.
-use surgeist_css::parse_sheet;
-
-fn exact(source: &str, expected: &str) {
-    let report = parse_sheet(source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    let before = report.clone();
-    assert_eq!(report.syntax().to_specified_css().unwrap(), expected);
-    assert_eq!(report, before);
-    assert!(parse_sheet(expected).is_clean());
-}
+use crate::css::support::rules::assert_exact_specified_sheet as exact;
 
 #[test]
 fn animation_direction_consumer_emits_typed_keywords_in_list_order() {

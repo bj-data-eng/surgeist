@@ -200,6 +200,10 @@ fn malformed_urls_and_modifier_tokens_drop_only_their_declaration() {
             report.syntax()[1].known().unwrap().property(),
             CssKnownProperty::Width
         );
-        assert!(validate_style_attribute(&source).is_err(), "{source}");
+        assert_eq!(
+            validate_style_attribute(&source).unwrap_err().diagnostics(),
+            report.diagnostics(),
+            "{source}"
+        );
     }
 }

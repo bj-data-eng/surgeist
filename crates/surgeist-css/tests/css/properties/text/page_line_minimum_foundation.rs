@@ -1,23 +1,13 @@
 //! Authored line minima from Fragmentation 3 CR (2018-12-04) §3.3 and
 //! lexical integers from Values 4 §5.2.
 
+use crate::css::support::checked_grammar_declaration as checked;
 use crate::css::support::important_declaration as declaration;
+use crate::css::support::named_property::sole_longhand_contribution;
+use crate::css::support::selected_grammar as grammar;
 use surgeist_css::*;
 
 const NAMES: [&str; 2] = ["orphans", "widows"];
-
-fn grammar(name: &str) -> CssPropertyGrammar {
-    CssPropertyGrammar::from_name(name).unwrap()
-}
-
-fn checked(name: &str, value: &str) -> CssDeclaration {
-    parse_property_value_for_grammar(
-        grammar(name),
-        parse_component_values(value).unwrap(),
-        CssImportance::Important,
-    )
-    .unwrap_or_else(|error| panic!("checked {name}:{value}: {error:?}"))
-}
 
 fn minimum(source: &CssDeclaration) -> &CssPageLineMinimum {
     match source.known().unwrap().property_value().unwrap() {
@@ -28,18 +18,10 @@ fn minimum(source: &CssDeclaration) -> &CssPageLineMinimum {
 }
 
 fn one_value(source: &CssDeclaration) -> CssLonghandValue {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
-    else {
-        panic!("one terminal contribution")
-    };
-    let [item] = values.items() else {
-        panic!("one terminal contribution")
-    };
-    assert_eq!(item.property(), source.known().unwrap().property());
-    assert!(item.source().same_occurrence(source));
-    assert_eq!(item.source().importance(), CssImportance::Important);
-    item.ordinary_value().unwrap().clone()
+    sole_longhand_contribution(source)
+        .ordinary_value()
+        .unwrap()
+        .clone()
 }
 
 #[test]
@@ -150,41 +132,6 @@ fn line_minima_are_inherited_longhands_with_initial_two() {
         assert_eq!(initial_value, &one_value(&declaration(name, "2")));
         let source = declaration(name, "3");
         assert_eq!(one_value(&source).property().known_property(), property);
-    }
-}
-
-#[test]
-fn css_wide_values_and_all_reset_include_line_minima() {
-    let all = declaration("all", "initial");
-    let CssExpansion::Contributions(CssContributions::UniversalReset(reset)) =
-        expand_declaration(&all).unwrap()
-    else {
-        panic!("symbolic all reset")
-    };
-    for name in NAMES {
-        let property = grammar(name).target_property();
-        assert!(!reset.excludes(CssPropertyNameRef::Known(property)));
-        for (text, keyword) in [
-            ("initial", CssGlobalKeyword::Initial),
-            ("inherit", CssGlobalKeyword::Inherit),
-            ("unset", CssGlobalKeyword::Unset),
-            ("revert", CssGlobalKeyword::Revert),
-            ("revert-layer", CssGlobalKeyword::RevertLayer),
-        ] {
-            let source = declaration(name, text);
-            checked(name, text);
-            let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-                expand_declaration(&source).unwrap()
-            else {
-                panic!("one symbolic global contribution")
-            };
-            let [item] = values.items() else {
-                panic!("one symbolic global contribution")
-            };
-            assert_eq!(item.property(), property);
-            assert_eq!(item.value(), CssContributionValueRef::Global(keyword));
-            assert!(item.source().same_occurrence(&source));
-        }
     }
 }
 

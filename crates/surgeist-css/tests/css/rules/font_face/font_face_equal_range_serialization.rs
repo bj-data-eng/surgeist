@@ -1,21 +1,12 @@
 //! Fonts 4 section 13.2: equal retained endpoints use the shorter form.
 //! Rounding two different retained numbers to the same text is not equality.
 
+use crate::css::support::rules::ordinary_font_face_descriptor as ordinary;
 use surgeist_css::{
-    CssAuthoredFontFaceDescriptorValue as Authored, CssFontFaceDescriptorKind as Kind,
-    CssFontFaceDescriptorValue as Value, CssFontFaceStyle,
+    CssFontFaceDescriptorKind as Kind, CssFontFaceDescriptorValue as Value, CssFontFaceStyle,
     CssSpecifiedValueSerializationErrorKind as ErrorKind,
-    CssSpecifiedValueSerializationLimits as Limits, parse_font_face_descriptor_value,
+    CssSpecifiedValueSerializationLimits as Limits,
 };
-
-fn ordinary(source: &str, kind: Kind) -> Value {
-    let report = parse_font_face_descriptor_value(source, kind);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    let Some(Authored::Ordinary(value)) = report.syntax() else {
-        panic!("expected an ordinary descriptor: {source}")
-    };
-    value.clone()
-}
 
 // Both retained endpoints consume visits, including the endpoint suppressed in
 // output. Only the returned shorter text consumes the final output byte budget.
@@ -59,7 +50,7 @@ macro_rules! assert_shortened {
 }
 
 #[test]
-fn equal_weight_endpoints_emit_once_and_still_charge_both_visits() {
+fn equal_weight_endpoints_emit_once_but_charge_both_visits() {
     for source in ["400 400", "400 4e2", "bold bold"] {
         let Value::FontWeight(value) = ordinary(source, Kind::FontWeight) else {
             panic!("weight")
@@ -70,7 +61,7 @@ fn equal_weight_endpoints_emit_once_and_still_charge_both_visits() {
 }
 
 #[test]
-fn equal_width_endpoints_emit_once_and_still_charge_both_visits() {
+fn equal_width_endpoints_emit_once_but_charge_both_visits() {
     for source in ["75% 75%", "75% 75.0%", "condensed condensed"] {
         let Value::FontWidth(value) = ordinary(source, Kind::FontWidth) else {
             panic!("width")
@@ -85,7 +76,7 @@ fn equal_width_endpoints_emit_once_and_still_charge_both_visits() {
 }
 
 #[test]
-fn equal_oblique_endpoints_emit_once_and_still_charge_both_visits() {
+fn equal_oblique_endpoints_emit_once_but_charge_both_visits() {
     for source in ["oblique 10deg 10deg", "oblique 10deg 1e1deg"] {
         let Value::FontStyle(value) = ordinary(source, Kind::FontStyle) else {
             panic!("style")

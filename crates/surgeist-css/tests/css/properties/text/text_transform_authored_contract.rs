@@ -7,6 +7,8 @@
 use crate::css::support::authored_property;
 use authored_property::{ParserFront, assert_source, checked, checked_components, invalid, parsed};
 
+use crate::css::support::named_property::sole_completed_contributions as completed;
+use crate::css::support::serialization_limits::LimitLadder;
 use surgeist_css::CssKnownProperty as P;
 use surgeist_css::*;
 
@@ -46,9 +48,6 @@ const FRONTS: [ParserFront; 5] = [
     ParserFront::TextName,
     ParserFront::TextGrammar,
 ];
-fn fronts(value: &str) -> [CssDeclaration; 5] {
-    FRONTS.map(|front| front.parse(PROPERTY, value))
-}
 fn primitive(source: &CssDeclaration) -> &CssTextTransform {
     let CssKnownPropertyValueRef::TextTransform(wrapper) =
         source.known().unwrap().property_value().unwrap()
@@ -56,18 +55,6 @@ fn primitive(source: &CssDeclaration) -> &CssTextTransform {
         panic!("existing typed TextTransform wrapper")
     };
     wrapper.value()
-}
-fn completed(source: &CssDeclaration) -> CssLonghandContributions {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
-    else {
-        panic!("intrinsic terminal contribution")
-    };
-    assert_eq!(values.items().len(), 1);
-    let item = &values.items()[0];
-    assert_eq!(item.property(), PROPERTY);
-    assert_source(item, source);
-    values
 }
 fn canonical(source: &CssDeclaration, expected: &str) {
     assert_eq!(primitive(source).serialize_specified().unwrap(), expected);
@@ -183,7 +170,7 @@ fn duplicate_conflicting_and_exclusive_choices_reject_atomically_with_color_sibl
     }
 }
 #[test]
-fn existing_singleton_primitive_provider_controls_execute_without_intrinsic_metadata() {
+fn singleton_primitive_provider_controls_execute_without_intrinsic_metadata() {
     for value in ["none", "capitalize", "uppercase", "lowercase"] {
         let source = checked(PROPERTY, value, false);
         canonical(&source, value);
@@ -234,325 +221,6 @@ fn intrinsic_metadata_is_one_inherited_ordinary_initial_terminal() {
     // The opaque initial equals the authored none contribution. Direct enum
     // payload inspection additionally belongs with the new borrowed view.
     accepted("none", "none");
-}
-#[test]
-fn every_css_wide_keyword_is_symbolic_and_keeps_source_and_importance() {
-    for (text, keyword) in GLOBALS {
-        for source in fronts(text) {
-            assert_eq!(source.known().unwrap().global(), Some(keyword));
-            assert_eq!(
-                source.to_specified_css().unwrap(),
-                format!("text-transform: {text} !important;")
-            );
-            let values = completed(&source);
-            assert!(
-                matches!(values.items()[0].value(), CssContributionValueRef::Global(v) if v == keyword)
-            );
-            assert!(values.items()[0].replacement_components().is_none());
-        }
-    }
-}
-#[test]
-fn var_env_attr_reentry_preserves_original_occurrence_and_replacement_snapshot() {
-    for pending in [
-        "var(--transform)",
-        "env(transform)",
-        "attr(data-transform *)",
-    ] {
-        for source in fronts(pending) {
-            let before = source.clone();
-            let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
-                panic!("pending")
-            };
-            assert!(handle.source().same_occurrence(&source));
-            assert_eq!(
-                source.to_specified_css().unwrap(),
-                format!("text-transform: {pending} !important;")
-            );
-            for text in STATES {
-                let replacement = parse_component_values(text).unwrap();
-                let CssContributions::Longhands(values) =
-                    handle.reenter(replacement.clone()).unwrap()
-                else {
-                    panic!("ordinary reentry")
-                };
-                assert_eq!(values.items().len(), 1);
-                let item = &values.items()[0];
-                assert_eq!(item.property(), PROPERTY);
-                assert_source(item, &source);
-                assert!(matches!(item.value(), CssContributionValueRef::Ordinary(_)));
-                assert_eq!(item.replacement_components(), Some(&replacement));
-                for (actual, supplied) in item
-                    .replacement_components()
-                    .unwrap()
-                    .items()
-                    .iter()
-                    .zip(replacement.items())
-                {
-                    assert_eq!(actual.origin(), supplied.origin());
-                    let (CssValueOrigin::Parsed(actual), CssValueOrigin::Parsed(supplied)) =
-                        (actual.origin(), supplied.origin())
-                    else {
-                        panic!("replacement snapshot")
-                    };
-                    assert!(actual.source().same_snapshot(supplied.source()));
-                    assert_eq!(actual.source().as_str(), text);
-                }
-                canonical(&checked(PROPERTY, text, false), text);
-            }
-            for (text, keyword) in GLOBALS {
-                let replacement = parse_component_values(text).unwrap();
-                let CssContributions::Longhands(values) =
-                    handle.reenter(replacement.clone()).unwrap()
-                else {
-                    panic!("global reentry")
-                };
-                assert_eq!(values.items().len(), 1);
-                let item = &values.items()[0];
-                assert_source(item, &source);
-                assert!(matches!(item.value(), CssContributionValueRef::Global(v) if v == keyword));
-                assert_eq!(item.replacement_components(), Some(&replacement));
-            }
-            assert_eq!(source, before);
-        }
-    }
-}
-#[test]
-fn residual_and_invalid_replacements_fail_repeatedly_then_the_same_handle_succeeds() {
-    let source = checked(PROPERTY, "var(--transform)", true);
-    let before = source.clone();
-    let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
-        panic!("pending")
-    };
-    for text in [
-        "var(--again)",
-        "env(again)",
-        "attr(data-again *)",
-        "full-width var(--again)",
-        r"\76 ar(--again)",
-    ] {
-        for _ in 0..2 {
-            assert!(matches!(
-                handle
-                    .reenter(parse_component_values(text).unwrap())
-                    .unwrap_err()
-                    .kind(),
-                CssExpansionErrorKind::ResidualSubstitution
-            ));
-        }
-    }
-    for text in [
-        "uppercase lowercase",
-        "none full-width",
-        "math-auto full-size-kana",
-        "uppercase!important",
-        "uppercase;color:red",
-    ] {
-        for _ in 0..2 {
-            let error = handle
-                .reenter(parse_component_values(text).unwrap())
-                .unwrap_err();
-            let CssExpansionErrorKind::InvalidReplacement(error) = error.kind() else {
-                panic!("strict replacement")
-            };
-            assert!(matches!(
-                error.kind(),
-                CssPropertyValueErrorKind::Grammar(_)
-            ));
-        }
-    }
-    let CssContributions::Longhands(values) = handle
-        .reenter(parse_component_values("full-size-kana uppercase full-width").unwrap())
-        .unwrap()
-    else {
-        panic!("reusable successful retry")
-    };
-    assert_eq!(values.items().len(), 1);
-    assert_source(&values.items()[0], &source);
-    assert!(handle.source().same_occurrence(&source));
-    assert_eq!(source, before);
-}
-fn implicit_origin(components: &CssComponentValues) -> CssValueOrigin {
-    for value in components.items() {
-        let closing = match value.view() {
-            CssComponentValueRef::Function(v) => Some(v.closing_origin()),
-            CssComponentValueRef::Block(v) => Some(v.closing_origin()),
-            _ => None,
-        };
-        if let Some(origin @ CssValueOrigin::ImplicitClosure { .. }) = closing {
-            return origin.clone();
-        }
-    }
-    let serialized = components.serialize().unwrap();
-    (0..serialized.as_css().len())
-        .find_map(|offset| match serialized.origin_at(offset) {
-            Some(CssSerializedOrigin::Token(origin @ CssValueOrigin::ImplicitClosure { .. })) => {
-                Some(origin.clone())
-            }
-            _ => None,
-        })
-        .expect("public original implicit closing origin")
-}
-fn assert_closure(error: &CssPropertyValueParseError, origin: &CssValueOrigin, text: &str) {
-    assert!(matches!(
-        error.kind(),
-        CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
-    ));
-    assert_eq!(
-        error.origin(),
-        &CssSerializedOrigin::End(Some(origin.clone()))
-    );
-    let CssValueOrigin::ImplicitClosure { opening, at } = origin else {
-        panic!("implicit EOF")
-    };
-    assert_eq!(opening.source().as_str(), text);
-    assert!(opening.source().same_snapshot(at.source()));
-    assert_eq!(at.span().start().byte_offset().value(), text.len());
-    assert_eq!(at.span().end().byte_offset().value(), text.len());
-}
-#[test]
-fn checked_original_closure_and_strict_reentry_cover_ordinary_global_and_all_pending_forms() {
-    // Independent existing checked admission: this group must reach closure
-    // assertions even before intrinsic metadata/expansion is implemented.
-    let mut texts = vec![
-        "uppercase/*".to_owned(),
-        "full-width uppercase/*".to_owned(),
-    ];
-    texts.extend(GLOBALS.map(|(text, _)| format!("{text}/*")));
-    texts.extend(
-        [
-            "var(--transform)/*",
-            "env(transform)/*",
-            "attr(data-transform *)/*",
-            "var(--transform",
-            "env(transform",
-            "attr(data-transform *",
-        ]
-        .map(str::to_owned),
-    );
-    for text in &texts {
-        let components = parse_component_values(text).unwrap();
-        let before = components.clone();
-        let origin = implicit_origin(&components);
-        for grammar in [false, true] {
-            assert_closure(
-                &checked_components(
-                    PROPERTY,
-                    components.clone(),
-                    grammar,
-                    CssImportance::Important,
-                )
-                .unwrap_err(),
-                &origin,
-                text,
-            );
-        }
-        assert_eq!(components, before);
-    }
-}
-#[test]
-fn pending_reentry_rejects_original_closures_and_complete_comment_controls_succeed() {
-    let source = checked(PROPERTY, "var(--transform)", false);
-    let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
-        panic!("pending")
-    };
-    for text in [
-        "uppercase/*",
-        "initial/*",
-        "full-size-kana uppercase full-width/*",
-    ] {
-        let components = parse_component_values(text).unwrap();
-        let origin = implicit_origin(&components);
-        for _ in 0..2 {
-            let error = handle.reenter(components.clone()).unwrap_err();
-            let CssExpansionErrorKind::InvalidReplacement(error) = error.kind() else {
-                panic!("strict original closure")
-            };
-            assert_closure(error, &origin, text);
-        }
-    }
-    for text in ["var(--again", "env(again", "attr(data-again *"] {
-        assert!(matches!(
-            handle
-                .reenter(parse_component_values(text).unwrap())
-                .unwrap_err()
-                .kind(),
-            CssExpansionErrorKind::ResidualSubstitution
-        ));
-    }
-    for text in [
-        "uppercase/**/",
-        "initial/**/",
-        "var(--transform)/**/",
-        "env(transform)/**/",
-        "attr(data-transform *)/**/",
-    ] {
-        checked(PROPERTY, text, false);
-        checked(PROPERTY, text, true);
-    }
-    assert!(
-        handle
-            .reenter(parse_component_values("uppercase/**/").unwrap())
-            .is_ok()
-    );
-}
-#[test]
-fn value_annotations_fail_at_original_tokens_while_authored_importance_remains_valid() {
-    let text = "/*😀*/uppercase!important";
-    let components = parse_component_values(text).unwrap();
-    let serialized = components.serialize().unwrap();
-    let origin = serialized
-        .origin_at(serialized.as_css().find('!').unwrap())
-        .unwrap();
-    for grammar in [false, true] {
-        let error = checked_components(
-            PROPERTY,
-            components.clone(),
-            grammar,
-            CssImportance::Important,
-        )
-        .unwrap_err();
-        assert!(matches!(
-            error.kind(),
-            CssPropertyValueErrorKind::Grammar(_)
-        ));
-        assert_eq!(error.origin(), origin);
-    }
-    canonical(&parsed(PROPERTY, "uppercase"), "uppercase");
-}
-#[test]
-fn browser_eof_recovery_retains_diagnostics_and_normalized_original_occurrence() {
-    for text in ["uppercase/*", "var(--transform"] {
-        let css = format!(".a{{text-transform:{text}");
-        let report = parse_sheet(&css);
-        assert!(!report.is_clean());
-        assert!(
-            report
-                .diagnostics()
-                .iter()
-                .any(|d| d.action() == CssRecoveryAction::RetainWithImplicitClosure)
-        );
-        let before = report.clone();
-        let exact = CssNormalizationLimits::try_new(0, 1, 1, 1).unwrap();
-        let normalized = normalize_report_with_limits(&report, exact).unwrap();
-        assert_eq!(normalized.diagnostics(), report.diagnostics());
-        let declarations: Vec<_> = normalized
-            .syntax()
-            .items()
-            .iter()
-            .filter_map(|v| match v {
-                CssNormalizedItem::Declaration(v) => Some(v),
-                _ => None,
-            })
-            .collect();
-        let [item] = declarations.as_slice() else {
-            panic!("retained recovery")
-        };
-        assert_eq!(item.order(), 0);
-        assert_eq!(item.source().known().unwrap().property(), PROPERTY);
-        assert_eq!(item.source().parsed_name().unwrap().source().as_str(), css);
-        assert_eq!(report, before);
-    }
 }
 #[test]
 fn normalization_counts_terminals_and_occurrences_cumulatively_preserving_order_contexts() {
@@ -655,43 +323,8 @@ fn normalization_counts_terminals_and_occurrences_cumulatively_preserving_order_
     assert!(normalize_sheet_with_limits(report.syntax(), exact).is_ok());
 }
 fn assert_primitive_limits(value: &CssTextTransform, expected: &str, nodes: usize) {
-    use CssSpecifiedValueSerializationErrorKind as Kind;
-    use CssSpecifiedValueSerializationLimits as Limits;
-    let before = *value;
-    let exact = Limits::new(nodes, nodes, expected.len());
-    assert_eq!(
-        value.serialize_specified_with_limits(exact).unwrap(),
-        expected
-    );
-    for (limits, kind) in [
-        (
-            Limits::new(nodes - 1, nodes, expected.len()),
-            Kind::InputNodeLimit,
-        ),
-        (
-            Limits::new(nodes, nodes - 1, expected.len()),
-            Kind::ProjectionNodeLimit,
-        ),
-        (
-            Limits::new(nodes, nodes, expected.len() - 1),
-            Kind::ByteLimit,
-        ),
-    ] {
-        for _ in 0..2 {
-            assert_eq!(
-                value
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
-                kind
-            );
-            assert_eq!(value, &before);
-        }
-    }
-    assert_eq!(
-        value.serialize_specified_with_limits(exact).unwrap(),
-        expected
-    );
+    LimitLadder::new(expected, nodes, nodes)
+        .assert_unchanged(value, CssTextTransform::serialize_specified_with_limits);
 }
 #[test]
 fn primitive_and_declaration_resources_charge_only_emitted_keywords_and_retry_atomically() {

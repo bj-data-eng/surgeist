@@ -5,27 +5,11 @@
 //! The quoted-string URL syntax also permits whitespace as authored content:
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#urls
 
+use crate::css::support::rules::retained_demo_font_face as font_face;
 use surgeist_css::{
-    CssFontDisplay, CssFontFaceRule, CssFontFaceSource, CssFontFaceUrlSource, CssFontFormatHint,
-    CssFontTechHint, CssParseReport, CssRule, CssSheet, parse_sheet, validate_sheet,
+    CssFontFaceSource, CssFontFaceUrlSource, CssFontFormatHint, CssFontTechHint, CssParseReport,
+    CssSheet, parse_sheet, validate_sheet,
 };
-
-fn font_face(report: &CssParseReport<CssSheet>) -> &CssFontFaceRule {
-    let [CssRule::FontFace(rule), CssRule::Style(_)] = report.syntax().rules() else {
-        panic!("expected retained font-face and following style rule");
-    };
-    assert_eq!(
-        ordinary_face!(rule.descriptors(), FontFamily)
-            .unwrap()
-            .as_str(),
-        "Demo"
-    );
-    assert_eq!(
-        ordinary_face!(rule.descriptors(), FontDisplay).unwrap(),
-        &CssFontDisplay::Swap
-    );
-    rule
-}
 
 fn assert_clean_urls(value: &str, expected: &[&str]) -> CssParseReport<CssSheet> {
     let source =

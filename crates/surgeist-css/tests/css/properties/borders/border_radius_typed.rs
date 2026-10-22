@@ -1,3 +1,4 @@
+use crate::css::support::property_admission::assert_component_rejected;
 use surgeist_css::*;
 
 fn scalar(text: &str) -> CssSpecifiedNonNegativeLengthPercentage {
@@ -67,14 +68,20 @@ fn checked_corner_preserves_omission_axes_origins_and_exact_literals() {
     for text in ["1e100px", "1e100%", "1e-100px", "1e-100%", "-0px", "-0%"] {
         assert!(scalar(text).literal_component().is_some(), "{text}");
     }
-    for text in ["-1e-100px", "-1e-100%", "1fr", "1"] {
+    for (text, kind) in [
+        ("-1e-100px", CssNumericConstructionErrorKind::OutOfRange),
+        ("-1e-100%", CssNumericConstructionErrorKind::OutOfRange),
+        ("1fr", CssNumericConstructionErrorKind::RootDomainMismatch),
+        ("1", CssNumericConstructionErrorKind::RootDomainMismatch),
+    ] {
         let values = parse_component_values(text).unwrap();
         let [component] = values.items() else {
             panic!("one invalid scalar")
         };
-        assert!(
-            CssSpecifiedNonNegativeLengthPercentage::try_from_component(component.clone()).is_err(),
-            "{text}"
+        assert_component_rejected(
+            CssSpecifiedNonNegativeLengthPercentage::try_from_component,
+            component.clone(),
+            kind,
         );
     }
 }

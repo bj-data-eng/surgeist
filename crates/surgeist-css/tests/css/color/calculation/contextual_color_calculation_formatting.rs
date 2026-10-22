@@ -2,6 +2,7 @@
 //! component numbers: generic six-place text for context-dependent ordinary components.
 //! Halfway away from zero is the adopted operational policy on binary64 bits.
 
+use crate::css::support::color_and_selector_fixtures::assert_color_limits;
 use crate::css::support::{
     checked_color as color, checked_color_declaration as declaration,
     component_values as components, declaration_color,
@@ -401,39 +402,10 @@ text_case!(literal_modulo_control, "lch(20 30 720)", "lch(20 30 0)");
 // With the Color root (1), one scaled contextual component costs nine.
 // A percentage product has no number-combination node (five projections),
 // then percentage-to-number adds percentage leaf/inverse/product (3).
-fn assert_limits(source: &str, expected: &str, inputs: usize, projections: usize) {
-    let c = color(source);
-    let before = c.clone();
-    for (limits, kind) in [
-        (
-            Limits::new(inputs - 1, usize::MAX, usize::MAX),
-            Kind::InputNodeLimit,
-        ),
-        (
-            Limits::new(usize::MAX, projections - 1, usize::MAX),
-            Kind::ProjectionNodeLimit,
-        ),
-        (
-            Limits::new(inputs, projections, expected.len() - 1),
-            Kind::ByteLimit,
-        ),
-    ] {
-        assert_eq!(
-            c.to_specified_css_with_limits(limits).unwrap_err().kind(),
-            kind
-        );
-        assert_eq!(c, before);
-    }
-    let limits = Limits::new(inputs, projections, expected.len());
-    let result = c.to_specified_css_with_limits(limits);
-    assert_eq!(result, c.to_specified_css_with_limits(limits));
-    assert_eq!(c, before);
-    assert_eq!(result.unwrap(), expected);
-}
 #[test]
 fn number_exact_counts_and_final_bytes() {
-    assert_limits(
-        "color(--P calc(.0078125 * 1em / 1px))",
+    assert_color_limits(
+        &color("color(--P calc(.0078125 * 1em / 1px))"),
         "color(--P calc(0.007813 * 1em / 1px))",
         6,
         9,
@@ -441,8 +413,8 @@ fn number_exact_counts_and_final_bytes() {
 }
 #[test]
 fn percent_scale_suffix_counts_and_final_bytes() {
-    assert_limits(
-        "color(--P calc(.0078125% * 1em / 1px))",
+    assert_color_limits(
+        &color("color(--P calc(.0078125% * 1em / 1px))"),
         "color(--P calc(0.007813% * 1em / 1px / 100%))",
         6,
         9,
@@ -451,8 +423,8 @@ fn percent_scale_suffix_counts_and_final_bytes() {
 #[test]
 fn cumulative_sibling_counts_and_bytes() {
     // One Color root + two captures of (first pass 5 + scale 3) = seventeen.
-    assert_limits(
-        "color(--P calc(.0078125 * 1em / 1px) calc(.0078125 * 1em / 1px))",
+    assert_color_limits(
+        &color("color(--P calc(.0078125 * 1em / 1px) calc(.0078125 * 1em / 1px))"),
         "color(--P calc(0.007813 * 1em / 1px) calc(0.007813 * 1em / 1px))",
         11,
         17,
@@ -463,8 +435,8 @@ fn mix_remaining_bytes_and_cumulative_counts() {
     // An explicit calc(50%) selects the retained weight path, avoiding generated
     // exact-rational weights. Three color roots + five component inputs + two
     // weight inputs = ten. Roots (3) + component (5 + 3) + weight leaf (1) = twelve.
-    assert_limits(
-        "color-mix(color(--P calc(.0078125 * 1em / 1px)) calc(50%), blue)",
+    assert_color_limits(
+        &color("color-mix(color(--P calc(.0078125 * 1em / 1px)) calc(50%), blue)"),
         "color-mix(color(--P calc(0.007813 * 1em / 1px)) calc(50%), blue)",
         10,
         12,
@@ -803,8 +775,8 @@ text_case!(
 fn contextual_angle_suffix_and_wrapper_final_bytes() {
     // Root + wrapper/product/three leaves + two none slots = eight inputs.
     // Three leaves/inverse/product plus root/two none = eight projections.
-    assert_limits(
-        "hsl(calc(.0078125deg * 1em / 1px) none none)",
+    assert_color_limits(
+        &color("hsl(calc(.0078125deg * 1em / 1px) none none)"),
         "hsl(calc(0.007813deg * 1em / 1px) none none)",
         8,
         8,
@@ -812,8 +784,8 @@ fn contextual_angle_suffix_and_wrapper_final_bytes() {
 }
 #[test]
 fn contextual_percentage_identity_final_bytes() {
-    assert_limits(
-        "hsl(none calc(.0078125% * 1em / 1px) none)",
+    assert_color_limits(
+        &color("hsl(none calc(.0078125% * 1em / 1px) none)"),
         "hsl(none calc(0.007813% * 1em / 1px) none)",
         8,
         8,

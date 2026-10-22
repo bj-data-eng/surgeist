@@ -58,7 +58,7 @@ fn a_root_semicolon_stays_inside_the_qualified_rule_stopped_by_the_nesting_limit
 }
 
 #[test]
-fn an_at_rule_still_ends_at_its_own_semicolon_before_the_limited_unit() {
+fn an_at_rule_ends_at_its_own_semicolon_before_the_limited_unit() {
     let parens = "(".repeat(LIMIT + 4);
     let source = format!("@x; b{parens}");
     assert_limit_unit(&source, 4, 5, 0);

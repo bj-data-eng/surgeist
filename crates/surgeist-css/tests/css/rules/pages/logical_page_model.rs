@@ -2,6 +2,7 @@
 //! Logical 1 WD20251204 §3 equates logical and physical side specificity;
 //! CSS2 §13.2.2 orders unqualified pages below side pages below first pages.
 
+use crate::css::support::rules::page_pseudo;
 use surgeist_css::*;
 
 #[test]
@@ -171,13 +172,6 @@ fn normalization_preserves_typed_page_classification_and_specificity_inside_grou
         report.syntax().to_specified_css().unwrap(),
         "@scope (.root) { @media print { @page :recto { margin-top: 1px; } @page :verso { margin-top: 2px !important; } @page :first { margin-top: 3px; } @page { margin-top: 4px; } } }"
     );
-}
-
-fn page_pseudo(page: &surgeist_css::CssPageRule) -> Option<surgeist_css::CssPagePseudo> {
-    page.selectors()
-        .selectors()
-        .first()
-        .and_then(|s| s.pseudos().first().copied())
 }
 
 fn page_specificity(page: &surgeist_css::CssPageRule) -> CssPageSpecificity {

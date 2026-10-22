@@ -1,25 +1,14 @@
 //! Functional evidence for the CSSOM media boundary: pinned CSSOM1 section 4,
 //! selected MQ5 grammar/recovery, and the shared specified resource policy.
 
+use crate::css::support::value_assertions::clean_media_query as query;
+use crate::css::support::value_assertions::media_resource_kind as resource_kind;
 use surgeist_css::{
-    CssMediaCssomSerializationError, CssMediaQuery, CssMediaSerializationError, CssRecoveryAction,
-    CssSerializedOrigin, CssSpecifiedValueSerializationErrorKind as ResourceKind,
+    CssMediaSerializationError, CssRecoveryAction, CssSerializedOrigin,
+    CssSpecifiedValueSerializationErrorKind as ResourceKind,
     CssSpecifiedValueSerializationLimits as Limits, CssValueOrigin, parse_cssom_media_query,
     parse_media_query, parse_media_query_list,
 };
-
-fn query(source: &str) -> CssMediaQuery {
-    let report = parse_cssom_media_query(source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    report.into_parts().0.expect("exactly one clean member")
-}
-
-fn resource_kind(error: &CssMediaCssomSerializationError) -> ResourceKind {
-    let CssMediaCssomSerializationError::Resource { error, .. } = error else {
-        panic!("expected cumulative resource failure: {error:?}");
-    };
-    error.kind()
-}
 
 #[test]
 fn single_query_requires_exactly_one_list_member_and_preserves_recovery_diagnostics() {

@@ -1,18 +1,16 @@
 //! Retained original Masking 1 §7.9 image/position/size/repeat provider contracts.
 //! https://www.w3.org/TR/2021/CRD-css-masking-1-20210805/#the-mask
 
+use crate::css::support::normal_declaration;
+use crate::css::support::serialization_limits::LimitLadder;
 use surgeist_css::*;
 type Limits = CssSpecifiedValueSerializationLimits;
 type Kind = CssSpecifiedValueSerializationErrorKind;
 
-fn parsed(css: &str) -> CssMaskList {
-    let report = parse_style_attribute(&format!("mask:{css}"));
-    assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
-    let CssKnownPropertyValueRef::Mask(value) = report.syntax()[0]
-        .known()
-        .unwrap()
-        .property_value()
-        .unwrap()
+fn mask_list(css: &str) -> CssMaskList {
+    let declaration = normal_declaration("mask", css);
+    let CssKnownPropertyValueRef::Mask(value) =
+        declaration.known().unwrap().property_value().unwrap()
     else {
         panic!("mask")
     };
@@ -20,38 +18,9 @@ fn parsed(css: &str) -> CssMaskList {
 }
 
 fn bounds(value: &CssMaskList, expected: &str, input: usize, projection: usize) {
-    let before = value.clone();
-    assert_eq!(
-        value
-            .serialize_specified_with_limits(Limits::new(input, projection, expected.len()))
-            .unwrap(),
-        expected
-    );
-    for (limits, kind) in [
-        (
-            Limits::new(input - 1, projection, expected.len()),
-            Kind::InputNodeLimit,
-        ),
-        (
-            Limits::new(input, projection - 1, expected.len()),
-            Kind::ProjectionNodeLimit,
-        ),
-        (
-            Limits::new(input, projection, expected.len() - 1),
-            Kind::ByteLimit,
-        ),
-    ] {
-        assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            kind
-        );
-        assert_eq!(*value, before);
-    }
+    LimitLadder::new(expected, input, projection)
+        .assert_unchanged(value, CssMaskList::serialize_specified_with_limits);
     assert_eq!(value.serialize_specified().unwrap(), expected);
-    assert_eq!(*value, before);
 }
 
 #[test]
@@ -71,10 +40,10 @@ fn parsed_fields_emit_in_canonical_layer_order() {
             "none, url(\"a\\\"b\"), linear-gradient(red, blue)",
         ),
     ] {
-        let value = parsed(input);
+        let value = mask_list(input);
         let before = value.clone();
         assert_eq!(value.serialize_specified().unwrap(), expected);
-        assert_eq!(parsed(expected).serialize_specified().unwrap(), expected);
+        assert_eq!(mask_list(expected).serialize_specified().unwrap(), expected);
         assert_eq!(value, before);
     }
 }
@@ -96,7 +65,7 @@ fn constructed_size_synthesizes_position_without_changing_omission() {
     .unwrap();
     bounds(&value, "0% 0% / contain", 3, 5);
     assert!(value.layers()[0].position().is_none());
-    let explicit = parsed("0% 0% / contain");
+    let explicit = mask_list("0% 0% / contain");
     bounds(&explicit, "0% 0% / contain", 8, 8);
     assert!(explicit.layers()[0].position().is_some());
     assert_ne!(value, explicit);
@@ -104,30 +73,35 @@ fn constructed_size_synthesizes_position_without_changing_omission() {
 
 #[test]
 fn list_layer_and_authored_child_costs_are_exact() {
-    bounds(&parsed("none"), "none", 3, 3);
-    bounds(&parsed("none, none"), "none, none", 5, 5);
-    bounds(&parsed("url(mask.png)"), "url(\"mask.png\")", 4, 4);
+    bounds(&mask_list("none"), "none", 3, 3);
+    bounds(&mask_list("none, none"), "none, none", 5, 5);
+    bounds(&mask_list("url(mask.png)"), "url(\"mask.png\")", 4, 4);
     // Gradient + stop list + two stop aggregates + two color leaves,
     // plus the enclosing mask list and mask layer.
     bounds(
-        &parsed("linear-gradient(red, blue)"),
+        &mask_list("linear-gradient(red, blue)"),
         "linear-gradient(red, blue)",
         8,
         8,
     );
     bounds(
-        &parsed("center / contain no-repeat"),
+        &mask_list("center / contain no-repeat"),
         "center center / contain no-repeat",
         9,
         9,
     );
     bounds(
-        &parsed("center / auto auto repeat repeat"),
+        &mask_list("center / auto auto repeat repeat"),
         "center center / auto repeat",
         11,
         11,
     );
-    bounds(&parsed("center / 10px"), "center center / 10px auto", 8, 9);
+    bounds(
+        &mask_list("center / 10px"),
+        "center center / 10px auto",
+        8,
+        9,
+    );
 }
 
 #[test]
@@ -249,7 +223,7 @@ fn symbolic_math_keeps_source_graph_and_non_bmp_origin_after_failure_and_retry()
 
 #[test]
 fn failure_after_first_layer_or_separator_is_atomic_and_retryable() {
-    let value = parsed("none, none");
+    let value = mask_list("none, none");
     let before = value.clone();
     for bytes in [4, 5, 6, 9] {
         assert_eq!(

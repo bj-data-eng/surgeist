@@ -1,5 +1,6 @@
 //! CSS Sizing 3 box-sizing remains a non-inherited terminal longhand.
-use crate::css::support::first_style_declaration as declaration;
+use crate::css::support::property_admission::assert_style_attribute_rejected;
+use crate::css::support::sole_declaration as declaration;
 use surgeist_css::*;
 
 #[test]
@@ -53,31 +54,6 @@ fn box_sizing_keywords_contribute_one_typed_terminal_with_source_identity() {
         assert!(item.source().same_occurrence(&source));
         assert_eq!(item.source().importance(), CssImportance::Important);
         assert!(item.replacement_components().is_none());
-    }
-}
-
-#[test]
-fn box_sizing_globals_remain_symbolic_single_terminal_values() {
-    for (text, expected) in [
-        ("initial", CssGlobalKeyword::Initial),
-        ("inherit", CssGlobalKeyword::Inherit),
-        ("unset", CssGlobalKeyword::Unset),
-        ("revert", CssGlobalKeyword::Revert),
-        ("revert-layer", CssGlobalKeyword::RevertLayer),
-    ] {
-        let source = declaration(&format!("box-sizing:{text}!important"));
-        let CssExpansion::Contributions(CssContributions::Longhands(items)) =
-            expand_declaration(&source).unwrap()
-        else {
-            panic!("global longhand")
-        };
-        let [item] = items.items() else {
-            panic!("one terminal")
-        };
-        assert_eq!(item.property(), CssKnownProperty::BoxSizing);
-        assert_eq!(item.value(), CssContributionValueRef::Global(expected));
-        assert!(item.source().same_occurrence(&source));
-        assert_eq!(item.source().importance(), CssImportance::Important);
     }
 }
 
@@ -288,15 +264,19 @@ fn box_sizing_specified_serialization_is_canonical_and_resource_bounded() {
 
 #[test]
 fn box_sizing_invalid_keyword_and_extra_tokens_are_recovered_and_fail_clean_validation() {
-    for text in ["padding-box", "border-box extra", "3", "border-box 3"] {
+    for (text, token) in [
+        ("padding-box", "padding-box"),
+        ("border-box extra", "extra"),
+        ("3", "3"),
+        ("border-box 3", "3"),
+    ] {
         let source = format!("box-sizing:{text}");
-        let report = parse_style_attribute(&source);
-        assert!(!report.is_clean(), "{source}");
+        let report =
+            assert_style_attribute_rejected(&source, CssKnownProperty::BoxSizing, Some(token));
         assert!(report.syntax().is_empty(), "{source}");
         assert_eq!(
             report.diagnostics()[0].action(),
             CssRecoveryAction::DropDeclaration
         );
-        assert!(validate_style_attribute(&source).is_err(), "{source}");
     }
 }

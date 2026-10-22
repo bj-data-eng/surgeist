@@ -1,9 +1,8 @@
 //! Functional contracts for the widened Motion CssPosition payloads. The
 //! immutable published parser RED covers preimplementation regression behavior;
 //! these typed calls first become expressible with the full owning payload.
-use surgeist_css::{
-    CssSpecifiedValueSerializationErrorKind as K, CssSpecifiedValueSerializationLimits as L, *,
-};
+use crate::css::support::serialization_limits::assert_node_limits as budget;
+use surgeist_css::*;
 
 fn scalar(text: &str) -> CssSpecifiedLengthPercentage {
     CssSpecifiedLengthPercentage::try_from_component(CssComponentValue::try_token(text).unwrap())
@@ -72,28 +71,6 @@ fn families() -> Vec<(CssPosition, &'static str, usize)> {
             5,
         ),
     ]
-}
-
-fn budget(
-    expected: &str,
-    nodes: usize,
-    emit: impl Fn(L) -> Result<String, CssSpecifiedValueSerializationError>,
-) {
-    assert_eq!(
-        emit(L::new(nodes, nodes, expected.len())).unwrap(),
-        expected
-    );
-    for (limits, kind) in [
-        (L::new(nodes - 1, nodes, expected.len()), K::InputNodeLimit),
-        (
-            L::new(nodes, nodes - 1, expected.len()),
-            K::ProjectionNodeLimit,
-        ),
-        (L::new(nodes, nodes, expected.len() - 1), K::ByteLimit),
-    ] {
-        assert_eq!(emit(limits).unwrap_err().kind(), kind);
-    }
-    assert_eq!(emit(L::default()).unwrap(), expected);
 }
 
 #[test]

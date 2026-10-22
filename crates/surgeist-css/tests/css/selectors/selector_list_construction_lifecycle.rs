@@ -1,12 +1,12 @@
 //! Functional expectations for checked list errors, aggregate admission limits,
 //! forgiving-empty construction, and ordinary/general-relative specified output.
 
+use crate::css::support::color_and_selector_fixtures::assert_specified_construction_cause as specified_cause;
 use crate::css::support::validated_selector as parsed;
 use surgeist_css::{
     CssCompoundSelectorArgument, CssNthChildPattern, CssNthPattern, CssPseudoClass,
     CssPseudoSelectorList, CssPseudoSelectorListItem, CssRelativeSelector, CssRelativeSelectorList,
-    CssSelector, CssSelectorCombinator, CssSelectorConstructionError,
-    CssSelectorConstructionErrorKind, CssSelectorList, CssSpecifiedValueSerializationError,
+    CssSelector, CssSelectorCombinator, CssSelectorConstructionErrorKind, CssSelectorList,
     CssSpecifiedValueSerializationErrorKind, CssSpecifiedValueSerializationLimits,
 };
 
@@ -28,18 +28,6 @@ fn relative_members() -> Vec<CssRelativeSelector> {
         ),
         CssRelativeSelector::new(CssSelectorCombinator::Column, CssSelector::Key("é".into())),
     ]
-}
-
-fn specified_cause(error: &CssSelectorConstructionError, expected: Kind) {
-    let CssSelectorConstructionErrorKind::Specified(cause) = error.kind() else {
-        panic!("specified construction cause: {error:?}")
-    };
-    assert_eq!(cause.kind(), expected);
-    let source = std::error::Error::source(error).expect("original specified source");
-    assert_eq!(
-        source.downcast_ref::<CssSpecifiedValueSerializationError>(),
-        Some(cause)
-    );
 }
 
 #[test]

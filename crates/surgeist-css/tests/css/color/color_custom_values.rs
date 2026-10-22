@@ -1,10 +1,7 @@
 //! Color 5 custom-profile contracts, checked without serialization as an oracle.
-use crate::css::support::checked_color as color;
+use crate::css::support::component_values as components;
+use crate::css::support::{checked_color as color, declaration_color};
 use surgeist_css::*;
-
-fn components(text: &str) -> CssComponentValues {
-    parse_component_values(text).unwrap()
-}
 
 fn expression(text: &str) -> CssProfileColorExpression {
     CssProfileColorExpression::try_from_components(components(text)).unwrap()
@@ -252,13 +249,12 @@ fn wide_custom_lists_keep_cumulative_token_and_byte_budgets() {
         CssImportance::Normal,
     )
     .unwrap();
-    let CssKnownPropertyValueRef::Color(value) =
-        declaration.known().unwrap().property_value().unwrap()
-    else {
-        panic!("color")
-    };
     assert_eq!(
-        value.value().custom_value().unwrap().channels().len(),
+        declaration_color(&declaration)
+            .custom_value()
+            .unwrap()
+            .channels()
+            .len(),
         width
     );
     for (tokens, bytes, expected) in [

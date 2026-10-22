@@ -191,7 +191,7 @@ fn block_contents_discard_semicolons_in_group_and_style_bodies_but_not_at_the_ro
 }
 
 #[test]
-fn top_level_semicolon_still_begins_a_dropped_qualified_rule() {
+fn top_level_semicolon_begins_a_dropped_qualified_rule() {
     // Consume a stylesheet's contents has no `<semicolon-token>` branch: `;.x{}`
     // is one qualified rule whose selector is invalid.
     let source = ";.x{color:red}.y{color:green}";

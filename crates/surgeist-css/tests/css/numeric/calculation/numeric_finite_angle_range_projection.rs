@@ -12,17 +12,11 @@
 //! coefficient range. Neither is an authored infinity or division by zero.
 //! Target-context computed/used clamping is a different rule under §10.12.
 
+use crate::css::support::value_assertions::calculated_number as number;
 use surgeist_css::*;
 
 type Limits = CssSpecifiedValueSerializationLimits;
 type Kind = CssSpecifiedValueSerializationErrorKind;
-
-fn number(source: &str) -> CssSpecifiedNumber {
-    CssSpecifiedNumber::try_from_calculation(
-        CssNumberCalculation::try_from_components(parse_component_values(source).unwrap()).unwrap(),
-    )
-    .unwrap()
-}
 
 fn assert_number(source: &str, expected: &str) {
     let value = number(source);
@@ -77,7 +71,7 @@ fn finite_authored_degree_coefficient_overflow_uses_the_angle_range_rule() {
 }
 
 #[test]
-fn genuine_authored_and_division_generated_infinities_still_have_nan_cosine() {
+fn genuine_authored_and_division_generated_infinities_have_nan_cosine() {
     for source in [
         "cos(infinity * 1deg)",
         "cos(-infinity * 1deg)",

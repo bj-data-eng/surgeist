@@ -1,11 +1,8 @@
 //! Narrow exact-authored fidelity regression; does not settle the legacy math grammar.
+use crate::css::support::selected_grammar;
 use surgeist_css::*;
 
 const NEGATIVE: &[&str] = &["1e-100deg", "-1e-100deg", "90.000001deg", "89.999999deg"];
-
-fn grammar() -> CssPropertyGrammar {
-    CssPropertyGrammar::from_name("glyph-orientation-vertical").unwrap()
-}
 
 #[test]
 fn parsed_near_terminal_dimensions_are_rejected_with_neighbor_recovery() {
@@ -46,8 +43,12 @@ fn checked_near_terminal_dimensions_are_rejected_for_both_origins() {
         ));
         for components in [parsed, programmatic] {
             assert!(
-                parse_property_value_for_grammar(grammar(), components, CssImportance::Important)
-                    .is_err(),
+                parse_property_value_for_grammar(
+                    selected_grammar("glyph-orientation-vertical"),
+                    components,
+                    CssImportance::Important
+                )
+                .is_err(),
                 "{text}"
             );
         }
@@ -55,7 +56,7 @@ fn checked_near_terminal_dimensions_are_rejected_for_both_origins() {
 }
 
 #[test]
-fn existing_exact_terminals_keep_mapping_spelling_and_origins() {
+fn exact_terminals_keep_mapping_spelling_and_origins() {
     for (text, expected) in [
         ("auto", CssTextOrientation::Mixed),
         ("AUTO", CssTextOrientation::Mixed),
@@ -75,7 +76,7 @@ fn existing_exact_terminals_keep_mapping_spelling_and_origins() {
         let components =
             CssComponentValues::try_new(vec![CssComponentValue::try_token(text).unwrap()]).unwrap();
         let checked = parse_property_value_for_grammar(
-            grammar(),
+            selected_grammar("glyph-orientation-vertical"),
             components.clone(),
             CssImportance::Important,
         )
@@ -92,7 +93,10 @@ fn existing_exact_terminals_keep_mapping_spelling_and_origins() {
         for declaration in [parsed, checked] {
             assert_eq!(declaration.importance(), CssImportance::Important);
             let known = declaration.known().unwrap();
-            assert_eq!(known.grammar(), grammar());
+            assert_eq!(
+                known.grammar(),
+                selected_grammar("glyph-orientation-vertical")
+            );
             let CssKnownPropertyValueRef::TextOrientation(value) = known.property_value().unwrap()
             else {
                 panic!("text orientation")
@@ -118,7 +122,12 @@ fn unchanged_deferred_syntax_boundary_is_not_expanded_by_fidelity_fix() {
     ] {
         let components = parse_component_values(text).unwrap();
         assert!(
-            parse_property_value_for_grammar(grammar(), components, CssImportance::Normal).is_err(),
+            parse_property_value_for_grammar(
+                selected_grammar("glyph-orientation-vertical"),
+                components,
+                CssImportance::Normal
+            )
+            .is_err(),
             "{text}"
         );
     }

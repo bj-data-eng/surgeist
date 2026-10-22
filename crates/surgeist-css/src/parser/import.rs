@@ -306,7 +306,7 @@ pub(super) fn parse_import_prelude<'i, 't>(
     // succeed at EOF without consuming a closing parenthesis.
     input.reset(&target_start);
     let prelude_closures =
-        recovery.check_specialized_components(source, input, "baseline.media.query-list")?;
+        recovery.check_specialized_components(source, input, "official.media.query-list-core")?;
     input.reset(&target_end);
     let selected = select_import_clauses(source, input, recovery)?;
     let probe = recovery.detached_probe();

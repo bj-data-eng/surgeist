@@ -75,7 +75,7 @@ fn relational_selectors_preserve_single_bar_namespace_prefixes() {
 }
 
 #[test]
-fn incomplete_namespace_names_still_discard_only_the_child_rule() {
+fn incomplete_namespace_names_discard_only_the_child_rule() {
     for selector in ["|&", "|.class&", "| div&"] {
         let source = format!(".parent {{ {selector} {{color:green}} color:red }}");
         let report = parse_sheet(&source);

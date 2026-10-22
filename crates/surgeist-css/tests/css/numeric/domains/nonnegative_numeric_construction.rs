@@ -5,6 +5,8 @@
 //! https://www.w3.org/TR/2018/WD-filter-effects-1-20181218/#supported-filter-functions
 //! https://www.w3.org/TR/2023/WD-css-animations-1-20230302/#animation-iteration-count
 
+use crate::css::support::value_assertions::assert_component_rejected;
+use crate::css::support::value_assertions::first_token as token;
 use surgeist_css::*;
 
 fn number(text: &str) -> CssSpecifiedNonNegativeNumber {
@@ -29,20 +31,6 @@ fn percentage_math(text: &str) -> CssSpecifiedNonNegativePercentage {
             .unwrap(),
     )
     .unwrap()
-}
-fn token(text: &str) -> CssComponentValue {
-    parse_component_values(text)
-        .unwrap()
-        .items()
-        .iter()
-        .find(|component| {
-            !matches!(
-                component.view(),
-                CssComponentValueRef::Token(CssValueTokenRef::Whitespace(_))
-            )
-        })
-        .unwrap()
-        .clone()
 }
 fn number_text(value: &CssSpecifiedNonNegativeNumber) -> &str {
     let CssComponentValueRef::Token(CssValueTokenRef::Number(number)) =
@@ -121,8 +109,16 @@ fn ordinary_tiny_negatives_and_wrong_domains_return_exact_errors_with_origins() 
             &CssNumericConstructionErrorKind::RootDomainMismatch
         );
     }
-    assert!(CssSpecifiedNonNegativeNumber::try_from_component(token("1%")).is_err());
-    assert!(CssSpecifiedNonNegativePercentage::try_from_component(token("0")).is_err());
+    assert_component_rejected(
+        CssSpecifiedNonNegativeNumber::try_from_component,
+        token("1%"),
+        surgeist_css::CssNumericConstructionErrorKind::RootDomainMismatch,
+    );
+    assert_component_rejected(
+        CssSpecifiedNonNegativePercentage::try_from_component,
+        token("0"),
+        surgeist_css::CssNumericConstructionErrorKind::RootDomainMismatch,
+    );
 }
 
 #[test]
@@ -905,7 +901,7 @@ fn assert_origin(origin: &CssValueOrigin, source: &str, start: usize, length: us
 }
 
 #[test]
-fn migrated_border_and_iteration_payloads_keep_exact_source_coordinates_and_kinds() {
+fn border_and_iteration_payloads_keep_exact_source_coordinates_and_kinds() {
     let source = "border-image-slice: +01.25 2.50%; border-image-width: 3e2; border-image-outset: -0; animation-iteration-count: .5, calc(-1)";
     let report = parse_style_attribute(source);
     assert!(report.is_clean());

@@ -1,5 +1,6 @@
 //! Typed authored gap construction and specified serialization, from Box Alignment 3 §8.
 
+use crate::css::support::normal_declaration as declaration;
 use surgeist_css::*;
 
 fn scalar(text: &str) -> CssGapValue {
@@ -19,20 +20,6 @@ fn scalar(text: &str) -> CssGapValue {
         CssSpecifiedNonNegativeLengthPercentage::try_from_component(component.clone()).unwrap()
     };
     CssGapValue::LengthPercentage(numeric)
-}
-
-fn declaration(name: &str, value: &str) -> CssDeclaration {
-    let source = format!("{name}:{value}");
-    let report = parse_style_attribute(&source);
-    assert!(
-        report.is_clean(),
-        "{source}: {} diagnostic(s)",
-        report.diagnostics().len()
-    );
-    let [declaration] = report.syntax().as_slice() else {
-        panic!("one gap declaration: {source}")
-    };
-    declaration.clone()
 }
 
 fn parsed_gap(value: &str) -> CssGapShorthand {

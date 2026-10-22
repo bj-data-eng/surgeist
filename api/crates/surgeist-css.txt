@@ -8909,7 +8909,6 @@ impl surgeist_css::CssFeatureId
 pub const fn surgeist_css::CssFeatureId::as_str(self) -> &'static str
 pub struct surgeist_css::CssFeatureMetadata
 impl surgeist_css::CssFeatureMetadata
-pub const fn surgeist_css::CssFeatureMetadata::baseline_alias_targets(&self) -> &'static [surgeist_css::CssFeatureId]
 pub const fn surgeist_css::CssFeatureMetadata::id(&self) -> surgeist_css::CssFeatureId
 pub const fn surgeist_css::CssFeatureMetadata::kind(&self) -> surgeist_css::CssFeatureKind
 pub const fn surgeist_css::CssFeatureMetadata::production(&self) -> &'static str

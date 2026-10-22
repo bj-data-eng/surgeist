@@ -4,6 +4,9 @@
 //! references. Halfway ties away from zero are the adopted operational WebKit
 //! FIXED policy, not a claim that CSSOM normatively resolves halfway direction.
 
+use crate::css::support::color_and_selector_fixtures::{
+    assert_color_limit_error, assert_color_limits,
+};
 use crate::css::support::{
     checked_color as color, checked_color_declaration as declaration,
     component_values as components, declaration_color,
@@ -328,13 +331,14 @@ fn checked_rust_relative_graph_preserves_domains_references_and_origins() {
     );
     let value = CssColor::from_relative(relative);
     let before = value.clone();
-    for limits in [
-        Limits::new(0, 0, 0),
-        Limits::new(100, 0, 100),
-        Limits::new(100, 100, 0),
+    // The color root charges its input node, then its projection node,
+    // before any output byte.
+    for (limits, kind) in [
+        (Limits::new(0, 0, 0), Kind::InputNodeLimit),
+        (Limits::new(100, 0, 100), Kind::ProjectionNodeLimit),
+        (Limits::new(100, 100, 0), Kind::ByteLimit),
     ] {
-        assert!(value.to_specified_css_with_limits(limits).is_err());
-        assert_eq!(value, before);
+        assert_color_limit_error(&value, limits, kind);
     }
     let first = value.to_specified_css();
     assert_eq!(first, value.to_specified_css());
@@ -349,51 +353,22 @@ fn checked_rust_relative_graph_preserves_domains_references_and_origins() {
 // (2 inputs), projects leaf plus scale/inverse/product (4 projections).
 // Profile identifiers add no visits. Captures charge scratch bounds, then final
 // output once. The two-calculation fixture therefore charges 2+4+4 = 10/10.
-fn assert_limits(source: &str, expected: &str, inputs: usize, projections: usize) {
-    let value = color(source);
-    let before = value.clone();
-    let bytes = expected.len();
-    for (limits, error) in [
-        (
-            Limits::new(inputs - 1, usize::MAX, usize::MAX),
-            Kind::InputNodeLimit,
-        ),
-        (
-            Limits::new(usize::MAX, projections - 1, usize::MAX),
-            Kind::ProjectionNodeLimit,
-        ),
-        (Limits::new(inputs, projections, bytes - 1), Kind::ByteLimit),
-    ] {
-        assert_eq!(
-            value
-                .to_specified_css_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            error
-        );
-        assert_eq!(value, before);
-    }
-    let result = value.to_specified_css_with_limits(Limits::new(inputs, projections, bytes));
-    assert_eq!(value, before);
-    assert_eq!(result.unwrap(), expected);
-}
-
 #[test]
 fn predefined_exact_visits_and_final_bytes_are_atomic() {
     const TEXT: &str = "rgb(from red calc(0.007813) g b)";
     assert_eq!(TEXT.len(), 32);
-    assert_limits("rgb(from red calc(1 / 128) g b)", TEXT, 8, 8);
+    assert_color_limits(&color("rgb(from red calc(1 / 128) g b)"), TEXT, 8, 8);
 }
 #[test]
 fn alpha_number_exact_visits_and_final_bytes_are_atomic() {
     const TEXT: &str = "alpha(from red / calc(0.007813))";
     assert_eq!(TEXT.len(), 32);
-    assert_limits("alpha(from red / calc(1 / 128))", TEXT, 6, 6);
+    assert_color_limits(&color("alpha(from red / calc(1 / 128))"), TEXT, 6, 6);
 }
 #[test]
 fn alpha_percentage_exact_scaled_visits_and_final_bytes_are_atomic() {
-    assert_limits(
-        "alpha(from red / calc(.78125%))",
+    assert_color_limits(
+        &color("alpha(from red / calc(.78125%))"),
         "alpha(from red / calc(0.007813))",
         4,
         6,
@@ -403,12 +378,12 @@ fn alpha_percentage_exact_scaled_visits_and_final_bytes_are_atomic() {
 fn profile_number_exact_visits_and_final_bytes_are_atomic() {
     const TEXT: &str = "color(from red --P calc(0.007813))";
     assert_eq!(TEXT.len(), 34);
-    assert_limits("color(from red --P calc(1 / 128))", TEXT, 6, 6);
+    assert_color_limits(&color("color(from red --P calc(1 / 128))"), TEXT, 6, 6);
 }
 #[test]
 fn profile_percentage_exact_scaled_visits_and_final_bytes_are_atomic() {
-    assert_limits(
-        "color(from red --P calc(.78125%))",
+    assert_color_limits(
+        &color("color(from red --P calc(.78125%))"),
         "color(from red --P calc(0.007813))",
         4,
         6,
@@ -418,8 +393,8 @@ fn profile_percentage_exact_scaled_visits_and_final_bytes_are_atomic() {
 fn profile_sibling_calculations_share_cumulative_visits_and_final_bytes() {
     const TEXT: &str = "color(from red --P calc(0.007813) calc(0.007813))";
     assert_eq!(TEXT.len(), 49);
-    assert_limits(
-        "color(from red --P calc(1 / 128) calc(1 / 128))",
+    assert_color_limits(
+        &color("color(from red --P calc(1 / 128) calc(1 / 128))"),
         TEXT,
         10,
         10,

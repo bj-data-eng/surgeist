@@ -4,11 +4,12 @@
 use crate::css::support::descriptor_phases;
 use descriptor_phases::*;
 
+use crate::css::support::authored_syntax::{
+    assert_fragment_implicitly_closed as implicit, assert_fragment_rejected as rejected,
+    assert_origin_bytes as origin, assert_position as point, fragment_body as body,
+    fragment_recovery as recovered,
+};
 use surgeist_css::*;
-
-fn body<T>(report: &CssParseReport<Option<CssBlockFragment<T>>>) -> &CssBlockFragment<T> {
-    report.syntax().as_ref().expect("an admitted genuine body")
-}
 
 fn clean<T: Clone + std::fmt::Debug + PartialEq>(
     report: &CssParseReport<Option<CssBlockFragment<T>>>,
@@ -18,44 +19,6 @@ fn clean<T: Clone + std::fmt::Debug + PartialEq>(
         report.clone().into_validation_result().unwrap(),
         report.syntax().clone(),
     );
-}
-
-fn recovered<T: Clone + std::fmt::Debug>(
-    report: &CssParseReport<Option<CssBlockFragment<T>>>,
-    action: CssRecoveryAction,
-) -> &CssRecoveryDiagnostic {
-    assert!(!report.is_clean());
-    assert!(report.clone().into_validation_result().is_err());
-    report
-        .diagnostics()
-        .iter()
-        .find(|diagnostic| diagnostic.action() == action)
-        .expect("the owning recovery action")
-}
-
-fn point(actual: CssSourcePosition, byte: usize, line: u32, column: u32) {
-    assert_eq!(actual.byte_offset().value(), byte);
-    assert_eq!(actual.line().value(), line);
-    assert_eq!(actual.column().value(), column);
-}
-
-fn origin(actual: &CssParsedOrigin, source: &str, start: usize, end: usize) {
-    assert_eq!(actual.source().as_str(), source);
-    assert_eq!(actual.span().start().byte_offset().value(), start);
-    assert_eq!(actual.span().end().byte_offset().value(), end);
-}
-
-fn rejected<T: Clone + std::fmt::Debug>(
-    report: &CssParseReport<Option<CssBlockFragment<T>>>,
-    source: &str,
-) {
-    assert!(
-        report.syntax().is_none(),
-        "whole fragment must be rejected: {source}"
-    );
-    let diagnostic = recovered(report, CssRecoveryAction::RejectInput);
-    assert_eq!(diagnostic.span().start().byte_offset().value(), 0);
-    assert_eq!(diagnostic.span().end().byte_offset().value(), source.len());
 }
 
 fn symbol(actual: &CssCounterSymbol, expected: &str, quoted: bool) {
@@ -546,19 +509,6 @@ fn original_utf8_and_utf16_coordinates_exclude_outer_trivia_but_share_its_snapsh
             .source()
             .same_snapshot(body(&profile).origin().source())
     );
-}
-
-fn implicit<T: Clone + std::fmt::Debug>(
-    report: &CssParseReport<Option<CssBlockFragment<T>>>,
-    source: &str,
-) {
-    origin(body(report).origin(), source, 0, source.len());
-    let diagnostic = recovered(report, CssRecoveryAction::RetainWithImplicitClosure);
-    assert_eq!(
-        diagnostic.error().position().byte_offset().value(),
-        source.len()
-    );
-    assert_eq!(diagnostic.span().end().byte_offset().value(), source.len());
 }
 
 #[test]

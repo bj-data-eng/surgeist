@@ -4,18 +4,8 @@
 //! reconciling this historical front is deferred (docs/reference.md#css-syntax-3-edition-differences).
 //! This wholly new front has functional tests alongside implementation;
 //! no executable preimplementation RED is claimed.
+use crate::css::support::authored_syntax::property_names as names;
 use surgeist_css::*;
-
-fn names(declarations: &CssDeclarationList) -> Vec<&str> {
-    declarations
-        .iter()
-        .map(|declaration| match declaration.property_name() {
-            CssPropertyNameRef::Known(property) => property.canonical_name(),
-            CssPropertyNameRef::Custom(name) => name.as_str(),
-            _ => panic!("ordinary test name"),
-        })
-        .collect()
-}
 
 fn dropped(source: &str, expected_names: &[&str], unit: &str, responsible: usize) {
     let report = parse_declaration_list_text(source);
@@ -459,7 +449,7 @@ fn resource_recovery_keeps_its_own_action_and_allows_later_siblings() {
 }
 
 #[test]
-fn contextual_quirks_and_svg_admission_use_the_existing_owning_grammar() {
+fn contextual_quirks_and_svg_admission_use_the_owning_grammar() {
     let source = "color: ABC; width: 2px";
     let standard = CssParserContext::default().parse_declaration_list_text(source);
     assert_eq!(names(standard.syntax()), ["width"]);

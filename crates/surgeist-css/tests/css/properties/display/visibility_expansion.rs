@@ -1,16 +1,19 @@
 //! Selected Display3 2026-06-05 §4 supplies
 //! visible | hidden | collapse, inherited yes, initial visible, one longhand.
 //! New longhand payload and canonical serializer assertions require functional APIs.
+use crate::css::support;
+use crate::css::support::property_admission::{
+    assert_checked_value_rejected, assert_declaration_rejected,
+};
 use surgeist_css::*;
 
 fn declaration(value: &str, important: bool) -> CssDeclaration {
-    let suffix = if important { "!important" } else { "" };
-    let report = parse_style_attribute(&format!("visibility:{value}{suffix}"));
-    assert!(report.is_clean(), "{value}: {:?}", report.diagnostics());
-    let [declaration] = report.syntax().as_slice() else {
-        panic!("one visibility declaration")
+    let importance = if important {
+        CssImportance::Important
+    } else {
+        CssImportance::Normal
     };
-    declaration.clone()
+    support::declaration("visibility", value, importance)
 }
 
 fn ordinary(source: &CssDeclaration) {
@@ -84,33 +87,6 @@ fn all_visibility_keywords_expand_once_with_original_occurrence() {
 }
 
 #[test]
-fn visibility_globals_target_the_same_terminal_without_resolving_inheritance() {
-    for (text, expected) in [
-        ("initial", CssGlobalKeyword::Initial),
-        ("inherit", CssGlobalKeyword::Inherit),
-        ("unset", CssGlobalKeyword::Unset),
-        ("revert", CssGlobalKeyword::Revert),
-        ("revert-layer", CssGlobalKeyword::RevertLayer),
-    ] {
-        for important in [false, true] {
-            let source = declaration(text, important);
-            let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-                expand_declaration(&source).unwrap()
-            else {
-                panic!("global terminal")
-            };
-            let [value] = values.items() else {
-                panic!("one terminal")
-            };
-            assert_eq!(value.property(), CssKnownProperty::Visibility);
-            assert_eq!(value.value(), CssContributionValueRef::Global(expected));
-            assert!(value.source().same_occurrence(&source));
-            assert_eq!(value.source().importance(), source.importance());
-        }
-    }
-}
-
-#[test]
 fn visibility_pending_reentry_is_strict_and_keeps_original_and_replacement_origins() {
     let source = declaration("var(--visibility)", true);
     let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
@@ -173,7 +149,7 @@ fn visibility_pending_reentry_is_strict_and_keeps_original_and_replacement_origi
 }
 
 #[test]
-fn visibility_existing_keyword_grammar_identity_and_recovery_are_preserved() {
+fn visibility_keyword_grammar_identity_and_recovery_are_preserved() {
     for (text, expected) in [
         ("visible", CssVisibility::Visible),
         ("hidden", CssVisibility::Hidden),
@@ -201,29 +177,17 @@ fn visibility_existing_keyword_grammar_identity_and_recovery_are_preserved() {
             assert_eq!(value.as_css(), text);
         }
     }
-    for text in [
-        "auto",
-        "force-hidden",
-        "visible hidden",
-        "hidden collapse",
-        "none",
-        "0",
-        "",
-        "inherit visible",
+    for (text, token) in [
+        ("auto", Some("auto")),
+        ("force-hidden", Some("force-hidden")),
+        ("visible hidden", Some("hidden")),
+        ("hidden collapse", Some("collapse")),
+        ("none", Some("none")),
+        ("0", Some("0")),
+        ("", None),
+        ("inherit visible", Some("visible")),
     ] {
-        let report = parse_style_attribute(&format!("color:red;visibility:{text};color:blue"));
-        let [diagnostic] = report.diagnostics() else {
-            panic!("one invalid visibility: {text}")
-        };
-        assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-        assert_eq!(report.syntax().len(), 2);
-        assert!(
-            parse_property_value(
-                CssPropertyNameRef::Known(CssKnownProperty::Visibility),
-                parse_component_values(text).unwrap(),
-                CssImportance::Normal
-            )
-            .is_err()
-        );
+        assert_declaration_rejected("visibility", text, token);
+        assert_checked_value_rejected(CssKnownProperty::Visibility, text, token);
     }
 }

@@ -3,14 +3,8 @@
 //! computed clamping is downstream. These are typed transport assertions, not
 //! canonical opacity serialization assertions.
 
+use crate::css::support::important_declaration;
 use surgeist_css::*;
-
-fn parsed(value: &str) -> CssDeclaration {
-    let report = parse_style_attribute(&format!("opacity:{value}!important"));
-    assert!(report.is_clean(), "{value}: {:?}", report.diagnostics());
-    assert_eq!(report.syntax().len(), 1);
-    report.syntax()[0].clone()
-}
 
 fn expanded(source: &CssDeclaration) -> CssLonghandContributions {
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =
@@ -168,7 +162,7 @@ fn parsed_and_programmatic_opacity_transport_preserves_exact_numeric_branches() 
         .into_iter()
         .enumerate()
     {
-        let source = parsed(spelling);
+        let source = important_declaration("opacity", spelling);
         let values = expanded(&source);
         assert_numeric(opacity(&values.items()[0]), index);
         assert!(
@@ -208,7 +202,7 @@ fn parsed_and_programmatic_opacity_calculations_preserve_operations_and_origins(
         (false, "calc(1 / 2)", ["1", " ", "/", " ", "2"]),
         (true, "calc(25% + 25%)", ["25%", " ", "+", " ", "25%"]),
     ] {
-        let source = parsed(spelling);
+        let source = important_declaration("opacity", spelling);
         let values = expanded(&source);
         assert_calculation(opacity(&values.items()[0]), percentage, false);
 
@@ -239,7 +233,7 @@ fn parsed_and_programmatic_opacity_calculations_preserve_operations_and_origins(
 
 #[test]
 fn opacity_reentry_emits_exact_replacement_value_with_original_occurrence() {
-    let source = parsed("var(--opacity)");
+    let source = important_declaration("opacity", "var(--opacity)");
     let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
         panic!("pending opacity")
     };

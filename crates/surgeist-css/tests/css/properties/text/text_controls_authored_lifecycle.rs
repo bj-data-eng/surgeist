@@ -7,6 +7,7 @@ use CssSpecifiedValueSerializationErrorKind as Kind;
 use CssSpecifiedValueSerializationLimits as Limits;
 use surgeist_css::*;
 
+use crate::css::support::authored_parsed_declaration as declaration;
 use crate::css::support::authored_property;
 use authored_property::ParserFront;
 
@@ -42,15 +43,6 @@ fn permutations(words: &[&str]) -> Vec<String> {
     result
 }
 
-fn declaration(name: &str, input: &str) -> CssDeclaration {
-    let report = parse_style_attribute(&format!("/*😀*/{name}:{input}!important"));
-    assert!(
-        report.is_clean(),
-        "{name}:{input}: {:?}",
-        report.diagnostics()
-    );
-    report.syntax()[0].clone()
-}
 fn components(input: &str) -> CssComponentValues {
     parse_component_values(input).unwrap()
 }
@@ -946,7 +938,7 @@ fn spacing_constituent_boundaries_reject_interleaving_and_project_only_the_two_t
 }
 
 #[test]
-fn numeric_children_keep_signed_domains_exact_origins_and_existing_math_work_prices() {
+fn numeric_children_keep_signed_domains_exact_origins_and_math_work_prices() {
     for (input, expected) in [("-0", "0"), ("-2px", "-2px"), ("-25%", "-25%")] {
         let source = declaration("hyphenate-limit-zone", input);
         let CssKnownPropertyValueRef::HyphenateLimitZone(wrapper) =

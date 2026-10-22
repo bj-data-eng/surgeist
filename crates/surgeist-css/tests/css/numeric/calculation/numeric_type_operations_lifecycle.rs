@@ -4,6 +4,8 @@
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-type-checking
 //! https://www.w3.org/TR/2024/WD-css-typed-om-1-20240321/#cssnumericvalue-match
 
+use crate::css::support::component_values as components;
+use crate::css::support::value_assertions::assert_calculation_rejected;
 use surgeist_css::*;
 
 const AXES: [CssNumericDimension; 7] = [
@@ -24,9 +26,6 @@ const DIMENSION_UNITS: [(CssNumericDimension, &str); 6] = [
     (CssNumericDimension::Flex, "fr"),
 ];
 
-fn components(text: &str) -> CssComponentValues {
-    parse_component_values(text).unwrap()
-}
 fn assert_type(ty: CssNumericType, exponents: [i32; 7], hint: Option<CssNumericDimension>) {
     for (axis, expected) in AXES.into_iter().zip(exponents) {
         assert_eq!(ty.exponent(axis), expected, "{axis:?}: {ty:?}");
@@ -253,7 +252,10 @@ fn ordinary_numeric_axes_and_math_constants_have_exact_non_evaluated_types() {
         assert_eq!(constant.value(), expected);
         assert_type(constant.numeric_type(), [0; 7], None);
     }
-    assert!(CssNumberCalculation::try_from_components(components("calc(custom-name)")).is_err());
+    assert_calculation_rejected(
+        CssNumberCalculation::try_from_components(components("calc(custom-name)")),
+        None,
+    );
 }
 
 #[test]
@@ -331,9 +333,9 @@ fn incompatible_dimensions_and_conflicting_hints_fail_before_zero_simplification
         "calc(1 / 1px)",
         "calc(calc(1px * 1px) / 1px / 1px)",
     ] {
-        assert!(
-            CssNumberCalculation::try_from_components(components(text)).is_err(),
-            "{text}"
+        assert_calculation_rejected(
+            CssNumberCalculation::try_from_components(components(text)),
+            None,
         );
     }
 }
@@ -343,10 +345,25 @@ fn integer_number_phase_and_unitless_zero_controls_do_not_promote_or_mix_domains
     let integer = CssIntegerCalculation::try_from_components(components("calc(1.5)")).unwrap();
     assert!(integer.requires_rounding());
     assert_type(integer.numeric_type(), [0; 7], None);
-    assert!(CssIntegerCalculation::try_from_components(components("1.5")).is_err());
+    assert_calculation_rejected(
+        CssIntegerCalculation::try_from_components(components("1.5")),
+        None,
+    );
     assert!(CssLengthCalculation::try_from_components(components("0")).is_ok());
-    for text in ["calc(0)", "calc(0 + 1px)"] {
-        assert!(CssLengthCalculation::try_from_components(components(text)).is_err());
+    for (text, kind) in [
+        (
+            "calc(0)",
+            surgeist_css::CssNumericConstructionErrorKind::RootDomainMismatch,
+        ),
+        (
+            "calc(0 + 1px)",
+            surgeist_css::CssNumericConstructionErrorKind::IncompatibleTypes,
+        ),
+    ] {
+        assert_calculation_rejected(
+            CssLengthCalculation::try_from_components(components(text)),
+            Some(kind),
+        );
     }
     for name in ["color", "opacity"] {
         let text = value_for(name, "calc(.25 + 25%)");

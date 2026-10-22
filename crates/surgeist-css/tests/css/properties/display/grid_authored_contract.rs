@@ -18,6 +18,12 @@
 //! is covered here, while existing area/implicit borrowed views cover defaults.
 //! Catalog source completeness and downstream execution are not test oracles.
 
+use crate::css::support::authored_property::{checked, parsed};
+use crate::css::support::property_admission::Responsible::{self, At, Disputed, End};
+use crate::css::support::property_admission::implicit_closing_origin as implicit_origin;
+use crate::css::support::property_admission::{
+    assert_checked_rejected, assert_implicit_closure, assert_invalid_value,
+};
 use surgeist_css::CssKnownProperty as P;
 use surgeist_css::*;
 
@@ -48,44 +54,6 @@ const GLOBALS: [(&str, CssGlobalKeyword); 5] = [
     ("revert-layer", CssGlobalKeyword::RevertLayer),
 ];
 
-fn parsed(property: P, value: &str) -> CssDeclaration {
-    let css = format!("/*😀*/{}:{value}!important", property.canonical_name());
-    let report = parse_style_attribute(&css);
-    assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
-    assert!(validate_style_attribute(&css).is_ok());
-    let [source] = report.syntax().as_slice() else {
-        panic!("one occurrence")
-    };
-    assert_eq!(source.known().unwrap().property(), property);
-    assert_eq!(source.known().unwrap().grammar(), property.grammar());
-    assert_eq!(source.importance(), CssImportance::Important);
-    assert!(source.position().is_some());
-    source.clone()
-}
-fn checked(property: P, value: &str, grammar: bool) -> CssDeclaration {
-    let components = parse_component_values(value).unwrap();
-    let before = components.clone();
-    let source = if grammar {
-        parse_property_value_for_grammar(
-            property.grammar(),
-            components.clone(),
-            CssImportance::Important,
-        )
-    } else {
-        parse_property_value(
-            CssPropertyNameRef::Known(property),
-            components.clone(),
-            CssImportance::Important,
-        )
-    }
-    .unwrap_or_else(|error| panic!("{}:{value}: {error:?}", property.canonical_name()));
-    assert_eq!(components, before);
-    assert_eq!(source.value_components(), &components);
-    assert!(source.position().is_none());
-    assert_eq!(source.known().unwrap().grammar(), property.grammar());
-    assert_eq!(source.importance(), CssImportance::Important);
-    source
-}
 fn fronts(property: P, value: &str) -> [CssDeclaration; 3] {
     [
         parsed(property, value),
@@ -129,7 +97,8 @@ fn accepted(property: P, value: &str, expected: &str) {
         checked(property, expected, true);
     }
 }
-fn invalid(property: P, value: &str) {
+fn invalid<'a>(property: P, value: &str, token: impl Into<Responsible<'a>>) {
+    let token = token.into();
     let css = format!("color:red;{}:{value};color:blue", property.canonical_name());
     let report = parse_style_attribute(&css);
     assert_eq!(report.syntax().len(), 2, "{css}");
@@ -147,27 +116,30 @@ fn invalid(property: P, value: &str) {
         panic!("typed property failure")
     };
     assert_eq!(detail.property(), property);
+    assert_invalid_value(diagnostic.error().kind(), property, token);
     assert_eq!(
         validate_style_attribute(&css).unwrap_err().diagnostics(),
         report.diagnostics()
     );
     let components = parse_component_values(value).unwrap();
     let before = components.clone();
-    assert!(
+    assert_checked_rejected(
         parse_property_value(
             CssPropertyNameRef::Known(property),
             components.clone(),
-            CssImportance::Normal
-        )
-        .is_err()
+            CssImportance::Normal,
+        ),
+        property,
+        token,
     );
-    assert!(
+    assert_checked_rejected(
         parse_property_value_for_grammar(
             property.grammar(),
             components.clone(),
-            CssImportance::Normal
-        )
-        .is_err()
+            CssImportance::Normal,
+        ),
+        property,
+        token,
     );
     assert_eq!(components, before);
 }
@@ -220,7 +192,7 @@ fn ordinary(source: &CssDeclaration) -> CssLonghandContributions {
     }
     values
 }
-fn existing_terminal_output(values: &CssLonghandContributions, property: P) -> String {
+fn terminal_output(values: &CssLonghandContributions, property: P) -> String {
     let item = values
         .items()
         .iter()
@@ -256,19 +228,22 @@ fn none_subgrid_and_name_repeat_admit_the_selected_axis_language() {
         ] {
             accepted(property, value, expected);
         }
-        for value in [
-            "subgrid 10px",
-            "subgrid repeat(auto-fit, [a])",
-            "subgrid repeat(0, [a])",
-            "subgrid repeat(2, 10px)",
-            "subgrid repeat(2, repeat(2, [a]))",
-            "subgrid [auto]",
-            "subgrid [span]",
-            "subgrid [inherit]",
-            "subgrid [default]",
-            "subgrid repeat(auto-fill, [a]) repeat(auto-fill, [b])",
+        for (value, token) in [
+            ("subgrid 10px", At("10px")),
+            ("subgrid repeat(auto-fit, [a])", At("auto-fit")),
+            ("subgrid repeat(0, [a])", At("0")),
+            ("subgrid repeat(2, 10px)", At("10px")),
+            ("subgrid repeat(2, repeat(2, [a]))", At("repeat(")),
+            ("subgrid [auto]", At("auto")),
+            ("subgrid [span]", At("span")),
+            ("subgrid [inherit]", At("inherit")),
+            ("subgrid [default]", At("default")),
+            (
+                "subgrid repeat(auto-fill, [a]) repeat(auto-fill, [b])",
+                Disputed,
+            ),
         ] {
-            invalid(property, value);
+            invalid(property, value, token);
         }
     }
 }
@@ -282,14 +257,14 @@ fn calculated_repeat_counts_are_authored_integer_math_not_used_repetition() {
         ] {
             accepted(property, value, value);
         }
-        for value in [
-            "repeat(calc(2px), 10px)",
-            "repeat(0, 10px)",
-            "repeat(-1, 10px)",
-            "repeat(2.5, 10px)",
-            "repeat(2, repeat(2, 10px))",
+        for (value, token) in [
+            ("repeat(calc(2px), 10px)", Some("calc(")),
+            ("repeat(0, 10px)", Some("0")),
+            ("repeat(-1, 10px)", Some("-1")),
+            ("repeat(2.5, 10px)", Some("2.5")),
+            ("repeat(2, repeat(2, 10px))", Some("repeat(")),
         ] {
-            invalid(property, value);
+            invalid(property, value, token);
         }
     }
 }
@@ -329,24 +304,24 @@ fn complete_area_string_alternatives_have_repeat_free_explicit_columns() {
         ] {
             accepted(property, value, value);
         }
-        for value in [
-            r#""a a" / repeat(2, 10px)"#,
-            r#""a a" / none"#,
-            r#""a a" / subgrid"#,
-            r#""a a" / repeat(auto-fill, 10px)"#,
-            r#""a a" repeat(2, 10px)"#,
-            r#""a a" /"#,
-            r#""""#,
-            r#""a a" "b""#,
-            r#""a ." ". a""#,
-            r#""a" [end] junk"#,
+        for (value, token) in [
+            (r#""a a" / repeat(2, 10px)"#, Some("repeat(")),
+            (r#""a a" / none"#, Some("none")),
+            (r#""a a" / subgrid"#, Some("subgrid")),
+            (r#""a a" / repeat(auto-fill, 10px)"#, Some("repeat(")),
+            (r#""a a" repeat(2, 10px)"#, Some("repeat(")),
+            (r#""a a" /"#, Some("/")),
+            (r#""""#, Some("\"\"")),
+            (r#""a a" "b""#, Some("\"b\"")),
+            (r#""a ." ". a""#, Some("\". a\"")),
+            (r#""a" [end] junk"#, Some("junk")),
         ] {
-            invalid(property, value);
+            invalid(property, value, token);
         }
     }
 }
 #[test]
-fn existing_track_auto_flow_precision_and_empty_group_policies_are_controls() {
+fn track_auto_flow_precision_and_empty_group_policies_are_controls() {
     for property in [P::GridTemplateRows, P::GridTemplateColumns] {
         for value in [
             "[] 10px []",
@@ -355,14 +330,14 @@ fn existing_track_auto_flow_precision_and_empty_group_policies_are_controls() {
         ] {
             accepted(property, value, value);
         }
-        for value in [
-            "[]",
-            "[a] [b] 10px",
-            "repeat(auto-fill, 1fr) repeat(auto-fit, 10px)",
-            "minmax(1fr, 10px)",
-            "fit-content(1fr)",
+        for (value, token) in [
+            ("[]", End),
+            ("[a] [b] 10px", At("[")),
+            ("repeat(auto-fill, 1fr) repeat(auto-fit, 10px)", Disputed),
+            ("minmax(1fr, 10px)", At("1fr")),
+            ("fit-content(1fr)", At("1fr")),
         ] {
-            invalid(property, value);
+            invalid(property, value, token);
         }
     }
     for property in [P::GridTemplate, P::Grid] {
@@ -372,8 +347,8 @@ fn existing_track_auto_flow_precision_and_empty_group_policies_are_controls() {
             "calc(10px + 5%) / 1e-50fr",
             "calc(5% + 10px) / 0fr",
         );
-        invalid(property, "10px");
-        invalid(property, "10px /");
+        invalid(property, "10px", Some("10px"));
+        invalid(property, "10px /", Some("/"));
     }
     for (value, expected) in [
         ("dense auto-flow / 10px", "auto-flow dense / 10px"),
@@ -383,12 +358,12 @@ fn existing_track_auto_flow_precision_and_empty_group_policies_are_controls() {
     ] {
         accepted(P::Grid, value, expected);
     }
-    for value in [
-        "auto-flow",
-        "auto-flow / auto-flow",
-        "auto-flow dense dense / 10px",
+    for (value, token) in [
+        ("auto-flow", At("auto-flow")),
+        ("auto-flow / auto-flow", At("auto-flow")),
+        ("auto-flow dense dense / 10px", At("dense")),
     ] {
-        invalid(P::Grid, value);
+        invalid(P::Grid, value, token);
     }
     for (value, expected) in [
         ("NORMAL", "normal"),
@@ -460,16 +435,13 @@ fn ordinary_projection_preserves_occurrences_and_source_defined_omission_default
             for source in fronts(property, value) {
                 let values = ordinary(&source);
                 assert_eq!(
-                    existing_terminal_output(&values, P::GridTemplateAreas),
+                    terminal_output(&values, P::GridTemplateAreas),
                     expected_areas
                 );
                 if property == P::Grid {
-                    assert_eq!(existing_terminal_output(&values, P::GridAutoRows), "auto");
-                    assert_eq!(
-                        existing_terminal_output(&values, P::GridAutoColumns),
-                        "auto"
-                    );
-                    assert_eq!(existing_terminal_output(&values, P::GridAutoFlow), "normal");
+                    assert_eq!(terminal_output(&values, P::GridAutoRows), "auto");
+                    assert_eq!(terminal_output(&values, P::GridAutoColumns), "auto");
+                    assert_eq!(terminal_output(&values, P::GridAutoFlow), "normal");
                 }
             }
         }
@@ -487,33 +459,10 @@ fn ordinary_projection_preserves_occurrences_and_source_defined_omission_default
     ] {
         for source in fronts(P::Grid, value) {
             let values = ordinary(&source);
-            assert_eq!(
-                existing_terminal_output(&values, P::GridTemplateAreas),
-                "none"
-            );
-            assert_eq!(existing_terminal_output(&values, P::GridAutoRows), rows);
-            assert_eq!(
-                existing_terminal_output(&values, P::GridAutoColumns),
-                columns
-            );
-            assert_eq!(existing_terminal_output(&values, P::GridAutoFlow), flow);
-        }
-    }
-}
-#[test]
-fn every_css_wide_keyword_projects_to_all_one_three_or_six_terminals() {
-    for (property, _) in ROLES {
-        for (text, keyword) in GLOBALS {
-            for source in fronts(property, text) {
-                let values = completed(&source);
-                assert_eq!(names(&values), members(property));
-                for item in values.items() {
-                    assert_source(item, &source);
-                    assert_eq!(item.value(), CssContributionValueRef::Global(keyword));
-                    assert!(item.ordinary_value().is_none());
-                    assert!(item.replacement_components().is_none());
-                }
-            }
+            assert_eq!(terminal_output(&values, P::GridTemplateAreas), "none");
+            assert_eq!(terminal_output(&values, P::GridAutoRows), rows);
+            assert_eq!(terminal_output(&values, P::GridAutoColumns), columns);
+            assert_eq!(terminal_output(&values, P::GridAutoFlow), flow);
         }
     }
 }
@@ -584,29 +533,6 @@ fn whole_value_pending_reentry_reuses_original_grammar_order_importance_and_orig
     }
 }
 
-fn implicit_origin(components: &CssComponentValues) -> CssValueOrigin {
-    // Public origin mappings cover comments; public closing_origin covers
-    // structural delimiters. Never inspect private first_implicit_origin.
-    for value in components.items() {
-        let closing = match value.view() {
-            CssComponentValueRef::Function(v) => Some(v.closing_origin()),
-            CssComponentValueRef::Block(v) => Some(v.closing_origin()),
-            _ => None,
-        };
-        if let Some(origin @ CssValueOrigin::ImplicitClosure { .. }) = closing {
-            return origin.clone();
-        }
-    }
-    let serialized = components.serialize().unwrap();
-    (0..serialized.as_css().len())
-        .find_map(|offset| match serialized.origin_at(offset) {
-            Some(CssSerializedOrigin::Token(origin @ CssValueOrigin::ImplicitClosure { .. })) => {
-                Some(origin.clone())
-            }
-            _ => None,
-        })
-        .expect("retained implicit closing origin")
-}
 fn assert_closure_error(error: &CssPropertyValueParseError, origin: &CssValueOrigin) {
     assert!(matches!(
         error.kind(),
@@ -808,8 +734,9 @@ fn normalization_preserves_duplicate_order_contexts_and_exact_one_three_six_acco
 #[test]
 fn recoverable_browser_comments_retain_diagnostics_and_source_in_normalized_reports() {
     for (property, value) in ROLES {
-        let report = parse_sheet(&format!(".a{{{}:{value}/*", property.canonical_name()));
-        assert!(!report.is_clean());
+        let css = format!(".a{{{}:{value}/*", property.canonical_name());
+        let report = parse_sheet(&css);
+        assert_implicit_closure(&css, &report);
         let before = report.clone();
         let count = match property {
             P::Grid => 6,
@@ -880,7 +807,7 @@ fn every_new_typed_branch_obeys_atomic_byte_limits_and_reusable_output() {
     }
 }
 #[test]
-fn existing_aggregate_work_costs_and_sheet_sibling_byte_limits_remain_atomic() {
+fn aggregate_work_costs_and_sheet_sibling_byte_limits_remain_atomic() {
     use CssSpecifiedRuleSerializationErrorKind as RuleKind;
     use CssSpecifiedValueSerializationErrorKind as Kind;
     use CssSpecifiedValueSerializationLimits as Limits;

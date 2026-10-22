@@ -7,28 +7,11 @@
 //! output budgets have separate focused tests; this module characterizes literals.
 
 use crate::css::support::color_components::{assert_recovered, component};
+use crate::css::support::parsed_color;
 use surgeist_css::{
     CssColor, CssColorComponent, CssColorConstructionError, CssColorSyntax, CssHexColor,
-    CssKnownPropertyValueRef, CssRgbColor, parse_style_attribute, validate_style_attribute,
+    CssRgbColor,
 };
-
-fn parsed_color(text: &str) -> CssColor {
-    let source = format!("color: {text}");
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    assert_eq!(report.syntax().len(), 1, "{source}");
-    let CssKnownPropertyValueRef::Color(color) = report.syntax()[0]
-        .known()
-        .unwrap()
-        .property_value()
-        .unwrap()
-    else {
-        panic!("typed color: {source}");
-    };
-    let color = color.value().clone();
-    assert_eq!(validate_style_attribute(&source).unwrap(), *report.syntax());
-    color
-}
 
 fn assert_component(value: &CssColorComponent, expected: &str) {
     match value {

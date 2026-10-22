@@ -44,7 +44,7 @@ fn terminal(source: &CssDeclaration) -> CssLonghandContributions {
 }
 
 #[test]
-fn existing_explicit_axis_spelling_remains_a_parsing_control() {
+fn explicit_axis_spelling_is_a_parsing_control() {
     for (text, axis, dense) in [
         ("row", CssGridAutoFlowAxis::Row, false),
         ("row dense", CssGridAutoFlowAxis::Row, true),
@@ -138,14 +138,20 @@ fn normal_cannot_combine_with_dense_and_duplicate_or_conflicting_keywords_reject
             CssRecoveryAction::DropDeclaration,
             "{source}"
         );
-        assert!(validate_style_attribute(&source).is_err(), "{source}");
-        assert!(
+        assert_eq!(
+            validate_style_attribute(&source).unwrap_err().diagnostics(),
+            report.diagnostics(),
+            "{source}"
+        );
+        assert_eq!(
             parse_property_value_for_grammar(
                 grammar(),
                 parse_component_values(value).unwrap(),
-                CssImportance::Normal,
+                CssImportance::Normal
             )
-            .is_err(),
+            .unwrap_err()
+            .kind(),
+            &CssPropertyValueErrorKind::Grammar(report.diagnostics()[0].error().kind().clone()),
             "checked accepted {value}"
         );
     }

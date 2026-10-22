@@ -6,7 +6,7 @@ use surgeist_css::{
 };
 
 #[test]
-fn c14_remaining_shared_values_are_typed() {
+fn shared_value_grammars_are_typed_with_feature_provenance() {
     let report = parse_style_attribute(
         "background-image: url(\"theme.css\" integrity(\"sha256\") cors); width: 2px",
     );

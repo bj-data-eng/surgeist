@@ -335,7 +335,7 @@ fn checked_value_construction_keeps_supplied_numeric_origins_and_no_fabricated_d
 }
 
 #[test]
-fn escaped_string_reference_and_type_use_existing_css_string_emission() {
+fn escaped_string_reference_and_type_use_css_string_emission() {
     let option = CssCursorUrlSetOption::try_new(
         CssCursorUrlSetReference::String(string("a\"b\\c")),
         vec![CssCursorUrlSetDescriptor::Type(string("x\"y\\z"))],

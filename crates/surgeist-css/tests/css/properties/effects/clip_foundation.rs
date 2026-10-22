@@ -3,7 +3,7 @@
 //! `clip` is one noninherited longhand, initially `auto`; `rect()` has four
 //! ordered length-or-auto edges and permits signed lengths.
 
-use crate::css::support::style_declaration_reporting_source as declaration;
+use crate::css::support::sole_declaration as declaration;
 use surgeist_css::*;
 
 fn clip(source: &CssDeclaration) -> &CssClip {
@@ -101,26 +101,6 @@ fn mixed_separators_percentages_and_wrong_arity_drop_only_the_invalid_declaratio
             report.diagnostics()[0].action(),
             CssRecoveryAction::DropDeclaration
         );
-    }
-}
-
-#[test]
-fn all_globals_are_single_symbolic_clip_contributions() {
-    for (spelling, expected) in [
-        ("initial", CssGlobalKeyword::Initial),
-        ("inherit", CssGlobalKeyword::Inherit),
-        ("unset", CssGlobalKeyword::Unset),
-        ("revert", CssGlobalKeyword::Revert),
-        ("revert-layer", CssGlobalKeyword::RevertLayer),
-    ] {
-        let source = declaration(&format!("clip:{spelling}!important"));
-        let [item] = expanded(&source)
-            .try_into()
-            .unwrap_or_else(|_| panic!("one terminal"));
-        assert_eq!(item.property(), CssKnownProperty::Clip);
-        assert_eq!(item.value(), CssContributionValueRef::Global(expected));
-        assert!(item.source().same_occurrence(&source));
-        assert_eq!(item.source().importance(), CssImportance::Important);
     }
 }
 

@@ -2,21 +2,10 @@
 //! CSS Text 3 Candidate Recommendation Draft (2026-08-14) support source.
 //! Exact typed payloads belong to later API tests.
 
+use crate::css::support::checked_grammar_declaration as checked;
 use crate::css::support::important_declaration as declaration;
+use crate::css::support::selected_grammar as grammar;
 use surgeist_css::*;
-
-fn grammar(name: &str) -> CssPropertyGrammar {
-    CssPropertyGrammar::from_name(name).unwrap_or_else(|| panic!("selected grammar: {name}"))
-}
-
-fn checked(name: &str, value: &str) -> CssDeclaration {
-    parse_property_value_for_grammar(
-        grammar(name),
-        parse_component_values(value).expect("valid component syntax"),
-        CssImportance::Important,
-    )
-    .unwrap_or_else(|error| panic!("checked {name}:{value}: {error:?}"))
-}
 
 fn one_ordinary(source: &CssDeclaration) -> CssLonghandValue {
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =

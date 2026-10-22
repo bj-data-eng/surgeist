@@ -1,20 +1,8 @@
 //! Logical1 WD20251204 §§2–3; source-authored page selector goldens.
 //! Authored page selectors retain their logical classification until progression is known.
+use crate::css::support::rules::ExpectedRejection;
+use crate::css::support::rules::normalized_pages as pages;
 use surgeist_css::*;
-
-fn pages(sheet: &CssNormalizedSheet) -> Vec<&CssPageRule> {
-    sheet
-        .items()
-        .iter()
-        .filter_map(|item| match item {
-            CssNormalizedItem::Rule(context) => match context.kind() {
-                CssRuleContextKindRef::Page(page) => Some(page),
-                _ => None,
-            },
-            _ => None,
-        })
-        .collect()
-}
 
 #[test]
 fn logical_page_pseudos_retain_symbolic_spelling_without_becoming_physical_sides() {
@@ -300,17 +288,22 @@ fn selected_directional_consumers_remain_symbolic_and_reject_forbidden_keyword_m
             source
         );
     }
-    for (name, text) in [
-        ("float", "start"),
-        ("clear", "end"),
-        ("float", "block-start"),
-        ("text-align", "inline-start"),
-        ("float", "left inline-start"),
-        ("clear", "right inline-end"),
-        ("text-align", "left start"),
+    // Logical 1 §2 adds inline-start/inline-end to float and clear, and
+    // Text 3 §7.1 start/end to text-align; each takes one keyword.
+    for (name, text, token) in [
+        ("float", "start", "start"),
+        ("clear", "end", "end"),
+        ("float", "block-start", "block-start"),
+        ("text-align", "inline-start", "inline-start"),
+        ("float", "left inline-start", "inline-start"),
+        ("clear", "right inline-end", "inline-end"),
+        ("text-align", "left start", "start"),
     ] {
         let report = parse_style_attribute(&format!("{name}:{text};color:red"));
-        assert!(!report.is_clean());
+        ExpectedRejection::new(CssErrorCode::InvalidPropertyValue)
+            .named(name)
+            .at(token)
+            .assert_first(&report);
         assert_eq!(report.syntax().len(), 1);
         assert_eq!(
             report.syntax()[0].known().unwrap().property(),

@@ -1,6 +1,7 @@
 //! Public normalization must handle parser-valid authored nesting on the
 //! ordinary 2 MiB thread stack while preserving source order and provenance.
 
+use crate::css::support::authored_syntax::normalized_declarations as declarations;
 use surgeist_css::*;
 
 const INNER_GROUPS: usize = 252;
@@ -23,17 +24,6 @@ fn deep_sheet() -> (String, Vec<usize>) {
     source.push_str(&"}".repeat(INNER_GROUPS));
     source.push_str("color:green}}.tail{color:black}");
     (source, group_offsets)
-}
-
-fn declarations(sheet: &CssNormalizedSheet) -> Vec<&CssNormalizedDeclaration> {
-    sheet
-        .items()
-        .iter()
-        .filter_map(|item| match item {
-            CssNormalizedItem::Declaration(value) => Some(value),
-            _ => None,
-        })
-        .collect()
 }
 
 fn assert_color(value: &CssNormalizedDeclaration, source: &str, color: &str, order: usize) {

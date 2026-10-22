@@ -167,7 +167,7 @@ fn modern_clause_and_extended_target_output_uses_the_cssom_url_first() {
 }
 
 #[test]
-fn supplied_recovered_media_keeps_current_origin_and_existing_cssom_projection() {
+fn supplied_recovered_media_keeps_current_origin_and_its_cssom_projection() {
     let original = import("@import 'x' print;");
     let report = parse_media_query_list("screen,???");
     assert!(!report.is_clean());

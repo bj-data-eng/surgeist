@@ -6,7 +6,7 @@ use super::protocol::{
 };
 use crate::CssColorProfileRenderingIntent;
 #[cfg(test)]
-use crate::tokenization::color_tokens::{NameKind, TokenKind};
+use crate::tokenization::tokenizer::{NameKind, TokenKind};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum ProfileError {

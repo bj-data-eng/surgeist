@@ -1,16 +1,13 @@
 //! Public recovery and round-trip contracts from CSS Syntax 3 §§3,9–10.
+use crate::css::support::authored_syntax::assert_span_bytes as span;
 use surgeist_css::{
     CssComponentValue, CssComponentValueRef, CssComponentValues, CssCustomPropertyName,
     CssDeclarationList, CssErrorCode, CssFontFaceDescriptorKind, CssImportance, CssKnownProperty,
     CssMediaQuery, CssMediaType, CssParseReport, CssPropertyNameRef, CssRecoveryAction, CssRule,
-    CssSelector, CssSheet, CssSourceSpan, CssStyleRule, CssValueTokenRef, ErrorKind,
-    parse_declaration, parse_property_value, parse_sheet, parse_style_attribute, validate_sheet,
+    CssSelector, CssSheet, CssStyleRule, CssValueTokenRef, ErrorKind, parse_declaration,
+    parse_property_value, parse_sheet, parse_style_attribute, validate_sheet,
 };
 
-fn span(span: CssSourceSpan, expected: std::ops::Range<usize>) {
-    assert_eq!(span.start().byte_offset().value(), expected.start);
-    assert_eq!(span.end().byte_offset().value(), expected.end);
-}
 fn style<'a>(rule: &'a CssRule, class: &str) -> &'a CssStyleRule {
     let CssRule::Style(rule) = rule else {
         panic!("style rule for {class}")

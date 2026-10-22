@@ -1,12 +1,8 @@
 //! Checked authored shadow syntax; expectations follow the pinned sources cited
 //! in shadow_selector_grammar.rs. These are new API tests without stub RED.
+use crate::css::support::admitted_selector as selector;
+use crate::css::support::color_and_selector_fixtures::assert_unrepresentable_construction;
 use surgeist_css::*;
-
-fn selector(source: &str) -> CssSelector {
-    let report = parse_selector(source, &CssNamespaceContext::default());
-    assert!(report.is_clean(), "{source}: {report:?}");
-    report.syntax().clone().unwrap()
-}
 
 fn argument(source: &str) -> CssCompoundSelectorArgument {
     CssCompoundSelectorArgument::try_new(selector(source)).unwrap()
@@ -69,7 +65,7 @@ fn compound_construction_preserves_primitive_and_namespace_arguments() {
 fn checked_arguments_reject_logical_complex_selectors_and_pseudo_elements() {
     // PE-bearing Where/nth argument containers are now rejected at admission;
     // their exact compound-argument defenses remain in owning private tests.
-    assert!(CssPseudoSelectorList::try_new(vec![selector("::before")]).is_err());
+    assert_unrepresentable_construction(CssPseudoSelectorList::try_new(vec![selector("::before")]));
     for invalid in [
         CssPseudoClass::Not(CssPseudoSelectorList::try_new(vec![selector(".a > .b")]).unwrap()),
         CssPseudoClass::Is(CssPseudoSelectorList::try_new(vec![selector(".a > .b")]).unwrap()),
@@ -136,8 +132,14 @@ fn part_names_preserve_order_duplicates_and_programmatic_origins() {
             .all(|name| name.origin() == &CssValueOrigin::Programmatic)
     );
     assert!(CssPartNameList::try_new(Vec::new()).is_none());
-    assert!(CssPartName::try_new("").is_err());
-    assert!(CssPartName::try_new("a\0b").is_err());
+    // An empty name and a NUL code point cannot survive as one CSS identifier.
+    for invalid in ["", "a\0b"] {
+        assert_eq!(
+            CssPartName::try_new(invalid).unwrap_err().kind(),
+            CssComponentValueErrorKind::InvalidIdentifier,
+            "{invalid:?}"
+        );
+    }
 }
 
 #[test]
@@ -275,7 +277,7 @@ fn checked_logical_suffix_arguments_inherit_position_and_remain_pseudo_only() {
     }
     // The Is(PE) suffix defense is private now; this external front rejects the
     // original pseudo-element member before suffix attachment is possible.
-    assert!(CssPseudoSelectorList::try_new(vec![selector("::before")]).is_err());
+    assert_unrepresentable_construction(CssPseudoSelectorList::try_new(vec![selector("::before")]));
     let host = CssPseudoClass::HostFunction(argument(".inside"));
     assert!(
         CssPseudoElementSequence::try_from_segments(vec![

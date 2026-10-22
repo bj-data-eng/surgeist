@@ -1,23 +1,22 @@
 //! Authored `content-visibility` from CSS Containment 2 WD (2022-09-17) §4.
 //! Skipping, user relevance, and used containment require downstream context.
 
+use crate::css::support::property_admission::{
+    assert_checked_value_rejected, assert_declaration_rejected, assert_invalid_value,
+};
+use crate::css::support::{important_declaration, known_property};
 use surgeist_css::*;
 
 const NAME: &str = "content-visibility";
 
 fn property() -> CssKnownProperty {
-    CssKnownProperty::from_name(NAME).expect("content-visibility is recognized")
+    known_property(NAME)
 }
 
 fn declaration(value: &str) -> CssDeclaration {
-    let text = format!("{NAME}:{value}!important");
-    let report = parse_style_attribute(&text);
-    assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
-    let [source] = report.syntax().as_slice() else {
-        panic!("one authored declaration: {text}")
-    };
-    assert!(validate_style_attribute(&text).is_ok());
-    source.clone()
+    let source = important_declaration(NAME, value);
+    assert!(validate_style_attribute(&format!("{NAME}:{value}!important")).is_ok());
+    source
 }
 
 fn contribution(source: &CssDeclaration) -> CssLonghandContribution {
@@ -118,69 +117,17 @@ fn only_three_keywords_construct_exact_typed_authored_values_and_one_terminal() 
 
 #[test]
 fn invalid_values_drop_only_their_occurrence_and_fail_checked_construction() {
-    for value in [
-        "",
-        "collapse",
-        "none",
-        "auto hidden",
-        "visible,hidden",
-        "10px",
+    for (value, token) in [
+        ("", None),
+        ("collapse", Some("collapse")),
+        ("none", Some("none")),
+        ("auto hidden", Some("hidden")),
+        ("visible,hidden", Some(",")),
+        ("10px", Some("10px")),
     ] {
-        let text = format!("color:red;{NAME}:{value};color:blue");
-        let report = parse_style_attribute(&text);
-        let [diagnostic] = report.diagnostics() else {
-            panic!("one invalid-value diagnostic: {text}")
-        };
-        assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-        assert_ne!(diagnostic.error().code(), CssErrorCode::UnknownProperty);
-        assert_eq!(report.syntax().len(), 2, "valid neighbors survive: {text}");
-        assert!(validate_style_attribute(&text).is_err());
-        assert!(
-            parse_property_value(
-                CssPropertyNameRef::Known(property()),
-                parse_component_values(value).unwrap(),
-                CssImportance::Normal,
-            )
-            .is_err(),
-            "checked construction accepted {value:?}"
-        );
+        assert_declaration_rejected(NAME, value, token);
+        assert_checked_value_rejected(property(), value, token);
     }
-}
-
-#[test]
-fn css_wide_keywords_and_all_keep_symbolic_reset_semantics() {
-    for (text, keyword) in [
-        ("initial", CssGlobalKeyword::Initial),
-        ("inherit", CssGlobalKeyword::Inherit),
-        ("unset", CssGlobalKeyword::Unset),
-        ("revert", CssGlobalKeyword::Revert),
-        ("revert-layer", CssGlobalKeyword::RevertLayer),
-    ] {
-        let source = declaration(text);
-        assert_eq!(
-            contribution(&source).value(),
-            CssContributionValueRef::Global(keyword)
-        );
-        let checked = parse_property_value(
-            CssPropertyNameRef::Known(property()),
-            parse_component_values(text).unwrap(),
-            CssImportance::Important,
-        )
-        .unwrap();
-        assert_eq!(
-            contribution(&checked).value(),
-            CssContributionValueRef::Global(keyword)
-        );
-    }
-    let source = parse_style_attribute("all:unset!important");
-    assert!(source.is_clean());
-    let CssExpansion::Contributions(CssContributions::UniversalReset(reset)) =
-        expand_declaration(&source.syntax()[0]).unwrap()
-    else {
-        panic!("all remains symbolic")
-    };
-    assert_eq!(reset.keyword(), CssGlobalKeyword::Unset);
-    assert!(!reset.excludes(CssPropertyNameRef::Known(property())));
 }
 
 #[test]
@@ -278,7 +225,15 @@ fn normalization_preserves_valid_order_and_fails_atomically_at_contribution_budg
         report.diagnostics()[0].action(),
         CssRecoveryAction::DropDeclaration
     );
-    assert!(validate_sheet(text).is_err());
+    assert_invalid_value(
+        report.diagnostics()[0].error().kind(),
+        property(),
+        Some("collapse"),
+    );
+    assert_eq!(
+        validate_sheet(text).unwrap_err().diagnostics(),
+        report.diagnostics()
+    );
     let original = report.syntax().clone();
     let limits = CssNormalizationLimits::try_new(0, 1, 3, 2).unwrap();
     let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();

@@ -1,5 +1,3 @@
-#[cfg(test)]
-use cssparser::ParserInput;
 use cssparser::{ParseError, Parser};
 
 use super::boolean_condition::{
@@ -11,10 +9,6 @@ use super::query_components::{
     media_literal_number, negative_literal, query_plain_range, query_range_chain,
 };
 use super::recovery::RecoveryState;
-#[cfg(test)]
-use super::recovery::StyleContextCaptures;
-#[cfg(test)]
-use crate::error::from_parse_error;
 use crate::error::{Error, invalid_syntax};
 use crate::media_features::MediaRangeState;
 use crate::numeric::CalculationRoot;
@@ -585,20 +579,6 @@ pub(super) fn container_prelude_from_components<'i>(
     })
 }
 
-#[cfg(test)]
-fn container_failure_location(
-    items: &[CssComponentValue],
-    index: usize,
-    end: cssparser::SourceLocation,
-) -> cssparser::SourceLocation {
-    items
-        .get(index)
-        .and_then(|component| crate::media::parsed_position(component.origin()))
-        .map_or(end, |position| cssparser::SourceLocation {
-            line: position.line().value(),
-            column: position.column().value() + 1,
-        })
-}
 fn container_component_error<'i>(
     fallback: cssparser::SourceLocation,
     error: crate::CssComponentValueError,
@@ -611,32 +591,6 @@ fn container_component_error<'i>(
     });
     crate::error::invalid_component_value(location, error)
 }
-#[cfg(test)]
-pub(crate) fn parse_container_condition_for_test(
-    source: &str,
-) -> Result<CssContainerCondition, Error> {
-    let working_source = crate::tokenization::prepare(source);
-    let mut input = ParserInput::new(&working_source);
-    let mut parser = Parser::new(&mut input);
-    let recovery = RecoveryState::at_depth(source, 0, StyleContextCaptures::default());
-    let location = parser.current_source_location();
-    let (values, _) = collect_container_components(source, &mut parser, &recovery)
-        .map_err(|error| from_parse_error(source, error))?;
-    container_condition(values.items())
-        .map_err(|error| from_parse_error(source, container_component_error(location, error)))?
-        .map(|node| node.into_condition(SupportsLexical::root(values.clone())))
-        .map_err(|index| {
-            from_parse_error(
-                source,
-                invalid_syntax(container_failure_location(
-                    values.items(),
-                    index,
-                    parser.current_source_location(),
-                )),
-            )
-        })
-}
-
 #[derive(Clone, Copy)]
 enum ContainerFeatureName {
     Width(Option<RangePrefix>),

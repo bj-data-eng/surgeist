@@ -4,52 +4,11 @@
 //! https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#container-shorthand
 //! CSSOM identifier escaping and the specified graph's semantic-node policy.
 //! New specified-text APIs are tested alongside their implementation.
+use crate::css::support::authored_syntax::container_names as names;
+use crate::css::support::serialization_limits::assert_node_limits as assert_limits;
 use CssSpecifiedValueSerializationErrorKind as Kind;
 use CssSpecifiedValueSerializationLimits as Limits;
 use surgeist_css::*;
-
-fn names(values: &[&str]) -> CssContainerNames {
-    CssContainerNames::Names(
-        CssContainerNameList::try_new(
-            values
-                .iter()
-                .map(|name| CssContainerName::try_from_decoded(*name).unwrap())
-                .collect(),
-        )
-        .unwrap(),
-    )
-}
-
-fn assert_limits(
-    expected: &str,
-    nodes: usize,
-    emit: impl Fn(Limits) -> Result<String, CssSpecifiedValueSerializationError>,
-) {
-    assert_eq!(
-        emit(Limits::new(nodes, nodes, expected.len())).unwrap(),
-        expected
-    );
-    for (limits, kind) in [
-        (
-            Limits::new(nodes - 1, nodes, expected.len()),
-            Kind::InputNodeLimit,
-        ),
-        (
-            Limits::new(nodes, nodes - 1, expected.len()),
-            Kind::ProjectionNodeLimit,
-        ),
-        (
-            Limits::new(nodes, nodes, expected.len() - 1),
-            Kind::ByteLimit,
-        ),
-    ] {
-        assert_eq!(emit(limits).unwrap_err().kind(), kind);
-        assert_eq!(
-            emit(Limits::new(nodes, nodes, expected.len())).unwrap(),
-            expected
-        );
-    }
-}
 
 #[test]
 fn six_type_states_preserve_semantics_and_use_grammar_order() {

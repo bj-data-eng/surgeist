@@ -2,7 +2,12 @@
 //! Color4 CRD20260908 #propdef-color; full accepted Color/Color5/profile/device
 //! owners; Syntax3 original EOF boundaries; Cascade5/Variables1; CSSOM.
 //! Context-specific quirky hex APIs are intentionally not fabricated here.
+use crate::css::support::color_and_selector_fixtures::assert_color_value_rejected;
 use crate::css::support::declaration_color as color;
+use crate::css::support::detached_checked_declaration as checked;
+use crate::css::support::{
+    check_named_components as checked_components, known_property as property,
+};
 use surgeist_css::*;
 
 const COLOR_GOLDENS: &[(&str, &str)] = &[
@@ -48,36 +53,6 @@ const COLOR_GOLDENS: &[(&str, &str)] = &[
         "device-cmyk(0 0.81 0.81 0.3)",
     ),
 ];
-fn property(name: &str) -> CssKnownProperty {
-    CssKnownProperty::from_name(name).unwrap_or_else(|| panic!("missing known property: {name}"))
-}
-fn checked_components(
-    name: &str,
-    values: CssComponentValues,
-    grammar: bool,
-) -> Result<CssDeclaration, CssPropertyValueParseError> {
-    let p = property(name);
-    if grammar {
-        parse_property_value_for_grammar(p.grammar(), values, CssImportance::Important)
-    } else {
-        parse_property_value(
-            CssPropertyNameRef::Known(p),
-            values,
-            CssImportance::Important,
-        )
-    }
-}
-fn checked(name: &str, text: &str, grammar: bool) -> CssDeclaration {
-    let values = parse_component_values(text).unwrap();
-    let before = values.clone();
-    let source = checked_components(name, values.clone(), grammar).unwrap();
-    assert_eq!(source.value_components(), &values);
-    assert_eq!(values, before);
-    assert!(source.position().is_none());
-    assert!(source.parsed_name().is_none());
-    assert!(source.parsed_value().is_none());
-    source
-}
 fn fronts(name: &str, text: &str) -> Vec<CssDeclaration> {
     let css = format!("/*😀*/{}:{text}!important", name.to_ascii_uppercase());
     let report = parse_style_attribute(&css);
@@ -420,8 +395,11 @@ fn invalid_color_grammar_drops_only_its_declaration_and_retains_original_coordin
                 CssImportance::Normal,
             ),
         ] {
-            assert!(!report.is_clean());
             assert!(report.syntax().is_none());
+            let [diagnostic] = report.diagnostics() else {
+                panic!("one text-front diagnostic: {text}")
+            };
+            assert_eq!(diagnostic.error().code(), code, "{text}");
         }
     }
 }
@@ -799,11 +777,35 @@ fn ordinary_mode_keeps_all_seven_quirky_color_properties_on_normal_color_grammar
     ] {
         for text in ["ABC", "123", "12abc"] {
             let values = parse_component_values(text).unwrap();
+            // Color 4 Appendix B: standards mode admits no quirky color, so
+            // the sole token is the responsible one.
             for grammar in [false, true] {
-                assert!(checked_components(name, values.clone(), grammar).is_err());
+                assert_color_value_rejected(
+                    checked_components(name, values.clone(), grammar),
+                    property(name),
+                    text,
+                    text,
+                );
             }
             let report = parse_style_attribute(&format!("{name}:{text};color:red"));
-            assert!(!report.is_clean());
+            let [diagnostic] = report.diagnostics() else {
+                panic!("{name}:{text}: one diagnostic")
+            };
+            // The color grammar or the property's own grammar rejects the
+            // value at its sole token.
+            assert!(
+                matches!(
+                    diagnostic.error().code(),
+                    CssErrorCode::InvalidColorSyntax | CssErrorCode::InvalidPropertyValue
+                ),
+                "{name}:{text}: {diagnostic:?}"
+            );
+            assert_eq!(
+                diagnostic.error().position().byte_offset().value(),
+                name.len() + 1,
+                "{name}:{text}"
+            );
+            assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
             assert_eq!(report.syntax().len(), 1);
             assert_eq!(
                 color(&report.syntax()[0]).to_specified_css().unwrap(),

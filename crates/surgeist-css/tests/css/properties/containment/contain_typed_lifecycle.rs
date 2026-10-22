@@ -4,6 +4,8 @@
 //! Containment2 WD20220917 §2 selects a nonempty unique unordered group and
 //! grammar-order specified output. Accepted aggregate-plus-keyword costs remain.
 
+use crate::css::support::property_admission::assert_implicit_closure;
+use crate::css::support::serialization_limits::LimitLadder;
 use CssContainComponent::{Layout, Paint, Size, Style};
 use surgeist_css::*;
 
@@ -73,43 +75,8 @@ fn completed(source: &CssDeclaration) -> CssLonghandContributions {
 }
 
 fn primitive_limits(value: &CssContain, expected: &str, nodes: usize) {
-    use CssSpecifiedValueSerializationErrorKind as Kind;
-    use CssSpecifiedValueSerializationLimits as Limits;
-    let before = value.clone();
-    let exact = Limits::new(nodes, nodes, expected.len());
-    assert_eq!(
-        value.serialize_specified_with_limits(exact).unwrap(),
-        expected
-    );
-    for (limits, kind) in [
-        (
-            Limits::new(nodes - 1, nodes, expected.len()),
-            Kind::InputNodeLimit,
-        ),
-        (
-            Limits::new(nodes, nodes - 1, expected.len()),
-            Kind::ProjectionNodeLimit,
-        ),
-        (
-            Limits::new(nodes, nodes, expected.len() - 1),
-            Kind::ByteLimit,
-        ),
-    ] {
-        for _ in 0..2 {
-            assert_eq!(
-                value
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
-                kind
-            );
-            assert_eq!(value, &before);
-        }
-    }
-    assert_eq!(
-        value.serialize_specified_with_limits(exact).unwrap(),
-        expected
-    );
+    LimitLadder::new(expected, nodes, nodes)
+        .assert_unchanged(value, CssContain::serialize_specified_with_limits);
 }
 
 #[test]
@@ -328,7 +295,7 @@ fn mixed_token_origins_survive_checked_contain_and_pending_replacement_without_r
 fn recovered_style_keeps_its_typed_borrowed_payload_and_original_diagnostics() {
     let css = ".a{contain:style/*";
     let report = parse_sheet(css);
-    assert!(!report.is_clean());
+    assert_implicit_closure(css, &report);
     let before = report.clone();
     let normalized = normalize_report_with_limits(
         &report,

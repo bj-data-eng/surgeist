@@ -7,6 +7,7 @@
 //! https://www.w3.org/TR/2022/CR-css-cascade-5-20220113/#shorthand
 //! https://www.w3.org/TR/2022/CR-css-variables-1-20220616/#variables-in-shorthands
 //! No new type/variant assumptions, containment execution, or variable resolution.
+use crate::css::support::authored_syntax::important_known_declaration;
 use surgeist_css::*;
 
 const CONDITIONAL5: &str = "https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/";
@@ -14,16 +15,6 @@ const CONDITIONAL5: &str = "https://www.w3.org/TR/2025/WD-css-conditional-5-2025
 fn grammar(name: &str) -> CssPropertyGrammar {
     CssPropertyGrammar::from_name(name)
         .unwrap_or_else(|| panic!("the selected container property must be recognized: {name}"))
-}
-
-fn declaration(name: &str, value: &str) -> CssDeclaration {
-    let source = format!("{name}:{value}!important");
-    let report = parse_declaration(&source);
-    assert!(report.is_clean(), "{source:?}: {report:?}");
-    let result = report.syntax().as_ref().expect("one declaration");
-    assert_eq!(result.known().unwrap().property().canonical_name(), name);
-    assert_eq!(result.importance(), CssImportance::Important);
-    result.clone()
 }
 
 fn expanded(source: &CssDeclaration) -> CssLonghandContributions {
@@ -41,7 +32,7 @@ fn expanded(source: &CssDeclaration) -> CssLonghandContributions {
 }
 
 fn ordinary(name: &str, value: &str) -> CssLonghandValue {
-    let values = expanded(&declaration(name, value));
+    let values = expanded(&important_known_declaration(name, value));
     let [item] = values.items() else {
         panic!("one terminal property")
     };
@@ -81,7 +72,7 @@ fn assert_pair(values: &CssLonghandContributions, names: &str, kind: &str) {
 
 fn accepted(name: &str, values: &[&str]) {
     for value in values {
-        let source = declaration(name, value);
+        let source = important_known_declaration(name, value);
         assert!(
             source.known().unwrap().property_value().is_some(),
             "{name}:{value}"
@@ -324,14 +315,22 @@ fn explicit_container_expansion_preserves_names_and_both_type_keywords() {
         ("none / inline-size", "none", "inline-size"),
         (r"a\ b / scroll-state", r"a\ b", "scroll-state"),
     ] {
-        assert_pair(&expanded(&declaration("container", value)), names, kind);
+        assert_pair(
+            &expanded(&important_known_declaration("container", value)),
+            names,
+            kind,
+        );
     }
 }
 
 #[test]
 fn omitted_container_type_resets_to_normal_instead_of_preserving_previous_type() {
     for names in ["pane", "size", "none", "pane pane"] {
-        assert_pair(&expanded(&declaration("container", names)), names, "normal");
+        assert_pair(
+            &expanded(&important_known_declaration("container", names)),
+            names,
+            "normal",
+        );
     }
 }
 
@@ -363,7 +362,7 @@ fn assert_wide(name: &str, members: &[&str]) {
         ("revert-layer", CssGlobalKeyword::RevertLayer),
         (r"\69 nherit", CssGlobalKeyword::Inherit),
     ] {
-        let source = declaration(name, text);
+        let source = important_known_declaration(name, text);
         assert_eq!(source.known().unwrap().global(), Some(keyword));
         assert!(source.known().unwrap().property_value().is_none());
         let values = expanded(&source);
@@ -397,7 +396,7 @@ fn assert_pending(
     invalid: &str,
     members: &[(&str, &str)],
 ) {
-    let source = declaration(name, authored);
+    let source = important_known_declaration(name, authored);
     assert!(source.known().unwrap().substitution_dependent().is_some());
     let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
         panic!("pending")

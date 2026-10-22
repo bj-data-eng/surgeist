@@ -6,6 +6,7 @@ use crate::css::support::descriptor_phases;
 use crate::css::support::normal_checked_declaration as declaration;
 use descriptor_phases::*;
 
+use crate::css::support::serialization_limits::LimitLadder;
 use surgeist_css::{
     CssSpecifiedValueSerializationErrorKind as K, CssSpecifiedValueSerializationLimits as L, *,
 };
@@ -765,48 +766,20 @@ fn aggregate_filter_refusal_preserves_actual_original_opener_through_imports_and
 }
 
 fn budget(value: &CssFilterImage, expected: &str, input: usize, projection: usize) {
-    let before = value.clone();
+    let ladder = LimitLadder::new(expected, input, projection).zero_limits();
+    ladder.assert_unchanged(value, CssFilterImage::serialize_specified_with_limits);
+    let image = CssImageValue::Filter(Box::new(value.clone()));
+    let checked = CssImage::try_new(image.clone()).unwrap();
     for _ in 0..2 {
-        for (limits, kind) in [
-            (
-                L::new(input - 1, projection, expected.len()),
-                K::InputNodeLimit,
-            ),
-            (
-                L::new(input, projection - 1, expected.len()),
-                K::ProjectionNodeLimit,
-            ),
-            (L::new(input, projection, expected.len() - 1), K::ByteLimit),
-            (L::new(0, projection, expected.len()), K::InputNodeLimit),
-            (L::new(input, 0, expected.len()), K::ProjectionNodeLimit),
-            (L::new(input, projection, 0), K::ByteLimit),
-        ] {
-            assert_eq!(
-                value
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
-                kind
-            );
-            assert_eq!(value, &before);
-        }
-        assert_eq!(
-            value
-                .serialize_specified_with_limits(L::new(input, projection, expected.len()))
-                .unwrap(),
-            expected
-        );
-        let image = CssImageValue::Filter(Box::new(value.clone()));
-        let checked = CssImage::try_new(image.clone()).unwrap();
         assert_eq!(
             image
-                .serialize_specified_with_limits(L::new(input, projection, expected.len()))
+                .serialize_specified_with_limits(ladder.exact())
                 .unwrap(),
             expected
         );
         assert_eq!(
             checked
-                .serialize_specified_with_limits(L::new(input, projection, expected.len()))
+                .serialize_specified_with_limits(ladder.exact())
                 .unwrap(),
             expected
         );

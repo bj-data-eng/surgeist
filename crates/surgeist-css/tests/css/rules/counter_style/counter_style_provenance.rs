@@ -2,23 +2,11 @@
 //! lexical origins. Parsing, normalization and projection never fabricate a
 //! stylesheet host or resolve counter names/images.
 use crate::css::support::descriptor_phases;
+use crate::css::support::rules::origin_text as text;
+use crate::css::support::rules::sole_counter_style as counter;
 use descriptor_phases::*;
 
 use surgeist_css::*;
-
-fn counter(source: &str) -> CssCounterStyleRule {
-    let report = parse_sheet(source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    let [CssRule::CounterStyle(rule)] = report.syntax().rules() else {
-        panic!("one counter rule");
-    };
-    rule.clone()
-}
-
-fn text(origin: &CssParsedOrigin) -> &str {
-    &origin.source().as_str()
-        [origin.span().start().byte_offset().value()..origin.span().end().byte_offset().value()]
-}
 
 fn assert_coordinates(origin: &CssParsedOrigin, source: &str) {
     assert_eq!(origin.source().as_str(), source);

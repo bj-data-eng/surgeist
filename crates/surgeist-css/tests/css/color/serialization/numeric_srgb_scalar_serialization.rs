@@ -6,6 +6,9 @@
 //! 2026-09-08 preserves Origin/relative/alpha/weight roles. Expected strings
 //! below are independent mathematical/grammar oracles, never captured output.
 
+use crate::css::support::color_and_selector_fixtures::{
+    assert_color_limit_error as assert_error, assert_color_limits,
+};
 use crate::css::support::{
     checked_color as color, checked_color_declaration as declaration,
     component_values as components, declaration_color,
@@ -645,13 +648,6 @@ fn maximum_finite_hsl_lightness_keeps_every_whole_digit() {
     );
 }
 
-fn assert_error(value: &CssColor, limits: Limits, kind: Kind) {
-    let before = value.clone();
-    let result = value.to_specified_css_with_limits(limits);
-    assert_eq!(result, value.to_specified_css_with_limits(limits));
-    assert_eq!(value, &before);
-    assert_eq!(result.unwrap_err().kind(), kind);
-}
 fn assert_limited(value: &CssColor, limits: Limits, expected: &str) {
     let before = value.clone();
     let result = value.to_specified_css_with_limits(limits);
@@ -668,6 +664,9 @@ fn numeric_missing_rgb_has_source_derived_cumulative_visits() {
     // Root/none (2), each leaf + number scale + resolved product (3): eight
     // projections. Calc wrappers add no arena node. No exact literal work.
     let expected = "color(srgb none 1 0)";
+    assert_color_limits(&value, expected, 6, 8);
+    // Root precedence at zero limits, and each node rung with an unbounded
+    // byte limit.
     for (limits, kind) in [
         (Limits::new(0, usize::MAX, usize::MAX), Kind::InputNodeLimit),
         (Limits::new(1, 0, usize::MAX), Kind::ProjectionNodeLimit),
@@ -676,15 +675,14 @@ fn numeric_missing_rgb_has_source_derived_cumulative_visits() {
         (Limits::new(usize::MAX, usize::MAX, 0), Kind::ByteLimit),
         (Limits::new(5, 8, usize::MAX), Kind::InputNodeLimit),
         (Limits::new(6, 7, usize::MAX), Kind::ProjectionNodeLimit),
-        (Limits::new(6, 8, expected.len() - 1), Kind::ByteLimit),
     ] {
         assert_error(&value, limits, kind);
     }
-    assert_limited(&value, Limits::new(6, 8, expected.len()), expected);
+    declaration(expected);
 }
 
 #[test]
-fn shrinking_hsl_scratch_still_requires_nineteen_remaining_bytes() {
+fn shrinking_hsl_scratch_requires_nineteen_remaining_bytes() {
     let value = color("hsl(none calc(-10000000000) 50%)");
     let scratch = "calc(-10000000000%)";
     let expected = "hsl(none 0% 50%)";
@@ -726,7 +724,7 @@ fn discarded_rgb_scratch_remains_seventeen_bytes() {
 }
 
 #[test]
-fn hwb_successful_capture_still_has_twenty_three_final_bytes() {
+fn hwb_successful_capture_has_twenty_three_final_bytes() {
     let value = color("hwb(none calc(1 / 128) 20%)");
     assert_eq!("calc(0.0078125%)".len(), 16);
     let expected = "hwb(none 0.007813% 20%)";
@@ -840,6 +838,21 @@ fn number_calc(value: &str, programmatic: bool) -> CssNumberCalculation {
     };
     CssNumberCalculation::try_from_components(raw).unwrap()
 }
+/// All-zero limits fail on input nodes first, a zero projection limit fails
+/// on projection nodes, and a one-byte limit fails on bytes.
+fn assert_zero_limit_precedence(value: &CssColor) {
+    assert_error(value, Limits::new(0, 0, 0), Kind::InputNodeLimit);
+    assert_error(
+        value,
+        Limits::new(usize::MAX, 0, usize::MAX),
+        Kind::ProjectionNodeLimit,
+    );
+    assert_error(
+        value,
+        Limits::new(usize::MAX, usize::MAX, 1),
+        Kind::ByteLimit,
+    );
+}
 fn checked_rgb_graph(programmatic: bool) {
     let calculation = number_calc("127.5", programmatic);
     let raw = calculation.components().clone();
@@ -860,17 +873,7 @@ fn checked_rgb_graph(programmatic: bool) {
         )
         .unwrap(),
     );
-    assert_error(&value, Limits::new(0, 0, 0), Kind::InputNodeLimit);
-    assert_error(
-        &value,
-        Limits::new(usize::MAX, 0, usize::MAX),
-        Kind::ProjectionNodeLimit,
-    );
-    assert_error(
-        &value,
-        Limits::new(usize::MAX, usize::MAX, 1),
-        Kind::ByteLimit,
-    );
+    assert_zero_limit_precedence(&value);
     assert_eq!(
         value.rgb_value().unwrap().channels()[1],
         CssColorComponent::NumberCalculation(calculation)
@@ -891,17 +894,7 @@ fn checked_hsl_graph(programmatic: bool) {
         )
         .unwrap(),
     );
-    assert_error(&value, Limits::new(0, 0, 0), Kind::InputNodeLimit);
-    assert_error(
-        &value,
-        Limits::new(usize::MAX, 0, usize::MAX),
-        Kind::ProjectionNodeLimit,
-    );
-    assert_error(
-        &value,
-        Limits::new(usize::MAX, usize::MAX, 1),
-        Kind::ByteLimit,
-    );
+    assert_zero_limit_precedence(&value);
     assert_value(&value, "hsl(none 0% 50%)");
 }
 fn checked_hwb_graph(programmatic: bool) {
@@ -915,17 +908,7 @@ fn checked_hwb_graph(programmatic: bool) {
         )
         .unwrap(),
     );
-    assert_error(&value, Limits::new(0, 0, 0), Kind::InputNodeLimit);
-    assert_error(
-        &value,
-        Limits::new(usize::MAX, 0, usize::MAX),
-        Kind::ProjectionNodeLimit,
-    );
-    assert_error(
-        &value,
-        Limits::new(usize::MAX, usize::MAX, 1),
-        Kind::ByteLimit,
-    );
+    assert_zero_limit_precedence(&value);
     assert_value(&value, "hwb(none -0.007812% 20%)");
 }
 

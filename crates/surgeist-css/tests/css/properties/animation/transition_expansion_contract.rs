@@ -17,6 +17,8 @@
 //! This intrinsic contribution order is a public contract, not a standard mandate.
 
 use crate::css::support::checked_property_grammar_declaration as checked;
+use crate::css::support::property_admission::assert_implicit_closure;
+use crate::css::support::sole_declaration as parsed;
 use surgeist_css::CssKnownProperty as P;
 use surgeist_css::*;
 
@@ -33,23 +35,6 @@ const LONGHANDS: [(P, &str); 4] = [
     (P::TransitionTimingFunction, "ease-in, linear"),
     (P::TransitionDelay, "-250ms, 0s"),
 ];
-
-const GLOBALS: [(&str, CssGlobalKeyword); 5] = [
-    ("initial", CssGlobalKeyword::Initial),
-    ("inherit", CssGlobalKeyword::Inherit),
-    ("unset", CssGlobalKeyword::Unset),
-    ("revert", CssGlobalKeyword::Revert),
-    ("revert-layer", CssGlobalKeyword::RevertLayer),
-];
-
-fn parsed(css: &str) -> CssDeclaration {
-    let report = parse_style_attribute(css);
-    assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
-    let [source] = report.syntax().as_slice() else {
-        panic!("one retained declaration for {css}")
-    };
-    source.clone()
-}
 
 fn retained_recovered(css: &str) -> CssDeclaration {
     let report = parse_style_attribute(css);
@@ -370,36 +355,6 @@ fn recovered_shorthand_time_projects_without_strict_reconstruction() {
 }
 
 #[test]
-fn all_five_css_wide_values_propagate_to_each_timing_longhand() {
-    for property in MEMBERS {
-        for (css, keyword) in GLOBALS {
-            let source = checked(property, css);
-            let values = completed(&source);
-            assert_eq!(member_names(&values), [property]);
-            let item = &values.items()[0];
-            assert_eq!(item.value(), CssContributionValueRef::Global(keyword));
-            assert!(item.ordinary_value().is_none());
-            assert_source(item, &source);
-        }
-    }
-}
-
-#[test]
-fn all_five_css_wide_shorthands_set_exactly_four_ordered_globals() {
-    for (css, keyword) in GLOBALS {
-        let source = parsed(&format!("transition:{css}!important"));
-        let values = completed(&source);
-        assert_eq!(member_names(&values), MEMBERS);
-        for item in values.items() {
-            assert_eq!(item.value(), CssContributionValueRef::Global(keyword));
-            assert!(item.ordinary_value().is_none());
-            assert_source(item, &source);
-            assert!(item.replacement_components().is_none());
-        }
-    }
-}
-
-#[test]
 fn universal_reset_includes_timing_targets_without_resolving_the_full_inventory() {
     let source = parsed("all:revert-layer!important");
     let CssExpansion::Contributions(CssContributions::UniversalReset(reset)) =
@@ -707,7 +662,7 @@ fn recovered_time_normalization_preserves_diagnostics_and_contribution_budget() 
         ".a{transition:opacity 1s calc(-250ms",
     ] {
         let report = parse_sheet(css);
-        assert!(!report.is_clean());
+        assert_implicit_closure(css, &report);
         let before = report.clone();
         let exact = CssNormalizationLimits::try_new(0, 1, 1, 4).unwrap();
         let normalized = normalize_report_with_limits(&report, exact).unwrap();

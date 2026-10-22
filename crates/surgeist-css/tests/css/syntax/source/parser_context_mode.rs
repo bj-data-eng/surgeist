@@ -1,4 +1,7 @@
-use surgeist_css::{CssParserContext, CssParserMode};
+use crate::css::support::authored_syntax::{assert_diagnostics, assert_invalid_property_value};
+use surgeist_css::{
+    CssErrorCode, CssKnownProperty, CssParserContext, CssParserMode, CssRecoveryAction,
+};
 
 const QUIRKS_SVG: CssParserContext = CssParserContext::new(CssParserMode::Standards)
     .with_svg_glyph_orientation_vertical()
@@ -44,7 +47,24 @@ fn changed_mode_controls_quirky_grammar_without_resetting_the_original_context()
         assert_eq!(standards, original);
         let report = standards.parse_declaration("width:7");
         assert!(report.syntax().is_none());
-        assert!(!report.is_clean());
+        // Standards mode has no unitless-length quirk, so the number fails
+        // the width grammar.
+        let [diagnostic] = report.diagnostics() else {
+            panic!("one width grammar failure: {report:?}")
+        };
+        assert_invalid_property_value(
+            diagnostic.error().kind(),
+            CssKnownProperty::Width,
+            Some("7"),
+        );
+        assert_diagnostics(
+            report.diagnostics(),
+            &[(
+                CssErrorCode::InvalidPropertyValue,
+                CssRecoveryAction::RejectInput,
+                "width:".len(),
+            )],
+        );
     }
     assert_eq!(CssParserContext::default().mode(), CssParserMode::Standards);
     assert_eq!(

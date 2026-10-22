@@ -1,3 +1,4 @@
+use crate::css::support::value_assertions::{assert_component_rejected, assert_numeric_kind};
 use surgeist_css::*;
 
 #[test]
@@ -7,10 +8,18 @@ fn checked_numeric_constructors_reject_non_finite_values_and_preserve_finite_bou
         assert_eq!(CssRatio::try_new(value, 1.0), None);
         assert_eq!(CssRatio::try_new(1.0, value), None);
 
-        assert!(
-            CssResolutionLiteral::try_new(&value.to_string(), CssResolutionUnit::Dppx).is_err()
+        assert_numeric_kind(
+            CssResolutionLiteral::try_new(&value.to_string(), CssResolutionUnit::Dppx),
+            surgeist_css::CssNumericConstructionErrorKind::Component(
+                surgeist_css::CssComponentValueErrorKind::InvalidDimension,
+            ),
         );
-        assert!(CssTimeLiteral::try_new(&value.to_string(), CssTimeUnit::Seconds).is_err());
+        assert_eq!(
+            CssTimeLiteral::try_new(&value.to_string(), CssTimeUnit::Seconds)
+                .unwrap_err()
+                .kind(),
+            surgeist_css::CssComponentValueErrorKind::InvalidDimension
+        );
     }
 
     for value in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
@@ -18,20 +27,53 @@ fn checked_numeric_constructors_reject_non_finite_values_and_preserve_finite_bou
     }
 
     for invalid in ["NaN", "infinity", "-infinity"] {
-        assert!(CssComponentValue::try_dimension(invalid, "rem").is_err());
-        assert!(CssComponentValue::try_token(&format!("{invalid}%")).is_err());
+        assert_eq!(
+            CssComponentValue::try_dimension(invalid, "rem")
+                .unwrap_err()
+                .kind(),
+            CssComponentValueErrorKind::InvalidDimension
+        );
+        // `NaN%` tokenizes as an identifier and a `%` delimiter, not one token.
+        assert_eq!(
+            CssComponentValue::try_token(&format!("{invalid}%"))
+                .unwrap_err()
+                .kind(),
+            CssComponentValueErrorKind::InvalidToken
+        );
     }
 
     for invalid in ["NaN", "infinity", "-infinity"] {
         let component = CssComponentValue::try_ident(invalid).unwrap();
-        assert!(CssSpecifiedNonNegativeNumber::try_from_component(component.clone()).is_err());
-        assert!(CssRatioOperand::try_from_component(component).is_err());
+        assert_component_rejected(
+            CssSpecifiedNonNegativeNumber::try_from_component,
+            component.clone(),
+            surgeist_css::CssNumericConstructionErrorKind::RootDomainMismatch,
+        );
+        assert_component_rejected(
+            CssRatioOperand::try_from_component,
+            component,
+            surgeist_css::CssNumericConstructionErrorKind::RootDomainMismatch,
+        );
     }
 
-    for invalid in ["-90.1deg", "90.1deg", "0"] {
-        assert!(
-            CssFontObliqueAngle::try_from_component(CssComponentValue::try_token(invalid).unwrap())
-                .is_err()
+    for (invalid, kind) in [
+        (
+            "-90.1deg",
+            surgeist_css::CssNumericConstructionErrorKind::OutOfRange,
+        ),
+        (
+            "90.1deg",
+            surgeist_css::CssNumericConstructionErrorKind::OutOfRange,
+        ),
+        (
+            "0",
+            surgeist_css::CssNumericConstructionErrorKind::RootDomainMismatch,
+        ),
+    ] {
+        assert_component_rejected(
+            CssFontObliqueAngle::try_from_component,
+            CssComponentValue::try_token(invalid).unwrap(),
+            kind,
         );
     }
 
@@ -72,11 +114,10 @@ fn checked_numeric_constructors_reject_non_finite_values_and_preserve_finite_bou
         "340282346638528859811704183484516925440"
     );
     for invalid in ["-1", "-0.00000000000000001"] {
-        assert!(
-            CssSpecifiedNonNegativeNumber::try_from_component(
-                CssComponentValue::try_number(invalid).unwrap()
-            )
-            .is_err()
+        assert_component_rejected(
+            CssSpecifiedNonNegativeNumber::try_from_component,
+            CssComponentValue::try_number(invalid).unwrap(),
+            surgeist_css::CssNumericConstructionErrorKind::OutOfRange,
         );
     }
     assert_eq!(

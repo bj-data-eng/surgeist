@@ -2,6 +2,11 @@
 //! `<number [0,∞]> [ / <number [0,∞]> ]?` and serializes both components.
 //! The expected spellings below come from those grammars, not parser output.
 
+use crate::css::support::property_admission::{
+    assert_checked_rejected, assert_component_rejected, assert_invalid_value,
+    assert_numeric_rejected,
+};
+use surgeist_css::CssNumericConstructionErrorKind;
 use surgeist_css::{
     CssAspectRatioValue, CssComponentValue, CssContributionValueRef, CssContributions,
     CssExpansion, CssExpansionErrorKind, CssGlobalKeyword, CssImportance, CssInitialValueRef,
@@ -172,18 +177,18 @@ fn ordinary_numbers_keep_their_authored_single_operand() {
 
 #[test]
 fn malformed_ratio_drops_only_its_declaration() {
-    for value in [
-        "-1e-999",
-        "-1e-999 / 2",
-        "2 / -1e-999",
-        "auto auto",
-        "auto 16/9 auto",
-        "16/9/2",
-        "/9",
-        "16/",
-        "auto / 9",
-        "16 / auto",
-        "calc(1px) / 2",
+    for (value, token) in [
+        ("-1e-999", Some("-1e-999")),
+        ("-1e-999 / 2", Some("-1e-999")),
+        ("2 / -1e-999", Some("-1e-999")),
+        ("auto auto", Some("auto")),
+        ("auto 16/9 auto", Some("auto")),
+        ("16/9/2", Some("/")),
+        ("/9", Some("/")),
+        ("16/", Some("/")),
+        ("auto / 9", Some("/")),
+        ("16 / auto", Some("auto")),
+        ("calc(1px) / 2", Some("calc(")),
     ] {
         let source = format!("color:red;aspect-ratio:{value};width:1px");
         let report = parse_style_attribute(&source);
@@ -192,6 +197,11 @@ fn malformed_ratio_drops_only_its_declaration() {
             report.diagnostics()[0].action(),
             CssRecoveryAction::DropDeclaration,
             "{value}"
+        );
+        assert_invalid_value(
+            report.diagnostics()[0].error().kind(),
+            CssKnownProperty::AspectRatio,
+            token,
         );
         let kept: Vec<_> = report
             .syntax()
@@ -208,7 +218,7 @@ fn malformed_ratio_drops_only_its_declaration() {
             parse_component_values(value).unwrap(),
             CssImportance::Normal,
         );
-        assert!(checked.is_err(), "checked invalid ratio: {value}");
+        assert_checked_rejected(checked, CssKnownProperty::AspectRatio, token);
     }
 }
 
@@ -248,12 +258,14 @@ fn specified_serialization_keeps_both_components_and_canonical_auto_order() {
 
 #[test]
 fn checked_operands_cannot_hide_invalid_literals_in_typed_calculations() {
-    for text in ["-1e-999", "-1", "2px", "auto"] {
+    for (text, kind) in [
+        ("-1e-999", CssNumericConstructionErrorKind::OutOfRange),
+        ("-1", CssNumericConstructionErrorKind::OutOfRange),
+        ("2px", CssNumericConstructionErrorKind::RootDomainMismatch),
+        ("auto", CssNumericConstructionErrorKind::RootDomainMismatch),
+    ] {
         let component = parse_component_values(text).unwrap().items()[0].clone();
-        assert!(
-            CssRatioOperand::try_from_component(component).is_err(),
-            "{text}"
-        );
+        assert_component_rejected(CssRatioOperand::try_from_component, component, kind);
     }
     let exact =
         CssRatioOperand::try_from_component(CssComponentValue::try_number("1e999").unwrap())
@@ -264,7 +276,10 @@ fn checked_operands_cannot_hide_invalid_literals_in_typed_calculations() {
     let bare_negative =
         CssNumberCalculation::try_from_components(parse_component_values("-1e-999").unwrap())
             .unwrap();
-    assert!(CssRatioOperand::try_from_calculation(bare_negative).is_err());
+    assert_numeric_rejected(
+        CssRatioOperand::try_from_calculation(bare_negative),
+        CssNumericConstructionErrorKind::OutOfRange,
+    );
     let math =
         CssNumberCalculation::try_from_components(parse_component_values("calc(-1)").unwrap())
             .unwrap();

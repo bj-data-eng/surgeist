@@ -1,5 +1,9 @@
 //! Pure length consumers re-admit authored math in their own percentage context.
 //! Values 4 numeric typing permits percentage units to cancel without a basis.
+use crate::css::support::known_property;
+use crate::css::support::value_assertions::{
+    assert_calculation_rejected, assert_first_property_rejection,
+};
 use surgeist_css::*;
 
 fn mixed_calculation(source: &str) -> (CssLengthPercentageCalculation, CssComponentValues) {
@@ -85,9 +89,9 @@ fn pure_consumers_reject_uncancelled_percentage_context_even_inside_a_sum() {
     for source in ["calc(1px + 10%)", "min(1px, 10%)", "calc(10%)"] {
         let (value, _) = mixed_calculation(source);
         assert!(pure(value.clone()).is_err(), "{source}");
-        assert!(
-            CssLengthCalculation::try_from_components(value.components().clone()).is_err(),
-            "{source}"
+        assert_calculation_rejected(
+            CssLengthCalculation::try_from_components(value.components().clone()),
+            Some(surgeist_css::CssNumericConstructionErrorKind::RootDomainMismatch),
         );
         let sum = CssLengthPercentageCalculation::try_sum(value, []).unwrap();
         assert!(pure(sum).is_err(), "{source}");
@@ -124,7 +128,8 @@ fn parsed_pure_consumers_reject_length_percentage_results() {
         "transform: perspective(calc(1px + 10%))",
     ] {
         let report = parse_style_attribute(declaration);
-        assert!(!report.is_clean(), "{declaration}");
+        let (name, _) = declaration.split_once(':').unwrap();
+        assert_first_property_rejection(report.diagnostics(), known_property(name));
         assert!(report.syntax().is_empty(), "{declaration}");
     }
 }

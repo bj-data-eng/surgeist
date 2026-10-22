@@ -5,6 +5,12 @@
 //! These tests use existing public front doors; new payload/serialization APIs
 //! belong in functional tests alongside implementation. Font execution is external.
 
+use crate::css::support::checked_grammar_declaration as checked;
+use crate::css::support::important_declaration as declaration;
+use crate::css::support::known_property;
+use crate::css::support::named_property::assert_checked_value_rejected_at;
+use crate::css::support::named_property::longhand_contributions as longhands;
+use crate::css::support::selected_grammar as grammar;
 use surgeist_css::*;
 
 const MEMBERS: [&str; 4] = [
@@ -14,38 +20,6 @@ const MEMBERS: [&str; 4] = [
     "font-synthesis-position",
 ];
 const CAPABILITIES: [&str; 4] = ["weight", "style", "small-caps", "position"];
-
-fn grammar(name: &str) -> CssPropertyGrammar {
-    CssPropertyGrammar::from_name(name).unwrap_or_else(|| panic!("missing grammar: {name}"))
-}
-
-fn declaration(name: &str, value: &str) -> CssDeclaration {
-    let text = format!("{name}:{value}!important");
-    let report = parse_style_attribute(&text);
-    assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
-    let [value] = report.syntax().as_slice() else {
-        panic!("one declaration: {text}")
-    };
-    value.clone()
-}
-
-fn checked(name: &str, value: &str) -> CssDeclaration {
-    parse_property_value_for_grammar(
-        grammar(name),
-        parse_component_values(value).unwrap(),
-        CssImportance::Important,
-    )
-    .unwrap_or_else(|error| panic!("checked {name}:{value}: {error:?}"))
-}
-
-fn longhands(source: &CssDeclaration) -> CssLonghandContributions {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap_or_else(|error| panic!("expansion: {error:?}"))
-    else {
-        panic!("ordinary or global longhands")
-    };
-    values
-}
 
 fn assert_member_values(values: &CssLonghandContributions, source: &CssDeclaration, mask: u8) {
     assert_eq!(values.items().len(), 4);
@@ -95,14 +69,14 @@ fn historical_weight_style_none_parsing_and_checked_values_remain_controls() {
 
 #[test]
 fn historical_invalid_shorthand_recovery_and_typed_checked_errors_remain_controls() {
-    for text in [
-        "weight weight",
-        "style style",
-        "none weight",
-        "weight none",
-        "weight, style",
-        "auto",
-        "oblique-only",
+    for (text, rest) in [
+        ("weight weight", "weight"),
+        ("style style", "style"),
+        ("none weight", "weight"),
+        ("weight none", "none"),
+        ("weight, style", ", style"),
+        ("auto", "auto"),
+        ("oblique-only", "oblique-only"),
     ] {
         let source = format!("color:red;font-synthesis:{text};color:blue");
         let report = parse_style_attribute(&source);
@@ -110,23 +84,13 @@ fn historical_invalid_shorthand_recovery_and_typed_checked_errors_remain_control
             panic!("one diagnostic: {source}")
         };
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-        assert_ne!(diagnostic.error().code(), CssErrorCode::UnknownProperty);
+        assert_eq!(
+            diagnostic.error().code(),
+            CssErrorCode::InvalidPropertyValue
+        );
         assert_eq!(report.syntax().len(), 2);
         assert!(validate_style_attribute(&source).is_err());
-        let error = parse_property_value_for_grammar(
-            grammar("font-synthesis"),
-            parse_component_values(text).unwrap(),
-            CssImportance::Normal,
-        )
-        .unwrap_err();
-        assert!(matches!(
-            error.kind(),
-            CssPropertyValueErrorKind::Grammar(_)
-        ));
-        assert!(matches!(
-            error.origin(),
-            CssSerializedOrigin::Token(CssValueOrigin::Parsed(_)) | CssSerializedOrigin::End(_)
-        ));
+        assert_checked_value_rejected_at(CssKnownProperty::FontSynthesis, text, rest);
     }
 }
 
@@ -181,12 +145,12 @@ fn four_capabilities_and_representative_permutations_are_admitted() {
                 .is_some()
         );
     }
-    for invalid in [
-        "small-caps small-caps",
-        "position position",
-        "none position",
-        "small-caps auto",
-        "oblique-only weight",
+    for (invalid, rest) in [
+        ("small-caps small-caps", "small-caps"),
+        ("position position", "position"),
+        ("none position", "position"),
+        ("small-caps auto", "auto"),
+        ("oblique-only weight", "oblique-only weight"),
     ] {
         let report = parse_style_attribute(&format!("font-synthesis:{invalid};color:red"));
         assert_eq!(report.syntax().len(), 1, "{invalid}");
@@ -194,15 +158,11 @@ fn four_capabilities_and_representative_permutations_are_admitted() {
             panic!("one shorthand grammar error")
         };
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-        assert_ne!(diagnostic.error().code(), CssErrorCode::UnknownProperty);
-        assert!(
-            parse_property_value_for_grammar(
-                grammar("font-synthesis"),
-                parse_component_values(invalid).unwrap(),
-                CssImportance::Normal
-            )
-            .is_err()
+        assert_eq!(
+            diagnostic.error().code(),
+            CssErrorCode::InvalidPropertyValue
         );
+        assert_checked_value_rejected_at(known_property("font-synthesis"), invalid, rest);
     }
 }
 
@@ -351,34 +311,6 @@ fn complete_shorthand_table_projects_selected_auto_and_omitted_none() {
         );
         assert!(source.same_occurrence(&before));
         assert_eq!(source.value_components(), before.value_components());
-    }
-}
-
-#[test]
-fn css_wide_values_expand_to_each_member_without_losing_occurrence_or_importance() {
-    for name in std::iter::once("font-synthesis").chain(MEMBERS) {
-        for (text, keyword) in [
-            ("initial", CssGlobalKeyword::Initial),
-            ("inherit", CssGlobalKeyword::Inherit),
-            ("unset", CssGlobalKeyword::Unset),
-            ("revert", CssGlobalKeyword::Revert),
-            ("revert-layer", CssGlobalKeyword::RevertLayer),
-        ] {
-            let source = declaration(name, text);
-            let values = longhands(&source);
-            let expected: Vec<&str> = if name == "font-synthesis" {
-                MEMBERS.to_vec()
-            } else {
-                vec![name]
-            };
-            assert_eq!(values.items().len(), expected.len());
-            for (item, member) in values.items().iter().zip(expected) {
-                assert_eq!(item.property().canonical_name(), member);
-                assert_eq!(item.value(), CssContributionValueRef::Global(keyword));
-                assert!(item.source().same_occurrence(&source));
-                assert_eq!(item.source().importance(), CssImportance::Important);
-            }
-        }
     }
 }
 

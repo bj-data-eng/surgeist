@@ -4,29 +4,14 @@
 //! grammar and its focused serialization fixtures supply the typed value text.
 //! Syntax3 §9 requires reparsing, while Variables1 §4.1 preserves custom text.
 
+use crate::css::support::authored_syntax::{
+    assert_diagnostics, grammar_checked_declaration as checked, parsed_declaration as parsed,
+};
+use crate::css::support::serialization_limits::LimitLadder;
 use surgeist_css::*;
 
 type Limits = CssSpecifiedValueSerializationLimits;
 type Kind = CssSpecifiedValueSerializationErrorKind;
-
-fn parsed(source: &str) -> CssDeclaration {
-    let report = parse_declaration(source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    report
-        .syntax()
-        .as_ref()
-        .expect("retained declaration")
-        .clone()
-}
-
-fn checked(name: &str, value: &str, importance: CssImportance) -> CssDeclaration {
-    parse_property_value_for_grammar(
-        CssPropertyGrammar::from_name(name).expect("known grammar"),
-        parse_component_values(value).unwrap(),
-        importance,
-    )
-    .unwrap()
-}
 
 #[test]
 fn every_represented_ordinary_property_dispatches_its_typed_payload() {
@@ -764,49 +749,19 @@ fn exact_limits(declaration: &CssDeclaration, expected: &str, input: usize, proj
     let components = declaration.value_components().clone();
     let name_origin = declaration.parsed_name().cloned();
     let value_origin = declaration.parsed_value().cloned();
-    assert_eq!(
-        declaration
-            .to_specified_css_with_limits(Limits::new(input, projection, expected.len()))
-            .unwrap(),
-        expected,
-    );
-    for (limits, kind) in [
-        (
-            Limits::new(0, projection, expected.len()),
-            Kind::InputNodeLimit,
-        ),
-        (
-            Limits::new(input - 1, projection, expected.len()),
-            Kind::InputNodeLimit,
-        ),
-        (
-            Limits::new(input, 0, expected.len()),
-            Kind::ProjectionNodeLimit,
-        ),
-        (
-            Limits::new(input, projection - 1, expected.len()),
-            Kind::ProjectionNodeLimit,
-        ),
-        (Limits::new(input, projection, 0), Kind::ByteLimit),
-        (
-            Limits::new(input, projection, expected.len() - 1),
-            Kind::ByteLimit,
-        ),
-    ] {
-        assert_eq!(
-            declaration
-                .to_specified_css_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            kind
+    LimitLadder::new(expected, input, projection)
+        .zero_limits()
+        .assert_unchanged_with(
+            declaration,
+            CssDeclaration::to_specified_css_with_limits,
+            |_, _, _| {
+                assert_eq!(declaration.to_specified_css().unwrap(), expected);
+                assert!(declaration.same_occurrence(&before));
+                assert_eq!(declaration.value_components(), &components);
+                assert_eq!(declaration.parsed_name(), name_origin.as_ref());
+                assert_eq!(declaration.parsed_value(), value_origin.as_ref());
+            },
         );
-        assert_eq!(declaration.to_specified_css().unwrap(), expected);
-        assert_eq!(declaration, &before);
-        assert!(declaration.same_occurrence(&before));
-        assert_eq!(declaration.value_components(), &components);
-        assert_eq!(declaration.parsed_name(), name_origin.as_ref());
-        assert_eq!(declaration.parsed_value(), value_origin.as_ref());
-    }
 }
 
 #[test]
@@ -924,7 +879,7 @@ fn counter_defaults_and_math_share_the_declaration_budget_without_resolving_inte
 }
 
 #[test]
-fn semantic_children_canonicalize_numeric_math_and_new_aggregate_owners() {
+fn semantic_children_canonicalize_numeric_math_and_aggregate_owners() {
     for (name, input, value) in [
         ("width", "+02.500PX", "2.5px"),
         ("width", "calc(2px + 3px)", "calc(5px)"),
@@ -1156,7 +1111,15 @@ fn nested_symbolic_trivia_and_recovered_closures_keep_their_original_origins() {
     }
     let source = "--X:var(--Case";
     let report = parse_style_attribute(source);
-    assert!(!report.is_clean());
+    // EOF closes the `var(` function implicitly.
+    assert_diagnostics(
+        report.diagnostics(),
+        &[(
+            CssErrorCode::UnexpectedEnd,
+            CssRecoveryAction::RetainWithImplicitClosure,
+            source.len(),
+        )],
+    );
     assert_eq!(report.syntax().len(), 1);
     let declaration = &report.syntax()[0];
     let components = declaration.value_components().clone();

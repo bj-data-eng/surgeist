@@ -1,5 +1,362 @@
+//! Support-catalog contracts.
+//!
+//! Structural invariants hold for every catalog record: the status decides
+//! which boundary fields are present, every cited source is the registered
+//! source with that identity, every schema property owns exactly one row, and
+//! every production anchor exists in the retained reference copy of its
+//! source. Named records are checked against [`expected::EXPECTED`] and its
+//! public parser vectors; the remaining tests pair records with the authored
+//! grammar they claim.
+
+use std::collections::{BTreeMap, BTreeSet};
+
 use surgeist_css::CssTimeLiteral;
 use surgeist_css::*;
+
+mod expected;
+
+use expected::{EXPECTED, Input};
+
+#[test]
+fn every_record_reports_exactly_the_boundary_fields_of_its_status() {
+    for record in feature_catalog() {
+        let id = record.id().as_str();
+        let non_empty = |text: Option<&str>| text.is_some_and(|text| !text.trim().is_empty());
+        match record.status() {
+            CssSupportStatus::Complete => {
+                assert_eq!(record.supported_subset(), None, "{id} subset");
+                assert_eq!(record.unsupported_remainder(), None, "{id} remainder");
+                assert_eq!(record.recognized_unsupported_code(), None, "{id} code");
+            }
+            CssSupportStatus::Partial => {
+                assert!(non_empty(record.supported_subset()), "{id} subset");
+                assert!(non_empty(record.unsupported_remainder()), "{id} remainder");
+                assert_eq!(record.recognized_unsupported_code(), None, "{id} code");
+            }
+            CssSupportStatus::RecognizedUnsupported => {
+                assert_eq!(record.supported_subset(), None, "{id} subset");
+                assert_eq!(record.unsupported_remainder(), None, "{id} remainder");
+                assert!(record.recognized_unsupported_code().is_some(), "{id} code");
+            }
+        }
+    }
+}
+
+#[test]
+fn catalog_identities_are_unique_and_exact_lookup_returns_each_record() {
+    let mut seen = BTreeSet::new();
+    for record in feature_catalog() {
+        let id = record.id().as_str();
+        assert!(seen.insert(id), "duplicate catalog identity {id}");
+        let found = feature_metadata(id).unwrap_or_else(|| panic!("lookup of {id}"));
+        assert!(
+            std::ptr::eq(found, record),
+            "{id} lookup returns its record"
+        );
+        assert!(!record.spelling().is_empty(), "{id} spelling");
+        assert!(!record.production().is_empty(), "{id} production");
+    }
+}
+
+#[test]
+fn every_record_cites_the_registered_source_with_its_identity() {
+    let mut registry = BTreeMap::new();
+    for source in specification_sources() {
+        assert!(
+            registry.insert(source.id().as_str(), source).is_none(),
+            "duplicate source identity {}",
+            source.id().as_str()
+        );
+    }
+    for record in feature_catalog() {
+        let source = record.source();
+        let registered = registry
+            .get(source.id().as_str())
+            .unwrap_or_else(|| panic!("{} cites an unregistered source", record.id().as_str()));
+        assert_eq!(**registered, source, "{} source", record.id().as_str());
+    }
+    for exclusion in conformance_exclusions() {
+        let source = exclusion.source();
+        let registered = registry
+            .get(source.id().as_str())
+            .unwrap_or_else(|| panic!("{} cites an unregistered source", exclusion.id().as_str()));
+        assert_eq!(**registered, source, "{} source", exclusion.id().as_str());
+    }
+}
+
+#[test]
+fn every_schema_property_owns_exactly_one_catalog_row() {
+    let properties = CssKnownProperty::all();
+    let schema_rows = feature_catalog()
+        .iter()
+        .filter(|record| {
+            record.kind() == CssFeatureKind::Property
+                && property_support_metadata(record.spelling())
+                    .is_some_and(|support| std::ptr::eq(support.feature(), *record))
+        })
+        .count();
+    assert_eq!(schema_rows, properties.len());
+    for &property in properties {
+        let name = property.canonical_name();
+        let support = property_support_metadata(name).unwrap_or_else(|| panic!("{name}"));
+        let record = support.feature();
+        assert_eq!(support.property(), property, "{name} owner");
+        assert_eq!(support.canonical_name(), name, "{name} canonical name");
+        assert_eq!(support.aliases(), property.aliases(), "{name} aliases");
+        assert_eq!(
+            record.id().as_str(),
+            property.stable_id(),
+            "{name} identity"
+        );
+        assert_eq!(record.kind(), CssFeatureKind::Property, "{name} kind");
+        assert_eq!(record.spelling(), name, "{name} spelling");
+        assert!(
+            std::ptr::eq(feature_metadata(property.stable_id()).unwrap(), record),
+            "{name} stable identity lookup"
+        );
+        assert!(
+            std::ptr::eq(
+                property_support_metadata(&name.to_ascii_uppercase())
+                    .unwrap()
+                    .feature(),
+                record
+            ),
+            "{name} ASCII case-insensitive lookup"
+        );
+        for alias in property.aliases() {
+            let aliased = property_support_metadata(alias).unwrap_or_else(|| panic!("{alias}"));
+            assert!(
+                std::ptr::eq(aliased.feature(), record),
+                "{alias} alias owner"
+            );
+        }
+    }
+}
+
+/// Retained reference copies keyed by the exact source snapshot they convert.
+fn reference_copies() -> BTreeMap<String, String> {
+    let directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../references");
+    let mut copies = BTreeMap::new();
+    for entry in std::fs::read_dir(&directory).expect("retained references directory") {
+        let path = entry.expect("reference entry").path();
+        if path.extension().and_then(|extension| extension.to_str()) != Some("md") {
+            continue;
+        }
+        let text = std::fs::read_to_string(&path).expect("UTF-8 reference copy");
+        let snapshot = text.lines().find_map(|line| {
+            line.strip_prefix("Source snapshot: ")
+                .or_else(|| line.strip_prefix("Source: "))
+                .map(|value| {
+                    value
+                        .trim()
+                        .trim_start_matches('<')
+                        .trim_end_matches('>')
+                        .to_owned()
+                })
+        });
+        if let Some(snapshot) = snapshot {
+            copies.insert(snapshot, text);
+        }
+    }
+    copies
+}
+
+// Records whose cited anchor is absent from the retained copy of their source.
+// Each is a catalog data defect reported for correction; the anchor invariant
+// still holds for every other record.
+const UNRESOLVED_PRODUCTION_ANCHORS: &[(&str, &str)] = &[
+    // Pseudo 4 (2025-06-27) does not define ::backdrop; Position 4 section 3.2
+    // owns `#selectordef-backdrop`, and the source registry has no Position 4
+    // source to cite.
+    ("ext.pseudo-element.backdrop", "#selectordef-backdrop"),
+];
+
+// The WebKit CSSProperties witness is retained as metadata only.
+const METADATA_ONLY_SOURCES: &[&str] = &["I-WEBKIT-SVG-GLYPH"];
+
+#[test]
+fn every_production_anchor_exists_in_the_cited_reference_copy() {
+    let copies = reference_copies();
+    let mut unresolved = Vec::new();
+    for record in feature_catalog() {
+        let id = record.id().as_str();
+        let source = record.source();
+        if METADATA_ONLY_SOURCES.contains(&source.id().as_str()) {
+            assert!(source.url().is_some(), "{id} metadata-only source URL");
+            continue;
+        }
+        for anchor in record.production().split(',') {
+            let (page, fragment) = anchor
+                .split_once('#')
+                .unwrap_or_else(|| panic!("{id} production `{anchor}` is not an anchor"));
+            assert!(!fragment.is_empty(), "{id} empty anchor");
+            let copy = match (source.url(), source.repository_provenance()) {
+                (Some(url), None) => copies.get(&format!("{url}{page}")),
+                (None, Some(provenance)) => {
+                    // Repository provenance is `revision:path`; the anchor's page
+                    // names that same path.
+                    let (revision, path) = provenance.split_once(':').expect("revision:path");
+                    assert!(page.is_empty() || page == path, "{id} page `{page}`");
+                    copies
+                        .iter()
+                        .find(|(snapshot, _)| {
+                            snapshot.contains(revision) && snapshot.ends_with(path)
+                        })
+                        .map(|(_, text)| text)
+                }
+                _ => panic!("{id} source has exactly one provenance form"),
+            };
+            let copy = copy.unwrap_or_else(|| panic!("{id} has no retained copy for `{anchor}`"));
+            if !copy.contains(&format!("id=\"{fragment}\"")) {
+                unresolved.push((id, anchor));
+            }
+        }
+    }
+    assert_eq!(unresolved, UNRESOLVED_PRODUCTION_ANCHORS);
+}
+
+#[test]
+fn named_conformance_records_expose_declared_metadata() {
+    for expected in EXPECTED {
+        let actual = feature_metadata(expected.id).expect("expected catalog record");
+        assert_eq!(actual.id().as_str(), expected.id);
+        assert_eq!(actual.kind(), expected.kind, "{} kind", expected.id);
+        if let Some(spelling) = expected.spelling {
+            assert_eq!(actual.spelling(), spelling, "{} spelling", expected.id);
+        }
+        assert_eq!(
+            actual.source().id().as_str(),
+            expected.source,
+            "{} source",
+            expected.id
+        );
+        assert_eq!(
+            actual.production(),
+            expected.production,
+            "{} production",
+            expected.id
+        );
+        assert_eq!(actual.status(), expected.status, "{} status", expected.id);
+    }
+
+    assert!(
+        feature_metadata("BASELINE.RULE.IMPORT").is_none(),
+        "lookup is exact"
+    );
+    assert!(
+        feature_metadata("baseline.rule.import ").is_none(),
+        "lookup does not trim"
+    );
+    assert!(feature_metadata("baseline.property.display").is_some());
+    assert!(feature_metadata("").is_none());
+}
+
+#[test]
+fn conformance_catalog_vectors_cover_each_supported_and_unsupported_boundary() {
+    for expected in EXPECTED {
+        match expected.status {
+            CssSupportStatus::Complete | CssSupportStatus::Partial => {
+                let input = expected
+                    .positive
+                    .expect("supported record needs a positive vector");
+                let diagnostics = diagnostics(input);
+                assert!(
+                    diagnostics.is_empty(),
+                    "{} positive vector produced {diagnostics:?}",
+                    expected.id
+                );
+            }
+            CssSupportStatus::RecognizedUnsupported => {
+                assert!(
+                    expected.positive.is_none(),
+                    "recognized unsupported has no positive vector"
+                );
+            }
+        }
+
+        if matches!(
+            expected.status,
+            CssSupportStatus::Partial | CssSupportStatus::RecognizedUnsupported
+        ) {
+            assert!(
+                expected.negative.is_some(),
+                "{} unsupported boundary needs a vector",
+                expected.id
+            );
+        }
+        if let Some((input, code)) = expected.negative {
+            let diagnostics = diagnostics(input);
+            assert!(
+                !diagnostics.is_empty(),
+                "{} negative vector was accepted",
+                expected.id
+            );
+            assert_eq!(
+                diagnostics[0].0, code,
+                "{} negative vector root",
+                expected.id
+            );
+            if expected.status == CssSupportStatus::RecognizedUnsupported {
+                assert_eq!(
+                    diagnostics[0].1,
+                    Some(expected.id),
+                    "{} diagnostic feature identity",
+                    expected.id
+                );
+            }
+        }
+    }
+}
+
+fn diagnostics(input: Input) -> Vec<(CssErrorCode, Option<&'static str>)> {
+    let diagnostics = match input {
+        Input::Sheet(source) => parse_sheet(source).diagnostics().to_vec(),
+        Input::Style(source) => parse_style_attribute(source).diagnostics().to_vec(),
+    };
+    diagnostics
+        .iter()
+        .map(|diagnostic| {
+            let feature = match diagnostic.error().kind() {
+                ErrorKind::UnsupportedAtRule(detail) => Some(detail.feature().as_str()),
+                _ => None,
+            };
+            (diagnostic.error().code(), feature)
+        })
+        .collect()
+}
+
+/// Asserts that one authored declaration is retained cleanly with the given identity.
+fn assert_single_known_declaration(source: &str, id: &str) {
+    let report = parse_style_attribute(source);
+    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
+    let [declaration] = report.syntax().as_slice() else {
+        panic!("{source}: expected one retained declaration");
+    };
+    let known = declaration.known().expect("known declaration");
+    assert_eq!(known.property().stable_id(), id, "{source} identity");
+}
+
+/// Asserts that an authored declaration outside its property grammar is dropped.
+fn assert_dropped_declaration(source: &str) {
+    let report = parse_style_attribute(source);
+    assert!(report.syntax().is_empty(), "{source}");
+    let [diagnostic] = report.diagnostics() else {
+        panic!(
+            "{source}: expected one diagnostic: {:?}",
+            report.diagnostics()
+        );
+    };
+    assert_eq!(
+        diagnostic.error().code(),
+        CssErrorCode::InvalidPropertyValue,
+        "{source}"
+    );
+    assert_eq!(
+        diagnostic.action(),
+        CssRecoveryAction::DropDeclaration,
+        "{source}"
+    );
+}
 
 #[test]
 fn removed_track_properties_have_no_current_catalogue_metadata() {
@@ -98,78 +455,6 @@ fn display_sources_separate_base_grammar_from_grid_lanes_additions() {
     }
 }
 
-#[derive(Clone, Copy)]
-enum ExpectedSource {
-    Id(&'static str),
-}
-
-#[derive(Clone, Copy)]
-enum Input {
-    Sheet(&'static str),
-    Style(&'static str),
-}
-
-struct ExpectedFeature {
-    id: &'static str,
-    kind: CssFeatureKind,
-    spelling: &'static str,
-    source: ExpectedSource,
-    production: &'static str,
-    status: CssSupportStatus,
-    supported_subset: Option<&'static str>,
-    unsupported_remainder: Option<&'static str>,
-    recognized_code: Option<CssErrorCode>,
-    positive: Option<Input>,
-    negative: Option<(Input, CssErrorCode)>,
-}
-
-const BASELINE_RULE_SUBSET: &str =
-    "The baseline parser spelling and the I01 recovery extensions are supported.";
-const BASELINE_RULE_REMAINDER: &str =
-    "Other valid forms of the cited rule production are outside the I01 subset.";
-const SELECTOR_REMAINDER: &str =
-    "Other valid forms of the cited Selectors production are outside the I01 subset.";
-const SUPPORTS_SELECTOR_SUBSET: &str = "selector() accepts complete Selectors 3 plus the selected I01 extensions: the || column combinator; i and s attribute modifiers; :scope, :focus-visible, :focus-within, :required, :optional, :valid, :invalid, :placeholder-shown, :modal, :fullscreen, :popover-open, :default, :indeterminate, :read-only, :read-write, :in-range, and :out-of-range; :is(), :where(), :has(), selector-list :not(), and nth-child of lists; and ::marker, ::selection, ::backdrop, and generated-marker sequences. The selected named states :defined, :any-link, :playing, :paused, :seeking, :buffering, :stalled, :muted, :volume-locked, :open, :picture-in-picture, :unchecked, :user-valid and :user-invalid retain distinct symbolic identities, with decoded ASCII-insensitive admission and canonical lowercase specified output; functional forms remain invalid and :any-link is not lowered. Directionality accepts one identifier and language accepts nonempty comma-separated identifier or string ranges. Required shadow definitions add :host, compound-argument :host() and :host-context(), ::slotted(), and identifier-list ::part(). Autofill and its required -webkit-autofill alias share the standard identity; unknown nonfunctional -webkit- pseudo-elements retain symbolic match-nothing identities with ASCII-lowercase output. Pseudo 4 adds Prefix, Suffix, SearchText, TargetText, SpellingError, GrammarError, Highlight with one checked custom identifier, Placeholder, FileSelectorButton and DetailsContent. Nonfunctional Current is limited to SearchText and element-backed suffix contexts and inherited logical arguments; ordinary Current and functional Current remain unsupported. View Transitions 1 adds its tree-abiding root and Group, ImagePair, Old and New functional pseudos with wildcard or custom-ident arguments, named-descendant OnlyChild suffixes and exact root-to-group-to-image-pair-to-old/new compounds. Ordered pseudo-element suffixes retain contextual pseudo-classes and defined child transitions, resetting permissions at each new segment. All typed selector tests remain symbolic, including optional UA pseudo implementation and matching prohibitions.";
-const SUPPORTS_SELECTOR_REMAINDER: &str = "Unselected Selectors 4 pseudo-classes and pseudo-elements, and syntax outside those atomic extension rows remain outside the typed subset; balanced content is preserved as general-enclosed authored syntax.";
-const QUERY_REMAINDER: &str =
-    "Other valid forms of the cited query production are outside the I01 subset.";
-const COLOR5_RELATIVE_SUBSET: &str = "Relative rgb()/rgba(), hsl()/hsla(), hwb(), lab(), lch(), oklab(), oklch(), predefined and custom-profile color(), and alpha() preserve authored channels and symbolic calculations.";
-const COLOR5_RELATIVE_REMAINDER: &str = "Unselected CSS Color 5 source-color functions remain unsupported; profile binding and color evaluation belong to downstream resolution.";
-const COLOR5_MIX_SUBSET: &str = "Authored color-mix() supports an optional interpolation method, ordered nonempty color lists, literal or calculated percentage weights before or after colors, and predefined, polar or symbolic custom spaces.";
-const COLOR5_MIX_REMAINDER: &str = "Unselected contextual Color 5 alternatives and downstream color evaluation remain outside this authored subset.";
-fn assert_complete_fonts3_feature(
-    id: &str,
-    kind: CssFeatureKind,
-    spelling: &str,
-    production: &str,
-) {
-    let metadata = feature_metadata(id).unwrap_or_else(|| panic!("missing metadata for {id}"));
-    assert_eq!(metadata.kind(), kind, "{id}");
-    assert_eq!(metadata.spelling(), spelling, "{id}");
-    let source = if spelling.starts_with("font-variant")
-        || spelling.starts_with("font-synthesis")
-        || spelling == "font-palette"
-        || matches!(
-            id,
-            "baseline.property.font-feature-settings"
-                | "official.property.font-kerning"
-                | "official.property.font-size-adjust"
-                | "official.descriptor.font-feature-settings"
-                | "official.value.opentype-tag"
-        ) {
-        "I-FONTS4-20260907"
-    } else {
-        "O-FONTS3"
-    };
-    assert_eq!(metadata.source().id().as_str(), source, "{id}");
-    assert_eq!(metadata.production(), production, "{id}");
-    assert_eq!(metadata.status(), CssSupportStatus::Complete, "{id}");
-    assert_eq!(metadata.supported_subset(), None, "{id}");
-    assert_eq!(metadata.unsupported_remainder(), None, "{id}");
-    assert_eq!(metadata.recognized_unsupported_code(), None, "{id}");
-    assert!(metadata.baseline_alias_targets().is_empty(), "{id}");
-}
-
 #[test]
 fn selected_font_family_and_shorthand_metadata_match_their_grammar_boundaries() {
     let family = feature_metadata("baseline.property.font-family").unwrap();
@@ -178,10 +463,6 @@ fn selected_font_family_and_shorthand_metadata_match_their_grammar_boundaries() 
     assert_eq!(family.source().id().as_str(), "I-FONTS4-20260907");
     assert_eq!(family.production(), "#propdef-font-family");
     assert_eq!(family.status(), CssSupportStatus::Complete);
-    assert_eq!(family.supported_subset(), None);
-    assert_eq!(family.unsupported_remainder(), None);
-    assert_eq!(family.recognized_unsupported_code(), None);
-    assert!(family.baseline_alias_targets().is_empty());
 
     let font = feature_metadata("baseline.property.font").unwrap();
     assert_eq!(font.kind(), CssFeatureKind::Property);
@@ -189,10 +470,6 @@ fn selected_font_family_and_shorthand_metadata_match_their_grammar_boundaries() 
     assert_eq!(font.source().id().as_str(), "I-FONTS4-20260907");
     assert_eq!(font.production(), "#propdef-font");
     assert_eq!(font.status(), CssSupportStatus::Complete);
-    assert_eq!(font.supported_subset(), None);
-    assert_eq!(font.unsupported_remainder(), None);
-    assert_eq!(font.recognized_unsupported_code(), None);
-    assert!(font.baseline_alias_targets().is_empty());
 
     for authored in [
         "font-family: \"Avenir Next\", sans-serif",
@@ -215,92 +492,31 @@ fn selected_font_family_and_shorthand_metadata_match_their_grammar_boundaries() 
 }
 
 #[test]
-fn fonts3_and_preserved_fonts4_metadata_are_truthful() {
-    let fonts3_properties = [
+fn font_properties_and_font_face_descriptors_parse_their_selected_grammar() {
+    for (property, authored) in [
+        ("font-feature-settings", "\"kern\" on, \"liga\" 0"),
+        ("font-kerning", "normal"),
+        ("font-size-adjust", "0.5"),
+        ("font-synthesis", "weight style"),
+        ("font-palette", "palette-mix(light, dark)"),
+        ("font-variant", "small-caps oldstyle-nums"),
+        ("font-variant-alternates", "styleset(Alpha, beta)"),
+        ("font-variant-caps", "all-small-caps"),
+        ("font-variant-east-asian", "jis04 ruby"),
+        ("font-variant-emoji", "emoji"),
         (
-            "baseline.property.font-feature-settings",
-            "font-feature-settings",
-            "#propdef-font-feature-settings",
-            "\"kern\" on, \"liga\" 0",
-        ),
-        (
-            "official.property.font-kerning",
-            "font-kerning",
-            "#propdef-font-kerning",
-            "normal",
-        ),
-        (
-            "official.property.font-size-adjust",
-            "font-size-adjust",
-            "#propdef-font-size-adjust",
-            "0.5",
-        ),
-        (
-            "official.property.font-synthesis",
-            "font-synthesis",
-            "#propdef-font-synthesis",
-            "weight style",
-        ),
-        (
-            "official.property.font-palette",
-            "font-palette",
-            "#propdef-font-palette",
-            "palette-mix(light, dark)",
-        ),
-        (
-            "baseline.property.font-variant",
-            "font-variant",
-            "#propdef-font-variant",
-            "small-caps oldstyle-nums",
-        ),
-        (
-            "official.property.font-variant-alternates",
-            "font-variant-alternates",
-            "#propdef-font-variant-alternates",
-            "styleset(Alpha, beta)",
-        ),
-        (
-            "official.property.font-variant-caps",
-            "font-variant-caps",
-            "#propdef-font-variant-caps",
-            "all-small-caps",
-        ),
-        (
-            "official.property.font-variant-east-asian",
-            "font-variant-east-asian",
-            "#propdef-font-variant-east-asian",
-            "jis04 ruby",
-        ),
-        (
-            "official.property.font-variant-emoji",
-            "font-variant-emoji",
-            "#propdef-font-variant-emoji",
-            "emoji",
-        ),
-        (
-            "official.property.font-variant-ligatures",
             "font-variant-ligatures",
-            "#propdef-font-variant-ligatures",
             "common-ligatures no-discretionary-ligatures",
         ),
         (
-            "official.property.font-variant-numeric",
             "font-variant-numeric",
-            "#propdef-font-variant-numeric",
             "lining-nums tabular-nums slashed-zero",
         ),
-        (
-            "official.property.font-variant-position",
-            "font-variant-position",
-            "#propdef-font-variant-position",
-            "super",
-        ),
-    ];
-    for (id, spelling, production, authored) in fonts3_properties {
-        let report = parse_style_attribute(&format!("{spelling}: {authored}"));
-        assert!(report.is_clean(), "{id}: {:?}", report.diagnostics());
-        assert_eq!(report.syntax().len(), 1, "{id}");
-        assert_complete_fonts3_feature(id, CssFeatureKind::Property, spelling, production);
+        ("font-variant-position", "super"),
+    ] {
+        let report = parse_style_attribute(&format!("{property}: {authored}"));
+        assert!(report.is_clean(), "{property}: {:?}", report.diagnostics());
+        assert_eq!(report.syntax().len(), 1, "{property}");
     }
 
     let font_face = parse_sheet(concat!(
@@ -312,42 +528,9 @@ fn fonts3_and_preserved_fonts4_metadata_are_truthful() {
     assert!(font_face.is_clean(), "{:?}", font_face.diagnostics());
     assert_eq!(font_face.syntax().rules().len(), 1);
 
-    for (id, kind, spelling, production) in [
-        (
-            "baseline.descriptor.unicode-range",
-            CssFeatureKind::Descriptor,
-            "unicode-range in @font-face",
-            "#unicode-range-desc",
-        ),
-        (
-            "official.descriptor.font-feature-settings",
-            CssFeatureKind::Descriptor,
-            "font-feature-settings in @font-face",
-            "#font-rend-desc",
-        ),
-        (
-            "official.value.opentype-tag",
-            CssFeatureKind::Value,
-            "OpenType feature tag",
-            "#font-rend-desc",
-        ),
-    ] {
-        assert_complete_fonts3_feature(id, kind, spelling, production);
-    }
-
     let display =
         parse_sheet("@font-face { font-family: Demo; src: url(demo.woff2); font-display: swap; }");
     assert!(display.is_clean(), "{:?}", display.diagnostics());
-    let display_metadata =
-        feature_metadata("baseline.descriptor.font-display").expect("font-display metadata");
-    assert_eq!(display_metadata.kind(), CssFeatureKind::Descriptor);
-    assert_eq!(display_metadata.spelling(), "font-display in @font-face");
-    assert_eq!(display_metadata.source().id().as_str(), "I-FONTS4");
-    assert_eq!(display_metadata.production(), "#font-display-desc");
-    assert_eq!(display_metadata.status(), CssSupportStatus::Complete);
-    assert_eq!(display_metadata.supported_subset(), None);
-    assert_eq!(display_metadata.unsupported_remainder(), None);
-    assert_eq!(display_metadata.recognized_unsupported_code(), None);
 
     let feature_values = parse_sheet("@font-feature-values Demo { @styleset { nice: 1; } }");
     assert!(feature_values.is_clean());
@@ -355,14 +538,6 @@ fn fonts3_and_preserved_fonts4_metadata_are_truthful() {
         feature_values.syntax().rules(),
         [CssRule::FontFeatureValues(_)]
     ));
-    let metadata =
-        feature_metadata("later.rule.font-feature-values").expect("font-feature-values metadata");
-    assert_eq!(metadata.kind(), CssFeatureKind::Rule);
-    assert_eq!(metadata.spelling(), "@font-feature-values");
-    assert_eq!(metadata.source().id().as_str(), "I-FONTS4-20260907");
-    assert_eq!(metadata.production(), "#font-feature-values-syntax");
-    assert_eq!(metadata.status(), CssSupportStatus::Complete);
-    assert_eq!(metadata.recognized_unsupported_code(), None);
 
     let numeric_weight = parse_style_attribute("font-weight: 725");
     assert!(
@@ -378,10 +553,9 @@ fn fonts3_and_preserved_fonts4_metadata_are_truthful() {
         CssErrorCode::InvalidPropertyValue
     );
 
-    let (id, spelling, production, authored, rejected) = (
+    // Fonts 4 oblique angles lie in [-90deg, 90deg].
+    let (id, authored, rejected) = (
         "ext.descriptor.font-style-oblique-range",
-        "font-style oblique ranges in @font-face",
-        "#font-prop-desc",
         "font-style: oblique -10deg 20deg",
         "font-style: oblique 91deg",
     );
@@ -389,14 +563,6 @@ fn fonts3_and_preserved_fonts4_metadata_are_truthful() {
         "@font-face {{ font-family: Demo; src: url(demo.woff2); {authored}; }}"
     ));
     assert!(report.is_clean(), "{id}: {:?}", report.diagnostics());
-    let metadata = feature_metadata(id).unwrap();
-    assert_eq!(metadata.kind(), CssFeatureKind::Descriptor);
-    assert_eq!(metadata.spelling(), spelling);
-    assert_eq!(metadata.source().id().as_str(), "I-FONTS4-20260907");
-    assert_eq!(metadata.production(), production);
-    assert_eq!(metadata.status(), CssSupportStatus::Complete);
-    assert_eq!(metadata.supported_subset(), None);
-    assert_eq!(metadata.unsupported_remainder(), None);
 
     let rejected_report = parse_sheet(&format!(
         "@font-face {{ font-family: Demo; src: url(demo.woff2); {rejected}; }}"
@@ -413,19 +579,6 @@ fn fonts3_and_preserved_fonts4_metadata_are_truthful() {
         "src: url(demo.woff2) format(woff2) tech(variations, color-colrv1); }"
     ));
     assert!(modern_hints.is_clean(), "{:?}", modern_hints.diagnostics());
-    let hints = feature_metadata("ext.value.font-source-modern-hints").unwrap();
-    assert_eq!(hints.kind(), CssFeatureKind::Value);
-    assert_eq!(
-        hints.spelling(),
-        "format() keyword and tech() font-source hints"
-    );
-    assert_eq!(hints.source().id().as_str(), "I-FONTS4-20260907");
-    assert_eq!(hints.production(), "#font-face-src-parsing");
-    assert_eq!(hints.status(), CssSupportStatus::Complete);
-    assert_eq!(hints.supported_subset(), None);
-    assert_eq!(hints.unsupported_remainder(), None);
-    assert_eq!(hints.recognized_unsupported_code(), None);
-    assert!(hints.baseline_alias_targets().is_empty());
     let unknown_hint = parse_sheet(
         "@font-face { font-family: Demo; src: url(demo.woff2) format(woff3) tech(unknown); }",
     );
@@ -466,8 +619,6 @@ fn selected_font_width_records_keep_historical_ids_and_canonical_names() {
     assert_eq!(property.source().id().as_str(), "I-FONTS4-20260907");
     assert_eq!(property.production(), "#propdef-font-width");
     assert_eq!(property.status(), CssSupportStatus::Complete);
-    assert_eq!(property.supported_subset(), None);
-    assert_eq!(property.unsupported_remainder(), None);
     let support = property_support_metadata("font-stretch").expect("legacy property name");
     assert_eq!(support.property(), CssKnownProperty::FontWidth);
     assert_eq!(support.canonical_name(), "font-width");
@@ -475,21 +626,15 @@ fn selected_font_width_records_keep_historical_ids_and_canonical_names() {
 
     let descriptor = feature_metadata("baseline.descriptor.font-stretch").unwrap();
     assert_eq!(descriptor.kind(), CssFeatureKind::Descriptor);
-    assert_eq!(descriptor.spelling(), "font-width in @font-face");
     assert_eq!(descriptor.source().id().as_str(), "I-FONTS4-20260907");
     assert_eq!(descriptor.production(), "#font-prop-desc");
     assert_eq!(descriptor.status(), CssSupportStatus::Complete);
-    assert_eq!(descriptor.supported_subset(), None);
-    assert_eq!(descriptor.unsupported_remainder(), None);
 
     let range = feature_metadata("ext.descriptor.font-stretch-range").unwrap();
     assert_eq!(range.kind(), CssFeatureKind::Descriptor);
-    assert_eq!(range.spelling(), "ordinary font-width ranges in @font-face");
     assert_eq!(range.source().id().as_str(), "I-FONTS4-20260907");
     assert_eq!(range.production(), "#font-prop-desc");
     assert_eq!(range.status(), CssSupportStatus::Complete);
-    assert_eq!(range.supported_subset(), None);
-    assert_eq!(range.unsupported_remainder(), None);
 
     for name in ["font-width", "font-stretch"] {
         let report = parse_sheet(&format!(
@@ -519,41 +664,6 @@ fn selected_font_width_records_keep_historical_ids_and_canonical_names() {
 
 #[test]
 fn selected_font_weight_records_keep_historical_ids_and_complete_authored_grammar() {
-    for (id, kind, spelling, production) in [
-        (
-            "baseline.property.font-weight",
-            CssFeatureKind::Property,
-            "font-weight",
-            "#propdef-font-weight",
-        ),
-        (
-            "ext.property.font-weight-range",
-            CssFeatureKind::Property,
-            "font-weight numeric range",
-            "#font-weight-absolute-values",
-        ),
-        (
-            "baseline.descriptor.font-weight",
-            CssFeatureKind::Descriptor,
-            "font-weight in @font-face",
-            "#font-prop-desc",
-        ),
-        (
-            "ext.descriptor.font-weight-range",
-            CssFeatureKind::Descriptor,
-            "font-weight ranges in @font-face",
-            "#font-prop-desc",
-        ),
-    ] {
-        let record = feature_metadata(id).unwrap_or_else(|| panic!("missing {id}"));
-        assert_eq!(record.kind(), kind, "{id}");
-        assert_eq!(record.spelling(), spelling, "{id}");
-        assert_eq!(record.source().id().as_str(), "I-FONTS4-20260907", "{id}");
-        assert_eq!(record.production(), production, "{id}");
-        assert_eq!(record.status(), CssSupportStatus::Complete, "{id}");
-        assert_eq!(record.supported_subset(), None, "{id}");
-        assert_eq!(record.unsupported_remainder(), None, "{id}");
-    }
     let property = parse_style_attribute("font-weight: 725.25");
     assert!(property.is_clean(), "{:?}", property.diagnostics());
     let descriptor = parse_sheet("@font-face { font-weight: bold 300; }");
@@ -562,35 +672,6 @@ fn selected_font_weight_records_keep_historical_ids_and_complete_authored_gramma
 
 #[test]
 fn selected_font_style_records_keep_historical_ids_and_complete_authored_grammar() {
-    for (id, kind, spelling, production) in [
-        (
-            "baseline.property.font-style",
-            CssFeatureKind::Property,
-            "font-style",
-            "#propdef-font-style",
-        ),
-        (
-            "baseline.descriptor.font-style",
-            CssFeatureKind::Descriptor,
-            "font-style in @font-face",
-            "#font-prop-desc",
-        ),
-        (
-            "ext.descriptor.font-style-oblique-range",
-            CssFeatureKind::Descriptor,
-            "font-style oblique ranges in @font-face",
-            "#font-prop-desc",
-        ),
-    ] {
-        let record = feature_metadata(id).unwrap_or_else(|| panic!("missing {id}"));
-        assert_eq!(record.kind(), kind, "{id}");
-        assert_eq!(record.spelling(), spelling, "{id}");
-        assert_eq!(record.source().id().as_str(), "I-FONTS4-20260907", "{id}");
-        assert_eq!(record.production(), production, "{id}");
-        assert_eq!(record.status(), CssSupportStatus::Complete, "{id}");
-        assert_eq!(record.supported_subset(), None, "{id}");
-        assert_eq!(record.unsupported_remainder(), None, "{id}");
-    }
     assert!(parse_style_attribute("font-style: oblique 10deg").is_clean());
     assert!(parse_sheet("@font-face { font-style: oblique 20deg -10deg; }").is_clean());
     assert!(parse_style_attribute("font: oblique calc(10deg) 16px serif").is_clean());
@@ -604,8 +685,6 @@ fn selected_font_size_record_keeps_historical_id_with_current_fonts_source() {
     assert_eq!(record.source().id().as_str(), "I-FONTS4-20260907");
     assert_eq!(record.production(), "#propdef-font-size");
     assert_eq!(record.status(), CssSupportStatus::Complete);
-    assert_eq!(record.supported_subset(), None);
-    assert_eq!(record.unsupported_remainder(), None);
     for input in [
         "font-size: xxx-large",
         "font-size: math",
@@ -628,8 +707,6 @@ fn selected_line_height_record_keeps_css2_identity_and_complete_authored_grammar
     assert_eq!(record.source().id().as_str(), "O-CSS2");
     assert_eq!(record.production(), "visudet.html#propdef-line-height");
     assert_eq!(record.status(), CssSupportStatus::Complete);
-    assert_eq!(record.supported_subset(), None);
-    assert_eq!(record.unsupported_remainder(), None);
     for input in [
         "line-height: normal",
         "line-height: 1e999",
@@ -655,22 +732,6 @@ fn environment_metadata_names_selected_descriptor_consumers_without_claiming_exe
     let record = feature_metadata("required.value.environment-substitution").unwrap();
     assert_eq!(record.source().id().as_str(), "D-ENV1");
     assert_eq!(record.status(), CssSupportStatus::Partial);
-    assert_eq!(
-        record.spelling(),
-        "env() in authored property and selected font-palette, font-face, counter-style, font-feature-values and color-profile descriptor values"
-    );
-    assert_eq!(
-        record.supported_subset(),
-        Some(
-            "Known-property values, selected font-palette and recognized font-face descriptors, all ten counter-style descriptors, font-feature-values font-display and named values in all seven subsidiary blocks, and color-profile descriptors qualify for pending substitution through valid env() functions, including exact integer indices, symbolic integer calculations and token-preserving fallbacks. Strict replacement reentry rejects residual env()."
-        )
-    );
-    assert_eq!(
-        record.unsupported_remainder(),
-        Some(
-            "Other Env1 contexts and environment lookup/substitution execution remain outside this authored subset; this record does not select the complete Env1 module."
-        )
-    );
 }
 
 #[test]
@@ -684,18 +745,8 @@ fn attribute_substitution_metadata_matches_pending_known_property_behavior() {
         record.production(),
         "#component-function-commas,#typedef-syntax,#attr-notation,#attr-substitution,#attr-security"
     );
-    assert!(
-        record
-            .supported_subset()
-            .unwrap()
-            .contains("whole-value pending")
-    );
-    assert!(
-        record
-            .unsupported_remainder()
-            .unwrap()
-            .contains("downstream")
-    );
+    assert!(record.supported_subset().is_some());
+    assert!(record.unsupported_remainder().is_some());
 
     let source = specification_source("D-VALUES5-ATTR").unwrap();
     assert_eq!(
@@ -742,163 +793,25 @@ fn assert_rejected_color(authored: &str) {
     );
 }
 
-fn assert_complete_color4_value(id: &str, spelling: &str, production: &str, authored: &str) {
-    assert_clean_color(authored);
-    let metadata = feature_metadata(id).unwrap_or_else(|| panic!("missing metadata for {id}"));
-    assert_eq!(metadata.kind(), CssFeatureKind::Value, "{id}");
-    assert_eq!(metadata.spelling(), spelling, "{id}");
-    assert_eq!(metadata.source().id().as_str(), "O-COLOR4", "{id}");
-    assert_eq!(metadata.production(), production, "{id}");
-    assert_eq!(metadata.status(), CssSupportStatus::Complete, "{id}");
-    assert_eq!(metadata.supported_subset(), None, "{id}");
-    assert_eq!(metadata.unsupported_remainder(), None, "{id}");
-    assert_eq!(metadata.recognized_unsupported_code(), None, "{id}");
-    assert!(metadata.baseline_alias_targets().is_empty(), "{id}");
-}
-
-fn assert_complete_color5_value(
-    id: &str,
-    spelling: &str,
-    production: &str,
-    accepted: &str,
-    rejected: &str,
-) {
-    assert_clean_color(accepted);
-    assert_rejected_color(rejected);
-    let metadata = feature_metadata(id).unwrap_or_else(|| panic!("missing metadata for {id}"));
-    assert_eq!(metadata.kind(), CssFeatureKind::Value, "{id}");
-    assert_eq!(metadata.spelling(), spelling, "{id}");
-    assert_eq!(metadata.source().id().as_str(), "I-COLOR5", "{id}");
-    assert_eq!(metadata.production(), production, "{id}");
-    assert_eq!(metadata.status(), CssSupportStatus::Complete, "{id}");
-    assert_eq!(metadata.supported_subset(), None, "{id}");
-    assert_eq!(metadata.unsupported_remainder(), None, "{id}");
-    assert_eq!(metadata.recognized_unsupported_code(), None, "{id}");
-    assert!(metadata.baseline_alias_targets().is_empty(), "{id}");
-}
-
-fn assert_partial_color5_value(
-    id: &str,
-    spelling: &str,
-    production: &str,
-    subset: &str,
-    remainder: &str,
-    accepted: &str,
-    rejected: &str,
-) {
-    assert_clean_color(accepted);
-    assert_rejected_color(rejected);
-    let metadata = feature_metadata(id).unwrap_or_else(|| panic!("missing metadata for {id}"));
-    assert_eq!(metadata.kind(), CssFeatureKind::Value, "{id}");
-    assert_eq!(metadata.spelling(), spelling, "{id}");
-    assert_eq!(metadata.source().id().as_str(), "I-COLOR5", "{id}");
-    assert_eq!(metadata.production(), production, "{id}");
-    assert_eq!(metadata.status(), CssSupportStatus::Partial, "{id}");
-    assert_eq!(metadata.supported_subset(), Some(subset), "{id}");
-    assert_eq!(metadata.unsupported_remainder(), Some(remainder), "{id}");
-    assert_eq!(metadata.recognized_unsupported_code(), None, "{id}");
-    assert!(metadata.baseline_alias_targets().is_empty(), "{id}");
-}
-
 #[test]
 fn color4_value_and_property_metadata_match_public_authored_behavior() {
-    assert_complete_color4_value("official.value.color", "<color>", "#color-type", "red");
-    assert_complete_color4_value(
-        "official.value.alpha",
-        "<alpha-value>",
-        "#alpha-syntax",
-        "rgb(0 0 0 / 150%)",
-    );
-    assert_complete_color4_value(
-        "official.value.hue",
-        "<hue>",
-        "#hue-syntax",
-        "hsl(calc(1turn - 90deg) 50% 50%)",
-    );
-    assert_complete_color4_value(
-        "official.value.rgb",
-        "rgb()/rgba()",
-        "#rgb-functions",
-        "rgb(calc(1 + 2) 20% none / 150%)",
-    );
-    assert_complete_color4_value(
-        "official.value.hex-color",
-        "<hex-color>",
-        "#hex-notation",
-        "#00ff88cc",
-    );
-    assert_complete_color4_value(
-        "official.value.named-color",
-        "<named-color>",
-        "#named-colors",
-        "rebeccapurple",
-    );
-    assert_complete_color4_value(
-        "official.value.system-color",
-        "<system-color>",
-        "#css-system-colors",
-        "CanvasText",
-    );
-    assert_complete_color4_value(
-        "official.value.deprecated-system-color",
-        "<deprecated-system-color>",
-        "#css-system-colors",
-        "ActiveBorder",
-    );
-    assert_complete_color4_value(
-        "official.value.transparent",
-        "transparent",
-        "#transparent-color",
-        "transparent",
-    );
-    assert_complete_color4_value(
-        "official.value.currentcolor",
-        "currentColor",
-        "#currentcolor-color",
-        "currentColor",
-    );
-    assert_complete_color4_value(
-        "official.value.hsl",
-        "hsl()/hsla()",
-        "#the-hsl-notation",
-        "hsl(30deg 120 -20% / none)",
-    );
-    assert_complete_color4_value(
-        "official.value.hwb",
-        "hwb()",
-        "#the-hwb-notation",
-        "hwb(none 20 120% / -10%)",
-    );
-    assert_complete_color4_value(
-        "official.value.lab",
-        "lab()",
-        "#specifying-lab-lch",
-        "lab(50% 20 -30 / 120%)",
-    );
-    assert_complete_color4_value(
-        "official.value.lch",
-        "lch()",
-        "#specifying-lab-lch",
-        "lch(50% 20 30deg / none)",
-    );
-    assert_complete_color4_value(
-        "official.value.oklab",
-        "oklab()",
-        "#specifying-oklab-oklch",
-        "oklab(50% 0.1 -0.1)",
-    );
-    assert_complete_color4_value(
-        "official.value.oklch",
-        "oklch()",
-        "#specifying-oklab-oklch",
-        "oklch(50% 0.2 30deg)",
-    );
-    assert_complete_color4_value(
-        "official.value.predefined-color",
-        "color()",
-        "#color-function",
-        "color(display-p3 1 0 0 / 120%)",
-    );
+    assert_clean_color("red");
+    assert_clean_color("rgb(0 0 0 / 150%)");
+    assert_clean_color("hsl(calc(1turn - 90deg) 50% 50%)");
+    assert_clean_color("rgb(calc(1 + 2) 20% none / 150%)");
+    assert_clean_color("#00ff88cc");
+    assert_clean_color("rebeccapurple");
+    assert_clean_color("CanvasText");
+    assert_clean_color("ActiveBorder");
+    assert_clean_color("transparent");
+    assert_clean_color("currentColor");
+    assert_clean_color("hsl(30deg 120 -20% / none)");
+    assert_clean_color("hwb(none 20 120% / -10%)");
+    assert_clean_color("lab(50% 20 -30 / 120%)");
+    assert_clean_color("lch(50% 20 30deg / none)");
+    assert_clean_color("oklab(50% 0.1 -0.1)");
+    assert_clean_color("oklch(50% 0.2 30deg)");
+    assert_clean_color("color(display-p3 1 0 0 / 120%)");
 
     let color = property_support_metadata("color").expect("color metadata");
     assert_eq!(color.feature().status(), CssSupportStatus::Complete);
@@ -923,116 +836,62 @@ fn color4_value_and_property_metadata_match_public_authored_behavior() {
 
 #[test]
 fn relative_color_selected_families_and_deferred_remainder_are_distinct() {
-    assert_partial_color5_value(
-        "ext.value.relative-color",
-        "relative color syntax",
-        "#relative-colors,#relative-syntax",
-        COLOR5_RELATIVE_SUBSET,
-        COLOR5_RELATIVE_REMAINDER,
-        "rgb(from red r g b / alpha)",
-        "alpha(from red r g b)",
-    );
+    assert_clean_color("rgb(from red r g b / alpha)");
+    assert_rejected_color("alpha(from red r g b)");
 }
 
 #[test]
 fn relative_rgb_channels_reject_foreign_identifiers_and_dimensions() {
-    assert_complete_color5_value(
-        "ext.value.relative-color.rgb",
-        "relative rgb()/rgba()",
-        "#relative-RGB",
-        "rgb(from red r g b / alpha)",
-        "rgb(from red h g b)",
-    );
+    assert_clean_color("rgb(from red r g b / alpha)");
+    assert_rejected_color("rgb(from red h g b)");
 }
 
 #[test]
 fn relative_hsl_channels_keep_hue_and_percentage_domains_distinct() {
-    assert_complete_color5_value(
-        "ext.value.relative-color.hsl",
-        "relative hsl()/hsla()",
-        "#relative-HSL",
-        "hsl(from red h s l / alpha)",
-        "hsl(from red 10% s l)",
-    );
+    assert_clean_color("hsl(from red h s l / alpha)");
+    assert_rejected_color("hsl(from red 10% s l)");
 }
 
 #[test]
 fn relative_hwb_channels_use_only_hwb_environment() {
-    assert_complete_color5_value(
-        "ext.value.relative-color.hwb",
-        "relative hwb()",
-        "#relative-HWB",
-        "hwb(from red h w b / alpha)",
-        "hwb(from red h s b)",
-    );
+    assert_clean_color("hwb(from red h w b / alpha)");
+    assert_rejected_color("hwb(from red h s b)");
 }
 
 #[test]
 fn relative_lab_channels_use_only_lab_environment() {
-    assert_complete_color5_value(
-        "ext.value.relative-color.lab",
-        "relative lab()",
-        "#relative-Lab",
-        "lab(from red l a b / alpha)",
-        "lab(from red l c b)",
-    );
+    assert_clean_color("lab(from red l a b / alpha)");
+    assert_rejected_color("lab(from red l c b)");
 }
 
 #[test]
 fn relative_oklab_channels_use_only_oklab_environment() {
-    assert_complete_color5_value(
-        "ext.value.relative-color.oklab",
-        "relative oklab()",
-        "#relative-Oklab",
-        "oklab(from red l a b / alpha)",
-        "oklab(from red l c b)",
-    );
+    assert_clean_color("oklab(from red l a b / alpha)");
+    assert_rejected_color("oklab(from red l c b)");
 }
 
 #[test]
 fn relative_lch_channels_keep_hue_domain_distinct() {
-    assert_complete_color5_value(
-        "ext.value.relative-color.lch",
-        "relative lch()",
-        "#relative-LCH",
-        "lch(from red l c h / alpha)",
-        "lch(from red l c calc(h + 10%))",
-    );
+    assert_clean_color("lch(from red l c h / alpha)");
+    assert_rejected_color("lch(from red l c calc(h + 10%))");
 }
 
 #[test]
 fn relative_oklch_channels_keep_hue_domain_distinct() {
-    assert_complete_color5_value(
-        "ext.value.relative-color.oklch",
-        "relative oklch()",
-        "#relative-OkLCh",
-        "oklch(from red l c h / alpha)",
-        "oklch(from red l c calc(h + 10%))",
-    );
+    assert_clean_color("oklch(from red l c h / alpha)");
+    assert_rejected_color("oklch(from red l c calc(h + 10%))");
 }
 
 #[test]
 fn relative_predefined_color_channels_follow_space_environment() {
-    assert_complete_color5_value(
-        "ext.value.relative-color.predefined",
-        "relative color()",
-        "#relative-color-function",
-        "color(from red display-p3 r g b / alpha)",
-        "color(from red srgb x g b)",
-    );
+    assert_clean_color("color(from red display-p3 r g b / alpha)");
+    assert_rejected_color("color(from red srgb x g b)");
 }
 
 #[test]
 fn color_mix_preserved_subset_rejects_cross_space_hue_methods() {
-    assert_partial_color5_value(
-        "ext.value.color-mix",
-        "color-mix()",
-        "#funcdef-color-mix",
-        COLOR5_MIX_SUBSET,
-        COLOR5_MIX_REMAINDER,
-        "color-mix(in oklch longer hue, red 25%, blue 75%)",
-        "color-mix(in srgb longer hue, red, blue)",
-    );
+    assert_clean_color("color-mix(in oklch longer hue, red 25%, blue 75%)");
+    assert_rejected_color("color-mix(in srgb longer hue, red, blue)");
 }
 
 #[test]
@@ -1082,1392 +941,7 @@ fn grid_metadata_matches_preserved_boundaries() {
     assert_eq!(fade.blocks().len(), 3);
     assert!(fade.blocks()[0].declarations().is_empty());
     assert!(empty.blocks().is_empty());
-
-    for (id, kind, spelling, source, production) in [
-        (
-            "ext.value.grid-repeat",
-            CssFeatureKind::Value,
-            "repeat()",
-            "X-GRID3-20260121",
-            "#intrinsic-auto-repeat",
-        ),
-        (
-            "baseline.property.grid-template-rows",
-            CssFeatureKind::Property,
-            "grid-template-rows",
-            "R-GRID2",
-            "#propdef-grid-template-rows",
-        ),
-        (
-            "baseline.property.grid-template-columns",
-            CssFeatureKind::Property,
-            "grid-template-columns",
-            "R-GRID2",
-            "#propdef-grid-template-columns",
-        ),
-        (
-            "baseline.property.grid-template",
-            CssFeatureKind::Property,
-            "grid-template",
-            "R-GRID2",
-            "#propdef-grid-template",
-        ),
-        (
-            "baseline.property.grid-auto-rows",
-            CssFeatureKind::Property,
-            "grid-auto-rows",
-            "R-GRID2",
-            "#propdef-grid-auto-rows",
-        ),
-        (
-            "baseline.property.grid-auto-columns",
-            CssFeatureKind::Property,
-            "grid-auto-columns",
-            "R-GRID2",
-            "#propdef-grid-auto-columns",
-        ),
-        (
-            "baseline.property.grid",
-            CssFeatureKind::Property,
-            "grid",
-            "R-GRID2",
-            "#propdef-grid",
-        ),
-    ] {
-        let metadata = feature_metadata(id).unwrap_or_else(|| panic!("missing `{id}` metadata"));
-        assert_eq!(metadata.kind(), kind, "{id} kind");
-        assert_eq!(metadata.spelling(), spelling, "{id} spelling");
-        assert_eq!(metadata.source().id().as_str(), source, "{id} source");
-        assert_eq!(metadata.production(), production, "{id} production");
-        assert_eq!(metadata.status(), CssSupportStatus::Complete, "{id} status");
-        assert_eq!(metadata.supported_subset(), None, "{id} subset");
-        assert_eq!(metadata.unsupported_remainder(), None, "{id} remainder");
-        assert_eq!(metadata.recognized_unsupported_code(), None, "{id} code");
-    }
 }
-
-const EXPECTED: &[ExpectedFeature] = &[
-    ExpectedFeature {
-        id: "baseline.rule.import",
-        kind: CssFeatureKind::Rule,
-        spelling: "@import",
-        source: ExpectedSource::Id("O-CASCADE4"),
-        production: "#at-import",
-        status: CssSupportStatus::Complete,
-        supported_subset: None,
-        unsupported_remainder: None,
-        recognized_code: None,
-        positive: Some(Input::Sheet(
-            "@import url(theme.css) supports(display: grid) print;",
-        )),
-        negative: None,
-    },
-    ExpectedFeature {
-        id: "baseline.rule.layer-statement",
-        kind: CssFeatureKind::Rule,
-        spelling: "@layer ...;",
-        source: ExpectedSource::Id("R-CASCADE5"),
-        production: "#layering",
-        status: CssSupportStatus::Partial,
-        supported_subset: Some(BASELINE_RULE_SUBSET),
-        unsupported_remainder: Some(BASELINE_RULE_REMAINDER),
-        recognized_code: None,
-        positive: Some(Input::Sheet("@layer reset, theme;")),
-        negative: Some((
-            Input::Sheet("@layer initial;"),
-            CssErrorCode::InvalidAtRulePrelude,
-        )),
-    },
-    ExpectedFeature {
-        id: "baseline.rule.layer-block",
-        kind: CssFeatureKind::Rule,
-        spelling: "@layer {...}",
-        source: ExpectedSource::Id("R-CASCADE5"),
-        production: "#layering",
-        status: CssSupportStatus::Partial,
-        supported_subset: Some(BASELINE_RULE_SUBSET),
-        unsupported_remainder: Some(BASELINE_RULE_REMAINDER),
-        recognized_code: None,
-        positive: Some(Input::Sheet("@layer theme { .x { color: red; } }")),
-        negative: Some((
-            Input::Sheet("@layer first, second { .x { color: red; } }"),
-            CssErrorCode::InvalidAtRuleBody,
-        )),
-    },
-    ExpectedFeature {
-        id: "baseline.rule.font-face",
-        kind: CssFeatureKind::Rule,
-        spelling: "@font-face",
-        source: ExpectedSource::Id("I-FONTS4-20260907"),
-        production: "#font-face-rule",
-        status: CssSupportStatus::Complete,
-        supported_subset: None,
-        unsupported_remainder: None,
-        recognized_code: None,
-        positive: Some(Input::Sheet(
-            "@font-face { font-family: Inter; src: url(inter.woff2); }",
-        )),
-        negative: None,
-    },
-    ExpectedFeature {
-        id: "baseline.rule.keyframes",
-        kind: CssFeatureKind::Rule,
-        spelling: "@keyframes",
-        source: ExpectedSource::Id("I-ANIMATIONS1"),
-        production: "#keyframes",
-        status: CssSupportStatus::Complete,
-        supported_subset: None,
-        unsupported_remainder: None,
-        recognized_code: None,
-        positive: Some(Input::Sheet(
-            "@keyframes fade { from { opacity: 0; } to { opacity: 1; } }",
-        )),
-        negative: None,
-    },
-    ExpectedFeature {
-        id: "baseline.rule.style",
-        kind: CssFeatureKind::Rule,
-        spelling: "style and nested qualified rules",
-        source: ExpectedSource::Id("O-SYNTAX3"),
-        production: "#style-rules",
-        status: CssSupportStatus::Partial,
-        supported_subset: Some(BASELINE_RULE_SUBSET),
-        unsupported_remainder: Some(BASELINE_RULE_REMAINDER),
-        recognized_code: None,
-        positive: Some(Input::Sheet(".x { color: red; }")),
-        negative: Some((
-            Input::Sheet("??? { color: red; }"),
-            CssErrorCode::InvalidSelector,
-        )),
-    },
-    ExpectedFeature {
-        id: "baseline.rule.media",
-        kind: CssFeatureKind::Rule,
-        spelling: "@media",
-        source: ExpectedSource::Id("O-CONDITIONAL3"),
-        production: "#at-media",
-        status: CssSupportStatus::Complete,
-        supported_subset: None,
-        unsupported_remainder: None,
-        recognized_code: None,
-        positive: Some(Input::Sheet("@media screen { .x { color: red; } }")),
-        negative: None,
-    },
-    ExpectedFeature {
-        id: "baseline.rule.container",
-        kind: CssFeatureKind::Rule,
-        spelling: "@container",
-        source: ExpectedSource::Id("X-CONDITIONAL5"),
-        production: "#container-rule",
-        status: CssSupportStatus::Partial,
-        supported_subset: Some(BASELINE_RULE_SUBSET),
-        unsupported_remainder: Some(BASELINE_RULE_REMAINDER),
-        recognized_code: None,
-        positive: Some(Input::Sheet(
-            "@container (width > 1px) { .x { color: red; } }",
-        )),
-        negative: Some((
-            Input::Sheet("@container scroll-state(stuck: top) and { .x { color: red; } }"),
-            CssErrorCode::InvalidAtRulePrelude,
-        )),
-    },
-    ExpectedFeature {
-        id: "ext.rule.supports-condition",
-        kind: CssFeatureKind::Rule,
-        spelling: "@supports-condition",
-        source: ExpectedSource::Id("X-CONDITIONAL5"),
-        production: "#at-ruledef-supports-condition",
-        status: CssSupportStatus::Complete,
-        supported_subset: None,
-        unsupported_remainder: None,
-        recognized_code: None,
-        positive: Some(Input::Sheet(
-            "@supports-condition --feature { future: value; }",
-        )),
-        negative: None,
-    },
-    ExpectedFeature {
-        id: "baseline.rule.scope",
-        kind: CssFeatureKind::Rule,
-        spelling: "@scope",
-        source: ExpectedSource::Id("X-CASCADE6"),
-        production: "#scope-atrule",
-        status: CssSupportStatus::Partial,
-        supported_subset: Some(BASELINE_RULE_SUBSET),
-        unsupported_remainder: Some(BASELINE_RULE_REMAINDER),
-        recognized_code: None,
-        positive: Some(Input::Sheet("@scope (.card) { .title { color: red; } }")),
-        negative: Some((
-            Input::Sheet("@scope .card { .title { color: red; } }"),
-            CssErrorCode::InvalidAtRulePrelude,
-        )),
-    },
-    ExpectedFeature {
-        id: "foundation.declaration-list.style-attribute",
-        kind: CssFeatureKind::Declaration,
-        spelling: "style-attribute declaration-list structure",
-        source: ExpectedSource::Id("O-STYLE-ATTR"),
-        production: "#syntax",
-        status: CssSupportStatus::Complete,
-        supported_subset: None,
-        unsupported_remainder: None,
-        recognized_code: None,
-        positive: Some(Input::Style("color: red; width: 1px")),
-        negative: None,
-    },
-    ExpectedFeature {
-        id: "foundation.declaration.importance",
-        kind: CssFeatureKind::Declaration,
-        spelling: "terminal declaration !important annotation",
-        source: ExpectedSource::Id("O-CASCADE4"),
-        production: "#importance",
-        status: CssSupportStatus::Complete,
-        supported_subset: None,
-        unsupported_remainder: None,
-        recognized_code: None,
-        positive: Some(Input::Style("color: red !important")),
-        negative: None,
-    },
-    ExpectedFeature {
-        id: "baseline.declaration.custom-property",
-        kind: CssFeatureKind::Declaration,
-        spelling: "custom-property names and authored token streams",
-        source: ExpectedSource::Id("O-VARIABLES1"),
-        production: "#defining-variables,#syntax",
-        status: CssSupportStatus::Partial,
-        supported_subset: Some(
-            "Baseline custom-property names and authored token streams, including I01 recovery behavior, are supported.",
-        ),
-        unsupported_remainder: Some(
-            "Other valid CSS Variables custom-property declaration forms are outside the I01 subset.",
-        ),
-        recognized_code: None,
-        positive: Some(Input::Style("--x: inherit 1px")),
-        negative: Some((Input::Style("--: 1px"), CssErrorCode::UnknownProperty)),
-    },
-    ExpectedFeature {
-        id: "baseline.value.substitution-dependent",
-        kind: CssFeatureKind::Value,
-        spelling: "preserved known-property and font-palette descriptor values containing substitution functions",
-        source: ExpectedSource::Id("O-VARIABLES1"),
-        production: "#using-variables",
-        status: CssSupportStatus::Partial,
-        supported_subset: Some(
-            "Known-property and font-palette descriptor values with syntactically admissible var() references remain authored and symbolic.",
-        ),
-        unsupported_remainder: Some(
-            "Other descriptor contexts outside the selected authored consumers remain unsupported; variable resolution belongs to style.",
-        ),
-        recognized_code: None,
-        positive: Some(Input::Style("width: var(--width, 1px)")),
-        negative: Some((
-            Input::Style("width: var(color)"),
-            CssErrorCode::InvalidPropertyValue,
-        )),
-    },
-    ExpectedFeature {
-        id: "later.rule.namespace",
-        kind: CssFeatureKind::Rule,
-        spelling: "@namespace",
-        source: ExpectedSource::Id("O-NAMESPACES3"),
-        production: "#terminology,#declaration,#syntax,#scope,#prefixes",
-        status: CssSupportStatus::Complete,
-        supported_subset: None,
-        unsupported_remainder: None,
-        recognized_code: None,
-        positive: Some(Input::Sheet(
-            "@namespace svg url(https://example.test/svg);",
-        )),
-        negative: None,
-    },
-    ExpectedFeature {
-        id: "later.rule.counter-style",
-        kind: CssFeatureKind::Rule,
-        spelling: "@counter-style",
-        source: ExpectedSource::Id("O-COUNTERSTYLES3"),
-        production: "#the-counter-style-rule",
-        status: CssSupportStatus::Complete,
-        supported_subset: None,
-        unsupported_remainder: None,
-        recognized_code: None,
-        positive: Some(Input::Sheet(
-            "@counter-style thumbs { system: cyclic; symbols: 👍; suffix: \" \"; }",
-        )),
-        negative: None,
-    },
-    ExpectedFeature {
-        id: "later.rule.page",
-        kind: CssFeatureKind::Rule,
-        spelling: "@page",
-        source: ExpectedSource::Id("L-PAGE3-20181018"),
-        production: "#syntax-page-selector",
-        status: CssSupportStatus::Complete,
-        supported_subset: None,
-        unsupported_remainder: None,
-        recognized_code: None,
-        positive: Some(Input::Sheet("@page { margin: 1cm; }")),
-        negative: None,
-    },
-    ExpectedFeature {
-        id: "official.selector.page-pseudo",
-        kind: CssFeatureKind::Selector,
-        spelling: ":left|:right|:first|:blank",
-        source: ExpectedSource::Id("L-PAGE3-20181018"),
-        production: "#page-selectors",
-        status: CssSupportStatus::Complete,
-        supported_subset: None,
-        unsupported_remainder: None,
-        recognized_code: None,
-        positive: Some(Input::Sheet("@page :left { margin: 1cm; }")),
-        negative: None,
-    },
-    ExpectedFeature {
-        id: "official.selector.logical-page-pseudo",
-        kind: CssFeatureKind::Selector,
-        spelling: ":recto|:verso",
-        source: ExpectedSource::Id("I-LOGICAL1-20251204"),
-        production: "#page",
-        status: CssSupportStatus::Complete,
-        supported_subset: None,
-        unsupported_remainder: None,
-        recognized_code: None,
-        positive: Some(Input::Sheet("@page :recto { margin: 1cm; }")),
-        negative: None,
-    },
-    ExpectedFeature {
-        id: "later.rule.font-feature-values",
-        kind: CssFeatureKind::Rule,
-        spelling: "@font-feature-values",
-        source: ExpectedSource::Id("I-FONTS4-20260907"),
-        production: "#font-feature-values-syntax",
-        status: CssSupportStatus::Complete,
-        supported_subset: None,
-        unsupported_remainder: None,
-        recognized_code: None,
-        positive: Some(Input::Sheet(
-            "@font-feature-values Font One { @styleset { nice: 1; } }",
-        )),
-        // Empty definitions remain invalid under the selected authored grammar.
-        negative: None,
-    },
-    ExpectedFeature {
-        id: "later.rule.font-palette-values",
-        kind: CssFeatureKind::Rule,
-        spelling: "@font-palette-values",
-        source: ExpectedSource::Id("I-FONTS4-20260907"),
-        production: "#font-palette-values",
-        status: CssSupportStatus::Complete,
-        supported_subset: None,
-        unsupported_remainder: None,
-        recognized_code: None,
-        positive: Some(Input::Sheet(
-            "@font-palette-values --brand { font-family: Demo; }",
-        )),
-        negative: None,
-    },
-    ExpectedFeature {
-        id: "later.descriptor.font-palette-values.font-family",
-        kind: CssFeatureKind::Descriptor,
-        spelling: "font-family in @font-palette-values",
-        source: ExpectedSource::Id("I-FONTS4-20260907"),
-        production: "#font-family-2-desc",
-        status: CssSupportStatus::Complete,
-        supported_subset: None,
-        unsupported_remainder: None,
-        recognized_code: None,
-        positive: Some(Input::Sheet(
-            "@font-palette-values --brand { font-family: Demo, \"serif\"; }",
-        )),
-        negative: None,
-    },
-    ExpectedFeature {
-        id: "later.descriptor.font-palette-values.base-palette",
-        kind: CssFeatureKind::Descriptor,
-        spelling: "base-palette in @font-palette-values",
-        source: ExpectedSource::Id("I-FONTS4-20260907"),
-        production: "#base-palette-desc",
-        status: CssSupportStatus::Complete,
-        supported_subset: None,
-        unsupported_remainder: None,
-        recognized_code: None,
-        positive: Some(Input::Sheet(
-            "@font-palette-values --brand { font-family: Demo; base-palette: dark; }",
-        )),
-        negative: None,
-    },
-    ExpectedFeature {
-        id: "later.descriptor.font-palette-values.override-colors",
-        kind: CssFeatureKind::Descriptor,
-        spelling: "override-colors in @font-palette-values",
-        source: ExpectedSource::Id("I-FONTS4-20260907"),
-        production: "#override-color",
-        status: CssSupportStatus::Complete,
-        supported_subset: None,
-        unsupported_remainder: None,
-        recognized_code: None,
-        positive: Some(Input::Sheet(
-            "@font-palette-values --brand { font-family: Demo; override-colors: 0 red; }",
-        )),
-        negative: None,
-    },
-    ExpectedFeature {
-        id: "official.descriptor.font-named-instance",
-        kind: CssFeatureKind::Descriptor,
-        spelling: "font-named-instance in @font-face",
-        source: ExpectedSource::Id("I-FONTS4-20260907"),
-        production: "#font-named-instance",
-        status: CssSupportStatus::Complete,
-        supported_subset: None,
-        unsupported_remainder: None,
-        recognized_code: None,
-        positive: Some(Input::Sheet(
-            "@font-face { font-named-instance: \"Grotesque\"; }",
-        )),
-        negative: None,
-    },
-    ExpectedFeature {
-        id: "official.descriptor.font-language-override",
-        kind: CssFeatureKind::Descriptor,
-        spelling: "font-language-override in @font-face",
-        source: ExpectedSource::Id("I-FONTS4-20260907"),
-        production: "#font-language-override-desc",
-        status: CssSupportStatus::Complete,
-        supported_subset: None,
-        unsupported_remainder: None,
-        recognized_code: None,
-        positive: Some(Input::Sheet(
-            "@font-face { font-language-override: \"TRK\"; }",
-        )),
-        negative: None,
-    },
-    ExpectedFeature {
-        id: "official.descriptor.ascent-override",
-        kind: CssFeatureKind::Descriptor,
-        spelling: "ascent-override in @font-face",
-        source: ExpectedSource::Id("I-FONTS4-20260907"),
-        production: "#descdef-font-face-ascent-override",
-        status: CssSupportStatus::Complete,
-        supported_subset: None,
-        unsupported_remainder: None,
-        recognized_code: None,
-        positive: Some(Input::Sheet("@font-face { ascent-override: 125%; }")),
-        negative: None,
-    },
-    ExpectedFeature {
-        id: "official.descriptor.descent-override",
-        kind: CssFeatureKind::Descriptor,
-        spelling: "descent-override in @font-face",
-        source: ExpectedSource::Id("I-FONTS4-20260907"),
-        production: "#descdef-font-face-descent-override",
-        status: CssSupportStatus::Complete,
-        supported_subset: None,
-        unsupported_remainder: None,
-        recognized_code: None,
-        positive: Some(Input::Sheet("@font-face { descent-override: 25%; }")),
-        negative: None,
-    },
-    ExpectedFeature {
-        id: "official.descriptor.line-gap-override",
-        kind: CssFeatureKind::Descriptor,
-        spelling: "line-gap-override in @font-face",
-        source: ExpectedSource::Id("I-FONTS4-20260907"),
-        production: "#descdef-font-face-line-gap-override",
-        status: CssSupportStatus::Complete,
-        supported_subset: None,
-        unsupported_remainder: None,
-        recognized_code: None,
-        positive: Some(Input::Sheet("@font-face { line-gap-override: 0%; }")),
-        negative: None,
-    },
-    ExpectedFeature {
-        id: "baseline.descriptor.font-family",
-        kind: CssFeatureKind::Descriptor,
-        spelling: "font-family in @font-face",
-        source: ExpectedSource::Id("I-FONTS4-20260907"),
-        production: "#font-family-desc",
-        status: CssSupportStatus::Complete,
-        supported_subset: None,
-        unsupported_remainder: None,
-        recognized_code: None,
-        positive: Some(Input::Sheet(
-            "@font-face { font-family: Inter; src: url(inter.woff2); }",
-        )),
-        negative: None,
-    },
-    ExpectedFeature {
-        id: "baseline.descriptor.src",
-        kind: CssFeatureKind::Descriptor,
-        spelling: "src in @font-face",
-        source: ExpectedSource::Id("I-FONTS4-20260907"),
-        production: "#font-face-src-parsing",
-        status: CssSupportStatus::Complete,
-        supported_subset: None,
-        unsupported_remainder: None,
-        recognized_code: None,
-        positive: Some(Input::Sheet(
-            "@font-face { font-family: Inter; src: url(inter.woff2) format(\"woff2\"); }",
-        )),
-        negative: None,
-    },
-    ExpectedFeature {
-        id: "baseline.descriptor.font-weight",
-        kind: CssFeatureKind::Descriptor,
-        spelling: "font-weight in @font-face",
-        source: ExpectedSource::Id("I-FONTS4-20260907"),
-        production: "#font-prop-desc",
-        status: CssSupportStatus::Complete,
-        supported_subset: None,
-        unsupported_remainder: None,
-        recognized_code: None,
-        positive: Some(Input::Sheet(
-            "@font-face { font-family: Inter; src: url(inter.woff2); font-weight: 700; }",
-        )),
-        negative: None,
-    },
-    ExpectedFeature {
-        id: "baseline.descriptor.font-style",
-        kind: CssFeatureKind::Descriptor,
-        spelling: "font-style in @font-face",
-        source: ExpectedSource::Id("I-FONTS4-20260907"),
-        production: "#font-prop-desc",
-        status: CssSupportStatus::Complete,
-        supported_subset: None,
-        unsupported_remainder: None,
-        recognized_code: None,
-        positive: Some(Input::Sheet(
-            "@font-face { font-family: Inter; src: url(inter.woff2); font-style: italic; }",
-        )),
-        negative: None,
-    },
-    ExpectedFeature {
-        id: "baseline.descriptor.font-stretch",
-        kind: CssFeatureKind::Descriptor,
-        spelling: "font-width in @font-face",
-        source: ExpectedSource::Id("I-FONTS4-20260907"),
-        production: "#font-prop-desc",
-        status: CssSupportStatus::Complete,
-        supported_subset: None,
-        unsupported_remainder: None,
-        recognized_code: None,
-        positive: Some(Input::Sheet(
-            "@font-face { font-family: Inter; src: url(inter.woff2); font-width: condensed; }",
-        )),
-        negative: None,
-    },
-    ExpectedFeature {
-        id: "baseline.descriptor.font-display",
-        kind: CssFeatureKind::Descriptor,
-        spelling: "font-display in @font-face",
-        source: ExpectedSource::Id("I-FONTS4"),
-        production: "#font-display-desc",
-        status: CssSupportStatus::Complete,
-        supported_subset: None,
-        unsupported_remainder: None,
-        recognized_code: None,
-        positive: Some(Input::Sheet(
-            "@font-face { font-family: Inter; src: url(inter.woff2); font-display: swap; }",
-        )),
-        negative: None,
-    },
-    ExpectedFeature {
-        id: "baseline.descriptor.unicode-range",
-        kind: CssFeatureKind::Descriptor,
-        spelling: "unicode-range in @font-face",
-        source: ExpectedSource::Id("O-FONTS3"),
-        production: "#unicode-range-desc",
-        status: CssSupportStatus::Complete,
-        supported_subset: None,
-        unsupported_remainder: None,
-        recognized_code: None,
-        positive: Some(Input::Sheet(
-            "@font-face { font-family: Inter; src: url(inter.woff2); unicode-range: U+0000-00FF; }",
-        )),
-        negative: None,
-    },
-    ExpectedFeature {
-        id: "baseline.selector.complex",
-        kind: CssFeatureKind::Selector,
-        spelling: "type, universal, ID, class; presence and six valued attribute matchers; descendant, child, next-sibling, subsequent-sibling combinators",
-        source: ExpectedSource::Id("O-SELECTORS3"),
-        production: "#type-selectors,#universal-selector,#attribute-representation,#attribute-substrings,#class-html,#id-selectors,#descendant-combinators,#child-combinators,#adjacent-sibling-combinators,#general-sibling-combinators",
-        status: CssSupportStatus::Partial,
-        supported_subset: Some(
-            "The exact baseline-recognized complex-selector spelling group is supported.",
-        ),
-        unsupported_remainder: Some(SELECTOR_REMAINDER),
-        recognized_code: None,
-        positive: Some(Input::Sheet(
-            "article#main.card[data-ready][lang|=\"en\"] > span + a ~ b { color: red; }",
-        )),
-        negative: Some((
-            Input::Sheet("svg|a { color: red; }"),
-            CssErrorCode::InvalidSelector,
-        )),
-    },
-    ExpectedFeature {
-        id: "baseline.selector.pseudo-class",
-        kind: CssFeatureKind::Selector,
-        spelling: ":root, :hover, :active, :focus, :disabled, :enabled, :checked, :first-child, :last-child, :only-child, :empty, :first-of-type, :last-of-type, :only-of-type",
-        source: ExpectedSource::Id("O-SELECTORS3"),
-        production: "#dynamic-pseudos,#UIstates,#structural-pseudos",
-        status: CssSupportStatus::Partial,
-        supported_subset: Some(
-            "The exact baseline-recognized pseudo-class spelling group is supported.",
-        ),
-        unsupported_remainder: Some(SELECTOR_REMAINDER),
-        recognized_code: None,
-        positive: Some(Input::Sheet(".button:hover { color: red; }")),
-        negative: Some((
-            Input::Sheet(".host:host() { color: red; }"),
-            CssErrorCode::InvalidSelector,
-        )),
-    },
-    ExpectedFeature {
-        id: "baseline.selector.functional",
-        kind: CssFeatureKind::Selector,
-        spelling: ":nth-child(), :nth-last-child(), :nth-of-type(), :nth-last-of-type(), :not()",
-        source: ExpectedSource::Id("O-SELECTORS3"),
-        production: "#structural-pseudos,#negation",
-        status: CssSupportStatus::Partial,
-        supported_subset: Some(
-            "The exact baseline-recognized functional pseudo-class spelling group is supported.",
-        ),
-        unsupported_remainder: Some(SELECTOR_REMAINDER),
-        recognized_code: None,
-        positive: Some(Input::Sheet(".item:nth-child(2n+1) { color: red; }")),
-        negative: Some((
-            Input::Sheet(".item:dir(1) { color: red; }"),
-            CssErrorCode::InvalidSelector,
-        )),
-    },
-    ExpectedFeature {
-        id: "baseline.selector.extension-state",
-        kind: CssFeatureKind::Selector,
-        spelling: ":scope, :focus-visible, :focus-within, :required, :optional, :valid, :invalid, :placeholder-shown, :default, :indeterminate, :read-only, :read-write, :in-range, :out-of-range, :modal, :fullscreen, :popover-open, :defined, :any-link, :playing, :paused, :seeking, :buffering, :stalled, :muted, :volume-locked, :open, :picture-in-picture, :unchecked, :user-valid, :user-invalid",
-        source: ExpectedSource::Id("I-SELECTORS4"),
-        production: "#useraction-pseudos,#input-pseudos,#resource-pseudos,#display-state-pseudos,#the-defined-pseudo,#the-any-link-pseudo,#video-state,#media-loading-state,#sound-state,#open-state,#pip-state,#checked,#user-pseudos",
-        status: CssSupportStatus::Partial,
-        supported_subset: Some(
-            "The exact I01 extension-state pseudo-class spelling group is supported.",
-        ),
-        unsupported_remainder: Some(SELECTOR_REMAINDER),
-        recognized_code: None,
-        positive: Some(Input::Sheet(".button:focus-visible { color: red; }")),
-        negative: Some((
-            Input::Sheet(".link:local-link { color: red; }"),
-            CssErrorCode::InvalidSelector,
-        )),
-    },
-    ExpectedFeature {
-        id: "baseline.selector.extension-functional",
-        kind: CssFeatureKind::Selector,
-        spelling: ":is(), :where(), complex :not(), :has(), and nth-child of lists",
-        source: ExpectedSource::Id("I-SELECTORS4"),
-        production: "#matches,#zero-matches,#relational,#negation,#the-nth-child-pseudo",
-        status: CssSupportStatus::Partial,
-        supported_subset: Some(
-            "The exact I01 extension-functional pseudo-class spelling group is supported.",
-        ),
-        unsupported_remainder: Some(SELECTOR_REMAINDER),
-        recognized_code: None,
-        positive: Some(Input::Sheet(
-            ".item:is(.primary, .secondary) { color: red; }",
-        )),
-        negative: Some((
-            Input::Sheet(".item:has(:has(.nested)) { color: red; }"),
-            CssErrorCode::InvalidSelector,
-        )),
-    },
-    ExpectedFeature {
-        id: "baseline.selector.attribute-case",
-        kind: CssFeatureKind::Selector,
-        spelling: "i and s attribute-selector modifiers",
-        source: ExpectedSource::Id("I-SELECTORS4"),
-        production: "#attribute-case",
-        status: CssSupportStatus::Partial,
-        supported_subset: Some("The i and s attribute-selector case modifiers are supported."),
-        unsupported_remainder: Some(SELECTOR_REMAINDER),
-        recognized_code: None,
-        positive: Some(Input::Sheet("[data-kind=\"primary\" i] { color: red; }")),
-        negative: Some((
-            Input::Sheet("[data-kind=\"primary\" q] { color: red; }"),
-            CssErrorCode::InvalidSelector,
-        )),
-    },
-    ExpectedFeature {
-        id: "ext.pseudo-element.prefix",
-        kind: CssFeatureKind::Selector,
-        spelling: "::prefix, including the defined ::first-letter::prefix child",
-        source: ExpectedSource::Id("X-PSEUDO4"),
-        production: "#selectordef-first-letter-prefix",
-        status: CssSupportStatus::Complete,
-        supported_subset: None,
-        unsupported_remainder: None,
-        recognized_code: None,
-        positive: Some(Input::Sheet("p::first-letter::prefix { color: red; }")),
-        negative: None,
-    },
-    ExpectedFeature {
-        id: "ext.pseudo-element.suffix",
-        kind: CssFeatureKind::Selector,
-        spelling: "::suffix, including the defined ::first-letter::suffix child",
-        source: ExpectedSource::Id("X-PSEUDO4"),
-        production: "#selectordef-first-letter-suffix",
-        status: CssSupportStatus::Complete,
-        supported_subset: None,
-        unsupported_remainder: None,
-        recognized_code: None,
-        positive: Some(Input::Sheet("p::first-letter::suffix { color: red; }")),
-        negative: None,
-    },
-    ExpectedFeature {
-        id: "ext.pseudo-element.search-text",
-        kind: CssFeatureKind::Selector,
-        spelling: "::search-text authored identity, independent of optional UA implementation",
-        source: ExpectedSource::Id("X-PSEUDO4"),
-        production: "#selectordef-search-text",
-        status: CssSupportStatus::Complete,
-        supported_subset: None,
-        unsupported_remainder: None,
-        recognized_code: None,
-        positive: Some(Input::Sheet(".x::search-text { color: red; }")),
-        negative: None,
-    },
-    ExpectedFeature {
-        id: "ext.pseudo-element.target-text",
-        kind: CssFeatureKind::Selector,
-        spelling: "::target-text",
-        source: ExpectedSource::Id("X-PSEUDO4"),
-        production: "#selectordef-target-text",
-        status: CssSupportStatus::Complete,
-        supported_subset: None,
-        unsupported_remainder: None,
-        recognized_code: None,
-        positive: Some(Input::Sheet(".x::target-text { color: red; }")),
-        negative: None,
-    },
-    ExpectedFeature {
-        id: "ext.pseudo-element.spelling-error",
-        kind: CssFeatureKind::Selector,
-        spelling: "::spelling-error",
-        source: ExpectedSource::Id("X-PSEUDO4"),
-        production: "#selectordef-spelling-error",
-        status: CssSupportStatus::Complete,
-        supported_subset: None,
-        unsupported_remainder: None,
-        recognized_code: None,
-        positive: Some(Input::Sheet(".x::spelling-error { color: red; }")),
-        negative: None,
-    },
-    ExpectedFeature {
-        id: "ext.pseudo-element.grammar-error",
-        kind: CssFeatureKind::Selector,
-        spelling: "::grammar-error",
-        source: ExpectedSource::Id("X-PSEUDO4"),
-        production: "#selectordef-grammar-error",
-        status: CssSupportStatus::Complete,
-        supported_subset: None,
-        unsupported_remainder: None,
-        recognized_code: None,
-        positive: Some(Input::Sheet(".x::grammar-error { color: red; }")),
-        negative: None,
-    },
-    ExpectedFeature {
-        id: "ext.pseudo-element.highlight",
-        kind: CssFeatureKind::Selector,
-        spelling: "::highlight() with exactly one checked, case-preserving custom identifier",
-        source: ExpectedSource::Id("X-PSEUDO4"),
-        production: "#selectordef-highlight-custom-ident",
-        status: CssSupportStatus::Complete,
-        supported_subset: None,
-        unsupported_remainder: None,
-        recognized_code: None,
-        positive: Some(Input::Sheet(".x::highlight(MyName) { color: red; }")),
-        negative: None,
-    },
-    ExpectedFeature {
-        id: "ext.pseudo-element.placeholder",
-        kind: CssFeatureKind::Selector,
-        spelling: "::placeholder tree-abiding authored identity",
-        source: ExpectedSource::Id("X-PSEUDO4"),
-        production: "#selectordef-placeholder",
-        status: CssSupportStatus::Complete,
-        supported_subset: None,
-        unsupported_remainder: None,
-        recognized_code: None,
-        positive: Some(Input::Sheet("input::placeholder { color: red; }")),
-        negative: None,
-    },
-    ExpectedFeature {
-        id: "ext.pseudo-element.file-selector-button",
-        kind: CssFeatureKind::Selector,
-        spelling: "::file-selector-button with element-backed pseudo syntax and tree-abiding transitions",
-        source: ExpectedSource::Id("X-PSEUDO4"),
-        production: "#selectordef-file-selector-button,#element-backed",
-        status: CssSupportStatus::Complete,
-        supported_subset: None,
-        unsupported_remainder: None,
-        recognized_code: None,
-        positive: Some(Input::Sheet(
-            "input::file-selector-button:first-child { color: red; }",
-        )),
-        negative: None,
-    },
-    ExpectedFeature {
-        id: "ext.pseudo-element.details-content",
-        kind: CssFeatureKind::Selector,
-        spelling: "::details-content with element-backed pseudo syntax and tree-abiding transitions",
-        source: ExpectedSource::Id("X-PSEUDO4"),
-        production: "#selectordef-details-content,#element-backed",
-        status: CssSupportStatus::Complete,
-        supported_subset: None,
-        unsupported_remainder: None,
-        recognized_code: None,
-        positive: Some(Input::Sheet(
-            "details::details-content::before { color: red; }",
-        )),
-        negative: None,
-    },
-    ExpectedFeature {
-        id: "ext.pseudo-element.search-text-current",
-        kind: CssFeatureKind::Selector,
-        spelling: "nonfunctional :current in SearchText and element-backed suffix contexts, inherited by logical arguments; ordinary :current, current(), :past and :future remain unsupported",
-        source: ExpectedSource::Id("X-PSEUDO4"),
-        production: "#selectordef-search-text,#element-backed",
-        status: CssSupportStatus::Complete,
-        supported_subset: None,
-        unsupported_remainder: None,
-        recognized_code: None,
-        positive: Some(Input::Sheet(".x::search-text:current { color: red; }")),
-        negative: None,
-    },
-    ExpectedFeature {
-        id: "baseline.selector.pseudo-element",
-        kind: CssFeatureKind::Selector,
-        spelling: "authored pseudo-element identities, ordered contextual suffixes and defined child sequences",
-        source: ExpectedSource::Id("I01-BASE-SELECTORS"),
-        production: "pseudo-element selector",
-        status: CssSupportStatus::Partial,
-        supported_subset: Some(
-            "The referenced atomic pseudo-element identities and contextual attachment grammar are supported.",
-        ),
-        unsupported_remainder: Some(SELECTOR_REMAINDER),
-        recognized_code: None,
-        positive: Some(Input::Sheet(".item::before { content: \"x\"; }")),
-        negative: Some((
-            Input::Sheet(".item::part() { color: red; }"),
-            CssErrorCode::InvalidSelector,
-        )),
-    },
-    ExpectedFeature {
-        id: "baseline.selector.nesting",
-        kind: CssFeatureKind::Selector,
-        spelling: "nesting &, scoped selector anchors, and contextual relative selectors",
-        source: ExpectedSource::Id("I-NESTING1"),
-        production: "#nest-selector,#syntax-examples,#nesting-at-scope",
-        status: CssSupportStatus::Partial,
-        supported_subset: Some(
-            "Nesting &, counted scope anchors, scoped relative selectors, and contextual relative scope boundaries are supported.",
-        ),
-        unsupported_remainder: Some(SELECTOR_REMAINDER),
-        recognized_code: None,
-        positive: Some(Input::Sheet(".card { & > .title { color: red; } }")),
-        negative: Some((
-            Input::Sheet(".card { & || ! { color: red; } }"),
-            CssErrorCode::InvalidSelector,
-        )),
-    },
-    ExpectedFeature {
-        id: "baseline.media.query-list",
-        kind: CssFeatureKind::MediaQuery,
-        spelling: "typed/condition query lists, not/only, and/or/not, range and colon forms, and malformed-member Never recovery",
-        source: ExpectedSource::Id("I01-BASE-QUERIES"),
-        production: "media query list",
-        status: CssSupportStatus::Partial,
-        supported_subset: Some(
-            "The exact baseline-recognized media query-list spelling group and malformed-member Never recovery are supported.",
-        ),
-        unsupported_remainder: Some(QUERY_REMAINDER),
-        recognized_code: None,
-        positive: Some(Input::Sheet(
-            "@media screen and (min-width: 1px), print { .x { color: red; } }",
-        )),
-        negative: Some((
-            Input::Sheet("@media screen, ??? { .x { color: red; } }"),
-            CssErrorCode::InvalidMediaQuery,
-        )),
-    },
-    ExpectedFeature {
-        id: "baseline.media.type",
-        kind: CssFeatureKind::MediaQuery,
-        spelling: "all, aural, braille, embossed, handheld, print, projection, screen, speech, tty, tv",
-        source: ExpectedSource::Id("X-MEDIA5"),
-        production: "#media-types",
-        status: CssSupportStatus::Complete,
-        supported_subset: None,
-        unsupported_remainder: None,
-        recognized_code: None,
-        positive: Some(Input::Sheet("@media speech { .x { color: red; } }")),
-        negative: None,
-    },
-    ExpectedFeature {
-        id: "baseline.media.range-feature",
-        kind: CssFeatureKind::MediaQuery,
-        spelling: "width, height, resolution, color, monochrome and their min-/max- names",
-        source: ExpectedSource::Id("I01-BASE-QUERIES"),
-        production: "media range feature",
-        status: CssSupportStatus::Partial,
-        supported_subset: Some(
-            "The exact baseline-recognized media range-feature spelling group is supported.",
-        ),
-        unsupported_remainder: Some(QUERY_REMAINDER),
-        recognized_code: None,
-        positive: Some(Input::Sheet("@media (width >= 1px) { .x { color: red; } }")),
-        // Unknown features stay clean; an incomplete outer conjunction is invalid.
-        negative: Some((
-            Input::Sheet("@media (width >= 1px) and { .x { color: red; } }"),
-            CssErrorCode::InvalidMediaQuery,
-        )),
-    },
-    ExpectedFeature {
-        id: "baseline.media.discrete-feature",
-        kind: CssFeatureKind::MediaQuery,
-        spelling: "orientation, prefers-color-scheme, prefers-reduced-motion, prefers-reduced-transparency, prefers-contrast, forced-colors, hover, any-hover, pointer, any-pointer, display-mode",
-        source: ExpectedSource::Id("I01-BASE-QUERIES"),
-        production: "media discrete feature",
-        status: CssSupportStatus::Partial,
-        supported_subset: Some(
-            "The exact baseline-recognized media discrete-feature spelling group is supported.",
-        ),
-        unsupported_remainder: Some(QUERY_REMAINDER),
-        recognized_code: None,
-        positive: Some(Input::Sheet(
-            "@media (orientation: landscape) { .x { color: red; } }",
-        )),
-        // Scripting is admitted, but typed queries prohibit an unwrapped outer `or`.
-        negative: Some((
-            Input::Sheet(
-                "@media screen and (scripting: enabled) or (color) { .x { color: red; } }",
-            ),
-            CssErrorCode::InvalidMediaQuery,
-        )),
-    },
-    ExpectedFeature {
-        id: "baseline.container.condition",
-        kind: CssFeatureKind::ContainerQuery,
-        spelling: "and/or/not, size features, authored style and scroll-state queries, and general-enclosed",
-        source: ExpectedSource::Id("X-CONDITIONAL5"),
-        production: "#container-rule",
-        status: CssSupportStatus::Partial,
-        supported_subset: Some(
-            "Recursive container, style and scroll-state logic, supported-property and custom-property boolean/plain style features, broad authored style ranges, four discrete scroll-state features with whole-value pending substitution, and original-component general-enclosed operands are retained; query evaluation and scroll snapshots belong downstream.",
-        ),
-        unsupported_remainder: Some(QUERY_REMAINDER),
-        recognized_code: None,
-        positive: Some(Input::Sheet(
-            "@container (width > 1px) and style(--theme) { .x { color: red; } }",
-        )),
-        negative: Some((
-            Input::Sheet("@container style(color: red) and { .x { color: red; } }"),
-            CssErrorCode::InvalidAtRulePrelude,
-        )),
-    },
-    ExpectedFeature {
-        id: "baseline.container.size-feature",
-        kind: CssFeatureKind::ContainerQuery,
-        spelling: "width, height, inline-size, block-size, aspect-ratio, orientation and applicable min-/max- names",
-        source: ExpectedSource::Id("X-CONDITIONAL5"),
-        production: "#size-container",
-        status: CssSupportStatus::Partial,
-        supported_subset: Some(
-            "The six authored size features retain boolean, plain, prefixed and directional range forms, exact symbolic numeric values, checked var() operands and the scoped tree-counting functions; orientation remains discrete.",
-        ),
-        unsupported_remainder: Some(QUERY_REMAINDER),
-        recognized_code: None,
-        positive: Some(Input::Sheet(
-            "@container (inline-size > 1px) { .x { color: red; } }",
-        )),
-        negative: Some((
-            Input::Sheet("@container (unknown-size > 1px) or { .x { color: red; } }"),
-            CssErrorCode::InvalidAtRulePrelude,
-        )),
-    },
-    ExpectedFeature {
-        id: "ext.supports.named",
-        kind: CssFeatureKind::Value,
-        spelling: "named supports condition reference",
-        source: ExpectedSource::Id("X-CONDITIONAL5"),
-        production: "#typedef-supports-decl,#typedef-supports-condition-name",
-        status: CssSupportStatus::Complete,
-        supported_subset: None,
-        unsupported_remainder: None,
-        recognized_code: None,
-        positive: Some(Input::Sheet("@supports (--feature) { .x { color: red; } }")),
-        negative: None,
-    },
-];
-
-fn assert_c03_value_metadata(
-    id: &str,
-    spelling: &str,
-    production: &str,
-    status: CssSupportStatus,
-    subset: Option<&str>,
-    remainder: Option<&str>,
-) {
-    let metadata = feature_metadata(id).unwrap_or_else(|| panic!("missing `{id}` metadata"));
-    assert_eq!(metadata.id().as_str(), id);
-    assert_eq!(metadata.kind(), CssFeatureKind::Value, "{id} kind");
-    assert_eq!(metadata.spelling(), spelling, "{id} spelling");
-    assert_eq!(metadata.source().id().as_str(), "O-VALUES3", "{id} source");
-    assert_eq!(metadata.production(), production, "{id} production");
-    assert_eq!(metadata.status(), status, "{id} status");
-    assert_eq!(metadata.supported_subset(), subset, "{id} subset");
-    assert_eq!(
-        metadata.unsupported_remainder(),
-        remainder,
-        "{id} remainder"
-    );
-    assert_eq!(metadata.recognized_unsupported_code(), None, "{id} code");
-}
-
-#[test]
-fn c14_amended_ledger_public_metadata_is_reconciled() {
-    for id in [
-        "official.value.syntax-token-stream",
-        "official.value.component-value",
-        "official.value.simple-block",
-        "official.value.function",
-        "official.value.declaration-value",
-        "official.value.any-value",
-        "official.value.an-plus-b",
-        "official.value.unicode-range",
-        "official.value.css-wide-keyword",
-        "official.value.custom-ident",
-        "official.value.ident",
-        "official.value.string",
-        "official.value.url",
-        "official.value.url-modifier",
-        "ext.value.font-source-modern-hints",
-    ] {
-        let metadata = feature_metadata(id).unwrap_or_else(|| panic!("missing `{id}` metadata"));
-        assert_eq!(metadata.id().as_str(), id, "{id} identity");
-        assert_eq!(metadata.status(), CssSupportStatus::Complete, "{id} status");
-        assert_eq!(metadata.supported_subset(), None, "{id} subset");
-        assert_eq!(metadata.unsupported_remainder(), None, "{id} remainder");
-        assert_eq!(metadata.recognized_unsupported_code(), None, "{id} code");
-    }
-
-    for id in [
-        "official.value.dimension",
-        "official.value.angle",
-        "official.value.angle-percentage",
-        "official.value.time-percentage",
-        "official.value.frequency",
-        "official.value.frequency-percentage",
-        "official.value.calc",
-    ] {
-        let metadata = feature_metadata(id).unwrap_or_else(|| panic!("missing `{id}` metadata"));
-        assert_eq!(metadata.id().as_str(), id, "{id} identity");
-        assert_eq!(metadata.status(), CssSupportStatus::Complete, "{id} status");
-        assert_eq!(metadata.supported_subset(), None, "{id} subset");
-        assert_eq!(metadata.unsupported_remainder(), None, "{id} remainder");
-        assert_eq!(metadata.recognized_unsupported_code(), None, "{id} code");
-    }
-
-    for id in [
-        "ext.value.relative-color",
-        "ext.value.color-mix",
-        "ext.supports.selector",
-    ] {
-        let metadata = feature_metadata(id).unwrap_or_else(|| panic!("missing `{id}` metadata"));
-        assert_eq!(metadata.id().as_str(), id, "{id} identity");
-        assert_eq!(metadata.status(), CssSupportStatus::Partial, "{id} status");
-        assert!(metadata.supported_subset().is_some(), "{id} subset");
-        assert!(metadata.unsupported_remainder().is_some(), "{id} remainder");
-        assert_eq!(metadata.recognized_unsupported_code(), None, "{id} code");
-    }
-
-    let metadata =
-        feature_metadata("later.rule.font-feature-values").expect("font-feature-values metadata");
-    assert_eq!(metadata.status(), CssSupportStatus::Complete);
-    assert!(metadata.supported_subset().is_none());
-    assert!(metadata.unsupported_remainder().is_none());
-    assert_eq!(metadata.recognized_unsupported_code(), None);
-}
-
-#[test]
-fn c14_closure_metadata_and_docs_are_truthful() {
-    for (id, kind, spelling, source, production) in [
-        (
-            "official.property.flex-flow",
-            CssFeatureKind::Property,
-            "flex-flow",
-            "O-FLEXBOX1",
-            "#propdef-flex-flow",
-        ),
-        (
-            "official.property.column-count",
-            CssFeatureKind::Property,
-            "column-count",
-            "O-MULTICOL1",
-            "#propdef-column-count",
-        ),
-        (
-            "official.property.column-fill",
-            CssFeatureKind::Property,
-            "column-fill",
-            "O-MULTICOL1",
-            "#propdef-column-fill",
-        ),
-        (
-            "official.property.column-rule",
-            CssFeatureKind::Property,
-            "column-rule",
-            "O-MULTICOL1",
-            "#propdef-column-rule",
-        ),
-        (
-            "official.property.column-rule-color",
-            CssFeatureKind::Property,
-            "column-rule-color",
-            "O-MULTICOL1",
-            "#propdef-column-rule-color",
-        ),
-        (
-            "official.property.column-rule-style",
-            CssFeatureKind::Property,
-            "column-rule-style",
-            "O-MULTICOL1",
-            "#propdef-column-rule-style",
-        ),
-        (
-            "official.property.column-rule-width",
-            CssFeatureKind::Property,
-            "column-rule-width",
-            "O-MULTICOL1",
-            "#propdef-column-rule-width",
-        ),
-        (
-            "official.property.column-span",
-            CssFeatureKind::Property,
-            "column-span",
-            "O-MULTICOL1",
-            "#propdef-column-span",
-        ),
-        (
-            "official.property.column-width",
-            CssFeatureKind::Property,
-            "column-width",
-            "O-MULTICOL1",
-            "#propdef-column-width",
-        ),
-        (
-            "official.property.columns",
-            CssFeatureKind::Property,
-            "columns",
-            "O-MULTICOL1",
-            "#propdef-columns",
-        ),
-        (
-            "official.rule.at-rule",
-            CssFeatureKind::Rule,
-            "generic at-rule",
-            "O-SYNTAX3",
-            "#at-rules,#consume-at-rule",
-        ),
-        (
-            "official.qualified-rule.generic",
-            CssFeatureKind::Rule,
-            "generic qualified rule",
-            "O-SYNTAX3",
-            "#consume-qualified-rule",
-        ),
-        (
-            "official.declaration.generic",
-            CssFeatureKind::Declaration,
-            "generic declaration",
-            "O-SYNTAX3",
-            "#consume-declaration",
-        ),
-        (
-            "official.value.stylesheet",
-            CssFeatureKind::Value,
-            "<stylesheet>",
-            "O-SYNTAX3",
-            "#parser-entry-points",
-        ),
-        (
-            "official.value.rule-list",
-            CssFeatureKind::Value,
-            "<rule-list>",
-            "O-SYNTAX3",
-            "#declaration-rule-list",
-        ),
-        (
-            "official.value.declaration-list",
-            CssFeatureKind::Value,
-            "<declaration-list>",
-            "O-SYNTAX3",
-            "#declaration-rule-list",
-        ),
-        (
-            "official.value.style-block",
-            CssFeatureKind::Value,
-            "<style-block>",
-            "O-SYNTAX3",
-            "#declaration-rule-list",
-        ),
-        (
-            "official.value.syntax-token-stream",
-            CssFeatureKind::Value,
-            "syntax token stream",
-            "O-SYNTAX3",
-            "#tokenization",
-        ),
-        (
-            "official.value.component-value",
-            CssFeatureKind::Value,
-            "<component-value>",
-            "O-SYNTAX3",
-            "#consume-component-value",
-        ),
-        (
-            "official.value.simple-block",
-            CssFeatureKind::Value,
-            "simple block",
-            "O-SYNTAX3",
-            "#consume-simple-block",
-        ),
-        (
-            "official.value.function",
-            CssFeatureKind::Value,
-            "function",
-            "O-SYNTAX3",
-            "#consume-function",
-        ),
-        (
-            "official.value.declaration-value",
-            CssFeatureKind::Value,
-            "<declaration-value>",
-            "O-SYNTAX3",
-            "#any-value",
-        ),
-        (
-            "official.value.any-value",
-            CssFeatureKind::Value,
-            "<any-value>",
-            "O-SYNTAX3",
-            "#any-value",
-        ),
-        (
-            "official.value.an-plus-b",
-            CssFeatureKind::Value,
-            "<an+b>",
-            "O-SYNTAX3",
-            "#the-anb-type",
-        ),
-        (
-            "official.value.unicode-range",
-            CssFeatureKind::Value,
-            "<urange>",
-            "O-SYNTAX3",
-            "#urange-syntax",
-        ),
-        (
-            "official.value.css-wide-keyword",
-            CssFeatureKind::Value,
-            "CSS-wide keyword",
-            "O-CASCADE4",
-            "#defaulting-keywords",
-        ),
-        (
-            "official.value.custom-ident",
-            CssFeatureKind::Value,
-            "<custom-ident>",
-            "O-VALUES3",
-            "#custom-idents",
-        ),
-        (
-            "official.value.ident",
-            CssFeatureKind::Value,
-            "<ident>",
-            "O-VALUES3",
-            "#custom-idents",
-        ),
-        (
-            "official.value.string",
-            CssFeatureKind::Value,
-            "<string>",
-            "O-VALUES3",
-            "#strings",
-        ),
-        (
-            "official.value.url",
-            CssFeatureKind::Value,
-            "<url>",
-            "I-VALUES4-20240312",
-            "#urls",
-        ),
-        (
-            "official.value.url-modifier",
-            CssFeatureKind::Value,
-            "<url-modifier>",
-            "I-VALUES4-20240312",
-            "#url-modifiers",
-        ),
-    ] {
-        let metadata = feature_metadata(id).unwrap_or_else(|| panic!("missing `{id}` metadata"));
-        assert_eq!(metadata.id().as_str(), id, "{id} identity");
-        assert_eq!(metadata.kind(), kind, "{id} kind");
-        assert_eq!(metadata.spelling(), spelling, "{id} spelling");
-        assert_eq!(metadata.source().id().as_str(), source, "{id} source");
-        assert_eq!(metadata.production(), production, "{id} production");
-        assert_eq!(metadata.status(), CssSupportStatus::Complete, "{id} status");
-        assert_eq!(metadata.supported_subset(), None, "{id} subset");
-        assert_eq!(metadata.unsupported_remainder(), None, "{id} remainder");
-        assert_eq!(metadata.recognized_unsupported_code(), None, "{id} code");
-        assert!(metadata.baseline_alias_targets().is_empty(), "{id} atomic");
-    }
-
-    for (id, spelling, production) in [
-        ("official.value.dimension", "<dimension>", "#dimensions"),
-        ("official.value.angle", "<angle>", "#angles"),
-        (
-            "official.value.angle-percentage",
-            "<angle-percentage>",
-            "#mixed-percentages",
-        ),
-        (
-            "official.value.time-percentage",
-            "<time-percentage>",
-            "#mixed-percentages",
-        ),
-        ("official.value.frequency", "<frequency>", "#frequency"),
-        (
-            "official.value.frequency-percentage",
-            "<frequency-percentage>",
-            "#mixed-percentages",
-        ),
-        (
-            "official.value.calc",
-            "calc()",
-            "#calc-notation,#calc-syntax,#calc-type-checking",
-        ),
-    ] {
-        let metadata = feature_metadata(id).unwrap_or_else(|| panic!("missing `{id}` metadata"));
-        assert_eq!(metadata.kind(), CssFeatureKind::Value, "{id} kind");
-        assert_eq!(metadata.spelling(), spelling, "{id} spelling");
-        assert_eq!(metadata.source().id().as_str(), "O-VALUES3", "{id} source");
-        assert_eq!(metadata.production(), production, "{id} production");
-        assert_eq!(metadata.status(), CssSupportStatus::Complete, "{id} status");
-        assert_eq!(metadata.supported_subset(), None, "{id} subset");
-        assert_eq!(metadata.unsupported_remainder(), None, "{id} remainder");
-        assert_eq!(metadata.recognized_unsupported_code(), None, "{id} code");
-        assert!(metadata.baseline_alias_targets().is_empty(), "{id} atomic");
-    }
-}
-
 #[test]
 fn selected_alignment_grammars_cite_the_superseding_align3_source() {
     for name in [
@@ -2485,13 +959,11 @@ fn selected_alignment_grammars_cite_the_superseding_align3_source() {
         let feature = feature_metadata(property.stable_id()).unwrap();
         assert_eq!(feature.source().id().as_str(), "S-ALIGN3", "{name}");
         assert_eq!(feature.status(), CssSupportStatus::Complete, "{name}");
-        assert_eq!(feature.supported_subset(), None, "{name}");
-        assert_eq!(feature.unsupported_remainder(), None, "{name}");
     }
 }
 
 #[test]
-fn c14_remaining_official_values_are_typed() {
+fn numeric_value_types_construct_checked_literals_and_drop_cross_type_declarations() {
     let dimension = CssSpecifiedLength::try_from_component(
         CssComponentValue::try_dimension("-1.5", "cqw").unwrap(),
     )
@@ -2562,45 +1034,10 @@ fn c14_remaining_official_values_are_typed() {
             .iter()
             .all(|diagnostic| diagnostic.action() == CssRecoveryAction::DropDeclaration)
     );
-
-    for (id, spelling, production) in [
-        ("official.value.dimension", "<dimension>", "#dimensions"),
-        ("official.value.angle", "<angle>", "#angles"),
-        (
-            "official.value.angle-percentage",
-            "<angle-percentage>",
-            "#mixed-percentages",
-        ),
-        (
-            "official.value.time-percentage",
-            "<time-percentage>",
-            "#mixed-percentages",
-        ),
-        ("official.value.frequency", "<frequency>", "#frequency"),
-        (
-            "official.value.frequency-percentage",
-            "<frequency-percentage>",
-            "#mixed-percentages",
-        ),
-        (
-            "official.value.calc",
-            "calc()",
-            "#calc-notation,#calc-syntax,#calc-type-checking",
-        ),
-    ] {
-        assert_c03_value_metadata(
-            id,
-            spelling,
-            production,
-            CssSupportStatus::Complete,
-            None,
-            None,
-        );
-    }
 }
 
 #[test]
-fn c14_retained_partial_extensions_have_direct_public_evidence() {
+fn partial_color_and_selector_extensions_accept_their_supported_subset() {
     for (id, kind, input) in [
         (
             "ext.value.relative-color",
@@ -2623,7 +1060,6 @@ fn c14_retained_partial_extensions_have_direct_public_evidence() {
         assert_eq!(metadata.status(), CssSupportStatus::Partial, "{id} status");
         assert!(metadata.supported_subset().is_some(), "{id} subset");
         assert!(metadata.unsupported_remainder().is_some(), "{id} remainder");
-        assert_eq!(metadata.recognized_unsupported_code(), None, "{id} code");
         assert!(diagnostics(input).is_empty(), "{id} public positive vector");
     }
 
@@ -2643,91 +1079,6 @@ fn c14_retained_partial_extensions_have_direct_public_evidence() {
     assert_eq!(metadata.source().id().as_str(), "I-FONTS4-20260907");
     assert_eq!(metadata.production(), "#font-feature-values-syntax");
     assert_eq!(metadata.status(), CssSupportStatus::Complete);
-    assert_eq!(metadata.recognized_unsupported_code(), None);
-}
-
-fn assert_c03_timing_metadata(
-    id: &str,
-    property: &str,
-    source: &str,
-    production: &str,
-    status: CssSupportStatus,
-    subset: Option<&str>,
-    remainder: Option<&str>,
-) {
-    let report = parse_style_attribute(property);
-    assert!(report.is_clean(), "{property}: {:?}", report.diagnostics());
-    let [declaration] = report.syntax().as_slice() else {
-        panic!("{property}: expected one retained declaration");
-    };
-    let known = declaration.known().expect("known timing declaration");
-    assert_eq!(known.property().stable_id(), id, "{property} identity");
-
-    let metadata = feature_metadata(id).unwrap_or_else(|| panic!("missing `{id}` metadata"));
-    assert_eq!(metadata.id().as_str(), id);
-    assert_eq!(metadata.kind(), CssFeatureKind::Property, "{id} kind");
-    assert_eq!(
-        metadata.spelling(),
-        known.property().canonical_name(),
-        "{id} spelling"
-    );
-    assert_eq!(metadata.source().id().as_str(), source, "{id} source");
-    assert_eq!(metadata.production(), production, "{id} production");
-    assert_eq!(metadata.status(), status, "{id} status");
-    assert_eq!(metadata.supported_subset(), subset, "{id} subset");
-    assert_eq!(
-        metadata.unsupported_remainder(),
-        remainder,
-        "{id} remainder"
-    );
-    assert_eq!(metadata.recognized_unsupported_code(), None, "{id} code");
-}
-
-fn assert_complete_position_value_metadata(
-    id: &str,
-    spelling: &str,
-    source: &str,
-    production: &str,
-) {
-    let metadata = feature_metadata(id).unwrap_or_else(|| panic!("missing `{id}` metadata"));
-    assert_eq!(metadata.id().as_str(), id);
-    assert_eq!(metadata.kind(), CssFeatureKind::Value, "{id} kind");
-    assert_eq!(metadata.spelling(), spelling, "{id} spelling");
-    assert_eq!(metadata.source().id().as_str(), source, "{id} source");
-    assert_eq!(metadata.production(), production, "{id} production");
-    assert_eq!(metadata.status(), CssSupportStatus::Complete, "{id} status");
-    assert_eq!(metadata.supported_subset(), None, "{id} subset");
-    assert_eq!(metadata.unsupported_remainder(), None, "{id} remainder");
-    assert_eq!(metadata.recognized_unsupported_code(), None, "{id} code");
-    assert!(metadata.baseline_alias_targets().is_empty(), "{id} atomic");
-}
-
-fn assert_complete_position_property_metadata(
-    id: &str,
-    canonical_name: &str,
-    property: CssKnownProperty,
-    source: &str,
-    production: &str,
-) {
-    let metadata = feature_metadata(id).unwrap_or_else(|| panic!("missing `{id}` metadata"));
-    let property_owner = property_support_metadata(canonical_name)
-        .unwrap_or_else(|| panic!("missing `{canonical_name}` property metadata"));
-    assert!(
-        std::ptr::eq(metadata, property_owner.feature()),
-        "{id} owner"
-    );
-    assert_eq!(property_owner.property(), property, "{id} property owner");
-    assert_eq!(property_owner.canonical_name(), canonical_name, "{id} name");
-    assert_eq!(metadata.id().as_str(), id);
-    assert_eq!(metadata.kind(), CssFeatureKind::Property, "{id} kind");
-    assert_eq!(metadata.spelling(), canonical_name, "{id} spelling");
-    assert_eq!(metadata.source().id().as_str(), source, "{id} source");
-    assert_eq!(metadata.production(), production, "{id} production");
-    assert_eq!(metadata.status(), CssSupportStatus::Complete, "{id} status");
-    assert_eq!(metadata.supported_subset(), None, "{id} subset");
-    assert_eq!(metadata.unsupported_remainder(), None, "{id} remainder");
-    assert_eq!(metadata.recognized_unsupported_code(), None, "{id} code");
-    assert!(metadata.baseline_alias_targets().is_empty(), "{id} atomic");
 }
 
 #[test]
@@ -2752,13 +1103,6 @@ fn official_position_metadata_matches_generic_position_behavior() {
         CssVerticalPosition::BottomOffset(offset)
             if exact_dimension(offset.literal_component(), "2", "px")
     ));
-
-    assert_complete_position_value_metadata(
-        "official.value.position",
-        "<position>",
-        "O-VALUES3",
-        "#position",
-    );
 }
 
 #[test]
@@ -2782,13 +1126,6 @@ fn official_background_position_metadata_matches_three_component_layer_behavior(
             if exact_dimension(offset.literal_component(), "10", "px")
     ));
     assert!(matches!(layer.vertical(), CssVerticalPosition::Top));
-
-    assert_complete_position_value_metadata(
-        "official.value.background-position",
-        "<bg-position>#",
-        "O-BACKGROUNDS3",
-        "#background-position",
-    );
 }
 
 #[test]
@@ -2806,14 +1143,6 @@ fn background_position_property_metadata_matches_layer_list_behavior() {
         panic!("expected background-position value");
     };
     assert_eq!(value.positions().positions().len(), 2);
-
-    assert_complete_position_property_metadata(
-        "baseline.property.background-position",
-        "background-position",
-        CssKnownProperty::BackgroundPosition,
-        "O-BACKGROUNDS3",
-        "#propdef-background-position",
-    );
 }
 
 #[test]
@@ -2837,14 +1166,6 @@ fn object_position_property_metadata_matches_semantic_accessor_behavior() {
         CssVerticalPosition::Offset(offset)
             if exact_percentage(offset.literal_component(), "25")
     ));
-
-    assert_complete_position_property_metadata(
-        "official.property.object-position",
-        "object-position",
-        CssKnownProperty::ObjectPosition,
-        "O-IMAGES3",
-        "#propdef-object-position",
-    );
 }
 
 #[test]
@@ -2873,14 +1194,6 @@ fn transform_origin_property_metadata_matches_directed_z_behavior() {
             .z()
             .is_some_and(|z| exact_dimension(z.literal_component(), "50", "px"))
     );
-
-    assert_complete_position_property_metadata(
-        "baseline.property.transform-origin",
-        "transform-origin",
-        CssKnownProperty::TransformOrigin,
-        "O-TRANSFORMS1",
-        "#propdef-transform-origin",
-    );
 }
 
 #[test]
@@ -2904,43 +1217,30 @@ fn mask_position_property_metadata_matches_generic_layer_behavior() {
             if exact_dimension(offset.literal_component(), "10", "px")
     ));
     assert!(matches!(second.horizontal(), CssHorizontalPosition::Center));
-
-    assert_complete_position_property_metadata(
-        "baseline.property.mask-position",
-        "mask-position",
-        CssKnownProperty::MaskPosition,
-        "S-MASKING1",
-        "#propdef-mask-position",
-    );
 }
+
+// Each Values and Units value type claimed Complete is exercised through a
+// property whose grammar consumes it: the authored value is retained, and a
+// value outside the type is dropped with InvalidPropertyValue (CSS Syntax 3
+// section 8.1 and Values 3 section 2: an invalid declaration is ignored).
 
 #[test]
 fn official_integer_metadata_matches_checked_integer_behavior() {
     let value = CssIntegerCalculation::literal(-3);
     assert_eq!(value.result_type(), CssCalculationType::Number);
     assert!(!value.requires_rounding());
-    assert_c03_value_metadata(
-        "official.value.integer",
-        "<integer>",
-        "#integers",
-        CssSupportStatus::Complete,
-        None,
-        None,
-    );
+    // Values 3 section 5.1; z-index is `auto | <integer>`.
+    assert_single_known_declaration("z-index: -3", "baseline.property.z-index");
+    assert_dropped_declaration("z-index: 1.5");
 }
 
 #[test]
 fn official_number_metadata_matches_checked_number_behavior() {
     let value = CssNumberCalculation::try_literal(-3.5).expect("finite number");
     assert_eq!(value.result_type(), CssCalculationType::Number);
-    assert_c03_value_metadata(
-        "official.value.number",
-        "<number>",
-        "#numbers",
-        CssSupportStatus::Complete,
-        None,
-        None,
-    );
+    // Values 3 section 5.2; flex-grow is `<number [0,∞]>`.
+    assert_single_known_declaration("flex-grow: 1.5", "baseline.property.flex-grow");
+    assert_dropped_declaration("flex-grow: 1px");
 }
 
 #[test]
@@ -2950,28 +1250,19 @@ fn official_dimension_metadata_matches_checked_dimension_behavior() {
     )
     .unwrap();
     assert!(exact_dimension(value.literal_component(), "1.5", "rem"));
-    assert_c03_value_metadata(
-        "official.value.dimension",
-        "<dimension>",
-        "#dimensions",
-        CssSupportStatus::Complete,
-        None,
-        None,
-    );
+    // Values 3 section 5.4: a dimension carries a unit; an unknown unit is
+    // not a length.
+    assert_single_known_declaration("width: 1.5rem", "baseline.property.width");
+    assert_dropped_declaration("width: 1.5qux");
 }
 
 #[test]
 fn official_percentage_metadata_matches_checked_percentage_behavior() {
     let value = CssPercentageCalculation::try_literal(-12.5).expect("finite percentage");
     assert_eq!(value.result_type(), CssCalculationType::Percentage);
-    assert_c03_value_metadata(
-        "official.value.percentage",
-        "<percentage>",
-        "#percentages",
-        CssSupportStatus::Complete,
-        None,
-        None,
-    );
+    // Values 3 section 5.5: `%` must immediately follow the number.
+    assert_single_known_declaration("text-indent: -12.5%", "baseline.property.text-indent");
+    assert_dropped_declaration("text-indent: 12.5 %");
 }
 
 #[test]
@@ -2979,14 +1270,8 @@ fn official_length_metadata_matches_checked_length_behavior() {
     let value = CssLengthCalculation::try_dimension(2.0, CssLengthUnit::Cqw)
         .expect("finite length dimension");
     assert_eq!(value.result_type(), CssCalculationType::Length);
-    assert_c03_value_metadata(
-        "official.value.length",
-        "<length>",
-        "#lengths",
-        CssSupportStatus::Complete,
-        None,
-        None,
-    );
+    assert_single_known_declaration("width: 2cqw", "baseline.property.width");
+    assert_dropped_declaration("width: 2deg");
 }
 
 #[test]
@@ -2997,14 +1282,8 @@ fn official_length_percentage_metadata_matches_mixed_length_parser_behavior() {
         report.syntax()[0].known().unwrap().property(),
         CssKnownProperty::Width
     );
-    assert_c03_value_metadata(
-        "official.value.length-percentage",
-        "<length-percentage>",
-        "#mixed-percentages",
-        CssSupportStatus::Complete,
-        None,
-        None,
-    );
+    // Values 4 section 10.10: length and angle do not add.
+    assert_dropped_declaration("width: calc(1px + 2deg)");
 }
 
 #[test]
@@ -3012,14 +1291,8 @@ fn official_angle_metadata_matches_checked_angle_behavior() {
     let value =
         CssAngleCalculation::try_literal("-0.5", CssAngleUnit::Turns).expect("finite angle");
     assert_eq!(value.result_type(), CssCalculationType::Angle);
-    assert_c03_value_metadata(
-        "official.value.angle",
-        "<angle>",
-        "#angles",
-        CssSupportStatus::Complete,
-        None,
-        None,
-    );
+    assert_single_known_declaration("rotate: -0.5turn", "baseline.property.rotate");
+    assert_dropped_declaration("rotate: 1hz");
 }
 
 #[test]
@@ -3029,14 +1302,12 @@ fn official_angle_percentage_metadata_matches_checked_mixed_models() {
     let percentage = CssPercentageCalculation::try_literal(25.0).expect("finite percentage");
     assert_eq!(angle.result_type(), CssCalculationType::Angle);
     assert_eq!(percentage.result_type(), CssCalculationType::Percentage);
-    assert_c03_value_metadata(
-        "official.value.angle-percentage",
-        "<angle-percentage>",
-        "#mixed-percentages",
-        CssSupportStatus::Complete,
-        None,
-        None,
+    // Images 4 conic color stops are `<angle-percentage>`; a length is not.
+    assert_single_known_declaration(
+        "background-image: conic-gradient(red 10%, blue 90deg)",
+        "baseline.property.background-image",
     );
+    assert_dropped_declaration("background-image: conic-gradient(red 10px, blue)");
 }
 
 #[test]
@@ -3045,14 +1316,11 @@ fn official_time_metadata_matches_checked_time_behavior() {
         CssTimeLiteral::try_new("-250", CssTimeUnit::Milliseconds).expect("finite signed time");
     assert_eq!(value.numeric().representation(), "-250");
     assert_eq!(value.unit(), CssTimeUnit::Milliseconds);
-    assert_c03_value_metadata(
-        "official.value.time",
-        "<time>",
-        "#time",
-        CssSupportStatus::Complete,
-        None,
-        None,
+    assert_single_known_declaration(
+        "transition-delay: -250ms",
+        "baseline.property.transition-delay",
     );
+    assert_dropped_declaration("transition-delay: 1px");
 }
 
 #[test]
@@ -3061,14 +1329,9 @@ fn official_time_percentage_metadata_matches_checked_mixed_models() {
     let percentage = CssPercentageCalculation::try_literal(50.0).expect("finite percentage");
     assert_eq!(time.result_type(), CssCalculationType::Time);
     assert_eq!(percentage.result_type(), CssCalculationType::Percentage);
-    assert_c03_value_metadata(
-        "official.value.time-percentage",
-        "<time-percentage>",
-        "#mixed-percentages",
-        CssSupportStatus::Complete,
-        None,
-        None,
-    );
+    // No selected property consumes <time-percentage>; a pure <time> context
+    // keeps rejecting percentages (Values 4 section 10.10).
+    assert_dropped_declaration("transition-delay: calc(1s + 10%)");
 }
 
 #[test]
@@ -3076,14 +1339,12 @@ fn official_frequency_metadata_matches_checked_frequency_behavior() {
     let value = CssFrequencyCalculation::try_literal("440", CssFrequencyUnit::Hertz)
         .expect("finite frequency");
     assert_eq!(value.result_type(), CssCalculationType::Frequency);
-    assert_c03_value_metadata(
-        "official.value.frequency",
-        "<frequency>",
-        "#frequency",
-        CssSupportStatus::Complete,
-        None,
-        None,
+    // Speech 1 voice-pitch admits `<frequency [0Hz,∞]> && absolute`.
+    assert_single_known_declaration(
+        "voice-pitch: 200Hz absolute",
+        "official.property.voice-pitch",
     );
+    assert_dropped_declaration("voice-pitch: 200px absolute");
 }
 
 #[test]
@@ -3093,14 +1354,11 @@ fn official_frequency_percentage_metadata_matches_checked_mixed_models() {
     let percentage = CssPercentageCalculation::try_literal(75.0).expect("finite percentage");
     assert_eq!(frequency.result_type(), CssCalculationType::Frequency);
     assert_eq!(percentage.result_type(), CssCalculationType::Percentage);
-    assert_c03_value_metadata(
-        "official.value.frequency-percentage",
-        "<frequency-percentage>",
-        "#mixed-percentages",
-        CssSupportStatus::Complete,
-        None,
-        None,
+    assert_single_known_declaration(
+        "voice-pitch: calc(100Hz + 10%)",
+        "official.property.voice-pitch",
     );
+    assert_dropped_declaration("voice-pitch: calc(100Hz + 10deg)");
 }
 
 #[test]
@@ -3109,14 +1367,16 @@ fn official_resolution_metadata_matches_checked_resolution_behavior() {
         CssResolutionLiteral::try_new("2", CssResolutionUnit::Dppx).expect("exact resolution");
     assert_eq!(value.numeric().representation(), "2");
     assert_eq!(value.unit(), CssResolutionUnit::Dppx);
-    assert_c03_value_metadata(
-        "official.value.resolution",
-        "<resolution>",
-        "#resolution",
-        CssSupportStatus::Complete,
-        None,
-        None,
-    );
+    // The resolution media feature is the selected <resolution> consumer. A
+    // mistyped feature value is an unknown feature, not a syntax error
+    // (Media Queries 5 section 3.2), so no authored rejection exists here.
+    for source in [
+        "@media (resolution: 2dppx) { .x { color: red; } }",
+        "@media (min-resolution: 192dpi) { .x { color: red; } }",
+    ] {
+        let report = parse_sheet(source);
+        assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
+    }
 }
 
 #[test]
@@ -3127,104 +1387,60 @@ fn official_calc_metadata_matches_typed_calculation_parser_behavior() {
         report.syntax()[0].known().unwrap().property(),
         CssKnownProperty::Width
     );
-    assert_c03_value_metadata(
-        "official.value.calc",
-        "calc()",
-        "#calc-notation,#calc-syntax,#calc-type-checking",
-        CssSupportStatus::Complete,
-        None,
-        None,
-    );
+    // Values 4 section 10.1: a calc() sum needs an operand after `+`.
+    assert_dropped_declaration("width: calc(1px +)");
 }
 
 #[test]
 fn transition_duration_metadata_matches_typed_duration_behavior() {
-    assert_c03_timing_metadata(
-        "baseline.property.transition-duration",
+    assert_single_known_declaration(
         "transition-duration: calc((1s + 250ms) * 2)",
-        "I-TRANSITIONS1",
-        "#propdef-transition-duration",
-        CssSupportStatus::Complete,
-        None,
-        None,
+        "baseline.property.transition-duration",
     );
 }
 
 #[test]
 fn transition_delay_metadata_matches_signed_delay_behavior() {
-    assert_c03_timing_metadata(
-        "baseline.property.transition-delay",
+    assert_single_known_declaration(
         "transition-delay: -250ms",
-        "I-TRANSITIONS1",
-        "#propdef-transition-delay",
-        CssSupportStatus::Complete,
-        None,
-        None,
+        "baseline.property.transition-delay",
     );
 }
 
 #[test]
 fn animation_duration_metadata_matches_typed_duration_behavior() {
-    assert_c03_timing_metadata(
-        "baseline.property.animation-duration",
+    assert_single_known_declaration(
         "animation-duration: calc(1s + 250ms)",
-        "I-ANIMATIONS1",
-        "#propdef-animation-duration",
-        CssSupportStatus::Complete,
-        None,
-        None,
+        "baseline.property.animation-duration",
     );
 }
 
 #[test]
 fn animation_delay_metadata_matches_signed_delay_behavior() {
-    assert_c03_timing_metadata(
-        "baseline.property.animation-delay",
-        "animation-delay: -1s",
-        "I-ANIMATIONS1",
-        "#propdef-animation-delay",
-        CssSupportStatus::Complete,
-        None,
-        None,
-    );
+    assert_single_known_declaration("animation-delay: -1s", "baseline.property.animation-delay");
 }
 
 #[test]
 fn animation_iteration_count_metadata_matches_typed_iteration_behavior() {
-    assert_c03_timing_metadata(
-        "baseline.property.animation-iteration-count",
+    assert_single_known_declaration(
         "animation-iteration-count: calc((1 + 2) * 3)",
-        "I-ANIMATIONS1",
-        "#propdef-animation-iteration-count",
-        CssSupportStatus::Complete,
-        None,
-        None,
+        "baseline.property.animation-iteration-count",
     );
 }
 
 #[test]
 fn transition_metadata_matches_the_selected_complete_shorthand_grammar() {
-    assert_c03_timing_metadata(
-        "baseline.property.transition",
+    assert_single_known_declaration(
         "transition: opacity calc(1s + 250ms) linear -200ms",
-        "I-TRANSITIONS1",
-        "#propdef-transition",
-        CssSupportStatus::Complete,
-        None,
-        None,
+        "baseline.property.transition",
     );
 }
 
 #[test]
 fn animation_metadata_matches_the_selected_complete_shorthand_grammar() {
-    assert_c03_timing_metadata(
-        "baseline.property.animation",
+    assert_single_known_declaration(
         "animation: fade calc(1s + 250ms) linear calc((1 + 2) * 3) -200ms both running",
-        "I-ANIMATIONS1",
-        "#propdef-animation",
-        CssSupportStatus::Complete,
-        None,
-        None,
+        "baseline.property.animation",
     );
 }
 
@@ -3241,14 +1457,12 @@ fn complete_media_range_metadata_preserves_original_comparison_evidence() {
         let metadata = feature_metadata(&id).expect("range metadata");
         assert_eq!(metadata.status(), CssSupportStatus::Complete);
         assert_eq!(metadata.source().id().as_str(), "X-MEDIA5");
-        assert_eq!(metadata.supported_subset(), None);
-        assert_eq!(metadata.unsupported_remainder(), None);
         assert!(parse_sheet(&format!("@media {css} {{}}")).is_clean());
     }
 }
 
 #[test]
-fn media_conditional_and_import_metadata_are_truthful() {
+fn media_supports_and_import_preludes_parse_cleanly() {
     for source in [
         "@media speech and (device-width: 800px) and (resolution: 2dpcm) { .x { color: red; } }",
         "@supports (display: grid) and future-layout(mode) { .x { color: red; } }",
@@ -3263,150 +1477,6 @@ fn media_conditional_and_import_metadata_are_truthful() {
         );
     }
 
-    let assert_complete = |id: &str, kind: CssFeatureKind, source_id: &str, production: &str| {
-        let metadata = feature_metadata(id).unwrap_or_else(|| panic!("missing metadata for {id}"));
-        assert_eq!(metadata.kind(), kind, "{id} kind");
-        assert_eq!(metadata.source().id().as_str(), source_id, "{id} source");
-        assert_eq!(metadata.production(), production, "{id} production");
-        assert_eq!(metadata.status(), CssSupportStatus::Complete, "{id} status");
-        assert_eq!(metadata.supported_subset(), None, "{id} subset");
-        assert_eq!(metadata.unsupported_remainder(), None, "{id} remainder");
-        assert_eq!(
-            metadata.recognized_unsupported_code(),
-            None,
-            "{id} recognized code"
-        );
-        assert!(metadata.baseline_alias_targets().is_empty(), "{id} alias");
-    };
-
-    assert_complete(
-        "official.media.query-list-core",
-        CssFeatureKind::MediaQuery,
-        "X-MEDIA5",
-        "#mq-syntax",
-    );
-    assert_complete(
-        "baseline.media.type",
-        CssFeatureKind::MediaQuery,
-        "X-MEDIA5",
-        "#media-types",
-    );
-    assert_complete(
-        "official.media.feature.width",
-        CssFeatureKind::MediaQuery,
-        "X-MEDIA5",
-        "#width",
-    );
-    assert_complete(
-        "official.media.feature.height",
-        CssFeatureKind::MediaQuery,
-        "X-MEDIA5",
-        "#height",
-    );
-    assert_complete(
-        "official.media.feature.device-width",
-        CssFeatureKind::MediaQuery,
-        "X-MEDIA5",
-        "#device-width",
-    );
-    assert_complete(
-        "official.media.feature.device-height",
-        CssFeatureKind::MediaQuery,
-        "X-MEDIA5",
-        "#device-height",
-    );
-    assert_complete(
-        "official.media.feature.orientation",
-        CssFeatureKind::MediaQuery,
-        "X-MEDIA5",
-        "#orientation",
-    );
-    assert_complete(
-        "official.media.feature.aspect-ratio",
-        CssFeatureKind::MediaQuery,
-        "X-MEDIA5",
-        "#aspect-ratio",
-    );
-    assert_complete(
-        "official.media.feature.device-aspect-ratio",
-        CssFeatureKind::MediaQuery,
-        "X-MEDIA5",
-        "#device-aspect-ratio",
-    );
-    assert_complete(
-        "official.media.feature.color",
-        CssFeatureKind::MediaQuery,
-        "X-MEDIA5",
-        "#color",
-    );
-    assert_complete(
-        "official.media.feature.color-index",
-        CssFeatureKind::MediaQuery,
-        "X-MEDIA5",
-        "#color-index",
-    );
-    assert_complete(
-        "official.media.feature.monochrome",
-        CssFeatureKind::MediaQuery,
-        "X-MEDIA5",
-        "#monochrome",
-    );
-    assert_complete(
-        "official.media.feature.resolution",
-        CssFeatureKind::MediaQuery,
-        "X-MEDIA5",
-        "#resolution",
-    );
-    assert_complete(
-        "official.media.feature.scan",
-        CssFeatureKind::MediaQuery,
-        "X-MEDIA5",
-        "#scan",
-    );
-    assert_complete(
-        "official.media.feature.grid",
-        CssFeatureKind::MediaQuery,
-        "X-MEDIA5",
-        "#grid",
-    );
-
-    assert_complete(
-        "baseline.rule.media",
-        CssFeatureKind::Rule,
-        "O-CONDITIONAL3",
-        "#at-media",
-    );
-    assert_complete(
-        "later.rule.supports",
-        CssFeatureKind::Rule,
-        "O-CONDITIONAL3",
-        "#at-supports",
-    );
-    assert_complete(
-        "official.rule.conditional-group-context",
-        CssFeatureKind::Rule,
-        "O-CONDITIONAL3",
-        "#contents,#placement",
-    );
-    assert_complete(
-        "baseline.rule.import",
-        CssFeatureKind::Rule,
-        "O-CASCADE4",
-        "#at-import",
-    );
-
-    assert_complete(
-        "ext.media.resolution.dppx",
-        CssFeatureKind::MediaQuery,
-        "X-MEDIA5",
-        "#resolution",
-    );
-    assert_complete(
-        "ext.supports.general-enclosed",
-        CssFeatureKind::Value,
-        "X-VALUES4",
-        "css-values-4/Overview.bs#general-enclosed",
-    );
     let general_enclosed_source =
         specification_source("X-VALUES4").expect("immutable general-enclosed source");
     assert_eq!(
@@ -3418,36 +1488,16 @@ fn media_conditional_and_import_metadata_are_truthful() {
         general_enclosed_source.repository_provenance(),
         Some("720ea2863696971ea6a6744e0f23acbb3e6936bd:css-values-4/Overview.bs")
     );
-    assert_complete(
-        "ext.import.layer",
-        CssFeatureKind::Rule,
-        "R-CASCADE5",
-        "#at-import",
-    );
-    assert_complete(
-        "ext.stylesheet.prelude-order",
-        CssFeatureKind::Rule,
-        "R-CASCADE5",
-        "#at-import",
-    );
-
     let selector =
         feature_metadata("ext.supports.selector").expect("Conditional 4 selector-test metadata");
     assert_eq!(selector.kind(), CssFeatureKind::Selector);
     assert_eq!(selector.source().id().as_str(), "R-CONDITIONAL4");
-    assert_eq!(selector.production(), "#at-supports");
+    assert_eq!(selector.production(), "#typedef-supports-selector-fn");
     assert_eq!(selector.status(), CssSupportStatus::Partial);
-    assert_eq!(selector.supported_subset(), Some(SUPPORTS_SELECTOR_SUBSET));
-    assert_eq!(
-        selector.unsupported_remainder(),
-        Some(SUPPORTS_SELECTOR_REMAINDER)
-    );
-    assert_eq!(selector.recognized_unsupported_code(), None);
-    assert!(selector.baseline_alias_targets().is_empty());
 }
 
 #[test]
-fn selectors3_and_namespace_metadata_are_truthful() {
+fn selectors3_and_namespace_selectors_parse_into_typed_supports_conditions() {
     let selectors = parse_sheet(concat!(
         ":root,:link,:visited,:target,:lang(en),:hover,:active,:focus,",
         ":enabled,:disabled,:checked,:indeterminate,:first-child,:last-child,",
@@ -3503,338 +1553,20 @@ fn selectors3_and_namespace_metadata_are_truthful() {
             if value.authored() == Some("selector(.x ||)")
     ));
 
-    let assert_complete = |id: &str, kind: CssFeatureKind, source: &str, production: &str| {
-        let metadata = feature_metadata(id).unwrap_or_else(|| panic!("missing metadata for {id}"));
-        assert_eq!(metadata.id().as_str(), id, "{id} identity");
-        assert_eq!(metadata.kind(), kind, "{id} kind");
-        assert_eq!(metadata.source().id().as_str(), source, "{id} source");
-        assert_eq!(metadata.production(), production, "{id} production");
-        assert_eq!(metadata.status(), CssSupportStatus::Complete, "{id} status");
-        assert_eq!(metadata.supported_subset(), None, "{id} subset");
-        assert_eq!(metadata.unsupported_remainder(), None, "{id} remainder");
-        assert_eq!(
-            metadata.recognized_unsupported_code(),
-            None,
-            "{id} recognized code"
-        );
-        assert!(metadata.baseline_alias_targets().is_empty(), "{id} atomic");
-    };
-
-    assert_complete(
-        "official.selector.group",
-        CssFeatureKind::Selector,
-        "O-SELECTORS3",
-        "#grouping",
-    );
-    assert_complete(
-        "official.selector.type",
-        CssFeatureKind::Selector,
-        "O-SELECTORS3",
-        "#type-selectors",
-    );
-    assert_complete(
-        "official.selector.universal",
-        CssFeatureKind::Selector,
-        "O-SELECTORS3",
-        "#universal-selector",
-    );
-    assert_complete(
-        "official.selector.attribute-presence-value",
-        CssFeatureKind::Selector,
-        "O-SELECTORS3",
-        "#attribute-representation",
-    );
-    assert_complete(
-        "official.selector.attribute-substring",
-        CssFeatureKind::Selector,
-        "O-SELECTORS3",
-        "#attribute-substrings",
-    );
-    assert_complete(
-        "official.selector.class",
-        CssFeatureKind::Selector,
-        "O-SELECTORS3",
-        "#class-html",
-    );
-    assert_complete(
-        "official.selector.id",
-        CssFeatureKind::Selector,
-        "O-SELECTORS3",
-        "#id-selectors",
-    );
-    assert_complete(
-        "official.selector.dynamic",
-        CssFeatureKind::Selector,
-        "O-SELECTORS3",
-        "#dynamic-pseudos",
-    );
-    assert_complete(
-        "official.selector.target",
-        CssFeatureKind::Selector,
-        "O-SELECTORS3",
-        "#target-pseudo",
-    );
-    assert_complete(
-        "official.selector.lang",
-        CssFeatureKind::Selector,
-        "I-SELECTORS4",
-        "#the-lang-pseudo",
-    );
-    assert_complete(
-        "official.selector.ui-state",
-        CssFeatureKind::Selector,
-        "O-SELECTORS3",
-        "#UIstates",
-    );
-    assert_complete(
-        "official.selector.structural",
-        CssFeatureKind::Selector,
-        "O-SELECTORS3",
-        "#structural-pseudos",
-    );
-    assert_complete(
-        "official.selector.negation",
-        CssFeatureKind::Selector,
-        "O-SELECTORS3",
-        "#negation",
-    );
-    assert_complete(
-        "official.selector.first-line",
-        CssFeatureKind::Selector,
-        "O-SELECTORS3",
-        "#first-line",
-    );
-    assert_complete(
-        "official.selector.first-letter",
-        CssFeatureKind::Selector,
-        "O-SELECTORS3",
-        "#first-letter",
-    );
-    assert_complete(
-        "official.selector.generated",
-        CssFeatureKind::Selector,
-        "O-SELECTORS3",
-        "#gen-content",
-    );
-    assert_complete(
-        "official.selector.combinator.descendant",
-        CssFeatureKind::Selector,
-        "O-SELECTORS3",
-        "#descendant-combinators",
-    );
-    assert_complete(
-        "official.selector.combinator.child",
-        CssFeatureKind::Selector,
-        "O-SELECTORS3",
-        "#child-combinators",
-    );
-    assert_complete(
-        "official.selector.combinator.next-sibling",
-        CssFeatureKind::Selector,
-        "O-SELECTORS3",
-        "#adjacent-sibling-combinators",
-    );
-    assert_complete(
-        "official.selector.combinator.subsequent-sibling",
-        CssFeatureKind::Selector,
-        "O-SELECTORS3",
-        "#general-sibling-combinators",
-    );
-    assert_complete(
-        "later.rule.namespace",
-        CssFeatureKind::Rule,
-        "O-NAMESPACES3",
-        "#terminology,#declaration,#syntax,#scope,#prefixes",
-    );
-    assert_complete(
-        "official.selector.namespace-qualified-name",
-        CssFeatureKind::Selector,
-        "O-NAMESPACES3",
-        "#scope,#prefixes,#css-qnames",
-    );
-
     let supports_selector =
         feature_metadata("ext.supports.selector").expect("selector() extension metadata");
     assert_eq!(supports_selector.id().as_str(), "ext.supports.selector");
     assert_eq!(supports_selector.kind(), CssFeatureKind::Selector);
     assert_eq!(supports_selector.source().id().as_str(), "R-CONDITIONAL4");
-    assert_eq!(supports_selector.production(), "#at-supports");
+    assert_eq!(
+        supports_selector.production(),
+        "#typedef-supports-selector-fn"
+    );
     assert_eq!(supports_selector.status(), CssSupportStatus::Partial);
-    assert_eq!(
-        supports_selector.supported_subset(),
-        Some(SUPPORTS_SELECTOR_SUBSET)
-    );
-    assert_eq!(
-        supports_selector.unsupported_remainder(),
-        Some(SUPPORTS_SELECTOR_REMAINDER)
-    );
-    assert_eq!(supports_selector.recognized_unsupported_code(), None);
-    assert!(supports_selector.baseline_alias_targets().is_empty());
 }
 
 #[test]
-fn counter_styles_and_page_metadata_are_truthful() {
-    let counter_styles = [
-        (
-            "later.rule.counter-style",
-            CssFeatureKind::Rule,
-            "@counter-style",
-            "#the-counter-style-rule",
-        ),
-        (
-            "official.descriptor.counter-style.system",
-            CssFeatureKind::Descriptor,
-            "system in @counter-style",
-            "#counter-style-system",
-        ),
-        (
-            "official.descriptor.counter-style.negative",
-            CssFeatureKind::Descriptor,
-            "negative in @counter-style",
-            "#counter-style-negative",
-        ),
-        (
-            "official.descriptor.counter-style.prefix",
-            CssFeatureKind::Descriptor,
-            "prefix in @counter-style",
-            "#counter-style-prefix",
-        ),
-        (
-            "official.descriptor.counter-style.suffix",
-            CssFeatureKind::Descriptor,
-            "suffix in @counter-style",
-            "#counter-style-suffix",
-        ),
-        (
-            "official.descriptor.counter-style.range",
-            CssFeatureKind::Descriptor,
-            "range in @counter-style",
-            "#counter-style-range",
-        ),
-        (
-            "official.descriptor.counter-style.pad",
-            CssFeatureKind::Descriptor,
-            "pad in @counter-style",
-            "#counter-style-pad",
-        ),
-        (
-            "official.descriptor.counter-style.fallback",
-            CssFeatureKind::Descriptor,
-            "fallback in @counter-style",
-            "#counter-style-fallback",
-        ),
-        (
-            "official.descriptor.counter-style.symbols",
-            CssFeatureKind::Descriptor,
-            "symbols in @counter-style",
-            "#counter-style-symbols",
-        ),
-        (
-            "official.descriptor.counter-style.additive-symbols",
-            CssFeatureKind::Descriptor,
-            "additive-symbols in @counter-style",
-            "#counter-style-symbols",
-        ),
-        (
-            "official.descriptor.counter-style.speak-as",
-            CssFeatureKind::Descriptor,
-            "speak-as in @counter-style",
-            "#counter-style-speak-as",
-        ),
-        (
-            "official.value.counter-style",
-            CssFeatureKind::Value,
-            "<counter-style>",
-            "#the-counter-style-rule",
-        ),
-        (
-            "official.value.counter-style-name",
-            CssFeatureKind::Value,
-            "<counter-style-name>",
-            "#the-counter-style-rule",
-        ),
-        (
-            "official.value.symbol",
-            CssFeatureKind::Value,
-            "<symbol>",
-            "#counter-style-symbols",
-        ),
-        (
-            "official.value.symbols-function",
-            CssFeatureKind::Value,
-            "symbols()",
-            "#symbols-function",
-        ),
-        (
-            "official.value.symbols-type",
-            CssFeatureKind::Value,
-            "cyclic|numeric|alphabetic|symbolic|fixed",
-            "#symbols-function",
-        ),
-    ];
-
-    let page = [
-        (
-            "later.rule.page",
-            CssFeatureKind::Rule,
-            "@page",
-            "#syntax-page-selector",
-        ),
-        (
-            "official.selector.page-pseudo",
-            CssFeatureKind::Selector,
-            ":left|:right|:first|:blank",
-            "#page-selectors",
-        ),
-    ];
-
-    for (id, kind, spelling, production) in counter_styles {
-        let metadata = feature_metadata(id).unwrap_or_else(|| panic!("missing metadata for {id}"));
-        assert_eq!(metadata.id().as_str(), id, "{id} identity");
-        assert_eq!(metadata.kind(), kind, "{id} kind");
-        assert_eq!(metadata.spelling(), spelling, "{id} spelling");
-        assert_eq!(
-            metadata.source().id().as_str(),
-            "O-COUNTERSTYLES3",
-            "{id} source"
-        );
-        assert_eq!(metadata.production(), production, "{id} production");
-        assert_eq!(metadata.status(), CssSupportStatus::Complete, "{id} status");
-        assert_eq!(metadata.supported_subset(), None, "{id} subset");
-        assert_eq!(metadata.unsupported_remainder(), None, "{id} remainder");
-        assert_eq!(
-            metadata.recognized_unsupported_code(),
-            None,
-            "{id} recognized code"
-        );
-        assert!(metadata.baseline_alias_targets().is_empty(), "{id} atomic");
-    }
-
-    for (id, kind, spelling, production) in page {
-        let metadata = feature_metadata(id).unwrap_or_else(|| panic!("missing metadata for {id}"));
-        assert_eq!(metadata.id().as_str(), id, "{id} identity");
-        assert_eq!(metadata.kind(), kind, "{id} kind");
-        assert_eq!(metadata.spelling(), spelling, "{id} spelling");
-        assert_eq!(
-            metadata.source().id().as_str(),
-            "L-PAGE3-20181018",
-            "{id} source"
-        );
-        assert_eq!(metadata.production(), production, "{id} production");
-        assert_eq!(metadata.status(), CssSupportStatus::Complete, "{id} status");
-        assert_eq!(metadata.supported_subset(), None, "{id} subset");
-        assert_eq!(metadata.unsupported_remainder(), None, "{id} remainder");
-        assert_eq!(
-            metadata.recognized_unsupported_code(),
-            None,
-            "{id} recognized code"
-        );
-        assert!(metadata.baseline_alias_targets().is_empty(), "{id} atomic");
-    }
-}
-
-#[test]
-fn c12_property_metadata_is_truthful() {
+fn residual_css2_and_level_three_properties_parse_with_their_catalog_owner() {
     let properties = [
         (
             "official.property.border-collapse",
@@ -4014,10 +1746,6 @@ fn c12_property_metadata_is_truthful() {
         assert_eq!(metadata.source().id().as_str(), source, "{id} source");
         assert_eq!(metadata.production(), production, "{id} production");
         assert_eq!(metadata.status(), CssSupportStatus::Complete, "{id} status");
-        assert_eq!(metadata.supported_subset(), None, "{id} subset");
-        assert_eq!(metadata.unsupported_remainder(), None, "{id} remainder");
-        assert_eq!(metadata.recognized_unsupported_code(), None, "{id} code");
-        assert!(metadata.baseline_alias_targets().is_empty(), "{id} atomic");
 
         let property =
             property_support_metadata(name).unwrap_or_else(|| panic!("missing property {name}"));
@@ -4050,8 +1778,6 @@ fn c12_property_metadata_is_truthful() {
     assert_eq!(alias.status(), CssSupportStatus::Partial);
     assert!(alias.supported_subset().is_some());
     assert!(alias.unsupported_remainder().is_some());
-    assert_eq!(alias.recognized_unsupported_code(), None);
-    assert!(alias.baseline_alias_targets().is_empty());
     let alias_report = parse_style_attribute("glyph-orientation-vertical: 90");
     assert!(alias_report.is_clean(), "{:?}", alias_report.diagnostics());
     assert_eq!(
@@ -4089,10 +1815,6 @@ fn c12_property_metadata_is_truthful() {
         assert_eq!(metadata.source().id().as_str(), source, "{id} source");
         assert_eq!(metadata.production(), production, "{id} production");
         assert_eq!(metadata.status(), CssSupportStatus::Complete, "{id} status");
-        assert_eq!(metadata.supported_subset(), None, "{id} subset");
-        assert_eq!(metadata.unsupported_remainder(), None, "{id} remainder");
-        assert_eq!(metadata.recognized_unsupported_code(), None, "{id} code");
-        assert!(metadata.baseline_alias_targets().is_empty(), "{id} atomic");
         let report = parse_style_attribute(vector);
         assert!(report.is_clean(), "{id}: {:?}", report.diagnostics());
         assert_eq!(report.syntax().len(), 1, "{id} parser vector");
@@ -4135,137 +1857,6 @@ fn c12_property_metadata_is_truthful() {
         assert!(CssBlendMode::from_keyword(keyword).is_some(), "{keyword}");
     }
     assert_eq!(CssBlendMode::from_keyword("plus-lighter"), None);
-}
-
-#[test]
-fn named_conformance_records_expose_declared_metadata() {
-    for expected in EXPECTED {
-        let actual = feature_metadata(expected.id).expect("expected catalog record");
-        assert_eq!(actual.id().as_str(), expected.id);
-        assert_eq!(actual.kind(), expected.kind, "{} kind", expected.id);
-        assert_eq!(
-            actual.spelling(),
-            expected.spelling,
-            "{} spelling",
-            expected.id
-        );
-        assert_eq!(
-            actual.production(),
-            expected.production,
-            "{} production",
-            expected.id
-        );
-        assert_eq!(actual.status(), expected.status, "{} status", expected.id);
-        assert_eq!(
-            actual.supported_subset(),
-            expected.supported_subset,
-            "{} supported subset",
-            expected.id
-        );
-        assert_eq!(
-            actual.unsupported_remainder(),
-            expected.unsupported_remainder,
-            "{} unsupported remainder",
-            expected.id
-        );
-        assert_eq!(
-            actual.recognized_unsupported_code(),
-            expected.recognized_code,
-            "{} recognized code",
-            expected.id
-        );
-        let ExpectedSource::Id(source_id) = expected.source;
-        assert_eq!(
-            actual.source().id().as_str(),
-            source_id,
-            "{} source",
-            expected.id
-        );
-
-        let partial = expected.status == CssSupportStatus::Partial;
-        assert_eq!(
-            actual.supported_subset().is_some(),
-            partial,
-            "{} subset status invariant",
-            expected.id
-        );
-        assert_eq!(
-            actual.unsupported_remainder().is_some(),
-            partial,
-            "{} remainder status invariant",
-            expected.id
-        );
-        assert_eq!(
-            actual.recognized_unsupported_code().is_some(),
-            expected.status == CssSupportStatus::RecognizedUnsupported,
-            "{} recognized status invariant",
-            expected.id
-        );
-    }
-
-    assert!(
-        feature_metadata("BASELINE.RULE.IMPORT").is_none(),
-        "lookup is exact"
-    );
-    assert!(
-        feature_metadata("baseline.rule.import ").is_none(),
-        "lookup does not trim"
-    );
-    assert!(feature_metadata("baseline.property.display").is_some());
-    assert!(feature_metadata("").is_none());
-}
-
-#[test]
-fn conformance_catalog_vectors_cover_each_supported_and_unsupported_boundary() {
-    for expected in EXPECTED {
-        match expected.status {
-            CssSupportStatus::Complete | CssSupportStatus::Partial => {
-                let input = expected
-                    .positive
-                    .expect("supported record needs a positive vector");
-                let diagnostics = diagnostics(input);
-                assert!(
-                    diagnostics.is_empty(),
-                    "{} positive vector produced {diagnostics:?}",
-                    expected.id
-                );
-            }
-            CssSupportStatus::RecognizedUnsupported => {
-                assert!(
-                    expected.positive.is_none(),
-                    "recognized unsupported has no positive vector"
-                );
-            }
-        }
-
-        match expected.status {
-            CssSupportStatus::Complete => assert!(expected.negative.is_none()),
-            CssSupportStatus::Partial | CssSupportStatus::RecognizedUnsupported => {
-                let (input, code) = expected
-                    .negative
-                    .expect("unsupported boundary needs a vector");
-                let diagnostics = diagnostics(input);
-                assert!(
-                    !diagnostics.is_empty(),
-                    "{} negative vector was accepted",
-                    expected.id
-                );
-                assert_eq!(
-                    diagnostics[0].0, code,
-                    "{} negative vector root",
-                    expected.id
-                );
-                if expected.status == CssSupportStatus::RecognizedUnsupported {
-                    assert_eq!(
-                        diagnostics[0].1,
-                        Some(expected.id),
-                        "{} diagnostic feature identity",
-                        expected.id
-                    );
-                }
-            }
-        }
-    }
 }
 
 #[test]
@@ -4439,7 +2030,7 @@ fn source_registry_exposes_containment_level_three_extension_provenance() {
 }
 
 #[test]
-fn preserved_i01_catalog_exposes_dated_atomic_provenance_and_alias_targets() {
+fn container_scrollbar_and_generated_records_cite_their_dated_sources() {
     let scrollbar =
         feature_metadata("baseline.property.scrollbar-width").expect("scrollbar-width record");
     assert_eq!(scrollbar.source().id().as_str(), "R-SCROLLBARS1");
@@ -4461,40 +2052,9 @@ fn preserved_i01_catalog_exposes_dated_atomic_provenance_and_alias_targets() {
         );
     }
 
-    let alias = feature_metadata("baseline.selector.pseudo-element")
-        .expect("preserved pseudo-element alias");
-    let targets: Vec<_> = alias
-        .baseline_alias_targets()
-        .iter()
-        .map(|id| id.as_str())
-        .collect();
-    assert_eq!(
-        targets,
-        [
-            "official.selector.generated",
-            "ext.pseudo-element.marker",
-            "ext.pseudo-element.selection",
-            "ext.pseudo-element.prefix",
-            "ext.pseudo-element.suffix",
-            "ext.pseudo-element.search-text",
-            "ext.pseudo-element.target-text",
-            "ext.pseudo-element.spelling-error",
-            "ext.pseudo-element.grammar-error",
-            "ext.pseudo-element.highlight",
-            "ext.pseudo-element.placeholder",
-            "ext.pseudo-element.file-selector-button",
-            "ext.pseudo-element.details-content",
-            "ext.pseudo-element.search-text-current",
-            "ext.pseudo-element.backdrop",
-            "ext.pseudo-element.generated-marker",
-            "ext.pseudo-element.unknown-webkit",
-        ]
-    );
-
     let generated =
         feature_metadata("official.selector.generated").expect("atomic generated pseudo-element");
     assert_eq!(generated.source().id().as_str(), "O-SELECTORS3");
-    assert!(generated.baseline_alias_targets().is_empty());
 
     let report = parse_sheet(".note::before { color: red; }");
     assert!(
@@ -4506,79 +2066,39 @@ fn preserved_i01_catalog_exposes_dated_atomic_provenance_and_alias_targets() {
 }
 
 #[test]
-fn every_alias_atomic_target_has_declared_metadata_and_public_parser_evidence() {
-    let aliases: &[(&str, &[&str])] = &[
+fn every_pseudo_element_and_media_feature_record_has_public_parser_evidence() {
+    // The supported subset and its boundary for pseudo-element suffixes and
+    // media-query lists, ranges and discrete features.
+    for source in [
+        ".item::before { content: \"x\"; }",
+        "@media screen and (min-width: 1px), print { .x { color: red; } }",
+        "@media (orientation: landscape) { .x { color: red; } }",
+    ] {
+        let report = parse_sheet(source);
+        assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
+    }
+    for (source, code) in [
         (
-            "baseline.selector.pseudo-element",
-            &[
-                "official.selector.generated",
-                "ext.pseudo-element.marker",
-                "ext.pseudo-element.selection",
-                "ext.pseudo-element.prefix",
-                "ext.pseudo-element.suffix",
-                "ext.pseudo-element.search-text",
-                "ext.pseudo-element.target-text",
-                "ext.pseudo-element.spelling-error",
-                "ext.pseudo-element.grammar-error",
-                "ext.pseudo-element.highlight",
-                "ext.pseudo-element.placeholder",
-                "ext.pseudo-element.file-selector-button",
-                "ext.pseudo-element.details-content",
-                "ext.pseudo-element.search-text-current",
-                "ext.pseudo-element.backdrop",
-                "ext.pseudo-element.generated-marker",
-                "ext.pseudo-element.unknown-webkit",
-            ],
+            ".item::part() { color: red; }",
+            CssErrorCode::InvalidSelector,
         ),
+        // Unknown features stay clean; an incomplete outer conjunction is invalid.
         (
-            "baseline.media.query-list",
-            &[
-                "official.media.query-list-core",
-                "ext.media.condition-syntax",
-                "ext.media.malformed-member-never",
-            ],
+            "@media (width >= 1px) and { .x { color: red; } }",
+            CssErrorCode::InvalidMediaQuery,
         ),
+        // Scripting is admitted, but typed queries prohibit an unwrapped outer `or`.
         (
-            "baseline.media.range-feature",
-            &[
-                "official.media.feature.width",
-                "official.media.feature.height",
-                "official.media.feature.resolution",
-                "official.media.feature.color",
-                "official.media.feature.monochrome",
-                "ext.media.resolution.dppx",
-                "ext.media.range.width",
-                "ext.media.range.height",
-                "ext.media.range.resolution",
-                "ext.media.range.color",
-                "ext.media.range.monochrome",
-            ],
+            "@media screen and (scripting: enabled) or (color) { .x { color: red; } }",
+            CssErrorCode::InvalidMediaQuery,
         ),
-        (
-            "baseline.media.discrete-feature",
-            &[
-                "official.media.feature.orientation",
-                "ext.media.hover",
-                "ext.media.any-hover",
-                "ext.media.pointer",
-                "ext.media.any-pointer",
-                "ext.media.prefers-color-scheme",
-                "ext.media.prefers-reduced-motion",
-                "ext.media.prefers-reduced-transparency",
-                "ext.media.prefers-contrast",
-                "ext.media.forced-colors",
-                "ext.media.display-mode",
-            ],
-        ),
-    ];
-    for (alias_id, expected_targets) in aliases {
-        let alias = feature_metadata(alias_id).unwrap_or_else(|| panic!("missing `{alias_id}`"));
-        let actual_targets: Vec<_> = alias
-            .baseline_alias_targets()
-            .iter()
-            .map(|target| target.as_str())
-            .collect();
-        assert_eq!(actual_targets, *expected_targets, "{alias_id}");
+    ] {
+        let report = parse_sheet(source);
+        assert_eq!(
+            report.diagnostics().first().map(|d| d.error().code()),
+            Some(code),
+            "{source}"
+        );
     }
 
     let clean_cases = [
@@ -4801,7 +2321,6 @@ fn every_alias_atomic_target_has_declared_metadata_and_public_parser_evidence() 
     for (id, source_id, css) in clean_cases {
         let metadata = feature_metadata(id).unwrap_or_else(|| panic!("missing `{id}`"));
         assert_eq!(metadata.source().id().as_str(), source_id, "{id}");
-        assert!(metadata.baseline_alias_targets().is_empty(), "{id}");
         let report = parse_sheet(css);
         assert!(report.is_clean(), "{id}: {:?}", report.diagnostics());
         assert_eq!(report.syntax().rules().len(), 1, "{id}");
@@ -4810,7 +2329,6 @@ fn every_alias_atomic_target_has_declared_metadata_and_public_parser_evidence() 
     let malformed = feature_metadata("ext.media.malformed-member-never")
         .expect("malformed-member recovery target");
     assert_eq!(malformed.source().id().as_str(), "X-MEDIA5");
-    assert!(malformed.baseline_alias_targets().is_empty());
     let source = "@media screen, ??? { .x { color: red; } }";
     let report = parse_sheet(source);
     assert_eq!(report.syntax().rules().len(), 1);
@@ -4834,41 +2352,6 @@ fn every_alias_atomic_target_has_declared_metadata_and_public_parser_evidence() 
         diagnostic.span().end().byte_offset().value(),
         source.find('{').expect("end of media query list")
     );
-}
-
-fn assert_complete_function_metadata(id: &str, spelling: &str, source: &str, production: &str) {
-    let metadata = feature_metadata(id).unwrap_or_else(|| panic!("missing `{id}` metadata"));
-    assert_eq!(metadata.id().as_str(), id, "{id} identity");
-    assert_eq!(metadata.kind(), CssFeatureKind::Value, "{id} kind");
-    assert_eq!(metadata.spelling(), spelling, "{id} spelling");
-    assert_eq!(metadata.source().id().as_str(), source, "{id} source");
-    assert_eq!(metadata.production(), production, "{id} production");
-    assert_eq!(metadata.status(), CssSupportStatus::Complete, "{id} status");
-    assert_eq!(metadata.supported_subset(), None, "{id} subset");
-    assert_eq!(metadata.unsupported_remainder(), None, "{id} remainder");
-    assert_eq!(metadata.recognized_unsupported_code(), None, "{id} code");
-    assert!(metadata.baseline_alias_targets().is_empty(), "{id} atomic");
-}
-
-fn assert_complete_function_property_metadata(
-    id: &str,
-    canonical_name: &str,
-    source: &str,
-    production: &str,
-) {
-    let metadata = feature_metadata(id).unwrap_or_else(|| panic!("missing `{id}` metadata"));
-    let property = property_support_metadata(canonical_name)
-        .unwrap_or_else(|| panic!("missing `{canonical_name}` property metadata"));
-    assert!(std::ptr::eq(metadata, property.feature()), "{id} owner");
-    assert_eq!(metadata.kind(), CssFeatureKind::Property, "{id} kind");
-    assert_eq!(metadata.spelling(), canonical_name, "{id} spelling");
-    assert_eq!(metadata.source().id().as_str(), source, "{id} source");
-    assert_eq!(metadata.production(), production, "{id} production");
-    assert_eq!(metadata.status(), CssSupportStatus::Complete, "{id} status");
-    assert_eq!(metadata.supported_subset(), None, "{id} subset");
-    assert_eq!(metadata.unsupported_remainder(), None, "{id} remainder");
-    assert_eq!(metadata.recognized_unsupported_code(), None, "{id} code");
-    assert!(metadata.baseline_alias_targets().is_empty(), "{id} atomic");
 }
 
 #[test]
@@ -4906,85 +2389,6 @@ fn official_two_dimensional_transform_metadata_matches_typed_functions() {
             CssTransformFunction::SkewY(_),
         ]
     ));
-
-    assert_complete_function_metadata(
-        "official.value.transform-list",
-        "<transform-list>",
-        "O-TRANSFORMS1",
-        "#transform-function-lists",
-    );
-    assert_complete_function_metadata(
-        "official.value.transform-function",
-        "<transform-function>",
-        "O-TRANSFORMS1",
-        "#transform-functions",
-    );
-    assert_complete_function_metadata(
-        "official.value.transform.matrix",
-        "matrix()",
-        "O-TRANSFORMS1",
-        "#two-d-transform-functions",
-    );
-    assert_complete_function_metadata(
-        "official.value.transform.translate",
-        "translate()",
-        "O-TRANSFORMS1",
-        "#two-d-transform-functions",
-    );
-    assert_complete_function_metadata(
-        "official.value.transform.translate-x",
-        "translateX()",
-        "O-TRANSFORMS1",
-        "#two-d-transform-functions",
-    );
-    assert_complete_function_metadata(
-        "official.value.transform.translate-y",
-        "translateY()",
-        "O-TRANSFORMS1",
-        "#two-d-transform-functions",
-    );
-    assert_complete_function_metadata(
-        "official.value.transform.scale",
-        "scale()",
-        "O-TRANSFORMS1",
-        "#two-d-transform-functions",
-    );
-    assert_complete_function_metadata(
-        "official.value.transform.scale-x",
-        "scaleX()",
-        "O-TRANSFORMS1",
-        "#two-d-transform-functions",
-    );
-    assert_complete_function_metadata(
-        "official.value.transform.scale-y",
-        "scaleY()",
-        "O-TRANSFORMS1",
-        "#two-d-transform-functions",
-    );
-    assert_complete_function_metadata(
-        "official.value.transform.rotate",
-        "rotate()",
-        "O-TRANSFORMS1",
-        "#two-d-transform-functions",
-    );
-    assert_complete_function_metadata(
-        "official.value.transform.skew",
-        "skew()",
-        "O-TRANSFORMS1",
-        "#two-d-transform-functions",
-    );
-    assert_complete_function_metadata(
-        "official.value.transform.skew-x",
-        "skewX()",
-        "O-TRANSFORMS1",
-        "#two-d-transform-functions",
-    );
-    assert_complete_function_metadata(
-        "official.value.transform.skew-y",
-        "skewY()",
-        "O-TRANSFORMS1",
-        "#two-d-transform-functions",
-    );
 }
 
 #[test]
@@ -5008,12 +2412,6 @@ fn transform_matrix3d_exposes_sixteen_finite_components() {
         panic!("expected matrix3d");
     };
     assert_eq!(matrix.components().len(), 16);
-    assert_complete_function_metadata(
-        "ext.value.transform.matrix3d",
-        "matrix3d()",
-        "I-TRANSFORMS2",
-        "#funcdef-matrix3d",
-    );
 }
 
 #[test]
@@ -5042,12 +2440,6 @@ fn transform_perspective_accepts_none_and_zero_and_rejects_invalid_dimensions() 
     ));
     assert!(!parse_style_attribute("transform: perspective(10%)").is_clean());
     assert!(!parse_style_attribute("transform: perspective(-1px)").is_clean());
-    assert_complete_function_metadata(
-        "ext.value.transform.perspective",
-        "perspective()",
-        "I-TRANSFORMS2",
-        "#funcdef-perspective",
-    );
 }
 
 #[test]
@@ -5076,30 +2468,6 @@ fn transform_three_dimensional_rotations_are_typed() {
             CssTransformFunction::RotateZ(_),
         ]
     ));
-    assert_complete_function_metadata(
-        "ext.value.transform.rotate3d",
-        "rotate3d()",
-        "I-TRANSFORMS2",
-        "#funcdef-rotate3d",
-    );
-    assert_complete_function_metadata(
-        "ext.value.transform.rotate-x",
-        "rotateX()",
-        "I-TRANSFORMS2",
-        "#funcdef-rotatex",
-    );
-    assert_complete_function_metadata(
-        "ext.value.transform.rotate-y",
-        "rotateY()",
-        "I-TRANSFORMS2",
-        "#funcdef-rotatey",
-    );
-    assert_complete_function_metadata(
-        "ext.value.transform.rotate-z",
-        "rotateZ()",
-        "I-TRANSFORMS2",
-        "#funcdef-rotatez",
-    );
 }
 
 #[test]
@@ -5129,18 +2497,6 @@ fn transform_three_dimensional_scales_preserve_number_and_percentage_operands() 
         functions.functions()[1],
         CssTransformFunction::ScaleZ(CssTransformScaleComponent::Percentage(_))
     ));
-    assert_complete_function_metadata(
-        "ext.value.transform.scale3d",
-        "scale3d()",
-        "I-TRANSFORMS2",
-        "#funcdef-scale3d",
-    );
-    assert_complete_function_metadata(
-        "ext.value.transform.scale-z",
-        "scaleZ()",
-        "I-TRANSFORMS2",
-        "#funcdef-scalez",
-    );
 }
 
 #[test]
@@ -5166,18 +2522,6 @@ fn transform_three_dimensional_translations_keep_z_length_only() {
         ]
     ));
     assert!(!parse_style_attribute("transform: translate3d(1px, 2px, 3%)").is_clean());
-    assert_complete_function_metadata(
-        "ext.value.transform.translate3d",
-        "translate3d()",
-        "I-TRANSFORMS2",
-        "#funcdef-translate3d",
-    );
-    assert_complete_function_metadata(
-        "ext.value.transform.translate-z",
-        "translateZ()",
-        "I-TRANSFORMS2",
-        "#funcdef-translatez",
-    );
 }
 
 #[test]
@@ -5203,18 +2547,6 @@ fn official_easing_metadata_matches_typed_functions() {
             CssEasing::Linear(_),
         ]
     ));
-    assert_complete_function_metadata(
-        "official.value.easing-function",
-        "<easing-function>",
-        "D-EASING2",
-        "#easing-functions",
-    );
-    assert_complete_function_metadata(
-        "official.value.linear-easing",
-        "linear()",
-        "D-EASING2",
-        "#linear-easing-function-syntax,#create-a-linear-easing-function",
-    );
     let source = feature_metadata("official.value.linear-easing")
         .unwrap()
         .source();
@@ -5222,24 +2554,6 @@ fn official_easing_metadata_matches_typed_functions() {
     assert_eq!(
         source.url(),
         Some("https://www.w3.org/TR/2024/WD-css-easing-2-20240829/")
-    );
-    assert_complete_function_metadata(
-        "official.value.cubic-bezier-easing",
-        "cubic-bezier()",
-        "O-EASING1",
-        "#cubic-bezier-easing-functions",
-    );
-    assert_complete_function_metadata(
-        "official.value.step-easing",
-        "steps()",
-        "O-EASING1",
-        "#step-easing-functions",
-    );
-    assert_complete_function_metadata(
-        "official.value.step-position",
-        "<step-position>",
-        "O-EASING1",
-        "#step-easing-functions",
     );
 }
 
@@ -5260,12 +2574,6 @@ fn official_shadow_metadata_matches_typed_box_shadow() {
     };
     assert!(shadows.shadows()[0].inset());
     assert!(shadows.shadows()[0].color().is_some());
-    assert_complete_function_metadata(
-        "official.value.shadow",
-        "<shadow>",
-        "O-BACKGROUNDS3",
-        "#box-shadow",
-    );
 }
 
 #[test]
@@ -5294,22 +2602,6 @@ fn filter_function_list_preserves_typed_authored_order() {
             CssFilterFunction::Opacity(_),
         ]
     ));
-    assert_complete_function_metadata(
-        "ext.value.filter-function-list",
-        "<filter-function-list>",
-        "I-FILTER1",
-        "#FilterProperty",
-    );
-}
-
-#[test]
-fn filter_image_metadata_uses_the_selected_imported_section_twelve_owner() {
-    assert_complete_function_metadata(
-        "ext.value.filter-image",
-        "filter()",
-        "I-FILTER1",
-        "#FilterCSSImageValue",
-    );
 }
 
 #[test]
@@ -5344,60 +2636,6 @@ fn every_filter_amount_function_has_exact_typed_domain() {
             CssFilterFunction::Sepia(_),
         ]
     ));
-    assert_complete_function_metadata(
-        "ext.value.filter.blur",
-        "blur()",
-        "I-FILTER1",
-        "#funcdef-filter-blur",
-    );
-    assert_complete_function_metadata(
-        "ext.value.filter.brightness",
-        "brightness()",
-        "I-FILTER1",
-        "#funcdef-filter-brightness",
-    );
-    assert_complete_function_metadata(
-        "ext.value.filter.contrast",
-        "contrast()",
-        "I-FILTER1",
-        "#funcdef-filter-contrast",
-    );
-    assert_complete_function_metadata(
-        "ext.value.filter.grayscale",
-        "grayscale()",
-        "I-FILTER1",
-        "#funcdef-filter-grayscale",
-    );
-    assert_complete_function_metadata(
-        "ext.value.filter.hue-rotate",
-        "hue-rotate()",
-        "I-FILTER1",
-        "#funcdef-filter-hue-rotate",
-    );
-    assert_complete_function_metadata(
-        "ext.value.filter.invert",
-        "invert()",
-        "I-FILTER1",
-        "#funcdef-filter-invert",
-    );
-    assert_complete_function_metadata(
-        "ext.value.filter.opacity",
-        "opacity()",
-        "I-FILTER1",
-        "#funcdef-filter-opacity",
-    );
-    assert_complete_function_metadata(
-        "ext.value.filter.saturate",
-        "saturate()",
-        "I-FILTER1",
-        "#funcdef-filter-saturate",
-    );
-    assert_complete_function_metadata(
-        "ext.value.filter.sepia",
-        "sepia()",
-        "I-FILTER1",
-        "#funcdef-filter-sepia",
-    );
 }
 
 #[test]
@@ -5421,12 +2659,6 @@ fn drop_shadow_rejects_box_shadow_only_components() {
     ));
     assert!(!parse_style_attribute("filter: drop-shadow(inset 1px 2px)").is_clean());
     assert!(!parse_style_attribute("filter: drop-shadow(1px 2px 3px 4px)").is_clean());
-    assert_complete_function_metadata(
-        "ext.value.filter.drop-shadow",
-        "drop-shadow()",
-        "I-FILTER1",
-        "#funcdef-filter-drop-shadow",
-    );
 }
 
 #[test]
@@ -5444,27 +2676,7 @@ fn all_basic_shape_functions_have_complete_authored_metadata() {
         let report = parse_style_attribute(&format!("clip-path: {value}"));
         assert!(report.is_clean(), "{value}: {:?}", report.diagnostics());
     }
-    let metadata = feature_metadata("ext.value.basic-shape").unwrap();
-    assert_eq!(metadata.kind(), CssFeatureKind::Value);
-    assert_eq!(metadata.spelling(), "<basic-shape>");
-    assert_eq!(metadata.source().id().as_str(), "S-SHAPES1");
-    assert_eq!(metadata.production(), "#typedef-basic-shape");
-    assert_complete_shape_metadata(metadata);
-    assert_complete_function_metadata(
-        "ext.value.basic-shape.shape",
-        "shape()",
-        "S-SHAPES1",
-        "#funcdef-basic-shape-shape",
-    );
 }
-fn assert_complete_shape_metadata(metadata: &CssFeatureMetadata) {
-    assert_eq!(metadata.status(), CssSupportStatus::Complete);
-    assert_eq!(metadata.supported_subset(), None);
-    assert_eq!(metadata.unsupported_remainder(), None);
-    assert_eq!(metadata.recognized_unsupported_code(), None);
-    assert!(metadata.baseline_alias_targets().is_empty());
-}
-
 #[test]
 fn every_selected_basic_shape_has_typed_public_components() {
     let report = parse_style_attribute(concat!(
@@ -5502,37 +2714,6 @@ fn every_selected_basic_shape_has_typed_public_components() {
             assert!(polygon.round().is_some(), "polygon round component");
         }
     }
-    assert_complete_function_metadata(
-        "ext.value.basic-shape.inset",
-        "inset()",
-        "S-SHAPES1",
-        "#funcdef-basic-shape-inset",
-    );
-    assert_complete_function_metadata(
-        "ext.value.basic-shape.polygon",
-        "polygon()",
-        "S-SHAPES1",
-        "#funcdef-basic-shape-polygon",
-    );
-}
-
-#[test]
-fn circle_and_ellipse_metadata_cover_the_full_imported_position_grammar() {
-    for (name, production) in [
-        ("circle", "#funcdef-basic-shape-circle"),
-        ("ellipse", "#funcdef-basic-shape-ellipse"),
-    ] {
-        let metadata = feature_metadata(&format!("ext.value.basic-shape.{name}")).unwrap();
-        assert_eq!(metadata.kind(), CssFeatureKind::Value);
-        assert_eq!(metadata.spelling(), format!("{name}()"));
-        assert_eq!(metadata.source().id().as_str(), "S-SHAPES1");
-        assert_eq!(metadata.production(), production);
-        assert_eq!(metadata.status(), CssSupportStatus::Complete);
-        assert_eq!(metadata.supported_subset(), None);
-        assert_eq!(metadata.unsupported_remainder(), None);
-        assert_eq!(metadata.recognized_unsupported_code(), None);
-        assert!(metadata.baseline_alias_targets().is_empty());
-    }
 }
 
 #[test]
@@ -5555,16 +2736,6 @@ fn backdrop_filter_preserves_typed_authored_grammar_with_the_named_source() {
                 [CssFilterFunction::Blur(_), CssFilterFunction::Opacity(_)]
             )
     ));
-    let metadata =
-        feature_metadata("baseline.property.backdrop-filter").expect("backdrop-filter metadata");
-    assert_eq!(metadata.kind(), CssFeatureKind::Property);
-    assert_eq!(metadata.spelling(), "backdrop-filter");
-    assert_eq!(metadata.source().id().as_str(), "X-BACKDROP-FILTER");
-    assert_eq!(metadata.production(), "#BackdropFilterProperty");
-    assert_eq!(metadata.status(), CssSupportStatus::Complete);
-    assert_eq!(metadata.supported_subset(), None);
-    assert_eq!(metadata.unsupported_remainder(), None);
-    assert!(metadata.baseline_alias_targets().is_empty());
 }
 
 #[test]
@@ -5589,12 +2760,6 @@ fn clip_path_complete_metadata_matches_all_authored_alternatives() {
         let report = parse_style_attribute(&format!("clip-path: {value}"));
         assert!(report.is_clean(), "{value}: {:?}", report.diagnostics());
     }
-    let metadata = feature_metadata("baseline.property.clip-path").expect("clip-path metadata");
-    assert_eq!(metadata.kind(), CssFeatureKind::Property);
-    assert_eq!(metadata.spelling(), "clip-path");
-    assert_eq!(metadata.source().id().as_str(), "S-MASKING1");
-    assert_eq!(metadata.production(), "#propdef-clip-path");
-    assert_complete_shape_metadata(metadata);
 }
 
 #[test]
@@ -5652,37 +2817,6 @@ fn completed_function_property_metadata_matches_public_current_accessors() {
         CssKnownPropertyValueRef::AnimationTimingFunction(value)
             if matches!(value.timing_functions().values(), [CssEasing::Steps(_)])
     ));
-
-    assert_complete_function_property_metadata(
-        "baseline.property.transform",
-        "transform",
-        "O-TRANSFORMS1",
-        "#propdef-transform",
-    );
-    assert_complete_function_property_metadata(
-        "baseline.property.box-shadow",
-        "box-shadow",
-        "O-BACKGROUNDS3",
-        "#propdef-box-shadow",
-    );
-    assert_complete_function_property_metadata(
-        "baseline.property.filter",
-        "filter",
-        "I-FILTER1",
-        "#propdef-filter",
-    );
-    assert_complete_function_property_metadata(
-        "baseline.property.transition-timing-function",
-        "transition-timing-function",
-        "I-TRANSITIONS1",
-        "#propdef-transition-timing-function",
-    );
-    assert_complete_function_property_metadata(
-        "baseline.property.animation-timing-function",
-        "animation-timing-function",
-        "I-ANIMATIONS1",
-        "#propdef-animation-timing-function",
-    );
 }
 
 #[test]
@@ -5765,23 +2899,6 @@ fn exclusion_registry_exposes_named_official_audit_facts() {
     assert!(conformance_exclusion("excluded.O-COLOR4.informative-audit ").is_none());
 }
 
-fn diagnostics(input: Input) -> Vec<(CssErrorCode, Option<&'static str>)> {
-    let diagnostics = match input {
-        Input::Sheet(source) => parse_sheet(source).diagnostics().to_vec(),
-        Input::Style(source) => parse_style_attribute(source).diagnostics().to_vec(),
-    };
-    diagnostics
-        .iter()
-        .map(|diagnostic| {
-            let feature = match diagnostic.error().kind() {
-                ErrorKind::UnsupportedAtRule(detail) => Some(detail.feature().as_str()),
-                _ => None,
-            };
-            (diagnostic.error().code(), feature)
-        })
-        .collect()
-}
-
 #[test]
 fn images_three_properties_are_publicly_recognized() {
     let object = parse_style_attribute("object-position: left top");
@@ -5824,8 +2941,8 @@ fn images_three_properties_are_publicly_recognized() {
 }
 
 #[test]
-fn c13_background_image_metadata_is_truthful() {
-    let c13_records = [
+fn images_and_backgrounds_records_parse_their_authored_vectors() {
+    let image_and_background_records = [
         (
             "official.property.border-image",
             CssFeatureKind::Property,
@@ -6043,9 +3160,9 @@ fn c13_background_image_metadata_is_truthful() {
             "background-image: radial-gradient(closest-side, red, blue)",
         ),
     ];
-    assert_eq!(c13_records.len(), 27);
+    assert_eq!(image_and_background_records.len(), 27);
 
-    for (id, kind, spelling, source, production, vector) in c13_records {
+    for (id, kind, spelling, source, production, vector) in image_and_background_records {
         let metadata = feature_metadata(id).unwrap_or_else(|| panic!("missing {id}"));
         assert_eq!(metadata.id().as_str(), id, "{id} identity");
         assert_eq!(metadata.kind(), kind, "{id} kind");
@@ -6053,10 +3170,6 @@ fn c13_background_image_metadata_is_truthful() {
         assert_eq!(metadata.source().id().as_str(), source, "{id} source");
         assert_eq!(metadata.production(), production, "{id} production");
         assert_eq!(metadata.status(), CssSupportStatus::Complete, "{id} status");
-        assert_eq!(metadata.supported_subset(), None, "{id} subset");
-        assert_eq!(metadata.unsupported_remainder(), None, "{id} remainder");
-        assert_eq!(metadata.recognized_unsupported_code(), None, "{id} code");
-        assert!(metadata.baseline_alias_targets().is_empty(), "{id} atomic");
 
         if kind == CssFeatureKind::Property {
             let property = property_support_metadata(spelling)
@@ -6112,8 +3225,6 @@ fn c13_background_image_metadata_is_truthful() {
         assert_eq!(metadata.source().id().as_str(), "O-BACKGROUNDS3", "{name}");
         assert_eq!(metadata.production(), format!("#propdef-{name}"), "{name}");
         assert_eq!(metadata.status(), CssSupportStatus::Complete, "{name}");
-        assert_eq!(metadata.supported_subset(), None, "{name}");
-        assert_eq!(metadata.unsupported_remainder(), None, "{name}");
     }
 
     for (id, source) in [
@@ -6124,8 +3235,6 @@ fn c13_background_image_metadata_is_truthful() {
         let metadata = feature_metadata(id).unwrap_or_else(|| panic!("missing preserved {id}"));
         assert_eq!(metadata.source().id().as_str(), source, "{id}");
         assert_eq!(metadata.status(), CssSupportStatus::Complete, "{id}");
-        assert_eq!(metadata.supported_subset(), None, "{id}");
-        assert_eq!(metadata.unsupported_remainder(), None, "{id}");
     }
 }
 
@@ -6285,40 +3394,6 @@ fn exact_percentage(
 }
 
 #[test]
-fn rectangular_shape_metadata_cites_complete_shapes_authored_grammar() {
-    for (name, production) in [
-        ("rect", "#funcdef-basic-shape-rect"),
-        ("xywh", "#funcdef-basic-shape-xywh"),
-    ] {
-        let metadata =
-            feature_metadata(&format!("ext.value.basic-shape.{name}")).expect("rectangle metadata");
-        assert_eq!(metadata.kind(), CssFeatureKind::Value);
-        assert_eq!(metadata.spelling(), format!("{name}()"));
-        assert_eq!(metadata.source().id().as_str(), "S-SHAPES1");
-        assert_eq!(metadata.production(), production);
-        assert_eq!(metadata.status(), CssSupportStatus::Complete);
-        assert_eq!(metadata.supported_subset(), None);
-        assert_eq!(metadata.unsupported_remainder(), None);
-        assert_eq!(metadata.recognized_unsupported_code(), None);
-        assert!(metadata.baseline_alias_targets().is_empty());
-    }
-}
-
-#[test]
-fn path_shape_metadata_cites_complete_authored_grammar_without_promoting_shape_commands() {
-    let metadata = feature_metadata("ext.value.basic-shape.path").expect("path metadata");
-    assert_eq!(metadata.kind(), CssFeatureKind::Value);
-    assert_eq!(metadata.spelling(), "path()");
-    assert_eq!(metadata.source().id().as_str(), "S-SHAPES1");
-    assert_eq!(metadata.production(), "#funcdef-basic-shape-path");
-    assert_eq!(metadata.status(), CssSupportStatus::Complete);
-    assert_eq!(metadata.supported_subset(), None);
-    assert_eq!(metadata.unsupported_remainder(), None);
-    assert_eq!(metadata.recognized_unsupported_code(), None);
-    assert!(metadata.baseline_alias_targets().is_empty());
-}
-
-#[test]
 fn complete_z_index_catalogue_matches_the_typed_authored_lifecycle() {
     for (text, expected) in [
         ("AUTO", "auto"),
@@ -6343,23 +3418,12 @@ fn complete_z_index_catalogue_matches_the_typed_authored_lifecycle() {
         assert!(item.source().same_occurrence(source));
         assert_eq!(item.source().importance(), CssImportance::Important);
     }
-    assert_complete_position_property_metadata(
-        "baseline.property.z-index",
-        "z-index",
-        CssKnownProperty::ZIndex,
-        "O-CSS2",
-        "visuren.html#propdef-z-index",
-    );
 }
 
 #[test]
 fn quirky_length_metadata_matches_scoped_pixel_admission() {
     let metadata = feature_metadata("official.value.quirky-length").unwrap();
     assert_eq!(metadata.kind(), CssFeatureKind::Value);
-    assert_eq!(
-        metadata.spelling(),
-        "<quirky-length> in explicit document contexts"
-    );
     assert_eq!(metadata.source().id().as_str(), "I-VALUES4-20240312");
     assert_eq!(metadata.production(), "#deprecated-quirky-length");
     assert_eq!(metadata.status(), CssSupportStatus::Complete);

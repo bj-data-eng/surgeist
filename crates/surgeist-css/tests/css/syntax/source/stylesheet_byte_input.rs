@@ -333,7 +333,7 @@ fn utf16_sheet_components_share_decoded_snapshot_with_utf8_and_utf16_coordinates
 }
 
 #[test]
-fn byte_composition_preserves_prefilter_source_and_existing_string_recovery() {
+fn byte_composition_preserves_prefilter_source_and_string_recovery() {
     let text = "/*😀*/\r\n\x0c\r@supports (width: 2px){a{--x:a\0b; mystery:1; color:red}}";
     let input =
         decode_stylesheet_bytes(text.as_bytes(), CssStylesheetDecodeHints::default()).unwrap();
@@ -471,4 +471,73 @@ fn null_filtering_changes_token_semantics_while_preserving_unfiltered_snapshot()
             ..origin.span().end().byte_offset().value()],
         "wid\0th"
     );
+}
+
+// Syntax 3 (CRD 2026-10-01) §3.2 "determine the fallback encoding": step 2
+// returns whatever the `@charset "…";` label resolves to "except failure"
+// (only utf-16be/utf-16le are remapped to utf-8), so a label of the
+// replacement encoding selects it; step 3 returns an environment encoding,
+// including replacement. Encoding's decode lets a byte order mark override
+// any fallback, and the replacement decoder emits one U+FFFD for a nonempty
+// stream.
+// https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#determine-the-fallback-encoding
+// https://encoding.spec.whatwg.org/#replacement-decoder
+#[test]
+fn replacement_charset_prefix_and_environment_are_selected_unless_a_bom_overrides() {
+    let replacement = CssEncoding::for_label("iso-2022-kr").unwrap();
+    for label in ["iso-2022-kr", "csiso2022kr", "hz-gb-2312", "iso-2022-cn"] {
+        let bytes = format!("@charset \"{label}\";a{{color:red}}");
+        let decoded =
+            decode_stylesheet_bytes(bytes.as_bytes(), CssStylesheetDecodeHints::default()).unwrap();
+        assert_eq!(decoded.encoding().name(), "replacement", "{label}");
+        assert_eq!(decoded.selection(), CssEncodingSelection::CharsetPrefix);
+        assert_eq!(decoded.source().as_str(), "\u{FFFD}", "{label}");
+        assert!(decoded.had_replacements());
+        assert_eq!(decoded.original_bytes(), bytes.as_bytes());
+        let report = parse_decoded_stylesheet(&decoded, None);
+        assert!(report.syntax().rules().is_empty(), "{label}: {report:?}");
+    }
+
+    let environment = |protocol_label| CssStylesheetDecodeHints {
+        protocol_label,
+        environment_encoding: Some(replacement),
+    };
+    let decoded = decode_stylesheet_bytes(b"a{color:red}", environment(None)).unwrap();
+    assert_eq!(decoded.encoding().name(), "replacement");
+    assert_eq!(decoded.selection(), CssEncodingSelection::Environment);
+    assert_eq!(decoded.source().as_str(), "\u{FFFD}");
+    assert!(decoded.had_replacements());
+    // Step 2 precedes the environment: an exact prefix still selects UTF-8.
+    let decoded = decode_stylesheet_bytes(b"@charset \"utf-8\";a{}", environment(None)).unwrap();
+    assert_eq!(decoded.encoding().name(), "UTF-8");
+    assert_eq!(decoded.selection(), CssEncodingSelection::CharsetPrefix);
+    assert_eq!(decoded.source().as_str(), "@charset \"utf-8\";a{}");
+    // Step 1 precedes both: a protocol label wins over a replacement prefix.
+    let decoded =
+        decode_stylesheet_bytes(b"@charset \"iso-2022-kr\";a{}", environment(Some("utf-8")))
+            .unwrap();
+    assert_eq!(decoded.encoding().name(), "UTF-8");
+    assert_eq!(decoded.selection(), CssEncodingSelection::Protocol);
+    assert_eq!(decoded.source().as_str(), "@charset \"iso-2022-kr\";a{}");
+
+    // A byte order mark overrides a replacement prefix, environment and protocol.
+    let text = "@charset \"iso-2022-kr\";a{}";
+    let utf16be: Vec<u8> = text.encode_utf16().flat_map(u16::to_be_bytes).collect();
+    for (bom, body, encoding) in [
+        (&b"\xEF\xBB\xBF"[..], text.as_bytes().to_vec(), "UTF-8"),
+        (&b"\xFE\xFF"[..], utf16be, "UTF-16BE"),
+    ] {
+        let bytes = [bom, &body].concat();
+        for hints in [
+            CssStylesheetDecodeHints::default(),
+            environment(None),
+            environment(Some("iso-2022-kr")),
+        ] {
+            let decoded = decode_stylesheet_bytes(&bytes, hints).unwrap();
+            assert_eq!(decoded.encoding().name(), encoding);
+            assert_eq!(decoded.selection(), CssEncodingSelection::ByteOrderMark);
+            assert_eq!(decoded.source().as_str(), text);
+            assert!(!decoded.had_replacements());
+        }
+    }
 }

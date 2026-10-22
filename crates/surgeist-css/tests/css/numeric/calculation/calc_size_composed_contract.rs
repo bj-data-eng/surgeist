@@ -2,16 +2,8 @@
 //! calc-sum independently. Interpolation basis rewriting is a later operation.
 //! Shared strict reentry retains the original occurrence and replacement origins.
 
+use crate::css::support::value_assertions::assert_parsed_span as parsed_origin;
 use surgeist_css::*;
-
-fn parsed_origin(origin: &CssValueOrigin, source: &str, start: usize, end: usize) {
-    let CssValueOrigin::Parsed(original) = origin else {
-        panic!("expected original parsed origin: {origin:?}")
-    };
-    assert_eq!(original.source().as_str(), source);
-    assert_eq!(original.span().start().byte_offset().value(), start);
-    assert_eq!(original.span().end().byte_offset().value(), end);
-}
 
 // Function origins identify actual opener tokens. Closing origins separately
 // anchor the far end; only parsed_value identifies a whole declaration region.

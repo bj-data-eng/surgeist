@@ -7,20 +7,12 @@
 //! literals are rejected, while calculations retain their specified phase.
 //! Raw component serialization is lexical; new typed canonical model APIs get
 //! functional tests with implementation, rather than compile-failing stubs.
+use crate::css::support::named_property::longhand_contributions as expanded;
 use crate::css::support::{
-    important_speech_declaration as declaration, speech_property as property,
+    important_speech_declaration as declaration, known_property as property,
 };
 use surgeist_css::*;
 const PROPERTIES: [&str; 4] = ["voice-duration", "voice-pitch", "voice-range", "voice-rate"];
-
-fn expanded(source: &CssDeclaration) -> CssLonghandContributions {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
-    else {
-        panic!("complete terminal expansion")
-    };
-    values
-}
 
 fn assert_admitted(name: &str, value: &str) {
     let source = declaration(name, value);
@@ -383,38 +375,6 @@ fn prosody_metadata_supplies_exact_inheritance_and_intrinsic_initial_terminals()
 }
 
 #[test]
-fn prosody_globals_are_whole_value_keywords_with_one_terminal_contribution() {
-    for name in PROPERTIES {
-        for (text, keyword) in [
-            ("initial", CssGlobalKeyword::Initial),
-            ("inherit", CssGlobalKeyword::Inherit),
-            ("unset", CssGlobalKeyword::Unset),
-            ("revert", CssGlobalKeyword::Revert),
-            ("revert-layer", CssGlobalKeyword::RevertLayer),
-        ] {
-            let source = declaration(name, text);
-            assert_eq!(source.known().unwrap().global(), Some(keyword));
-            assert!(source.known().unwrap().property_value().is_none());
-            let values = expanded(&source);
-            let [item] = values.items() else {
-                panic!("one terminal")
-            };
-            assert_eq!(item.property(), property(name));
-            assert_eq!(item.value(), CssContributionValueRef::Global(keyword));
-            assert!(item.source().same_occurrence(&source));
-            let checked = parse_property_value(
-                CssPropertyNameRef::Known(property(name)),
-                parse_component_values(text).unwrap(),
-                CssImportance::Important,
-            )
-            .unwrap();
-            assert_eq!(checked.known().unwrap().global(), Some(keyword));
-            assert!(!parse_style_attribute(&format!("{name}:{text} extra")).is_clean());
-        }
-    }
-}
-
-#[test]
 fn prosody_substitution_reentry_checks_phase_and_grammar_atomically_with_origins() {
     for (name, valid, invalid) in [
         ("voice-duration", "calc(-1s)", "-1s"),
@@ -513,7 +473,13 @@ fn prosody_case_escapes_comments_and_exact_coefficients_survive_bounded_raw_seri
                 .as_css(),
             value
         );
-        assert!(components.serialize_with_limit(value.len() - 1).is_err());
+        assert_eq!(
+            components
+                .serialize_with_limit(value.len() - 1)
+                .unwrap_err()
+                .kind(),
+            CssComponentValueErrorKind::ByteLimit
+        );
         assert_eq!(components.serialize().unwrap().as_css(), value);
         let checked = parse_property_value(
             CssPropertyNameRef::Known(property(canonical)),

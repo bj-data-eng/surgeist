@@ -31,7 +31,7 @@ It never derives expected acceptance from Surgeist output.
 | [profile-expectations.json](profile-expectations.json) | Four explicit source disagreements yield 59 surviving descriptors and 50 absent descriptors under the selected published profile |
 | [nesting-selector-presence.json](nesting-selector-presence.json) | 31 retained inner style rules and one rejected inner rule, with the authored parent retained |
 | [nesting-declaration-order.json](nesting-declaration-order.json) | Five authored rule/declaration sequences, including nested media and trailing declaration groups |
-| [deferred-cssom-and-execution.json](deferred-cssom-and-execution.json) | 116 source-only assertions with explicit deferred dispositions; no parser-conformance pass is claimed for them |
+| [deferred-cssom-and-execution.json](deferred-cssom-and-execution.json) | 116 source-only assertions. 26 nested `selectorText` cases replay through the nested-role CSSOM selector serializer and the `src` `tech()` keyword-set case replays over the 12 compared rows of its table; the other 89 keep explicit deferred dispositions, including five `testNestedSelector` rows deferred as a recorded compound-order defect, and no parser-conformance pass is claimed for them |
 
 Font-source acceptance means that `src` remains present in a recovered
 `@font-face` rule. It does not mean the entire descriptor input is a clean strict

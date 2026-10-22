@@ -782,8 +782,8 @@
 //! Family lists, the `@font-face` family descriptor, and `local()` names follow
 //! the selected September 7, 2026 Fonts 4 grammar. [`CssFontFamilyName`] preserves
 //! decoded identifier tokens and distinguishes literal names from all fifteen
-//! typed generic families. Family and font wrappers expose their current
-//! `families()` and `font()` models without the obsolete I01 projections; use
+//! typed generic families. Family and font wrappers expose their
+//! `families()` and `font()` models; use
 //! [`CssFontValue`] and [`CssExplicitFont`] for explicit or system fonts.
 //! Other typography includes four-ASCII-character OpenType tags, non-negative
 //! feature indices, synthesis, and variant longhands. Individual metadata
@@ -1122,7 +1122,7 @@
 //!
 //! # Residual official properties and legacy orientation
 //!
-//! The C12 family exposes complete typed authored grammars for thirteen CSS2 residual
+//! Complete typed authored grammars cover thirteen CSS2 residual
 //! properties; Writing Modes 3 text combination, orientation, and bidi properties; UI3
 //! outline-offset and UI4 caret-color and resize; Containment 2 `contain`; Transforms 1
 //! `transform-box`; and Compositing 1 blend and isolation properties. These values retain
@@ -1442,11 +1442,9 @@
 //! assert_eq!(gradient.status(), CssSupportStatus::Complete);
 //! ```
 //!
-//! The public catalog exposes all 27 C13 property/value records as Complete and
-//! retains Complete metadata for `background-position`, `object-position`, and
-//! `box-shadow`. The 33 previously Partial Backgrounds/Borders property records
-//! are Complete as well. These metadata transitions do not add official ledger
-//! units.
+//! The Images and Backgrounds/Borders property and value records, including
+//! `background-position`, `object-position`, and `box-shadow`, are Complete
+//! catalog entries.
 //!
 //! # Flexbox, multicolumn, and official grammar closure
 //!
@@ -1501,34 +1499,22 @@
 //! assert!(feature_values.unsupported_remainder().is_none());
 //! ```
 //!
-//! C14 makes all 31 records that entered the cycle as Reserved public Complete
-//! catalog entries: ten Flexbox and Multicolumn properties; seven generic rule,
-//! declaration, and list shells; and fourteen shared values—`syntax-token-stream`,
-//! `component-value`, `simple-block`, `function`, `declaration-value`, `any-value`,
-//! `an-plus-b`, `unicode-range`, `css-wide-keyword`, `custom-ident`, `ident`,
-//! `string`, `url`, and `url-modifier`. The first two groups are 17 shell/property
-//! additions, and the last group is 14 shared-value additions. It separately
-//! promotes the seven Values 3 records for `dimension`, `angle`,
-//! `angle-percentage`, `time-percentage`, `frequency`, `frequency-percentage`, and
-//! `calc()` from Partial to Complete.
+//! The generic rule, declaration, and list shells and the shared values
+//! `syntax-token-stream`, `component-value`, `simple-block`, `function`,
+//! `declaration-value`, `any-value`, `an-plus-b`, `unicode-range`,
+//! `css-wide-keyword`, `custom-ident`, `ident`, `string`, `url`, and
+//! `url-modifier` are Complete catalog entries, as are the Values 3 records for
+//! `dimension`, `angle`, `angle-percentage`, `time-percentage`, `frequency`,
+//! `frequency-percentage`, and `calc()`.
 //!
-//! The preserved `ext.value.relative-color`, `ext.value.color-mix`,
-//! `ext.descriptor.font-weight-range`, `ext.descriptor.font-style-oblique-range`,
-//! `ext.descriptor.font-stretch-range`, `ext.value.font-source-modern-hints`,
-//! `ext.property.font-weight-range`, `ext.supports.selector`,
-//! `ext.media.range.width`, `ext.media.range.height`,
-//! `ext.media.range.resolution`, `ext.media.range.color`, and
-//! `ext.media.range.monochrome` records remain Partial with explicit subset and
+//! The `ext.value.relative-color`, `ext.value.color-mix`, and
+//! `ext.supports.selector` records are Partial with explicit subset and
 //! remainder metadata. `@font-face` and `@font-feature-values` provide complete
 //! selected authored rule construction and effective specified serialization.
-//! The Fonts 4 index-source contradiction remains explicit in the reference. C13's
-//! 456 public catalog records plus C14's 31 additions reached 487 at that point;
-//! subsequent selected records extend the catalog. [`feature_catalog`] owns its
-//! current cardinality, which is distinct from the immutable official
-//! inventory of exactly 162 property units, one normative legacy shorthand, and
-//! 167 non-property units. The 219 I01 baseline records retained their
-//! classifications at that checkpoint; later authored-family completion refines
-//! individual records. The exclusion registry contains exactly 130 rows.
+//! The Fonts 4 index-source contradiction remains explicit in the reference.
+//! [`feature_catalog`] owns its current cardinality, which is distinct from the
+//! immutable official inventory of property units, normative legacy shorthands,
+//! and non-property units; [`conformance_exclusions`] owns the exclusion rows.
 //!
 //! # Support metadata and application policy
 //!
@@ -1550,7 +1536,7 @@
 //!
 //! ```
 //! use surgeist_css::{
-//!     CssExclusionReason, CssSpecificationTier, CssSupportStatus,
+//!     CssExclusionReason, CssFeatureKind, CssSpecificationTier, CssSupportStatus,
 //!     conformance_exclusion, feature_metadata, specification_source,
 //! };
 //!
@@ -1561,14 +1547,10 @@
 //! let importance = feature_metadata("foundation.declaration.importance")
 //!     .expect("atomic parser-facing record");
 //! assert_eq!(importance.status(), CssSupportStatus::Complete);
-//! assert!(importance.baseline_alias_targets().is_empty());
 //!
-//! let pseudo_elements = feature_metadata("baseline.selector.pseudo-element")
-//!     .expect("preserved aggregate alias");
-//! assert_eq!(
-//!     pseudo_elements.baseline_alias_targets()[0].as_str(),
-//!     "official.selector.generated",
-//! );
+//! let generated = feature_metadata("official.selector.generated")
+//!     .expect("atomic pseudo-element record");
+//! assert_eq!(generated.kind(), CssFeatureKind::Selector);
 //!
 //! let processing = conformance_exclusion("excluded.O-IMAGES3.processing")
 //!     .expect("official source exclusion");
@@ -1578,10 +1560,8 @@
 //! );
 //! ```
 //!
-//! An atomic feature record is parser-facing and has one truthful support
-//! status. The four preserved baseline aggregate aliases remain queryable and
-//! expose immutable atomic target slices, but they do not own parser dispatch.
-//! Private reserved coverage slots describe later grammar boundaries only: they
+//! Every feature record is atomic and parser-facing, with one truthful support
+//! status. Private reserved coverage slots describe later grammar boundaries only: they
 //! are not feature records, carry no support status, and do not make their
 //! spellings recognized. [`conformance_exclusions`] records informative,
 //! superseded, and out-of-boundary official source items separately; exclusions
@@ -2137,7 +2117,7 @@ pub use syntax::*;
 /// Shared ceiling for authored rules and owned component-value trees.
 const STRUCTURAL_NESTING_LIMIT: u32 = 256;
 #[cfg(test)]
-pub(crate) use test_support::{CssParseReportTestExt, CssProperty};
+pub(crate) use test_support::CssParseReportTestExt;
 
 /// Validates a stylesheet by accepting only a clean ordinary parse report.
 ///

@@ -1,21 +1,12 @@
 //! Existing-public-API contracts from CSS Fonts 4 WD (2026-09-07) §§2.3, 2.3.1, 2.7.
 //! Exact typed width payloads follow with the functional model.
 
-use crate::css::support::important_retained_declaration as declaration;
+use crate::css::support::checked_grammar_declaration as checked;
+use crate::css::support::important_declaration as declaration;
+use crate::css::support::known_property;
+use crate::css::support::named_property::assert_checked_value_rejected_at;
+use crate::css::support::selected_grammar as grammar;
 use surgeist_css::*;
-
-fn grammar(name: &str) -> CssPropertyGrammar {
-    CssPropertyGrammar::from_name(name).unwrap_or_else(|| panic!("known grammar: {name}"))
-}
-
-fn checked(name: &str, value: &str) -> CssDeclaration {
-    parse_property_value_for_grammar(
-        grammar(name),
-        parse_component_values(value).unwrap(),
-        CssImportance::Important,
-    )
-    .unwrap_or_else(|error| panic!("checked {name}:{value}: {error:?}"))
-}
 
 fn one_contribution(
     source: &CssDeclaration,
@@ -100,28 +91,31 @@ fn both_names_accept_keywords_and_nonnegative_percentages_but_recover_bad_values
                 assert_eq!(source.importance(), CssImportance::Important);
             }
         }
-        for value in ["0", "-1%", "-1e-999%", "75% 125%", "wide", "normal 75%"] {
+        for (value, rest) in [
+            ("0", "0"),
+            ("-1%", "-1%"),
+            ("-1e-999%", "-1e-999%"),
+            ("75% 125%", "125%"),
+            ("wide", "wide"),
+            ("normal 75%", "75%"),
+        ] {
             let source = format!("color:red;{name}:{value};color:blue");
             let report = parse_style_attribute(&source);
             let [diagnostic] = report.diagnostics() else {
                 panic!("one invalid value: {source}")
             };
             assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-            assert_ne!(diagnostic.error().code(), CssErrorCode::UnknownProperty);
+            assert_eq!(
+                diagnostic.error().code(),
+                CssErrorCode::InvalidPropertyValue
+            );
             assert_eq!(
                 report.syntax().len(),
                 2,
                 "valid neighbors survive: {source}"
             );
             assert!(validate_style_attribute(&source).is_err());
-            assert!(
-                parse_property_value_for_grammar(
-                    grammar(name),
-                    parse_component_values(value).unwrap(),
-                    CssImportance::Normal
-                )
-                .is_err()
-            );
+            assert_checked_value_rejected_at(known_property(name), value, rest);
         }
     }
 }

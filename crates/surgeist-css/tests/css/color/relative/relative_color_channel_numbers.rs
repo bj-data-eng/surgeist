@@ -5,7 +5,7 @@
 //! references as numbers. An explicit unit can give a complete expression an
 //! angle or percentage type; it does not give the channel reference that type.
 
-use surgeist_css::{CssKnownProperty, parse_style_attribute};
+use surgeist_css::{CssErrorCode, CssKnownProperty, CssRecoveryAction, parse_style_attribute};
 
 fn assert_accepted(color: &str) {
     let source = format!("color: {color}; opacity: 0.5");
@@ -27,7 +27,15 @@ fn assert_accepted(color: &str) {
 fn assert_rejected_with_sibling(color: &str) {
     let source = format!("color: {color}; opacity: 0.5");
     let report = parse_style_attribute(&source);
-    assert_eq!(report.diagnostics().len(), 1, "{source}");
+    let [diagnostic] = report.diagnostics() else {
+        panic!("{source}: one diagnostic: {report:?}")
+    };
+    assert_eq!(
+        diagnostic.error().code(),
+        CssErrorCode::InvalidColorSyntax,
+        "{source}"
+    );
+    assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
     assert_eq!(report.syntax().len(), 1, "{source}");
     assert_eq!(
         report.syntax()[0].known().map(|known| known.property()),

@@ -8,29 +8,10 @@
 //! basis: existing aggregate identity expresses their literal fidelity instead.
 
 use crate::css::support::retained_checked_declaration as checked;
+use crate::css::support::value_assertions::filter_value as filter;
+use crate::css::support::value_assertions::validated_declaration;
 use surgeist_css::*;
 
-fn declaration(property: CssKnownProperty, value: &str) -> CssDeclaration {
-    let source = format!("{}:{value}!important", property.canonical_name());
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    assert_eq!(
-        validate_style_attribute(&source),
-        Ok(report.syntax().clone())
-    );
-    let [declaration] = report.syntax().as_slice() else {
-        panic!("one declaration")
-    };
-    declaration.clone()
-}
-
-fn filter(source: &CssDeclaration) -> &CssFilter {
-    match source.known().unwrap().property_value().unwrap() {
-        CssKnownPropertyValueRef::Filter(value) => value.value(),
-        CssKnownPropertyValueRef::BackdropFilter(value) => value.value(),
-        _ => panic!("filter"),
-    }
-}
 fn transform(source: &CssDeclaration) -> &CssTransform {
     let CssKnownPropertyValueRef::Transform(value) =
         source.known().unwrap().property_value().unwrap()
@@ -100,7 +81,7 @@ fn precise_filter_and_backdrop_literals_round_text_without_changing_authored_uni
             ] {
                 let authored = format!("hue-rotate({number}{unit})");
                 let expected = format!("hue-rotate({expected}{unit})");
-                let source = declaration(property, &authored);
+                let source = validated_declaration(property, &authored, CssImportance::Important);
                 assert_eq!(filter(&source).serialize_specified().unwrap(), expected);
                 assert_eq!(
                     filter(&checked(property, &authored))
@@ -124,13 +105,20 @@ fn huge_and_tiny_literal_dimensions_are_admitted_without_machine_float_limits() 
         for unit in ["deg", "grad", "rad", "turn"] {
             let angle = format!("{number}{unit}");
             for (property, value) in permissive_consumers(&angle) {
-                declaration(property, &value);
+                validated_declaration(property, &value, CssImportance::Important);
                 checked(property, &value);
             }
-            declaration(CssKnownProperty::ImageOrientation, &format!("{angle} flip"));
+            validated_declaration(
+                CssKnownProperty::ImageOrientation,
+                &format!("{angle} flip"),
+                CssImportance::Important,
+            );
             checked(CssKnownProperty::ImageOrientation, &angle);
-            let filter_value =
-                declaration(CssKnownProperty::Filter, &format!("hue-rotate({angle})"));
+            let filter_value = validated_declaration(
+                CssKnownProperty::Filter,
+                &format!("hue-rotate({angle})"),
+                CssImportance::Important,
+            );
             assert_eq!(
                 filter(&filter_value).serialize_specified().unwrap(),
                 format!("hue-rotate({decimal}{unit})")
@@ -177,11 +165,19 @@ fn image_orientation_distinguishes_adjacent_exact_literal_coefficients() {
 
 #[test]
 fn identical_literal_aggregates_ignore_source_location_changes() {
-    let first = declaration(CssKnownProperty::Transform, "rotate(0.1deg)");
+    let first = validated_declaration(
+        CssKnownProperty::Transform,
+        "rotate(0.1deg)",
+        CssImportance::Important,
+    );
     let second_report = parse_style_attribute("/*😀*/ transform:rotate(0.1deg)!important");
     assert!(second_report.is_clean());
     assert_eq!(transform(&first), transform(&second_report.syntax()[0]));
-    let first = declaration(CssKnownProperty::ImageOrientation, "0.1deg flip");
+    let first = validated_declaration(
+        CssKnownProperty::ImageOrientation,
+        "0.1deg flip",
+        CssImportance::Important,
+    );
     let second_report = parse_style_attribute("/*😀*/ image-orientation:0.1deg flip!important");
     assert!(second_report.is_clean());
     assert_eq!(orientation(&first), orientation(&second_report.syntax()[0]));
@@ -197,17 +193,22 @@ fn permitted_consumers_accept_exact_number_zero_with_signed_and_large_exponent_s
         "+0e-999999999999999999",
     ] {
         for (property, value) in permissive_consumers(zero) {
-            declaration(property, &value);
+            validated_declaration(property, &value, CssImportance::Important);
             checked(property, &value);
         }
-        let source = declaration(CssKnownProperty::Filter, &format!("hue-rotate({zero})"));
+        let source = validated_declaration(
+            CssKnownProperty::Filter,
+            &format!("hue-rotate({zero})"),
+            CssImportance::Important,
+        );
         assert_eq!(
             filter(&source).serialize_specified().unwrap(),
             "hue-rotate(0)"
         );
-        let source = declaration(
+        let source = validated_declaration(
             CssKnownProperty::BackgroundImage,
             &format!("linear-gradient({zero}, red, blue)"),
+            CssImportance::Important,
         );
         assert_eq!(
             gradient(&source).serialize_specified().unwrap(),
@@ -247,13 +248,17 @@ fn reject(property: CssKnownProperty, value: &str) {
         validate_style_attribute(&source).unwrap_err().diagnostics(),
         report.diagnostics()
     );
+    // Images 3: a gradient's `1%` is read as a color stop, so the grammar
+    // detail may be a color-syntax error rather than a property-value one.
+    let error = parse_property_value(
+        CssPropertyNameRef::Known(property),
+        parse_component_values(value).unwrap(),
+        CssImportance::Normal,
+    )
+    .unwrap_err();
     assert!(
-        parse_property_value(
-            CssPropertyNameRef::Known(property),
-            parse_component_values(value).unwrap(),
-            CssImportance::Normal
-        )
-        .is_err()
+        matches!(error.kind(), CssPropertyValueErrorKind::Grammar(_)),
+        "{error:?}"
     );
 }
 
@@ -276,7 +281,11 @@ fn strict_image_orientation_rejects_number_zero_but_accepts_zero_dimensions() {
         reject(CssKnownProperty::ImageOrientation, zero);
     }
     for dimension in ["0deg", "-0grad", "+0e999rad", "0turn flip"] {
-        declaration(CssKnownProperty::ImageOrientation, dimension);
+        validated_declaration(
+            CssKnownProperty::ImageOrientation,
+            dimension,
+            CssImportance::Important,
+        );
         checked(CssKnownProperty::ImageOrientation, dimension);
     }
 }
@@ -310,9 +319,10 @@ fn gradient_omits_only_exact_positive_default_directions_and_keeps_neighbors() {
             ".5turn",
             "+5e-1turn",
         ] {
-            let source = declaration(
+            let source = validated_declaration(
                 CssKnownProperty::BackgroundImage,
                 &format!("{function}({default}, red, blue)"),
+                CssImportance::Important,
             );
             assert_eq!(
                 gradient(&source).serialize_specified().unwrap(),
@@ -332,9 +342,10 @@ fn gradient_omits_only_exact_positive_default_directions_and_keeps_neighbors() {
             ("0", "0"),
             ("calc(180deg)", "calc(180deg)"),
         ] {
-            let source = declaration(
+            let source = validated_declaration(
                 CssKnownProperty::BackgroundImage,
                 &format!("{function}({angle}, red, blue)"),
+                CssImportance::Important,
             );
             assert_eq!(
                 gradient(&source).serialize_specified().unwrap(),
@@ -379,7 +390,7 @@ fn escaped_case_varied_angle_unit_and_precise_coefficient_keep_original_token_or
 }
 
 fn located(property: CssKnownProperty, value: &str) -> (CssDeclaration, CssDeclaration) {
-    let first = declaration(property, value);
+    let first = validated_declaration(property, value, CssImportance::Important);
     let report = parse_style_attribute(&format!(
         "/*😀*/ {}:{value}!important",
         property.canonical_name()
@@ -430,7 +441,7 @@ fn image_orientation_calculation_aggregate_equality_ignores_original_source_coor
 }
 
 #[test]
-fn raw_angle_math_and_color_still_compare_original_provenance() {
+fn raw_angle_math_and_color_compare_original_provenance() {
     let first = CssAngleCalculation::try_from_components(
         parse_component_values("calc(25deg + 5deg)").unwrap(),
     )
@@ -454,15 +465,20 @@ fn raw_angle_math_and_color_still_compare_original_provenance() {
 }
 
 #[test]
-fn existing_angle_calculation_simplification_remains_a_positive_control() {
-    let source = declaration(CssKnownProperty::Filter, "hue-rotate(calc(25deg + 5deg))");
+fn angle_calculation_simplification_is_a_positive_control() {
+    let source = validated_declaration(
+        CssKnownProperty::Filter,
+        "hue-rotate(calc(25deg + 5deg))",
+        CssImportance::Important,
+    );
     assert_eq!(
         filter(&source).serialize_specified().unwrap(),
         "hue-rotate(calc(30deg))"
     );
-    let source = declaration(
+    let source = validated_declaration(
         CssKnownProperty::BackgroundImage,
         "linear-gradient(calc(180deg), red, blue)",
+        CssImportance::Important,
     );
     assert_eq!(
         gradient(&source).serialize_specified().unwrap(),
@@ -511,7 +527,7 @@ fn ordinary_recovered_angle_math_is_retained_but_checked_construction_is_strict(
 #[test]
 fn pending_angle_reentry_retains_exact_literals_importance_and_replacement_sources() {
     for property in [CssKnownProperty::Filter, CssKnownProperty::BackdropFilter] {
-        let source = declaration(property, "var(--angle)");
+        let source = validated_declaration(property, "var(--angle)", CssImportance::Important);
         let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
             panic!("pending filter")
         };
@@ -641,9 +657,10 @@ fn normalization_retains_exact_angle_literals_in_surviving_source_order() {
 fn exact_literal_provider_failures_are_atomic_and_do_not_mutate_source_or_refund_work() {
     use CssSpecifiedValueSerializationErrorKind as K;
     use CssSpecifiedValueSerializationLimits as L;
-    let source = declaration(
+    let source = validated_declaration(
         CssKnownProperty::Filter,
         "hue-rotate(0.10000000000000000001deg)",
+        CssImportance::Important,
     );
     let before = source.clone();
     let CssFilter::Functions(list) = filter(&source) else {
@@ -675,7 +692,11 @@ fn exact_literal_provider_failures_are_atomic_and_do_not_mutate_source_or_refund
     }
     assert_eq!(function.serialize_specified().unwrap(), expected);
     assert_eq!(source, before);
-    let huge = declaration(CssKnownProperty::Filter, "hue-rotate(1e999deg)");
+    let huge = validated_declaration(
+        CssKnownProperty::Filter,
+        "hue-rotate(1e999deg)",
+        CssImportance::Important,
+    );
     let before = huge.clone();
     assert_eq!(
         filter(&huge)
@@ -688,12 +709,13 @@ fn exact_literal_provider_failures_are_atomic_and_do_not_mutate_source_or_refund
 }
 
 #[test]
-fn suppressed_exact_gradient_default_still_consumes_its_scalar_budget_without_output_bytes() {
+fn suppressed_exact_gradient_default_consumes_its_scalar_budget_without_output_bytes() {
     use CssSpecifiedValueSerializationErrorKind as K;
     use CssSpecifiedValueSerializationLimits as L;
-    let source = declaration(
+    let source = validated_declaration(
         CssKnownProperty::BackgroundImage,
         "linear-gradient(+1.80e2deg, red, blue)",
+        CssImportance::Important,
     );
     let before = source.clone();
     let value = gradient(&source);
@@ -724,7 +746,7 @@ fn suppressed_exact_gradient_default_still_consumes_its_scalar_budget_without_ou
 #[test]
 fn pending_filter_reentry_rejects_recovered_angle_math_roots() {
     for property in [CssKnownProperty::Filter, CssKnownProperty::BackdropFilter] {
-        let source = declaration(property, "var(--angle)");
+        let source = validated_declaration(property, "var(--angle)", CssImportance::Important);
         let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
             panic!("pending filter")
         };
@@ -758,7 +780,7 @@ fn ordinary_gradient_outer_recovery_retains_its_complete_angle_calculation() {
     );
 }
 
-// Functional evidence for the newly introduced checked owners.
+// Checked construction of angle literals and calculations.
 mod checked_construction {
     use std::error::Error as _;
     use surgeist_css::*;
@@ -785,29 +807,8 @@ mod checked_construction {
         ))
     }
     fn budget(value: &CssFilterFunction, expected: &str) {
-        use CssSpecifiedValueSerializationErrorKind as K;
-        use CssSpecifiedValueSerializationLimits as L;
-        let before = value.clone();
-        assert_eq!(
-            value
-                .serialize_specified_with_limits(L::new(2, 2, expected.len()))
-                .unwrap(),
-            expected
-        );
-        for (limits, kind) in [
-            (L::new(1, 2, expected.len()), K::InputNodeLimit),
-            (L::new(2, 1, expected.len()), K::ProjectionNodeLimit),
-            (L::new(2, 2, expected.len() - 1), K::ByteLimit),
-        ] {
-            assert_eq!(
-                value
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
-                kind
-            );
-            assert_eq!(value, &before);
-        }
+        crate::css::support::serialization_limits::LimitLadder::new(expected, 2, 2)
+            .assert_unchanged(value, CssFilterFunction::serialize_specified_with_limits);
     }
 
     #[test]
@@ -860,8 +861,18 @@ mod checked_construction {
             assert_eq!(error.origin(), supplied.origin());
         }
         for number in ["NaN", "infinity", "1 2", ""] {
-            assert!(CssAngleLiteral::try_new(number, CssAngleUnit::Degrees).is_err());
-            assert!(CssAngleCalculation::try_literal(number, CssAngleUnit::Degrees).is_err());
+            assert_eq!(
+                CssAngleLiteral::try_new(number, CssAngleUnit::Degrees)
+                    .unwrap_err()
+                    .kind(),
+                surgeist_css::CssComponentValueErrorKind::InvalidDimension
+            );
+            crate::css::support::value_assertions::assert_numeric_kind(
+                CssAngleCalculation::try_literal(number, CssAngleUnit::Degrees),
+                surgeist_css::CssNumericConstructionErrorKind::Component(
+                    surgeist_css::CssComponentValueErrorKind::InvalidDimension,
+                ),
+            );
         }
     }
 

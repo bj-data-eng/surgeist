@@ -15,17 +15,11 @@
 //! Frozen WebKit 73aa6c89e2cb77c46184a81aec944e4ab99d114d also permits
 //! contextual numeric coefficients in simplify(Abs&) through magnitudeComparable.
 
+use crate::css::support::value_assertions::calculated_length as length;
 use surgeist_css::*;
 
 type Limits = CssSpecifiedValueSerializationLimits;
 type Kind = CssSpecifiedValueSerializationErrorKind;
-
-fn length(source: &str) -> CssSpecifiedLength {
-    CssSpecifiedLength::try_from_calculation(
-        CssLengthCalculation::try_from_components(parse_component_values(source).unwrap()).unwrap(),
-    )
-    .unwrap()
-}
 
 fn assert_length(source: &str, expected: &str) {
     let value = length(source);
@@ -239,7 +233,7 @@ fn contextual_hypot_replacement_obeys_exact_limits_and_atomic_failures() {
 }
 
 #[test]
-fn existing_numeric_color_consumption_censors_only_after_nested_arithmetic() {
+fn numeric_color_consumption_censors_only_after_nested_arithmetic() {
     for (source, expected) in [
         ("rgb(calc(NaN) 0 0)", "rgb(0, 0, 0)"),
         ("rgb(calc(0 * -1) 0 0)", "rgb(0, 0, 0)"),

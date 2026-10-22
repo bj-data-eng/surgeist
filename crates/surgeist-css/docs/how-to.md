@@ -147,7 +147,7 @@ Use `feature_metadata` for an exact stable feature ID,
 source ID. Check `status()` and, for `Partial` records, both
 `supported_subset()` and `unsupported_remainder()`.
 The [conformance reference](reference.md#conformance-sources-and-atomic-records)
-contains lookup examples with assertions and explains aggregate aliases and
+contains lookup examples with assertions and explains atomic records and
 exclusions. A metadata status is not a substitute for examining a parse report.
 `Partial` does not prove that syntax outside the documented subset is valid CSS:
 the remainder may describe a known implementation gap or unresolved standard

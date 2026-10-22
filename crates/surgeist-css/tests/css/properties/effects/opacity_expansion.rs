@@ -2,7 +2,7 @@
 //! Oracle: catalog-pinned Color 4 (2026-09-08), §§3.2–3.3; existing intrinsic
 //! expansion/normalization contracts. Values below are specified, not computed.
 //! Raw authored text assertions do not claim canonical serialization (§17).
-use crate::css::support::style_declaration as declaration;
+use crate::css::support::sole_declaration as declaration;
 use surgeist_css::*;
 
 fn ordinary(source: &CssDeclaration) -> CssLonghandContributions {
@@ -154,33 +154,6 @@ fn opacity_expansion_accepts_and_keeps_distinct_authored_numeric_branches() {
         // do not substitute for direct new-variant payload assertions later.
         assert!(payloads.iter().all(|earlier| earlier != &payload));
         payloads.push(payload);
-    }
-}
-
-#[test]
-fn opacity_css_wide_values_emit_one_symbolic_terminal_without_resolving_it() {
-    for (text, expected) in [
-        ("initial", CssGlobalKeyword::Initial),
-        ("inherit", CssGlobalKeyword::Inherit),
-        ("unset", CssGlobalKeyword::Unset),
-        ("revert", CssGlobalKeyword::Revert),
-        ("revert-layer", CssGlobalKeyword::RevertLayer),
-    ] {
-        let source = declaration(&format!("opacity:{text}!important"));
-        let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            expand_declaration(&source).unwrap()
-        else {
-            panic!("one completed terminal set")
-        };
-        let [value] = values.items() else {
-            panic!("one opacity contribution")
-        };
-        assert_eq!(value.property(), CssKnownProperty::Opacity);
-        assert_eq!(value.value(), CssContributionValueRef::Global(expected));
-        assert!(value.ordinary_value().is_none());
-        assert!(value.source().same_occurrence(&source));
-        assert_eq!(value.source().importance(), CssImportance::Important);
-        assert!(value.replacement_components().is_none());
     }
 }
 

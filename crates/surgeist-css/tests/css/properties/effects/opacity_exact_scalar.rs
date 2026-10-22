@@ -3,20 +3,9 @@
 //! contract preserves finite decimals beyond tokenizer float range.
 //! https://www.w3.org/TR/2026/CRD-css-color-4-20260908/#transparency
 
+use crate::css::support::important_declaration;
+use crate::css::support::property_admission::assert_checked_value_rejected;
 use surgeist_css::*;
-
-fn parsed(text: &str) -> CssDeclaration {
-    let report = parse_style_attribute(&format!("opacity:{text}!important"));
-    assert!(
-        report.is_clean(),
-        "finite opacity {text}: {:?}",
-        report.diagnostics()
-    );
-    let [declaration] = report.syntax().as_slice() else {
-        panic!("one retained ordinary opacity declaration")
-    };
-    declaration.clone()
-}
 
 fn wrapper(declaration: &CssDeclaration) -> &CssOpacityPropertyValue {
     let CssKnownPropertyValueRef::Opacity(value) =
@@ -49,7 +38,7 @@ fn assert_token(declaration: &CssDeclaration, text: &str, percentage: bool) {
 }
 
 fn assert_parsed(text: &str, percentage: bool) {
-    let declaration = parsed(text);
+    let declaration = important_declaration("opacity", text);
     assert_token(&declaration, text, percentage);
     assert_eq!(declaration.importance(), CssImportance::Important);
     let CssValueOrigin::Parsed(origin) = declaration.value_components().items()[0].origin() else {
@@ -137,17 +126,13 @@ fn constructed_tiny_scalars_keep_exact_tokens_and_programmatic_origins() {
 
 #[test]
 fn opacity_scalar_admission_keeps_grammar_and_symbolic_boundaries() {
-    for text in ["1px", "1 2", "infinity", "NaN"] {
-        let components = parse_component_values(text).unwrap();
-        assert!(
-            parse_property_value(
-                CssPropertyNameRef::Known(CssKnownProperty::Opacity),
-                components,
-                CssImportance::Normal,
-            )
-            .is_err(),
-            "invalid opacity scalar: {text}"
-        );
+    for (text, token) in [
+        ("1px", "1px"),
+        ("1 2", "2"),
+        ("infinity", "infinity"),
+        ("NaN", "NaN"),
+    ] {
+        assert_checked_value_rejected(CssKnownProperty::Opacity, text, Some(token));
         let report = parse_style_attribute(&format!("opacity:{text}"));
         assert!(!report.is_clean(), "invalid opacity scalar: {text}");
         assert!(report.syntax().is_empty());

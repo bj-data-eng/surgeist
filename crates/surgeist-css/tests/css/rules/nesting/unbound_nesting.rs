@@ -1,7 +1,8 @@
 //! Nesting 1 section 4: parentless & matches scope with zero anchor specificity.
 //! https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#nest-selector
+use crate::css::support::rules::ExpectedRejection;
 use surgeist_css::{
-    CssNamespaceContext, CssNormalizedItem, CssPseudoSelectorListItem, CssSelector,
+    CssErrorCode, CssNamespaceContext, CssNormalizedItem, CssPseudoSelectorListItem, CssSelector,
     CssSelectorBinding, normalize_sheet, parse_selector, parse_selector_list, parse_sheet,
 };
 
@@ -68,10 +69,19 @@ fn normalized_anchor_context_distinguishes_missing_and_real_parents() {
 
 #[test]
 fn unbound_anchor_admission_does_not_enable_relative_roots_or_trailing_tokens() {
-    for source in ["&div", ">&", "&.a{}", "&.a;", ""] {
+    // Selectors 4 §3.1: a type selector starts its compound, a complex
+    // selector starts with a compound, and nothing may follow the selector.
+    let invalid = ExpectedRejection::new(CssErrorCode::InvalidSelector);
+    for (source, expected) in [
+        ("&div", invalid.clone().at("div")),
+        (">&", invalid.clone().at(">")),
+        ("&.a{}", invalid.clone().at("{")),
+        ("&.a;", invalid.clone().at(";")),
+        ("", invalid.clone().at_end()),
+    ] {
         let report = parse_selector(source, &CssNamespaceContext::default());
         assert!(report.syntax().is_none(), "{source}: {report:?}");
-        assert!(!report.is_clean());
+        expected.assert_first(&report);
     }
 }
 
@@ -281,9 +291,10 @@ fn anchors_do_not_invent_types_or_discard_authored_namespace_constraints() {
         assert_eq!(name.namespace(), &namespace);
         assert_eq!(name.local_name(), Some("leaf"));
     }
-    assert!(
-        parse_selector("svg|leaf&", &CssNamespaceContext::default())
-            .syntax()
-            .is_none()
-    );
+    // Namespaces 3 §3.3: the default context declares no `svg` prefix. The
+    // diagnostic names the local name `leaf` rather than the prefix, so
+    // only the code is checked.
+    let report = parse_selector("svg|leaf&", &CssNamespaceContext::default());
+    assert!(report.syntax().is_none());
+    ExpectedRejection::new(CssErrorCode::InvalidSelector).assert_first(&report);
 }

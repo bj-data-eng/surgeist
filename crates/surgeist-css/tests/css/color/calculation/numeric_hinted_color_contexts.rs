@@ -8,15 +8,13 @@
 //! https://www.w3.org/TR/2026/CRD-css-color-4-20260908/#hue-syntax
 //! https://www.w3.org/TR/2024/WD-css-typed-om-1-20240321/#cssnumericvalue-match
 
+use crate::css::support::color_and_selector_fixtures::assert_color_grammar_failure;
 use crate::css::support::declaration_color as color;
+use crate::css::support::{component_values as components, detached_checked_declaration};
 use surgeist_color::PredefinedColorSpace;
 use surgeist_css::*;
 
 const HINTED: &str = "calc((1px + 1%) / 1px)";
-
-fn components(text: &str) -> CssComponentValues {
-    parse_component_values(text).unwrap()
-}
 
 fn assert_hinted_number(ty: CssNumericType) {
     for axis in [
@@ -75,21 +73,8 @@ fn parsed(text: &str) -> CssDeclaration {
     declaration
 }
 
-fn checked(text: &str) -> CssDeclaration {
-    let original = components(text);
-    let result = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Color),
-        original.clone(),
-        CssImportance::Important,
-    )
-    .unwrap_or_else(|error| panic!("checked {text}: {error:?}"));
-    assert_eq!(result.value_components(), &original);
-    assert!(result.position().is_none());
-    result
-}
-
 fn assert_reentry(text: &str) {
-    let source = checked("var(--paint)");
+    let source = detached_checked_declaration("color", "var(--paint)", false);
     let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
         panic!("pending color")
     };
@@ -104,7 +89,7 @@ fn assert_reentry(text: &str) {
     assert_eq!(item.source().importance(), CssImportance::Important);
     assert_eq!(item.replacement_components(), Some(&replacement));
     let CssExpansion::Contributions(CssContributions::Longhands(expected)) =
-        expand_declaration(&checked(text)).unwrap()
+        expand_declaration(&detached_checked_declaration("color", text, false)).unwrap()
     else {
         panic!("checked color")
     };
@@ -123,7 +108,10 @@ fn profile_expression_constructor_matches_number_with_retained_hint() {
 #[test]
 fn relative_custom_profile_channels_and_alpha_admit_hinted_numbers_through_frontdoors() {
     let text = format!("color(from red --P {HINTED} / {HINTED})");
-    for source in [parsed(&text), checked(&text)] {
+    for source in [
+        parsed(&text),
+        detached_checked_declaration("color", &text, false),
+    ] {
         let value = color(&source).relative_custom_value().unwrap();
         assert_eq!(value.profile().as_str(), "--P");
         assert_eq!(value.channels().len(), 1);
@@ -183,7 +171,10 @@ fn relative_non_hue_channels_and_alpha_admit_hinted_numbers_through_frontdoors()
         ("color", "xyz-d65 ", " y z", 0),
     ] {
         let text = format!("{prefix}(from red {before}{HINTED}{after} / {HINTED})");
-        for source in [parsed(&text), checked(&text)] {
+        for source in [
+            parsed(&text),
+            detached_checked_declaration("color", &text, false),
+        ] {
             let value = color(&source).relative_value().unwrap();
             assert_relative(&value.channels()[slot]);
             assert_relative(value.alpha().unwrap());
@@ -191,7 +182,10 @@ fn relative_non_hue_channels_and_alpha_admit_hinted_numbers_through_frontdoors()
         assert_reentry(&text);
     }
     let text = format!("alpha(from red / {HINTED})");
-    for source in [parsed(&text), checked(&text)] {
+    for source in [
+        parsed(&text),
+        detached_checked_declaration("color", &text, false),
+    ] {
         assert_relative(color(&source).alpha_value().unwrap().alpha().unwrap());
     }
     assert_reentry(&text);
@@ -214,15 +208,15 @@ fn rejects(text: &str) {
         validate_style_attribute(&source).unwrap_err().diagnostics(),
         report.diagnostics()
     );
-    assert!(
+    assert_color_grammar_failure(
         parse_property_value(
             CssPropertyNameRef::Known(CssKnownProperty::Color),
             components(text),
-            CssImportance::Normal
-        )
-        .is_err()
+            CssImportance::Normal,
+        ),
+        text,
     );
-    let pending = checked("var(--paint)");
+    let pending = detached_checked_declaration("color", "var(--paint)", false);
     let CssExpansion::Pending(handle) = expand_declaration(&pending).unwrap() else {
         panic!("pending")
     };
@@ -273,7 +267,7 @@ fn legacy_number_only_device_cmyk_keeps_its_percentage_hint_rejection() {
     rejects("device-cmyk(1%, 0, 0, 0)");
     for source in [
         parsed("device-cmyk(calc(1px / 1px), 0, 0, 0)"),
-        checked("device-cmyk(calc(1px / 1px), 0, 0, 0)"),
+        detached_checked_declaration("color", "device-cmyk(calc(1px / 1px), 0, 0, 0)", false),
     ] {
         assert!(color(&source).device_cmyk_value().is_some());
     }

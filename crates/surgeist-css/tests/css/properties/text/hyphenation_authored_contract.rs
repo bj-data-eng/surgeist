@@ -14,6 +14,14 @@
 //! functionally alongside implementation.
 //! Used hyphenation, language dictionaries, UA auto counts and rounding are excluded.
 
+use crate::css::support::authored_checked_declaration as checked;
+use crate::css::support::authored_property::assert_source;
+use crate::css::support::check_named_components as checked_components;
+use crate::css::support::known_property as property;
+use crate::css::support::named_property::accepted_through_every_front as accepted;
+use crate::css::support::named_property::invalid_named_value as invalid;
+use crate::css::support::named_property::named_fronts as fronts;
+use crate::css::support::named_property::sole_completed_contributions as completed;
 use surgeist_css::CssKnownProperty as P;
 use surgeist_css::*;
 
@@ -32,9 +40,6 @@ const GLOBALS: [(&str, CssGlobalKeyword); 5] = [
     ("revert", CssGlobalKeyword::Revert),
     ("revert-layer", CssGlobalKeyword::RevertLayer),
 ];
-fn property(name: &str) -> P {
-    P::from_name(name).unwrap_or_else(|| panic!("authored property unavailable: {name}"))
-}
 fn initial(name: &str) -> &'static str {
     match name {
         "hyphens" => "manual",
@@ -212,171 +217,6 @@ fn negatives(name: &str) -> &'static [&'static str] {
         ],
         _ => panic!("selected family"),
     }
-}
-fn parsed(name: &str, text: &str) -> CssDeclaration {
-    let p = property(name);
-    let css = format!("/*😀*/{}:{text}!important", name.to_ascii_uppercase());
-    let report = parse_style_attribute(&css);
-    assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
-    assert!(validate_style_attribute(&css).is_ok());
-    let [source] = report.syntax().as_slice() else {
-        panic!("one occurrence")
-    };
-    assert_eq!(source.known().unwrap().property(), p);
-    assert_eq!(source.importance(), CssImportance::Important);
-    assert!(source.position().is_some());
-    assert_eq!(source.parsed_name().unwrap().source().as_str(), css);
-    assert_eq!(source.parsed_value().unwrap().source().as_str(), css);
-    source.clone()
-}
-fn checked_components(
-    name: &str,
-    components: CssComponentValues,
-    grammar: bool,
-) -> Result<CssDeclaration, CssPropertyValueParseError> {
-    let p = property(name);
-    if grammar {
-        parse_property_value_for_grammar(p.grammar(), components, CssImportance::Important)
-    } else {
-        parse_property_value(
-            CssPropertyNameRef::Known(p),
-            components,
-            CssImportance::Important,
-        )
-    }
-}
-fn checked(name: &str, text: &str, grammar: bool) -> CssDeclaration {
-    let components = parse_component_values(text).unwrap();
-    let before = components.clone();
-    let source = checked_components(name, components.clone(), grammar).unwrap();
-    assert_eq!(source.value_components(), &components);
-    assert_eq!(components, before);
-    assert!(source.position().is_none());
-    assert!(source.parsed_name().is_none());
-    assert!(source.parsed_value().is_none());
-    assert_eq!(source.importance(), CssImportance::Important);
-    assert_eq!(source.known().unwrap().grammar(), property(name).grammar());
-    source
-}
-fn text_front(name: &str, text: &str, grammar: bool) -> CssDeclaration {
-    let p = property(name);
-    let report = if grammar {
-        parse_property_value_text_for_grammar(text, p.grammar(), CssImportance::Important)
-    } else {
-        parse_property_value_text(text, CssPropertyNameRef::Known(p), CssImportance::Important)
-    };
-    assert!(
-        report.is_clean(),
-        "{name}:{text}: {:?}",
-        report.diagnostics()
-    );
-    let source = report.syntax().as_ref().unwrap().clone();
-    assert_eq!(source.known().unwrap().grammar(), p.grammar());
-    assert_eq!(source.importance(), CssImportance::Important);
-    assert!(source.position().is_none());
-    assert!(source.parsed_name().is_none());
-    assert_eq!(source.parsed_value().unwrap().source().as_str(), text);
-    source
-}
-fn fronts(name: &str, text: &str) -> [CssDeclaration; 5] {
-    [
-        parsed(name, text),
-        checked(name, text, false),
-        checked(name, text, true),
-        text_front(name, text, false),
-        text_front(name, text, true),
-    ]
-}
-fn assert_source(item: &CssLonghandContribution, source: &CssDeclaration) {
-    assert!(item.source().same_occurrence(source));
-    assert_eq!(item.source().importance(), source.importance());
-    assert_eq!(item.source().position(), source.position());
-    assert_eq!(item.source().value_components(), source.value_components());
-    assert_eq!(
-        item.source().known().unwrap().grammar(),
-        source.known().unwrap().grammar()
-    );
-}
-fn completed(source: &CssDeclaration) -> CssLonghandContributions {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
-    else {
-        panic!("complete longhand contribution")
-    };
-    assert_eq!(values.items().len(), 1);
-    assert_eq!(
-        values.items()[0].property(),
-        source.known().unwrap().property()
-    );
-    assert_source(&values.items()[0], source);
-    values
-}
-fn accepted(name: &str, text: &str, canonical: &str) {
-    for source in fronts(name, text) {
-        let before = source.clone();
-        assert_eq!(
-            source.to_specified_css().unwrap(),
-            format!("{name}: {canonical} !important;")
-        );
-        assert!(source.known().unwrap().property_value().is_some());
-        assert!(source.known().unwrap().global().is_none());
-        assert!(source.known().unwrap().substitution_dependent().is_none());
-        let values = completed(&source);
-        let item = &values.items()[0];
-        assert!(matches!(item.value(), CssContributionValueRef::Ordinary(_)));
-        assert_eq!(
-            item.ordinary_value().unwrap().property().known_property(),
-            property(name)
-        );
-        assert!(item.replacement_components().is_none());
-        assert_eq!(source, before);
-    }
-    assert_eq!(
-        checked(name, canonical, true).to_specified_css().unwrap(),
-        format!("{name}: {canonical} !important;")
-    );
-}
-fn invalid(name: &str, text: &str) {
-    let p = property(name);
-    let css = format!("color:red;{name}:{text};color:blue");
-    let report = parse_style_attribute(&css);
-    assert_eq!(report.syntax().len(), 2, "{css}");
-    assert!(
-        report
-            .syntax()
-            .iter()
-            .all(|v| v.known().unwrap().property() == P::Color)
-    );
-    let [diagnostic] = report.diagnostics() else {
-        panic!("one atomic grammar failure")
-    };
-    assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("property-specific diagnostic")
-    };
-    assert_eq!(detail.property(), p);
-    assert_eq!(
-        validate_style_attribute(&css).unwrap_err().diagnostics(),
-        report.diagnostics()
-    );
-    let components = parse_component_values(text).unwrap();
-    let before = components.clone();
-    for grammar in [false, true] {
-        assert!(matches!(
-            checked_components(name, components.clone(), grammar)
-                .unwrap_err()
-                .kind(),
-            CssPropertyValueErrorKind::Grammar(_)
-        ));
-    }
-    for report in [
-        parse_property_value_text(text, CssPropertyNameRef::Known(p), CssImportance::Normal),
-        parse_property_value_text_for_grammar(text, p.grammar(), CssImportance::Normal),
-    ] {
-        assert!(report.syntax().is_none());
-        assert!(!report.is_clean());
-    }
-    assert_eq!(components, before);
 }
 fn intrinsic(name: &str) {
     let p = property(name);
@@ -813,7 +653,7 @@ fn retained_string_components_preserve_decoded_payload_utf8_offsets_and_source_s
     }
 }
 #[test]
-fn existing_programmatic_components_admit_six_roles_without_forging_parsed_origins() {
+fn programmatic_components_admit_six_roles_without_forging_parsed_origins() {
     let fixtures = [
         (
             "hyphens",
@@ -1208,7 +1048,7 @@ fn sibling_sheet_output_shares_exact_work_and_utf8_bytes_without_partial_results
     assert_eq!(sheet.to_specified_css_with_limits(exact).unwrap(), expected);
 }
 #[test]
-fn existing_color_and_overflow_wrap_controls_exercise_the_same_public_lifecycle() {
+fn color_and_overflow_wrap_controls_exercise_the_same_public_lifecycle() {
     accepted("color", "red", "red");
     accepted("overflow-wrap", "anywhere", "anywhere");
     let css = ".a{color:red;overflow-wrap:anywhere}";
@@ -1231,7 +1071,7 @@ fn existing_color_and_overflow_wrap_controls_exercise_the_same_public_lifecycle(
     );
 }
 #[test]
-fn existing_exact_integer_and_signed_length_owners_are_controls_for_new_admission() {
+fn exact_integer_and_signed_length_owners_are_controls_for_hyphenation_admission() {
     let huge = format!("1{}", "0".repeat(999));
     let integer =
         CssIntegerLiteral::try_from_component(CssComponentValue::try_number(&huge).unwrap())
@@ -1268,7 +1108,7 @@ fn existing_exact_integer_and_signed_length_owners_are_controls_for_new_admissio
     assert_eq!(length.serialize_specified().unwrap(), "-25%");
 }
 #[test]
-fn existing_closure_origin_and_color_provider_prices_are_independent_controls() {
+fn closure_origin_and_color_provider_prices_are_independent_controls() {
     for text in ["manual/*", "\"😀", "calc(3 / 2"] {
         let components = parse_component_values(text).unwrap();
         let origin = implicit_origin(&components);

@@ -1,6 +1,8 @@
 //! Authored sizing values from Sizing 3 (2026-09-04) §§3.1–3.2, Sizing 4
 //! (2026-09-04) §3.2, and its Values 5 (2024-11-11) §10 dependency.
 
+use crate::css::support::property_admission::Responsible::{At, Disputed};
+use crate::css::support::property_admission::assert_declaration_rejected as rejected;
 use crate::css::support::{
     checked_grammar_declaration as checked, important_declaration as declaration,
     selected_grammar as grammar,
@@ -35,27 +37,6 @@ fn accepted(name: &str, value: &str) {
             value
         );
     }
-}
-
-fn invalid(name: &str, value: &str) {
-    let source = format!("color:red;{name}:{value};color:blue");
-    let report = parse_style_attribute(&source);
-    let [diagnostic] = report.diagnostics() else {
-        panic!("one invalid-value diagnostic: {source}")
-    };
-    assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    assert_ne!(diagnostic.error().code(), CssErrorCode::UnknownProperty);
-    assert_eq!(report.syntax().len(), 2, "{source}");
-    assert!(validate_style_attribute(&source).is_err());
-    assert!(
-        parse_property_value_for_grammar(
-            grammar(name),
-            parse_component_values(value).unwrap(),
-            CssImportance::Normal,
-        )
-        .is_err(),
-        "checked construction accepted {name}:{value}"
-    );
 }
 
 fn one_contribution(declaration: &CssDeclaration) -> CssLonghandValue {
@@ -115,11 +96,11 @@ fn twelve_sizing_names_keep_distinct_physical_and_logical_identities() {
 fn preferred_and_minimum_accept_auto_but_maximum_accepts_none() {
     for name in PREFERRED.iter().chain(MINIMUM).copied() {
         accepted(name, "auto");
-        invalid(name, "none");
+        rejected(name, "none", Some("none"));
     }
     for &name in MAXIMUM {
         accepted(name, "none");
-        invalid(name, "auto");
+        rejected(name, "auto", Some("auto"));
     }
 }
 
@@ -138,12 +119,12 @@ fn all_twelve_accept_shared_intrinsic_keywords_and_sizing4_extensions() {
         ] {
             accepted(name, value);
         }
-        for value in [
-            "fit-content()",
-            "fit-content(-1px)",
-            "fit-content(-1e-999%)",
+        for (value, token) in [
+            ("fit-content()", None),
+            ("fit-content(-1px)", Some("-1px")),
+            ("fit-content(-1e-999%)", Some("-1e-999%")),
         ] {
-            invalid(name, value);
+            rejected(name, value, token);
         }
     }
 }
@@ -154,13 +135,20 @@ fn nonnegative_length_percentage_rejects_negative_literals_without_float_roundin
         for value in ["0", "1px", "1%", "1e999px", "1e-999px", "1e-999%"] {
             accepted(name, value);
         }
-        for value in ["-1px", "-1%", "-1e-999px", "-1e-999%", "1", "1fr"] {
-            invalid(name, value);
+        for (value, token) in [
+            ("-1px", Some("-1px")),
+            ("-1%", Some("-1%")),
+            ("-1e-999px", Some("-1e-999px")),
+            ("-1e-999%", Some("-1e-999%")),
+            ("1", Some("1")),
+            ("1fr", Some("1fr")),
+        ] {
+            rejected(name, value, token);
         }
         // The range is checked after calculation; syntax must retain the math.
         accepted(name, "calc(1px - 2px)");
         accepted(name, "calc(1px + 2%)");
-        invalid(name, "calc(1 + 2)");
+        rejected(name, "calc(1 + 2)", Some("calc("));
     }
 }
 
@@ -171,8 +159,8 @@ fn calc_size_basis_and_size_keyword_follow_the_values5_function_grammar() {
     }
     for &name in MAXIMUM {
         accepted(name, "calc-size(min-content, size)");
-        invalid(name, "calc-size(auto, size)");
-        invalid(name, "calc-size(calc-size(auto, 1px), 1px)");
+        rejected(name, "calc-size(auto, size)", Some("auto"));
+        rejected(name, "calc-size(calc-size(auto, 1px), 1px)", Some("auto"));
     }
     for name in names() {
         for value in [
@@ -188,23 +176,26 @@ fn calc_size_basis_and_size_keyword_follow_the_values5_function_grammar() {
         ] {
             accepted(name, value);
         }
-        for value in [
-            "calc-size(any, size)",
-            "calc-size(any, 0)",
-            "calc-size(0, size)",
-            "calc-size(any, size * 0)",
-            "calc-size(size, 1px)",
-            "calc-size(none, 1px)",
-            "calc-size(fit-content(1px), size)",
-            "calc-size(min-content)",
-            "calc-size(min-content, 1)",
-            "calc-size(min-content, calc-size(min-content, size))",
-            "calc-size(any, 1px / 1px)",
-            "calc-size(any, 1px * 1px)",
-            "calc(size + 1px)",
-            "calc(calc-size(min-content, size) + 1px)",
+        for (value, token) in [
+            ("calc-size(any, size)", At("size")),
+            ("calc-size(any, 0)", Disputed),
+            ("calc-size(0, size)", Disputed),
+            ("calc-size(any, size * 0)", At("size")),
+            ("calc-size(size, 1px)", At("size")),
+            ("calc-size(none, 1px)", At("none")),
+            ("calc-size(fit-content(1px), size)", At("fit-content(")),
+            ("calc-size(min-content)", Disputed),
+            ("calc-size(min-content, 1)", Disputed),
+            (
+                "calc-size(min-content, calc-size(min-content, size))",
+                At("calc-size("),
+            ),
+            ("calc-size(any, 1px / 1px)", Disputed),
+            ("calc-size(any, 1px * 1px)", Disputed),
+            ("calc(size + 1px)", At("size")),
+            ("calc(calc-size(min-content, size) + 1px)", At("calc-size(")),
         ] {
-            invalid(name, value);
+            rejected(name, value, token);
         }
     }
 }
@@ -273,7 +264,7 @@ fn css_wide_keywords_remain_whole_values_and_pending_reentry_is_strict() {
             assert_eq!(item.value(), CssContributionValueRef::Global(keyword));
             assert!(item.source().same_occurrence(&source));
         }
-        invalid(name, "initial 1px");
+        rejected(name, "initial 1px", Some("1px"));
 
         let source = declaration(name, "var(--size)");
         let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {

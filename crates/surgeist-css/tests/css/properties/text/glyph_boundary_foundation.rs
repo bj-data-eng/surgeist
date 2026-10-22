@@ -2,14 +2,11 @@
 //! terminal mappings are explicit; numeric-terminal spelling and math
 //! applicability remain unresolved under CSSWG issue 8032.
 
+use crate::css::support::selected_grammar;
 use surgeist_css::*;
 
 const ALIAS: &str = "glyph-orientation-vertical";
 const TARGET: CssKnownProperty = CssKnownProperty::TextOrientation;
-
-fn grammar() -> CssPropertyGrammar {
-    CssPropertyGrammar::from_name(ALIAS).expect("selected legacy grammar")
-}
 
 fn one(source: &str) -> CssDeclaration {
     let report = parse_style_attribute(source);
@@ -22,7 +19,7 @@ fn one(source: &str) -> CssDeclaration {
 
 fn mapped(source: &CssDeclaration, expected: CssTextOrientation, authored: &str) {
     let known = source.known().expect("known legacy alias");
-    assert_eq!(known.grammar(), grammar());
+    assert_eq!(known.grammar(), selected_grammar(ALIAS));
     assert_eq!(known.property(), TARGET);
     let CssKnownPropertyValueRef::TextOrientation(value) = known.property_value().unwrap() else {
         panic!("legacy alias maps to text-orientation")
@@ -73,7 +70,6 @@ fn legacy_alias_catalog_is_partial_with_a_truthful_unresolved_boundary() {
         );
     }
     assert_eq!(alias.recognized_unsupported_code(), None);
-    assert!(alias.baseline_alias_targets().is_empty());
 
     // The ordinary Partial record remains a known valid-but-unimplemented case.
     let ordinary = feature_metadata("ext.value.relative-color").expect("relative color record");
@@ -90,15 +86,17 @@ fn legacy_alias_catalog_is_partial_with_a_truthful_unresolved_boundary() {
 
 #[test]
 fn five_explicit_alias_mappings_retain_authored_tokens_and_one_target() {
-    assert_eq!(grammar().name(), ALIAS);
-    assert_eq!(grammar().target_property(), TARGET);
+    assert_eq!(selected_grammar(ALIAS).name(), ALIAS);
+    assert_eq!(selected_grammar(ALIAS).target_property(), TARGET);
     assert_eq!(
-        grammar().feature_id().as_str(),
+        selected_grammar(ALIAS).feature_id().as_str(),
         "official.property-alias.glyph-orientation-vertical"
     );
     assert_eq!(CssKnownProperty::from_name(ALIAS), None);
     assert!(TARGET.aliases().is_empty());
-    let CssPropertyKindRef::Shorthand(metadata) = grammar().metadata().unwrap().kind() else {
+    let CssPropertyKindRef::Shorthand(metadata) =
+        selected_grammar(ALIAS).metadata().unwrap().kind()
+    else {
         panic!("explicit legacy shorthand grammar")
     };
     assert!(metadata.is_legacy());
@@ -117,7 +115,7 @@ fn five_explicit_alias_mappings_retain_authored_tokens_and_one_target() {
         let parsed = one(&source);
         let components = parse_component_values(authored).unwrap();
         let checked = parse_property_value_for_grammar(
-            grammar(),
+            selected_grammar(ALIAS),
             components.clone(),
             CssImportance::Important,
         )
@@ -126,7 +124,7 @@ fn five_explicit_alias_mappings_retain_authored_tokens_and_one_target() {
             CssComponentValues::try_new(vec![CssComponentValue::try_token(authored).unwrap()])
                 .unwrap();
         let programmatic = parse_property_value_for_grammar(
-            grammar(),
+            selected_grammar(ALIAS),
             programmatic_components.clone(),
             CssImportance::Important,
         )
@@ -343,7 +341,7 @@ fn modern_keywords_stay_distinct_and_invalid_legacy_values_recover() {
         );
         assert!(
             parse_property_value_for_grammar(
-                grammar(),
+                selected_grammar(ALIAS),
                 parse_component_values(invalid).unwrap(),
                 CssImportance::Normal,
             )

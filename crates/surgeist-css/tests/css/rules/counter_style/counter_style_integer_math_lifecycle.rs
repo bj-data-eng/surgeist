@@ -2,6 +2,7 @@
 //! §§11.9/11.12: specified Number-result graphs precede integer computation.
 //! Literal order checks remain intrinsic; symbolic comparisons are downstream.
 
+use crate::css::support::rules::sole_counter_style as parsed;
 use surgeist_css::*;
 
 fn calculation(text: &str) -> CssIntegerValue {
@@ -12,15 +13,6 @@ fn calculation(text: &str) -> CssIntegerValue {
 
 fn symbol() -> CssCounterSymbol {
     CssCounterSymbol::String(CssContentString::try_new("0").unwrap())
-}
-
-fn parsed(source: &str) -> CssCounterStyleRule {
-    let report = parse_sheet(source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    let [CssRule::CounterStyle(rule)] = report.syntax().rules() else {
-        panic!("one retained counter style")
-    };
-    rule.clone()
 }
 
 #[test]
@@ -183,16 +175,24 @@ fn checked_pending_env_math_reentry_is_reusable_and_rejects_residual_var_and_env
         )
         .unwrap();
         let before = pending.clone();
+        // Counter Styles 3 §3.6: literal weights must strictly descend.
+        // Reentry reports this complete input as an UnexpectedEnd, so only
+        // its grammar failure is checked.
+        let error = pending
+            .reparse_after_substitution(parse_component_values("2 X, 2 Y").unwrap())
+            .unwrap_err();
         assert!(
-            pending
-                .reparse_after_substitution(parse_component_values("2 X, 2 Y").unwrap())
-                .is_err()
+            matches!(error.kind(), CssCounterStyleValueErrorKind::Grammar(_)),
+            "grammar failure: {error:?}"
         );
         for residual in ["calc(var(--weight)) X", "calc(env(weight)) X"] {
-            assert!(
+            assert_eq!(
                 pending
                     .reparse_after_substitution(parse_component_values(residual).unwrap())
-                    .is_err()
+                    .unwrap_err()
+                    .kind(),
+                &CssCounterStyleValueErrorKind::ResidualSubstitution,
+                "{residual}"
             );
         }
         let completed = pending
@@ -287,10 +287,12 @@ fn checked_math_depth_failure_keeps_the_original_pending_descriptor() {
     let components = parse_component_values(source).unwrap();
     let limits = CssComponentValueLimits::try_new(2, 1000, 10000).unwrap();
     let before = pending.clone();
-    assert!(
+    assert_eq!(
         pending
             .reparse_after_substitution_with_limits(components.clone(), limits)
-            .is_err()
+            .unwrap_err()
+            .kind(),
+        &CssCounterStyleValueErrorKind::Component(CssComponentValueErrorKind::NestingLimit)
     );
     let completed = pending.reparse_after_substitution(components).unwrap();
     assert!(matches!(

@@ -24,7 +24,7 @@ fn retained_count(source: &str) -> usize {
 }
 
 #[test]
-fn existing_stretch_descriptor_keyword_and_percentage_range_are_retained() {
+fn stretch_descriptor_keyword_and_percentage_range_are_retained() {
     let source = concat!(
         "@font-face{font-family:Demo;src:url(face);",
         "font-stretch:condensed;font-stretch:75% 125%}"

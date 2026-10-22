@@ -1,33 +1,13 @@
 //! Exact authored literals follow the product fidelity contract; calculations
 //! retain their separately owned numeric semantics. These tests use public APIs.
+use crate::css::support::color_and_selector_fixtures::assert_color_value_rejected;
 use crate::css::support::color_declaration as parsed;
+use crate::css::support::normal_checked_declaration;
 use std::error::Error as _;
 
+use crate::css::support::color_components::token as component;
+use crate::css::support::color_property::color_property_value as wrapper;
 use surgeist_css::*;
-
-fn component(text: &str) -> CssComponentValue {
-    let values = parse_component_values(text).unwrap();
-    assert_eq!(values.items().len(), 1);
-    values.items()[0].clone()
-}
-
-fn checked(text: &str) -> CssDeclaration {
-    parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Color),
-        parse_component_values(text).unwrap(),
-        CssImportance::Normal,
-    )
-    .unwrap()
-}
-
-fn wrapper(declaration: &CssDeclaration) -> &CssColorPropertyValue {
-    let CssKnownPropertyValueRef::Color(value) =
-        declaration.known().unwrap().property_value().unwrap()
-    else {
-        panic!("color property")
-    };
-    value
-}
 
 fn number<'a>(value: &'a CssColorComponent, expected: &str) -> &'a CssColorNumberLiteral {
     let CssColorComponent::Number(value) = value else {
@@ -97,7 +77,7 @@ fn wrong_literal_domains_report_the_original_invalid_token() {
 fn ordinary_huge_and_nonzero_underflow_channels_remain_exact() {
     for declaration in [
         parsed("rgb(1e100 1e-47 0.1 / 1e-100%)"),
-        checked("rgb(1e100 1e-47 0.1 / 1e-100%)"),
+        normal_checked_declaration(CssKnownProperty::Color, "rgb(1e100 1e-47 0.1 / 1e-100%)"),
     ] {
         let rgb = wrapper(&declaration).value().rgb_value().unwrap();
         for (value, expected) in rgb.channels().iter().zip(["1e100", "1e-47", "0.1"]) {
@@ -168,7 +148,10 @@ fn formerly_overflowing_relative_slots_keep_their_typed_environment() {
             CssRelativeColorEnvironment::Hsl,
         ),
     ] {
-        for declaration in [parsed(text), checked(text)] {
+        for declaration in [
+            parsed(text),
+            normal_checked_declaration(CssKnownProperty::Color, text),
+        ] {
             let relative = wrapper(&declaration).value().relative_value().unwrap();
             assert_eq!(relative.environment(), environment);
             let expression = &relative.channels()[index];
@@ -199,14 +182,21 @@ fn formerly_overflowing_relative_slots_keep_their_typed_environment() {
             assert_eq!(expression.origin(), origin);
         }
     }
-    for text in ["hsl(from red 1e999% s l)", "rgb(from red 1e999deg g b)"] {
-        assert!(
+    // Color 4: a hue is <number> or <angle>, and an RGB channel is <number>
+    // or <percentage>, so the out-of-type token is responsible.
+    for (text, responsible) in [
+        ("hsl(from red 1e999% s l)", "1e999%"),
+        ("rgb(from red 1e999deg g b)", "1e999deg"),
+    ] {
+        assert_color_value_rejected(
             parse_property_value(
                 CssPropertyNameRef::Known(CssKnownProperty::Color),
                 parse_component_values(text).unwrap(),
-                CssImportance::Normal
-            )
-            .is_err()
+                CssImportance::Normal,
+            ),
+            CssKnownProperty::Color,
+            text,
+            responsible,
         );
     }
 }
@@ -215,7 +205,7 @@ fn formerly_overflowing_relative_slots_keep_their_typed_environment() {
 fn hue_and_percentage_coefficient_domains_survive_without_normalizing() {
     for declaration in [
         parsed("hsl(1e100turn 0.1% 25%)"),
-        checked("hsl(1e100turn 0.1% 25%)"),
+        normal_checked_declaration(CssKnownProperty::Color, "hsl(1e100turn 0.1% 25%)"),
     ] {
         let hsl = wrapper(&declaration).value().hsl_value().unwrap();
         let CssColorHue::Angle(hue) = hsl.hue() else {
@@ -275,7 +265,10 @@ fn finite_high_precision_mix_weights_retain_original_decimal() {
         "1.40129846432481707092372958328991613128026194187651577175706828388979108268586060148663818836212158203125e-45",
     ] {
         let text = format!("color-mix(in srgb, red {coefficient}%, blue)");
-        for declaration in [parsed(&text), checked(&text)] {
+        for declaration in [
+            parsed(&text),
+            normal_checked_declaration(CssKnownProperty::Color, &text),
+        ] {
             let mix = wrapper(&declaration).value().color_mix_value().unwrap();
             let weight = mix.components()[0]
                 .weight()
@@ -308,7 +301,10 @@ fn percentage_slots_retain_the_authored_coefficient_without_scaling() {
         ),
         ("lch(50% 50.000003814697265625% 0)", "50.000003814697265625"),
     ] {
-        for declaration in [parsed(text), checked(text)] {
+        for declaration in [
+            parsed(text),
+            normal_checked_declaration(CssKnownProperty::Color, text),
+        ] {
             let current = wrapper(&declaration).value();
             let slot = if let Some(value) = current.hsl_value() {
                 value.saturation()
@@ -455,7 +451,8 @@ fn decimal_proof_capacity_does_not_limit_exact_literal_admission() {
         "1e999999999999999999999999999999999999999".to_owned(),
         "1e-999999999999999999999999999999999999999".to_owned(),
     ] {
-        let declaration = checked(&format!("rgb({text} 0 0)"));
+        let declaration =
+            normal_checked_declaration(CssKnownProperty::Color, &format!("rgb({text} 0 0)"));
         number(
             &wrapper(&declaration)
                 .value()
@@ -490,7 +487,10 @@ fn decimal_proof_capacity_does_not_limit_exact_literal_admission() {
 #[test]
 fn perceptual_families_retain_exact_authored_percentages() {
     for text in ["lab(50% 20% 0%)", "lch(50% 20% 0)", "oklab(50% 0% 0%)"] {
-        for declaration in [parsed(text), checked(text)] {
+        for declaration in [
+            parsed(text),
+            normal_checked_declaration(CssKnownProperty::Color, text),
+        ] {
             let color = wrapper(&declaration).value();
             if let Some(lab) = color.lab_value() {
                 let CssColorComponent::Percentage(lightness) = lab.lightness() else {
@@ -550,7 +550,10 @@ fn deep_mixed_color_graph_retains_exact_leaf_at_the_shared_depth_boundary() {
     }
     for depth in [255, 256] {
         let text = nested(depth);
-        for declaration in [parsed(&text), checked(&text)] {
+        for declaration in [
+            parsed(&text),
+            normal_checked_declaration(CssKnownProperty::Color, &text),
+        ] {
             let value = wrapper(&declaration);
             let mut current = value.value();
             let mut visited = 1;

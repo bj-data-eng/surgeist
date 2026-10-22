@@ -14,7 +14,7 @@ use super::literal::{LiteralAction, LiteralConversion};
 use super::protocol::{CssColorBank, CssColorProtocolError, CssColorSlot, LexicalTable};
 use super::tokens::{ClassifiedToken, TokenAction, TokenReader};
 use crate::numeric::bounded_expression::FailureKind;
-use crate::tokenization::color_tokens::{NameKind, TokenKind};
+use crate::tokenization::tokenizer::{NameKind, TokenKind};
 use crate::{
     CssColorSyntax, CssNumericDimension as Dimension, CssNumericType,
     CssRelativeColorEnvironment as Environment,

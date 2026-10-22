@@ -1,3 +1,4 @@
+use crate::css::support::property_admission::assert_component_rejected;
 use surgeist_css::*;
 
 fn length(number: &str, unit: &str) -> CssBorderWidth {
@@ -59,11 +60,10 @@ fn checked_widths_preserve_exact_literals_and_origin_blind_structure() {
             if number.representation() == "1e-100" && unit == "px"
     ));
     assert_eq!(tiny, before);
-    assert!(
-        CssSpecifiedNonNegativeLength::try_from_component(
-            CssComponentValue::try_dimension("-1e-100", "px").unwrap()
-        )
-        .is_err()
+    assert_component_rejected(
+        CssSpecifiedNonNegativeLength::try_from_component,
+        CssComponentValue::try_dimension("-1e-100", "px").unwrap(),
+        CssNumericConstructionErrorKind::OutOfRange,
     );
     assert_eq!(length("-0", "px").serialize_specified().unwrap(), "0px");
     let programmatic = length("1", "px");
@@ -91,12 +91,26 @@ fn pair_and_four_side_keep_arity_roles_and_cumulative_budgets() {
             .unwrap(),
         "thin thick"
     );
-    for limit in [
-        CssSpecifiedValueSerializationLimits::new(2, 3, 10),
-        CssSpecifiedValueSerializationLimits::new(3, 2, 10),
-        CssSpecifiedValueSerializationLimits::new(3, 3, 9),
+    for (limit, kind) in [
+        (
+            CssSpecifiedValueSerializationLimits::new(2, 3, 10),
+            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+        ),
+        (
+            CssSpecifiedValueSerializationLimits::new(3, 2, 10),
+            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+        ),
+        (
+            CssSpecifiedValueSerializationLimits::new(3, 3, 9),
+            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+        ),
     ] {
-        assert!(pair.serialize_specified_with_limits(limit).is_err());
+        assert_eq!(
+            pair.serialize_specified_with_limits(limit)
+                .unwrap_err()
+                .kind(),
+            kind
+        );
     }
     let one = CssBorderWidthPair::new(CssBorderWidth::Thin, None);
     assert_eq!(one.authored_end(), None);
@@ -166,12 +180,27 @@ fn pair_and_four_side_keep_arity_roles_and_cumulative_budgets() {
             .unwrap(),
         "logical thin medium thick 0"
     );
-    for limit in [
-        CssSpecifiedValueSerializationLimits::new(4, 5, 27),
-        CssSpecifiedValueSerializationLimits::new(5, 4, 27),
-        CssSpecifiedValueSerializationLimits::new(5, 5, 26),
+    for (limit, kind) in [
+        (
+            CssSpecifiedValueSerializationLimits::new(4, 5, 27),
+            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+        ),
+        (
+            CssSpecifiedValueSerializationLimits::new(5, 4, 27),
+            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+        ),
+        (
+            CssSpecifiedValueSerializationLimits::new(5, 5, 26),
+            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+        ),
     ] {
-        assert!(shorthand.serialize_specified_with_limits(limit).is_err());
+        assert_eq!(
+            shorthand
+                .serialize_specified_with_limits(limit)
+                .unwrap_err()
+                .kind(),
+            kind
+        );
     }
     assert_ne!(
         shorthand,
@@ -202,12 +231,27 @@ fn border_triple_retains_omissions_and_exact_shared_budget() {
             .unwrap(),
         "thin solid red"
     );
-    for limit in [
-        CssSpecifiedValueSerializationLimits::new(3, 4, 14),
-        CssSpecifiedValueSerializationLimits::new(4, 3, 14),
-        CssSpecifiedValueSerializationLimits::new(4, 4, 13),
+    for (limit, kind) in [
+        (
+            CssSpecifiedValueSerializationLimits::new(3, 4, 14),
+            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+        ),
+        (
+            CssSpecifiedValueSerializationLimits::new(4, 3, 14),
+            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+        ),
+        (
+            CssSpecifiedValueSerializationLimits::new(4, 4, 13),
+            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+        ),
     ] {
-        assert!(value.serialize_specified_with_limits(limit).is_err());
+        assert_eq!(
+            value
+                .serialize_specified_with_limits(limit)
+                .unwrap_err()
+                .kind(),
+            kind
+        );
     }
     let reordered = parse_style_attribute("border:red solid thin");
     assert!(reordered.is_clean());

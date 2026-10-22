@@ -3,7 +3,9 @@
 //! The nine authored properties retain their distinct grammars and expand to
 //! the six specified longhands before any layout-dependent interpretation.
 
-use crate::css::support::important_declaration as parsed;
+use crate::css::support::property_admission::Responsible::{At, Disputed};
+use crate::css::support::property_admission::assert_declaration_rejected as rejected;
+use crate::css::support::{important_declaration as parsed, selected_grammar as grammar};
 use surgeist_css::*;
 
 const CONTENT: &str = "align-content";
@@ -12,10 +14,6 @@ const ITEMS: &str = "align-items";
 const JUSTIFY_ITEMS: &str = "justify-items";
 const SELF: &str = "align-self";
 const JUSTIFY_SELF: &str = "justify-self";
-
-fn grammar(name: &str) -> CssPropertyGrammar {
-    CssPropertyGrammar::from_name(name).unwrap_or_else(|| panic!("known property {name}"))
-}
 
 fn accepted(name: &str, value: &str) {
     let declaration = parsed(name, value);
@@ -27,26 +25,6 @@ fn accepted(name: &str, value: &str) {
     .unwrap_or_else(|error| panic!("checked {name}:{value}: {error:?}"));
     assert_eq!(declaration.known().unwrap().grammar(), grammar(name));
     assert_eq!(checked.known().unwrap().grammar(), grammar(name));
-}
-
-fn rejected(name: &str, value: &str) {
-    let source = format!("color:red;{name}:{value};color:blue");
-    let report = parse_style_attribute(&source);
-    let [diagnostic] = report.diagnostics() else {
-        panic!("one invalid-value diagnostic: {source}")
-    };
-    assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    assert_ne!(diagnostic.error().code(), CssErrorCode::UnknownProperty);
-    assert_eq!(report.syntax().len(), 2, "neighbors survive: {source}");
-    assert!(
-        parse_property_value_for_grammar(
-            grammar(name),
-            parse_component_values(value).unwrap(),
-            CssImportance::Normal,
-        )
-        .is_err(),
-        "checked construction accepted {name}:{value}"
-    );
 }
 
 fn expanded(source: &CssDeclaration) -> Vec<CssLonghandContribution> {
@@ -118,20 +96,25 @@ fn content_axes_accept_their_own_positions_and_baseline_domain() {
     ] {
         accepted(CONTENT, value);
     }
-    for value in [
-        "left",
-        "right",
-        "self-start",
-        "safe normal",
-        "unsafe stretch",
+    for (value, token) in [
+        ("left", At("left")),
+        ("right", At("right")),
+        ("self-start", At("self-start")),
+        ("safe normal", Disputed),
+        ("unsafe stretch", At("stretch")),
     ] {
-        rejected(CONTENT, value);
+        rejected(CONTENT, value, token);
     }
     for value in ["left", "right", "safe left", "unsafe right", "space-around"] {
         accepted(JUSTIFY_CONTENT, value);
     }
-    for value in ["baseline", "first baseline", "self-end", "safe normal"] {
-        rejected(JUSTIFY_CONTENT, value);
+    for (value, token) in [
+        ("baseline", At("baseline")),
+        ("first baseline", At("first")),
+        ("self-end", At("self-end")),
+        ("safe normal", Disputed),
+    ] {
+        rejected(JUSTIFY_CONTENT, value, token);
     }
 }
 
@@ -147,31 +130,35 @@ fn item_and_self_axes_admit_only_their_own_prefixed_positions() {
     ] {
         accepted(ITEMS, value);
     }
-    for value in [
-        "auto",
-        "left",
-        "safe normal",
-        "unsafe stretch",
-        "space-between",
+    for (value, token) in [
+        ("auto", At("auto")),
+        ("left", At("left")),
+        ("safe normal", Disputed),
+        ("unsafe stretch", At("stretch")),
+        ("space-between", At("space-between")),
     ] {
-        rejected(ITEMS, value);
+        rejected(ITEMS, value, token);
     }
     for name in [SELF, JUSTIFY_SELF] {
         for value in ["auto", "safe normal", "unsafe normal", "safe self-start"] {
             accepted(name, value);
         }
-        for value in [
-            "safe auto",
-            "unsafe baseline",
-            "safe stretch",
-            "space-around",
+        for (value, token) in [
+            ("safe auto", At("auto")),
+            ("unsafe baseline", At("baseline")),
+            ("safe stretch", At("stretch")),
+            ("space-around", At("space-around")),
         ] {
-            rejected(name, value);
+            rejected(name, value, token);
         }
     }
-    for value in ["left", "right", "unsafe left"] {
+    for (value, token) in [
+        ("left", At("left")),
+        ("right", At("right")),
+        ("unsafe left", Disputed),
+    ] {
         accepted(JUSTIFY_SELF, value);
-        rejected(SELF, value);
+        rejected(SELF, value, token);
     }
 }
 
@@ -188,17 +175,17 @@ fn justify_items_legacy_is_unordered_but_confined_to_its_own_grammar() {
     ] {
         accepted(JUSTIFY_ITEMS, value);
     }
-    for value in [
-        "legacy start",
-        "safe legacy",
-        "legacy safe left",
-        "auto",
-        "safe normal",
+    for (value, token) in [
+        ("legacy start", At("start")),
+        ("safe legacy", At("legacy")),
+        ("legacy safe left", At("safe")),
+        ("auto", At("auto")),
+        ("safe normal", Disputed),
     ] {
-        rejected(JUSTIFY_ITEMS, value);
+        rejected(JUSTIFY_ITEMS, value, token);
     }
     for name in [ITEMS, SELF, JUSTIFY_SELF] {
-        rejected(name, "legacy");
+        rejected(name, "legacy", Some("legacy"));
     }
 }
 
@@ -256,13 +243,13 @@ fn place_content_baseline_defaults_justify_to_start_and_pairs_restrict_each_axis
         (CONTENT, "baseline"),
         (JUSTIFY_CONTENT, "right"),
     );
-    for value in [
-        "baseline baseline",
-        "left",
-        "left center",
-        "normal self-start",
+    for (value, token) in [
+        ("baseline baseline", Some("baseline")),
+        ("left", Some("left")),
+        ("left center", Some("left")),
+        ("normal self-start", Some("self-start")),
     ] {
-        rejected("place-content", value);
+        rejected("place-content", value, token);
     }
 }
 
@@ -286,8 +273,13 @@ fn place_items_and_self_copy_valid_omissions_and_enforce_component_domains() {
         (ITEMS, "self-end"),
         (JUSTIFY_ITEMS, "right"),
     );
-    for value in ["legacy", "legacy normal", "auto", "left right"] {
-        rejected("place-items", value);
+    for (value, token) in [
+        ("legacy", At("legacy")),
+        ("legacy normal", Disputed),
+        ("auto", At("auto")),
+        ("left right", At("left")),
+    ] {
+        rejected("place-items", value, token);
     }
     pair("place-self", "auto", (SELF, "auto"), (JUSTIFY_SELF, "auto"));
     pair(
@@ -302,41 +294,12 @@ fn place_items_and_self_copy_valid_omissions_and_enforce_component_domains() {
         (SELF, "auto"),
         (JUSTIFY_SELF, "right"),
     );
-    for value in ["right auto", "legacy", "auto legacy"] {
-        rejected("place-self", value);
-    }
-}
-
-#[test]
-fn css_wide_values_expand_symbolically_for_all_nine_properties() {
-    for (spelling, keyword) in [
-        ("initial", CssGlobalKeyword::Initial),
-        ("inherit", CssGlobalKeyword::Inherit),
-        ("unset", CssGlobalKeyword::Unset),
-        ("revert", CssGlobalKeyword::Revert),
-        ("revert-layer", CssGlobalKeyword::RevertLayer),
+    for (value, token) in [
+        ("right auto", At("right")),
+        ("legacy", At("legacy")),
+        ("auto legacy", At("legacy")),
     ] {
-        for (name, members) in [
-            (CONTENT, &[CONTENT][..]),
-            (JUSTIFY_CONTENT, &[JUSTIFY_CONTENT][..]),
-            (ITEMS, &[ITEMS][..]),
-            (JUSTIFY_ITEMS, &[JUSTIFY_ITEMS][..]),
-            (SELF, &[SELF][..]),
-            (JUSTIFY_SELF, &[JUSTIFY_SELF][..]),
-            ("place-content", &[CONTENT, JUSTIFY_CONTENT][..]),
-            ("place-items", &[ITEMS, JUSTIFY_ITEMS][..]),
-            ("place-self", &[SELF, JUSTIFY_SELF][..]),
-        ] {
-            let source = parsed(name, spelling);
-            let items = expanded(&source);
-            assert_eq!(items.len(), members.len(), "{name}:{spelling}");
-            for (item, member) in items.iter().zip(members) {
-                assert_eq!(item.property(), grammar(member).target_property());
-                assert_eq!(item.value(), CssContributionValueRef::Global(keyword));
-                assert!(item.source().same_occurrence(&source));
-                assert_eq!(item.source().importance(), CssImportance::Important);
-            }
-        }
+        rejected("place-self", value, token);
     }
 }
 

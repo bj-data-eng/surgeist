@@ -755,6 +755,8 @@ property_records! {
         source: "S-BREAK3",
         dispatch: "clone",
         wrapper: yes,
+        accepts: ["slice", "clone", "CLONE" => "clone", r#"sl\69 ce"# => "slice"],
+        rejects: ["", "auto", "none", "1", "10%", "slice clone", "slice,clone"],
     }
     BoxShadow, "box-shadow" {
         metadata: longhand(false, |v| assert_eq!(*v, CssBoxShadow::None)),
@@ -795,6 +797,14 @@ property_records! {
         source: "X-UI4",
         dispatch: "rebeccapurple",
         wrapper: yes,
+        accepts: [
+            "auto", "AUTO" => "auto", "/**/AUTO /**/" => "auto", "currentcolor",
+            "CURRENTCOLOR" => "currentcolor", "/**/CURRENTCOLOR /**/" => "currentcolor",
+            "transparent", "TRANSPARENT" => "transparent", "/**/TRANSPARENT /**/" => "transparent",
+            "rebeccapurple", "REBECCAPURPLE" => "rebeccapurple",
+            "/**/REBECCAPURPLE /**/" => "rebeccapurple", r#"\72 ebeccapurple"# => "rebeccapurple",
+        ],
+        rejects: ["auto auto", "bogus"],
     }
     Clear, "clear" {
         metadata: longhand(false, |v| assert_eq!(*v, CssClear::None)),
@@ -924,6 +934,8 @@ property_records! {
         dispatch: "economy",
         wrapper: yes,
         inverse: ("exact", "exact"),
+        accepts: ["economy", "exact", "EXACT" => "exact", r#"ec\6f nomy"# => "economy"],
+        rejects: ["", "auto", "none", "economy exact", "exact,economy", "1", "10%"],
     }
     ColorScheme, "color-scheme" {
         metadata: longhand(true, |v| assert_eq!(*v, CssColorScheme::normal())),
@@ -994,6 +1006,57 @@ property_records! {
         source: "I-CONTAIN2",
         dispatch: "paint style size",
         wrapper: yes,
+        accepts: [
+            "none", "strict", "content", "size", "layout", "style", "paint", "size layout",
+            "layout size" => "size layout", "size style", "style size" => "size style",
+            "size paint", "paint size" => "size paint", "layout style",
+            "style layout" => "layout style", "layout paint", "paint layout" => "layout paint",
+            "style paint", "paint style" => "style paint", "size layout style",
+            "size style layout" => "size layout style", "layout size style" => "size layout style",
+            "layout style size" => "size layout style", "style size layout" => "size layout style",
+            "style layout size" => "size layout style", "size layout paint",
+            "size paint layout" => "size layout paint", "layout size paint" => "size layout paint",
+            "layout paint size" => "size layout paint", "paint size layout" => "size layout paint",
+            "paint layout size" => "size layout paint", "size style paint",
+            "size paint style" => "size style paint", "style size paint" => "size style paint",
+            "style paint size" => "size style paint", "paint size style" => "size style paint",
+            "paint style size" => "size style paint", "layout style paint",
+            "layout paint style" => "layout style paint",
+            "style layout paint" => "layout style paint",
+            "style paint layout" => "layout style paint",
+            "paint layout style" => "layout style paint",
+            "paint style layout" => "layout style paint", "size layout style paint",
+            "size layout paint style" => "size layout style paint",
+            "size style layout paint" => "size layout style paint",
+            "size style paint layout" => "size layout style paint",
+            "size paint layout style" => "size layout style paint",
+            "size paint style layout" => "size layout style paint",
+            "layout size style paint" => "size layout style paint",
+            "layout size paint style" => "size layout style paint",
+            "layout style size paint" => "size layout style paint",
+            "layout style paint size" => "size layout style paint",
+            "layout paint size style" => "size layout style paint",
+            "layout paint style size" => "size layout style paint",
+            "style size layout paint" => "size layout style paint",
+            "style size paint layout" => "size layout style paint",
+            "style layout size paint" => "size layout style paint",
+            "style layout paint size" => "size layout style paint",
+            "style paint size layout" => "size layout style paint",
+            "style paint layout size" => "size layout style paint",
+            "paint size layout style" => "size layout style paint",
+            "paint size style layout" => "size layout style paint",
+            "paint layout size style" => "size layout style paint",
+            "paint layout style size" => "size layout style paint",
+            "paint style size layout" => "size layout style paint",
+            "paint style layout size" => "size layout style paint", r#"\73 tyle"# => "style",
+            r#"PAINT/**/\73 tyle SIZE"# => "size style paint",
+        ],
+        rejects: [
+            "", "none size", "strict paint", "content style", "none none", "size size",
+            "style style", "size layout style paint size", "size, paint", "inline-size",
+            "inline-size style", "auto", "normal", "inherit paint", "style initial", "1",
+            r#""style""#, "var()", "none paint",
+        ],
     }
     ContainIntrinsicBlockSize, "contain-intrinsic-block-size" {
         metadata: longhand(false, |v| {
@@ -1070,6 +1133,7 @@ property_records! {
         catalog: grammar_catalog!("baseline.property.content", "\"Chapter \"", rejected("contents normal")),
         dispatch: "\"Chapter \"",
         wrapper: yes,
+        accepts: [r#""caption""#],
     }
     StringSet, "string-set" {
         metadata: longhand(false, |v| assert!(v.entries().is_none())),
@@ -1151,6 +1215,43 @@ property_records! {
         source: "X-UI4",
         dispatch: "grab",
         wrapper: yes,
+        accepts: [
+            "auto", "AUTO" => "auto", "/**/AUTO /**/" => "auto", "default", "DEFAULT" => "default",
+            "/**/DEFAULT /**/" => "default", "none", "NONE" => "none", "/**/NONE /**/" => "none",
+            "context-menu", "CONTEXT-MENU" => "context-menu",
+            "/**/CONTEXT-MENU /**/" => "context-menu", "help", "HELP" => "help",
+            "/**/HELP /**/" => "help", "pointer", "POINTER" => "pointer",
+            "/**/POINTER /**/" => "pointer", "progress", "PROGRESS" => "progress",
+            "/**/PROGRESS /**/" => "progress", "wait", "WAIT" => "wait", "/**/WAIT /**/" => "wait",
+            "cell", "CELL" => "cell", "/**/CELL /**/" => "cell", "crosshair",
+            "CROSSHAIR" => "crosshair", "/**/CROSSHAIR /**/" => "crosshair", "text",
+            "TEXT" => "text", "/**/TEXT /**/" => "text", "vertical-text",
+            "VERTICAL-TEXT" => "vertical-text", "/**/VERTICAL-TEXT /**/" => "vertical-text",
+            "alias", "ALIAS" => "alias", "/**/ALIAS /**/" => "alias", "copy", "COPY" => "copy",
+            "/**/COPY /**/" => "copy", "move", "MOVE" => "move", "/**/MOVE /**/" => "move",
+            "no-drop", "NO-DROP" => "no-drop", "/**/NO-DROP /**/" => "no-drop", "not-allowed",
+            "NOT-ALLOWED" => "not-allowed", "/**/NOT-ALLOWED /**/" => "not-allowed", "grab",
+            "GRAB" => "grab", "/**/GRAB /**/" => "grab", "grabbing", "GRABBING" => "grabbing",
+            "/**/GRABBING /**/" => "grabbing", "all-scroll", "ALL-SCROLL" => "all-scroll",
+            "/**/ALL-SCROLL /**/" => "all-scroll", "col-resize", "COL-RESIZE" => "col-resize",
+            "/**/COL-RESIZE /**/" => "col-resize", "row-resize", "ROW-RESIZE" => "row-resize",
+            "/**/ROW-RESIZE /**/" => "row-resize", "n-resize", "N-RESIZE" => "n-resize",
+            "/**/N-RESIZE /**/" => "n-resize", "e-resize", "E-RESIZE" => "e-resize",
+            "/**/E-RESIZE /**/" => "e-resize", "s-resize", "S-RESIZE" => "s-resize",
+            "/**/S-RESIZE /**/" => "s-resize", "w-resize", "W-RESIZE" => "w-resize",
+            "/**/W-RESIZE /**/" => "w-resize", "ne-resize", "NE-RESIZE" => "ne-resize",
+            "/**/NE-RESIZE /**/" => "ne-resize", "nw-resize", "NW-RESIZE" => "nw-resize",
+            "/**/NW-RESIZE /**/" => "nw-resize", "se-resize", "SE-RESIZE" => "se-resize",
+            "/**/SE-RESIZE /**/" => "se-resize", "sw-resize", "SW-RESIZE" => "sw-resize",
+            "/**/SW-RESIZE /**/" => "sw-resize", "ew-resize", "EW-RESIZE" => "ew-resize",
+            "/**/EW-RESIZE /**/" => "ew-resize", "ns-resize", "NS-RESIZE" => "ns-resize",
+            "/**/NS-RESIZE /**/" => "ns-resize", "nesw-resize", "NESW-RESIZE" => "nesw-resize",
+            "/**/NESW-RESIZE /**/" => "nesw-resize", "nwse-resize", "NWSE-RESIZE" => "nwse-resize",
+            "/**/NWSE-RESIZE /**/" => "nwse-resize", "zoom-in", "ZOOM-IN" => "zoom-in",
+            "/**/ZOOM-IN /**/" => "zoom-in", "zoom-out", "ZOOM-OUT" => "zoom-out",
+            "/**/ZOOM-OUT /**/" => "zoom-out", r#"\70 ointer"# => "pointer",
+        ],
+        rejects: ["auto auto", "bogus"],
     }
     Direction, "direction" {
         metadata: longhand(true, |v| assert_eq!(v, &CssDirection::Ltr)),
@@ -1467,6 +1568,14 @@ property_records! {
         source: "R-COLORADJUST1",
         dispatch: "preserve-parent-color",
         wrapper: yes,
+        accepts: [
+            "auto", "none", "preserve-parent-color",
+            "PRESERVE-PARENT-COLOR" => "preserve-parent-color", r#"n\6f ne"# => "none",
+        ],
+        rejects: [
+            "", "normal", "exact", "auto none", "preserve-parent-color auto", "none,auto", "1",
+            "10%",
+        ],
     }
     FrameSizing, "frame-sizing" {
         metadata: longhand(false, |v| assert_eq!(*v, CssFrameSizing::Auto)),
@@ -1620,6 +1729,11 @@ property_records! {
         source: "X-TEXT4",
         dispatch: "last allow-end first",
         wrapper: yes,
+        accepts: [
+            "none", "first", "last", "force-end", "allow-end", "first force-end last",
+            "first allow-end last",
+        ],
+        rejects: ["unknown", "first first", "allow-end force-end", "none last"],
     }
     Height, "height" {
         metadata: longhand(false, |v| assert_eq!(*v, CssSizeValue::Auto)),
@@ -1807,6 +1921,14 @@ property_records! {
         catalog: grammar_catalog!("ext.property.line-break", "anywhere", rejected("avoid")),
         source: "X-TEXT4",
         wrapper: yes,
+        accepts: [
+            "auto", "AUTO" => "auto", "/**/AUTO /**/" => "auto", "loose", "LOOSE" => "loose",
+            "/**/LOOSE /**/" => "loose", "normal", "NORMAL" => "normal",
+            "/**/NORMAL /**/" => "normal", "strict", "STRICT" => "strict",
+            "/**/STRICT /**/" => "strict", "anywhere", "ANYWHERE" => "anywhere",
+            "/**/ANYWHERE /**/" => "anywhere", r#"\61 nywhere"# => "anywhere",
+        ],
+        rejects: ["auto auto", "none"],
     }
     LineHeight, "line-height" {
         metadata: longhand(true, |v| assert_eq!(v, &CssLineHeight::Normal)),
@@ -1820,6 +1942,15 @@ property_records! {
         source: "X-TEXT4",
         dispatch: "-2px",
         wrapper: yes,
+        accepts: [
+            "0", "-2px", "1.25em", "+0" => "0", "-0" => "0", "-2PX" => "-2px",
+            "-0.0000005px" => "-0.000001px", "999999999999999999999999px",
+            "calc(-2px - 3px)" => "calc(-5px)", "calc(1em + 2px)",
+        ],
+        rejects: [
+            "unknown", "1", "-1", "25%", "-25%", "normal", "auto", "1fr", "calc(1% + 1px)",
+            "calc(1 + 1)", "0 1px", "1px,2px", "2", "calc(1% + 2px)",
+        ],
     }
     ListStyle, "list-style" {
         metadata: shorthand([ListStylePosition, ListStyleImage, ListStyleType], []),
@@ -2223,6 +2354,8 @@ property_records! {
         source: "I-SCROLLANCHORING1",
         dispatch: "none",
         wrapper: yes,
+        accepts: ["auto", "none", "AUTO" => "auto", r#"n\6f ne"# => "none"],
+        rejects: ["", "normal", "thin", "1", "10%", "auto none", "auto,none"],
     }
     OverflowBlock, "overflow-block" {
         metadata: longhand(false, |v| assert_eq!(*v, CssOverflow::Visible)),
@@ -2418,6 +2551,11 @@ property_records! {
         source: "X-UI4",
         dispatch: "none",
         wrapper: yes,
+        accepts: [
+            "auto", "AUTO" => "auto", "/**/AUTO /**/" => "auto", "none", "NONE" => "none",
+            "/**/NONE /**/" => "none", r#"\6e one"# => "none",
+        ],
+        rejects: ["auto auto", "bogus"],
     }
     Position, "position" {
         metadata: longhand(false, |v| assert_eq!(*v, CssLayoutPosition::Static)),
@@ -2430,6 +2568,8 @@ property_records! {
         source: "R-COLORADJUST1",
         dispatch: "exact",
         wrapper: yes,
+        accepts: ["economy", "exact", "EXACT" => "exact", r#"ec\6f nomy"# => "economy"],
+        rejects: ["", "auto", "none", "economy exact", "exact,economy", "1", "10%"],
     }
     Quotes, "quotes" {
         metadata: longhand(true, |v| assert_eq!(v, &CssQuotes::Auto)),
@@ -2447,6 +2587,15 @@ property_records! {
         source: "X-UI4",
         dispatch: "block",
         wrapper: yes,
+        accepts: [
+            "none", "NONE" => "none", "/**/NONE /**/" => "none", "both", "BOTH" => "both",
+            "/**/BOTH /**/" => "both", "horizontal", "HORIZONTAL" => "horizontal",
+            "/**/HORIZONTAL /**/" => "horizontal", "vertical", "VERTICAL" => "vertical",
+            "/**/VERTICAL /**/" => "vertical", "block", "BLOCK" => "block",
+            "/**/BLOCK /**/" => "block", "inline", "INLINE" => "inline",
+            "/**/INLINE /**/" => "inline", r#"\62 lock"# => "block",
+        ],
+        rejects: ["auto auto", "bogus"],
     }
     Rest, "rest" {
         metadata: shorthand([RestBefore, RestAfter], []),
@@ -2632,6 +2781,11 @@ property_records! {
         source: "R-SCROLLBARS1",
         dispatch: "red blue",
         wrapper: yes,
+        accepts: [
+            "auto", "red blue", "currentcolor Canvas" => "currentcolor canvas",
+            "rgb(10 20 30) color(srgb .2 .3 .4)" => "rgb(10, 20, 30) color(srgb 0.2 0.3 0.4)",
+        ],
+        rejects: ["", "red", "red blue green", "auto red", "red,blue", "thin"],
     }
     ScrollbarGutter, "scrollbar-gutter" {
         metadata: longhand(false, |v| assert_eq!(*v, CssScrollbarGutter::Auto)),
@@ -2642,6 +2796,8 @@ property_records! {
         source: "R-SCROLLBARS1",
         dispatch: "thin",
         wrapper: yes,
+        accepts: ["auto", "thin", "NONE" => "none", r#"th\69 n"# => "thin"],
+        rejects: ["", "8", "10%", "auto thin", "thin,none", "wide"],
     }
     Size, "size" {
         metadata: shorthand([Width, Height], []),
@@ -2696,6 +2852,13 @@ property_records! {
         source: "X-TEXT4",
         dispatch: "replace punctuation ideograph-alpha",
         wrapper: yes,
+        accepts: [
+            "normal", "auto", "no-autospace", "insert", "replace", "ideograph-alpha",
+            "ideograph-alpha punctuation replace",
+        ],
+        rejects: [
+            "unknown", "normal insert", "insert replace", "ideograph-alpha insert punctuation",
+        ],
     }
     // Snapshot2026 §4 selects Inline3 WD20241218 §6.1–6.3 only; §5.2
     // contributes exact <text-edge> grammar. Normative edge inheritance is yes.
@@ -2868,6 +3031,8 @@ property_records! {
         source: "X-TEXT4",
         dispatch: "center",
         wrapper: yes,
+        accepts: ["none", "start", "end", "left", "right", "center"],
+        rejects: ["unknown", "none center", "left right", "auto", "ruby"],
     }
     TextIndent, "text-indent" {
         metadata: longhand(true, |v| {
@@ -2889,6 +3054,14 @@ property_records! {
         source: "X-TEXT4",
         dispatch: "no-compress distribute",
         wrapper: yes,
+        accepts: [
+            "auto", "none", "inter-word", "inter-character", "ruby", "distribute", "no-compress",
+            "ruby no-compress", "distribute no-compress",
+        ],
+        rejects: [
+            "unknown", "auto inter-word", "ruby ruby", "no-compress no-compress", "none ruby",
+            "distribute inter-character",
+        ],
     }
     TextOrientation, "text-orientation" {
         metadata: longhand(true, |v| assert_eq!(*v, CssTextOrientation::Mixed)),
@@ -2907,6 +3080,14 @@ property_records! {
         dispatch: "replace punctuation ideograph-alpha trim-both",
         wrapper: yes,
         inverse: ("auto", "auto"),
+        accepts: [
+            "none", "auto", "normal", "trim-start", "insert", "replace", "no-autospace",
+            "trim-both ideograph-alpha punctuation replace",
+        ],
+        rejects: [
+            "unknown", "ideograph-alpha trim-start punctuation",
+            "insert trim-start ideograph-alpha", "trim-start auto", "normal normal",
+        ],
     }
     TextSpacingTrim, "text-spacing-trim" {
         metadata: longhand(true, |v| assert_eq!(*v, CssTextSpacingTrim::Trim(CssSpacingTrim::Normal))),
@@ -2914,6 +3095,10 @@ property_records! {
         source: "X-TEXT4",
         dispatch: "auto",
         wrapper: yes,
+        accepts: [
+            "normal", "space-all", "space-first", "trim-start", "trim-both", "trim-all", "auto",
+        ],
+        rejects: ["unknown", "normal trim-start", "none", "trim-end"],
     }
     TextTransform, "text-transform" {
         metadata: longhand(true, |v| assert_eq!(*v, CssTextTransform::None)),
@@ -2921,6 +3106,36 @@ property_records! {
         source: "X-TEXT4",
         dispatch: "uppercase",
         wrapper: yes,
+        accepts: [
+            "none", "math-auto", "capitalize", "uppercase", "lowercase", "full-width",
+            "full-size-kana", "full-width full-size-kana",
+            "full-size-kana full-width" => "full-width full-size-kana", "capitalize full-width",
+            "full-width capitalize" => "capitalize full-width", "capitalize full-size-kana",
+            "full-size-kana capitalize" => "capitalize full-size-kana",
+            "capitalize full-width full-size-kana",
+            "capitalize full-size-kana full-width" => "capitalize full-width full-size-kana",
+            "full-width capitalize full-size-kana" => "capitalize full-width full-size-kana",
+            "full-width full-size-kana capitalize" => "capitalize full-width full-size-kana",
+            "full-size-kana capitalize full-width" => "capitalize full-width full-size-kana",
+            "full-size-kana full-width capitalize" => "capitalize full-width full-size-kana",
+            "uppercase full-width", "full-width uppercase" => "uppercase full-width",
+            "uppercase full-size-kana", "full-size-kana uppercase" => "uppercase full-size-kana",
+            "uppercase full-width full-size-kana",
+            "uppercase full-size-kana full-width" => "uppercase full-width full-size-kana",
+            "full-width uppercase full-size-kana" => "uppercase full-width full-size-kana",
+            "full-width full-size-kana uppercase" => "uppercase full-width full-size-kana",
+            "full-size-kana uppercase full-width" => "uppercase full-width full-size-kana",
+            "full-size-kana full-width uppercase" => "uppercase full-width full-size-kana",
+            "lowercase full-width", "full-width lowercase" => "lowercase full-width",
+            "lowercase full-size-kana", "full-size-kana lowercase" => "lowercase full-size-kana",
+            "lowercase full-width full-size-kana",
+            "lowercase full-size-kana full-width" => "lowercase full-width full-size-kana",
+            "full-width lowercase full-size-kana" => "lowercase full-width full-size-kana",
+            "full-width full-size-kana lowercase" => "lowercase full-width full-size-kana",
+            "full-size-kana lowercase full-width" => "lowercase full-width full-size-kana",
+            "full-size-kana full-width lowercase" => "lowercase full-width full-size-kana",
+        ],
+        rejects: ["uppercase lowercase", "none full-width", "math-auto full-size-kana"],
     }
     TextWrap, "text-wrap" {
         metadata: shorthand([TextWrapMode, TextWrapStyle], []),
@@ -3050,6 +3265,13 @@ property_records! {
         aliases: ["-webkit-user-select"],
         dispatch: "text",
         wrapper: yes,
+        accepts: [
+            "auto", "AUTO" => "auto", "/**/AUTO /**/" => "auto", "text", "TEXT" => "text",
+            "/**/TEXT /**/" => "text", "none", "NONE" => "none", "/**/NONE /**/" => "none",
+            "contain", "CONTAIN" => "contain", "/**/CONTAIN /**/" => "contain", "all",
+            "ALL" => "all", "/**/ALL /**/" => "all", r#"\63 ontain"# => "contain",
+        ],
+        rejects: ["auto auto", "bogus"],
     }
     VerticalAlign, "vertical-align" {
         metadata: longhand(false, |v| assert_eq!(*v, CssVerticalAlign::Baseline)),
@@ -3168,6 +3390,14 @@ property_records! {
         source: "I-WILLCHANGE1",
         dispatch: "span, contents, --custom",
         wrapper: yes,
+        accepts: [
+            "auto", "scroll-position", "contents", "transform, opacity", "FutureProperty, --custom",
+            r#"f\75 ture, contents, future"# => "future, contents, future",
+        ],
+        rejects: [
+            "", "none", "all", "will-change", "default", "auto,opacity", "inherit,contents",
+            "scroll-position contents", "opacity,", ",opacity", "1", r#""opacity""#,
+        ],
     }
     WordBreak, "word-break" {
         metadata: longhand(true, |v| assert_eq!(*v, CssWordBreak::Normal)),
@@ -3196,6 +3426,15 @@ property_records! {
         catalog: grammar_catalog!("ext.property.wrap-after", "flex", rejected("anywhere")),
         source: "X-TEXT4",
         wrapper: yes,
+        accepts: [
+            "auto", "AUTO" => "auto", "/**/AUTO /**/" => "auto", "avoid", "AVOID" => "avoid",
+            "/**/AVOID /**/" => "avoid", "avoid-line", "AVOID-LINE" => "avoid-line",
+            "/**/AVOID-LINE /**/" => "avoid-line", "avoid-flex", "AVOID-FLEX" => "avoid-flex",
+            "/**/AVOID-FLEX /**/" => "avoid-flex", "line", "LINE" => "line",
+            "/**/LINE /**/" => "line", "flex", "FLEX" => "flex", "/**/FLEX /**/" => "flex",
+            r#"\6c ine"# => "line",
+        ],
+        rejects: ["auto auto", "none"],
     }
     WrapBefore, "wrap-before" {
         metadata: longhand(false, |v| {
@@ -3204,12 +3443,26 @@ property_records! {
         catalog: grammar_catalog!("ext.property.wrap-before", "avoid-line", rejected("loose")),
         source: "X-TEXT4",
         wrapper: yes,
+        accepts: [
+            "auto", "AUTO" => "auto", "/**/AUTO /**/" => "auto", "avoid", "AVOID" => "avoid",
+            "/**/AVOID /**/" => "avoid", "avoid-line", "AVOID-LINE" => "avoid-line",
+            "/**/AVOID-LINE /**/" => "avoid-line", "avoid-flex", "AVOID-FLEX" => "avoid-flex",
+            "/**/AVOID-FLEX /**/" => "avoid-flex", "line", "LINE" => "line",
+            "/**/LINE /**/" => "line", "flex", "FLEX" => "flex", "/**/FLEX /**/" => "flex",
+            r#"\61 void-flex"# => "avoid-flex", "AvOiD-LiNe" => "avoid-line",
+        ],
+        rejects: ["auto auto", "none"],
     }
     WrapInside, "wrap-inside" {
         metadata: longhand(false, |v| assert_eq!(*v, CssWrapInside::Auto)),
         catalog: grammar_catalog!("ext.property.wrap-inside", "avoid", rejected("avoid-flex")),
         source: "X-TEXT4",
         wrapper: yes,
+        accepts: [
+            "auto", "AUTO" => "auto", "/**/AUTO /**/" => "auto", "avoid", "AVOID" => "avoid",
+            "/**/AVOID /**/" => "avoid", r#"\61 void"# => "avoid",
+        ],
+        rejects: ["auto auto", "none"],
     }
     WritingMode, "writing-mode" {
         metadata: longhand(true, |v| assert_eq!(v, &CssWritingMode::HorizontalTb)),

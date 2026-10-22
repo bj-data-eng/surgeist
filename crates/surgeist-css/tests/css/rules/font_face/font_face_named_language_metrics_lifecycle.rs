@@ -3,6 +3,7 @@
 //! These tests use existing public parsing/lifecycle APIs; a descriptor kind is
 //! obtained from an admitted occurrence, without referring to future enum variants.
 
+use crate::css::support::rules::{invalid_descriptor, rejected_bang};
 use surgeist_css::{
     CssAuthoredFontFaceDescriptorValue as Authored, CssComponentValueErrorKind,
     CssComponentValueLimits, CssErrorCode, CssFontFaceDescriptor, CssFontFaceDescriptorKind,
@@ -58,10 +59,18 @@ fn ordinary_grammar(name: &str, valid: &[&str], invalid: &[&str]) {
                 .iter()
                 .any(|diagnostic| { diagnostic.action() == CssRecoveryAction::RejectInput })
         );
-        assert!(
-            Authored::try_from_components(kind, parse_component_values(value).unwrap()).is_err(),
-            "{name}: {value}"
-        );
+        let error = Authored::try_from_components(kind, parse_component_values(value).unwrap())
+            .unwrap_err();
+        let CssFontFaceValueErrorKind::Grammar(detail) = error.kind() else {
+            panic!("{name}: {value}: grammar failure: {error:?}")
+        };
+        // A top-level `!` is the first token <declaration-value> excludes.
+        let expected = if value.contains('!') {
+            rejected_bang("font-face", name)
+        } else {
+            invalid_descriptor("font-face", name)
+        };
+        expected.assert_kind(detail);
     }
 }
 
@@ -160,12 +169,23 @@ fn pending_recovery_and_provenance(name: &str, first: &str, last: &str, invalid:
         };
         assert_eq!(value.components(), &components);
     }
-    for text in ["env(selection)!important", "env(selection);", "env()"] {
+    // <declaration-value> excludes a top-level `!` or `;`; env() needs a
+    // <custom-ident>.
+    let rejected = invalid_descriptor("font-face", name);
+    for (text, expected) in [
+        ("env(selection)!important", rejected_bang("font-face", name)),
+        ("env(selection);", rejected.clone().at(";")),
+        ("env()", rejected.clone()),
+    ] {
         let raw = parse_font_face_descriptor_value(text, kind);
         assert!(raw.syntax().is_none(), "{name}: {text}: {raw:?}");
-        assert!(
-            Authored::try_from_components(kind, parse_component_values(text).unwrap()).is_err()
-        );
+        expected.assert_first(&raw);
+        let error =
+            Authored::try_from_components(kind, parse_component_values(text).unwrap()).unwrap_err();
+        let CssFontFaceValueErrorKind::Grammar(detail) = error.kind() else {
+            panic!("{name}: {text}: grammar failure: {error:?}")
+        };
+        expected.assert_kind(detail);
     }
     let components = parse_component_values("env(selection)").unwrap();
     let original = components.clone();
@@ -312,7 +332,7 @@ fn line_gap_override_admits_nonnegative_percentage_calculations_and_preserves_li
 }
 
 #[test]
-fn existing_width_descriptor_retains_calculations_pending_values_and_local_recovery() {
+fn width_descriptor_retains_calculations_pending_values_and_local_recovery() {
     ordinary_grammar(
         "font-width",
         &["normal", "75%", "calc(50% + 25%)"],

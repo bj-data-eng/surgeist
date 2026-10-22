@@ -181,7 +181,12 @@ fn page_and_margin_recovery_drop_invalid_owned_units_without_losing_neighbors() 
     let report = parse_sheet(
         "@page { size:bogus; size:A4; @top-left bad {content:'bad'} @top-right {content:'good'; size:A4; width:3px} marks:crop; }",
     );
-    assert!(!report.is_clean());
+    crate::css::support::value_assertions::assert_first_diagnostic(
+        report.diagnostics(),
+        "@page { size:bogus; size:A4; @top-left bad {content:'bad'} @top-right {content:'good'; size:A4; width:3px} marks:crop; }",
+        surgeist_css::CssErrorCode::InvalidDescriptorValue,
+        "bogus",
+    );
     let CssRule::Page(page) = &report.syntax().rules()[0] else {
         panic!()
     };
@@ -357,10 +362,10 @@ fn selected_page_terminal_edits_preserve_sources_and_do_not_expand_the_original_
         CssSpecifiedDeclarationValueRef::Completed(_)
     ));
     assert!(B::try_from_entries(&[E::Property(top.clone()), E::Property(top)]).is_err());
-    assert!(
-        B::try_from_entries(&[E::Descriptor(descriptor.clone()), E::Descriptor(descriptor)])
-            .is_err()
-    );
+    assert!(matches!(
+        B::try_from_entries(&[E::Descriptor(descriptor.clone()), E::Descriptor(descriptor)]),
+        Err(surgeist_css::CssPageProjectionError::DuplicateDescriptor { .. })
+    ));
 }
 #[test]
 fn selected_page_and_margin_views_preserve_pending_occurrence_and_order_and_reject_wrong_domains() {
@@ -398,10 +403,9 @@ fn selected_page_and_margin_views_preserve_pending_occurrence_and_order_and_reje
     ];
     let margin_text = "@top-left { content: \"X\"; color: red; }";
     assert_eq!(margins[1].serialize_cssom().unwrap(), margin_text);
-    assert!(
-        margins[1]
-            .serialize_cssom_with_limits(Limits::new(1000, 1000, margin_text.len() - 1))
-            .is_err()
+    crate::css::support::value_assertions::assert_rule_resource(
+        margins[1].serialize_cssom_with_limits(Limits::new(1000, 1000, margin_text.len() - 1)),
+        surgeist_css::CssSpecifiedValueSerializationErrorKind::ByteLimit,
     );
     assert_eq!(margins[1].serialize_cssom().unwrap(), margin_text);
     assert_eq!(
@@ -418,8 +422,19 @@ fn selected_page_and_margin_views_preserve_pending_occurrence_and_order_and_reje
     };
     let ordinary =
         CssSpecifiedDeclarationBlock::try_from_declarations(style.declarations()).unwrap();
-    assert!(CssSpecifiedDeclarationBlock::try_from_page_entries(ordinary.entries()).is_err());
-    assert!(CssSpecifiedDeclarationBlock::try_from_margin_entries(ordinary.entries()).is_err());
+    for result in [
+        CssSpecifiedDeclarationBlock::try_from_page_entries(ordinary.entries()),
+        CssSpecifiedDeclarationBlock::try_from_margin_entries(ordinary.entries()),
+    ] {
+        let error = result.unwrap_err();
+        assert!(
+            matches!(
+                error.kind(),
+                surgeist_css::CssDeclarationBlockErrorKind::InvalidPageSource
+            ),
+            "{error:?}"
+        );
+    }
 }
 #[test]
 fn edited_page_and_margin_projection_share_atomic_node_projection_and_byte_limits() {
@@ -437,12 +452,24 @@ fn edited_page_and_margin_projection_share_atomic_node_projection_and_byte_limit
     let view = CssPageRuleView::new(page.selectors(), &selected, &margins);
     let expected = "@page named { size: a4; @top-left { content: \"X\"; } }";
     assert_eq!(view.serialize_cssom().unwrap(), expected);
-    for limits in [
-        Limits::new(0, 1000, 1000),
-        Limits::new(1000, 0, 1000),
-        Limits::new(1000, 1000, expected.len() - 1),
+    for (limits, kind) in [
+        (
+            Limits::new(0, 1000, 1000),
+            surgeist_css::CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+        ),
+        (
+            Limits::new(1000, 0, 1000),
+            surgeist_css::CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+        ),
+        (
+            Limits::new(1000, 1000, expected.len() - 1),
+            surgeist_css::CssSpecifiedValueSerializationErrorKind::ByteLimit,
+        ),
     ] {
-        assert!(view.serialize_cssom_with_limits(limits).is_err());
+        crate::css::support::value_assertions::assert_rule_resource(
+            view.serialize_cssom_with_limits(limits),
+            kind,
+        );
         assert_eq!(view.serialize_cssom().unwrap(), expected);
     }
 }

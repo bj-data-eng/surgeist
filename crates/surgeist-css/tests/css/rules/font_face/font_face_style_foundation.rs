@@ -1,6 +1,7 @@
 //! Existing-public-API @font-face style grammar from CSS Fonts 4 WD
 //! (2026-09-07) §4.4. Typed authored ranges follow with the model.
 
+use crate::css::support::rules::invalid_descriptor;
 use surgeist_css::*;
 
 type Kind = CssFontFaceDescriptorKind;
@@ -98,7 +99,7 @@ fn invalid_descriptor_angles_and_arity_drop_locally_with_original_position() {
     ] {
         let raw = parse_font_face_descriptor_value(invalid, Kind::FontStyle);
         assert!(raw.syntax().is_none(), "raw accepted {invalid}: {raw:?}");
-        assert!(!raw.is_clean());
+        invalid_descriptor("font-face", "font-style").assert_first(&raw);
 
         let source = format!(
             "@font-face{{font-family:Demo;font-style:normal;src:url(face);font-style:{invalid};font-display:swap}}"

@@ -77,7 +77,7 @@ fn case_and_unicode_codepoint_distinctions_are_preserved_in_equality_and_hashing
 }
 
 #[test]
-fn nul_is_retained_in_identity_and_existing_identifier_output_replaces_it_only_on_output() {
+fn nul_is_retained_in_identity_and_identifier_output_replaces_it_only_on_output() {
     let name = CssCustomPropertyName::try_from_decoded("--a\0Z").unwrap();
     assert_eq!(name.as_str().as_bytes(), b"--a\0Z");
     let replaced = CssCustomPropertyName::try_from_decoded("--a�Z").unwrap();

@@ -6,6 +6,8 @@
 //! Authored URL targets and relative units stay context-free. These controls
 //! do not resolve URLs, fonts, colors, layout, inheritance or used values.
 
+use crate::css::support::important_declaration as declaration;
+use crate::css::support::value_assertions::assert_component_rejected;
 use surgeist_css::*;
 
 type Limits = CssSpecifiedValueSerializationLimits;
@@ -15,19 +17,6 @@ fn component(text: &str) -> CssComponentValue {
     let values = parse_component_values(text).unwrap();
     let [value] = values.items() else {
         panic!("one scalar component: {text}")
-    };
-    value.clone()
-}
-
-fn declaration(name: &str, text: &str) -> CssDeclaration {
-    let report = parse_style_attribute(&format!("{name}:{text}!important"));
-    assert!(
-        report.is_clean(),
-        "{name}:{text}: {:?}",
-        report.diagnostics()
-    );
-    let [value] = report.syntax().as_slice() else {
-        panic!("one ordinary declaration")
     };
     value.clone()
 }
@@ -103,8 +92,18 @@ fn scalar_outputs_compose_without_losing_exact_authored_components() {
     assert_eq!(checked.origin(), &CssValueOrigin::Programmatic);
     assert_eq!(checked.literal_component(), Some(&checked_component));
     assert_eq!(checked.serialize_specified().unwrap(), "1.234568");
-    assert!(CssIntegerLiteral::try_from_component(component("1e0")).is_err());
-    assert!(CssSpecifiedLength::try_from_component(component("2hz")).is_err());
+    // Syntax 3 §4.3.3: an exponent makes a <number-token> of type "number".
+    assert_eq!(
+        CssIntegerLiteral::try_from_component(component("1e0"))
+            .unwrap_err()
+            .kind(),
+        CssComponentValueErrorKind::InvalidToken
+    );
+    assert_component_rejected(
+        CssSpecifiedLength::try_from_component,
+        component("2hz"),
+        surgeist_css::CssNumericConstructionErrorKind::RootDomainMismatch,
+    );
 }
 
 #[test]
@@ -181,7 +180,10 @@ fn macro_aliases_delegate_to_concrete_property_grammar_and_family_rules() {
         ("voice-family", "female male"),
     ] {
         let report = parse_style_attribute(&format!("{name}:{invalid};color:red"));
-        assert!(!report.is_clean(), "{name}:{invalid}");
+        crate::css::support::value_assertions::assert_first_property_rejection(
+            report.diagnostics(),
+            crate::css::support::known_property(name),
+        );
         assert_eq!(report.syntax().len(), 1, "invalid declaration is atomic");
         assert_eq!(specified(&report.syntax()[0]), "red");
     }

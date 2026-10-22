@@ -1,14 +1,17 @@
 //! Exact authored font-weight property and common scalar contracts (Fonts 4 §2.2).
 
+use crate::css::support::named_property::assert_checked_value_rejected_at;
+use crate::css::support::named_property::assert_programmatic_rejection;
+use crate::css::support::named_property::normal_grammar_components;
 use surgeist_css::{
     CssAbsoluteFontWeight as Absolute, CssComponentValue, CssComponentValues, CssContributions,
     CssExpansion, CssExpansionErrorKind, CssFontStyle, CssFontValue, CssFontWeight,
     CssFontWeightNumber, CssImportance, CssInitialValueRef, CssKnownProperty,
     CssKnownPropertyValueRef, CssLonghandValueRef, CssNumberCalculation,
-    CssNumericConstructionErrorKind, CssPropertyGrammar, CssPropertyKindRef,
-    CssPropertyValueErrorKind, CssSerializedOrigin, CssSpecifiedValueSerializationErrorKind,
+    CssNumericConstructionErrorKind, CssPropertyKindRef, CssPropertyValueErrorKind,
+    CssSerializedOrigin, CssSpecifiedValueSerializationErrorKind,
     CssSpecifiedValueSerializationLimits, CssValueOrigin, expand_declaration,
-    parse_component_values, parse_property_value_for_grammar, parse_style_attribute,
+    parse_component_values, parse_style_attribute,
 };
 
 fn number(text: &str) -> CssFontWeightNumber {
@@ -30,18 +33,8 @@ fn property(text: &str) -> CssFontWeight {
     weight.value().clone()
 }
 
-fn checked(
-    components: CssComponentValues,
-) -> Result<surgeist_css::CssDeclaration, surgeist_css::CssPropertyValueParseError> {
-    parse_property_value_for_grammar(
-        CssPropertyGrammar::from_name("font-weight").unwrap(),
-        components,
-        CssImportance::Normal,
-    )
-}
-
 fn checked_weight(components: CssComponentValues) -> CssFontWeight {
-    let declaration = checked(components).unwrap();
+    let declaration = normal_grammar_components("font-weight", components).unwrap();
     let CssKnownPropertyValueRef::FontWeight(weight) =
         declaration.known().unwrap().property_value().unwrap()
     else {
@@ -123,11 +116,9 @@ fn wrong_domain_and_bare_math_roots_cannot_bypass_literal_bounds() {
     assert!(value.calculation().is_some());
     assert_eq!(value.serialize_specified().unwrap(), "calc(0)");
     assert!(matches!(value.origin(), CssValueOrigin::Parsed(_)));
+    // A length or percentage calculation is not a <number>.
     for text in ["calc(10px)", "calc(10%)"] {
-        assert!(
-            checked(parse_component_values(text).unwrap()).is_err(),
-            "{text}"
-        );
+        assert_checked_value_rejected_at(CssKnownProperty::FontWeight, text, text);
         let report = parse_style_attribute(&format!("font-weight:{text}"));
         assert!(!report.is_clean(), "{text}");
     }
@@ -200,7 +191,7 @@ fn checked_and_pending_property_numeric_origins_remain_exact() {
 
     let invalid =
         CssComponentValues::try_new(vec![CssComponentValue::try_number("1001").unwrap()]).unwrap();
-    let error = checked(invalid).unwrap_err();
+    let error = normal_grammar_components("font-weight", invalid).unwrap_err();
     assert!(matches!(
         error.kind(),
         CssPropertyValueErrorKind::Grammar(_)
@@ -271,7 +262,10 @@ fn adjacent_programmatic_number_components_do_not_merge_into_one_weight() {
         CssComponentValue::try_number("00").unwrap(),
     ])
     .unwrap();
-    assert!(checked(components.clone()).is_err());
+    assert_programmatic_rejection(
+        normal_grammar_components("font-weight", components.clone()),
+        CssKnownProperty::FontWeight,
+    );
     let report = parse_style_attribute("font-weight:env(weight)");
     let CssExpansion::Pending(handle) = expand_declaration(&report.syntax()[0]).unwrap() else {
         panic!("pending weight")

@@ -1,33 +1,12 @@
 //! Selected Color4 CRD 2026-09-08 #the-hsl-notation and #funcdef-hwb:
 //! modern saturation/lightness/whiteness/blackness admit numbers or percentages.
 //! Existing public APIs only; no canonical or exact-scalar completion claim.
+use crate::css::support::color_and_selector_fixtures::{
+    assert_color_value_rejected, parsed_important_declaration,
+};
+use crate::css::support::declaration_color as color;
 use surgeist_css::*;
 
-fn parsed(value: &str) -> CssDeclaration {
-    let source = format!("color:{value}!important");
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "{value}: {:?}", report.diagnostics());
-    assert_eq!(report.syntax().len(), 1);
-    let declaration = report.syntax()[0].clone();
-    assert_eq!(declaration.importance(), CssImportance::Important);
-    let CssValueOrigin::Parsed(origin) = declaration.value_components().items()[0].origin() else {
-        panic!("original function origin")
-    };
-    assert_eq!(origin.source().as_str(), source);
-    assert_eq!(origin.span().start().byte_offset().value(), 6);
-    declaration
-}
-fn wrapper(declaration: &CssDeclaration) -> &CssColorPropertyValue {
-    let CssKnownPropertyValueRef::Color(value) =
-        declaration.known().unwrap().property_value().unwrap()
-    else {
-        panic!("ordinary color")
-    };
-    value
-}
-fn color(declaration: &CssDeclaration) -> &CssColor {
-    wrapper(declaration).value()
-}
 fn number(component: &CssColorComponent, expected: f32) {
     assert!(
         matches!(component, CssColorComponent::Number(value) if value.numeric().representation() == format!("{expected}"))
@@ -57,7 +36,7 @@ fn modern_number_channels_keep_number_payloads_and_source_origins() {
         ("hsl(0 -25 150)", -25.0, 150.0),
         ("hwb(0 -25 150)", -25.0, 150.0),
     ] {
-        let declaration = parsed(text);
+        let declaration = parsed_important_declaration("color", text);
         let (first, second) = slots(color(&declaration));
         number(first, first_expected);
         number(second, second_expected);
@@ -132,7 +111,7 @@ fn modern_number_and_percentage_calculations_keep_distinct_types_and_leaves() {
         "hwb(0 calc(25) calc(50%))",
     ] {
         for declaration in [
-            parsed(text),
+            parsed_important_declaration("color", text),
             parse_property_value(
                 CssPropertyNameRef::Known(CssKnownProperty::Color),
                 parse_component_values(text).unwrap(),
@@ -184,44 +163,65 @@ fn border_color_aggregate_uses_the_same_modern_color_grammar() {
 
 #[test]
 fn legacy_hsl_stays_percentage_only_and_invalid_modern_domains_recover() {
-    for text in [
-        "hsl(0, 25, 50%)",
-        "hsla(0, 25%, 50, .5)",
-        "hsl(0, calc(25), 50%)",
-        "hwb(0, 25%, 50%)",
-        "hsl(0 25px 50)",
-        "hwb(0 25 50deg)",
-        "hsl(0 25)",
-        "hwb(0 25 50 75)",
+    // Color 4 §7.1: legacy HSL saturation and lightness are percentages and
+    // HWB has no legacy comma form; modern HSL/HWB channels are <number> or
+    // <percentage> and take exactly three. A truncated argument list and a
+    // calculation name no single responsible token, so those rows check only
+    // the color grammar kind.
+    for (text, responsible) in [
+        ("hsl(0, 25, 50%)", Some("25")),
+        ("hsla(0, 25%, 50, .5)", Some("50")),
+        ("hsl(0, calc(25), 50%)", None),
+        ("hwb(0, 25%, 50%)", Some(",")),
+        ("hsl(0 25px 50)", Some("25px")),
+        ("hwb(0 25 50deg)", Some("50deg")),
+        ("hsl(0 25)", None),
+        ("hwb(0 25 50 75)", Some("75")),
     ] {
         let report = parse_style_attribute(&format!("color:{text};opacity:.5"));
-        assert!(!report.is_clean(), "{text}");
+        let [diagnostic] = report.diagnostics() else {
+            panic!("{text}: one diagnostic: {report:?}")
+        };
+        assert_eq!(
+            diagnostic.error().code(),
+            CssErrorCode::InvalidColorSyntax,
+            "{text}"
+        );
+        assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
         assert_eq!(report.syntax().len(), 1, "{text}");
         assert_eq!(
             report.syntax()[0].known().unwrap().property(),
             CssKnownProperty::Opacity
         );
-        assert!(
-            parse_property_value(
-                CssPropertyNameRef::Known(CssKnownProperty::Color),
-                parse_component_values(text).unwrap(),
-                CssImportance::Normal
-            )
-            .is_err(),
-            "{text}"
+        let checked = parse_property_value(
+            CssPropertyNameRef::Known(CssKnownProperty::Color),
+            parse_component_values(text).unwrap(),
+            CssImportance::Normal,
         );
+        match responsible {
+            Some(token) => {
+                assert_color_value_rejected(checked, CssKnownProperty::Color, text, token)
+            }
+            None => assert!(
+                matches!(
+                    checked.unwrap_err().kind(),
+                    CssPropertyValueErrorKind::Grammar(ErrorKind::InvalidColorSyntax(_))
+                ),
+                "{text}"
+            ),
+        }
     }
 }
 
 #[test]
-fn existing_legacy_percentages_and_modern_missing_components_stay_valid() {
-    let declaration = parsed("hsla(0, 25%, 50%, .5)");
+fn legacy_percentages_and_modern_missing_components_stay_valid() {
+    let declaration = parsed_important_declaration("color", "hsla(0, 25%, 50%, .5)");
     let hsl = color(&declaration).hsl_value().unwrap();
     assert_eq!(hsl.syntax(), CssColorSyntax::Legacy);
     percentage(hsl.saturation(), 25.0);
     percentage(hsl.lightness(), 50.0);
     for text in ["hsl(none none 50% / none)", "hwb(none none 50% / none)"] {
-        let declaration = parsed(text);
+        let declaration = parsed_important_declaration("color", text);
         let (first, second) = slots(color(&declaration));
         assert!(matches!(first, CssColorComponent::None));
         percentage(second, 50.0);
@@ -233,7 +233,7 @@ fn existing_legacy_percentages_and_modern_missing_components_stay_valid() {
 fn former_negative_modern_hsl_fixture_is_a_valid_mixed_domain_color() {
     let text = "hsl(20 30 40%)";
     for declaration in [
-        parsed(text),
+        parsed_important_declaration("color", text),
         parse_property_value(
             CssPropertyNameRef::Known(CssKnownProperty::Color),
             parse_component_values(text).unwrap(),

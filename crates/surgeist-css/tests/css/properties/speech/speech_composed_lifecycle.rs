@@ -5,6 +5,10 @@
 //! omission; Values 4 supplies shared numeric/unit serialization. These tests
 //! do not select voices, resolve inheritance, load audio or execute synthesis.
 
+use crate::css::support::important_speech_components as checked;
+use crate::css::support::important_speech_declaration as declaration;
+use crate::css::support::known_property as property;
+use crate::css::support::named_property::longhand_contributions as expanded;
 use surgeist_css::*;
 
 struct Case {
@@ -200,41 +204,6 @@ const GLOBALS: [(&str, CssGlobalKeyword); 5] = [
     ("revert", CssGlobalKeyword::Revert),
     ("revert-layer", CssGlobalKeyword::RevertLayer),
 ];
-
-fn property(name: &str) -> CssKnownProperty {
-    CssKnownProperty::from_name(name).unwrap()
-}
-
-fn declaration(name: &str, text: &str) -> CssDeclaration {
-    let report = parse_style_attribute(&format!("{name}:{text}!important"));
-    assert!(
-        report.is_clean(),
-        "{name}:{text}: {:?}",
-        report.diagnostics()
-    );
-    let [value] = report.syntax().as_slice() else {
-        panic!("one Speech declaration")
-    };
-    value.clone()
-}
-
-fn checked(name: &str, values: CssComponentValues) -> CssDeclaration {
-    parse_property_value(
-        CssPropertyNameRef::Known(property(name)),
-        values,
-        CssImportance::Important,
-    )
-    .unwrap()
-}
-
-fn expanded(source: &CssDeclaration) -> CssLonghandContributions {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
-    else {
-        panic!("completed Speech contribution")
-    };
-    values
-}
 
 fn targets(name: &str) -> Vec<&str> {
     match name {

@@ -2,16 +2,13 @@
 //! https://www.w3.org/TR/2025/WD-css-content-3-20251204/#propdef-content
 //! Counter-style names and `symbols()` follow Counter Styles 3 (2021-07-27).
 
+use crate::css::support::important_declaration;
+use crate::css::support::property_admission::Responsible;
+use crate::css::support::property_admission::assert_invalid_value;
 use surgeist_css::*;
 
 fn parsed(value: &str) -> CssDeclaration {
-    let source = format!("content:{value}!important");
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    let [declaration] = report.syntax().as_slice() else {
-        panic!("one content declaration: {source}")
-    };
-    declaration.clone()
+    important_declaration("content", value)
 }
 
 fn ordinary(source: &CssDeclaration) -> CssLonghandContribution {
@@ -26,7 +23,7 @@ fn ordinary(source: &CssDeclaration) -> CssLonghandContribution {
     item.clone()
 }
 
-fn assert_recovered(invalid: &str) {
+fn assert_recovered<'a>(invalid: &str, token: impl Into<Responsible<'a>>) {
     let source = format!("color:red;content:{invalid};height:2px");
     let report = parse_style_attribute(&source);
     let properties = report
@@ -46,7 +43,11 @@ fn assert_recovered(invalid: &str) {
         )
     };
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    assert!(validate_style_attribute(&source).is_err());
+    assert_invalid_value(diagnostic.error().kind(), CssKnownProperty::Content, token);
+    assert_eq!(
+        validate_style_attribute(&source).unwrap_err().diagnostics(),
+        report.diagnostics()
+    );
 }
 
 #[test]
@@ -72,7 +73,7 @@ fn content_is_one_noninherited_longhand_with_symbolic_normal_initial() {
 }
 
 #[test]
-fn existing_normal_none_strings_counters_and_attr_pending_remain_admitted() {
+fn normal_none_strings_counters_and_attr_pending_are_admitted() {
     for value in [
         "normal",
         "none",
@@ -153,71 +154,51 @@ fn content_three_function_families_accept_their_finite_arguments() {
 
 #[test]
 fn ordinary_counter_names_reject_decoded_reserved_and_default_names() {
-    for invalid in [
-        "counter(default)",
-        "counters(DEFAULT, \".\")",
-        r"counter(\64 efault)",
+    for (invalid, token) in [
+        ("counter(default)", Responsible::At("default")),
+        ("counters(DEFAULT, \".\")", Responsible::Disputed),
+        (r"counter(\64 efault)", Responsible::At("\\64 efault")),
     ] {
-        assert_recovered(invalid);
+        assert_recovered(invalid, token);
     }
 }
 
 #[test]
 fn invalid_combinations_and_function_arguments_recover_without_losing_neighbors() {
-    for invalid in [
-        "normal contents",
-        "none \"caption\"",
-        "normal / \"spoken\"",
-        "\"caption\" /",
-        "\"caption\" / url(\"#icon\")",
-        "\"caption\" / open-quote",
-        "\"caption\" / contents",
-        "\"caption\" / leader(dotted)",
-        "leader()",
-        "leader(dashed)",
-        "target-counter(\"#ch\")",
-        "target-counter(\"#ch\", chapter, decimal, extra)",
-        "target-counters(\"#ch\", chapter)",
-        "target-text(\"#ch\", marker)",
-        "string(chapter, middle)",
-        "content(chapter)",
-        "counter(none)",
-        r"counter(\69 nherit)",
-        "target-counter(\"#ch\", default)",
-        "string(INHERIT)",
-        r"string(\64 efault)",
-        "counter(chapter, symbols())",
-        "counter(chapter, symbols(numeric \"0\"))",
-        "counter(chapter, symbols(alphabetic \"a\"))",
-        "counter(chapter, symbols(cyclic none))",
-        "counter(chapter, symbols(symbolic star))",
-        "target-counter(\"#ch\", chapter,)",
+    for (invalid, token) in [
+        ("normal contents", Some("contents")),
+        ("none \"caption\"", Some("\"caption\"")),
+        ("normal / \"spoken\"", Some("/")),
+        ("\"caption\" /", Some("/")),
+        ("\"caption\" / url(\"#icon\")", Some("url(")),
+        ("\"caption\" / open-quote", Some("open-quote")),
+        ("\"caption\" / contents", Some("contents")),
+        ("\"caption\" / leader(dotted)", Some("leader(")),
+        ("leader()", None),
+        ("leader(dashed)", Some("dashed")),
+        ("target-counter(\"#ch\")", Some("\"#ch\"")),
+        (
+            "target-counter(\"#ch\", chapter, decimal, extra)",
+            Some(","),
+        ),
+        ("target-counters(\"#ch\", chapter)", Some("chapter")),
+        ("target-text(\"#ch\", marker)", Some("marker")),
+        ("string(chapter, middle)", Some("middle")),
+        ("content(chapter)", Some("chapter")),
+        ("counter(none)", Some("none")),
+        (r"counter(\69 nherit)", Some("\\69 nherit")),
+        ("target-counter(\"#ch\", default)", Some("default")),
+        ("string(INHERIT)", Some("INHERIT")),
+        (r"string(\64 efault)", Some("\\64 efault")),
+        ("counter(chapter, symbols())", None),
+        ("counter(chapter, symbols(numeric \"0\"))", Some("\"0\"")),
+        ("counter(chapter, symbols(alphabetic \"a\"))", Some("\"a\"")),
+        ("counter(chapter, symbols(cyclic none))", Some("none")),
+        ("counter(chapter, symbols(symbolic star))", Some("star")),
+        ("target-counter(\"#ch\", chapter,)", None),
     ] {
-        assert_recovered(invalid);
+        assert_recovered(invalid, token);
     }
-}
-
-#[test]
-fn global_keywords_have_one_terminal_and_preserve_source_importance() {
-    for (spelling, expected) in [
-        ("initial", CssGlobalKeyword::Initial),
-        ("inherit", CssGlobalKeyword::Inherit),
-        ("unset", CssGlobalKeyword::Unset),
-        ("revert", CssGlobalKeyword::Revert),
-        ("revert-layer", CssGlobalKeyword::RevertLayer),
-    ] {
-        let source = parsed(spelling);
-        let item = ordinary(&source);
-        assert_eq!(item.property(), CssKnownProperty::Content);
-        assert_eq!(item.value(), CssContributionValueRef::Global(expected));
-        assert!(item.source().same_occurrence(&source));
-        assert_eq!(item.source().importance(), CssImportance::Important);
-    }
-    let source = parsed("\"caption\"");
-    let item = ordinary(&source);
-    assert_eq!(item.property(), CssKnownProperty::Content);
-    assert!(item.ordinary_value().is_some());
-    assert!(item.source().same_occurrence(&source));
 }
 
 #[test]

@@ -1,13 +1,8 @@
 //! Cascade6 §2.5.4/2.5.5 and Nesting1 §3.2 contextual boundary contracts.
 //! https://www.w3.org/TR/2024/WD-css-cascade-6-20240906/#scope-scope
 //! https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#syntax-examples
+use crate::css::support::rules::clean_sheet as sheet;
 use surgeist_css::*;
-
-fn sheet(source: &str) -> CssSheet {
-    let report = parse_sheet(source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    report.syntax().clone()
-}
 
 fn relative(combinator: CssSelectorCombinator, selector: CssSelector) -> CssScopeSelectorList {
     CssScopeSelectorList::try_new(vec![CssScopeSelector::Relative(CssRelativeSelector::new(

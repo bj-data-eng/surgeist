@@ -3,19 +3,15 @@
 //! URL (#1327).
 //! Locations remain decoded authored values; resolution and loading are external.
 
+use crate::css::support::value_assertions::assert_first_diagnostic;
+use crate::css::support::value_assertions::clean_rule as rule;
 use std::error::Error;
 use surgeist_css::{
     CssImportSerializationError, CssImportTarget, CssMediaCssomSerializationError,
-    CssMediaSerializationError, CssNamespaceContext, CssRule, CssRuleCssomSerializationErrorKind,
-    CssSerializedOrigin, CssSpecifiedValueSerializationErrorKind as Resource,
-    CssSpecifiedValueSerializationLimits as Limits, CssValueOrigin, parse_rule, parse_sheet,
+    CssMediaSerializationError, CssRule, CssRuleCssomSerializationErrorKind, CssSerializedOrigin,
+    CssSpecifiedValueSerializationErrorKind as Resource,
+    CssSpecifiedValueSerializationLimits as Limits, CssValueOrigin, parse_sheet,
 };
-
-fn rule(source: &str) -> CssRule {
-    let report = parse_rule(source, &CssNamespaceContext::default());
-    assert!(report.is_clean(), "{source}: {report:?}");
-    report.syntax().clone().expect("one admitted import")
-}
 
 fn exact_location(target: &str, decoded: &str, expected: &str) {
     let source = format!("@import {target};");
@@ -287,7 +283,12 @@ fn literal_import_sheet_charges_cumulative_nodes_separator_and_url_bytes() {
 #[test]
 fn recovered_media_keeps_provider_failure_origin_and_retry_without_mutation() {
     let report = parse_sheet("@import 'x' screen,???;");
-    assert!(!report.is_clean());
+    assert_first_diagnostic(
+        report.diagnostics(),
+        "@import 'x' screen,???;",
+        surgeist_css::CssErrorCode::InvalidMediaQuery,
+        "???",
+    );
     let before = report.clone();
     let [value @ CssRule::Import(import)] = report.syntax().rules() else {
         panic!("import")

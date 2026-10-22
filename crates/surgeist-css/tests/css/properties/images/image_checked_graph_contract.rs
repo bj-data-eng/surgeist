@@ -358,7 +358,7 @@ fn image_pair_provider_control_counts_its_own_enclosing_function_and_cached_chil
 }
 
 #[test]
-fn none_and_low_depth_image_controls_preserve_every_existing_family_and_payload() {
+fn none_and_low_depth_image_controls_preserve_every_family_and_payload() {
     for _ in 0..2 {
         assert_eq!(
             CssImage::try_new(CssImageValue::None).unwrap_err(),

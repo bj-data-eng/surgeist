@@ -1,3 +1,5 @@
+use crate::css::support::property_admission::assert_component_rejected;
+use surgeist_css::CssNumericConstructionErrorKind;
 use surgeist_css::{
     CssBoxSideKind, CssComponentValue, CssComponentValueRef, CssLengthPercentageCalculation,
     CssMarginPair, CssMarginShorthand, CssMarginValue, CssPaddingPair, CssPaddingShorthand,
@@ -88,10 +90,17 @@ fn signed_length_percentage_keeps_exact_extremes_and_literal_domain() {
             if number.representation() == "-1e-999"
     ));
     assert_eq!(tiny, before);
-    assert!(CssSpecifiedLengthPercentage::try_from_component(component("1")).is_err());
-    assert!(CssSpecifiedLengthPercentage::try_from_component(component("1fr")).is_err());
-    assert!(
-        CssSpecifiedNonNegativeLengthPercentage::try_from_component(component("-1e-999%")).is_err()
+    for text in ["1", "1fr"] {
+        assert_component_rejected(
+            CssSpecifiedLengthPercentage::try_from_component,
+            component(text),
+            CssNumericConstructionErrorKind::RootDomainMismatch,
+        );
+    }
+    assert_component_rejected(
+        CssSpecifiedNonNegativeLengthPercentage::try_from_component,
+        component("-1e-999%"),
+        CssNumericConstructionErrorKind::OutOfRange,
     );
 }
 

@@ -16,6 +16,8 @@ pub(crate) use parse::promote_nodes;
 pub(crate) use parse::{has_unescaped_final, odd_trailing_backslashes};
 pub(crate) use retained::{equivalent_in_same_input_with, retained_backing_bytes_with};
 mod serialize;
+#[cfg(test)]
+mod tokenizer_agreement_tests;
 pub(crate) use serialize::{CssCanonicalBuilder, CssCanonicalToken};
 
 use std::fmt;

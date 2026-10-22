@@ -2,6 +2,7 @@
 //! https://www.w3.org/TR/2026/WD-css-text-4-20260814/#propdef-word-spacing
 //! https://www.w3.org/TR/2026/WD-css-text-4-20260814/#propdef-letter-spacing
 
+use crate::css::support::named_property::sole_longhand_contribution;
 use surgeist_css::*;
 
 fn component(text: &str) -> CssComponentValue {
@@ -45,15 +46,10 @@ fn declared(name: &str, value: &str) -> CssDeclaration {
 }
 
 fn expanded_value(declaration: &CssDeclaration) -> CssLonghandValue {
-    let CssExpansion::Contributions(CssContributions::Longhands(items)) =
-        expand_declaration(declaration).unwrap()
-    else {
-        panic!("spacing is one longhand")
-    };
-    let [item] = items.items() else {
-        panic!("one spacing contribution")
-    };
-    item.ordinary_value().unwrap().clone()
+    sole_longhand_contribution(declaration)
+        .ordinary_value()
+        .unwrap()
+        .clone()
 }
 
 #[test]

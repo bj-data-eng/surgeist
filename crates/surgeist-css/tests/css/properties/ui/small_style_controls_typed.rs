@@ -1,7 +1,7 @@
 //! Functional checked-value and canonical-writer contracts from Will Change 1 §2,
 //! Scroll Anchoring 1 §3, and Fragmentation 3 §5.4, using the pinned editions.
 
-use crate::css::support::first_declaration_reporting_diagnostics as declaration;
+use crate::css::support::normal_declaration as declaration;
 use surgeist_css::*;
 
 fn will_change(source: &CssDeclaration) -> &CssWillChange {

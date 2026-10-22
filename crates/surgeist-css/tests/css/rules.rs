@@ -16,7 +16,14 @@ mod scope;
 mod structure;
 mod view_transitions;
 
+mod advanced_rule_surface;
 mod color_profile_authored;
 mod color_profile_construction;
+mod font_face_rule_authoring;
 mod font_palette_values;
 mod font_palette_values_authored;
+mod import_rule_authoring;
+mod keyframes_rule_authoring;
+mod layer_rule_authoring;
+mod nesting_rule_authoring;
+mod scope_rule_authoring;

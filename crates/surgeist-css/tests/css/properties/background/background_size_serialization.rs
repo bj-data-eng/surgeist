@@ -10,14 +10,14 @@
 //! That revision's authored mask omission parser conflicts with its size test;
 //! these expectations select the test policy, not unanimous engine behavior.
 
+use crate::css::support::serialization_limits::assert_limits as exact_bounds;
+use crate::css::support::sole_declaration;
 use surgeist_css::{
     CssSpecifiedValueSerializationErrorKind as E, CssSpecifiedValueSerializationLimits as L, *,
 };
 
 fn parsed(property: &str, css: &str) -> CssBackgroundSizeList {
-    let report = parse_style_attribute(&format!("{property}:{css}"));
-    assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
-    match report.syntax()[0]
+    match sole_declaration(&format!("{property}:{css}"))
         .known()
         .unwrap()
         .property_value()
@@ -76,31 +76,6 @@ fn mask_explicit_auto_height_remains_in_serialized_text() {
             .serialize_specified()
             .unwrap(),
         "1px auto"
-    );
-}
-
-fn exact_bounds(
-    expected: &str,
-    input: usize,
-    projection: usize,
-    serialize: impl Fn(L) -> Result<String, CssSpecifiedValueSerializationError>,
-) {
-    for (limits, error) in [
-        (
-            L::new(input - 1, projection, expected.len()),
-            E::InputNodeLimit,
-        ),
-        (
-            L::new(input, projection - 1, expected.len()),
-            E::ProjectionNodeLimit,
-        ),
-        (L::new(input, projection, expected.len() - 1), E::ByteLimit),
-    ] {
-        assert_eq!(serialize(limits).unwrap_err().kind(), error);
-    }
-    assert_eq!(
-        serialize(L::new(input, projection, expected.len())).unwrap(),
-        expected
     );
 }
 

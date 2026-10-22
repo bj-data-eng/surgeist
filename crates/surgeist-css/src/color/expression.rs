@@ -9,7 +9,7 @@ use super::literal::{LiteralAction, LiteralConversion};
 use super::protocol::{CssColorProtocolError, CssColorSlot, Data, LexicalTable};
 use super::tokens::{ClassifiedToken, TokenAction, TokenReader};
 use crate::numeric::bounded_expression as engine;
-use crate::tokenization::color_tokens::{NameKind, TokenKind};
+use crate::tokenization::tokenizer::{NameKind, TokenKind};
 use crate::{CssNumericDimension as Dimension, CssNumericType as Type};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -2087,7 +2087,7 @@ mod tests {
         };
         assert_eq!(
             token.source,
-            crate::tokenization::color_tokens::Span { start: 7, end: 10 }
+            crate::tokenization::tokenizer::Span { start: 7, end: 10 }
         );
         syntax.abandon();
         assert!(matches!(syntax.action(), NumericAction::Stopped));

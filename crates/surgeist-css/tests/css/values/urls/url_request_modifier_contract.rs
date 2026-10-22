@@ -5,6 +5,11 @@
 //! Fetch execution, CORS policy and resource resolution belong downstream.
 
 use crate::css::support::check_property_text as checked;
+use crate::css::support::value_assertions::background_image_url as parsed_url;
+use crate::css::support::value_assertions::url_consumer_text as consumer_value;
+use crate::css::support::value_assertions::{
+    assert_first_property_diagnostic, assert_property_rejected,
+};
 use surgeist_css::*;
 
 const REFERRER_POLICIES: [&str; 8] = [
@@ -68,14 +73,6 @@ const CONSUMERS: [CssKnownProperty; 17] = [
     CssKnownProperty::Cue,
 ];
 
-fn consumer_value(property: CssKnownProperty, url: &str) -> String {
-    if property == CssKnownProperty::Cursor {
-        format!("{url}, auto")
-    } else {
-        url.to_owned()
-    }
-}
-
 fn background_url(declaration: &CssDeclaration) -> &CssUrl {
     let CssKnownPropertyValueRef::BackgroundImage(images) =
         declaration.known().unwrap().property_value().unwrap()
@@ -86,12 +83,6 @@ fn background_url(declaration: &CssDeclaration) -> &CssUrl {
         panic!("one URL")
     };
     url
-}
-
-fn parsed_url(text: &str) -> CssUrl {
-    let report = parse_style_attribute(&format!("background-image:{text}"));
-    assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
-    background_url(&report.syntax()[0]).clone()
 }
 
 fn one_function(url: &CssUrl) -> &CssUrlModifierFunction {
@@ -181,7 +172,11 @@ fn missing_extra_wrong_category_and_malformed_known_arguments_drop_whole_declara
                 report.diagnostics()[0].error().code(),
                 CssErrorCode::InvalidPropertyValue
             );
-            assert!(validate_style_attribute(&source).is_err(), "{source}");
+            assert_eq!(
+                validate_style_attribute(&source).unwrap_err().diagnostics(),
+                report.diagnostics(),
+                "{source}"
+            );
         }
     }
 }
@@ -198,13 +193,16 @@ fn every_property_consumer_rejects_invalid_recognized_modifier_arguments() {
             let source = format!("color:red;{}:{value};width:2px", property.canonical_name());
             let report = parse_style_attribute(&source);
             assert_eq!(report.syntax().len(), 2, "{source}");
-            assert!(!report.is_clean(), "{source}");
-            assert!(
-                matches!(
-                    checked(property, &value).unwrap_err().kind(),
-                    CssPropertyValueErrorKind::Grammar(_)
-                ),
-                "{source}"
+            // The responsible token is left unasserted: some consumers
+            // (`cursor`, `content`) attribute the rejection to `src(` rather
+            // than to the modifier, which is reported as a possible defect.
+            crate::css::support::value_assertions::assert_first_property_rejection(
+                report.diagnostics(),
+                property,
+            );
+            crate::css::support::value_assertions::property_rejection(
+                checked(property, &value),
+                property,
             );
         }
     }
@@ -261,10 +259,16 @@ fn nested_image_and_generated_content_consumers_reject_invalid_known_modifiers()
         (CssKnownProperty::ListStyleType, "symbols(VALUE)"),
     ] {
         let invalid = pattern.replace("VALUE", "src(\"asset\" integrity(hash))");
-        assert!(
-            checked(property, &invalid).is_err(),
-            "recognized malformed modifier: {invalid}"
-        );
+        if property == CssKnownProperty::Cursor {
+            // Reported as a possible defect: `cursor` attributes the
+            // rejection to `image-set(` rather than to the modifier.
+            crate::css::support::value_assertions::property_rejection(
+                checked(property, &invalid),
+                property,
+            );
+        } else {
+            assert_property_rejected(checked(property, &invalid), property, Some("integrity("));
+        }
     }
 }
 
@@ -285,14 +289,17 @@ fn imports_reject_invalid_known_modifiers_atomically_and_keep_following_rules() 
             report.diagnostics()[0].action(),
             CssRecoveryAction::DropAtRule
         );
-        assert!(validate_sheet(&source).is_err());
-        assert!(
+        assert_eq!(
+            validate_sheet(&source).unwrap_err().diagnostics(),
+            report.diagnostics()
+        );
+        assert!(matches!(
             CssImportRule::try_from_components(
                 parse_component_values(&source[..source.find(".after").unwrap()]).unwrap(),
                 &CssNamespaceContext::default()
-            )
-            .is_err()
-        );
+            ),
+            Err(CssImportConstructionError::InvalidRuleGrammar { .. })
+        ));
     }
 }
 
@@ -315,12 +322,14 @@ fn font_sources_reject_invalid_known_modifiers_at_the_source_item_boundary() {
             report.diagnostics()[0].action(),
             CssRecoveryAction::DropFontSourceListItem
         );
+        let error = CssAuthoredFontFaceDescriptorValue::try_from_components(
+            CssFontFaceDescriptorKind::Src,
+            parse_component_values(&value).unwrap(),
+        )
+        .unwrap_err();
         assert!(
-            CssAuthoredFontFaceDescriptorValue::try_from_components(
-                CssFontFaceDescriptorKind::Src,
-                parse_component_values(&value).unwrap()
-            )
-            .is_err()
+            matches!(error.kind(), CssFontFaceValueErrorKind::Grammar(_)),
+            "{value}: {error:?}"
         );
     }
 }
@@ -361,9 +370,11 @@ fn known_names_and_keywords_decode_css_escapes_and_fold_ascii_case() {
         r##"src("asset" CrOsSoRiGiN(wrong))"##,
         r##"url("asset" integ\72 ity(hash))"##,
     ] {
-        assert!(
-            checked(CssKnownProperty::BackgroundImage, text).is_err(),
-            "{text}"
+        let opening = &text[text.find("\" ").unwrap() + 2..=text.rfind("(").unwrap()];
+        assert_property_rejected(
+            checked(CssKnownProperty::BackgroundImage, text),
+            CssKnownProperty::BackgroundImage,
+            Some(opening),
         );
     }
 }
@@ -510,13 +521,13 @@ fn known_argument_comments_and_whitespace_preserve_the_single_significant_token(
         "integrity(\"a\"/**/\"b\")",
         "referrerpolicy(ori/**/gin)",
     ] {
-        assert!(
+        assert_property_rejected(
             checked(
                 CssKnownProperty::BackgroundImage,
-                &format!("url(\"asset\" {modifier})")
-            )
-            .is_err(),
-            "{modifier}"
+                &format!("url(\"asset\" {modifier})"),
+            ),
+            CssKnownProperty::BackgroundImage,
+            Some(&modifier[..=modifier.find('(').unwrap()]),
         );
     }
 }
@@ -650,7 +661,12 @@ fn integrity_requires_a_string_argument() {
             report.syntax().is_empty(),
             "known grammar must reject {modifier}"
         );
-        assert!(!report.is_clean());
+        assert_first_property_diagnostic(
+            report.diagnostics(),
+            &source,
+            CssKnownProperty::BackgroundImage,
+            &modifier[..=modifier.find('(').unwrap()],
+        );
     }
 }
 
@@ -815,12 +831,15 @@ fn counter_symbol_descriptor_consumers_use_shared_known_argument_validation() {
         let report = parse_counter_style_descriptor_value(&invalid, kind);
         assert!(!report.is_clean(), "{}:{invalid}", kind.css_name());
         assert!(report.syntax().is_none());
+        let error = CssCounterStyleDescriptorValue::try_from_components(
+            kind,
+            parse_component_values(&invalid).unwrap(),
+        )
+        .unwrap_err();
         assert!(
-            CssCounterStyleDescriptorValue::try_from_components(
-                kind,
-                parse_component_values(&invalid).unwrap()
-            )
-            .is_err()
+            matches!(error.kind(), CssCounterStyleValueErrorKind::Grammar(_)),
+            "{}:{invalid}: {error:?}",
+            kind.css_name()
         );
     }
 }
@@ -832,5 +851,10 @@ fn referrerpolicy_rejects_keywords_outside_the_eight_selected_alternatives() {
         report.syntax().is_empty(),
         "unknown referrer policy must reject"
     );
-    assert!(!report.is_clean());
+    assert_first_property_diagnostic(
+        report.diagnostics(),
+        "background-image:url(\"asset\" referrerpolicy(default))",
+        CssKnownProperty::BackgroundImage,
+        "referrerpolicy(",
+    );
 }

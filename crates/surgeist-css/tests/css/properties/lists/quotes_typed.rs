@@ -2,6 +2,7 @@
 //! https://www.w3.org/TR/2025/WD-css-content-3-20251204/#propdef-quotes
 //! Locale selection for `auto` and parent resolution for `match-parent` occur later.
 
+use crate::css::support::normal_declaration;
 use surgeist_css::*;
 
 fn pair(open: &str, close: &str) -> CssQuotePair {
@@ -13,16 +14,6 @@ fn pair(open: &str, close: &str) -> CssQuotePair {
 
 fn list(pairs: Vec<CssQuotePair>) -> CssQuotePairList {
     CssQuotePairList::try_new(pairs).expect("at least one pair")
-}
-
-fn authored(value: &str) -> CssDeclaration {
-    let source = format!("quotes:{value}");
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    let [declaration] = report.syntax().as_slice() else {
-        panic!("one quotes declaration")
-    };
-    declaration.clone()
 }
 
 #[test]
@@ -95,7 +86,7 @@ fn decoded_keyword_spellings_keep_authored_text_and_serialize_canonically() {
         (r#"m\61 tch-parent"#, CssQuotes::MatchParent, "match-parent"),
         (r#"\6e one"#, CssQuotes::None, "none"),
     ] {
-        let parsed = authored(spelling);
+        let parsed = normal_declaration("quotes", spelling);
         let CssKnownPropertyValueRef::Quotes(wrapper) =
             parsed.known().unwrap().property_value().unwrap()
         else {
@@ -145,7 +136,7 @@ fn string_escaping_is_canonical_and_preserves_decoded_unicode_and_controls() {
         );
     }
 
-    let parsed = authored(r#""a\"b" "c\\d""#);
+    let parsed = normal_declaration("quotes", r#""a\"b" "c\\d""#);
     let CssKnownPropertyValueRef::Quotes(wrapper) =
         parsed.known().unwrap().property_value().unwrap()
     else {
@@ -161,7 +152,7 @@ fn string_escaping_is_canonical_and_preserves_decoded_unicode_and_controls() {
 #[test]
 fn parsed_and_programmatic_pairs_share_typed_value_and_initial_is_auto() {
     let programmed = CssQuotes::Pairs(list(vec![pair("<", ">"), pair("[", "]")]));
-    let parsed = authored("\"<\" \">\" \"[\" \"]\"");
+    let parsed = normal_declaration("quotes", "\"<\" \">\" \"[\" \"]\"");
     let CssKnownPropertyValueRef::Quotes(wrapper) =
         parsed.known().unwrap().property_value().unwrap()
     else {

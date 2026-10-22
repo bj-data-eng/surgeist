@@ -106,9 +106,9 @@ fn bare_calculation_roots_reenter_literals_and_actual_math_stays_symbolic() {
     assert!(math.literal_component().is_none());
     assert!(math.calculation().is_some());
     assert_eq!(math.serialize_specified().unwrap(), "calc(-1)");
-    assert!(
-        CssNumberCalculation::try_from_components(parse_component_values("calc(1 + 2%)").unwrap())
-            .is_err()
+    crate::css::support::value_assertions::assert_calculation_rejected(
+        CssNumberCalculation::try_from_components(parse_component_values("calc(1 + 2%)").unwrap()),
+        Some(surgeist_css::CssNumericConstructionErrorKind::IncompatibleTypes),
     );
 }
 

@@ -1,3 +1,4 @@
+use crate::css::support::rules::page_pseudo;
 use surgeist_css::{
     CssErrorCode, CssImportance, CssKnownProperty, CssKnownPropertyValueRef, CssMarginValue,
     CssPagePseudo, CssRecoveryAction, CssRule, CssSupportStatus, ErrorKind, feature_metadata,
@@ -428,11 +429,4 @@ fn page_rules_preserve_non_bmp_source_coordinates_for_rules_and_declarations() {
             .encode_utf16()
             .count()
     );
-}
-
-fn page_pseudo(page: &surgeist_css::CssPageRule) -> Option<surgeist_css::CssPagePseudo> {
-    page.selectors()
-        .selectors()
-        .first()
-        .and_then(|s| s.pseudos().first().copied())
 }

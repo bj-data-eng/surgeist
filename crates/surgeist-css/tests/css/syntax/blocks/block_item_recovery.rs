@@ -1,19 +1,8 @@
+use crate::css::support::authored_syntax::property_names;
 use surgeist_css::{
-    CssDeclarationContextRef, CssErrorCode, CssPropertyNameRef, CssRecoveryAction, CssRule,
-    CssScopedRule, CssSelector, CssSelectorCombinator, CssStyleSelector, CssTokenKind, ErrorKind,
-    parse_sheet,
+    CssDeclarationContextRef, CssErrorCode, CssRecoveryAction, CssRule, CssScopedRule, CssSelector,
+    CssSelectorCombinator, CssStyleSelector, CssTokenKind, ErrorKind, parse_sheet,
 };
-
-fn property_names(declarations: &surgeist_css::CssDeclarationList) -> Vec<&str> {
-    declarations
-        .iter()
-        .map(|declaration| match declaration.property_name() {
-            CssPropertyNameRef::Known(property) => property.canonical_name(),
-            CssPropertyNameRef::Custom(name) => name.as_str(),
-            _ => panic!("unexpected future property-name kind"),
-        })
-        .collect()
-}
 
 fn assert_drop(
     source: &str,

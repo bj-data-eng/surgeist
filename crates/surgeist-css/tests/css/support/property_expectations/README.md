@@ -23,6 +23,8 @@ the selected specifications; consult the pinned references when adding coverage.
 | `aliases` | Exact aliases for a property covered by the grammar catalog; omission means an empty expected list |
 | `dispatch` | Ordinary public parser stimulus; an optional `=>` supplies a different important stimulus |
 | `wrapper` | `yes` checks the independently named property and typed value variant, then its retained authored text |
+| `accepts` | Additional ordinary `authored => specified` rows (a bare row is already specified), added to the catalog's positive sample |
+| `rejects` | Additional values the grammar rejects, added to the catalog's rejected boundary sample |
 
 Coverage is optional per contract. A metadata-only property need not invent a
 parser sample, and catalog and dispatch samples may differ. `all` deliberately
@@ -54,6 +56,19 @@ schema macros. It is shared by:
 
 - [catalog_inventory.rs](../../properties/metadata/catalog_inventory.rs), for lookup, aliases,
   provenance, grammar acceptance/rejection, and complete-support rows;
+- [property_record_fronts_contract.rs](../../properties/metadata/property_record_fronts_contract.rs),
+  which runs the generic property contracts once for every record through the
+  style-attribute (canonical and uppercase name), checked name, checked
+  grammar, text name and text grammar fronts at both importances: CSS-wide
+  keyword serialization, spelling, exclusivity, `all` participation and
+  expansion to the members named by `metadata`; `var()`/`env()`/`attr()`
+  admission and strict, residual-first, repeatable reentry; original closure
+  at the end of input in checked, text, sheet and reentry paths with exact
+  normalization budgets; alias and escaped-name lookup; and every `accepts`
+  and `rejects` row with re-parse idempotence;
+- [known_property_original_closure_contract.rs](../../properties/metadata/known_property_original_closure_contract.rs),
+  for original comment and function closure witnesses, programmatic globals
+  and legacy grammar owners;
 - [property_schema.rs](../../properties/metadata/property_schema.rs), for broad dispatch, typed
   wrappers, and retained authored text;
 - [property_metadata_consumer.rs](../../../../examples/property_metadata_consumer.rs),
@@ -69,10 +84,15 @@ available metadata with the independent fixture set. There is no fixed property
 tally to maintain. Its integration test executes the example as a real external
 consumer.
 
-For a new property, add one record with the applicable fields and extend the
-specialized family tests for behavior that the common runners do not express.
-Run the affected consumer targets and family suite using the repository's
-verification policy. Do not move recovery, expansion, numeric, normalization,
-or authored-omission regressions into a generic row merely to centralize them.
-Those suites remain separate behavioral evidence. This format consolidates the
-common inventories; it does not require every CSS test to use the same format.
+For a new property, add one record with the applicable fields, including
+`accepts` and `rejects` rows written from the property's grammar in the pinned
+specification, never from current output. The record harness then covers the
+generic contracts above; do not copy them into a family suite. Family suites
+keep only property-specific behavior: typed payloads, member projection and
+reset-only targets, numeric representation, specialized recovery locations,
+resource prices of ordinary values, normalization sequences and similar
+regressions that a generic row cannot express (for example caret-color color
+diagnostics, background reset-only targets and mask member order). Run the
+affected consumer targets and family suite using the repository's
+verification policy. This format consolidates the common inventories and
+contracts; it does not require every CSS test to use the same format.

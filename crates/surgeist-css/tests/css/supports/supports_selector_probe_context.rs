@@ -264,7 +264,11 @@ fn programmatic_components_and_output_retry_do_not_invent_original_coordinates()
             ))]
         );
         let before = condition.clone();
-        assert!(condition.serialize_with_limit(16).is_err());
+        // The seventeenth byte is the closing parenthesis of the programmatic
+        // outer function.
+        let error = condition.serialize_with_limit(16).unwrap_err();
+        assert_eq!(error.kind(), CssComponentValueErrorKind::ByteLimit);
+        assert_eq!(error.origin(), &CssValueOrigin::Programmatic);
         assert_eq!(condition, before);
         assert_eq!(
             condition.serialize_with_limit(17).unwrap().as_css(),

@@ -96,6 +96,10 @@ fn empty_groups_do_not_replace_required_tracks_or_admit_reserved_names() {
         let report = parse_style_attribute(&source);
         assert!(!report.is_clean(), "{source}");
         assert_eq!(report.syntax().len(), 1, "only the color sibling remains");
-        assert!(report.into_validation_result().is_err());
+        let diagnostics = report.diagnostics().to_vec();
+        assert_eq!(
+            report.into_validation_result().unwrap_err().diagnostics(),
+            diagnostics.as_slice()
+        );
     }
 }

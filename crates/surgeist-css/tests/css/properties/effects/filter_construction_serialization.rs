@@ -4,21 +4,13 @@
 //! Surgeist authored contract, without computed defaults or filter execution.
 //! These new APIs have no executable preimplementation behavioral RED.
 
-use surgeist_css::{
-    CssSpecifiedValueSerializationErrorKind as K, CssSpecifiedValueSerializationLimits as L, *,
-};
-
-fn declaration(property: CssKnownProperty, css: &str) -> CssDeclaration {
-    let report = parse_style_attribute(&format!("{}:{css}", property.canonical_name()));
-    assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
-    let [value] = report.syntax().as_slice() else {
-        panic!("one declaration")
-    };
-    value.clone()
-}
+use crate::css::support::normal_declaration;
+use crate::css::support::property_admission::assert_reentry_rejected;
+use crate::css::support::serialization_limits::assert_limits_with_zero as budget;
+use surgeist_css::{CssSpecifiedValueSerializationLimits as L, *};
 
 fn filter(property: CssKnownProperty, css: &str) -> CssFilter {
-    let source = declaration(property, css);
+    let source = normal_declaration(property.canonical_name(), css);
     match source.known().unwrap().property_value().unwrap() {
         CssKnownPropertyValueRef::Filter(value) => value.value().clone(),
         CssKnownPropertyValueRef::BackdropFilter(value) => value.value().clone(),
@@ -85,41 +77,12 @@ fn percentage(css: &str) -> CssFilterAmount {
 }
 
 fn color(css: &str) -> CssColor {
-    let source = declaration(CssKnownProperty::Color, css);
+    let source = normal_declaration(CssKnownProperty::Color.canonical_name(), css);
     let CssKnownPropertyValueRef::Color(value) = source.known().unwrap().property_value().unwrap()
     else {
         panic!("color")
     };
     value.value().clone()
-}
-
-fn budget(
-    expected: &str,
-    input: usize,
-    projection: usize,
-    serialize: impl Fn(L) -> Result<String, CssSpecifiedValueSerializationError>,
-) {
-    assert_eq!(
-        serialize(L::new(input, projection, expected.len())).unwrap(),
-        expected
-    );
-    for (limits, kind) in [
-        (
-            L::new(input - 1, projection, expected.len()),
-            K::InputNodeLimit,
-        ),
-        (
-            L::new(input, projection - 1, expected.len()),
-            K::ProjectionNodeLimit,
-        ),
-        (L::new(input, projection, expected.len() - 1), K::ByteLimit),
-        (L::new(0, projection, expected.len()), K::InputNodeLimit),
-        (L::new(input, 0, expected.len()), K::ProjectionNodeLimit),
-        (L::new(input, projection, 0), K::ByteLimit),
-    ] {
-        assert_eq!(serialize(limits).unwrap_err().kind(), kind, "{expected}");
-    }
-    assert_eq!(serialize(L::default()).unwrap(), expected);
 }
 
 #[test]
@@ -180,7 +143,7 @@ fn hue_construction_keeps_omission_zero_units_and_origin_sensitive_math() {
 fn parsed_empty_and_comment_hue_keep_omission_and_authored_declaration_text() {
     for property in [CssKnownProperty::Filter, CssKnownProperty::BackdropFilter] {
         for css in ["hue-rotate()", "hue-rotate(/**/)"] {
-            let source = declaration(property, css);
+            let source = normal_declaration(property.canonical_name(), css);
             let CssFilter::Functions(list) = filter(property, css) else {
                 panic!("list")
             };
@@ -404,7 +367,7 @@ fn exact_amount_literals_keep_branch_spelling_and_origins_without_clamping() {
 }
 
 #[test]
-fn symbolic_drop_children_share_existing_providers_without_mutating_origins() {
+fn symbolic_drop_children_share_providers_without_mutating_origins() {
     let css = "drop-shadow(calc(1px + 2em) -2px color-mix(in srgb, currentcolor, blue))";
     let value = function(css);
     let CssFilterFunction::DropShadow(drop) = &value else {
@@ -485,7 +448,7 @@ fn borrowed_filter_terminals_and_all_reset_keep_schema_identity() {
                 CssLonghandValueRef::BackdropFilter(CssFilter::None)
             )
         ));
-        let source = declaration(property, "hue-rotate()");
+        let source = normal_declaration(property.canonical_name(), "hue-rotate()");
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
             expand_declaration(&source).unwrap()
         else {
@@ -511,7 +474,7 @@ fn borrowed_filter_terminals_and_all_reset_keep_schema_identity() {
             panic!("all metadata")
         };
         assert!(!all.excludes(CssPropertyNameRef::Known(property)));
-        let source = declaration(CssKnownProperty::All, "unset");
+        let source = normal_declaration(CssKnownProperty::All.canonical_name(), "unset");
         let CssExpansion::Contributions(CssContributions::UniversalReset(all)) =
             expand_declaration(&source).unwrap()
         else {
@@ -524,14 +487,14 @@ fn borrowed_filter_terminals_and_all_reset_keep_schema_identity() {
 #[test]
 fn repeated_pending_reentry_preserves_replacement_child_origins_after_failure() {
     for property in [CssKnownProperty::Filter, CssKnownProperty::BackdropFilter] {
-        let source = declaration(property, "var(--effect)!important");
+        let source = normal_declaration(property.canonical_name(), "var(--effect)!important");
         let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
             panic!("pending")
         };
-        assert!(
-            pending
-                .reenter(parse_component_values("blur(-1px)").unwrap())
-                .is_err()
+        assert_reentry_rejected(
+            pending.reenter(parse_component_values("blur(-1px)").unwrap()),
+            property,
+            Some("-1px"),
         );
         for css in [
             "blur(2em) hue-rotate(calc(30deg + 60deg))",
@@ -569,10 +532,12 @@ fn repeated_pending_reentry_preserves_replacement_child_origins_after_failure() 
             };
             assert_eq!(origin.source().as_str(), css);
             let before = filter.clone();
-            assert!(
+            assert_eq!(
                 filter
                     .serialize_specified_with_limits(L::new(100, 100, 1))
-                    .is_err()
+                    .unwrap_err()
+                    .kind(),
+                CssSpecifiedValueSerializationErrorKind::ByteLimit
             );
             assert_eq!(filter, &before);
             if let Some(CssAngleOrZero::Angle(angle)) = hue.authored_angle()

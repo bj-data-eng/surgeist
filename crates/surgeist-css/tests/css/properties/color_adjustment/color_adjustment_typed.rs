@@ -2,7 +2,7 @@
 //! and the shared CSSOM identifier serialization contract. Contextual execution
 //! remains outside these authored models.
 
-use crate::css::support::important_pair_declaration as declaration;
+use crate::css::support::important_declaration as declaration;
 use surgeist_css::*;
 
 fn scheme(source: &CssDeclaration) -> &CssColorScheme {
@@ -53,8 +53,15 @@ fn checked_scheme_names_apply_only_generic_and_local_exclusions() {
         let checked = CssColorSchemeName::try_new(CssIdent::try_new(name).unwrap()).unwrap();
         assert_eq!(checked.as_str(), name);
     }
-    assert!(CssIdent::try_new("").is_err());
-    assert!(CssIdent::try_new("bad\0name").is_err());
+    for name in ["", "bad\0name"] {
+        let error = CssIdent::try_new(name).unwrap_err();
+        assert_eq!(
+            error.kind(),
+            CssComponentValueErrorKind::InvalidIdentifier,
+            "{name:?}"
+        );
+        assert_eq!(error.origin(), &CssValueOrigin::Programmatic);
+    }
     for only in [false, true] {
         assert_eq!(
             CssColorScheme::try_new(vec![], only).unwrap_err(),

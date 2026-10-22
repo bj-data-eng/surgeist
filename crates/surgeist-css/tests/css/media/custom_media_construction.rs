@@ -1,9 +1,8 @@
 //! Independent checked-model and canonical-output witnesses for MQ5 custom media.
+use crate::css::support::authored_syntax::assert_diagnostics;
+use crate::css::support::component_values as components;
 use surgeist_css::*;
 
-fn components(css: &str) -> CssComponentValues {
-    parse_component_values(css).unwrap()
-}
 fn list(css: &str) -> CssMediaQueryList {
     let report = parse_media_query_list(css);
     assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
@@ -33,9 +32,22 @@ fn decoded_names_escape_without_changing_extension_identity() {
         assert_eq!(rule.position(), None);
         assert!(matches!(rule.origin(), CssValueOrigin::Programmatic));
     }
-    for name in ["ordinary", "-x", ""] {
-        assert!(CssCustomMediaName::try_new(name).is_err());
+    // `<extension-name>` is a dashed ident; the empty string is no ident.
+    for name in ["ordinary", "-x"] {
+        assert_eq!(
+            CssCustomMediaName::try_new(name),
+            Err(CssCustomMediaConstructionError::InvalidName {
+                origin: CssValueOrigin::Programmatic
+            }),
+            "{name:?}"
+        );
     }
+    let Err(CssCustomMediaConstructionError::Component(error)) = CssCustomMediaName::try_new("")
+    else {
+        panic!("empty name")
+    };
+    assert_eq!(error.kind(), CssComponentValueErrorKind::InvalidIdentifier);
+    assert_eq!(error.origin(), &CssValueOrigin::Programmatic);
     let number = components("2").items()[0].clone();
     let origin = number.origin().clone();
     assert!(
@@ -159,11 +171,34 @@ fn reference_inspection_agrees_across_parsed_and_mixed_origin_checked_admission(
         condition.kind(),
         CssMediaConditionKind::CustomMediaReference(_)
     ));
-    for source in ["(--x: 1)", "not ((--x: 1))", "(1 < --x)"] {
-        assert!(
-            CssMediaCondition::try_from_components(components(source)).is_err(),
-            "{source}"
-        );
+    // A dashed name is only a boolean custom-media reference, so as a
+    // feature name that name first violates the condition. The range form is
+    // not located at its dashed name (reported), so only its error variant is
+    // asserted.
+    for (source, responsible) in [
+        ("(--x: 1)", Some(1)),
+        ("not ((--x: 1))", Some(6)),
+        ("(1 < --x)", None),
+    ] {
+        let Err(CssMediaConstructionError::InvalidConditionGrammar { origin }) =
+            CssMediaCondition::try_from_components(components(source))
+        else {
+            panic!(
+                "{source}: {:?}",
+                CssMediaCondition::try_from_components(components(source))
+            )
+        };
+        let CssValueOrigin::Parsed(origin) = origin else {
+            panic!("{source}: parsed failing token")
+        };
+        assert_eq!(origin.source().as_str(), source);
+        if let Some(responsible) = responsible {
+            assert_eq!(
+                origin.span().start().byte_offset().value(),
+                responsible,
+                "{source}"
+            );
+        }
     }
 }
 
@@ -274,7 +309,15 @@ fn canonical_rule_output_preserves_exact_values_and_opaque_token_boundaries() {
 #[test]
 fn recovered_members_and_implicit_components_are_rejected_by_checked_construction() {
     let report = parse_media_query_list("(color), ???, screen");
-    assert!(!report.is_clean());
+    // The second member first fails at its `?` delimiter.
+    assert_diagnostics(
+        report.diagnostics(),
+        &[(
+            CssErrorCode::InvalidMediaQuery,
+            CssRecoveryAction::ReplaceMediaQueryWithNever,
+            "(color), ".len(),
+        )],
+    );
     let never = report.syntax().queries()[1].origin().clone();
     assert!(
         matches!(CssCustomMediaRule::try_new(programmatic_name(),CssCustomMediaBody::Media(report.syntax().clone())),Err(CssCustomMediaConstructionError::RecoveredInput{origin})if origin==never)

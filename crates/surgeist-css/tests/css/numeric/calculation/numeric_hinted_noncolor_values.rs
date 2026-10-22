@@ -2,25 +2,17 @@
 //! Source matching rules and selected grammars are cited in the unchanged
 //! numeric_hinted_noncolor_contexts target. No percentage basis is supplied.
 
+use crate::css::support::component_values as components;
+use crate::css::support::important_declaration;
+use crate::css::support::serialization_limits::LimitLadder;
+use crate::css::support::value_assertions::filter_value as filter;
 use surgeist_css::*;
 
-type Limits = CssSpecifiedValueSerializationLimits;
-type Error = CssSpecifiedValueSerializationError;
-type Kind = CssSpecifiedValueSerializationErrorKind;
 const SOURCE: &str = "calc((1px + 1%) / 1px)";
 const CSS: &str = "calc((1% + 1px) / 1px)";
 
-fn components(text: &str) -> CssComponentValues {
-    parse_component_values(text).unwrap()
-}
 fn hinted(text: &str) -> CssHintedNumberCalculation {
     CssHintedNumberCalculation::try_from_components(components(text)).unwrap()
-}
-fn declaration(property: CssKnownProperty, text: &str) -> CssDeclaration {
-    let source = format!("{}:{text}!important", property.canonical_name());
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    report.syntax()[0].clone()
 }
 fn transform(source: &CssDeclaration) -> &CssTransformFunction {
     let CssKnownPropertyValueRef::Transform(value) =
@@ -33,13 +25,6 @@ fn transform(source: &CssDeclaration) -> &CssTransformFunction {
     };
     &values.functions()[0]
 }
-fn filter(source: &CssDeclaration) -> &CssFilter {
-    match source.known().unwrap().property_value().unwrap() {
-        CssKnownPropertyValueRef::Filter(value) => value.value(),
-        CssKnownPropertyValueRef::BackdropFilter(value) => value.value(),
-        _ => panic!("filter"),
-    }
-}
 fn line_height(source: &CssDeclaration) -> &CssLineHeight {
     let CssKnownPropertyValueRef::LineHeight(value) =
         source.known().unwrap().property_value().unwrap()
@@ -51,7 +36,10 @@ fn line_height(source: &CssDeclaration) -> &CssLineHeight {
 
 #[test]
 fn selected_frontdoors_expose_distinct_hinted_number_payloads_without_changing_authored_graphs() {
-    let source = declaration(CssKnownProperty::Transform, &format!("scaleZ({SOURCE})"));
+    let source = important_declaration(
+        CssKnownProperty::Transform.canonical_name(),
+        &format!("scaleZ({SOURCE})"),
+    );
     let CssTransformFunction::ScaleZ(CssTransformScaleComponent::HintedNumberCalculation(value)) =
         transform(&source)
     else {
@@ -64,7 +52,10 @@ fn selected_frontdoors_expose_distinct_hinted_number_payloads_without_changing_a
     );
     assert!(value.position().is_some());
     assert_eq!(value.components().nesting_depth(), 2);
-    let source = declaration(CssKnownProperty::Filter, &format!("contrast({SOURCE})"));
+    let source = important_declaration(
+        CssKnownProperty::Filter.canonical_name(),
+        &format!("contrast({SOURCE})"),
+    );
     let CssFilter::Functions(values) = filter(&source) else {
         panic!("functions")
     };
@@ -74,7 +65,7 @@ fn selected_frontdoors_expose_distinct_hinted_number_payloads_without_changing_a
         panic!("hinted filter")
     };
     assert_eq!(value.components().serialize().unwrap().as_css(), SOURCE);
-    let source = declaration(CssKnownProperty::BorderImageSlice, SOURCE);
+    let source = important_declaration(CssKnownProperty::BorderImageSlice.canonical_name(), SOURCE);
     let CssKnownPropertyValueRef::BorderImageSlice(slice) =
         source.known().unwrap().property_value().unwrap()
     else {
@@ -86,7 +77,7 @@ fn selected_frontdoors_expose_distinct_hinted_number_payloads_without_changing_a
         };
         assert_eq!(value.components().serialize().unwrap().as_css(), SOURCE);
     }
-    let source = declaration(CssKnownProperty::BorderImageWidth, SOURCE);
+    let source = important_declaration(CssKnownProperty::BorderImageWidth.canonical_name(), SOURCE);
     let CssKnownPropertyValueRef::BorderImageWidth(width) =
         source.known().unwrap().property_value().unwrap()
     else {
@@ -98,7 +89,7 @@ fn selected_frontdoors_expose_distinct_hinted_number_payloads_without_changing_a
         };
         assert_eq!(value.components().serialize().unwrap().as_css(), SOURCE);
     }
-    let source = declaration(CssKnownProperty::LineHeight, SOURCE);
+    let source = important_declaration(CssKnownProperty::LineHeight.canonical_name(), SOURCE);
     let CssLineHeight::HintedNumberCalculation(value) = line_height(&source) else {
         panic!("hinted line-height")
     };
@@ -120,26 +111,29 @@ fn checked_transform_construction_preserves_context_and_ignores_only_origins_in_
     assert!(matches!(value.origin(), CssValueOrigin::Programmatic));
     assert!(value.position().is_none());
     assert_eq!(value.components(), &programmatic);
-    assert!(
+    crate::css::support::value_assertions::assert_numeric_resource(
         CssHintedNumberCalculation::try_from_components_with_limits(
             programmatic,
             CssComponentValueLimits::try_new(1, 11, SOURCE.len()).unwrap(),
-        )
-        .is_err()
+        ),
+        CssComponentValueErrorKind::NestingLimit,
     );
     let original = value.components().clone();
     let z = CssTransformFunction::ScaleZ(CssTransformScaleComponent::HintedNumberCalculation(
         value.clone(),
     ));
-    let parsed = declaration(CssKnownProperty::Transform, &format!("scaleZ({SOURCE})"));
+    let parsed = important_declaration(
+        CssKnownProperty::Transform.canonical_name(),
+        &format!("scaleZ({SOURCE})"),
+    );
     assert_eq!(&z, transform(&parsed));
     let xyz = CssTransformFunction::Scale3d(CssTransformScale3d::new(
         CssTransformScaleComponent::HintedNumberCalculation(value.clone()),
         CssTransformScaleComponent::HintedNumberCalculation(value.clone()),
         CssTransformScaleComponent::HintedNumberCalculation(value.clone()),
     ));
-    let parsed = declaration(
-        CssKnownProperty::Transform,
+    let parsed = important_declaration(
+        CssKnownProperty::Transform.canonical_name(),
         &format!("scale3d({SOURCE}, {SOURCE}, {SOURCE})"),
     );
     assert_eq!(&xyz, transform(&parsed));
@@ -169,7 +163,8 @@ fn all_checked_filter_amount_functions_reuse_symbolic_projection_and_structural_
             CssFilter::Functions(CssFilterFunctionList::try_new(vec![function.clone()]).unwrap());
         let before = value.clone();
         for property in [CssKnownProperty::Filter, CssKnownProperty::BackdropFilter] {
-            let source = declaration(property, &format!("{name}({SOURCE})"));
+            let source =
+                important_declaration(property.canonical_name(), &format!("{name}({SOURCE})"));
             assert_eq!(&value, filter(&source));
         }
         assert_eq!(
@@ -198,14 +193,14 @@ fn border_image_checked_edges_compress_only_after_visiting_their_shared_numeric_
             hinted(SOURCE),
         )])
         .unwrap();
-    let source = declaration(CssKnownProperty::BorderImageSlice, SOURCE);
+    let source = important_declaration(CssKnownProperty::BorderImageSlice.canonical_name(), SOURCE);
     let CssKnownPropertyValueRef::BorderImageSlice(parsed) =
         source.known().unwrap().property_value().unwrap()
     else {
         panic!("slice")
     };
     assert_eq!(&slice, parsed.slice());
-    let source = declaration(CssKnownProperty::BorderImageWidth, SOURCE);
+    let source = important_declaration(CssKnownProperty::BorderImageWidth.canonical_name(), SOURCE);
     let CssKnownPropertyValueRef::BorderImageWidth(parsed) =
         source.known().unwrap().property_value().unwrap()
     else {
@@ -214,10 +209,10 @@ fn border_image_checked_edges_compress_only_after_visiting_their_shared_numeric_
     assert_eq!(&width, parsed.widths());
     // Aggregate 1 + four edges, each edge aggregate 1 + seven input/eight
     // projection nodes. Compression retains all visits: 33 inputs/37 projections.
-    limits(&slice, CSS, 33, 37, |value, limit| {
+    LimitLadder::new(CSS, 33, 37).assert_unchanged(&slice, |value, limit| {
         value.serialize_specified_with_limits(limit)
     });
-    limits(&width, CSS, 33, 37, |value, limit| {
+    LimitLadder::new(CSS, 33, 37).assert_unchanged(&width, |value, limit| {
         value.serialize_specified_with_limits(limit)
     });
     let mixed = CssBorderImageSlice::try_new(
@@ -234,38 +229,6 @@ fn border_image_checked_edges_compress_only_after_visiting_their_shared_numeric_
     );
 }
 
-fn limits<T: Clone + PartialEq + std::fmt::Debug>(
-    value: &T,
-    css: &str,
-    inputs: usize,
-    projections: usize,
-    serialize: impl Fn(&T, Limits) -> Result<String, Error>,
-) {
-    let before = value.clone();
-    for (limit, kind) in [
-        (
-            Limits::new(inputs - 1, projections, css.len()),
-            Kind::InputNodeLimit,
-        ),
-        (
-            Limits::new(inputs, projections - 1, css.len()),
-            Kind::ProjectionNodeLimit,
-        ),
-        (
-            Limits::new(inputs, projections, css.len() - 1),
-            Kind::ByteLimit,
-        ),
-    ] {
-        assert_eq!(serialize(value, limit).unwrap_err().kind(), kind);
-        assert_eq!(value, &before);
-    }
-    assert_eq!(
-        serialize(value, Limits::new(inputs, projections, css.len())).unwrap(),
-        css
-    );
-    assert_eq!(value, &before);
-}
-
 #[test]
 fn filter_siblings_charge_one_cumulative_budget_without_resolving_the_percentage_basis() {
     let amount = CssFilterAmount::HintedNumberCalculation(hinted(SOURCE));
@@ -278,7 +241,7 @@ fn filter_siblings_charge_one_cumulative_budget_without_resolving_the_percentage
     );
     // List 1 + two function aggregates + two calculations of 7 inputs/8 projections.
     let css = format!("contrast({CSS}) sepia({CSS})");
-    limits(&value, &css, 17, 19, |value, limit| {
+    LimitLadder::new(&css, 17, 19).assert_unchanged(&value, |value, limit| {
         value.serialize_specified_with_limits(limit)
     });
 }
@@ -286,23 +249,26 @@ fn filter_siblings_charge_one_cumulative_budget_without_resolving_the_percentage
 #[test]
 fn contextual_line_height_has_checked_equality_and_exact_atomic_projection_limits() {
     let value = CssLineHeight::HintedNumberCalculation(hinted(SOURCE));
-    let source = declaration(CssKnownProperty::LineHeight, SOURCE);
+    let source = important_declaration(CssKnownProperty::LineHeight.canonical_name(), SOURCE);
     assert_eq!(&value, line_height(&source));
     // Wrapper, Product, Group, Sum and three leaves: seven inputs. Three leaves,
     // two replacement scalars, Sum, inverse and Product: eight projections.
-    limits(&value, CSS, 7, 8, |value, limit| {
+    LimitLadder::new(CSS, 7, 8).assert_unchanged(&value, |value, limit| {
         value.serialize_specified_with_limits(limit)
     });
 }
 
 #[test]
-fn negative_math_remains_authored_while_negative_ordinary_values_still_fail_admission() {
+fn negative_math_remains_authored_while_negative_ordinary_values_fail_admission() {
     let source = "calc((0px - 1px + 1%) / 1px)";
     let css = "calc((1% - 1px) / 1px)";
     let value = CssLineHeight::HintedNumberCalculation(hinted(source));
     assert_eq!(value.serialize_specified().unwrap(), css);
     assert_eq!(
-        line_height(&declaration(CssKnownProperty::LineHeight, source)),
+        line_height(&important_declaration(
+            CssKnownProperty::LineHeight.canonical_name(),
+            source
+        )),
         &value
     );
     assert_eq!(
@@ -329,7 +295,7 @@ fn negative_math_remains_authored_while_negative_ordinary_values_still_fail_admi
 }
 
 #[test]
-fn existing_shorthand_and_backdrop_reentry_retains_checked_contextual_payloads_and_occurrence() {
+fn shorthand_and_backdrop_reentry_retains_checked_contextual_payloads_and_occurrence() {
     for (property, text) in [
         (CssKnownProperty::Font, format!("16px / {SOURCE} serif")),
         (

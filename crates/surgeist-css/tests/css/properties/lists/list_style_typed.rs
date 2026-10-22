@@ -2,14 +2,8 @@
 //! canonical text follows CSSOM's meaning-preserving shorthand rule and the
 //! pinned list-style parsing cases, including keyword/custom-name ambiguity.
 
+use crate::css::support::named_property::normal_property_declaration as parsed;
 use surgeist_css::*;
-
-fn parsed(property: CssKnownProperty, value: &str) -> CssDeclaration {
-    let source = format!("{}:{value}", property.canonical_name());
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    report.syntax().as_slice()[0].clone()
-}
 
 fn named(name: &str) -> CssCounterStyleValue {
     CssCounterStyleValue::try_named(CssIdent::try_new(name).unwrap()).unwrap()

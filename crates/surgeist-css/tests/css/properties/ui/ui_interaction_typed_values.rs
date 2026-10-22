@@ -4,15 +4,11 @@
 //! These new symbols receive functional coverage alongside implementation,
 //! while ui_interaction_authored_contract.rs retains the published callable RED.
 
+use crate::css::support::authored_checked_declaration;
 use surgeist_css::*;
 
 fn declaration(name: &str, text: &str) -> CssDeclaration {
-    parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::from_name(name).unwrap()),
-        parse_component_values(text).unwrap(),
-        CssImportance::Important,
-    )
-    .unwrap()
+    authored_checked_declaration(name, text, false)
 }
 
 fn exact_payload(source: &CssDeclaration, ordinary: &CssLonghandValue) {

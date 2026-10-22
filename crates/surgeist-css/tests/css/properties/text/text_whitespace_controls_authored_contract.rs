@@ -16,12 +16,17 @@
 
 use crate::css::support::{
     authored_checked_declaration as checked, authored_parsed_declaration as parsed,
-    authored_property_named as property,
+    known_property as property,
 };
 use surgeist_css::CssKnownProperty as P;
 use surgeist_css::*;
 
 use crate::css::support::authored_property;
+use crate::css::support::check_named_components as checked_components;
+use crate::css::support::named_property::accepted_through_every_front as accepted;
+use crate::css::support::named_property::invalid_named_value as invalid;
+use crate::css::support::named_property::named_fronts as fronts;
+use crate::css::support::named_property::sole_completed_contributions as completed;
 use authored_property::assert_source;
 const FAMILY: [&str; 2] = ["word-space-transform", "tab-size"];
 const WORD: [&str; 5] = [
@@ -61,95 +66,6 @@ fn pending_inputs(name: &str) -> Vec<&'static str> {
         inputs.push("space var(--phrase)");
     }
     inputs
-}
-fn checked_components(
-    name: &str,
-    value: CssComponentValues,
-    grammar: bool,
-) -> Result<CssDeclaration, CssPropertyValueParseError> {
-    authored_property::checked_components(property(name), value, grammar, CssImportance::Important)
-}
-fn fronts(name: &str, text: &str) -> [CssDeclaration; 5] {
-    authored_property::fronts(property(name), text)
-}
-fn completed(source: &CssDeclaration) -> CssLonghandContributions {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
-    else {
-        panic!("complete longhand contribution")
-    };
-    assert_eq!(values.items().len(), 1);
-    let item = &values.items()[0];
-    assert_eq!(item.property(), source.known().unwrap().property());
-    assert_source(item, source);
-    values
-}
-fn accepted(name: &str, input: &str, canonical: &str) {
-    for source in fronts(name, input) {
-        let before = source.clone();
-        assert_eq!(
-            source.to_specified_css().unwrap(),
-            format!("{name}: {canonical} !important;")
-        );
-        assert!(source.known().unwrap().property_value().is_some());
-        assert!(source.known().unwrap().global().is_none());
-        assert!(source.known().unwrap().substitution_dependent().is_none());
-        let values = completed(&source);
-        let item = &values.items()[0];
-        assert!(matches!(item.value(), CssContributionValueRef::Ordinary(_)));
-        assert_eq!(
-            item.ordinary_value().unwrap().property().known_property(),
-            property(name)
-        );
-        assert!(item.replacement_components().is_none());
-        assert_eq!(source, before);
-    }
-    assert_eq!(
-        checked(name, canonical, true).to_specified_css().unwrap(),
-        format!("{name}: {canonical} !important;")
-    );
-}
-fn invalid(name: &str, value: &str) {
-    let p = property(name);
-    let css = format!("color:red;{name}:{value};color:blue");
-    let report = parse_style_attribute(&css);
-    assert_eq!(report.syntax().len(), 2, "{css}");
-    assert!(
-        report
-            .syntax()
-            .iter()
-            .all(|v| v.known().unwrap().property() == P::Color)
-    );
-    let [diagnostic] = report.diagnostics() else {
-        panic!("one atomic grammar failure")
-    };
-    assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("property-specific diagnostic")
-    };
-    assert_eq!(detail.property(), p);
-    assert_eq!(
-        validate_style_attribute(&css).unwrap_err().diagnostics(),
-        report.diagnostics()
-    );
-    let components = parse_component_values(value).unwrap();
-    let before = components.clone();
-    for grammar in [false, true] {
-        assert!(matches!(
-            checked_components(name, components.clone(), grammar)
-                .unwrap_err()
-                .kind(),
-            CssPropertyValueErrorKind::Grammar(_)
-        ));
-    }
-    for report in [
-        parse_property_value_text(value, CssPropertyNameRef::Known(p), CssImportance::Normal),
-        parse_property_value_text_for_grammar(value, p.grammar(), CssImportance::Normal),
-    ] {
-        assert!(report.syntax().is_none());
-        assert!(!report.is_clean());
-    }
-    assert_eq!(components, before);
 }
 
 #[test]
@@ -341,7 +257,7 @@ fn decoded_keyword_case_escapes_and_dimension_units_keep_source_and_canonical_ou
     );
 }
 #[test]
-fn programmatic_existing_component_construction_preserves_origins_and_importance() {
+fn programmatic_component_construction_preserves_origins_and_importance() {
     let states = [
         (
             "word-space-transform",
@@ -427,25 +343,6 @@ fn none_and_number_eight_initials_are_inherited_ordinary_longhands() {
             source.to_specified_css().unwrap(),
             format!("{name}: {} !important;", initial_text(name))
         );
-    }
-}
-#[test]
-fn all_css_wide_values_are_symbolic_single_terminals_preserving_occurrence_and_importance() {
-    for name in FAMILY {
-        for (text, keyword) in GLOBALS {
-            for source in fronts(name, text) {
-                assert_eq!(source.known().unwrap().global(), Some(keyword));
-                assert!(source.known().unwrap().property_value().is_none());
-                assert_eq!(
-                    source.to_specified_css().unwrap(),
-                    format!("{name}: {text} !important;")
-                );
-                let values = completed(&source);
-                let item = &values.items()[0];
-                assert!(matches!(item.value(),CssContributionValueRef::Global(v) if v == keyword));
-                assert!(item.replacement_components().is_none());
-            }
-        }
     }
 }
 #[test]
@@ -958,7 +855,7 @@ fn normalization_preserves_occurrence_order_contexts_and_exact_terminal_budgets(
     assert!(normalize_sheet_with_limits(report.syntax(), exact).is_ok());
 }
 #[test]
-fn existing_scalar_and_composed_controls_execute_without_new_property_lookup() {
+fn scalar_and_composed_controls_execute_without_whitespace_property_lookup() {
     for (input, expected) in [("0", "0"), ("-0", "0"), ("8", "8"), ("1e-999", "0")] {
         let number = CssSpecifiedNonNegativeNumber::try_from_component(
             CssComponentValue::try_number(input).unwrap(),

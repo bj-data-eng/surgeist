@@ -3,33 +3,18 @@
 //! selected CSS2 vertical-align; Values4 typed roots and deferred math range.
 //! Canonical transform role order and transparent emitted-keyword pricing are
 //! adopted authored product contracts. Contextual text processing is excluded.
+use crate::css::support::authored_property;
+use crate::css::support::authored_property::checked;
+use crate::css::support::named_property::{
+    assert_checked_value_rejected_at, assert_invalid_replacement_at,
+};
+use crate::css::support::serialization_limits::assert_limits as primitive;
 use surgeist_css::CssKnownProperty as P;
 use surgeist_css::*;
 
-fn checked(p: P, text: &str, grammar: bool) -> CssDeclaration {
-    let components = parse_component_values(text).unwrap();
-    let declaration = if grammar {
-        parse_property_value_for_grammar(p.grammar(), components.clone(), CssImportance::Important)
-    } else {
-        parse_property_value(
-            CssPropertyNameRef::Known(p),
-            components.clone(),
-            CssImportance::Important,
-        )
-    }
-    .unwrap();
-    assert_eq!(declaration.value_components(), &components);
-    declaration
-}
 fn fronts(p: P, text: &str) -> [CssDeclaration; 3] {
-    let css = format!("/*😀*/{}:{text}!important", p.canonical_name());
-    let report = parse_style_attribute(&css);
-    assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
-    let [declaration] = report.syntax().as_slice() else {
-        panic!("one occurrence")
-    };
     [
-        declaration.clone(),
+        authored_property::parsed(p, text),
         checked(p, text, false),
         checked(p, text, true),
     ]
@@ -64,38 +49,6 @@ fn contributions(source: &CssDeclaration) -> CssLonghandContributions {
     assert_eq!(item.source().importance(), source.importance());
     assert_eq!(item.ordinary_value().unwrap().view(), declared(source));
     values
-}
-fn primitive(
-    expected: &str,
-    inputs: usize,
-    projections: usize,
-    emit: impl Fn(
-        CssSpecifiedValueSerializationLimits,
-    ) -> Result<String, CssSpecifiedValueSerializationError>,
-) {
-    use CssSpecifiedValueSerializationErrorKind as K;
-    use CssSpecifiedValueSerializationLimits as L;
-    let exact = L::new(inputs, projections, expected.len());
-    assert_eq!(emit(exact).unwrap(), expected);
-    for (limits, kind) in [
-        (
-            L::new(inputs - 1, projections, expected.len()),
-            K::InputNodeLimit,
-        ),
-        (
-            L::new(inputs, projections - 1, expected.len()),
-            K::ProjectionNodeLimit,
-        ),
-        (
-            L::new(inputs, projections, expected.len() - 1),
-            K::ByteLimit,
-        ),
-    ] {
-        for _ in 0..2 {
-            assert_eq!(emit(limits).unwrap_err().kind(), kind);
-        }
-        assert_eq!(emit(exact).unwrap(), expected);
-    }
 }
 fn transform_sets() -> [(
     Option<CssTextTransformCase>,
@@ -474,23 +427,15 @@ fn tab_math_retains_pure_root_graph_origins_and_deferred_negative_ranges() {
     primitive("calc(2em + 1px)", 4, 5, |l| {
         math.serialize_specified_with_limits(l)
     });
-    for text in [
-        "-1",
-        "-1e-999",
-        "-1px",
-        "-1e-999px",
-        "calc(1%)",
-        "calc(0 + 1px)",
-    ] {
-        assert!(
-            parse_property_value_for_grammar(
-                P::TabSize.grammar(),
-                parse_component_values(text).unwrap(),
-                CssImportance::Normal
-            )
-            .is_err()
-        );
+    for text in ["-1", "-1e-999", "-1px", "-1e-999px", "calc(1%)"] {
+        // Text 3 tab-size = <number [0,inf]> | <length [0,inf]>: each whole
+        // value is out of range or of another type.
+        assert_checked_value_rejected_at(P::TabSize, text, text);
     }
+    // The implemented location of the mixed-type sum differs from the
+    // grammar-derived whole function (held for review), so only its kind and
+    // property are asserted.
+    assert_checked_value_rejected_at(P::TabSize, "calc(0 + 1px)", None);
 }
 #[test]
 fn tab_reentry_borrows_the_supplied_numeric_children_and_preserves_original_occurrence() {
@@ -530,16 +475,19 @@ fn tab_reentry_borrows_the_supplied_numeric_children_and_preserves_original_occu
             assert_eq!(origin, replacement.items()[0].origin());
             assert_eq!(replacement, snapshot);
         }
-        assert!(
-            handle
+        assert_invalid_replacement_at(
+            &handle
                 .reenter(parse_component_values("-1e-999").unwrap())
-                .is_err()
+                .unwrap_err(),
+            P::TabSize,
+            "-1e-999",
+            "-1e-999",
         );
         assert!(handle.reenter(parse_component_values("8").unwrap()).is_ok());
     }
 }
 #[test]
-fn existing_indent_flags_and_vertical_signed_numeric_models_have_new_typed_projections() {
+fn indent_flags_and_vertical_signed_numeric_models_have_typed_projections() {
     for source in fronts(P::TextIndent, "each-line -1e-999% hanging") {
         let CssLonghandValueRef::TextIndent(v) = declared(&source) else {
             panic!("indent")

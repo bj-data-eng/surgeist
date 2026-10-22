@@ -2,20 +2,11 @@
 //! https://www.w3.org/TR/2025/WD-css-env-1-20250923/#env-function
 //! https://www.w3.org/TR/2022/CR-css-variables-1-20220616/#using-variables
 //! https://www.w3.org/TR/2022/CR-css-variables-1-20220616/#syntax
-use crate::css::support::important_pair_declaration as parsed;
+use crate::css::support::important_declaration as parsed;
+use crate::css::support::retained_checked_declaration;
+use crate::css::support::value_assertions::property_rejection;
 use surgeist_css::*;
 
-fn checked(text: &str) -> CssDeclaration {
-    let components = parse_component_values(text).unwrap();
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Display),
-        components.clone(),
-        CssImportance::Important,
-    )
-    .unwrap();
-    assert_eq!(declaration.value_components(), &components);
-    declaration
-}
 fn pending_value(declaration: &CssDeclaration, text: &str) {
     let known = declaration.known().unwrap();
     assert_eq!(known.property(), CssKnownProperty::Display);
@@ -61,7 +52,10 @@ fn checked_env_indices_keep_exact_integer_and_authored_math_domains() {
         "env(future calc(NaN))",
         "env(future calc(1px / 1em))",
     ] {
-        pending_value(&checked(text), text);
+        pending_value(
+            &retained_checked_declaration(CssKnownProperty::Display, text),
+            text,
+        );
     }
 }
 
@@ -76,17 +70,19 @@ fn env_fallback_presence_preserves_whitespace_and_full_remaining_stream() {
         "env(foo, var(--x,))",
     ] {
         pending_value(&parsed("display", text), text);
-        pending_value(&checked(text), text);
+        pending_value(
+            &retained_checked_declaration(CssKnownProperty::Display, text),
+            text,
+        );
     }
     for text in ["env(foo,)", "env(foo,/**/)"] {
-        assert!(
+        property_rejection(
             parse_property_value(
                 CssPropertyNameRef::Known(CssKnownProperty::Display),
                 parse_component_values(text).unwrap(),
-                CssImportance::Normal
-            )
-            .is_err(),
-            "{text}"
+                CssImportance::Normal,
+            ),
+            CssKnownProperty::Display,
         );
     }
 }
@@ -95,12 +91,15 @@ fn env_fallback_presence_preserves_whitespace_and_full_remaining_stream() {
 fn qualifying_env_family_defers_other_family_mismatches() {
     for text in ["var(env(foo))", "env(foo, var(x))", "env(foo) var(x)"] {
         pending_value(&parsed("display", text), text);
-        pending_value(&checked(text), text);
+        pending_value(
+            &retained_checked_declaration(CssKnownProperty::Display, text),
+            text,
+        );
     }
 }
 
 #[test]
-fn qualifying_var_family_keeps_its_existing_whole_value_deferral() {
+fn qualifying_var_family_keeps_its_whole_value_deferral() {
     for text in [
         "var(--x,)",
         "env(var(--name))",
@@ -111,7 +110,10 @@ fn qualifying_var_family_keeps_its_existing_whole_value_deferral() {
         "var(--x, env(foo,))",
     ] {
         pending_value(&parsed("display", text), text);
-        pending_value(&checked(text), text);
+        pending_value(
+            &retained_checked_declaration(CssKnownProperty::Display, text),
+            text,
+        );
     }
 }
 
@@ -125,14 +127,13 @@ fn a_same_family_mismatch_cannot_be_rescued_by_its_inner_valid_occurrence() {
         "var(var(--name))",
         "var(--x) var(x)",
     ] {
-        assert!(
+        property_rejection(
             parse_property_value(
                 CssPropertyNameRef::Known(CssKnownProperty::Display),
                 parse_component_values(text).unwrap(),
-                CssImportance::Normal
-            )
-            .is_err(),
-            "{text}"
+                CssImportance::Normal,
+            ),
+            CssKnownProperty::Display,
         );
         let report = parse_style_attribute(&format!("display:{text};display:block"));
         assert!(!report.is_clean(), "{text}");
@@ -168,14 +169,13 @@ fn nonqualifying_env_headers_and_index_types_do_not_escape_display_grammar() {
         "env(foo calc(1px))",
         "env(foo calc(1%))",
     ] {
-        assert!(
+        property_rejection(
             parse_property_value(
                 CssPropertyNameRef::Known(CssKnownProperty::Display),
                 parse_component_values(text).unwrap(),
-                CssImportance::Normal
-            )
-            .is_err(),
-            "{text}"
+                CssImportance::Normal,
+            ),
+            CssKnownProperty::Display,
         );
     }
 }
@@ -228,7 +228,7 @@ fn permissive_custom_and_style_values_retain_env_mismatches_as_raw_tokens() {
 }
 
 #[test]
-fn permissive_contexts_keep_the_existing_malformed_var_restriction() {
+fn permissive_contexts_keep_the_malformed_var_restriction() {
     let name = CssCustomPropertyName::try_new("--x").unwrap();
     for text in ["var(x)", "var(var(--name))", "env(foo,var(x))"] {
         assert!(

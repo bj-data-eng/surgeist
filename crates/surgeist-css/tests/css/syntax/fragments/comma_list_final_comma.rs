@@ -10,9 +10,11 @@
 //! https://www.w3.org/TR/2026/CRD-mediaqueries-4-20260219/#mq-syntax
 //! https://www.w3.org/TR/2026/WD-selectors-4-20260122/#forgiving-selector
 //! https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-face-src-parsing
+use crate::css::support::authored_syntax::parsed_origin;
 use surgeist_css::{
-    CssCustomMediaBody, CssCustomMediaRule, CssFontFaceDescriptorKind as Kind,
-    CssFontFaceDescriptorValue, CssImportRule, CssMediaQuery, CssMediaQueryList,
+    CssCustomMediaBody, CssCustomMediaConstructionError, CssCustomMediaRule,
+    CssFontFaceDescriptorKind as Kind, CssFontFaceDescriptorValue, CssImportConstructionError,
+    CssImportRule, CssMediaConstructionError, CssMediaQuery, CssMediaQueryList,
     CssNamespaceContext, CssRecoveryAction, CssRule, parse_component_values,
     parse_media_query_list, parse_selector, parse_sheet,
 };
@@ -138,8 +140,18 @@ fn checked_media_lists_share_the_final_comma_boundary() {
         let rule = import(source).unwrap();
         assert_eq!(rule.media().unwrap().queries().len(), 1, "{source:?}");
     }
-    assert!(import("@import 'x.css' screen, ;").is_err());
-    assert!(import("@import 'x.css' screen,,;").is_err());
+    // A second comma is the first token where a `<media-query>` must start.
+    // A whitespace-only member is located inconsistently between the two
+    // owners (reported), so its location is not asserted.
+    for (source, responsible) in [
+        ("@import 'x.css' screen, ;", None),
+        ("@import 'x.css' screen,,;", Some(23)),
+    ] {
+        let Err(CssImportConstructionError::Media(error)) = import(source) else {
+            panic!("{source:?}: {:?}", import(source))
+        };
+        assert_invalid_member(&error, source, responsible);
+    }
 
     let custom = |source: &str| {
         CssCustomMediaRule::try_from_components(parse_component_values(source).unwrap())
@@ -149,6 +161,36 @@ fn checked_media_lists_share_the_final_comma_boundary() {
         panic!("{rule:?}")
     };
     assert_eq!(list.queries().len(), 1);
-    assert!(custom("--narrow screen, ").is_err());
-    assert!(custom("--narrow screen,,").is_err());
+    // Custom-media construction does not locate the failing member in the
+    // parsed source (reported), so only the grammar failure is asserted.
+    for source in ["--narrow screen, ", "--narrow screen,,"] {
+        let Err(CssCustomMediaConstructionError::Media(error)) = custom(source) else {
+            panic!("{source:?}: {:?}", custom(source))
+        };
+        assert!(
+            matches!(error, CssMediaConstructionError::InvalidQueryGrammar { .. }),
+            "{source:?}: {error:?}"
+        );
+    }
+}
+
+#[track_caller]
+fn assert_invalid_member(
+    error: &CssMediaConstructionError,
+    source: &str,
+    responsible: Option<usize>,
+) {
+    assert!(
+        matches!(error, CssMediaConstructionError::InvalidQueryGrammar { .. }),
+        "{source:?}: {error:?}"
+    );
+    let origin = parsed_origin(error.origin());
+    assert_eq!(origin.source().as_str(), source);
+    if let Some(responsible) = responsible {
+        assert_eq!(
+            origin.span().start().byte_offset().value(),
+            responsible,
+            "{source:?}"
+        );
+    }
 }

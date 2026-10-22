@@ -2,6 +2,7 @@
 //! effective namespace constraints, while each host owns grammar and recovery.
 //! https://www.w3.org/TR/2014/REC-css-namespaces-3-20140320/#css-qnames
 
+use crate::css::support::value_assertions::assert_first_code;
 use surgeist_css::{
     CssErrorCode, CssNamespaceConstraint, CssNamespaceContext, CssNamespaceName,
     CssNamespacePrefix, CssNormalizedItem, CssRecoveryAction, CssRule, CssRuleContextKindRef,
@@ -178,7 +179,7 @@ fn qualified_names_allow_comments_but_keep_whitespace_and_local_wildcards_host_s
         "[|*]",
     ] {
         let report = parse_selector(source, &context);
-        assert!(!report.is_clean(), "{source}: {report:?}");
+        assert_first_code(report.diagnostics(), CssErrorCode::InvalidSelector);
         assert!(report.syntax().is_none(), "{source}: {report:?}");
     }
     // Whitespace may instead separate two valid compounds; it cannot be

@@ -2,25 +2,11 @@
 //! https://www.w3.org/TR/2020/WD-css-lists-3-20201117/#propdef-marker-side
 //! The two specified keywords remain symbolic; marker placement is downstream.
 
+use crate::css::support::named_property::assert_programmatic_rejection;
+use crate::css::support::{known_property, validated_important_declaration};
 use surgeist_css::*;
 
 const NAME: &str = "marker-side";
-
-fn property() -> CssKnownProperty {
-    CssKnownProperty::from_name(NAME).expect("marker-side is a known property")
-}
-
-fn declaration(value: &str) -> CssDeclaration {
-    let source = format!("{NAME}:{value}!important");
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    let [declaration] = report.syntax().as_slice() else {
-        panic!("one retained marker-side declaration: {source}")
-    };
-    assert_eq!(declaration.known().unwrap().property(), property());
-    assert!(validate_style_attribute(&source).is_ok(), "{source}");
-    declaration.clone()
-}
 
 fn contribution(source: &CssDeclaration) -> CssLonghandContribution {
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =
@@ -36,7 +22,7 @@ fn contribution(source: &CssDeclaration) -> CssLonghandContribution {
 
 #[test]
 fn marker_side_is_an_inherited_lists3_longhand_with_match_self_initial() {
-    let property = property();
+    let property = known_property(NAME);
     let grammar = CssPropertyGrammar::from_name(NAME).unwrap();
     assert_eq!(grammar.target_property(), property);
     assert_eq!(grammar.name(), NAME);
@@ -55,7 +41,7 @@ fn marker_side_is_an_inherited_lists3_longhand_with_match_self_initial() {
     };
     assert_eq!(
         initial,
-        contribution(&declaration("match-self"))
+        contribution(&validated_important_declaration(NAME, "match-self"))
             .ordinary_value()
             .unwrap()
     );
@@ -69,14 +55,14 @@ fn two_keywords_and_case_insensitive_identifiers_retain_authored_spelling() {
         "MATCH-SELF",
         r"m\61 tch-parent",
     ] {
-        let source = declaration(value);
+        let source = validated_important_declaration(NAME, value);
         assert!(source.known().unwrap().property_value().is_some());
         assert_eq!(
             source.value_components().serialize().unwrap().as_css(),
             value
         );
         let item = contribution(&source);
-        assert_eq!(item.property(), property());
+        assert_eq!(item.property(), known_property(NAME));
         assert!(item.ordinary_value().is_some());
         assert!(item.source().same_occurrence(&source));
         assert_eq!(item.source().importance(), CssImportance::Important);
@@ -131,7 +117,7 @@ fn malformed_marker_side_values_drop_only_their_declaration() {
 
 #[test]
 fn programmatic_components_use_the_same_grammar_and_origin() {
-    let property = property();
+    let property = known_property(NAME);
     let components =
         CssComponentValues::try_new(vec![CssComponentValue::try_ident("match-parent").unwrap()])
             .unwrap();
@@ -150,51 +136,19 @@ fn programmatic_components_use_the_same_grammar_and_origin() {
     let invalid =
         CssComponentValues::try_new(vec![CssComponentValue::try_ident("outside").unwrap()])
             .unwrap();
-    assert!(
+    assert_programmatic_rejection(
         parse_property_value(
             CssPropertyNameRef::Known(property),
             invalid,
             CssImportance::Normal,
-        )
-        .is_err()
+        ),
+        property,
     );
-}
-
-#[test]
-fn css_wide_keywords_and_universal_reset_include_marker_side() {
-    for (value, keyword) in [
-        ("initial", CssGlobalKeyword::Initial),
-        ("inherit", CssGlobalKeyword::Inherit),
-        ("unset", CssGlobalKeyword::Unset),
-        ("revert", CssGlobalKeyword::Revert),
-        ("revert-layer", CssGlobalKeyword::RevertLayer),
-    ] {
-        let source = declaration(value);
-        let item = contribution(&source);
-        assert_eq!(item.property(), property());
-        assert_eq!(item.value(), CssContributionValueRef::Global(keyword));
-        assert!(item.source().same_occurrence(&source));
-        assert_eq!(item.source().importance(), CssImportance::Important);
-    }
-    let escaped = declaration(r"\69 nherit");
-    assert_eq!(
-        contribution(&escaped).value(),
-        CssContributionValueRef::Global(CssGlobalKeyword::Inherit)
-    );
-
-    let all = parse_style_attribute("all:initial");
-    assert!(all.is_clean(), "{:?}", all.diagnostics());
-    let CssExpansion::Contributions(CssContributions::UniversalReset(reset)) =
-        expand_declaration(&all.syntax()[0]).unwrap()
-    else {
-        panic!("all yields a universal reset")
-    };
-    assert!(!reset.excludes(CssPropertyNameRef::Known(property())));
 }
 
 #[test]
 fn pending_reentry_is_strict_repeatable_and_preserves_source_and_replacement() {
-    let source = declaration("var(--side)");
+    let source = validated_important_declaration(NAME, "var(--side)");
     let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
         panic!("known marker-side with var() is pending")
     };
@@ -225,7 +179,7 @@ fn pending_reentry_is_strict_repeatable_and_preserves_source_and_replacement() {
             let [item] = values.items() else {
                 panic!("one marker-side terminal")
             };
-            assert_eq!(item.property(), property());
+            assert_eq!(item.property(), known_property(NAME));
             assert!(item.source().same_occurrence(&source));
             assert_eq!(item.source().importance(), CssImportance::Important);
             assert_eq!(item.replacement_components(), Some(&replacement));
@@ -247,9 +201,13 @@ fn normalization_preserves_order_and_reports_an_atomic_contribution_limit() {
         })
         .collect::<Vec<_>>();
     assert_eq!(declarations.len(), 3);
-    for (order, property) in [property(), CssKnownProperty::Color, property()]
-        .into_iter()
-        .enumerate()
+    for (order, property) in [
+        known_property(NAME),
+        CssKnownProperty::Color,
+        known_property(NAME),
+    ]
+    .into_iter()
+    .enumerate()
     {
         assert_eq!(declarations[order].order(), order);
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
@@ -275,6 +233,6 @@ fn normalization_preserves_order_and_reports_an_atomic_contribution_limit() {
     assert_eq!(error.declaration_order(), Some(2));
     assert_eq!(
         error.declaration().unwrap().known().unwrap().property(),
-        property()
+        known_property(NAME)
     );
 }

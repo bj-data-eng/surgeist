@@ -2,6 +2,9 @@
 //! 6.3, 6.12, 6.13, 8.1 and 8.2. Expectations are independent of parser output.
 
 use crate::css::support::important_declaration as declaration;
+use crate::css::support::known_property;
+use crate::css::support::named_property::assert_checked_value_rejected_at;
+use crate::css::support::selected_grammar as grammar;
 use surgeist_css::*;
 
 const SIX: [(&str, &str, &str); 6] = [
@@ -12,10 +15,6 @@ const SIX: [(&str, &str, &str); 6] = [
     ("font-optical-sizing", "auto", "auto"),
     ("font-variation-settings", "normal", "normal"),
 ];
-
-fn grammar(name: &str) -> CssPropertyGrammar {
-    CssPropertyGrammar::from_name(name).unwrap_or_else(|| panic!("missing grammar: {name}"))
-}
 
 fn accepted(name: &str, value: &str) {
     let parsed = declaration(name, value);
@@ -35,7 +34,8 @@ fn accepted(name: &str, value: &str) {
     );
 }
 
-fn rejected(name: &str, value: &str) {
+fn rejected<'a>(name: &str, value: &str, rest: impl Into<Option<&'a str>>) {
+    let rest = rest.into();
     // Checking the known grammar first distinguishes a malformed value from an
     // unregistered property, even when the parser preserves valid neighbors.
     let target = grammar(name).target_property();
@@ -45,7 +45,10 @@ fn rejected(name: &str, value: &str) {
         panic!("one value error for {source}: {:?}", report.diagnostics())
     };
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    assert_ne!(diagnostic.error().code(), CssErrorCode::UnknownProperty);
+    assert_eq!(
+        diagnostic.error().code(),
+        CssErrorCode::InvalidPropertyValue
+    );
     assert_eq!(
         report.syntax().len(),
         2,
@@ -58,15 +61,7 @@ fn rejected(name: &str, value: &str) {
         );
     }
     assert!(validate_style_attribute(&source).is_err());
-    assert!(
-        parse_property_value_for_grammar(
-            grammar(name),
-            parse_component_values(value).unwrap(),
-            CssImportance::Normal,
-        )
-        .is_err(),
-        "checked constructor accepted {source}"
-    );
+    assert_checked_value_rejected_at(known_property(name), value, rest);
     assert_eq!(target.canonical_name(), name);
 }
 
@@ -98,7 +93,7 @@ fn descriptor_rejected(name: &str, value: &str) {
 }
 
 #[test]
-fn existing_font_controls_remain_accepted() {
+fn font_controls_are_accepted() {
     for (name, value) in [
         ("font-feature-settings", "normal"),
         ("font-feature-settings", "\"kern\" on, \"liga\" 0"),
@@ -119,14 +114,14 @@ fn feature_tags_use_four_printable_ascii_characters_and_preserve_case() {
         accepted("font-feature-settings", value);
         descriptor_accepted("font-feature-settings", value);
     }
-    for value in [
-        r#""\1 abc" on"#,
-        r#""\7f abc" on"#,
-        "\"abc\" on",
-        "\"abcde\" on",
-        "\"éabc\" on",
+    for (value, rest) in [
+        (r#""\1 abc" on"#, r#""\1 abc" on"#),
+        (r#""\7f abc" on"#, r#""\7f abc" on"#),
+        ("\"abc\" on", r#""abc" on"#),
+        ("\"abcde\" on", r#""abcde" on"#),
+        ("\"éabc\" on", r#""éabc" on"#),
     ] {
-        rejected("font-feature-settings", value);
+        rejected("font-feature-settings", value, rest);
         descriptor_rejected("font-feature-settings", value);
     }
 }
@@ -142,22 +137,31 @@ fn feature_indices_accept_unbounded_integer_literals_and_symbolic_integer_math()
         accepted("font-feature-settings", value);
         descriptor_accepted("font-feature-settings", value);
     }
-    for value in [
-        "\"cv01\" -1",
-        "\"cv01\" 1.5",
-        "\"cv01\" 1e2",
-        "\"cv01\" 2%",
-        "\"cv01\" 2px",
+    for (value, rest) in [
+        ("\"cv01\" -1", "-1"),
+        ("\"cv01\" 1.5", "1.5"),
+        ("\"cv01\" 1e2", "1e2"),
+        ("\"cv01\" 2%", "2%"),
+        ("\"cv01\" 2px", "2px"),
     ] {
-        rejected("font-feature-settings", value);
+        rejected("font-feature-settings", value, rest);
         descriptor_rejected("font-feature-settings", value);
     }
 }
 
 #[test]
 fn feature_settings_reject_empty_and_malformed_lists() {
-    for value in ["", "normal, \"kern\"", "\"kern\",", "\"kern\" \"liga\""] {
-        rejected("font-feature-settings", value);
+    // The implemented location of `normal, "kern"` differs from the
+    // grammar-derived `,` (held for review), so only its kind and property
+    // are asserted.
+    rejected("font-feature-settings", "normal, \"kern\"", None);
+    descriptor_rejected("font-feature-settings", "normal, \"kern\"");
+    for (value, rest) in [
+        ("", ""),
+        ("\"kern\",", ""),
+        ("\"kern\" \"liga\"", r#""liga""#),
+    ] {
+        rejected("font-feature-settings", value, rest);
         descriptor_rejected("font-feature-settings", value);
     }
 }
@@ -167,8 +171,12 @@ fn kerning_has_only_three_keywords() {
     for value in ["auto", "normal", "none"] {
         accepted("font-kerning", value);
     }
-    for value in ["auto none", "optimizeSpeed", "1"] {
-        rejected("font-kerning", value);
+    for (value, rest) in [
+        ("auto none", "none"),
+        ("optimizeSpeed", "optimizeSpeed"),
+        ("1", "1"),
+    ] {
+        rejected("font-kerning", value, rest);
     }
 }
 
@@ -181,15 +189,26 @@ fn size_adjust_keeps_exact_nonnegative_numbers_and_symbolic_math() {
 
 #[test]
 fn size_adjust_rejects_negative_values_even_when_float_narrowing_underflows() {
-    for value in ["-1e-999", "-0.000000000000000000000000000000000000001"] {
-        rejected("font-size-adjust", value);
+    for (value, rest) in [
+        ("-1e-999", "-1e-999"),
+        (
+            "-0.000000000000000000000000000000000000001",
+            "-0.000000000000000000000000000000000000001",
+        ),
+    ] {
+        rejected("font-size-adjust", value, rest);
     }
 }
 
 #[test]
 fn size_adjust_rejects_wrong_domains_and_unselected_forms() {
-    for value in ["1px", "50%", "from-font", "ex-height 0.5"] {
-        rejected("font-size-adjust", value);
+    for (value, rest) in [
+        ("1px", "1px"),
+        ("50%", "50%"),
+        ("from-font", "from-font"),
+        ("ex-height 0.5", "ex-height 0.5"),
+    ] {
+        rejected("font-size-adjust", value, rest);
     }
 }
 
@@ -204,8 +223,8 @@ fn language_override_accepts_general_strings_and_rejects_other_domains() {
     ] {
         accepted("font-language-override", value);
     }
-    for value in ["none", "SRB", "\"x\" \"y\""] {
-        rejected("font-language-override", value);
+    for (value, rest) in [("none", "none"), ("SRB", "SRB"), ("\"x\" \"y\"", r#""y""#)] {
+        rejected("font-language-override", value, rest);
     }
 }
 
@@ -214,8 +233,8 @@ fn optical_sizing_accepts_only_auto_or_none() {
     for value in ["auto", "none"] {
         accepted("font-optical-sizing", value);
     }
-    for value in ["normal", "auto none", "1"] {
-        rejected("font-optical-sizing", value);
+    for (value, rest) in [("normal", "normal"), ("auto none", "none"), ("1", "1")] {
+        rejected("font-optical-sizing", value, rest);
     }
 }
 
@@ -235,19 +254,24 @@ fn variation_settings_accept_signed_fractional_and_duplicate_axes_in_both_contex
 
 #[test]
 fn variation_settings_reject_bad_tags_and_number_domains_in_both_contexts() {
-    for value in [
-        "\"abc\" 1",
-        "\"abcde\" 1",
-        "\"éabc\" 1",
-        r#""\1 abc" 1"#,
-        r#""\7f abc" 1"#,
-        "\"wght\" 2%",
-        "\"wght\" 2px",
-        "\"wght\"",
-        "\"wght\" 1,",
-        "normal, \"wght\" 1",
+    // The implemented location of these rejections differs from the
+    // grammar-derived token (held for review), so only the kind and
+    // property are asserted.
+    rejected("font-variation-settings", "\"wght\"", None);
+    descriptor_rejected("font-variation-settings", "\"wght\"");
+    rejected("font-variation-settings", "normal, \"wght\" 1", None);
+    descriptor_rejected("font-variation-settings", "normal, \"wght\" 1");
+    for (value, rest) in [
+        ("\"abc\" 1", r#""abc" 1"#),
+        ("\"abcde\" 1", r#""abcde" 1"#),
+        ("\"éabc\" 1", r#""éabc" 1"#),
+        (r#""\1 abc" 1"#, r#""\1 abc" 1"#),
+        (r#""\7f abc" 1"#, r#""\7f abc" 1"#),
+        ("\"wght\" 2%", "2%"),
+        ("\"wght\" 2px", "2px"),
+        ("\"wght\" 1,", ""),
     ] {
-        rejected("font-variation-settings", value);
+        rejected("font-variation-settings", value, rest);
         descriptor_rejected("font-variation-settings", value);
     }
 }

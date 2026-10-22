@@ -1,6 +1,8 @@
 //! Independent Fonts 4 descriptor payload expectations, CSSOM string escaping,
 //! and Values 4 specified percentage/range semantics through public APIs.
 
+use crate::css::support::rules::ordinary_font_face_descriptor;
+use crate::css::support::serialization_limits::LimitLadder;
 use surgeist_css::*;
 
 type Kind = CssFontFaceDescriptorKind;
@@ -10,12 +12,7 @@ type Error = CssSpecifiedValueSerializationError;
 type ErrorKind = CssSpecifiedValueSerializationErrorKind;
 
 fn parsed(kind: Kind, text: &str) -> Value {
-    let report = parse_font_face_descriptor_value(text, kind);
-    assert!(report.is_clean(), "{}: {text}: {report:?}", kind.css_name());
-    let Some(CssAuthoredFontFaceDescriptorValue::Ordinary(value)) = report.syntax() else {
-        panic!("ordinary descriptor payload")
-    };
-    value.clone()
+    ordinary_font_face_descriptor(text, kind)
 }
 
 fn emit(value: &Value, limits: Limits) -> Result<String, Error> {
@@ -30,23 +27,9 @@ fn emit(value: &Value, limits: Limits) -> Result<String, Error> {
 }
 
 fn assert_primitive(value: Value, expected: &str) {
-    let before = value.clone();
     assert_eq!(emit(&value, Limits::default()).unwrap(), expected);
-    assert_eq!(
-        emit(&value, Limits::new(1, 1, expected.len())).unwrap(),
-        expected
-    );
-    for (limits, expected_kind) in [
-        (Limits::new(0, 1, expected.len()), ErrorKind::InputNodeLimit),
-        (
-            Limits::new(1, 0, expected.len()),
-            ErrorKind::ProjectionNodeLimit,
-        ),
-        (Limits::new(1, 1, expected.len() - 1), ErrorKind::ByteLimit),
-    ] {
-        assert_eq!(emit(&value, limits).unwrap_err().kind(), expected_kind);
-        assert_eq!(value, before);
-    }
+    // One node carries the complete descriptor value.
+    LimitLadder::new(expected, 1, 1).assert_unchanged(&value, emit);
     assert_eq!(parsed(value.kind(), expected), value);
     assert_eq!(emit(&value, Limits::default()).unwrap(), expected);
 }
@@ -81,7 +64,13 @@ fn named_instance_strings_keep_decoded_names_and_original_components() {
             .kind(),
         ErrorKind::ByteLimit
     );
-    assert!(CssFontNamedInstanceString::try_new("a\0b").is_err());
+    // Syntax 3 §3.3 replaces U+0000, so the decoded string cannot round-trip.
+    assert_eq!(
+        CssFontNamedInstanceString::try_new("a\0b")
+            .unwrap_err()
+            .kind(),
+        CssComponentValueErrorKind::InvalidString
+    );
     for component in [
         CssComponentValue::try_ident("auto").unwrap(),
         CssComponentValue::try_number("1").unwrap(),
@@ -194,12 +183,23 @@ fn three_metric_branches_share_exact_percentage_payloads_without_losing_identity
             .unwrap(),
         "125%"
     );
-    for token in ["-0.000000000000000000001%", "10px", "0"] {
-        assert!(
+    // Fonts 4 §4.9: metric overrides are <percentage [0,∞]>.
+    for (token, expected) in [
+        (
+            "-0.000000000000000000001%",
+            CssNumericConstructionErrorKind::OutOfRange,
+        ),
+        ("10px", CssNumericConstructionErrorKind::RootDomainMismatch),
+        ("0", CssNumericConstructionErrorKind::RootDomainMismatch),
+    ] {
+        assert_eq!(
             CssSpecifiedNonNegativePercentage::try_from_component(
                 CssComponentValue::try_token(token).unwrap(),
             )
-            .is_err()
+            .unwrap_err()
+            .kind(),
+            &expected,
+            "{token}"
         );
     }
 }

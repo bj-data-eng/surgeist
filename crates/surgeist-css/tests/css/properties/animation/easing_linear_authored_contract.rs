@@ -3,6 +3,11 @@
 //! These specified-value contracts preserve omissions and symbolic inputs;
 //! creation/fixup and computed serialization require the later numeric phase.
 
+use crate::css::support::property_admission::Responsible::{self, At, Disputed};
+use crate::css::support::property_admission::{
+    assert_checked_closure_rejected, assert_checked_rejected, assert_reentry_rejected,
+    assert_style_attribute_rejected,
+};
 use surgeist_css::*;
 
 const LONGHANDS: [CssKnownProperty; 2] = [
@@ -194,24 +199,34 @@ fn symbolic_number_and_percentage_graphs_remain_authored_and_roundtrip() {
 
 #[test]
 fn malformed_singleton_and_wrong_domain_stops_reject_atomically_and_recover() {
-    for invalid in [
-        "linear()",
-        "linear(0)",
-        "linear(0 0% 100%)",
-        "linear(0,)",
-        "linear(,1)",
-        "linear(0,,1)",
-        "linear(0 1)",
-        "linear(0%, 1)",
-        "linear(0 10px, 1)",
-        "linear(1s, 1)",
-        "linear(0 0% 20% 40%, 1)",
-        "linear(0% 0 20%, 1)",
-        "linear(calc(1px), 1)",
-        "linear(0 calc(1), 1)",
-        "linear(0, 1) junk",
+    // A shorthand's responsible token is disputed: it names the whole
+    // `linear(` component instead of the token inside it.
+    for (invalid, longhand, shorthand) in [
+        ("linear()", None, Disputed),
+        ("linear(0)", Some("0"), Disputed),
+        ("linear(0 0% 100%)", Some("100%"), Disputed),
+        ("linear(0,)", None, Disputed),
+        ("linear(,1)", Some(","), Disputed),
+        ("linear(0,,1)", Some(","), Disputed),
+        ("linear(0 1)", Some("1"), Disputed),
+        ("linear(0%, 1)", Some(","), Disputed),
+        ("linear(0 10px, 1)", Some("10px"), Disputed),
+        ("linear(1s, 1)", Some("1s"), Disputed),
+        ("linear(0 0% 20% 40%, 1)", Some("40%"), Disputed),
+        ("linear(0% 0 20%, 1)", Some("20%"), Disputed),
+        ("linear(calc(1px), 1)", Some("calc("), Disputed),
+        ("linear(0 calc(1), 1)", Some("calc("), Disputed),
+        ("linear(0, 1) junk", Some("junk"), At("junk")),
     ] {
         for property in CONSUMERS {
+            let token = if matches!(
+                property,
+                CssKnownProperty::Animation | CssKnownProperty::Transition
+            ) {
+                shorthand
+            } else {
+                Responsible::from(longhand)
+            };
             let value = body(property, invalid);
             let components = parse_component_values(&value).unwrap();
             for result in [
@@ -226,11 +241,10 @@ fn malformed_singleton_and_wrong_domain_stops_reject_atomically_and_recover() {
                     CssImportance::Normal,
                 ),
             ] {
-                assert!(result.is_err(), "{}:{value}", property.canonical_name());
+                assert_checked_rejected(result, property, token);
             }
             let css = format!("{}:{value};transition-delay:2s", property.canonical_name());
-            let report = parse_style_attribute(&css);
-            assert!(!report.is_clean(), "{css}");
+            let report = assert_style_attribute_rejected(&css, property, token);
             let [survivor] = report.syntax().as_slice() else {
                 panic!("invalid declaration drops as a unit: {css}")
             };
@@ -238,7 +252,6 @@ fn malformed_singleton_and_wrong_domain_stops_reject_atomically_and_recover() {
                 survivor.known().unwrap().property(),
                 CssKnownProperty::TransitionDelay
             );
-            assert!(validate_style_attribute(&css).is_err());
         }
     }
 }
@@ -325,13 +338,27 @@ fn pending_linear_reentry_is_strict_repeatable_and_preserves_replacement_origins
         let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
             panic!("whole-value substitution remains pending")
         };
-        for invalid in ["linear(0)", "linear(0, 1", "linear(0, var(--again))"] {
-            assert!(
-                pending
-                    .reenter(parse_component_values(&body(property, invalid)).unwrap())
-                    .is_err()
-            );
-        }
+        let reenter =
+            |invalid| pending.reenter(parse_component_values(&body(property, invalid)).unwrap());
+        // A single stop is too few (Easing 2 §2.1.2); a shorthand's token is disputed.
+        let token = if matches!(
+            property,
+            CssKnownProperty::Animation | CssKnownProperty::Transition
+        ) {
+            Disputed
+        } else {
+            At("0")
+        };
+        assert_reentry_rejected(reenter("linear(0)"), property, token);
+        let error = reenter("linear(0, 1").unwrap_err();
+        let CssExpansionErrorKind::InvalidReplacement(error) = error.kind() else {
+            panic!("an unclosed replacement is invalid: {error:?}")
+        };
+        assert_checked_closure_rejected(Err(error.clone()));
+        assert!(matches!(
+            reenter("linear(0, var(--again))").unwrap_err().kind(),
+            CssExpansionErrorKind::ResidualSubstitution
+        ));
         let replacement = parse_component_values(&body(property, "linear(0 20% 40%, 1)")).unwrap();
         for _ in 0..2 {
             let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap()

@@ -2,6 +2,7 @@
 //! independent goldens retain repetition within each group and do not claim
 //! exact upstream CSSOM conformity for mixed authored category order.
 
+use crate::css::support::validated_selector as parsed;
 use surgeist_css::{
     CssAttributeCaseSensitivity, CssAttributeMatcher, CssAttributeName, CssAttributeSelector,
     CssCompoundSelector, CssIdent, CssNamespaceContext, CssPseudoClass, CssPseudoElement,
@@ -9,17 +10,11 @@ use surgeist_css::{
     CssRuleCssomSerializationErrorKind as RuleError, CssSelector, CssSimpleSelector as Simple,
     CssSpecifiedValueSerializationErrorKind as Resource,
     CssSpecifiedValueSerializationLimits as Limits, CssStyleSelector, CssValueOrigin, parse_rule,
-    parse_selector, parse_sheet,
+    parse_sheet,
 };
 
 const AUTHORED: &str = ".One#X:hover[A='é'].Two#Y:focus[B='two'].One#X:hover[A='é']";
 const CANONICAL: &str = "#X#Y#X.One.Two.One[A=\"é\"][B=\"two\"][A=\"é\"]:hover:focus:hover";
-
-fn parsed(source: &str) -> CssSelector {
-    let report = parse_selector(source, &CssNamespaceContext::default());
-    assert!(report.is_clean(), "{source}: {report:?}");
-    report.into_validation_result().unwrap().unwrap()
-}
 
 fn ident(value: &str) -> CssIdent {
     CssIdent::try_new(value).unwrap()
@@ -186,7 +181,10 @@ fn category_normalization_keeps_pseudo_element_attachments_order_sensitive() {
     ] {
         let rejected = parse_rule(&format!("{invalid}{{}}"), &CssNamespaceContext::default());
         assert!(rejected.syntax().is_none(), "{invalid}: {rejected:?}");
-        assert!(!rejected.is_clean());
+        crate::css::support::value_assertions::assert_first_code(
+            rejected.diagnostics(),
+            surgeist_css::CssErrorCode::InvalidSelector,
+        );
     }
 }
 

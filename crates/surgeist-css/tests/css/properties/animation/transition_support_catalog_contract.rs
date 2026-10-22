@@ -1,9 +1,17 @@
 //! The selected Transitions 1 §§2.1–2.5 define the property/list production
 //! independently of contextual matching and execution. The support catalog
 //! describes that authored production; Easing owns easing-function syntax.
+use crate::css::support::property_admission::Responsible::{self, At, Disputed, End};
+use crate::css::support::property_admission::{
+    assert_checked_rejected, assert_style_attribute_rejected,
+};
 use surgeist_css::*;
 
-fn grammar(property: CssKnownProperty, accepted: &[&str], rejected: &[&str]) {
+fn grammar<'a, T: Copy + Into<Responsible<'a>>>(
+    property: CssKnownProperty,
+    accepted: &[&str],
+    rejected: &[(&str, T)],
+) {
     for value in accepted {
         let css = format!("{}:{value}", property.canonical_name());
         let report = parse_style_attribute(&css);
@@ -21,23 +29,22 @@ fn grammar(property: CssKnownProperty, accepted: &[&str], rejected: &[&str]) {
         )
         .unwrap();
     }
-    for value in rejected {
+    for &(value, token) in rejected {
         let css = format!("{}:{value};color:red", property.canonical_name());
-        let report = parse_style_attribute(&css);
-        assert!(!report.is_clean(), "{css}");
+        let report = assert_style_attribute_rejected(&css, property, token);
         assert_eq!(report.syntax().len(), 1, "{css}");
         assert_eq!(
             report.syntax()[0].known().unwrap().property(),
             CssKnownProperty::Color
         );
-        assert!(validate_style_attribute(&css).is_err());
-        assert!(
+        assert_checked_rejected(
             parse_property_value_for_grammar(
                 property.grammar(),
                 parse_component_values(value).unwrap(),
-                CssImportance::Normal
-            )
-            .is_err()
+                CssImportance::Normal,
+            ),
+            property,
+            token,
         );
     }
 }
@@ -64,13 +71,13 @@ fn property_list_catalog_covers_the_selected_identifier_and_none_production() {
             "ease, infinite, normal, running",
         ],
         &[
-            "",
-            "none, opacity",
-            "opacity, none",
-            "default",
-            "revert-layer, opacity",
-            "opacity,",
-            "opacity ease",
+            ("", End),
+            ("none, opacity", Disputed),
+            ("opacity, none", At("none")),
+            ("default", At("default")),
+            ("revert-layer, opacity", At(",")),
+            ("opacity,", End),
+            ("opacity ease", At("ease")),
         ],
     );
     complete(CssKnownProperty::TransitionProperty);
@@ -90,34 +97,39 @@ fn shorthand_catalog_covers_selected_slots_and_whole_list_none_rejection() {
             "all",
         ],
         &[
-            "",
-            "none, opacity",
-            "opacity, none 1s",
-            "opacity -1s",
-            "opacity 1s 2s 3s",
-            "opacity,",
-            "opacity 1s ease linear extra",
+            ("", End),
+            ("none, opacity", Disputed),
+            ("opacity, none 1s", At("none")),
+            ("opacity -1s", At("-1s")),
+            ("opacity 1s 2s 3s", At("3s")),
+            ("opacity,", End),
+            ("opacity 1s ease linear extra", At("linear")),
         ],
     );
     complete(CssKnownProperty::Transition);
 }
 
 #[test]
-fn existing_time_and_easing_catalog_controls_cover_their_selected_lists() {
+fn time_and_easing_catalog_controls_cover_their_selected_lists() {
     grammar(
         CssKnownProperty::TransitionDuration,
         &["0s", "1s, calc(1s + 250ms)"],
-        &["", "-1s", "1s,", "1px"],
+        &[
+            ("", None),
+            ("-1s", Some("-1s")),
+            ("1s,", None),
+            ("1px", Some("1px")),
+        ],
     );
     grammar(
         CssKnownProperty::TransitionDelay,
         &["-250ms", "0s, calc(-1s + 250ms)"],
-        &["", "1s,", "1px"],
+        &[("", None), ("1s,", None), ("1px", Some("1px"))],
     );
     grammar(
         CssKnownProperty::TransitionTimingFunction,
         &["ease", "linear, cubic-bezier(.2,0,.8,1), steps(2,end)"],
-        &["", "ease,", "steps(0,end)"],
+        &[("", None), ("ease,", None), ("steps(0,end)", Some("0"))],
     );
     for property in [
         CssKnownProperty::TransitionDuration,

@@ -109,15 +109,23 @@ fn percentage_constructor_preserves_exact_literals_and_rejects_invalid_roots() {
         scalar("999999999999999999999999%"),
         scalar("999999999999999999999998%")
     );
-    for text in ["0", "1", "1px", "-1%", "-1e-999%"] {
+    // A number or length is outside the <percentage> root; a negative
+    // percentage is outside [0,inf].
+    for (text, kind) in [
+        ("0", CssNumericConstructionErrorKind::RootDomainMismatch),
+        ("1", CssNumericConstructionErrorKind::RootDomainMismatch),
+        ("1px", CssNumericConstructionErrorKind::RootDomainMismatch),
+        ("-1%", CssNumericConstructionErrorKind::OutOfRange),
+        ("-1e-999%", CssNumericConstructionErrorKind::OutOfRange),
+    ] {
         let values = parse_component_values(text).unwrap();
         let [component] = values.items() else {
             panic!("one invalid scalar")
         };
-        assert!(
-            CssSpecifiedNonNegativePercentage::try_from_component(component.clone()).is_err(),
-            "{text}"
-        );
+        let error =
+            CssSpecifiedNonNegativePercentage::try_from_component(component.clone()).unwrap_err();
+        assert_eq!(error.kind(), &kind, "{text}");
+        assert_eq!(error.origin(), Some(component.origin()), "{text}");
     }
     for text in ["1e999%", "1e-999%"] {
         let direct = CssFontWidth::Percentage(scalar(text));
@@ -140,8 +148,11 @@ fn bare_percentage_calculation_roots_reenter_exact_range_admission() {
         let typed =
             CssPercentageCalculation::try_from_components(parse_component_values(text).unwrap())
                 .expect("negative percentage is in the percentage calculation domain");
-        assert!(
-            CssSpecifiedNonNegativePercentage::try_from_calculation(typed).is_err(),
+        assert_eq!(
+            CssSpecifiedNonNegativePercentage::try_from_calculation(typed)
+                .unwrap_err()
+                .kind(),
+            &CssNumericConstructionErrorKind::OutOfRange,
             "{text}"
         );
     }

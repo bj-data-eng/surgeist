@@ -2,6 +2,7 @@
 //! Canonical examples include the Backgrounds 3 subset of pinned WebKit WPT
 //! background-shorthand-serialization.html; Backgrounds 4 text/border-area excluded.
 
+use crate::css::support::serialization_limits::LimitLadder;
 use surgeist_css::*;
 
 fn background(text: &str) -> CssBackground {
@@ -289,41 +290,9 @@ fn canonical_grammar_omits_initials_preserves_context_and_round_trips_expansion(
 
 fn assert_limits(text: &str, input: usize, projection: usize, expected: &str) {
     let value = background(text);
-    let original = value.clone();
-    assert_eq!(
-        value
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                input,
-                projection,
-                expected.len()
-            ))
-            .unwrap(),
-        expected
-    );
-    for (limits, kind) in [
-        (
-            CssSpecifiedValueSerializationLimits::new(input - 1, projection, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
-        ),
-        (
-            CssSpecifiedValueSerializationLimits::new(input, projection - 1, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
-        ),
-        (
-            CssSpecifiedValueSerializationLimits::new(input, projection, expected.len() - 1),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
-        ),
-    ] {
-        assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            kind,
-            "{text}"
-        );
-        assert_eq!(value, original);
-    }
+    LimitLadder::new(expected, input, projection).assert_unchanged(&value, |value, limits| {
+        value.serialize_specified_with_limits(limits)
+    });
 }
 
 #[test]

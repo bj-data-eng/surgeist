@@ -1,9 +1,7 @@
 //! Typed authored contracts from Conditional5 sections 5.4 and 6.3; no matching.
+use crate::css::support::authored_syntax::checked_container_condition as construct;
 use surgeist_css::*;
 
-fn construct(source: &str) -> CssContainerCondition {
-    CssContainerCondition::try_from_components(parse_component_values(source).unwrap()).unwrap()
-}
 fn scroll(condition: &CssContainerCondition) -> &CssContainerScrollQuery {
     let CssContainerConditionKind::ScrollState(query) = condition.kind() else {
         panic!("scroll query")
@@ -330,7 +328,10 @@ fn limits_and_recovered_closures_keep_typed_resource_and_source_information() {
         source.len(),
     )
     .unwrap();
-    assert!(CssContainerCondition::try_from_components_with_limits(values.clone(), exact).is_ok());
+    assert_eq!(
+        CssContainerCondition::try_from_components_with_limits(values.clone(), exact).unwrap(),
+        CssContainerCondition::try_from_components(values.clone()).unwrap()
+    );
     for (limits, expected) in [
         (
             CssComponentValueLimits::try_new(1, usize::MAX, usize::MAX).unwrap(),

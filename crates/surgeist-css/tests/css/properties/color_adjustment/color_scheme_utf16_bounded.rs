@@ -1,5 +1,6 @@
 //! Functional bounds and retained-content contracts for the property ingress.
 
+use crate::css::support::property_admission::{ValueTextRejection, assert_value_text_rejected};
 use std::{cell::Cell, sync::Arc};
 use surgeist_css::*;
 
@@ -158,10 +159,14 @@ fn equivalence_uses_logical_content_not_spare_capacity_and_remains_interruptible
 }
 
 #[test]
-fn empty_invalid_input_still_retains_one_complete_original_source() {
+fn empty_invalid_input_retains_one_complete_original_source() {
     let input = Arc::new(Vec::with_capacity(128));
     let report = parse(input.clone());
-    assert!(report.result().is_err());
+    assert_value_text_rejected(
+        report.result(),
+        CssKnownProperty::ColorScheme,
+        ValueTextRejection::Grammar(None),
+    );
     assert!(Arc::ptr_eq(
         report.source().source().original_utf16().unwrap(),
         &input

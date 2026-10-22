@@ -15,6 +15,9 @@
 //! Expectations never depend on catalog status, issue state, Debug text, or a
 //! serializer's output being copied into a golden.
 
+use crate::css::support::authored_property::checked;
+use crate::css::support::authored_property::fronts;
+use crate::css::support::authored_property::parsed;
 use surgeist_css::CssKnownProperty as P;
 use surgeist_css::*;
 
@@ -25,72 +28,6 @@ const GLOBALS: [(&str, CssGlobalKeyword); 5] = [
     ("revert", CssGlobalKeyword::Revert),
     ("revert-layer", CssGlobalKeyword::RevertLayer),
 ];
-
-fn parsed(p: P, value: &str) -> CssDeclaration {
-    let css = format!("/*😀*/{}:{value}!important", p.canonical_name());
-    let report = parse_style_attribute(&css);
-    assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
-    assert!(validate_style_attribute(&css).is_ok());
-    let [source] = report.syntax().as_slice() else {
-        panic!("one occurrence")
-    };
-    assert_eq!(source.known().unwrap().property(), p);
-    assert_eq!(source.importance(), CssImportance::Important);
-    assert!(source.position().is_some());
-    assert_eq!(source.parsed_name().unwrap().source().as_str(), css);
-    source.clone()
-}
-
-fn checked(p: P, value: &str, grammar: bool) -> CssDeclaration {
-    let components = parse_component_values(value).unwrap();
-    let before = components.clone();
-    let source = if grammar {
-        parse_property_value_for_grammar(p.grammar(), components.clone(), CssImportance::Important)
-    } else {
-        parse_property_value(
-            CssPropertyNameRef::Known(p),
-            components.clone(),
-            CssImportance::Important,
-        )
-    }
-    .unwrap();
-    assert_eq!(components, before);
-    assert_eq!(source.value_components(), &components);
-    assert_eq!(source.known().unwrap().grammar(), p.grammar());
-    assert_eq!(source.importance(), CssImportance::Important);
-    assert!(source.position().is_none());
-    assert!(source.parsed_name().is_none());
-    assert!(source.parsed_value().is_none());
-    source
-}
-
-fn text_front(p: P, value: &str, grammar: bool) -> CssDeclaration {
-    let report = if grammar {
-        parse_property_value_text_for_grammar(value, p.grammar(), CssImportance::Important)
-    } else {
-        parse_property_value_text(
-            value,
-            CssPropertyNameRef::Known(p),
-            CssImportance::Important,
-        )
-    };
-    assert!(report.is_clean(), "{value}: {:?}", report.diagnostics());
-    let source = report.syntax().as_ref().unwrap().clone();
-    assert_eq!(source.known().unwrap().grammar(), p.grammar());
-    assert_eq!(source.importance(), CssImportance::Important);
-    assert_eq!(source.parsed_value().unwrap().source().as_str(), value);
-    source
-}
-
-fn fronts(p: P, value: &str) -> [CssDeclaration; 5] {
-    [
-        parsed(p, value),
-        checked(p, value, false),
-        checked(p, value, true),
-        text_front(p, value, false),
-        text_front(p, value, true),
-    ]
-}
 
 fn indent(source: &CssDeclaration) -> &CssTextIndent {
     let CssKnownPropertyValueRef::TextIndent(value) =
@@ -201,7 +138,7 @@ fn ordinary(p: P, input: &str, canonical: &str) {
 }
 
 #[test]
-fn ordinary_indent_expands_once_through_all_existing_fronts() {
+fn ordinary_indent_expands_once_through_every_front() {
     for (input, canonical) in [
         ("0", "0"),
         ("each-line -2.50% hanging", "-2.5% hanging each-line"),
@@ -212,7 +149,7 @@ fn ordinary_indent_expands_once_through_all_existing_fronts() {
 }
 
 #[test]
-fn ordinary_css2_alignment_expands_once_through_all_existing_fronts() {
+fn ordinary_css2_alignment_expands_once_through_every_front() {
     for input in [
         "baseline",
         "sub",

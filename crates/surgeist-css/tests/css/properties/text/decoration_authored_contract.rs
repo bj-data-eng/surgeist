@@ -6,8 +6,8 @@
 //! contracts; Values4 math simplification/unit ordering; new Emphasis default
 //! omission is an explicitly documented CSSOM + Decoration4 inference.
 use crate::css::support::{
-    authored_family_property as property, check_named_components as checked_components,
-    detached_checked_declaration as checked,
+    check_named_components as checked_components, detached_checked_declaration as checked,
+    known_property as property,
 };
 use surgeist_css::*;
 
@@ -1273,7 +1273,7 @@ fn checked_programmatic_inputs_and_zero_resource_failures_leave_supplied_graphs_
 }
 
 #[test]
-fn empty_ordinary_values_reject_atomically_through_all_existing_fronts() {
+fn empty_ordinary_values_reject_atomically_through_every_front() {
     // Complete-family grammar stimuli, not metadata/catalog/wrapper inventory.
     for name in [
         "text-decoration",

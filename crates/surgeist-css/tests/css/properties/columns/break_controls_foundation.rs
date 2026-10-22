@@ -1,7 +1,11 @@
 //! Authored break controls from Fragmentation 3 CR (2018-12-04) §§3.1, 3.2, 3.4,
 //! including the flow-relative page classifications of Logical 1 WD (2025-12-04) §3.
 
-use crate::css::support::important_declaration as declaration;
+use crate::css::support::property_admission::assert_declaration_rejected as rejected;
+use crate::css::support::{
+    checked_grammar_declaration as checked, important_declaration as declaration,
+    selected_grammar as grammar,
+};
 use surgeist_css::*;
 
 const MODERN: [&str; 3] = ["break-before", "break-after", "break-inside"];
@@ -30,19 +34,6 @@ const INSIDE: [&str; 5] = [
 const LEGACY_BEFORE_AFTER: [&str; 7] =
     ["auto", "always", "avoid", "left", "right", "recto", "verso"];
 
-fn grammar(name: &str) -> CssPropertyGrammar {
-    CssPropertyGrammar::from_name(name).unwrap_or_else(|| panic!("selected grammar: {name}"))
-}
-
-fn checked(name: &str, value: &str) -> CssDeclaration {
-    parse_property_value_for_grammar(
-        grammar(name),
-        parse_component_values(value).unwrap(),
-        CssImportance::Important,
-    )
-    .unwrap_or_else(|error| panic!("checked {name}:{value}: {error:?}"))
-}
-
 fn accepted(name: &str, value: &str) {
     for source in [declaration(name, value), checked(name, value)] {
         assert_eq!(source.known().unwrap().grammar(), grammar(name));
@@ -52,27 +43,6 @@ fn accepted(name: &str, value: &str) {
             value
         );
     }
-}
-
-fn invalid(name: &str, value: &str) {
-    let source = format!("color:red;{name}:{value};color:blue");
-    let report = parse_style_attribute(&source);
-    let [diagnostic] = report.diagnostics() else {
-        panic!("one invalid-value diagnostic: {source}")
-    };
-    assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    assert_ne!(diagnostic.error().code(), CssErrorCode::UnknownProperty);
-    assert_eq!(report.syntax().len(), 2, "neighbors survive: {source}");
-    assert!(validate_style_attribute(&source).is_err());
-    assert!(
-        parse_property_value_for_grammar(
-            grammar(name),
-            parse_component_values(value).unwrap(),
-            CssImportance::Normal,
-        )
-        .is_err(),
-        "checked construction accepted {name}:{value}"
-    );
 }
 
 fn one_value(source: &CssDeclaration) -> CssLonghandValue {
@@ -154,53 +124,58 @@ fn modern_and_legacy_keyword_domains_are_distinct_and_recover_invalid_neighbors(
         for value in BEFORE_AFTER {
             accepted(name, value);
         }
-        for value in ["always", "none", "auto page", "page avoid"] {
-            invalid(name, value);
+        for (value, token) in [
+            ("always", Some("always")),
+            ("none", Some("none")),
+            ("auto page", Some("page")),
+            ("page avoid", Some("avoid")),
+        ] {
+            rejected(name, value, token);
         }
     }
     for value in INSIDE {
         accepted("break-inside", value);
     }
-    for value in [
-        "page",
-        "column",
-        "region",
-        "left",
-        "recto",
-        "always",
-        "auto avoid",
+    for (value, token) in [
+        ("page", Some("page")),
+        ("column", Some("column")),
+        ("region", Some("region")),
+        ("left", Some("left")),
+        ("recto", Some("recto")),
+        ("always", Some("always")),
+        ("auto avoid", Some("avoid")),
     ] {
-        invalid("break-inside", value);
+        rejected("break-inside", value, token);
     }
     for name in ["page-break-before", "page-break-after"] {
         for value in LEGACY_BEFORE_AFTER {
             accepted(name, value);
         }
-        for value in [
-            "page",
-            "avoid-page",
-            "column",
-            "avoid-column",
-            "region",
-            "avoid-region",
-            "none",
-            "always page",
+        for (value, token) in [
+            ("page", Some("page")),
+            ("avoid-page", Some("avoid-page")),
+            ("column", Some("column")),
+            ("avoid-column", Some("avoid-column")),
+            ("region", Some("region")),
+            ("avoid-region", Some("avoid-region")),
+            ("none", Some("none")),
+            ("always page", Some("page")),
         ] {
-            invalid(name, value);
+            rejected(name, value, token);
         }
     }
     for value in ["auto", "avoid"] {
         accepted("page-break-inside", value);
     }
-    for value in [
-        "always",
-        "page",
-        "avoid-page",
-        "left",
-        "recto",
-        "avoid-column",
+    for (value, token) in [
+        ("always", Some("always")),
+        ("page", Some("page")),
+        ("avoid-page", Some("avoid-page")),
+        ("left", Some("left")),
+        ("recto", Some("recto")),
+        ("avoid-column", Some("avoid-column")),
     ] {
-        invalid("page-break-inside", value);
+        rejected("page-break-inside", value, token);
     }
     accepted("page-break-before", "RECTO");
     accepted("break-after", "VERSO");

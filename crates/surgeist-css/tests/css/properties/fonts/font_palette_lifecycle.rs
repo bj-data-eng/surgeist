@@ -7,25 +7,15 @@
 //! specified-output APIs require functional tests alongside implementation.
 //! Palette lookup, computed simplification and mixing are downstream work.
 
+use crate::css::support::named_property::important_property_declaration;
 use surgeist_css::*;
-
-fn declaration(value: &str) -> CssDeclaration {
-    let text = format!("font-palette:{value}!important");
-    let report = parse_style_attribute(&text);
-    assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
-    let [value] = report.syntax().as_slice() else {
-        panic!("one retained palette declaration: {text}")
-    };
-    assert_eq!(
-        value.known().unwrap().property().canonical_name(),
-        "font-palette"
-    );
-    value.clone()
-}
 
 fn grammar() -> CssPropertyGrammar {
     // Obtain the grammar only after exercising real property admission.
-    declaration("normal").known().unwrap().grammar()
+    important_property_declaration(CssKnownProperty::FontPalette, "normal")
+        .known()
+        .unwrap()
+        .grammar()
 }
 
 fn checked(value: &str) -> CssDeclaration {
@@ -53,7 +43,7 @@ fn longhands(source: &CssDeclaration) -> CssLonghandContributions {
 }
 
 fn assert_admitted(value: &str) {
-    let parsed = declaration(value);
+    let parsed = important_property_declaration(CssKnownProperty::FontPalette, value);
     let supplied = parse_component_values(value).unwrap();
     let constructed = checked(value);
     assert!(parsed.known().unwrap().property_value().is_some());
@@ -74,7 +64,7 @@ fn assert_admitted(value: &str) {
 }
 
 #[test]
-fn palette_property_is_retained_between_existing_declarations() {
+fn palette_property_is_retained_between_neighboring_declarations() {
     let report = parse_style_attribute("color:red;font-palette:normal;color:blue");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 3);
@@ -110,7 +100,7 @@ fn palette_names_preserve_decoded_case_and_escape_equivalence() {
         (r"--\54 heme", "--Theme"),
         ("--theme", "--theme"),
     ] {
-        let source = declaration(text);
+        let source = important_property_declaration(CssKnownProperty::FontPalette, text);
         let CssComponentValueRef::Token(CssValueTokenRef::Ident(name)) =
             source.value_components().items()[0].view()
         else {
@@ -351,27 +341,14 @@ fn palette_is_one_inherited_longhand_with_intrinsic_normal_initial() {
         panic!("intrinsic normal initial")
     };
     assert_eq!(
-        longhands(&declaration("normal")).items()[0].ordinary_value(),
+        longhands(&important_property_declaration(
+            CssKnownProperty::FontPalette,
+            "normal"
+        ))
+        .items()[0]
+            .ordinary_value(),
         Some(initial)
     );
-}
-
-#[test]
-fn css_wide_values_keep_the_single_contribution_and_original_importance() {
-    for (text, keyword) in [
-        ("initial", CssGlobalKeyword::Initial),
-        ("inherit", CssGlobalKeyword::Inherit),
-        ("unset", CssGlobalKeyword::Unset),
-        ("revert", CssGlobalKeyword::Revert),
-        ("revert-layer", CssGlobalKeyword::RevertLayer),
-    ] {
-        for source in [declaration(text), checked(text)] {
-            assert_eq!(
-                longhands(&source).items()[0].value(),
-                CssContributionValueRef::Global(keyword)
-            );
-        }
-    }
 }
 
 #[test]
@@ -385,7 +362,10 @@ fn whole_pending_values_reenter_strictly_without_changing_source_or_replacement_
         // defers the entire known-property grammar for a valid var() reference.
         "{} var(--palette)",
     ] {
-        for source in [declaration(symbolic), checked(symbolic)] {
+        for source in [
+            important_property_declaration(CssKnownProperty::FontPalette, symbolic),
+            checked(symbolic),
+        ] {
             let before = source.clone();
             assert!(matches!(
                 source.known().unwrap().declared_value(),

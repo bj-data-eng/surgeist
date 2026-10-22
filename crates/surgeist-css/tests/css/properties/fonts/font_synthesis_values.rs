@@ -1,7 +1,7 @@
 //! Functional coverage for new checked payloads and emission methods. The oracle
 //! is Fonts 4 WD 2026-09-07 §§2.8.1–2.8.5, including canonical grammar order and
 //! the four-column expansion table. These APIs had no preimplementation RED.
-use crate::css::support::first_important_declaration as declaration;
+use crate::css::support::important_declaration as declaration;
 use surgeist_css::*;
 
 const CAPABILITIES: [&str; 4] = ["weight", "style", "small-caps", "position"];

@@ -177,7 +177,18 @@ fn namespaces_and_unicode_positions_come_from_the_supplied_context_and_source() 
             .as_str(),
         source
     );
-    assert!(parse(source).syntax().is_none());
+    // Without the binding the `svg` prefix is undeclared, so the selector
+    // fails at the name after `svg|` and no rule is admitted.
+    let undeclared = parse(source);
+    assert!(undeclared.syntax().is_none());
+    let [diagnostic] = undeclared.diagnostics() else {
+        panic!("one undeclared-prefix rejection: {undeclared:?}")
+    };
+    assert_eq!(diagnostic.error().code(), CssErrorCode::InvalidSelector);
+    assert_eq!(
+        diagnostic.error().position().byte_offset().value(),
+        source.find("leaf").unwrap()
+    );
     let namespace = parse_rule("@namespace svg 'urn:replacement';", &context);
     assert!(namespace.is_clean());
     assert_eq!(

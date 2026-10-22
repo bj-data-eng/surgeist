@@ -1,6 +1,7 @@
 //! Conditional 5 section 8 keeps structurally formed, unknown feature tests.
 //! Syntax 3's declaration-first block partition governs ambiguous curly input.
 
+use crate::css::support::authored_syntax::{assert_diagnostics, offset_of};
 use surgeist_css::{
     CssComponentValueErrorKind, CssImportance, CssRule, CssSupportsTestItem, CssValueTokenRef,
     ErrorKind, parse_sheet,
@@ -82,7 +83,18 @@ fn empty_and_whitespace_only_qualified_preludes_retain_nested_tests() {
 fn bare_double_hyphen_is_not_a_custom_property_for_mixed_curly_values() {
     let source = "@supports-condition --t{--:a{b:c}d;tail:yes}";
     let report = parse_sheet(source);
-    assert!(!report.is_clean());
+    // `--` declares no custom property, so its value may not mix a
+    // `{}`-block with other tokens. The nested qualified-rule fallback then
+    // starts with an ident and a colon, so Syntax 3 consumes it from `--` as
+    // bad-declaration remnants through the semicolon.
+    assert_diagnostics(
+        report.diagnostics(),
+        &[(
+            surgeist_css::CssErrorCode::InvalidQualifiedRule,
+            surgeist_css::CssRecoveryAction::DropDeclaration,
+            offset_of(source, "--:"),
+        )],
+    );
     let [CssRule::SupportsCondition(rule)] = report.syntax().rules() else {
         panic!("definition retained");
     };

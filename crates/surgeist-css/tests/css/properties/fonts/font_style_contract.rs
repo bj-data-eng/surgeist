@@ -1,14 +1,15 @@
 //! Authored Fonts 4 property, shared angle, and shorthand contracts.
 
+use crate::css::support::named_property::assert_programmatic_rejection;
+use crate::css::support::named_property::normal_grammar_components;
 use surgeist_css::{
     CssAngleCalculation, CssComponentValue, CssComponentValueRef, CssComponentValues,
     CssContributions, CssExpansion, CssExpansionErrorKind, CssFontObliqueAngle, CssFontStyle,
     CssFontStyleKeyword, CssFontValue, CssImportance, CssInitialValueRef, CssKnownProperty,
     CssKnownPropertyValueRef, CssLonghandValueRef, CssNumericConstructionErrorKind,
-    CssPropertyGrammar, CssPropertyKindRef, CssPropertyValueErrorKind, CssRecoveryAction,
-    CssSerializedOrigin, CssSpecifiedValueSerializationErrorKind,
-    CssSpecifiedValueSerializationLimits, CssValueOrigin, CssValueTokenRef, expand_declaration,
-    parse_component_values, parse_property_value_for_grammar, parse_style_attribute,
+    CssPropertyKindRef, CssPropertyValueErrorKind, CssRecoveryAction, CssSerializedOrigin,
+    CssSpecifiedValueSerializationErrorKind, CssSpecifiedValueSerializationLimits, CssValueOrigin,
+    CssValueTokenRef, expand_declaration, parse_component_values, parse_style_attribute,
 };
 
 fn angle(text: &str) -> CssFontObliqueAngle {
@@ -27,16 +28,6 @@ fn property(text: &str) -> CssFontStyle {
         panic!("font-style wrapper")
     };
     value.value().clone()
-}
-
-fn checked(
-    components: CssComponentValues,
-) -> Result<surgeist_css::CssDeclaration, surgeist_css::CssPropertyValueParseError> {
-    parse_property_value_for_grammar(
-        CssPropertyGrammar::from_name("font-style").unwrap(),
-        components,
-        CssImportance::Normal,
-    )
 }
 
 #[test]
@@ -316,7 +307,11 @@ fn recovered_math_requires_parser_admission_before_typed_transfer() {
 
 #[test]
 fn checked_values_and_pending_reentry_preserve_real_origins_and_importance() {
-    let parsed = checked(parse_component_values("oblique 12.50deg ").unwrap()).unwrap();
+    let parsed = normal_grammar_components(
+        "font-style",
+        parse_component_values("oblique 12.50deg ").unwrap(),
+    )
+    .unwrap();
     let CssKnownPropertyValueRef::FontStyle(value) =
         parsed.known().unwrap().property_value().unwrap()
     else {
@@ -332,7 +327,8 @@ fn checked_values_and_pending_reentry_preserve_real_origins_and_importance() {
     assert_eq!(origin.span().start().byte_offset().value(), 8);
     assert_eq!(origin.span().end().byte_offset().value(), 16);
 
-    let programmatic = checked(
+    let programmatic = normal_grammar_components(
+        "font-style",
         CssComponentValues::try_new(vec![
             CssComponentValue::try_ident("oblique").unwrap(),
             CssComponentValue::try_token("12deg").unwrap(),
@@ -350,7 +346,8 @@ fn checked_values_and_pending_reentry_preserve_real_origins_and_importance() {
     };
     assert_eq!(value.origin(), &CssValueOrigin::Programmatic);
 
-    let invalid = checked(
+    let invalid = normal_grammar_components(
+        "font-style",
         CssComponentValues::try_new(vec![
             CssComponentValue::try_ident("oblique").unwrap(),
             CssComponentValue::try_token("91deg").unwrap(),
@@ -372,7 +369,10 @@ fn checked_values_and_pending_reentry_preserve_real_origins_and_importance() {
         CssComponentValue::try_token("0deg").unwrap(),
     ])
     .unwrap();
-    assert!(checked(adjacent).is_err());
+    assert_programmatic_rejection(
+        normal_grammar_components("font-style", adjacent),
+        CssKnownProperty::FontStyle,
+    );
 
     let report = parse_style_attribute("font-style:env(style)!important");
     let source = &report.syntax()[0];

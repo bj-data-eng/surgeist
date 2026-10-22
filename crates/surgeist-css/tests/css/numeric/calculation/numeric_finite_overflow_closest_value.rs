@@ -120,7 +120,7 @@ fn finite_angle_overflow_keeps_the_nearest_supported_multiple_of_360deg() {
 }
 
 #[test]
-fn coefficients_beyond_binary64_still_convert_when_the_canonical_value_fits() {
+fn coefficients_beyond_binary64_convert_when_the_canonical_value_fits() {
     // 1e310ms is the finite 1e307s; its coefficient alone exceeds binary64.
     let output = specified("transition-duration:calc(1e310ms)");
     let coefficient = output

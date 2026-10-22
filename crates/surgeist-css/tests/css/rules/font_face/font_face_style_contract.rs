@@ -1,5 +1,7 @@
 //! Ordinary Fonts 4 font-face style descriptor and checked range contracts.
 
+use crate::css::support::rules::invalid_descriptor;
+use crate::css::support::rules::ordinary_font_face_descriptor;
 use surgeist_css::{
     CssAuthoredFontFaceDescriptorValue as Authored, CssComponentValue, CssComponentValues,
     CssFontFaceDescriptorKind as Kind, CssFontFaceDescriptorValue as Ordinary,
@@ -14,12 +16,10 @@ fn angle(text: &str) -> CssFontObliqueAngle {
 }
 
 fn ordinary(text: &str) -> CssFontFaceStyle {
-    let report = parse_font_face_descriptor_value(text, Kind::FontStyle);
-    assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
-    let Some(Authored::Ordinary(Ordinary::FontStyle(value))) = report.syntax() else {
+    let Ordinary::FontStyle(value) = ordinary_font_face_descriptor(text, Kind::FontStyle) else {
         panic!("ordinary style descriptor: {text}")
     };
-    value.clone()
+    value
 }
 
 #[test]
@@ -206,14 +206,26 @@ fn duplicate_pending_and_mixed_origin_reentry_select_last_admitted_style() {
         range.end().unwrap().serialize_specified().unwrap(),
         "-20grad"
     );
-    for text in ["env(style)", "var(--style)", "oblique 91deg"] {
-        assert!(
+    for text in ["env(style)", "var(--style)"] {
+        assert_eq!(
             pending
                 .reparse_after_substitution(parse_component_values(text).unwrap())
-                .is_err(),
+                .unwrap_err()
+                .kind(),
+            &CssFontFaceValueErrorKind::ResidualSubstitution,
             "{text}"
         );
     }
+    // Fonts 4 §4.2: an oblique angle lies in [-90deg, 90deg].
+    let error = pending
+        .reparse_after_substitution(parse_component_values("oblique 91deg").unwrap())
+        .unwrap_err();
+    let CssFontFaceValueErrorKind::Grammar(detail) = error.kind() else {
+        panic!("grammar failure: {error:?}")
+    };
+    invalid_descriptor("font-face", "font-style")
+        .at("91deg")
+        .assert_kind(detail);
 }
 
 #[test]
@@ -239,7 +251,14 @@ fn strict_checked_construction_rejects_invalid_and_adjacent_tokens_with_real_ori
         CssComponentValue::try_token("0deg").unwrap(),
     ])
     .unwrap();
-    assert!(Authored::try_from_components(Kind::FontStyle, adjacent).is_err());
+    // Fonts 4 §4.2: oblique takes <angle>{0,2}; `1` is a <number>.
+    let error = Authored::try_from_components(Kind::FontStyle, adjacent).unwrap_err();
+    let CssFontFaceValueErrorKind::Grammar(detail) = error.kind() else {
+        panic!("grammar failure: {error:?}")
+    };
+    invalid_descriptor("font-face", "font-style")
+        .at("1")
+        .assert_kind(detail);
 }
 
 #[test]

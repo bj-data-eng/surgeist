@@ -1,6 +1,7 @@
 //! Authored contained intrinsic sizes from Sizing 4 (2026-09-04) §§5.2–5.2.1.
 //! Last-remembered sizes and the logical-to-physical mapping need downstream context.
 
+use crate::css::support::property_admission::assert_declaration_rejected as rejected;
 use crate::css::support::{
     checked_grammar_declaration as checked, important_declaration as declaration,
     selected_grammar as grammar,
@@ -31,27 +32,6 @@ fn accepted(name: &str, value: &str) {
             value
         );
     }
-}
-
-fn invalid(name: &str, value: &str) {
-    let source = format!("color:red;{name}:{value};color:blue");
-    let report = parse_style_attribute(&source);
-    let [diagnostic] = report.diagnostics() else {
-        panic!("one invalid-value diagnostic: {source}")
-    };
-    assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    assert_ne!(diagnostic.error().code(), CssErrorCode::UnknownProperty);
-    assert_eq!(report.syntax().len(), 2, "neighbors survive: {source}");
-    assert!(validate_style_attribute(&source).is_err());
-    assert!(
-        parse_property_value_for_grammar(
-            grammar(name),
-            parse_component_values(value).unwrap(),
-            CssImportance::Normal,
-        )
-        .is_err(),
-        "checked construction accepted {name}:{value}"
-    );
 }
 
 fn one_value(source: &CssDeclaration) -> CssLonghandValue {
@@ -119,24 +99,24 @@ fn four_longhands_accept_optional_auto_then_exact_nonnegative_length_or_none() {
         ] {
             accepted(name, value);
         }
-        for value in [
-            "auto",
-            "none auto",
-            "auto auto none",
-            "1px auto",
-            "-1px",
-            "-1e-999px",
-            "auto -1e-999px",
-            "1%",
-            "auto 1%",
-            "1",
-            "1e999",
-            "1fr",
-            "min-content",
-            "calc(1px + 2%)",
-            "calc(1 + 2)",
+        for (value, token) in [
+            ("auto", Some("auto")),
+            ("none auto", Some("auto")),
+            ("auto auto none", Some("auto")),
+            ("1px auto", Some("auto")),
+            ("-1px", Some("-1px")),
+            ("-1e-999px", Some("-1e-999px")),
+            ("auto -1e-999px", Some("-1e-999px")),
+            ("1%", Some("1%")),
+            ("auto 1%", Some("1%")),
+            ("1", Some("1")),
+            ("1e999", Some("1e999")),
+            ("1fr", Some("1fr")),
+            ("min-content", Some("min-content")),
+            ("calc(1px + 2%)", Some("calc(")),
+            ("calc(1 + 2)", Some("calc(")),
         ] {
-            invalid(name, value);
+            rejected(name, value, token);
         }
     }
 }
@@ -158,22 +138,22 @@ fn shorthand_parses_one_or_two_whole_axis_values_with_ordered_auto_prefixes() {
     ] {
         accepted(SHORTHAND, value);
     }
-    for value in [
-        "auto",
-        "none auto",
-        "auto auto none",
-        "auto none auto",
-        "1px 2px 3px",
-        "auto 1px 2px 3px",
-        "none auto 1px 2px",
-        "auto none auto 1px 2px",
-        "logical 1px",
-        "1px logical 2px",
-        "1px 2%",
-        "auto 1px -1e-999px",
-        "1px auto -1px",
+    for (value, token) in [
+        ("auto", Some("auto")),
+        ("none auto", Some("auto")),
+        ("auto auto none", Some("auto")),
+        ("auto none auto", Some("auto")),
+        ("1px 2px 3px", Some("3px")),
+        ("auto 1px 2px 3px", Some("3px")),
+        ("none auto 1px 2px", Some("2px")),
+        ("auto none auto 1px 2px", Some("2px")),
+        ("logical 1px", Some("logical")),
+        ("1px logical 2px", Some("logical")),
+        ("1px 2%", Some("2%")),
+        ("auto 1px -1e-999px", Some("-1e-999px")),
+        ("1px auto -1px", Some("-1px")),
     ] {
-        invalid(SHORTHAND, value);
+        rejected(SHORTHAND, value, token);
     }
 }
 
@@ -255,7 +235,7 @@ fn css_wide_values_all_reset_and_substitutions_keep_symbolic_provenance() {
             !reset.excludes(CssPropertyNameRef::Known(grammar(name).target_property())),
             "all includes {name}"
         );
-        invalid(name, "initial 1px");
+        rejected(name, "initial 1px", Some("1px"));
         for (text, keyword) in [
             ("initial", CssGlobalKeyword::Initial),
             ("inherit", CssGlobalKeyword::Inherit),

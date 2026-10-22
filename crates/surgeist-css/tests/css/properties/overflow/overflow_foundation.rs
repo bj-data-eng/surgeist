@@ -1,6 +1,9 @@
 //! Authored overflow from CSS Overflow 3 WD (2025-10-07) §3.1.
 //! Cross-axis computed-value coupling and writing-mode mapping require later context.
 
+use crate::css::support::named_property::accepted_by_attribute_and_grammar as accepted;
+use crate::css::support::named_property::invalid_named_value_at as invalid;
+use crate::css::support::named_property::sole_longhand_contribution;
 use crate::css::support::{
     checked_grammar_declaration as checked, important_declaration as declaration,
     selected_grammar as grammar,
@@ -19,52 +22,11 @@ fn names() -> impl Iterator<Item = &'static str> {
     LONGHANDS.into_iter().chain([SHORTHAND])
 }
 
-fn accepted(name: &str, value: &str) {
-    for source in [declaration(name, value), checked(name, value)] {
-        assert_eq!(
-            source.known().unwrap().property(),
-            grammar(name).target_property()
-        );
-        assert_eq!(source.importance(), CssImportance::Important);
-        assert_eq!(
-            source.value_components().serialize().unwrap().as_css(),
-            value
-        );
-    }
-}
-
-fn invalid(name: &str, value: &str) {
-    let source = format!("color:red;{name}:{value};color:blue");
-    let report = parse_style_attribute(&source);
-    let [diagnostic] = report.diagnostics() else {
-        panic!("one invalid-value diagnostic: {source}")
-    };
-    assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    assert_ne!(diagnostic.error().code(), CssErrorCode::UnknownProperty);
-    assert_eq!(report.syntax().len(), 2, "neighbors survive: {source}");
-    assert!(validate_style_attribute(&source).is_err());
-    assert!(
-        parse_property_value_for_grammar(
-            grammar(name),
-            parse_component_values(value).unwrap(),
-            CssImportance::Normal,
-        )
-        .is_err(),
-        "checked construction accepted {name}:{value}"
-    );
-}
-
 fn one_value(source: &CssDeclaration) -> CssLonghandValue {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
-    else {
-        panic!("one terminal contribution")
-    };
-    let [item] = values.items() else {
-        panic!("one terminal contribution")
-    };
-    assert!(item.source().same_occurrence(source));
-    item.ordinary_value().unwrap().clone()
+    sole_longhand_contribution(source)
+        .ordinary_value()
+        .unwrap()
+        .clone()
 }
 
 #[test]
@@ -113,17 +75,17 @@ fn terminals_accept_five_keywords_and_overlay_alias_with_strict_recovery() {
         for value in ["VISIBLE", "AuTo", "OVERLAY", "vis\\69 ble"] {
             accepted(name, value);
         }
-        for value in [
-            "none",
-            "both",
-            "start",
-            "visible hidden",
-            "overlay auto",
-            "visible / hidden",
-            "1px",
-            "initial clip",
+        for (value, rest) in [
+            ("none", "none"),
+            ("both", "both"),
+            ("start", "start"),
+            ("visible hidden", "hidden"),
+            ("overlay auto", "auto"),
+            ("visible / hidden", "/ hidden"),
+            ("1px", "1px"),
+            ("initial clip", "clip"),
         ] {
-            invalid(name, value);
+            invalid(name, value, rest);
         }
     }
     for value in [
@@ -137,16 +99,16 @@ fn terminals_accept_five_keywords_and_overlay_alias_with_strict_recovery() {
     ] {
         accepted(SHORTHAND, value);
     }
-    for value in [
-        "none",
-        "both",
-        "visible hidden clip",
-        "overlay auto clip",
-        "visible / hidden",
-        "visible 1px",
-        "initial hidden",
+    for (value, rest) in [
+        ("none", "none"),
+        ("both", "both"),
+        ("visible hidden clip", "clip"),
+        ("overlay auto clip", "clip"),
+        ("visible / hidden", "/ hidden"),
+        ("visible 1px", "1px"),
+        ("initial hidden", "hidden"),
     ] {
-        invalid(SHORTHAND, value);
+        invalid(SHORTHAND, value, rest);
     }
 }
 
@@ -312,7 +274,7 @@ fn css_wide_all_and_pending_reentry_keep_axes_and_occurrence() {
     };
     for name in names() {
         assert!(!reset.excludes(CssPropertyNameRef::Known(grammar(name).target_property())));
-        invalid(name, "initial clip");
+        invalid(name, "initial clip", "clip");
         for (text, keyword) in [
             ("initial", CssGlobalKeyword::Initial),
             ("inherit", CssGlobalKeyword::Inherit),

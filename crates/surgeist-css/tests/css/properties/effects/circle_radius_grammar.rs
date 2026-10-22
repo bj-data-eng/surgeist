@@ -54,7 +54,7 @@ fn mixed_length_percentage_calculation_is_accepted_as_one_radius() {
 }
 
 #[test]
-fn length_omission_and_existing_percentage_position_remain_accepted() {
+fn length_omission_and_percentage_position_are_accepted() {
     accepted("circle(10px)");
     accepted("circle()");
     accepted("circle(50% at center)");

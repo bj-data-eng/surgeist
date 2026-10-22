@@ -482,8 +482,13 @@ mod tests {
     #[test]
     fn original_authored_numbers_reach_exact_conversion_without_color_tokens() {
         for (spelling, unit, expected) in [
-            // Values 4: authored 0, +0 and -0 all produce the unsigned zero.
+            // Values 4 §10.9.1 (WD 2024-03-12, #css-signed-zero): the zero
+            // spellings 0, +0 and -0 all produce the unsigned zero.
             ("-0", None, 0.0_f64),
+            // `-1e-9999` is not a zero spelling: it spells a nonzero negative
+            // value, and under the IEEE-754 semantics of Values 4 §10.9.1 its
+            // nearest representable binary64 value is 0⁻ (decided in #1274).
+            ("-1e-9999", None, -0.0),
             (".5", None, 0.5),
             ("9007199254740993", None, 9007199254740992.0),
             ("1e-9999", None, 0.0),

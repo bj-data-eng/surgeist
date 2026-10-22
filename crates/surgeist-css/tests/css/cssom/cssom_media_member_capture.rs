@@ -1,16 +1,9 @@
 //! Ordered captures for the selected CSSOM MediaList byte-comparison algorithm.
+use crate::css::support::value_assertions::media_resource_kind;
 use surgeist_css::{
-    CssMediaCssomSerializationError, CssSerializedOrigin,
-    CssSpecifiedValueSerializationErrorKind as Kind,
+    CssSerializedOrigin, CssSpecifiedValueSerializationErrorKind as Kind,
     CssSpecifiedValueSerializationLimits as Limits, parse_media_query_list,
 };
-
-fn kind(error: CssMediaCssomSerializationError) -> Kind {
-    let CssMediaCssomSerializationError::Resource { error, .. } = error else {
-        panic!("expected resource failure: {error:?}");
-    };
-    error.kind()
-}
 
 #[test]
 fn ordered_captures_keep_duplicates_recovery_and_owned_input_origins() {
@@ -56,8 +49,8 @@ fn cumulative_member_limits_exclude_separators_and_retry_independently() {
         (Limits::new(5, 5, 10), Kind::ByteLimit),
     ] {
         assert_eq!(
-            kind(
-                report
+            media_resource_kind(
+                &report
                     .syntax()
                     .serialize_cssom_members_with_limits(limits)
                     .unwrap_err()
@@ -97,8 +90,8 @@ fn recovered_expansion_and_empty_aggregate_have_their_real_tariffs() {
         (Limits::new(4, 6, 12), Kind::ByteLimit),
     ] {
         assert_eq!(
-            kind(
-                recovered
+            media_resource_kind(
+                &recovered
                     .syntax()
                     .serialize_cssom_members_with_limits(limits)
                     .unwrap_err()
@@ -115,8 +108,8 @@ fn recovered_expansion_and_empty_aggregate_have_their_real_tariffs() {
             .is_empty()
     );
     assert_eq!(
-        kind(
-            empty
+        media_resource_kind(
+            &empty
                 .syntax()
                 .serialize_cssom_members_with_limits(Limits::new(0, 1, 0))
                 .unwrap_err()

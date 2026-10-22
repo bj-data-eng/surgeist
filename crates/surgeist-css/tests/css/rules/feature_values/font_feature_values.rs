@@ -1,6 +1,9 @@
 use crate::css::support::descriptor_phases;
 use descriptor_phases::*;
 
+use crate::css::support::rules::{
+    ExpectedRejection, invalid_descriptor, rejected_bang, unexpected_token,
+};
 use surgeist_css::{CssNamespaceContext, parse_rule, parse_sheet, validate_sheet};
 
 // Fonts 4 (7 September 2026), section 6.9.2 and frozen WebKit select the
@@ -40,15 +43,21 @@ fn font_feature_values_retains_all_defined_blocks_and_display_descriptor() {
 
 #[test]
 fn font_feature_values_rejects_missing_or_generic_family_preludes() {
-    for source in [
-        "@font-feature-values {}",
-        "@font-feature-values serif {}",
-        "@font-feature-values Demo, {}",
+    // Fonts 4 §6.9.1: the prelude is <family-name>#, which excludes
+    // generic family keywords.
+    let prelude =
+        ExpectedRejection::new(CssErrorCode::InvalidAtRulePrelude).in_rule("font-feature-values");
+    for (source, expected) in [
+        // The diagnostic names the block after the prelude rather than the
+        // violating member, so only the at-rule is checked.
+        ("@font-feature-values {}", prelude.clone()),
+        ("@font-feature-values serif {}", prelude.clone()),
+        ("@font-feature-values Demo, {}", prelude.clone()),
     ] {
         let report = parse_rule(source, &CssNamespaceContext::default());
         assert!(report.syntax().is_none(), "{source}");
-        assert!(!report.is_clean(), "{source}");
-        assert!(validate_sheet(source).is_err(), "{source}");
+        expected.assert_first(&report);
+        expected.assert_sheet(source);
     }
 }
 
@@ -57,8 +66,9 @@ use surgeist_css::{
     CssFontFeatureValueBlock as Block, CssFontFeatureValueDefinition as Definition,
     CssFontFeatureValueIndex as Index, CssFontFeatureValueKind as Kind,
     CssFontFeatureValueName as Name, CssFontFeatureValuesErrorKind as ConstructionError,
-    CssFontFeatureValuesItem, CssFontFeatureValuesRule, CssNormalizationLimits, CssNormalizedItem,
-    CssRule, CssRuleContextKindRef, normalize_sheet, normalize_sheet_with_limits,
+    CssFontFeatureValuesItem, CssFontFeatureValuesRule, CssNormalizationErrorKind,
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem, CssRule,
+    CssRuleContextKindRef, normalize_sheet, normalize_sheet_with_limits,
 };
 
 fn authored(source: &str) -> CssFontFeatureValuesRule {
@@ -322,8 +332,14 @@ fn assert_invalid_value(kind: &str, value: &str) {
         }
     );
     let report = parse_sheet(&source);
-    assert!(!report.is_clean(), "{source}");
-    assert!(validate_sheet(&source).is_err());
+    // `!important` is no part of a feature value declaration.
+    let expected = if value.contains('!') {
+        rejected_bang(kind, "bad")
+    } else {
+        invalid_descriptor(kind, "bad")
+    };
+    expected.assert_first(&report);
+    expected.assert_sheet(&source);
     let [CssRule::FontFeatureValues(rule)] = report.syntax().rules() else {
         panic!("{source}: {:?}", report.diagnostics())
     };
@@ -375,7 +391,10 @@ fn invalid_values_recover_only_the_definition() {
 fn malformed_blocks_and_descriptors_leave_valid_siblings_and_empty_containers() {
     let source = "@font-feature-values Demo { font-display: invalid; @unknown { nested: [1]; } @swash extra { a: 1; } font-display: swap !important; font-display: block; @annotation { @swash { bad: 1; } keep: 2; } @swash {} }";
     let report = parse_sheet(source);
-    assert!(!report.is_clean());
+    // Fonts 4 §6.9.2: font-display takes auto | block | swap | fallback | optional.
+    invalid_descriptor("font-feature-values", "font-display")
+        .at("invalid")
+        .assert_first(&report);
     let [CssRule::FontFeatureValues(rule)] = report.syntax().rules() else {
         panic!("{:?}", report.diagnostics())
     };
@@ -385,14 +404,24 @@ fn malformed_blocks_and_descriptors_leave_valid_siblings_and_empty_containers() 
         "keep"
     );
     assert!(block(&rule.items()[2]).definitions().is_empty());
-    assert!(validate_sheet("@swash { a: 1; }").is_err());
-    for source in [
-        "@font-feature-values Demo;",
-        "@font-feature-values Demo, serif {}",
-        "@font-feature-values Demo,,Other {}",
+    // Feature value blocks are defined only inside @font-feature-values;
+    // a top-level @swash is no recognized rule.
+    ExpectedRejection::new(CssErrorCode::UnknownAtRule)
+        .in_rule("swash")
+        .assert_sheet("@swash { a: 1; }");
+    let prelude =
+        ExpectedRejection::new(CssErrorCode::InvalidAtRulePrelude).in_rule("font-feature-values");
+    for (source, expected) in [
+        // The rule requires a {}-block, so its `;` is unexpected.
+        ("@font-feature-values Demo;", unexpected_token(";")),
+        ("@font-feature-values Demo, serif {}", prelude.clone()),
+        (
+            "@font-feature-values Demo,,Other {}",
+            prelude.clone().at(","),
+        ),
     ] {
         assert!(parse_sheet(source).syntax().rules().is_empty());
-        assert!(validate_sheet(source).is_err());
+        expected.assert_sheet(source);
     }
 }
 #[test]
@@ -473,12 +502,17 @@ fn normalization_counts_one_opaque_font_rule_and_fails_atomically_at_rule_limit(
             .len(),
         1
     );
-    assert!(
+    assert_eq!(
         normalize_sheet_with_limits(
             report.syntax(),
             CssNormalizationLimits::try_new(0, 0, 0, 0).unwrap()
         )
-        .is_err()
+        .unwrap_err()
+        .kind(),
+        &CssNormalizationErrorKind::LimitExceeded {
+            resource: CssNormalizationResource::Rules,
+            limit: 0
+        }
     );
 }
 #[test]

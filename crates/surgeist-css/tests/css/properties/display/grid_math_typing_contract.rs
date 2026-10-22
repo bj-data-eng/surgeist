@@ -6,6 +6,7 @@
 //! Representative cases establish the actual Grid boundary, not arbitrary
 //! crossproducts of all 21 recognized math functions.
 
+use crate::css::support::authored_property::{checked, parsed};
 use surgeist_css::CssKnownProperty as P;
 use surgeist_css::*;
 
@@ -31,41 +32,6 @@ const GRID: [P; 6] = [
     P::GridAutoFlow,
 ];
 
-fn parsed(property: P, text: &str) -> CssDeclaration {
-    let css = format!("/*😀*/{}:{text}!important", property.canonical_name());
-    let report = parse_style_attribute(&css);
-    assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
-    assert!(validate_style_attribute(&css).is_ok());
-    let [source] = report.syntax().as_slice() else {
-        panic!("one occurrence")
-    };
-    assert_eq!(source.known().unwrap().property(), property);
-    assert_eq!(source.importance(), CssImportance::Important);
-    source.clone()
-}
-fn checked(property: P, text: &str, grammar: bool) -> CssDeclaration {
-    let values = parse_component_values(text).unwrap();
-    let before = values.clone();
-    let result = if grammar {
-        parse_property_value_for_grammar(
-            property.grammar(),
-            values.clone(),
-            CssImportance::Important,
-        )
-    } else {
-        parse_property_value(
-            CssPropertyNameRef::Known(property),
-            values.clone(),
-            CssImportance::Important,
-        )
-    };
-    let source =
-        result.unwrap_or_else(|error| panic!("{}:{text}: {error:?}", property.canonical_name()));
-    assert_eq!(values, before);
-    assert_eq!(source.value_components(), &values);
-    assert!(source.position().is_none());
-    source
-}
 fn fronts(property: P, text: &str) -> [CssDeclaration; 3] {
     [
         parsed(property, text),
@@ -844,7 +810,7 @@ fn mixed_parsed_and_programmatic_math_children_keep_distinct_origins_through_gri
 }
 
 #[test]
-fn checked_math_closure_and_browser_recovery_remain_distinct_existing_controls() {
+fn checked_math_closure_and_browser_recovery_remain_distinct_controls() {
     for property in TRACKS.into_iter().chain([P::GridTemplate, P::Grid]) {
         let recovered = if TRACKS.contains(&property) {
             "hypot(3fr, 4fr"
@@ -914,7 +880,10 @@ fn checked_math_closure_and_browser_recovery_remain_distinct_existing_controls()
         let report = parse_style_attribute(&css);
         assert!(!report.is_clean());
         assert_eq!(report.syntax().len(), 1);
-        assert!(validate_style_attribute(&css).is_err());
+        assert_eq!(
+            validate_style_attribute(&css).unwrap_err().diagnostics(),
+            report.diagnostics()
+        );
         assert_eq!(
             typed_output(&report.syntax()[0], Limits::default()).unwrap(),
             if TRACKS.contains(&property) {

@@ -2,20 +2,11 @@
 //! the elements matched even when another simple selector follows it.
 //! https://www.w3.org/TR/2026/WD-selectors-4-20260122/#universal-selector
 
+use crate::css::support::color_and_selector_fixtures::namespace_context as context;
 use surgeist_css::{
-    CssNamespaceConstraint, CssNamespaceContext, CssNamespaceName, CssNamespacePrefix,
-    CssPseudoClass, CssPseudoSelectorListItem, CssSelector, parse_selector,
+    CssNamespaceConstraint, CssNamespaceContext, CssNamespacePrefix, CssPseudoClass,
+    CssPseudoSelectorListItem, CssSelector, parse_selector,
 };
-
-fn context() -> CssNamespaceContext {
-    CssNamespaceContext::from_bindings([
-        (None, CssNamespaceName::new("urn:default")),
-        (
-            Some(CssNamespacePrefix::try_new("svg").unwrap()),
-            CssNamespaceName::new("urn:svg"),
-        ),
-    ])
-}
 
 fn assert_universal(selector: &CssSelector, expected: &CssNamespaceConstraint, suffix: &str) {
     let CssSelector::Compound(compound) = selector else {

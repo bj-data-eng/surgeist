@@ -1,6 +1,7 @@
 //! Percentage tokens retain exact authored numeric spelling in checked lengths.
 //! Bounded scalar consumers retain their directly authored percentage magnitude.
 
+use crate::css::support::value_assertions::exact_percentage;
 use surgeist_css::*;
 
 fn first_object_position_percent(source: &str) -> String {
@@ -201,7 +202,7 @@ fn keyframe_selector_keeps_authored_thirty_percent() {
 }
 
 #[test]
-fn already_exact_percentage_controls_remain_valid() {
+fn exact_percentage_controls_are_valid() {
     for (source, expected) in [
         ("object-position: 25%", "25"),
         ("object-position: .5%", ".5"),
@@ -222,7 +223,7 @@ fn signed_and_exponent_spellings_keep_authored_thirty_percent() {
 }
 
 #[test]
-fn invalid_unitless_negative_and_range_controls_still_recover_at_the_token() {
+fn invalid_unitless_negative_and_range_controls_recover_at_the_token() {
     for source in [
         "object-position: 1e100; color: red",
         "grid-template-columns: -30%; color: red",
@@ -292,11 +293,4 @@ fn huge_finite_decimal_percentage_is_an_exact_authored_position() {
             ..origin.span().end().byte_offset().value()],
         "1e100%"
     );
-}
-
-fn exact_percentage(
-    component: Option<&surgeist_css::CssComponentValue>,
-    representation: &str,
-) -> bool {
-    matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Percentage(number))) if number.representation() == representation)
 }

@@ -5,6 +5,7 @@
 //! Expected classes derive from exact decimal comparison with 0, 1 or 100;
 //! approximate observations never supply the endpoint-classification oracle.
 
+use crate::css::support::declaration_color as color_of;
 use surgeist_color::PredefinedColorSpace;
 use surgeist_css::*;
 
@@ -132,14 +133,6 @@ fn declaration(family: &str, alpha: Option<&str>) -> CssDeclaration {
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     assert_eq!(validate_style_attribute(&source).unwrap(), *report.syntax());
     report.syntax()[0].clone()
-}
-fn color_of(declaration: &CssDeclaration) -> &CssColor {
-    let CssKnownPropertyValueRef::Color(value) =
-        declaration.known().unwrap().property_value().unwrap()
-    else {
-        panic!("color payload")
-    };
-    value.value()
 }
 fn authored<'a>(color: &'a CssColor, family: &str) -> Option<&'a CssColorComponent> {
     match family {
@@ -506,7 +499,7 @@ fn expanded_and_normalized_transport_preserves_raw_alpha_and_exact_parsed_view()
 }
 
 #[test]
-fn reading_parsed_alpha_keeps_existing_specified_text_and_raw_graph_unchanged() {
+fn reading_parsed_alpha_keeps_specified_text_and_raw_graph_unchanged() {
     for (family, text, expected) in [
         ("rgb", "150%", "rgb(0, 0, 0)"),
         ("hsl", "-2", "rgba(0, 0, 0, 0)"),
