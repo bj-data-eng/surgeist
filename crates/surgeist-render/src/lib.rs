@@ -116,8 +116,10 @@ pub use surface::{
     SurfaceState, WebCanvas,
 };
 pub use text::{
-    FontData, FontId, FontRef, TextDecorationLine, TextDecorationLineStyle, TextGlyph, TextPaint,
-    TextRun, TextRunBounds, TextRunBoundsKind, TextShadowRun,
+    FontData, FontId, FontRef, NormalizedCoordinate, OutlineCapability, OutlineLimits,
+    OutlineNumericPhase, OutlinePreparationError, OutlineResource, OutlineSynthesis,
+    PreparedOutline, TextDecorationLine, TextDecorationLineStyle, TextGlyph, TextInstance,
+    TextPaint, TextRun, TextRunBounds, TextRunBoundsKind, TextShadowRun, VariationTable,
 };
 
 #[cfg(test)]

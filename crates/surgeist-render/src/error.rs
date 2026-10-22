@@ -21,6 +21,7 @@ pub struct Error {
     unresolved_resource: Option<Box<UnresolvedResource>>,
     degraded_quality: Option<Box<DegradedQuality>>,
     runtime_capability_unavailable: Option<RuntimeCapabilityUnavailable>,
+    outline_preparation: Option<Box<crate::OutlinePreparationError>>,
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -94,6 +95,7 @@ impl Error {
             unresolved_resource: None,
             degraded_quality: None,
             runtime_capability_unavailable: None,
+            outline_preparation: None,
         }
     }
 
@@ -176,6 +178,7 @@ impl Error {
             unresolved_resource: None,
             degraded_quality: None,
             runtime_capability_unavailable: None,
+            outline_preparation: None,
         }
     }
 
@@ -196,6 +199,7 @@ impl Error {
             unresolved_resource: None,
             degraded_quality: None,
             runtime_capability_unavailable: None,
+            outline_preparation: None,
         }
     }
 
@@ -212,6 +216,7 @@ impl Error {
             unresolved_resource: Some(Box::new(resource)),
             degraded_quality: None,
             runtime_capability_unavailable: None,
+            outline_preparation: None,
         }
     }
 
@@ -228,6 +233,7 @@ impl Error {
             unresolved_resource: None,
             degraded_quality: Some(Box::new(diagnostic)),
             runtime_capability_unavailable: None,
+            outline_preparation: None,
         }
     }
 
@@ -247,6 +253,16 @@ impl Error {
             unresolved_resource: None,
             degraded_quality: None,
             runtime_capability_unavailable: Some(value),
+            outline_preparation: None,
+        }
+    }
+
+    /// Returns a semantic headless outline-preparation refusal, when present.
+    #[must_use]
+    pub const fn outline_preparation_diagnostic(&self) -> Option<&crate::OutlinePreparationError> {
+        match &self.outline_preparation {
+            Some(diagnostic) => Some(diagnostic),
+            None => None,
         }
     }
 
@@ -292,6 +308,22 @@ impl Error {
     }
 }
 
+impl From<crate::OutlinePreparationError> for Error {
+    fn from(value: crate::OutlinePreparationError) -> Self {
+        Self {
+            code: ErrorCode::OutlinePreparation,
+            message: format!("outline preparation refused: {value:?}"),
+            source: None,
+            invalid_value: None,
+            unsupported_primitive: None,
+            unresolved_resource: None,
+            degraded_quality: None,
+            runtime_capability_unavailable: None,
+            outline_preparation: Some(Box::new(value)),
+        }
+    }
+}
+
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:?}: {}", self.code, self.message)
@@ -308,11 +340,13 @@ impl error::Error for Error {
 /// Stable classifications for render diagnostics, suitable for programmatic failure handling.
 ///
 /// Callers first inspect [`Error::code`], then use the matching typed payload
-/// accessor for invalid input, unsupported primitives, unresolved resources,
-/// degraded quality, or unavailable runtime capabilities. Other codes describe
+/// accessor for invalid input, outline preparation, unsupported primitives,
+/// unresolved resources, degraded quality, or unavailable runtime capabilities. Other codes describe
 /// backend-operation failures and may expose a safe source through
 /// [`std::error::Error::source`].
 pub enum ErrorCode {
+    /// Reports a semantic headless outline-preparation refusal.
+    OutlinePreparation,
     /// Reports failure to create a GPU device.
     DeviceCreateFailed,
     /// Reports failure to create renderer-owned GPU state.

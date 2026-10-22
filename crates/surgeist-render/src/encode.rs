@@ -133,6 +133,23 @@ fn encode_vello_commands(
             RenderCommand::Image { image, rect, fit } => {
                 encode_image(scene, transform, image, *rect, *fit)?
             }
+            RenderCommand::PreparedOutline {
+                outline,
+                transform: run_transform,
+                paint,
+            } => {
+                let transform = transform * kurbo::Affine::from(*run_transform);
+                crate::text::qualify_outline_placement(transform, outline)?;
+                let brush = glyph_paint_brush(paint.fill())?;
+                // One path/brush draw preserves overlap and run-local paint semantics.
+                scene.fill(
+                    peniko::Fill::NonZero,
+                    transform,
+                    &brush,
+                    None,
+                    outline.path(),
+                );
+            }
             RenderCommand::TextRun {
                 font,
                 size,

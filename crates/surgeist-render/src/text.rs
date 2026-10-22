@@ -4,6 +4,14 @@ use super::{
 };
 use std::borrow::Cow;
 
+mod outline;
+pub(crate) use outline::qualify_placement as qualify_outline_placement;
+pub use outline::{
+    NormalizedCoordinate, OutlineCapability, OutlineLimits, OutlineNumericPhase,
+    OutlinePreparationError, OutlineResource, OutlineSynthesis, PreparedOutline, TextInstance,
+    VariationTable,
+};
+
 /// An opaque caller-defined font identity used by authored text runs.
 ///
 /// Equality and ordering compare the underlying `u64`. The value carries no

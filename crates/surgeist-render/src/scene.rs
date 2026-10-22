@@ -94,6 +94,23 @@ impl Scene {
         self
     }
 
+    /// Appends one shared, already prepared outline run with run-local paint.
+    /// Geometry and font resources remain owned independently of the caller.
+    /// Numeric backend composition is checked before frame publication.
+    pub fn prepared_outline(
+        &mut self,
+        outline: PreparedOutline,
+        transform: Transform,
+        paint: TextPaint,
+    ) -> &mut Self {
+        self.commands.push(Command::PreparedOutline {
+            outline,
+            transform,
+            paint,
+        });
+        self
+    }
+
     /// Copies an authored text run and its ordered shadows into owned command storage.
     pub fn text_shadow_run(&mut self, run: TextShadowRun<'_>) -> &mut Self {
         let text = run.run();
@@ -201,6 +218,11 @@ impl Scene {
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum Command {
+    PreparedOutline {
+        outline: PreparedOutline,
+        transform: Transform,
+        paint: TextPaint,
+    },
     Fill {
         shape: Shape,
         paint: Paint,

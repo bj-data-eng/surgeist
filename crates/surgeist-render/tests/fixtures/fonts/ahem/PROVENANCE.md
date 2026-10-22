@@ -51,3 +51,21 @@ Stable glyphs for deterministic render tests:
 Use character-to-glyph resolution through the text stack where possible. The
 glyph IDs above are fixture-specific probe facts for tests that need to assert
 the exact lowered glyph stream.
+
+## Authored outline derivatives
+
+`tests/prepared_outline.rs` builds an in-memory derivative from these licensed
+bytes using authored OpenType table data. Its single `wght` axis has normalized
+default 0 and endpoint +1. One actual gvar tuple moves X's two right-edge points
+by +100 font units at +1; its other points, phantom points and y deltas remain
+zero. The independent expected width at UPEM1000 is therefore
+`1000 + normalized_coordinate * 100`. No downloaded font or upstream test-data
+package is used, and the original `Ahem.ttf` bytes remain unchanged.
+
+The same test builds literal simple/composite contour and dense/sparse delta
+variants in memory. The off-curve contour's source points are OFF `(500,1000)`,
+ON `(1000,0)`, ON `(0,0)`; HarfBuzz starts at the second point and closes through
+the first control point. A wide dense delta variant uses +32768 on the right
+edge to distinguish exact full-scalar f32 application from overflowing partial
+Fixed conversion. Malformed/truncated variants deliberately test refusal; these
+fixtures do not claim general font conformance or validate unexecuted payloads.

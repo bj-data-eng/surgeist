@@ -269,6 +269,22 @@ impl SemanticSourceContribution {
         local_to_surface: Transform,
     ) -> Result<SemanticCommandContribution> {
         match command {
+            command @ RenderCommand::PreparedOutline { .. } => {
+                let RenderCommand::PreparedOutline {
+                    ref outline,
+                    transform,
+                    ..
+                } = command
+                else {
+                    unreachable!()
+                };
+                let bounds = match outline.bounds().ink_rect() {
+                    None => SemanticSourceBounds::exactly_empty(),
+                    Some(rect) => SemanticSourceBounds::try_from_rect(rect)?,
+                }
+                .try_transform(transform, "prepared outline transform")?;
+                SemanticCommandContribution::try_new(command, bounds, current_parent)
+            }
             command @ RenderCommand::TextRun { .. } => {
                 Self::try_from_text_run(command, current_parent)
             }

@@ -268,6 +268,44 @@ fn selected_color_glyph<'a>(
     Ok(selected)
 }
 
+/// Uses the same actual representation priority as authored runs. This boundary
+/// does not draw a default-instance outline before exact-instance preparation.
+pub(crate) fn require_outline_selection(
+    font: &skrifa::FontRef<'_>,
+    font_data: &FontData,
+    glyph: u32,
+    size: f32,
+) -> Result<()> {
+    let colr = font
+        .table_data(Tag::new(b"COLR"))
+        .map(|_| font.colr().map_err(|_| font_data_error(font_data)))
+        .transpose()?;
+    let glyph = GlyphId::new(glyph);
+    if selected_color_glyph(colr.as_ref(), glyph, font_data)? {
+        // This entry does not execute COLR. Qualify borrowed selection metadata,
+        // then refuse without drawing outlines or allocating a raster buffer.
+        let cpal = font.cpal().map_err(|_| font_data_error(font_data))?;
+        let records = cpal
+            .color_records_array()
+            .transpose()
+            .map_err(|_| font_data_error(font_data))?
+            .ok_or_else(|| font_data_error(font_data))?;
+        for start in cpal.color_record_indices() {
+            let end = usize::from(start.get()) + usize::from(cpal.num_palette_entries());
+            if end > records.len() {
+                return Err(font_data_error(font_data));
+            }
+        }
+        return Err(crate::OutlinePreparationError::UnsupportedColor.into());
+    }
+    if select_bitmap(font, Size::new(size), glyph, font_data)?.is_some() {
+        // Selection validates actual table/record lookup. Pixel decoding belongs
+        // to eventual bitmap support, not to refusing this unsupported capability.
+        return Err(crate::OutlinePreparationError::UnsupportedBitmap.into());
+    }
+    Ok(())
+}
+
 fn preflight_selected_image_head(font: &skrifa::FontRef<'_>, font_data: &FontData) -> Result<()> {
     font.head()
         .map_err(|_| font_data_error(font_data))?

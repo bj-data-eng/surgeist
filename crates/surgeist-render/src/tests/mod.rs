@@ -1,6 +1,7 @@
 mod frame;
 mod gpu;
 mod model;
+mod outline;
 mod platform;
 mod style;
 mod support;
