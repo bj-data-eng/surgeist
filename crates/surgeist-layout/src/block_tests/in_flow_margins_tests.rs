@@ -345,6 +345,92 @@ fn replaced_block_child_keeps_measured_auto_inline_size_in_both_scalar_lanes() {
     assert_lane::<f64>();
 }
 
+fn assert_replaced_zero_height_leaf_prevents_margin_collapse_through<S: LayoutScalar>() {
+    let scalar = scalar_value::<S>;
+    for replaced in [false, true] {
+        let tree = PublicBlockTree::default()
+            .with_children(0, [1, 2])
+            .with_children(1, [])
+            .with_children(2, [])
+            .with_style(
+                0,
+                NodeInputOf {
+                    display: Display::Block,
+                    size: Size::new(PreferredSizeOf::px(scalar(200.0)), PreferredSizeOf::AUTO),
+                    ..NodeInputOf::default()
+                },
+            )
+            .with_style(
+                1,
+                NodeInputOf {
+                    display: Display::Block,
+                    item_is_replaced: replaced,
+                    margin: Edges::new(
+                        LengthAutoOf::px(scalar(10.0)),
+                        LengthAutoOf::ZERO,
+                        LengthAutoOf::px(scalar(20.0)),
+                        LengthAutoOf::ZERO,
+                    ),
+                    ..NodeInputOf::default()
+                },
+            )
+            .with_style(
+                2,
+                NodeInputOf {
+                    display: Display::Block,
+                    size: Size::new(
+                        PreferredSizeOf::px(scalar(10.0)),
+                        PreferredSizeOf::px(scalar(10.0)),
+                    ),
+                    margin: Edges::new(
+                        LengthAutoOf::px(scalar(30.0)),
+                        LengthAutoOf::ZERO,
+                        LengthAutoOf::ZERO,
+                        LengthAutoOf::ZERO,
+                    ),
+                    ..NodeInputOf::default()
+                },
+            )
+            .with_measurement(1, Size::new(scalar(50.0), S::ZERO));
+        let batch = compute_layout(
+            &tree,
+            0,
+            LayoutRootRequestOf::viewport(Size::new(
+                AvailableOf::definite(scalar(200.0)),
+                AvailableOf::MAX_CONTENT,
+            ))
+            .expect("finite margin viewport"),
+        )
+        .expect("zero-height measured leaf and sibling lay out");
+        let first = public_final_output(&batch, 1);
+        let following = public_final_output(&batch, 2);
+        let root = public_final_output(&batch, 0);
+
+        assert_eq!(first.location.y, scalar(10.0));
+        assert_eq!(first.size.height, S::ZERO);
+        // CSS Display gives replacements an independent context even at
+        // zero height. Their own top/bottom margins cannot collapse through
+        // it, while the external adjacent sibling margins still collapse:
+        // replaced: 10 + max(20, 30) = 40; ordinary: max(10, 20, 30) = 30.
+        let expected_sibling_top = scalar(if replaced { 40.0 } else { 30.0 });
+        assert_eq!(
+            following.location.y, expected_sibling_top,
+            "unexpected collapse-through for replaced={replaced}",
+        );
+        assert_eq!(root.size.height, expected_sibling_top + scalar(10.0));
+    }
+}
+
+#[test]
+fn replaced_zero_height_leaf_prevents_margin_collapse_through_in_f32() {
+    assert_replaced_zero_height_leaf_prevents_margin_collapse_through::<f32>();
+}
+
+#[test]
+fn replaced_zero_height_leaf_prevents_margin_collapse_through_in_f64() {
+    assert_replaced_zero_height_leaf_prevents_margin_collapse_through::<f64>();
+}
+
 #[test]
 fn block_layout_ignores_item_order_for_geometry() {
     let layout = |item_orders: [ItemOrder; 3]| {

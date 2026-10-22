@@ -4,6 +4,169 @@ use super::fixtures::{
 };
 use super::*;
 
+fn assert_replaced_fixed_block_clears_full_width_float<S: LayoutScalar>() {
+    let scalar = scalar_value::<S>;
+    for replaced in [false, true] {
+        let tree = PublicBlockTree::default()
+            .with_children(0, [1, 2])
+            .with_children(1, [])
+            .with_children(2, [])
+            .with_style(
+                0,
+                NodeInputOf {
+                    display: Display::Block,
+                    size: Size::new(
+                        PreferredSizeOf::px(scalar(100.0)),
+                        PreferredSizeOf::px(scalar(100.0)),
+                    ),
+                    ..NodeInputOf::default()
+                },
+            )
+            .with_style(
+                1,
+                NodeInputOf {
+                    display: Display::Block,
+                    float: Float::Left,
+                    size: Size::new(
+                        PreferredSizeOf::px(scalar(100.0)),
+                        PreferredSizeOf::px(scalar(20.0)),
+                    ),
+                    ..NodeInputOf::default()
+                },
+            )
+            .with_style(
+                2,
+                NodeInputOf {
+                    display: Display::Block,
+                    item_is_replaced: replaced,
+                    size: Size::new(
+                        PreferredSizeOf::px(scalar(50.0)),
+                        PreferredSizeOf::px(scalar(10.0)),
+                    ),
+                    ..NodeInputOf::default()
+                },
+            );
+        let batch = compute_layout(
+            &tree,
+            0,
+            LayoutRootRequestOf::viewport(Size::new(
+                AvailableOf::definite(scalar(100.0)),
+                AvailableOf::definite(scalar(100.0)),
+            ))
+            .expect("finite float viewport"),
+        )
+        .expect("fixed block siblings lay out");
+        let float = public_final_output(&batch, 1);
+        let block = public_final_output(&batch, 2);
+
+        assert_eq!(float.location, Point::ZERO);
+        assert_eq!(float.size, Size::new(scalar(100.0), scalar(20.0)));
+        assert_eq!(block.size, Size::new(scalar(50.0), scalar(10.0)));
+        assert_eq!(block.location.x, S::ZERO);
+        // CSS2's bfc-next-to-float rule forbids replacement/float overlap.
+        // The float fills the containing width, so the fixed replacement
+        // cannot fit beside it. An ordinary block may extend under it.
+        assert_eq!(
+            block.location.y,
+            scalar(if replaced { 20.0 } else { 0.0 }),
+            "unexpected float isolation for replaced={replaced}",
+        );
+    }
+}
+
+#[test]
+fn replaced_fixed_block_clears_full_width_float_in_f32() {
+    assert_replaced_fixed_block_clears_full_width_float::<f32>();
+}
+
+#[test]
+fn replaced_fixed_block_clears_full_width_float_in_f64() {
+    assert_replaced_fixed_block_clears_full_width_float::<f64>();
+}
+
+fn assert_replaced_auto_block_retains_natural_measurement_around_floats<S: LayoutScalar>() {
+    let scalar = scalar_value::<S>;
+    for (float_width, fills_inline_band) in [(100.0, true), (40.0, false)] {
+        let tree = PublicBlockTree::default()
+            .with_children(0, [1, 2])
+            .with_children(1, [])
+            .with_children(2, [])
+            .with_style(
+                0,
+                NodeInputOf {
+                    display: Display::Block,
+                    size: Size::new(
+                        PreferredSizeOf::px(scalar(100.0)),
+                        PreferredSizeOf::px(scalar(100.0)),
+                    ),
+                    ..NodeInputOf::default()
+                },
+            )
+            .with_style(
+                1,
+                NodeInputOf {
+                    display: Display::Block,
+                    float: Float::Left,
+                    size: Size::new(
+                        PreferredSizeOf::px(scalar(float_width)),
+                        PreferredSizeOf::px(scalar(20.0)),
+                    ),
+                    ..NodeInputOf::default()
+                },
+            )
+            .with_style(
+                2,
+                NodeInputOf {
+                    display: Display::Block,
+                    item_is_replaced: true,
+                    ..NodeInputOf::default()
+                },
+            )
+            .with_measurement(2, Size::new(scalar(50.0), scalar(10.0)));
+        let batch = compute_layout(
+            &tree,
+            0,
+            LayoutRootRequestOf::viewport(Size::new(
+                AvailableOf::definite(scalar(100.0)),
+                AvailableOf::definite(scalar(100.0)),
+            ))
+            .expect("finite float viewport"),
+        )
+        .expect("naturally measured replacement lays out");
+        let float = public_final_output(&batch, 1);
+        let replacement = public_final_output(&batch, 2);
+
+        assert_eq!(
+            replacement.size,
+            Size::new(scalar(50.0), scalar(10.0)),
+            "float placement must retain the actual host measurement for float width {float_width}",
+        );
+        assert!(replacement.location.x >= S::ZERO);
+        assert!(replacement.location.x + replacement.size.width <= scalar(100.0));
+        // CSS2 permits beside or below placement when a band is wide
+        // enough. Assert isolation, not an arbitrary choice between them.
+        assert!(
+            replacement.location.x >= float.location.x + float.size.width
+                || replacement.location.y >= float.location.y + float.size.height,
+            "the replacement must not overlap the preceding float",
+        );
+        if fills_inline_band {
+            assert_eq!(replacement.location.x, S::ZERO);
+            assert_eq!(replacement.location.y, scalar(20.0));
+        }
+    }
+}
+
+#[test]
+fn replaced_auto_block_retains_natural_measurement_around_floats_in_f32() {
+    assert_replaced_auto_block_retains_natural_measurement_around_floats::<f32>();
+}
+
+#[test]
+fn replaced_auto_block_retains_natural_measurement_around_floats_in_f64() {
+    assert_replaced_auto_block_retains_natural_measurement_around_floats::<f64>();
+}
+
 fn fri06_c04_float_style<S: LayoutScalar>(
     flow_axes: FlowAxes,
     logical_size: crate::geometry::LogicalSizeOf<S>,
