@@ -1,8 +1,8 @@
 use std::ops::Range as StdRange;
 
-use super::{Error, ErrorCode, ErrorDetail, Result};
+use super::{Error, ErrorCode, ErrorDetail, Result, Text};
 
-/// Byte range in source text.
+/// UTF-16 code-unit range in source text.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub struct Range {
     pub start: usize,
@@ -42,11 +42,11 @@ pub struct SourcePosition(usize);
 
 impl SourcePosition {
     #[must_use]
-    pub const fn from_unchecked(index: usize) -> Self {
+    pub(crate) const fn from_unchecked(index: usize) -> Self {
         Self(index)
     }
 
-    pub fn try_new(text: &str, index: usize) -> Result<Self> {
+    pub fn try_new(text: &Text, index: usize) -> Result<Self> {
         validate_index_raw(text, index, "source position")?;
         Ok(Self(index))
     }
@@ -65,11 +65,11 @@ pub struct SourceRange {
 
 impl SourceRange {
     #[must_use]
-    pub const fn from_unchecked(start: SourcePosition, end: SourcePosition) -> Self {
+    pub(crate) const fn from_unchecked(start: SourcePosition, end: SourcePosition) -> Self {
         Self { start, end }
     }
 
-    pub fn try_new(text: &str, start: usize, end: usize) -> Result<Self> {
+    pub fn try_new(text: &Text, start: usize, end: usize) -> Result<Self> {
         let range = Range::new(start, end);
         validate_raw(text, range)?;
         Ok(Self {
@@ -94,24 +94,24 @@ impl SourceRange {
     }
 }
 
-pub(crate) fn validate(text: &str, range: Range) -> Result<()> {
+pub(crate) fn validate(text: &Text, range: Range) -> Result<()> {
     SourceRange::try_new(text, range.start, range.end)?;
     Ok(())
 }
 
-pub(crate) fn validate_index(text: &str, index: usize, name: &'static str) -> Result<()> {
+pub(crate) fn validate_index(text: &Text, index: usize, name: &'static str) -> Result<()> {
     SourcePosition::try_new_with_name(text, index, name)?;
     Ok(())
 }
 
 impl SourcePosition {
-    fn try_new_with_name(text: &str, index: usize, name: &'static str) -> Result<Self> {
+    fn try_new_with_name(text: &Text, index: usize, name: &'static str) -> Result<Self> {
         validate_index_raw(text, index, name)?;
         Ok(Self(index))
     }
 }
 
-fn validate_raw(text: &str, range: Range) -> Result<()> {
+fn validate_raw(text: &Text, range: Range) -> Result<()> {
     if range.start > range.end || range.end > text.len() {
         return Err(Error::new(
             ErrorCode::InvalidRange,
@@ -128,28 +128,14 @@ fn validate_raw(text: &str, range: Range) -> Result<()> {
             text_len: text.len(),
         }));
     }
-    if !text.is_char_boundary(range.start) || !text.is_char_boundary(range.end) {
-        return Err(Error::new(
-            ErrorCode::InvalidRange,
-            format!(
-                "range {}..{} does not align to UTF-8 boundaries",
-                range.start, range.end
-            ),
-        )
-        .with_detail(ErrorDetail::InvalidSourceRange {
-            start: range.start,
-            end: range.end,
-            text_len: text.len(),
-        }));
-    }
     Ok(())
 }
 
-fn validate_index_raw(text: &str, index: usize, name: &'static str) -> Result<()> {
-    if index > text.len() || !text.is_char_boundary(index) {
+fn validate_index_raw(text: &Text, index: usize, name: &'static str) -> Result<()> {
+    if index > text.len() {
         return Err(Error::new(
             ErrorCode::InvalidRange,
-            format!("{name} {index} is not a valid UTF-8 boundary"),
+            format!("{name} {index} is not an in-bounds UTF-16 endpoint"),
         )
         .with_detail(ErrorDetail::InvalidSourceIndex {
             name,

@@ -263,12 +263,16 @@ fn registered_font_cursor_and_selection_use_the_same_literal_geometry() {
         .register_fonts(AHEM.to_vec())
         .expect("Ahem registers");
     let layout = ahem_layout(&mut system, "AX");
-    let cursor = layout.cursor(Cursor::new(1, Affinity::After));
+    let cursor = layout
+        .cursor(Cursor::new(1, Affinity::After))
+        .expect("valid source projection");
     assert_eq!(cursor.rect().origin().x(), 20.0);
-    let selection = layout.selection(Selection::new(
-        Cursor::new(0, Affinity::After),
-        Cursor::new(1, Affinity::Before),
-    ));
+    let selection = layout
+        .selection(Selection::new(
+            Cursor::new(0, Affinity::After),
+            Cursor::new(1, Affinity::Before),
+        ))
+        .expect("valid source projection");
     assert_eq!(selection.rects().len(), 1);
     assert_eq!(selection.rects()[0].rect().origin().x(), 0.0);
     assert_eq!(selection.rects()[0].rect().size().width(), 20.0);
@@ -287,7 +291,9 @@ fn registered_font_accessibility_retains_historical_layout_positions_after_refre
     drop(system);
     let mut state = Accessibility::new(10);
     let parent = accesskit::NodeId(1);
-    let update = layout.accessibility_update(&mut state, parent, parent, Point::default());
+    let update = layout
+        .accessibility_update(&mut state, parent, parent, Point::default())
+        .expect("valid source projection");
     assert!(update.nodes.iter().any(|(id, _)| *id == parent));
     let selection = layout
         .access_selection(
@@ -297,6 +303,7 @@ fn registered_font_accessibility_retains_historical_layout_positions_after_refre
                 Cursor::new(1, Affinity::Before),
             ),
         )
+        .expect("valid source projection")
         .expect("actual historical grapheme positions are projected");
     assert_eq!(selection.anchor.character_index, 0);
     assert_eq!(selection.focus.character_index, 1);

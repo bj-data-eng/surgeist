@@ -1,8 +1,9 @@
-use std::fmt;
+use std::{fmt, sync::Arc};
 
 use parley::PositionedLayoutItem;
 
 use super::geometry::rect_from_bounds;
+use super::projection::{ProviderIndex, ScalarProjection};
 use super::{
     BaselineShift, Brush, Direction, Edit, Id, InlineBoxKind, Key, Point, Range, Rect, Result,
     SelectionPaint, Size, Source, Style, VerticalAlign,
@@ -12,6 +13,11 @@ use super::{
 #[derive(Clone)]
 pub struct Layout {
     pub(crate) inner: parley::Layout<Brush>,
+    pub(crate) projection: Arc<ScalarProjection>,
+    #[cfg(feature = "text-accessibility")]
+    pub(crate) identity: Arc<()>,
+    #[cfg(feature = "text-accessibility")]
+    pub(crate) alignment: super::Alignment,
     pub(crate) source: Source,
     pub(crate) default_style: Style,
     pub(crate) key: Key,
@@ -70,7 +76,7 @@ impl Layout {
                 let metrics = line.metrics();
                 Line::new(
                     index,
-                    Range::new(line.text_range().start, line.text_range().end),
+                    self.projection.line_range(index),
                     metrics.baseline,
                     Rect::new(
                         metrics.inline_min_coord,
@@ -91,11 +97,11 @@ impl Layout {
                 line.items().filter_map(move |item| match item {
                     PositionedLayoutItem::GlyphRun(run) => {
                         let run_range = run.run().text_range();
-                        let fallback_range = Range::new(run_range.start, run_range.end);
+                        let fallback_range = self.projection.range(run_range);
                         let brush = run.style().brush;
                         let mut ranges = run.run().visual_clusters().flat_map(|cluster| {
                             let range = cluster.text_range();
-                            let range = Range::new(range.start, range.end);
+                            let range = self.projection.range(range);
                             cluster.glyphs().map(move |_| range)
                         });
                         let glyphs: Vec<Glyph> = run
@@ -184,7 +190,7 @@ impl Layout {
             .unwrap_or_else(|| self.style_for_range(fallback_range))
     }
 
-    fn style_for_range(&self, range: Range) -> Style {
+    pub(crate) fn style_for_range(&self, range: Range) -> Style {
         if range.start < range.end {
             self.style_at(range.start)
         } else if range.start > 0 {
@@ -245,7 +251,7 @@ impl Layout {
                     let range = cluster.text_range();
                     let x = cluster.visual_offset().unwrap_or(line_metrics.offset);
                     clusters.push(Cluster::new(
-                        Range::new(range.start, range.end),
+                        self.projection.range(range),
                         Rect::new(
                             x,
                             line_metrics.block_min_coord,
@@ -326,48 +332,70 @@ impl Layout {
         if !Rect::new(0.0, 0.0, metrics.size.width, metrics.size.height).contains(point) {
             return Hit::None;
         }
-        Hit::Text(Cursor::from_parley(parley::Cursor::from_point(
+        Hit::Text(self.mapped_cursor(parley::Cursor::from_point(&self.inner, point.x, point.y)))
+    }
+
+    fn provider_cursor(&self, cursor: Cursor) -> Result<parley::Cursor> {
+        super::range::validate_index(self.source.text(), cursor.index, "cursor")?;
+        let stop = self.projection.caret(cursor.index, cursor.affinity);
+        Ok(parley::Cursor::from_byte_index(
             &self.inner,
-            point.x,
-            point.y,
+            self.projection.byte(stop).0,
+            cursor.affinity.into(),
+        ))
+    }
+
+    fn mapped_cursor(&self, cursor: parley::Cursor) -> Cursor {
+        let unit = self
+            .projection
+            .unit(ProviderIndex(cursor.index()))
+            .expect("provider cursor uses validated scalar boundaries");
+        let affinity = cursor.affinity().into();
+        Cursor::new(self.projection.caret(unit, affinity), affinity)
+    }
+
+    pub fn cursor(&self, cursor: Cursor) -> Result<CursorGeometry> {
+        let cursor = self.provider_cursor(cursor)?;
+        Ok(CursorGeometry::new(rect_from_bounds(
+            cursor.geometry(&self.inner, 1.0),
         )))
     }
 
-    #[must_use]
-    pub fn cursor(&self, cursor: Cursor) -> CursorGeometry {
-        let cursor = cursor.to_parley(&self.inner);
-        CursorGeometry::new(rect_from_bounds(cursor.geometry(&self.inner, 1.0)))
-    }
-
-    pub fn selection(&self, selection: Selection) -> SelectionGeometry {
-        let selection = selection.to_parley(&self.inner);
-        SelectionGeometry::new(
-            selection
+    pub fn selection(&self, selection: Selection) -> Result<SelectionGeometry> {
+        super::range::validate(self.source.text(), selection.range())?;
+        if selection.is_collapsed() {
+            return Ok(SelectionGeometry::default());
+        }
+        let range = self.projection.selection_range(selection.range());
+        let start = self.provider_cursor(Cursor::new(range.start, Affinity::After))?;
+        let end = self.provider_cursor(Cursor::new(range.end, Affinity::Before))?;
+        let projected = parley::Selection::new(start, end);
+        Ok(SelectionGeometry::new(
+            projected
                 .geometry(&self.inner)
                 .into_iter()
                 .map(|(bounds, line)| SelectionRect::new(rect_from_bounds(bounds), line))
                 .collect(),
-        )
+        ))
     }
 
     pub fn painted_selection(
         &self,
         selection: Selection,
         paint: SelectionPaint,
-    ) -> PaintedSelectionGeometry {
-        PaintedSelectionGeometry::new(
-            self.selection(selection)
+    ) -> Result<PaintedSelectionGeometry> {
+        Ok(PaintedSelectionGeometry::new(
+            self.selection(selection)?
                 .rects()
                 .iter()
                 .map(|rect| PaintedSelectionRect::new(rect.rect(), rect.line(), paint))
                 .collect(),
-        )
+        ))
     }
 
-    #[must_use]
-    pub fn move_cursor(&self, cursor: Cursor, movement: Movement) -> Cursor {
-        let cursor = cursor.to_parley(&self.inner);
-        Cursor::from_parley(match movement {
+    pub fn move_cursor(&self, cursor: Cursor, movement: Movement) -> Result<Cursor> {
+        let cursor = self.provider_cursor(cursor)?;
+        let mut moved = match movement {
             Movement::PreviousCluster => cursor.previous_visual(&self.inner),
             Movement::NextCluster => cursor.next_visual(&self.inner),
             Movement::PreviousWord => cursor.previous_logical_word(&self.inner),
@@ -381,25 +409,45 @@ impl Layout {
             }
             Movement::DocumentEnd => parley::Cursor::from_byte_index(
                 &self.inner,
-                self.source.text.len(),
+                self.projection.text.len(),
                 parley::Affinity::Upstream,
             ),
-        })
+        };
+        if matches!(movement, Movement::PreviousCluster | Movement::NextCluster) {
+            // Each scalar boundary has at most two affinities. Traverse actual provider stops,
+            // never return a caret inside an indivisible source grapheme.
+            for _ in 0..=self.source.text.len().saturating_mul(2) {
+                let unit = self.projection.unit(ProviderIndex(moved.index()))?;
+                if self.projection.is_stop(unit) {
+                    break;
+                }
+                let next = if movement == Movement::PreviousCluster {
+                    moved.previous_visual(&self.inner)
+                } else {
+                    moved.next_visual(&self.inner)
+                };
+                if next.index() == moved.index() && next.affinity() == moved.affinity() {
+                    break;
+                }
+                moved = next;
+            }
+        }
+        Ok(self.mapped_cursor(moved))
     }
 
-    #[must_use]
     pub fn move_selection(
         &self,
         selection: Selection,
         movement: Movement,
         extend: bool,
-    ) -> Selection {
-        let moved = self.move_cursor(selection.focus, movement);
-        if extend {
+    ) -> Result<Selection> {
+        super::range::validate(self.source.text(), selection.range())?;
+        let moved = self.move_cursor(selection.focus, movement)?;
+        Ok(if extend {
             Selection::new(selection.anchor, moved)
         } else {
             Selection::collapsed(moved)
-        }
+        })
     }
 
     #[cfg(feature = "text-render")]
@@ -446,76 +494,17 @@ impl Layout {
         }
     }
 
-    #[cfg(feature = "text-accessibility")]
-    pub fn accessibility_update(
-        &self,
-        state: &mut Accessibility,
-        parent: accesskit::NodeId,
-        focus: accesskit::NodeId,
-        origin: Point,
-    ) -> accesskit::TreeUpdate {
-        let mut update = accesskit::TreeUpdate {
-            nodes: Vec::new(),
-            tree: None,
-            tree_id: accesskit::TreeId::ROOT,
-            focus,
-        };
-        let mut parent_node = accesskit::Node::new(accesskit::Role::Paragraph);
-        parent_node.set_bounds(accesskit::Rect {
-            x0: origin.x as f64,
-            y0: origin.y as f64,
-            x1: (origin.x + self.metrics().size.width) as f64,
-            y1: (origin.y + self.metrics().size.height) as f64,
-        });
-        let mut next_id = state.next_id;
-        state.inner.build_nodes(
-            &self.source.text,
-            &self.inner,
-            &mut update,
-            &mut parent_node,
-            || {
-                let id = accesskit::NodeId(next_id);
-                next_id = next_id.saturating_add(1);
-                id
-            },
-            origin.x as f64,
-            origin.y as f64,
-            |_node, _style| {},
-        );
-        state.next_id = next_id;
-        update.nodes.push((parent, parent_node));
-        update
-    }
-
-    #[cfg(feature = "text-accessibility")]
-    pub fn access_position(
-        &self,
-        state: &Accessibility,
-        cursor: Cursor,
-    ) -> Option<accesskit::TextPosition> {
-        cursor
-            .to_parley(&self.inner)
-            .to_access_position(&self.inner, &state.inner)
-    }
-
-    #[cfg(feature = "text-accessibility")]
-    pub fn access_selection(
-        &self,
-        state: &Accessibility,
-        selection: Selection,
-    ) -> Option<accesskit::TextSelection> {
-        selection
-            .to_parley(&self.inner)
-            .to_access_selection(&self.inner, &state.inner)
-    }
-
     fn line_boundary(&self, index: usize, boundary: LineBoundary) -> parley::Cursor {
-        let Some(line) = self.line_for_index(index) else {
+        let unit = self
+            .projection
+            .unit(ProviderIndex(index))
+            .expect("validated cursor boundary");
+        let Some(line) = self.line_for_index(unit) else {
             return parley::Cursor::from_byte_index(
                 &self.inner,
                 match boundary {
                     LineBoundary::Start => 0,
-                    LineBoundary::End => self.source.text.len(),
+                    LineBoundary::End => self.projection.text.len(),
                 },
                 match boundary {
                     LineBoundary::Start => parley::Affinity::Downstream,
@@ -526,12 +515,12 @@ impl Layout {
         match boundary {
             LineBoundary::Start => parley::Cursor::from_byte_index(
                 &self.inner,
-                line.range.start,
+                self.projection.byte(line.range.start).0,
                 parley::Affinity::Downstream,
             ),
             LineBoundary::End => parley::Cursor::from_byte_index(
                 &self.inner,
-                self.line_visible_end(line.range),
+                self.projection.byte(self.line_visible_end(line.range)).0,
                 parley::Affinity::Upstream,
             ),
         }
@@ -543,7 +532,12 @@ impl Layout {
         movement: VerticalMovement,
     ) -> parley::Cursor {
         let lines = self.lines();
-        let Some(current_index) = self.line_index_for_cursor(cursor.index(), &lines) else {
+        let Some(current_index) = self.line_index_for_cursor(
+            self.projection
+                .unit(ProviderIndex(cursor.index()))
+                .expect("validated cursor boundary"),
+            &lines,
+        ) else {
             return cursor;
         };
         let next_index = match movement {
@@ -585,11 +579,8 @@ impl Layout {
     fn line_visible_end(&self, range: Range) -> usize {
         let mut end = range.end;
         while end > range.start {
-            let Some(ch) = self.source.text[..end].chars().next_back() else {
-                break;
-            };
-            if ch == '\n' || ch == '\r' {
-                end -= ch.len_utf8();
+            if matches!(self.source.text.code_units()[end - 1], 0x0a | 0x0d) {
+                end -= 1;
             } else {
                 break;
             }
@@ -597,13 +588,7 @@ impl Layout {
         end
     }
 
-    #[must_use]
-    pub fn apply(&self, edit: Edit) -> Source {
-        self.try_apply(edit)
-            .expect("Layout::apply expects edit ranges produced from the layout source")
-    }
-
-    pub fn try_apply(&self, edit: Edit) -> Result<Source> {
+    pub fn apply(&self, edit: Edit) -> Result<Source> {
         edit.normalize(&self.source)?.apply_to(self.source.clone())
     }
 }
@@ -1245,31 +1230,6 @@ impl PositionedInlineBox {
     }
 }
 
-#[cfg(feature = "text-accessibility")]
-#[derive(Clone)]
-pub struct Accessibility {
-    inner: parley::LayoutAccessibility,
-    next_id: u64,
-}
-
-#[cfg(feature = "text-accessibility")]
-impl Accessibility {
-    #[must_use]
-    pub fn new(first_node_id: u64) -> Self {
-        Self {
-            inner: parley::LayoutAccessibility::default(),
-            next_id: first_node_id,
-        }
-    }
-}
-
-#[cfg(feature = "text-accessibility")]
-impl Default for Accessibility {
-    fn default() -> Self {
-        Self::new(1)
-    }
-}
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Hit {
     Text(Cursor),
@@ -1332,17 +1292,6 @@ impl Cursor {
     #[must_use]
     pub const fn affinity(self) -> Affinity {
         self.affinity
-    }
-
-    fn from_parley(cursor: parley::Cursor) -> Self {
-        Self {
-            index: cursor.index(),
-            affinity: cursor.affinity().into(),
-        }
-    }
-
-    fn to_parley(self, layout: &parley::Layout<Brush>) -> parley::Cursor {
-        parley::Cursor::from_byte_index(layout, self.index, self.affinity.into())
     }
 }
 
@@ -1420,7 +1369,6 @@ impl Selection {
     #[must_use]
     pub const fn is_collapsed(self) -> bool {
         self.anchor.index == self.focus.index
-            && self.anchor.affinity as u8 == self.focus.affinity as u8
     }
 
     #[must_use]
@@ -1429,10 +1377,6 @@ impl Selection {
             self.anchor.index.min(self.focus.index),
             self.anchor.index.max(self.focus.index),
         )
-    }
-
-    fn to_parley(self, layout: &parley::Layout<Brush>) -> parley::Selection {
-        parley::Selection::new(self.anchor.to_parley(layout), self.focus.to_parley(layout))
     }
 }
 

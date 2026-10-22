@@ -1,4 +1,4 @@
-use std::{borrow::Cow, collections::HashMap, ops::Range as StdRange};
+use std::{borrow::Cow, collections::HashMap, ops::Range as StdRange, sync::Arc};
 
 use parley::{
     AlignmentOptions, FontFamily, FontFeatures, FontVariations, GenericFamily, LayoutContext,
@@ -7,10 +7,10 @@ use parley::{
 
 use super::{
     Brush, FontCatalogueIdentity, FontCatalogueMode, Id, InlineBox, Key, Layout, Options, Range,
-    Result, Source, Span, Stats, Style, ValidatedOptions, ValidatedSource, ValidatedStyle,
+    Result, Source, Span, Stats, Style, Text, ValidatedOptions, ValidatedSource, ValidatedStyle,
 };
 
-use crate::catalogue::Catalogue;
+use crate::{catalogue::Catalogue, projection::ScalarProjection};
 
 /// Shared font and layout system.
 pub struct System {
@@ -30,7 +30,7 @@ impl System {
         })
     }
 
-    pub fn builder(&mut self, text: impl Into<String>) -> Builder<'_> {
+    pub fn builder(&mut self, text: impl Into<Text>) -> Builder<'_> {
         Builder {
             system: self,
             source: Source::new(text),
@@ -146,6 +146,7 @@ impl Builder<'_> {
             .map(|span| (span.range(), span.style()))
             .collect::<Vec<_>>();
 
+        ScalarProjection::admit(validated_source.source())?;
         let key = Key::from_validated(
             &validated_source,
             &default_style,
@@ -158,28 +159,33 @@ impl Builder<'_> {
         }
 
         let layout_source = validated_source.source().clone();
+        let mut projection = ScalarProjection::new(&layout_source)?;
         let mut builder = self.system.layout_context.ranged_builder(
             self.system.catalogue.context_mut(),
-            &layout_source.text,
+            &projection.text,
             validated_options.authored().scale,
             validated_options.authored().quantize,
         );
 
         push_style_defaults(&mut builder, &default_style);
         for (range, style) in &span_styles {
-            push_style_span(&mut builder, *range, style);
+            push_style_span(
+                &mut builder,
+                projection.byte(range.start).0..projection.byte(range.end).0,
+                style,
+            );
         }
         for box_ in &layout_source.boxes {
             builder.push_inline_box(parley::InlineBox {
                 id: box_.id.as_u64(),
                 kind: box_.kind.into(),
-                index: box_.index,
+                index: projection.byte(box_.index).0,
                 width: box_.size.width,
                 height: box_.size.height,
             });
         }
 
-        let mut layout = builder.build(&layout_source.text);
+        let mut layout = builder.build(&projection.text);
         if let Some((amount, indent_options)) = validated_options.parley_indent() {
             layout.set_text_indent(amount, indent_options);
         }
@@ -189,10 +195,16 @@ impl Builder<'_> {
             AlignmentOptions::default(),
         );
 
+        projection.finish(&layout)?;
         self.system.stats.record_layout_miss();
 
         let layout = Layout {
             inner: layout,
+            projection: Arc::new(projection),
+            #[cfg(feature = "text-accessibility")]
+            identity: Arc::new(()),
+            #[cfg(feature = "text-accessibility")]
+            alignment: validated_options.authored().alignment,
             source: layout_source,
             default_style: self.default_style.clone(),
             key: key.clone(),
@@ -208,10 +220,10 @@ fn push_style_defaults(builder: &mut parley::RangedBuilder<'_, Brush>, style: &V
 
 fn push_style_span(
     builder: &mut parley::RangedBuilder<'_, Brush>,
-    range: Range,
+    range: StdRange<usize>,
     style: &ValidatedStyle,
 ) {
-    push_style_properties(builder, style, Some(range.into()))
+    push_style_properties(builder, style, Some(range))
 }
 
 fn push_style_properties(

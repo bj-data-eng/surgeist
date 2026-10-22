@@ -39,6 +39,15 @@ This product depends on Fontique, distributed by the Parley Authors:
 Fontique supplies safe catalogue, registration and font selection interfaces.
 Its native implementation remains an external dependency.
 
+### icu_segmenter 2.2.0
+
+This product depends on ICU4X segmentation, distributed by the ICU4X Project Developers:
+
+* License: [Unicode License 3.0](licenses/icu4x/LICENSE)
+* Homepage: [ICU4X](https://icu4x.unicode.org/)
+
+The Text interaction map uses compiled Unicode grapheme boundary data.
+
 ### linebender_resource_handle 0.1.1
 
 This product depends on Linebender resource handles:
@@ -58,7 +67,10 @@ This product depends on parley, distributed by the Parley Authors:
 * Homepage: [Parley](https://github.com/linebender/parley)
 
 Parley provides the text layout implementation in the default configuration.
-The `text-accessibility` feature also enables Parley's AccessKit integration.
+The `text-accessibility` feature projects the resulting layout through Text-owned
+AccessKit integration. The adapted projection retains the upstream copyright
+and SPDX attribution in its source; the [adaptation provenance](docs/accessibility-provenance.md)
+identifies the exact input and retained mechanisms.
 
 ### pollster 0.4.0
 

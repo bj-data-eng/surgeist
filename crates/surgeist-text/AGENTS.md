@@ -20,9 +20,11 @@ boundary discrepancy; the snapshot import does not reconcile it.
 | Package identity, dependencies, features and targets | [Cargo.toml](Cargo.toml) |
 | Public front door | [src/lib.rs](src/lib.rs) and its reexports |
 | Source composition, ranges, validation, and edits | [src/source.rs](src/source.rs), [src/composer.rs](src/composer.rs), [src/range.rs](src/range.rs), [src/edit.rs](src/edit.rs) |
+| Exact UTF-16 storage and scalar provider mapping | [src/text.rs](src/text.rs), [src/projection.rs](src/projection.rs) |
 | Text style inputs, supported features, options, and diagnostics | [src/style.rs](src/style.rs), [src/style_support.rs](src/style_support.rs), [src/options.rs](src/options.rs), [src/error.rs](src/error.rs) |
 | Layout construction and cache identity | [src/system.rs](src/system.rs), [src/catalogue.rs](src/catalogue.rs), [src/cache.rs](src/cache.rs) |
 | Layout outputs, geometry, movement, and optional projections | [src/layout.rs](src/layout.rs), [src/geometry.rs](src/geometry.rs) |
+| Owned optional AccessKit projection | [src/accessibility.rs](src/accessibility.rs), [provenance](docs/accessibility-provenance.md) |
 | Focused verification | [src/tests.rs](src/tests.rs), its [catalogue cases](src/tests/catalogue.rs), and owning module tests, loaded by [src/lib.rs](src/lib.rs) |
 
 [README.md](README.md) links usage, contract and attribution documentation.

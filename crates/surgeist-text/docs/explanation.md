@@ -25,11 +25,12 @@ code; it does not resolve or revise the boundary stated in [AGENTS.md](../AGENTS
 
 ## Source coordinates remain authored coordinates
 
-Text ranges use UTF-8 byte offsets. Preserving the authored string lets style
-spans, glyph cluster ranges, cursor positions, and edit ranges refer to the same
-source. A byte offset must still lie on a character boundary; it is not a count
-of visible characters or grapheme clusters. Cluster movement comes from layout
-information rather than arithmetic on byte offsets.
+Text ranges count exact UTF-16 code units. Immutable source preserves isolated
+surrogates and endpoints within pairs for edits and extraction. Scalar layout
+uses a private lossless UTF-8 projection; public result ranges map back to units.
+Caret geometry uses legal grapheme/provider stops and affinity, while partial-unit
+selection geometry covers the complete typographic unit. Isolated-source layout
+currently refuses before font/cache work and never analyzes replacement text.
 
 This contract helps explain why whitespace collapse is explicitly rejected:
 transforming the string would need an additional mapping back to authored
@@ -52,9 +53,10 @@ and the authentic font catalogue publication (issuer identity and checked genera
 contents of a layout request.
 
 [TextEdit](../src/edit.rs) normalizes insertion, replacement, or deletion to a
-validated range and replacement string. Applying it rechecks the range against
+validated range and replacement text. Applying it rechecks the range against
 the target source, projects span endpoints and inline-box anchors, and increments
-the source revision once using saturating arithmetic. It does not require that
+the source revision once with checked arithmetic. Exhaustion refuses the edit
+before changing source data. It does not require that
 the target source have the identity or revision of the source used to construct
 the edit. A caller that needs stale-edit detection must enforce that separately.
 
@@ -62,7 +64,7 @@ Projection retains the existing spans and boxes. Span starts inside replaced
 text move to the edit start; span ends inside or at the replaced end move to the
 end of inserted text. Box anchors at or before the edit start stay put, while
 anchors inside the replaced interval move to the inserted end. Later coordinates
-shift by the byte-length difference. Applying an edit returns a `Source`; a new
+shift by the code-unit length difference. Applying an edit returns a `Source`; a new
 layout request performs validation and shaping for that version.
 
 Each `System` owns its contexts and an in-memory layout cache. Repeated identical

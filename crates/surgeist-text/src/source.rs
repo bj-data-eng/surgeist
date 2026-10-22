@@ -1,6 +1,6 @@
 use super::{
     Error, ErrorCode, ErrorDetail, Id, NumericRequirement, Range, Result, Size, SourcePosition,
-    SourceRange, Style, ValidatedStyle, range,
+    SourceRange, Style, Text, ValidatedStyle, range,
 };
 
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -179,14 +179,14 @@ fn validate_baseline_shift(value: f32) -> Result<()> {
 pub struct Source {
     pub(crate) id: Option<Id>,
     pub(crate) revision: u64,
-    pub(crate) text: String,
+    pub(crate) text: Text,
     pub(crate) spans: Vec<Span>,
     pub(crate) boxes: Vec<InlineBox>,
 }
 
 impl Source {
     #[must_use]
-    pub fn new(text: impl Into<String>) -> Self {
+    pub fn new(text: impl Into<Text>) -> Self {
         Self {
             id: None,
             revision: 0,
@@ -197,7 +197,7 @@ impl Source {
     }
 
     #[must_use]
-    pub fn identified(text: impl Into<String>, id: Id, revision: u64) -> Self {
+    pub fn identified(text: impl Into<Text>, id: Id, revision: u64) -> Self {
         Self {
             id: Some(id),
             revision,
@@ -213,9 +213,11 @@ impl Source {
         self
     }
 
-    pub fn push(&mut self, text: impl AsRef<str>) -> Range {
+    pub fn push(&mut self, text: impl Into<Text>) -> Range {
         let start = SourcePosition::from_unchecked(self.text.len());
-        self.text.push_str(text.as_ref());
+        let mut units = self.text.code_units().to_vec();
+        units.extend_from_slice(text.into().code_units());
+        self.text = Text::from_code_units(units);
         SourceRange::from_unchecked(start, SourcePosition::from_unchecked(self.text.len())).range()
     }
 
@@ -240,7 +242,7 @@ impl Source {
     }
 
     #[must_use]
-    pub fn text(&self) -> &str {
+    pub const fn text(&self) -> &Text {
         &self.text
     }
 

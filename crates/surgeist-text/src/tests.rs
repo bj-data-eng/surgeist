@@ -2,9 +2,10 @@ use super::layout::decoration_top;
 use super::*;
 
 mod catalogue;
+mod utf16;
 
 #[test]
-fn rejects_invalid_utf8_span_boundary() {
+fn rejects_out_of_bounds_unit_span() {
     let mut system = System::default();
     let mut builder = system.builder("é");
     builder.span(Range::new(1, 2), Style::default());
@@ -15,13 +16,13 @@ fn rejects_invalid_utf8_span_boundary() {
 }
 
 #[test]
-fn rejects_invalid_utf8_inline_box_boundary() {
+fn rejects_out_of_bounds_unit_inline_box() {
     let mut system = System::default();
     let mut builder = system.builder("é");
     builder.inline_box(InlineBox::new(
         Id::from_u64(1),
         InlineBoxKind::InFlow,
-        1,
+        2,
         Size::new(4.0, 4.0),
     ));
 
@@ -33,41 +34,50 @@ fn rejects_invalid_utf8_inline_box_boundary() {
 }
 
 #[test]
-fn source_position_accepts_only_utf8_boundaries() {
-    let text = "é text";
-
-    let position = SourcePosition::try_new(text, 2).expect("boundary should validate");
-    let error = SourcePosition::try_new(text, 1).expect_err("middle of scalar should fail");
-
-    assert_eq!(position.get(), 2);
+fn source_position_accepts_every_in_bounds_unit_endpoint() {
+    let text = Text::from_code_units(vec![0xd83d, 0xde00, 0xd800]);
+    for index in 0..=3 {
+        assert_eq!(
+            SourcePosition::try_new(&text, index)
+                .expect("unit endpoint is valid")
+                .get(),
+            index
+        );
+    }
+    let error = SourcePosition::try_new(&text, 4).expect_err("out of bounds");
     assert_eq!(error.code, ErrorCode::InvalidRange);
 }
 
 #[test]
-fn source_range_accepts_only_ordered_utf8_boundaries() {
-    let text = "é text";
-
-    let range = SourceRange::try_new(text, 0, 2).expect("valid source range");
-    let reversed = SourceRange::try_new(text, 2, 0).expect_err("reversed range should fail");
-    let split = SourceRange::try_new(text, 0, 1).expect_err("split scalar should fail");
-
-    assert_eq!(range.start().get(), 0);
-    assert_eq!(range.end().get(), 2);
-    assert_eq!(reversed.code, ErrorCode::InvalidRange);
-    assert_eq!(split.code, ErrorCode::InvalidRange);
+fn source_range_accepts_ordered_units_including_pair_interiors() {
+    let text = Text::from("😀");
+    let range = SourceRange::try_new(&text, 0, 1).expect("half-pair source range is valid");
+    assert_eq!(range.range(), Range::new(0, 1));
+    assert_eq!(
+        SourceRange::try_new(&text, 2, 0)
+            .expect_err("reversed")
+            .code,
+        ErrorCode::InvalidRange
+    );
+    assert_eq!(
+        SourceRange::try_new(&text, 0, 3)
+            .expect_err("out of bounds")
+            .code,
+        ErrorCode::InvalidRange
+    );
 }
 
 #[test]
 fn invalid_range_error_names_rejected_boundary() {
-    let error = SourceRange::try_new("é", 0, 1).expect_err("split scalar should fail");
-
+    let error =
+        SourceRange::try_new(&Text::from("é"), 0, 2).expect_err("unit range is out of bounds");
     assert_eq!(error.code, ErrorCode::InvalidRange);
     assert_eq!(
         error.detail(),
         Some(&ErrorDetail::InvalidSourceRange {
             start: 0,
-            end: 1,
-            text_len: 2,
+            end: 2,
+            text_len: 1
         })
     );
 }
@@ -233,7 +243,10 @@ fn preserve_whitespace_flow_keeps_source_ranges_stable() {
     let layout = builder.build().expect("preserved whitespace should build");
     let clusters = layout.clusters();
 
-    assert_eq!(layout.source().text(), "a  b\nc");
+    assert_eq!(
+        layout.source().text().code_units(),
+        "a  b\nc".encode_utf16().collect::<Vec<_>>()
+    );
     assert!(
         clusters
             .iter()
@@ -570,7 +583,10 @@ fn default_flow_policy_values_are_explicit_noops() {
 
     let layout = builder.build().expect("default flow policies should build");
 
-    assert_eq!(layout.source().text(), "Flow 123");
+    assert_eq!(
+        layout.source().text().code_units(),
+        "Flow 123".encode_utf16().collect::<Vec<_>>()
+    );
 }
 
 #[test]
@@ -679,8 +695,12 @@ fn first_line_indent_offsets_first_line() {
     });
 
     let layout = builder.build().expect("layout should build");
-    let first = layout.cursor(Cursor::new(0, Affinity::After));
-    let second = layout.cursor(Cursor::new(6, Affinity::After));
+    let first = layout
+        .cursor(Cursor::new(0, Affinity::After))
+        .expect("valid source projection");
+    let second = layout
+        .cursor(Cursor::new(6, Affinity::After))
+        .expect("valid source projection");
 
     assert!(first.rect().origin.x >= 9.0);
     assert!(second.rect().origin.x < 1.0);
@@ -705,6 +725,7 @@ fn first_line_false_without_other_scope_skips_indent() {
     assert!(
         layout
             .cursor(Cursor::new(0, Affinity::After))
+            .expect("valid source projection")
             .rect()
             .origin
             .x
@@ -850,7 +871,7 @@ fn validated_source_snapshot_rejects_invalid_boxes_before_cache_keying() {
     source.inline_box(InlineBox::new(
         Id::from_u64(11),
         InlineBoxKind::InFlow,
-        1,
+        2,
         Size::new(1.0, 1.0),
     ));
 
@@ -1053,7 +1074,10 @@ fn layout_preserves_authored_source_identity() {
 
     assert_eq!(layout.source().id(), Some(Id::from_u64(9)));
     assert_eq!(layout.source().revision(), 8);
-    assert_eq!(layout.source().text(), "  hello  ");
+    assert_eq!(
+        layout.source().text().code_units(),
+        "  hello  ".encode_utf16().collect::<Vec<_>>()
+    );
 }
 
 #[test]
@@ -1144,7 +1168,13 @@ fn selection_geometry_for_non_empty_range() {
         Cursor::new(5, Affinity::Before),
     );
 
-    assert!(!layout.selection(selection).rects().is_empty());
+    assert!(
+        !layout
+            .selection(selection)
+            .expect("valid source projection")
+            .rects()
+            .is_empty()
+    );
 }
 
 #[test]
@@ -1159,11 +1189,17 @@ fn selection_paint_projects_concrete_brush_with_geometry() {
         Cursor::new(5, Affinity::Before),
     );
 
-    let painted = layout.painted_selection(selection, paint);
+    let painted = layout
+        .painted_selection(selection, paint)
+        .expect("valid source projection");
 
     assert_eq!(
         painted.rects().len(),
-        layout.selection(selection).rects().len()
+        layout
+            .selection(selection)
+            .expect("valid source projection")
+            .rects()
+            .len()
     );
     assert!(
         painted
@@ -1218,7 +1254,9 @@ fn selection_geometry_for_multi_line_range() {
         Cursor::new(0, Affinity::After),
         Cursor::new(layout.source().text().len(), Affinity::Before),
     );
-    let geometry = layout.selection(selection);
+    let geometry = layout
+        .selection(selection)
+        .expect("valid source projection");
 
     assert!(
         geometry.rects().len() >= 2,
@@ -1231,7 +1269,9 @@ fn cursor_geometry_for_empty_text() {
     let mut system = System::default();
     let mut builder = system.builder("");
     let layout = builder.build().expect("empty layout should build");
-    let cursor = layout.cursor(Cursor::new(0, Affinity::After));
+    let cursor = layout
+        .cursor(Cursor::new(0, Affinity::After))
+        .expect("valid source projection");
 
     assert!(cursor.rect().size.height > 0.0);
 }
@@ -1241,8 +1281,15 @@ fn cursor_geometry_for_bidi_boundary() {
     let mut system = System::default();
     let mut builder = system.builder("abc שלום def");
     let layout = builder.build().expect("layout should build");
-    let before_rtl = layout.cursor(Cursor::new(4, Affinity::After));
-    let after_rtl = layout.cursor(Cursor::new("abc שלום".len(), Affinity::Before));
+    let before_rtl = layout
+        .cursor(Cursor::new(4, Affinity::After))
+        .expect("valid source projection");
+    let after_rtl = layout
+        .cursor(Cursor::new(
+            "abc שלום".encode_utf16().count(),
+            Affinity::Before,
+        ))
+        .expect("valid source projection");
 
     assert!(before_rtl.rect().size.height > 0.0);
     assert!(after_rtl.rect().size.height > 0.0);
@@ -1259,7 +1306,9 @@ fn selection_geometry_for_bidi_range() {
         Cursor::new(0, Affinity::After),
         Cursor::new(layout.source().text().len(), Affinity::Before),
     );
-    let geometry = layout.selection(selection);
+    let geometry = layout
+        .selection(selection)
+        .expect("valid source projection");
 
     assert!(!geometry.rects().is_empty());
     assert!(
@@ -1500,7 +1549,9 @@ fn movement_handles_clusters() {
     let mut builder = system.builder("hello");
     let layout = builder.build().expect("layout should build");
 
-    let moved = layout.move_cursor(Cursor::new(0, Affinity::After), Movement::NextCluster);
+    let moved = layout
+        .move_cursor(Cursor::new(0, Affinity::After), Movement::NextCluster)
+        .expect("valid source projection");
 
     assert!(moved.index() > 0);
 }
@@ -1557,19 +1608,27 @@ fn movement_handles_line_and_document_boundaries() {
     let layout = builder.build().expect("layout should build");
 
     assert_eq!(
-        layout.move_cursor(Cursor::new(8, Affinity::After), Movement::LineStart),
+        layout
+            .move_cursor(Cursor::new(8, Affinity::After), Movement::LineStart)
+            .expect("valid source projection"),
         Cursor::new(6, Affinity::After)
     );
     assert_eq!(
-        layout.move_cursor(Cursor::new(8, Affinity::After), Movement::LineEnd),
+        layout
+            .move_cursor(Cursor::new(8, Affinity::After), Movement::LineEnd)
+            .expect("valid source projection"),
         Cursor::new(10, Affinity::Before)
     );
     assert_eq!(
-        layout.move_cursor(Cursor::new(8, Affinity::After), Movement::DocumentStart),
+        layout
+            .move_cursor(Cursor::new(8, Affinity::After), Movement::DocumentStart)
+            .expect("valid source projection"),
         Cursor::new(0, Affinity::After)
     );
     assert_eq!(
-        layout.move_cursor(Cursor::new(8, Affinity::After), Movement::DocumentEnd),
+        layout
+            .move_cursor(Cursor::new(8, Affinity::After), Movement::DocumentEnd)
+            .expect("valid source projection"),
         Cursor::new("alpha\nbeta\ngamma".len(), Affinity::Before)
     );
 }
@@ -1580,8 +1639,12 @@ fn movement_handles_previous_and_next_line() {
     let mut builder = system.builder("alpha\nbeta\ngamma");
     let layout = builder.build().expect("layout should build");
 
-    let previous = layout.move_cursor(Cursor::new(8, Affinity::After), Movement::PreviousLine);
-    let next = layout.move_cursor(Cursor::new(8, Affinity::After), Movement::NextLine);
+    let previous = layout
+        .move_cursor(Cursor::new(8, Affinity::After), Movement::PreviousLine)
+        .expect("valid source projection");
+    let next = layout
+        .move_cursor(Cursor::new(8, Affinity::After), Movement::NextLine)
+        .expect("valid source projection");
 
     assert!(previous.index() < 6);
     assert!(next.index() > 10);
@@ -1594,7 +1657,9 @@ fn movement_can_extend_selection() {
     let layout = builder.build().expect("layout should build");
     let selection = Selection::collapsed(Cursor::new(0, Affinity::After));
 
-    let extended = layout.move_selection(selection, Movement::NextCluster, true);
+    let extended = layout
+        .move_selection(selection, Movement::NextCluster, true)
+        .expect("valid source projection");
 
     assert_eq!(extended.anchor(), Cursor::new(0, Affinity::After));
     assert!(extended.focus().index() > extended.anchor().index());
@@ -1611,7 +1676,9 @@ fn movement_without_extend_collapses_selection() {
         Cursor::new(5, Affinity::Before),
     );
 
-    let moved = layout.move_selection(selection, Movement::PreviousCluster, false);
+    let moved = layout
+        .move_selection(selection, Movement::PreviousCluster, false)
+        .expect("valid source projection");
 
     assert!(moved.is_collapsed());
     assert!(moved.focus().index() < 5);
@@ -1624,30 +1691,36 @@ fn edits_validate_ranges() {
     let layout = builder.build().expect("layout should build");
 
     let replaced = layout
-        .try_apply(Edit::Replace {
+        .apply(Edit::Replace {
             range: Range::new(1, 4),
-            text: "ipp".to_owned(),
+            text: "ipp".into(),
         })
         .expect("valid replace should apply");
     let deleted = layout
-        .try_apply(Edit::Delete {
+        .apply(Edit::Delete {
             range: Range::new(1, 4),
         })
         .expect("valid delete should apply");
     let error = layout
-        .try_apply(Edit::Delete {
+        .apply(Edit::Delete {
             range: Range::new(1, 99),
         })
         .expect_err("invalid delete should fail");
     let insert_error = layout
-        .try_apply(Edit::Insert {
+        .apply(Edit::Insert {
             index: 99,
-            text: "!".to_owned(),
+            text: "!".into(),
         })
         .expect_err("invalid insert should fail");
 
-    assert_eq!(replaced.text(), "hippo");
-    assert_eq!(deleted.text(), "ho");
+    assert_eq!(
+        replaced.text().code_units(),
+        "hippo".encode_utf16().collect::<Vec<_>>()
+    );
+    assert_eq!(
+        deleted.text().code_units(),
+        "ho".encode_utf16().collect::<Vec<_>>()
+    );
     assert_eq!(error.code, ErrorCode::InvalidRange);
     assert_eq!(insert_error.code, ErrorCode::InvalidRange);
 }
@@ -1668,14 +1741,20 @@ fn source_revision_exhaustion_refuses_edit_without_publishing_changed_source() {
     let edit = TextEdit::replace(&source, Range::new(1, 4), "ipp")
         .expect("the nonnoop replacement has valid source boundaries");
     assert_eq!(edit.range(), Range::new(1, 4));
-    assert_eq!(edit.inserted_text(), "ipp");
+    assert_eq!(
+        edit.inserted_text().code_units(),
+        "ipp".encode_utf16().collect::<Vec<_>>()
+    );
     let edited = edit.apply_to(source.clone());
     assert!(
         edited.is_err(),
         "an exhausted source revision must refuse the edit instead of publishing changed text under the same revision: {edited:?}"
     );
 
-    assert_eq!(source.text(), "hello");
+    assert_eq!(
+        source.text().code_units(),
+        "hello".encode_utf16().collect::<Vec<_>>()
+    );
     assert_eq!(source.id(), Some(Id::from_u64(41)));
     assert_eq!(source.revision(), u64::MAX);
     assert_eq!(layout.source(), &source);
@@ -1719,10 +1798,16 @@ fn source_revision_last_edit_succeeds_then_refuses_another_publication() {
         .apply_to(original.clone())
         .expect("the last available source revision can be published");
 
-    assert_eq!(final_source.text(), "hippo");
+    assert_eq!(
+        final_source.text().code_units(),
+        "hippo".encode_utf16().collect::<Vec<_>>()
+    );
     assert_eq!(final_source.id(), original.id());
     assert_eq!(final_source.revision(), u64::MAX);
-    assert_eq!(original.text(), "hello");
+    assert_eq!(
+        original.text().code_units(),
+        "hello".encode_utf16().collect::<Vec<_>>()
+    );
     assert_eq!(original.revision(), u64::MAX - 1);
 
     let next = TextEdit::insert(&final_source, 5, "!").expect("next insert is a valid edit");
@@ -1734,7 +1819,10 @@ fn source_revision_last_edit_succeeds_then_refuses_another_publication() {
         error.detail(),
         Some(&ErrorDetail::SourceRevisionExhausted { revision: u64::MAX })
     );
-    assert_eq!(final_source.text(), "hippo");
+    assert_eq!(
+        final_source.text().code_units(),
+        "hippo".encode_utf16().collect::<Vec<_>>()
+    );
     assert_eq!(final_source.id(), original.id());
     assert_eq!(final_source.revision(), u64::MAX);
 }
@@ -1748,11 +1836,20 @@ fn text_edit_normalizes_insert_replace_and_delete() {
     let delete = TextEdit::delete(&source, Range::new(1, 4)).expect("delete validates");
 
     assert_eq!(insert.range(), Range::new(2, 2));
-    assert_eq!(insert.inserted_text(), "y");
+    assert_eq!(
+        insert.inserted_text().code_units(),
+        "y".encode_utf16().collect::<Vec<_>>()
+    );
     assert_eq!(replace.range(), Range::new(1, 4));
-    assert_eq!(replace.inserted_text(), "ipp");
+    assert_eq!(
+        replace.inserted_text().code_units(),
+        "ipp".encode_utf16().collect::<Vec<_>>()
+    );
     assert_eq!(delete.range(), Range::new(1, 4));
-    assert_eq!(delete.inserted_text(), "");
+    assert_eq!(
+        delete.inserted_text().code_units(),
+        "".encode_utf16().collect::<Vec<_>>()
+    );
 }
 
 #[test]
@@ -1764,7 +1861,10 @@ fn text_edit_application_advances_source_revision_once() {
         .apply_to(source)
         .expect("edit applies to original source");
 
-    assert_eq!(edited.text(), "heyllo");
+    assert_eq!(
+        edited.text().code_units(),
+        "heyllo".encode_utf16().collect::<Vec<_>>()
+    );
     assert_eq!(edited.revision(), 11);
 }
 
@@ -1796,32 +1896,41 @@ fn edits_project_ranges_and_revision() {
     let layout = builder.build().expect("layout should build");
 
     let replaced = layout
-        .try_apply(Edit::Replace {
+        .apply(Edit::Replace {
             range: Range::new(1, 3),
-            text: "XXYY".to_owned(),
+            text: "XXYY".into(),
         })
         .expect("replace should apply");
     let deleted = layout
-        .try_apply(Edit::Delete {
+        .apply(Edit::Delete {
             range: Range::new(1, 4),
         })
         .expect("delete should apply");
     let inserted = layout
-        .try_apply(Edit::Insert {
+        .apply(Edit::Insert {
             index: 3,
-            text: "ZZ".to_owned(),
+            text: "ZZ".into(),
         })
         .expect("insert should apply");
 
-    assert_eq!(replaced.text(), "aXXYYdef");
+    assert_eq!(
+        replaced.text().code_units(),
+        "aXXYYdef".encode_utf16().collect::<Vec<_>>()
+    );
     assert_eq!(replaced.revision(), 5);
     assert_eq!(replaced.spans()[0].range(), Range::new(1, 7));
     assert_eq!(replaced.boxes()[0].index(), 7);
-    assert_eq!(deleted.text(), "aef");
+    assert_eq!(
+        deleted.text().code_units(),
+        "aef".encode_utf16().collect::<Vec<_>>()
+    );
     assert_eq!(deleted.revision(), 5);
     assert_eq!(deleted.spans()[0].range(), Range::new(1, 2));
     assert_eq!(deleted.boxes()[0].index(), 2);
-    assert_eq!(inserted.text(), "abcZZdef");
+    assert_eq!(
+        inserted.text().code_units(),
+        "abcZZdef".encode_utf16().collect::<Vec<_>>()
+    );
     assert_eq!(inserted.revision(), 5);
     assert_eq!(inserted.spans()[0].range(), Range::new(2, 7));
     assert_eq!(inserted.boxes()[0].index(), 7);
@@ -1835,13 +1944,16 @@ fn edit_insert_targets_source_index() {
     let layout = builder.build().expect("layout should build");
 
     let edited = layout
-        .try_apply(Edit::Insert {
+        .apply(Edit::Insert {
             index: 2,
-            text: "y".to_owned(),
+            text: "y".into(),
         })
         .expect("insert should apply");
 
-    assert_eq!(edited.text(), "heyllo");
+    assert_eq!(
+        edited.text().code_units(),
+        "heyllo".encode_utf16().collect::<Vec<_>>()
+    );
     assert_eq!(edited.revision(), 10);
 }
 
@@ -1891,9 +2003,12 @@ fn composer_push_appends_text_and_returns_range() {
     let second = composer.push(" text");
     let source = composer.finish();
 
-    assert_eq!(source.text(), "é text");
-    assert_eq!(first.range(), Range::new(0, 2));
-    assert_eq!(second.range(), Range::new(2, 7));
+    assert_eq!(
+        source.text().code_units(),
+        "é text".encode_utf16().collect::<Vec<_>>()
+    );
+    assert_eq!(first.range(), Range::new(0, 1));
+    assert_eq!(second.range(), Range::new(1, 6));
 }
 
 #[test]
@@ -1935,7 +2050,10 @@ fn composer_with_captures_only_text_added_inside_closure() {
         assert_eq!(mark.range(), Range::new(7, 13));
     });
 
-    assert_eq!(composed.text(), "before inside after");
+    assert_eq!(
+        composed.text().code_units(),
+        "before inside after".encode_utf16().collect::<Vec<_>>()
+    );
     assert_eq!(composed.spans(), &[Span::new(Range::new(7, 13), style)]);
 }
 
@@ -1960,7 +2078,10 @@ fn composer_nested_with_orders_outer_before_inner() {
         });
     });
 
-    assert_eq!(composed.text(), "abc");
+    assert_eq!(
+        composed.text().code_units(),
+        "abc".encode_utf16().collect::<Vec<_>>()
+    );
     assert_eq!(
         composed.spans(),
         &[
@@ -2015,7 +2136,7 @@ fn composer_try_span_rejects_invalid_ranges() {
 
     let error = composer
         .try_span(Range::new(1, 2), Style::default())
-        .expect_err("non-boundary range should fail");
+        .expect_err("out-of-bounds unit range should fail");
 
     assert_eq!(error.code, ErrorCode::InvalidRange);
 }
@@ -2029,10 +2150,10 @@ fn composer_try_inline_box_rejects_invalid_indices() {
         .try_inline_box(InlineBox::new(
             Id::from_u64(1),
             InlineBoxKind::OutOfFlow,
-            1,
+            2,
             Size::new(4.0, 4.0),
         ))
-        .expect_err("non-boundary inline box index should fail");
+        .expect_err("out-of-bounds inline box index should fail");
 
     assert_eq!(error.code, ErrorCode::InvalidRange);
 }
@@ -2201,9 +2322,12 @@ fn accessibility_projection_preserves_cursor_and_selection() {
     let mut accessibility = Accessibility::default();
     let parent = accesskit::NodeId(100);
 
-    let update = layout.accessibility_update(&mut accessibility, parent, parent, Point::default());
+    let update = layout
+        .accessibility_update(&mut accessibility, parent, parent, Point::default())
+        .expect("valid source projection");
     let position = layout
         .access_position(&accessibility, Cursor::new(0, Affinity::After))
+        .expect("valid source projection")
         .expect("cursor should map to AccessKit");
     let selection = layout
         .access_selection(
@@ -2213,6 +2337,7 @@ fn accessibility_projection_preserves_cursor_and_selection() {
                 Cursor::new(5, Affinity::Before),
             ),
         )
+        .expect("valid source projection")
         .expect("selection should map to AccessKit");
 
     assert!(update.nodes.iter().any(|(id, _)| *id == parent));

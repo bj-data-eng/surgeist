@@ -56,6 +56,8 @@ pub enum ErrorCode {
     FontGenerationExhausted,
     /// An edit cannot publish another revision of the source.
     SourceRevisionExhausted,
+    /// Source or mapped index arithmetic exceeded its representable domain.
+    SourceLengthOverflow,
     InvalidRange,
     InvalidStyle,
     LayoutFailed,
@@ -65,6 +67,27 @@ pub enum ErrorCode {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ErrorDetail {
+    IsolatedSurrogateLayout {
+        index: usize,
+        unit: u16,
+    },
+    UnsupportedShapingBoundary {
+        index: usize,
+        kind: ShapingBoundary,
+    },
+    ProviderSourceRange {
+        start: usize,
+        end: usize,
+    },
+    UnsupportedAccessibilityUnit {
+        range: super::Range,
+        bytes: usize,
+    },
+    AccessibilityLayoutMismatch,
+    AccessibilityIdentityConflict {
+        id: u64,
+    },
+    AccessibilityIdentityExhausted,
     InvalidFontContainer,
     InvalidFontFace {
         index: u32,
@@ -104,6 +127,14 @@ pub enum ErrorDetail {
         feature: &'static str,
         reason: &'static str,
     },
+}
+
+/// A shaping input boundary that must not divide a surrogate pair.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ShapingBoundary {
+    SpanStart,
+    SpanEnd,
+    InlineBox,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

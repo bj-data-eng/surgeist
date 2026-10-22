@@ -9,6 +9,14 @@ The API has explicit limits: whitespace collapse and explicit base direction are
 unsupported, and inline-box alignment requests do not imply backend placement.
 See the [support reference](docs/reference.md) for the current contract.
 
+`Text` retains exact UTF-16 code units, and public source positions and ranges
+count those units. Edits can split or join surrogate pairs. Layout currently
+accepts scalar-representable source through a lossless private UTF-8 projection;
+isolated surrogates and shaping boundaries inside pairs return precise errors
+before font/cache work. Interaction and optional accessibility map back to the
+same source units. This interim boundary does not provide isolated-surrogate
+shaping or the future prepared-text pipeline.
+
 `System` can discover system fonts (the default) or use only explicitly
 registered font bytes. Registration and refresh publish a new issuer-qualified
 catalogue identity and invalidate current cached layouts atomically; retained

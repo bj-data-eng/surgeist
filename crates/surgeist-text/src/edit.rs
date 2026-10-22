@@ -1,21 +1,19 @@
-use std::ops::Range as StdRange;
-
 use super::{
-    Error, ErrorCode, ErrorDetail, Range, Result, Source, SourceRange, SourceRevision, range,
+    Error, ErrorCode, ErrorDetail, Range, Result, Source, SourceRange, SourceRevision, Text, range,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TextEdit {
     range: Range,
-    inserted_text: String,
+    inserted_text: Text,
 }
 
 impl TextEdit {
-    pub fn insert(source: &Source, index: usize, text: impl Into<String>) -> Result<Self> {
+    pub fn insert(source: &Source, index: usize, text: impl Into<Text>) -> Result<Self> {
         Self::replace(source, Range::new(index, index), text)
     }
 
-    pub fn replace(source: &Source, range: Range, text: impl Into<String>) -> Result<Self> {
+    pub fn replace(source: &Source, range: Range, text: impl Into<Text>) -> Result<Self> {
         range::validate(source.text(), range)?;
         Ok(Self {
             range,
@@ -33,7 +31,7 @@ impl TextEdit {
     }
 
     #[must_use]
-    pub fn inserted_text(&self) -> &str {
+    pub fn inserted_text(&self) -> &Text {
         &self.inserted_text
     }
 
@@ -51,19 +49,34 @@ impl TextEdit {
                     revision: source.revision,
                 })
             })?;
-        project_edit_ranges(&mut source, source_range, self.inserted_text.len());
-        source.revision = revision.get();
         source
             .text
-            .replace_range(StdRange::from(self.range), &self.inserted_text);
+            .len()
+            .checked_sub(self.range.len())
+            .and_then(|len| len.checked_add(self.inserted_text.len()))
+            .ok_or_else(super::projection::length_overflow)?;
+        for span in &source.spans {
+            range::validate(source.text(), span.range)?;
+        }
+        for box_ in &source.boxes {
+            range::validate_index(source.text(), box_.index, "inline box index")?;
+        }
+        let mut units = source.text.code_units().to_vec();
+        units.splice(
+            self.range.start..self.range.end,
+            self.inserted_text.code_units().iter().copied(),
+        );
+        project_edit_ranges(&mut source, source_range, self.inserted_text.len());
+        source.revision = revision.get();
+        source.text = Text::from_code_units(units);
         Ok(source)
     }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Edit {
-    Insert { index: usize, text: String },
-    Replace { range: Range, text: String },
+    Insert { index: usize, text: Text },
+    Replace { range: Range, text: Text },
     Delete { range: Range },
 }
 
@@ -102,7 +115,7 @@ fn project_edit_start(
     } else if index < range.end {
         range.start
     } else {
-        index + inserted_len - removed_len
+        index - removed_len + inserted_len
     }
 }
 
@@ -112,7 +125,7 @@ fn project_edit_end(index: usize, range: Range, inserted_len: usize, removed_len
     } else if index <= range.end {
         range.start + inserted_len
     } else {
-        index + inserted_len - removed_len
+        index - removed_len + inserted_len
     }
 }
 
@@ -127,6 +140,6 @@ fn project_edit_anchor(
     } else if index <= range.end {
         range.start + inserted_len
     } else {
-        index + inserted_len - removed_len
+        index - removed_len + inserted_len
     }
 }

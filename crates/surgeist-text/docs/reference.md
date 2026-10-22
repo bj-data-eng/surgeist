@@ -10,7 +10,7 @@ directly for catalogue registration and admission.
 
 | Feature | Default | Effect and dependency |
 | --- | --- | --- |
-| `text-accessibility` | Off | Enables `Accessibility` and layout-to-AccessKit methods; selects AccessKit `0.24.1` and `parley/accesskit`. |
+| `text-accessibility` | Off | Enables owned `Accessibility` and layout-to-AccessKit methods; selects AccessKit `0.24.1`. |
 | `text-render` | Off | Enables `Layout::push_render_text`; requires `surgeist-render` `0.1.0` at `../surgeist-render`. |
 
 The default feature set is empty. Feature-gated methods and their tests are in
@@ -26,7 +26,7 @@ private implementation organization.
 
 | Area | Main types and entry points | Source |
 | --- | --- | --- |
-| Authored text | `Source`, `Span`, `InlineBox`, `SourceIdentity`, `SourceRevision` | [source.rs](../src/source.rs) |
+| Authored text | `Text`, `Source`, `Span`, `InlineBox`, `SourceIdentity`, `SourceRevision` | [text.rs](../src/text.rs), [source.rs](../src/source.rs) |
 | Composition | `source`, `compose`, `Composer`, `Mark` | [composer.rs](../src/composer.rs) |
 | Style and fonts | `Style`, `Font`, `Brush`, decorations, flow settings | [style.rs](../src/style.rs) |
 | Paragraph layout | `Options`, `Alignment`, `Indent`, `ValidatedOptions` | [options.rs](../src/options.rs) |
@@ -54,7 +54,7 @@ and valid faces the catalogue cannot admit are distinct `FontLoadFailed` details
 No operation publishes partial registration or clears a cache on refusal.
 Registration does not define unregister, family replacement, or a new missing-
 glyph policy. These are catalogue capabilities, not prepared text or selected-
-line finalization; the current source API remains UTF-8 pending that work.
+line finalization; the scalar Parley engine remains in use.
 
 ## Defaults and validation
 
@@ -69,10 +69,13 @@ height `1.0`, zero letter/word spacing, opaque black, no decorations, automatic
 direction, preserved whitespace, word wrapping, normal word-break and
 overflow-wrap, and no text transform.
 
-Ranges, cursor indices, glyph/cluster ranges, and inline-box anchors use UTF-8
-byte offsets. `Range::new` does not validate ordering or character boundaries.
-`SourcePosition::try_new` and `SourceRange::try_new` validate against specific
-text. Layout construction validates source spans, style values, options, inline
+`Text` owns immutable exact UTF-16 units, including isolated surrogates.
+`Text::from_code_units` takes owned units; string conversions encode them
+losslessly. `code_units()` lends the original units. Ranges, cursor indices,
+glyph/cluster ranges, and inline-box anchors use UTF-16 code-unit offsets.
+`Range::new` does not validate ordering. `SourcePosition::try_new` and
+`SourceRange::try_new` validate bounds/order against specific `Text`; pair
+interiors are valid source endpoints. Layout construction validates source spans, style values, options, inline
 box dimensions, and unique inline-box IDs before cache lookup. Font size and
 scale must be finite and positive; layout width and box dimensions must be finite
 and nonnegative; brush channels must be finite and within `0..=1`.
@@ -82,6 +85,28 @@ once before returning the edited source. At `u64::MAX` it returns
 `SourceRevisionExhausted`, including that revision in `ErrorDetail`, before
 changing text, spans, or inline-box anchors. Retained sources and layouts remain
 unchanged. `SourceRevision::checked_next` returns `None` at exhaustion.
+
+Before cache/font work, layout refuses isolated surrogates with
+`IsolatedSurrogateLayout` and span/box boundaries inside a valid pair with
+`UnsupportedShapingBoundary`. Source storage and edits still support them.
+Scalar source uses one private lossless UTF-8 projection consumed by Parley;
+all returned offsets map back to source units. No original-surrogate Unicode
+analysis or shaping completion guarantee is added by this interim engine.
+
+Cursor and selection requests retain their exact endpoints. Geometry projects
+interior carets to the preceding/following legal logical stop by affinity before
+bidi placement. Noncollapsed partial-unit selections cover complete typographic
+units; collapsed selections remain collapsed. Offset-taking interaction methods
+return `Result`, and invalid endpoints refuse rather than clamp.
+
+The [owned AccessKit projection](../src/accessibility.rs) retains the same layout
+identity and source maps. Updates are fallible and publish complete state only.
+Host values and character lengths use UTF-8 bytes; an indivisible unit longer
+than 255 bytes is unsupported. Mixed-style units preserve all source/geometry
+and publish only uniform node metadata. Optional one-dimensional geometry is
+omitted when it cannot truthfully describe the fragments. Retained child focus
+is valid on repeat updates; parent/child collisions and ID exhaustion refuse.
+Mapping a state through another layout returns `AccessibilityLayoutMismatch`.
 
 ## Style support
 

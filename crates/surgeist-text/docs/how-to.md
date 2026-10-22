@@ -6,7 +6,7 @@ the calling Rust target already depends on `surgeist-text`.
 ## Compose text with styled spans
 
 Use the [composer](../src/composer.rs) when constructing text incrementally so
-that ranges follow the UTF-8 text you append:
+that ranges follow the UTF-16 code units you append:
 
 ```rust
 use surgeist_text::{Options, Style, System, source};
@@ -17,7 +17,7 @@ let source = source(|text| {
         text.push("world");
     });
 });
-assert_eq!(source.text(), "Hello world");
+assert_eq!(source.text().code_units(), "Hello world".encode_utf16().collect::<Vec<_>>());
 assert_eq!(source.spans()[0].range(), surgeist_text::Range::new(6, 11));
 
 let layout = System::default()
@@ -41,9 +41,10 @@ span tests in [src/tests.rs](../src/tests.rs) demonstrate both contracts.
 With a built `Layout`, use `hit(Point)` to distinguish text cursors, inline boxes,
 and empty space. Use `cursor(Cursor)` for caret geometry, `selection(Selection)`
 for selection rectangles, and `move_cursor` or `move_selection` for supported
-cluster, word, line, and document movements.
+cluster, word, line, and document movements. These offset-taking methods return
+`Result`; source pair interiors project by affinity, while invalid bounds refuse.
 
-For inline content, create an `InlineBox` at a UTF-8 byte boundary, assign an ID
+For inline content, create an `InlineBox` at a UTF-16 scalar boundary, assign an ID
 unique within the source, and supply finite, nonnegative dimensions. Add it with
 `Source::inline_box`, `Builder::inline_box`, or `Composer::box_` at the current text
 end. Choose `InFlow` when the box should participate in flow, or `OutOfFlow` for a
@@ -69,17 +70,17 @@ let layout = system
     .layout(Source::new("hello"), Style::default(), Options::default())
     .expect("initial layout should build");
 let edited = layout
-    .try_apply(Edit::Insert { index: 2, text: "y".into() })
+    .apply(Edit::Insert { index: 2, text: "y".into() })
     .expect("edit boundary should be valid");
 
-assert_eq!(edited.text(), "heyllo");
+assert_eq!(edited.text().code_units(), "heyllo".encode_utf16().collect::<Vec<_>>());
 assert_eq!(edited.revision(), 1);
-assert_eq!(layout.source().text(), "hello");
+assert_eq!(layout.source().text().code_units(), "hello".encode_utf16().collect::<Vec<_>>());
 
 let updated = system
     .layout(edited, Style::default(), Options::default())
     .expect("edited source should build");
-assert_eq!(updated.source().text(), "heyllo");
+assert_eq!(updated.source().text().code_units(), "heyllo".encode_utf16().collect::<Vec<_>>());
 ```
 
 The edit returns a new `Source`; it does not mutate or reflow the existing layout.

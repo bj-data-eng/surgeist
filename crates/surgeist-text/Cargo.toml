@@ -14,6 +14,7 @@ path = "src/lib.rs"
 [dependencies]
 accesskit = { version = "=0.24.1", optional = true }
 fontique = { version = "=0.9.0", default-features = false, features = ["std", "system"] }
+icu_segmenter = { version = "=2.2.0", default-features = false, features = ["compiled_data"] }
 linebender_resource_handle = { version = "=0.1.1", default-features = false, features = ["std"] }
 parley = "=0.9.0"
 skrifa = { version = "=0.42.1", default-features = false, features = ["std"] }
@@ -21,7 +22,7 @@ surgeist-render = { path = "../surgeist-render", version = "=0.1.0", optional = 
 
 [features]
 default = []
-text-accessibility = ["dep:accesskit", "parley/accesskit"]
+text-accessibility = ["dep:accesskit"]
 text-render = ["dep:surgeist-render"]
 
 [dev-dependencies]

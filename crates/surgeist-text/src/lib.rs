@@ -5,6 +5,8 @@
 //! It does not own rendering, widgets, document identity, style resolution, or
 //! application commands.
 
+#[cfg(feature = "text-accessibility")]
+mod accessibility;
 mod cache;
 mod catalogue;
 mod composer;
@@ -14,22 +16,24 @@ mod geometry;
 mod id;
 mod layout;
 mod options;
+mod projection;
 mod range;
 #[path = "source.rs"]
 mod source_model;
 mod style;
 mod style_support;
 mod system;
+mod text;
 
+#[cfg(feature = "text-accessibility")]
+pub use accessibility::Accessibility;
 pub use cache::{FontGeneration, Key, OptionsKey, SourceKey, Stats, StyleKey};
 pub use catalogue::{FontCatalogueIdentity, FontCatalogueMode};
 pub use composer::{Composer, Mark, compose, source};
 pub use edit::{Edit, TextEdit};
-pub use error::{Error, ErrorCode, ErrorDetail, NumericRequirement, Result};
+pub use error::{Error, ErrorCode, ErrorDetail, NumericRequirement, Result, ShapingBoundary};
 pub use geometry::{Point, Rect, Size};
 pub use id::Id;
-#[cfg(feature = "text-accessibility")]
-pub use layout::Accessibility;
 pub use layout::{
     Affinity, BaselineShiftFact, Cluster, Cursor, CursorGeometry, DecorationKind, DecorationRun,
     FontData, FontRef, Glyph, Hit, InlineBoxMetricFact, InlineMetricFacts, Layout, Line,
@@ -51,6 +55,7 @@ pub use style::{
 };
 pub use style_support::{TextStyleFeature, TextStyleSupport, UnsupportedTextStyleReason};
 pub use system::{Builder, System, SystemOptions};
+pub use text::Text;
 
 #[cfg(test)]
 mod tests;
