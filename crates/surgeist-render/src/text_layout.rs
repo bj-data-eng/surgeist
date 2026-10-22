@@ -1,4 +1,4 @@
-//! Standalone consumer of an authentic immutable Text layout.
+//! Consumer of an authentic immutable placed Text layout.
 
 use std::mem::size_of;
 
@@ -11,7 +11,7 @@ use crate::{
     text::{AdmittedOutlineFont, qualify_bounds_placement, qualify_outline_placement},
 };
 
-/// Whole-invocation bounds for a standalone Text-layout scene.
+/// Whole-invocation bounds for a placed Text-layout scene.
 ///
 /// Outline glyph/path/temporary/retained limits apply across all runs, rather
 /// than resetting for each run. Input-loaned Text storage is excluded. Retained
@@ -44,7 +44,7 @@ impl TextLayoutLimits {
     }
 }
 
-/// One scene paired with the exact standalone snapshot that supplied its facts.
+/// One scene paired with the exact placed snapshot that supplied its facts.
 ///
 /// The scene owns admitted paint resources; the borrowed layout remains the
 /// authority for interaction and source/catalogue provenance. No second-layout
@@ -69,7 +69,7 @@ impl<'a> PreparedTextScene<'a> {
     }
 }
 
-/// An aggregate count or storage resource in standalone layout admission.
+/// An aggregate count or storage resource in placed layout admission.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TextLayoutResource {
     /// Actual positioned glyph runs.
@@ -114,7 +114,7 @@ pub enum TextLayoutCause {
     Render(Box<Error>),
 }
 
-/// Typed standalone adapter refusal; no prefix scene is published.
+/// Typed placed-layout adapter refusal; no prefix scene is published.
 #[derive(Debug)]
 pub enum TextLayoutError {
     /// An aggregate requirement exceeds its caller-supplied bound.
@@ -166,8 +166,10 @@ impl TextLayoutError {
 /// from Text. The published outline domain is unchanged; unsupported runs refuse
 /// the complete operation. Supplied placement is qualified for glyph ink and
 /// decoration geometry before returning. Future parent/surface composition is
-/// still checked by the actual renderer. This is a standalone-layout adapter,
-/// not a finalized Layout-fragment or captured-style join.
+/// still checked by the actual renderer. Both standalone Text layout and explicit
+/// finalized-line placement supply this same immutable input. A Layout batch
+/// lends its actual placed Text result; detached fragment rectangles do not
+/// supply that authority. Live computed-style authentication remains upstream.
 pub fn prepare_text_layout(
     layout: &Layout,
     placement: Transform,

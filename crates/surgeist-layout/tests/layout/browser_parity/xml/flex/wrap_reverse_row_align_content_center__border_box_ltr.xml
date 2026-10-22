@@ -1,4 +1,4 @@
-<test name="wrap_reverse_row_align_content_center__border_box_ltr" use-rounding="true">
+<test name="wrap_reverse_row_align_content_center__border_box_ltr" measurement-version="2" use-rounding="true">
   <viewport width="max-content" height="max-content"/>
   <input>
     <div source-tag="div" display="flex" direction="ltr" flex-wrap="wrap-reverse" align-content="center" width="100px">

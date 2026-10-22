@@ -1,4 +1,4 @@
-<test name="fri06_inline_unequal_line_alignment__border_box_rtl" use-rounding="true">
+<test name="fri06_inline_unequal_line_alignment__border_box_rtl" measurement-version="2" use-rounding="true">
   <viewport width="max-content" height="max-content"/>
   <input>
     <div source-tag="div" display="block" direction="rtl" font-family="monospace" font-size="16px" line-height="20px" width="160px">

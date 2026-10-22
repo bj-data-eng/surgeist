@@ -1,4 +1,4 @@
-<test name="subgrid_sibling_overflow_footer_second_matches_first__border_box_ltr" use-rounding="true">
+<test name="subgrid_sibling_overflow_footer_second_matches_first__border_box_ltr" measurement-version="2" use-rounding="true">
   <viewport width="max-content" height="max-content"/>
   <input>
     <div source-tag="div" display="grid" direction="ltr" width="400px" row-gap="16px" column-gap="16px">

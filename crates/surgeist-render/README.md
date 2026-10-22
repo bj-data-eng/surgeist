@@ -40,7 +40,7 @@ existing provider behavior, with `Unspecified` bounds permitted only by its dire
 route. Broader outline/representation/synthesis support remains separate work.
 
 The optional `render-text` feature adds `prepare_text_layout`, consuming the
-actual immutable standalone `surgeist_text::Layout` without reshaping or choosing
+actual immutable placed `surgeist_text::Layout` without reshaping or choosing
 lines. Its result borrows that exact snapshot and owns the complete Scene. Text
 qualifies the real face and effective normalized coordinates, including
 source-proved default axes; unresolved faux-bold or skew refuse explicitly.
@@ -54,9 +54,11 @@ Glyph placement already includes Text's offsets and baselines. Existing
 rectangle decorations follow glyphs; a nonidentity placement uses one admitted
 decoration transform layer. Both glyph ink and decoration geometry receive
 numeric placement qualification. Generic Scene copies retain owned paint
-resources but carry no authority to join another Text snapshot. This standalone
-adapter does not implement #72 finalized inline fragments or captured style/text
-joins; it preserves the existing outline capability limits.
+resources but carry no authority to join another Text snapshot. Both standalone
+Text layout and explicit finalized-line placement use this boundary. A completed
+Layout batch lends its actual placed Text result; fragment rectangles alone are
+insufficient. Live computed-style authentication remains upstream. The adapter
+preserves the existing outline capability limits.
 
 ## Start
 

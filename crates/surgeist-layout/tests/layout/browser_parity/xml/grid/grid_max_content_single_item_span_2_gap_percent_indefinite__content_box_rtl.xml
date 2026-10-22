@@ -1,4 +1,4 @@
-<test name="grid_max_content_single_item_span_2_gap_percent_indefinite__content_box_rtl" use-rounding="true">
+<test name="grid_max_content_single_item_span_2_gap_percent_indefinite__content_box_rtl" measurement-version="2" use-rounding="true">
   <viewport width="max-content" height="max-content"/>
   <input>
     <div source-tag="div" display="grid" box-sizing="content-box" direction="rtl" column-gap="20%" grid-template-rows="40px 40px 40px" grid-template-columns="40px max-content max-content">

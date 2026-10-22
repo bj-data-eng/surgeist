@@ -445,7 +445,7 @@ fn fri06_c05_provider_error_missing_provider_has_exact_context_both_scalars() {
             }
         );
         assert_eq!(error.operation(), LayoutOperation::FloatExclusionQuery);
-        assert_eq!(
+        crate::test_support::assert_error_kind(
             error.kind(),
             &LayoutErrorKindOf::MissingContext(LayoutMissingContext::FloatExclusionProvider),
         );
@@ -474,7 +474,7 @@ fn fri06_c05_provider_error_failure_preserves_measurement_and_context_both_scala
             }
         );
         assert_eq!(error.operation(), LayoutOperation::FloatExclusionQuery);
-        assert_eq!(error.kind(), &LayoutErrorKindOf::Measurement(()));
+        assert!(matches!(error.kind(), LayoutErrorKindOf::Measurement(())));
         assert_eq!(tree.shape_queries(), vec![(1, fri06_c05_expected_query())]);
     }
 
@@ -512,7 +512,7 @@ fn fri06_c05_provider_error_mismatched_query_preserves_expected_and_actual_both_
             }
         );
         assert_eq!(error.operation(), LayoutOperation::FloatExclusionQuery);
-        assert_eq!(
+        crate::test_support::assert_error_kind(
             error.kind(),
             &LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::FloatExclusionProviderOutput {
                 error: FloatExclusionIntervalErrorOf::QueryMismatch { expected, actual },
@@ -1048,37 +1048,38 @@ fn fri06_c12_t08_float_dominated_terminal_extent_stops_at_the_float_edge() {
             60.0,
         );
         floating.float_exclusion = FloatExclusion::Shape;
-        let segment = ShapedInlineSegmentOf::try_new(
-            InlineSegmentId::new(1),
-            S::from_f64(48.164_062_5),
-            InlineMetricsOf::from_line_height_and_baseline(S::from_f64(20.0), S::from_f64(14.8))
-                .unwrap(),
-            BidiLevel::try_new(0).unwrap(),
-            InlineWhitespaceEdge::Preserve,
-            InlineBreakOpportunityOf::prohibited(),
-        )
-        .unwrap();
-        let text = LayoutInputOf::inline_text(InlineTextInputOf::try_new(vec![segment]).unwrap());
+        // Genuine numeric inline boxes preserve this float-edge experiment:
+        // the leading box has before/after-baseline extents 14.8/5.2; the
+        // following 16px boxes therefore make the first line 21.2px high.
+        let leading = NodeInputOf {
+            display: Display::InlineBlock,
+            size: Size::new(
+                PreferredSizeOf::px(S::from_f64(48.164_062_5)),
+                PreferredSizeOf::px(S::from_f64(20.0)),
+            ),
+            atomic_inline_participation: Some(AtomicInlineParticipation::new(
+                BidiLevel::try_new(0).unwrap(),
+                InlineBreakOpportunity::Prohibited,
+            )),
+            ..NodeInputOf::default()
+        };
         let atomic = |inline_extent, following_break| NodeInputOf {
             display: Display::InlineBlock,
             size: Size::new(
                 PreferredSizeOf::px(S::from_f64(inline_extent)),
                 PreferredSizeOf::px(S::from_f64(16.0)),
             ),
-            atomic_inline_participation: Some(
-                AtomicInlineParticipationOf::try_new(
-                    BidiLevel::try_new(0).unwrap(),
-                    following_break,
-                )
-                .unwrap(),
-            ),
+            atomic_inline_participation: Some(AtomicInlineParticipation::new(
+                BidiLevel::try_new(0).unwrap(),
+                following_break,
+            )),
             ..NodeInputOf::default()
         };
         let atomics = [
-            atomic(34.0, InlineBreakOpportunityOf::prohibited()),
-            atomic(38.0, InlineBreakOpportunityOf::prohibited()),
-            atomic(42.0, InlineBreakOpportunityOf::allowed()),
-            atomic(46.0, InlineBreakOpportunityOf::prohibited()),
+            atomic(34.0, InlineBreakOpportunity::Prohibited),
+            atomic(38.0, InlineBreakOpportunity::Prohibited),
+            atomic(42.0, InlineBreakOpportunity::Allowed),
+            atomic(46.0, InlineBreakOpportunity::Prohibited),
         ];
         let mut tree = PublicBlockTree::default()
             .with_shape_provider(ShapeProviderBehavior::Bands(vec![
@@ -1092,11 +1093,23 @@ fn fri06_c12_t08_float_dominated_terminal_extent_stops_at_the_float_edge() {
             ]))
             .with_children(0, [1, 2, 3, 4, 5, 6])
             .with_children(1, [])
-            .with_children(2, [])
+            .with_children(2, [7])
+            .with_children(7, [])
+            .with_style(7, NodeInputOf::non_box())
+            .with_layout_input(
+                7,
+                LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
+                    InlineBoundaryKind::Start,
+                    InlineMetricsOf::from_line_height_and_baseline(
+                        S::from_f64(20.0),
+                        S::from_f64(14.8),
+                    )
+                    .unwrap(),
+                )),
+            )
             .with_style(0, root)
             .with_style(1, floating)
-            .with_style(2, NodeInputOf::non_box())
-            .with_layout_input(2, text);
+            .with_style(2, leading);
         for (offset, style) in atomics.into_iter().enumerate() {
             let node = u32::try_from(offset + 3).unwrap();
             tree = tree.with_children(node, []).with_style(node, style);
@@ -1154,37 +1167,57 @@ fn fri06_c12_t08_float_shape_slots_follow_visual_order_before_physical_projectio
             Direction::Rtl => (S::ZERO, S::from_f64(44.0)),
         };
         let bidi_level = BidiLevel::try_new(u8::from(direction == Direction::Rtl)).unwrap();
-        let segments = [(1, 66.0), (2, 114.0)]
-            .into_iter()
-            .map(|(id, inline_extent)| {
-                ShapedInlineSegmentOf::try_new(
-                    InlineSegmentId::new(id),
-                    S::from_f64(inline_extent),
-                    InlineMetricsOf::from_line_height_and_baseline(
-                        S::from_f64(20.0),
-                        S::from_f64(14.0),
-                    )
-                    .unwrap(),
-                    bidi_level,
-                    InlineWhitespaceEdge::Preserve,
-                    InlineBreakOpportunityOf::prohibited(),
-                )
-                .unwrap()
-            })
-            .collect::<Vec<_>>();
-        let text = LayoutInputOf::inline_text(InlineTextInputOf::try_new(segments).unwrap());
+        let inline_box = |width| NodeInputOf {
+            display: Display::InlineBlock,
+            size: Size::new(
+                PreferredSizeOf::px(S::from_f64(width)),
+                PreferredSizeOf::px(S::from_f64(20.0)),
+            ),
+            atomic_inline_participation: Some(AtomicInlineParticipation::new(
+                bidi_level,
+                InlineBreakOpportunity::Prohibited,
+            )),
+            ..NodeInputOf::default()
+        };
         let tree = PublicBlockTree::default()
             .with_shape_provider(ShapeProviderBehavior::Interval {
                 minimum: shape_minimum,
                 maximum: shape_maximum,
             })
-            .with_children(0, [1, 2])
+            .with_children(0, [1, 2, 3])
             .with_children(1, [])
-            .with_children(2, [])
+            .with_children(2, [4])
+            .with_children(3, [5])
+            .with_children(4, [])
+            .with_children(5, [])
+            .with_style(4, NodeInputOf::non_box())
+            .with_style(5, NodeInputOf::non_box())
+            .with_layout_input(
+                4,
+                LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
+                    InlineBoundaryKind::Start,
+                    InlineMetricsOf::from_line_height_and_baseline(
+                        S::from_f64(20.0),
+                        S::from_f64(14.0),
+                    )
+                    .unwrap(),
+                )),
+            )
+            .with_layout_input(
+                5,
+                LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
+                    InlineBoundaryKind::Start,
+                    InlineMetricsOf::from_line_height_and_baseline(
+                        S::from_f64(20.0),
+                        S::from_f64(14.0),
+                    )
+                    .unwrap(),
+                )),
+            )
             .with_style(0, root)
             .with_style(1, floating)
-            .with_style(2, NodeInputOf::non_box())
-            .with_layout_input(2, text);
+            .with_style(2, inline_box(66.0))
+            .with_style(3, inline_box(114.0));
 
         let batch = compute_layout(
             &tree,
@@ -1196,14 +1229,18 @@ fn fri06_c12_t08_float_shape_slots_follow_visual_order_before_physical_projectio
             .unwrap(),
         )
         .expect("shape-backed float slot layout succeeds");
-        let flow_inline_starts = batch
-            .unrounded_inline_fragments()
-            .iter()
-            .map(|entry| {
-                let rect = entry.fragment().rect();
+        let flow_inline_starts = [2, 3]
+            .into_iter()
+            .map(|node| {
+                let output = batch
+                    .unrounded_entries()
+                    .iter()
+                    .find(|row| row.node() == node)
+                    .unwrap()
+                    .output();
                 match direction {
-                    Direction::Ltr => rect.origin().x,
-                    Direction::Rtl => rect.origin().x + rect.size().width,
+                    Direction::Ltr => output.location.x,
+                    Direction::Rtl => output.location.x + output.size.width,
                 }
             })
             .collect::<Vec<_>>();

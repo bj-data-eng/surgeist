@@ -1,4 +1,4 @@
-<test name="min_height_with_nested_fixed_height__border_box_ltr" use-rounding="true">
+<test name="min_height_with_nested_fixed_height__border_box_ltr" measurement-version="2" use-rounding="true">
   <viewport width="max-content" height="max-content"/>
   <input>
     <div source-tag="div" display="flex" direction="ltr" width="320px" min-height="44px" padding-left="16px" padding-right="16px">

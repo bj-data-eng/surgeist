@@ -440,9 +440,9 @@ fn leaf_measurement_provider_error_is_preserved() {
 
     assert_eq!(error.site(), LayoutErrorSite::Standalone);
     assert_eq!(error.operation(), LayoutOperation::LeafMeasurement);
-    assert_eq!(
+    crate::test_support::assert_error_kind(
         error.kind(),
-        &LayoutErrorKind::Measurement("provider failed")
+        &LayoutErrorKind::Measurement("provider failed"),
     );
 }
 
@@ -759,9 +759,9 @@ fn fri04_c03_leaf_root_leaf_preserves_missing_basis_by_run_mode() {
     );
     let error = compute_leaf(layout, &style, |_input| Ok::<_, ()>(Size::new(30.0, 5.0)))
         .expect_err("layout requires the missing percentage basis");
-    assert_eq!(
+    crate::test_support::assert_error_kind(
         error.kind(),
-        &LayoutErrorKind::MissingContext(LayoutMissingContext::RequiredBasis)
+        &LayoutErrorKind::MissingContext(LayoutMissingContext::RequiredBasis),
     );
 }
 

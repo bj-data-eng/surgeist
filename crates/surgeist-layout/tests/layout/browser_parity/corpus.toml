@@ -54,8 +54,8 @@ scoped = []
 
 [generation_reports.full]
 file = "all.json"
-generated = 5776
-unsupported = 16
+generated = 5668
+unsupported = 136
 expected_fail = 3
 quarantined = 0
 failed_to_generate = 0
@@ -2494,5 +2494,26 @@ status = "active"
 id = "subgrid/subgrid_axes_vertical_parent_orthogonal_child"
 source_root = "surgeist"
 source = "subgrid/subgrid_axes_vertical_parent_orthogonal_child.html"
+generator = "constrained-html"
+status = "active"
+
+[[cases]]
+id = "block/prepared_text_continuity_bidi"
+source_root = "surgeist"
+source = "block/prepared_text_continuity_bidi.html"
+generator = "constrained-html"
+status = "active"
+
+[[cases]]
+id = "block/prepared_text_atomic_controls"
+source_root = "surgeist"
+source = "block/prepared_text_atomic_controls.html"
+generator = "constrained-html"
+status = "active"
+
+[[cases]]
+id = "block/prepared_text_fractional_fit"
+source_root = "surgeist"
+source = "block/prepared_text_fractional_fit.html"
 generator = "constrained-html"
 status = "active"

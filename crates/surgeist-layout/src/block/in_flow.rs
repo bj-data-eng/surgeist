@@ -20,6 +20,7 @@ where
         let projection = InlineParticipantProjection::lookup::<Tree, M>(tree, child);
         let style = match projection.kind() {
             InlineParticipantKindOf::InlineText(_) => return true,
+            InlineParticipantKindOf::TextControl(_) => return true,
             InlineParticipantKindOf::Box(style) => style,
             InlineParticipantKindOf::LineBreak(input) => {
                 return !input.display().is_none()
@@ -215,7 +216,7 @@ where
                     index += 1;
                     continue;
                 }
-                if style.display.is_inline_level() && style.float.is_none() {
+                if crate::inline::starts_run(tree.layout_input(child)) {
                     let run_start = index;
                     index = inline_run_end(tree, node, children, constants, index + 1)?;
                     InFlowChildStart::VisibleInlineRun(VisibleInlineRunTransition::new(
@@ -225,7 +226,7 @@ where
                     InFlowChildStart::FlowBox(style)
                 }
             }
-            InlineParticipantKindOf::InlineText(_) => {
+            InlineParticipantKindOf::InlineText(_) | InlineParticipantKindOf::TextControl(_) => {
                 let run_start = index;
                 index = inline_run_end(tree, node, children, constants, index + 1)?;
                 InFlowChildStart::VisibleInlineRun(VisibleInlineRunTransition::new(

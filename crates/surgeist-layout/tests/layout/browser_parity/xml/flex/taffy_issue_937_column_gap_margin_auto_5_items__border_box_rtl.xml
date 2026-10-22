@@ -1,4 +1,4 @@
-<test name="taffy_issue_937_column_gap_margin_auto_5_items__border_box_rtl" use-rounding="true">
+<test name="taffy_issue_937_column_gap_margin_auto_5_items__border_box_rtl" measurement-version="2" use-rounding="true">
   <viewport width="max-content" height="max-content"/>
   <input>
     <div source-tag="div" display="flex" direction="rtl" flex-direction="column" width="200px" height="200px" row-gap="10px" column-gap="10px">

@@ -1,4 +1,4 @@
-<test name="fri08_duplicate_line_name_token__border_box_ltr" use-rounding="true">
+<test name="fri08_duplicate_line_name_token__border_box_ltr" measurement-version="2" use-rounding="true">
   <viewport width="max-content" height="max-content"/>
   <input>
     <div source-tag="div" display="grid" direction="ltr" align-content="start" justify-content="start" width="80px" height="20px" grid-template-rows="20px" grid-template-columns="[zone-start zone-start] 40px [zone-start] 40px" grid-template-areas="zone zone">

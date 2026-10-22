@@ -1,4 +1,4 @@
-<test name="undefined_width_with_min_max__content_box_ltr" use-rounding="true">
+<test name="undefined_width_with_min_max__content_box_ltr" measurement-version="2" use-rounding="true">
   <viewport width="max-content" height="max-content"/>
   <input>
     <div source-tag="div" display="flex" box-sizing="content-box" direction="ltr" flex-direction="column" height="50px">

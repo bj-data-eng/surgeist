@@ -1,4 +1,4 @@
-<test name="subgrid_gap_larger_than_twice_track_size__content_box_ltr" use-rounding="true">
+<test name="subgrid_gap_larger_than_twice_track_size__content_box_ltr" measurement-version="2" use-rounding="true">
   <viewport width="max-content" height="max-content"/>
   <input>
     <div source-tag="div" display="grid" box-sizing="content-box" direction="ltr" font-size="16px" width="300px" grid-template-columns="100px 100px 100px">

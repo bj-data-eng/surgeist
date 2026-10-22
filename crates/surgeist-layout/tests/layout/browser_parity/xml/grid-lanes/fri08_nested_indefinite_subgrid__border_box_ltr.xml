@@ -1,4 +1,4 @@
-<test name="fri08_nested_indefinite_subgrid__border_box_ltr" use-rounding="true">
+<test name="fri08_nested_indefinite_subgrid__border_box_ltr" measurement-version="2" use-rounding="true">
   <viewport width="max-content" height="max-content"/>
   <input>
     <div source-tag="div" display="grid-lanes" direction="ltr" align-content="start" justify-content="start" width="max-content" height="10px" grid-template-rows="10px" grid-template-columns="auto auto auto">

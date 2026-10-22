@@ -49,7 +49,9 @@ public scalar lane.
 Sources: [engine](../src/engine/mod.rs), [measurement](../src/measurement.rs),
 [tree](../src/tree.rs), [cache](../src/cache.rs), and [errors](../src/error.rs).
 
-- Tree layout: `compute_layout` and `compute_layout_invalidated`.
+- Tree layout: `compute_layout` and `compute_layout_invalidated`; captured Text
+  participation: `TextLayoutInput`, `compute_layout_with_text`, and
+  `compute_layout_with_text_invalidated`.
 - Direct leaf measurement: `compute_leaf`.
 - Host contracts: `Traverse`, `LayoutTree`, and `LayoutBatchSink`.
 - Cache and failure contracts: `CacheOf`, `LayoutResultOf`, and `LayoutErrorOf`.
@@ -61,18 +63,54 @@ Source: [node input](../src/node_input/mod.rs) and its domain modules.
 - Aggregate input: `NodeInputOf` and its `NodeInput` default-scalar alias.
 - Tree participation: owned `LayoutInputOf` storage and borrowed `LayoutInputViewOf`, `Display`, `Position`, and `ItemOrder`.
 - Flow and alignment: `WritingMode`, `Direction`, `AlignItems`, and `AlignContent`.
-- Inline and flex input: `InlineTextInputOf`, `InlineBoundaryInputOf`, `FlexDirection`, `FlexWrap`, and `FlexItemCollapse`.
+- Inline and flex input: `TextParticipation`, `TextControlParticipation`, `TextParagraphBinding`,
+  `InlineBoundaryInputOf`, `FlexDirection`, `FlexWrap`, and `FlexItemCollapse`.
 - Grid input: `GridPlacement`, `GridAutoFlow`, and `GridFlowToleranceOf`.
 - Scroll input: `ComputedOverflow`, `OverflowClipMarginOf`, `ScrollPaddingOf`, `ScrollMarginOf`, and `ScrollSnapType`.
 
-Inline segments and atomic participation use Text's canonical `BidiLevel` and
-`InlineWhitespaceEdge`, imported from `surgeist_text`. Supplied resolved levels
-include 126; values `127..=255` refuse. The formatter consumes Text's borrowed
-[`SuppliedLine`](../../surgeist-text/src/supplied_line.rs) for edge decisions and
-complete mixed-participant L2 order. Layout keeps actual break choice, replacements,
-width/metric arithmetic, floats and placement. This mandatory production dependency
-currently includes Text's font and Parley dependencies; it introduces no shaping
-call into Layout. See the [shared ownership contract](../../../docs/text-layout-contract.md).
+Prepared Text participation carries actual issued origin, atomic, and control
+handles. Capture validates complete inventories against the same borrowed tree;
+equal characters from another preparation cannot replace that basis. Layout
+selects actual issued break opportunities and alternatives, then consumes Text's
+finalized metrics, fragments, control slots, and atomic slots. At a discretionary
+endpoint it tries alternatives in declaration order and uses the first that fits;
+it keeps the first alternative when an indivisible candidate must overflow.
+`TextControlParticipation` supplies the exact issued semantic control with no
+allocated strut. Its direction, wrapping, and source-less alternative facts stay
+Text-owned. Existing line breaks and inline boundaries instead supply their real
+Layout strut metrics and must match the corresponding issued semantic role.
+The preparation retains its actual `ParagraphStrut` policy. `DefaultFont`
+contributes the captured base font on each native line; `AllocatedContributions`
+uses real selected text, boxes, controls, and any explicitly supplied Layout
+`line_strut`. Missing metrics remain a typed refusal rather than a guessed font
+or zero-size line.
+
+The initial profile supports horizontal LTR and RTL text, zero indentation,
+font-advance tabs, and no additional spacing allocations. Vertical and sideways
+Text orientations remain explicit unsupported operations. A complete canonical
+frame, line allocation, and float-band basis governs same-invocation retries.
+An unchanged selection reuses its exact finalized line, including rigid
+translation; a repeated conflicting basis refuses rather than looping.
+The common physical line anchor uses nearest-CSS-pixel rounding while retaining
+fractional Text geometry. A real float transition or explicit clearance imposes
+a minimum position; Layout selects the earliest permitted anchor on that same
+pixel grid and retains the constraint during feedback retries. Completed batches
+own the exact placed Text layout
+and authentic fragment handles; consumers can pass that layout directly to
+Render. Bound Text and dependent ancestor geometry caches are rejected across
+invocations, while unrelated box caches retain their ordinary behavior.
+Native scroll geometry includes every logical line allocation, including
+terminal empty lines, alongside the independently placed Text metric bounds.
+Source fragments and atomic boxes contribute their own actual geometry; glyph
+ink and glyph advance do not replace line allocations. The
+[shared placement contract](../../../docs/text-layout-contract.md#canonical-boxes-and-coherent-line-placement)
+distinguishes logical progression, physical anchors and their float constraints.
+
+The box/control-only numeric fitter uses Text's canonical `BidiLevel` and
+borrowed [`SuppliedLine`](../../surgeist-text/src/supplied_line.rs) for ordering.
+Supplied levels include 126; values `127..=255` refuse. It accepts actual atomic
+box/control metrics, not caller-shaped text segments. See the
+[shared ownership contract](../../../docs/text-layout-contract.md).
 
 ### Sizing
 
@@ -96,7 +134,8 @@ Source: [output](../src/output.rs).
 
 - Root request and transaction: `LayoutRootRequestOf` and `CompletedLayoutBatchOf`.
 - Node and sizing results: `NodeOutputOf`, `ComputeInputOf`, and `ComputeOutputOf`.
-- Inline output: `InlineFragmentOutputOf` and `InlineFragmentOutputEntryOf`.
+- Inline output: `InlineFragmentOutputOf`, `InlineFragmentOutputEntryOf`, and
+  `PlacedTextOutput`.
 - Root context: `LayoutRootContextOf`, `FlexItemRootContextOf`, and `ContainingLayoutContext`.
 
 Grid and grid-lanes use canonical scroll-box reservations for intrinsic
@@ -171,7 +210,7 @@ reported through `LayoutUnsupportedCapability::SizingBehavior` with the exact
 property, behavior, algorithm, and axis instead of an automatic fallback.
 
 `LayoutTree::layout_input` returns a concrete `LayoutInputViewOf` borrowed from
-immutable request storage. Box facts and validated inline-text segment storage
+immutable request storage. Box facts and actual Text participation handles
 are read in place; small break and boundary records are copied. Existing owned
 `LayoutInputOf` constructors remain storage choices and expose `as_view` for
 borrowing. A box provider derives `node_input` and the box view from the same

@@ -34,12 +34,10 @@ pub surgeist_layout::AlignItems::Stretch
 impl surgeist_layout::AlignItems
 pub fn surgeist_layout::AlignItems::safe_fallback<S: surgeist_layout::LayoutScalar>(self, free_space: S) -> Self
 pub const fn surgeist_layout::AlignItems::unsafe_position(self) -> Self
-pub enum surgeist_layout::AtomicInlineParticipationErrorOf<S: surgeist_layout::LayoutScalar>
-pub surgeist_layout::AtomicInlineParticipationErrorOf::ReplacementNotAllowed
-pub surgeist_layout::AtomicInlineParticipationErrorOf::ReplacementNotAllowed::replacement_inline_extent: S
 pub enum surgeist_layout::AtomicInlineParticipationRoleError
 pub surgeist_layout::AtomicInlineParticipationRoleError::MissingForAtomicInline
 pub surgeist_layout::AtomicInlineParticipationRoleError::UnexpectedForNonAtomic
+pub surgeist_layout::AtomicInlineParticipationRoleError::UnexpectedForPreparedAtomic
 pub enum surgeist_layout::AvailableOf<S: surgeist_layout::LayoutScalar>
 pub surgeist_layout::AvailableOf::Definite(S)
 pub surgeist_layout::AvailableOf::MaxContent
@@ -196,11 +194,10 @@ pub fn surgeist_layout::GridFlowToleranceOf<S>::default() -> Self
 pub enum surgeist_layout::InlineBoundaryKind
 pub surgeist_layout::InlineBoundaryKind::End
 pub surgeist_layout::InlineBoundaryKind::Start
-pub enum surgeist_layout::InlineBreakKind
-pub surgeist_layout::InlineBreakKind::Allowed
-pub surgeist_layout::InlineBreakKind::AllowedWithReplacement
-pub surgeist_layout::InlineBreakKind::Mandatory
-pub surgeist_layout::InlineBreakKind::Prohibited
+pub enum surgeist_layout::InlineBreakOpportunity
+pub surgeist_layout::InlineBreakOpportunity::Allowed
+pub surgeist_layout::InlineBreakOpportunity::Mandatory
+pub surgeist_layout::InlineBreakOpportunity::Prohibited
 pub enum surgeist_layout::InlineMetricsError<S: surgeist_layout::LayoutScalar>
 pub surgeist_layout::InlineMetricsError::BaselineExceedsLineExtent
 pub surgeist_layout::InlineMetricsError::BaselineExceedsLineExtent::baseline: S
@@ -212,18 +209,6 @@ pub surgeist_layout::InlineMetricsError::Negative
 pub surgeist_layout::InlineMetricsError::Negative::value: S
 pub surgeist_layout::InlineMetricsError::NonFinite
 pub surgeist_layout::InlineMetricsError::NonFinite::value: S
-pub enum surgeist_layout::InlineTextInputErrorOf<S: surgeist_layout::LayoutScalar>
-pub surgeist_layout::InlineTextInputErrorOf::DuplicateSegmentId
-pub surgeist_layout::InlineTextInputErrorOf::DuplicateSegmentId::segment_id: surgeist_layout::InlineSegmentId
-pub surgeist_layout::InlineTextInputErrorOf::Empty
-pub surgeist_layout::InlineTextInputErrorOf::InvalidInlineExtent
-pub surgeist_layout::InlineTextInputErrorOf::InvalidInlineExtent::error: surgeist_layout::NonNegativeFiniteScalarErrorOf<S>
-pub surgeist_layout::InlineTextInputErrorOf::InvalidInlineExtent::segment_id: surgeist_layout::InlineSegmentId
-pub surgeist_layout::InlineTextInputErrorOf::InvalidReplacementInlineExtent
-pub surgeist_layout::InlineTextInputErrorOf::InvalidReplacementInlineExtent::error: surgeist_layout::NonNegativeFiniteScalarErrorOf<S>
-pub surgeist_layout::InlineTextInputErrorOf::ReplacementWithDiscardableWhitespace
-pub surgeist_layout::InlineTextInputErrorOf::ReplacementWithDiscardableWhitespace::segment_id: surgeist_layout::InlineSegmentId
-pub surgeist_layout::InlineTextInputErrorOf::ReplacementWithDiscardableWhitespace::whitespace_edge: surgeist_text::supplied_line::InlineWhitespaceEdge
 pub enum surgeist_layout::LaneIntrinsicItemKind
 pub surgeist_layout::LaneIntrinsicItemKind::Definite
 pub surgeist_layout::LaneIntrinsicItemKind::Definite::span: surgeist_layout::LaneTrackSpan
@@ -254,6 +239,11 @@ pub surgeist_layout::LayoutErrorKindOf::InternalInvariant(surgeist_layout::Layou
 pub surgeist_layout::LayoutErrorKindOf::InvalidInput(surgeist_layout::LayoutInvalidInputOf<S>)
 pub surgeist_layout::LayoutErrorKindOf::Measurement(M)
 pub surgeist_layout::LayoutErrorKindOf::MissingContext(surgeist_layout::LayoutMissingContext)
+pub surgeist_layout::LayoutErrorKindOf::Text(surgeist_text::error::Error)
+pub surgeist_layout::LayoutErrorKindOf::TextFeedbackCycle
+pub surgeist_layout::LayoutErrorKindOf::TextNumeric
+pub surgeist_layout::LayoutErrorKindOf::TextNumeric::reason: surgeist_layout::LayoutTextNumericError
+pub surgeist_layout::LayoutErrorKindOf::TextNumeric::value: f64
 pub surgeist_layout::LayoutErrorKindOf::UnsupportedCapability(surgeist_layout::LayoutUnsupportedCapability)
 pub enum surgeist_layout::LayoutErrorSiteOf<Node>
 pub surgeist_layout::LayoutErrorSiteOf::ContainerSubject
@@ -264,34 +254,38 @@ pub surgeist_layout::LayoutErrorSiteOf::Standalone
 pub enum surgeist_layout::LayoutInputOf<S: surgeist_layout::LayoutScalar>
 pub surgeist_layout::LayoutInputOf::Box(alloc::boxed::Box<surgeist_layout::NodeInputOf<S>>)
 pub surgeist_layout::LayoutInputOf::InlineBoundary(surgeist_layout::InlineBoundaryInputOf<S>)
-pub surgeist_layout::LayoutInputOf::InlineText(surgeist_layout::InlineTextInputOf<S>)
+pub surgeist_layout::LayoutInputOf::InlineText(surgeist_layout::TextParticipation)
 pub surgeist_layout::LayoutInputOf::LineBreak(surgeist_layout::LineBreakInputOf<S>)
+pub surgeist_layout::LayoutInputOf::TextControl(surgeist_layout::TextControlParticipation)
 impl<S: surgeist_layout::LayoutScalar> surgeist_layout::LayoutInputOf<S>
 pub fn surgeist_layout::LayoutInputOf<S>::as_box(&self) -> core::option::Option<&surgeist_layout::NodeInputOf<S>>
 pub const fn surgeist_layout::LayoutInputOf<S>::as_inline_boundary(&self) -> core::option::Option<surgeist_layout::InlineBoundaryInputOf<S>>
-pub const fn surgeist_layout::LayoutInputOf<S>::as_inline_text(&self) -> core::option::Option<&surgeist_layout::InlineTextInputOf<S>>
+pub const fn surgeist_layout::LayoutInputOf<S>::as_inline_text(&self) -> core::option::Option<&surgeist_layout::TextParticipation>
 pub const fn surgeist_layout::LayoutInputOf<S>::as_line_break(&self) -> core::option::Option<surgeist_layout::LineBreakInputOf<S>>
+pub const fn surgeist_layout::LayoutInputOf<S>::as_text_control(&self) -> core::option::Option<&surgeist_layout::TextControlParticipation>
 pub fn surgeist_layout::LayoutInputOf<S>::as_view(&self) -> surgeist_layout::LayoutInputViewOf<'_, S>
 pub fn surgeist_layout::LayoutInputOf<S>::box_input(input: surgeist_layout::NodeInputOf<S>) -> Self
 pub const fn surgeist_layout::LayoutInputOf<S>::inline_boundary(input: surgeist_layout::InlineBoundaryInputOf<S>) -> Self
-pub const fn surgeist_layout::LayoutInputOf<S>::inline_text(input: surgeist_layout::InlineTextInputOf<S>) -> Self
+pub const fn surgeist_layout::LayoutInputOf<S>::inline_text(input: surgeist_layout::TextParticipation) -> Self
 pub const fn surgeist_layout::LayoutInputOf<S>::line_break(input: surgeist_layout::LineBreakInputOf<S>) -> Self
+pub const fn surgeist_layout::LayoutInputOf<S>::text_control(input: surgeist_layout::TextControlParticipation) -> Self
 pub enum surgeist_layout::LayoutInputViewOf<'input, S: surgeist_layout::LayoutScalar>
 pub surgeist_layout::LayoutInputViewOf::Box(&'input surgeist_layout::NodeInputOf<S>)
 pub surgeist_layout::LayoutInputViewOf::InlineBoundary(surgeist_layout::InlineBoundaryInputOf<S>)
-pub surgeist_layout::LayoutInputViewOf::InlineText(&'input surgeist_layout::InlineTextInputOf<S>)
+pub surgeist_layout::LayoutInputViewOf::InlineText(&'input surgeist_layout::TextParticipation)
 pub surgeist_layout::LayoutInputViewOf::LineBreak(surgeist_layout::LineBreakInputOf<S>)
+pub surgeist_layout::LayoutInputViewOf::TextControl(&'input surgeist_layout::TextControlParticipation)
 impl<'input, S: surgeist_layout::LayoutScalar> surgeist_layout::LayoutInputViewOf<'input, S>
 pub const fn surgeist_layout::LayoutInputViewOf<'input, S>::as_box(self) -> core::option::Option<&'input surgeist_layout::NodeInputOf<S>>
 pub const fn surgeist_layout::LayoutInputViewOf<'input, S>::as_inline_boundary(self) -> core::option::Option<surgeist_layout::InlineBoundaryInputOf<S>>
-pub const fn surgeist_layout::LayoutInputViewOf<'input, S>::as_inline_text(self) -> core::option::Option<&'input surgeist_layout::InlineTextInputOf<S>>
+pub const fn surgeist_layout::LayoutInputViewOf<'input, S>::as_inline_text(self) -> core::option::Option<&'input surgeist_layout::TextParticipation>
 pub const fn surgeist_layout::LayoutInputViewOf<'input, S>::as_line_break(self) -> core::option::Option<surgeist_layout::LineBreakInputOf<S>>
+pub const fn surgeist_layout::LayoutInputViewOf<'input, S>::as_text_control(self) -> core::option::Option<&'input surgeist_layout::TextControlParticipation>
 #[non_exhaustive] pub enum surgeist_layout::LayoutInternalInvariant
 pub surgeist_layout::LayoutInternalInvariant::InvalidBlockScrollGeometry
 pub surgeist_layout::LayoutInternalInvariant::InvalidRootScrollGeometry
 pub surgeist_layout::LayoutInternalInvariant::InvalidRoundedInlineFragmentGeometry
 pub surgeist_layout::LayoutInternalInvariant::InvalidRoundedScrollGeometry
-pub surgeist_layout::LayoutInternalInvariant::MissingCachedInlineFragmentState
 pub surgeist_layout::LayoutInternalInvariant::MissingLeafMeasurementProvider
 pub surgeist_layout::LayoutInternalInvariant::MissingStagedUnroundedOutput
 pub surgeist_layout::LayoutInternalInvariant::SubgridBaselineInheritance
@@ -306,7 +300,6 @@ pub surgeist_layout::LayoutInvalidInputOf::FloatExclusionRole::reason: surgeist_
 pub surgeist_layout::LayoutInvalidInputOf::InlineFlowMismatch
 pub surgeist_layout::LayoutInvalidInputOf::InlineFlowMismatch::actual: surgeist_layout::FlowAxes
 pub surgeist_layout::LayoutInvalidInputOf::InlineFlowMismatch::expected: surgeist_layout::FlowAxes
-pub surgeist_layout::LayoutInvalidInputOf::InlineText(surgeist_layout::InlineTextInputErrorOf<S>)
 pub surgeist_layout::LayoutInvalidInputOf::InvalidNumeric
 pub surgeist_layout::LayoutInvalidInputOf::InvalidNumeric::value: S
 pub surgeist_layout::LayoutInvalidInputOf::InvalidationNodeNotReachable
@@ -316,10 +309,13 @@ pub surgeist_layout::LayoutInvalidInputOf::NonBoxNodeRole::reason: surgeist_layo
 pub surgeist_layout::LayoutInvalidInputOf::RootAvailability
 pub surgeist_layout::LayoutInvalidInputOf::RootAvailability::axis: surgeist_layout::PhysicalAxis
 pub surgeist_layout::LayoutInvalidInputOf::RootAvailability::error: surgeist_layout::NonNegativeFiniteScalarErrorOf<S>
+pub surgeist_layout::LayoutInvalidInputOf::TextBinding(surgeist_layout::TextBindingError)
 pub surgeist_layout::LayoutInvalidInputOf::TreeTopologyCycle
 #[non_exhaustive] pub enum surgeist_layout::LayoutMissingContext
 pub surgeist_layout::LayoutMissingContext::FloatExclusionProvider
 pub surgeist_layout::LayoutMissingContext::RequiredBasis
+pub surgeist_layout::LayoutMissingContext::TextCapture
+pub surgeist_layout::LayoutMissingContext::TextOutOfFlowGeometry
 pub enum surgeist_layout::LayoutOperation
 pub surgeist_layout::LayoutOperation::CacheAccess
 pub surgeist_layout::LayoutOperation::CacheInvalidation
@@ -330,12 +326,19 @@ pub surgeist_layout::LayoutOperation::HiddenLayout
 pub surgeist_layout::LayoutOperation::LeafMeasurement
 pub surgeist_layout::LayoutOperation::RootLayout
 pub surgeist_layout::LayoutOperation::RoundingFinalization
+pub surgeist_layout::LayoutOperation::TextCapture
+pub surgeist_layout::LayoutOperation::TextPlacement
+pub surgeist_layout::LayoutOperation::TextSelection
 pub surgeist_layout::LayoutOperation::ValueResolution
 pub enum surgeist_layout::LayoutRootContextOf<S: surgeist_layout::LayoutScalar>
 pub surgeist_layout::LayoutRootContextOf::FlexItemUnderViewport(surgeist_layout::FlexItemRootContextOf<S>)
 pub surgeist_layout::LayoutRootContextOf::Viewport
 pub enum surgeist_layout::LayoutRoundingMode
 pub surgeist_layout::LayoutRoundingMode::NearestCssPixel
+pub enum surgeist_layout::LayoutTextNumericError
+pub surgeist_layout::LayoutTextNumericError::NonFinite
+pub surgeist_layout::LayoutTextNumericError::NonZeroLost
+pub surgeist_layout::LayoutTextNumericError::OutOfRange
 #[non_exhaustive] pub enum surgeist_layout::LayoutUnsupportedCapability
 pub surgeist_layout::LayoutUnsupportedCapability::LaterFriBehavior
 pub surgeist_layout::LayoutUnsupportedCapability::SizingBehavior(surgeist_layout::UnsupportedSizingBehavior)
@@ -690,6 +693,18 @@ pub surgeist_layout::TextAlign::Auto
 pub surgeist_layout::TextAlign::LegacyCenter
 pub surgeist_layout::TextAlign::LegacyLeft
 pub surgeist_layout::TextAlign::LegacyRight
+#[non_exhaustive] pub enum surgeist_layout::TextBindingError
+pub surgeist_layout::TextBindingError::AtomicCoverage
+pub surgeist_layout::TextBindingError::ControlCoverage
+pub surgeist_layout::TextBindingError::DuplicateRunNode
+pub surgeist_layout::TextBindingError::EmptyRun
+pub surgeist_layout::TextBindingError::MissingParagraph
+pub surgeist_layout::TextBindingError::OriginCoverage
+pub surgeist_layout::TextBindingError::OverlappingParagraphs
+pub surgeist_layout::TextBindingError::ParticipantOrder
+pub surgeist_layout::TextBindingError::ParticipantRole
+pub surgeist_layout::TextBindingError::RootMismatch
+pub surgeist_layout::TextBindingError::RunMembership
 pub enum surgeist_layout::TrackComponentOf<S: surgeist_layout::LayoutScalar>
 pub surgeist_layout::TrackComponentOf::LineNames(alloc::vec::Vec<alloc::string::String>)
 pub surgeist_layout::TrackComponentOf::Repeat(surgeist_layout::TrackRepetitionOf<S>)
@@ -736,11 +751,11 @@ pub struct surgeist_layout::AspectRatioOf<S: surgeist_layout::LayoutScalar>(_)
 impl<S: surgeist_layout::LayoutScalar> surgeist_layout::AspectRatioOf<S>
 pub const fn surgeist_layout::AspectRatioOf<S>::get(self) -> S
 pub fn surgeist_layout::AspectRatioOf<S>::new(value: S) -> core::option::Option<Self>
-pub struct surgeist_layout::AtomicInlineParticipationOf<S: surgeist_layout::LayoutScalar>
-impl<S: surgeist_layout::LayoutScalar> surgeist_layout::AtomicInlineParticipationOf<S>
-pub const fn surgeist_layout::AtomicInlineParticipationOf<S>::bidi_level(self) -> surgeist_text::supplied_line::BidiLevel
-pub const fn surgeist_layout::AtomicInlineParticipationOf<S>::following_break(self) -> surgeist_layout::InlineBreakOpportunityOf<S>
-pub fn surgeist_layout::AtomicInlineParticipationOf<S>::try_new(bidi_level: surgeist_text::supplied_line::BidiLevel, following_break: surgeist_layout::InlineBreakOpportunityOf<S>) -> core::result::Result<Self, surgeist_layout::AtomicInlineParticipationErrorOf<S>>
+pub struct surgeist_layout::AtomicInlineParticipation
+impl surgeist_layout::AtomicInlineParticipation
+pub const fn surgeist_layout::AtomicInlineParticipation::bidi_level(self) -> surgeist_text::supplied_line::BidiLevel
+pub const fn surgeist_layout::AtomicInlineParticipation::following_break(self) -> surgeist_layout::InlineBreakOpportunity
+pub const fn surgeist_layout::AtomicInlineParticipation::new(bidi_level: surgeist_text::supplied_line::BidiLevel, following_break: surgeist_layout::InlineBreakOpportunity) -> Self
 pub struct surgeist_layout::BaselinesOf<S: surgeist_layout::LayoutScalar>
 pub surgeist_layout::BaselinesOf::first: surgeist_layout::Point<core::option::Option<S>>
 pub surgeist_layout::BaselinesOf::last: surgeist_layout::Point<core::option::Option<S>>
@@ -789,6 +804,7 @@ pub fn surgeist_layout::CompletedLayoutBatchOf<Node, S>::cache_store_entries(&se
 pub fn surgeist_layout::CompletedLayoutBatchOf<Node, S>::final_entries(&self) -> &[surgeist_layout::LayoutOutputEntryOf<Node, S>]
 pub fn surgeist_layout::CompletedLayoutBatchOf<Node, S>::final_inline_fragments(&self) -> &[surgeist_layout::InlineFragmentOutputEntryOf<Node, S>]
 pub fn surgeist_layout::CompletedLayoutBatchOf<Node, S>::invalidated_nodes(&self) -> &[Node]
+pub fn surgeist_layout::CompletedLayoutBatchOf<Node, S>::placed_text(&self) -> &[surgeist_layout::PlacedTextOutput<Node>]
 pub fn surgeist_layout::CompletedLayoutBatchOf<Node, S>::unrounded_entries(&self) -> &[surgeist_layout::LayoutOutputEntryOf<Node, S>]
 pub fn surgeist_layout::CompletedLayoutBatchOf<Node, S>::unrounded_inline_fragments(&self) -> &[surgeist_layout::InlineFragmentOutputEntryOf<Node, S>]
 pub struct surgeist_layout::ComputeInputOf<S: surgeist_layout::LayoutScalar>
@@ -1001,26 +1017,16 @@ pub const fn surgeist_layout::InlineBoundaryInputOf<S>::with_direction(self, dir
 pub const fn surgeist_layout::InlineBoundaryInputOf<S>::with_vertical_align(self, vertical_align: surgeist_layout::VerticalAlign) -> Self
 pub const fn surgeist_layout::InlineBoundaryInputOf<S>::with_writing_mode(self, writing_mode: surgeist_layout::WritingMode) -> Self
 pub const fn surgeist_layout::InlineBoundaryInputOf<S>::writing_mode(self) -> surgeist_layout::WritingMode
-pub struct surgeist_layout::InlineBreakOpportunityOf<S: surgeist_layout::LayoutScalar>
-impl<S: surgeist_layout::LayoutScalar> surgeist_layout::InlineBreakOpportunityOf<S>
-pub const fn surgeist_layout::InlineBreakOpportunityOf<S>::allowed() -> Self
-pub const fn surgeist_layout::InlineBreakOpportunityOf<S>::kind(self) -> surgeist_layout::InlineBreakKind
-pub const fn surgeist_layout::InlineBreakOpportunityOf<S>::mandatory() -> Self
-pub const fn surgeist_layout::InlineBreakOpportunityOf<S>::prohibited() -> Self
-pub const fn surgeist_layout::InlineBreakOpportunityOf<S>::replacement_inline_extent(self) -> core::option::Option<S>
-pub fn surgeist_layout::InlineBreakOpportunityOf<S>::try_allowed_with_replacement(extent: S) -> core::result::Result<Self, surgeist_layout::InlineTextInputErrorOf<S>>
 pub struct surgeist_layout::InlineFragmentOutputEntryOf<Node, S: surgeist_layout::LayoutScalar>
-impl<Node, S> surgeist_layout::InlineFragmentOutputEntryOf<Node, S> where Node: core::marker::Copy, S: surgeist_layout::LayoutScalar
-pub const fn surgeist_layout::InlineFragmentOutputEntryOf<Node, S>::fragment(&self) -> surgeist_layout::InlineFragmentOutputOf<S>
+impl<Node: core::marker::Copy, S: surgeist_layout::LayoutScalar> surgeist_layout::InlineFragmentOutputEntryOf<Node, S>
+pub fn surgeist_layout::InlineFragmentOutputEntryOf<Node, S>::fragment(&self) -> &surgeist_layout::InlineFragmentOutputOf<S>
 pub const fn surgeist_layout::InlineFragmentOutputEntryOf<Node, S>::node(&self) -> Node
 pub struct surgeist_layout::InlineFragmentOutputOf<S: surgeist_layout::LayoutScalar>
 impl<S: surgeist_layout::LayoutScalar> surgeist_layout::InlineFragmentOutputOf<S>
 pub const fn surgeist_layout::InlineFragmentOutputOf<S>::baseline(&self) -> surgeist_layout::Point<S>
+pub fn surgeist_layout::InlineFragmentOutputOf<S>::finalized_fragment(&self) -> &surgeist_text::protocol::FinalizedFragment
 pub const fn surgeist_layout::InlineFragmentOutputOf<S>::line_index(&self) -> usize
-pub const fn surgeist_layout::InlineFragmentOutputOf<S>::rect(&self) -> surgeist_layout::ScrollRectOf<S>
-pub const fn surgeist_layout::InlineFragmentOutputOf<S>::replacement_inline_extent(&self) -> core::option::Option<S>
-pub const fn surgeist_layout::InlineFragmentOutputOf<S>::segment_id(&self) -> surgeist_layout::InlineSegmentId
-pub const fn surgeist_layout::InlineFragmentOutputOf<S>::visual_index(&self) -> usize
+pub const fn surgeist_layout::InlineFragmentOutputOf<S>::rect(&self) -> core::option::Option<surgeist_layout::ScrollRectOf<S>>
 pub struct surgeist_layout::InlineMetricsOf<S: surgeist_layout::LayoutScalar>
 impl<S: surgeist_layout::LayoutScalar> surgeist_layout::InlineMetricsOf<S>
 pub fn surgeist_layout::InlineMetricsOf<S>::after_baseline(self) -> S
@@ -1031,14 +1037,6 @@ pub const fn surgeist_layout::InlineMetricsOf<S>::line_extent(self) -> S
 pub fn surgeist_layout::InlineMetricsOf<S>::try_new(baseline: S, line_extent: S) -> core::result::Result<Self, surgeist_layout::InlineMetricsError<S>>
 impl<S: surgeist_layout::LayoutScalar> core::default::Default for surgeist_layout::InlineMetricsOf<S>
 pub fn surgeist_layout::InlineMetricsOf<S>::default() -> Self
-pub struct surgeist_layout::InlineSegmentId(_)
-impl surgeist_layout::InlineSegmentId
-pub const fn surgeist_layout::InlineSegmentId::get(self) -> u64
-pub const fn surgeist_layout::InlineSegmentId::new(value: u64) -> Self
-pub struct surgeist_layout::InlineTextInputOf<S: surgeist_layout::LayoutScalar>
-impl<S: surgeist_layout::LayoutScalar> surgeist_layout::InlineTextInputOf<S>
-pub fn surgeist_layout::InlineTextInputOf<S>::segments(&self) -> &[surgeist_layout::ShapedInlineSegmentOf<S>]
-pub fn surgeist_layout::InlineTextInputOf<S>::try_new(segments: alloc::vec::Vec<surgeist_layout::ShapedInlineSegmentOf<S>>) -> core::result::Result<Self, surgeist_layout::InlineTextInputErrorOf<S>>
 pub struct surgeist_layout::InvalidMeasurementOutputOf<S: surgeist_layout::LayoutScalar>
 impl<S: surgeist_layout::LayoutScalar> surgeist_layout::InvalidMeasurementOutputOf<S>
 pub const fn surgeist_layout::InvalidMeasurementOutputOf<S>::axis(self) -> surgeist_layout::PhysicalAxis
@@ -1231,7 +1229,7 @@ pub surgeist_layout::NodeInputOf::align_content: core::option::Option<surgeist_l
 pub surgeist_layout::NodeInputOf::align_items: core::option::Option<surgeist_layout::AlignItems>
 pub surgeist_layout::NodeInputOf::align_self: core::option::Option<surgeist_layout::AlignItems>
 pub surgeist_layout::NodeInputOf::aspect_ratio: core::option::Option<surgeist_layout::AspectRatioOf<S>>
-pub surgeist_layout::NodeInputOf::atomic_inline_participation: core::option::Option<surgeist_layout::AtomicInlineParticipationOf<S>>
+pub surgeist_layout::NodeInputOf::atomic_inline_participation: core::option::Option<surgeist_layout::AtomicInlineParticipation>
 pub surgeist_layout::NodeInputOf::border: surgeist_layout::Edges<surgeist_layout::LengthOf<S>>
 pub surgeist_layout::NodeInputOf::box_sizing: surgeist_layout::BoxSizing
 pub surgeist_layout::NodeInputOf::clear: surgeist_layout::Clear
@@ -1345,6 +1343,11 @@ pub fn surgeist_layout::PhysicalScrollRangeOf<S>::clamp(self, offset: surgeist_l
 pub fn surgeist_layout::PhysicalScrollRangeOf<S>::try_new(x_minimum: S, x_maximum: S, y_minimum: S, y_maximum: S) -> core::result::Result<Self, surgeist_layout::ScrollCoordinateErrorOf<S>>
 pub const fn surgeist_layout::PhysicalScrollRangeOf<S>::x(self) -> surgeist_layout::PhysicalScrollAxisRangeOf<S>
 pub const fn surgeist_layout::PhysicalScrollRangeOf<S>::y(self) -> surgeist_layout::PhysicalScrollAxisRangeOf<S>
+pub struct surgeist_layout::PlacedTextOutput<Node>
+impl<Node: core::marker::Copy> surgeist_layout::PlacedTextOutput<Node>
+pub const fn surgeist_layout::PlacedTextOutput<Node>::container(&self) -> Node
+pub fn surgeist_layout::PlacedTextOutput<Node>::layout(&self) -> &surgeist_text::layout::Layout
+pub fn surgeist_layout::PlacedTextOutput<Node>::nodes(&self) -> &[Node]
 pub struct surgeist_layout::Point<T>
 pub surgeist_layout::Point::x: T
 pub surgeist_layout::Point::y: T
@@ -1467,15 +1470,6 @@ pub const fn surgeist_layout::ScrollbarWidthOf<S>::get(self) -> S
 pub fn surgeist_layout::ScrollbarWidthOf<S>::try_new(value: S) -> core::result::Result<Self, surgeist_layout::NonNegativeFiniteScalarErrorOf<S>>
 impl<S: surgeist_layout::LayoutScalar> core::default::Default for surgeist_layout::ScrollbarWidthOf<S>
 pub fn surgeist_layout::ScrollbarWidthOf<S>::default() -> Self
-pub struct surgeist_layout::ShapedInlineSegmentOf<S: surgeist_layout::LayoutScalar>
-impl<S: surgeist_layout::LayoutScalar> surgeist_layout::ShapedInlineSegmentOf<S>
-pub const fn surgeist_layout::ShapedInlineSegmentOf<S>::bidi_level(self) -> surgeist_text::supplied_line::BidiLevel
-pub const fn surgeist_layout::ShapedInlineSegmentOf<S>::following_break(self) -> surgeist_layout::InlineBreakOpportunityOf<S>
-pub const fn surgeist_layout::ShapedInlineSegmentOf<S>::inline_extent(self) -> S
-pub const fn surgeist_layout::ShapedInlineSegmentOf<S>::metrics(self) -> surgeist_layout::InlineMetricsOf<S>
-pub const fn surgeist_layout::ShapedInlineSegmentOf<S>::segment_id(self) -> surgeist_layout::InlineSegmentId
-pub fn surgeist_layout::ShapedInlineSegmentOf<S>::try_new(segment_id: surgeist_layout::InlineSegmentId, inline_extent: S, metrics: surgeist_layout::InlineMetricsOf<S>, bidi_level: surgeist_text::supplied_line::BidiLevel, whitespace_edge: surgeist_text::supplied_line::InlineWhitespaceEdge, following_break: surgeist_layout::InlineBreakOpportunityOf<S>) -> core::result::Result<Self, surgeist_layout::InlineTextInputErrorOf<S>>
-pub const fn surgeist_layout::ShapedInlineSegmentOf<S>::whitespace_edge(self) -> surgeist_text::supplied_line::InlineWhitespaceEdge
 pub struct surgeist_layout::Size<T>
 pub surgeist_layout::Size::height: T
 pub surgeist_layout::Size::width: T
@@ -1513,6 +1507,36 @@ pub surgeist_layout::SubgridTrack::name_components: alloc::vec::Vec<surgeist_lay
 impl surgeist_layout::SubgridTrack
 pub fn surgeist_layout::SubgridTrack::line_names(&self) -> alloc::vec::Vec<alloc::vec::Vec<alloc::string::String>>
 pub fn surgeist_layout::SubgridTrack::new(line_names: alloc::vec::Vec<alloc::vec::Vec<alloc::string::String>>) -> Self
+pub struct surgeist_layout::TextAtomicBinding<Node>
+pub surgeist_layout::TextAtomicBinding::node: Node
+pub surgeist_layout::TextAtomicBinding::occurrence: surgeist_text::protocol::PreparedAtomic
+pub struct surgeist_layout::TextControlBinding<Node>
+pub surgeist_layout::TextControlBinding::node: Node
+pub surgeist_layout::TextControlBinding::occurrence: surgeist_text::protocol::PreparedControl
+pub struct surgeist_layout::TextControlParticipation
+impl surgeist_layout::TextControlParticipation
+pub const fn surgeist_layout::TextControlParticipation::new(occurrence: surgeist_text::protocol::PreparedControl) -> Self
+pub const fn surgeist_layout::TextControlParticipation::occurrence(&self) -> &surgeist_text::protocol::PreparedControl
+pub struct surgeist_layout::TextLayoutInput<'tree, Tree: surgeist_layout::LayoutTree>
+impl<'tree, Tree: surgeist_layout::LayoutTree> surgeist_layout::TextLayoutInput<'tree, Tree>
+pub fn surgeist_layout::TextLayoutInput<'tree, Tree>::paragraphs(&self) -> &[surgeist_layout::TextParagraphBinding<<Tree as surgeist_layout::Traverse>::Node>]
+pub fn surgeist_layout::TextLayoutInput<'tree, Tree>::tree(&self) -> &'tree Tree
+pub fn surgeist_layout::TextLayoutInput<'tree, Tree>::try_new(tree: &'tree Tree, root: <Tree as surgeist_layout::Traverse>::Node, paragraphs: alloc::vec::Vec<surgeist_layout::TextParagraphBinding<<Tree as surgeist_layout::Traverse>::Node>>) -> surgeist_layout::LayoutResultOf<<Tree as surgeist_layout::Traverse>::Node, Self, <Tree as surgeist_layout::Traverse>::Scalar, <Tree as surgeist_layout::LayoutTree>::MeasureError>
+pub struct surgeist_layout::TextOriginBinding<Node>
+pub surgeist_layout::TextOriginBinding::node: Node
+pub surgeist_layout::TextOriginBinding::origin: surgeist_text::protocol::PreparedOrigin
+pub struct surgeist_layout::TextParagraphBinding<Node>
+pub surgeist_layout::TextParagraphBinding::atomics: alloc::vec::Vec<surgeist_layout::TextAtomicBinding<Node>>
+pub surgeist_layout::TextParagraphBinding::container: Node
+pub surgeist_layout::TextParagraphBinding::controls: alloc::vec::Vec<surgeist_layout::TextControlBinding<Node>>
+pub surgeist_layout::TextParagraphBinding::line_strut: core::option::Option<surgeist_text::protocol::LineStrut>
+pub surgeist_layout::TextParagraphBinding::nodes: alloc::vec::Vec<Node>
+pub surgeist_layout::TextParagraphBinding::origins: alloc::vec::Vec<surgeist_layout::TextOriginBinding<Node>>
+pub surgeist_layout::TextParagraphBinding::prepared: surgeist_text::protocol::PreparedText
+pub struct surgeist_layout::TextParticipation
+impl surgeist_layout::TextParticipation
+pub const fn surgeist_layout::TextParticipation::new(origin: surgeist_text::protocol::PreparedOrigin) -> Self
+pub const fn surgeist_layout::TextParticipation::origin(&self) -> &surgeist_text::protocol::PreparedOrigin
 pub struct surgeist_layout::TrackComponentListOf<S: surgeist_layout::LayoutScalar>(_)
 impl<S: surgeist_layout::LayoutScalar> surgeist_layout::TrackComponentListOf<S>
 pub fn surgeist_layout::TrackComponentListOf<S>::as_slice(&self) -> &[surgeist_layout::TrackComponentOf<S>]
@@ -1636,7 +1660,6 @@ pub fn surgeist_layout::LayoutTree::has_leaf_measurement(&self, _node: Self::Nod
 pub fn surgeist_layout::LayoutTree::layout_input(&self, node: Self::Node) -> surgeist_layout::LayoutInputViewOf<'_, Self::Scalar>
 pub fn surgeist_layout::LayoutTree::measure_leaf(&self, _node: Self::Node, _input: surgeist_layout::LeafMeasureInputOf<Self::Scalar>) -> core::option::Option<core::result::Result<surgeist_layout::Size<Self::Scalar>, Self::MeasureError>>
 pub fn surgeist_layout::LayoutTree::node_input(&self, node: Self::Node) -> &surgeist_layout::NodeInputOf<Self::Scalar>
-pub fn surgeist_layout::LayoutTree::unrounded_inline_fragments(&self, _node: Self::Node) -> core::option::Option<&[surgeist_layout::InlineFragmentOutputOf<Self::Scalar>]>
 pub fn surgeist_layout::LayoutTree::unrounded_layout(&self, _node: Self::Node) -> core::option::Option<surgeist_layout::NodeOutputOf<Self::Scalar>>
 pub trait surgeist_layout::Traverse
 pub type surgeist_layout::Traverse::Children<'a> where Self: 'a: core::iter::traits::iterator::Iterator<Item = Self::Node>
@@ -1647,6 +1670,8 @@ pub fn surgeist_layout::Traverse::child_count(&self, node: Self::Node) -> usize
 pub fn surgeist_layout::Traverse::children(&self, node: Self::Node) -> Self::Children
 pub fn surgeist_layout::compute_layout<Tree>(tree: &Tree, root: <Tree as surgeist_layout::Traverse>::Node, request: surgeist_layout::LayoutRootRequestOf<<Tree as surgeist_layout::Traverse>::Scalar>) -> surgeist_layout::LayoutResultOf<<Tree as surgeist_layout::Traverse>::Node, surgeist_layout::CompletedLayoutBatchOf<<Tree as surgeist_layout::Traverse>::Node, <Tree as surgeist_layout::Traverse>::Scalar>, <Tree as surgeist_layout::Traverse>::Scalar, <Tree as surgeist_layout::LayoutTree>::MeasureError> where Tree: surgeist_layout::LayoutTree
 pub fn surgeist_layout::compute_layout_invalidated<Tree>(tree: &Tree, root: <Tree as surgeist_layout::Traverse>::Node, request: surgeist_layout::LayoutRootRequestOf<<Tree as surgeist_layout::Traverse>::Scalar>, changed_nodes: &[<Tree as surgeist_layout::Traverse>::Node]) -> surgeist_layout::LayoutResultOf<<Tree as surgeist_layout::Traverse>::Node, surgeist_layout::CompletedLayoutBatchOf<<Tree as surgeist_layout::Traverse>::Node, <Tree as surgeist_layout::Traverse>::Scalar>, <Tree as surgeist_layout::Traverse>::Scalar, <Tree as surgeist_layout::LayoutTree>::MeasureError> where Tree: surgeist_layout::LayoutTree
+pub fn surgeist_layout::compute_layout_with_text<Tree>(capture: &surgeist_layout::TextLayoutInput<'_, Tree>, root: <Tree as surgeist_layout::Traverse>::Node, request: surgeist_layout::LayoutRootRequestOf<<Tree as surgeist_layout::Traverse>::Scalar>) -> surgeist_layout::LayoutResultOf<<Tree as surgeist_layout::Traverse>::Node, surgeist_layout::CompletedLayoutBatchOf<<Tree as surgeist_layout::Traverse>::Node, <Tree as surgeist_layout::Traverse>::Scalar>, <Tree as surgeist_layout::Traverse>::Scalar, <Tree as surgeist_layout::LayoutTree>::MeasureError> where Tree: surgeist_layout::LayoutTree
+pub fn surgeist_layout::compute_layout_with_text_invalidated<Tree>(capture: &surgeist_layout::TextLayoutInput<'_, Tree>, root: <Tree as surgeist_layout::Traverse>::Node, request: surgeist_layout::LayoutRootRequestOf<<Tree as surgeist_layout::Traverse>::Scalar>, changed_nodes: &[<Tree as surgeist_layout::Traverse>::Node]) -> surgeist_layout::LayoutResultOf<<Tree as surgeist_layout::Traverse>::Node, surgeist_layout::CompletedLayoutBatchOf<<Tree as surgeist_layout::Traverse>::Node, <Tree as surgeist_layout::Traverse>::Scalar>, <Tree as surgeist_layout::Traverse>::Scalar, <Tree as surgeist_layout::LayoutTree>::MeasureError> where Tree: surgeist_layout::LayoutTree
 pub fn surgeist_layout::compute_leaf<S, M>(input: surgeist_layout::ComputeInputOf<S>, style: &surgeist_layout::NodeInputOf<S>, measure: impl core::ops::function::FnMut(surgeist_layout::LeafMeasureInputOf<S>) -> core::result::Result<surgeist_layout::Size<S>, M>) -> surgeist_layout::LayoutResultOf<(), surgeist_layout::ComputeOutputOf<S>, S, M> where S: surgeist_layout::LayoutScalar
 pub const fn surgeist_layout::grid_axis_for_lanes(auto_flow: surgeist_layout::GridAutoFlow) -> surgeist_layout::GridAxisKind
 pub const fn surgeist_layout::lane_axis(auto_flow: surgeist_layout::GridAutoFlow) -> surgeist_layout::GridAxisKind
@@ -1655,8 +1680,6 @@ pub fn surgeist_layout::place_lanes<Item, S: surgeist_layout::LayoutScalar>(inpu
 pub fn surgeist_layout::track_sizing_components(components: &[surgeist_layout::TrackComponent]) -> alloc::vec::Vec<surgeist_layout::TrackSizing>
 pub fn surgeist_layout::track_sizing_components_of<S: surgeist_layout::LayoutScalar>(components: &[surgeist_layout::TrackComponentOf<S>]) -> alloc::vec::Vec<surgeist_layout::TrackSizingOf<S>>
 pub type surgeist_layout::AspectRatio = surgeist_layout::AspectRatioOf<surgeist_layout::DefaultScalar>
-pub type surgeist_layout::AtomicInlineParticipation = surgeist_layout::AtomicInlineParticipationOf<surgeist_layout::DefaultScalar>
-pub type surgeist_layout::AtomicInlineParticipationError = surgeist_layout::AtomicInlineParticipationErrorOf<surgeist_layout::DefaultScalar>
 pub type surgeist_layout::Available = surgeist_layout::AvailableOf<surgeist_layout::DefaultScalar>
 pub type surgeist_layout::Baselines = surgeist_layout::BaselinesOf<surgeist_layout::DefaultScalar>
 pub type surgeist_layout::Cache = surgeist_layout::CacheOf<surgeist_layout::DefaultScalar>
@@ -1681,12 +1704,9 @@ pub type surgeist_layout::GridComputation = surgeist_layout::GridComputationOf<s
 pub type surgeist_layout::GridFlowTolerance = surgeist_layout::GridFlowToleranceOf<surgeist_layout::DefaultScalar>
 pub type surgeist_layout::IndefiniteLaneContributionGroup = surgeist_layout::IndefiniteLaneContributionGroupOf<surgeist_layout::DefaultScalar>
 pub type surgeist_layout::InlineBoundaryInput = surgeist_layout::InlineBoundaryInputOf<surgeist_layout::DefaultScalar>
-pub type surgeist_layout::InlineBreakOpportunity = surgeist_layout::InlineBreakOpportunityOf<surgeist_layout::DefaultScalar>
 pub type surgeist_layout::InlineFragmentOutput = surgeist_layout::InlineFragmentOutputOf<surgeist_layout::DefaultScalar>
 pub type surgeist_layout::InlineFragmentOutputEntry<Node> = surgeist_layout::InlineFragmentOutputEntryOf<Node, surgeist_layout::DefaultScalar>
 pub type surgeist_layout::InlineMetrics = surgeist_layout::InlineMetricsOf<surgeist_layout::DefaultScalar>
-pub type surgeist_layout::InlineTextInput = surgeist_layout::InlineTextInputOf<surgeist_layout::DefaultScalar>
-pub type surgeist_layout::InlineTextInputError = surgeist_layout::InlineTextInputErrorOf<surgeist_layout::DefaultScalar>
 pub type surgeist_layout::InvalidMeasurementOutput = surgeist_layout::InvalidMeasurementOutputOf<surgeist_layout::DefaultScalar>
 pub type surgeist_layout::LaneContributionFacts = surgeist_layout::LaneContributionFactsOf<surgeist_layout::DefaultScalar>
 pub type surgeist_layout::LaneIntrinsicItem = surgeist_layout::LaneIntrinsicItemOf<surgeist_layout::DefaultScalar>
@@ -1743,7 +1763,6 @@ pub type surgeist_layout::ScrollRectError = surgeist_layout::ScrollRectErrorOf<s
 pub type surgeist_layout::ScrollTargetGeometry = surgeist_layout::ScrollTargetGeometryOf<surgeist_layout::DefaultScalar>
 pub type surgeist_layout::ScrollbarGutterRects = surgeist_layout::ScrollbarGutterRectsOf<surgeist_layout::DefaultScalar>
 pub type surgeist_layout::ScrollbarWidth = surgeist_layout::ScrollbarWidthOf<surgeist_layout::DefaultScalar>
-pub type surgeist_layout::ShapedInlineSegment = surgeist_layout::ShapedInlineSegmentOf<surgeist_layout::DefaultScalar>
 pub type surgeist_layout::SizingCalculation = surgeist_layout::SizingCalculationOf<surgeist_layout::DefaultScalar>
 pub type surgeist_layout::TrackComponent = surgeist_layout::TrackComponentOf<surgeist_layout::DefaultScalar>
 pub type surgeist_layout::TrackComponentList = surgeist_layout::TrackComponentListOf<surgeist_layout::DefaultScalar>

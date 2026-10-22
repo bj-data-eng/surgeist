@@ -152,6 +152,69 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
         }
     }
 
+    /// Rebase this actual influencing float ledger to the preceding canonical
+    /// pass. Inherited entries keep their genuine node and side provenance.
+    pub(super) fn canonical_for_text(
+        &self,
+        container: Node,
+        frames: &[crate::text_layout::state::CanonicalFrame<Node, S>],
+    ) -> Result<Option<Self>, crate::text_layout::fit::FitError>
+    where
+        Node: Eq,
+    {
+        let Some(container) = frames.iter().find(|frame| frame.node == container) else {
+            return Ok(None);
+        };
+        let content = container
+            .output
+            .scroll_geometry
+            .ok_or(crate::text_layout::fit::FitError::InvalidGeometry)?
+            .content_box();
+        let logical_content_origin =
+            self.flow_axes
+                .logical_point(content.origin(), content.size(), container.output.size);
+        let logical_content = self.flow_axes.logical_size(content.size());
+        let mut result = self.clone();
+        result.containing_size = container.output.size;
+        result.containing_inline_start = logical_content_origin.inline;
+        result.containing_inline_end = logical_content_origin.inline + logical_content.inline;
+        for entry in &mut result.ledger {
+            let frame = frames
+                .iter()
+                .find(|frame| frame.node == entry.node)
+                .ok_or(crate::text_layout::fit::FitError::InvalidGeometry)?;
+            let margin = frame.output.margin;
+            let origin = Point::new(
+                crate::text_layout::run::number::<S>(
+                    frame.origin.x - container.origin.x - margin.left.to_f64(),
+                )?,
+                crate::text_layout::run::number::<S>(
+                    frame.origin.y - container.origin.y - margin.top.to_f64(),
+                )?,
+            );
+            let size = Size::new(
+                crate::text_layout::run::number::<S>(
+                    frame.output.size.width.to_f64() + margin.left.to_f64() + margin.right.to_f64(),
+                )?,
+                crate::text_layout::run::number::<S>(
+                    frame.output.size.height.to_f64()
+                        + margin.top.to_f64()
+                        + margin.bottom.to_f64(),
+                )?,
+            );
+            let logical_origin = self
+                .flow_axes
+                .logical_point(origin, size, result.containing_size);
+            let logical_size = self.flow_axes.logical_size(size);
+            entry.physical_margin_box = PhysicalMarginBox { origin, size };
+            entry.inline_start = logical_origin.inline;
+            entry.inline_end = logical_origin.inline + logical_size.inline;
+            entry.block_start = logical_origin.block;
+            entry.block_end = logical_origin.block + logical_size.block;
+        }
+        Ok(Some(result))
+    }
+
     pub(super) fn is_empty(&self) -> bool {
         self.ledger.is_empty()
     }

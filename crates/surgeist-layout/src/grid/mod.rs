@@ -3099,11 +3099,11 @@ mod fri06_c13_t06_characterization_tests {
         };
         assert_eq!(error.site(), LayoutErrorSiteOf::Node(7));
         assert_eq!(error.operation(), LayoutOperation::ValueResolution);
-        assert_eq!(
+        crate::test_support::assert_error_kind(
             error.kind(),
             &LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::InvalidNumeric {
                 value: S::INFINITY,
-            })
+            }),
         );
     }
 

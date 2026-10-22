@@ -1,4 +1,4 @@
-<test name="subgrid_item_percentage_height__content_box_ltr" use-rounding="true">
+<test name="subgrid_item_percentage_height__content_box_ltr" measurement-version="2" use-rounding="true">
   <viewport width="max-content" height="max-content"/>
   <input>
     <div source-tag="div" display="grid" box-sizing="content-box" direction="ltr" height="300px" row-gap="60px" padding-top="5px" padding-left="2px" padding-bottom="2px" padding-right="2px" border-top="1px" border-left="1px" border-bottom="1px" border-right="1px" grid-template-rows="auto auto" grid-template-columns="auto">

@@ -1,4 +1,4 @@
-<test name="scroll_size__content_box_rtl" use-rounding="true">
+<test name="scroll_size__content_box_rtl" measurement-version="2" use-rounding="true">
   <viewport width="max-content" height="max-content"/>
   <input>
     <div source-tag="div" display="flex" box-sizing="content-box" direction="rtl" overflow-x="scroll" overflow-y="scroll" scrollbar-width="15" align-items="start" justify-content="start" width="50px" height="50px">

@@ -1,4 +1,4 @@
-<test name="xgrid_span_2_max_content_minmax_max_content_min_content_indefinite__border_box_ltr" use-rounding="true">
+<test name="xgrid_span_2_max_content_minmax_max_content_min_content_indefinite__border_box_ltr" measurement-version="2" use-rounding="true">
   <viewport width="max-content" height="max-content"/>
   <input>
     <div source-tag="div" display="grid" direction="ltr" grid-template-rows="40px 40px" grid-template-columns="max-content minmax(max-content,min-content)">

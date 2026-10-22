@@ -501,10 +501,9 @@ fn cached_compute_uses_tree_cache_before_running_expensive_layout() {
         Ok(ComputeOutput::from_outer_size(Size::new(10.0, 10.0)))
     });
 
-    assert_eq!(
-        first,
-        Ok(ComputeOutput::from_outer_size(Size::new(80.0, 24.0)))
-    );
+    let first = first.expect("first cache request computes");
+    let second = second.expect("second cache request reuses the result");
+    assert_eq!(first, ComputeOutput::from_outer_size(Size::new(80.0, 24.0)));
     assert_eq!(second, first);
     assert_eq!(probe.calls, 1);
 }

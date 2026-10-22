@@ -1,4 +1,4 @@
-<test name="multiline_min_max_8__content_box_ltr" use-rounding="true">
+<test name="multiline_min_max_8__content_box_ltr" measurement-version="2" use-rounding="true">
   <viewport width="max-content" height="max-content"/>
   <input>
     <div source-tag="div" display="flex" box-sizing="content-box" direction="ltr" flex-wrap="wrap" width="600px" height="20px" border-top="5px" border-left="5px" border-bottom="5px" border-right="5px">

@@ -62,12 +62,16 @@
 //! [`LayoutErrorOf`] with no partial public result. Recursive compute modes are
 //! internal.
 //!
-//! The current text boundary accepts validated [`InlineTextInputOf`] segments.
-//! Layout owns break selection, box/float constraints, placement and its consuming
-//! Text adapter. Text owns shaping and source mappings; Render owns paint
-//! conversion and Runtime owns coherent publication. The fixed-segment input
-//! does not yet carry Text preparation or finalized-line identities. Authored
-//! text, glyph data and rendering do not enter this implemented boundary.
+//! [`TextLayoutInput`] binds actual immutable Text preparations to the borrowed
+//! tree. [`compute_layout_with_text`] selects and finalizes Text-issued line
+//! candidates against actual box and float constraints. It retains the exact
+//! placed [`surgeist_text::Layout`] in each [`PlacedTextOutput`], alongside
+//! source-associated fragment handles and canonical atomic allocations.
+//! Text owns shaping and source mappings; Layout owns fitting and placement,
+//! Render owns paint conversion, and Runtime owns coherent publication.
+//! The initial prepared-text profile supports horizontal LTR and RTL flow,
+//! zero indentation, font-advance tabs, and no additional spacing allocation.
+//! Other Text orientations return a precise unsupported error.
 //! [`NodeInputOf::non_box`] is the canonical tree companion for text and inline
 //! controls.
 //!
@@ -210,6 +214,14 @@ mod measurement;
 mod node_input;
 mod node_projection;
 mod output;
+#[cfg(test)]
+#[path = "../tests/layout/browser_parity/pinned_font.rs"]
+mod pinned_font;
+mod text_layout;
+pub use text_layout::{
+    TextAtomicBinding, TextBindingError, TextControlBinding, TextControlParticipation,
+    TextLayoutInput, TextOriginBinding, TextParagraphBinding, TextParticipation,
+};
 mod scalar;
 mod scroll;
 mod sizing;
@@ -238,14 +250,17 @@ pub(crate) use engine::contracts::{Round, compute_cached};
 pub(crate) use engine::round_layout;
 #[cfg(test)]
 pub(crate) use engine::{compute_hidden, compute_root};
-pub use engine::{compute_layout, compute_layout_invalidated};
+pub use engine::{
+    compute_layout, compute_layout_invalidated, compute_layout_with_text,
+    compute_layout_with_text_invalidated,
+};
 pub use error::{
     AtomicInlineParticipationRoleError, CalcSizeBehaviorBasis, FloatExclusionRoleError,
     InvalidMeasurementOutput, InvalidMeasurementOutputOf, LayoutError, LayoutErrorKind,
     LayoutErrorKindOf, LayoutErrorOf, LayoutErrorSite, LayoutErrorSiteOf, LayoutInternalInvariant,
     LayoutInvalidInput, LayoutInvalidInputOf, LayoutMissingContext, LayoutOperation, LayoutResult,
-    LayoutResultOf, LayoutUnsupportedCapability, NonBoxNodeRoleError, SizingAlgorithm,
-    SizingBehavior, SizingProperty, UnsupportedSizingBehavior,
+    LayoutResultOf, LayoutTextNumericError, LayoutUnsupportedCapability, NonBoxNodeRoleError,
+    SizingAlgorithm, SizingBehavior, SizingProperty, UnsupportedSizingBehavior,
 };
 #[cfg(test)]
 pub(crate) use flex::compute_flex;
@@ -268,24 +283,20 @@ pub use measurement::{
     MeasurementAvailable, MeasurementAvailableOf, compute_leaf,
 };
 pub use node_input::{
-    AlignContent, AlignItems, AtomicInlineParticipation, AtomicInlineParticipationError,
-    AtomicInlineParticipationErrorOf, AtomicInlineParticipationOf, BoxSizing, Clear,
-    ComputedOverflow, ComputedOverflowError, Direction, Display, FlexDirection, FlexGrow,
-    FlexGrowOf, FlexItemCollapse, FlexShrink, FlexShrinkOf, FlexWrap, Float, FloatExclusion,
+    AlignContent, AlignItems, AtomicInlineParticipation, BoxSizing, Clear, ComputedOverflow,
+    ComputedOverflowError, Direction, Display, FlexDirection, FlexGrow, FlexGrowOf,
+    FlexItemCollapse, FlexShrink, FlexShrinkOf, FlexWrap, Float, FloatExclusion,
     FloatExclusionInterval, FloatExclusionIntervalError, FloatExclusionIntervalErrorOf,
     FloatExclusionIntervalOf, FloatExclusionQuery, FloatExclusionQueryOf, GridAutoFlow,
     GridFlowTolerance, GridFlowToleranceOf, GridPlacement, InlineBoundaryInput,
-    InlineBoundaryInputOf, InlineBoundaryKind, InlineBreakKind, InlineBreakOpportunity,
-    InlineBreakOpportunityOf, InlineMetrics, InlineMetricsError, InlineMetricsOf, InlineSegmentId,
-    InlineTextInput, InlineTextInputError, InlineTextInputErrorOf, InlineTextInputOf, ItemOrder,
-    LayoutInput, LayoutInputOf, LayoutInputView, LayoutInputViewOf, LineBreakDisplay,
-    LineBreakInput, LineBreakInputOf, NodeInput, NodeInputOf, Overflow, OverflowClipBox,
-    OverflowClipMargin, OverflowClipMarginOf, Position, RawGridLine, RawGridPlacement,
-    ScrollMargin, ScrollMarginError, ScrollMarginErrorOf, ScrollMarginOf, ScrollPadding,
-    ScrollPaddingOf, ScrollPaddingValue, ScrollPaddingValueOf, ScrollSnapAlign,
+    InlineBoundaryInputOf, InlineBoundaryKind, InlineBreakOpportunity, InlineMetrics,
+    InlineMetricsError, InlineMetricsOf, ItemOrder, LayoutInput, LayoutInputOf, LayoutInputView,
+    LayoutInputViewOf, LineBreakDisplay, LineBreakInput, LineBreakInputOf, NodeInput, NodeInputOf,
+    Overflow, OverflowClipBox, OverflowClipMargin, OverflowClipMarginOf, Position, RawGridLine,
+    RawGridPlacement, ScrollMargin, ScrollMarginError, ScrollMarginErrorOf, ScrollMarginOf,
+    ScrollPadding, ScrollPaddingOf, ScrollPaddingValue, ScrollPaddingValueOf, ScrollSnapAlign,
     ScrollSnapAlignValue, ScrollSnapAxis, ScrollSnapStop, ScrollSnapStrictness, ScrollSnapType,
-    ScrollbarGutter, ScrollbarWidth, ScrollbarWidthOf, ShapedInlineSegment, ShapedInlineSegmentOf,
-    TextAlign, VerticalAlign, WritingMode,
+    ScrollbarGutter, ScrollbarWidth, ScrollbarWidthOf, TextAlign, VerticalAlign, WritingMode,
 };
 pub use output::{
     Baselines, BaselinesOf, CollapsibleMargin, CollapsibleMarginOf, CompletedLayoutBatch,
@@ -295,8 +306,8 @@ pub use output::{
     LayoutCacheClearEntry, LayoutCacheStoreEntry, LayoutCacheStoreEntryOf, LayoutOutputEntry,
     LayoutOutputEntryOf, LayoutRootContext, LayoutRootContextOf, LayoutRootRequest,
     LayoutRootRequestOf, LayoutRoundingMode, NodeOutput, NodeOutputOf, ParentFormattingContext,
-    PhysicalBlockMarginCollapse, PhysicalBlockMarginCollapseOf, RootAvailabilityError,
-    RootAvailabilityErrorOf, SourceIndex,
+    PhysicalBlockMarginCollapse, PhysicalBlockMarginCollapseOf, PlacedTextOutput,
+    RootAvailabilityError, RootAvailabilityErrorOf, SourceIndex,
 };
 pub(crate) use output::{RequestedAxis, RunMode, SizingMode};
 /// Supported scalar contract for generic layout APIs.

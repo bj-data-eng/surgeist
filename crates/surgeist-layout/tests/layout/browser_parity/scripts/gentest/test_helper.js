@@ -961,18 +961,22 @@ function describeElement(e, expectedElement = null) {
   };
   const layoutReadyInlineRoot = e.getAttribute?.('data-surgeist-layout-ready-inline') === 'true';
   if (layoutReadyInlineRoot) resetLayoutReadyRangeLineRegistry(e);
-  const children = describeChildNodes(e, expectedElement);
+  const preparedCapture = e.getAttribute?.('data-surgeist-prepared-text') === 'ahem-ttf-v1'
+    ? capturePreparedChildren(e) : undefined;
+  const children = preparedCapture ? preparedCapture.children : describeChildNodes(e, expectedElement);
   const brInlineMetrics = brInlineMetricsForElement(e, computedStyle);
   const lineControlParticipation = layoutReadyLineControlParticipation(e, computedStyle);
-  const hasTypedInlineText = children.some((child) => child.layoutInput === 'inline-text');
+  const hasTypedInlineText = children.some((child) => ['inline-text', 'prepared-text'].includes(child.layoutInput));
 
   return {
     layoutInput: 'box',
+    preparedParagraph: preparedCapture?.paragraph,
     tagName: e.tagName.toLowerCase(),
     layoutReadyInlineRoot: layoutReadyInlineRoot || undefined,
     layoutReadyAnonymousGridTextWrapper: layoutReadyAnonymousGridTextWrapper(e, computedStyle, children),
     lineControlParticipation,
-    unsupportedReason: unsupportedElementReason(e, computedStyle) || unsupportedChildNodesReason(e),
+    unsupportedReason: preparedCapture?.unsupportedReason || unsupportedElementReason(e, computedStyle) ||
+      (!preparedCapture && hasTypedInlineText ? 'Historical measured-width inline input lacks original source and pinned font capture' : unsupportedChildNodesReason(e)),
     style: {
       display: parseEnum(computedStyle.display),
       boxSizing: parseEnum(computedStyle.boxSizing),
@@ -1749,7 +1753,7 @@ function layoutReadyTextNodeData(
       : fragment[physicalStartEdge] - containingRootRect.top;
     const advance = horizontal ? fragment.width : fragment.height;
     if (![start, advance].every(Number.isFinite) || advance < 0) {
-      throw new Error(`layout-ready text Range ink ${segmentId} requires a complete finite inline tuple`);
+      throw new Error(`layout-ready text Range rectangle ${segmentId} requires a complete finite inline tuple`);
     }
     return {
       sourceSegmentId: segmentId,
@@ -1928,6 +1932,218 @@ function isLoweredAtomicInline(e) {
   return ['inline-block', 'inline-grid', 'inline-grid-lanes'].includes(getComputedStyle(e).display);
 }
 
+// Source/font capture is independent from the Range rectangle oracle. Only an
+// explicit fixture opt-in selects this finite profile; no old width is decoded
+// as text, a glyph, a font size, an original range, or a resolved bidi level.
+const PINNED_TEXT_FONT = Object.freeze({
+  id: 'ahem-ttf-f0a92cd0',
+  sha256: 'f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc',
+  faceIndex: 0, family: 'SurgeistParityAhem', style: 'normal', weight: 400,
+  stretch: 'normal', features: 'normal', variations: 'normal', synthesis: 'none',
+});
+let pinnedTextFontState;
+
+async function preparePinnedTextFont(supplied) {
+  if (typeof document === 'undefined' || !document.querySelector?.('[data-surgeist-prepared-text="ahem-ttf-v1"]')) return;
+  if (!Array.isArray(supplied) || supplied.length !== 22572 || supplied.some(byte => !Number.isInteger(byte) || byte < 0 || byte > 255)) {
+    throw new Error('Pinned text profile requires the exact generator-owned font bytes');
+  }
+  const bytes = new Uint8Array(supplied);
+  // The owning adapter SHA256-authenticates these captured bytes before JSON
+  // transport. This exact Uint8Array also backs the loaded FontFace and cmap.
+  for (const existing of document.fonts) { if (existing.family.replace(/^['"]|['"]$/g, '') === PINNED_TEXT_FONT.family) throw new Error('Pinned fixture family must not have another FontFace resource'); }
+  const face = new FontFace(PINNED_TEXT_FONT.family, bytes.buffer, {
+    style: 'normal', weight: '400', stretch: 'normal',
+    featureSettings: 'normal', variationSettings: 'normal',
+  });
+  await face.load();
+  document.fonts.add(face);
+  await document.fonts.ready;
+  if (face.status !== 'loaded') throw new Error('Pinned text FontFace did not load');
+  pinnedTextFontState = { face, bytes };
+}
+
+function pinnedTextNominalGlyph(codePoint) {
+  if (!pinnedTextFontState || codePoint > 0xffff) return 0;
+  const bytes = pinnedTextFontState.bytes;
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const count = view.getUint16(4);
+  let cmap;
+  for (let index = 0; index < count; index++) {
+    const row = 12 + index * 16;
+    if (String.fromCharCode(...bytes.slice(row, row + 4)) === 'cmap') cmap = view.getUint32(row + 8);
+  }
+  if (cmap === undefined) throw new Error('Pinned font lacks cmap');
+  for (let index = 0; index < view.getUint16(cmap + 2); index++) {
+    const row = cmap + 4 + index * 8;
+    if (view.getUint16(row) !== 3 || view.getUint16(row + 2) !== 1) continue;
+    const table = cmap + view.getUint32(row + 4);
+    if (view.getUint16(table) !== 4) throw new Error('Pinned font cmap profile changed');
+    const segments = view.getUint16(table + 6) / 2;
+    for (let segment = 0; segment < segments; segment++) {
+      const end = view.getUint16(table + 14 + segment * 2);
+      const start = view.getUint16(table + 16 + segments * 2 + segment * 2);
+      if (codePoint < start || codePoint > end) continue;
+      const delta = view.getUint16(table + 16 + segments * 4 + segment * 2);
+      const position = table + 16 + segments * 6 + segment * 2;
+      const offset = view.getUint16(position);
+      const glyph = offset === 0 ? codePoint : view.getUint16(position + offset + (codePoint - start) * 2);
+      return glyph === 0 ? 0 : (glyph + delta) & 0xffff;
+    }
+  }
+  return 0;
+}
+
+function glyphFreeSourceControl(codePoint) {
+  return [0x0a, 0x0d, 0x061c, 0x200e, 0x200f, 0x2028, 0x2029].includes(codePoint) ||
+    (codePoint >= 0x202a && codePoint <= 0x202e) || (codePoint >= 0x2066 && codePoint <= 0x2069);
+}
+
+function capturedTextStyle(parent) {
+  const style = getComputedStyle(parent);
+  const family = style.fontFamily.replace(/^['"]|['"]$/g, '');
+  if (family !== PINNED_TEXT_FONT.family || style.fontStyle !== 'normal' || style.fontWeight !== '400' ||
+      !['normal', '100%'].includes(style.fontStretch) || style.fontFeatureSettings !== 'normal' ||
+      style.fontVariationSettings !== 'normal' || style.fontSynthesis !== 'none' ||
+      style.writingMode !== 'horizontal-tb' || !['normal', ''].includes(style.unicodeBidi)) {
+    throw new Error('Prepared text requires the exact unsynthesized pinned face and horizontal normal-bidi style profile');
+  }
+  const fontSize = parseCssPx(style.fontSize);
+  const lineHeight = parseCssPx(style.lineHeight);
+  const whitespace = { normal: 'collapse', nowrap: 'collapse', pre: 'preserve', 'pre-wrap': 'preserve', 'break-spaces': 'preserve-spaces' }[style.whiteSpace];
+  if (!whitespace || !Number.isFinite(fontSize) || Math.fround(fontSize) !== fontSize ||
+      !Number.isFinite(lineHeight) || fontSize <= 0 || lineHeight < 0 ||
+      style.wordBreak !== 'normal' || style.overflowWrap !== 'normal') {
+    throw new Error('Prepared text style is outside the closed finite source profile');
+  }
+  const spacing = value => value === 'normal' ? 0 : parseCssPx(value);
+  const letterSpacing = spacing(style.letterSpacing), wordSpacing = spacing(style.wordSpacing);
+  if (![letterSpacing, wordSpacing].every(Number.isFinite)) throw new Error('Prepared text spacing must be finite pixels');
+  if (style.textTransform !== 'none' || style.textDecorationLine !== 'none' ||
+      !['normal', 'none'].includes(style.fontVariant) || style.hyphens !== 'manual') throw new Error('Prepared text transforms/decorations need their own explicit source profile');
+  const match = /^rgba?\(\s*([0-9.]+)[, ]+([0-9.]+)[, ]+([0-9.]+)(?:\s*[,/]\s*([0-9.]+))?\s*\)$/.exec(style.color);
+  if (!match) throw new Error('Prepared text requires resolved sRGB color components');
+  const color = [Number(match[1])/255, Number(match[2])/255, Number(match[3])/255, match[4] === undefined ? 1 : Number(match[4])].map(Math.fround);
+  if (!color.every(component => Number.isFinite(component) && component >= 0 && component <= 1)) throw new Error('Prepared color is outside canonical RGBA');
+  const locale = parent.closest('[lang]')?.getAttribute('lang') ?? null;
+  return { fontSize, lineHeight, color, locale, whitespace, wrap: ['nowrap', 'pre'].includes(style.whiteSpace) ? 'none' : 'word', letterSpacing, wordSpacing };
+}
+
+function qualifyTransparentPreparedInline(node, containingElement) {
+  // A metricless boundary can represent only an actually transparent inline.
+  // Inspect the element itself even when it contains no text: its own strut,
+  // box edges or positioning context cannot be recovered from child text rows.
+  const own = capturedTextStyle(node);
+  const containing = capturedTextStyle(containingElement);
+  const style = getComputedStyle(node);
+  if (own.fontSize !== containing.fontSize || own.lineHeight !== containing.lineHeight) {
+    throw new Error('Transparent inline requires the containing font size and line height; an independent strut is unsupported');
+  }
+  const edges = ['paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
+    'marginTop', 'marginRight', 'marginBottom', 'marginLeft',
+    'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth'];
+  if (edges.some(edge => parseCssPx(style[edge]) !== 0)) {
+    throw new Error('Transparent inline requires zero actual margin, padding and border edges');
+  }
+  if (style.verticalAlign !== 'baseline' || style.cssFloat !== 'none' || style.transform !== 'none' ||
+      !['static', 'relative'].includes(style.position) ||
+      (style.position === 'relative' && ['top', 'right', 'bottom', 'left'].some(edge =>
+        style[edge] !== 'auto' && parseCssPx(style[edge]) !== 0))) {
+    throw new Error('Transparent inline positioning/alignment context is unsupported');
+  }
+}
+
+function capturePreparedChildren(root) {
+  const paragraph = { font: { ...PINNED_TEXT_FONT, loaded: pinnedTextFontState?.face.status === 'loaded' },
+    direction: getComputedStyle(root).direction, writingMode: 'horizontal-tb', baseStyle: undefined,
+    origins: [], connections: [], atomics: [], controls: [], order: [] };
+  const children = [];
+  let sourceEnd = 0;
+  let precedingTextNode;
+  try {
+    if (!paragraph.font.loaded) throw new Error('Pinned FontFace must load before capture');
+    paragraph.baseStyle = capturedTextStyle(root);
+    resetLayoutReadyRangeLineRegistry(root);
+    const capture = (element) => {
+      for (const node of element.childNodes) {
+        if (node.nodeType === Node.COMMENT_NODE) continue;
+        const child = children.length;
+        if (node.nodeType === Node.TEXT_NODE) {
+          const text = node.textContent;
+          const units = Array.from({ length: text.length }, (_, index) => text.charCodeAt(index));
+          for (const character of text) {
+            const cp = character.codePointAt(0);
+            if (!glyphFreeSourceControl(cp) && !pinnedTextNominalGlyph(cp)) throw new Error(`Pinned font lacks original U+${cp.toString(16)}`);
+          }
+          const index = paragraph.origins.length;
+          const style = capturedTextStyle(node.parentElement);
+          paragraph.origins.push({ child, units, start: sourceEnd, end: sourceEnd + units.length, style });
+          if (index !== 0) {
+            const ancestors = new Set(); for (let ancestor = precedingTextNode.parentElement; ancestor; ancestor = ancestor.parentElement) ancestors.add(ancestor);
+            let common = node.parentElement; while (common && !ancestors.has(common)) common = common.parentElement;
+            if (!common) throw new Error('Original text occurrences lack their actual common containing element');
+            paragraph.connections.push({ preceding: index - 1, following: index, kind: 'continuous',
+              precedingWrap: paragraph.origins[index - 1].style.wrap, followingWrap: style.wrap,
+              ancestorWrap: capturedTextStyle(common).wrap });
+          }
+          precedingTextNode = node;
+          paragraph.order.push({ kind: 'origin', index, affinity: 'before' });
+          sourceEnd += units.length;
+          const range = document.createRange(); range.selectNodeContents(node);
+          const rootRect = root.getBoundingClientRect();
+          const rangeRectangles = Array.from(range.getClientRects()).map(rect => ({
+            origin: index, line: layoutReadyRangeLineIndex(root, rect),
+            physicalStartEdge: 'left', start: rect.left - rootRect.left, advance: rect.width,
+          }));
+          range.detach();
+          children.push({ layoutInput: 'prepared-text', preparedOccurrence: index, rangeFragments: rangeRectangles, children: [] });
+        } else if (node.nodeType === Node.ELEMENT_NODE) {
+          const style = getComputedStyle(node);
+          if (node.tagName === 'BR') {
+            const index = paragraph.controls.length;
+            paragraph.controls.push({ child, at: sourceEnd, kind: 'forced-break' });
+            paragraph.order.push({ kind: 'control', index, affinity: 'before' });
+            const measured = describeElement(node);
+            if (measured.style) delete measured.style.inlineMetrics;
+            children.push(measured);
+          } else if (['inline-block', 'inline-grid', 'inline-grid-lanes'].includes(style.display)) {
+            const width = /^\d+(?:\.\d+)?px$/.test(node.style.width) ? parseCssPx(node.style.width) : NaN;
+            const height = /^\d+(?:\.\d+)?px$/.test(node.style.height) ? parseCssPx(node.style.height) : NaN;
+            if (![width, height].every(Number.isFinite) || node.textContent.length !== 0) throw new Error('Prepared atomic profile needs explicit finite pixel input dimensions and no unbound text subtree');
+            const index = paragraph.atomics.length;
+            const wrap = capturedTextStyle(element).wrap;
+            paragraph.atomics.push({ child, at: sourceEnd, kind: style.position === 'absolute' ? 'out-of-flow' : 'in-flow', width, height,
+              precedingWrap: wrap, followingWrap: wrap, ancestorWrap: wrap });
+            paragraph.order.push({ kind: 'atomic', index, affinity: 'before' });
+            const measured = describeElement(node); delete measured.atomicInlineParticipation;
+            children.push(measured);
+          } else if (style.display === 'inline' && node.getAttribute('data-surgeist-transparent-inline-container') === 'true') {
+            qualifyTransparentPreparedInline(node, element);
+            // A qualified transparent boundary has no independent strut. Source
+            // continuity and style are captured from its actual text children.
+            for (const kind of ['inline-boundary-start', 'inline-boundary-end']) {
+              if (kind.endsWith('end')) capture(node);
+              const index = paragraph.controls.length;
+              paragraph.controls.push({ child: children.length, at: sourceEnd, kind });
+              paragraph.order.push({ kind: 'control', index, affinity: 'before' });
+              children.push({ layoutInput: 'inline-boundary', inlineBoundary: {kind: kind.endsWith('start') ? 'start' : 'end'}, children: [] });
+            }
+          } else throw new Error('Prepared text encountered an unsupported actual inline participant');
+        } else throw new Error('Prepared text encountered an unsupported DOM node kind');
+      }
+    };
+    capture(root);
+    // The initial atomic profile captures one uniform containing wrap policy.
+    // Mixed inline styles remain explicit profile refusals, never guessed NCA facts.
+    if (paragraph.atomics.length && paragraph.origins.some(origin => origin.style.wrap !== paragraph.baseStyle.wrap)) {
+      throw new Error('Atomic capture requires the actual uniform containing wrap profile');
+    }
+    return { paragraph, children };
+  } catch (error) {
+    return { children: [], unsupportedReason: `Prepared text profile: ${error.message}` };
+  }
+}
+
 function unsupportedTestData(reason) {
   return { layoutInput: 'unsupported', unsupportedReason: reason };
 }
@@ -1937,7 +2153,7 @@ function getTestData() {
   if (!root) {
     const reason = "Unsupported missing #test-root fixture root";
     return JSON.stringify({
-      schemaVersion: 1,
+      schemaVersion: 2,
       borderBoxLtrData: unsupportedTestData(reason),
       contentBoxLtrData: unsupportedTestData(reason),
       borderBoxRtlData: unsupportedTestData(reason),
@@ -1954,7 +2170,7 @@ function getTestData() {
   document.body.className = "content-box rtl";
   const contentBoxRtlData = describeElement(root);
 
-  return JSON.stringify({ schemaVersion: 1, borderBoxLtrData, contentBoxLtrData, borderBoxRtlData, contentBoxRtlData });
+  return JSON.stringify({ schemaVersion: 2, borderBoxLtrData, contentBoxLtrData, borderBoxRtlData, contentBoxRtlData });
 }
 
 // Useful when developing this script. Logs the parsed style to the console when any test fixture is opened in a browser.

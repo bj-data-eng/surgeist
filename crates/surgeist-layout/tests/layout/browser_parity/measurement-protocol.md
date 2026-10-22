@@ -1,9 +1,130 @@
-# Browser measurement protocol, version 1
+# Browser measurement protocol, version 2
 
 This is the private interchange between layout's bundled JavaScript helper and
 its Rust browser-corpus adapter. It describes measured fixture data, not authored
 CSS, a public layout API, or the generator crate's report schema. Browser reports
 continue to use schema 4 independently of this protocol version.
+
+## Authentic prepared-text input
+
+Version 2 adds a closed original-source profile, independently validated by the
+Rust generator and the default XML reader. The reader does not import the
+generator's wire types. `data-surgeist-prepared-text="ahem-ttf-v1"` opts a real
+formatting container into capture. Its `<prepared-paragraph capture="…"/>`
+contains JSON, escaped as an XML attribute; source strings are arrays of exact
+UTF-16 code units. This profile precisely refuses isolated surrogates and source
+without the pinned nominal coverage. It never normalizes them to replacement
+characters or substitutes a different string.
+
+The capture records:
+
+- The exact font resource, face index, CSS descriptors, feature/variation and
+  synthesis policy, and explicit successful FontFace loading.
+- Resolved base direction, horizontal writing mode, canonical font size, logical
+  line height and spacing, whitespace/wrap policy, inherited language and color.
+- Original text occurrences, exact aggregate ranges, incident connections and
+  captured containing wrap policies.
+- Actual inline controls, atomic roles and original anchors, with one complete
+  occurrence order. Empty origins are retained, including their identity.
+
+Only the byte-identical [pinned font](fonts/PROVENANCE.md) is admitted. The
+adapter hashes the **captured** `fonts/Ahem.ttf` input before injecting those
+same bytes as an explicit font-setup argument. Browser setup loads one explicit
+FontFace from that exact byte buffer and checks nominal cmap coverage and loaded
+status; the independent reader separately hashes
+its retained bytes and prepares through Text `RegisteredOnly`. Glyph-free bidi
+format controls have an explicit closed list. Hebrew, tabs and unsupported
+shaping/style profiles are refusals, not fallback-font success. The browser's
+family alias names this one resource; Text uses its real internal Ahem family.
+
+Native control topology is checked against the exact immutable prepared control
+roles and original occurrence mapping. Balanced metricless start/end controls
+may enclose zero, one or multiple genuine source occurrences, including nested
+transparent containers. An empty container has no fabricated authored origin.
+Mismatched, unbalanced or unbound controls refuse. Historical numeric-boundary
+schema tests retain their separate original triplet/atomic constraints.
+
+Marked transparent inline containers are admitted only with zero actual margin,
+padding and border edges, baseline alignment, no transform/float/displacement,
+and the same canonical font size and logical line height as their containing
+element. The base CSS's unshifted relative positioning is admitted. The element's
+own style is qualified even when empty. Independent struts, bidi/feature context
+outside the source profile, and nontransparent boxes precisely refuse; they are
+never replaced by invented zero metrics or discarded geometry.
+
+Inputs never include measured glyph advances, resolved output bidi levels,
+Range line groups, observed atomic dimensions, or estimated baselines. The first
+atomic source profile requires actual authored pixel width/height and an empty
+subtree. Percentage/auto/nested-content atomics need further capture of their
+real Layout inputs. Layout computes the box allocation before handing that
+allocation to Text. Current capture also refuses mixed containing wrap policy
+around atomics rather than guessing common-ancestor facts.
+
+Browser `Range.getClientRects()` output is a separate `rangeFragments` observation
+channel; XML names it `<range-fragments><range-fragment …/>`. Its origin/line,
+physical edge, start and advance are observations only. These rectangles are
+neither font outline ink nor preparation inputs. Compositor/layout assertions
+continue to compare actual independent production geometry.
+
+Native Layout fragments carry actual Text-issued association handles and physical
+geometry, not a visual ordinal derived from association-table order. Native
+comparison uses those owners, source correspondence, line identity and actual
+run/glyph/slot placement. The historical XML `visual_index` field remains a
+required, validated metadata field in its old numeric schema; attempting to use
+it as a native ordering assertion precisely refuses. It is never replaced with
+another fragment enumeration.
+
+Historical `inline-text` numeric tuples remain readable only for closed-schema
+and invalid-input tests. The production reader rejects them. They are not a
+compatibility Text front and do not count as native parity. The unchanged
+original version 1 XML and all 124 affected variants are listed in
+[prepared-text-accounting.json](prepared-text-accounting.json), with exact source
+and artifact hashes, per-variant limits and execution state. Its historical Git
+basis preserves the original XML and generation sources independently of current
+regenerated files. Source-at-inventory hashes retain their separate meaning for
+the deliberately migrated mixed-wrap source. Current browser artifact provenance
+belongs to `xml/generation-reports/all.json`. The current helper refuses the 120
+remaining measured-width variants because they lack original source and pinned
+font capture. Clean full generation classifies them as unsupported and omits
+their current XML outputs; their original bytes remain under the historical Git
+basis. This fixture-profile refusal does not establish native Text support or
+reproduce those inputs through the new Text protocol.
+The pinned browser generated 16 native variants and the production
+adapter executed all 16:14 matched and two retain the observation difference
+below. Schema checks alone do not establish browser parity.
+
+## Executed Range observation difference
+
+The `prepared_text_continuity_bidi` border-box and content-box RTL variants
+retain original PDI at aggregate UTF-16 `[4,5)`, the same pinned Ahem face, and
+actual issued source/line/placement associations. Native selected-line L1 resets
+the trailing PDI to the RTL paragraph level before canonical L2 ordering. Its
+zero-width source slot is at physical x=24; Chrome's captured Range rectangle is
+at x=72. Visible glyph positions and source coverage agree. The strict parity
+runner continues to report both differences. These are executed observations
+with **Range projection unresolved**, not matches, skipped cases, unsupported
+native input, or demonstrated browser conformance defects. Version 2 stores only
+the observed inline edge/start/advance; it does not retain the browser rectangle's
+height. Native source-fragment height must not be substituted for that observation.
+
+[CSSOM View §9](../../../../../references/cssom-view-1--WD-cssom-view-1-20250916--693b1c1fe7f7.md#dom-range-getclientrects)
+defines Text-node Range rectangles using font metrics and advances, but does not
+choose a unique invisible-format-control caret affinity. The native line rule
+is [UAX#9 revision 51, L1/L2](https://www.unicode.org/reports/tr9/tr9-51.html#L1).
+The executed Chrome tag's [trailing-item reset](https://github.com/chromium/chromium/blob/149.0.7827.115/third_party/blink/renderer/core/layout/inline/logical_line_builder.cc#L653)
+and [trailing-space classification/split](https://github.com/chromium/chromium/blob/149.0.7827.115/third_party/blink/renderer/core/layout/inline/line_breaker.cc#L189)
+retain a different item-level path for this PDI. Its
+[Range entry](https://github.com/chromium/chromium/blob/149.0.7827.115/third_party/blink/renderer/core/dom/range.cc#L1532)
+delegates to [actual text fragments](https://github.com/chromium/chromium/blob/149.0.7827.115/third_party/blink/renderer/core/layout/layout_text.cc#L516),
+not an independent native caret rule. These sources explain the observation
+boundary; they do not authorize changing native bidi or guessing a neighboring
+edge. Exact Range acceptance under [#1450](https://github.com/bj-data-eng/surgeist/issues/1450)
+remains open. Future DOM Range projection belongs to
+[#850](https://github.com/bj-data-eng/surgeist/issues/850).
+
+The historical version 1 `rangeInks` JSON / `range-inks` XML spellings below remain
+only as their declared historical parser contract. Current private models and
+diagnostics call these **Range rectangles**, never glyph ink.
 
 ## Transport and evaluation
 
@@ -12,24 +133,24 @@ returns a **JSON string**, whose object has exactly these five required fields:
 
 | Field | Type | Measurement state / case suffix |
 | --- | --- | --- |
-| `schemaVersion` | Integer `1` | Version of this measurement contract |
+| `schemaVersion` | Integer `2` | Version of this measurement contract |
 | `borderBoxLtrData` | Node object | `border-box ltr` / `border_box_ltr` |
 | `contentBoxLtrData` | Node object | `content-box ltr` / `content_box_ltr` |
 | `borderBoxRtlData` | Node object | `border-box rtl` / `border_box_rtl` |
 | `contentBoxRtlData` | Node object | `content-box rtl` / `content_box_rtl` |
 
 Measurements occur in the table's order by changing `document.body.className`
-and describing the same `#test-root` each time. The protocol does not add another
-document, measurement, readiness condition, or browser wait. A missing root
+and describing the same `#test-root` each time. The version-2 adapter explicitly loads the pinned face before measurement; it
+does not add a second document or derive source inputs from measurements. A missing root
 returns all four variants as `layoutInput: "unsupported"` nodes with
 `unsupportedReason: "Unsupported missing #test-root fixture root"`; it performs
 no measurements or body-class changes.
 
 The helper is injected only if `getTestData` is missing. A fixture's preloaded
-helper remains in effect and must implement version 1. Unversioned and unknown
+helper remains in effect and must implement version 2. Unversioned and unknown
 versions are errors; there is no production legacy decoder or automatic helper
 replacement. Preservation tests explicitly transform captured old measurements
-into the canonical version-1 wire shape offline. That test harness is not part
+into the historical version-1 wire shape offline. That test harness is not part
 of the production decoder.
 
 ## Decoding and classification
@@ -69,7 +190,7 @@ separate semantic value. Explicit empty observations are preserved.
 | Fields or structure | Meaning of omission, null, or an empty value |
 | --- | --- |
 | Envelope version and four variants | Required; omission and null are errors. |
-| `layoutInput` | Required explicit tag: `box`, `inline-text`, `inline-boundary`, or `unsupported`. No node kind is inferred from a missing tag. |
+| `layoutInput` | Required explicit tag: `box`, `prepared-text`, `inline-text` (historical schema only), `inline-boundary`, or `unsupported`. No node kind is inferred from a missing tag. |
 | `unsupportedReason` | Optional classification on a measured node; required by the reason-only `unsupported` tag. Classification uses the first reason after wire validation. |
 | `children` | Required ordered array on supported nodes; `[]` means no children. Unsupported reason-only nodes omit it. |
 | Optional `style` fields | Omission means no explicit fixture declaration. XML default-value omission remains a serialization rule; the decoder does not fabricate an observed value. |
@@ -84,9 +205,9 @@ separate semantic value. Explicit empty observations are preserved.
 
 An ordinary box uses geometry observations and may include explicit fragments.
 Inline text has at least one complete `inlineSegments` entry and may use either
-geometry/fragment observations or Range-ink observations. Range-ink text has no
+geometry/fragment observations or Range rectangle observations. Range rectangle text has no
 ordinary node geometry, scroll state, fragments, or child expectations. An empty
-Range-ink array remains a valid observation of significant collapsed whitespace.
+Range rectangle array remains a valid observation of significant collapsed whitespace.
 
 Each text segment carries its source ID, inline extent, baseline, line height,
 bidi level, whitespace-edge behavior, and following-break behavior. Whitespace
@@ -150,7 +271,7 @@ control characters fail at their original node and field location. This check
 does not parse symbolic sizing expressions or other opaque style strings.
 
 Only ordinary layout geometry crosses the existing `f32` formatting boundary,
-after representability has been checked. Segment metrics, fragments, Range inks,
+after representability has been checked. Segment metrics, fragments, Range rectangles,
 and dimensions retain their existing `f64` formatting. The root's `useRounding`
 chooses smart-rounded or unrounded geometry for the tree. Root `x` and `y` write
 as zero; child geometry stays relative to its parent. Scroll extents use the

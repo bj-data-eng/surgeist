@@ -85,11 +85,11 @@ mod leaf_box_arithmetic {
                 assert_eq!(calls, 0);
                 assert_eq!(error.site(), LayoutErrorSiteOf::Standalone);
                 assert_eq!(error.operation(), LayoutOperation::ValueResolution);
-                assert_eq!(
+                crate::test_support::assert_error_kind(
                     error.kind(),
                     &LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::InvalidNumeric {
-                        value: expected
-                    })
+                        value: expected,
+                    }),
                 );
             }
         }
@@ -192,11 +192,11 @@ mod leaf_box_arithmetic {
             .expect_err("resolved size arithmetic must be checked before measurement");
             assert_eq!(calls, 0);
             assert_eq!(error.operation(), LayoutOperation::ValueResolution);
-            assert_eq!(
+            crate::test_support::assert_error_kind(
                 error.kind(),
                 &LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::InvalidNumeric {
-                    value: S::INFINITY
-                })
+                    value: S::INFINITY,
+                }),
             );
         }
     }
@@ -290,138 +290,102 @@ fn completed_batch_exposes_read_only_layout_and_cache_entries() {
     assert_eq!(batch.cache_clear_entries()[0].node(), 11);
 }
 
-fn fri06_c01_fragment_value<S: LayoutScalar>(
-    segment: u64,
+fn fragment_value<S: LayoutScalar>(
+    fragment: surgeist_text::FinalizedFragment,
     origin: Point<S>,
     size: Size<S>,
     baseline: Point<S>,
     line_index: usize,
-    visual_index: usize,
-    replacement_inline_extent: Option<S>,
 ) -> InlineFragmentOutputOf<S> {
     InlineFragmentOutputOf::new(
-        InlineSegmentId::new(segment),
-        ScrollRectOf::try_new(origin, size).unwrap(),
+        fragment,
+        Some(ScrollRectOf::try_new(origin, size).unwrap()),
         baseline,
         line_index,
-        visual_index,
-        replacement_inline_extent,
     )
 }
 
-fn assert_fri06_c01_fragment_output_contract<S: LayoutScalar>() {
-    fn assert_immutable_carrier<T: Clone + Copy + core::fmt::Debug + PartialEq>() {}
+fn assert_fragment_output_contract<S: LayoutScalar>() {
+    fn assert_immutable_carrier<T: Clone + core::fmt::Debug + PartialEq>() {}
     assert_immutable_carrier::<InlineFragmentOutputOf<S>>();
     assert_immutable_carrier::<InlineFragmentOutputEntryOf<u32, S>>();
-
-    let fragment = fri06_c01_fragment_value(
-        41,
+    let handle = crate::test_support::text_fragment::fragment();
+    let rect = ScrollRectOf::try_new(
         Point::new(S::from_f64(1.25), S::from_f64(2.5)),
         Size::new(S::from_f64(3.75), S::from_f64(4.5)),
+    )
+    .unwrap();
+    let fragment = fragment_value(
+        handle.clone(),
+        rect.origin(),
+        rect.size(),
         Point::new(S::from_f64(1.25), S::from_f64(5.5)),
         2,
-        3,
-        Some(S::from_f64(0.75)),
     );
-    assert_eq!(fragment.segment_id(), InlineSegmentId::new(41));
-    assert_eq!(
-        fragment.rect(),
-        ScrollRectOf::try_new(
-            Point::new(S::from_f64(1.25), S::from_f64(2.5)),
-            Size::new(S::from_f64(3.75), S::from_f64(4.5)),
-        )
-        .unwrap()
-    );
+    assert_eq!(fragment.finalized_fragment(), &handle);
+    assert_eq!(fragment.rect(), Some(rect));
     assert_eq!(
         fragment.baseline(),
         Point::new(S::from_f64(1.25), S::from_f64(5.5))
     );
     assert_eq!(fragment.line_index(), 2);
-    assert_eq!(fragment.visual_index(), 3);
-    assert_eq!(
-        fragment.replacement_inline_extent(),
-        Some(S::from_f64(0.75))
-    );
-
-    let entry = InlineFragmentOutputEntryOf::new(7_u32, fragment);
+    let entry = InlineFragmentOutputEntryOf::new(7_u32, fragment.clone());
     assert_eq!(entry.node(), 7);
-    assert_eq!(entry.fragment(), fragment);
+    assert_eq!(entry.fragment(), &fragment);
 }
 
 #[test]
-fn fri06_c01_fragment_carriers_expose_immutable_phase_output_in_both_scalar_lanes() {
-    assert_fri06_c01_fragment_output_contract::<f32>();
-    assert_fri06_c01_fragment_output_contract::<f64>();
+fn finalized_fragment_carriers_retain_actual_owner_in_both_scalar_lanes() {
+    assert_fragment_output_contract::<f32>();
+    assert_fragment_output_contract::<f64>();
 }
 
-fn assert_fri06_c01_fragment_batch_phases<S: LayoutScalar>() {
-    let first_unrounded = fri06_c01_fragment_value(
-        1,
-        Point::new(S::from_f64(0.25), S::from_f64(0.5)),
-        Size::new(S::from_f64(4.5), S::from_f64(2.25)),
-        Point::new(S::from_f64(0.25), S::from_f64(2.0)),
-        0,
-        1,
-        None,
-    );
-    let second_unrounded = fri06_c01_fragment_value(
-        2,
-        Point::new(S::from_f64(5.25), S::from_f64(0.5)),
-        Size::new(S::from_f64(3.5), S::from_f64(2.25)),
-        Point::new(S::from_f64(5.25), S::from_f64(2.0)),
-        0,
-        0,
-        None,
-    );
-    let first_final = fri06_c01_fragment_value(
-        1,
-        Point::new(S::ZERO, S::from_f64(1.0)),
-        Size::new(S::from_f64(5.0), S::from_f64(2.0)),
-        Point::new(S::ZERO, S::from_f64(2.0)),
-        0,
-        1,
-        None,
-    );
-    let second_final = fri06_c01_fragment_value(
-        2,
-        Point::new(S::from_f64(5.0), S::from_f64(1.0)),
-        Size::new(S::from_f64(4.0), S::from_f64(2.0)),
-        Point::new(S::from_f64(5.0), S::from_f64(2.0)),
-        0,
-        0,
-        None,
-    );
+fn assert_fragment_batch_phases<S: LayoutScalar>() {
+    let first = crate::test_support::text_fragment::fragment();
+    let second = crate::test_support::text_fragment::fragment();
+    let output = |handle, x: f64, y: f64, width: f64, height: f64, baseline: f64| {
+        fragment_value(
+            handle,
+            Point::new(S::from_f64(x), S::from_f64(y)),
+            Size::new(S::from_f64(width), S::from_f64(height)),
+            Point::new(S::from_f64(x), S::from_f64(baseline)),
+            0,
+        )
+    };
+    let first_unrounded = output(first.clone(), 0.25, 0.5, 4.5, 2.25, 2.0);
+    let second_unrounded = output(second.clone(), 5.25, 0.5, 3.5, 2.25, 2.0);
+    let first_final = output(first.clone(), 0.0, 1.0, 5.0, 2.0, 2.0);
+    let second_final = output(second.clone(), 5.0, 1.0, 4.0, 2.0, 2.0);
     let batch = CompletedLayoutBatchOf::from_entries(
         Vec::new(),
         Vec::new(),
         vec![
-            InlineFragmentOutputEntryOf::new(10_u32, first_unrounded),
+            InlineFragmentOutputEntryOf::new(10_u32, first_unrounded.clone()),
             InlineFragmentOutputEntryOf::new(10_u32, second_unrounded),
         ],
         vec![
-            InlineFragmentOutputEntryOf::new(10_u32, first_final),
-            InlineFragmentOutputEntryOf::new(10_u32, second_final),
+            InlineFragmentOutputEntryOf::new(10_u32, first_final.clone()),
+            InlineFragmentOutputEntryOf::new(10_u32, second_final.clone()),
         ],
         Vec::new(),
         Vec::new(),
         Vec::new(),
     );
-
     assert_eq!(
         batch
             .unrounded_inline_fragments()
             .iter()
-            .map(|entry| (entry.node(), entry.fragment().segment_id()))
+            .map(|entry| (entry.node(), entry.fragment().finalized_fragment().clone()))
             .collect::<Vec<_>>(),
-        vec![(10, InlineSegmentId::new(1)), (10, InlineSegmentId::new(2))]
+        vec![(10, first), (10, second)]
     );
     assert_eq!(
         batch
             .final_inline_fragments()
             .iter()
-            .map(InlineFragmentOutputEntryOf::fragment)
+            .map(|entry| entry.fragment().clone())
             .collect::<Vec<_>>(),
-        vec![first_final, second_final]
+        vec![first_final.clone(), second_final]
     );
     assert_ne!(first_unrounded.rect(), first_final.rect());
     assert!(batch.unrounded_entries().is_empty());
@@ -431,9 +395,9 @@ fn assert_fri06_c01_fragment_batch_phases<S: LayoutScalar>() {
 }
 
 #[test]
-fn fri06_c01_fragment_batch_keeps_source_order_and_separate_geometry_in_both_scalar_lanes() {
-    assert_fri06_c01_fragment_batch_phases::<f32>();
-    assert_fri06_c01_fragment_batch_phases::<f64>();
+fn fragment_batch_preserves_actual_associations_and_separate_phase_geometry() {
+    assert_fragment_batch_phases::<f32>();
+    assert_fragment_batch_phases::<f64>();
 }
 
 #[test]
@@ -458,9 +422,9 @@ fn layout_error_accessors_preserve_typed_site_operation_kind_and_source() {
         }
     );
     assert_eq!(error.operation(), LayoutOperation::LeafMeasurement);
-    assert_eq!(
+    crate::test_support::assert_error_kind(
         error.kind(),
-        &LayoutErrorKind::Measurement(ProviderSource("measure failed"))
+        &LayoutErrorKind::Measurement(ProviderSource("measure failed")),
     );
 
     let scalar_error = LayoutError::<u32, ProviderSource>::new(
@@ -472,12 +436,12 @@ fn layout_error_accessors_preserve_typed_site_operation_kind_and_source() {
         }),
     );
 
-    assert_eq!(
+    crate::test_support::assert_error_kind(
         scalar_error.kind(),
         &LayoutErrorKind::InvalidInput(LayoutInvalidInput::RootAvailability {
             axis: PhysicalAxis::Horizontal,
             error: NonNegativeFiniteScalarErrorOf::Negative { value: -2.0 },
-        })
+        }),
     );
 }
 
@@ -490,9 +454,9 @@ fn value_resolution_diagnostics_classify_represented_non_numeric_values_as_unsup
 
     assert_eq!(error.site(), LayoutErrorSite::Node(3));
     assert_eq!(error.operation(), LayoutOperation::ValueResolution);
-    assert_eq!(
+    crate::test_support::assert_error_kind(
         error.kind(),
-        &LayoutErrorKind::UnsupportedCapability(LayoutUnsupportedCapability::LaterFriBehavior)
+        &LayoutErrorKind::UnsupportedCapability(LayoutUnsupportedCapability::LaterFriBehavior),
     );
 }
 
@@ -702,11 +666,11 @@ fn public_leaf_invalid_numeric_affine_width_returns_typed_error() {
 
     assert_eq!(error.site(), LayoutErrorSite::Standalone);
     assert_eq!(error.operation(), LayoutOperation::ValueResolution);
-    assert_eq!(
+    crate::test_support::assert_error_kind(
         error.kind(),
         &LayoutErrorKind::InvalidInput(LayoutInvalidInput::InvalidNumeric {
             value: f32::INFINITY,
-        })
+        }),
     );
 }
 
@@ -724,11 +688,11 @@ fn public_leaf_invalid_numeric_affine_padding_returns_typed_error() {
 
     assert_eq!(error.site(), LayoutErrorSite::Standalone);
     assert_eq!(error.operation(), LayoutOperation::ValueResolution);
-    assert_eq!(
+    crate::test_support::assert_error_kind(
         error.kind(),
         &LayoutErrorKind::InvalidInput(LayoutInvalidInput::InvalidNumeric {
             value: f32::INFINITY,
-        })
+        }),
     );
 }
 
@@ -759,11 +723,11 @@ fn public_f64_leaf_invalid_numeric_affine_width_returns_typed_error() {
 
     assert_eq!(error.site(), LayoutErrorSiteOf::Standalone);
     assert_eq!(error.operation(), LayoutOperation::ValueResolution);
-    assert_eq!(
+    crate::test_support::assert_error_kind(
         error.kind(),
         &LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::InvalidNumeric {
             value: f64::INFINITY,
-        })
+        }),
     );
 }
 
@@ -790,9 +754,9 @@ fn assert_public_leaf_missing_basis_returns_typed_error<S: LayoutScalar>() {
 
     assert_eq!(error.site(), LayoutErrorSiteOf::Standalone);
     assert_eq!(error.operation(), LayoutOperation::ValueResolution);
-    assert_eq!(
+    crate::test_support::assert_error_kind(
         error.kind(),
-        &LayoutErrorKindOf::MissingContext(LayoutMissingContext::RequiredBasis)
+        &LayoutErrorKindOf::MissingContext(LayoutMissingContext::RequiredBasis),
     );
 }
 

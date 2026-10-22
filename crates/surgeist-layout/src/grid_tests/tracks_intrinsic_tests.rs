@@ -1119,41 +1119,41 @@ fn fri06_c07_height_subgrid_tree<S: LayoutScalar>(row: Fri06C07HeightRow) -> Pub
         direction: row.direction,
         ..NodeInputOf::default()
     };
-    let segment = |id, inline_extent: f64, following_break| {
-        ShapedInlineSegmentOf::try_new(
-            InlineSegmentId::new(id),
-            S::from_f64(inline_extent),
-            InlineMetricsOf::from_ascent_descent(S::from_f64(20.0), S::from_f64(5.0))
-                .expect("positive text metrics are valid"),
-            BidiLevel::try_new(if row.direction == Direction::Rtl {
-                1
-            } else {
-                0
-            })
-            .expect("base-direction bidi level is valid"),
-            InlineWhitespaceEdge::Preserve,
-            following_break,
-        )
-        .expect("preserved shaped participant is valid")
-    };
-    let text = InlineTextInputOf::try_new(vec![
-        segment(1, 25.0, InlineBreakOpportunityOf::allowed()),
-        segment(2, 100.0, InlineBreakOpportunityOf::allowed()),
-        segment(3, 50.0, InlineBreakOpportunityOf::allowed()),
-        segment(4, 75.0, InlineBreakOpportunityOf::prohibited()),
-    ])
-    .expect("four unique shaped participants are valid");
-    PublicLayoutTreeOf::new()
+    // This height-dependent Grid experiment consumes actual numeric inline
+    // boxes: four 25px line allocations with declared border widths and breaks.
+    // Font selection/shaping is independently covered by prepared Text tests.
+    let mut tree = PublicLayoutTreeOf::new()
         .children(0, [1])
         .children(1, [2])
         .children(2, [3])
-        .children(3, [4])
-        .children(4, [])
+        .children(3, [4, 5, 6, 7])
         .style(0, fixture_root)
         .style(1, outer)
         .style(2, subgrid)
-        .style(3, text_container)
-        .input(4, LayoutInputOf::inline_text(text))
+        .style(3, text_container);
+    for (index, width) in [25.0, 100.0, 50.0, 75.0].into_iter().enumerate() {
+        let node = 4 + index as u32;
+        tree = tree.children(node, []).style(
+            node,
+            NodeInputOf {
+                display: Display::InlineBlock,
+                size: Size::new(
+                    PreferredSizeOf::px(S::from_f64(width)),
+                    PreferredSizeOf::px(S::from_f64(25.0)),
+                ),
+                atomic_inline_participation: Some(AtomicInlineParticipation::new(
+                    BidiLevel::try_new(u8::from(row.direction == Direction::Rtl)).unwrap(),
+                    if index == 3 {
+                        InlineBreakOpportunity::Prohibited
+                    } else {
+                        InlineBreakOpportunity::Allowed
+                    },
+                )),
+                ..NodeInputOf::default()
+            },
+        );
+    }
+    tree
 }
 
 fn assert_fri06_c07_height_grid_lanes<S: LayoutScalar>(
@@ -1221,29 +1221,22 @@ fn assert_fri06_c07_height_subgrid<S: LayoutScalar>(row: Fri06C07HeightRow) {
     } else {
         [75.0, 0.0, 50.0, 25.0]
     };
-    let fragments = batch
-        .unrounded_inline_fragments()
-        .iter()
-        .filter(|entry| entry.node() == 4)
-        .map(|entry| entry.fragment())
-        .collect::<Vec<_>>();
-    assert_eq!(fragments.len(), 4, "{row:?}");
-    for (((fragment, x), y), width) in fragments
+    for (((node, x), y), width) in [4, 5, 6, 7]
         .into_iter()
         .zip(expected_x)
         .zip([0.0, 25.0, 50.0, 75.0])
         .zip([25.0, 100.0, 50.0, 75.0])
     {
+        let output = fri06_c07_height_output(batch.unrounded_entries(), node);
         assert_eq!(
-            fragment.rect().origin(),
+            output.location,
             Point::new(scalar(x), scalar(y)),
-            "{row:?} participant {:?}",
-            fragment.segment_id()
+            "{row:?} atomic {node}"
         );
         assert_eq!(
-            fragment.rect().size(),
+            output.size,
             Size::new(scalar(width), scalar(25.0)),
-            "{row:?}"
+            "{row:?} atomic {node}"
         );
     }
 }
@@ -1623,7 +1616,15 @@ fn fake_leaf_error(
     LayoutError::new(
         LayoutErrorSite::Node(node),
         error.operation(),
-        error.kind().clone(),
+        match error.kind() {
+            LayoutErrorKind::InvalidInput(value) => LayoutErrorKind::InvalidInput(*value),
+            LayoutErrorKind::MissingContext(value) => LayoutErrorKind::MissingContext(*value),
+            LayoutErrorKind::UnsupportedCapability(value) => {
+                LayoutErrorKind::UnsupportedCapability(*value)
+            }
+            LayoutErrorKind::InternalInvariant(value) => LayoutErrorKind::InternalInvariant(*value),
+            other => panic!("infallible scalar leaf returned an unexpected cause: {other:?}"),
+        },
     )
 }
 

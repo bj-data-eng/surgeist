@@ -937,9 +937,9 @@ mod tests {
         .expect_err("layout keeps missing edge basis fallible");
         assert_eq!(error.site(), LayoutErrorSiteOf::Standalone);
         assert_eq!(error.operation(), LayoutOperation::ValueResolution);
-        assert_eq!(
+        crate::test_support::assert_error_kind(
             error.kind(),
-            &LayoutErrorKindOf::MissingContext(crate::LayoutMissingContext::RequiredBasis,)
+            &LayoutErrorKindOf::MissingContext(crate::LayoutMissingContext::RequiredBasis),
         );
     }
 

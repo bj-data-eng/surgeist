@@ -6098,11 +6098,11 @@ where
 
     assert_eq!(error.site(), LayoutErrorSiteOf::Node(0));
     assert_eq!(error.operation(), LayoutOperation::ValueResolution);
-    assert_eq!(
+    crate::test_support::assert_error_kind(
         error.kind(),
         &LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::InvalidNumeric {
             value: S::INFINITY,
-        })
+        }),
     );
 }
 

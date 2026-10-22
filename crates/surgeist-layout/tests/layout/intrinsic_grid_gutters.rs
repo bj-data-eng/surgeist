@@ -3,7 +3,6 @@
 //! §4.1/§4.2 reserves stable classic gutters as border-box space, even for
 //! hidden overflow. Available space is not an authored definite border box.
 use surgeist_layout::*;
-use surgeist_text::{BidiLevel, InlineWhitespaceEdge};
 
 struct FixedGrid<S: LayoutScalar> {
     inputs: [LayoutInputOf<S>; 2],
@@ -515,7 +514,7 @@ fn inherited_auto_gutter_tracks_both_axes_and_all_writing_modes_f64() {
 
 struct WrappingColumnSubgrid<S: LayoutScalar> {
     boxes: [LayoutInputOf<S>; 3],
-    text: LayoutInputOf<S>,
+    text: [LayoutInputOf<S>; 2],
     non_box: NodeInputOf<S>,
 }
 
@@ -523,40 +522,100 @@ impl<S: LayoutScalar> Traverse for WrappingColumnSubgrid<S> {
     type Node = usize;
     type Scalar = S;
     type Children<'a>
-        = std::option::IntoIter<usize>
+        = std::iter::Copied<std::slice::Iter<'a, usize>>
     where
         Self: 'a;
-
     fn children(&self, node: usize) -> Self::Children<'_> {
-        (node < 3).then_some(node + 1).into_iter()
+        let children: &[usize] = match node {
+            0 => &[1],
+            1 => &[2],
+            2 => &[3, 4],
+            _ => &[],
+        };
+        children.iter().copied()
     }
-
     fn child_count(&self, node: usize) -> usize {
-        usize::from(node < 3)
+        self.children(node).count()
     }
     fn child(&self, node: usize, index: usize) -> usize {
-        assert!(node < 3);
-        assert_eq!(index, 0);
-        node + 1
+        self.children(node).nth(index).unwrap()
     }
 }
-
 impl<S: LayoutScalar> LayoutTree for WrappingColumnSubgrid<S> {
     type MeasureError = std::convert::Infallible;
     fn node_input(&self, node: usize) -> &NodeInputOf<S> {
-        if node == 3 {
+        if node >= 3 {
             &self.non_box
         } else {
             self.boxes[node].as_box().unwrap()
         }
     }
     fn layout_input(&self, node: usize) -> LayoutInputViewOf<'_, S> {
-        if node == 3 {
-            self.text.as_view()
+        if node >= 3 {
+            self.text[node - 3].as_view()
         } else {
             self.boxes[node].as_view()
         }
     }
+}
+
+fn prepare_wrapping_text() -> surgeist_text::PreparedText {
+    use surgeist_text::*;
+    let style = Style {
+        font: Font::new().family("Ahem"),
+        size: 5.0,
+        line_height: LineHeight::Absolute(10.0),
+        ..Style::default()
+    };
+    let first = Source::new("AAAAA\u{200b}");
+    let second = Source::new("AAAA");
+    let analyzed = AnalyzedSource::from_paragraph(ParagraphInput {
+        source: Source::new("AAAAA\u{200b}AAAA"),
+        base_style: style.clone(),
+        base_direction: ParagraphBaseDirection::LeftToRight,
+        segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
+        paragraph_strut: ParagraphStrut::DefaultFont,
+        origins: vec![
+            ParagraphOrigin {
+                source: first,
+                local: Range::new(0, 6),
+                aggregate: Range::new(0, 6),
+                kind: ParagraphOriginKind::Authored,
+            },
+            ParagraphOrigin {
+                source: second,
+                local: Range::new(0, 4),
+                aggregate: Range::new(6, 10),
+                kind: ParagraphOriginKind::Authored,
+            },
+        ],
+        connections: vec![ParagraphConnection {
+            at: 6,
+            kind: ParagraphConnectionKind::Continuous,
+        }],
+        boundary_policies: vec![ParagraphBoundaryPolicy {
+            definition: ParagraphBoundaryDefinition::Connection(0),
+            preceding_wrap: style.wrap,
+            following_wrap: style.wrap,
+            ancestor_wrap: style.wrap,
+        }],
+        controls: vec![],
+        replacements: vec![],
+        anchor_order: vec![],
+    })
+    .unwrap();
+    let mut system = System::new(SystemOptions {
+        font_catalogue: FontCatalogueMode::RegisteredOnly,
+    })
+    .unwrap();
+    system
+        .register_fonts(
+            include_bytes!("../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf").to_vec(),
+        )
+        .unwrap();
+    system
+        .prepare(&analyzed, PreparationOptions::default())
+        .unwrap()
 }
 
 fn qualify_wrapping_min_max<S: LayoutScalar>() {
@@ -566,8 +625,17 @@ fn qualify_wrapping_min_max<S: LayoutScalar>() {
         // At tentativeMIN25 the allowed break yields two10px lines, which
         // overflow the child's fixed15 block size and require5 inline gutter.
         // Thus intrinsicMIN is30. MAX45 fits one10px line and needs no gutter.
-        let metrics =
-            InlineMetricsOf::from_ascent_descent(S::from_f64(8.0), S::from_f64(2.0)).unwrap();
+        let prepared = prepare_wrapping_text();
+        let origins = prepared
+            .origin_views()
+            .map(|view| view.handle())
+            .collect::<Vec<_>>();
+        for (origin, source) in origins.iter().zip(["AAAAA\u{200b}", "AAAA"]) {
+            assert_eq!(
+                origin.view().source().text().code_units(),
+                source.encode_utf16().collect::<Vec<_>>()
+            );
+        }
         let tree = WrappingColumnSubgrid {
             boxes: [
                 LayoutInputOf::box_input(NodeInputOf {
@@ -604,33 +672,37 @@ fn qualify_wrapping_min_max<S: LayoutScalar>() {
                     ..NodeInputOf::default()
                 }),
             ],
-            text: LayoutInputOf::inline_text(
-                InlineTextInputOf::try_new(vec![
-                    ShapedInlineSegmentOf::try_new(
-                        InlineSegmentId::new(1),
-                        S::from_f64(25.0),
-                        metrics,
-                        BidiLevel::try_new(0).unwrap(),
-                        InlineWhitespaceEdge::Preserve,
-                        InlineBreakOpportunityOf::allowed(),
-                    )
-                    .unwrap(),
-                    ShapedInlineSegmentOf::try_new(
-                        InlineSegmentId::new(2),
-                        S::from_f64(20.0),
-                        metrics,
-                        BidiLevel::try_new(0).unwrap(),
-                        InlineWhitespaceEdge::Preserve,
-                        InlineBreakOpportunityOf::prohibited(),
-                    )
-                    .unwrap(),
-                ])
-                .unwrap(),
-            ),
+            text: [
+                LayoutInputOf::inline_text(TextParticipation::new(origins[0].clone())),
+                LayoutInputOf::inline_text(TextParticipation::new(origins[1].clone())),
+            ],
             non_box: NodeInputOf::non_box(),
         };
-        let batch = compute_layout(
+        let capture = TextLayoutInput::try_new(
             &tree,
+            0,
+            vec![TextParagraphBinding {
+                prepared,
+                container: 2,
+                nodes: vec![3, 4],
+                origins: vec![
+                    TextOriginBinding {
+                        origin: origins[0].clone(),
+                        node: 3,
+                    },
+                    TextOriginBinding {
+                        origin: origins[1].clone(),
+                        node: 4,
+                    },
+                ],
+                atomics: vec![],
+                controls: vec![],
+                line_strut: None,
+            }],
+        )
+        .unwrap();
+        let batch = compute_layout_with_text(
+            &capture,
             0,
             LayoutRootRequestOf::viewport(Size::splat(AvailableOf::MAX_CONTENT)).unwrap(),
         )
@@ -671,34 +743,67 @@ fn qualify_wrapping_min_max<S: LayoutScalar>() {
         let fragments: Vec<_> = batch
             .unrounded_inline_fragments()
             .iter()
-            .filter(|entry| entry.node() == 3)
-            .map(|entry| (entry.fragment().segment_id().get(), entry.fragment().rect()))
+            .filter(|entry| entry.node() == 3 || entry.node() == 4)
+            .map(|entry| {
+                let fragment = entry.fragment();
+                let finalized = fragment.finalized_fragment();
+                let view = finalized.view();
+                let surgeist_text::FinalizedFragmentOwner::Origin(origin) = view.owner() else {
+                    panic!("authored A/ZWSP units retain their original source owner")
+                };
+                (
+                    entry.node(),
+                    origin,
+                    view.local_range().unwrap(),
+                    view.aggregate_range().unwrap(),
+                    fragment.line_index(),
+                    fragment.baseline(),
+                    fragment.rect().unwrap(),
+                )
+            })
             .collect();
-        let expected_fragments = [
-            (
-                1,
-                ScrollRectOf::try_new(
-                    Point::new(S::ZERO, S::ZERO),
-                    Size::new(S::from_f64(25.0), S::from_f64(10.0)),
+        // Each original A is a real5px unit; ZWSP is a distinct zero-advance
+        // original unit. Ahem5 has ascent4/descent1 and LH10, so before6.5
+        // rounds to the common baseline7 (17 on MIN's second logical line).
+        // Every source fragment receives that same rigid translation: y.5.
+        let expected_fragments: Vec<_> = (0..6)
+            .map(|index| {
+                (
+                    3,
+                    origins[0].clone(),
+                    surgeist_text::Range::new(index, index + 1),
+                    surgeist_text::Range::new(index, index + 1),
+                    0,
+                    Point::new(S::ZERO, S::from_f64(7.0)),
+                    ScrollRectOf::try_new(
+                        Point::new(S::from_f64(5.0 * index as f64), S::from_f64(0.5)),
+                        Size::new(
+                            S::from_f64(if index == 5 { 0.0 } else { 5.0 }),
+                            S::from_f64(10.0),
+                        ),
+                    )
+                    .unwrap(),
                 )
-                .unwrap(),
-            ),
-            (
-                2,
-                ScrollRectOf::try_new(
-                    Point::new(
-                        S::from_f64(if minimum { 0.0 } else { 25.0 }),
-                        S::from_f64(if minimum { 10.0 } else { 0.0 }),
-                    ),
-                    Size::new(S::from_f64(20.0), S::from_f64(10.0)),
+            })
+            .chain((0..4).map(|index| {
+                (
+                    4,
+                    origins[1].clone(),
+                    surgeist_text::Range::new(index, index + 1),
+                    surgeist_text::Range::new(6 + index, 7 + index),
+                    usize::from(minimum),
+                    Point::new(S::ZERO, S::from_f64(if minimum { 17.0 } else { 7.0 })),
+                    ScrollRectOf::try_new(
+                        Point::new(
+                            S::from_f64((if minimum { 0.0 } else { 25.0 }) + 5.0 * index as f64),
+                            S::from_f64(if minimum { 10.5 } else { 0.5 }),
+                        ),
+                        Size::new(S::from_f64(5.0), S::from_f64(10.0)),
+                    )
+                    .unwrap(),
                 )
-                .unwrap(),
-            ),
-        ];
-        eprintln!(
-            "{} wrapping minimum={minimum}: actual={actual:?}, expected={expected:?}, fragments={fragments:?}, expected_fragments={expected_fragments:?}",
-            std::any::type_name::<S>()
-        );
+            }))
+            .collect();
         if actual != expected || fragments != expected_fragments {
             failures.push(format!("minimum={minimum}: actual={actual:?}, expected={expected:?}, fragments={fragments:?}, expected_fragments={expected_fragments:?}"));
         }

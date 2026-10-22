@@ -5,15 +5,17 @@ use super::fixtures::{
     assert_public_scroll_geometry_error_without_batch, computed_overflow,
     fri05_c03_block_root_state, fri05_c04_assert_initial_local_auto_state,
     fri05_c04_local_auto_state, fri05_c04_nested_flex_auto_tree, fri06_atomic_participation,
-    fri06_c02_final_node, fri06_c02_segment, fri06_c02_segment_with_level,
-    fri06_c02_segment_with_metrics, fri06_c02_text_batch, fri06_c02_text_nodes_batch,
-    fri06_c03_atomic_participation, fri06_c03_atomic_style, fri06_c03_mixed_batch_with_root,
-    fri06_c03_text_input, fri06_c04_bfc_batch, fri06_c04_front_door_batch, fri06_c04_line_batch,
-    fri06_c04_line_box, fri06_c04_logical_origin, fri06_c12_t08_forced_break_fallback_batch,
-    fri06_mr02_geometry_error_largest_finite, public_flow_output, public_layout_tree,
-    root_test_scroll_geometry, root_writing_mode_directions, scalar, single_final_output,
+    fri06_c02_final_node, fri06_c03_atomic_participation, fri06_c03_atomic_style,
+    fri06_c03_mixed_batch_with_root, fri06_c04_bfc_batch, fri06_c04_front_door_batch,
+    fri06_c04_line_batch, fri06_c04_line_box, fri06_c04_logical_origin,
+    fri06_c12_t08_forced_break_fallback_batch, fri06_mr02_geometry_error_largest_finite,
+    prepared_atomic_style, prepared_front_door_batch, prepared_mixed_batch, prepared_source_batch,
+    prepared_tree_batch, public_flow_output, public_layout_tree, root_test_scroll_geometry,
+    root_writing_mode_directions, scalar, single_final_output,
 };
 use super::*;
+use crate::test_support::text::{ParagraphPart, PreparedParagraph, ahem_style};
+use surgeist_text::{Id, ParagraphReplacement, ParagraphReplacementDefinition, Source, Text};
 
 fn assert_fri08_c07_t02_scroll_source_root_paths<S: LayoutScalar>() {
     let scalar = S::from_f64;
@@ -160,22 +162,22 @@ fn fri06_c03_logical_block_start<S: LayoutScalar>(
 fn fri06_c03_fragment<S: LayoutScalar>(
     batch: &CompletedLayoutBatchOf<u32, S>,
     node: u32,
-) -> InlineFragmentOutputOf<S> {
+) -> &InlineFragmentOutputOf<S> {
     batch
         .final_inline_fragments()
         .iter()
         .find(|entry| entry.node() == node)
-        .expect("the requested shaped source publishes one fragment")
+        .expect("the requested original occurrence publishes a fragment")
         .fragment()
 }
 
-fn fri06_c03_nested_atomic_baseline_batch<S: LayoutScalar>(
+fn prepared_nested_atomic_baseline_batch<S: LayoutScalar>(
     parent_flow: FlowAxes,
     child_flow: FlowAxes,
     overflow: Overflow,
     item_is_replaced: bool,
-) -> CompletedLayoutBatchOf<u32, S> {
-    let root_style = NodeInputOf {
+) -> LayoutResultOf<u32, CompletedLayoutBatchOf<u32, S>, S, core::convert::Infallible> {
+    let root = NodeInputOf {
         display: Display::Block,
         writing_mode: parent_flow.writing_mode(),
         direction: parent_flow.direction(),
@@ -183,62 +185,81 @@ fn fri06_c03_nested_atomic_baseline_batch<S: LayoutScalar>(
     };
     let atomic_size =
         parent_flow.physical_size(LogicalSizeOf::new(S::from_f64(10.0), S::from_f64(20.0)));
-    let atomic_margin = parent_flow.physical_edges(
-        crate::geometry::LogicalEdgesOf::new(S::ZERO, S::ZERO, S::from_f64(1.0), S::from_f64(2.0))
-            .map(LengthAutoOf::px),
-    );
-    let atomic_style = NodeInputOf {
+    let atomic = NodeInputOf {
         display: Display::InlineBlock,
         writing_mode: child_flow.writing_mode(),
         direction: child_flow.direction(),
         size: atomic_size.map(PreferredSizeOf::px),
-        margin: atomic_margin,
-        overflow: ComputedOverflow::try_new(overflow, overflow).unwrap(),
+        margin: parent_flow.physical_edges(
+            LogicalEdgesOf::new(S::ZERO, S::ZERO, S::from_f64(1.0), S::from_f64(2.0))
+                .map(LengthAutoOf::px),
+        ),
+        overflow: computed_overflow(overflow, overflow),
         item_is_replaced,
-        atomic_inline_participation: Some(fri06_c03_atomic_participation(
-            0,
-            InlineBreakOpportunityOf::prohibited(),
-        )),
         ..NodeInputOf::default()
     };
-    let parent_text =
-        InlineTextInputOf::try_new(vec![fri06_c02_segment_with_metrics(700, 10.0, 8.0, 2.0)])
-            .unwrap();
-    let first_inner_text =
-        InlineTextInputOf::try_new(vec![fri06_c02_segment_with_metrics(701, 5.0, 4.0, 6.0)])
-            .unwrap();
-    let last_inner_text =
-        InlineTextInputOf::try_new(vec![fri06_c02_segment_with_metrics(702, 5.0, 7.0, 3.0)])
-            .unwrap();
-    let zero_metrics = InlineMetricsOf::from_ascent_descent(S::ZERO, S::ZERO).unwrap();
-    let inner_break = LineBreakInputOf::new()
+    let paragraph = PreparedParagraph::new(
+        vec![
+            ParagraphPart::text(1, Source::new("X"), ahem_style(10.0, 10.0)),
+            ParagraphPart::Atomic {
+                node: 2,
+                size: surgeist_text::Size::new(10.0, 20.0),
+            },
+        ],
+        ahem_style(10.0, 10.0),
+        if parent_flow.direction() == Direction::Rtl {
+            surgeist_text::ParagraphBaseDirection::RightToLeft
+        } else {
+            surgeist_text::ParagraphBaseDirection::LeftToRight
+        },
+    );
+    let inner = PreparedParagraph::new(
+        vec![
+            ParagraphPart::text(3, Source::new("X"), ahem_style(5.0, 10.0)),
+            ParagraphPart::Control {
+                node: 4,
+                kind: surgeist_text::ParagraphControlKind::ForcedBreak,
+            },
+            ParagraphPart::text(5, Source::new("X"), ahem_style(5.0, 10.0)),
+        ],
+        ahem_style(5.0, 10.0),
+        if child_flow.direction() == Direction::Rtl {
+            surgeist_text::ParagraphBaseDirection::RightToLeft
+        } else {
+            surgeist_text::ParagraphBaseDirection::LeftToRight
+        },
+    );
+    let line_break = LineBreakInputOf::new()
         .with_writing_mode(child_flow.writing_mode())
-        .with_direction(child_flow.direction())
-        .with_metrics(zero_metrics);
+        .with_direction(child_flow.direction());
     let tree = public_layout_tree(
         HashMap::from([
-            (0, LayoutInputOf::box_input(root_style.clone())),
-            (1, LayoutInputOf::inline_text(parent_text)),
-            (2, LayoutInputOf::box_input(atomic_style.clone())),
-            (3, LayoutInputOf::inline_text(first_inner_text)),
-            (4, LayoutInputOf::line_break(inner_break)),
-            (5, LayoutInputOf::inline_text(last_inner_text)),
+            (0, LayoutInputOf::box_input(root)),
+            (1, paragraph.text_input(1)),
+            (2, LayoutInputOf::box_input(atomic)),
+            (3, inner.text_input(3)),
+            (4, LayoutInputOf::line_break(line_break)),
+            (5, inner.text_input(5)),
         ]),
         HashMap::from([
             (0, vec![1, 2]),
-            (1, Vec::new()),
+            (1, vec![]),
             (2, vec![3, 4, 5]),
-            (3, Vec::new()),
-            (4, Vec::new()),
-            (5, Vec::new()),
+            (3, vec![]),
+            (4, vec![]),
+            (5, vec![]),
         ]),
     );
-    let viewport = parent_flow.physical_size(LogicalSizeOf::new(
+    let capture = TextLayoutInput::try_new(&tree, 0, vec![paragraph.binding(0), inner.binding(2)])?;
+    let available = parent_flow.physical_size(LogicalSizeOf::new(
         AvailableOf::definite(S::from_f64(100.0)),
         AvailableOf::MAX_CONTENT,
     ));
-
-    compute_layout(&tree, 0, LayoutRootRequestOf::viewport(viewport).unwrap()).unwrap()
+    compute_layout_with_text(
+        &capture,
+        0,
+        LayoutRootRequestOf::viewport(available).unwrap(),
+    )
 }
 
 #[derive(Clone)]
@@ -285,7 +306,19 @@ impl<S: LayoutScalar> LayoutTree for Fri06C03CachedAtomicTree<S> {
         _input: &ComputeInputOf<S>,
         _context: CacheKeyContext,
     ) -> Option<ComputeOutputOf<S>> {
-        (node == 2).then_some(self.atomic_output)
+        if node == 1 {
+            Some(ComputeOutputOf::from_sizes_and_baselines(
+                Size::new(S::from_f64(10.0), S::from_f64(10.0)),
+                Size::new(S::from_f64(10.0), S::from_f64(10.0)),
+                BaselinesOf::from_block_coordinates(
+                    FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+                    Some(S::from_f64(8.0)),
+                    None,
+                ),
+            ))
+        } else {
+            (node == 2).then_some(self.atomic_output)
+        }
     }
 }
 
@@ -296,37 +329,89 @@ fn fri06_c03_atomic_baseline_visible_inner_and_non_visible_margin_edge_both_scal
         let opposing_parent = FlowAxes::new(WritingMode::VerticalRl, Direction::Ltr);
         let opposing_child = FlowAxes::new(WritingMode::VerticalLr, Direction::Ltr);
 
-        for (parent_flow, child_flow, atomic_block_start, baseline, block_extent) in [
-            (parallel, parallel, 4.0, 8.0, 26.0),
-            (opposing_parent, opposing_child, 1.0, 17.0, 23.0),
-        ] {
-            let batch = fri06_c03_nested_atomic_baseline_batch::<S>(
-                parent_flow,
-                child_flow,
-                Overflow::Visible,
-                false,
-            );
-            let root = fri06_c02_final_node(&batch, 0);
-            let atomic = fri06_c02_final_node(&batch, 2);
-            let parent_fragment = fri06_c03_fragment(&batch, 1);
-            assert_eq!(
-                fri06_c03_logical_block_start(parent_flow, atomic, root.size),
-                S::from_f64(atomic_block_start),
-                "visible inner first baseline in {parent_flow:?}/{child_flow:?}"
-            );
-            assert_eq!(
-                parent_flow
-                    .logical_point(parent_fragment.baseline(), Size::ZERO, root.size)
-                    .block,
-                S::from_f64(baseline),
-                "container baseline in {parent_flow:?}/{child_flow:?}"
-            );
-            assert_eq!(
-                parent_flow.logical_size(root.size).block,
-                S::from_f64(block_extent),
-                "visible inner descent in {parent_flow:?}/{child_flow:?}"
-            );
-        }
+        // Ahem5/LH10 contributes6.5px before the baseline, while the real
+        // default forced-control allocation contributes12px before/4px after.
+        // Its inner baseline12 plus the atomic's1px top margin selects13.
+        let batch = prepared_nested_atomic_baseline_batch::<S>(
+            parallel,
+            parallel,
+            Overflow::Visible,
+            false,
+        )
+        .unwrap();
+        let root = fri06_c02_final_node(&batch, 0);
+        let inner = batch
+            .placed_text()
+            .iter()
+            .find(|output| output.container() == 2)
+            .unwrap()
+            .layout();
+        assert_eq!(
+            inner.lines()[0].baseline(),
+            13.0,
+            "the inner common12px baseline is placed at atomic top1 plus12"
+        );
+        let inner_finalized = fri06_c03_fragment(&batch, 3)
+            .finalized_fragment()
+            .finalized_line();
+        assert_eq!(inner_finalized.feedback().baseline, 12.0);
+        let inner_selected = inner_finalized.selected_line();
+        let font = inner_selected
+            .request()
+            .participants
+            .iter()
+            .find_map(|participant| {
+                if let surgeist_text::PreparedParticipant::Text(unit) = participant {
+                    Some(unit.view())
+                } else {
+                    None
+                }
+            })
+            .unwrap();
+        assert_eq!(
+            (font.ascent(), font.descent(), font.line_height()),
+            (4.0, 1.0, 10.0)
+        );
+        assert_eq!(
+            font.ascent() + (font.line_height() - font.ascent() - font.descent()) / 2.0,
+            6.5
+        );
+        let control = inner_selected.request().controls[0].strut.unwrap();
+        assert_eq!((control.baseline, control.line_extent), (12.0, 16.0));
+        assert_eq!(
+            fri06_c03_logical_block_start(parallel, fri06_c02_final_node(&batch, 2), root.size),
+            S::from_f64(1.0)
+        );
+        assert_eq!(
+            fri06_c03_fragment(&batch, 1).baseline().y,
+            S::from_f64(13.0)
+        );
+        assert_eq!(root.size.height, S::from_f64(23.0));
+        let outer = fri06_c03_fragment(&batch, 1)
+            .finalized_fragment()
+            .finalized_line();
+        assert_eq!(
+            (outer.feedback().ascent, outer.feedback().descent),
+            (13.0, 10.0)
+        );
+        let error = prepared_nested_atomic_baseline_batch::<S>(
+            opposing_parent,
+            opposing_child,
+            Overflow::Visible,
+            false,
+        )
+        .unwrap_err();
+        let LayoutErrorKindOf::Text(source) = error.kind() else {
+            panic!("{error:?}")
+        };
+        assert!(matches!(
+            source.detail(),
+            Some(surgeist_text::ErrorDetail::InvalidTextProtocol {
+                reason: surgeist_text::ProtocolError::UnsupportedContext {
+                    field: surgeist_text::ProtocolContextField::Orientation
+                }
+            })
+        ));
 
         for overflow in [
             Overflow::Clip,
@@ -335,7 +420,8 @@ fn fri06_c03_atomic_baseline_visible_inner_and_non_visible_margin_edge_both_scal
             Overflow::Auto,
         ] {
             let batch =
-                fri06_c03_nested_atomic_baseline_batch::<S>(parallel, parallel, overflow, false);
+                prepared_nested_atomic_baseline_batch::<S>(parallel, parallel, overflow, false)
+                    .unwrap();
             let root = fri06_c02_final_node(&batch, 0);
             let atomic = fri06_c02_final_node(&batch, 2);
             let parent_fragment = fri06_c03_fragment(&batch, 1);
@@ -349,7 +435,8 @@ fn fri06_c03_atomic_baseline_visible_inner_and_non_visible_margin_edge_both_scal
         }
 
         let replaced_hidden =
-            fri06_c03_nested_atomic_baseline_batch::<S>(parallel, parallel, Overflow::Hidden, true);
+            prepared_nested_atomic_baseline_batch::<S>(parallel, parallel, Overflow::Hidden, true)
+                .unwrap();
         let root = fri06_c02_final_node(&replaced_hidden, 0);
         assert_eq!(
             fri06_c03_fragment(&replaced_hidden, 1).baseline().y,
@@ -370,7 +457,7 @@ fn fri06_c03_atomic_baseline_visible_inner_and_non_visible_margin_edge_both_scal
             },
             atomic_inline_participation: Some(fri06_c03_atomic_participation(
                 0,
-                InlineBreakOpportunityOf::prohibited(),
+                InlineBreakOpportunity::Prohibited,
             )),
             ..NodeInputOf::default()
         };
@@ -384,9 +471,14 @@ fn fri06_c03_atomic_baseline_visible_inner_and_non_visible_margin_edge_both_scal
                     (0, LayoutInputOf::box_input(root_style.clone())),
                     (
                         1,
-                        fri06_c03_text_input(vec![fri06_c02_segment_with_metrics(
-                            703, 10.0, 8.0, 2.0,
-                        )]),
+                        LayoutInputOf::box_input(fri06_c03_atomic_style(
+                            10.0,
+                            10.0,
+                            0.0,
+                            0.0,
+                            0,
+                            InlineBreakOpportunity::Prohibited,
+                        )),
                     ),
                     (2, LayoutInputOf::box_input(atomic_style.clone())),
                 ]),
@@ -413,10 +505,7 @@ fn fri06_c03_atomic_baseline_visible_inner_and_non_visible_margin_edge_both_scal
             fri06_c02_final_node(&last_only, 2).location.y,
             S::from_f64(2.0)
         );
-        assert_eq!(
-            fri06_c03_fragment(&last_only, 1).baseline().y,
-            S::from_f64(8.0)
-        );
+        assert_eq!(fri06_c02_final_node(&last_only, 1).location.y, S::ZERO);
         assert_eq!(root.size.height, S::from_f64(24.0));
     }
 
@@ -427,21 +516,33 @@ fn fri06_c03_atomic_baseline_visible_inner_and_non_visible_margin_edge_both_scal
 #[test]
 fn fri06_c03_atomic_baseline_absent_inner_uses_positive_and_negative_margin_edges_once() {
     fn assert_lane<S: LayoutScalar>() {
-        let text = fri06_c03_text_input(vec![fri06_c02_segment_with_metrics(710, 10.0, 8.0, 2.0)]);
+        let paragraph = PreparedParagraph::new(
+            vec![
+                ParagraphPart::text(
+                    1,
+                    Source::identified("X", Id::from_u64(710), 0),
+                    ahem_style(10.0, 10.0),
+                ),
+                ParagraphPart::Atomic {
+                    node: 2,
+                    size: surgeist_text::Size::new(10.0, 10.0),
+                },
+                ParagraphPart::Atomic {
+                    node: 3,
+                    size: surgeist_text::Size::new(10.0, 10.0),
+                },
+            ],
+            ahem_style(10.0, 10.0),
+            surgeist_text::ParagraphBaseDirection::LeftToRight,
+        );
+        let text = paragraph.text_input(1);
         let positive = NodeInputOf {
             margin: Edges {
                 top: LengthAutoOf::px(S::from_f64(3.0)),
                 bottom: LengthAutoOf::px(S::from_f64(5.0)),
                 ..Edges::all(LengthAutoOf::ZERO)
             },
-            ..fri06_c03_atomic_style(
-                10.0,
-                10.0,
-                0.0,
-                0.0,
-                0,
-                InlineBreakOpportunityOf::prohibited(),
-            )
+            ..prepared_atomic_style(10.0, 10.0, 0.0, 0.0)
         };
         let negative = NodeInputOf {
             margin: Edges {
@@ -449,22 +550,17 @@ fn fri06_c03_atomic_baseline_absent_inner_uses_positive_and_negative_margin_edge
                 bottom: LengthAutoOf::px(S::from_f64(-3.0)),
                 ..Edges::all(LengthAutoOf::ZERO)
             },
-            ..fri06_c03_atomic_style(
-                10.0,
-                10.0,
-                0.0,
-                0.0,
-                0,
-                InlineBreakOpportunityOf::prohibited(),
-            )
+            ..prepared_atomic_style(10.0, 10.0, 0.0, 0.0)
         };
-        let batch = fri06_c03_mixed_batch(
+        let batch = prepared_mixed_batch(
+            &paragraph,
             vec![
                 (1, text, NodeInputOf::non_box()),
                 (2, LayoutInputOf::box_input(positive.clone()), positive),
                 (3, LayoutInputOf::box_input(negative.clone()), negative),
             ],
             AvailableOf::definite(S::from_f64(100.0)),
+            NodeInputOf::default(),
         );
         let root = fri06_c02_final_node(&batch, 0);
         assert_eq!(
@@ -486,7 +582,51 @@ fn fri06_c03_atomic_baseline_absent_inner_uses_positive_and_negative_margin_edge
 #[test]
 fn fri06_c03_top_bottom_mixed_atomics_and_metric_controls_expand_one_line_both_scalars() {
     fn assert_lane<S: LayoutScalar>() {
-        let text = fri06_c03_text_input(vec![fri06_c02_segment_with_metrics(720, 10.0, 8.0, 2.0)]);
+        let paragraph = PreparedParagraph::new(
+            vec![
+                ParagraphPart::text(
+                    1,
+                    Source::identified("X", Id::from_u64(720), 0),
+                    ahem_style(10.0, 10.0),
+                ),
+                ParagraphPart::Atomic {
+                    node: 2,
+                    size: surgeist_text::Size::new(10.0, 20.0),
+                },
+                ParagraphPart::Atomic {
+                    node: 3,
+                    size: surgeist_text::Size::new(10.0, 25.0),
+                },
+                ParagraphPart::Atomic {
+                    node: 4,
+                    size: surgeist_text::Size::new(10.0, 30.0),
+                },
+                ParagraphPart::Atomic {
+                    node: 5,
+                    size: surgeist_text::Size::new(10.0, 35.0),
+                },
+                ParagraphPart::Control {
+                    node: 6,
+                    kind: surgeist_text::ParagraphControlKind::InlineBoundaryStart,
+                },
+                ParagraphPart::Control {
+                    node: 7,
+                    kind: surgeist_text::ParagraphControlKind::InlineBoundaryEnd,
+                },
+                ParagraphPart::Control {
+                    node: 8,
+                    kind: surgeist_text::ParagraphControlKind::ForcedBreak,
+                },
+                ParagraphPart::text(
+                    9,
+                    Source::identified("XX", Id::from_u64(721), 0),
+                    ahem_style(5.0, 10.0),
+                ),
+            ],
+            ahem_style(10.0, 10.0),
+            surgeist_text::ParagraphBaseDirection::LeftToRight,
+        );
+        let text = paragraph.text_input(1);
         let top_with_margins = NodeInputOf {
             vertical_align: VerticalAlign::Top,
             margin: Edges {
@@ -494,25 +634,11 @@ fn fri06_c03_top_bottom_mixed_atomics_and_metric_controls_expand_one_line_both_s
                 bottom: LengthAutoOf::px(S::from_f64(3.0)),
                 ..Edges::all(LengthAutoOf::ZERO)
             },
-            ..fri06_c03_atomic_style(
-                10.0,
-                20.0,
-                0.0,
-                0.0,
-                0,
-                InlineBreakOpportunityOf::prohibited(),
-            )
+            ..prepared_atomic_style(10.0, 20.0, 0.0, 0.0)
         };
         let top = NodeInputOf {
             vertical_align: VerticalAlign::Top,
-            ..fri06_c03_atomic_style(
-                10.0,
-                25.0,
-                0.0,
-                0.0,
-                0,
-                InlineBreakOpportunityOf::prohibited(),
-            )
+            ..prepared_atomic_style(10.0, 25.0, 0.0, 0.0)
         };
         let bottom_with_margins = NodeInputOf {
             vertical_align: VerticalAlign::Bottom,
@@ -521,25 +647,11 @@ fn fri06_c03_top_bottom_mixed_atomics_and_metric_controls_expand_one_line_both_s
                 bottom: LengthAutoOf::px(S::from_f64(4.0)),
                 ..Edges::all(LengthAutoOf::ZERO)
             },
-            ..fri06_c03_atomic_style(
-                10.0,
-                30.0,
-                0.0,
-                0.0,
-                0,
-                InlineBreakOpportunityOf::prohibited(),
-            )
+            ..prepared_atomic_style(10.0, 30.0, 0.0, 0.0)
         };
         let bottom = NodeInputOf {
             vertical_align: VerticalAlign::Bottom,
-            ..fri06_c03_atomic_style(
-                10.0,
-                35.0,
-                0.0,
-                0.0,
-                0,
-                InlineBreakOpportunityOf::prohibited(),
-            )
+            ..prepared_atomic_style(10.0, 35.0, 0.0, 0.0)
         };
         let top_metrics =
             InlineMetricsOf::from_line_height_and_baseline(S::from_f64(22.0), S::from_f64(6.0))
@@ -550,7 +662,8 @@ fn fri06_c03_top_bottom_mixed_atomics_and_metric_controls_expand_one_line_both_s
         let break_metrics =
             InlineMetricsOf::from_line_height_and_baseline(S::from_f64(10.0), S::from_f64(8.0))
                 .unwrap();
-        let batch = fri06_c03_mixed_batch(
+        let batch = prepared_mixed_batch(
+            &paragraph,
             vec![
                 (1, text, NodeInputOf::non_box()),
                 (
@@ -586,17 +699,20 @@ fn fri06_c03_top_bottom_mixed_atomics_and_metric_controls_expand_one_line_both_s
                     LayoutInputOf::line_break(LineBreakInputOf::new().with_metrics(break_metrics)),
                     NodeInputOf::non_box(),
                 ),
-                (
-                    9,
-                    fri06_c03_text_input(vec![fri06_c02_segment_with_metrics(721, 10.0, 4.0, 6.0)]),
-                    NodeInputOf::non_box(),
-                ),
+                (9, paragraph.text_input(9), NodeInputOf::non_box()),
             ],
             AvailableOf::definite(S::from_f64(100.0)),
+            NodeInputOf::default(),
         );
 
         let root = fri06_c02_final_node(&batch, 0);
-        assert_eq!(root.size.height, S::from_f64(49.0));
+        // Real5px Ahem contributes ascent6.5/descent3.5 at line-height10.
+        // The8px break strut selects baseline43; actual descent closes at46.5.
+        assert_eq!(
+            public_flow_output(batch.unrounded_entries(), 0).size.height,
+            S::from_f64(46.5)
+        );
+        assert_eq!(root.size.height, S::from_f64(47.0));
         assert_eq!(
             fri06_c03_fragment(&batch, 1).baseline().y,
             S::from_f64(18.0)
@@ -605,9 +721,30 @@ fn fri06_c03_top_bottom_mixed_atomics_and_metric_controls_expand_one_line_both_s
             fri06_c03_fragment(&batch, 9).baseline().y,
             S::from_f64(43.0)
         );
+        assert_eq!(fri06_c02_final_node(&batch, 2).location.y, S::from_f64(2.0));
+        let first_line = fri06_c03_fragment(&batch, 1)
+            .finalized_fragment()
+            .finalized_line();
+        let top_slot = first_line
+            .atomic_slots()
+            .find(|slot| slot.occurrence.view().original_box().id() == Id::from_u64(2))
+            .unwrap();
+        let surgeist_text::AtomicLineAllocation::InFlow {
+            flow, box_geometry, ..
+        } = top_slot.allocation
+        else {
+            panic!("the top-aligned fixture supplies a genuine in-flow atomic")
+        };
+        assert_eq!(
+            (flow.before_baseline, box_geometry.border.origin.y),
+            (25.0, -23.0)
+        );
+        let line_top = batch.placed_text()[0].layout().lines()[0].bounds().origin.y;
+        assert_eq!(line_top, 0.0);
         assert_eq!(
             fri06_c02_final_node(&batch, 2).location.y,
-            S::from_f64(-2.0)
+            S::from_f64(line_top + 2.0),
+            "Top aligns the margin box, so the2px top margin places the border below it"
         );
         assert_eq!(fri06_c02_final_node(&batch, 3).location.y, S::ZERO);
         assert_eq!(fri06_c02_final_node(&batch, 4).location.y, S::from_f64(1.0));
@@ -636,27 +773,44 @@ fn fri06_c03_control_mixed_break_boundary_and_hidden_output_publish_from_one_sou
         let break_metrics =
             InlineMetricsOf::from_line_height_and_baseline(S::from_f64(12.0), S::from_f64(9.0))
                 .unwrap();
-        let atomic_style = fri06_c03_atomic_style(
-            10.0,
-            10.0,
-            0.0,
-            0.0,
-            2,
-            InlineBreakOpportunityOf::prohibited(),
-        );
-        let batch = fri06_c03_mixed_batch(
+        let atomic_style = prepared_atomic_style(10.0, 10.0, 0.0, 0.0);
+        let paragraph = PreparedParagraph::new(
             vec![
-                (
+                ParagraphPart::text(
                     1,
-                    fri06_c03_text_input(vec![fri06_c02_segment_with_level(
-                        401,
-                        10.0,
-                        1,
-                        InlineWhitespaceEdge::Preserve,
-                        InlineBreakOpportunityOf::prohibited(),
-                    )]),
-                    NodeInputOf::non_box(),
+                    Source::identified("X", Id::from_u64(401), 0),
+                    ahem_style(10.0, 10.0),
                 ),
+                ParagraphPart::Atomic {
+                    node: 2,
+                    size: surgeist_text::Size::new(10.0, 10.0),
+                },
+                ParagraphPart::Control {
+                    node: 3,
+                    kind: surgeist_text::ParagraphControlKind::InlineBoundaryStart,
+                },
+                ParagraphPart::text(
+                    4,
+                    Source::identified("X", Id::from_u64(402), 0),
+                    ahem_style(10.0, 10.0),
+                ),
+                ParagraphPart::Control {
+                    node: 5,
+                    kind: surgeist_text::ParagraphControlKind::ForcedBreak,
+                },
+                ParagraphPart::text(
+                    7,
+                    Source::identified("X", Id::from_u64(403), 0),
+                    ahem_style(5.0, 10.0),
+                ),
+            ],
+            ahem_style(10.0, 10.0),
+            surgeist_text::ParagraphBaseDirection::LeftToRight,
+        );
+        let batch = prepared_mixed_batch(
+            &paragraph,
+            vec![
+                (1, paragraph.text_input(1), NodeInputOf::non_box()),
                 (
                     2,
                     LayoutInputOf::box_input(atomic_style.clone()),
@@ -670,17 +824,7 @@ fn fri06_c03_control_mixed_break_boundary_and_hidden_output_publish_from_one_sou
                     )),
                     NodeInputOf::non_box(),
                 ),
-                (
-                    4,
-                    fri06_c03_text_input(vec![fri06_c02_segment_with_level(
-                        402,
-                        10.0,
-                        1,
-                        InlineWhitespaceEdge::Preserve,
-                        InlineBreakOpportunityOf::prohibited(),
-                    )]),
-                    NodeInputOf::non_box(),
-                ),
+                (4, paragraph.text_input(4), NodeInputOf::non_box()),
                 (
                     5,
                     LayoutInputOf::line_break(LineBreakInputOf::new().with_metrics(break_metrics)),
@@ -691,18 +835,10 @@ fn fri06_c03_control_mixed_break_boundary_and_hidden_output_publish_from_one_sou
                     LayoutInputOf::line_break(LineBreakInputOf::new().hidden()),
                     NodeInputOf::non_box(),
                 ),
-                (
-                    7,
-                    fri06_c03_text_input(vec![fri06_c02_segment(
-                        403,
-                        5.0,
-                        InlineWhitespaceEdge::Preserve,
-                        InlineBreakOpportunityOf::prohibited(),
-                    )]),
-                    NodeInputOf::non_box(),
-                ),
+                (7, paragraph.text_input(7), NodeInputOf::non_box()),
             ],
             AvailableOf::definite(S::from_f64(40.0)),
+            NodeInputOf::default(),
         );
 
         assert_eq!(
@@ -716,19 +852,20 @@ fn fri06_c03_control_mixed_break_boundary_and_hidden_output_publish_from_one_sou
         assert_eq!(fri06_c02_final_node(&batch, 3).source_index.get(), 2);
         assert_eq!(fri06_c02_final_node(&batch, 5).source_index.get(), 4);
         assert_eq!(fri06_c02_final_node(&batch, 6).source_index.get(), 5);
-        assert_eq!(batch.final_inline_fragments().len(), 3);
+        let source_fragments =
+            super::fixtures::origin_fragment_associations(batch.final_inline_fragments());
+        assert_eq!(source_fragments.len(), 3);
         assert_eq!(
-            batch
-                .final_inline_fragments()
+            source_fragments
                 .iter()
-                .map(|entry| (
-                    entry.fragment().line_index(),
-                    entry.fragment().visual_index()
-                ))
+                .map(|entry| entry.5)
                 .collect::<Vec<_>>(),
-            [(0, 1), (0, 3), (1, 0)]
+            [0, 0, 1]
         );
-        assert_eq!(fri06_c02_final_node(&batch, 2).location.x, S::ZERO);
+        assert_eq!(
+            fri06_c02_final_node(&batch, 2).location.x,
+            S::from_f64(10.0)
+        );
         assert_eq!(
             fri06_c02_final_node(&batch, 3).location.x,
             S::from_f64(20.0)
@@ -748,7 +885,7 @@ fn fri06_c03_control_forced_break_splits_min_content_indivisible_groups_both_sca
     fn atomic<S: LayoutScalar>(
         node: u32,
         extent: f64,
-        following_break: InlineBreakOpportunityOf<S>,
+        following_break: InlineBreakOpportunity,
     ) -> (u32, LayoutInputOf<S>, NodeInputOf<S>) {
         let style = fri06_c03_atomic_style(extent, 10.0, 0.0, 0.0, 0, following_break);
         (node, LayoutInputOf::box_input(style.clone()), style)
@@ -756,8 +893,8 @@ fn fri06_c03_control_forced_break_splits_min_content_indivisible_groups_both_sca
 
     fn children<S: LayoutScalar>() -> Vec<(u32, LayoutInputOf<S>, NodeInputOf<S>)> {
         vec![
-            atomic(1, 12.0, InlineBreakOpportunityOf::prohibited()),
-            atomic(2, 18.0, InlineBreakOpportunityOf::prohibited()),
+            atomic(1, 12.0, InlineBreakOpportunity::Prohibited),
+            atomic(2, 18.0, InlineBreakOpportunity::Prohibited),
             (
                 3,
                 LayoutInputOf::line_break(
@@ -771,9 +908,9 @@ fn fri06_c03_control_forced_break_splits_min_content_indivisible_groups_both_sca
                 ),
                 NodeInputOf::non_box(),
             ),
-            atomic(4, 17.0, InlineBreakOpportunityOf::prohibited()),
-            atomic(5, 23.0, InlineBreakOpportunityOf::allowed()),
-            atomic(6, 25.0, InlineBreakOpportunityOf::prohibited()),
+            atomic(4, 17.0, InlineBreakOpportunity::Prohibited),
+            atomic(5, 23.0, InlineBreakOpportunity::Allowed),
+            atomic(6, 25.0, InlineBreakOpportunity::Prohibited),
         ]
     }
 
@@ -850,22 +987,17 @@ fn fri06_c03_strut_adjacent_final_breaks_preserve_empty_following_line_both_scal
 }
 
 #[test]
-fn fri06_c03_control_leading_trailing_only_child_and_boundary_edges_both_scalars() {
+fn control_leading_trailing_only_child_and_boundary_edges_both_scalars() {
     fn assert_lane<S: LayoutScalar>() {
         let metrics =
             InlineMetricsOf::from_line_height_and_baseline(S::from_f64(20.0), S::from_f64(15.0))
                 .unwrap();
+        // This case owns numeric control envelopes; real inline boxes supply
+        // adjacent geometry, while separate prepared cases own Text semantics.
         let text = || {
-            (
-                2,
-                fri06_c03_text_input(vec![fri06_c02_segment(
-                    451,
-                    10.0,
-                    InlineWhitespaceEdge::Preserve,
-                    InlineBreakOpportunityOf::prohibited(),
-                )]),
-                NodeInputOf::non_box(),
-            )
+            let atomic =
+                fri06_c03_atomic_style(10.0, 10.0, 0.0, 0.0, 0, InlineBreakOpportunity::Prohibited);
+            (2, LayoutInputOf::box_input(atomic.clone()), atomic)
         };
 
         let leading = fri06_c03_mixed_batch(
@@ -1017,33 +1149,28 @@ fn fri06_c03_control_visible_break_uses_each_unequal_lines_alignment_both_scalar
         let metrics =
             InlineMetricsOf::from_line_height_and_baseline(S::from_f64(12.0), S::from_f64(9.0))
                 .unwrap();
-        let batch = fri06_c03_mixed_batch_with_root(
+        let paragraph = PreparedParagraph::new(
             vec![
-                (
-                    1,
-                    fri06_c03_text_input(vec![fri06_c02_segment(
-                        461,
-                        20.0,
-                        InlineWhitespaceEdge::Preserve,
-                        InlineBreakOpportunityOf::prohibited(),
-                    )]),
-                    NodeInputOf::non_box(),
-                ),
+                ParagraphPart::text(1, Source::new("XX"), ahem_style(10.0, 10.0)),
+                ParagraphPart::Control {
+                    node: 2,
+                    kind: surgeist_text::ParagraphControlKind::ForcedBreak,
+                },
+                ParagraphPart::text(3, Source::new("X"), ahem_style(6.0, 10.0)),
+            ],
+            ahem_style(10.0, 10.0),
+            surgeist_text::ParagraphBaseDirection::LeftToRight,
+        );
+        let batch = prepared_mixed_batch(
+            &paragraph,
+            vec![
+                (1, paragraph.text_input(1), NodeInputOf::non_box()),
                 (
                     2,
                     LayoutInputOf::line_break(LineBreakInputOf::new().with_metrics(metrics)),
                     NodeInputOf::non_box(),
                 ),
-                (
-                    3,
-                    fri06_c03_text_input(vec![fri06_c02_segment(
-                        462,
-                        6.0,
-                        InlineWhitespaceEdge::Preserve,
-                        InlineBreakOpportunityOf::prohibited(),
-                    )]),
-                    NodeInputOf::non_box(),
-                ),
+                (3, paragraph.text_input(3), NodeInputOf::non_box()),
             ],
             AvailableOf::definite(S::from_f64(40.0)),
             NodeInputOf {
@@ -1071,10 +1198,8 @@ fn fri06_c03_control_visible_break_uses_each_unequal_lines_alignment_both_scalar
 }
 
 #[test]
-fn fri06_c04_line_band_text_atomic_control_rewrap_transition_and_progress_both_scalars() {
-    fn atomic_participation<S: LayoutScalar>(
-        following_break: InlineBreakOpportunityOf<S>,
-    ) -> AtomicInlineParticipationOf<S> {
+fn atomic_control_line_bands_rewrap_transition_and_progress_both_scalars() {
+    fn atomic_participation(following_break: InlineBreakOpportunity) -> AtomicInlineParticipation {
         fri06_c03_atomic_participation(0, following_break)
     }
 
@@ -1108,15 +1233,17 @@ fn fri06_c04_line_band_text_atomic_control_rewrap_transition_and_progress_both_s
                 float(1, Float::Left, 30.0, 30.0),
                 (
                     2,
-                    fri06_c03_text_input(vec![fri06_c02_segment(
-                        601,
+                    LayoutInputOf::box_input(fri06_c03_atomic_style(
                         20.0,
-                        InlineWhitespaceEdge::Preserve,
-                        InlineBreakOpportunityOf::prohibited(),
-                    )]),
+                        10.0,
+                        0.0,
+                        0.0,
+                        0,
+                        InlineBreakOpportunity::Prohibited,
+                    )),
                     NodeInputOf::non_box(),
                 ),
-                atomic(3, 10.0, 10.0, InlineBreakOpportunityOf::prohibited()),
+                atomic(3, 10.0, 10.0, InlineBreakOpportunity::Prohibited),
                 (
                     4,
                     LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
@@ -1127,10 +1254,10 @@ fn fri06_c04_line_band_text_atomic_control_rewrap_transition_and_progress_both_s
                 ),
             ],
         );
-        let fragment = fri06_c03_fragment(&mixed, 2);
-        assert_eq!(fragment.line_index(), 0);
-        assert_eq!(fragment.visual_index(), 0);
-        assert_eq!(fragment.rect().origin().x, S::from_f64(30.0));
+        assert_eq!(
+            fri06_c02_final_node(&mixed, 2).location.x,
+            S::from_f64(30.0)
+        );
         assert_eq!(
             fri06_c02_final_node(&mixed, 3).location.x,
             S::from_f64(50.0)
@@ -1153,15 +1280,17 @@ fn fri06_c04_line_band_text_atomic_control_rewrap_transition_and_progress_both_s
                 float(1, Float::Right, 30.0, 20.0),
                 (
                     2,
-                    fri06_c03_text_input(vec![fri06_c02_segment(
-                        602,
+                    LayoutInputOf::box_input(fri06_c03_atomic_style(
                         20.0,
-                        InlineWhitespaceEdge::Preserve,
-                        InlineBreakOpportunityOf::prohibited(),
-                    )]),
+                        10.0,
+                        0.0,
+                        0.0,
+                        0,
+                        InlineBreakOpportunity::Prohibited,
+                    )),
                     NodeInputOf::non_box(),
                 ),
-                atomic(3, 20.0, 10.0, InlineBreakOpportunityOf::prohibited()),
+                atomic(3, 20.0, 10.0, InlineBreakOpportunity::Prohibited),
                 (
                     4,
                     LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
@@ -1172,7 +1301,7 @@ fn fri06_c04_line_band_text_atomic_control_rewrap_transition_and_progress_both_s
                 ),
             ],
         );
-        assert_eq!(fri06_c03_fragment(&right, 2).rect().origin().x, S::ZERO);
+        assert_eq!(fri06_c02_final_node(&right, 2).location.x, S::ZERO);
         assert_eq!(
             fri06_c02_final_node(&right, 3).location.x,
             S::from_f64(20.0)
@@ -1190,15 +1319,17 @@ fn fri06_c04_line_band_text_atomic_control_rewrap_transition_and_progress_both_s
                 float(2, Float::Right, 20.0, 20.0),
                 (
                     3,
-                    fri06_c03_text_input(vec![fri06_c02_segment(
-                        603,
+                    LayoutInputOf::box_input(fri06_c03_atomic_style(
                         20.0,
-                        InlineWhitespaceEdge::Preserve,
-                        InlineBreakOpportunityOf::prohibited(),
-                    )]),
+                        10.0,
+                        0.0,
+                        0.0,
+                        0,
+                        InlineBreakOpportunity::Prohibited,
+                    )),
                     NodeInputOf::non_box(),
                 ),
-                atomic(4, 30.0, 10.0, InlineBreakOpportunityOf::prohibited()),
+                atomic(4, 30.0, 10.0, InlineBreakOpportunity::Prohibited),
                 (
                     5,
                     LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
@@ -1210,7 +1341,7 @@ fn fri06_c04_line_band_text_atomic_control_rewrap_transition_and_progress_both_s
             ],
         );
         assert_eq!(
-            fri06_c03_fragment(&opposing, 3).rect().origin().x,
+            fri06_c02_final_node(&opposing, 3).location.x,
             S::from_f64(30.0)
         );
         assert_eq!(
@@ -1227,61 +1358,29 @@ fn fri06_c04_line_band_text_atomic_control_rewrap_transition_and_progress_both_s
             TextAlign::Auto,
             vec![
                 float(1, Float::Left, 60.0, 10.0),
-                (
-                    2,
-                    fri06_c03_text_input(vec![
-                        fri06_c02_segment(
-                            611,
-                            30.0,
-                            InlineWhitespaceEdge::Preserve,
-                            InlineBreakOpportunityOf::allowed(),
-                        ),
-                        fri06_c02_segment(
-                            612,
-                            30.0,
-                            InlineWhitespaceEdge::Preserve,
-                            InlineBreakOpportunityOf::allowed(),
-                        ),
-                        fri06_c02_segment(
-                            613,
-                            30.0,
-                            InlineWhitespaceEdge::Preserve,
-                            InlineBreakOpportunityOf::prohibited(),
-                        ),
-                    ]),
-                    NodeInputOf::non_box(),
-                ),
+                atomic(2, 30.0, 10.0, InlineBreakOpportunity::Allowed),
+                atomic(3, 30.0, 10.0, InlineBreakOpportunity::Allowed),
+                atomic(4, 30.0, 10.0, InlineBreakOpportunity::Prohibited),
             ],
         );
-        let fragments = rewrapped
-            .final_inline_fragments()
-            .iter()
-            .filter(|entry| entry.node() == 2)
-            .map(|entry| entry.fragment())
-            .collect::<Vec<_>>();
-        assert_eq!(fragments.len(), 3);
-        assert_eq!(fragments[0].line_index(), 0);
         assert_eq!(
-            fragments[0].rect().origin(),
+            fri06_c02_final_node(&rewrapped, 2).location,
             Point::new(S::from_f64(60.0), S::ZERO)
         );
-        assert_eq!(fragments[1].line_index(), 1);
         assert_eq!(
-            fragments[1].rect().origin(),
+            fri06_c02_final_node(&rewrapped, 3).location,
             Point::new(S::ZERO, S::from_f64(10.0))
         );
-        assert_eq!(fragments[2].line_index(), 1);
         assert_eq!(
-            fragments[2].rect().origin(),
+            fri06_c02_final_node(&rewrapped, 4).location,
             Point::new(S::from_f64(30.0), S::from_f64(10.0))
         );
-
         let forced = fri06_c04_line_batch(
             flow_axes,
             TextAlign::Auto,
             vec![
                 float(1, Float::Left, 30.0, 15.0),
-                atomic(2, 20.0, 20.0, InlineBreakOpportunityOf::prohibited()),
+                atomic(2, 20.0, 20.0, InlineBreakOpportunity::Prohibited),
                 (
                     3,
                     LayoutInputOf::line_break(
@@ -1295,7 +1394,7 @@ fn fri06_c04_line_band_text_atomic_control_rewrap_transition_and_progress_both_s
                     ),
                     NodeInputOf::non_box(),
                 ),
-                atomic(4, 10.0, 10.0, InlineBreakOpportunityOf::prohibited()),
+                atomic(4, 10.0, 10.0, InlineBreakOpportunity::Prohibited),
             ],
         );
         assert_eq!(
@@ -1313,7 +1412,7 @@ fn fri06_c04_line_band_text_atomic_control_rewrap_transition_and_progress_both_s
             vec![
                 float(1, Float::Left, 50.0, 20.0),
                 float(2, Float::Right, 50.0, 20.0),
-                atomic(3, 120.0, 10.0, InlineBreakOpportunityOf::prohibited()),
+                atomic(3, 120.0, 10.0, InlineBreakOpportunity::Prohibited),
             ],
         );
         assert_eq!(
@@ -1358,33 +1457,26 @@ fn fri06_c04_line_band_ordinary_block_keeps_outer_edge_and_inherits_parent_float
                 padding: Edges::all(LengthOf::px(S::from_f64(3.0))),
                 ..NodeInputOf::default()
             };
-            let text = InlineTextInputOf::try_new(vec![
-                fri06_c02_segment(
-                    701,
-                    30.0,
-                    InlineWhitespaceEdge::Preserve,
-                    InlineBreakOpportunityOf::allowed(),
-                ),
-                fri06_c02_segment(
-                    702,
-                    30.0,
-                    InlineWhitespaceEdge::Preserve,
-                    InlineBreakOpportunityOf::allowed(),
-                ),
-                fri06_c02_segment(
-                    703,
-                    30.0,
-                    InlineWhitespaceEdge::Preserve,
-                    InlineBreakOpportunityOf::prohibited(),
-                ),
-            ])
-            .unwrap();
+            // Actual Unicode zero-width opportunities separate three3em words.
+            let paragraph = PreparedParagraph::new(
+                vec![ParagraphPart::text(
+                    3,
+                    Source::new("XXX\u{200b}XXX\u{200b}XXX"),
+                    ahem_style(10.0, 10.0),
+                )],
+                ahem_style(10.0, 10.0),
+                if child_direction == Direction::Rtl {
+                    surgeist_text::ParagraphBaseDirection::RightToLeft
+                } else {
+                    surgeist_text::ParagraphBaseDirection::LeftToRight
+                },
+            );
             let tree = public_layout_tree(
                 HashMap::from([
                     (0, LayoutInputOf::box_input(root_style.clone())),
                     (1, LayoutInputOf::box_input(float_style.clone())),
                     (2, LayoutInputOf::box_input(ordinary_style.clone())),
-                    (3, LayoutInputOf::inline_text(text)),
+                    (3, paragraph.text_input(3)),
                 ]),
                 HashMap::from([
                     (0, vec![1, 2]),
@@ -1394,8 +1486,9 @@ fn fri06_c04_line_band_ordinary_block_keeps_outer_edge_and_inherits_parent_float
                 ]),
             );
 
-            let batch = compute_layout(
-                &tree,
+            let capture = TextLayoutInput::try_new(&tree, 0, vec![paragraph.binding(2)]).unwrap();
+            let batch = compute_layout_with_text(
+                &capture,
                 0,
                 LayoutRootRequestOf::viewport(Size::new(
                     AvailableOf::definite(S::from_f64(100.0)),
@@ -1420,29 +1513,48 @@ fn fri06_c04_line_band_ordinary_block_keeps_outer_edge_and_inherits_parent_float
                 .filter(|entry| entry.node() == 3)
                 .map(|entry| entry.fragment())
                 .collect::<Vec<_>>();
-            assert_eq!(fragments.len(), 3);
-            for (index, (segment, line, x, baseline_y)) in [
-                (701, 0, 35.0, 13.0),
-                (702, 1, 35.0, 23.0),
-                (703, 2, 5.0, 33.0),
-            ]
-            .into_iter()
-            .enumerate()
-            {
-                assert_eq!(fragments[index].segment_id(), InlineSegmentId::new(segment));
-                assert_eq!(fragments[index].line_index(), line);
-                assert_eq!(fragments[index].visual_index(), 0);
-                assert_eq!(fragments[index].rect().origin().x, S::from_f64(x));
-                let baseline_x = if child_direction == Direction::Rtl {
-                    x + 30.0
-                } else {
-                    x
-                };
+            let ranges = fragments
+                .iter()
+                .map(|fragment| {
+                    let view = fragment.finalized_fragment().view();
+                    assert_eq!(view.origin(), Some(paragraph.origin(3)));
+                    view.local_range().unwrap()
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(ranges.first().unwrap().start, 0);
+            assert_eq!(ranges.last().unwrap().end, 11);
+            assert!(ranges.windows(2).all(|pair| pair[0].end == pair[1].start));
+            for (line, x, baseline_y) in [(0, 35.0, 13.0), (1, 35.0, 23.0), (2, 5.0, 33.0)] {
+                let rows = fragments
+                    .iter()
+                    .filter(|fragment| fragment.line_index() == line)
+                    .collect::<Vec<_>>();
+                assert!(!rows.is_empty());
+                let rects = rows
+                    .iter()
+                    .filter_map(|fragment| fragment.rect())
+                    .collect::<Vec<_>>();
+                let left = rects
+                    .iter()
+                    .map(|rect| rect.origin().x)
+                    .fold(S::INFINITY, S::min);
+                let right = rects
+                    .iter()
+                    .map(|rect| rect.origin().x + rect.size().width)
+                    .fold(-S::INFINITY, S::max);
+                assert_eq!(left, S::from_f64(x));
+                assert_eq!(right - left, S::from_f64(30.0));
+                // The common physical local-x0 anchor is the line's left edge,
+                // independently of its paragraph's inline progression.
+                let baseline_x = x;
                 assert_eq!(
-                    fragments[index].baseline(),
-                    Point::new(S::from_f64(baseline_x), S::from_f64(baseline_y))
+                    rows.iter()
+                        .map(|fragment| fragment.baseline())
+                        .collect::<Vec<_>>(),
+                    vec![Point::new(S::from_f64(baseline_x), S::from_f64(baseline_y)); rows.len()]
                 );
             }
+            assert!(fragments.iter().all(|fragment| fragment.line_index() < 3));
         }
     }
 
@@ -1483,13 +1595,7 @@ fn fri06_c04_line_band_nested_local_float_keeps_combined_ledger_order_both_scala
             Float::Right,
             None,
         );
-        let text = InlineTextInputOf::try_new(vec![fri06_c02_segment(
-            704,
-            40.0,
-            InlineWhitespaceEdge::Preserve,
-            InlineBreakOpportunityOf::prohibited(),
-        )])
-        .unwrap();
+        let paragraph = PreparedParagraph::plain(5, Source::new("XXXX"), ahem_style(10.0, 10.0));
         let tree = public_layout_tree(
             HashMap::from([
                 (0, LayoutInputOf::box_input(root_style.clone())),
@@ -1497,7 +1603,7 @@ fn fri06_c04_line_band_nested_local_float_keeps_combined_ledger_order_both_scala
                 (2, LayoutInputOf::box_input(parent_float_style.clone())),
                 (3, LayoutInputOf::box_input(ordinary_style.clone())),
                 (4, LayoutInputOf::box_input(local_float_style.clone())),
-                (5, LayoutInputOf::inline_text(text)),
+                (5, paragraph.text_input(5)),
             ]),
             HashMap::from([
                 (0, vec![1, 2, 3]),
@@ -1509,8 +1615,9 @@ fn fri06_c04_line_band_nested_local_float_keeps_combined_ledger_order_both_scala
             ]),
         );
 
-        let batch = compute_layout(
-            &tree,
+        let capture = TextLayoutInput::try_new(&tree, 0, vec![paragraph.binding(3)]).unwrap();
+        let batch = compute_layout_with_text(
+            &capture,
             0,
             LayoutRootRequestOf::viewport(Size::new(
                 AvailableOf::definite(S::from_f64(100.0)),
@@ -1539,7 +1646,7 @@ fn fri06_c04_line_band_nested_local_float_keeps_combined_ledger_order_both_scala
         let fragment = fri06_c03_fragment(&batch, 5);
         assert_eq!(fragment.line_index(), 0);
         assert_eq!(
-            fragment.rect().origin(),
+            fragment.rect().unwrap().origin(),
             Point::new(S::from_f64(30.0), S::ZERO)
         );
     }
@@ -1573,7 +1680,7 @@ fn fri06_c04_bfc_role_exact_positive_and_negative_matrix_both_scalars() {
                 if display.is_inline_level() {
                     style.atomic_inline_participation = Some(fri06_c03_atomic_participation(
                         0,
-                        InlineBreakOpportunityOf::prohibited(),
+                        InlineBreakOpportunity::Prohibited,
                     ));
                 }
                 style
@@ -2031,13 +2138,16 @@ fn fri06_c04_float_size_auto_block_encloses_inset_float_mixed_and_nested_both_sc
             let floated_origin = flow_axes.logical_point(floated.location, floated.size, root.size);
             assert_eq!(floated_origin.block, S::from_f64(7.0));
 
-            let text = InlineTextInputOf::try_new(vec![fri06_c02_segment(
-                940,
-                20.0,
-                InlineWhitespaceEdge::Preserve,
-                InlineBreakOpportunityOf::prohibited(),
-            )])
-            .unwrap();
+            let atomic = NodeInputOf {
+                display: Display::InlineBlock,
+                writing_mode,
+                direction,
+                size: flow_axes
+                    .physical_size(LogicalSizeOf::new(S::from_f64(20.0), S::from_f64(10.0)))
+                    .map(PreferredSizeOf::px),
+                atomic_inline_participation: Some(fri06_atomic_participation()),
+                ..NodeInputOf::default()
+            };
             let mixed = fri06_c04_front_door_batch(
                 root_style,
                 LogicalSizeOf::new(
@@ -2054,8 +2164,8 @@ fn fri06_c04_float_size_auto_block_encloses_inset_float_mixed_and_nested_both_sc
                     ),
                     (
                         2,
-                        LayoutInputOf::inline_text(text),
-                        NodeInputOf::non_box(),
+                        LayoutInputOf::box_input(atomic.clone()),
+                        atomic,
                         Vec::new(),
                     ),
                 ],
@@ -2100,14 +2210,8 @@ fn fri06_c04_float_size_auto_block_encloses_inset_float_mixed_and_nested_both_sc
             },
             ..float_style(flow_axes, 20.0, 8.0, Clear::Both)
         };
-        let following_text = InlineTextInputOf::try_new(vec![fri06_c02_segment(
-            941,
-            10.0,
-            InlineWhitespaceEdge::Preserve,
-            InlineBreakOpportunityOf::prohibited(),
-        )])
-        .unwrap();
-        let nested = fri06_c04_front_door_batch(
+        let paragraph = PreparedParagraph::plain(3, Source::new("X"), ahem_style(10.0, 10.0));
+        let nested = prepared_front_door_batch(
             root_style,
             LogicalSizeOf::new(
                 AvailableOf::definite(S::from_f64(80.0)),
@@ -2129,11 +2233,12 @@ fn fri06_c04_float_size_auto_block_encloses_inset_float_mixed_and_nested_both_sc
                 ),
                 (
                     3,
-                    LayoutInputOf::inline_text(following_text),
+                    paragraph.text_input(3),
                     NodeInputOf::non_box(),
                     Vec::new(),
                 ),
             ],
+            vec![paragraph.binding(0)],
         );
         let root = fri06_c02_final_node(&nested, 0);
         let nested_output = fri06_c02_final_node(&nested, 1);
@@ -2177,14 +2282,16 @@ fn fri06_c04_float_scroll_signed_fractional_geometry_and_source_order_both_scala
             },
             ..NodeInputOf::default()
         };
-        let text = InlineTextInputOf::try_new(vec![fri06_c02_segment(
-            950,
-            5.25,
-            InlineWhitespaceEdge::Preserve,
-            InlineBreakOpportunityOf::prohibited(),
-        )])
-        .unwrap();
-        let batch = fri06_c04_front_door_batch(
+        let paragraph = PreparedParagraph::new(
+            vec![ParagraphPart::text(
+                2,
+                Source::new("X"),
+                ahem_style(5.25, 10.0),
+            )],
+            ahem_style(5.25, 10.0),
+            surgeist_text::ParagraphBaseDirection::RightToLeft,
+        );
+        let batch = prepared_front_door_batch(
             root_style,
             LogicalSizeOf::new(
                 AvailableOf::definite(S::from_f64(20.0)),
@@ -2200,11 +2307,12 @@ fn fri06_c04_float_scroll_signed_fractional_geometry_and_source_order_both_scala
                 ),
                 (
                     2,
-                    LayoutInputOf::inline_text(text),
+                    paragraph.text_input(2),
                     NodeInputOf::non_box(),
                     Vec::new(),
                 ),
             ],
+            vec![paragraph.binding(0)],
         );
         for entries in [batch.unrounded_entries(), batch.final_entries()] {
             assert_eq!(
@@ -2250,12 +2358,25 @@ fn fri06_c04_float_scroll_signed_fractional_geometry_and_source_order_both_scala
         assert_eq!(unrounded_geometry.physical_range().x().maximum(), S::ZERO);
         let fragment = batch.unrounded_inline_fragments()[0].fragment();
         assert_eq!(fragment.line_index(), 0);
-        assert_eq!(fragment.visual_index(), 0);
-        assert_eq!(fragment.rect().origin().y, S::from_f64(8.75));
+        let clearance = unrounded_float.location.y
+            + unrounded_float.size.height
+            + unrounded_float.margin.bottom;
+        assert_eq!(clearance, S::from_f64(8.75));
+        // One common canonical baseline16 minus actual Ahem body-before6.575.
+        let body_before = 0.8 * 5.25 + (10.0 - 5.25) / 2.0;
+        assert_eq!(fragment.baseline().y, S::from_f64(16.0));
+        assert_eq!(
+            fragment.rect().unwrap().origin().y,
+            S::from_f64(16.0 - body_before)
+        );
+        assert!(fragment.rect().unwrap().origin().y >= clearance);
         let rounded_fragment = batch.final_inline_fragments()[0].fragment();
         assert_eq!(rounded_fragment.line_index(), fragment.line_index());
-        assert_eq!(rounded_fragment.visual_index(), fragment.visual_index());
-        assert_eq!(rounded_fragment.rect().origin().y, S::from_f64(9.0));
+        assert_eq!(
+            rounded_fragment.rect().unwrap().origin().y,
+            S::from_f64(16.0 - body_before)
+        );
+        assert_eq!(rounded_fragment.baseline().y, S::from_f64(16.0));
     }
 
     assert_lane::<f32>();
@@ -2263,352 +2384,484 @@ fn fri06_c04_float_scroll_signed_fractional_geometry_and_source_order_both_scala
 }
 
 #[test]
-fn fri06_c03_mixed_text_atomic_source_gaps_and_repeat_both_scalars() {
+fn prepared_text_atomic_source_gaps_and_repeat_keep_exact_occurrences_both_scalars() {
     fn assert_lane<S: LayoutScalar>() {
-        let children = || {
-            let atomic = fri06_c03_atomic_style(
-                20.0,
-                6.0,
-                2.0,
-                3.0,
-                0,
-                InlineBreakOpportunityOf::prohibited(),
-            );
-            let hidden = NodeInputOf {
-                display: Display::None,
-                ..NodeInputOf::default()
-            };
-            let absolute = NodeInputOf {
-                position: Position::Absolute,
-                ..fri06_c03_atomic_style(
-                    7.0,
-                    5.0,
-                    0.0,
-                    0.0,
-                    0,
-                    InlineBreakOpportunityOf::prohibited(),
-                )
-            };
-            let floated = NodeInputOf {
-                float: Float::Left,
-                ..fri06_c03_atomic_style(
-                    8.0,
-                    4.0,
-                    0.0,
-                    0.0,
-                    0,
-                    InlineBreakOpportunityOf::prohibited(),
-                )
-            };
+        let first = PreparedParagraph::new(
             vec![
-                (
+                ParagraphPart::text(
                     1,
-                    fri06_c03_text_input(vec![fri06_c02_segment(
-                        101,
-                        10.0,
-                        InlineWhitespaceEdge::Preserve,
-                        InlineBreakOpportunityOf::prohibited(),
-                    )]),
-                    NodeInputOf::non_box(),
+                    Source::identified("X", Id::from_u64(101), 0),
+                    ahem_style(10.0, 10.0),
                 ),
-                (2, LayoutInputOf::box_input(hidden.clone()), hidden),
-                (3, LayoutInputOf::box_input(atomic.clone()), atomic),
-                (4, LayoutInputOf::box_input(absolute.clone()), absolute),
-                (
+                ParagraphPart::Atomic {
+                    node: 3,
+                    size: surgeist_text::Size::new(20.0, 6.0),
+                },
+                ParagraphPart::text(
                     5,
-                    fri06_c03_text_input(vec![fri06_c02_segment(
-                        102,
-                        10.0,
-                        InlineWhitespaceEdge::Preserve,
-                        InlineBreakOpportunityOf::prohibited(),
-                    )]),
-                    NodeInputOf::non_box(),
+                    Source::identified("X", Id::from_u64(102), 0),
+                    ahem_style(10.0, 10.0),
                 ),
-                (6, LayoutInputOf::box_input(floated.clone()), floated),
-                (
-                    7,
-                    fri06_c03_text_input(vec![fri06_c02_segment(
-                        103,
-                        5.0,
-                        InlineWhitespaceEdge::Preserve,
-                        InlineBreakOpportunityOf::prohibited(),
-                    )]),
-                    NodeInputOf::non_box(),
-                ),
-            ]
+            ],
+            ahem_style(10.0, 10.0),
+            surgeist_text::ParagraphBaseDirection::LeftToRight,
+        );
+        let after = PreparedParagraph::plain(
+            7,
+            Source::identified("X", Id::from_u64(103), 0),
+            ahem_style(5.0, 10.0),
+        );
+        let mut binding = first.binding(0);
+        binding.nodes = vec![1, 2, 3, 4, 5]; // hidden/absolute subjects keep original slots
+        let hidden = NodeInputOf {
+            display: Display::None,
+            ..NodeInputOf::default()
         };
-        let first = fri06_c03_mixed_batch(children(), AvailableOf::definite(S::from_f64(100.0)));
-        let second = fri06_c03_mixed_batch(children(), AvailableOf::definite(S::from_f64(100.0)));
-        assert_eq!(first.final_entries(), second.final_entries());
+        let atomic = prepared_atomic_style(20.0, 6.0, 2.0, 3.0);
+        let absolute = NodeInputOf {
+            position: Position::Absolute,
+            ..fri06_c03_atomic_style(7.0, 5.0, 0.0, 0.0, 0, InlineBreakOpportunity::Prohibited)
+        };
+        let floated = NodeInputOf {
+            float: Float::Left,
+            ..fri06_c03_atomic_style(8.0, 4.0, 0.0, 0.0, 0, InlineBreakOpportunity::Prohibited)
+        };
+        let inputs = HashMap::from([
+            (
+                0,
+                LayoutInputOf::box_input(NodeInputOf {
+                    display: Display::Block,
+                    ..NodeInputOf::default()
+                }),
+            ),
+            (1, first.text_input(1)),
+            (2, LayoutInputOf::box_input(hidden)),
+            (3, LayoutInputOf::box_input(atomic)),
+            (4, LayoutInputOf::box_input(absolute)),
+            (5, first.text_input(5)),
+            (6, LayoutInputOf::box_input(floated)),
+            (7, after.text_input(7)),
+        ]);
+        let children = HashMap::from([
+            (0, vec![1, 2, 3, 4, 5, 6, 7]),
+            (1, vec![]),
+            (2, vec![]),
+            (3, vec![]),
+            (4, vec![]),
+            (5, vec![]),
+            (6, vec![]),
+            (7, vec![]),
+        ]);
+        let request = LayoutRootRequestOf::viewport(Size::new(
+            AvailableOf::definite(S::from_f64(100.0)),
+            AvailableOf::MAX_CONTENT,
+        ))
+        .unwrap();
+        let run = || {
+            prepared_tree_batch(
+                inputs.clone(),
+                children.clone(),
+                vec![binding.clone(), after.binding(0)],
+                request,
+            )
+        };
+        let one = run();
+        let two = run();
+        assert_eq!(one.final_entries(), two.final_entries());
+        let fragments = super::fixtures::origin_fragment_associations(one.final_inline_fragments());
         assert_eq!(
-            first.final_inline_fragments(),
-            second.final_inline_fragments()
+            fragments,
+            super::fixtures::origin_fragment_associations(two.final_inline_fragments())
         );
-
-        let fragments = first.final_inline_fragments();
-        assert_eq!(fragments.len(), 3);
-        assert_eq!(fragments[0].node(), 1);
         assert_eq!(
-            fragments[0].fragment().segment_id(),
-            InlineSegmentId::new(101)
+            fragments.iter().map(|row| row.0).collect::<Vec<_>>(),
+            [1, 5, 7]
         );
-        assert_eq!(fragments[0].fragment().rect().origin().x, S::ZERO);
-        assert_eq!(fragments[1].node(), 5);
+        for (index, (node, origin, x, y)) in [
+            (1, first.origin(1), 0.0, 0.0),
+            (5, first.origin(5), 35.0, 0.0),
+            (7, after.origin(7), 8.0, 10.5),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            assert_eq!(fragments[index].0, node);
+            assert_eq!(fragments[index].1, origin);
+            assert_eq!(fragments[index].2, surgeist_text::Range::new(0, 1));
+            if node == 7 {
+                assert_eq!(fragments[index].4.y, S::from_f64(17.0));
+            }
+            assert_eq!(
+                fragments[index].3.unwrap().origin(),
+                Point::new(S::from_f64(x), S::from_f64(y))
+            );
+        }
+        assert_eq!(fri06_c02_final_node(&one, 2).size, Size::ZERO);
+        assert_eq!(fri06_c02_final_node(&one, 3).location.x, S::from_f64(12.0));
+        for (node, slot) in [(2, 1), (3, 2), (5, 4), (6, 5), (7, 6)] {
+            assert_eq!(
+                fri06_c02_final_node(&one, node).source_index,
+                SourceIndex::new(slot)
+            );
+        }
         assert_eq!(
-            fragments[1].fragment().segment_id(),
-            InlineSegmentId::new(102)
-        );
-        assert_eq!(fragments[1].fragment().rect().origin().x, S::from_f64(35.0));
-        assert_eq!(fragments[2].node(), 7);
-        assert_eq!(
-            fragments[2].fragment().segment_id(),
-            InlineSegmentId::new(103)
-        );
-        assert_eq!(
-            fragments[2].fragment().rect().origin(),
-            Point::new(S::from_f64(8.0), S::from_f64(10.0))
-        );
-
-        let hidden = fri06_c02_final_node(&first, 2);
-        let atomic = fri06_c02_final_node(&first, 3);
-        let trailing_text = fri06_c02_final_node(&first, 5);
-        let float = fri06_c02_final_node(&first, 6);
-        let after_float = fri06_c02_final_node(&first, 7);
-        assert_eq!(hidden.source_index, SourceIndex::new(1));
-        assert_eq!(hidden.size, Size::ZERO);
-        assert_eq!(atomic.source_index, SourceIndex::new(2));
-        assert_eq!(atomic.location.x, S::from_f64(12.0));
-        assert_eq!(trailing_text.source_index, SourceIndex::new(4));
-        assert_eq!(float.source_index, SourceIndex::new(5));
-        assert_eq!(after_float.source_index, SourceIndex::new(6));
-        assert_eq!(
-            first
-                .final_entries()
+            one.final_entries()
                 .iter()
                 .filter(|entry| entry.node() == 3)
                 .count(),
-            1,
-            "one supplied atomic placeholder publishes exactly once"
+            1
         );
     }
-
     assert_lane::<f32>();
     assert_lane::<f64>();
 }
 
 #[test]
-fn fri06_c03_atomic_break_opportunities_overwide_and_intrinsic_both_scalars() {
-    fn text<S: LayoutScalar>(
-        node: u32,
-        id: u64,
-        extent: f64,
-        following_break: InlineBreakOpportunityOf<S>,
-    ) -> (u32, LayoutInputOf<S>, NodeInputOf<S>) {
-        (
-            node,
-            fri06_c03_text_input(vec![fri06_c02_segment(
-                id,
-                extent,
-                InlineWhitespaceEdge::Preserve,
-                following_break,
-            )]),
-            NodeInputOf::non_box(),
-        )
-    }
-
-    fn atomic<S: LayoutScalar>(
-        node: u32,
-        extent: f64,
-        margin_start: f64,
-        margin_end: f64,
-        following_break: InlineBreakOpportunityOf<S>,
-    ) -> (u32, LayoutInputOf<S>, NodeInputOf<S>) {
-        let style =
-            fri06_c03_atomic_style(extent, 10.0, margin_start, margin_end, 0, following_break);
-        (node, LayoutInputOf::box_input(style.clone()), style)
-    }
-
+fn prepared_atomic_break_opportunities_overwide_and_intrinsic_both_scalars() {
     fn assert_lane<S: LayoutScalar>() {
-        let allowed = fri06_c03_mixed_batch(
+        let style = ahem_style(10.0, 10.0);
+        let allowed = PreparedParagraph::new(
             vec![
-                text(1, 201, 10.0, InlineBreakOpportunityOf::allowed()),
-                atomic(2, 8.0, 1.0, 1.0, InlineBreakOpportunityOf::prohibited()),
-                atomic(3, 8.0, 1.0, 1.0, InlineBreakOpportunityOf::allowed()),
-                text(4, 202, 15.0, InlineBreakOpportunityOf::prohibited()),
+                ParagraphPart::text(1, Source::new("X\u{200b}"), style.clone()),
+                ParagraphPart::Atomic {
+                    node: 2,
+                    size: surgeist_text::Size::new(8.0, 10.0),
+                },
+                ParagraphPart::Atomic {
+                    node: 3,
+                    size: surgeist_text::Size::new(8.0, 10.0),
+                },
+                ParagraphPart::text(4, Source::new("XXX"), ahem_style(5.0, 10.0)),
+            ],
+            style.clone(),
+            surgeist_text::ParagraphBaseDirection::LeftToRight,
+        );
+        let batch = prepared_mixed_batch(
+            &allowed,
+            vec![
+                (1, allowed.text_input(1), NodeInputOf::non_box()),
+                (
+                    2,
+                    LayoutInputOf::box_input(prepared_atomic_style(8.0, 10.0, 1.0, 1.0)),
+                    NodeInputOf::non_box(),
+                ),
+                (
+                    3,
+                    LayoutInputOf::box_input(prepared_atomic_style(8.0, 10.0, 1.0, 1.0)),
+                    NodeInputOf::non_box(),
+                ),
+                (4, allowed.text_input(4), NodeInputOf::non_box()),
             ],
             AvailableOf::definite(S::from_f64(30.0)),
+            NodeInputOf::default(),
         );
-        let fragments = allowed.final_inline_fragments();
-        assert_eq!(fragments.len(), 2);
-        assert_eq!(fragments[0].fragment().line_index(), 0);
-        assert_eq!(fragments[1].fragment().line_index(), 1);
-        assert_eq!(fri06_c02_final_node(&allowed, 3).location.y, S::ZERO);
+        let fragments =
+            super::fixtures::origin_fragment_associations(batch.final_inline_fragments());
+        let last = fragments
+            .iter()
+            .find(|row| row.0 == 4 && row.3.is_some())
+            .unwrap();
+        assert_eq!(last.5, 1);
         assert_eq!(
-            fragments[1].fragment().rect().origin(),
-            Point::new(S::ZERO, S::from_f64(12.0))
+            last.3.unwrap().origin(),
+            Point::new(S::ZERO, S::from_f64(13.5))
         );
+        assert_eq!(last.4.y, S::from_f64(20.0));
+        assert_eq!(
+            batch.placed_text()[0].layout().lines()[1].bounds().origin.y,
+            12.0
+        );
+        assert_eq!(fri06_c02_final_node(&batch, 3).location.y, S::ZERO);
 
-        let mandatory = fri06_c03_mixed_batch(
+        let mandatory = PreparedParagraph::new(
             vec![
-                text(1, 211, 10.0, InlineBreakOpportunityOf::prohibited()),
-                atomic(2, 10.0, 0.0, 0.0, InlineBreakOpportunityOf::mandatory()),
-                text(3, 212, 10.0, InlineBreakOpportunityOf::prohibited()),
+                ParagraphPart::text(1, Source::new("X"), style.clone()),
+                ParagraphPart::Atomic {
+                    node: 2,
+                    size: surgeist_text::Size::new(10.0, 10.0),
+                },
+                ParagraphPart::Control {
+                    node: 4,
+                    kind: surgeist_text::ParagraphControlKind::ForcedBreak,
+                },
+                ParagraphPart::text(3, Source::new("X"), style.clone()),
+            ],
+            style.clone(),
+            surgeist_text::ParagraphBaseDirection::LeftToRight,
+        );
+        let forced = prepared_mixed_batch(
+            &mandatory,
+            vec![
+                (1, mandatory.text_input(1), NodeInputOf::non_box()),
+                (
+                    2,
+                    LayoutInputOf::box_input(prepared_atomic_style(10.0, 10.0, 0.0, 0.0)),
+                    NodeInputOf::non_box(),
+                ),
+                (
+                    4,
+                    LayoutInputOf::line_break(LineBreakInputOf::new()),
+                    NodeInputOf::non_box(),
+                ),
+                (3, mandatory.text_input(3), NodeInputOf::non_box()),
             ],
             AvailableOf::definite(S::from_f64(100.0)),
+            NodeInputOf::default(),
         );
-        assert_eq!(
-            mandatory.final_inline_fragments()[0]
-                .fragment()
-                .line_index(),
-            0
-        );
-        assert_eq!(
-            mandatory.final_inline_fragments()[1]
-                .fragment()
-                .line_index(),
-            1
-        );
+        assert_eq!(fri06_c03_fragment(&forced, 1).line_index(), 0);
+        assert_eq!(fri06_c03_fragment(&forced, 3).line_index(), 1);
 
-        let overwide = fri06_c03_mixed_batch(
+        let overwide = PreparedParagraph::new(
             vec![
-                atomic(1, 40.0, 0.0, 0.0, InlineBreakOpportunityOf::mandatory()),
-                text(2, 221, 5.0, InlineBreakOpportunityOf::prohibited()),
+                ParagraphPart::Atomic {
+                    node: 1,
+                    size: surgeist_text::Size::new(40.0, 10.0),
+                },
+                ParagraphPart::Control {
+                    node: 3,
+                    kind: surgeist_text::ParagraphControlKind::ForcedBreak,
+                },
+                ParagraphPart::text(2, Source::new("X"), ahem_style(5.0, 10.0)),
+            ],
+            style.clone(),
+            surgeist_text::ParagraphBaseDirection::LeftToRight,
+        );
+        let progress = prepared_mixed_batch(
+            &overwide,
+            vec![
+                (
+                    1,
+                    LayoutInputOf::box_input(prepared_atomic_style(40.0, 10.0, 0.0, 0.0)),
+                    NodeInputOf::non_box(),
+                ),
+                (
+                    3,
+                    LayoutInputOf::line_break(LineBreakInputOf::new()),
+                    NodeInputOf::non_box(),
+                ),
+                (2, overwide.text_input(2), NodeInputOf::non_box()),
             ],
             AvailableOf::definite(S::from_f64(20.0)),
+            NodeInputOf::default(),
         );
         assert_eq!(
-            fri06_c02_final_node(&overwide, 1).size.width,
+            fri06_c02_final_node(&progress, 1).size.width,
             S::from_f64(40.0)
         );
-        assert_eq!(
-            overwide.final_inline_fragments()[0].fragment().line_index(),
-            1
-        );
-
-        let intrinsic_children = || {
+        assert_eq!(fri06_c03_fragment(&progress, 2).line_index(), 1);
+        let intrinsic = PreparedParagraph::new(
             vec![
-                text(1, 231, 10.0, InlineBreakOpportunityOf::<S>::allowed()),
-                atomic(
-                    2,
-                    20.0,
-                    5.0,
-                    5.0,
-                    InlineBreakOpportunityOf::<S>::mandatory(),
-                ),
-                text(3, 232, 15.0, InlineBreakOpportunityOf::<S>::prohibited()),
-            ]
+                ParagraphPart::text(1, Source::new("X\u{200b}"), style.clone()),
+                ParagraphPart::Atomic {
+                    node: 2,
+                    size: surgeist_text::Size::new(20.0, 10.0),
+                },
+                ParagraphPart::Control {
+                    node: 4,
+                    kind: surgeist_text::ParagraphControlKind::ForcedBreak,
+                },
+                ParagraphPart::text(3, Source::new("XXX"), ahem_style(5.0, 10.0)),
+            ],
+            style,
+            surgeist_text::ParagraphBaseDirection::LeftToRight,
+        );
+        let run = |available: AvailableOf<S>| {
+            prepared_mixed_batch(
+                &intrinsic,
+                vec![
+                    (1, intrinsic.text_input(1), NodeInputOf::non_box()),
+                    (
+                        2,
+                        LayoutInputOf::box_input(prepared_atomic_style(20.0, 10.0, 5.0, 5.0)),
+                        NodeInputOf::non_box(),
+                    ),
+                    (
+                        4,
+                        LayoutInputOf::line_break(LineBreakInputOf::new()),
+                        NodeInputOf::non_box(),
+                    ),
+                    (3, intrinsic.text_input(3), NodeInputOf::non_box()),
+                ],
+                available,
+                NodeInputOf::default(),
+            )
         };
-        let min = fri06_c03_mixed_batch(intrinsic_children(), AvailableOf::MIN_CONTENT);
-        let max = fri06_c03_mixed_batch(intrinsic_children(), AvailableOf::MAX_CONTENT);
-        assert_eq!(fri06_c02_final_node(&min, 0).size.width, S::from_f64(30.0));
-        assert_eq!(fri06_c02_final_node(&max, 0).size.width, S::from_f64(40.0));
+        assert_eq!(
+            fri06_c02_final_node(&run(AvailableOf::MIN_CONTENT), 0)
+                .size
+                .width,
+            S::from_f64(30.0)
+        );
+        assert_eq!(
+            fri06_c02_final_node(&run(AvailableOf::MAX_CONTENT), 0)
+                .size
+                .width,
+            S::from_f64(40.0)
+        );
     }
-
     assert_lane::<f32>();
     assert_lane::<f64>();
 }
 
 #[test]
-fn fri06_c03_mixed_bidi_reorders_complete_units_per_line_both_scalars() {
+fn prepared_mixed_bidi_uses_original_directional_source_and_resets_each_line_both_scalars() {
     fn assert_lane<S: LayoutScalar>() {
-        let text = |node, id, extent, level, whitespace, following_break| {
-            (
-                node,
-                fri06_c03_text_input(vec![fri06_c02_segment_with_level(
-                    id,
-                    extent,
-                    level,
-                    whitespace,
-                    following_break,
-                )]),
-                NodeInputOf::non_box(),
-            )
-        };
-        let atomic = |node, level, following_break| {
-            let style = fri06_c03_atomic_style(10.0, 10.0, 0.0, 0.0, level, following_break);
-            (node, LayoutInputOf::box_input(style.clone()), style)
-        };
-        let batch = fri06_c03_mixed_batch(
+        let mut collapse = ahem_style(5.0, 10.0);
+        collapse.white_space = surgeist_text::WhiteSpace::Collapse;
+        // Source RLO admits the actual odd text level; nested LRE supplies the
+        // even box context. These are captured characters, not supplied levels.
+        let paragraph = PreparedParagraph::new(
             vec![
-                text(
+                ParagraphPart::text(
                     1,
-                    301,
-                    10.0,
-                    1,
-                    InlineWhitespaceEdge::Preserve,
-                    InlineBreakOpportunityOf::prohibited(),
+                    Source::identified("\u{202e}X\u{202a}", Id::from_u64(301), 0),
+                    ahem_style(10.0, 10.0),
                 ),
-                atomic(2, 2, InlineBreakOpportunityOf::prohibited()),
-                text(
+                ParagraphPart::Atomic {
+                    node: 2,
+                    size: surgeist_text::Size::new(10.0, 10.0),
+                },
+                ParagraphPart::text(
                     3,
-                    302,
-                    5.0,
-                    1,
-                    InlineWhitespaceEdge::DiscardAtLineEnd,
-                    InlineBreakOpportunityOf::allowed(),
+                    Source::identified("\u{202c} ", Id::from_u64(302), 0),
+                    collapse,
                 ),
-                text(
+                ParagraphPart::text(
                     4,
-                    303,
-                    5.0,
-                    1,
-                    InlineWhitespaceEdge::Preserve,
-                    InlineBreakOpportunityOf::prohibited(),
+                    Source::identified("X\u{202a}", Id::from_u64(303), 0),
+                    ahem_style(5.0, 10.0),
                 ),
-                atomic(5, 2, InlineBreakOpportunityOf::prohibited()),
-                text(
+                ParagraphPart::Atomic {
+                    node: 5,
+                    size: surgeist_text::Size::new(10.0, 10.0),
+                },
+                ParagraphPart::text(
                     6,
-                    304,
-                    5.0,
-                    1,
-                    InlineWhitespaceEdge::Preserve,
-                    InlineBreakOpportunityOf::prohibited(),
+                    Source::identified("\u{202c}X\u{202c}", Id::from_u64(304), 0),
+                    ahem_style(5.0, 10.0),
                 ),
             ],
+            ahem_style(10.0, 10.0),
+            surgeist_text::ParagraphBaseDirection::LeftToRight,
+        );
+        let batch = prepared_mixed_batch(
+            &paragraph,
+            vec![
+                (1, paragraph.text_input(1), NodeInputOf::non_box()),
+                (
+                    2,
+                    LayoutInputOf::box_input(prepared_atomic_style(10.0, 10.0, 0.0, 0.0)),
+                    NodeInputOf::non_box(),
+                ),
+                (3, paragraph.text_input(3), NodeInputOf::non_box()),
+                (4, paragraph.text_input(4), NodeInputOf::non_box()),
+                (
+                    5,
+                    LayoutInputOf::box_input(prepared_atomic_style(10.0, 10.0, 0.0, 0.0)),
+                    NodeInputOf::non_box(),
+                ),
+                (6, paragraph.text_input(6), NodeInputOf::non_box()),
+            ],
             AvailableOf::definite(S::from_f64(25.0)),
+            NodeInputOf::default(),
         );
-
-        let fragments = batch.final_inline_fragments();
-        assert_eq!(
-            fragments
+        let rows = super::fixtures::origin_fragment_associations(batch.final_inline_fragments());
+        for (node, local, line, x, y, width) in [
+            (1, surgeist_text::Range::new(1, 2), 0, 10.0, 2.0, 10.0),
+            (4, surgeist_text::Range::new(0, 1), 1, 15.0, 17.5, 5.0),
+            (6, surgeist_text::Range::new(1, 2), 1, 0.0, 17.5, 5.0),
+        ] {
+            let row = rows
                 .iter()
-                .map(|entry| entry.fragment().segment_id())
-                .collect::<Vec<_>>(),
-            [
-                InlineSegmentId::new(301),
-                InlineSegmentId::new(303),
-                InlineSegmentId::new(304),
-            ]
-        );
-        assert_eq!(
-            fragments
+                .find(|row| row.0 == node && row.2 == local)
+                .unwrap();
+            assert_eq!(row.1, paragraph.origin(node));
+            assert_eq!(row.5, line);
+            assert_eq!(
+                row.3.unwrap().origin(),
+                Point::new(S::from_f64(x), S::from_f64(y))
+            );
+            assert_eq!(row.3.unwrap().size().width, S::from_f64(width));
+            let fragment = batch
+                .final_inline_fragments()
                 .iter()
-                .map(|entry| (
-                    entry.fragment().line_index(),
-                    entry.fragment().visual_index()
-                ))
+                .find(|entry| {
+                    entry.node() == node
+                        && entry.fragment().finalized_fragment().view().local_range() == Some(local)
+                })
+                .unwrap()
+                .fragment();
+            let metrics = fragment.finalized_fragment().finalized_line().feedback();
+            assert_eq!(
+                (metrics.baseline, metrics.descent, metrics.line_height),
+                (10.0, 3.5, 13.5)
+            );
+            assert_eq!(
+                fragment.baseline().y,
+                S::from_f64(if line == 0 { 10.0 } else { 24.0 })
+            );
+        }
+        // RLO/LRE/PDF and suppressed whitespace retain their actual source
+        // intersections and metric anchors rather than masquerading as X rows.
+        for (node, length, visible) in [
+            (1, 3, Some(surgeist_text::Range::new(1, 2))),
+            (3, 2, None),
+            (4, 2, Some(surgeist_text::Range::new(0, 1))),
+            (6, 3, Some(surgeist_text::Range::new(1, 2))),
+        ] {
+            let source_rows = rows.iter().filter(|row| row.0 == node).collect::<Vec<_>>();
+            assert_eq!(source_rows.first().unwrap().2.start, 0);
+            assert_eq!(source_rows.last().unwrap().2.end, length);
+            assert!(
+                source_rows
+                    .windows(2)
+                    .all(|pair| pair[0].2.end == pair[1].2.start)
+            );
+            for row in source_rows {
+                assert_eq!(row.1, paragraph.origin(node));
+                if Some(row.2) != visible {
+                    assert_eq!(row.3.unwrap().size().width, S::ZERO);
+                }
+            }
+        }
+        assert_eq!(
+            paragraph
+                .prepared
+                .unit_views()
+                .find(|unit| unit.source_range() == surgeist_text::Range::new(1, 2))
+                .unwrap()
+                .level(),
+            BidiLevel::try_new(1).unwrap()
+        );
+        for at in [3, 7] {
+            assert_eq!(
+                paragraph
+                    .prepared
+                    .atomic_views()
+                    .find(|atomic| atomic.source_position().get() == at)
+                    .unwrap()
+                    .level(),
+                BidiLevel::try_new(2).unwrap()
+            );
+        }
+        let lines = batch.placed_text()[0].layout().lines();
+        assert_eq!(
+            lines.iter().map(|line| line.baseline()).collect::<Vec<_>>(),
+            [10.0, 24.0]
+        );
+        assert_eq!(
+            lines
+                .iter()
+                .map(|line| line.bounds().origin.y)
                 .collect::<Vec<_>>(),
-            [(0, 2), (1, 2), (1, 0)]
-        );
-        assert_eq!(
-            fragments[0].fragment().rect().origin(),
-            Point::new(S::from_f64(10.0), S::from_f64(2.0))
-        );
-        assert_eq!(
-            fragments[1].fragment().rect().origin(),
-            Point::new(S::from_f64(15.0), S::from_f64(14.0))
-        );
-        assert_eq!(
-            fragments[2].fragment().rect().origin(),
-            Point::new(S::ZERO, S::from_f64(14.0))
+            [0.0, 14.0]
         );
         assert_eq!(fri06_c02_final_node(&batch, 2).location, Point::ZERO);
         assert_eq!(
             fri06_c02_final_node(&batch, 5).location,
-            Point::new(S::from_f64(5.0), S::from_f64(12.0))
+            Point::new(S::from_f64(5.0), S::from_f64(14.0))
         );
     }
-
     assert_lane::<f32>();
     assert_lane::<f64>();
 }
@@ -2631,7 +2884,40 @@ fn fri06_c08_r1_bidi_range_four_variants_preserve_complete_unit_geometry() {
 }
 
 #[test]
-fn fri06_c08_r1_rtl_visual_placement_is_independent_of_surviving_unit_composition() {
+fn numeric_rtl_visual_placement_and_internal_supplied_edge_semantics_all_flows_both_scalars() {
+    use surgeist_text::{SuppliedInlineParticipant as Participant, SuppliedLine};
+    for edge in [
+        InlineWhitespaceEdge::DiscardAtBoth,
+        InlineWhitespaceEdge::Preserve,
+    ] {
+        let supplied = [
+            Participant::Atomic {
+                level: BidiLevel::try_new(1).unwrap(),
+            },
+            Participant::Text {
+                level: BidiLevel::try_new(1).unwrap(),
+                edge,
+            },
+            Participant::Atomic {
+                level: BidiLevel::try_new(1).unwrap(),
+            },
+        ];
+        assert_eq!(
+            SuppliedLine::new(&supplied).edges().is_discarded(1),
+            Some(false),
+            "a genuine interior source slot is not a line edge"
+        );
+        let mut order = [usize::MAX; 3];
+        assert_eq!(
+            SuppliedLine::new(&supplied)
+                .reorder_into(&mut order)
+                .unwrap()
+                .iter()
+                .map(|(index, _)| index)
+                .collect::<Vec<_>>(),
+            [2, 1, 0]
+        );
+    }
     fn assert_lane<S: LayoutScalar>() {
         for writing_mode in [
             WritingMode::HorizontalTb,
@@ -2640,72 +2926,43 @@ fn fri06_c08_r1_rtl_visual_placement_is_independent_of_surviving_unit_compositio
             WritingMode::SidewaysRl,
             WritingMode::SidewaysLr,
         ] {
-            let flow_axes = FlowAxes::new(writing_mode, Direction::Rtl);
-            let placements = [
-                None,
-                Some(InlineWhitespaceEdge::DiscardAtBoth),
-                Some(InlineWhitespaceEdge::Preserve),
-            ]
-            .map(|middle_whitespace| {
-                let atomic = |node, inline_extent| {
-                    let style = fri06_c04_line_box(
-                        flow_axes,
-                        LogicalSizeOf::new(S::from_f64(inline_extent), S::from_f64(12.0)),
-                        Float::None,
-                        Some(fri06_c03_atomic_participation(
-                            1,
-                            InlineBreakOpportunityOf::prohibited(),
-                        )),
-                    );
-                    (node, LayoutInputOf::box_input(style.clone()), style)
-                };
-                let mut children = vec![atomic(1, 10.0)];
-                children.push(match middle_whitespace {
-                    Some(whitespace) => (
-                        2,
-                        fri06_c03_text_input(vec![fri06_c02_segment_with_level(
-                            903,
-                            15.0,
-                            1,
-                            whitespace,
-                            InlineBreakOpportunityOf::prohibited(),
-                        )]),
-                        NodeInputOf::non_box(),
-                    ),
-                    None => atomic(2, 15.0),
-                });
-                children.push(atomic(3, 20.0));
-                let batch = fri06_c04_line_batch(flow_axes, TextAlign::Auto, children);
-                let root_size = flow_axes
-                    .physical_size(LogicalSizeOf::new(S::from_f64(100.0), S::from_f64(160.0)));
-                let logical_inline_start = |node| {
-                    let output = fri06_c02_final_node(&batch, node);
-                    flow_axes
-                        .logical_point(output.location, output.size, root_size)
-                        .inline
-                };
-
-                if middle_whitespace.is_some() {
-                    let fragment = batch.final_inline_fragments()[0].fragment();
-                    assert_eq!(fragment.segment_id(), InlineSegmentId::new(903));
-                    assert_eq!(fragment.visual_index(), 1);
-                }
-
-                [logical_inline_start(1), logical_inline_start(3)]
-            });
-
-            assert_eq!(
-                placements,
-                [
-                    [S::from_f64(35.0), S::ZERO],
-                    [S::from_f64(35.0), S::ZERO],
-                    [S::from_f64(35.0), S::ZERO],
+            let axes = FlowAxes::new(writing_mode, Direction::Rtl);
+            let report = super::fixtures::numeric_atomic_fit_with_flow(
+                vec![
+                    (10.0, 1, InlineBreakOpportunity::Prohibited),
+                    (15.0, 1, InlineBreakOpportunity::Prohibited),
+                    (20.0, 1, InlineBreakOpportunity::Prohibited),
                 ],
-                "{writing_mode:?} RTL all-atomic, middle-discard, and middle-preserve slices"
+                AvailableOf::definite(S::from_f64(100.0)),
+                writing_mode,
+                Direction::Rtl,
+                TextAlign::Auto,
             );
+            assert_eq!(
+                [
+                    report.atomics[0].inline_start,
+                    report.atomics[2].inline_start
+                ],
+                [S::from_f64(35.0), S::ZERO]
+            );
+            let containing =
+                axes.physical_size(LogicalSizeOf::new(S::from_f64(100.0), S::from_f64(160.0)));
+            for row in &report.atomics {
+                let projected = axes.physical_rect(
+                    crate::geometry::LogicalRectOf::new(
+                        LogicalPointOf::new(row.inline_start, row.block_start),
+                        axes.logical_size(row.item.size),
+                    ),
+                    containing,
+                );
+                assert_eq!(
+                    axes.logical_point(projected.0, projected.1, containing)
+                        .inline,
+                    row.inline_start
+                );
+            }
         }
     }
-
     assert_lane::<f32>();
     assert_lane::<f64>();
 }
@@ -2723,8 +2980,29 @@ fn fri06_c08_mixed_inline_rtl_content_box_projects_reordered_slice_once() {
 }
 
 fn fri06_c08_float_line_control_batch<S: LayoutScalar>(
+    in_flow: Vec<(u32, LayoutInputOf<S>, NodeInputOf<S>)>,
+    right_float_block_extent: f64,
+) -> CompletedLayoutBatchOf<u32, S> {
+    fri06_c08_float_line_control_capture(in_flow, right_float_block_extent, None)
+}
+
+fn fri06_c08_native_atomic<S: LayoutScalar>(width: f64, height: f64) -> NodeInputOf<S> {
+    NodeInputOf {
+        display: Display::InlineBlock,
+        size: Size::new(
+            PreferredSizeOf::px(S::from_f64(width)),
+            PreferredSizeOf::px(S::from_f64(height)),
+        ),
+        // The actual PreparedAtomic owns bidi and opportunity facts.
+        atomic_inline_participation: None,
+        ..NodeInputOf::default()
+    }
+}
+
+fn fri06_c08_float_line_control_capture<S: LayoutScalar>(
     mut in_flow: Vec<(u32, LayoutInputOf<S>, NodeInputOf<S>)>,
     right_float_block_extent: f64,
+    paragraph: Option<&PreparedParagraph>,
 ) -> CompletedLayoutBatchOf<u32, S> {
     let flow_axes = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
     let left_float = fri06_c04_line_box(
@@ -2748,80 +3026,170 @@ fn fri06_c08_float_line_control_batch<S: LayoutScalar>(
         ),
     ];
     children.append(&mut in_flow);
-    fri06_c03_mixed_batch_with_root(
-        children,
-        AvailableOf::definite(S::from_f64(180.0)),
-        NodeInputOf {
-            display: Display::Block,
-            size: Size::new(
-                PreferredSizeOf::px(S::from_f64(180.0)),
-                PreferredSizeOf::AUTO,
-            ),
-            ..NodeInputOf::default()
-        },
-    )
+    let root = NodeInputOf {
+        display: Display::Block,
+        size: Size::new(
+            PreferredSizeOf::px(S::from_f64(180.0)),
+            PreferredSizeOf::AUTO,
+        ),
+        ..NodeInputOf::default()
+    };
+    if let Some(paragraph) = paragraph {
+        super::fixtures::prepared_mixed_batch(
+            paragraph,
+            children,
+            AvailableOf::definite(S::from_f64(180.0)),
+            root,
+        )
+    } else {
+        fri06_c03_mixed_batch_with_root(children, AvailableOf::definite(S::from_f64(180.0)), root)
+    }
 }
 
 fn assert_fri06_c08_float_line_control_height<S: LayoutScalar>(
     in_flow: Vec<(u32, LayoutInputOf<S>, NodeInputOf<S>)>,
+    paragraph: Option<&PreparedParagraph>,
 ) {
+    let batch = if let Some(paragraph) = paragraph {
+        fri06_c08_float_line_control_capture(in_flow, 62.0, Some(paragraph))
+    } else {
+        fri06_c08_float_line_control_batch(in_flow, 62.0)
+    };
     assert_eq!(
-        public_flow_output(
-            fri06_c08_float_line_control_batch(in_flow, 62.0).final_entries(),
-            0,
-        )
-        .size,
-        Size::new(S::from_f64(180.0), S::from_f64(62.0)),
+        public_flow_output(batch.final_entries(), 0).size,
+        Size::new(S::from_f64(180.0), S::from_f64(62.0))
     );
 }
 
-fn fri06_c08_float_line_continuation_input<S: LayoutScalar>(
+fn fri06_c08_float_line_continuation_batch<S: LayoutScalar>(
     line_height: f64,
-    levels: [u8; 4],
-) -> Vec<(u32, LayoutInputOf<S>, NodeInputOf<S>)> {
-    let atomic = |node, inline, level, following_break| {
-        let style = fri06_c03_atomic_style(inline, 16.0, 0.0, 0.0, level, following_break);
-        (node, LayoutInputOf::box_input(style.clone()), style)
+    right_float_block_extent: f64,
+) -> CompletedLayoutBatchOf<u32, S> {
+    // Ahem's 16px cell plus authored 4px letter spacing gives two real 20px
+    // clusters. Ahem ascent/descent 12.8/3.2 and 20px line height give 14.8/5.2.
+    let style = surgeist_text::Style {
+        letter_spacing: 4.0,
+        ..ahem_style(16.0, 20.0)
     };
+    let paragraph = PreparedParagraph::new(
+        vec![
+            ParagraphPart::text(3, Source::new("XX"), style.clone()),
+            ParagraphPart::Control {
+                node: 8,
+                kind: surgeist_text::ParagraphControlKind::InlineBoundaryStart,
+            },
+            ParagraphPart::Atomic {
+                node: 4,
+                size: surgeist_text::Size::new(28.0, 16.0),
+            },
+            ParagraphPart::Atomic {
+                node: 5,
+                size: surgeist_text::Size::new(32.0, 16.0),
+            },
+            ParagraphPart::Atomic {
+                node: 6,
+                size: surgeist_text::Size::new(36.0, 16.0),
+            },
+            ParagraphPart::Atomic {
+                node: 7,
+                size: surgeist_text::Size::new(40.0, 16.0),
+            },
+        ],
+        style,
+        surgeist_text::ParagraphBaseDirection::LeftToRight,
+    );
     let strut = InlineBoundaryInputOf::new(
         InlineBoundaryKind::Start,
         InlineMetricsOf::from_line_height_and_baseline(S::from_f64(line_height), S::from_f64(12.0))
             .unwrap(),
     );
-    vec![
-        (
-            3,
-            fri06_c03_text_input(vec![fri06_c02_segment_with_metrics(813, 40.0, 14.8, 5.2)]),
-            NodeInputOf::non_box(),
-        ),
+    let mut children = vec![
+        (3, paragraph.text_input(3), NodeInputOf::non_box()),
         (
             8,
             LayoutInputOf::inline_boundary(strut),
             NodeInputOf::non_box(),
         ),
-        atomic(4, 28.0, levels[0], InlineBreakOpportunityOf::allowed()),
-        atomic(5, 32.0, levels[1], InlineBreakOpportunityOf::allowed()),
-        atomic(6, 36.0, levels[2], InlineBreakOpportunityOf::allowed()),
-        atomic(7, 40.0, levels[3], InlineBreakOpportunityOf::prohibited()),
-    ]
+    ];
+    for (node, width) in [(4, 28.0), (5, 32.0), (6, 36.0), (7, 40.0)] {
+        let atomic = fri06_c08_native_atomic(width, 16.0);
+        children.push((node, LayoutInputOf::box_input(atomic.clone()), atomic));
+    }
+    fri06_c08_float_line_control_capture(children, right_float_block_extent, Some(&paragraph))
 }
 
 #[test]
-fn fri06_c08_float_line_mixed_bidi_continuation_uses_visual_placement() {
+fn fri06_c08_float_line_actual_bidi_continuation_uses_visual_placement() {
     fn assert_lane<S: LayoutScalar>() {
-        let batch = fri06_c08_float_line_control_batch(
-            fri06_c08_float_line_continuation_input::<S>(20.0, [0, 1, 2, 1]),
-            62.0,
+        // Actual Hebrew source resolves the RTL line. The real Ahem cell plus
+        // authored letter spacing is 40px and the atomic border is 28px.
+        let style = surgeist_text::Style {
+            letter_spacing: 24.0,
+            ..ahem_style(16.0, 20.0)
+        };
+        let paragraph = PreparedParagraph::new(
+            vec![
+                ParagraphPart::text(3, Source::new("א"), style.clone()),
+                ParagraphPart::Atomic {
+                    node: 4,
+                    size: surgeist_text::Size::new(28.0, 16.0),
+                },
+            ],
+            style,
+            surgeist_text::ParagraphBaseDirection::RightToLeft,
         );
-
+        let atomic = fri06_c08_native_atomic(28.0, 16.0);
+        let left = NodeInputOf {
+            display: Display::Block,
+            float: Float::Right,
+            size: Size::new(
+                PreferredSizeOf::px(S::from_f64(42.0)),
+                PreferredSizeOf::px(S::from_f64(42.0)),
+            ),
+            ..NodeInputOf::default()
+        };
+        let right = NodeInputOf {
+            display: Display::Block,
+            float: Float::Left,
+            size: Size::new(
+                PreferredSizeOf::px(S::from_f64(50.0)),
+                PreferredSizeOf::px(S::from_f64(62.0)),
+            ),
+            ..NodeInputOf::default()
+        };
+        let batch = super::fixtures::prepared_mixed_batch(
+            &paragraph,
+            vec![
+                (1, LayoutInputOf::box_input(left.clone()), left),
+                (2, LayoutInputOf::box_input(right.clone()), right),
+                (3, paragraph.text_input(3), NodeInputOf::non_box()),
+                (4, LayoutInputOf::box_input(atomic.clone()), atomic),
+            ],
+            AvailableOf::definite(S::from_f64(180.0)),
+            NodeInputOf {
+                display: Display::Block,
+                direction: Direction::Rtl,
+                size: Size::new(
+                    PreferredSizeOf::px(S::from_f64(180.0)),
+                    PreferredSizeOf::AUTO,
+                ),
+                ..NodeInputOf::default()
+            },
+        );
+        let rows = super::fixtures::origin_fragment_associations(batch.final_inline_fragments());
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].1, paragraph.origin(3));
+        let text = rows[0].3.unwrap();
+        let atomic = public_flow_output(batch.final_entries(), 4);
+        assert_eq!(text.size().width, S::from_f64(40.0));
+        assert_eq!(atomic.size.width, S::from_f64(28.0));
+        assert_eq!(text.origin().x, atomic.location.x + atomic.size.width);
+        assert_eq!(text.origin().x + text.size().width, S::from_f64(130.0));
         assert_eq!(
-            [5, 6].map(|node| public_flow_output(batch.unrounded_entries(), node)
-                .location
-                .x),
-            [S::from_f64(78.0), S::from_f64(42.0)],
+            public_flow_output(batch.final_entries(), 0).size.height,
+            S::from_f64(62.0)
         );
     }
-
     assert_lane::<f32>();
     assert_lane::<f64>();
 }
@@ -2829,17 +3197,35 @@ fn fri06_c08_float_line_mixed_bidi_continuation_uses_visual_placement() {
 #[test]
 fn fri06_c08_float_line_fractional_terminal_extent_uses_resolved_geometry() {
     fn assert_lane<S: LayoutScalar>() {
-        let batch = fri06_c08_float_line_control_batch(
-            fri06_c08_float_line_continuation_input::<S>(20.25, [0; 4]),
+        // Four authored forced lines allocate4*20.25=81px beyond both floats.
+        // Ahem16's before12.8 plus half-leading2.125 gives14.925. Rounding
+        // each physical baseline preserves separate fractional metric bounds;
+        // those rigid translations do not advance the next logical line.
+        let paragraph =
+            PreparedParagraph::plain(3, Source::new("X\nX\nX\nX"), ahem_style(16.0, 20.25));
+        let batch = fri06_c08_float_line_control_capture::<S>(
+            vec![(3, paragraph.text_input(3), NodeInputOf::non_box())],
             62.0,
+            Some(&paragraph),
         );
-
+        let layout = batch.placed_text()[0].layout();
+        let lines = layout.lines();
+        assert_eq!(lines.len(), 4);
+        for (line, baseline) in lines.iter().zip([15.0, 35.0, 55.0, 76.0]) {
+            assert!((line.bounds().size.height - 20.25).abs() < 0.000_001);
+            assert_eq!(line.baseline(), baseline);
+            assert!((line.bounds().origin.y - (baseline - 14.925)).abs() < 0.000_1);
+        }
+        let terminal = lines.last().unwrap().bounds();
+        let resolved_bottom = terminal.origin.y + terminal.size.height;
+        assert!((resolved_bottom - 81.325).abs() < 0.000_1);
+        let actual = public_flow_output(batch.unrounded_entries(), 0).size.height;
+        assert_eq!(actual, S::from_f64(4.0 * 20.25));
         assert_eq!(
-            public_flow_output(batch.unrounded_entries(), 0).size.height,
-            S::from_f64(62.25),
+            fri06_c02_final_node(&batch, 0).size.height,
+            S::from_f64(81.0)
         );
     }
-
     assert_lane::<f32>();
     assert_lane::<f64>();
 }
@@ -2847,15 +3233,12 @@ fn fri06_c08_float_line_fractional_terminal_extent_uses_resolved_geometry() {
 #[test]
 fn fri06_c08_float_line_pure_text_keeps_integral_float_height_at_62() {
     fn assert_lane<S: LayoutScalar>() {
-        assert_fri06_c08_float_line_control_height::<S>(vec![(
-            3,
-            fri06_c03_text_input::<S>(vec![fri06_c02_segment_with_metrics::<S>(
-                810, 40.0, 14.8, 5.3,
-            )]),
-            NodeInputOf::non_box(),
-        )]);
+        let paragraph = PreparedParagraph::plain(3, Source::new("XX"), ahem_style(20.0, 20.1));
+        assert_fri06_c08_float_line_control_height::<S>(
+            vec![(3, paragraph.text_input(3), NodeInputOf::non_box())],
+            Some(&paragraph),
+        );
     }
-
     assert_lane::<f32>();
     assert_lane::<f64>();
 }
@@ -2863,21 +3246,13 @@ fn fri06_c08_float_line_pure_text_keeps_integral_float_height_at_62() {
 #[test]
 fn fri06_c08_float_line_all_atomic_keeps_integral_float_height_at_62() {
     fn assert_lane<S: LayoutScalar>() {
-        let atomic: NodeInputOf<S> = fri06_c03_atomic_style(
-            40.0,
-            20.2,
-            0.0,
-            0.0,
-            0,
-            InlineBreakOpportunityOf::prohibited(),
+        let atomic =
+            fri06_c03_atomic_style(40.0, 20.2, 0.0, 0.0, 0, InlineBreakOpportunity::Prohibited);
+        assert_fri06_c08_float_line_control_height::<S>(
+            vec![(3, LayoutInputOf::box_input(atomic.clone()), atomic)],
+            None,
         );
-        assert_fri06_c08_float_line_control_height::<S>(vec![(
-            3,
-            LayoutInputOf::box_input(atomic.clone()),
-            atomic,
-        )]);
     }
-
     assert_lane::<f32>();
     assert_lane::<f64>();
 }
@@ -2885,24 +3260,32 @@ fn fri06_c08_float_line_all_atomic_keeps_integral_float_height_at_62() {
 #[test]
 fn fri06_c08_float_line_empty_inline_keeps_integral_float_height_at_62() {
     fn assert_lane<S: LayoutScalar>() {
+        let style = ahem_style(1.0, 10.0);
+        let paragraph = PreparedParagraph::new(
+            vec![
+                ParagraphPart::text(3, Source::new("X"), style.clone()),
+                ParagraphPart::Control {
+                    node: 4,
+                    kind: surgeist_text::ParagraphControlKind::ForcedBreak,
+                },
+            ],
+            style,
+            surgeist_text::ParagraphBaseDirection::LeftToRight,
+        );
         let metrics =
             InlineMetricsOf::from_ascent_descent(S::from_f64(7.8), S::from_f64(2.3)).unwrap();
-        assert_fri06_c08_float_line_control_height::<S>(vec![
-            (
-                3,
-                fri06_c03_text_input::<S>(vec![fri06_c02_segment_with_metrics::<S>(
-                    812, 1.0, 8.0, 2.0,
-                )]),
-                NodeInputOf::non_box(),
-            ),
-            (
-                4,
-                LayoutInputOf::line_break(LineBreakInputOf::new().with_metrics(metrics)),
-                NodeInputOf::non_box(),
-            ),
-        ]);
+        assert_fri06_c08_float_line_control_height::<S>(
+            vec![
+                (3, paragraph.text_input(3), NodeInputOf::non_box()),
+                (
+                    4,
+                    LayoutInputOf::line_break(LineBreakInputOf::new().with_metrics(metrics)),
+                    NodeInputOf::non_box(),
+                ),
+            ],
+            Some(&paragraph),
+        );
     }
-
     assert_lane::<f32>();
     assert_lane::<f64>();
 }
@@ -2910,15 +3293,23 @@ fn fri06_c08_float_line_empty_inline_keeps_integral_float_height_at_62() {
 #[test]
 fn fri06_c08_float_line_nonterminal_mixed_inline_keeps_integral_float_height_at_62() {
     fn assert_lane<S: LayoutScalar>() {
-        let atomic: NodeInputOf<S> = fri06_c03_atomic_style(
-            28.0,
-            16.0,
-            0.0,
-            0.0,
-            0,
-            InlineBreakOpportunityOf::prohibited(),
+        let style = surgeist_text::Style {
+            letter_spacing: 4.0,
+            ..ahem_style(16.0, 20.0)
+        };
+        let paragraph = PreparedParagraph::new(
+            vec![
+                ParagraphPart::text(3, Source::new("XX"), style.clone()),
+                ParagraphPart::Atomic {
+                    node: 4,
+                    size: surgeist_text::Size::new(28.0, 16.0),
+                },
+            ],
+            style,
+            surgeist_text::ParagraphBaseDirection::LeftToRight,
         );
-        let terminal_block = NodeInputOf {
+        let atomic = fri06_c08_native_atomic(28.0, 16.0);
+        let terminal = NodeInputOf {
             display: Display::Block,
             size: Size::new(
                 PreferredSizeOf::px(S::from_f64(10.0)),
@@ -2926,23 +3317,15 @@ fn fri06_c08_float_line_nonterminal_mixed_inline_keeps_integral_float_height_at_
             ),
             ..NodeInputOf::default()
         };
-        assert_fri06_c08_float_line_control_height::<S>(vec![
-            (
-                3,
-                fri06_c03_text_input::<S>(vec![fri06_c02_segment_with_metrics::<S>(
-                    811, 40.0, 14.8, 5.2,
-                )]),
-                NodeInputOf::non_box(),
-            ),
-            (4, LayoutInputOf::box_input(atomic.clone()), atomic),
-            (
-                5,
-                LayoutInputOf::box_input(terminal_block.clone()),
-                terminal_block,
-            ),
-        ]);
+        assert_fri06_c08_float_line_control_height::<S>(
+            vec![
+                (3, paragraph.text_input(3), NodeInputOf::non_box()),
+                (4, LayoutInputOf::box_input(atomic.clone()), atomic),
+                (5, LayoutInputOf::box_input(terminal.clone()), terminal),
+            ],
+            Some(&paragraph),
+        );
     }
-
     assert_lane::<f32>();
     assert_lane::<f64>();
 }
@@ -3001,36 +3384,23 @@ fn fri06_c12_t08_horizontal_forced_break_fallback_expands_each_line_envelope() {
 #[test]
 fn fri06_c12_t08_ltr_post_exclusion_continuation_restarts_at_line_start() {
     fn assert_lane<S: LayoutScalar>() {
-        let batch = fri06_c08_float_line_control_batch(
-            fri06_c08_float_line_continuation_input::<S>(20.0, [0; 4]),
-            62.0,
-        );
-
-        assert_eq!(
-            public_flow_output(batch.unrounded_entries(), 7).location.x,
-            S::ZERO,
-        );
+        // This real 28px allocated control has 16px below its 12px baseline.
+        // Combined with the 16px baseline atomic it makes the first line at
+        // least 32px. The next 16px atomic line ends beyond the 42px left float.
+        let batch = fri06_c08_float_line_continuation_batch::<S>(28.0, 62.0);
+        let terminal = public_flow_output(batch.unrounded_entries(), 7);
+        assert_eq!(terminal.location.x, S::ZERO);
+        assert!(terminal.location.y >= S::from_f64(42.0));
         assert_eq!(
             public_flow_output(batch.unrounded_entries(), 6).location.x,
             S::from_f64(74.0),
-            "the nearest in-exclusion continuation remains unchanged",
+            "the preceding line still intersects the actual 42px left float"
         );
         assert_eq!(
-            public_flow_output(
-                fri06_c08_float_line_control_batch(
-                    fri06_c08_float_line_continuation_input::<S>(20.25, [0; 4]),
-                    62.0,
-                )
-                .unrounded_entries(),
-                0,
-            )
-            .size
-            .height,
-            S::from_f64(62.25),
-            "fractional terminal line geometry remains independent of continuation placement",
+            terminal.size,
+            Size::new(S::from_f64(40.0), S::from_f64(16.0))
         );
     }
-
     assert_lane::<f32>();
     assert_lane::<f64>();
 }
@@ -3066,43 +3436,33 @@ fn fri06_c08_recovery_characterization_batch<S: LayoutScalar>(
     .unwrap()
 }
 
-fn fri06_c08_recovery_characterization_segment<S: LayoutScalar>(
-    id: u64,
-    inline_extent: f64,
-    baseline: f64,
-    line_height: f64,
-    bidi_level: u8,
-    following_break: InlineBreakOpportunityOf<S>,
-) -> ShapedInlineSegmentOf<S> {
-    ShapedInlineSegmentOf::try_new(
-        InlineSegmentId::new(id),
-        S::from_f64(inline_extent),
-        InlineMetricsOf::from_line_height_and_baseline(
-            S::from_f64(line_height),
-            S::from_f64(baseline),
-        )
-        .unwrap(),
-        BidiLevel::try_new(bidi_level).unwrap(),
-        InlineWhitespaceEdge::Preserve,
-        following_break,
-    )
-    .unwrap()
-}
-
 #[test]
 fn fri06_c08_recovery_characterization_exact_public_inputs_cover_both_scalar_lanes() {
     fn assert_percentage_lane<S: LayoutScalar>() {
         for box_sizing in [BoxSizing::BorderBox, BoxSizing::ContentBox] {
-            let text = |id, extent| {
-                fri06_c08_recovery_characterization_segment(
-                    id,
-                    extent,
-                    14.8,
-                    20.0,
-                    1,
-                    InlineBreakOpportunityOf::prohibited(),
-                )
+            // Three Ahem cells with authored 3.265625px spacing: 57.796875.
+            // Four cells with 5.67578125px spacing: 86.703125. Strong Hebrew
+            // source establishes actual level one instead of supplied glyph levels.
+            let first_style = surgeist_text::Style {
+                letter_spacing: 3.265625,
+                ..ahem_style(16.0, 20.0)
             };
+            let last_style = surgeist_text::Style {
+                letter_spacing: 5.67578125,
+                ..ahem_style(16.0, 20.0)
+            };
+            let paragraph = PreparedParagraph::new(
+                vec![
+                    ParagraphPart::text(1, Source::new("אבג"), first_style.clone()),
+                    ParagraphPart::Atomic {
+                        node: 2,
+                        size: surgeist_text::Size::new(20.0, 40.0),
+                    },
+                    ParagraphPart::text(3, Source::new("אבגד"), last_style),
+                ],
+                first_style,
+                surgeist_text::ParagraphBaseDirection::RightToLeft,
+            );
             let atomic = NodeInputOf {
                 display: Display::InlineBlock,
                 direction: Direction::Rtl,
@@ -3111,10 +3471,7 @@ fn fri06_c08_recovery_characterization_exact_public_inputs_cover_both_scalar_lan
                     PreferredSizeOf::px(S::from_f64(20.0)),
                     PreferredSizeOf::percent(S::from_f64(0.5)),
                 ),
-                atomic_inline_participation: Some(fri06_c03_atomic_participation(
-                    1,
-                    InlineBreakOpportunityOf::prohibited(),
-                )),
+                atomic_inline_participation: None,
                 ..NodeInputOf::default()
             };
             let root = NodeInputOf {
@@ -3127,80 +3484,51 @@ fn fri06_c08_recovery_characterization_exact_public_inputs_cover_both_scalar_lan
                 ),
                 ..NodeInputOf::default()
             };
-            let batch = fri06_c08_recovery_characterization_batch(
+            let batch = super::fixtures::prepared_mixed_batch(
+                &paragraph,
                 vec![
-                    (
-                        1,
-                        fri06_c03_text_input(vec![text(0, 57.796875)]),
-                        NodeInputOf::non_box(),
-                    ),
+                    (1, paragraph.text_input(1), NodeInputOf::non_box()),
                     (2, LayoutInputOf::box_input(atomic.clone()), atomic),
-                    (
-                        3,
-                        fri06_c03_text_input(vec![text(2, 86.703125)]),
-                        NodeInputOf::non_box(),
-                    ),
+                    (3, paragraph.text_input(3), NodeInputOf::non_box()),
                 ],
+                AvailableOf::MAX_CONTENT,
                 root,
             );
-
             assert_eq!(
                 fri06_c02_final_node(&batch, 0).size,
                 Size::new(S::from_f64(180.0), S::from_f64(80.0))
             );
             let atomic = fri06_c02_final_node(&batch, 2);
-            let fragments = batch.unrounded_inline_fragments();
-            assert_eq!(fragments.len(), 2);
-            assert_eq!(
-                (
-                    fragments[0].fragment().baseline().x,
-                    atomic.location.x,
-                    fragments[1].fragment().baseline().x,
-                ),
-                (
-                    S::from_f64(73.296875),
-                    S::from_f64(73.0),
-                    S::from_f64(180.0),
-                ),
-                "{box_sizing:?} direct RTL visual starts"
-            );
             assert_eq!(atomic.source_index, SourceIndex::new(1));
+            // L2 puts the last Hebrew origin first, then the atomic, then the
+            // first origin. Start alignment uses 180 - (57.796875+20+86.703125).
             assert_eq!(
                 (atomic.location, atomic.size, atomic.content_size),
                 (
-                    Point::new(S::from_f64(73.0), S::ZERO),
+                    Point::new(S::from_f64(102.0), S::ZERO),
                     Size::new(S::from_f64(20.0), S::from_f64(40.0)),
-                    Size::new(S::from_f64(20.0), S::from_f64(40.0)),
-                ),
-                "{box_sizing:?} rounded percentage atomic geometry"
+                    Size::new(S::from_f64(20.0), S::from_f64(40.0))
+                )
             );
-            for (index, (node, id, x, width, baseline_x)) in [
-                (1, 0, 15.5, 57.796875, 73.296875),
-                (3, 2, 93.296875, 86.703125, 180.0),
-            ]
-            .into_iter()
-            .enumerate()
-            {
-                let entry = fragments[index];
-                let fragment = entry.fragment();
-                assert_eq!(
-                    (entry.node(), fragment.segment_id()),
-                    (node, InlineSegmentId::new(id))
+            for (node, x, width) in [(1, 122.203125, 57.796875), (3, 15.5, 86.703125)] {
+                let output = public_flow_output(batch.final_entries(), node);
+                assert_eq!(output.location.x, S::from_f64(x));
+                assert_eq!(output.size.width, S::from_f64(width));
+                let rows =
+                    super::fixtures::origin_fragment_associations(batch.final_inline_fragments());
+                let rows: Vec<_> = rows.iter().filter(|row| row.0 == node).collect();
+                assert!(!rows.is_empty());
+                assert!(
+                    rows.iter()
+                        .all(|row| row.1 == paragraph.origin(node) && row.5 == 0)
                 );
-                assert_eq!(fragment.line_index(), 0);
-                assert_eq!(
-                    fragment.rect(),
-                    ScrollRectOf::try_new(
-                        Point::new(S::from_f64(x), S::from_f64(25.2)),
-                        Size::new(S::from_f64(width), S::from_f64(20.0)),
-                    )
-                    .unwrap()
-                );
-                assert_eq!(
-                    fragment.baseline(),
-                    Point::new(S::from_f64(baseline_x), S::from_f64(40.0))
-                );
+                assert!(rows.iter().all(|row| row.4.y == S::from_f64(40.0)));
+                assert!(rows.iter().all(|row| row.3.is_some()));
             }
+            assert_eq!(
+                batch.placed_text()[0].layout().source().text().code_units(),
+                Source::new("אבגאבגד").text().code_units()
+            );
         }
     }
 
@@ -3226,7 +3554,7 @@ fn fri06_c08_recovery_characterization_exact_public_inputs_cover_both_scalar_lan
                 let participation = || {
                     Some(fri06_c03_atomic_participation(
                         bidi_level,
-                        InlineBreakOpportunityOf::prohibited(),
+                        InlineBreakOpportunity::Prohibited,
                     ))
                 };
                 let floating =
@@ -3363,11 +3691,10 @@ fn fri06_c08_recovery_characterization_exact_public_inputs_cover_both_scalar_lan
         for box_sizing in [BoxSizing::BorderBox, BoxSizing::ContentBox] {
             for direction in [Direction::Ltr, Direction::Rtl] {
                 let axes = FlowAxes::new(WritingMode::HorizontalTb, direction);
-                let bidi_level = u8::from(direction == Direction::Rtl);
                 let floating = |physical_left: bool, width, height| {
                     let side = match (direction, physical_left) {
                         (Direction::Ltr, true) | (Direction::Rtl, false) => Float::Left,
-                        (Direction::Ltr, false) | (Direction::Rtl, true) => Float::Right,
+                        _ => Float::Right,
                     };
                     let mut input = fri06_c04_line_box(
                         axes,
@@ -3378,169 +3705,156 @@ fn fri06_c08_recovery_characterization_exact_public_inputs_cover_both_scalar_lan
                     input.box_sizing = box_sizing;
                     input
                 };
-                let atomic = |width, following_break| {
+                let atomic = |width| {
                     let mut input = fri06_c04_line_box(
                         axes,
                         LogicalSizeOf::new(S::from_f64(width), S::from_f64(16.0)),
                         Float::None,
-                        Some(fri06_c03_atomic_participation(bidi_level, following_break)),
+                        None,
                     );
                     input.box_sizing = box_sizing;
                     input
                 };
                 let left = floating(true, 42.0, 42.0);
                 let right = floating(false, 50.0, 62.0);
-                let atomics = [
-                    atomic(28.0, InlineBreakOpportunityOf::allowed()),
-                    atomic(32.0, InlineBreakOpportunityOf::allowed()),
-                    atomic(36.0, InlineBreakOpportunityOf::allowed()),
-                    atomic(40.0, InlineBreakOpportunityOf::prohibited()),
-                ];
-                let segment = fri06_c08_recovery_characterization_segment(
-                    4,
-                    38.53125,
-                    14.8,
-                    20.0,
-                    bidi_level,
-                    InlineBreakOpportunityOf::allowed(),
-                );
-                let line_strut = InlineBoundaryInputOf::new(
-                    InlineBoundaryKind::Start,
-                    InlineMetricsOf::from_line_height_and_baseline(
-                        S::from_f64(20.0),
-                        S::from_f64(12.0),
-                    )
-                    .unwrap(),
-                )
-                .with_writing_mode(WritingMode::HorizontalTb)
-                .with_direction(direction);
-                let root = NodeInputOf {
-                    display: Display::Block,
-                    direction,
-                    box_sizing,
-                    size: Size::new(
-                        PreferredSizeOf::px(S::from_f64(180.0)),
-                        PreferredSizeOf::AUTO,
-                    ),
-                    ..NodeInputOf::default()
+                let atomics = [atomic(28.0), atomic(32.0), atomic(36.0), atomic(40.0)];
+                // One genuine 16px Ahem cell plus exact authored spacing.
+                let style = surgeist_text::Style {
+                    letter_spacing: 22.53125,
+                    ..ahem_style(16.0, 20.0)
                 };
-                let batch = fri06_c08_recovery_characterization_batch(
+                let paragraph = PreparedParagraph::new(
                     vec![
-                        (1, LayoutInputOf::box_input(left.clone()), left),
-                        (2, LayoutInputOf::box_input(right.clone()), right),
-                        (
+                        ParagraphPart::text(
                             3,
-                            fri06_c03_text_input(vec![segment]),
-                            NodeInputOf::non_box(),
+                            Source::new(if direction == Direction::Rtl {
+                                "א"
+                            } else {
+                                "X"
+                            }),
+                            style.clone(),
                         ),
-                        (
-                            8,
-                            LayoutInputOf::inline_boundary(line_strut),
-                            NodeInputOf::non_box(),
-                        ),
-                        (
-                            4,
-                            LayoutInputOf::box_input(atomics[0].clone()),
-                            atomics[0].clone(),
-                        ),
-                        (
-                            5,
-                            LayoutInputOf::box_input(atomics[1].clone()),
-                            atomics[1].clone(),
-                        ),
-                        (
-                            6,
-                            LayoutInputOf::box_input(atomics[2].clone()),
-                            atomics[2].clone(),
-                        ),
-                        (
-                            7,
-                            LayoutInputOf::box_input(atomics[3].clone()),
-                            atomics[3].clone(),
-                        ),
+                        ParagraphPart::Atomic {
+                            node: 4,
+                            size: surgeist_text::Size::new(28.0, 16.0),
+                        },
+                        ParagraphPart::Atomic {
+                            node: 5,
+                            size: surgeist_text::Size::new(32.0, 16.0),
+                        },
+                        ParagraphPart::Atomic {
+                            node: 6,
+                            size: surgeist_text::Size::new(36.0, 16.0),
+                        },
+                        ParagraphPart::Atomic {
+                            node: 7,
+                            size: surgeist_text::Size::new(40.0, 16.0),
+                        },
                     ],
-                    root,
+                    style,
+                    if direction == Direction::Rtl {
+                        surgeist_text::ParagraphBaseDirection::RightToLeft
+                    } else {
+                        surgeist_text::ParagraphBaseDirection::LeftToRight
+                    },
                 );
+                let mut children = vec![
+                    (1, LayoutInputOf::box_input(left.clone()), left),
+                    (2, LayoutInputOf::box_input(right.clone()), right),
+                    (3, paragraph.text_input(3), NodeInputOf::non_box()),
+                ];
+                for (index, input) in atomics.into_iter().enumerate() {
+                    children.push((
+                        4 + index as u32,
+                        LayoutInputOf::box_input(input.clone()),
+                        input,
+                    ));
+                }
+                let batch = super::fixtures::prepared_mixed_batch(
+                    &paragraph,
+                    children,
+                    AvailableOf::MAX_CONTENT,
+                    NodeInputOf {
+                        display: Display::Block,
+                        direction,
+                        box_sizing,
+                        size: Size::new(
+                            PreferredSizeOf::px(S::from_f64(180.0)),
+                            PreferredSizeOf::AUTO,
+                        ),
+                        ..NodeInputOf::default()
+                    },
+                );
+                // Ahem16/LH20 contributes after5.2; each baseline-aligned
+                // atomic contributes before16, giving three21.2px lines.
+                // With no clear minimum, nearest common baselines16/37/58
+                // place their actual metric tops at0/21/42 and bottom63.2.
+                // Logical starts remain0/21.2/42.4, so three21.2px allocations
+                // end at63.6, beyond both float bottoms42/62, and round to64.
+                let lines = batch.placed_text()[0].layout().lines();
+                assert_eq!(lines.len(), 3);
+                for (line, (top, baseline)) in
+                    lines.iter().zip([(0.0, 16.0), (21.0, 37.0), (42.0, 58.0)])
+                {
+                    assert!((line.bounds().origin.y - top).abs() < 0.0001);
+                    assert_eq!(line.baseline(), baseline);
+                    assert!((line.bounds().size.height - 21.2).abs() < 0.0001);
+                }
+                let terminal_metrics = lines.last().unwrap().bounds();
+                assert!(
+                    (terminal_metrics.origin.y + terminal_metrics.size.height - 63.2).abs()
+                        < 0.0001
+                );
+                // Match normal-flow's repeated f64 addition before the one
+                // selected-scalar conversion, rather than rounding to63.6.
+                let logical_extent = [21.2_f64; 3].into_iter().sum::<f64>();
                 assert_eq!(
                     public_flow_output(batch.unrounded_entries(), 0).size,
-                    Size::new(S::from_f64(180.0), S::from_f64(62.5))
+                    Size::new(S::from_f64(180.0), S::from_f64(logical_extent))
                 );
                 assert_eq!(
                     fri06_c02_final_node(&batch, 0).size,
-                    Size::new(S::from_f64(180.0), S::from_f64(63.0))
+                    Size::new(S::from_f64(180.0), S::from_f64(64.0))
                 );
-                for (node, x, y, width, height) in
-                    [(1, 0.0, 0.0, 42.0, 42.0), (2, 130.0, 0.0, 50.0, 62.0)]
-                {
+                for (node, x, width, height) in [(1, 0.0, 42.0, 42.0), (2, 130.0, 50.0, 62.0)] {
                     let output = fri06_c02_final_node(&batch, node);
                     assert_eq!(
                         (output.location, output.size),
                         (
-                            Point::new(S::from_f64(x), S::from_f64(y)),
+                            Point::new(S::from_f64(x), S::ZERO),
                             Size::new(S::from_f64(width), S::from_f64(height))
                         )
                     );
                 }
-                let atomic_x = match direction {
-                    Direction::Ltr => [81.0, 42.0, 74.0, 0.0],
-                    Direction::Rtl => [102.0, 62.0, 94.0, 90.0],
-                };
-                for (index, (node, width, y)) in [
-                    (4, 28.0, 0.0),
-                    (5, 32.0, 21.0),
-                    (6, 36.0, 21.0),
-                    (7, 40.0, 42.0),
-                ]
-                .into_iter()
-                .enumerate()
-                {
-                    let output = fri06_c02_final_node(&batch, node);
-                    assert_eq!(
-                        (output.location, output.size),
-                        (
-                            Point::new(S::from_f64(atomic_x[index]), S::from_f64(y)),
-                            Size::new(S::from_f64(width), S::from_f64(16.0))
-                        ),
-                        "{axes:?} {box_sizing:?} atomic {node}"
-                    );
-                }
-                for (node, expected) in [4, 5, 6, 7].into_iter().zip([0.0, 21.2, 21.2, 42.0]) {
-                    let actual = public_flow_output(batch.unrounded_entries(), node)
-                        .location
-                        .y;
-                    assert!(
-                        (actual - S::from_f64(expected)).abs() <= S::from_f64(0.000_1),
-                        "{axes:?} {box_sizing:?} unrounded continuation phase: \
-                         node {node} expected {expected}, got {actual:?}"
-                    );
-                }
-                let fragment = batch.unrounded_inline_fragments()[0].fragment();
-                let (x, baseline_x) = match direction {
-                    Direction::Ltr => (42.0, 42.0),
-                    Direction::Rtl => (63.46875, 102.0),
-                };
-                assert_eq!(fragment.line_index(), 0);
-                assert_eq!(fragment.rect().origin().x, S::from_f64(x));
-                assert!(
-                    (fragment.rect().origin().y - S::from_f64(1.2)).abs() <= S::from_f64(0.000_1)
-                );
+                let rows =
+                    super::fixtures::origin_fragment_associations(batch.final_inline_fragments());
+                assert_eq!(rows.len(), 1);
+                assert_eq!(rows[0].1, paragraph.origin(3));
+                assert_eq!(rows[0].5, 0);
+                let text = rows[0].3.unwrap();
+                assert_eq!(text.size().width, S::from_f64(38.53125));
+                let first = fri06_c02_final_node(&batch, 4);
                 assert_eq!(
-                    fragment.rect().size(),
-                    Size::new(S::from_f64(38.53125), S::from_f64(20.0))
+                    first.location.x,
+                    S::from_f64(if direction == Direction::Rtl {
+                        63.0
+                    } else {
+                        81.0
+                    })
                 );
-                assert_eq!(fragment.baseline().x, S::from_f64(baseline_x));
-                assert!((fragment.baseline().y - S::from_f64(16.0)).abs() <= S::from_f64(0.000_1));
-                if direction == Direction::Rtl {
-                    let first_atomic = public_flow_output(batch.unrounded_entries(), 4);
+                // Every allocated atomic preserves its real source position and size;
+                // text's actual height/float feedback, not nominal descriptors,
+                // determines which candidate and line receives it.
+                for (index, width) in [28.0, 32.0, 36.0, 40.0].into_iter().enumerate() {
+                    let node = 4 + index as u32;
+                    let output = fri06_c02_final_node(&batch, node);
+                    assert_eq!(output.source_index, SourceIndex::new(3 + index));
                     assert_eq!(
-                        [
-                            fragment.rect().origin().x + fragment.rect().size().width,
-                            first_atomic.location.x + first_atomic.size.width,
-                        ],
-                        [S::from_f64(102.0), S::from_f64(130.0)],
-                        "logical float-band starts 78/50 project once to physical Range starts 102/130",
+                        output.size,
+                        Size::new(S::from_f64(width), S::from_f64(16.0))
                     );
                 }
+                assert_eq!(rows[0].4.y, S::from_f64(16.0));
             }
         }
     }
@@ -3564,7 +3878,7 @@ fn fri06_c07_sideways_lr_rtl_all_atomic_odd_bidi_keeps_visual_placement_both_sca
                 Float::None,
                 Some(fri06_c03_atomic_participation(
                     1,
-                    InlineBreakOpportunityOf::prohibited(),
+                    InlineBreakOpportunity::Prohibited,
                 )),
             );
             (node, LayoutInputOf::box_input(style.clone()), style)
@@ -3594,243 +3908,329 @@ fn fri06_c07_sideways_lr_rtl_all_atomic_odd_bidi_keeps_visual_placement_both_sca
 }
 
 #[test]
-fn fri06_c02_bidi_nested_equal_levels_reset_per_line_and_keep_discarded_slot_gaps_both_scalars() {
+fn supplied_line_bidi_and_actual_atomic_geometry_preserve_nested_levels_and_slot_gaps_both_scalars()
+{
+    use surgeist_text::{SuppliedInlineParticipant as Participant, SuppliedLine};
+    let participants = [0, 1, 2, 2, 1, 0].map(|level| Participant::Text {
+        level: BidiLevel::try_new(level).unwrap(),
+        edge: InlineWhitespaceEdge::Preserve,
+    });
+    let mut scratch = [usize::MAX; 6];
+    let visual = SuppliedLine::new(&participants)
+        .reorder_into(&mut scratch)
+        .unwrap();
+    assert_eq!(
+        visual.iter().map(|(index, _)| index).collect::<Vec<_>>(),
+        [0, 4, 2, 3, 1, 5]
+    );
+    let discarded = [
+        InlineWhitespaceEdge::DiscardAtLineStart,
+        InlineWhitespaceEdge::Preserve,
+        InlineWhitespaceEdge::DiscardAtLineEnd,
+    ]
+    .map(|edge| Participant::Text {
+        level: BidiLevel::try_new(0).unwrap(),
+        edge,
+    });
+    let edges = SuppliedLine::new(&discarded).edges();
+    assert_eq!(
+        (0..3)
+            .filter(|index| edges.is_discarded(*index) == Some(false))
+            .collect::<Vec<_>>(),
+        [1]
+    );
+    // The actual box fitter retains the same genuine L2 producer/geometry join;
+    // this is not an obsolete text-shaped input to a canonical tree.
     fn assert_lane<S: LayoutScalar>() {
-        let nested = fri06_c02_text_batch(
+        let report = super::fixtures::numeric_atomic_fit_with_flow(
             [0, 1, 2, 2, 1, 0]
-                .into_iter()
-                .enumerate()
-                .map(|(index, level)| {
-                    fri06_c02_segment_with_level(
-                        u64::try_from(index + 1).unwrap(),
-                        10.0,
-                        level,
-                        InlineWhitespaceEdge::Preserve,
-                        InlineBreakOpportunityOf::prohibited(),
-                    )
-                })
-                .collect(),
+                .map(|level| (10.0, level, InlineBreakOpportunity::Prohibited))
+                .to_vec(),
             AvailableOf::definite(S::from_f64(100.0)),
-        );
-        let nested_fragments = nested.final_inline_fragments();
-        assert_eq!(
-            nested_fragments
-                .iter()
-                .map(|entry| entry.fragment().segment_id().get())
-                .collect::<Vec<_>>(),
-            vec![1, 2, 3, 4, 5, 6],
-            "public fragment identity stays in source segment order"
+            WritingMode::HorizontalTb,
+            Direction::Ltr,
+            TextAlign::Auto,
         );
         assert_eq!(
-            nested_fragments
+            report
+                .atomics
                 .iter()
-                .map(|entry| entry.fragment().visual_index())
+                .map(|a| a.visual_index)
                 .collect::<Vec<_>>(),
-            vec![0, 4, 2, 3, 1, 5]
+            [Some(0), Some(4), Some(2), Some(3), Some(1), Some(5)]
         );
         assert_eq!(
-            nested_fragments
+            report
+                .atomics
                 .iter()
-                .map(|entry| entry.fragment().rect().origin().x)
+                .map(|a| a.inline_start)
                 .collect::<Vec<_>>(),
-            [0.0, 40.0, 20.0, 30.0, 10.0, 50.0]
-                .map(S::from_f64)
-                .to_vec()
+            [0.0, 40.0, 20.0, 30.0, 10.0, 50.0].map(S::from_f64)
         );
-
-        let wrapped = fri06_c02_text_batch(
+        let wrapped = super::fixtures::numeric_atomic_fit_with_flow(
             (0..4)
-                .map(|index| {
-                    fri06_c02_segment_with_level(
-                        10 + index,
+                .map(|i| {
+                    (
                         10.0,
                         1,
-                        InlineWhitespaceEdge::Preserve,
-                        if index == 1 {
-                            InlineBreakOpportunityOf::mandatory()
+                        if i == 1 {
+                            InlineBreakOpportunity::Mandatory
                         } else {
-                            InlineBreakOpportunityOf::prohibited()
+                            InlineBreakOpportunity::Prohibited
                         },
                     )
                 })
                 .collect(),
             AvailableOf::definite(S::from_f64(100.0)),
+            WritingMode::HorizontalTb,
+            Direction::Ltr,
+            TextAlign::Auto,
         );
         assert_eq!(
             wrapped
-                .final_inline_fragments()
+                .atomics
                 .iter()
-                .map(|entry| (
-                    entry.fragment().line_index(),
-                    entry.fragment().visual_index(),
-                    entry.fragment().rect().origin(),
-                ))
+                .map(|a| (a.line_index, a.visual_index, a.inline_start, a.block_start))
                 .collect::<Vec<_>>(),
-            vec![
-                (0, 1, Point::new(S::from_f64(10.0), S::ZERO)),
-                (0, 0, Point::new(S::ZERO, S::ZERO)),
-                (1, 1, Point::new(S::from_f64(10.0), S::from_f64(10.0))),
-                (1, 0, Point::new(S::ZERO, S::from_f64(10.0))),
+            [
+                (0, 1, 10.0, 0.0),
+                (0, 0, 0.0, 0.0),
+                (1, 1, 10.0, 10.0),
+                (1, 0, 0.0, 10.0)
             ]
+            .map(|(l, v, x, y)| (l, Some(v), S::from_f64(x), S::from_f64(y)))
         );
-
-        let discarded = fri06_c02_text_batch(
-            vec![
-                fri06_c02_segment_with_level(
-                    20,
-                    5.0,
-                    0,
-                    InlineWhitespaceEdge::DiscardAtLineStart,
-                    InlineBreakOpportunityOf::prohibited(),
-                ),
-                fri06_c02_segment_with_level(
-                    21,
-                    10.0,
-                    0,
-                    InlineWhitespaceEdge::Preserve,
-                    InlineBreakOpportunityOf::prohibited(),
-                ),
-                fri06_c02_segment_with_level(
-                    22,
-                    5.0,
-                    0,
-                    InlineWhitespaceEdge::DiscardAtLineEnd,
-                    InlineBreakOpportunityOf::prohibited(),
-                ),
-            ],
-            AvailableOf::definite(S::from_f64(100.0)),
-        );
-        let fragments = discarded.final_inline_fragments();
-        assert_eq!(fragments.len(), 1);
-        assert_eq!(
-            fragments[0].fragment().segment_id(),
-            InlineSegmentId::new(21)
-        );
-        assert_eq!(fragments[0].fragment().visual_index(), 1);
-        assert_eq!(fragments[0].fragment().rect().origin(), Point::ZERO);
     }
-
     assert_lane::<f32>();
     assert_lane::<f64>();
 }
 
 #[test]
-fn fri06_c02_break_latest_replacement_mandatory_final_and_overwide_progress_both_scalars() {
+fn prepared_text_latest_replacement_mandatory_final_and_overwide_progress_both_scalars() {
+    fn replacement() -> ParagraphReplacement {
+        ParagraphReplacement {
+            definition: ParagraphReplacementDefinition::Source {
+                origin: 0,
+                source: surgeist_text::Range::new(3, 4),
+            },
+            insertion_anchor: 4,
+            style_anchor: 4,
+            text: Text::from("-"),
+        }
+    }
     fn assert_lane<S: LayoutScalar>() {
-        let replacement =
-            InlineBreakOpportunityOf::try_allowed_with_replacement(S::from_f64(5.0)).unwrap();
-        let selected = vec![
-            fri06_c02_segment(
-                1,
-                15.0,
-                InlineWhitespaceEdge::Preserve,
-                InlineBreakOpportunityOf::allowed(),
-            ),
-            fri06_c02_segment(2, 20.0, InlineWhitespaceEdge::Preserve, replacement),
-            fri06_c02_segment(
-                3,
-                20.0,
-                InlineWhitespaceEdge::Preserve,
-                InlineBreakOpportunityOf::prohibited(),
-            ),
-        ];
-        let first =
-            fri06_c02_text_batch(selected.clone(), AvailableOf::definite(S::from_f64(40.0)));
-        let second = fri06_c02_text_batch(selected, AvailableOf::definite(S::from_f64(40.0)));
-        assert_eq!(first.final_entries(), second.final_entries());
+        // Seven authored Xs at5px plus a source-defined soft hyphen. The selected
+        // computed hyphen is another5px; it is not a caller-authored break width.
+        let source = Source::identified("XXX\u{ad}XXXX", Id::from_u64(72), 0);
+        let selected = prepared_source_batch(
+            source.clone(),
+            ahem_style(5.0, 10.0),
+            AvailableOf::definite(S::from_f64(20.0)),
+            WritingMode::HorizontalTb,
+            Direction::Ltr,
+            TextAlign::Auto,
+            vec![replacement()],
+        )
+        .unwrap();
+        let layout = selected.placed_text()[0].layout();
+        assert_eq!(layout.metrics().line_count(), 2);
         assert_eq!(
-            first.final_inline_fragments(),
-            second.final_inline_fragments()
-        );
-        let fragments = first.final_inline_fragments();
-        assert_eq!(
-            fragments
+            layout
+                .glyph_runs()
                 .iter()
-                .map(|entry| entry.fragment().line_index())
-                .collect::<Vec<_>>(),
-            vec![0, 0, 1]
+                .map(|run| run.glyphs().len())
+                .sum::<usize>(),
+            8
         );
-        assert_eq!(fragments[0].fragment().replacement_inline_extent(), None);
         assert_eq!(
-            fragments[1].fragment().replacement_inline_extent(),
-            Some(S::from_f64(5.0))
+            layout
+                .lines()
+                .iter()
+                .map(|line| line.bounds().size.width)
+                .collect::<Vec<_>>(),
+            [20.0, 20.0]
         );
-
-        let unselected = fri06_c02_text_batch(
-            vec![
-                fri06_c02_segment(
-                    1,
-                    15.0,
-                    InlineWhitespaceEdge::Preserve,
-                    InlineBreakOpportunityOf::allowed(),
-                ),
-                fri06_c02_segment(2, 20.0, InlineWhitespaceEdge::Preserve, replacement),
-                fri06_c02_segment(
-                    3,
-                    20.0,
-                    InlineWhitespaceEdge::Preserve,
-                    InlineBreakOpportunityOf::prohibited(),
-                ),
-            ],
+        assert_eq!(
+            layout.source().text().code_units(),
+            source.text().code_units()
+        );
+        let repeated = prepared_source_batch(
+            source.clone(),
+            ahem_style(5.0, 10.0),
+            AvailableOf::definite(S::from_f64(20.0)),
+            WritingMode::HorizontalTb,
+            Direction::Ltr,
+            TextAlign::Auto,
+            vec![replacement()],
+        )
+        .unwrap();
+        assert_eq!(selected.final_entries(), repeated.final_entries());
+        assert_eq!(layout.lines(), repeated.placed_text()[0].layout().lines());
+        // Equal source is not the identity of a separately prepared occurrence.
+        assert_ne!(
+            selected.final_inline_fragments()[0]
+                .fragment()
+                .finalized_fragment()
+                .view()
+                .origin(),
+            repeated.final_inline_fragments()[0]
+                .fragment()
+                .finalized_fragment()
+                .view()
+                .origin()
+        );
+        let unselected = prepared_source_batch(
+            source,
+            ahem_style(5.0, 10.0),
             AvailableOf::definite(S::from_f64(100.0)),
+            WritingMode::HorizontalTb,
+            Direction::Ltr,
+            TextAlign::Auto,
+            vec![replacement()],
+        )
+        .unwrap();
+        let layout = unselected.placed_text()[0].layout();
+        assert_eq!(layout.metrics().line_count(), 1);
+        let finalized = unselected.final_inline_fragments()[0]
+            .fragment()
+            .finalized_fragment()
+            .finalized_line();
+        let mut glyphs = Vec::new();
+        for run in finalized.run_views() {
+            let instance = run.effective_instance().unwrap();
+            for glyph in run.glyphs() {
+                let bounds = instance
+                    .glyph_outline(glyph.id(), run.face().catalogue_identity())
+                    .unwrap()
+                    .bounds();
+                glyphs.push((
+                    glyph.range(),
+                    glyph.id(),
+                    glyph.advance(),
+                    glyph.pen(),
+                    bounds,
+                ));
+            }
+        }
+        // The retained default-ignorable SHY record is not an inserted hyphen.
+        // Seven actual Ahem X outlines carry the 35px advance; SHY has no outline ink.
+        let shy_range = surgeist_text::Range::new(3, 4);
+        let visible = glyphs
+            .iter()
+            .filter(|glyph| glyph.0 != shy_range)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            visible.iter().map(|glyph| glyph.0).collect::<Vec<_>>(),
+            [(0, 1), (1, 2), (2, 3), (4, 5), (5, 6), (6, 7), (7, 8)]
+                .map(|(start, end)| surgeist_text::Range::new(start, end))
         );
+        for glyph in visible {
+            assert_eq!(glyph.1, 58); // Ahem's actual X glyph.
+            assert_eq!(glyph.2, 5.0);
+            assert_eq!(glyph.4, Some(surgeist_text::Rect::new(0.0, -4.0, 5.0, 5.0)));
+        }
+        let shy = glyphs
+            .iter()
+            .filter(|glyph| glyph.0 == shy_range)
+            .collect::<Vec<_>>();
+        assert_eq!(shy.len(), 1);
+        assert_eq!(
+            (shy[0].1, shy[0].2, shy[0].3, shy[0].4),
+            (3, 0.0, 15.0, None)
+        );
+        assert_eq!(
+            glyphs.iter().map(|glyph| f64::from(glyph.2)).sum::<f64>(),
+            35.0
+        );
+        assert_eq!(
+            layout.source().text().code_units(),
+            "XXX\u{ad}XXXX".encode_utf16().collect::<Vec<_>>()
+        );
+        assert!(finalized.selected_line().request().alternative.is_none());
         assert!(
             unselected
                 .final_inline_fragments()
                 .iter()
-                .all(|entry| entry.fragment().replacement_inline_extent().is_none())
+                .all(|row| matches!(
+                    row.fragment().finalized_fragment().view().owner(),
+                    surgeist_text::FinalizedFragmentOwner::Origin(_)
+                ))
         );
-
-        let mandatory = fri06_c02_text_batch(
-            vec![
-                fri06_c02_segment(
-                    4,
-                    10.0,
-                    InlineWhitespaceEdge::Preserve,
-                    InlineBreakOpportunityOf::mandatory(),
-                ),
-                fri06_c02_segment(
-                    5,
-                    12.0,
-                    InlineWhitespaceEdge::Preserve,
-                    InlineBreakOpportunityOf::mandatory(),
-                ),
-            ],
+        let feedback = finalized.feedback();
+        assert_eq!(
+            (
+                feedback.advance,
+                feedback.occupied_start,
+                feedback.occupied_end
+            ),
+            (35.0, 0.0, 35.0)
+        );
+        assert_eq!(
+            finalized.selected_line().request().context.available_inline,
+            Some(100.0)
+        );
+        assert_eq!(layout.lines()[0].bounds().size.width, 100.0);
+        let mandatory = prepared_source_batch(
+            Source::new("X\nX\n"),
+            ahem_style(10.0, 10.0),
             AvailableOf::definite(S::from_f64(100.0)),
-        );
+            WritingMode::HorizontalTb,
+            Direction::Ltr,
+            TextAlign::Auto,
+            vec![],
+        )
+        .unwrap();
         assert_eq!(
-            mandatory.final_inline_fragments()[0]
-                .fragment()
-                .line_index(),
-            0
-        );
-        assert_eq!(
-            mandatory.final_inline_fragments()[1]
-                .fragment()
-                .line_index(),
-            1
+            mandatory.placed_text()[0].layout().metrics().line_count(),
+            3
         );
         assert_eq!(
             fri06_c02_final_node(&mandatory, 0).size.height,
             S::from_f64(30.0)
         );
-
-        let overwide = fri06_c02_text_batch(
-            vec![fri06_c02_segment(
-                6,
-                60.0,
-                InlineWhitespaceEdge::Preserve,
-                InlineBreakOpportunityOf::prohibited(),
-            )],
+        let overwide = prepared_source_batch(
+            Source::new("XXXXXX"),
+            ahem_style(10.0, 10.0),
             AvailableOf::definite(S::from_f64(40.0)),
-        );
-        assert_eq!(overwide.final_inline_fragments().len(), 1);
+            WritingMode::HorizontalTb,
+            Direction::Ltr,
+            TextAlign::Auto,
+            vec![],
+        )
+        .unwrap();
+        assert_eq!(overwide.placed_text()[0].layout().metrics().line_count(), 1);
         assert_eq!(
-            overwide.final_inline_fragments()[0]
-                .fragment()
-                .rect()
-                .size()
+            overwide.placed_text()[0].layout().lines()[0]
+                .bounds()
+                .size
                 .width,
+            40.0
+        );
+        let overwide_line = overwide.final_inline_fragments()[0]
+            .fragment()
+            .finalized_fragment()
+            .finalized_line();
+        assert_eq!(overwide_line.feedback().advance, 60.0);
+        assert_eq!(
+            overwide_line
+                .selected_line()
+                .request()
+                .context
+                .available_inline,
+            Some(40.0)
+        );
+        assert_eq!(
+            overwide.placed_text()[0]
+                .layout()
+                .glyph_runs()
+                .iter()
+                .flat_map(|run| run.glyphs().iter())
+                .map(|glyph| f64::from(glyph.advance()))
+                .sum::<f64>(),
+            60.0
+        );
+        assert_eq!(
+            fri06_c02_final_node(&overwide, 0).content_size.width,
             S::from_f64(60.0)
         );
     }
@@ -3839,115 +4239,92 @@ fn fri06_c02_break_latest_replacement_mandatory_final_and_overwide_progress_both
 }
 
 #[test]
-fn fri06_c02_whitespace_discards_every_edge_mode_and_retains_empty_source_anchor_both_scalars() {
-    fn assert_lane<S: LayoutScalar>() {
-        let batch = fri06_c02_text_batch(
-            vec![
-                fri06_c02_segment(
-                    1,
-                    5.0,
-                    InlineWhitespaceEdge::DiscardAtLineStart,
-                    InlineBreakOpportunityOf::prohibited(),
-                ),
-                fri06_c02_segment(
-                    2,
-                    10.0,
-                    InlineWhitespaceEdge::Preserve,
-                    InlineBreakOpportunityOf::prohibited(),
-                ),
-                fri06_c02_segment(
-                    3,
-                    5.0,
-                    InlineWhitespaceEdge::DiscardAtLineEnd,
-                    InlineBreakOpportunityOf::allowed(),
-                ),
-                fri06_c02_segment(
-                    4,
-                    5.0,
-                    InlineWhitespaceEdge::DiscardAtBoth,
-                    InlineBreakOpportunityOf::allowed(),
-                ),
-                fri06_c02_segment(
-                    5,
-                    10.0,
-                    InlineWhitespaceEdge::Preserve,
-                    InlineBreakOpportunityOf::prohibited(),
-                ),
-            ],
-            AvailableOf::definite(S::from_f64(20.0)),
-        );
-        let fragments = batch.final_inline_fragments();
-        assert_eq!(
-            fragments
-                .iter()
-                .map(|entry| entry.fragment().segment_id().get())
-                .collect::<Vec<_>>(),
-            vec![2, 5]
-        );
-        assert_eq!(fragments[0].fragment().line_index(), 0);
-        assert_eq!(fragments[1].fragment().line_index(), 1);
-
-        let empty = fri06_c02_text_batch(
-            vec![fri06_c02_segment(
-                7,
-                9.0,
-                InlineWhitespaceEdge::DiscardAtBoth,
-                InlineBreakOpportunityOf::mandatory(),
-            )],
-            AvailableOf::definite(S::from_f64(20.0)),
-        );
-        assert!(empty.final_inline_fragments().is_empty());
-        let text = fri06_c02_final_node(&empty, 1);
-        assert_eq!(text.source_index, SourceIndex::ZERO);
-        assert_eq!(text.location, Point::ZERO);
-        assert_eq!(text.size, Size::ZERO);
-        assert_eq!(text.content_size, Size::ZERO);
-    }
-    assert_lane::<f32>();
-    assert_lane::<f64>();
+fn supplied_line_edge_decisions_retain_every_logical_slot_without_fabricated_geometry() {
+    use surgeist_text::{SuppliedInlineParticipant as Participant, SuppliedLine};
+    let participants = [
+        InlineWhitespaceEdge::DiscardAtLineStart,
+        InlineWhitespaceEdge::Preserve,
+        InlineWhitespaceEdge::DiscardAtLineEnd,
+        InlineWhitespaceEdge::DiscardAtBoth,
+        InlineWhitespaceEdge::Preserve,
+    ]
+    .map(|edge| Participant::Text {
+        level: BidiLevel::try_new(0).unwrap(),
+        edge,
+    });
+    let first = SuppliedLine::new(&participants[..3]);
+    let second = SuppliedLine::new(&participants[3..]);
+    assert_eq!(
+        (0..3)
+            .filter(|i| first.edges().is_discarded(*i) == Some(false))
+            .collect::<Vec<_>>(),
+        [1]
+    );
+    assert_eq!(
+        (0..2)
+            .filter(|i| second.edges().is_discarded(*i) == Some(false))
+            .collect::<Vec<_>>(),
+        [1]
+    );
+    let mut first_order = [usize::MAX; 3];
+    assert_eq!(
+        first
+            .reorder_into(&mut first_order)
+            .unwrap()
+            .iter()
+            .map(|(i, _)| i)
+            .collect::<Vec<_>>(),
+        [0, 1, 2]
+    );
+    let only = [Participant::Text {
+        level: BidiLevel::try_new(0).unwrap(),
+        edge: InlineWhitespaceEdge::DiscardAtBoth,
+    }];
+    assert_eq!(SuppliedLine::new(&only).edges().is_discarded(0), Some(true));
+    let mut order = [usize::MAX; 1];
+    assert_eq!(
+        SuppliedLine::new(&only)
+            .reorder_into(&mut order)
+            .unwrap()
+            .iter()
+            .map(|(i, _)| i)
+            .collect::<Vec<_>>(),
+        [0]
+    );
+    // Source anchors and absent-vs-zero allocation are tested by actual prepared
+    // root captures, not inferred from this deliberately geometry-free front.
 }
 
 #[test]
-fn fri06_c02_intrinsic_reports_exact_min_and_max_content_in_both_scalar_lanes() {
-    fn segments<S: LayoutScalar>() -> Vec<ShapedInlineSegmentOf<S>> {
-        vec![
-            fri06_c02_segment(
-                1,
-                12.0,
-                InlineWhitespaceEdge::Preserve,
-                InlineBreakOpportunityOf::prohibited(),
-            ),
-            fri06_c02_segment(
-                2,
-                8.0,
-                InlineWhitespaceEdge::Preserve,
-                InlineBreakOpportunityOf::try_allowed_with_replacement(S::from_f64(4.0)).unwrap(),
-            ),
-            fri06_c02_segment(
-                3,
-                30.0,
-                InlineWhitespaceEdge::DiscardAtBoth,
-                InlineBreakOpportunityOf::allowed(),
-            ),
-            fri06_c02_segment(
-                4,
-                7.0,
-                InlineWhitespaceEdge::Preserve,
-                InlineBreakOpportunityOf::mandatory(),
-            ),
-            fri06_c02_segment(
-                5,
-                15.0,
-                InlineWhitespaceEdge::Preserve,
-                InlineBreakOpportunityOf::prohibited(),
-            ),
-        ]
-    }
+fn prepared_text_intrinsic_uses_actual_selected_replacement_min_and_unselected_max_both_scalars() {
     fn assert_lane<S: LayoutScalar>() {
-        let min = fri06_c02_text_batch(segments::<S>(), AvailableOf::MIN_CONTENT);
-        let max = fri06_c02_text_batch(segments::<S>(), AvailableOf::MAX_CONTENT);
-        assert_eq!(fri06_c02_final_node(&min, 0).size.width, S::from_f64(24.0));
-        assert_eq!(fri06_c02_final_node(&max, 0).size.width, S::from_f64(57.0));
+        let source = Source::new("XXX\u{ad}XXXX");
+        let batch = |available| {
+            prepared_source_batch(
+                source.clone(),
+                ahem_style(5.0, 10.0),
+                available,
+                WritingMode::HorizontalTb,
+                Direction::Ltr,
+                TextAlign::Auto,
+                vec![ParagraphReplacement {
+                    definition: ParagraphReplacementDefinition::Source {
+                        origin: 0,
+                        source: surgeist_text::Range::new(3, 4),
+                    },
+                    insertion_anchor: 4,
+                    style_anchor: 4,
+                    text: Text::from("-"),
+                }],
+            )
+            .unwrap()
+        };
+        let min = batch(AvailableOf::<S>::MIN_CONTENT);
+        let max = batch(AvailableOf::<S>::MAX_CONTENT);
+        assert_eq!(fri06_c02_final_node(&min, 0).size.width, S::from_f64(20.0));
+        assert_eq!(fri06_c02_final_node(&max, 0).size.width, S::from_f64(35.0));
+        assert_eq!(min.placed_text()[0].layout().metrics().line_count(), 2);
+        assert_eq!(max.placed_text()[0].layout().metrics().line_count(), 1);
     }
     assert_lane::<f32>();
     assert_lane::<f64>();
@@ -3956,251 +4333,234 @@ fn fri06_c02_intrinsic_reports_exact_min_and_max_content_in_both_scalar_lanes() 
 #[test]
 fn fri06_c02_block_text_adjacent_nodes_share_soft_mandatory_and_bidi_lines_both_scalars() {
     fn assert_lane<S: LayoutScalar>() {
-        let root = NodeInputOf {
-            display: Display::Block,
-            ..NodeInputOf::default()
-        };
-        let soft = fri06_c02_text_nodes_batch(
+        let style = ahem_style(5.0, 10.0);
+        let soft = PreparedParagraph::new(
             vec![
-                (
-                    1,
-                    vec![fri06_c02_segment_with_level(
-                        1,
-                        15.0,
-                        1,
-                        InlineWhitespaceEdge::Preserve,
-                        InlineBreakOpportunityOf::allowed(),
-                    )],
-                ),
-                (
-                    2,
-                    vec![fri06_c02_segment_with_level(
-                        2,
-                        15.0,
-                        1,
-                        InlineWhitespaceEdge::Preserve,
-                        InlineBreakOpportunityOf::prohibited(),
-                    )],
-                ),
+                ParagraphPart::text(1, Source::new("X "), style.clone()),
+                ParagraphPart::text(2, Source::new("XX"), style.clone()),
             ],
-            root.clone(),
-            Size::new(
-                AvailableOf::definite(S::from_f64(20.0)),
-                AvailableOf::MAX_CONTENT,
-            ),
+            style.clone(),
+            surgeist_text::ParagraphBaseDirection::LeftToRight,
         );
+        let batch = |paragraph: &PreparedParagraph, direction, available: AvailableOf<S>| {
+            super::fixtures::prepared_mixed_batch(
+                paragraph,
+                vec![
+                    (1, paragraph.text_input(1), NodeInputOf::non_box()),
+                    (2, paragraph.text_input(2), NodeInputOf::non_box()),
+                ],
+                available,
+                NodeInputOf {
+                    display: Display::Block,
+                    direction,
+                    ..NodeInputOf::default()
+                },
+            )
+        };
+        let selected = batch(
+            &soft,
+            Direction::Ltr,
+            AvailableOf::definite(S::from_f64(15.0)),
+        );
+        let rows = super::fixtures::origin_fragment_associations(selected.final_inline_fragments());
+        assert!(
+            rows.iter()
+                .filter(|row| row.0 == 1)
+                .all(|row| row.1 == soft.origin(1) && row.5 == 0)
+        );
+        assert!(
+            rows.iter()
+                .filter(|row| row.0 == 2)
+                .all(|row| row.1 == soft.origin(2) && row.5 == 1)
+        );
+        assert_eq!(selected.placed_text()[0].layout().metrics().line_count(), 2);
+
+        let rtl_style = ahem_style(10.0, 10.0);
+        let bidi = PreparedParagraph::new(
+            vec![
+                ParagraphPart::text(1, Source::new("א"), rtl_style.clone()),
+                ParagraphPart::text(2, Source::new("ב"), rtl_style.clone()),
+            ],
+            rtl_style,
+            surgeist_text::ParagraphBaseDirection::RightToLeft,
+        );
+        let selected = batch(
+            &bidi,
+            Direction::Rtl,
+            AvailableOf::definite(S::from_f64(40.0)),
+        );
+        let rows = super::fixtures::origin_fragment_associations(selected.final_inline_fragments());
+        assert_eq!(rows.len(), 2);
+        let first = rows.iter().find(|row| row.0 == 1).unwrap();
+        let second = rows.iter().find(|row| row.0 == 2).unwrap();
         assert_eq!(
-            soft.final_inline_fragments()
-                .iter()
-                .map(|entry| (entry.node(), entry.fragment().line_index()))
-                .collect::<Vec<_>>(),
-            vec![(1, 0), (2, 1)]
+            (first.1.clone(), second.1.clone()),
+            (bidi.origin(1), bidi.origin(2))
+        );
+        assert_eq!((first.5, second.5), (0, 0));
+        assert_eq!(
+            first.3.unwrap().origin().x,
+            second.3.unwrap().origin().x + S::from_f64(10.0)
         );
 
-        let shared_bidi = fri06_c02_text_nodes_batch(
+        let mandatory = PreparedParagraph::new(
             vec![
-                (
-                    1,
-                    vec![fri06_c02_segment_with_level(
-                        3,
-                        10.0,
-                        1,
-                        InlineWhitespaceEdge::Preserve,
-                        InlineBreakOpportunityOf::prohibited(),
-                    )],
-                ),
-                (
-                    2,
-                    vec![fri06_c02_segment_with_level(
-                        4,
-                        10.0,
-                        1,
-                        InlineWhitespaceEdge::Preserve,
-                        InlineBreakOpportunityOf::mandatory(),
-                    )],
-                ),
+                ParagraphPart::text(1, Source::new("X\n"), style.clone()),
+                ParagraphPart::text(2, Source::new("X"), style.clone()),
             ],
-            root,
-            Size::new(
-                AvailableOf::definite(S::from_f64(40.0)),
-                AvailableOf::MAX_CONTENT,
-            ),
+            style.clone(),
+            surgeist_text::ParagraphBaseDirection::LeftToRight,
         );
+        let selected = batch(
+            &mandatory,
+            Direction::Ltr,
+            AvailableOf::definite(S::from_f64(40.0)),
+        );
+        let rows = super::fixtures::origin_fragment_associations(selected.final_inline_fragments());
+        assert!(
+            rows.iter()
+                .filter(|row| row.0 == 1 && row.2.start == 0)
+                .all(|row| row.5 == 0)
+        );
+        assert!(rows.iter().filter(|row| row.0 == 2).all(|row| row.5 == 1));
+        assert_eq!(selected.placed_text()[0].layout().metrics().line_count(), 2);
         assert_eq!(
-            shared_bidi
-                .final_inline_fragments()
-                .iter()
-                .map(|entry| (
-                    entry.node(),
-                    entry.fragment().line_index(),
-                    entry.fragment().visual_index()
-                ))
-                .collect::<Vec<_>>(),
-            vec![(1, 0, 1), (2, 0, 0)]
+            selected.placed_text()[0]
+                .layout()
+                .source()
+                .text()
+                .code_units(),
+            Source::new("X\nX").text().code_units()
         );
 
-        let mandatory = fri06_c02_text_nodes_batch(
+        let intrinsic = PreparedParagraph::with_replacements(
             vec![
-                (
-                    1,
-                    vec![fri06_c02_segment(
-                        5,
-                        9.0,
-                        InlineWhitespaceEdge::Preserve,
-                        InlineBreakOpportunityOf::mandatory(),
-                    )],
-                ),
-                (
-                    2,
-                    vec![fri06_c02_segment(
-                        6,
-                        11.0,
-                        InlineWhitespaceEdge::Preserve,
-                        InlineBreakOpportunityOf::prohibited(),
-                    )],
-                ),
+                ParagraphPart::text(1, Source::new("XXX\u{ad}"), style.clone()),
+                ParagraphPart::text(2, Source::new("XXXX\n"), style.clone()),
+                ParagraphPart::text(3, Source::new("XXX"), style.clone()),
             ],
-            NodeInputOf {
-                display: Display::Block,
-                ..NodeInputOf::default()
-            },
-            Size::new(
-                AvailableOf::definite(S::from_f64(40.0)),
-                AvailableOf::MAX_CONTENT,
-            ),
+            style,
+            surgeist_text::ParagraphBaseDirection::LeftToRight,
+            vec![ParagraphReplacement {
+                definition: ParagraphReplacementDefinition::Source {
+                    origin: 0,
+                    source: surgeist_text::Range::new(3, 4),
+                },
+                insertion_anchor: 4,
+                style_anchor: 4,
+                text: Text::from("-"),
+            }],
         );
-        assert_eq!(
-            mandatory
-                .final_inline_fragments()
-                .iter()
-                .map(|entry| (entry.node(), entry.fragment().line_index()))
-                .collect::<Vec<_>>(),
-            vec![(1, 0), (2, 1)]
-        );
-
-        let intrinsic_nodes = || {
-            vec![
-                (
-                    1,
-                    vec![
-                        fri06_c02_segment(
-                            7,
-                            12.0,
-                            InlineWhitespaceEdge::Preserve,
-                            InlineBreakOpportunityOf::prohibited(),
-                        ),
-                        fri06_c02_segment(
-                            8,
-                            8.0,
-                            InlineWhitespaceEdge::Preserve,
-                            InlineBreakOpportunityOf::try_allowed_with_replacement(S::from_f64(
-                                4.0,
-                            ))
-                            .unwrap(),
-                        ),
-                    ],
-                ),
-                (
-                    2,
-                    vec![
-                        fri06_c02_segment(
-                            9,
-                            30.0,
-                            InlineWhitespaceEdge::DiscardAtBoth,
-                            InlineBreakOpportunityOf::allowed(),
-                        ),
-                        fri06_c02_segment(
-                            10,
-                            7.0,
-                            InlineWhitespaceEdge::Preserve,
-                            InlineBreakOpportunityOf::mandatory(),
-                        ),
-                    ],
-                ),
-                (
-                    3,
-                    vec![fri06_c02_segment(
-                        11,
-                        15.0,
-                        InlineWhitespaceEdge::Preserve,
-                        InlineBreakOpportunityOf::prohibited(),
-                    )],
-                ),
-            ]
+        let intrinsic_batch = |available: AvailableOf<S>| {
+            super::fixtures::prepared_mixed_batch(
+                &intrinsic,
+                vec![
+                    (1, intrinsic.text_input(1), NodeInputOf::non_box()),
+                    (2, intrinsic.text_input(2), NodeInputOf::non_box()),
+                    (3, intrinsic.text_input(3), NodeInputOf::non_box()),
+                ],
+                available,
+                NodeInputOf {
+                    display: Display::Block,
+                    ..NodeInputOf::default()
+                },
+            )
         };
-        let intrinsic_root = NodeInputOf {
-            display: Display::Block,
-            ..NodeInputOf::default()
-        };
-        let min = fri06_c02_text_nodes_batch(
-            intrinsic_nodes(),
-            intrinsic_root.clone(),
-            Size::new(AvailableOf::MIN_CONTENT, AvailableOf::MAX_CONTENT),
-        );
-        let max = fri06_c02_text_nodes_batch(
-            intrinsic_nodes(),
-            intrinsic_root,
-            Size::new(AvailableOf::MAX_CONTENT, AvailableOf::MAX_CONTENT),
-        );
-        assert_eq!(fri06_c02_final_node(&min, 0).size.width, S::from_f64(24.0));
-        assert_eq!(fri06_c02_final_node(&max, 0).size.width, S::from_f64(57.0));
+        let min = intrinsic_batch(AvailableOf::MIN_CONTENT);
+        let max = intrinsic_batch(AvailableOf::MAX_CONTENT);
+        // Three cells plus the selected one-cell hyphen, versus seven cells
+        // before the authored forced break. The second hard line is three cells.
+        assert_eq!(fri06_c02_final_node(&min, 0).size.width, S::from_f64(20.0));
+        assert_eq!(fri06_c02_final_node(&max, 0).size.width, S::from_f64(35.0));
+        assert_eq!(max.placed_text()[0].layout().metrics().line_count(), 2);
     }
     assert_lane::<f32>();
     assert_lane::<f64>();
 }
 
 #[test]
-fn fri06_c02_scroll_uses_fragment_rects_without_replacement_or_full_line_proxy_both_scalars() {
+fn fri06_c02_scroll_uses_actual_source_and_replacement_fragment_rects_both_scalars() {
     fn assert_lane<S: LayoutScalar>() {
-        let replacement =
-            InlineBreakOpportunityOf::try_allowed_with_replacement(S::from_f64(5.0)).unwrap();
-        let batch = fri06_c02_text_nodes_batch(
+        let style = ahem_style(5.0, 5.0);
+        let paragraph = PreparedParagraph::with_replacements(
             vec![
-                (
-                    1,
-                    vec![fri06_c02_segment(
-                        41,
-                        20.0,
-                        InlineWhitespaceEdge::Preserve,
-                        replacement,
-                    )],
-                ),
-                (
-                    2,
-                    vec![fri06_c02_segment(
-                        42,
-                        10.0,
-                        InlineWhitespaceEdge::Preserve,
-                        InlineBreakOpportunityOf::prohibited(),
-                    )],
-                ),
+                ParagraphPart::text(1, Source::new("XXX\u{ad}"), style.clone()),
+                ParagraphPart::text(2, Source::new("XX"), style.clone()),
             ],
-            NodeInputOf {
-                display: Display::Block,
-                size: Size::new(
-                    PreferredSizeOf::px(S::from_f64(22.0)),
-                    PreferredSizeOf::px(S::from_f64(20.0)),
-                ),
-                overflow: ComputedOverflow::try_new(Overflow::Auto, Overflow::Auto).unwrap(),
-                ..NodeInputOf::default()
-            },
-            Size::new(
-                AvailableOf::definite(S::from_f64(22.0)),
-                AvailableOf::definite(S::from_f64(20.0)),
-            ),
+            style,
+            surgeist_text::ParagraphBaseDirection::LeftToRight,
+            vec![ParagraphReplacement {
+                definition: ParagraphReplacementDefinition::Source {
+                    origin: 0,
+                    source: surgeist_text::Range::new(3, 4),
+                },
+                insertion_anchor: 4,
+                style_anchor: 4,
+                text: Text::from("-"),
+            }],
         );
-        let root = fri06_c02_final_node(&batch, 0);
+        let root = NodeInputOf {
+            display: Display::Block,
+            size: Size::new(
+                PreferredSizeOf::px(S::from_f64(22.0)),
+                PreferredSizeOf::px(S::from_f64(20.0)),
+            ),
+            overflow: ComputedOverflow::try_new(Overflow::Auto, Overflow::Auto).unwrap(),
+            ..NodeInputOf::default()
+        };
+        let selected = super::fixtures::prepared_mixed_batch(
+            &paragraph,
+            vec![
+                (1, paragraph.text_input(1), NodeInputOf::non_box()),
+                (2, paragraph.text_input(2), NodeInputOf::non_box()),
+            ],
+            AvailableOf::definite(S::from_f64(22.0)),
+            root,
+        );
+        let root = fri06_c02_final_node(&selected, 0);
         let range = root.scroll_geometry.unwrap().physical_range();
-        assert_eq!(range.x().minimum(), S::ZERO);
-        assert_eq!(range.x().maximum(), S::ZERO);
-        assert_eq!(range.y().minimum(), S::ZERO);
-        assert_eq!(range.y().maximum(), S::ZERO);
-        assert_eq!(batch.final_inline_fragments().len(), 2);
         assert_eq!(
-            batch.final_inline_fragments()[0]
-                .fragment()
-                .replacement_inline_extent(),
-            Some(S::from_f64(5.0))
+            (
+                range.x().minimum(),
+                range.x().maximum(),
+                range.y().minimum(),
+                range.y().maximum()
+            ),
+            (S::ZERO, S::ZERO, S::ZERO, S::ZERO)
+        );
+        assert_eq!(selected.placed_text()[0].layout().metrics().line_count(), 2);
+        let replacements: Vec<_> = selected
+            .final_inline_fragments()
+            .iter()
+            .filter(|entry| {
+                matches!(
+                    entry.fragment().finalized_fragment().view().owner(),
+                    surgeist_text::FinalizedFragmentOwner::Alternative(_)
+                )
+            })
+            .collect();
+        assert_eq!(replacements.len(), 1);
+        let replacement = replacements[0].fragment();
+        assert_eq!(replacement.rect().unwrap().size().width, S::from_f64(5.0));
+        assert_eq!(replacement.rect().unwrap().origin().x, S::from_f64(15.0));
+        assert_eq!(
+            replacement.finalized_fragment().view().origin(),
+            Some(paragraph.origin(1))
+        );
+        assert!(
+            selected
+                .final_inline_fragments()
+                .iter()
+                .filter_map(|entry| entry.fragment().rect())
+                .all(|rect| rect.origin().x + rect.size().width <= S::from_f64(22.0))
+        );
+        assert_eq!(
+            selected.placed_text()[0]
+                .layout()
+                .source()
+                .text()
+                .code_units(),
+            Source::new("XXX\u{ad}XX").text().code_units()
         );
     }
     assert_lane::<f32>();
@@ -4561,9 +4921,9 @@ fn compute_layout_stops_after_first_recursive_child_error() {
 
     assert_eq!(error.site(), LayoutErrorSite::Node(1));
     assert_eq!(error.operation(), LayoutOperation::LeafMeasurement);
-    assert_eq!(
+    crate::test_support::assert_error_kind(
         error.kind(),
-        &LayoutErrorKind::Measurement("first child failed")
+        &LayoutErrorKind::Measurement("first child failed"),
     );
     assert_eq!(tree.measured_nodes(), vec![1]);
 }
@@ -4596,11 +4956,11 @@ fn compute_layout_reports_consumed_invalid_numeric_resolution() {
 
     assert_eq!(error.site(), LayoutErrorSite::Node(0));
     assert_eq!(error.operation(), LayoutOperation::ValueResolution);
-    assert_eq!(
+    crate::test_support::assert_error_kind(
         error.kind(),
         &LayoutErrorKind::InvalidInput(LayoutInvalidInput::InvalidNumeric {
             value: f32::NEG_INFINITY,
-        })
+        }),
     );
 }
 

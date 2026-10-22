@@ -1,4 +1,4 @@
-<test name="padding_container_match_child__content_box_ltr" use-rounding="true">
+<test name="padding_container_match_child__content_box_ltr" measurement-version="2" use-rounding="true">
   <viewport width="max-content" height="max-content"/>
   <input>
     <div source-tag="div" display="flex" box-sizing="content-box" direction="ltr" flex-direction="column" padding-top="10px" padding-left="10px" padding-bottom="10px" padding-right="10px">

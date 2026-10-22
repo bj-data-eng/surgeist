@@ -1,7 +1,7 @@
 use crate::node_projection::CommonBoxProjection;
 use crate::scroll::{ScrollBoxProjection, ScrollTargetProjection};
 use crate::{
-    AtomicInlineParticipationOf, Clear, Compute, Display, Float, FloatExclusion, LayoutScalar,
+    AtomicInlineParticipation, Clear, Compute, Display, Float, FloatExclusion, LayoutScalar,
     NodeInputOf, ScrollbarGutter, ScrollbarWidthOf, TextAlign, Traverse, VerticalAlign,
 };
 
@@ -36,7 +36,7 @@ pub(crate) struct BlockChildProjection<'a, S: LayoutScalar> {
     pub(super) float: Float,
     pub(super) clear: Clear,
     pub(super) float_exclusion: FloatExclusion,
-    pub(super) atomic_inline_participation: Option<AtomicInlineParticipationOf<S>>,
+    pub(super) atomic_inline_participation: Option<AtomicInlineParticipation>,
     pub(super) vertical_align: VerticalAlign,
     pub(super) scrollbar_width: ScrollbarWidthOf<S>,
 }
@@ -94,7 +94,7 @@ mod tests {
     use crate::inline::{InlineParticipantKindOf, InlineParticipantProjection};
     use crate::{
         AspectRatioOf, BidiLevel, BoxSizing, ComputeInputOf, ComputeOutputOf, ComputedOverflow,
-        Direction, Edges, FlowAxes, InlineBreakOpportunityOf, LayoutInputOf, LayoutResultOf,
+        Direction, Edges, FlowAxes, InlineBreakOpportunity, LayoutInputOf, LayoutResultOf,
         LengthAutoOf, LengthOf, LengthPercentageOf, MaxSizeOf, MinSizeOf, NodeOutputOf, Overflow,
         Position, PreferredSizeOf, Size, WritingMode,
     };
@@ -208,13 +208,10 @@ mod tests {
             .expect("canonical scrollable overflow pair");
         let expected_scrollbar_width =
             ScrollbarWidthOf::try_new(scalar(32.0)).expect("finite non-negative scrollbar width");
-        let expected_atomic_inline_participation = Some(
-            AtomicInlineParticipationOf::try_new(
-                BidiLevel::try_new(3).expect("valid bidi level"),
-                InlineBreakOpportunityOf::mandatory(),
-            )
-            .expect("atomic participation cannot replace inline extent"),
-        );
+        let expected_atomic_inline_participation = Some(AtomicInlineParticipation::new(
+            BidiLevel::try_new(3).expect("valid bidi level"),
+            InlineBreakOpportunity::Mandatory,
+        ));
 
         let input = NodeInputOf::<S> {
             display: Display::InlineBlock,

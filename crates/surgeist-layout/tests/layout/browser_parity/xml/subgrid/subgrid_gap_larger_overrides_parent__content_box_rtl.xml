@@ -1,4 +1,4 @@
-<test name="subgrid_gap_larger_overrides_parent__content_box_rtl" use-rounding="true">
+<test name="subgrid_gap_larger_overrides_parent__content_box_rtl" measurement-version="2" use-rounding="true">
   <viewport width="800px" height="max-content"/>
   <input>
     <div source-tag="div" display="grid" box-sizing="content-box" direction="ltr" font-family="monospace" font-size="16px" line-height="16px" row-gap="0px" column-gap="0px" grid-template-rows="repeat(3, auto)" grid-template-columns="150px 100px 150px 100px">

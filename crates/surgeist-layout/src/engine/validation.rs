@@ -13,8 +13,20 @@ pub(crate) fn validate_layout_request<Tree>(
 where
     Tree: LayoutTree,
 {
+    validate_layout_request_with_text(tree, root, changed_nodes, &[])
+}
+
+pub(crate) fn validate_layout_request_with_text<Tree>(
+    tree: &Tree,
+    root: Tree::Node,
+    changed_nodes: &[Tree::Node],
+    paragraphs: &[crate::TextParagraphBinding<Tree::Node>],
+) -> LayoutResultOf<Tree::Node, Vec<Tree::Node>, Tree::Scalar, Tree::MeasureError>
+where
+    Tree: LayoutTree,
+{
     let invalidated_nodes = invalidation_closure(tree, root, changed_nodes)?;
-    if validate_layout_tree(tree, root)? {
+    if validate_layout_tree(tree, root, paragraphs)? {
         return Err(LayoutErrorOf::new(
             LayoutErrorSiteOf::Node(root),
             LayoutOperation::RootLayout,
@@ -139,6 +151,7 @@ where
 fn validate_layout_tree<Tree>(
     tree: &Tree,
     root: Tree::Node,
+    paragraphs: &[crate::TextParagraphBinding<Tree::Node>],
 ) -> LayoutResultOf<Tree::Node, bool, Tree::Scalar, Tree::MeasureError>
 where
     Tree: LayoutTree,
@@ -149,6 +162,7 @@ where
         is_root: bool,
         parent_accepts_inline_text: bool,
         later_behavior: &mut bool,
+        paragraphs: &[crate::TextParagraphBinding<Tree::Node>],
     ) -> LayoutResultOf<Tree::Node, (), Tree::Scalar, Tree::MeasureError>
     where
         Tree: LayoutTree,
@@ -157,8 +171,19 @@ where
         let accepts_inline_text = match layout_input {
             LayoutInputViewOf::Box(_) => {
                 let input = tree.node_input(node);
+                let text_bound = paragraphs
+                    .iter()
+                    .any(|paragraph| paragraph.atomics.iter().any(|binding| binding.node == node));
+                if text_bound && input.atomic_inline_participation.is_some() {
+                    return Err(root_input_error(
+                        node,
+                        LayoutInvalidInputOf::AtomicInlineParticipation {
+                            reason: AtomicInlineParticipationRoleError::UnexpectedForPreparedAtomic,
+                        },
+                    ));
+                }
                 match (
-                    !is_root && input.display.is_inline_level(),
+                    !text_bound && !is_root && input.display.is_inline_level(),
                     input.atomic_inline_participation.is_some(),
                 ) {
                     (true, false) => {
@@ -199,7 +224,7 @@ where
                 }
                 input.display == Display::None || input.display.inner_display() == Display::Block
             }
-            LayoutInputViewOf::InlineText(_) => {
+            LayoutInputViewOf::InlineText(_) | LayoutInputViewOf::TextControl(_) => {
                 if let Some(reason) = non_box_node_role_error(tree, node) {
                     return Err(root_input_error(
                         node,
@@ -223,13 +248,20 @@ where
         };
 
         for child in tree.children(node) {
-            visit(tree, child, false, accepts_inline_text, later_behavior)?;
+            visit(
+                tree,
+                child,
+                false,
+                accepts_inline_text,
+                later_behavior,
+                paragraphs,
+            )?;
         }
         Ok(())
     }
 
     let mut later_behavior = false;
-    visit(tree, root, true, false, &mut later_behavior)?;
+    visit(tree, root, true, false, &mut later_behavior, paragraphs)?;
     Ok(later_behavior)
 }
 

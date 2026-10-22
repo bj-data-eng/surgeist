@@ -1,4 +1,4 @@
-<test name="leaf_overflow_scrollbars_overridden_by_max_size__content_box_ltr" use-rounding="true">
+<test name="leaf_overflow_scrollbars_overridden_by_max_size__content_box_ltr" measurement-version="2" use-rounding="true">
   <viewport width="max-content" height="max-content"/>
   <input>
     <div source-tag="div" display="flex" box-sizing="content-box" direction="ltr" overflow-x="scroll" overflow-y="scroll" scrollbar-width="15" max-width="2px" max-height="4px"/>

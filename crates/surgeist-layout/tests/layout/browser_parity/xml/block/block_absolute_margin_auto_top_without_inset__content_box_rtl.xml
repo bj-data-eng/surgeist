@@ -1,4 +1,4 @@
-<test name="block_absolute_margin_auto_top_without_inset__content_box_rtl" use-rounding="true">
+<test name="block_absolute_margin_auto_top_without_inset__content_box_rtl" measurement-version="2" use-rounding="true">
   <viewport width="max-content" height="max-content"/>
   <input>
     <div source-tag="div" display="block" box-sizing="content-box" direction="rtl" align-items="center" width="200px" height="200px">

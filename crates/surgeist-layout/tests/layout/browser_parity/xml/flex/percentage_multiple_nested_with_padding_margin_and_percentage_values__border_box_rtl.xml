@@ -1,4 +1,4 @@
-<test name="percentage_multiple_nested_with_padding_margin_and_percentage_values__border_box_rtl" use-rounding="false">
+<test name="percentage_multiple_nested_with_padding_margin_and_percentage_values__border_box_rtl" measurement-version="2" use-rounding="false">
   <viewport width="max-content" height="max-content"/>
   <input>
     <div source-tag="div" display="flex" direction="rtl" flex-direction="column" width="200px" height="200px">

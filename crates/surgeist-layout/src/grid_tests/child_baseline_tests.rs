@@ -3780,7 +3780,7 @@ fn subgrid_baseline_placement_error_propagates_with_node_site() {
     );
     assert_eq!(error.site(), LayoutErrorSiteOf::Node(11));
     assert_eq!(error.operation(), LayoutOperation::ChildLayout);
-    assert_eq!(
+    crate::test_support::assert_error_kind(
         error.kind(),
         &LayoutErrorKindOf::InternalInvariant(LayoutInternalInvariant::SubgridBaselineInheritance),
     );
@@ -3803,7 +3803,7 @@ fn subgrid_baseline_placement_error_propagates_with_container_subject_site() {
         },
     );
     assert_eq!(error.operation(), LayoutOperation::ChildLayout);
-    assert_eq!(
+    crate::test_support::assert_error_kind(
         error.kind(),
         &LayoutErrorKindOf::InternalInvariant(LayoutInternalInvariant::SubgridBaselineInheritance),
     );
@@ -8764,8 +8764,8 @@ fn subgrid_child_context_rejects_inheritable_axis_without_parent_tracks() {
         }
     );
     assert_eq!(error.operation(), LayoutOperation::ChildLayout);
-    assert_eq!(
+    crate::test_support::assert_error_kind(
         error.kind(),
-        &LayoutErrorKind::InternalInvariant(LayoutInternalInvariant::SubgridTrackInheritance)
+        &LayoutErrorKind::InternalInvariant(LayoutInternalInvariant::SubgridTrackInheritance),
     );
 }

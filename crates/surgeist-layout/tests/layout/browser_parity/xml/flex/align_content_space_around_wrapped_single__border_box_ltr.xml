@@ -1,4 +1,4 @@
-<test name="align_content_space_around_wrapped_single__border_box_ltr" use-rounding="true">
+<test name="align_content_space_around_wrapped_single__border_box_ltr" measurement-version="2" use-rounding="true">
   <viewport width="max-content" height="max-content"/>
   <input>
     <div source-tag="div" display="flex" direction="ltr" flex-wrap="wrap" align-content="space-around" width="100px" height="100px">

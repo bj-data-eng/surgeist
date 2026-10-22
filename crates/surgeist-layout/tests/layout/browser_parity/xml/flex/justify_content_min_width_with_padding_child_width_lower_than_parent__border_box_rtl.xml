@@ -1,4 +1,4 @@
-<test name="justify_content_min_width_with_padding_child_width_lower_than_parent__border_box_rtl" use-rounding="true">
+<test name="justify_content_min_width_with_padding_child_width_lower_than_parent__border_box_rtl" measurement-version="2" use-rounding="true">
   <viewport width="max-content" height="max-content"/>
   <input>
     <div source-tag="div" display="flex" direction="rtl" flex-direction="column" align-content="stretch" width="1080px" height="1584px">

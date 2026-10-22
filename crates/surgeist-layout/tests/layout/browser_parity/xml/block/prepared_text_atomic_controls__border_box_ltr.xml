@@ -1,0 +1,36 @@
+<test name="prepared_text_atomic_controls__border_box_ltr" measurement-version="2" use-rounding="true">
+  <viewport width="max-content" height="max-content"/>
+  <input>
+    <div source-tag="div" layout-ready-inline-root="true" display="block" direction="ltr" font-size="16px" line-height="20px" width="72px">
+      <prepared-paragraph capture="{&quot;font&quot;:{&quot;id&quot;:&quot;ahem-ttf-f0a92cd0&quot;,&quot;sha256&quot;:&quot;f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc&quot;,&quot;faceIndex&quot;:0,&quot;family&quot;:&quot;SurgeistParityAhem&quot;,&quot;style&quot;:&quot;normal&quot;,&quot;weight&quot;:400,&quot;stretch&quot;:&quot;normal&quot;,&quot;features&quot;:&quot;normal&quot;,&quot;variations&quot;:&quot;normal&quot;,&quot;synthesis&quot;:&quot;none&quot;,&quot;loaded&quot;:true},&quot;direction&quot;:&quot;ltr&quot;,&quot;writingMode&quot;:&quot;horizontal-tb&quot;,&quot;baseStyle&quot;:{&quot;fontSize&quot;:16.0,&quot;lineHeight&quot;:20.0,&quot;whitespace&quot;:&quot;collapse&quot;,&quot;wrap&quot;:&quot;word&quot;,&quot;letterSpacing&quot;:0.0,&quot;wordSpacing&quot;:0.0,&quot;color&quot;:[0.0,0.501960813999176,0.0,1.0],&quot;locale&quot;:&quot;en&quot;},&quot;origins&quot;:[{&quot;child&quot;:0,&quot;units&quot;:[88],&quot;start&quot;:0,&quot;end&quot;:1,&quot;style&quot;:{&quot;fontSize&quot;:16.0,&quot;lineHeight&quot;:20.0,&quot;whitespace&quot;:&quot;collapse&quot;,&quot;wrap&quot;:&quot;word&quot;,&quot;letterSpacing&quot;:0.0,&quot;wordSpacing&quot;:0.0,&quot;color&quot;:[0.0,0.501960813999176,0.0,1.0],&quot;locale&quot;:&quot;en&quot;}},{&quot;child&quot;:2,&quot;units&quot;:[88],&quot;start&quot;:1,&quot;end&quot;:2,&quot;style&quot;:{&quot;fontSize&quot;:16.0,&quot;lineHeight&quot;:20.0,&quot;whitespace&quot;:&quot;collapse&quot;,&quot;wrap&quot;:&quot;word&quot;,&quot;letterSpacing&quot;:0.0,&quot;wordSpacing&quot;:0.0,&quot;color&quot;:[0.0,0.501960813999176,0.0,1.0],&quot;locale&quot;:&quot;en&quot;}},{&quot;child&quot;:4,&quot;units&quot;:[88],&quot;start&quot;:2,&quot;end&quot;:3,&quot;style&quot;:{&quot;fontSize&quot;:16.0,&quot;lineHeight&quot;:20.0,&quot;whitespace&quot;:&quot;collapse&quot;,&quot;wrap&quot;:&quot;word&quot;,&quot;letterSpacing&quot;:0.0,&quot;wordSpacing&quot;:0.0,&quot;color&quot;:[0.0,0.501960813999176,0.0,1.0],&quot;locale&quot;:&quot;en&quot;}}],&quot;connections&quot;:[{&quot;preceding&quot;:0,&quot;following&quot;:1,&quot;kind&quot;:&quot;continuous&quot;,&quot;precedingWrap&quot;:&quot;word&quot;,&quot;followingWrap&quot;:&quot;word&quot;,&quot;ancestorWrap&quot;:&quot;word&quot;},{&quot;preceding&quot;:1,&quot;following&quot;:2,&quot;kind&quot;:&quot;continuous&quot;,&quot;precedingWrap&quot;:&quot;word&quot;,&quot;followingWrap&quot;:&quot;word&quot;,&quot;ancestorWrap&quot;:&quot;word&quot;}],&quot;atomics&quot;:[{&quot;child&quot;:1,&quot;at&quot;:1,&quot;kind&quot;:&quot;in-flow&quot;,&quot;width&quot;:18.0,&quot;height&quot;:18.0,&quot;precedingWrap&quot;:&quot;word&quot;,&quot;followingWrap&quot;:&quot;word&quot;,&quot;ancestorWrap&quot;:&quot;word&quot;}],&quot;controls&quot;:[{&quot;child&quot;:3,&quot;at&quot;:2,&quot;kind&quot;:&quot;forced-break&quot;}],&quot;order&quot;:[{&quot;kind&quot;:&quot;origin&quot;,&quot;index&quot;:0,&quot;affinity&quot;:&quot;before&quot;},{&quot;kind&quot;:&quot;atomic&quot;,&quot;index&quot;:0,&quot;affinity&quot;:&quot;before&quot;},{&quot;kind&quot;:&quot;origin&quot;,&quot;index&quot;:1,&quot;affinity&quot;:&quot;before&quot;},{&quot;kind&quot;:&quot;control&quot;,&quot;index&quot;:0,&quot;affinity&quot;:&quot;before&quot;},{&quot;kind&quot;:&quot;origin&quot;,&quot;index&quot;:2,&quot;affinity&quot;:&quot;before&quot;}]}"/>
+      <text layout-input="prepared-text" occurrence="0"/>
+      <div source-tag="span" display="inline-block" direction="ltr" font-size="16px" line-height="20px" width="18px" height="18px"/>
+      <text layout-input="prepared-text" occurrence="1"/>
+      <div source-tag="br" line-control="forced-break" display="inline" direction="ltr" font-size="16px" line-height="20px"/>
+      <text layout-input="prepared-text" occurrence="2"/>
+    </div>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="72" height="43">
+      <node>
+        <range-fragments>
+          <range-fragment origin="0" line="0" physical_start_edge="left" start="0" advance="16"/>
+        </range-fragments>
+      </node>
+      <node x="16" y="0" width="18" height="18"/>
+      <node>
+        <range-fragments>
+          <range-fragment origin="1" line="0" physical_start_edge="left" start="34" advance="16"/>
+        </range-fragments>
+      </node>
+      <node>
+        <browser-control source_index="3" terminal_visual_slot="unobserved" previous_line="unobserved" next_line="unobserved"/>
+      </node>
+      <node>
+        <range-fragments>
+          <range-fragment origin="2" line="1" physical_start_edge="left" start="0" advance="16"/>
+        </range-fragments>
+      </node>
+    </node>
+  </expectations>
+</test>

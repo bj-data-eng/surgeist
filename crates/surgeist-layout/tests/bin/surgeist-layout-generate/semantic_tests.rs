@@ -828,10 +828,7 @@ fn fri06_c08_t2_word_only_segments_preserve_direct_root_sequence_and_break_indic
             ],
             0,
             "text",
-            Some(json!([
-                {"sourceIndex": 0, "followingBreak": "allowed"},
-                {"sourceIndex": 1, "followingBreak": "allowed"}
-            ])),
+            None,
         ),
         (
             "float/fri06_float_line_exclusion.html",
@@ -955,7 +952,7 @@ if (JSON.stringify(bands) !== JSON.stringify([
 }
 
 #[test]
-fn fri06_c08_new_authored_break_opportunity_serializes_and_wraps_through_public_layout() {
+fn fri06_c08_historical_authored_break_schema_preserves_literals_and_refuses_native_lowering() {
     let script = [
             r#"
 const window = {};
@@ -1043,9 +1040,10 @@ console.log(JSON.stringify({
     keep_imported_browser_parity_support_reachable(&golden);
     let layout = browser_parity_support::assert_surgeist_matches(&golden);
 
-    assert!(
-        layout.is_ok(),
-        "layout-ready input must serialize the authored allowed boundary and wrap through compute_layout; result={layout:?}\n{xml}"
+    assert_eq!(
+        layout.unwrap_err().to_string(),
+        "historical measured-width text has no original source/font capture; it cannot enter production Text",
+        "literal historical measurements remain schema evidence, never native Text parity\n{xml}"
     );
     assert!(
             xml.contains(
@@ -1056,7 +1054,7 @@ console.log(JSON.stringify({
 }
 
 #[test]
-fn fri06_c08_new_float_line_breaks_advance_inside_reduced_band_through_public_layout() {
+fn fri06_c08_historical_float_break_schema_preserves_literals_and_refuses_native_lowering() {
     let script = [
             r#"
 const window = {};
@@ -1165,9 +1163,10 @@ console.log(JSON.stringify({
     let golden = browser_parity_support::Golden::parse(&xml).expect("serialized fixture");
     let layout = browser_parity_support::assert_surgeist_matches(&golden);
 
-    assert!(
-        layout.is_ok(),
-        "allowed source boundaries must wrap and advance inside the 88px opposing-float band through compute_layout; result={layout:?}\n{xml}"
+    assert_eq!(
+        layout.unwrap_err().to_string(),
+        "historical measured-width text has no original source/font capture; it cannot enter production Text",
+        "literal historical measurements remain schema evidence, never native Text parity\n{xml}"
     );
     for expected in [
         r#"<segment id="4" inline-extent="38.53125" inline-baseline="14.8" inline-line-height="20" bidi-level="0" whitespace-edge="preserve" following-break="allowed"/>"#,
@@ -1244,7 +1243,7 @@ if (!rejected) {
 }
 
 #[test]
-fn fri06_c08_existing_range_ink_omits_model_visual_identity() {
+fn fri06_c08_existing_range_rectangle_omits_model_visual_identity() {
     let script = [
         r#"
 const window = {};
@@ -1281,7 +1280,7 @@ const rangeInk = shaped.rangeInks[0];
 const keys = Object.keys(rangeInk).sort();
 const expectedKeys = ["advance", "lineIndex", "physicalStartEdge", "sourceSegmentId", "start"];
 if (JSON.stringify(keys) !== JSON.stringify(expectedKeys)) {
-  throw new Error(`Range ink retained a model-only field: ${JSON.stringify(rangeInk)}`);
+  throw new Error(`Range rectangle retained a model-only field: ${JSON.stringify(rangeInk)}`);
 }
 if (rangeInk.sourceSegmentId !== 7 || rangeInk.lineIndex !== 0 ||
     rangeInk.physicalStartEdge !== "right" || rangeInk.start !== 35 || rangeInk.advance !== 25) {
@@ -1444,10 +1443,10 @@ for (const [name, value] of Object.entries({
   if (!Number.isFinite(value)) throw new Error(`${name} must be finite, got ${value}`);
 }
 if (segment.id !== 7 || rangeInk.sourceSegmentId !== 7) {
-  throw new Error("text source and Range-ink segment identity must remain stable");
+  throw new Error("text source and Range-rectangle segment identity must remain stable");
 }
 if (rangeInk.lineIndex !== 0 || Object.prototype.hasOwnProperty.call(rangeInk, "visualIndex")) {
-  throw new Error("Range ink must retain line identity without model visual identity");
+  throw new Error("Range rectangle must retain line identity without model visual identity");
 }
 
 const metrics = brInlineMetricsForElement({ tagName: "BR" }, {
@@ -2014,7 +2013,7 @@ console.log(JSON.stringify({
         .iter()
         .map(|child| {
             child
-                .range_inks
+                .range_rectangles
                 .as_ref()
                 .and_then(|ranges| ranges.first())
                 .expect("one Range observation")
@@ -2028,7 +2027,7 @@ console.log(JSON.stringify({
     );
     for (source_id, child) in [0, 4, 8, 12].into_iter().zip(&golden.expectations.children) {
         assert_eq!(
-            child.range_inks.as_ref().unwrap()[0].source_segment_id,
+            child.range_rectangles.as_ref().unwrap()[0].source_segment_id,
             source_id
         );
     }
@@ -2147,7 +2146,7 @@ mustReject(
 }
 
 #[test]
-fn fri06_c08_recovery_inputs_shape_break_round_trips_before_42px_atomic() {
+fn fri06_c08_historical_shape_break_schema_preserves_literals_and_refuses_native_lowering() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/layout/browser_parity");
     let relative = "html/float/fri06_float_shape_exclusion.html";
     let raw = fs::read_to_string(root.join(relative)).expect(relative);
@@ -2254,9 +2253,10 @@ console.log(JSON.stringify({
     let xml = generate_xml("fri06_float_shape_exclusion__border_box_ltr", &node);
     let golden = browser_parity_support::Golden::parse(&xml).expect("serialized shape fixture");
     let layout = browser_parity_support::assert_surgeist_matches(&golden);
-    assert!(
-        layout.is_ok(),
-        "the 38px atomic must carry the allowed break before 42px through helper, serializer, parser, and public layout; result={layout:?}\n{xml}"
+    assert_eq!(
+        layout.unwrap_err().to_string(),
+        "historical measured-width text has no original source/font capture; it cannot enter production Text",
+        "literal historical measurements remain schema evidence, never native Text parity\n{xml}"
     );
     for expected in [
         r#"<atomic-placeholder child-index="2" bidi-level="0" following-break="prohibited"/>"#,
@@ -2447,19 +2447,28 @@ fn fri06_c08_t1_spill_matrix_preserves_64_legacy_variants() {
 }
 
 #[test]
-fn fri06_c08_t2_mixed_wrap_allows_break_after_first_atomic() {
+fn prepared_mixed_wrap_preserves_original_content_and_removes_reviewed_output_authority() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/layout/browser_parity");
     let relative = "html/block/fri06_inline_mixed_text_atomic_wrap.html";
     let raw = fs::read_to_string(root.join(relative)).expect(relative);
     let (_, authored_breaks) = fri06_c08_direct_test_root(&raw, relative);
     assert_eq!(
-        authored_breaks,
-        Some(json!([
-            {"sourceIndex": 0, "followingBreak": "allowed"},
-            {"sourceIndex": 1, "followingBreak": "allowed"}
-        ])),
-        "the first 18px atomic must own the later allowed break"
+        authored_breaks, None,
+        "Text owns actual opportunity computation; no reviewed output levels or widths may re-enter input"
     );
+    assert!(raw.contains("data-surgeist-prepared-text=\"ahem-ttf-v1\""));
+    assert!(raw.contains(">text<span"));
+    for literal in [
+        "width: 18px; height: 18px",
+        "width: 24px; height: 18px",
+        "width: 30px; height: 18px",
+    ] {
+        assert!(
+            raw.contains(literal),
+            "original atomic input must remain {literal}"
+        );
+    }
+    assert!(!raw.contains("data-surgeist-inline-struts"));
 }
 
 #[test]
@@ -2537,7 +2546,7 @@ fn fri06_c08_t2_shape_query_recorder_uses_two_observed_finite_bands() {
 }
 
 #[test]
-fn fri06_c08_range_ink_helper_keeps_browser_block_ink_out_of_metric_geometry() {
+fn fri06_c08_range_rectangle_helper_keeps_browser_block_ink_out_of_metric_geometry() {
     let script = [
             r#"
 const window = {};
@@ -2593,11 +2602,11 @@ for (const [direction, writingMode, physicalStartEdge, start, advance] of [
     start,
     advance,
   }])) {
-    throw new Error(`Range ink must retain only source/line and flow-inline facts, got ${JSON.stringify(shaped.rangeInks)}`);
+    throw new Error(`Range rectangle must retain only source/line and flow-inline facts, got ${JSON.stringify(shaped.rangeInks)}`);
   }
   if (shaped.inlineSegments[0].inlineBaseline !== 14.8 ||
       shaped.inlineSegments[0].inlineLineHeight !== 20) {
-    throw new Error("supplied model line metrics must remain independent from 7px Range ink height");
+    throw new Error("supplied model line metrics must remain independent from 7px Range rectangle height");
   }
 }
 "#,
@@ -2608,7 +2617,7 @@ for (const [direction, writingMode, physicalStartEdge, start, advance] of [
 }
 
 #[test]
-fn fri06_c08_range_ink_serializer_emits_only_physical_inline_observations() {
+fn fri06_c08_range_rectangle_serializer_emits_only_physical_inline_observations() {
     let node = json!({"layoutInput": "box",
         "tagName": "div",
         "useRounding": false,
@@ -2640,16 +2649,16 @@ fn fri06_c08_range_ink_serializer_emits_only_physical_inline_observations() {
         }],
     });
 
-    let xml = generate_xml("fri06_c08_range_ink_serializer", &node);
+    let xml = generate_xml("fri06_c08_range_rectangle_serializer", &node);
     assert!(
             xml.contains(
                 r#"<range-ink source_segment_id="7" line_index="0" physical_start_edge="left" start="15" advance="9"/>"#
             ),
-            "missing explicit Range-ink category in\n{xml}"
+            "missing explicit Range-rectangle category in\n{xml}"
         );
     assert!(
         !xml.contains("<fragment "),
-        "Range ink must not serialize as a model fragment\n{xml}"
+        "Range rectangle must not serialize as a model fragment\n{xml}"
     );
     assert!(
         xml.contains("<node><range-inks>") || xml.contains("<node>\n        <range-inks>"),
@@ -2773,7 +2782,7 @@ fn fri06_c08_browser_control_serializer_emits_only_source_slot_and_neighbor_line
 }
 
 #[test]
-fn fri06_c08_range_ink_serializer_rejects_every_ordinary_metric_and_scroll_state() {
+fn fri06_c08_range_rectangle_serializer_rejects_every_ordinary_metric_and_scroll_state() {
     let incompatible_states = [
         (
             "unroundedLayout",
@@ -2920,7 +2929,8 @@ fn fri06_c08_range_ink_serializer_rejects_every_ordinary_metric_and_scroll_state
                     .clone(),
             );
 
-        let error = measured_xml("fri06_c08_range_ink_serializer_rejection", &node).unwrap_err();
+        let error =
+            measured_xml("fri06_c08_range_rectangle_serializer_rejection", &node).unwrap_err();
         assert_eq!(
             error.kind,
             MeasurementErrorKind::ContradictoryFields,
@@ -2973,14 +2983,14 @@ function getComputedStyle() {
 const shaped = layoutReadyTextNodeData(text, parent, 7);
 const rangeInk = shaped.rangeInks[0];
 if (rangeInk.physicalStartEdge !== "left" || rangeInk.start !== 30 || rangeInk.advance !== 4) {
-  throw new Error(`Range ink must retain explicit-root-local flow-inline geometry, got ${JSON.stringify(rangeInk)}`);
+  throw new Error(`Range rectangle must retain explicit-root-local flow-inline geometry, got ${JSON.stringify(rangeInk)}`);
 }
 if (rangeInk.sourceSegmentId !== 7 || rangeInk.lineIndex !== 0 ||
     Object.prototype.hasOwnProperty.call(rangeInk, "visualIndex")) {
-  throw new Error(`Range-ink identity must remain stable, got ${JSON.stringify(rangeInk)}`);
+  throw new Error(`Range-rectangle identity must remain stable, got ${JSON.stringify(rangeInk)}`);
 }
 if ("y" in rangeInk || "height" in rangeInk || "baselineX" in rangeInk || "baselineY" in rangeInk) {
-  throw new Error(`Range ink must not retain block-axis or baseline geometry, got ${JSON.stringify(rangeInk)}`);
+  throw new Error(`Range rectangle must not retain block-axis or baseline geometry, got ${JSON.stringify(rangeInk)}`);
 }
 "#,
         ]
@@ -3086,7 +3096,7 @@ fn xml_generation_preserves_browser_parity_fixture_shape() {
 
     let xml = generate_xml("block_basic__border_box_ltr", &node);
 
-    assert!(xml.contains("<test name=\"block_basic__border_box_ltr\" use-rounding=\"true\">"));
+    assert!(xml.contains("<test name=\"block_basic__border_box_ltr\" measurement-version=\"2\" use-rounding=\"true\">"));
     assert!(xml.contains("  <viewport width=\"max-content\" height=\"max-content\"/>"));
     assert!(xml.contains("    <div display=\"block\" direction=\"ltr\" width=\"50px\">"));
     assert!(xml.contains("      <div direction=\"ltr\" height=\"10px\"/>"));
@@ -4850,7 +4860,7 @@ fn xml_generation_applies_root_rounding_policy_to_descendants() {
     let xml = generate_xml("percentage_moderate_complexity__border_box_ltr", &node);
 
     assert!(xml.contains(
-        "<test name=\"percentage_moderate_complexity__border_box_ltr\" use-rounding=\"false\">"
+        "<test name=\"percentage_moderate_complexity__border_box_ltr\" measurement-version=\"2\" use-rounding=\"false\">"
     ));
     assert!(xml.contains("    <node x=\"0\" y=\"0\" width=\"200\" height=\"42.15625\">"));
     assert!(xml.contains("      <node x=\"8\" y=\"8\" width=\"97\" height=\"26.15625\">"));

@@ -6,6 +6,8 @@ mod cli;
 mod envelope;
 #[path = "surgeist-layout-generate/measurement.rs"]
 mod measurement;
+#[path = "../layout/browser_parity/pinned_font.rs"]
+mod pinned_font;
 #[path = "surgeist-layout-generate/xml.rs"]
 mod xml;
 

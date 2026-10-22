@@ -2,10 +2,12 @@ use super::fixtures::{
     Fri06C02StatefulTextTree, Fri06C05ShapeProvider, PublicFlowTree, RootSessionTree,
     computed_overflow, fri05_c03_block_root_state, fri05_c04_assert_initial_local_auto_state,
     fri05_c04_local_auto_state, fri05_c04_nested_flex_auto_tree, fri06_c02_final_node,
-    fri06_c02_segment, fri06_c02_stateful_request, fri06_c02_text_nodes_batch,
-    fri06_mr02_geometry_error_largest_finite, public_flow_output, public_layout_tree, scalar,
+    fri06_c02_stateful_request, fri06_mr02_geometry_error_largest_finite,
+    origin_fragment_associations, public_flow_output, public_layout_tree, scalar,
 };
 use super::*;
+use crate::test_support::text::{ParagraphPart, PreparedParagraph, ahem_style};
+use surgeist_text::{Id, ParagraphBaseDirection, Source, WhiteSpace};
 
 #[test]
 fn fri08_c07_t02_scroll_source_root_preserves_error_identity_without_batch() {
@@ -23,7 +25,9 @@ fn fri06_c04_float_lifecycle_cold_warm_dirty_failures_baseline_and_content_are_a
         ))
         .unwrap();
         let mut tree = Fri06C02StatefulTextTree::new_float_mixed();
-        let cold = compute_layout(&tree, 0, request).expect("cold float/line layout succeeds");
+        let cold = tree
+            .compute(request)
+            .expect("cold float/line layout succeeds");
         let cold_unrounded = cold.unrounded_entries().to_vec();
         let cold_final = cold.final_entries().to_vec();
         let cold_fragments = cold.unrounded_inline_fragments().to_vec();
@@ -43,10 +47,15 @@ fn fri06_c04_float_lifecycle_cold_warm_dirty_failures_baseline_and_content_are_a
         );
         cold.apply_to(&mut tree).expect("cold float batch commits");
 
-        let warm = compute_layout(&tree, 0, request).expect("warm float/line layout succeeds");
+        let warm = tree
+            .compute(request)
+            .expect("warm float/line layout succeeds");
         assert_eq!(warm.unrounded_entries(), cold_unrounded);
         assert_eq!(warm.final_entries(), cold_final);
-        assert_eq!(warm.unrounded_inline_fragments(), cold_fragments);
+        assert_eq!(
+            origin_fragment_associations(warm.unrounded_inline_fragments()),
+            origin_fragment_associations(&cold_fragments)
+        );
         assert!(
             warm.cache_store_entries()
                 .iter()
@@ -59,9 +68,10 @@ fn fri06_c04_float_lifecycle_cold_warm_dirty_failures_baseline_and_content_are_a
         let stale_text = tree.retained.unrounded_nodes[&2];
         tree.replace_float_inline_extent(25.75);
         tree.retained.dirty = vec![1, 1];
-        let replacement = compute_layout_invalidated(&tree, 0, request, &tree.retained.dirty)
+        let replacement = tree
+            .compute_invalidated(request, &tree.retained.dirty)
             .expect("dirty float replacement stages");
-        assert_eq!(replacement.invalidated_nodes(), &[0, 1]);
+        assert_eq!(replacement.invalidated_nodes(), &[0, 1, 2]);
         replacement
             .apply_to(&mut tree)
             .expect("dirty float replacement commits");
@@ -80,13 +90,15 @@ fn fri06_c04_float_lifecycle_cold_warm_dirty_failures_baseline_and_content_are_a
         tree.retained.dirty = vec![1];
         tree.add_failing_float_path_control();
         let before_layout_failure = tree.retained.clone();
-        let error = compute_layout_invalidated(&tree, 0, request, &tree.retained.dirty)
+        let error = tree
+            .compute_invalidated(request, &tree.retained.dirty)
             .expect_err("invalid float-path control pairing rejects the whole layout batch");
         assert_eq!(error.site(), LayoutErrorSiteOf::Node(9));
         assert_eq!(tree.retained, before_layout_failure);
 
         tree.remove_failing_float_path_control();
-        let rejected = compute_layout_invalidated(&tree, 0, request, &tree.retained.dirty)
+        let rejected = tree
+            .compute_invalidated(request, &tree.retained.dirty)
             .expect("replacement after layout failure stages");
         tree.reject_preparation = true;
         let before_preparation_failure = tree.retained.clone();
@@ -103,95 +115,119 @@ fn fri06_c04_float_lifecycle_cold_warm_dirty_failures_baseline_and_content_are_a
 }
 
 #[test]
-fn fri06_c02_fragment_publication_is_per_node_source_ordered_and_retains_empty_anchors_both_scalars()
+fn prepared_fragment_publication_preserves_actual_original_nodes_ranges_and_issued_anchors_both_scalars()
  {
     fn assert_lane<S: LayoutScalar>() {
-        let batch = fri06_c02_text_nodes_batch(
+        let base = ahem_style(10.0, 10.0);
+        let mut collapsed = base.clone();
+        collapsed.white_space = WhiteSpace::Collapse;
+        let paragraph = PreparedParagraph::new(
             vec![
-                (
+                ParagraphPart::text(
                     1,
-                    vec![
-                        fri06_c02_segment(
-                            11,
-                            8.0,
-                            InlineWhitespaceEdge::Preserve,
-                            InlineBreakOpportunityOf::mandatory(),
-                        ),
-                        fri06_c02_segment(
-                            12,
-                            6.0,
-                            InlineWhitespaceEdge::Preserve,
-                            InlineBreakOpportunityOf::prohibited(),
-                        ),
-                    ],
+                    Source::identified("X\nX", Id::from_u64(11), 0),
+                    base.clone(),
                 ),
-                (
-                    2,
-                    vec![fri06_c02_segment(
-                        21,
-                        7.0,
-                        InlineWhitespaceEdge::DiscardAtBoth,
-                        InlineBreakOpportunityOf::mandatory(),
-                    )],
-                ),
+                ParagraphPart::text(2, Source::identified(" ", Id::from_u64(21), 0), collapsed),
             ],
-            NodeInputOf {
-                display: Display::Block,
-                ..NodeInputOf::default()
-            },
-            Size::new(
-                AvailableOf::definite(S::from_f64(30.0)),
-                AvailableOf::MAX_CONTENT,
+            base,
+            ParagraphBaseDirection::LeftToRight,
+        );
+        let inputs = HashMap::from([
+            (
+                0,
+                LayoutInputOf::box_input(NodeInputOf {
+                    display: Display::Block,
+                    ..NodeInputOf::default()
+                }),
             ),
+            (1, paragraph.text_input(1)),
+            (2, paragraph.text_input(2)),
+        ]);
+        let tree = public_layout_tree(
+            inputs,
+            HashMap::from([(0, vec![1, 2]), (1, Vec::new()), (2, Vec::new())]),
         );
+        let capture = TextLayoutInput::try_new(&tree, 0, vec![paragraph.binding(0)]).unwrap();
+        let request = LayoutRootRequestOf::viewport(Size::new(
+            AvailableOf::definite(S::from_f64(30.0)),
+            AvailableOf::MAX_CONTENT,
+        ))
+        .unwrap();
+        let batch = compute_layout_with_text(&capture, 0, request).unwrap();
+        let rows = origin_fragment_associations(batch.final_inline_fragments());
+        let first: Vec<_> = rows.iter().filter(|row| row.0 == 1).collect();
         assert_eq!(
-            batch
-                .final_inline_fragments()
-                .iter()
-                .map(|entry| (entry.node(), entry.fragment().segment_id().get()))
-                .collect::<Vec<_>>(),
-            vec![(1, 11), (1, 12)]
+            first.iter().map(|row| row.2).collect::<Vec<_>>(),
+            [
+                surgeist_text::Range::new(0, 1),
+                surgeist_text::Range::new(1, 2),
+                surgeist_text::Range::new(2, 3)
+            ]
         );
-        let first = fri06_c02_final_node(&batch, 1);
-        assert_eq!(first.location, Point::ZERO);
-        assert_eq!(first.size, Size::new(S::from_f64(8.0), S::from_f64(20.0)));
-        assert_eq!(first.content_size, first.size);
-        assert_eq!(first.border, Edges::ZERO);
-        assert_eq!(first.padding, Edges::ZERO);
-        assert_eq!(first.margin, Edges::ZERO);
-        assert!(first.scroll_geometry.is_none());
-        let empty = fri06_c02_final_node(&batch, 2);
+        assert!(first.iter().all(|row| row.1 == paragraph.origin(1)));
+        let visible = first
+            .iter()
+            .filter(|row| row.2 != surgeist_text::Range::new(1, 2))
+            .collect::<Vec<_>>();
+        assert_eq!(visible.iter().map(|row| row.5).collect::<Vec<_>>(), [0, 1]);
+        for (row, y) in visible.iter().zip([0.0, 10.0]) {
+            let rect = row.3.unwrap();
+            assert_eq!(rect.origin(), Point::new(S::ZERO, S::from_f64(y)));
+            assert_eq!(rect.size(), Size::new(S::from_f64(10.0), S::from_f64(10.0)));
+        }
         assert_eq!(
-            empty.location,
-            Point::new(S::from_f64(6.0), S::from_f64(10.0))
+            first[1].3.unwrap().size().width,
+            S::ZERO,
+            "the original newline retains its genuine zero-advance occurrence"
         );
-        assert_eq!(empty.size, Size::ZERO);
-        assert_eq!(empty.content_size, Size::ZERO);
-        assert!(empty.scroll_geometry.is_none());
-
-        let hidden = fri06_c02_text_nodes_batch(
-            vec![(
-                1,
-                vec![fri06_c02_segment(
-                    31,
-                    10.0,
-                    InlineWhitespaceEdge::Preserve,
-                    InlineBreakOpportunityOf::prohibited(),
-                )],
-            )],
-            NodeInputOf {
-                display: Display::None,
-                ..NodeInputOf::default()
-            },
-            Size::splat(AvailableOf::definite(S::from_f64(30.0))),
+        let absent: Vec<_> = rows.iter().filter(|row| row.0 == 2).collect();
+        assert_eq!(absent.len(), 1);
+        assert_eq!(absent[0].1, paragraph.origin(2));
+        assert_eq!(absent[0].2, surgeist_text::Range::new(0, 1));
+        assert_eq!(
+            absent[0].3.unwrap().size(),
+            Size::new(S::ZERO, S::from_f64(10.0)),
+            "the finalized zero-advance source retains Text's actual line-backed anchor"
         );
-        assert!(hidden.final_inline_fragments().is_empty());
+        let first_node = fri06_c02_final_node(&batch, 1);
+        assert_eq!(first_node.location, Point::ZERO);
+        assert_eq!(
+            first_node.size,
+            Size::new(S::from_f64(10.0), S::from_f64(20.0))
+        );
+        assert_eq!(first_node.content_size, first_node.size);
+        assert_eq!(first_node.border, Edges::ZERO);
+        assert_eq!(first_node.padding, Edges::ZERO);
+        assert_eq!(first_node.margin, Edges::ZERO);
+        assert!(first_node.scroll_geometry.is_none());
+        assert_eq!(batch.placed_text().len(), 1);
+        assert_eq!(batch.placed_text()[0].container(), 0);
+        drop(batch);
+        drop(capture);
+        let mut hidden_inputs = HashMap::from([
+            (
+                0,
+                LayoutInputOf::box_input(NodeInputOf {
+                    display: Display::None,
+                    ..NodeInputOf::default()
+                }),
+            ),
+            (1, paragraph.text_input(1)),
+            (2, paragraph.text_input(2)),
+        ]);
+        let hidden = public_layout_tree(
+            std::mem::take(&mut hidden_inputs),
+            HashMap::from([(0, vec![1, 2]), (1, Vec::new()), (2, Vec::new())]),
+        );
+        let capture = TextLayoutInput::try_new(&hidden, 0, vec![paragraph.binding(0)]).unwrap();
+        let batch = compute_layout_with_text(&capture, 0, request).unwrap();
+        assert!(batch.final_inline_fragments().is_empty());
+        assert!(batch.placed_text().is_empty());
     }
     assert_lane::<f32>();
     assert_lane::<f64>();
 }
-
-type Fri06C03FragmentIdentity<S> = (u32, InlineSegmentId, usize, usize, Option<S>);
 
 #[test]
 fn fri06_c05_provider_atomicity_layout_and_preparation_failures_publish_nothing_both_scalars() {
@@ -202,13 +238,14 @@ fn fri06_c05_provider_atomicity_layout_and_preparation_failures_publish_nothing_
                 minimum: S::ZERO,
                 maximum: S::from_f64(8.0),
             });
-        let cold = compute_layout(&tree, 0, request).expect("provider layout succeeds");
+        let cold = tree.compute(request).expect("provider layout succeeds");
         cold.apply_to(&mut tree).expect("provider batch commits");
 
         tree.shape_provider = Fri06C05ShapeProvider::Failure;
         tree.retained.dirty = vec![1];
         let before_layout_failure = tree.retained.clone();
-        let error = compute_layout_invalidated(&tree, 0, request, &tree.retained.dirty)
+        let error = tree
+            .compute_invalidated(request, &tree.retained.dirty)
             .expect_err("provider failure returns no batch");
         assert_eq!(
             error.site(),
@@ -218,14 +255,15 @@ fn fri06_c05_provider_atomicity_layout_and_preparation_failures_publish_nothing_
             }
         );
         assert_eq!(error.operation(), LayoutOperation::FloatExclusionQuery);
-        assert_eq!(error.kind(), &LayoutErrorKindOf::Measurement(()));
+        assert!(matches!(error.kind(), LayoutErrorKindOf::Measurement(())));
         assert_eq!(tree.retained, before_layout_failure);
         assert_eq!(tree.retained.dirty, [1]);
 
         tree.shape_provider = Fri06C05ShapeProvider::Empty;
-        let replacement = compute_layout_invalidated(&tree, 0, request, &tree.retained.dirty)
+        let replacement = tree
+            .compute_invalidated(request, &tree.retained.dirty)
             .expect("provider recovery stages a complete batch");
-        assert_eq!(replacement.invalidated_nodes(), &[0, 1]);
+        assert_eq!(replacement.invalidated_nodes(), &[0, 1, 2]);
         tree.reject_preparation = true;
         let before_preparation_failure = tree.retained.clone();
         assert_eq!(
@@ -243,54 +281,47 @@ fn fri06_c05_provider_atomicity_layout_and_preparation_failures_publish_nothing_
 #[test]
 fn fri06_c03_lifecycle_mixed_cold_warm_rounding_dirty_replacement_scroll_and_failure_are_atomic_both_scalars()
  {
-    fn fragment_identity<S: LayoutScalar>(
-        entries: &[InlineFragmentOutputEntryOf<u32, S>],
-    ) -> Vec<Fri06C03FragmentIdentity<S>> {
-        entries
-            .iter()
-            .map(|entry| {
-                let fragment = entry.fragment();
-                (
-                    entry.node(),
-                    fragment.segment_id(),
-                    fragment.line_index(),
-                    fragment.visual_index(),
-                    fragment.replacement_inline_extent(),
-                )
-            })
-            .collect()
-    }
-
     fn assert_lane<S: LayoutScalar>() {
         let request = fri06_c02_stateful_request::<S>();
         let mut tree = Fri06C02StatefulTextTree::new_mixed();
-        let cold = compute_layout(&tree, 0, request).expect("cold mixed layout succeeds");
-        assert_eq!(tree.fragment_readbacks.get(), 0);
-        assert!(
-            cold.cache_store_entries()
-                .iter()
-                .any(|entry| entry.node() == 1),
-            "cold mixed layout must stage the text cache state used by the warm pass"
-        );
-        let cold_unrounded_identity = fragment_identity(cold.unrounded_inline_fragments());
-        let cold_final_identity = fragment_identity(cold.final_inline_fragments());
+        let cold = tree.compute(request).expect("cold mixed layout succeeds");
+        assert_eq!(cold.invalidated_nodes(), [0, 1, 3, 4]);
+        let cold_unrounded_identity =
+            origin_fragment_associations(cold.unrounded_inline_fragments());
+        let cold_final_identity = origin_fragment_associations(cold.final_inline_fragments());
+        assert_eq!(cold_unrounded_identity.len(), 1);
+        let original = &cold_unrounded_identity[0];
         assert_eq!(
-            cold_unrounded_identity,
-            vec![(1, InlineSegmentId::new(91), 0, 0, None)]
+            (original.0, original.1.clone(), original.2, original.5),
+            (
+                1,
+                tree.text.origins[0].origin.clone(),
+                surgeist_text::Range::new(0, 1),
+                0
+            )
         );
-        assert_eq!(cold_final_identity, cold_unrounded_identity);
         assert_eq!(
-            cold.unrounded_inline_fragments()
+            cold_unrounded_identity
                 .iter()
-                .map(|entry| entry.fragment().baseline())
+                .map(|row| (&row.1, row.2, row.5))
+                .collect::<Vec<_>>(),
+            cold_final_identity
+                .iter()
+                .map(|row| (&row.1, row.2, row.5))
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            cold_unrounded_identity
+                .iter()
+                .map(|entry| entry.4)
                 .collect::<Vec<_>>(),
             vec![Point::new(S::ZERO, S::from_f64(8.0))],
             "the mixed source must retain its exact unrounded baseline"
         );
         assert_eq!(
-            cold.final_inline_fragments()
+            cold_final_identity
                 .iter()
-                .map(|entry| entry.fragment().baseline())
+                .map(|entry| entry.4)
                 .collect::<Vec<_>>(),
             vec![Point::new(S::ZERO, S::from_f64(8.0))],
             "cumulative-origin rounding must publish the exact final baseline"
@@ -305,8 +336,105 @@ fn fri06_c03_lifecycle_mixed_cold_warm_rounding_dirty_replacement_scroll_and_fai
             .unwrap()
             .output();
         let unrounded_range = unrounded_root.scroll_geometry.unwrap().physical_range();
+        let placed = cold.placed_text()[0].layout();
+        let lines = placed.lines();
+        assert_eq!(lines.len(), 3);
+        for (line, (top, baseline, height)) in
+            lines
+                .iter()
+                .zip([(0.0, 8.0, 10.0), (10.0, 20.0, 14.0), (24.0, 32.0, 10.0)])
+        {
+            assert_eq!(
+                line.bounds(),
+                surgeist_text::Rect::new(0.0, top, 20.0, height)
+            );
+            assert_eq!(line.baseline(), baseline);
+        }
+        assert_eq!(lines[0].range(), surgeist_text::Range::new(0, 1));
+        assert!(
+            lines[1..]
+                .iter()
+                .all(|line| line.range() == surgeist_text::Range::new(1, 1))
+        );
+        // The legal Forced offer consumes the overwide atomic together with
+        // the neutral boundary and the Forced control. Their canonical struts
+        // are6/10 and8/10; atomic-before10 plus control-after4 makes14px.
+        let control_line = cold
+            .unrounded_inline_fragments()
+            .iter()
+            .find(|entry| entry.node() == 3)
+            .unwrap()
+            .fragment()
+            .finalized_fragment()
+            .finalized_line();
+        let feedback = control_line.feedback();
+        assert_eq!(
+            (
+                feedback.ascent,
+                feedback.descent,
+                feedback.baseline,
+                feedback.line_height
+            ),
+            (10.0, 4.0, 10.0, 14.0)
+        );
+        assert_eq!(
+            control_line
+                .selected_line()
+                .request()
+                .controls
+                .iter()
+                .map(|allocation| {
+                    let strut = allocation.strut.unwrap();
+                    (strut.baseline, strut.line_extent)
+                })
+                .collect::<Vec<_>>(),
+            [(6.0, 10.0), (8.0, 10.0)]
+        );
+        // The actual native atomic shares baseline20. Its original10.5px
+        // baseline gives raw top9.5, then canonical edges10..20 and0..25.
+        let atomic_boxes = placed.inline_boxes();
+        assert_eq!(atomic_boxes.len(), 1);
+        assert_eq!(atomic_boxes[0].id(), surgeist_text::Id::from_u64(2));
+        assert_eq!(atomic_boxes[0].line(), 1);
+        assert_eq!(
+            atomic_boxes[0].rect(),
+            surgeist_text::Rect::new(0.0, 10.0, 25.0, 10.0)
+        );
+        for entries in [&cold_unrounded, &cold_final] {
+            let atomic = entries
+                .iter()
+                .find(|entry| entry.node() == 2)
+                .unwrap()
+                .output();
+            assert_eq!(atomic.location, Point::new(S::ZERO, S::from_f64(10.0)));
+            assert_eq!(atomic.size, Size::new(S::from_f64(25.0), S::from_f64(10.0)));
+        }
+        // All three actual line boxes contribute to overflow, including the
+        // terminal strut line with no source fragment:24+10−root20=14.
+        assert_eq!(
+            unrounded_root.size,
+            Size::new(S::from_f64(20.0), S::from_f64(20.0))
+        );
         assert_eq!(unrounded_range.x().maximum(), S::from_f64(5.25));
-        assert_eq!(unrounded_range.y().maximum(), S::from_f64(0.5));
+        assert_eq!(unrounded_range.y().maximum(), S::from_f64(14.0));
+        let final_root = cold_final
+            .iter()
+            .find(|entry| entry.node() == 0)
+            .unwrap()
+            .output();
+        assert_eq!(
+            final_root.size,
+            Size::new(S::from_f64(20.0), S::from_f64(20.0))
+        );
+        assert_eq!(
+            final_root
+                .scroll_geometry
+                .unwrap()
+                .physical_range()
+                .y()
+                .maximum(),
+            S::from_f64(14.0)
+        );
         let source_indices = |entries: &[LayoutOutputEntryOf<u32, S>]| {
             entries
                 .iter()
@@ -327,67 +455,79 @@ fn fri06_c03_lifecycle_mixed_cold_warm_rounding_dirty_replacement_scroll_and_fai
         cold.apply_to(&mut tree).expect("cold mixed batch commits");
         assert!(tree.retained.unrounded_nodes.contains_key(&1));
         assert!(tree.retained.final_nodes.contains_key(&1));
-        assert!(
-            tree.retained.caches.contains_key(&1),
-            "cold commit must retain the text cache entry"
-        );
+        assert_eq!(tree.retained.unrounded_fragments[&1].len(), 1);
         assert_eq!(
             tree.retained.unrounded_fragments[&1],
             cold_unrounded_fragments
                 .iter()
-                .map(InlineFragmentOutputEntryOf::fragment)
+                .filter(|entry| entry.node() == 1)
+                .map(|entry| entry.fragment().clone())
                 .collect::<Vec<_>>()
         );
         assert_eq!(
             tree.retained.final_fragments[&1],
             cold_final_fragments
                 .iter()
-                .map(InlineFragmentOutputEntryOf::fragment)
+                .filter(|entry| entry.node() == 1)
+                .map(|entry| entry.fragment().clone())
                 .collect::<Vec<_>>()
         );
 
-        let warm = compute_layout(&tree, 0, request).expect("warm mixed layout succeeds");
-        assert_eq!(
-            tree.fragment_readbacks.get(),
-            1,
-            "warm mixed layout must read the committed text fragment state"
-        );
+        let warm = tree.compute(request).expect("warm mixed layout succeeds");
+        assert_eq!(warm.invalidated_nodes(), [0, 1, 3, 4]);
         assert!(
-            warm.cache_store_entries()
+            tree.cache_queries
+                .borrow()
                 .iter()
-                .all(|entry| entry.node() != 1),
-            "the warm cached text node must avoid a cache store/recompute"
+                .all(|(node, _)| ![0, 1, 3, 4].contains(node))
         );
         assert_eq!(warm.unrounded_entries(), cold_unrounded);
         assert_eq!(warm.final_entries(), cold_final);
-        assert_eq!(warm.unrounded_inline_fragments(), cold_unrounded_fragments);
-        assert_eq!(warm.final_inline_fragments(), cold_final_fragments);
+        assert_eq!(
+            origin_fragment_associations(warm.unrounded_inline_fragments()),
+            origin_fragment_associations(&cold_unrounded_fragments)
+        );
+        assert_eq!(
+            origin_fragment_associations(warm.final_inline_fragments()),
+            origin_fragment_associations(&cold_final_fragments)
+        );
         warm.apply_to(&mut tree)
             .expect("warm mixed batch recommits");
 
         let stale_atomic = tree.retained.unrounded_nodes[&2];
         tree.replace_atomic_inline_extent(27.75);
-        tree.retained.dirty = vec![2, 2];
-        let replacement = compute_layout_invalidated(&tree, 0, request, &tree.retained.dirty)
-            .expect("dirty atomic replacement stages");
-        assert_eq!(replacement.invalidated_nodes(), &[0, 2]);
         assert_eq!(
-            replacement.unrounded_inline_fragments(),
-            cold_unrounded_fragments,
-            "unaffected warm text fragments republish during exact atomic-path replacement"
+            tree.node_input(2).size.width,
+            PreferredSizeOf::px(S::from_f64(27.75)),
+            "the authored replacement remains fractional"
+        );
+        tree.retained.dirty = vec![2, 2];
+        let replacement = tree
+            .compute_invalidated(request, &tree.retained.dirty)
+            .expect("dirty atomic replacement stages");
+        assert_eq!(replacement.invalidated_nodes(), &[0, 1, 2, 3, 4]);
+        assert_eq!(
+            origin_fragment_associations(replacement.unrounded_inline_fragments()),
+            origin_fragment_associations(&cold_unrounded_fragments),
+            "same actual preparation retains source associations during atomic replacement"
         );
         replacement
             .apply_to(&mut tree)
             .expect("dirty atomic replacement commits");
         assert_ne!(tree.retained.unrounded_nodes[&2], stale_atomic);
+        // Native Text receives the accepted physical allocation. At x0 the
+        // actual border edges round from0/27.75 to0/28 before publication,
+        // including the batch's unrounded-node phase.
         assert_eq!(
             tree.retained.unrounded_nodes[&2].size.width,
-            S::from_f64(27.75)
+            S::from_f64(28.0)
         );
+        assert_eq!(tree.retained.final_nodes[&2].size.width, S::from_f64(28.0));
 
         tree.replace_atomic_inline_extent(29.25);
         tree.retained.dirty = vec![2];
-        let rejected = compute_layout_invalidated(&tree, 0, request, &tree.retained.dirty)
+        let rejected = tree
+            .compute_invalidated(request, &tree.retained.dirty)
             .expect("second dirty atomic replacement stages");
         tree.reject_preparation = true;
         let retained_before_rejection = tree.retained.clone();
@@ -404,108 +544,127 @@ fn fri06_c03_lifecycle_mixed_cold_warm_rounding_dirty_replacement_scroll_and_fai
 }
 
 #[test]
-fn fri06_c02_cache_cold_warm_and_dirty_replacement_use_committed_state_both_scalars() {
+fn prepared_text_capture_bypasses_stale_geometry_cache_and_retains_actual_basis_both_scalars() {
     fn assert_lane<S: LayoutScalar>() {
         let request = fri06_c02_stateful_request::<S>();
-        let mut tree = Fri06C02StatefulTextTree::new(vec![fri06_c02_segment(
-            61,
-            9.25,
-            InlineWhitespaceEdge::Preserve,
-            InlineBreakOpportunityOf::prohibited(),
-        )]);
-
-        let cold = compute_layout(&tree, 0, request).expect("cold text layout succeeds");
-        let cold_unrounded = cold.unrounded_entries().to_vec();
-        let cold_final = cold.final_entries().to_vec();
-        let cold_unrounded_fragments = cold.unrounded_inline_fragments().to_vec();
-        let cold_final_fragments = cold.final_inline_fragments().to_vec();
-        assert_eq!(tree.fragment_readbacks.get(), 0);
-        cold.apply_to(&mut tree).expect("cold batch commits");
-        assert!(tree.retained.dirty.is_empty());
-        assert_eq!(tree.retained.unrounded_fragments[&1].len(), 1);
-        assert!(!tree.retained.caches.is_empty());
-
-        let warm = compute_layout(&tree, 0, request).expect("warm text layout restores fragments");
-        assert_eq!(warm.unrounded_entries(), cold_unrounded);
-        assert_eq!(warm.final_entries(), cold_final);
-        assert_eq!(warm.unrounded_inline_fragments(), cold_unrounded_fragments);
-        assert_eq!(warm.final_inline_fragments(), cold_final_fragments);
-        assert_eq!(tree.fragment_readbacks.get(), 1);
-        assert!(
-            warm.cache_store_entries()
-                .iter()
-                .all(|entry| entry.node() != 1),
-            "the committed text cache must serve the warm text node"
+        let mut tree = Fri06C02StatefulTextTree::new(
+            Source::identified("X", Id::from_u64(61), 0),
+            ahem_style(10.0, 10.0),
         );
-        warm.apply_to(&mut tree).expect("warm batch recommits");
-
-        let stale_text_output = tree.retained.unrounded_nodes[&1];
-        let stale_fragments = tree.retained.unrounded_fragments[&1].clone();
-        let stale_caches = tree.retained.caches.clone();
-        tree.replace_text(vec![fri06_c02_segment(
-            62,
-            13.75,
-            InlineWhitespaceEdge::Preserve,
-            InlineBreakOpportunityOf::prohibited(),
-        )]);
-        tree.retained.dirty = vec![1, 1];
-
-        let invalidated = compute_layout_invalidated(&tree, 0, request, &tree.retained.dirty)
-            .expect("dirty text layout succeeds");
-        assert_eq!(invalidated.invalidated_nodes(), &[0, 1]);
-        assert_eq!(tree.retained.dirty, [1, 1]);
-        invalidated
-            .apply_to(&mut tree)
-            .expect("dirty replacement batch commits");
-
+        let original = tree.text.origins[0].origin.clone();
+        let cold = tree.compute(request).expect("real prepared Text computes");
+        assert_eq!(cold.invalidated_nodes(), [0, 1]);
+        let cold_nodes = cold.unrounded_entries().to_vec();
+        let cold_final = cold.final_entries().to_vec();
+        let cold_fragments = origin_fragment_associations(cold.unrounded_inline_fragments());
+        assert_eq!(cold_fragments.len(), 1);
+        assert_eq!(cold_fragments[0].1, original);
+        assert_eq!(cold_fragments[0].2, surgeist_text::Range::new(0, 1));
+        assert_eq!(cold_fragments[0].3.unwrap().size().width, S::from_f64(10.0));
+        cold.apply_to(&mut tree).unwrap();
         assert!(tree.retained.dirty.is_empty());
-        assert_ne!(tree.retained.unrounded_nodes[&1], stale_text_output);
-        assert_ne!(tree.retained.unrounded_fragments[&1], stale_fragments);
-        assert_ne!(tree.retained.caches, stale_caches);
+        tree.cache_queries.borrow_mut().clear();
+        let warm = tree
+            .compute(request)
+            .expect("same actual preparation remains valid");
+        assert_eq!(warm.unrounded_entries(), cold_nodes);
+        assert_eq!(warm.final_entries(), cold_final);
         assert_eq!(
-            tree.retained.unrounded_fragments[&1][0].segment_id(),
-            InlineSegmentId::new(62)
+            origin_fragment_associations(warm.unrounded_inline_fragments()),
+            cold_fragments
+        );
+        assert!(
+            tree.cache_queries
+                .borrow()
+                .iter()
+                .all(|(node, _)| ![0, 1].contains(node)),
+            "actual captured Text and its ancestor bypass stale geometry cache lookup"
+        );
+        warm.apply_to(&mut tree).unwrap();
+        let stale = tree.retained.clone();
+        tree.replace_text(
+            Source::identified("XX", Id::from_u64(62), 1),
+            ahem_style(10.0, 10.0),
+        );
+        assert_ne!(tree.text.origins[0].origin, original);
+        tree.retained.dirty = vec![1, 1];
+        let dirty = tree
+            .compute_invalidated(request, &tree.retained.dirty)
+            .unwrap();
+        assert_eq!(dirty.invalidated_nodes(), [0, 1]);
+        assert_eq!(tree.retained.dirty, [1, 1]);
+        let sources = origin_fragment_associations(dirty.unrounded_inline_fragments());
+        assert!(
+            sources
+                .iter()
+                .all(|row| row.0 == 1 && row.1 == tree.text.origins[0].origin)
+        );
+        assert!(
+            sources
+                .iter()
+                .all(|row| row.1.view().source().id() == Some(Id::from_u64(62)))
+        );
+        assert_eq!(sources.first().unwrap().2.start, 0);
+        assert_eq!(sources.last().unwrap().2.end, 2);
+        assert!(
+            sources
+                .windows(2)
+                .all(|pair| pair[0].2.end == pair[1].2.start)
+        );
+        dirty.apply_to(&mut tree).unwrap();
+        assert!(tree.retained.dirty.is_empty());
+        assert_ne!(tree.retained.unrounded_nodes[&1], stale.unrounded_nodes[&1]);
+        assert_ne!(
+            tree.retained.unrounded_fragments[&1],
+            stale.unrounded_fragments[&1]
         );
     }
-
     assert_lane::<f32>();
     assert_lane::<f64>();
 }
 
 #[test]
-fn fri06_c02_cache_committed_empty_fragment_state_replays_warm_both_scalars() {
+fn prepared_text_zero_advance_source_fragment_survives_committed_state_and_fresh_capture_both_scalars()
+ {
     fn assert_lane<S: LayoutScalar>() {
+        let mut style = ahem_style(10.0, 10.0);
+        style.white_space = WhiteSpace::Collapse;
+        let mut tree =
+            Fri06C02StatefulTextTree::new(Source::identified(" ", Id::from_u64(63), 0), style);
         let request = fri06_c02_stateful_request::<S>();
-        let mut tree = Fri06C02StatefulTextTree::new(vec![fri06_c02_segment(
-            63,
-            6.5,
-            InlineWhitespaceEdge::DiscardAtBoth,
-            InlineBreakOpportunityOf::prohibited(),
-        )]);
-
-        let cold = compute_layout(&tree, 0, request).expect("cold discarded text layout succeeds");
-        assert!(cold.unrounded_inline_fragments().is_empty());
-        cold.apply_to(&mut tree)
-            .expect("committed empty fragment state is retained");
-        assert_eq!(tree.unrounded_inline_fragments(1), Some([].as_slice()));
-        tree.fragment_readbacks.set(0);
-        assert!(
-            tree.retained.caches.contains_key(&1),
-            "the committed empty fragment state must pair with a warm text cache"
+        let cold = tree.compute(request).unwrap();
+        let source = origin_fragment_associations(cold.unrounded_inline_fragments());
+        assert_eq!(
+            source.len(),
+            1,
+            "a zero-advance occurrence retains its actual original association"
         );
-
-        let warm = compute_layout(&tree, 0, request)
-            .expect("Some(&[]) is valid warm committed fragment state");
-        assert!(warm.unrounded_inline_fragments().is_empty());
-        assert!(warm.final_inline_fragments().is_empty());
-        assert_eq!(tree.fragment_readbacks.get(), 1);
+        assert_eq!(source[0].1, tree.text.origins[0].origin);
+        assert_eq!(source[0].2, surgeist_text::Range::new(0, 1));
+        assert_eq!(
+            source[0].3.unwrap().size(),
+            Size::new(S::ZERO, S::from_f64(10.0)),
+            "placed font-backed source retains its actual Text anchor geometry"
+        );
         assert!(
-            warm.cache_store_entries()
+            cold.placed_text()[0]
+                .layout()
+                .glyph_runs()
                 .iter()
-                .all(|entry| entry.node() != 1)
+                .all(|run| run.glyphs().iter().all(|glyph| glyph.advance() == 0.0))
+        );
+        cold.apply_to(&mut tree).unwrap();
+        assert_eq!(tree.retained.unrounded_fragments[&1].len(), 1);
+        let warm = tree.compute(request).unwrap();
+        assert_eq!(
+            origin_fragment_associations(warm.unrounded_inline_fragments()),
+            source
+        );
+        assert_eq!(
+            origin_fragment_associations(warm.final_inline_fragments()),
+            source
         );
     }
-
     assert_lane::<f32>();
     assert_lane::<f64>();
 }
@@ -514,43 +673,41 @@ fn fri06_c02_cache_committed_empty_fragment_state_replays_warm_both_scalars() {
 fn fri06_c02_transaction_layout_and_preparation_failures_preserve_retained_state_both_scalars() {
     fn assert_lane<S: LayoutScalar>() {
         let request = fri06_c02_stateful_request::<S>();
-        let mut tree = Fri06C02StatefulTextTree::new(vec![fri06_c02_segment(
-            81,
-            7.5,
-            InlineWhitespaceEdge::Preserve,
-            InlineBreakOpportunityOf::prohibited(),
-        )]);
-        let cold = compute_layout(&tree, 0, request).expect("cold text layout succeeds");
+        let mut tree = Fri06C02StatefulTextTree::new(
+            Source::identified("X", Id::from_u64(81), 0),
+            ahem_style(10.0, 10.0),
+        );
+        let cold = tree.compute(request).expect("cold text layout succeeds");
         cold.apply_to(&mut tree).expect("cold batch commits");
         assert!(
-            tree.retained.caches.contains_key(&1),
-            "transaction proof requires committed text cache state"
+            tree.retained.unrounded_fragments.contains_key(&1),
+            "transaction proof requires committed actual Text fragment state"
         );
 
-        tree.replace_text(vec![fri06_c02_segment(
-            82,
-            8.5,
-            InlineWhitespaceEdge::Preserve,
-            InlineBreakOpportunityOf::prohibited(),
-        )]);
+        tree.replace_text(
+            Source::identified("XX", Id::from_u64(82), 1),
+            ahem_style(10.0, 10.0),
+        );
         tree.retained.dirty = vec![1];
         tree.add_failing_noncanonical_control();
         let before_layout_failure = tree.retained.clone();
 
-        let error = compute_layout_invalidated(&tree, 0, request, &tree.retained.dirty)
+        let error = tree
+            .compute_invalidated(request, &tree.retained.dirty)
             .expect_err("noncanonical control pairing fails before retained-state mutation");
         assert_eq!(error.site(), LayoutErrorSiteOf::Node(2));
         assert_eq!(error.operation(), LayoutOperation::RootLayout);
-        assert_eq!(
+        crate::test_support::assert_error_kind(
             error.kind(),
             &LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::NonBoxNodeRole {
                 reason: NonBoxNodeRoleError::NonCanonicalNodeInput,
-            })
+            }),
         );
         assert_eq!(tree.retained, before_layout_failure);
 
         tree.remove_failing_noncanonical_control();
-        let replacement = compute_layout_invalidated(&tree, 0, request, &tree.retained.dirty)
+        let replacement = tree
+            .compute_invalidated(request, &tree.retained.dirty)
             .expect("dirty text replacement stages successfully");
         tree.reject_preparation = true;
         let before_preparation_failure = tree.retained.clone();
@@ -946,9 +1103,9 @@ fn compute_layout_root_diagnostics_reject_invalid_cached_scroll_geometry_without
 
     assert_eq!(error.site(), LayoutErrorSite::Node(0));
     assert_eq!(error.operation(), LayoutOperation::RootLayout);
-    assert_eq!(
+    crate::test_support::assert_error_kind(
         error.kind(),
-        &LayoutErrorKind::InternalInvariant(LayoutInternalInvariant::InvalidRootScrollGeometry)
+        &LayoutErrorKind::InternalInvariant(LayoutInternalInvariant::InvalidRootScrollGeometry),
     );
 }
 
@@ -1025,9 +1182,9 @@ fn compute_layout_cached_container_failure_returns_no_batch() {
 
     assert_eq!(error.site(), LayoutErrorSite::Node(1));
     assert_eq!(error.operation(), LayoutOperation::LeafMeasurement);
-    assert_eq!(
+    crate::test_support::assert_error_kind(
         error.kind(),
-        &LayoutErrorKind::Measurement("measure failed")
+        &LayoutErrorKind::Measurement("measure failed"),
     );
     assert_eq!(tree.measured_nodes(), vec![1]);
     assert_eq!(*tree.caches.borrow(), before);

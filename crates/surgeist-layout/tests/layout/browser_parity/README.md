@@ -22,9 +22,13 @@ for a maximum track breadth, never a minimum track breadth or a box/flex
 property. Integration layers outside this layout-ready harness own authored CSS
 parsing and lowering.
 
-Inline metrics attributes are layout-ready fixture data. They are not CSS
-syntax. Root/style/text integration is expected to generate them from computed
-style and text/font metrics later.
+Prepared Text parity uses [measurement protocol version 2](measurement-protocol.md)
+and the exact [pinned font](fonts/PROVENANCE.md). Source capture and browser Range
+observations are separate channels. Historical measured-width text tuples are
+schema-only; the native production reader rejects them. The complete
+[124-variant accounting](prepared-text-accounting.json) records their actual
+source/resource/profile and execution state. No historical tuple or passing
+schema test is counted as native Text parity.
 
 ## FRI-05 Normalized Scroll Adapter
 
@@ -135,9 +139,9 @@ HTML fixtures are the human-readable source of truth. The constrained `html/`
 fixtures are runnable today. XML fixtures are generated browser expectations for
 fast Rust-side regression tests.
 
-Unsupported browser features are not silently skipped. If Surgeist does not yet
-support a construct such as `<br>` or mixed inline text, the harness should keep
-the fixture visible and report a classified pass/fail bucket.
+Unsupported browser features are not silently skipped. A fixture outside the
+closed native source/font/context profile remains visible with a classified
+unsupported result; historical measured-width text cannot enter production Text.
 
 The supported entry point is layout's thin `surgeist-layout-generate` binary,
 enabled by `layout-golden-generate`. It depends on the sibling workspace
@@ -148,7 +152,7 @@ document/helper preparation, measurement decoding, unsupported classification,
 and XML serialization.
 `scripts/gentest` remains helper-only: `test_helper.js` and `test_base_style.css`.
 
-The helper and adapter use the strict [version-1 measurement
+The helper and adapter use the strict [version-2 measurement
 protocol](measurement-protocol.md). Closed wire decoding and semantic validation
 precede XML serialization. Preloaded helpers must implement that protocol;
 unversioned or malformed measurements return contextual adapter errors.
@@ -159,11 +163,13 @@ inline boxes with inner block, grid, or grid-lanes formatting contexts. Full
 parity failures from fixtures containing those displays now report their actual
 geometry mismatch kind rather than an unsupported-inline bucket.
 
-Atomic inline displays (`inline-block`, `inline-grid`, and `inline-grid-lanes`)
-are expected to reach normal geometry comparison. The tree layout engine still
-does not model non-atomic inline text/span behavior; if those fixtures enter the
-harness, they should get an explicit classification separate from atomic inline
-display handling.
+Ordinary box-only atomic displays (`inline-block`, `inline-grid`, and
+`inline-grid-lanes`) reach normal geometry comparison. Native prepared text uses
+original UTF16, the exact pinned Ahem face and captured supported style context.
+Its finite profile includes transparent inline boundaries, bidi-format controls,
+forced breaks and authored fixed-pixel empty atomics. Uncovered text, unsupported
+inline box/strut context and unresolved atomic sizing are explicitly refused;
+version-1 numeric records remain historical schema evidence.
 
 Inline engine impact measured on 2026-06-17:
 
@@ -181,3 +187,10 @@ line-name fixtures `subgrid_line_names_004_b_to_b_minus_1` and
 `subgrid_line_names_repeat_outer_span_a_to_a_8` now run as ordinary parity
 fixtures, so any future failures should report their concrete mismatch or
 validation kind.
+
+The native prepared-source subset has 16 executed variants: 14 match and the two
+RTL continuity variants retain an executed zero-width PDI Range observation
+difference. Exact Range projection remains unresolved under #1450/#850; the
+strict runner still reports those differences. See the
+[protocol determination](measurement-protocol.md#executed-range-observation-difference)
+and [complete accounting](prepared-text-accounting.json).

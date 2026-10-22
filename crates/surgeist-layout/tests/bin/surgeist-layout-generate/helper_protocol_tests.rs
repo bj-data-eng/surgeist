@@ -82,7 +82,7 @@ fn decode_envelope(result: &Value) -> Value {
         .expect("getTestData retains JSON-string transport");
     let envelope: Value =
         serde_json::from_str(response).expect("measurement envelope is valid JSON");
-    assert_eq!(envelope["schemaVersion"].as_u64(), Some(1));
+    assert_eq!(envelope["schemaVersion"].as_u64(), Some(2));
     assert_eq!(
         envelope
             .as_object()
@@ -102,7 +102,7 @@ fn decode_envelope(result: &Value) -> Value {
 }
 
 #[test]
-fn present_root_returns_version_one_with_four_ordered_measurements() {
+fn present_root_returns_version_two_with_four_ordered_measurements() {
     let result = helper_response(true);
     let envelope = decode_envelope(&result);
     let expected_classes = json!([
@@ -125,7 +125,7 @@ fn present_root_returns_version_one_with_four_ordered_measurements() {
 }
 
 #[test]
-fn missing_root_returns_version_one_with_four_unsupported_variants() {
+fn missing_root_returns_version_two_with_four_unsupported_variants() {
     let result = helper_response(false);
     let envelope = decode_envelope(&result);
     assert_eq!(result["rootQueries"], json!(["test-root"]));
@@ -194,5 +194,15 @@ fn named_grid_placements_omit_absent_occurrences() {
             { "kind": "named-span", "name": "header" },
             { "kind": "named-span", "name": "header", "occurrence": 3 },
         ])
+    );
+}
+
+#[test]
+fn prepared_transparent_inline_profile_preserves_or_refuses_actual_context() {
+    // Execute the exact producer with DOM computed-style facts. No Text provider
+    // or browser-output geometry is substituted by this focused profile test.
+    run_node(
+        include_str!("prepared_capture_tests.js"),
+        json!({"helperSource":TEST_HELPER_SOURCE, "fontBytes": include_bytes!("../../layout/browser_parity/fonts/Ahem.ttf").as_slice()}),
     );
 }

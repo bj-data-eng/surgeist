@@ -4,7 +4,7 @@ use super::inline::{
     AtomicInlineBoxParticipant, ForcedLineBreakControlOf, InlineBoundaryControlOf,
     InlineControlAlignment, InlineFlowOf, InlineParticipantKindOf, InlineParticipantProjection,
     LogicalLineBandQueryResultOf, MixedInlineParticipantOf, MixedInlineRunInputOf,
-    ShapedTextParticipantOf, layout_mixed_inline_run_with_band_source,
+    layout_mixed_inline_run_with_band_source,
 };
 use super::value::{ResolvedLengthAutoOf, UnresolvedLengthReason};
 use super::{
@@ -802,11 +802,11 @@ mod fri06_c13_t06_characterization_tests {
         .expect_err("padding failure must precede the distinct border failure");
         assert_eq!(error.site(), LayoutErrorSiteOf::Node(7));
         assert_eq!(error.operation(), LayoutOperation::ValueResolution);
-        assert_eq!(
+        crate::test_support::assert_error_kind(
             error.kind(),
             &LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::InvalidNumeric {
                 value: S::INFINITY,
-            })
+            }),
         );
     }
 

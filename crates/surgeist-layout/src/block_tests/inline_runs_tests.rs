@@ -200,27 +200,45 @@ fn assert_fri06_c03_fixed_metric_participant<S: LayoutScalar>(
 }
 
 #[test]
-fn fri06_c03_fixed_metric_text_retains_requested_baseline_both_scalars() {
+fn prepared_fixed_metric_text_retains_actual_font_baseline_both_scalars() {
     fn assert_lane<S: LayoutScalar>() {
-        assert_fri06_c03_fixed_metric_participant(
-            LayoutInputOf::inline_text(
-                InlineTextInputOf::try_new(vec![
-                    ShapedInlineSegmentOf::try_new(
-                        InlineSegmentId::new(1),
-                        S::from_f64(9.0),
-                        InlineMetricsOf::from_ascent_descent(S::from_f64(8.0), S::from_f64(2.0))
-                            .unwrap(),
-                        BidiLevel::try_new(0).unwrap(),
-                        InlineWhitespaceEdge::Preserve,
-                        InlineBreakOpportunityOf::prohibited(),
-                    )
-                    .unwrap(),
-                ])
-                .unwrap(),
-            ),
-            S::from_f64(8.0),
-            S::from_f64(8.0),
+        let text = crate::test_support::text::PreparedParagraph::plain(
+            1,
+            surgeist_text::Source::new("X"),
+            crate::test_support::text::ahem_style(10.0, 10.0),
         );
+        let tree = PublicBlockTree::default()
+            .with_children(0, [1])
+            .with_children(1, [])
+            .with_style(
+                0,
+                NodeInputOf {
+                    display: Display::Block,
+                    size: Size::new(
+                        PreferredSizeOf::px(S::from_f64(100.0)),
+                        PreferredSizeOf::px(S::from_f64(50.0)),
+                    ),
+                    ..NodeInputOf::default()
+                },
+            )
+            .with_style(1, NodeInputOf::non_box())
+            .with_layout_input(1, text.text_input(1));
+        let capture = TextLayoutInput::try_new(&tree, 0, vec![text.binding(0)]).unwrap();
+        let batch = compute_layout_with_text(
+            &capture,
+            0,
+            LayoutRootRequestOf::viewport(Size::splat(AvailableOf::MAX_CONTENT)).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            public_final_output(&batch, 0).size,
+            Size::new(S::from_f64(100.0), S::from_f64(50.0))
+        );
+        assert_eq!(
+            batch.final_inline_fragments()[0].fragment().baseline().y,
+            S::from_f64(8.0)
+        );
+        assert_eq!(batch.placed_text()[0].layout().lines()[0].baseline(), 8.0);
     }
     assert_lane::<f32>();
     assert_lane::<f64>();
@@ -291,32 +309,50 @@ enum Fri08C07T01InlineRunStart {
     InlineBox,
 }
 
-fn fri08_c07_t01_text<S: LayoutScalar>(
-    segment_id: u64,
-    advance: f64,
-    ascent: f64,
-    descent: f64,
-) -> LayoutInputOf<S> {
-    LayoutInputOf::inline_text(
-        InlineTextInputOf::try_new(vec![
-            ShapedInlineSegmentOf::try_new(
-                InlineSegmentId::new(segment_id),
-                S::from_f64(advance),
-                InlineMetricsOf::from_ascent_descent(S::from_f64(ascent), S::from_f64(descent))
-                    .unwrap(),
-                BidiLevel::try_new(0).unwrap(),
-                InlineWhitespaceEdge::Preserve,
-                InlineBreakOpportunityOf::prohibited(),
-            )
-            .unwrap(),
-        ])
-        .unwrap(),
+fn real_text_for_invalid_role<S: LayoutScalar>() -> LayoutInputOf<S> {
+    crate::test_support::text::PreparedParagraph::plain(
+        1,
+        surgeist_text::Source::new("X"),
+        crate::test_support::text::ahem_style(1.0, 1.0),
     )
+    .text_input(1)
 }
 
 fn fri08_c07_t01_inline_transition_tree<S: LayoutScalar>(
     start: Fri08C07T01InlineRunStart,
-) -> PublicBlockTree<S> {
+) -> (
+    PublicBlockTree<S>,
+    crate::test_support::text::PreparedParagraph,
+) {
+    use crate::test_support::text::{ParagraphPart, PreparedParagraph, ahem_style};
+    let style = ahem_style(10.0, 10.0);
+    let first = match start {
+        Fri08C07T01InlineRunStart::Text => {
+            ParagraphPart::text(3, surgeist_text::Source::new(""), style.clone())
+        }
+        Fri08C07T01InlineRunStart::InlineBoundary => ParagraphPart::Control {
+            node: 3,
+            kind: surgeist_text::ParagraphControlKind::InlineBoundaryStart,
+        },
+        Fri08C07T01InlineRunStart::ExplicitLineBreak => ParagraphPart::Control {
+            node: 3,
+            kind: surgeist_text::ParagraphControlKind::ForcedBreak,
+        },
+        Fri08C07T01InlineRunStart::InlineBox => ParagraphPart::Atomic {
+            node: 3,
+            size: surgeist_text::Size::new(0.0, 0.0),
+        },
+    };
+    let paragraph = PreparedParagraph::with_strut(
+        vec![
+            first,
+            ParagraphPart::text(4, surgeist_text::Source::new("X"), style.clone()),
+        ],
+        style,
+        surgeist_text::ParagraphBaseDirection::LeftToRight,
+        surgeist_text::ParagraphStrut::AllocatedContributions,
+        Vec::new(),
+    );
     let fixed_size = |width, height| {
         Size::new(
             PreferredSizeOf::px(S::from_f64(width)),
@@ -365,7 +401,7 @@ fn fri08_c07_t01_inline_transition_tree<S: LayoutScalar>(
             },
         )
         .with_style(4, NodeInputOf::non_box())
-        .with_layout_input(4, fri08_c07_t01_text(404, 10.0, 8.0, 2.0))
+        .with_layout_input(4, paragraph.text_input(4))
         .with_style(
             5,
             NodeInputOf {
@@ -397,7 +433,7 @@ fn fri08_c07_t01_inline_transition_tree<S: LayoutScalar>(
     tree = match start {
         Fri08C07T01InlineRunStart::Text => tree
             .with_style(3, NodeInputOf::non_box())
-            .with_layout_input(3, fri08_c07_t01_text(303, 0.0, 0.0, 0.0)),
+            .with_layout_input(3, paragraph.text_input(3)),
         Fri08C07T01InlineRunStart::InlineBoundary => tree
             .with_style(3, NodeInputOf::non_box())
             .with_layout_input(
@@ -420,14 +456,14 @@ fn fri08_c07_t01_inline_transition_tree<S: LayoutScalar>(
             3,
             NodeInputOf {
                 display: Display::InlineBlock,
-                atomic_inline_participation: Some(fri06_atomic_participation()),
+                atomic_inline_participation: None,
                 size: fixed_size(0.0, 0.0),
                 ..NodeInputOf::default()
             },
         ),
     };
 
-    tree
+    (tree, paragraph)
 }
 
 fn assert_fri08_c07_t01_inline_transition_roles<S: LayoutScalar>() {
@@ -437,9 +473,12 @@ fn assert_fri08_c07_t01_inline_transition_roles<S: LayoutScalar>() {
         Fri08C07T01InlineRunStart::ExplicitLineBreak,
         Fri08C07T01InlineRunStart::InlineBox,
     ] {
-        let tree = fri08_c07_t01_inline_transition_tree(start);
-        let batch = compute_layout(
-            &tree,
+        let (tree, text) = fri08_c07_t01_inline_transition_tree(start);
+        let mut binding = text.binding(0);
+        binding.nodes = vec![3, 4, 5, 6];
+        let capture = TextLayoutInput::try_new(&tree, 0, vec![binding]).unwrap();
+        let batch = compute_layout_with_text(
+            &capture,
             0,
             LayoutRootRequestOf::viewport(Size::splat(AvailableOf::definite(S::from_f64(100.0))))
                 .unwrap(),
@@ -541,7 +580,7 @@ fn assert_fri08_c07_t01_invalid_input_ordering<S: LayoutScalar>() {
         .with_children(2, [])
         .with_style(0, NodeInputOf::default())
         .with_style(1, NodeInputOf::default())
-        .with_layout_input(1, fri08_c07_t01_text(101, 1.0, 1.0, 0.0))
+        .with_layout_input(1, real_text_for_invalid_role())
         .with_style(
             2,
             NodeInputOf {

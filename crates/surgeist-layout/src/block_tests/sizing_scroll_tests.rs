@@ -860,11 +860,11 @@ fn fri04_c03_block_positioned_invalid_numeric_propagates_from_both_consumers() {
             .expect_err("invalid numeric sizing must return no completed batch");
         assert_eq!(error.site(), LayoutErrorSite::Node(1));
         assert_eq!(error.operation(), LayoutOperation::ValueResolution);
-        assert_eq!(
+        crate::test_support::assert_error_kind(
             error.kind(),
             &LayoutErrorKind::InvalidInput(LayoutInvalidInput::InvalidNumeric {
                 value: f32::INFINITY,
-            })
+            }),
         );
     }
 }
@@ -2363,7 +2363,12 @@ impl<'input> Compute<'input> for CalcLeafTreeCompute<'input> {
             LayoutErrorOf::new(
                 LayoutErrorSiteOf::Node(node),
                 error.operation(),
-                error.kind().clone(),
+                match error.kind() {
+                    LayoutErrorKindOf::InvalidInput(value) => {
+                        LayoutErrorKindOf::InvalidInput(*value)
+                    }
+                    other => panic!("numeric leaf fixture returned an unexpected cause: {other:?}"),
+                },
             )
         })
     }
@@ -3773,13 +3778,16 @@ fn fri05_c03_block_negative_margin_families_use_only_positive_outsets() {
                     ..NodeInput::default()
                 },
             );
-        let result = std::panic::catch_unwind(|| {
+        // This immutable fixture has no Text binding or mutable provider state.
+        // Its broader input enum can retain external font handles, so unwind
+        // safety is asserted only around this actual box-only invocation.
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             compute_layout(
                 &tree,
                 0,
                 LayoutRootRequest::viewport(Size::splat(Available::definite(120.0))).unwrap(),
             )
-        });
+        }));
         let batch = result
             .expect("valid negative margins never panic")
             .expect("valid negative margins never produce an invalid synthetic rectangle");
@@ -4236,11 +4244,11 @@ where
 
     assert_eq!(error.site(), LayoutErrorSiteOf::Node(0));
     assert_eq!(error.operation(), LayoutOperation::ValueResolution);
-    assert_eq!(
+    crate::test_support::assert_error_kind(
         error.kind(),
         &LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::InvalidNumeric {
             value: S::INFINITY,
-        })
+        }),
     );
 }
 

@@ -1,13 +1,14 @@
 use super::fixtures::{
     FlowRootLeafTree, Fri06C02StatefulTextTree, Fri06C05ShapeProvider, RootSessionTree,
     computed_overflow, fri05_c03_tree_leaf_layout, fri06_atomic_participation,
-    fri06_c02_stateful_request, fri06_mr02_geometry_error_largest_finite, scalar,
-    single_final_output,
+    fri06_c02_stateful_request, fri06_mr02_geometry_error_largest_finite,
+    origin_fragment_associations, scalar, single_final_output,
 };
 use super::*;
 
 #[test]
-fn fri06_c05_provider_cache_warm_valid_output_reuses_provider_result_both_scalars() {
+fn prepared_text_provider_fresh_invocation_requeries_actual_bands_without_geometry_drift_both_scalars()
+ {
     fn assert_lane<S: LayoutScalar>() {
         let request = fri06_c02_stateful_request::<S>();
         let mut tree =
@@ -16,28 +17,42 @@ fn fri06_c05_provider_cache_warm_valid_output_reuses_provider_result_both_scalar
                 maximum: S::from_f64(8.0),
             });
 
-        let cold = compute_layout(&tree, 0, request).expect("cold provider layout succeeds");
+        let cold = tree
+            .compute(request)
+            .expect("cold provider layout succeeds");
         let cold_query_count = tree.shape_queries.get();
-        assert_eq!(
-            cold_query_count, 1,
-            "intrinsic computation and rounding must not add provider queries"
-        );
+        let cold_queries = tree.shape_query_inputs.borrow().clone();
+        assert!(cold_query_count > 0);
+        assert_eq!(cold_query_count, cold_queries.len());
+        for query in &cold_queries {
+            let margin = query.margin_box();
+            assert!(query.band_minimum().is_finite());
+            assert!(query.band_maximum().is_finite());
+            assert!(query.band_minimum() <= query.band_maximum());
+            assert!(query.band_minimum() < margin.origin().y + margin.size().height);
+            assert!(margin.origin().y < query.band_maximum());
+        }
         cold.apply_to(&mut tree)
             .expect("cold provider batch commits");
 
-        let warm = compute_layout(&tree, 0, request).expect("warm provider layout succeeds");
+        let warm = tree
+            .compute(request)
+            .expect("warm provider layout succeeds");
 
         assert_eq!(warm.unrounded_entries(), cold.unrounded_entries());
         assert_eq!(warm.final_entries(), cold.final_entries());
         assert_eq!(
-            warm.unrounded_inline_fragments(),
-            cold.unrounded_inline_fragments()
+            origin_fragment_associations(warm.unrounded_inline_fragments()),
+            origin_fragment_associations(cold.unrounded_inline_fragments())
         );
-        assert_eq!(warm.final_inline_fragments(), cold.final_inline_fragments());
         assert_eq!(
-            tree.shape_queries.get(),
-            cold_query_count,
-            "a valid warm output must not rerun the provider"
+            origin_fragment_associations(warm.final_inline_fragments()),
+            origin_fragment_associations(cold.final_inline_fragments())
+        );
+        assert_eq!(
+            &tree.shape_query_inputs.borrow()[cold_query_count..],
+            cold_queries,
+            "fresh prepared-Text invocation re-evaluates the same actual bands; no old fragment cache is consulted"
         );
     }
 
@@ -59,7 +74,9 @@ fn fri06_c05_provider_dirty_exact_closure_bypasses_stale_hits_and_recomputes_tra
     fn assert_lane<S: LayoutScalar>() {
         let request = fri06_c02_stateful_request::<S>();
         let mut tree = Fri06C02StatefulTextTree::new_shape_provider(Fri06C05ShapeProvider::Empty);
-        let cold = compute_layout(&tree, 0, request).expect("empty provider layout succeeds");
+        let cold = tree
+            .compute(request)
+            .expect("empty provider layout succeeds");
         let cold_final = cold.final_entries().to_vec();
         let cold_fragments = cold.final_inline_fragments().to_vec();
         let expected_source_order = source_order(&cold);
@@ -67,10 +84,16 @@ fn fri06_c05_provider_dirty_exact_closure_bypasses_stale_hits_and_recomputes_tra
             .expect("empty provider batch commits");
 
         let warm_queries = tree.shape_queries.get();
-        let warm = compute_layout(&tree, 0, request).expect("empty warm layout succeeds");
-        assert_eq!(tree.shape_queries.get(), warm_queries);
+        let warm = tree.compute(request).expect("empty warm layout succeeds");
+        assert!(
+            tree.shape_queries.get() > warm_queries,
+            "bound Text bypasses cross-invocation geometry cache"
+        );
         assert_eq!(warm.final_entries(), cold_final);
-        assert_eq!(warm.final_inline_fragments(), cold_fragments);
+        assert_eq!(
+            origin_fragment_associations(warm.final_inline_fragments()),
+            origin_fragment_associations(&cold_fragments)
+        );
 
         tree.shape_provider = Fri06C05ShapeProvider::Interval {
             minimum: S::ZERO,
@@ -79,11 +102,12 @@ fn fri06_c05_provider_dirty_exact_closure_bypasses_stale_hits_and_recomputes_tra
         tree.retained.dirty = vec![1, 1];
         tree.cache_queries.borrow_mut().clear();
         let partial_query_start = tree.shape_queries.get();
-        let partial = compute_layout_invalidated(&tree, 0, request, &tree.retained.dirty)
+        let partial = tree
+            .compute_invalidated(request, &tree.retained.dirty)
             .expect("dirty partial provider layout succeeds");
-        assert_eq!(partial.invalidated_nodes(), &[0, 1]);
+        assert_eq!(partial.invalidated_nodes(), &[0, 1, 2]);
         assert_eq!(tree.retained.dirty, [1, 1]);
-        assert_eq!(tree.shape_queries.get() - partial_query_start, 1);
+        assert!(tree.shape_queries.get() > partial_query_start);
         assert!(
             tree.cache_queries
                 .borrow()
@@ -105,20 +129,27 @@ fn fri06_c05_provider_dirty_exact_closure_bypasses_stale_hits_and_recomputes_tra
         tree.retained.dirty = vec![1];
         tree.cache_queries.borrow_mut().clear();
         let full_query_start = tree.shape_queries.get();
-        let full = compute_layout_invalidated(&tree, 0, request, &tree.retained.dirty)
+        let full = tree
+            .compute_invalidated(request, &tree.retained.dirty)
             .expect("dirty full provider layout succeeds");
-        assert_eq!(full.invalidated_nodes(), &[0, 1]);
-        assert_eq!(tree.shape_queries.get() - full_query_start, 1);
+        assert_eq!(full.invalidated_nodes(), &[0, 1, 2]);
+        assert!(tree.shape_queries.get() > full_query_start);
         assert_ne!(full.final_entries(), partial.final_entries());
         assert_eq!(source_order(&full), expected_source_order);
         assert_eq!(
             full.final_inline_fragments()
                 .iter()
-                .map(|entry| (entry.node(), entry.fragment().segment_id()))
+                .map(|entry| (
+                    entry.node(),
+                    entry.fragment().finalized_fragment().view().owner()
+                ))
                 .collect::<Vec<_>>(),
             cold_fragments
                 .iter()
-                .map(|entry| (entry.node(), entry.fragment().segment_id()))
+                .map(|entry| (
+                    entry.node(),
+                    entry.fragment().finalized_fragment().view().owner()
+                ))
                 .collect::<Vec<_>>(),
             "provider geometry changes must preserve text source association"
         );
@@ -291,9 +322,9 @@ fn compute_layout_provider_error_returns_no_completed_batch() {
 
     assert_eq!(error.site(), LayoutErrorSite::Node(1));
     assert_eq!(error.operation(), LayoutOperation::LeafMeasurement);
-    assert_eq!(
+    crate::test_support::assert_error_kind(
         error.kind(),
-        &LayoutErrorKind::Measurement("measure failed")
+        &LayoutErrorKind::Measurement("measure failed"),
     );
 }
 
@@ -315,11 +346,11 @@ fn compute_layout_rejects_claimed_leaf_without_provider() {
 
     assert_eq!(error.site(), LayoutErrorSite::Node(1));
     assert_eq!(error.operation(), LayoutOperation::LeafMeasurement);
-    assert_eq!(
+    crate::test_support::assert_error_kind(
         error.kind(),
         &LayoutErrorKind::InternalInvariant(
-            LayoutInternalInvariant::MissingLeafMeasurementProvider
-        )
+            LayoutInternalInvariant::MissingLeafMeasurementProvider,
+        ),
     );
     assert_eq!(tree.measured_nodes(), vec![1]);
 }
@@ -390,11 +421,11 @@ fn compute_layout_rejects_measured_child_invalid_affine_width_without_batch() {
 
     assert_eq!(error.site(), LayoutErrorSite::Node(1));
     assert_eq!(error.operation(), LayoutOperation::ValueResolution);
-    assert_eq!(
+    crate::test_support::assert_error_kind(
         error.kind(),
         &LayoutErrorKind::InvalidInput(LayoutInvalidInput::InvalidNumeric {
             value: f32::INFINITY,
-        })
+        }),
     );
     assert!(tree.measured_nodes().is_empty());
     assert_eq!(*tree.caches.borrow(), before);
@@ -429,11 +460,11 @@ fn compute_layout_rejects_measured_child_invalid_affine_padding_without_batch() 
 
     assert_eq!(error.site(), LayoutErrorSite::Node(1));
     assert_eq!(error.operation(), LayoutOperation::ValueResolution);
-    assert_eq!(
+    crate::test_support::assert_error_kind(
         error.kind(),
         &LayoutErrorKind::InvalidInput(LayoutInvalidInput::InvalidNumeric {
             value: f32::INFINITY,
-        })
+        }),
     );
     assert!(tree.measured_nodes().is_empty());
     assert_eq!(*tree.caches.borrow(), before);
@@ -464,11 +495,11 @@ fn compute_layout_rejects_root_measured_leaf_invalid_affine_width_without_batch(
 
     assert_eq!(error.site(), LayoutErrorSite::Node(0));
     assert_eq!(error.operation(), LayoutOperation::ValueResolution);
-    assert_eq!(
+    crate::test_support::assert_error_kind(
         error.kind(),
         &LayoutErrorKind::InvalidInput(LayoutInvalidInput::InvalidNumeric {
             value: f32::INFINITY,
-        })
+        }),
     );
     assert!(tree.measured_nodes().is_empty());
     assert_eq!(*tree.caches.borrow(), before);
@@ -499,11 +530,11 @@ fn compute_layout_rejects_root_measured_leaf_invalid_affine_padding_without_batc
 
     assert_eq!(error.site(), LayoutErrorSite::Node(0));
     assert_eq!(error.operation(), LayoutOperation::ValueResolution);
-    assert_eq!(
+    crate::test_support::assert_error_kind(
         error.kind(),
         &LayoutErrorKind::InvalidInput(LayoutInvalidInput::InvalidNumeric {
             value: f32::INFINITY,
-        })
+        }),
     );
     assert!(tree.measured_nodes().is_empty());
     assert_eq!(*tree.caches.borrow(), before);
@@ -855,11 +886,11 @@ fn assert_fri08_c07_t03_optional_math_leaf_results<S: LayoutScalar>() {
 
     assert_eq!(error.site(), LayoutErrorSiteOf::Standalone);
     assert_eq!(error.operation(), LayoutOperation::ValueResolution);
-    assert_eq!(
+    crate::test_support::assert_error_kind(
         error.kind(),
         &LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::InvalidNumeric {
             value: S::INFINITY,
-        })
+        }),
     );
 }
 

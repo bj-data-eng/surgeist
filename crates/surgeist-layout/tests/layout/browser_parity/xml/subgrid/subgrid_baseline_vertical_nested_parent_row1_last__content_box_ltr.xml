@@ -1,4 +1,4 @@
-<test name="subgrid_baseline_vertical_nested_parent_row1_last__content_box_ltr" use-rounding="true">
+<test name="subgrid_baseline_vertical_nested_parent_row1_last__content_box_ltr" measurement-version="2" use-rounding="true">
   <viewport width="max-content" height="max-content"/>
   <input>
     <div source-tag="div" layout-ready-inline-root="true" display="grid" box-sizing="content-box" direction="ltr" writing-mode="vertical-rl" width="600px" grid-template-rows="150px 150px 150px" grid-template-columns="100px 100px 100px 100px">

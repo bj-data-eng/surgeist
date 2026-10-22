@@ -1,4 +1,4 @@
-<test name="align_flex_start_with_shrinking_children__content_box_ltr" use-rounding="true">
+<test name="align_flex_start_with_shrinking_children__content_box_ltr" measurement-version="2" use-rounding="true">
   <viewport width="max-content" height="max-content"/>
   <input>
     <div source-tag="div" display="flex" box-sizing="content-box" direction="ltr" width="500px" height="500px">

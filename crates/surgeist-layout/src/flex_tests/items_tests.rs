@@ -1069,12 +1069,11 @@ fn fri04_c03_flex_invalid_numeric_propagates_for_every_numeric_property_role() {
             LayoutOperation::ValueResolution,
             "role: {role}"
         );
-        assert_eq!(
+        crate::test_support::assert_error_kind(
             error.kind(),
             &LayoutErrorKind::InvalidInput(LayoutInvalidInput::InvalidNumeric {
                 value: f32::INFINITY,
             }),
-            "role: {role}"
         );
     }
 }

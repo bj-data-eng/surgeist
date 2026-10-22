@@ -32,12 +32,9 @@ pub use grid::{
     RawGridPlacement,
 };
 pub use inline::{
-    AtomicInlineParticipation, AtomicInlineParticipationError, AtomicInlineParticipationErrorOf,
-    AtomicInlineParticipationOf, InlineBoundaryInput, InlineBoundaryInputOf, InlineBoundaryKind,
-    InlineBreakKind, InlineBreakOpportunity, InlineBreakOpportunityOf, InlineMetrics,
-    InlineMetricsError, InlineMetricsOf, InlineSegmentId, InlineTextInput, InlineTextInputError,
-    InlineTextInputErrorOf, InlineTextInputOf, LineBreakDisplay, LineBreakInput, LineBreakInputOf,
-    ShapedInlineSegment, ShapedInlineSegmentOf, TextAlign, VerticalAlign, WritingMode,
+    AtomicInlineParticipation, InlineBoundaryInput, InlineBoundaryInputOf, InlineBoundaryKind,
+    InlineBreakOpportunity, InlineMetrics, InlineMetricsError, InlineMetricsOf, LineBreakDisplay,
+    LineBreakInput, LineBreakInputOf, TextAlign, VerticalAlign, WritingMode,
 };
 pub use scroll::{
     ComputedOverflow, ComputedOverflowError, Overflow, OverflowClipBox, OverflowClipMargin,
@@ -64,7 +61,7 @@ fn validate_numeric_property<S: LayoutScalar>(
 #[derive(Clone, Debug, PartialEq)]
 pub struct NodeInputOf<S: LayoutScalar = DefaultScalar> {
     pub display: Display,
-    pub atomic_inline_participation: Option<AtomicInlineParticipationOf<S>>,
+    pub atomic_inline_participation: Option<AtomicInlineParticipation>,
     pub float_exclusion: FloatExclusion,
     pub item_is_table: bool,
     pub item_is_replaced: bool,
@@ -387,7 +384,8 @@ mod property_field_migration_tests {
 #[derive(Clone, Debug, PartialEq)]
 pub enum LayoutInputOf<S: LayoutScalar = DefaultScalar> {
     Box(std::boxed::Box<NodeInputOf<S>>),
-    InlineText(InlineTextInputOf<S>),
+    InlineText(crate::text_layout::TextParticipation),
+    TextControl(crate::text_layout::TextControlParticipation),
     LineBreak(LineBreakInputOf<S>),
     InlineBoundary(InlineBoundaryInputOf<S>),
 }
@@ -422,7 +420,8 @@ pub enum LayoutInputOf<S: LayoutScalar = DefaultScalar> {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum LayoutInputViewOf<'input, S: LayoutScalar = DefaultScalar> {
     Box(&'input NodeInputOf<S>),
-    InlineText(&'input InlineTextInputOf<S>),
+    InlineText(&'input crate::text_layout::TextParticipation),
+    TextControl(&'input crate::text_layout::TextControlParticipation),
     LineBreak(LineBreakInputOf<S>),
     InlineBoundary(InlineBoundaryInputOf<S>),
 }
@@ -434,15 +433,30 @@ impl<'input, S: LayoutScalar> LayoutInputViewOf<'input, S> {
     pub const fn as_box(self) -> Option<&'input NodeInputOf<S>> {
         match self {
             Self::Box(input) => Some(input),
-            Self::InlineText(_) | Self::LineBreak(_) | Self::InlineBoundary(_) => None,
+            Self::InlineText(_)
+            | Self::TextControl(_)
+            | Self::LineBreak(_)
+            | Self::InlineBoundary(_) => None,
         }
     }
 
     #[must_use]
-    pub const fn as_inline_text(self) -> Option<&'input InlineTextInputOf<S>> {
+    pub const fn as_inline_text(self) -> Option<&'input crate::text_layout::TextParticipation> {
         match self {
             Self::InlineText(input) => Some(input),
-            Self::Box(_) | Self::LineBreak(_) | Self::InlineBoundary(_) => None,
+            Self::Box(_) | Self::TextControl(_) | Self::LineBreak(_) | Self::InlineBoundary(_) => {
+                None
+            }
+        }
+    }
+
+    #[must_use]
+    pub const fn as_text_control(
+        self,
+    ) -> Option<&'input crate::text_layout::TextControlParticipation> {
+        match self {
+            Self::TextControl(input) => Some(input),
+            _ => None,
         }
     }
 
@@ -450,7 +464,9 @@ impl<'input, S: LayoutScalar> LayoutInputViewOf<'input, S> {
     pub const fn as_line_break(self) -> Option<LineBreakInputOf<S>> {
         match self {
             Self::LineBreak(input) => Some(input),
-            Self::Box(_) | Self::InlineText(_) | Self::InlineBoundary(_) => None,
+            Self::Box(_) | Self::InlineText(_) | Self::TextControl(_) | Self::InlineBoundary(_) => {
+                None
+            }
         }
     }
 
@@ -458,7 +474,7 @@ impl<'input, S: LayoutScalar> LayoutInputViewOf<'input, S> {
     pub const fn as_inline_boundary(self) -> Option<InlineBoundaryInputOf<S>> {
         match self {
             Self::InlineBoundary(input) => Some(input),
-            Self::Box(_) | Self::InlineText(_) | Self::LineBreak(_) => None,
+            Self::Box(_) | Self::InlineText(_) | Self::TextControl(_) | Self::LineBreak(_) => None,
         }
     }
 }
@@ -472,6 +488,7 @@ impl<S: LayoutScalar> LayoutInputOf<S> {
         match self {
             Self::Box(input) => LayoutInputViewOf::Box(input),
             Self::InlineText(input) => LayoutInputViewOf::InlineText(input),
+            Self::TextControl(input) => LayoutInputViewOf::TextControl(input),
             Self::LineBreak(input) => LayoutInputViewOf::LineBreak(*input),
             Self::InlineBoundary(input) => LayoutInputViewOf::InlineBoundary(*input),
         }
@@ -488,8 +505,13 @@ impl<S: LayoutScalar> LayoutInputOf<S> {
     }
 
     #[must_use]
-    pub const fn inline_text(input: InlineTextInputOf<S>) -> Self {
+    pub const fn inline_text(input: crate::text_layout::TextParticipation) -> Self {
         Self::InlineText(input)
+    }
+
+    #[must_use]
+    pub const fn text_control(input: crate::text_layout::TextControlParticipation) -> Self {
+        Self::TextControl(input)
     }
 
     #[must_use]
@@ -501,22 +523,37 @@ impl<S: LayoutScalar> LayoutInputOf<S> {
     pub fn as_box(&self) -> Option<&NodeInputOf<S>> {
         match self {
             Self::Box(input) => Some(input.as_ref()),
-            Self::InlineText(_) | Self::LineBreak(_) | Self::InlineBoundary(_) => None,
+            Self::InlineText(_)
+            | Self::TextControl(_)
+            | Self::LineBreak(_)
+            | Self::InlineBoundary(_) => None,
         }
     }
 
     #[must_use]
-    pub const fn as_inline_text(&self) -> Option<&InlineTextInputOf<S>> {
+    pub const fn as_inline_text(&self) -> Option<&crate::text_layout::TextParticipation> {
         match self {
             Self::InlineText(input) => Some(input),
-            Self::Box(_) | Self::LineBreak(_) | Self::InlineBoundary(_) => None,
+            Self::Box(_) | Self::TextControl(_) | Self::LineBreak(_) | Self::InlineBoundary(_) => {
+                None
+            }
+        }
+    }
+
+    #[must_use]
+    pub const fn as_text_control(&self) -> Option<&crate::text_layout::TextControlParticipation> {
+        match self {
+            Self::TextControl(input) => Some(input),
+            _ => None,
         }
     }
 
     #[must_use]
     pub const fn as_line_break(&self) -> Option<LineBreakInputOf<S>> {
         match self {
-            Self::Box(_) | Self::InlineText(_) | Self::InlineBoundary(_) => None,
+            Self::Box(_) | Self::InlineText(_) | Self::TextControl(_) | Self::InlineBoundary(_) => {
+                None
+            }
             Self::LineBreak(input) => Some(*input),
         }
     }
@@ -524,7 +561,7 @@ impl<S: LayoutScalar> LayoutInputOf<S> {
     #[must_use]
     pub const fn as_inline_boundary(&self) -> Option<InlineBoundaryInputOf<S>> {
         match self {
-            Self::Box(_) | Self::InlineText(_) | Self::LineBreak(_) => None,
+            Self::Box(_) | Self::InlineText(_) | Self::TextControl(_) | Self::LineBreak(_) => None,
             Self::InlineBoundary(input) => Some(*input),
         }
     }

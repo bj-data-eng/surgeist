@@ -57,20 +57,23 @@ records changes and limitations. The originals remain authoritative.
 
 ### Ahem
 
-The layout and render crates include Ahem test fonts. Layout embeds WOFF2 bytes
+The layout, render and text crates include Ahem test fonts. Layout embeds WOFF2 bytes
 retained from Taffy's browser-test support and credits Todd Fahrner and Paul
-Nelson through Kozea/Ahem. Render bundles a W3C-distributed TTF and credits Todd
-Fahrner and Myles C. Maxfield in the included upstream README.
+Nelson through Kozea/Ahem. Render bundles a W3C-distributed TTF, also copied
+unchanged into Text's fixtures and Layout's prepared-text browser corpus, and
+credits Todd Fahrner and Myles C. Maxfield in the included upstream README.
 
 * License: [Public domain with the upstream Creative Commons Zero fallback](licenses/ahem/COPYING)
 * Homepages: [Kozea/Ahem](https://github.com/Kozea/Ahem) and [W3C Ahem](https://www.w3.org/Style/CSS/Test/Fonts/Ahem/)
 * Authorship and usage: [W3C upstream README](licenses/ahem/UPSTREAM-README)
 
-Both crates carry byte-identical `COPYING` declarations, shared here. Layout's
+All three crates carry byte-identical `COPYING` declarations, shared here. Layout's
 [source notice](https://github.com/bj-data-eng/surgeist-layout/blob/b65a18c042655f47d0870f712c7b5e647b5e28a6/NOTICE.md#ahem)
 identifies the declaration's Kozea revision; render's
 [fixture provenance](https://github.com/bj-data-eng/surgeist-render/blob/e44860e7df530795fef2d423024723d5fa5dc447/tests/fixtures/fonts/ahem/PROVENANCE.md)
 records its font and notice hashes. These fonts are test assets.
+Layout's [TTF provenance](crates/surgeist-layout/tests/layout/browser_parity/fonts/PROVENANCE.md)
+identifies the exact shared bytes separately from its embedded WOFF2.
 
 ### Chromium Blink implementation references
 

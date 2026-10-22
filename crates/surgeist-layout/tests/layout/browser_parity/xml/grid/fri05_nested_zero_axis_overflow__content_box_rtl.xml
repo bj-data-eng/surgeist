@@ -1,4 +1,4 @@
-<test name="fri05_nested_zero_axis_overflow__content_box_rtl" use-rounding="true">
+<test name="fri05_nested_zero_axis_overflow__content_box_rtl" measurement-version="2" use-rounding="true">
   <viewport width="max-content" height="max-content"/>
   <input>
     <div source-tag="div" display="grid" box-sizing="content-box" direction="rtl" overflow-x="auto" overflow-y="auto" scrollbar-width="15" width="100px" height="100px">

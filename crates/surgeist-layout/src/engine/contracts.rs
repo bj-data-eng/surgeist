@@ -6,10 +6,20 @@ use crate::{
 
 // Input loans refer to immutable request storage, independently of temporary
 // borrows of the mutable output/cache computation facade.
-pub(crate) trait Compute<'input, M = core::convert::Infallible>: Traverse {
+pub(crate) trait Compute<'input, M = core::convert::Infallible>:
+    Traverse<Node: 'input>
+{
     fn node_input(&self, node: Self::Node) -> &'input NodeInputOf<Self::Scalar>;
     fn layout_input(&self, node: Self::Node) -> LayoutInputViewOf<'input, Self::Scalar>;
     fn set_unrounded(&mut self, node: Self::Node, layout: NodeOutputOf<Self::Scalar>);
+    // Absence is the actual box-only profile, not a successful no-op finalizer.
+    fn text_computation(
+        &mut self,
+    ) -> Option<&mut crate::text_layout::state::TextComputation<'input, Self::Node, Self::Scalar>>
+    {
+        None
+    }
+
     fn set_unrounded_inline_fragment_state(
         &mut self,
         _node: Self::Node,
@@ -45,6 +55,13 @@ pub(crate) trait Compute<'input, M = core::convert::Infallible>: Traverse {
 }
 
 pub(crate) trait Round<M = core::convert::Infallible>: Traverse {
+    fn is_prepared_text(&self, _node: Self::Node) -> bool {
+        false
+    }
+    fn canonical_text_atomic_origin(&self, _node: Self::Node) -> Option<crate::Point<f64>> {
+        None
+    }
+
     fn unrounded(
         &self,
         node: Self::Node,
@@ -69,7 +86,6 @@ pub(crate) trait Round<M = core::convert::Infallible>: Traverse {
 
 pub(crate) enum UnroundedInlineFragmentState<'a, S: LayoutScalar> {
     Absent,
-    Missing,
     Present(&'a [InlineFragmentOutputOf<S>]),
 }
 

@@ -1,4 +1,4 @@
-<test name="bevy_issue_9530_reduced2__content_box_rtl" use-rounding="true">
+<test name="bevy_issue_9530_reduced2__content_box_rtl" measurement-version="2" use-rounding="true">
   <viewport width="max-content" height="max-content"/>
   <input>
     <div source-tag="div" display="flex" box-sizing="content-box" direction="rtl" flex-direction="column">

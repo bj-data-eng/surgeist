@@ -1,5 +1,7 @@
 //! Closed browser wire data and its validated layout-owned representation.
 
+#[path = "measurement/prepared_text.rs"]
+mod prepared_text;
 #[path = "measurement/style.rs"]
 mod style;
 
@@ -85,7 +87,12 @@ impl Context<'_> {
             )
         })
     }
-    fn ensure(&self, valid: bool, field: &str, detail: &str) -> Result<(), MeasurementError> {
+    fn ensure(
+        &self,
+        valid: bool,
+        field: impl Into<String>,
+        detail: &str,
+    ) -> Result<(), MeasurementError> {
         if valid {
             Ok(())
         } else {
@@ -146,6 +153,10 @@ struct WireNode {
     #[serde(default, deserialize_with = "present")]
     inline_segments: Option<Vec<WireSegment>>,
     #[serde(default, deserialize_with = "present")]
+    prepared_paragraph: Option<prepared_text::Paragraph>,
+    #[serde(default, deserialize_with = "present")]
+    prepared_occurrence: Option<usize>,
+    #[serde(default, deserialize_with = "present")]
     inline_boundary: Option<WireBoundary>,
     #[serde(default, deserialize_with = "present")]
     line_control_participation: Option<WireControl>,
@@ -156,7 +167,10 @@ struct WireNode {
     #[serde(default, deserialize_with = "present")]
     fragments: Option<Vec<WireFragment>>,
     #[serde(default, deserialize_with = "present")]
-    range_inks: Option<Vec<WireRange>>,
+    #[serde(rename = "rangeInks")]
+    range_rectangles: Option<Vec<WireRange>>,
+    #[serde(default, deserialize_with = "present")]
+    range_fragments: Option<Vec<WireRangeFragment>>,
     #[serde(default, deserialize_with = "present")]
     children: Option<Vec<WireNode>>,
 }
@@ -165,6 +179,7 @@ struct WireNode {
 enum LayoutInput {
     Box,
     InlineText,
+    PreparedText,
     InlineBoundary,
     Unsupported,
 }
@@ -306,6 +321,26 @@ struct WireRange {
     advance: f64,
 }
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct WireRangeFragment {
+    origin: u64,
+    line: u64,
+    physical_start_edge: PhysicalEdge,
+    start: f64,
+    advance: f64,
+}
+impl WireRangeFragment {
+    fn rectangle_fields(self) -> WireRange {
+        WireRange {
+            source_segment_id: self.origin,
+            line_index: self.line,
+            physical_start_edge: self.physical_start_edge,
+            start: self.start,
+            advance: self.advance,
+        }
+    }
+}
+#[derive(Deserialize)]
 #[serde(rename_all = "kebab-case")]
 enum PhysicalEdge {
     Left,
@@ -328,6 +363,7 @@ pub(super) struct ValidatedMeasurement {
 #[derive(Debug)]
 pub(super) struct Node {
     kind: NodeKind,
+    prepared_paragraph: Option<String>,
     attrs: Attributes,
     children: Vec<Node>,
     text: Option<String>,
@@ -341,6 +377,7 @@ pub(super) enum NodeKind {
     Box,
     Text,
     InlineText(Vec<Attributes>),
+    PreparedText(usize),
     Boundary(Attributes),
     Control,
 }
@@ -352,7 +389,8 @@ pub(super) enum Observation {
         scroll: Option<(f64, f64)>,
         fragments: Option<Vec<Attributes>>,
     },
-    RangeInks(Vec<Attributes>),
+    RangeRectangles(Vec<Attributes>),
+    RangeFragments(Vec<Attributes>),
     Boundary,
 }
 #[derive(Clone, Copy, Debug)]
@@ -477,6 +515,14 @@ impl WireNode {
         })
     }
     fn validate_wire(&self, context: &Context<'_>) -> Result<(), MeasurementError> {
+        if let Some(paragraph) = &self.prepared_paragraph {
+            paragraph.validate(context, self.children.as_ref().map_or(0, Vec::len))?;
+        }
+        context.compatible(
+            self.range_fragments.is_none() || self.layout_input == LayoutInput::PreparedText,
+            "rangeFragments",
+            "source Range rectangles require prepared-text role",
+        )?;
         if let Some(reason) = &self.unsupported_reason {
             context.compatible(
                 matches!(
@@ -505,13 +551,16 @@ impl WireNode {
                     && self.unrounded_layout.is_none()
                     && self.smart_rounded_layout.is_none()
                     && self.naively_rounded_layout.is_none()
+                    && self.prepared_paragraph.is_none()
+                    && self.prepared_occurrence.is_none()
                     && self.inline_segments.is_none()
                     && self.inline_boundary.is_none()
                     && self.line_control_participation.is_none()
                     && self.atomic_inline_participation.is_none()
                     && self.shape_bands.is_none()
                     && self.fragments.is_none()
-                    && self.range_inks.is_none()
+                    && self.range_rectangles.is_none()
+                    && self.range_fragments.is_none()
                     && self.children.is_none(),
                 "layoutInput",
                 "unsupported descriptors carry only a reason",
@@ -521,13 +570,39 @@ impl WireNode {
             context.compatible(
                 self.inline_segments.is_none()
                     && self.inline_boundary.is_none()
-                    && self.range_inks.is_none(),
+                    && self.range_rectangles.is_none(),
                 "layoutInput",
                 "box roles cannot carry inline text or boundary payload",
             )?;
         }
-        if self.layout_input == LayoutInput::InlineText {
-            if self.range_inks.is_some() {
+        context.compatible(
+            self.prepared_paragraph.is_none() || self.layout_input == LayoutInput::Box,
+            "preparedParagraph",
+            "only an actual containing box owns a prepared paragraph",
+        )?;
+        context.compatible(
+            self.prepared_occurrence.is_none() || self.layout_input == LayoutInput::PreparedText,
+            "preparedOccurrence",
+            "an original occurrence requires the prepared-text role",
+        )?;
+        if self.layout_input == LayoutInput::PreparedText {
+            context.required(self.prepared_occurrence, "preparedOccurrence")?;
+            context.compatible(
+                self.inline_segments.is_none(),
+                "inlineSegments",
+                "measured segments cannot be a prepared-text input",
+            )?;
+        }
+        if matches!(
+            self.layout_input,
+            LayoutInput::InlineText | LayoutInput::PreparedText
+        ) {
+            context.compatible(
+                self.range_rectangles.is_none() || self.layout_input == LayoutInput::InlineText,
+                "rangeInks",
+                "historical measured observations cannot masquerade as native source observations",
+            )?;
+            if self.range_rectangles.is_some() || self.range_fragments.is_some() {
                 context.compatible(self.fragments.is_none() && self.unrounded_layout.is_none() && self.smart_rounded_layout.is_none() && self.naively_rounded_layout.is_none() && self.children.as_ref().is_none_or(Vec::is_empty) && self.style.as_ref().is_none_or(|style| !style.has_scroll_fields()), "rangeInks", "Range observations cannot carry geometry, fragments, children, or scroll state")?;
             }
             context.compatible(
@@ -566,7 +641,7 @@ impl WireNode {
                     && self.atomic_inline_participation.is_none()
                     && self.shape_bands.is_none()
                     && self.fragments.is_none()
-                    && self.range_inks.is_none()
+                    && self.range_rectangles.is_none()
                     && self.children.as_ref().is_none_or(Vec::is_empty),
                 "inlineBoundary",
                 "inline boundaries cannot carry box, text, or observation payload",
@@ -635,6 +710,7 @@ impl WireNode {
         if self.layout_input == LayoutInput::InlineBoundary {
             let boundary = context.required(self.inline_boundary, "inlineBoundary")?;
             return Ok(Node {
+                prepared_paragraph: None,
                 kind: NodeKind::Boundary(boundary.validate(context)?),
                 attrs,
                 children: Vec::new(),
@@ -650,9 +726,15 @@ impl WireNode {
             "inlineBoundary",
             "boundary descriptor requires inline-boundary role",
         )?;
-        let inline_text = self.layout_input == LayoutInput::InlineText;
+        let inline_text = matches!(
+            self.layout_input,
+            LayoutInput::InlineText | LayoutInput::PreparedText
+        );
         context.compatible(
-            inline_text || (self.inline_segments.is_none() && self.range_inks.is_none()),
+            inline_text
+                || (self.inline_segments.is_none()
+                    && self.range_rectangles.is_none()
+                    && self.range_fragments.is_none()),
             "layoutInput",
             "text segments and Range observations require inline-text role",
         )?;
@@ -740,7 +822,7 @@ impl WireNode {
                         let query = (band.band_minimum, band.band_maximum);
                         context.ensure(
                             !queries.contains(&query),
-                            &format!("shapeBands[{index}]"),
+                            format!("shapeBands[{index}]"),
                             "shape query endpoints must be unique",
                         )?;
                         queries.push(query);
@@ -764,7 +846,11 @@ impl WireNode {
             .atomic_inline_participation
             .map(|value| value.validate(context))
             .transpose()?;
-        let kind = if inline_text {
+        let kind = if self.layout_input == LayoutInput::PreparedText {
+            NodeKind::PreparedText(
+                context.required(self.prepared_occurrence, "preparedOccurrence")?,
+            )
+        } else if inline_text {
             let segments = context.required(self.inline_segments, "inlineSegments")?;
             context.ensure(
                 !segments.is_empty(),
@@ -778,7 +864,7 @@ impl WireNode {
                 .map(|(index, segment)| {
                     context.ensure(
                         seen.insert(segment.id),
-                        &format!("inlineSegments[{index}].id"),
+                        format!("inlineSegments[{index}].id"),
                         "segment identifier must be unique within its text node",
                     )?;
                     segment.validate(context, &format!("inlineSegments[{index}]"))
@@ -797,7 +883,13 @@ impl WireNode {
         } else {
             NodeKind::Box
         };
-        let observation = if let Some(ranges) = self.range_inks {
+        let native_ranges = self.range_fragments.is_some();
+        let native_rectangles = self.range_fragments.map(|rows| {
+            rows.into_iter()
+                .map(WireRangeFragment::rectangle_fields)
+                .collect()
+        });
+        let observation = if let Some(ranges) = self.range_rectangles.or(native_rectangles) {
             context.compatible(
                 self.fragments.is_none()
                     && self.unrounded_layout.is_none()
@@ -807,13 +899,29 @@ impl WireNode {
                 "rangeInks",
                 "Range observations cannot carry geometry, fragments, or scroll state",
             )?;
-            Observation::RangeInks(
-                ranges
+            let ranges = ranges
+                .into_iter()
+                .enumerate()
+                .map(|(index, range)| range.validate(context, &format!("rangeFragments[{index}]")))
+                .collect::<Result<Vec<_>, _>>()?;
+            if native_ranges {
+                let ranges = ranges
                     .into_iter()
-                    .enumerate()
-                    .map(|(index, range)| range.validate(context, &format!("rangeInks[{index}]")))
-                    .collect::<Result<Vec<_>, _>>()?,
-            )
+                    .map(|mut attributes: Attributes| {
+                        for (name, _) in &mut attributes {
+                            if *name == "source_segment_id" {
+                                *name = "origin";
+                            } else if *name == "line_index" {
+                                *name = "line";
+                            }
+                        }
+                        attributes
+                    })
+                    .collect();
+                Observation::RangeFragments(ranges)
+            } else {
+                Observation::RangeRectangles(ranges)
+            }
         } else {
             let unrounded = context.required(self.unrounded_layout, "unroundedLayout")?;
             let geometry = unrounded.validate(context, "unroundedLayout")?;
@@ -934,9 +1042,93 @@ impl WireNode {
                 fragments,
             }
         };
-        let has_typed_text = children
-            .iter()
-            .any(|child| child.layout_input == LayoutInput::InlineText);
+        let prepared_paragraph = self
+            .prepared_paragraph
+            .as_ref()
+            .map(|paragraph| {
+                let encoded = paragraph.validate(context, children.len())?;
+                for (origin, row) in paragraph.origins.iter().enumerate() {
+                    context.ensure(
+                        children[row.child].layout_input == LayoutInput::PreparedText
+                            && children[row.child].prepared_occurrence == Some(origin),
+                        "preparedParagraph.origins",
+                        "each input leaf must lend its exact original occurrence",
+                    )?;
+                }
+                for row in &paragraph.atomics {
+                    let child = &children[row.child];
+                    let style = child.style.as_ref();
+                    let display = style.and_then(|style| style.display.as_deref());
+                    let absolute = style.and_then(|style| style.position.as_deref())
+                        == Some("absolute");
+                    let floating = style
+                        .and_then(|style| style.css_float.as_deref())
+                        .is_some_and(|value| value != "none");
+                    // The independent reader lowers actual inline BRs to break
+                    // controls even without optional lineControlParticipation.
+                    let inline_br = child.tag_name.as_deref() == Some("br")
+                        && matches!(display, Some("inline" | "none"));
+                    let matches_flow = match row.kind {
+                        prepared_text::AtomicKind::InFlow => {
+                            matches!(display,
+                                Some("inline-block" | "inline-grid" | "inline-grid-lanes"))
+                                && !absolute
+                                && !floating
+                        }
+                        prepared_text::AtomicKind::OutOfFlow => {
+                            absolute && display != Some("none")
+                        }
+                    };
+                    context.ensure(
+                        child.layout_input == LayoutInput::Box
+                            && child.line_control_participation.is_none()
+                            && child.atomic_inline_participation.is_none()
+                            && !inline_br
+                            && matches_flow,
+                        "preparedParagraph.atomics",
+                        "captured atomic flow role requires the corresponding actual box without control or measured-level authority",
+                    )?;
+                }
+                for row in &paragraph.controls {
+                    let child = &children[row.child];
+                    let matches_role = match row.kind {
+                        prepared_text::ControlKind::ForcedBreak => {
+                            child.layout_input == LayoutInput::Box
+                                && child.tag_name.as_deref() == Some("br")
+                                && child.style.as_ref().and_then(|style| style.display.as_deref())
+                                    == Some("inline")
+                                && child.children.as_ref().is_none_or(Vec::is_empty)
+                                && matches!(
+                                    child.line_control_participation.as_ref(),
+                                    Some(WireControl { kind: ControlKind::ForcedBreak })
+                                )
+                        }
+                        prepared_text::ControlKind::InlineBoundaryStart => {
+                            child.layout_input == LayoutInput::InlineBoundary
+                                && matches!(child.inline_boundary.as_ref(),
+                                    Some(boundary) if boundary.kind == BoundaryKind::Start)
+                        }
+                        prepared_text::ControlKind::InlineBoundaryEnd => {
+                            child.layout_input == LayoutInput::InlineBoundary
+                                && matches!(child.inline_boundary.as_ref(),
+                                    Some(boundary) if boundary.kind == BoundaryKind::End)
+                        }
+                    };
+                    context.ensure(
+                        matches_role,
+                        "preparedParagraph.controls",
+                        "each captured control must match its actual child role",
+                    )?;
+                }
+                Ok(encoded)
+            })
+            .transpose()?;
+        let has_typed_text = children.iter().any(|child| {
+            matches!(
+                child.layout_input,
+                LayoutInput::InlineText | LayoutInput::PreparedText
+            )
+        });
         let mut children = children
             .into_iter()
             .enumerate()
@@ -950,6 +1142,7 @@ impl WireNode {
         prepare_control_expectations(&writing_mode, &mut children, context)?;
         Ok(Node {
             kind,
+            prepared_paragraph,
             attrs,
             children,
             text: if has_typed_text {
@@ -1210,7 +1403,7 @@ impl WireSegment {
         ];
         context.ensure(
             self.inline_baseline <= self.inline_line_height,
-            &field("inlineLineHeight"),
+            field("inlineLineHeight"),
             "line height must cover the baseline",
         )?;
         attrs.extend(break_attrs(
@@ -1376,6 +1569,9 @@ impl ValidatedMeasurement {
     }
 }
 impl Node {
+    pub fn prepared_paragraph(&self) -> Option<&str> {
+        self.prepared_paragraph.as_deref()
+    }
     pub fn kind(&self) -> &NodeKind {
         &self.kind
     }

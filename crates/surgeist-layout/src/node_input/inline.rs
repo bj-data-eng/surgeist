@@ -1,8 +1,7 @@
-use std::collections::HashSet;
-use surgeist_text::{BidiLevel, InlineWhitespaceEdge};
+use surgeist_text::BidiLevel;
 
-use super::super::{DefaultScalar, LayoutScalar, NonNegativeFiniteScalarErrorOf};
-use super::{Clear, Direction, validate_numeric_property};
+use super::super::{DefaultScalar, LayoutScalar};
+use super::{Clear, Direction};
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum LineBreakDisplay {
@@ -64,246 +63,36 @@ pub struct InlineMetricsOf<S: LayoutScalar = DefaultScalar> {
 
 pub type InlineMetrics = InlineMetricsOf<DefaultScalar>;
 
-/// Caller-local identity for one shaped inline segment.
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct InlineSegmentId(u64);
-
-impl InlineSegmentId {
-    #[must_use]
-    pub const fn new(value: u64) -> Self {
-        Self(value)
-    }
-
-    #[must_use]
-    pub const fn get(self) -> u64 {
-        self.0
-    }
-}
-
-/// The closed kind of break opportunity following one inline participant.
+/// Normalized break permission for a box-only inline participant.
+/// Text candidates use preparation-issued opportunities and alternatives.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum InlineBreakKind {
+pub enum InlineBreakOpportunity {
     Prohibited,
     Allowed,
-    AllowedWithReplacement,
     Mandatory,
 }
 
-/// A validated break opportunity following one inline participant.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct InlineBreakOpportunityOf<S: LayoutScalar = DefaultScalar> {
-    kind: InlineBreakKind,
-    replacement_inline_extent: Option<S>,
-}
-
-pub type InlineBreakOpportunity = InlineBreakOpportunityOf<DefaultScalar>;
-
-impl<S: LayoutScalar> InlineBreakOpportunityOf<S> {
-    #[must_use]
-    pub const fn prohibited() -> Self {
-        Self {
-            kind: InlineBreakKind::Prohibited,
-            replacement_inline_extent: None,
-        }
-    }
-
-    #[must_use]
-    pub const fn allowed() -> Self {
-        Self {
-            kind: InlineBreakKind::Allowed,
-            replacement_inline_extent: None,
-        }
-    }
-
-    pub fn try_allowed_with_replacement(extent: S) -> Result<Self, InlineTextInputErrorOf<S>> {
-        Ok(Self {
-            kind: InlineBreakKind::AllowedWithReplacement,
-            replacement_inline_extent: Some(validate_numeric_property(extent).map_err(
-                |error| InlineTextInputErrorOf::InvalidReplacementInlineExtent { error },
-            )?),
-        })
-    }
-
-    #[must_use]
-    pub const fn mandatory() -> Self {
-        Self {
-            kind: InlineBreakKind::Mandatory,
-            replacement_inline_extent: None,
-        }
-    }
-
-    #[must_use]
-    pub const fn kind(self) -> InlineBreakKind {
-        self.kind
-    }
-
-    #[must_use]
-    pub const fn replacement_inline_extent(self) -> Option<S> {
-        self.replacement_inline_extent
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum InlineTextInputErrorOf<S: LayoutScalar = DefaultScalar> {
-    Empty,
-    InvalidReplacementInlineExtent {
-        error: NonNegativeFiniteScalarErrorOf<S>,
-    },
-    DuplicateSegmentId {
-        segment_id: InlineSegmentId,
-    },
-    InvalidInlineExtent {
-        segment_id: InlineSegmentId,
-        error: NonNegativeFiniteScalarErrorOf<S>,
-    },
-    ReplacementWithDiscardableWhitespace {
-        segment_id: InlineSegmentId,
-        whitespace_edge: InlineWhitespaceEdge,
-    },
-}
-
-pub type InlineTextInputError = InlineTextInputErrorOf<DefaultScalar>;
-
-/// One indivisible layout-ready shaped inline segment.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct ShapedInlineSegmentOf<S: LayoutScalar = DefaultScalar> {
-    segment_id: InlineSegmentId,
-    inline_extent: S,
-    metrics: InlineMetricsOf<S>,
+/// Actual resolved level and break participation of an atomic inline box.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct AtomicInlineParticipation {
     bidi_level: BidiLevel,
-    whitespace_edge: InlineWhitespaceEdge,
-    following_break: InlineBreakOpportunityOf<S>,
+    following_break: InlineBreakOpportunity,
 }
 
-pub type ShapedInlineSegment = ShapedInlineSegmentOf<DefaultScalar>;
-
-impl<S: LayoutScalar> ShapedInlineSegmentOf<S> {
-    pub fn try_new(
-        segment_id: InlineSegmentId,
-        inline_extent: S,
-        metrics: InlineMetricsOf<S>,
-        bidi_level: BidiLevel,
-        whitespace_edge: InlineWhitespaceEdge,
-        following_break: InlineBreakOpportunityOf<S>,
-    ) -> Result<Self, InlineTextInputErrorOf<S>> {
-        let inline_extent = validate_numeric_property(inline_extent)
-            .map_err(|error| InlineTextInputErrorOf::InvalidInlineExtent { segment_id, error })?;
-        if following_break.kind() == InlineBreakKind::AllowedWithReplacement
-            && whitespace_edge != InlineWhitespaceEdge::Preserve
-        {
-            return Err(
-                InlineTextInputErrorOf::ReplacementWithDiscardableWhitespace {
-                    segment_id,
-                    whitespace_edge,
-                },
-            );
-        }
-        Ok(Self {
-            segment_id,
-            inline_extent,
-            metrics,
+impl AtomicInlineParticipation {
+    #[must_use]
+    pub const fn new(bidi_level: BidiLevel, following_break: InlineBreakOpportunity) -> Self {
+        Self {
             bidi_level,
-            whitespace_edge,
             following_break,
-        })
-    }
-
-    #[must_use]
-    pub const fn segment_id(self) -> InlineSegmentId {
-        self.segment_id
-    }
-    #[must_use]
-    pub const fn inline_extent(self) -> S {
-        self.inline_extent
-    }
-    #[must_use]
-    pub const fn metrics(self) -> InlineMetricsOf<S> {
-        self.metrics
+        }
     }
     #[must_use]
     pub const fn bidi_level(self) -> BidiLevel {
         self.bidi_level
     }
     #[must_use]
-    pub const fn whitespace_edge(self) -> InlineWhitespaceEdge {
-        self.whitespace_edge
-    }
-    #[must_use]
-    pub const fn following_break(self) -> InlineBreakOpportunityOf<S> {
-        self.following_break
-    }
-}
-
-/// A nonempty ordered collection of shaped inline segments.
-#[derive(Clone, Debug, PartialEq)]
-pub struct InlineTextInputOf<S: LayoutScalar = DefaultScalar> {
-    segments: Vec<ShapedInlineSegmentOf<S>>,
-}
-
-pub type InlineTextInput = InlineTextInputOf<DefaultScalar>;
-
-impl<S: LayoutScalar> InlineTextInputOf<S> {
-    pub fn try_new(
-        segments: Vec<ShapedInlineSegmentOf<S>>,
-    ) -> Result<Self, InlineTextInputErrorOf<S>> {
-        if segments.is_empty() {
-            return Err(InlineTextInputErrorOf::Empty);
-        }
-        let mut segment_ids = HashSet::<InlineSegmentId>::with_capacity(segments.len());
-        for segment in &segments {
-            if !segment_ids.insert(segment.segment_id) {
-                return Err(InlineTextInputErrorOf::DuplicateSegmentId {
-                    segment_id: segment.segment_id,
-                });
-            }
-        }
-        Ok(Self { segments })
-    }
-
-    #[must_use]
-    pub fn segments(&self) -> &[ShapedInlineSegmentOf<S>] {
-        &self.segments
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum AtomicInlineParticipationErrorOf<S: LayoutScalar = DefaultScalar> {
-    ReplacementNotAllowed { replacement_inline_extent: S },
-}
-
-pub type AtomicInlineParticipationError = AtomicInlineParticipationErrorOf<DefaultScalar>;
-
-/// Paragraph participation facts for one atomic inline box.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct AtomicInlineParticipationOf<S: LayoutScalar = DefaultScalar> {
-    bidi_level: BidiLevel,
-    following_break: InlineBreakOpportunityOf<S>,
-}
-
-pub type AtomicInlineParticipation = AtomicInlineParticipationOf<DefaultScalar>;
-
-impl<S: LayoutScalar> AtomicInlineParticipationOf<S> {
-    pub fn try_new(
-        bidi_level: BidiLevel,
-        following_break: InlineBreakOpportunityOf<S>,
-    ) -> Result<Self, AtomicInlineParticipationErrorOf<S>> {
-        if let Some(replacement_inline_extent) = following_break.replacement_inline_extent() {
-            return Err(AtomicInlineParticipationErrorOf::ReplacementNotAllowed {
-                replacement_inline_extent,
-            });
-        }
-        Ok(Self {
-            bidi_level,
-            following_break,
-        })
-    }
-
-    #[must_use]
-    pub const fn bidi_level(self) -> BidiLevel {
-        self.bidi_level
-    }
-    #[must_use]
-    pub const fn following_break(self) -> InlineBreakOpportunityOf<S> {
+    pub const fn following_break(self) -> InlineBreakOpportunity {
         self.following_break
     }
 }

@@ -1,4 +1,4 @@
-<test name="grid_axes_sideways_lr_parallel__content_box_rtl" use-rounding="true">
+<test name="grid_axes_sideways_lr_parallel__content_box_rtl" measurement-version="2" use-rounding="true">
   <viewport width="max-content" height="max-content"/>
   <input>
     <div source-tag="div" display="grid" box-sizing="content-box" direction="rtl" writing-mode="sideways-lr" grid-template-rows="50px 60px" grid-template-columns="30px 40px">

@@ -669,7 +669,7 @@ fn validate_areas(
     for (row_index, row) in rows.iter().enumerate() {
         context.ensure(
             row.len() == width,
-            &format!("style.gridTemplateAreas[{row_index}]"),
+            format!("style.gridTemplateAreas[{row_index}]"),
             "grid area rows must have equal widths",
         )?;
         for (column_index, name) in row.iter().enumerate() {
@@ -678,7 +678,7 @@ fn validate_areas(
             };
             context.ensure(
                 valid_area_name(name),
-                &format!("style.gridTemplateAreas[{row_index}][{column_index}]"),
+                format!("style.gridTemplateAreas[{row_index}][{column_index}]"),
                 "grid area cell must be an identifier or null",
             )?;
             let entry =
@@ -1174,7 +1174,7 @@ impl Style {
             if let Some(value) = value {
                 context.ensure(
                     choices.contains(&value),
-                    &format!("style.{field}"),
+                    format!("style.{field}"),
                     "unknown style discriminant",
                 )?;
             }
@@ -1577,7 +1577,7 @@ impl Style {
             for (index, row) in rows.iter().enumerate() {
                 context.ensure(
                     !row.is_empty(),
-                    &format!("style.gridTemplateAreas[{index}]"),
+                    format!("style.gridTemplateAreas[{index}]"),
                     "grid area row must not be empty",
                 )?;
                 let values = row

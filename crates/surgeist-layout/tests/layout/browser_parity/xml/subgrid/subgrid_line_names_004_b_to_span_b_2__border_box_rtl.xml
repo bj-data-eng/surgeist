@@ -1,4 +1,4 @@
-<test name="subgrid_line_names_004_b_to_span_b_2__border_box_rtl" use-rounding="true">
+<test name="subgrid_line_names_004_b_to_span_b_2__border_box_rtl" measurement-version="2" use-rounding="true">
   <viewport width="max-content" height="max-content"/>
   <input>
     <div source-tag="div" display="grid" direction="rtl" font-family="monospace" font-size="24px" line-height="24px" padding-top="20px" padding-left="10px" padding-bottom="20px" padding-right="10px" grid-template-rows="auto" grid-template-columns="[a] 50px 50px 50px 50px [b] 50px 50px [a b]">

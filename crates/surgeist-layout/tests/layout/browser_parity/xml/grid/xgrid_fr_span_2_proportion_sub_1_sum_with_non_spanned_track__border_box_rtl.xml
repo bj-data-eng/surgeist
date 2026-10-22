@@ -1,4 +1,4 @@
-<test name="xgrid_fr_span_2_proportion_sub_1_sum_with_non_spanned_track__border_box_rtl" use-rounding="true">
+<test name="xgrid_fr_span_2_proportion_sub_1_sum_with_non_spanned_track__border_box_rtl" measurement-version="2" use-rounding="true">
   <viewport width="max-content" height="max-content"/>
   <input>
     <div source-tag="div" display="grid" direction="rtl" grid-template-rows="40px 40px" grid-template-columns="0.2fr 0.3fr 0.5fr">

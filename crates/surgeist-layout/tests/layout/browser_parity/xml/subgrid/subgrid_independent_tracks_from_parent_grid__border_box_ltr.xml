@@ -1,4 +1,4 @@
-<test name="subgrid_independent_tracks_from_parent_grid__border_box_ltr" use-rounding="true">
+<test name="subgrid_independent_tracks_from_parent_grid__border_box_ltr" measurement-version="2" use-rounding="true">
   <viewport width="max-content" height="max-content"/>
   <input>
     <div source-tag="div" display="grid" direction="ltr" row-gap="25px" column-gap="25px">

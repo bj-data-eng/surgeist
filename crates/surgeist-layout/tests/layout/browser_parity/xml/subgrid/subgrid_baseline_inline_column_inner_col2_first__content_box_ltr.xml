@@ -1,4 +1,4 @@
-<test name="subgrid_baseline_inline_column_inner_col2_first__content_box_ltr" use-rounding="true">
+<test name="subgrid_baseline_inline_column_inner_col2_first__content_box_ltr" measurement-version="2" use-rounding="true">
   <viewport width="max-content" height="max-content"/>
   <input>
     <div source-tag="div" layout-ready-inline-root="true" display="grid" box-sizing="content-box" direction="ltr" width="600px" grid-auto-flow="column" grid-template-rows="100px 100px 100px 100px" grid-template-columns="auto auto auto">

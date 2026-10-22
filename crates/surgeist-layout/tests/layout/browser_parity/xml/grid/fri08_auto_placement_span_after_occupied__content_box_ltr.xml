@@ -1,4 +1,4 @@
-<test name="fri08_auto_placement_span_after_occupied__content_box_ltr" use-rounding="true">
+<test name="fri08_auto_placement_span_after_occupied__content_box_ltr" measurement-version="2" use-rounding="true">
   <viewport width="max-content" height="max-content"/>
   <input>
     <div source-tag="div" display="grid" box-sizing="content-box" direction="ltr" align-content="start" justify-content="start" width="120px" grid-template-rows="20px" grid-template-columns="40px 40px 40px" grid-auto-rows="20px">

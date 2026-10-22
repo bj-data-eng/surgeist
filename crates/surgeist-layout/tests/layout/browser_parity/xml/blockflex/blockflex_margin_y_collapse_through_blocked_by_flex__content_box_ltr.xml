@@ -1,4 +1,4 @@
-<test name="blockflex_margin_y_collapse_through_blocked_by_flex__content_box_ltr" use-rounding="true">
+<test name="blockflex_margin_y_collapse_through_blocked_by_flex__content_box_ltr" measurement-version="2" use-rounding="true">
   <viewport width="max-content" height="max-content"/>
   <input>
     <div source-tag="div" display="block" box-sizing="content-box" direction="ltr" width="50px">

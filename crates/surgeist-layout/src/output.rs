@@ -2,7 +2,6 @@ use super::{
     AvailableOf, CacheKeyContext, DefaultScalar, Edges, LayoutScalar, NonNegativeFiniteOf,
     NonNegativeFiniteScalarErrorOf, PhysicalAxis, Point, ScrollGeometryOf, ScrollRectOf, Size,
 };
-use crate::InlineSegmentId;
 use crate::geometry::{FlowAxes, PhysicalSide};
 use crate::scroll::SettledAutoScrollbarState;
 
@@ -1125,91 +1124,59 @@ impl<S: LayoutScalar> Default for NodeOutputOf<S> {
     }
 }
 
-/// Immutable geometry for one indivisible shaped inline segment on one line.
+/// Immutable geometry associated with one actual Text-issued fragment.
 ///
-/// Layout constructs this output after line selection. Callers can inspect but
-/// cannot construct or mutate it, so source identity and phase geometry remain
-/// associated.
-///
-/// ```compile_fail
-/// use surgeist_layout::{InlineFragmentOutput, InlineSegmentId, Point, ScrollRect, Size};
-/// let _ = InlineFragmentOutput::new(
-///     InlineSegmentId::new(1),
-///     ScrollRect::try_new(Point::ZERO, Size::ZERO).unwrap(),
-///     Point::ZERO,
-///     0,
-///     0,
-///     None,
-/// );
-/// ```
-#[derive(Clone, Copy, Debug, PartialEq)]
+/// The retained handle identifies the exact finalized line and origin, control,
+/// or alternative occurrence, including empty occurrences. The association table
+/// does not supply a mixed visual-order ordinal. No glyph packet or caller-local
+/// segment ID is copied into this Layout output.
+#[derive(Clone, Debug, PartialEq)]
 pub struct InlineFragmentOutputOf<S: LayoutScalar = DefaultScalar> {
-    segment_id: InlineSegmentId,
-    rect: ScrollRectOf<S>,
+    fragment: surgeist_text::FinalizedFragment,
+    rect: Option<ScrollRectOf<S>>,
     baseline: Point<S>,
     line_index: usize,
-    visual_index: usize,
-    replacement_inline_extent: Option<S>,
 }
 
 pub type InlineFragmentOutput = InlineFragmentOutputOf<DefaultScalar>;
 
 impl<S: LayoutScalar> InlineFragmentOutputOf<S> {
-    pub(crate) const fn new(
-        segment_id: InlineSegmentId,
-        rect: ScrollRectOf<S>,
+    pub(crate) fn new(
+        fragment: surgeist_text::FinalizedFragment,
+        rect: Option<ScrollRectOf<S>>,
         baseline: Point<S>,
         line_index: usize,
-        visual_index: usize,
-        replacement_inline_extent: Option<S>,
     ) -> Self {
         Self {
-            segment_id,
+            fragment,
             rect,
             baseline,
             line_index,
-            visual_index,
-            replacement_inline_extent,
         }
     }
 
+    /// The exact issued fragment and its retained finalized-line owner.
     #[must_use]
-    pub const fn segment_id(&self) -> InlineSegmentId {
-        self.segment_id
+    pub fn finalized_fragment(&self) -> &surgeist_text::FinalizedFragment {
+        &self.fragment
     }
 
     #[must_use]
-    pub const fn rect(&self) -> ScrollRectOf<S> {
+    pub const fn rect(&self) -> Option<ScrollRectOf<S>> {
         self.rect
     }
-
     #[must_use]
     pub const fn baseline(&self) -> Point<S> {
         self.baseline
     }
-
     #[must_use]
     pub const fn line_index(&self) -> usize {
         self.line_index
     }
-
-    #[must_use]
-    pub const fn visual_index(&self) -> usize {
-        self.visual_index
-    }
-
-    #[must_use]
-    pub const fn replacement_inline_extent(&self) -> Option<S> {
-        self.replacement_inline_extent
-    }
 }
 
-/// Associates one immutable inline fragment with its source layout node.
-///
-/// Completed batches order entries by source-tree order and then segment source
-/// order. [`InlineFragmentOutputOf::visual_index`] records visual order without
-/// changing that public identity order.
-#[derive(Clone, Copy, Debug, PartialEq)]
+/// Associates one retained finalized fragment with its actual tree node.
+#[derive(Clone, Debug, PartialEq)]
 pub struct InlineFragmentOutputEntryOf<Node, S: LayoutScalar = DefaultScalar> {
     node: Node,
     fragment: InlineFragmentOutputOf<S>,
@@ -1217,23 +1184,48 @@ pub struct InlineFragmentOutputEntryOf<Node, S: LayoutScalar = DefaultScalar> {
 
 pub type InlineFragmentOutputEntry<Node> = InlineFragmentOutputEntryOf<Node, DefaultScalar>;
 
-impl<Node, S> InlineFragmentOutputEntryOf<Node, S>
-where
-    Node: Copy,
-    S: LayoutScalar,
-{
-    pub(crate) const fn new(node: Node, fragment: InlineFragmentOutputOf<S>) -> Self {
+impl<Node: Copy, S: LayoutScalar> InlineFragmentOutputEntryOf<Node, S> {
+    pub(crate) fn new(node: Node, fragment: InlineFragmentOutputOf<S>) -> Self {
         Self { node, fragment }
     }
-
     #[must_use]
     pub const fn node(&self) -> Node {
         self.node
     }
-
     #[must_use]
-    pub const fn fragment(&self) -> InlineFragmentOutputOf<S> {
-        self.fragment
+    pub fn fragment(&self) -> &InlineFragmentOutputOf<S> {
+        &self.fragment
+    }
+}
+
+/// The exact placed Text result published with its containing Layout node.
+#[derive(Clone, Debug)]
+pub struct PlacedTextOutput<Node> {
+    container: Node,
+    nodes: Vec<Node>,
+    layout: surgeist_text::Layout,
+}
+
+impl<Node: Copy> PlacedTextOutput<Node> {
+    pub(crate) fn new(container: Node, nodes: Vec<Node>, layout: surgeist_text::Layout) -> Self {
+        Self {
+            container,
+            nodes,
+            layout,
+        }
+    }
+    #[must_use]
+    pub const fn container(&self) -> Node {
+        self.container
+    }
+    /// Exact captured run membership, retaining the node-to-placement join.
+    #[must_use]
+    pub fn nodes(&self) -> &[Node] {
+        &self.nodes
+    }
+    #[must_use]
+    pub fn layout(&self) -> &surgeist_text::Layout {
+        &self.layout
     }
 }
 
@@ -1334,7 +1326,7 @@ where
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct CompletedLayoutBatchOf<Node, S: LayoutScalar = DefaultScalar> {
     unrounded_entries: Vec<LayoutOutputEntryOf<Node, S>>,
     final_entries: Vec<LayoutOutputEntryOf<Node, S>>,
@@ -1343,6 +1335,7 @@ pub struct CompletedLayoutBatchOf<Node, S: LayoutScalar = DefaultScalar> {
     cache_store_entries: Vec<LayoutCacheStoreEntryOf<Node, S>>,
     cache_clear_entries: Vec<LayoutCacheClearEntry<Node>>,
     invalidated_nodes: Vec<Node>,
+    placed_text: Vec<PlacedTextOutput<Node>>,
 }
 
 pub type CompletedLayoutBatch<Node> = CompletedLayoutBatchOf<Node, DefaultScalar>;
@@ -1368,7 +1361,19 @@ where
             cache_store_entries,
             cache_clear_entries,
             invalidated_nodes,
+            placed_text: Vec::new(),
         }
+    }
+
+    pub(crate) fn with_placed_text(mut self, placed_text: Vec<PlacedTextOutput<Node>>) -> Self {
+        self.placed_text = placed_text;
+        self
+    }
+
+    /// Actual Text layouts retained in the same atomic node/cache batch.
+    #[must_use]
+    pub fn placed_text(&self) -> &[PlacedTextOutput<Node>] {
+        &self.placed_text
     }
 
     /// Returns staged entries in computation order.

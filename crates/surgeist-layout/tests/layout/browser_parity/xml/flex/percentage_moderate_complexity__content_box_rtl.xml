@@ -1,4 +1,4 @@
-<test name="percentage_moderate_complexity__content_box_rtl" use-rounding="false">
+<test name="percentage_moderate_complexity__content_box_rtl" measurement-version="2" use-rounding="false">
   <viewport width="max-content" height="max-content"/>
   <input>
     <div source-tag="div" display="flex" box-sizing="content-box" direction="rtl" flex-direction="column" width="200px" padding-top="3px" padding-left="3px" padding-bottom="3px" padding-right="3px">
