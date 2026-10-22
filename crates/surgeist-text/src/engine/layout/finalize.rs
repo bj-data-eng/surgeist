@@ -2286,4 +2286,334 @@ mod tests {
         .unwrap();
         assert_eq!((metrics.baseline, metrics.line_height), (14.0, 24.0));
     }
+
+    #[test]
+    fn rtl_trailing_pdi_keeps_original_class_through_l1_l2_and_exact_placement() {
+        use crate::{
+            Affinity, AnalyzedSource, Cursor, Id, Layout, ParagraphConnection,
+            ParagraphConnectionKind, Range,
+        };
+
+        // Native characterization, not a browser Range-coordinate oracle.
+        // UAX #9 rev51 L1 uses ORIGINAL isolate classes in the line's trailing
+        // sequence; L2 then orders the resulting levels. PDI therefore moves
+        // from pre-L1 level2 to paragraph level1 without losing source4..5.
+        // https://www.unicode.org/reports/tr9/tr9-51.html#L1
+        let original = [0x58, 0x2067, 0x58, 0x58, 0x2069, 0x20, 0x58];
+        let source = Source::identified("X\u{2067}XX\u{2069} X", Id::from_u64(1450), 1);
+        let origins = [("X", 0, 1), ("\u{2067}XX\u{2069}", 1, 5), (" X", 5, 7)]
+            .into_iter()
+            .enumerate()
+            .map(|(index, (text, start, end))| ParagraphOrigin {
+                source: Source::identified(text, Id::from_u64(1451 + index as u64), 1),
+                local: Range::new(0, end - start),
+                aggregate: Range::new(start, end),
+                kind: ParagraphOriginKind::Authored,
+            })
+            .collect();
+        let analyzed = AnalyzedSource::from_paragraph(ParagraphInput {
+            source: source.clone(),
+            base_style: Style {
+                white_space: WhiteSpace::Collapse,
+                wrap: crate::Wrap::Word,
+                ..ahem_strut(16.0, 20.0)
+            },
+            segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: ParagraphBaseDirection::RightToLeft,
+            paragraph_strut: ParagraphStrut::DefaultFont,
+            origins,
+            connections: [1, 5]
+                .map(|at| ParagraphConnection {
+                    at,
+                    kind: ParagraphConnectionKind::Continuous,
+                })
+                .to_vec(),
+            controls: [
+                (1, ParagraphControlKind::InlineBoundaryStart),
+                (5, ParagraphControlKind::InlineBoundaryEnd),
+            ]
+            .map(|(at, kind)| ParagraphControl { at, kind })
+            .to_vec(),
+            boundary_policies: (0..2)
+                .map(|index| ParagraphBoundaryPolicy {
+                    definition: ParagraphBoundaryDefinition::Connection(index),
+                    preceding_wrap: crate::Wrap::Word,
+                    following_wrap: crate::Wrap::Word,
+                    ancestor_wrap: crate::Wrap::Word,
+                })
+                .collect(),
+            replacements: vec![],
+            anchor_order: (0..2)
+                .map(|index| ParagraphAnchor {
+                    item: ParagraphAnchorItem::Control(index),
+                    affinity: Affinity::Before,
+                })
+                .collect(),
+        })
+        .unwrap();
+        assert_eq!(analyzed.source().text().code_units(), original);
+        assert_eq!(analyzed.inner.analysis.base_level, 1);
+        assert_eq!(
+            analyzed.inner.analysis.infos[4].0.bidi_class,
+            BidiClass::PopDirectionalIsolate
+        );
+        assert_eq!(analyzed.inner.analysis.levels[4], 2);
+
+        let mut system = System::new(SystemOptions {
+            font_catalogue: FontCatalogueMode::RegisteredOnly,
+        })
+        .unwrap();
+        system
+            .register_fonts(include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec())
+            .unwrap();
+        let prepared = system
+            .prepare(&analyzed, PreparationOptions::default())
+            .unwrap();
+        let isolate_origin = prepared.origin_views().nth(1).unwrap().handle();
+        let soft = prepared
+            .opportunity_views()
+            .find(|offer| {
+                offer.kind() == PreparedBreakKind::Allowed
+                    && offer.boundary().view().source_before().get() == 6
+            })
+            .unwrap()
+            .handle();
+        let end = prepared
+            .opportunity_views()
+            .find(|offer| offer.kind() == PreparedBreakKind::ParagraphEnd)
+            .unwrap()
+            .handle();
+        let participants: Vec<_> = prepared.participants().collect();
+        let split = soft.view().boundary().view().participant_offset();
+        let select = |start, termination: PreparedOpportunity, from, to, first| {
+            let participants = participants[from..to].to_vec();
+            let controls = participants
+                .iter()
+                .filter_map(|participant| match participant {
+                    PreparedParticipant::Control(control) => Some(ControlAllocation {
+                        occurrence: control.clone(),
+                        strut: None,
+                    }),
+                    _ => None,
+                })
+                .collect();
+            prepared
+                .select(LineSelectionRequest {
+                    start,
+                    end: termination.view().boundary(),
+                    participants,
+                    termination,
+                    alternative: None,
+                    context: LineContext {
+                        base_direction: ParagraphBaseDirection::RightToLeft,
+                        orientation: LineOrientation::Horizontal,
+                        start: if first {
+                            LineStart::Paragraph
+                        } else {
+                            LineStart::Continuation
+                        },
+                        end: if first {
+                            LineEnd::Soft
+                        } else {
+                            LineEnd::Paragraph
+                        },
+                        available_inline: Some(72.0),
+                        indent: 0.0,
+                        alignment: Alignment::Start,
+                        tabs: TabContext::NoTabs,
+                        hanging: HangingContext::None,
+                        spacing: SpacingPolicy::None,
+                    },
+                    atomics: vec![],
+                    controls,
+                    line_strut: None,
+                })
+                .unwrap()
+        };
+        let first_selected = select(
+            prepared.boundary_views().next().unwrap().handle(),
+            soft.clone(),
+            0,
+            split,
+            true,
+        );
+        let second_selected = select(
+            soft.view().boundary(),
+            end,
+            split,
+            participants.len(),
+            false,
+        );
+        let pdi_unit = first_selected
+            .inner
+            .presentation
+            .units
+            .iter()
+            .find(|unit| unit.source == Range::new(4, 5))
+            .unwrap();
+        assert_eq!(pdi_unit.code_point, Some(0x2069));
+        assert_eq!(pdi_unit.bidi_class, Some(BidiClass::PopDirectionalIsolate));
+        assert_eq!(pdi_unit.level, 2);
+        let (shaped, _) =
+            shape::finalize(&first_selected.inner, &mut ShapeContext::default()).unwrap();
+        let pdi_item = shaped.items.iter().position(|item| matches!(item,
+            ShapedItem::TextCluster(index) if shaped.clusters[*index].source == Range::new(4, 5)
+        )).unwrap();
+        let ShapedItem::TextCluster(pdi_cluster) = shaped.items[pdi_item] else {
+            unreachable!()
+        };
+        assert_eq!(shaped.clusters[pdi_cluster].level, 2);
+        assert_eq!(shaped.clusters[pdi_cluster].advance, 0.0);
+        assert_eq!(
+            line_levels(&first_selected.inner, &shaped).unwrap()[pdi_item],
+            1
+        );
+
+        let first = first_selected.finalize(SpacingAllocations::None).unwrap();
+        let second = second_selected.finalize(SpacingAllocations::None).unwrap();
+        assert_eq!(first.selected_line(), first_selected);
+        assert_eq!(second.selected_line(), second_selected);
+        assert_eq!(first.inner.selected.presentation.source, Range::new(0, 6));
+        assert_eq!(second.inner.selected.presentation.source, Range::new(6, 7));
+        assert_eq!(first.feedback().advance, 48.0);
+        near(first.feedback().baseline, 14.8);
+        assert_eq!(first.feedback().line_height, 20.0);
+        // L2 gives text-source order [SPACE, PDI, firstX, RLI, X, X].
+        // Suppressing the trailing SPACE leaves 48 units, right-aligned in72:
+        // PDI/firstX begin at24, RLI/isolatedXX at40, and XX ends at72.
+        let visual_sources: Vec<_> = first
+            .inner
+            .data
+            .visual_order
+            .iter()
+            .filter_map(|item| match *item {
+                FinalizedVisualItem::Cluster(index) => {
+                    Some(first.inner.data.clusters[index].source)
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            visual_sources,
+            [
+                Range::new(5, 6),
+                Range::new(4, 5),
+                Range::new(0, 1),
+                Range::new(1, 2),
+                Range::new(2, 3),
+                Range::new(3, 4)
+            ]
+        );
+        for (source_start, x, advance, level) in [
+            (0, 24.0, 16.0, 2),
+            (1, 40.0, 0.0, 2),
+            (2, 40.0, 16.0, 4),
+            (3, 56.0, 16.0, 4),
+            (4, 24.0, 0.0, 1),
+            (5, 24.0, 0.0, 1),
+        ] {
+            let cluster = first
+                .inner
+                .data
+                .clusters
+                .iter()
+                .find(|row| row.source == Range::new(source_start, source_start + 1))
+                .unwrap();
+            assert_eq!(
+                (cluster.x, cluster.advance, cluster.level),
+                (x, advance, level)
+            );
+        }
+        let fragment = first
+            .fragments()
+            .find(|fragment| {
+                let view = fragment.view();
+                view.owner() == FinalizedFragmentOwner::Origin(isolate_origin.clone())
+                    && view.aggregate_range() == Some(Range::new(4, 5))
+                    && view.local_range() == Some(Range::new(3, 4))
+            })
+            .unwrap();
+        assert_eq!(fragment.finalized_line(), first);
+        assert_eq!(fragment.view().aggregate_range(), Some(Range::new(4, 5)));
+        assert_eq!(fragment.view().local_range(), Some(Range::new(3, 4)));
+        let pdi_bounds = fragment.view().bounds().unwrap();
+        assert_eq!((pdi_bounds.origin.x, pdi_bounds.size.width), (24.0, 0.0));
+        assert_eq!(isolate_origin.view().aggregate_range(), Range::new(1, 5));
+        assert_eq!(isolate_origin.view().local_range(), Range::new(0, 4));
+        assert_eq!(
+            isolate_origin.view().source().text().code_units(),
+            [0x2067, 0x58, 0x58, 0x2069]
+        );
+
+        let request = PlacementRequest {
+            prepared: prepared.clone(),
+            coverage: PlacementCoverage::WholeParagraph,
+            lines: [first.clone(), second.clone()]
+                .into_iter()
+                .enumerate()
+                .map(|(index, line)| LinePlacement {
+                    anchor: LineAnchor {
+                        inline_origin: 0.0,
+                        baseline: index as f64 * 20.0 + line.feedback().baseline,
+                    },
+                    line,
+                    orientation: LineOrientation::Horizontal,
+                    atomics: vec![],
+                })
+                .collect(),
+        };
+        drop(system);
+        let placed = Layout::from_finalized_lines(request.clone()).unwrap();
+        assert_eq!(placed.source(), &source);
+        assert_eq!(placed.analyzed_source().identity(), analyzed.identity());
+        assert!(Arc::ptr_eq(&placed.inner.prepared, &prepared.inner));
+        assert!(Arc::ptr_eq(&placed.inner.lines[0].finalized, &first.inner));
+        assert!(Arc::ptr_eq(&placed.inner.lines[1].finalized, &second.inner));
+        assert_eq!(
+            placed
+                .lines()
+                .iter()
+                .map(|line| line.range())
+                .collect::<Vec<_>>(),
+            [Range::new(0, 6), Range::new(6, 7)]
+        );
+        let visible: Vec<_> = placed
+            .glyph_runs()
+            .iter()
+            .flat_map(|run| run.glyphs().iter().copied())
+            .filter(|glyph| glyph.advance() > 0.0)
+            .map(|glyph| (glyph.range(), glyph.id(), glyph.advance()))
+            .collect();
+        assert_eq!(
+            visible,
+            [
+                (Range::new(0, 1), 58, 16.0),
+                (Range::new(2, 3), 58, 16.0),
+                (Range::new(3, 4), 58, 16.0),
+                (Range::new(6, 7), 58, 16.0)
+            ]
+        );
+        let pdi_position = placed
+            .positions()
+            .find(|position| position.source_cursor() == Cursor::new(4, Affinity::After))
+            .unwrap();
+        assert_eq!(
+            placed
+                .position_geometry(&pdi_position)
+                .unwrap()
+                .rect()
+                .origin
+                .x,
+            24.0
+        );
+        assert_eq!(
+            placed.clone().position_geometry(&pdi_position).unwrap(),
+            placed.position_geometry(&pdi_position).unwrap()
+        );
+        let other_placement = Layout::from_finalized_lines(request).unwrap();
+        assert!(!Arc::ptr_eq(&placed.inner, &other_placement.inner));
+        assert!(other_placement.position_geometry(&pdi_position).is_err());
+        assert_eq!(fragment.finalized_line(), first);
+        assert_eq!(analyzed.source().text().code_units(), original);
+    }
 }
