@@ -184,6 +184,48 @@ Exact position geometry and movement use the same finalized interaction rows as 
 
 Verify more than two same-offset caret lines, physical hits and movement through their exact issued positions, source-query ambiguity and coverage refusal, foreign-placement rejection, and reuse of the same geometry for selection and geometric accessibility. These requirements establish the composed position boundary and do not claim support before its implementation is qualified.
 
+### Nonempty Text range fragments
+
+Text owns an occurrence-qualified nonempty original-source range query over the
+actual placed result. Its ordered observations retain selected source
+intersections, expanded typographic-unit coverage where applicable, finalized
+line/fragment and placement identities, advance edges and associated font-metric
+extent. This is a required observation boundary, not a claim that the query is
+already implemented. Generic source slots and caret affinities are distinct.
+
+For a nonempty range selecting an independently retained zero-advance formatting
+unit, Surgeist selects a zero-width rectangle at that unit's actual finalized
+post-L1/L2 position. Its block extent uses the unit's actual retained resolved
+font ascent/descent around the same placed baseline. Missing required metric
+association returns a precise capability error; neither a neighboring glyph,
+requested family, line-height strut nor outline ink supplies a replacement.
+This is an explicit policy for a gap in the pinned
+[CSSOM View Range rules](../references/cssom-view-1--WD-cssom-view-1-20250916--693b1c1fe7f7.md#extensions-to-the-range-interface).
+The [bounded Blink witness](../references/blink-formatting-unit-range--daf70f9ddee4.md)
+does not establish a universal alternative endpoint convention.
+
+Collapsed ranges, removed/collapsed whitespace and newline selection retain
+their separate semantics. Selecting part of an actual indivisible typographic
+unit includes that whole unit. Do not relocate a selected formatting unit to a
+neighboring visible run, matching isolate end, pre-L1 position or chosen caret.
+Keep genuine zero-width rectangles; bounding-rectangle aggregation is separate.
+
+Layout supplies committed placement and node/occurrence associations. Its
+[#860 CSSOM View consumer](https://github.com/bj-data-eng/surgeist/issues/860),
+under [#850](https://github.com/bj-data-eng/surgeist/issues/850), validates actual
+DOM Range membership/endpoints, maps selected Text portions to those occurrences,
+includes required selected-element border boxes in content order, and applies
+ancestor/viewport transforms once. A fixture adapter can request the same Text
+observations from explicit captured inputs without claiming the full live join.
+
+The retained RTL PDI case therefore keeps native x=24, while the authenticated
+Chrome Range reports x=72. These remain explicit strict oracle differences,
+not passing or unsupported cases, and neither coordinate is claimed uniquely
+required by CSS. Qualify font versus line metrics, independent zero units versus
+partial shared units and collapsed ranges, exact source/placement admission,
+LTR/RTL, zero-rectangle retention and failure atomicity. No bidi-ordering change
+or browser-number substitution follows from this policy.
+
 ## Numbers, errors and publication
 
 Shared logical geometry uses finite `f64` values. Provider font sizes and shaping glyph geometry remain canonical `f32` where the providers require that precision. Text reports actual canonical glyph positions and advances; widening those values to `f64` is exact. Layout’s adapter converts to its selected scalar at named boundaries: an `f32` layout rounds once, then returns its actual rounded allocation/context to finalization; an `f64` layout retains its values until the provider boundary. Finalizer converts provider-required spacing/positions once using IEEE round-to-nearest, ties-to-even and returns the actual result for fit/placement. No layer uses the unrounded requested value as if it were emitted geometry. Do not infer success from an unchecked `as` cast.

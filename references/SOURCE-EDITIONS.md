@@ -1233,3 +1233,16 @@ two-clause notice. The [Text/Render contract](../docs/text-layout-contract.md#co
 selects the corresponding horizontal translated-contour operation and owns its
 numerical and admission rules. This is an implementation-source determination,
 not a CSS edition change or native CoreText raster-equivalence claim.
+
+## Nonempty formatting-unit Range geometry
+
+The [Blink Range witness](blink-formatting-unit-range--daf70f9ddee4.md) identifies
+bounded rectangle and caret operations at Chromium
+`daf70f9ddee4b45d4f8870f574fbde61c0db4ca7`, corresponding to the executed
+Chrome 149.0.7827.115 probe. It is metadata-only corroboration, without copied
+implementation text or an inferred PDI branch. The pinned CSSOM View edition
+remains unchanged. The [Text range contract](../docs/text-layout-contract.md#nonempty-text-range-fragments)
+selects finalized-position, actual-font-metric rectangles for independently
+retained zero-advance formatting units. This resolves a policy gap while keeping
+the two authenticated RTL browser differences visible under #1450; it does not
+claim that the new query or #860's full consumer has been implemented.

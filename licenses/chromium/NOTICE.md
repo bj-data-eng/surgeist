@@ -2,6 +2,19 @@
 
 Upstream projects: [Chromium](https://www.chromium.org/) and [Blink](https://www.chromium.org/blink/).
 
+## Formatting-unit Range reference
+
+The [metadata-only Range witness](../../references/blink-formatting-unit-range--daf70f9ddee4.md)
+identifies `fragment_item.cc` at Chromium
+`daf70f9ddee4b45d4f8870f574fbde61c0db4ca7`, copyright 2019 The Chromium Authors.
+It retains source identity, bounded locators and a factual synopsis, without
+redistributing code excerpts or compiling the source. Its BSD-style project
+license refers to the pinned root [LICENSE](LICENSE.txt), copyright 2015
+The Chromium Authors. The retrieved 1,536-byte root license is byte-identical
+to this existing file, SHA-256
+`368cca1106be99d39ecd32a38d8305585d802a475effb66380b91ffc9bcf709b`;
+no different license text or project-license change is introduced.
+
 ## HTML dimension-list cursor witness
 
 The [dimension-list witness](../../references/html-dimension-list-cursor--webkit-73aa6c89e2cb-blink-7984f9d11800.md)
