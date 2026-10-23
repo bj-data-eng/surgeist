@@ -619,6 +619,48 @@ unchanged. Finite fit exclusions cannot be replayed as intrinsic determinations.
 These are integration requirements, not a claim that automatic resource delivery
 or the complete hyphenation contribution is implemented.
 
+### Successive hyphenated lines and intrinsic measurement
+
+Layout consumes the block container's computed `hyphenate-limit-lines` value:
+`no-limit` or a nonnegative integer. The consuming style adapter owns inheritance
+and checked external integer conversion. This is separate from each text cut's
+character minima. The pinned [line-limit clause](../references/css-text-4--WD-css-text-4-20260814--106c5cd086ab.md#hyphenate-line-limits)
+sets the successive-line limit but leaves emergency interaction incompletely
+defined. Surgeist adopts the following native committed-line policy, supported
+by the bounded [WebKit source witness](../references/webkit-text-source-gaps-hyphenation--73aa6c89e2cb.md).
+
+At the start of an actual line, suppress automatic hyphenation when the block's
+committed successive-hyphenated-line count reaches its finite limit. `no-limit`
+does not suppress it. Zero suppresses automatic opportunities immediately while
+retaining eligible manual conditional endings. Update state only when a line is
+committed: a selected genuine hyphenation ending increments the count, including
+manual endings and empty indications; any other ending resets it. A literal
+visible hyphen's ordinary break and an arbitrary unhyphenated emergency break
+are resets. Rejected candidates, float retries and measurements do not commit.
+Keep the block's actual line history across captured text-run boundaries;
+another block's independent line history cannot replace it.
+
+An already permitted exceptional hyphenation ending retains its actual trigger
+and increments the committed count, even at the limit. This grants no new
+exception: an automatic opportunity cannot bypass zero or a reached cap merely
+because it prevents overflow or is called an emergency. Preserve the original
+opportunity inventory, authored text and previously committed lines.
+
+MinContent is a measurement of pieces, not a committed line sequence. With
+`no-limit` or a positive limit, retain the admitted manual partition and eligible
+automatic refinement without reading or mutating the actual counter or creating
+a hypothetical counter. At zero, retain the manual partition but exclude automatic
+refinement. MaxContent remains unbroken. Carry explicit measurement purpose;
+missing available width alone does not identify an intrinsic query. Positive
+finite-fitting suppression cannot be replayed as an intrinsic exclusion.
+
+For the 10px-letter, 10px-indication `as` + SHY + `sociate` example, MinContent is
+50px at limit 1 or `no-limit`, and 70px at zero when no independent breaking
+opportunity applies. MaxContent remains 90px. Query order cannot change these
+measurements or the next actual line's eligibility. These intrinsic and emergency
+rules are explicit Surgeist policy, not a claim of uniquely specified CSS behavior
+or implementation completion.
+
 ### Float encounters inside shared text units
 
 A float remains a Layout-owned box at its original source-order occurrence. It
