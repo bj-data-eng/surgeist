@@ -1,5 +1,6 @@
 //! Functional qualification of the new public phase front.
 
+mod joining_context;
 mod mandatory_breaks;
 
 use super::*;
