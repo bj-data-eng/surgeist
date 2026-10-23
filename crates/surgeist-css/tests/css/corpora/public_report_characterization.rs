@@ -1,14 +1,25 @@
 //! Characterization of public-parser report observables.
 //!
-//! `fixtures/public-report-characterization.tsv` records the clean flag,
-//! retained structure identities, authored declarations and diagnostic tuples
-//! of the public parser. It is not a correctness oracle: a matching row shows
-//! only that observed behavior is unchanged, and rewriting a row is never
-//! evidence that a behavior change is right. Rows whose behavior was
-//! reconciled with the specifications are retired from the fixture in favor of
-//! the spec-cited cases in `report_expectations.rs`. Typed value expectations
-//! below are handwritten from each row's authored value and cite their
-//! specification basis.
+//! `fixtures/public-report-characterization.tsv` is the characterization
+//! golden file, captured from the crate's own output by `characterization`.
+//! Its report cases (ids under `catalog.` and `focused.`) record the clean
+//! flag, retained structure identities, authored declarations and diagnostic
+//! tuples of the sheet and style-attribute fronts in the first eight columns;
+//! this module reads those columns. It is not a correctness oracle: a matching
+//! row shows only that observed behavior is unchanged, and re-capturing a row
+//! is never evidence that a behavior change is right. Rows whose behavior was
+//! reconciled with the specifications are retired from the report case table
+//! in favor of the spec-cited cases in `report_expectations.rs`. Typed value
+//! expectations below are handwritten from each row's authored value and cite
+//! their specification basis.
+//!
+//! The value capability in `authored_declarations` (`public` or `typed-value`)
+//! is this harness's classification of how a test reads the value, not a
+//! product contract: the capture writes `typed-value` for every typed known
+//! property value, `public` for custom and substitution-dependent slices.
+//! Letter-spacing and the two list-style samples were relabelled from `public`
+//! to `typed-value` when the file became captured; their values and typed
+//! checks are unchanged.
 
 use std::collections::BTreeSet;
 
@@ -43,8 +54,8 @@ const FIXTURE: &str = include_str!("../../fixtures/public-report-characterizatio
 // Lists 3 accepts functional symbols() styles and positional-keyword custom
 // style names after the position slot is filled.
 // https://www.w3.org/TR/2020/WD-css-lists-3-20201117/#propdef-list-style
-const HEADER: &str =
-    "case_id\tentry\tfeature\tinput\tclean\tretained\tauthored_declarations\tdiagnostics";
+const HEADER: &str = "case_id\tentry\tfeature\tinput\tclean\tretained\tauthored_declarations\tdiagnostics\targument\tshape\tspecified\tcssom\tcharges\tfacts";
+const COLUMNS: usize = 14;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct Row {
@@ -56,12 +67,15 @@ struct Row {
     retained: String,
     authored_declarations: String,
     diagnostics: String,
+    /// The characterization columns after the report columns; this module
+    /// carries them unchanged.
+    characterization: [String; COLUMNS - 8],
 }
 
 impl Row {
-    fn fields(&self) -> [&str; 8] {
-        [
-            &self.case_id,
+    fn fields(&self) -> Vec<&str> {
+        let mut fields = vec![
+            self.case_id.as_str(),
             &self.entry,
             &self.feature,
             &self.input,
@@ -69,7 +83,15 @@ impl Row {
             &self.retained,
             &self.authored_declarations,
             &self.diagnostics,
-        ]
+        ];
+        fields.extend(self.characterization.iter().map(String::as_str));
+        fields
+    }
+
+    /// A sheet or style-attribute report case, as opposed to the other
+    /// characterization fronts sharing the golden file.
+    fn is_report_case(&self) -> bool {
+        self.case_id.starts_with("catalog.") || self.case_id.starts_with("focused.")
     }
 }
 
@@ -87,9 +109,9 @@ fn parse_fixture(source: &str) -> Result<Vec<Row>, String> {
             return Err(format!("blank row at fixture line {}", line_index + 2));
         }
         let raw = line.split('\t').collect::<Vec<_>>();
-        if raw.len() != 8 {
+        if raw.len() != COLUMNS {
             return Err(format!(
-                "fixture line {} has {} columns, expected 8",
+                "fixture line {} has {} columns, expected {COLUMNS}",
                 line_index + 2,
                 raw.len()
             ));
@@ -117,6 +139,7 @@ fn parse_fixture(source: &str) -> Result<Vec<Row>, String> {
             retained: fields[5].clone(),
             authored_declarations: fields[6].clone(),
             diagnostics: fields[7].clone(),
+            characterization: std::array::from_fn(|index| fields[8 + index].clone()),
         };
         if !ids.insert(row.case_id.clone()) {
             return Err(format!("duplicate case ID `{}`", row.case_id));
@@ -128,6 +151,10 @@ fn parse_fixture(source: &str) -> Result<Vec<Row>, String> {
                 "noncanonical case order: `{}` before `{}`",
                 previous.case_id, row.case_id
             ));
+        }
+        if !row.is_report_case() {
+            rows.push(row);
+            continue;
         }
         match row.entry.as_str() {
             "sheet" | "style" => {}
@@ -725,7 +752,7 @@ fn unescape(field: &str) -> Result<String, String> {
 #[test]
 fn authored_css_cases_match_selected_public_report_observables() {
     let rows = parse_fixture(FIXTURE).expect("valid observable fixture");
-    for row in rows {
+    for row in rows.into_iter().filter(Row::is_report_case) {
         let actual = observe(&row);
         assert_eq!(actual.clean, row.clean, "{} clean report", row.case_id);
         assert_eq!(
@@ -1041,7 +1068,11 @@ fn omitted_recovery_diagnostic_changes_the_public_report_observable() {
 }
 
 fn render_row(row: &Row) -> String {
-    row.fields().map(escape).join("\t")
+    row.fields()
+        .into_iter()
+        .map(escape)
+        .collect::<Vec<_>>()
+        .join("\t")
 }
 
 fn escape(field: &str) -> String {
@@ -2141,7 +2172,7 @@ fn assert_known_property_value(
             surgeist_css::CssKnownPropertyValueRef::ListStyleType(value),
         ) if frozen.case_id == "catalog.property.baseline.property.list-style-type.boundary" => {
             assert_eq!(authored.id, property.stable_id());
-            assert_eq!(authored.value_capability, "public");
+            assert_eq!(authored.value_capability, "typed-value");
             assert_eq!(authored.value, "symbols(cyclic \"*\" \"+\")");
             assert_eq!(value.as_css(), authored.value);
 
@@ -2160,7 +2191,7 @@ fn assert_known_property_value(
             surgeist_css::CssKnownPropertyValueRef::ListStyle(value),
         ) if frozen.case_id == "catalog.property.baseline.property.list-style.boundary" => {
             assert_eq!(authored.id, property.stable_id());
-            assert_eq!(authored.value_capability, "public");
+            assert_eq!(authored.value_capability, "typed-value");
             assert_eq!(authored.value, "inside outside");
             assert_eq!(value.as_css(), authored.value);
             assert_eq!(
@@ -2490,7 +2521,7 @@ fn assert_known_property_value(
                 CssComponentValueRef, CssTextSpacingAdjustment, CssValueOrigin, CssValueTokenRef,
             };
             assert_eq!(authored.id, property.stable_id());
-            assert_eq!(authored.value_capability, "public");
+            assert_eq!(authored.value_capability, "typed-value");
             assert_eq!(authored.value, "0.1em");
             assert_eq!(value.as_css(), "0.1em");
 
