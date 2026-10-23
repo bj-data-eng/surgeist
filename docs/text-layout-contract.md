@@ -186,7 +186,12 @@ the complete operation before any finalized result is published.
 
 For computed characters, derive joining behavior from the actual selected
 presentation; original contributions retain their independently determined source
-joining decisions. This is the adopted Surgeist policy for admitted computed
+joining decisions. The computed channel's Unicode context is the complete emitted
+selected-line presentation within its genuine context barriers. It includes
+selected characters in other font or metric runs and excludes unselected source
+outside that line. Font and instance boundaries constrain joint substitution and
+positioning without introducing Unicode joining-context barriers.
+This is the adopted Surgeist policy for admitted computed
 replacements, rather than a CSS-prescribed algorithm for arbitrary strings.
 Preserved joining decisions do not require identical glyph IDs when legitimate
 contextual substitutions or ligatures change the emitted glyphs. Qualification
