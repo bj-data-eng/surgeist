@@ -31,6 +31,7 @@ mod supplied_line;
 mod system;
 mod text;
 mod views;
+mod wrapping;
 
 #[cfg(feature = "text-accessibility")]
 pub use accessibility::Accessibility;
@@ -81,15 +82,16 @@ pub use protocol::readback::{
 };
 pub use protocol::{
     AtomicAllocation, AtomicBoxAllocation, AtomicFlowAllocation, AtomicLineAllocation,
-    AtomicPlacement, AtomicSlotFeedback, ControlAllocation, ControlStrut, FinalizedFragment,
-    FinalizedLine, HangingContext, LineAnchor, LineBoxAlignment, LineContext, LineEnd,
-    LineFeedback, LineOrientation, LinePlacement, LineSelectionRequest, LineStart, LineStrut,
-    ParagraphBaseDirection, ParagraphInput, PlacementCoverage, PlacementRequest,
+    AtomicPlacement, AtomicSlotFeedback, ConditionalPurpose, ControlAllocation, ControlStrut,
+    FinalizedFragment, FinalizedLine, HangingContext, LineAnchor, LineBoxAlignment, LineContext,
+    LineEnd, LineFeedback, LineOrientation, LinePlacement, LineSelectionRequest, LineStart,
+    LineStrut, ParagraphBaseDirection, ParagraphInput, PlacementCoverage, PlacementRequest,
     PreparationOptions, PreparedAlternative, PreparedAtomic, PreparedBoundary, PreparedBreakKind,
-    PreparedControl, PreparedOpportunity, PreparedOrigin, PreparedParticipant, PreparedText,
-    PreparedUnit, PresentationRange, ProtocolContextField, ProtocolError, ProtocolHandleKind,
-    SelectedLine, SpacingAllocation, SpacingAllocations, SpacingPolicy, SpacingSlot,
-    SpacingSlotDisposition, SpacingSlotFeedback, SpacingSlotOwner, TabContext,
+    PreparedConditionalOpportunity, PreparedControl, PreparedOpportunity, PreparedOrigin,
+    PreparedParticipant, PreparedTermination, PreparedText, PreparedUnit, PresentationRange,
+    ProtocolContextField, ProtocolError, ProtocolHandleKind, SelectedLine, SpacingAllocation,
+    SpacingAllocations, SpacingPolicy, SpacingSlot, SpacingSlotDisposition, SpacingSlotFeedback,
+    SpacingSlotOwner, TabContext,
 };
 pub use range::{Range, SourcePosition, SourceRange};
 pub use source_model::{
@@ -112,12 +114,17 @@ pub use supplied_line::{
 pub use system::{Builder, System, SystemOptions};
 pub use text::Text;
 pub use views::{GlyphPlacement, RunView};
+pub use wrapping::{
+    AnalyzedWrappingRelation, AnalyzedWrappingRelationView, WrappingNeighbor, WrappingPolicy,
+};
 
 #[cfg(test)]
 mod tests;
 
 #[cfg(test)]
 mod test_fonts;
+#[cfg(test)]
+mod test_wrapping;
 
 #[cfg(test)]
 #[path = "test_fonts/shaping.rs"]

@@ -1315,7 +1315,7 @@ mod tests {
                 start: prepared.boundary_views().next().unwrap().handle(),
                 end: termination.view().boundary(),
                 participants: prepared.participants().collect(),
-                termination,
+                termination: crate::PreparedTermination::Ordinary(termination),
                 alternative: None,
                 context: LineContext {
                     base_direction: ParagraphBaseDirection::LeftToRight,

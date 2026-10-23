@@ -94,6 +94,17 @@ fn interleaved_float_keeps_one_paragraph_for_paint_cursor_and_accessibility() {
         anchor_order: vec![],
     })
     .unwrap();
+    // Both text origins are direct children of Tree's one block. The float is
+    // outside their influencing pair; retain the existing connection policy.
+    let policies = analyzed
+        .wrapping_relations()
+        .filter(|relation| relation.ancestor_wrap().is_none())
+        .map(|relation| text::WrappingPolicy {
+            relation: relation.handle(),
+            ancestor_wrap: style.wrap,
+        })
+        .collect();
+    let analyzed = analyzed.with_wrapping_policies(policies).unwrap();
     let prepared = system
         .prepare(&analyzed, text::PreparationOptions::default())
         .unwrap();

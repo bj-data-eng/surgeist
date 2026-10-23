@@ -129,25 +129,31 @@ fn select(
             }));
         }
     }
-    require_prepared(
-        prepared,
-        &request.termination.prepared,
-        ProtocolHandleKind::Opportunity,
-        request.termination.index,
-    )?;
-    let opportunity = tables
-        .opportunities
-        .get(request.termination.index)
-        .ok_or_else(|| {
-            protocol_error(ProtocolError::IllegalOpportunity {
-                opportunity: request.termination.index,
-            })
-        })?;
-    if opportunity.boundary != request.end.index {
-        return Err(protocol_error(ProtocolError::IllegalOpportunity {
-            opportunity: request.termination.index,
-        }));
-    }
+    let ordinary = match &request.termination {
+        super::PreparedTermination::Ordinary(termination) => {
+            require_prepared(
+                prepared,
+                &termination.prepared,
+                ProtocolHandleKind::Opportunity,
+                termination.index,
+            )?;
+            let opportunity = tables.opportunities.get(termination.index).ok_or_else(|| {
+                protocol_error(ProtocolError::IllegalOpportunity {
+                    opportunity: termination.index,
+                })
+            })?;
+            if opportunity.boundary != request.end.index {
+                return Err(protocol_error(ProtocolError::IllegalOpportunity {
+                    opportunity: termination.index,
+                }));
+            }
+            Some((termination.index, opportunity))
+        }
+        super::PreparedTermination::Conditional(termination) => {
+            termination.validate(prepared, &request)?;
+            None
+        }
+    };
     // Opportunities are issued in mixed-boundary order. A mandatory break
     // consumed by this interval must be its actual termination, even when a
     // paragraph-end opportunity shares that final boundary. Breaks at start
@@ -162,19 +168,25 @@ fn select(
         .skip(first)
         .take_while(|(_, row)| tables.boundaries[row.boundary].participant <= end.participant)
         .find(|(_, row)| row.kind == PreparedBreakKind::Forced)
-        .is_some_and(|(index, _)| index != request.termination.index)
+        .is_some_and(|(index, _)| ordinary.is_none_or(|(actual, _)| index != actual))
     {
-        return Err(protocol_error(ProtocolError::IllegalOpportunity {
-            opportunity: request.termination.index,
+        return Err(protocol_error(match ordinary {
+            Some((opportunity, _)) => ProtocolError::IllegalOpportunity { opportunity },
+            None => ProtocolError::InvalidConditionalSelection {
+                start: request.start.index,
+                end: request.end.index,
+            },
         }));
     }
-    if start.participant == end.participant && opportunity.kind != PreparedBreakKind::ParagraphEnd {
+    if start.participant == end.participant
+        && ordinary.is_none_or(|(_, row)| row.kind != PreparedBreakKind::ParagraphEnd)
+    {
         return Err(bounds_error());
     }
-    let actual_end = match opportunity.kind {
-        PreparedBreakKind::Allowed | PreparedBreakKind::Discretionary => LineEnd::Soft,
-        PreparedBreakKind::Forced => LineEnd::Forced,
-        PreparedBreakKind::ParagraphEnd => LineEnd::Paragraph,
+    let actual_end = match ordinary.map(|(_, row)| row.kind) {
+        None | Some(PreparedBreakKind::Allowed | PreparedBreakKind::Discretionary) => LineEnd::Soft,
+        Some(PreparedBreakKind::Forced) => LineEnd::Forced,
+        Some(PreparedBreakKind::ParagraphEnd) => LineEnd::Paragraph,
     };
     if request.context.end != actual_end {
         return Err(protocol_error(ProtocolError::MismatchedContext {
@@ -191,12 +203,17 @@ fn select(
             field: ProtocolContextField::LineStart,
         }));
     }
-    if opportunity.kind == PreparedBreakKind::Discretionary && request.alternative.is_none() {
+    if let Some((index, opportunity)) = ordinary
+        && opportunity.kind == PreparedBreakKind::Discretionary
+        && request.alternative.is_none()
+    {
         return Err(protocol_error(ProtocolError::MissingAlternative {
-            opportunity: request.termination.index,
+            opportunity: index,
         }));
     }
-    if let Some(alternative) = &request.alternative {
+    if let Some(alternative) = &request.alternative
+        && let Some((index, opportunity)) = ordinary
+    {
         require_prepared(
             prepared,
             &alternative.prepared,
@@ -207,11 +224,11 @@ fn select(
             || tables
                 .alternatives
                 .get(alternative.index)
-                .is_none_or(|row| row.opportunity != request.termination.index)
+                .is_none_or(|row| row.opportunity != index)
         {
             return Err(protocol_error(ProtocolError::ForeignAlternative {
                 alternative: alternative.index,
-                opportunity: request.termination.index,
+                opportunity: index,
             }));
         }
     }
@@ -582,10 +599,10 @@ pub(crate) fn lower_standalone(
             index: end,
         },
         participants,
-        termination: PreparedOpportunity {
+        termination: super::PreparedTermination::Ordinary(PreparedOpportunity {
             prepared: Arc::clone(&prepared),
             index: termination,
-        },
+        }),
         alternative: None,
         context: LineContext {
             base_direction: if prepared.analyzed.analysis.base_level & 1 == 0 {

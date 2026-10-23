@@ -596,7 +596,7 @@ fn native_fractional_expansion_keeps_three_words_inside_the_actual_f64_band() {
         .handle();
     let mut proposed = first.selected_line().request().clone();
     proposed.end = end;
-    proposed.termination = termination;
+    proposed.termination = surgeist_text::PreparedTermination::Ordinary(termination);
     proposed.participants = paragraph.prepared.participants().take(6).collect();
     let selected = paragraph.prepared.select(proposed).unwrap();
     let natural = selected

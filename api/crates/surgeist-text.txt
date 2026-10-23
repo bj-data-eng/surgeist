@@ -24,6 +24,9 @@ pub surgeist_text::BaselineShiftFact::Requested(surgeist_text::BaselineShift)
 pub enum surgeist_text::BidiLevelError
 pub surgeist_text::BidiLevelError::OutOfRange
 pub surgeist_text::BidiLevelError::OutOfRange::level: u8
+pub enum surgeist_text::ConditionalPurpose
+pub surgeist_text::ConditionalPurpose::MinContent
+pub surgeist_text::ConditionalPurpose::Overflow
 pub enum surgeist_text::DecorationBrush
 pub surgeist_text::DecorationBrush::Color(surgeist_text::Brush)
 pub surgeist_text::DecorationBrush::TextColor
@@ -416,6 +419,9 @@ pub enum surgeist_text::PreparedParticipant
 pub surgeist_text::PreparedParticipant::Atomic(surgeist_text::PreparedAtomic)
 pub surgeist_text::PreparedParticipant::Control(surgeist_text::PreparedControl)
 pub surgeist_text::PreparedParticipant::Text(surgeist_text::PreparedUnit)
+pub enum surgeist_text::PreparedTermination
+pub surgeist_text::PreparedTermination::Conditional(surgeist_text::PreparedConditionalOpportunity)
+pub surgeist_text::PreparedTermination::Ordinary(surgeist_text::PreparedOpportunity)
 pub enum surgeist_text::PresentationMappingKind
 pub surgeist_text::PresentationMappingKind::Deleted
 pub surgeist_text::PresentationMappingKind::Replacement
@@ -438,6 +444,8 @@ pub surgeist_text::ProtocolError::AmbiguousSourcePosition::index: usize
 pub surgeist_text::ProtocolError::AtomicPlacementMismatch
 pub surgeist_text::ProtocolError::AtomicPlacementMismatch::line: usize
 pub surgeist_text::ProtocolError::AtomicPlacementMismatch::occurrence: usize
+pub surgeist_text::ProtocolError::ConflictingWrappingPolicy
+pub surgeist_text::ProtocolError::ConflictingWrappingPolicy::relation: usize
 pub surgeist_text::ProtocolError::DuplicateAtomic
 pub surgeist_text::ProtocolError::DuplicateAtomic::occurrence: usize
 pub surgeist_text::ProtocolError::DuplicateControl
@@ -446,6 +454,8 @@ pub surgeist_text::ProtocolError::DuplicateLine
 pub surgeist_text::ProtocolError::DuplicateLine::line: usize
 pub surgeist_text::ProtocolError::DuplicateSpacingSlot
 pub surgeist_text::ProtocolError::DuplicateSpacingSlot::slot: usize
+pub surgeist_text::ProtocolError::DuplicateWrappingPolicy
+pub surgeist_text::ProtocolError::DuplicateWrappingPolicy::relation: usize
 pub surgeist_text::ProtocolError::EmptyPlacement
 pub surgeist_text::ProtocolError::ForeignAlternative
 pub surgeist_text::ProtocolError::ForeignAlternative::alternative: usize
@@ -457,6 +467,8 @@ pub surgeist_text::ProtocolError::ForeignPreparation
 pub surgeist_text::ProtocolError::ForeignPreparation::kind: surgeist_text::ProtocolHandleKind
 pub surgeist_text::ProtocolError::ForeignPreparation::occurrence: usize
 pub surgeist_text::ProtocolError::ForeignSelectedLine
+pub surgeist_text::ProtocolError::ForeignWrappingRelation
+pub surgeist_text::ProtocolError::ForeignWrappingRelation::relation: usize
 pub surgeist_text::ProtocolError::IllegalOpportunity
 pub surgeist_text::ProtocolError::IllegalOpportunity::opportunity: usize
 pub surgeist_text::ProtocolError::IncompleteLineCoverage
@@ -479,6 +491,17 @@ pub surgeist_text::ProtocolError::InvalidBoundaryRange
 pub surgeist_text::ProtocolError::InvalidBoundaryRange::end: usize
 pub surgeist_text::ProtocolError::InvalidBoundaryRange::participants: usize
 pub surgeist_text::ProtocolError::InvalidBoundaryRange::start: usize
+pub surgeist_text::ProtocolError::InvalidConditionalContext
+pub surgeist_text::ProtocolError::InvalidConditionalContext::purpose: surgeist_text::ConditionalPurpose
+pub surgeist_text::ProtocolError::InvalidConditionalQuery
+pub surgeist_text::ProtocolError::InvalidConditionalQuery::ceiling: usize
+pub surgeist_text::ProtocolError::InvalidConditionalQuery::start: usize
+pub surgeist_text::ProtocolError::InvalidConditionalReceipt
+pub surgeist_text::ProtocolError::InvalidConditionalReceipt::opportunity: usize
+pub surgeist_text::ProtocolError::InvalidConditionalReceipt::receipt: usize
+pub surgeist_text::ProtocolError::InvalidConditionalSelection
+pub surgeist_text::ProtocolError::InvalidConditionalSelection::end: usize
+pub surgeist_text::ProtocolError::InvalidConditionalSelection::start: usize
 pub surgeist_text::ProtocolError::InvalidConnection
 pub surgeist_text::ProtocolError::InvalidConnection::at: usize
 pub surgeist_text::ProtocolError::InvalidConnection::connection: usize
@@ -516,6 +539,8 @@ pub surgeist_text::ProtocolError::MissingControl::occurrence: usize
 pub surgeist_text::ProtocolError::MissingLineMetrics
 pub surgeist_text::ProtocolError::MissingSpacingSlot
 pub surgeist_text::ProtocolError::MissingSpacingSlot::slot: usize
+pub surgeist_text::ProtocolError::MissingWrappingPolicy
+pub surgeist_text::ProtocolError::MissingWrappingPolicy::relation: usize
 pub surgeist_text::ProtocolError::OriginTextMismatch
 pub surgeist_text::ProtocolError::OriginTextMismatch::aggregate: usize
 pub surgeist_text::ProtocolError::OriginTextMismatch::local: usize
@@ -526,6 +551,9 @@ pub surgeist_text::ProtocolError::OutsidePlacement::coverage: surgeist_text::Ran
 pub surgeist_text::ProtocolError::OutsidePlacement::index: usize
 pub surgeist_text::ProtocolError::ParticipantMismatch
 pub surgeist_text::ProtocolError::ParticipantMismatch::position: usize
+pub surgeist_text::ProtocolError::RetainedConditionalPrefix
+pub surgeist_text::ProtocolError::RetainedConditionalPrefix::alternative: core::option::Option<usize>
+pub surgeist_text::ProtocolError::RetainedConditionalPrefix::opportunity: usize
 pub surgeist_text::ProtocolError::UnexpectedAtomic
 pub surgeist_text::ProtocolError::UnexpectedAtomic::occurrence: usize
 pub surgeist_text::ProtocolError::UnexpectedControl
@@ -533,10 +561,12 @@ pub surgeist_text::ProtocolError::UnexpectedControl::occurrence: usize
 pub surgeist_text::ProtocolError::UnsupportedContext
 pub surgeist_text::ProtocolError::UnsupportedContext::field: surgeist_text::ProtocolContextField
 pub surgeist_text::ProtocolError::UnsupportedStandaloneAnalysis
+pub surgeist_text::ProtocolError::UnsupportedWrappingAnalysis
 pub enum surgeist_text::ProtocolHandleKind
 pub surgeist_text::ProtocolHandleKind::Alternative
 pub surgeist_text::ProtocolHandleKind::Atomic
 pub surgeist_text::ProtocolHandleKind::Boundary
+pub surgeist_text::ProtocolHandleKind::ConditionalOpportunity
 pub surgeist_text::ProtocolHandleKind::Control
 pub surgeist_text::ProtocolHandleKind::Fragment
 pub surgeist_text::ProtocolHandleKind::Opportunity
@@ -794,6 +824,12 @@ pub surgeist_text::WordBreak::Normal
 pub enum surgeist_text::Wrap
 pub surgeist_text::Wrap::None
 pub surgeist_text::Wrap::Word
+pub enum surgeist_text::WrappingNeighbor
+pub surgeist_text::WrappingNeighbor::Atomic
+pub surgeist_text::WrappingNeighbor::Atomic::occurrence: usize
+pub surgeist_text::WrappingNeighbor::Text
+pub surgeist_text::WrappingNeighbor::Text::local: surgeist_text::Range
+pub surgeist_text::WrappingNeighbor::Text::origin: usize
 pub struct surgeist_text::AnalysisIdentity
 impl core::cmp::Eq for surgeist_text::AnalysisIdentity
 impl core::cmp::PartialEq for surgeist_text::AnalysisIdentity
@@ -816,8 +852,25 @@ impl surgeist_text::AnalyzedSource
 pub fn surgeist_text::AnalyzedSource::from_paragraph(input: surgeist_text::ParagraphInput) -> surgeist_text::Result<Self>
 impl surgeist_text::AnalyzedSource
 pub fn surgeist_text::AnalyzedSource::from_processed_paragraph(paragraph: surgeist_text::ProcessedParagraph) -> surgeist_text::Result<Self>
+impl surgeist_text::AnalyzedSource
+pub fn surgeist_text::AnalyzedSource::with_wrapping_policies(&self, policies: alloc::vec::Vec<surgeist_text::WrappingPolicy>) -> surgeist_text::Result<Self>
+pub fn surgeist_text::AnalyzedSource::wrapping_relations(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::AnalyzedWrappingRelationView<'_>>
 impl core::fmt::Debug for surgeist_text::AnalyzedSource
 pub fn surgeist_text::AnalyzedSource::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_text::AnalyzedWrappingRelation
+impl core::cmp::Eq for surgeist_text::AnalyzedWrappingRelation
+impl core::cmp::PartialEq for surgeist_text::AnalyzedWrappingRelation
+pub fn surgeist_text::AnalyzedWrappingRelation::eq(&self, other: &Self) -> bool
+impl core::fmt::Debug for surgeist_text::AnalyzedWrappingRelation
+pub fn surgeist_text::AnalyzedWrappingRelation::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for surgeist_text::AnalyzedWrappingRelation
+pub fn surgeist_text::AnalyzedWrappingRelation::hash<H: core::hash::Hasher>(&self, state: &mut H)
+pub struct surgeist_text::AnalyzedWrappingRelationView<'a>
+impl surgeist_text::AnalyzedWrappingRelationView<'_>
+pub fn surgeist_text::AnalyzedWrappingRelationView<'_>::after(&self) -> surgeist_text::WrappingNeighbor
+pub fn surgeist_text::AnalyzedWrappingRelationView<'_>::ancestor_wrap(&self) -> core::option::Option<surgeist_text::Wrap>
+pub fn surgeist_text::AnalyzedWrappingRelationView<'_>::before(&self) -> surgeist_text::WrappingNeighbor
+pub fn surgeist_text::AnalyzedWrappingRelationView<'_>::handle(&self) -> surgeist_text::AnalyzedWrappingRelation
 pub struct surgeist_text::AtomicAllocation
 pub surgeist_text::AtomicAllocation::allocation: surgeist_text::AtomicLineAllocation
 pub surgeist_text::AtomicAllocation::occurrence: surgeist_text::PreparedAtomic
@@ -1270,7 +1323,7 @@ pub surgeist_text::LineSelectionRequest::end: surgeist_text::PreparedBoundary
 pub surgeist_text::LineSelectionRequest::line_strut: core::option::Option<surgeist_text::LineStrut>
 pub surgeist_text::LineSelectionRequest::participants: alloc::vec::Vec<surgeist_text::PreparedParticipant>
 pub surgeist_text::LineSelectionRequest::start: surgeist_text::PreparedBoundary
-pub surgeist_text::LineSelectionRequest::termination: surgeist_text::PreparedOpportunity
+pub surgeist_text::LineSelectionRequest::termination: surgeist_text::PreparedTermination
 pub struct surgeist_text::LineStrut
 pub surgeist_text::LineStrut::baseline: f64
 pub surgeist_text::LineStrut::line_extent: f64
@@ -1454,6 +1507,18 @@ pub fn surgeist_text::PreparedBoundaryView<'_>::source_after(&self) -> surgeist_
 pub fn surgeist_text::PreparedBoundaryView<'_>::source_before(&self) -> surgeist_text::SourcePosition
 impl core::fmt::Debug for surgeist_text::PreparedBoundaryView<'_>
 pub fn surgeist_text::PreparedBoundaryView<'_>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_text::PreparedConditionalOpportunity
+impl surgeist_text::PreparedConditionalOpportunity
+pub fn surgeist_text::PreparedConditionalOpportunity::boundary(&self) -> surgeist_text::PreparedBoundary
+pub fn surgeist_text::PreparedConditionalOpportunity::ceiling(&self) -> surgeist_text::PreparedOpportunity
+pub fn surgeist_text::PreparedConditionalOpportunity::prepared_text(&self) -> surgeist_text::PreparedText
+pub fn surgeist_text::PreparedConditionalOpportunity::purpose(&self) -> surgeist_text::ConditionalPurpose
+pub fn surgeist_text::PreparedConditionalOpportunity::start(&self) -> surgeist_text::PreparedBoundary
+impl core::cmp::Eq for surgeist_text::PreparedConditionalOpportunity
+impl core::cmp::PartialEq for surgeist_text::PreparedConditionalOpportunity
+pub fn surgeist_text::PreparedConditionalOpportunity::eq(&self, other: &Self) -> bool
+impl core::hash::Hash for surgeist_text::PreparedConditionalOpportunity
+pub fn surgeist_text::PreparedConditionalOpportunity::hash<H: core::hash::Hasher>(&self, state: &mut H)
 pub struct surgeist_text::PreparedControl
 impl surgeist_text::PreparedControl
 pub fn surgeist_text::PreparedControl::prepared_text(&self) -> surgeist_text::PreparedText
@@ -1539,6 +1604,8 @@ pub fn surgeist_text::PreparedText::unit_views(&self) -> impl core::iter::traits
 impl surgeist_text::PreparedText
 pub fn surgeist_text::PreparedText::analyzed_source(&self) -> surgeist_text::AnalyzedSource
 pub fn surgeist_text::PreparedText::font_catalogue_identity(&self) -> &surgeist_text::FontCatalogueIdentity
+impl surgeist_text::PreparedText
+pub fn surgeist_text::PreparedText::conditional_opportunities(&self, start: &surgeist_text::PreparedBoundary, ceiling: &surgeist_text::PreparedOpportunity, purpose: surgeist_text::ConditionalPurpose, skipped_ordinary: &[surgeist_text::FinalizedLine]) -> surgeist_text::Result<alloc::vec::Vec<surgeist_text::PreparedConditionalOpportunity>>
 impl surgeist_text::PreparedText
 pub fn surgeist_text::PreparedText::select(&self, request: surgeist_text::LineSelectionRequest) -> surgeist_text::Result<surgeist_text::SelectedLine>
 impl core::cmp::Eq for surgeist_text::PreparedText
@@ -1959,6 +2026,9 @@ pub struct surgeist_text::WhiteSpaceTrim
 pub surgeist_text::WhiteSpaceTrim::discard_after: bool
 pub surgeist_text::WhiteSpaceTrim::discard_before: bool
 pub surgeist_text::WhiteSpaceTrim::discard_inner: bool
+pub struct surgeist_text::WrappingPolicy
+pub surgeist_text::WrappingPolicy::ancestor_wrap: surgeist_text::Wrap
+pub surgeist_text::WrappingPolicy::relation: surgeist_text::AnalyzedWrappingRelation
 pub fn surgeist_text::compose() -> surgeist_text::Composer
 pub fn surgeist_text::process_contextual_source(input: surgeist_text::ContextualSourceInput) -> surgeist_text::Result<surgeist_text::ProcessedSource>
 pub fn surgeist_text::process_source_whitespace(source: surgeist_text::Source, base_style: surgeist_text::Style, segment_breaks: surgeist_text::DocumentSegmentBreaks) -> surgeist_text::Result<surgeist_text::ProcessedSource>

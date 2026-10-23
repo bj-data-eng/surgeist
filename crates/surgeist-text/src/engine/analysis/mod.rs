@@ -4,6 +4,7 @@
 // separate segmentation input, usize indices, and occurrence-backed atomics.
 
 pub(crate) mod cluster;
+pub(crate) mod wrapping;
 
 use std::ops::Range;
 

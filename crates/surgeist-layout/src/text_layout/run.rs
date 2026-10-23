@@ -85,8 +85,9 @@ pub(crate) struct Output<Node, S: LayoutScalar> {
 
 /// One invocation's coupled line-band and source-event transitions. Each
 /// callback borrows the same actual provisional session, never a public root.
-pub(crate) struct LineEnvironment<Band, Clear, Replay, Accept> {
+pub(crate) struct LineEnvironment<Band, Clear, Replay, Accept, Reset> {
     pub band: Band,
+    pub reset: Reset,
     pub clear: Clear,
     pub replay: Replay,
     pub accept: Accept,
@@ -103,10 +104,12 @@ pub(crate) fn layout<Node: Copy + Eq, S: LayoutScalar>(
         impl FnMut(f64, &surgeist_text::LineSelectionRequest) -> Result<Option<f64>, FitError>,
         impl FnMut(&FinalizedLine, fit::EncounterReplay) -> Result<Vec<fit::EncounterBasis>, FitError>,
         impl FnMut() -> Result<(), FitError>,
+        impl FnMut(),
     >,
 ) -> Result<Output<Node, S>, FitError> {
     let LineEnvironment {
         band: band_source,
+        reset: reset_candidate,
         clear: clear_source,
         replay: replay_encounters,
         accept: accept_encounters,
@@ -210,8 +213,11 @@ pub(crate) fn layout<Node: Copy + Eq, S: LayoutScalar>(
             })
         },
         clear_source,
-        replay_encounters,
-        accept_encounters,
+        fit::EncounterCallbacks {
+            replay: replay_encounters,
+            accept: accept_encounters,
+            reset: reset_candidate,
+        },
     )?;
     output(binding, atomics, controls, &context, origin, lines)
 }

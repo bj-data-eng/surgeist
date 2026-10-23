@@ -51,8 +51,12 @@ pub(crate) fn fragment_for(
             })
         },
         |_, _| Ok(None),
-        |_, _| Ok(Vec::new()),
-        || Ok(()),
+        crate::text_layout::fit::EncounterCallbacks {
+            replay: |_: &surgeist_text::FinalizedLine,
+                     _: crate::text_layout::fit::EncounterReplay| Ok(Vec::new()),
+            accept: || Ok(()),
+            reset: || {},
+        },
     )
     .unwrap_or_else(|_| panic!("registered Ahem paragraph finalizes"));
     lines[0]

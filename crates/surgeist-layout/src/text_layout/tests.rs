@@ -210,6 +210,7 @@ fn assert_intrinsic_line_box<S: LayoutScalar>() {
         },
         &[],
         super::run::LineEnvironment {
+            reset: || {},
             band: |_, _| {
                 Ok(super::fit::Band {
                     start: 0.0,

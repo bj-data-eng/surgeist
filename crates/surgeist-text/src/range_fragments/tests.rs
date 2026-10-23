@@ -61,7 +61,10 @@ fn input(
 fn prepare(input: ParagraphInput, bytes: Vec<u8>) -> PreparedText {
     system(bytes)
         .prepare(
-            &AnalyzedSource::from_paragraph(input).unwrap(),
+            &crate::test_wrapping::bind_missing(
+                &AnalyzedSource::from_paragraph(input).unwrap(),
+                crate::Wrap::Word,
+            ),
             PreparationOptions::default(),
         )
         .unwrap()
@@ -94,7 +97,7 @@ fn select(
         .select(LineSelectionRequest {
             start,
             end,
-            termination: termination.clone(),
+            termination: crate::PreparedTermination::Ordinary(termination.clone()),
             alternative,
             participants: parts.clone(),
             atomics: parts

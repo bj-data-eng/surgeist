@@ -175,6 +175,7 @@ fn registered(
     style: surgeist_text::Style,
     direction: ParagraphBaseDirection,
 ) -> TextParagraphBinding<u32> {
+    let ancestor_wrap = style.wrap;
     let source = Source::new(source);
     let length = source.text().len();
     let analyzed = surgeist_text::AnalyzedSource::from_paragraph(surgeist_text::ParagraphInput {
@@ -196,6 +197,7 @@ fn registered(
         anchor_order: vec![],
     })
     .unwrap();
+    let analyzed = crate::test_support::text::in_flat_wrapping_context(analyzed, ancestor_wrap);
     let mut system = surgeist_text::System::new(surgeist_text::SystemOptions {
         font_catalogue: surgeist_text::FontCatalogueMode::RegisteredOnly,
     })
@@ -618,4 +620,85 @@ fn rejected_candidate<S: LayoutScalar>() {
 fn native_later_ordinary_fit_restores_its_own_float_receipt_after_a_rejected_longer_candidate() {
     rejected_candidate::<f32>();
     rejected_candidate::<f64>();
+}
+
+fn raw_minimum<S: LayoutScalar>(overflow: OverflowWrap) -> (f64, Vec<LineFact>) {
+    let mut style = ahem_style(10.0, 10.0);
+    style.overflow_wrap = overflow;
+    let analyzed = surgeist_text::AnalyzedSource::new(Source::new("AAAA"), style).unwrap();
+    let mut system = surgeist_text::System::new(surgeist_text::SystemOptions {
+        font_catalogue: surgeist_text::FontCatalogueMode::RegisteredOnly,
+    })
+    .unwrap();
+    system.register_fonts(AHEM.to_vec()).unwrap();
+    let prepared = system
+        .prepare(&analyzed, surgeist_text::PreparationOptions::default())
+        .unwrap();
+    let origin = prepared.origin_views().next().unwrap().handle();
+    let binding = TextParagraphBinding {
+        prepared: prepared.clone(),
+        container: 0,
+        nodes: vec![1],
+        origins: vec![TextOriginBinding {
+            node: 1,
+            origin: origin.clone(),
+        }],
+        atomics: vec![],
+        controls: vec![],
+        line_strut: None,
+    };
+    let tree = PublicLayoutTreeOf::<S>::new()
+        .children(0, [1])
+        .children(1, [])
+        .style(
+            0,
+            NodeInputOf {
+                display: Display::Block,
+                ..NodeInputOf::default()
+            },
+        )
+        .input(
+            1,
+            LayoutInputOf::inline_text(TextParticipation::new(origin)),
+        );
+    let capture = TextLayoutInput::try_new(&tree, 0, vec![binding]).unwrap();
+    let request = LayoutRootRequestOf::viewport(Size::new(
+        AvailableOf::MIN_CONTENT,
+        AvailableOf::MAX_CONTENT,
+    ))
+    .unwrap();
+    let batch = compute_layout_with_text(&capture, 0, request).unwrap();
+    let width = batch
+        .final_entries()
+        .iter()
+        .find(|row| row.node() == 0)
+        .unwrap()
+        .output()
+        .size
+        .width
+        .to_f64();
+    (width, facts(&batch, &prepared, "AAAA"))
+}
+#[test]
+fn raw_prepared_minimum_keeps_its_characterized_ordinary_overflow_inventory() {
+    // Raw analysis already issues its characterized overflow opportunities;
+    // this is an ordinary-profile control, not the native CSS min-content rule.
+    for overflow in [
+        OverflowWrap::Normal,
+        OverflowWrap::BreakWord,
+        OverflowWrap::Anywhere,
+    ] {
+        let actual = (raw_minimum::<f32>(overflow), raw_minimum::<f64>(overflow));
+        let expected = if overflow == OverflowWrap::Normal {
+            (40.0, vec![line(0, 4, 40.0, 40.0, 0.0, 0.0, false)])
+        } else {
+            (
+                10.0,
+                (0..4)
+                    .map(|i| line(i, i + 1, 10.0, 10.0, 0.0, i as f64 * 10.0, i != 3))
+                    .collect(),
+            )
+        };
+        assert_eq!(actual, (expected.clone(), expected));
+    }
 }

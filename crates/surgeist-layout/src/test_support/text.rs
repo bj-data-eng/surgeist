@@ -30,6 +30,26 @@ pub(crate) fn ahem_style(size: f32, line_height: f64) -> Style {
     }
 }
 
+/// This fixture explicitly authors a flat containing wrapping context. Text
+/// derives the actual survivor pairs; the fixture supplies only missing NCA
+/// facts and preserves any exact relation policy already captured by the input.
+pub(crate) fn in_flat_wrapping_context(
+    analyzed: AnalyzedSource,
+    ancestor_wrap: surgeist_text::Wrap,
+) -> AnalyzedSource {
+    let policies = analyzed
+        .wrapping_relations()
+        .filter(|view| view.ancestor_wrap().is_none())
+        .map(|view| surgeist_text::WrappingPolicy {
+            relation: view.handle(),
+            ancestor_wrap,
+        })
+        .collect();
+    analyzed
+        .with_wrapping_policies(policies)
+        .expect("fixture supplies its actual flat ancestor wrapping context")
+}
+
 /// One actual original tree occurrence in an authored test paragraph.
 pub(crate) enum ParagraphPart {
     Text(Box<ParagraphText>),
@@ -113,6 +133,7 @@ impl PreparedParagraph {
         paragraph_strut: surgeist_text::ParagraphStrut,
         replacements: Vec<surgeist_text::ParagraphReplacement>,
     ) -> Self {
+        let ancestor_wrap = base_style.wrap;
         let mut aggregate = Source::new("");
         let mut origins = Vec::new();
         let mut connections = Vec::new();
@@ -234,6 +255,7 @@ impl PreparedParagraph {
                 .collect(),
         })
         .expect("test supplies complete original paragraph facts");
+        let analyzed = in_flat_wrapping_context(analyzed, ancestor_wrap);
         let mut system = System::new(SystemOptions {
             font_catalogue: FontCatalogueMode::RegisteredOnly,
         })

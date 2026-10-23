@@ -10,6 +10,7 @@ use crate::engine::PreparedData;
 use crate::{Alignment, FontCatalogueIdentity, Point, Range, Rect, Result};
 use selection::SelectedData;
 
+mod conditional;
 pub(crate) mod finalized;
 pub(crate) mod paragraph;
 pub(crate) mod placement;
@@ -18,6 +19,7 @@ pub(crate) mod prepared;
 pub(crate) mod readback;
 pub(crate) mod selection;
 
+pub use conditional::{ConditionalPurpose, PreparedConditionalOpportunity};
 pub use paragraph::{ParagraphBaseDirection, ParagraphInput};
 pub use prepared::PreparedBreakKind;
 
@@ -259,6 +261,13 @@ pub struct LineStrut {
     pub line_extent: f64,
 }
 
+/// An actual ordinary opportunity or an interval-bound conditional capability.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub enum PreparedTermination {
+    Ordinary(PreparedOpportunity),
+    Conditional(PreparedConditionalOpportunity),
+}
+
 /// Complete request; all capabilities and numerical/context facts are checked
 /// together by `PreparedText::select` before a selected result is issued.
 #[derive(Clone, Debug, PartialEq)]
@@ -266,7 +275,7 @@ pub struct LineSelectionRequest {
     pub start: PreparedBoundary,
     pub end: PreparedBoundary,
     pub participants: Vec<PreparedParticipant>,
-    pub termination: PreparedOpportunity,
+    pub termination: PreparedTermination,
     pub alternative: Option<PreparedAlternative>,
     pub context: LineContext,
     pub atomics: Vec<AtomicAllocation>,
@@ -448,6 +457,7 @@ pub enum ProtocolHandleKind {
     Control,
     Boundary,
     Opportunity,
+    ConditionalOpportunity,
     Alternative,
     Fragment,
 }
@@ -527,6 +537,38 @@ pub enum ProtocolError {
     },
     IllegalOpportunity {
         opportunity: usize,
+    },
+    InvalidConditionalQuery {
+        start: usize,
+        ceiling: usize,
+    },
+    InvalidConditionalSelection {
+        start: usize,
+        end: usize,
+    },
+    InvalidConditionalContext {
+        purpose: ConditionalPurpose,
+    },
+    InvalidConditionalReceipt {
+        receipt: usize,
+        opportunity: usize,
+    },
+    RetainedConditionalPrefix {
+        opportunity: usize,
+        alternative: Option<usize>,
+    },
+    UnsupportedWrappingAnalysis,
+    MissingWrappingPolicy {
+        relation: usize,
+    },
+    ForeignWrappingRelation {
+        relation: usize,
+    },
+    DuplicateWrappingPolicy {
+        relation: usize,
+    },
+    ConflictingWrappingPolicy {
+        relation: usize,
     },
     ForeignAlternative {
         alternative: usize,

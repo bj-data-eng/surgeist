@@ -42,7 +42,7 @@ fn selected_end(
         .select(LineSelectionRequest {
             start: prepared.boundary_views().next().unwrap().handle(),
             end,
-            termination: termination.clone(),
+            termination: crate::PreparedTermination::Ordinary(termination.clone()),
             participants,
             alternative,
             context: LineContext {
@@ -128,6 +128,7 @@ fn native(
     system
         .register_fonts(crate::shaping_test_fonts::ligature_ahem())
         .unwrap();
+    let analyzed = crate::test_wrapping::bind_missing(&analyzed, crate::Wrap::Word);
     system
         .prepare(&analyzed, PreparationOptions::default())
         .unwrap()

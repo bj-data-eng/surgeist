@@ -91,14 +91,23 @@ in the same relation consult its permission while retaining their distinct
 occurrence custody. Permission alone creates no EGC opportunity.
 
 The consuming capture producer computes this ancestor permission from its actual
-input model. Text derives the influencing relation after its admitted processing
-and transparency rules, validates the supplied endpoint correspondence, and
-rejects foreign, reversed, non-neighbor or conflicting same-relation declarations.
-Keep one semantic permission owner for text and atomic endpoints. Reuse captured
-occurrence/source identity; do not add a DOM tree or generic style interface to
-Text. If attachment requires Text's processed neighbors, expose only the narrow
-analyzed relation/provenance view needed by the producer. Native fixtures may
-explicitly author these facts without claiming live Style authentication.
+input model. It reads Text's postprocessing neighbor/provenance views through
+`AnalyzedSource::wrapping_relations`, associates the issued relations with its
+original native occurrences, and supplies their actual `WrappingPolicy` values to
+`with_wrapping_policies`. Text validates exact context ownership and the actual
+ordered relation; foreign handles, invalid applicability and conflicting
+same-relation declarations fail. All native boundary-defined permission uses
+one normalized relation owner. Existing incident facts contribute only when they
+provably identify that exact pair; equal style values do not prove ancestry.
+
+Binding returns a new immutable analyzed context and identity while sharing its
+already executed source, projection and Unicode analysis. It does not rerun
+processing or mutate the old context. Clones retain their context identity; a
+changed binding cannot reuse old relation handles, preparation or cache identity.
+Previously issued analyses, preparations and finalized results remain valid for
+their own captured contexts. The producer binds before preparing its composed
+text result. Native fixtures may explicitly author these facts without claiming
+live Style authentication. Text acquires no DOM tree or generic style interface.
 
 If an operation requires a relation permission that the capture cannot establish,
 return a typed missing-relation-wrap capability error for that operation. Do not
@@ -117,6 +126,30 @@ Hard-break precedence belongs to Text’s opportunity inventory under the [pinne
 4. Text finalizes that selection. `FinalizedLine` owns its selected preparation, the applied replacement and processed mapping, final effective font runs/glyphs, actual advances, line-edge/hanging facts, text metrics and outline ink, visual order including atomic placeholders, and caret/selection anchors. It returns line-local geometry. It never chooses a different break or places a box. Finalization applies the selected line's shaping boundaries, bidi line rules and text spacing to one result shared by all consumers.
 5. Layout evaluates the returned metrics against its candidate span, including changes to float intersection caused by actual line height. It can choose another candidate/context and finalize again. After choosing a fitting line it supplies its space allocation and obtains the final geometry; it rechecks any resulting width/height feedback before committing. Preliminary metrics are never silently treated as final.
 6. Layout supplies validated placement of those exact finalized lines, including line/fragment IDs, physical origin, writing-mode basis, baseline and atomic box rectangles, to text's placed-layout constructor. The constructor validates identities, completeness and geometry before returning a placed `Layout`. Painting, hit testing, movement, selection and accessibility consume this placed result. They cannot call a separate paragraph wrapper to recreate it.
+
+An ordinary opportunity and a conditional opportunity are distinct terminating
+capabilities. Conditional enumeration binds the exact preparation, unchanged line
+start, first genuinely formatted ordinary ceiling and purpose. Finite overflow
+fitting uses `Overflow`; unconstrained minimum-content pieces use `MinContent`.
+Maximum-content does not request conditional cuts. Enumeration supplies legal
+cuts, without proving ordinary-search exhaustion or any candidate's actual fit.
+Raw analyses retain their separately characterized ordinary opportunity inventory;
+this operation adds no raw conditional cuts. Common owner and interval validation
+still applies. A consumer does not catch an unsupported-profile error or inspect
+private preparation state to choose a different algorithm.
+
+If earlier ordinary Soft endpoints finalize without retained flow participation,
+Layout may supply their actual `FinalizedLine` receipts to conditional enumeration.
+Text validates complete ordered endpoint and legal-variant coverage from the same
+unconsumed start. A mandatory or paragraph ending cannot be skipped. Zero advance,
+empty ink and font-only metrics do not prove a phantom prefix; retained zero or
+signed content still participates. A meaningful alternative prevents skipping its
+endpoint even if it does not fit. The eventual selection retains every original
+occurrence and revalidates contribution roles and allocation presence against the
+receipts. A control with no strut cannot acquire an allocated strut, including a
+zero strut, under that proof. Numerical geometry may legitimately converge.
+Receipt allocations are proof provenance, not conditional opportunity identity.
+Layout also filters phantom conditional trials before committing a line.
 
 Finalization is deterministic for a preparation and complete selection context. Layout's feedback algorithm visits its finite candidate/context states until it selects a valid state or returns its existing no-fit outcome; revisiting a complete already-rejected candidate/context state is a typed feedback-cycle error (or the formatter’s explicit no-fit failure), even when feedback is identical and even for a cycle through multiple states. A stable fitting state commits; rejected states cannot be retried without a changed input. Do not introduce a magic maximum pass count. Layout must ensure progress in its own float/box algorithm. A no-fit line allowed by applicable overflow semantics remains a deliberate layout outcome, not a text finalizer fallback.
 
@@ -221,9 +254,10 @@ and [overflow-wrap conditions](../references/css-text-4--WD-css-text-4-20260814-
 The corresponding [CSS2.2 rules](https://www.w3.org/TR/CSS22/visuren.html#floats)
 and [current Text4 clause](https://drafts.csswg.org/css-text-4/#overflow-wrap-property)
 do not explicitly order these competing assignments. This is not a claim of a
-universal CSSWG resolution or exact browser-test agreement. The conditional
-operation remains required work; the existing float adapter alone does not
-establish its implementation.
+universal CSSWG resolution or exact browser-test agreement. Native conditional
+fitting uses this ordering for its admitted horizontal capture. Broader
+hyphenation, live producer joins and the full #66/#72 contribution retain their
+separate requirements.
 
 The finite-fit precondition does not gate `anywhere` min-content opportunities
 on failure of an unconstrained ordinary trial. Min-content selects its eligible

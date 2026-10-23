@@ -14,6 +14,7 @@ pub(super) fn paragraph(bytes: Vec<u8>, pieces: &[&str]) -> TextParagraphBinding
         line_height: text::LineHeight::Absolute(16.0),
         ..text::Style::default()
     };
+    let ancestor_wrap = style.wrap;
     let source = text::Source::new(pieces.concat());
     let mut at = 0;
     let origins = pieces
@@ -61,6 +62,7 @@ pub(super) fn paragraph(bytes: Vec<u8>, pieces: &[&str]) -> TextParagraphBinding
         anchor_order: vec![],
     })
     .unwrap();
+    let analyzed = crate::test_support::text::in_flat_wrapping_context(analyzed, ancestor_wrap);
     let mut system = text::System::new(text::SystemOptions {
         font_catalogue: text::FontCatalogueMode::RegisteredOnly,
     })

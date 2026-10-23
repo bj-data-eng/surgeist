@@ -127,7 +127,10 @@ fn native_input(source: Source) -> ParagraphInput {
 fn native_prepare(system: &mut System, input: ParagraphInput) -> PreparedText {
     system
         .prepare(
-            &AnalyzedSource::from_paragraph(input).unwrap(),
+            &crate::test_wrapping::bind_missing(
+                &AnalyzedSource::from_paragraph(input).unwrap(),
+                crate::Wrap::Word,
+            ),
             PreparationOptions::default(),
         )
         .unwrap()
@@ -185,7 +188,7 @@ fn selected_line(
         PreparedBreakKind::Forced => LineEnd::Forced,
         PreparedBreakKind::ParagraphEnd => LineEnd::Paragraph,
     };
-    value.termination = ending;
+    value.termination = crate::PreparedTermination::Ordinary(ending);
     prepared.select(value)?.finalize(SpacingAllocations::None)
 }
 fn source_glyphs(line: &FinalizedLine, fixture: &[u8]) -> Vec<(Range, u32, f32)> {

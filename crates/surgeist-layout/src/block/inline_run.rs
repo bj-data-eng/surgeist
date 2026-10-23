@@ -790,6 +790,7 @@ where
             context,
             &reusable,
             crate::text_layout::run::LineEnvironment {
+                reset: || encounters.borrow_mut().reset_candidate(),
                 band: |block_start, block_end| {
                     let block_start = crate::text_layout::run::number::<S>(block_start)?;
                     let block_end = crate::text_layout::run::number::<S>(block_end)?;

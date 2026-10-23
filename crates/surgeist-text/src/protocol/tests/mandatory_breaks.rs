@@ -65,7 +65,7 @@ fn selected_request(
         PreparedBreakKind::ParagraphEnd => LineEnd::Paragraph,
         _ => unreachable!(),
     };
-    value.termination = termination;
+    value.termination = crate::PreparedTermination::Ordinary(termination);
     value
 }
 

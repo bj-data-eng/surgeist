@@ -651,10 +651,7 @@ fn native_atomic_transparent_relation_rejects_disagreeing_captured_ancestors() {
             ancestor_wrap: crate::Wrap::Word,
         },
     ]);
-    let analyzed = AnalyzedSource::from_paragraph(input).unwrap();
-    let error = system()
-        .prepare(&analyzed, PreparationOptions::try_new(1.0).unwrap())
-        .unwrap_err();
+    let error = AnalyzedSource::from_paragraph(input).unwrap_err();
     assert_eq!(
         error.detail(),
         Some(&crate::ErrorDetail::InvalidTextProtocol {
@@ -797,7 +794,7 @@ fn select_whole(prepared: &PreparedText) -> SelectedLine {
             start,
             end: termination.view().boundary(),
             participants: prepared.participants().collect(),
-            termination,
+            termination: crate::PreparedTermination::Ordinary(termination),
             alternative: None,
             context: context(LineEnd::Paragraph),
             atomics: Vec::new(),
@@ -1006,7 +1003,7 @@ fn selected_source_replacement_is_actual_retained_text_with_zero_authored_extent
             start: prepared.boundary_views().next().unwrap().handle(),
             end,
             participants: prepared.participants().take(count).collect(),
-            termination,
+            termination: crate::PreparedTermination::Ordinary(termination),
             alternative: Some(alternative),
             context: context(LineEnd::Soft),
             atomics: Vec::new(),
@@ -1096,7 +1093,7 @@ fn source_less_discretionary_control_and_empty_replacement_keep_real_owners() {
             start: prepared.boundary_views().next().unwrap().handle(),
             end: termination.view().boundary(),
             participants: prepared.participants().collect(),
-            termination,
+            termination: crate::PreparedTermination::Ordinary(termination),
             alternative: Some(alternative),
             context: context(LineEnd::Soft),
             atomics: Vec::new(),

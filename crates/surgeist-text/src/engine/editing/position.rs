@@ -543,7 +543,7 @@ mod tests {
                     start: start.clone(),
                     end: end.clone(),
                     participants: participants[from..to].to_vec(),
-                    termination: opportunity,
+                    termination: crate::PreparedTermination::Ordinary(opportunity),
                     alternative: None,
                     context: LineContext {
                         base_direction: ParagraphBaseDirection::LeftToRight,
@@ -761,7 +761,7 @@ mod tests {
                 start: start.clone(),
                 end: end.clone(),
                 participants,
-                termination,
+                termination: crate::PreparedTermination::Ordinary(termination),
                 alternative: None,
                 context: LineContext {
                     base_direction: ParagraphBaseDirection::LeftToRight,
@@ -971,6 +971,7 @@ mod tests {
             anchor_order: vec![],
         })
         .unwrap();
+        let analysis = crate::test_wrapping::bind_missing(&analysis, crate::Wrap::Word);
         system
             .prepare(&analysis, PreparationOptions::default())
             .unwrap()
@@ -992,7 +993,7 @@ mod tests {
                 start: prepared.boundary_views().next().unwrap().handle(),
                 end: termination.view().boundary(),
                 participants: prepared.participants().collect(),
-                termination,
+                termination: crate::PreparedTermination::Ordinary(termination),
                 alternative: None,
                 context: LineContext {
                     base_direction,
@@ -1367,7 +1368,7 @@ mod tests {
                     start: start.clone(),
                     end: end.clone(),
                     participants,
-                    termination,
+                    termination: crate::PreparedTermination::Ordinary(termination),
                     alternative: None,
                     context: LineContext {
                         base_direction: ParagraphBaseDirection::LeftToRight,

@@ -160,6 +160,12 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
             inline_space,
         }
     }
+    /// Discard only provisional encounter state; accepted placements and the
+    /// earlier-source base ledger stay intact for every candidate.
+    pub fn reset_candidate(&mut self) {
+        self.current = self.base.clone();
+        self.tentative = self.accepted.clone();
+    }
     pub fn band(&self) -> &FloatExclusions<S, Node> {
         &self.current
     }
@@ -231,8 +237,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
             } else if start == end
                 && event.position == end
                 && request.participants.is_empty()
-                && request.termination.view().kind()
-                    == surgeist_text::PreparedBreakKind::ParagraphEnd
+                && request.context.end == surgeist_text::LineEnd::Paragraph
             {
                 AcceptedFloatPrefix::EmptyParagraphEnd {
                     boundary: request.end.clone(),

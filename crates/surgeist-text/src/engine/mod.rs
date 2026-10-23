@@ -41,12 +41,26 @@ pub(crate) struct OriginalAtom {
 
 /// Font-independent original-source analysis, retained by every later phase.
 pub(crate) struct AnalyzedData {
+    pub(crate) core: Arc<AnalyzedCore>,
+    pub(crate) wrapping: Vec<Option<crate::Wrap>>,
+}
+
+impl std::ops::Deref for AnalyzedData {
+    type Target = AnalyzedCore;
+    fn deref(&self) -> &Self::Target {
+        &self.core
+    }
+}
+
+/// Executed source/Unicode data shared by distinct immutable wrapping contexts.
+pub(crate) struct AnalyzedCore {
     pub(crate) processed: Arc<crate::ProcessedSource>,
     pub(crate) paragraph: ParagraphData,
     pub(crate) host_projection: SourceProjection,
     pub(crate) projection: SourceProjection,
     pub(crate) styles: Vec<resolve::AnalyzedStyleRun>,
     pub(crate) analysis: analysis::Analysis,
+    pub(crate) logical: analysis::wrapping::LogicalParagraph,
 }
 
 /// The immutable, resource-retaining result of actual preparation.
@@ -167,13 +181,29 @@ pub(crate) fn analyze_paragraph(
     let styles =
         resolve::analyze_styles(processed.source(), &span_styles, &default_style, &paragraph);
     let analysis = analysis::analyze(&projection, &styles, processed.source().boxes(), &paragraph)?;
+    let logical = analysis::wrapping::LogicalParagraph::new(
+        &processed,
+        &paragraph,
+        &projection,
+        &styles,
+        &analysis,
+    )?;
+    let wrapping = logical
+        .relations
+        .iter()
+        .map(|relation| relation.captured_wrap)
+        .collect();
     Ok(Arc::new(AnalyzedData {
-        processed,
-        paragraph,
-        host_projection,
-        projection,
-        styles,
-        analysis,
+        core: Arc::new(AnalyzedCore {
+            processed,
+            paragraph,
+            host_projection,
+            projection,
+            styles,
+            analysis,
+            logical,
+        }),
+        wrapping,
     }))
 }
 

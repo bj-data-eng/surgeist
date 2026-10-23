@@ -39,6 +39,7 @@ fn input(text: &str, mode: WhiteSpace) -> ParagraphInput {
 
 fn prepare(input: ParagraphInput) -> PreparedText {
     let analyzed = AnalyzedSource::from_paragraph(input).unwrap();
+    let analyzed = crate::test_wrapping::bind_missing(&analyzed, crate::Wrap::Word);
     let mut system = System::new(SystemOptions {
         font_catalogue: FontCatalogueMode::RegisteredOnly,
     })
@@ -112,7 +113,7 @@ fn select(prepared: &PreparedText, alternative: Option<PreparedAlternative>) -> 
             start: prepared.boundary_views().next().unwrap().handle(),
             end: termination.view().boundary(),
             participants: prepared.participants().collect(),
-            termination,
+            termination: crate::PreparedTermination::Ordinary(termination),
             alternative,
             atomics,
             controls,

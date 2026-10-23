@@ -84,7 +84,10 @@ fn system() -> System {
 fn prepare(system: &mut System, view: ProcessedParagraph) -> PreparedText {
     system
         .prepare(
-            &AnalyzedSource::from_processed_paragraph(view).unwrap(),
+            &crate::test_wrapping::bind_missing(
+                &AnalyzedSource::from_processed_paragraph(view).unwrap(),
+                Wrap::Word,
+            ),
             PreparationOptions::default(),
         )
         .unwrap()
@@ -135,7 +138,7 @@ fn line(prepared: &PreparedText) -> FinalizedLine {
         .select(LineSelectionRequest {
             start: prepared.boundary_views().next().unwrap().handle(),
             end: termination.view().boundary(),
-            termination,
+            termination: crate::PreparedTermination::Ordinary(termination),
             alternative: None,
             participants: prepared.participants().collect(),
             atomics,
@@ -447,6 +450,8 @@ fn issued_parent_views_exclude_internal_domains_and_keep_actual_parent_atomics()
             ]
         );
         let mut fonts = system();
+        let parent = crate::test_wrapping::bind_missing(&parent, Wrap::Word);
+        let child = crate::test_wrapping::bind_missing(&child, Wrap::Word);
         let pp = fonts
             .prepare(&parent, PreparationOptions::default())
             .unwrap();
@@ -905,7 +910,7 @@ fn contextual_source_defined_replacement_remains_presentation_only() {
         .select(LineSelectionRequest {
             start: prepared.boundary_views().next().unwrap().handle(),
             end: termination.view().boundary(),
-            termination,
+            termination: crate::PreparedTermination::Ordinary(termination),
             alternative: Some(alternative),
             participants: prepared.participants().take(2).collect(),
             atomics: vec![],
@@ -988,6 +993,8 @@ fn source_and_geometric_accessibility_share_issued_piece_coverage() {
     let views: Vec<_> = result.paragraphs().collect();
     let parent = AnalyzedSource::from_processed_paragraph(views[0].clone()).unwrap();
     let child = AnalyzedSource::from_processed_paragraph(views[1].clone()).unwrap();
+    let parent = crate::test_wrapping::bind_missing(&parent, Wrap::Word);
+    let child = crate::test_wrapping::bind_missing(&child, Wrap::Word);
     let id = accesskit::NodeId(100);
     let mut state = Accessibility::new(200);
     let update = parent.accessibility_update(&mut state, id, id).unwrap();
@@ -1315,7 +1322,7 @@ fn selected_soft_wrap_does_not_reset_plaintext_context_or_copy_line_edge_deletio
         .select(LineSelectionRequest {
             start: prepared.boundary_views().next().unwrap().handle(),
             end: boundary,
-            termination,
+            termination: crate::PreparedTermination::Ordinary(termination),
             alternative: None,
             participants: prepared.participants().take(count).collect(),
             atomics: vec![],
@@ -1665,7 +1672,7 @@ fn right_line(prepared: &PreparedText) -> FinalizedLine {
         .select(LineSelectionRequest {
             start: prepared.boundary_views().nth(2).unwrap().handle(),
             end: termination.view().boundary(),
-            termination,
+            termination: crate::PreparedTermination::Ordinary(termination),
             alternative: None,
             participants: prepared.participants().skip(2).collect(),
             atomics: vec![],

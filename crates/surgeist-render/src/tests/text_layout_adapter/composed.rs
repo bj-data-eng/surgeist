@@ -21,7 +21,7 @@ fn finalized(source: text::Source) -> (text::PreparedText, text::FinalizedLine) 
         .select(text::LineSelectionRequest {
             start: prepared.boundary_views().next().unwrap().handle(),
             end: termination.view().boundary(),
-            termination,
+            termination: text::PreparedTermination::Ordinary(termination),
             alternative: None,
             participants: prepared.participants().collect(),
             atomics: vec![],
@@ -206,7 +206,7 @@ fn actual_gpos_mark_placement_reaches_admitted_outline_ink_without_advance_subst
         .select(text::LineSelectionRequest {
             start: prepared.boundary_views().next().unwrap().handle(),
             end: termination.view().boundary(),
-            termination,
+            termination: text::PreparedTermination::Ordinary(termination),
             alternative: None,
             participants: prepared.participants().collect(),
             atomics: vec![],

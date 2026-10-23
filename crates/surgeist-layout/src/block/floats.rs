@@ -89,8 +89,7 @@ impl AcceptedFloatPrefix {
                     || request.start != *boundary
                     || request.end != *boundary
                     || !request.participants.is_empty()
-                    || request.termination.view().kind()
-                        != surgeist_text::PreparedBreakKind::ParagraphEnd
+                    || request.context.end != surgeist_text::LineEnd::Paragraph
                 {
                     return Err(FitError::InvalidGeometry);
                 }

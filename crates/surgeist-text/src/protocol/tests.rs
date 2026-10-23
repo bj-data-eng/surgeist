@@ -1,5 +1,6 @@
 //! Functional qualification of the new public phase front.
 
+mod conditional;
 mod joining_context;
 mod mandatory_breaks;
 
@@ -58,7 +59,10 @@ fn prepared(system: &mut System, text: &str, whitespace: WhiteSpace) -> Prepared
     };
     system
         .prepare(
-            &AnalyzedSource::from_paragraph(input).unwrap(),
+            &crate::test_wrapping::bind_missing(
+                &AnalyzedSource::from_paragraph(input).unwrap(),
+                crate::Wrap::Word,
+            ),
             PreparationOptions::default(),
         )
         .unwrap()
@@ -73,7 +77,7 @@ fn request(prepared: &PreparedText) -> LineSelectionRequest {
     LineSelectionRequest {
         start,
         end: termination.view().boundary(),
-        termination,
+        termination: crate::PreparedTermination::Ordinary(termination),
         alternative: None,
         participants: prepared.participants().collect(),
         atomics: vec![],
@@ -420,7 +424,7 @@ fn selected_empty_control(policy: ParagraphStrut) -> SelectedLine {
     p.select(LineSelectionRequest {
         start: p.boundary_views().next().unwrap().handle(),
         end,
-        termination,
+        termination: crate::PreparedTermination::Ordinary(termination),
         alternative: None,
         participants,
         atomics: vec![],
@@ -593,6 +597,7 @@ fn native_unforced_break_keeps_arabic_joining_on_both_sides() {
             crate::Range::new(2, 3)
         ]
     );
+    let analyzed = crate::test_wrapping::bind_missing(&analyzed, crate::Wrap::Word);
     let prepared = system
         .prepare(&analyzed, PreparationOptions::default())
         .unwrap();
@@ -630,7 +635,7 @@ fn native_unforced_break_keeps_arabic_joining_on_both_sides() {
     assert!(offset > 0 && offset < participants.len());
     let mut first_request = whole_request.clone();
     first_request.end = cut.clone();
-    first_request.termination = soft;
+    first_request.termination = crate::PreparedTermination::Ordinary(soft);
     first_request.participants = participants[..offset].to_vec();
     first_request.context.end = LineEnd::Soft;
     first_request.context.available_inline = Some(20.0);

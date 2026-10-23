@@ -92,6 +92,7 @@ fn assert_retained_layout_composition(expanded: bool, indent: f32, contextual: b
         white_space: text::WhiteSpace::Collapse,
         ..text::Style::default()
     };
+    let ancestor_wrap = style.wrap;
     let origins = vec![text::ParagraphOrigin {
         source: source.clone(),
         local: text::Range::new(0, source.text().len()),
@@ -167,6 +168,17 @@ fn assert_retained_layout_composition(expanded: bool, indent: f32, contextual: b
         })
     }
     .unwrap();
+    // This fixture's text belongs to the single inline box in Tree. Its
+    // containing wrapping context is explicit even after contextual trimming.
+    let policies = analyzed
+        .wrapping_relations()
+        .filter(|relation| relation.ancestor_wrap().is_none())
+        .map(|relation| text::WrappingPolicy {
+            relation: relation.handle(),
+            ancestor_wrap,
+        })
+        .collect();
+    let analyzed = analyzed.with_wrapping_policies(policies).unwrap();
     let prepared = system
         .prepare(&analyzed, text::PreparationOptions::default())
         .unwrap();

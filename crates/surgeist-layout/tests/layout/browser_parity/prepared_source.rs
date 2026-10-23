@@ -192,6 +192,7 @@ impl Capture {
         let mut source = text::Source::new("");
         let mut origins = Vec::new();
         let mut origin_children = Vec::new();
+        let mut origin_wraps = Vec::new();
         let mut roles = std::collections::BTreeSet::new();
         for row in array(&value["origins"])? {
             let row = object(row, &["child", "units", "start", "end", "style"])?;
@@ -216,6 +217,7 @@ impl Capture {
                 return Err(fail("original range does not match exact UTF16 units"));
             }
             let resolved = style(&row["style"])?;
+            origin_wraps.push(resolved.wrap);
             source.span(aggregate, resolved.clone());
             origin_children.push(child);
             origins.push(text::ParagraphOrigin {
@@ -433,6 +435,26 @@ impl Capture {
             anchor_order: anchors,
         })
         .map_err(|error| fail(error.to_string()))?;
+        // Each origin captures one actual DOM text node's containing style.
+        // It owns NCA permission only for a pair inside that same origin;
+        // paragraph base style cannot stand in for unknown cross-origin ancestry.
+        let same_origin = analyzed
+            .wrapping_relations()
+            .filter(|relation| relation.ancestor_wrap().is_none())
+            .filter_map(|relation| match (relation.before(), relation.after()) {
+                (
+                    text::WrappingNeighbor::Text { origin: before, .. },
+                    text::WrappingNeighbor::Text { origin: after, .. },
+                ) if before == after => Some(text::WrappingPolicy {
+                    relation: relation.handle(),
+                    ancestor_wrap: origin_wraps[before],
+                }),
+                _ => None,
+            })
+            .collect();
+        let analyzed = analyzed
+            .with_wrapping_policies(same_origin)
+            .map_err(|error| fail(error.to_string()))?;
         let mut system = text::System::new(text::SystemOptions {
             font_catalogue: text::FontCatalogueMode::RegisteredOnly,
         })
@@ -691,6 +713,100 @@ mod tests {
         );
         assert!(capture.binding(4, &[7]).is_ok());
         assert!(capture.binding(4, &[]).is_err());
+    }
+
+    #[test]
+    fn same_origin_permission_uses_its_containing_style_instead_of_paragraph_base() {
+        let captures = [("none", "word"), ("word", "none")].map(|(base, origin)| {
+            let mut raw = original_capture();
+            raw["baseStyle"]["wrap"] = json!(base);
+            raw["origins"][0]["style"]["wrap"] = json!(origin);
+            Capture::parse(&raw.to_string(), 1).unwrap()
+        });
+        for (capture, expected) in captures.iter().zip([1, 0]) {
+            assert_eq!(
+                capture
+                    .prepared
+                    .analyzed_source()
+                    .source()
+                    .text()
+                    .code_units(),
+                &[88, 32, 88]
+            );
+            assert_eq!(
+                capture
+                    .prepared
+                    .opportunity_views()
+                    .filter(|offer| offer.kind() == text::PreparedBreakKind::Allowed)
+                    .count(),
+                expected
+            );
+            assert!(
+                capture
+                    .prepared
+                    .analyzed_source()
+                    .wrapping_relations()
+                    .all(|relation| relation.ancestor_wrap().is_some())
+            );
+        }
+    }
+
+    #[test]
+    fn same_origin_binding_preserves_captured_cross_origin_permission() {
+        let mut raw = original_capture();
+        let style = raw["origins"][0]["style"].clone();
+        raw["origins"] = json!([
+            {"child":0,"units":[88,32],"start":0,"end":2,"style":style},
+            {"child":1,"units":[88],"start":2,"end":3,"style":style}
+        ]);
+        raw["connections"] = json!([{"preceding":0,"following":1,"kind":"continuous","precedingWrap":"word","followingWrap":"word","ancestorWrap":"none"}]);
+        raw["order"] = json!([{"kind":"origin","index":0,"affinity":"before"},{"kind":"origin","index":1,"affinity":"before"}]);
+        let capture = Capture::parse(&raw.to_string(), 2).unwrap();
+        assert_eq!(
+            capture
+                .prepared
+                .analyzed_source()
+                .source()
+                .text()
+                .code_units(),
+            &[88, 32, 88]
+        );
+        assert!(
+            !capture
+                .prepared
+                .opportunity_views()
+                .any(|offer| offer.kind() == text::PreparedBreakKind::Allowed)
+        );
+        assert!(
+            capture
+                .prepared
+                .analyzed_source()
+                .wrapping_relations()
+                .any(|relation| matches!(
+                    (relation.before(), relation.after()),
+                    (
+                        text::WrappingNeighbor::Text { origin: 0, .. },
+                        text::WrappingNeighbor::Text { origin: 1, .. }
+                    )
+                ) && relation.ancestor_wrap() == Some(text::Wrap::None))
+        );
+    }
+
+    #[test]
+    fn missing_cross_origin_ancestry_is_not_inferred_across_an_empty_origin() {
+        let mut raw = original_capture();
+        let style = raw["origins"][0]["style"].clone();
+        raw["origins"] = json!([
+            {"child":0,"units":[88,32],"start":0,"end":2,"style":style},
+            {"child":1,"units":[],"start":2,"end":2,"style":style},
+            {"child":2,"units":[88],"start":2,"end":3,"style":style}
+        ]);
+        raw["connections"] = json!([
+            {"preceding":0,"following":1,"kind":"continuous","precedingWrap":"word","followingWrap":"word","ancestorWrap":"word"},
+            {"preceding":1,"following":2,"kind":"continuous","precedingWrap":"word","followingWrap":"word","ancestorWrap":"word"}
+        ]);
+        raw["order"] = json!([{"kind":"origin","index":0,"affinity":"before"},{"kind":"origin","index":1,"affinity":"before"},{"kind":"origin","index":2,"affinity":"before"}]);
+        assert!(Capture::parse(&raw.to_string(), 3).is_err());
     }
 
     #[test]

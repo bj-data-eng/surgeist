@@ -2,9 +2,10 @@
 
 use crate::{TextAlign, TextAlignLast, TextJustification};
 use surgeist_text::{
-    Alignment, AtomicAllocation, ControlAllocation, FinalizedLine, HangingContext, LineContext,
-    LineEnd, LineOrientation, LineSelectionRequest, LineStart, ParagraphBaseDirection,
-    PreparedBreakKind, PreparedParticipant, PreparedText, SelectedLine, SpacingAllocation,
+    Alignment, AtomicAllocation, ConditionalPurpose, ControlAllocation, FinalizedLine,
+    HangingContext, LineContext, LineEnd, LineOrientation, LineSelectionRequest, LineStart,
+    ParagraphBaseDirection, PreparedAlternative, PreparedBoundary, PreparedBreakKind,
+    PreparedParticipant, PreparedTermination, PreparedText, SelectedLine, SpacingAllocation,
     SpacingAllocations, SpacingPolicy, SpacingSlotDisposition, TabContext,
 };
 
@@ -339,277 +340,111 @@ fn constrain_spacing_budget(
     })
 }
 
-/// Fit only preparation-issued opportunities. Every measured candidate executes
-/// its exact retained finalizer; preliminary unit widths never establish fit.
-pub(crate) fn fit(
-    input: FitInput<'_>,
-    mut band_source: impl FnMut(f64, f64) -> Result<Band, FitError>,
-    mut canonical_block: impl FnMut(BlockPosition, f64) -> Result<f64, FitError>,
-    mut allocate: impl FnMut(&FinalizedLine, Band, f64) -> Result<LineAllocations, FitError>,
-    mut clear_source: impl FnMut(f64, &LineSelectionRequest) -> Result<Option<f64>, FitError>,
-    mut replay_encounters: impl FnMut(
-        &FinalizedLine,
-        EncounterReplay,
-    ) -> Result<Vec<EncounterBasis>, FitError>,
-    mut accept_encounters: impl FnMut() -> Result<(), FitError>,
-) -> Result<Vec<FittedLine>, FitError> {
-    let FitInput {
-        prepared,
-        available,
-        base_direction,
-        alignment,
-        last_alignment,
-        justification,
-        indent,
-        mut indent_state,
-        orientation,
-        atomics,
-        controls,
-        line_strut,
-        reusable,
-    } = input;
-    let participants: Vec<_> = prepared.participants().collect();
-    let boundaries: Vec<_> = prepared
-        .boundary_views()
-        .map(|view| (view.participant_offset(), view.handle()))
-        .collect();
-    let opportunities: Vec<_> = prepared
-        .opportunity_views()
-        .map(|view| {
-            let boundary = view.boundary();
-            let end = boundaries
-                .iter()
-                .find(|(_, handle)| handle == &boundary)
-                .expect("preparation-issued opportunity has an actual issued boundary")
-                .0;
-            let alternatives = view
-                .alternatives()
-                .map(|view| view.handle())
-                .collect::<Vec<_>>();
-            (end, view.handle(), view.kind(), alternatives)
-        })
-        .collect();
-    let mut result = Vec::new();
-    let mut start = 0;
-    let mut logical_start = 0.0;
-    let mut minimum_block: Option<f64> = None;
-    let mut completed_end = false;
-    while !completed_end {
-        let start_boundary = boundaries
-            .iter()
-            .find(|(offset, _)| *offset == start)
-            .expect("a consumed opportunity retains its mixed boundary")
-            .1
-            .clone();
-        let source_floor = logical_start;
-        let mut deferred_candidate = None;
+/// Candidate-local coordinates are distinct from the accepted source checkpoint.
+#[derive(Clone)]
+struct CandidatePosition {
+    source_floor: f64,
+    logical_start: f64,
+    minimum_block: Option<f64>,
+    deferred_from: Option<LineSelectionRequest>,
+}
+
+struct EvaluatedCandidate {
+    request: LineSelectionRequest,
+    finalized: FinalizedLine,
+    amounts: Vec<f64>,
+    encounters: Vec<EncounterBasis>,
+    bands: LineBands,
+    placed_start: f64,
+    fits: bool,
+    formatted: bool,
+}
+
+/// These callbacks all operate on the same unpublished invocation. Reset only
+/// restores its accepted encounter checkpoint; it is not a child publication.
+struct CandidateEnvironment<B, C, A, R, X> {
+    band: B,
+    canonical: C,
+    allocate: A,
+    replay: R,
+    reset: X,
+}
+
+impl<B, C, A, R, X> CandidateEnvironment<B, C, A, R, X>
+where
+    B: FnMut(f64, f64) -> Result<Band, FitError>,
+    C: FnMut(BlockPosition, f64) -> Result<f64, FitError>,
+    A: FnMut(&FinalizedLine, Band, f64) -> Result<LineAllocations, FitError>,
+    R: FnMut(&FinalizedLine, EncounterReplay) -> Result<Vec<EncounterBasis>, FitError>,
+    X: FnMut(),
+{
+    fn evaluate(
+        &mut self,
+        input: &FitInput<'_>,
+        mut request: LineSelectionRequest,
+        position: &CandidatePosition,
+    ) -> Result<EvaluatedCandidate, FitError> {
+        (self.reset)();
         let mut height = 0.0;
-        let mut placed_start = logical_start;
+        let mut placed_start = position.logical_start;
         let mut rejected = Vec::new();
         loop {
-            let bands = query_bands(&mut band_source, logical_start, placed_start, height)?;
+            let bands = query_bands(&mut self.band, position.logical_start, placed_start, height)?;
             let band = bands.combined();
-            let width = if matches!(available, Available::Maximum)
-                && band.intrinsic_end_occupation.is_some()
-            {
-                None
-            } else {
-                Some(finite((band.end - band.start).max(0.0))?)
-            };
-            let selected_width = match available {
-                Available::Definite(value) => width.map(|width| width.min(value)),
-                Available::Minimum | Available::Maximum => None,
-            };
-            let mut choice = None;
-            for (end, opportunity, kind, alternatives) in &opportunities {
-                if *end < start || (*end == start && *kind != PreparedBreakKind::ParagraphEnd) {
-                    continue;
+            request.context.available_inline = selection_width(input.available, band)?;
+            let mut allocation_bases = Vec::new();
+            let (finalized, amounts) = loop {
+                let candidate = finalize_candidate(
+                    input.prepared,
+                    input.reusable,
+                    request,
+                    input.alignment,
+                    input.last_alignment,
+                    input.justification,
+                )?;
+                request = candidate.request;
+                (self.replay)(&candidate.finalized, position.replay(placed_start))?;
+                let actual = (self.allocate)(&candidate.finalized, band, placed_start)?;
+                if actual.atomics == request.atomics
+                    && actual.controls == request.controls
+                    && actual.line_strut == request.line_strut
+                {
+                    break (candidate.finalized, candidate.amounts);
                 }
-                let end_boundary = boundaries
-                    .iter()
-                    .find(|(offset, _)| offset == end)
-                    .expect("actual opportunity boundary remains retained")
-                    .1
-                    .clone();
-                let selected_participants = participants[start..*end].to_vec();
-                let selected_atomics: Vec<_> = atomics.iter().filter(|allocation| {
-                    selected_participants.iter().any(|participant| matches!(participant,
-                        PreparedParticipant::Atomic(occurrence) if occurrence == &allocation.occurrence))
-                }).cloned().collect();
-                let selected_controls: Vec<_> = controls.iter().filter(|allocation| {
-                    selected_participants.iter().any(|participant| matches!(participant,
-                        PreparedParticipant::Control(occurrence) if occurrence == &allocation.occurrence))
-                }).cloned().collect();
-                let alternatives = if *kind == PreparedBreakKind::Discretionary {
-                    alternatives.iter().cloned().map(Some).collect::<Vec<_>>()
-                } else {
-                    vec![None]
-                };
-                let mut endpoint_choice = None;
-                for alternative in alternatives {
-                    let mut request = LineSelectionRequest {
-                        start: start_boundary.clone(),
-                        end: end_boundary.clone(),
-                        participants: selected_participants.clone(),
-                        termination: opportunity.clone(),
-                        alternative,
-                        context: LineContext {
-                            base_direction,
-                            orientation,
-                            start: if start == 0 {
-                                LineStart::Paragraph
-                            } else {
-                                LineStart::Continuation
-                            },
-                            end: match kind {
-                                PreparedBreakKind::Allowed | PreparedBreakKind::Discretionary => {
-                                    LineEnd::Soft
-                                }
-                                PreparedBreakKind::Forced => LineEnd::Forced,
-                                PreparedBreakKind::ParagraphEnd => LineEnd::Paragraph,
-                            },
-                            available_inline: selected_width,
-                            indent: indent.at(indent_state),
-                            alignment: text_alignment(alignment.for_line(
-                                last_alignment,
-                                matches!(
-                                    kind,
-                                    PreparedBreakKind::Forced | PreparedBreakKind::ParagraphEnd
-                                ),
-                            )),
-                            tabs: TabContext::FontAdvance,
-                            hanging: HangingContext::None,
-                            spacing: if justification == TextJustification::Spaces {
-                                SpacingPolicy::Spaces
-                            } else {
-                                SpacingPolicy::None
-                            },
-                        },
-                        atomics: selected_atomics.clone(),
-                        controls: selected_controls.clone(),
-                        line_strut,
-                    };
-                    let mut allocation_bases = Vec::new();
-                    let (finalized, amounts) = loop {
-                        let candidate = finalize_candidate(
-                            prepared,
-                            reusable,
-                            request,
-                            alignment,
-                            last_alignment,
-                            justification,
-                        )?;
-                        request = candidate.request;
-                        let finalized = candidate.finalized;
-                        replay_encounters(
-                            &finalized,
-                            EncounterReplay {
-                                source_floor,
-                                logical: logical_start,
-                                placed: placed_start,
-                                defer_preceding: deferred_candidate.as_ref().is_some_and(
-                                    |(termination, alternative)| {
-                                        termination == &request.termination
-                                            && alternative == &request.alternative
-                                    },
-                                ),
-                            },
-                        )?;
-                        let actual = allocate(&finalized, band, placed_start)?;
-                        if actual.atomics == request.atomics
-                            && actual.controls == request.controls
-                            && actual.line_strut == request.line_strut
-                        {
-                            break (finalized, candidate.amounts);
-                        }
-                        let basis = (request.clone(), candidate.amounts);
-                        if allocation_bases.contains(&basis) {
-                            return Err(FitError::FeedbackCycle);
-                        }
-                        allocation_bases.push(basis);
-                        request.atomics = actual.atomics;
-                        request.controls = actual.controls;
-                        request.line_strut = actual.line_strut;
-                    };
-                    let feedback = finalized.feedback();
-                    let occupied = finite(feedback.occupied_end - feedback.occupied_start)?;
-                    let fits = selected_width.is_none_or(|width| {
-                        feedback.advance <= width - request.context.indent
-                            && occupied <= width - request.context.indent
-                    });
-                    if endpoint_choice.is_none() || fits {
-                        endpoint_choice = Some((request, finalized, amounts, fits));
-                    }
-                    // Declaration order is native preference; subsequent alternatives
-                    // are reached only when earlier actual finalized candidates fail.
-                    if fits {
-                        break;
-                    }
-                }
-                let Some((request, finalized, amounts, fits)) = endpoint_choice else {
+                let basis = (request.clone(), candidate.amounts);
+                if allocation_bases.contains(&basis) {
                     return Err(FitError::FeedbackCycle);
-                };
-                // CSS2 phantom-line boxes are not formatted soft lines. Keep
-                // every original occurrence in the next actual selection; never
-                // publish a font-only line and discard its issued geometry.
-                // Actual retained zero/signed content counts independently of
-                // its numerical advance. Mandatory/paragraph endpoints remain.
-                if request.context.end == LineEnd::Soft
-                    && let Some(last) = request.participants.last()
-                    && !finalized
-                        .prefix_at(&surgeist_text::TextSeam::AfterParticipant(last.clone()))?
-                        .has_retained_flow_participation()
-                {
-                    continue;
                 }
-                if choice.is_none() || fits || matches!(available, Available::Maximum) {
-                    choice = Some((*end, *kind, request, finalized, amounts));
-                }
-                if matches!(available, Available::Minimum)
-                    || !matches!(
-                        kind,
-                        PreparedBreakKind::Allowed | PreparedBreakKind::Discretionary
-                    )
-                {
-                    break;
-                }
-            }
-            let Some((end, kind, request, finalized, amounts)) = choice else {
-                // Missing/illegal complete coverage is the Text owner's error;
-                // a valid preparation always offers a paragraph terminator.
-                return Err(FitError::FeedbackCycle);
+                allocation_bases.push(basis);
+                request.atomics = actual.atomics;
+                request.controls = actual.controls;
+                request.line_strut = actual.line_strut;
             };
-            let replay = EncounterReplay {
-                source_floor,
-                logical: logical_start,
-                placed: placed_start,
-                defer_preceding: deferred_candidate.as_ref().is_some_and(
-                    |(termination, alternative)| {
-                        termination == &request.termination && alternative == &request.alternative
-                    },
-                ),
-            };
-            let encounters = replay_encounters(&finalized, replay)?;
+            let encounters = (self.replay)(&finalized, position.replay(placed_start))?;
             let feedback = finalized.feedback();
             let actual_height = finite(feedback.line_height)?;
-            let actual_start = canonical_block(
+            let actual_start = (self.canonical)(
                 BlockPosition {
-                    proposed: logical_start,
-                    minimum: minimum_block,
+                    proposed: position.logical_start,
+                    minimum: position.minimum_block,
                 },
                 feedback.baseline,
             )?;
-            let actual_bands =
-                query_bands(&mut band_source, logical_start, actual_start, actual_height)?;
+            let actual_bands = query_bands(
+                &mut self.band,
+                position.logical_start,
+                actual_start,
+                actual_height,
+            )?;
             let basis = CandidateBasis {
                 encounters: encounters.clone(),
                 request: request.clone(),
                 amounts: amounts.clone(),
-                logical_start,
+                logical_start: position.logical_start,
                 placed_start,
                 bands,
                 height,
-                minimum_block,
+                minimum_block: position.minimum_block,
             };
             if actual_bands != bands || actual_start != placed_start {
                 if rejected.contains(&basis) {
@@ -620,74 +455,453 @@ pub(crate) fn fit(
                 placed_start = actual_start;
                 continue;
             }
-            let occupied = finite(feedback.occupied_end - feedback.occupied_start)?;
-            let float_fit_width = match available {
-                Available::Minimum => width,
-                Available::Definite(_) | Available::Maximum => selected_width,
+            // Retain the genuine receipt even for a phantom Soft trial.
+            // The conditional query authenticates complete earlier inventory.
+            let formatted = if request.context.end == LineEnd::Soft {
+                match request.participants.last() {
+                    Some(last) => finalized
+                        .prefix_at(&surgeist_text::TextSeam::AfterParticipant(last.clone()))?
+                        .has_retained_flow_participation(),
+                    None => false,
+                }
+            } else {
+                true
             };
-            let fits = float_fit_width.is_none_or(|width| {
+            let fit_width = match input.available {
+                Available::Minimum => Some(finite((band.end - band.start).max(0.0))?),
+                Available::Definite(_) | Available::Maximum => request.context.available_inline,
+            };
+            let occupied = finite(feedback.occupied_end - feedback.occupied_start)?;
+            let fits = fit_width.is_none_or(|width| {
                 feedback.advance <= width - request.context.indent
                     && occupied <= width - request.context.indent
             });
-            // A nonzero shortened band can still admit no content from this
-            // indivisible candidate. Consume actual float transitions before
-            // allowing unavoidable overflow in a float-free band. Minimum uses
-            // that real band only for float avoidance: Text's intrinsic request
-            // stays unconstrained. Maximum retains its unwrapped side-by-side
-            // contribution without imposing that minimum-width constraint.
-            if !fits && !replay.defer_preceding && encounters.iter().any(|event| event.preceding) {
-                // Test the actual preceding-line assignment before allowing this
-                // float to displace the very source line which encountered it.
-                // A different genuine endpoint/alternative replays independently.
-                let deferred = replay_encounters(
-                    &finalized,
+            return Ok(EvaluatedCandidate {
+                request,
+                finalized,
+                amounts,
+                encounters,
+                bands,
+                placed_start,
+                fits,
+                formatted,
+            });
+        }
+    }
+
+    /// A later rejected candidate may own the provisional ledger. Restore and
+    /// verify the chosen candidate's actual complete receipt before accepting it.
+    fn restore(
+        &mut self,
+        candidate: &EvaluatedCandidate,
+        position: &CandidatePosition,
+    ) -> Result<(), FitError> {
+        (self.reset)();
+        let encounters = (self.replay)(
+            &candidate.finalized,
+            position.replay(candidate.placed_start),
+        )?;
+        let bands = query_bands(
+            &mut self.band,
+            position.logical_start,
+            candidate.placed_start,
+            candidate.finalized.feedback().line_height,
+        )?;
+        let actual = (self.allocate)(
+            &candidate.finalized,
+            candidate.bands.combined(),
+            candidate.placed_start,
+        )?;
+        if encounters != candidate.encounters
+            || bands != candidate.bands
+            || actual.atomics != candidate.request.atomics
+            || actual.controls != candidate.request.controls
+            || actual.line_strut != candidate.request.line_strut
+        {
+            return Err(FitError::FeedbackCycle);
+        }
+        Ok(())
+    }
+}
+
+impl CandidatePosition {
+    fn replay(&self, placed: f64) -> EncounterReplay {
+        EncounterReplay {
+            source_floor: self.source_floor,
+            logical: self.logical_start,
+            placed,
+            defer_preceding: self.deferred_from.is_some(),
+        }
+    }
+}
+
+fn selection_width(available: Available, band: Band) -> Result<Option<f64>, FitError> {
+    match available {
+        Available::Definite(value) => {
+            Ok(Some(finite((band.end - band.start).max(0.0))?.min(value)))
+        }
+        Available::Minimum | Available::Maximum => Ok(None),
+    }
+}
+
+/// The three operations share one accepted encounter checkpoint.
+pub(crate) struct EncounterCallbacks<Replay, Accept, Reset> {
+    pub replay: Replay,
+    pub accept: Accept,
+    pub reset: Reset,
+}
+
+struct LineEndpoint {
+    boundary: PreparedBoundary,
+    termination: PreparedTermination,
+    alternative: Option<PreparedAlternative>,
+    ending: LineEnd,
+}
+
+fn selection_request(
+    input: &FitInput<'_>,
+    start: &PreparedBoundary,
+    endpoint: LineEndpoint,
+    indent_state: crate::text_indent::IndentLineState,
+) -> LineSelectionRequest {
+    let from = start.view().participant_offset();
+    let to = endpoint.boundary.view().participant_offset();
+    let participants = input
+        .prepared
+        .participants()
+        .skip(from)
+        .take(to - from)
+        .collect::<Vec<_>>();
+    let atomics = input
+        .atomics
+        .iter()
+        .filter(|allocation| {
+            participants.iter().any(|participant| {
+                matches!(participant,
+        PreparedParticipant::Atomic(occurrence) if occurrence == &allocation.occurrence)
+            })
+        })
+        .cloned()
+        .collect();
+    let controls = input
+        .controls
+        .iter()
+        .filter(|allocation| {
+            participants.iter().any(|participant| {
+                matches!(participant,
+        PreparedParticipant::Control(occurrence) if occurrence == &allocation.occurrence)
+            })
+        })
+        .cloned()
+        .collect();
+    LineSelectionRequest {
+        start: start.clone(),
+        end: endpoint.boundary,
+        participants,
+        termination: endpoint.termination,
+        alternative: endpoint.alternative,
+        context: LineContext {
+            base_direction: input.base_direction,
+            orientation: input.orientation,
+            start: if from == 0 {
+                LineStart::Paragraph
+            } else {
+                LineStart::Continuation
+            },
+            end: endpoint.ending,
+            available_inline: None,
+            indent: input.indent.at(indent_state),
+            alignment: text_alignment(input.alignment),
+            tabs: TabContext::FontAdvance,
+            hanging: HangingContext::None,
+            spacing: if input.justification == TextJustification::Spaces {
+                SpacingPolicy::Spaces
+            } else {
+                SpacingPolicy::None
+            },
+        },
+        atomics,
+        controls,
+        line_strut: input.line_strut,
+    }
+}
+
+/// Fit only preparation-issued opportunities. Every measured candidate executes
+/// its own retained finalizer and complete convergence, not preliminary widths.
+pub(crate) fn fit(
+    input: FitInput<'_>,
+    band_source: impl FnMut(f64, f64) -> Result<Band, FitError>,
+    canonical_block: impl FnMut(BlockPosition, f64) -> Result<f64, FitError>,
+    allocate: impl FnMut(&FinalizedLine, Band, f64) -> Result<LineAllocations, FitError>,
+    mut clear_source: impl FnMut(f64, &LineSelectionRequest) -> Result<Option<f64>, FitError>,
+    encounters: EncounterCallbacks<
+        impl FnMut(&FinalizedLine, EncounterReplay) -> Result<Vec<EncounterBasis>, FitError>,
+        impl FnMut() -> Result<(), FitError>,
+        impl FnMut(),
+    >,
+) -> Result<Vec<FittedLine>, FitError> {
+    let EncounterCallbacks {
+        replay: replay_encounters,
+        accept: mut accept_encounters,
+        reset: reset_candidate,
+    } = encounters;
+    let boundaries: Vec<_> = input
+        .prepared
+        .boundary_views()
+        .map(|view| (view.participant_offset(), view.handle()))
+        .collect();
+    let opportunities: Vec<_> = input
+        .prepared
+        .opportunity_views()
+        .map(|view| {
+            let boundary = view.boundary();
+            let end = boundary.view().participant_offset();
+            (
+                end,
+                view.handle(),
+                view.kind(),
+                view.alternatives()
+                    .map(|view| view.handle())
+                    .collect::<Vec<_>>(),
+            )
+        })
+        .collect();
+    let mut environment = CandidateEnvironment {
+        band: band_source,
+        canonical: canonical_block,
+        allocate,
+        replay: replay_encounters,
+        reset: reset_candidate,
+    };
+    let mut result = Vec::new();
+    let mut start = 0;
+    let mut logical_start = 0.0;
+    let mut minimum_block: Option<f64> = None;
+    let mut indent_state = input.indent_state;
+    let mut completed_end = false;
+    while !completed_end {
+        let start_boundary = boundaries
+            .iter()
+            .find(|(offset, _)| *offset == start)
+            .expect("a consumed opportunity retains its mixed boundary")
+            .1
+            .clone();
+        let mut position = CandidatePosition {
+            source_floor: logical_start,
+            logical_start,
+            minimum_block,
+            deferred_from: None,
+        };
+        let mut transitions = Vec::new();
+        loop {
+            let mut choice: Option<EvaluatedCandidate> = None;
+            let mut first_ceiling = None;
+            let mut skipped_ordinary = Vec::new();
+            for (end, opportunity, kind, alternatives) in &opportunities {
+                if *end < start || (*end == start && *kind != PreparedBreakKind::ParagraphEnd) {
+                    continue;
+                }
+                let variants = (*kind != PreparedBreakKind::Discretionary)
+                    .then_some(None)
+                    .into_iter()
+                    .chain(alternatives.iter().cloned().map(Some));
+                let mut endpoint_choice: Option<EvaluatedCandidate> = None;
+                let mut phantom_variants = Vec::new();
+                for alternative in variants {
+                    let request = selection_request(
+                        &input,
+                        &start_boundary,
+                        LineEndpoint {
+                            boundary: opportunity.view().boundary(),
+                            termination: PreparedTermination::Ordinary(opportunity.clone()),
+                            alternative,
+                            ending: match kind {
+                                PreparedBreakKind::Allowed | PreparedBreakKind::Discretionary => {
+                                    LineEnd::Soft
+                                }
+                                PreparedBreakKind::Forced => LineEnd::Forced,
+                                PreparedBreakKind::ParagraphEnd => LineEnd::Paragraph,
+                            },
+                        },
+                        indent_state,
+                    );
+                    let candidate = environment.evaluate(&input, request, &position)?;
+                    if !candidate.formatted {
+                        phantom_variants.push(candidate.finalized);
+                        continue;
+                    }
+                    let fits = candidate.fits;
+                    if endpoint_choice.is_none() || fits {
+                        endpoint_choice = Some(candidate);
+                    }
+                    // An actual fitting declared variant retains its preference.
+                    if fits {
+                        break;
+                    }
+                }
+                if let Some(candidate) = endpoint_choice {
+                    if first_ceiling.is_none() {
+                        first_ceiling = Some(opportunity.clone());
+                    }
+                    if choice.is_none()
+                        || candidate.fits
+                        || matches!(input.available, Available::Maximum)
+                    {
+                        choice = Some(candidate);
+                    }
+                    if matches!(input.available, Available::Minimum) {
+                        break;
+                    }
+                } else if first_ceiling.is_none() {
+                    // Every legal variant was executed and proved phantom.
+                    // Keep the original start and every original occurrence.
+                    skipped_ordinary.extend(phantom_variants);
+                }
+                if !matches!(
+                    kind,
+                    PreparedBreakKind::Allowed | PreparedBreakKind::Discretionary
+                ) {
+                    break;
+                }
+            }
+            let Some(mut candidate) = choice else {
+                return Err(FitError::FeedbackCycle);
+            };
+            let purpose = match input.available {
+                Available::Minimum => Some(ConditionalPurpose::MinContent),
+                Available::Definite(_) if !candidate.fits => Some(ConditionalPurpose::Overflow),
+                Available::Definite(_) | Available::Maximum => None,
+            };
+            let mut minimal_progress = None;
+            if let Some(purpose) = purpose
+                && let Some(ceiling) = first_ceiling
+                && ceiling.view().boundary().view().participant_offset() > start
+            {
+                let mut fitting = None;
+                for opportunity in input.prepared.conditional_opportunities(
+                    &start_boundary,
+                    &ceiling,
+                    purpose,
+                    &skipped_ordinary,
+                )? {
+                    let request = selection_request(
+                        &input,
+                        &start_boundary,
+                        LineEndpoint {
+                            boundary: opportunity.boundary(),
+                            termination: PreparedTermination::Conditional(opportunity),
+                            alternative: None,
+                            ending: LineEnd::Soft,
+                        },
+                        indent_state,
+                    );
+                    let trial = environment.evaluate(&input, request, &position)?;
+                    if !trial.formatted {
+                        continue;
+                    }
+                    if purpose == ConditionalPurpose::MinContent {
+                        fitting = Some(trial);
+                        break;
+                    }
+                    if trial.fits {
+                        fitting = Some(trial);
+                    } else if minimal_progress.is_none() {
+                        minimal_progress = Some(trial);
+                    }
+                    // Do not assume that later shaped prefixes are wider.
+                }
+                if let Some(fitting) = fitting {
+                    candidate = fitting;
+                }
+            }
+            environment.restore(&candidate, &position)?;
+            let basis = (
+                candidate.request.clone(),
+                candidate.amounts.clone(),
+                candidate.encounters.clone(),
+                candidate.bands,
+                candidate.placed_start,
+                position.logical_start,
+                position.minimum_block,
+                position.deferred_from.clone(),
+            );
+            if transitions.contains(&basis) {
+                return Err(FitError::FeedbackCycle);
+            }
+            transitions.push(basis);
+            if !candidate.fits
+                && position.deferred_from.is_none()
+                && candidate.encounters.iter().any(|event| event.preceding)
+            {
+                let deferred = (environment.replay)(
+                    &candidate.finalized,
                     EncounterReplay {
                         defer_preceding: true,
-                        ..replay
+                        ..position.replay(candidate.placed_start)
                     },
                 )?;
-                if deferred != encounters {
-                    deferred_candidate =
-                        Some((request.termination.clone(), request.alternative.clone()));
-                    height = actual_height;
-                    placed_start = actual_start;
+                if deferred != candidate.encounters {
+                    position.deferred_from = Some(candidate.request.clone());
                     continue;
                 }
             }
-            if !fits && let Some(next) = bands.next_transition(logical_start, placed_start) {
-                logical_start = logical_start.max(next);
-                minimum_block = Some(minimum_block.map_or(next, |minimum| minimum.max(next)));
-                placed_start = logical_start;
-                height = 0.0;
+            if !candidate.fits
+                && let Some(progress) = minimal_progress
+            {
+                candidate = progress;
+                environment.restore(&candidate, &position)?;
+            }
+            if !candidate.fits
+                && let Some(next) = candidate
+                    .bands
+                    .next_transition(position.logical_start, candidate.placed_start)
+            {
+                position.logical_start = position.logical_start.max(next);
+                position.minimum_block = Some(
+                    position
+                        .minimum_block
+                        .map_or(next, |minimum| minimum.max(next)),
+                );
                 continue;
             }
-            let logical_end = finite(logical_start + actual_height)?;
-            let cleared = clear_source(logical_end, &request)?
+            // Deferred replay above may have been a no-op. Restore the exact
+            // candidate once more before any clear/accept operation observes it.
+            environment.restore(&candidate, &position)?;
+            let feedback = candidate.finalized.feedback();
+            let logical_end = finite(position.logical_start + feedback.line_height)?;
+            let cleared = clear_source(logical_end, &candidate.request)?
                 .map(finite)
                 .transpose()?
                 .map_or(logical_end, |minimum| minimum.max(logical_end));
+            minimum_block = position.minimum_block;
             if cleared > logical_end {
                 minimum_block = Some(minimum_block.map_or(cleared, |minimum| minimum.max(cleared)));
             }
-            indent_state.commit(kind == PreparedBreakKind::Forced);
+            let ending = candidate.request.context.end;
+            let end = candidate.request.end.view().participant_offset();
+            indent_state.commit(ending == LineEnd::Forced);
             accept_encounters()?;
             result.push(FittedLine {
-                encounters,
-                finalized,
-                amounts,
-                inline_start: band.start,
-                placed_start,
-                available: selected_width.unwrap_or(feedback.advance),
-                bands,
+                encounters: candidate.encounters,
+                finalized: candidate.finalized,
+                amounts: candidate.amounts,
+                inline_start: candidate.bands.combined().start,
+                placed_start: candidate.placed_start,
+                available: candidate
+                    .request
+                    .context
+                    .available_inline
+                    .unwrap_or(feedback.advance),
+                bands: candidate.bands,
                 flow: LineFlow {
-                    start: logical_start,
+                    start: position.logical_start,
                     end: logical_end,
                     next: cleared,
                 },
             });
             logical_start = cleared;
             start = end;
-            completed_end = kind == PreparedBreakKind::ParagraphEnd;
+            completed_end = ending == LineEnd::Paragraph;
             break;
         }
     }

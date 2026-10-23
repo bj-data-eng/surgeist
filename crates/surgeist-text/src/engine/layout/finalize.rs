@@ -1755,6 +1755,7 @@ mod tests {
         system
             .register_fonts(include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec())
             .unwrap();
+        let analyzed = crate::test_wrapping::bind_missing(&analyzed, crate::Wrap::Word);
         let prepared = system
             .prepare(&analyzed, PreparationOptions::default())
             .unwrap();
@@ -1807,7 +1808,7 @@ mod tests {
                 start: boundaries[0].clone(),
                 end: boundaries.last().unwrap().clone(),
                 participants: prepared.participants().collect(),
-                termination,
+                termination: crate::PreparedTermination::Ordinary(termination),
                 alternative: None,
                 context: LineContext {
                     base_direction: ParagraphBaseDirection::LeftToRight,
@@ -2094,7 +2095,7 @@ mod tests {
                 start: prepared.boundary_views().next().unwrap().handle(),
                 end: prepared.boundary_views().last().unwrap().handle(),
                 participants: prepared.participants().collect(),
-                termination,
+                termination: crate::PreparedTermination::Ordinary(termination),
                 alternative: None,
                 atomics: vec![AtomicAllocation {
                     occurrence: occurrence.clone(),
@@ -2458,7 +2459,7 @@ mod tests {
                     start,
                     end: termination.view().boundary(),
                     participants,
-                    termination,
+                    termination: crate::PreparedTermination::Ordinary(termination),
                     alternative: None,
                     context: LineContext {
                         base_direction: ParagraphBaseDirection::RightToLeft,
