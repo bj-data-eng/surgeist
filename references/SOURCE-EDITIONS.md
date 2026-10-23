@@ -1248,6 +1248,29 @@ automatic opportunity resources and supported language/script conventions need
 their own evidence. This bounded determination does not establish implementation
 completion or all-language behavior.
 
+## Conditional hanging after spacing allocation
+
+The selected [Text 4 hanging clause](css-text-4--WD-css-text-4-20260814--106c5cd086ab.md#hanging)
+decides conditional activation before justification and permits hanging content
+to participate in justification. It does not uniquely specify how a partially
+excluded advance changes under an explicit allocation. #74's preserve-spaces
+determination retains advances but adds no such remapping rule.
+
+Source-only inspection of preferred WebKit
+`73aa6c89e2cb77c46184a81aec944e4ab99d114d` found conditional state selection in
+[InlineLine.cpp](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/layout/formattingContexts/inline/InlineLine.cpp#L207),
+while [InlineContentAligner.cpp](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/layout/formattingContexts/inline/InlineContentAligner.cpp#L201)
+excludes trailing hanging whitespace from expansion opportunities. That path does
+not decide the explicit-allocation case. No browser execution or implementation
+excerpt is retained for this determination.
+
+The [native Text/Layout contract](../docs/text-layout-contract.md#native-whitespace-edges-and-hanging)
+adopts fixed natural eligibility, edge/frame and terminal groups, then remaps the
+signed exclusion using allocated geometry. The remapping and signed extension
+are explicit native policy completing this gap, not uniquely mandated CSS or a
+claim of browser equivalence. Fit and intrinsic inclusion retain their separate
+normative roles.
+
 ## Preserved CSS tab stops
 
 The [Text/Layout contract](../docs/text-layout-contract.md#preserved-css-tab-stops)

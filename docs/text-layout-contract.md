@@ -219,6 +219,30 @@ uses the same owners and recomputes tabs and feedback. Alignment cannot decide
 the natural hanging condition again. Preserve complete allocation/replay identity
 and the existing cycle/failure rules.
 
+For allocated conditional hanging, [adopted native policy](../references/SOURCE-EDITIONS.md#conditional-hanging-after-spacing-allocation)
+freezes the natural candidate's eligible units, relevant edge/frame and terminal
+groups. After applying the complete allocation, recompute those eligible units'
+excluded contributions in that same prealignment frame. Neither the original
+pixel exclusion nor a fraction of the unit's advance is fixed. In coordinates
+increasing toward the relevant line end, a qualifying contribution traversing
+from u to v beyond edge B has signed exclusion:
+
+```text
+max(v - B, 0) - max(u - B, 0)
+```
+
+Subtract that signed contribution from raw flow for alignment. Physical outward
+overlap is separately the intersection of the geometric segment with the outward
+half-line; reverse advances must not become positive exclusions by absolute value.
+Use actual contribution ownership, including upstream displacement, without
+double-counting spacing. For X10 plus SPACE10 at width15, adding 4 to the space
+gives raw24, hanging9 and alignment15; adding -8 gives raw12 and hanging0.
+A naturally fitting conditional unit remains ineligible after later expansion.
+An eligible unit can contract to zero exclusion without reclassifying other units
+or terminal groups. Alignment translates the result without reevaluating this
+receipt. Changed breaks or ownership rebuild natural classification through replay.
+The separate fit/MinContent/MaxContent inclusion rules remain unchanged.
+
 Actual nonzero inline border/padding hanging barriers require their own captured
 boundary facts. Neutral native controls do not prove arbitrary styled boundaries
 have zero edges. Add that concrete producer/consumer operation without waiting
