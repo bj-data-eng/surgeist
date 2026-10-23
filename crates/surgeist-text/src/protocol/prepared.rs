@@ -452,12 +452,20 @@ pub(crate) fn prepare_tables(
             }
         }
         let next_atom = atom_cursor.max(atom);
-        let at = projection.atoms.get(next_atom).map_or(
-            analyzed.processed.project(
-                paragraph.extent(&analyzed.processed).end,
-                crate::Affinity::After,
-            ),
-            |value| value.presentation.start,
+        let at = projection
+            .atoms
+            .get(next_atom)
+            .map_or(projection.presentation_end(), |value| {
+                value.presentation.start
+            });
+        let processed = projection.atoms.get(next_atom).map_or_else(
+            || {
+                analyzed.processed.project(
+                    paragraph.extent(&analyzed.processed).end,
+                    crate::Affinity::After,
+                )
+            },
+            |value| value.processed.start,
         );
         // The existing raw standalone chooser treats each actual CR and LF as
         // a forced item boundary, even within the original CRLF grapheme.
@@ -474,7 +482,7 @@ pub(crate) fn prepare_tables(
             tables.boundaries.push(BoundaryData {
                 participant: tables.participants.len(),
                 atom: next_atom,
-                processed: at,
+                processed,
                 source_before: owned_source,
                 source_after: events.peek().map_or(owned_source, |event| event.source),
                 preliminary_item: (item_count == item_prefix && !shared_ligature)

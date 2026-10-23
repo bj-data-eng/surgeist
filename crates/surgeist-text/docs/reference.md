@@ -326,8 +326,23 @@ changing text, spans, or inline-box anchors. Retained sources and layouts remain
 unchanged. `SourceRevision::checked_next` returns `None` at exhaustion.
 
 `AnalyzedSource::new(Source, Style)` captures the original source and effective
-style winners once, without fonts. Raw original Unicode properties drive bidi;
-segmentation uses a separately proven private projection for isolated units.
+style winners once, without fonts. The post-Phase-I transform phase executes
+before semantic Unicode analysis. `TextTransform::none()` is neutral;
+`.with_full_size_kana(true)` enables all 58 mappings in the pinned
+[CSS kana table](../../../references/css-text-4--WD-css-text-4-20260814--106c5cd086ab.md#small-kana).
+Full-size-kana alone retains halfwidth forms. Casing, full-width and math-auto are
+not exposed. Real transformed code points drive analysis, shaping and wrapping;
+segmentation still uses a separately proven private projection for isolated units.
+Original/source AX and plaintext retain their own original/Phase-I projections.
+
+Original, processed and presentation coordinates remain distinct: for `A𛄲C`,
+original and Phase-I length are 4, with middle processed interval 1..3; transformed
+presentation length is 3, with middle interval 1..2. `PreparedBoundary` and unit
+processed readbacks remain Phase I. Selected `mapping_views` retain both exact
+processed extents and line-local presentation extents. Source Range/carets keep
+the original supplementary association and actual transformed glyph geometry.
+This contraction capability does not claim expansion-interior editing or selection.
+
 The glyph projection substitutes U+FFFD only for an original isolated unit;
 source associations remain exact and deletion cannot manufacture a new scalar.
 Span/box boundaries inside a valid pair refuse with `UnsupportedShapingBoundary`.
@@ -385,13 +400,17 @@ style resolver.
 | Supported | Preserved whitespace; word-break, wrapping, and overflow-wrap controls; paragraph alignment; supported indent shapes; inline-box alignment facts; underline/strikethrough; decoration offset, thickness, and concrete color; concrete selection color. |
 | Unsupported: paragraph direction control | Explicit text direction. Automatic direction still resolves to left-to-right or right-to-left in `Layout::direction()`. |
 | Phase-specific | Collapse, Discard and PreserveSpaces execute through explicit processed-paragraph capture; raw standalone layout requires Preserve. |
-| Unsupported: font or text-flow policy | Non-normal font variants, text overflow behavior beyond the accepted default, last-line alignment behavior beyond the accepted default, and text transformation. |
+| Unsupported: font or text-flow policy | Non-normal font variants, text overflow behavior beyond the accepted default, last-line alignment behavior beyond the accepted default. |
 | Unsupported: decoration policy | Overline and decoration styles beyond the exposed solid decoration contract. |
 | Unsupported: color resolution | Symbolic text and decoration colors. |
 | Unsupported: broader vertical alignment policy | General text vertical alignment. |
 
+`TextStyleFeature::FullSizeKana` reports the executed transform operation as
+Supported for both standalone and processed-paragraph analysis; it does not
+certify the entire CSS text-transform property.
+
 `FontVariant::Normal`, `TextOverflow::Clip`, `TextAlignLast::Auto`, and
-`TextTransform::None` are the exposed default values. Their acceptance does not
+`TextTransform::none()` are the exposed default values. Their acceptance does not
 mean the broader feature is implemented; `Clip` does not add a clipping stage to
 the layout pipeline. Explicit `Style.direction` and non-Preserve raw standalone
 whitespace still refuse. Composed base direction is a separate captured paragraph

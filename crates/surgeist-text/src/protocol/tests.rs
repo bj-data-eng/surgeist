@@ -10,6 +10,7 @@ mod hyphenation_limits;
 mod hyphenation_policy;
 mod joining_context;
 mod joining_positioning;
+mod kana;
 mod mandatory_breaks;
 mod manual_hyphenation;
 mod metric_heights;

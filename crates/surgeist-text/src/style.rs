@@ -289,7 +289,7 @@ impl Default for Style {
             word_break: WordBreak::Normal,
             wrap: Wrap::Word,
             overflow_wrap: OverflowWrap::Normal,
-            text_transform: TextTransform::None,
+            text_transform: TextTransform::none(),
             tab_size: crate::TabSize::default(),
             hyphens: crate::Hyphens::Manual,
             hyphenate_limit_chars: crate::HyphenateLimitChars::default(),
@@ -337,9 +337,35 @@ pub enum OverflowWrap {
     BreakWord,
 }
 
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum TextTransform {
-    None,
+/// Computed presentation transformations executed before Unicode analysis.
+///
+/// Full-size-kana implements the complete pinned CSS small-kana mapping. Casing,
+/// width conversion and math-auto are not accepted by this native input.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub struct TextTransform {
+    full_size_kana: bool,
+}
+
+impl TextTransform {
+    /// The neutral presentation operation.
+    #[must_use]
+    pub const fn none() -> Self {
+        Self {
+            full_size_kana: false,
+        }
+    }
+
+    /// Enables or disables the complete full-size-kana operation.
+    #[must_use]
+    pub const fn with_full_size_kana(mut self, enabled: bool) -> Self {
+        self.full_size_kana = enabled;
+        self
+    }
+
+    #[must_use]
+    pub const fn full_size_kana(self) -> bool {
+        self.full_size_kana
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]

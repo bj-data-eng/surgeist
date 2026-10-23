@@ -1,4 +1,4 @@
-//! Font-independent analysis of exact original source and its logical units.
+//! Font-independent semantic analysis with exact original-source custody.
 
 use std::{
     fmt,
@@ -28,7 +28,8 @@ impl fmt::Debug for AnalyzedSource {
 }
 
 impl AnalyzedSource {
-    /// Validates authored source/styles and analyzes original Unicode facts.
+    /// Validates source/styles and analyzes the post-transform semantic stream.
+    /// Exact original source and Phase-I correspondence remain separately owned.
     /// No font discovery, selection, glyph shaping or placement occurs.
     pub fn new(source: Source, style: Style) -> Result<Self> {
         let source = ValidatedSource::try_from(source)?;

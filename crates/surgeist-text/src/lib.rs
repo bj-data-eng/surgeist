@@ -31,6 +31,7 @@ mod style_support;
 mod supplied_line;
 mod system;
 mod text;
+mod transform;
 mod views;
 mod wrapping;
 

@@ -925,3 +925,474 @@ fn indication_keeps_authored_carets_and_accessibility_through_paint_admission(
         );
     }
 }
+
+// Native kana contraction through the actual Layout and Render consumer boundary.
+// The fixed derivative below reuses licensed Ahem, whose retained provenance is
+// crates/surgeist-text/tests/fixtures/fonts/ahem/PROVENANCE.md. Its cmap/hmtx facts
+// match the independently qualified Text kana fixture, without private test APIs.
+mod kana_transform {
+    use super::*;
+
+    fn kana_ahem() -> Vec<u8> {
+        fn u16_at(bytes: &[u8], at: usize) -> u16 {
+            u16::from_be_bytes(bytes[at..at + 2].try_into().unwrap())
+        }
+        fn u32_at(bytes: &[u8], at: usize) -> u32 {
+            u32::from_be_bytes(bytes[at..at + 4].try_into().unwrap())
+        }
+        fn checksum(bytes: &[u8]) -> u32 {
+            bytes.chunks(4).fold(0_u32, |sum, chunk| {
+                let mut word = [0; 4];
+                word[..chunk.len()].copy_from_slice(chunk);
+                sum.wrapping_add(u32::from_be_bytes(word))
+            })
+        }
+        fn record(bytes: &[u8], tag: &[u8; 4]) -> usize {
+            (0..usize::from(u16_at(bytes, 4)))
+                .map(|index| 12 + index * 16)
+                .find(|at| &bytes[*at..*at + 4] == tag)
+                .unwrap()
+        }
+        let mut bytes =
+            include_bytes!("../crates/surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf").to_vec();
+        // One Windows UCS-4 format12 subtable. Every glyph exists in Ahem.
+        let mut cmap = Vec::from(&[0, 0, 0, 1, 0, 3, 0, 10, 0, 0, 0, 12][..]);
+        cmap.extend(12_u16.to_be_bytes());
+        cmap.extend(0_u16.to_be_bytes());
+        cmap.extend(64_u32.to_be_bytes()); //16-byte header plus four12-byte groups
+        cmap.extend(0_u32.to_be_bytes());
+        cmap.extend(4_u32.to_be_bytes());
+        for (scalar, glyph) in [(0x41_u32, 35_u32), (0x43, 37), (0x3053, 36), (0x1b132, 82)] {
+            cmap.extend(scalar.to_be_bytes());
+            cmap.extend(scalar.to_be_bytes());
+            cmap.extend(glyph.to_be_bytes());
+        }
+        while !bytes.len().is_multiple_of(4) {
+            bytes.push(0);
+        }
+        let cmap_at = u32::try_from(bytes.len()).unwrap();
+        let entry = record(&bytes, b"cmap");
+        bytes[entry + 4..entry + 8].copy_from_slice(&checksum(&cmap).to_be_bytes());
+        bytes[entry + 8..entry + 12].copy_from_slice(&cmap_at.to_be_bytes());
+        bytes[entry + 12..entry + 16]
+            .copy_from_slice(&u32::try_from(cmap.len()).unwrap().to_be_bytes());
+        bytes.extend(cmap);
+        let entry = record(&bytes, b"hmtx");
+        let at = usize::try_from(u32_at(&bytes, entry + 8)).unwrap();
+        let length = usize::try_from(u32_at(&bytes, entry + 12)).unwrap();
+        assert_eq!(u16_at(&bytes, at + 36 * 4), 1000);
+        bytes[at + 36 * 4..at + 36 * 4 + 2].copy_from_slice(&500_u16.to_be_bytes());
+        let sum = checksum(&bytes[at..at + length]);
+        bytes[entry + 4..entry + 8].copy_from_slice(&sum.to_be_bytes());
+        let entry = record(&bytes, b"head");
+        let at = usize::try_from(u32_at(&bytes, entry + 8)).unwrap();
+        let length = usize::try_from(u32_at(&bytes, entry + 12)).unwrap();
+        assert_eq!(u16_at(&bytes, at + 18), 1000);
+        bytes[at + 8..at + 12].fill(0);
+        let sum = checksum(&bytes[at..at + length]);
+        bytes[entry + 4..entry + 8].copy_from_slice(&sum.to_be_bytes());
+        let adjustment = 0xb1b0_afba_u32.wrapping_sub(checksum(&bytes));
+        bytes[at + 8..at + 12].copy_from_slice(&adjustment.to_be_bytes());
+        assert_eq!(checksum(&bytes), 0xb1b0_afba);
+        bytes
+    }
+
+    fn capture(
+        system: &mut text::System,
+        enabled: bool,
+        available: layout::Available,
+    ) -> (
+        layout::CompletedLayoutBatch<usize>,
+        text::PreparedOrigin,
+        text::Source,
+    ) {
+        let source = text::Source::identified("A\u{1b132}C", text::Id::from_u64(6301), 11);
+        let units = [0x41, 0xd82c, 0xdd32, 0x43];
+        let style = text::Style {
+            font: text::Font::new().family("Ahem"),
+            size: 10.0,
+            line_height: text::LineHeight::Absolute(10.0),
+            white_space: text::WhiteSpace::Preserve,
+            text_transform: text::TextTransform::none().with_full_size_kana(enabled),
+            ..text::Style::default()
+        };
+        assert_eq!(style.text_transform.full_size_kana(), enabled);
+        let style = text::Style {
+            word_break: text::WordBreak::BreakAll,
+            ..style
+        };
+        let ancestor_wrap = style.wrap;
+        let analyzed = text::AnalyzedSource::from_paragraph(text::ParagraphInput {
+            source: source.clone(),
+            base_style: style,
+            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: text::ParagraphBaseDirection::LeftToRight,
+            paragraph_strut: text::ParagraphStrut::DefaultFont,
+            terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
+            tab_reference: None,
+            origins: vec![text::ParagraphOrigin {
+                source: source.clone(),
+                local: text::Range::new(0, 4),
+                aggregate: text::Range::new(0, 4),
+                kind: text::ParagraphOriginKind::Authored,
+            }],
+            connections: vec![],
+            controls: vec![],
+            boundary_policies: vec![],
+            replacements: vec![],
+            anchor_order: vec![],
+        })
+        .unwrap();
+        assert_eq!(
+            analyzed.processed_source().processed_text().code_units(),
+            units
+        );
+        let plaintext = analyzed
+            .processed_source()
+            .plaintext_items(text::Affinity::Before)
+            .flat_map(|item| match item {
+                text::PlaintextItem::Text(value) => value.code_units().to_vec(),
+                text::PlaintextItem::InlineBox(_) => panic!("no boxes in the actual source"),
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(plaintext, units);
+        let policies = analyzed
+            .wrapping_relations()
+            .filter(|relation| relation.ancestor_wrap().is_none())
+            .map(|relation| text::WrappingPolicy {
+                relation: relation.handle(),
+                ancestor_wrap,
+            })
+            .collect();
+        let analyzed = analyzed.with_wrapping_policies(policies).unwrap();
+        let prepared = system
+            .prepare(&analyzed, text::PreparationOptions::default())
+            .unwrap();
+        let origin = prepared.origin_views().next().unwrap().handle();
+
+        let tree = Tree {
+            inputs: [
+                layout::LayoutInput::box_input(layout::NodeInput {
+                    display: layout::Display::Block,
+                    size: layout::Size::new(
+                        match available {
+                            layout::Available::Definite(width) => layout::PreferredSizeOf::value(
+                                layout::LengthPercentageOf::px(width).unwrap(),
+                            ),
+                            _ => layout::PreferredSizeOf::AUTO,
+                        },
+                        layout::PreferredSizeOf::AUTO,
+                    ),
+                    ..layout::NodeInput::DEFAULT
+                }),
+                layout::LayoutInput::InlineText(layout::TextParticipation::new(origin.clone())),
+            ],
+            non_box: layout::NodeInput::non_box(),
+        };
+        let capture = layout::TextLayoutInput::try_new(
+            &tree,
+            0,
+            vec![layout::TextParagraphBinding {
+                prepared,
+                container: 0,
+                nodes: vec![1],
+                origins: vec![layout::TextOriginBinding {
+                    origin: origin.clone(),
+                    node: 1,
+                }],
+                atomics: vec![],
+                controls: vec![],
+                line_strut: None,
+            }],
+        )
+        .unwrap();
+        let batch = layout::compute_layout_with_text(
+            &capture,
+            0,
+            layout::LayoutRootRequest::viewport(layout::Size::new(
+                available,
+                layout::Available::MaxContent,
+            ))
+            .unwrap(),
+        )
+        .unwrap();
+        (batch, origin, source)
+    }
+
+    #[test]
+    fn full_size_kana_contraction_keeps_authored_geometry_through_layout_and_paint() {
+        let bytes = kana_ahem();
+        // None qualifies the original supplementary cmap/metrics separately.
+        // Kana fits the25px block with the actual shorter glyph, without any
+        // Render-side replacement, reshaping or second line layout.
+        for enabled in [false, true] {
+            let mut system = text::System::new(text::SystemOptions {
+                font_catalogue: text::FontCatalogueMode::RegisteredOnly,
+            })
+            .unwrap();
+            system.register_fonts(bytes.clone()).unwrap();
+            let (batch, origin, source) = capture(
+                &mut system,
+                enabled,
+                layout::Available::Definite(if enabled { 25.0 } else { 40.0 }),
+            );
+            let units = [0x41, 0xd82c, 0xdd32, 0x43];
+            let placed = batch.placed_text()[0].layout();
+            let advance = if enabled { 25.0 } else { 30.0 };
+            let middle = if enabled { 5.0 } else { 10.0 };
+            let c_x = 10.0 + middle;
+            assert_eq!(placed.source(), &source);
+            assert_eq!(placed.source().text().code_units(), units);
+            assert_eq!(placed.source().id(), Some(text::Id::from_u64(6301)));
+            assert_eq!(placed.source().revision(), 11);
+            assert_eq!(placed.lines().len(), 1);
+            assert_eq!(placed.lines()[0].range(), text::Range::new(0, 4));
+            // Line bounds describe the actual allocated span; glyphs and
+            // finalized feedback below own the content-advance observation.
+            assert_eq!(
+                placed.lines()[0].bounds().size.width,
+                if enabled { 25.0 } else { 40.0 }
+            );
+            let finalized = batch.final_inline_fragments()[0]
+                .fragment()
+                .finalized_fragment()
+                .finalized_line();
+            assert_eq!(finalized.feedback().advance, advance);
+            assert_eq!(
+                finalized
+                    .mapping_views()
+                    .map(|mapping| mapping.processed_range().end().get())
+                    .max(),
+                Some(4)
+            );
+            assert_eq!(
+                finalized
+                    .mapping_views()
+                    .map(|mapping| mapping.presentation_range().end())
+                    .max(),
+                Some(if enabled { 3 } else { 4 })
+            );
+            for run in placed.run_views() {
+                assert_eq!(run.face().bytes(), bytes.as_slice());
+                assert_eq!(run.font_size(), 10.0);
+                assert_eq!(run.effective_instance().unwrap().font_size(), 10.0);
+            }
+            let glyphs = placed
+                .glyph_runs()
+                .iter()
+                .flat_map(|run| {
+                    run.glyphs()
+                        .iter()
+                        .map(|glyph| {
+                            (
+                                glyph.id(),
+                                glyph.advance(),
+                                run.origin().x + glyph.pen() + f64::from(glyph.x()),
+                                glyph.range(),
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(
+                glyphs,
+                [
+                    (35, 10.0, 0.0, text::Range::new(0, 1)),
+                    (
+                        if enabled { 36 } else { 82 },
+                        middle as f32,
+                        10.0,
+                        text::Range::new(1, 3)
+                    ),
+                    (37, 10.0, c_x, text::Range::new(3, 4)),
+                ]
+            );
+            let whole = placed
+                .source_range_fragments(&origin, text::Range::new(1, 3))
+                .unwrap();
+            let first = placed
+                .source_range_fragments(&origin, text::Range::new(1, 2))
+                .unwrap();
+            let second = placed
+                .source_range_fragments(&origin, text::Range::new(2, 3))
+                .unwrap();
+            let whole_unit = whole.units().next().unwrap();
+            assert_eq!(whole.units().count(), 1);
+            assert_eq!(first.local_range(), text::Range::new(1, 2));
+            assert_eq!(second.local_range(), text::Range::new(2, 3));
+            assert!(whole_unit.same_unit(&first.units().next().unwrap()));
+            assert!(whole_unit.same_unit(&second.units().next().unwrap()));
+            for fragments in [&whole, &first, &second] {
+                assert_eq!(
+                    fragments
+                        .units()
+                        .flat_map(|unit| unit
+                            .pieces()
+                            .map(|piece| piece.rect())
+                            .collect::<Vec<_>>())
+                        .collect::<Vec<_>>(),
+                    [text::Rect::new(10.0, 0.0, middle, 10.0)]
+                );
+            }
+            for (index, affinity, x) in [
+                (1, text::Affinity::After, 10.0),
+                (2, text::Affinity::Before, 10.0),
+                (2, text::Affinity::After, c_x),
+                (3, text::Affinity::Before, c_x),
+                (4, text::Affinity::Before, advance),
+            ] {
+                assert_eq!(
+                    placed
+                        .cursor(text::Cursor::new(index, affinity))
+                        .unwrap()
+                        .rect()
+                        .origin,
+                    text::Point::new(x, 0.0)
+                );
+            }
+            let misses = system.stats().layout_misses();
+            drop(system);
+            let paint = render::prepare_text_layout(
+                placed,
+                render::Transform::identity(),
+                render::TextLayoutLimits::new(
+                    render::GlyphRunLimits::new(32, 1024, 8 << 20, 8 << 20),
+                    8,
+                    32,
+                    8,
+                ),
+            )
+            .unwrap();
+            assert!(std::ptr::eq(paint.layout(), placed));
+            assert!(!paint.scene().is_empty());
+            assert_eq!(paint.layout().lines(), placed.lines());
+            assert_eq!(paint.layout().source(), &source);
+            assert_eq!(misses, 0);
+            #[cfg(feature = "text-accessibility")]
+            {
+                let mut accessibility = text::Accessibility::new(10);
+                let parent = 1000_u64.into();
+                let update = paint
+                    .layout()
+                    .accessibility_update(
+                        &mut accessibility,
+                        parent,
+                        parent,
+                        text::Point::new(100.0, 200.0),
+                    )
+                    .unwrap();
+                let position = paint
+                    .layout()
+                    .access_position(&accessibility, text::Cursor::new(1, text::Affinity::After))
+                    .unwrap()
+                    .unwrap();
+                let node = &update
+                    .nodes
+                    .iter()
+                    .find(|(id, _)| *id == position.node)
+                    .unwrap()
+                    .1;
+                assert_eq!(node.value(), Some("\u{1b132}"));
+                assert_eq!(position.character_index, 0);
+                let bounds = node.bounds().unwrap();
+                assert_eq!(
+                    (bounds.x0, bounds.y0, bounds.x1, bounds.y1),
+                    (110.0, 200.0, 110.0 + middle, 210.0)
+                );
+            }
+        }
+    }
+    #[test]
+    fn kana_contraction_changes_actual_finite_fit_and_intrinsic_widths() {
+        // Pinned Text4 break-all treats letter units as ID. No hyphenation or
+        // glyph fitting substitutes for these actual10/5/10 provider advances.
+        let bytes = kana_ahem();
+        let mut system = text::System::new(text::SystemOptions {
+            font_catalogue: text::FontCatalogueMode::RegisteredOnly,
+        })
+        .unwrap();
+        system.register_fonts(bytes).unwrap();
+        for enabled in [false, true] {
+            let (batch, _, source) =
+                capture(&mut system, enabled, layout::Available::Definite(17.0));
+            let placed = batch.placed_text()[0].layout();
+            let advances = batch
+                .final_inline_fragments()
+                .iter()
+                .map(|entry| {
+                    let fragment = entry.fragment();
+                    (
+                        fragment.line_index(),
+                        fragment
+                            .finalized_fragment()
+                            .finalized_line()
+                            .feedback()
+                            .advance,
+                    )
+                })
+                .collect::<std::collections::BTreeMap<_, _>>();
+            assert_eq!(advances.len(), placed.lines().len());
+            assert!(
+                placed
+                    .lines()
+                    .iter()
+                    .all(|line| line.bounds().size.width == 17.0)
+            );
+            let actual = placed
+                .lines()
+                .iter()
+                .enumerate()
+                .map(|(index, line)| (line.range(), advances[&index]))
+                .collect::<Vec<_>>();
+            assert_eq!(
+                actual,
+                if enabled {
+                    vec![
+                        (text::Range::new(0, 3), 15.0),
+                        (text::Range::new(3, 4), 10.0),
+                    ]
+                } else {
+                    vec![
+                        (text::Range::new(0, 1), 10.0),
+                        (text::Range::new(1, 3), 10.0),
+                        (text::Range::new(3, 4), 10.0),
+                    ]
+                }
+            );
+            assert_eq!(placed.source(), &source);
+            let glyphs = placed
+                .run_views()
+                .flat_map(|run| {
+                    run.glyphs()
+                        .map(|glyph| (glyph.id(), glyph.advance()))
+                        .collect::<Vec<_>>()
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(
+                glyphs,
+                if enabled {
+                    vec![(35, 10.0), (36, 5.0), (37, 10.0)]
+                } else {
+                    vec![(35, 10.0), (82, 10.0), (37, 10.0)]
+                }
+            );
+            for (available, expected) in [
+                (layout::Available::MinContent, 10.0),
+                (
+                    layout::Available::MaxContent,
+                    if enabled { 25.0 } else { 30.0 },
+                ),
+            ] {
+                let (intrinsic, _, same_source) = capture(&mut system, enabled, available);
+                assert_eq!(same_source.text().code_units(), source.text().code_units());
+                let root = intrinsic
+                    .final_entries()
+                    .iter()
+                    .find(|entry| entry.node() == 0)
+                    .unwrap()
+                    .output();
+                assert_eq!(root.size.width, expected);
+            }
+        }
+    }
+}

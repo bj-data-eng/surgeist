@@ -1,5 +1,5 @@
 //! Fixed kana cmap/advance qualification over the retained licensed Ahem font.
-//! These baselines shape separate original sources with TextTransform::None.
+//! These baselines shape separate original sources with TextTransform::none().
 
 use crate::{
     Alignment, Direction, Font, FontCatalogueMode, Id, LineHeight, Options, Range, Source, Style,
@@ -48,7 +48,7 @@ fn baseline(text: &str, units: &[u16], expected: &[(u32, f32, f64, Range)], widt
                 font: Font::new().family("Ahem"),
                 size: 10.0,
                 line_height: LineHeight::Absolute(10.0),
-                text_transform: TextTransform::None,
+                text_transform: TextTransform::none(),
                 white_space: WhiteSpace::Preserve,
                 ..Style::default()
             },

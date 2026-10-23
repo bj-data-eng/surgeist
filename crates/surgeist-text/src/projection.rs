@@ -345,6 +345,14 @@ impl SourceProjection {
             .map_err(|_| boundary_error(byte.0))
     }
 
+    /// Terminal coordinate of this actual semantic presentation, not Phase I.
+    pub(crate) fn presentation_end(&self) -> usize {
+        self.segmentation_offsets
+            .last()
+            .expect("projection endpoint")
+            .0
+    }
+
     pub(crate) fn segmentation_unit(&self, byte: usize) -> Result<usize> {
         self.segmentation_offsets
             .binary_search_by_key(&byte, |(_, byte)| *byte)

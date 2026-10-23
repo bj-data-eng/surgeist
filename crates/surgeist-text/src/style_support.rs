@@ -42,7 +42,7 @@ pub enum TextStyleFeature {
     DecorationStyle,
     ConcreteDecorationColor,
     SymbolicDecorationColor,
-    TextTransform,
+    FullSizeKana,
     SelectionColor,
 }
 
@@ -96,7 +96,7 @@ impl TextStyleFeature {
         Self::DecorationStyle,
         Self::ConcreteDecorationColor,
         Self::SymbolicDecorationColor,
-        Self::TextTransform,
+        Self::FullSizeKana,
         Self::SelectionColor,
     ];
 
@@ -138,6 +138,7 @@ impl TextStyleFeature {
             | Self::DecorationOffset
             | Self::DecorationThickness
             | Self::ConcreteDecorationColor
+            | Self::FullSizeKana
             | Self::SelectionColor => TextStyleSupport::Supported,
             Self::ExplicitTextDirection => TextStyleSupport::Unsupported(
                 UnsupportedTextStyleReason::RequiresParagraphBaseDirection,
@@ -153,7 +154,7 @@ impl TextStyleFeature {
             Self::FontVariant => {
                 TextStyleSupport::Unsupported(UnsupportedTextStyleReason::RequiresFontPolicy)
             }
-            Self::TextAlignLast | Self::TextOverflow | Self::TextTransform => {
+            Self::TextAlignLast | Self::TextOverflow => {
                 TextStyleSupport::Unsupported(UnsupportedTextStyleReason::RequiresTextFlowPolicy)
             }
             Self::Overline | Self::DecorationStyle => TextStyleSupport::Unsupported(

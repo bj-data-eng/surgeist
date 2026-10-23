@@ -29,7 +29,11 @@ uses the same selected-line and placement machinery.
    controls, wrapping facts and any actual computed discretionary replacements.
    `AnalyzedSource::from_paragraph` validates this complete capture and retains the
    executed `ProcessedSource`; original code-unit ownership remains available
-   through the processed correspondence.
+   through the processed correspondence. The complete full-size-kana operation,
+   enabled by `TextTransform::none().with_full_size_kana(true)`, runs once after
+   Phase I and before semantic analysis. Original/Phase-I offsets remain distinct
+   from actual transformed presentation offsets; plaintext remains original.
+   See [transformation and source custody](reference.md#defaults-and-validation).
 2. Call `System::prepare(&analysis, PreparationOptions)` with the actual scale and
    `TabPreparation::FontAdvance` or `TabPreparation::CssStops` demand.
    Preparation resolves resources and preliminary measurements without choosing

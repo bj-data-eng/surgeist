@@ -45,6 +45,80 @@ A preparation has an opaque owner-issued identity. Clones retain the same identi
 
 Font catalogue changes publish a new immutable catalogue identity and invalidate preparation cache lookup for new requests. Existing preparations retain their old fonts and remain valid for reading/finalization. Each consuming adapter rejects joining them into a newly captured composed result whose source/style/font identities differ. A numeric generation counter must fail on exhaustion rather than saturate and reuse an identity. Refresh must actually publish the refreshed catalogue and replay registrations, rather than merely advance a counter. Provide concrete safe font registration and a `RegisteredOnly` catalogue mode for reproducible tests; preserve the default system catalogue behavior. This is not a font-provider trait.
 
+### Text transformations and correspondence
+
+Text owns one immutable transformation result after executed Phase I and before
+Unicode analysis, font selection, shaping and wrapping. Follow the pinned
+[transform order](../references/css-text-4--WD-css-text-4-20260814--106c5cd086ab.md#transforming):
+word-space transformation, casing, full-width, then full-size-kana. Original
+UTF-16 and Phase-I text retain their existing coordinates and
+[plaintext semantics](../references/css-text-4--WD-css-text-4-20260814--106c5cd086ab.md#plaintext).
+Transformation output has its actual UTF-16 extent; provider bytes remain a
+separate domain. For preserved `A𛄲C`, original and Phase-I endpoints remain 4,
+while full-size-kana presentation ends at 3. Prepared processed readbacks must
+continue to name the Phase-I domain.
+
+Record correspondence at the actual emission or removal, composed through
+Phase I to ordered original occurrence-qualified pieces. Each emitted scalar
+retains its contributing pieces and actual style owner. Expansions may repeat
+one original interval; contractions may retain multiple original units or pieces.
+Zero-output input retains its association and affinity. Preserve holes and
+distinct occurrences rather than replace them with a source hull, output diff,
+or equal-text deduplication. Isolated surrogates remain original units through
+this phase; glyph replacement is separate. Context crosses genuine connected
+origins, neutral inline/empty occurrences and out-of-flow boxes, while actual
+disconnections and atomic/forced boundaries retain their roles.
+
+All downstream analysis, opportunities, preparation, finalization and consumers
+use this result. Retain the prescribed full conditional and known-language
+casing requirements; per-scalar contextless casing is insufficient. Full-width
+uses the raw Unicode wide/narrow relation, not compatibility normalization, and
+maps U+0020 only when its Phase-I whitespace is preserved. Full-size-kana uses
+the complete pinned [Appendix G](../references/css-text-4--WD-css-text-4-20260814--106c5cd086ab.md#small-kana).
+Expose only executed options and report their specific capabilities. A complete
+kana contribution does not establish casing, width, math or separator support.
+
+The [native expansion-interior determination](https://github.com/bj-data-eng/surgeist/issues/63#issuecomment-6375717099)
+preserves the actual presentation boundary in `ß → S|S`. Its immutable placed
+position retains correspondence and output subposition. Interior upstream/trailing
+affinity projects to the contributing original end with upstream affinity;
+downstream/leading projects to the original start with downstream affinity.
+These are logical sides, independent of physical RTL order. With multiple
+contributing pieces, use the last endpoint or first start in logical source order
+and retain occurrence identity. This projection is lossy; source cursors cannot
+reconstruct an interior placed occurrence. Ordinary outer boundaries retain
+their existing projection.
+
+Exact placed selection derives geometry and authored coverage from selected
+presentation units, never sorted projected source endpoints. Selecting only the
+receiving `S` has receiving-only geometry and full original `ß` coverage;
+selecting both pieces extracts that authored occurrence once. A complete source
+Range selecting `ß` includes both attributable pieces, while a placement-restricted
+query reports only that placement's geometry without splitting original custody.
+A collapsed exact selection has no selected authored coverage. Exact source
+extraction preserves original UTF-16; plaintext applies its separate trim/collapse
+policy. Neither operation creates fractional source editing rights.
+
+A legal interior cut resumes at the next transformed participant/subposition
+through the existing issued boundaries. Original coverage may overlap lines;
+presentation progress must advance. Ordinary AL–AL supplies no `S|S` break;
+break-all and conditional anywhere retain their own gates. Do not synthesize
+authored consumption or reuse indication-specific `HyphenationContinuation`.
+The interior projection and coverage choices are Surgeist policy, not a browser
+interoperability claim. Introduce their exact-selection API with an actual
+expansion-capable transform, through one selection owner and direct caller
+migration.
+
+Qualification includes all kana mappings and unmapped controls, supplementary
+contraction with distinct Phase-I/presentation readbacks, actual registered-font
+glyphs and metrics, source/plaintext custody and shared composed geometry.
+Expansion acceptance additionally requires unwrapped and legally wrapped
+`ß → SS`, both logical affinities and RTL mirrors, receiving-only selection and
+extraction, both-piece extraction once, source Range over both lines, collapsed
+selection, distinct equal occurrences, mixed source pieces and real conditional
+and known-language length-changing mappings. These requirements do not claim
+implementation before their owning contribution is qualified.
+
 ### Font-independent analysis and accessibility
 
 `AnalyzedSource::new(Source, Style)` performs the font-independent analysis once and returns an immutable value with an opaque allocation identity. Clones retain that identity; independently analyzed equal text does not. It preserves exact source units, grapheme and host-projection mappings, source affinity and applicable language facts. Isolated UTF-16 units remain valid analysis inputs; a host requiring scalar UTF-8 may reject their accessibility projection at that boundary. Font preparation retains the same analyzed allocation. `System::layout_analyzed` consumes this analysis through the same preparation, selection, finalization and placement machinery as the `System::layout` convenience path.

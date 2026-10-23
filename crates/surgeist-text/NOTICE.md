@@ -154,3 +154,18 @@ it for deterministic Text tests, copied from the existing Render fixture:
 
 The font and license files are unchanged. The fixture is not a production font
 or evidence of general script, variation or shaping conformance.
+
+## CSS Text small-kana mapping
+
+The full-size-kana mapping facts in `src/transform.rs` and the independent
+literal test vectors derive from Appendix G of CSS Text Module Level 4,
+Working Draft 14 August 2026, distributed by the World Wide Web Consortium.
+Copyright © 2026 World Wide Web Consortium.
+
+* License: [W3C Software and Document License 2023](licenses/w3c/software-license-2023.txt)
+* Original: [CSS Text Module Level 4, Appendix G](https://www.w3.org/TR/2026/WD-css-text-4-20260814/#small-kana)
+
+The table is transcribed into Rust scalar matching and literal expectations;
+Surgeist owns execution, original-source correspondence and composed consumers.
+The crate's own license remains unchanged. No casing or width-mapping data is
+included by this contribution.

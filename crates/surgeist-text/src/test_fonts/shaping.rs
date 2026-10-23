@@ -97,6 +97,24 @@ pub(crate) fn kana_ahem() -> Vec<u8> {
     )
 }
 
+/// Real mark-to-base fixture: transformed KO uses base35, original small KO82.
+/// Acute100 retains the same actual (400,600)/(100,200) anchors as mark_ahem.
+pub(crate) fn kana_mark_ahem() -> Vec<u8> {
+    replace_tables(
+        &mark_ahem(),
+        vec![(
+            *b"cmap",
+            cmap(&[
+                (0x41, 35),
+                (0x43, 37),
+                (0x1b132, 82),
+                (0x3053, 35),
+                (0x301, 100),
+            ]),
+        )],
+    )
+}
+
 /// GSUB ccmp: original Ahem A(35) A(35) -> X(58), one 1000-unit glyph.
 pub(crate) fn ligature_ahem() -> Vec<u8> {
     let subtable = words(&[1, 18, 1, 8, 1, 4, 58, 2, 35, 1, 1, 35]);

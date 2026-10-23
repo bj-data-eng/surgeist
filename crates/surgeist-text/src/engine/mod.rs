@@ -28,7 +28,7 @@ mod tests;
 
 pub(crate) use crate::error::{shaping_refused, text_numeric_error};
 
-/// One atom decoded from original backing, before any rendering substitution.
+/// One semantic scalar with exact original, Phase-I and presentation associations.
 #[derive(Clone, Debug)]
 pub(crate) struct OriginalAtom {
     pub(crate) source: Range,
@@ -175,6 +175,7 @@ pub(crate) fn analyze_paragraph(
             });
         }
     }
+    let projection = crate::transform::apply(projection, &styles)?;
     let (analysis, words) =
         analysis::analyze(&projection, &styles, processed.source().boxes(), &paragraph)?;
     let words = analysis::hyphenation::Words::new(&projection, &analysis.graphemes, words);
