@@ -90,6 +90,7 @@ fn css_tab_geometry_supplies_the_same_source_carets_and_render_admission() {
     };
     let ancestor_wrap = style.wrap;
     let analyzed = text::AnalyzedSource::from_paragraph(text::ParagraphInput {
+        terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
         tab_reference: Some(
             text::ParagraphTabReference::new(
                 style.clone(),
@@ -295,6 +296,7 @@ fn assert_retained_layout_composition(expanded: bool, indent: f32, contextual: b
         text::AnalyzedSource::from_processed_paragraph(paragraph)
     } else {
         text::AnalyzedSource::from_paragraph(text::ParagraphInput {
+            terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
             tab_reference: None,
             source: source.clone(),
             base_style: style,

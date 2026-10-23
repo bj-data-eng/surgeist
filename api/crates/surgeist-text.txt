@@ -294,11 +294,6 @@ pub surgeist_text::FontOutlineError::Unsupported
 pub surgeist_text::FontOutlineError::Unsupported::capability: surgeist_text::FontOutlineCapability
 pub enum surgeist_text::FontVariant
 pub surgeist_text::FontVariant::Normal
-pub enum surgeist_text::HangingContext
-pub surgeist_text::HangingContext::None
-pub surgeist_text::HangingContext::Requested
-pub surgeist_text::HangingContext::Requested::end: f64
-pub surgeist_text::HangingContext::Requested::start: f64
 pub enum surgeist_text::Hit
 pub surgeist_text::Hit::InlineBox(surgeist_text::Id)
 pub surgeist_text::Hit::None
@@ -332,6 +327,23 @@ pub enum surgeist_text::LineBoxAlignment
 pub surgeist_text::LineBoxAlignment::Baseline
 pub surgeist_text::LineBoxAlignment::Bottom
 pub surgeist_text::LineBoxAlignment::Top
+pub enum surgeist_text::LineEdgeDisposition
+pub surgeist_text::LineEdgeDisposition::Conditional
+pub surgeist_text::LineEdgeDisposition::Conditional::eligible: bool
+pub surgeist_text::LineEdgeDisposition::Conditional::side: surgeist_text::LineEdgeSide
+pub surgeist_text::LineEdgeDisposition::Ordinary
+pub surgeist_text::LineEdgeDisposition::Removed
+pub surgeist_text::LineEdgeDisposition::Unconditional
+pub surgeist_text::LineEdgeDisposition::Unconditional::side: surgeist_text::LineEdgeSide
+pub surgeist_text::LineEdgeDisposition::Unconditional::terminal: bool
+pub surgeist_text::LineEdgeDisposition::UnconsumedTerminal
+pub surgeist_text::LineEdgeDisposition::UnconsumedTerminal::side: surgeist_text::LineEdgeSide
+pub enum surgeist_text::LineEdgeOwner
+pub surgeist_text::LineEdgeOwner::Alternative(surgeist_text::PreparedAlternative)
+pub surgeist_text::LineEdgeOwner::Participant(surgeist_text::PreparedParticipant)
+pub enum surgeist_text::LineEdgeSide
+pub surgeist_text::LineEdgeSide::End
+pub surgeist_text::LineEdgeSide::Start
 pub enum surgeist_text::LineEnd
 pub surgeist_text::LineEnd::Forced
 pub surgeist_text::LineEnd::Paragraph
@@ -414,6 +426,12 @@ pub surgeist_text::ParagraphReplacementDefinition::Source::source: surgeist_text
 pub enum surgeist_text::ParagraphStrut
 pub surgeist_text::ParagraphStrut::AllocatedContributions
 pub surgeist_text::ParagraphStrut::DefaultFont
+pub enum surgeist_text::ParagraphTerminalEdge
+pub surgeist_text::ParagraphTerminalEdge::BlockEnd
+pub surgeist_text::ParagraphTerminalEdge::NonBlockBoundary
+pub surgeist_text::ParagraphTerminalEdge::Unknown
+pub enum surgeist_text::PhaseTwoContext
+pub surgeist_text::PhaseTwoContext::TerminalBlockEdge
 pub enum surgeist_text::PlacementCoverage
 pub surgeist_text::PlacementCoverage::Range
 pub surgeist_text::PlacementCoverage::Range::end: surgeist_text::PreparedBoundary
@@ -450,7 +468,7 @@ pub surgeist_text::ProcessingCapacityError::Allocation
 pub surgeist_text::ProcessingCapacityError::Overflow
 pub enum surgeist_text::ProtocolContextField
 pub surgeist_text::ProtocolContextField::BaseDirection
-pub surgeist_text::ProtocolContextField::Hanging
+pub surgeist_text::ProtocolContextField::CssParagraphBoundary
 pub surgeist_text::ProtocolContextField::IntrinsicTabPhase
 pub surgeist_text::ProtocolContextField::LineEnd
 pub surgeist_text::ProtocolContextField::LineStart
@@ -564,6 +582,7 @@ pub surgeist_text::ProtocolError::MissingConnection::before: usize
 pub surgeist_text::ProtocolError::MissingControl
 pub surgeist_text::ProtocolError::MissingControl::occurrence: usize
 pub surgeist_text::ProtocolError::MissingLineMetrics
+pub surgeist_text::ProtocolError::MissingPhaseTwoContext(surgeist_text::PhaseTwoContext)
 pub surgeist_text::ProtocolError::MissingSpacingSlot
 pub surgeist_text::ProtocolError::MissingSpacingSlot::slot: usize
 pub surgeist_text::ProtocolError::MissingWrappingPolicy
@@ -1093,6 +1112,10 @@ pub fn surgeist_text::FinalizedLine::selected_line(&self) -> surgeist_text::Sele
 impl surgeist_text::FinalizedLine
 pub fn surgeist_text::FinalizedLine::control_slots(&self) -> impl core::iter::traits::iterator::Iterator<Item = surgeist_text::FinalizedControlView<'_>>
 impl surgeist_text::FinalizedLine
+pub fn surgeist_text::FinalizedLine::edge_units(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::LineEdgeUnitView<'_>>
+pub fn surgeist_text::FinalizedLine::measurements(&self) -> &surgeist_text::LineMeasurements
+pub fn surgeist_text::FinalizedLine::metric_bounds(&self) -> surgeist_text::Rect
+impl surgeist_text::FinalizedLine
 pub fn surgeist_text::FinalizedLine::fragment_views(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::FinalizedFragmentView<'_>>
 pub fn surgeist_text::FinalizedLine::fragments(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::FinalizedFragment> + '_
 pub fn surgeist_text::FinalizedLine::mapping_views(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::SelectedMappingView<'_>>
@@ -1259,6 +1282,11 @@ pub const fn surgeist_text::InlineBoxMetricFact::line(self) -> usize
 pub const fn surgeist_text::InlineBoxMetricFact::new(id: surgeist_text::Id, kind: surgeist_text::InlineBoxKind, index: usize, rect: surgeist_text::Rect, line: usize, vertical_align: surgeist_text::VerticalAlign, baseline_shift: surgeist_text::BaselineShiftFact) -> Self
 pub const fn surgeist_text::InlineBoxMetricFact::rect(self) -> surgeist_text::Rect
 pub const fn surgeist_text::InlineBoxMetricFact::vertical_align(self) -> surgeist_text::VerticalAlign
+pub struct surgeist_text::InlineMeasure
+impl surgeist_text::InlineMeasure
+pub const fn surgeist_text::InlineMeasure::advance(self) -> f64
+pub const fn surgeist_text::InlineMeasure::occupied_end(self) -> f64
+pub const fn surgeist_text::InlineMeasure::occupied_start(self) -> f64
 pub struct surgeist_text::InlineMetricFacts
 impl surgeist_text::InlineMetricFacts
 pub fn surgeist_text::InlineMetricFacts::inline_boxes(&self) -> &[surgeist_text::InlineBoxMetricFact]
@@ -1323,12 +1351,22 @@ pub surgeist_text::LineContext::alignment: surgeist_text::Alignment
 pub surgeist_text::LineContext::available_inline: core::option::Option<f64>
 pub surgeist_text::LineContext::base_direction: surgeist_text::ParagraphBaseDirection
 pub surgeist_text::LineContext::end: surgeist_text::LineEnd
-pub surgeist_text::LineContext::hanging: surgeist_text::HangingContext
 pub surgeist_text::LineContext::indent: f64
 pub surgeist_text::LineContext::orientation: surgeist_text::LineOrientation
 pub surgeist_text::LineContext::spacing: surgeist_text::SpacingPolicy
 pub surgeist_text::LineContext::start: surgeist_text::LineStart
 pub surgeist_text::LineContext::tabs: surgeist_text::TabContext
+pub struct surgeist_text::LineEdgeUnitView<'a>
+impl surgeist_text::LineEdgeUnitView<'_>
+pub fn surgeist_text::LineEdgeUnitView<'_>::advance(&self) -> f64
+pub fn surgeist_text::LineEdgeUnitView<'_>::bounds(&self) -> surgeist_text::Rect
+pub fn surgeist_text::LineEdgeUnitView<'_>::disposition(&self) -> surgeist_text::LineEdgeDisposition
+pub fn surgeist_text::LineEdgeUnitView<'_>::excluded_contribution(&self) -> f64
+pub fn surgeist_text::LineEdgeUnitView<'_>::finalized_line(&self) -> &surgeist_text::FinalizedLine
+pub fn surgeist_text::LineEdgeUnitView<'_>::outward_overlap(&self) -> f64
+pub fn surgeist_text::LineEdgeUnitView<'_>::owners(&self) -> impl core::iter::traits::iterator::Iterator<Item = surgeist_text::LineEdgeOwner> + '_
+pub fn surgeist_text::LineEdgeUnitView<'_>::presentation_range(&self) -> surgeist_text::PresentationRange
+pub fn surgeist_text::LineEdgeUnitView<'_>::source_pieces(&self) -> impl core::iter::traits::iterator::Iterator<Item = surgeist_text::Range> + '_
 pub struct surgeist_text::LineFeedback
 pub surgeist_text::LineFeedback::advance: f64
 pub surgeist_text::LineFeedback::ascent: f64
@@ -1340,6 +1378,12 @@ pub surgeist_text::LineFeedback::line_height: f64
 pub surgeist_text::LineFeedback::occupied_end: f64
 pub surgeist_text::LineFeedback::occupied_start: f64
 pub surgeist_text::LineFeedback::trailing_whitespace: f64
+pub struct surgeist_text::LineMeasurements
+impl surgeist_text::LineMeasurements
+pub const fn surgeist_text::LineMeasurements::alignment(&self) -> surgeist_text::InlineMeasure
+pub const fn surgeist_text::LineMeasurements::fit(&self) -> surgeist_text::InlineMeasure
+pub const fn surgeist_text::LineMeasurements::max_content_contribution(&self) -> surgeist_text::InlineMeasure
+pub const fn surgeist_text::LineMeasurements::min_content_contribution(&self) -> surgeist_text::InlineMeasure
 pub struct surgeist_text::LineMetricFact
 impl surgeist_text::LineMetricFact
 pub const fn surgeist_text::LineMetricFact::line(self) -> surgeist_text::Line
@@ -1436,6 +1480,7 @@ pub surgeist_text::ParagraphInput::replacements: alloc::vec::Vec<surgeist_text::
 pub surgeist_text::ParagraphInput::segment_breaks: surgeist_text::DocumentSegmentBreaks
 pub surgeist_text::ParagraphInput::source: surgeist_text::Source
 pub surgeist_text::ParagraphInput::tab_reference: core::option::Option<surgeist_text::ParagraphTabReference>
+pub surgeist_text::ParagraphInput::terminal_edge: surgeist_text::ParagraphTerminalEdge
 pub struct surgeist_text::ParagraphOrigin
 pub surgeist_text::ParagraphOrigin::aggregate: surgeist_text::Range
 pub surgeist_text::ParagraphOrigin::kind: surgeist_text::ParagraphOriginKind
@@ -1658,6 +1703,7 @@ pub fn surgeist_text::PreparedText::analyzed_source(&self) -> surgeist_text::Ana
 pub fn surgeist_text::PreparedText::font_catalogue_identity(&self) -> &surgeist_text::FontCatalogueIdentity
 pub fn surgeist_text::PreparedText::preparation_options(&self) -> surgeist_text::PreparationOptions
 pub fn surgeist_text::PreparedText::tab_reference(&self) -> core::option::Option<&surgeist_text::ParagraphTabReference>
+pub fn surgeist_text::PreparedText::terminal_edge(&self) -> surgeist_text::ParagraphTerminalEdge
 impl surgeist_text::PreparedText
 pub fn surgeist_text::PreparedText::conditional_opportunities(&self, start: &surgeist_text::PreparedBoundary, ceiling: &surgeist_text::PreparedOpportunity, purpose: surgeist_text::ConditionalPurpose, skipped_ordinary: &[surgeist_text::FinalizedLine]) -> surgeist_text::Result<alloc::vec::Vec<surgeist_text::PreparedConditionalOpportunity>>
 impl surgeist_text::PreparedText

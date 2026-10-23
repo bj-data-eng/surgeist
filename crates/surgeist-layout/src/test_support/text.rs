@@ -93,7 +93,33 @@ pub(crate) struct PreparedParagraph {
     controls: Vec<TextControlBinding<u32>>,
 }
 
+struct ParagraphFacts {
+    strut: surgeist_text::ParagraphStrut,
+    terminal: surgeist_text::ParagraphTerminalEdge,
+}
+
 impl PreparedParagraph {
+    /// Explicitly authors the fixture's actual boundary (or truthful absence).
+    /// The default constructors below author a complete flat block instead.
+    pub(crate) fn at_boundary(
+        parts: Vec<ParagraphPart>,
+        base_style: Style,
+        direction: ParagraphBaseDirection,
+        terminal: surgeist_text::ParagraphTerminalEdge,
+    ) -> Self {
+        Self::with_preparation(
+            parts,
+            base_style,
+            direction,
+            ParagraphFacts {
+                strut: surgeist_text::ParagraphStrut::DefaultFont,
+                terminal,
+            },
+            Vec::new(),
+            PreparationOptions::default(),
+            None,
+        )
+    }
     pub(crate) fn plain(node: u32, source: Source, style: Style) -> Self {
         Self::new(
             vec![ParagraphPart::text(node, source, style.clone())],
@@ -133,11 +159,33 @@ impl PreparedParagraph {
         paragraph_strut: surgeist_text::ParagraphStrut,
         replacements: Vec<surgeist_text::ParagraphReplacement>,
     ) -> Self {
-        Self::with_preparation(
+        Self::with_strut_at_boundary(
             parts,
             base_style,
             direction,
             paragraph_strut,
+            replacements,
+            surgeist_text::ParagraphTerminalEdge::BlockEnd,
+        )
+    }
+
+    /// Authors both actual strut participation and the containing end role.
+    pub(crate) fn with_strut_at_boundary(
+        parts: Vec<ParagraphPart>,
+        base_style: Style,
+        direction: ParagraphBaseDirection,
+        paragraph_strut: surgeist_text::ParagraphStrut,
+        replacements: Vec<surgeist_text::ParagraphReplacement>,
+        terminal: surgeist_text::ParagraphTerminalEdge,
+    ) -> Self {
+        Self::with_preparation(
+            parts,
+            base_style,
+            direction,
+            ParagraphFacts {
+                strut: paragraph_strut,
+                terminal,
+            },
             replacements,
             PreparationOptions::default(),
             None,
@@ -157,7 +205,10 @@ impl PreparedParagraph {
             parts,
             base_style,
             direction,
-            surgeist_text::ParagraphStrut::DefaultFont,
+            ParagraphFacts {
+                strut: surgeist_text::ParagraphStrut::DefaultFont,
+                terminal: surgeist_text::ParagraphTerminalEdge::BlockEnd,
+            },
             Vec::new(),
             PreparationOptions::try_new(1.0, surgeist_text::TabPreparation::CssStops).unwrap(),
             Some(reference),
@@ -168,7 +219,7 @@ impl PreparedParagraph {
         parts: Vec<ParagraphPart>,
         base_style: Style,
         direction: ParagraphBaseDirection,
-        paragraph_strut: surgeist_text::ParagraphStrut,
+        facts: ParagraphFacts,
         replacements: Vec<surgeist_text::ParagraphReplacement>,
         options: PreparationOptions,
         tab_reference: Option<surgeist_text::ParagraphTabReference>,
@@ -276,11 +327,12 @@ impl PreparedParagraph {
             }
         }
         let analyzed = AnalyzedSource::from_paragraph(ParagraphInput {
+            terminal_edge: facts.terminal,
             source: aggregate,
             base_style,
             segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
             base_direction: direction,
-            paragraph_strut,
+            paragraph_strut: facts.strut,
             tab_reference,
             origins,
             connections,

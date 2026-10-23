@@ -75,6 +75,7 @@ fn css(
         ..style()
     };
     let input = ParagraphInput {
+        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
         source: source.clone(),
         base_style: style.clone(),
         tab_reference: Some(crate::ParagraphTabReference::new(style, direction).unwrap()),
@@ -289,6 +290,7 @@ fn captured(
     let source = Source::new(text);
     let end = source.text().len();
     ParagraphInput {
+        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
         source: source.clone(),
         base_style: style,
         tab_reference: block

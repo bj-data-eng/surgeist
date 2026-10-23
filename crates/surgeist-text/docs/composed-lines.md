@@ -15,6 +15,11 @@ uses the same selected-line and placement machinery.
    For one complete native paragraph, construct `ParagraphInput` from the actual
    aggregate `Source`, base `Style`,
    document delimiter policy, explicit base direction and original occurrences.
+   Capture `terminal_edge` as `ParagraphTerminalEdge::Unknown`, `BlockEnd`, or
+   `NonBlockBoundary` from the actual normalized block relation. A complete
+   paragraph/source range alone does not prove block completion. Contextual
+   views derive this fact from the sole validated scope/paragraph event stream,
+   retaining occurrences inside the final paragraph separately from later ones.
    `paragraph_strut: ParagraphStrut::DefaultFont` requests an actual base-style
    font strut on every native line, even when body spans select other styles.
    `AllocatedContributions` omits that base strut; actual body and supplied
@@ -78,6 +83,27 @@ uses the same selected-line and placement machinery.
    Foreign, missing and duplicate slots refuse. Actual feedback carries advances,
    occupied/hanging extents, metrics and atomic slots; the consumer decides fit.
    Raw provider glyph advances remain `f32`, separate from logical `f64` pens.
+   Borrow `FinalizedLine::measurements()` for native fit, alignment and the
+   min/max-content contributions of this exact selection. These signed flow
+   observations exclude indentation; their ordered occupied intervals are in
+   the prealignment line frame. The consumer supplies indentation once and
+   still decides fit. `metric_bounds()` observes the actual Text metric frame,
+   independently of a consumer's intrinsic allocation.
+   `edge_units()` distinguishes natural eligibility and terminal grouping from
+   final allocated exclusion and physical outward overlap, with genuine issued
+   participant/alternative owners and original pieces. It issues no break or
+   replay capability. A hanging contribution can lie physically inside a wide
+   frame, and a reverse contribution is not an absolute width.
+   `UnconsumedTerminal` observes a neutral row whose terminal authority was not
+   consumed; it certifies neither an ordinary classification nor a block end.
+   Natural classification retains that row and its exact earlier-group
+   dependencies through spacing. If allocation makes one material, finalization
+   requires the real terminal fact atomically; unrelated allocations stay valid.
+   An eligible preserved terminal sequence consumes missing block-end context
+   only when its actual measures need the distinction; genuine Soft/Forced
+   endings, nowrap and independent ordinary content retain their own semantics.
+   See the [native whitespace contract](../../../docs/text-layout-contract.md#native-whitespace-edges-and-hanging)
+   for current modes, supplied-spacing remapping and remaining styled barriers.
 5. Supply `PlacementRequest` to `Layout::from_finalized_lines`. Coverage is the
    actual whole paragraph or issued boundary range. Lines must cover it contiguously
    under the same preparation. Each `LineAnchor` identifies physical local x=0 on
@@ -173,12 +199,15 @@ Positive tabs consume that phase; zero tabs retain custody without unused font
 probes. Hypothetical character metrics use the native isolated Common-to-Latin
 profile with actual settings, coordinates and locale: SPACE follows the captured
 block direction; ZERO retains its even/LTR level. This does not borrow a source
-run script or claim arbitrary script-sensitive metric conformance. The shared finalizer orders the mixed line, resolves glyph-free tab
+run script or claim arbitrary script-sensitive metric conformance. The shared
+finalizer orders the mixed line, resolves glyph-free tab
 advances with actual spacing/atomic contributions, then builds prefix, metrics,
 paint and interaction rows. Re-finalization recomputes stops; alignment follows.
 Fontless tabs cannot invent font metrics for Range observations. Negative
 computed intervals and consumed unknown intrinsic phase remain explicit bounded
-capability refusals. Hanging requests remain unsupported. This contribution does
-not claim all CSS whitespace, orientation or intrinsic cases.
+capability refusals. Native whitespace-edge measurements follow the captured
+terminal role and actual line ending; callers do not supply numeric hanging.
+Other whitespace modes, styled boundary barriers and vertical orientation remain
+outside this contribution.
 See the [owning contract](../../../docs/text-layout-contract.md) for phase ownership
 and coherent placement policy, and [reference](reference.md) for supported styles.

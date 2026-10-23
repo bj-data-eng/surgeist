@@ -16,6 +16,15 @@ pub enum ParagraphBaseDirection {
     RightToLeft,
 }
 
+/// Actual normalized relation of this preparation's end to its containing block.
+/// Paragraph completion alone does not establish a CSS block end.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum ParagraphTerminalEdge {
+    Unknown,
+    BlockEnd,
+    NonBlockBoundary,
+}
+
 impl ParagraphBaseDirection {
     pub(crate) const fn level(self) -> u8 {
         match self {
@@ -279,6 +288,7 @@ pub enum ParagraphStrut {
 /// request together; public vector positions do not issue prepared capabilities.
 #[derive(Clone, Debug)]
 pub struct ParagraphInput {
+    pub terminal_edge: ParagraphTerminalEdge,
     pub source: Source,
     pub base_style: Style,
     pub segment_breaks: DocumentSegmentBreaks,
@@ -321,6 +331,7 @@ impl OriginData {
 /// Validated occurrence/context facts retained by the actual analysis allocation.
 #[derive(Clone, Debug)]
 pub(crate) struct ParagraphData {
+    pub(crate) terminal_edge: ParagraphTerminalEdge,
     pub(crate) origins: Vec<OriginData>,
     pub(crate) connections: Vec<ParagraphConnection>,
     /// Real preceding/following original endpoints for contextual connections.
@@ -439,6 +450,7 @@ impl ParagraphData {
             );
         }
         Self {
+            terminal_edge: ParagraphTerminalEdge::Unknown,
             origins: vec![OriginData {
                 source: OriginSource::Canonical,
                 local: Range::new(0, source_len),
@@ -539,6 +551,7 @@ impl AnalyzedSource {
     pub fn from_paragraph(input: ParagraphInput) -> Result<Self> {
         validate(&input)?;
         let ParagraphInput {
+            terminal_edge,
             source,
             base_style,
             segment_breaks,
@@ -553,6 +566,7 @@ impl AnalyzedSource {
             anchor_order,
         } = input;
         let paragraph = ParagraphData {
+            terminal_edge,
             origins: origins
                 .into_iter()
                 .map(|origin| OriginData {

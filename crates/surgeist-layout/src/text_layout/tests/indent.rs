@@ -14,7 +14,7 @@ fn text(node: u32, source: &str, rtl: bool) -> PreparedParagraph {
     let mut style = ahem_style(10.0, 10.0);
     style.white_space = WhiteSpace::Collapse;
     style.wrap = Wrap::Word;
-    PreparedParagraph::new(
+    PreparedParagraph::at_boundary(
         vec![ParagraphPart::text(
             node,
             Source::new(source),
@@ -26,6 +26,7 @@ fn text(node: u32, source: &str, rtl: bool) -> PreparedParagraph {
         } else {
             ParagraphBaseDirection::LeftToRight
         },
+        surgeist_text::ParagraphTerminalEdge::Unknown,
     )
 }
 

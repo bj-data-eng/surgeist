@@ -9,6 +9,7 @@ use paragraph::{
 fn input(source: Source, direction: ParagraphBaseDirection) -> ParagraphInput {
     let length = source.text().len();
     ParagraphInput {
+        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
         source: source.clone(),
         base_style: style(),

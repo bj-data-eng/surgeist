@@ -1253,8 +1253,8 @@ mod tests {
             ParagraphOrigin, ParagraphOriginKind, ParagraphStrut,
         };
         use crate::protocol::{
-            HangingContext, LineAnchor, LineContext, LineEnd, LineOrientation, LinePlacement,
-            LineStart, ParagraphBaseDirection, ParagraphInput, PlacementCoverage, PlacementRequest,
+            LineAnchor, LineContext, LineEnd, LineOrientation, LinePlacement, LineStart,
+            ParagraphBaseDirection, ParagraphInput, PlacementCoverage, PlacementRequest,
             PreparationOptions, PreparedBreakKind, SpacingAllocations, SpacingPolicy, TabContext,
         };
         let mut system = System::new(SystemOptions {
@@ -1264,6 +1264,7 @@ mod tests {
         system.register_fonts(AHEM.to_vec()).unwrap();
         let source = Source::new("A");
         let analysis = crate::AnalyzedSource::from_paragraph(ParagraphInput {
+            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
             tab_reference: None,
             source: source.clone(),
             base_style: Style {
@@ -1327,7 +1328,7 @@ mod tests {
                     indent: 0.0,
                     alignment: crate::Alignment::Start,
                     tabs: TabContext::NoTabs,
-                    hanging: HangingContext::None,
+
                     spacing: SpacingPolicy::None,
                 },
                 atomics: vec![],

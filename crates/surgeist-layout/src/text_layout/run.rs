@@ -305,11 +305,7 @@ fn canonical_allocations<Node: Copy + Eq, S: LayoutScalar>(
         context,
         origin,
         band.start,
-        line.selected_line()
-            .request()
-            .context
-            .available_inline
-            .unwrap_or(feedback.advance),
+        line.metric_bounds().size.width,
         block,
         feedback.baseline,
     )?;
@@ -394,11 +390,7 @@ fn canonical_controls<Node: Copy + Eq, S: LayoutScalar>(
         context,
         origin,
         band.start,
-        line.selected_line()
-            .request()
-            .context
-            .available_inline
-            .unwrap_or(feedback.advance),
+        line.metric_bounds().size.width,
         block,
         feedback.baseline,
     )?;
@@ -459,11 +451,7 @@ fn canonical_line_strut<S: LayoutScalar>(
         context,
         origin,
         band.start,
-        line.selected_line()
-            .request()
-            .context
-            .available_inline
-            .unwrap_or(feedback.advance),
+        line.metric_bounds().size.width,
         block,
         feedback.baseline,
     )?;
@@ -475,14 +463,12 @@ fn canonical_line_strut<S: LayoutScalar>(
     }))
 }
 
-fn line_anchor<S: LayoutScalar>(
+fn line_inline_origin<S: LayoutScalar>(
     context: &Context<S>,
-    origin: Point<f64>,
+    origin: f64,
     start: f64,
     available: f64,
-    block: f64,
-    baseline: f64,
-) -> Result<LineAnchor, FitError> {
+) -> Result<f64, FitError> {
     let containing_width = match context.frame {
         Frame::Canonical { size, .. } => size.width,
         Frame::Measurement => context.containing_size.width,
@@ -493,8 +479,19 @@ fn line_anchor<S: LayoutScalar>(
     } else {
         context.inset.x.to_f64() + start
     };
+    round(add(origin, local_x)?)
+}
+
+fn line_anchor<S: LayoutScalar>(
+    context: &Context<S>,
+    origin: Point<f64>,
+    start: f64,
+    available: f64,
+    block: f64,
+    baseline: f64,
+) -> Result<LineAnchor, FitError> {
     Ok(LineAnchor {
-        inline_origin: round(add(origin.x.to_f64(), local_x)?)?,
+        inline_origin: line_inline_origin(context, origin.x, start, available)?,
         baseline: round(add(
             add(origin.y.to_f64(), context.cursor_block.to_f64())?,
             add(block, baseline)?,
@@ -534,6 +531,11 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
     let mut outflows = Vec::new();
     for (line_index, line) in lines.into_iter().enumerate() {
         let feedback = line.finalized.feedback();
+        let contribution = match context.available {
+            AvailableOf::MinContent => line.finalized.measurements().min_content_contribution(),
+            AvailableOf::MaxContent => line.finalized.measurements().max_content_contribution(),
+            AvailableOf::Definite(_) => line.finalized.measurements().fit(),
+        };
         report.indent_state.commit(
             line.finalized.selected_line().request().context.end == surgeist_text::LineEnd::Forced,
         );
@@ -547,9 +549,9 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
         )?;
         let local_baseline = anchor.baseline - origin.y.to_f64() - context.cursor_block.to_f64();
         // Normal-flow allocations and placed metric bounds both contribute to
-        // overflow, including lines without a source fragment or ink. Native
-        // intrinsic width includes the signed start margin and excludes observed
-        // trailing whitespace rather than using glyph advance.
+        // overflow, including lines without a source fragment or ink. Intrinsic
+        // allocation uses the exact requested contribution plus signed indent;
+        // actual Text metric and source-fragment geometry remain independent.
         let width = match line
             .finalized
             .selected_line()
@@ -559,25 +561,32 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
         {
             Some(width) => width,
             None => finite(
-                feedback.advance - feedback.trailing_whitespace
-                    + line.finalized.selected_line().request().context.indent,
+                contribution.advance() + line.finalized.selected_line().request().context.indent,
             )?
             .max(0.0),
         };
         let allocation = ScrollRectOf::try_new(
             Point::new(
-                number(anchor.inline_origin - origin.x)?,
+                number(
+                    line_inline_origin(context, origin.x, line.inline_start, width)? - origin.x,
+                )?,
                 number(add(context.cursor_block.to_f64(), line.flow.start)?)?,
             ),
             Size::new(number(width)?, number(feedback.line_height)?),
         )
         .map_err(|_| FitError::InvalidGeometry)?;
+        let metric_frame = line.finalized.metric_bounds();
         let metrics = ScrollRectOf::try_new(
             Point::new(
-                number(anchor.inline_origin - origin.x)?,
-                number(add(anchor.baseline, -feedback.baseline)? - origin.y)?,
+                number(anchor.inline_origin + metric_frame.origin.x - origin.x)?,
+                number(
+                    add(anchor.baseline, -feedback.baseline)? + metric_frame.origin.y - origin.y,
+                )?,
             ),
-            Size::new(number(width)?, number(feedback.line_height)?),
+            Size::new(
+                number(metric_frame.size.width)?,
+                number(metric_frame.size.height)?,
+            ),
         )
         .map_err(|_| FitError::InvalidGeometry)?;
         line_bounds.push(LineBounds {
@@ -589,7 +598,7 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
         report.block_extent = report.block_extent.max(number(line.flow.next)?);
         report.inline_extent = report.inline_extent.max(number(
             line.inline_start
-                + feedback.advance
+                + contribution.advance()
                 + line.finalized.selected_line().request().context.indent
                 + line
                     .bands

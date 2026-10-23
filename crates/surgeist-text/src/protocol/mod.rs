@@ -12,6 +12,7 @@ use selection::SelectedData;
 
 mod conditional;
 pub(crate) mod finalized;
+pub(crate) mod measurements;
 pub(crate) mod paragraph;
 pub(crate) mod placement;
 pub(crate) mod prefix;
@@ -20,7 +21,11 @@ pub(crate) mod readback;
 pub(crate) mod selection;
 
 pub use conditional::{ConditionalPurpose, PreparedConditionalOpportunity};
-pub use paragraph::{ParagraphBaseDirection, ParagraphInput};
+pub use measurements::{
+    InlineMeasure, LineEdgeDisposition, LineEdgeOwner, LineEdgeSide, LineEdgeUnitView,
+    LineMeasurements,
+};
+pub use paragraph::{ParagraphBaseDirection, ParagraphInput, ParagraphTerminalEdge};
 pub use prepared::PreparedBreakKind;
 
 /// Provider-dependent preparation inputs, independent of line choice/placement.
@@ -97,6 +102,11 @@ impl PreparedText {
     #[must_use]
     pub fn tab_reference(&self) -> Option<&crate::ParagraphTabReference> {
         self.inner.analyzed.paragraph.tab_reference.as_ref()
+    }
+    /// Actual captured end role, independent of numeric coverage and completion.
+    #[must_use]
+    pub fn terminal_edge(&self) -> ParagraphTerminalEdge {
+        self.inner.analyzed.paragraph.terminal_edge
     }
     #[must_use]
     pub fn analyzed_source(&self) -> crate::AnalyzedSource {
@@ -192,11 +202,6 @@ pub enum TabContext {
         origin: Option<f64>,
     },
 }
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum HangingContext {
-    None,
-    Requested { start: f64, end: f64 },
-}
 /// The selected profile exposes only actual supported inter-space allocation.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum SpacingPolicy {
@@ -214,7 +219,6 @@ pub struct LineContext {
     pub indent: f64,
     pub alignment: Alignment,
     pub tabs: TabContext,
-    pub hanging: HangingContext,
     pub spacing: SpacingPolicy,
 }
 
@@ -453,8 +457,13 @@ pub struct LineFeedback {
     pub advance: f64,
     pub occupied_start: f64,
     pub occupied_end: f64,
+    /// Descriptive retained trailing whitespace; never a general subtraction
+    /// instruction. Use the owner-issued purpose-specific measurements.
     pub trailing_whitespace: f64,
+    /// Signed excluded contribution at the physical start edge. Physical
+    /// outward overlap is observed separately through `edge_units()`.
     pub hanging_start: f64,
+    /// Signed excluded contribution at the physical end edge.
     pub hanging_end: f64,
     pub ascent: f64,
     pub descent: f64,
@@ -494,12 +503,14 @@ pub enum ProtocolContextField {
     TabMetrics,
     NegativeTabInterval,
     IntrinsicTabPhase,
-    Hanging,
+    CssParagraphBoundary,
     Spacing,
 }
 /// Actual invalid association or incomplete input; no caller ordinal issues a capability.
 #[derive(Clone, Debug, PartialEq)]
 pub enum ProtocolError {
+    /// Missing actual context for CSS Text Phase II: Trimming and Positioning.
+    MissingPhaseTwoContext(PhaseTwoContext),
     /// The occurrence-qualified original seam is not represented by this line.
     OutsideFinalizedLine,
     InvalidOriginSeam {
@@ -676,6 +687,13 @@ pub enum ProtocolError {
         line: usize,
         occurrence: usize,
     },
+}
+
+/// Actual structural fact consumed by native CSS Text Phase II (Trimming and
+/// Positioning) measurements, not an implementation or delivery-stage marker.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PhaseTwoContext {
+    TerminalBlockEdge,
 }
 
 pub(crate) fn protocol_error(reason: ProtocolError) -> crate::Error {

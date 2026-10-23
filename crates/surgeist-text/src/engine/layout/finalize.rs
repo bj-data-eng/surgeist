@@ -26,6 +26,8 @@ use crate::protocol::{
     ProtocolError, SpacingSlotDisposition, protocol_error,
 };
 
+mod phase_two;
+
 pub(super) fn finalize(
     selected: Arc<SelectedData>,
     amounts: &[f64],
@@ -37,7 +39,6 @@ pub(super) fn finalize(
     let (mut shaped, mapping) = shape::finalize(&selected, scratch)?;
     validate_rows(&selected, &shaped)?;
     let mut dispositions = collapse_edges(&selected, &mut shaped)?;
-    let mut spacing_slots = apply_spacing(&selected, &mut shaped, amounts, &dispositions)?;
     let levels = line_levels(&selected, &shaped)?;
     let base = selected.presentation.analysis.base_level;
     let participants: Vec<_> = shaped
@@ -65,6 +66,21 @@ pub(super) fn finalize(
         .reorder_into(&mut order)
         .map_err(|_| invalid("line order scratch does not match its actual participants"))?;
     resolve_tabs(&selected, &mut shaped, &atomics, &order)?;
+    let natural = if selected.metric_policy == LineMetricPolicy::Native {
+        Some(phase_two::natural(
+            &selected,
+            &shaped,
+            &atomics,
+            &order,
+            &dispositions,
+        )?)
+    } else {
+        None
+    };
+    let mut spacing_slots = apply_spacing(&selected, &mut shaped, amounts, &dispositions)?;
+    if amounts.iter().any(|amount| *amount != 0.0) {
+        resolve_tabs(&selected, &mut shaped, &atomics, &order)?;
+    }
     let mut prefix_receipts = Vec::with_capacity(shaped.items.len() + 1);
     let mut metrics = line_metrics(
         &selected,
@@ -92,8 +108,14 @@ pub(super) fn finalize(
             selected.request.line_strut,
         )?;
     }
+    let measurements = match natural {
+        Some(natural) => {
+            phase_two::allocated(&selected, &shaped, &atomics, &order, natural, &mut metrics)?
+        }
+        None => phase_two::standalone(&metrics, &shaped, &atomics, &order)?,
+    };
     let width = selection.available_inline.unwrap_or_else(|| {
-        (metrics.advance + selection.indent.max(0.0) - metrics.trailing_whitespace).max(0.0)
+        (measurements.alignment().advance() + selection.indent.max(0.0)).max(0.0)
     });
     finite(
         "line available width",
@@ -102,9 +124,23 @@ pub(super) fn finalize(
     )?;
     metrics.inline_min = 0.0;
     metrics.inline_max = width;
-    metrics.offset = alignment_offset(selection, base, width, &metrics)?;
+    metrics.offset = if selected.metric_policy == LineMetricPolicy::Native {
+        let mut measured = metrics;
+        measured.advance = measurements.alignment().advance();
+        measured.trailing_whitespace = 0.0;
+        let offset = alignment_offset(selection, base, width, &measured)?;
+        add(
+            "native hanging alignment",
+            TextNumericPhase::Finalization,
+            offset,
+            -metrics.hanging_start,
+        )?
+    } else {
+        alignment_offset(selection, base, width, &metrics)?
+    };
 
     let mut data = FinalizedLineData {
+        measurements: Some(measurements),
         spacing_slots,
         prefix,
         clusters: shaped
@@ -1305,6 +1341,11 @@ fn collapse_edges(
             }
             ShapedItem::TextCluster(index) => {
                 let cluster = &shaped.clusters[index];
+                if selected.metric_policy == LineMetricPolicy::Native
+                    && cluster.whitespace == Whitespace::Newline
+                {
+                    continue;
+                }
                 let mode = selected
                     .prepared
                     .analyzed
@@ -1318,6 +1359,13 @@ fn collapse_edges(
                     && mode == crate::WhiteSpace::Collapse
                 {
                     InlineWhitespaceEdge::DiscardAtBoth
+                } else if selected.metric_policy == LineMetricPolicy::Native
+                    && mode == crate::WhiteSpace::Collapse
+                    && selected.presentation.projection.atoms[cluster.atoms.clone()]
+                        .iter()
+                        .all(|atom| atom.code_point == 0x1680)
+                {
+                    InlineWhitespaceEdge::DiscardAtLineEnd
                 } else {
                     InlineWhitespaceEdge::Preserve
                 };
@@ -1922,6 +1970,7 @@ mod tests {
             });
         }
         let analyzed = crate::AnalyzedSource::from_paragraph(ParagraphInput {
+            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
             tab_reference: None,
             source: source.clone(),
             base_style: style,
@@ -2029,7 +2078,7 @@ mod tests {
                     indent: 0.0,
                     alignment: Alignment::Start,
                     tabs: TabContext::NoTabs,
-                    hanging: HangingContext::None,
+
                     spacing: SpacingPolicy::Spaces,
                 },
                 atomics,
@@ -2258,6 +2307,7 @@ mod tests {
             crate::Size::new(4.0, 4.0),
         ));
         let analyzed = crate::AnalyzedSource::from_paragraph(ParagraphInput {
+            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
             tab_reference: None,
             source,
             base_style: Style::default(),
@@ -2339,7 +2389,7 @@ mod tests {
                     indent: 0.0,
                     alignment: Alignment::Start,
                     tabs: TabContext::NoTabs,
-                    hanging: HangingContext::None,
+
                     spacing: SpacingPolicy::None,
                 },
             })
@@ -2580,6 +2630,7 @@ mod tests {
             })
             .collect();
         let analyzed = AnalyzedSource::from_paragraph(ParagraphInput {
+            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
             tab_reference: None,
             source: source.clone(),
             base_style: Style {
@@ -2690,7 +2741,7 @@ mod tests {
                         indent: 0.0,
                         alignment: Alignment::Start,
                         tabs: TabContext::NoTabs,
-                        hanging: HangingContext::None,
+
                         spacing: SpacingPolicy::None,
                     },
                     atomics: vec![],

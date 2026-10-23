@@ -10,6 +10,7 @@ fn input(text: &str, base_style: Style) -> ParagraphInput {
     let source = Source::new(text);
     let len = source.text().len();
     ParagraphInput {
+        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
         source: source.clone(),
         base_style,

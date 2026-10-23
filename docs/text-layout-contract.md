@@ -198,6 +198,16 @@ Require missing terminal authority only when an eligible sequence's measures
 consume it; a known non-block boundary cannot manufacture a Soft or Forced break.
 Real Forced/Soft, NBSP and other independent cases do not acquire that requirement.
 
+A zero natural contribution can leave terminal authority unconsumed. Retain that
+dependence for the actual row and any earlier terminal group it governs. After
+supplied spacing and tab recomputation, refuse atomically with the missing or
+unsupported cause if an affected measure, occupied interval or group result now
+depends on that authority. Unrelated ordinary content does not trigger refusal;
+net allocation or total line advance cannot prove independence. Successful
+immaterial rows report `UnconsumedTerminal`, without asserting an ordinary
+classification or supplying block-end authority. This guard does not reclassify
+frozen natural eligibility or terminal groups.
+
 One Text-owned receipt distinguishes raw signed flow and physical geometry from
 fit advance/occupied bounds, alignment/justification measure, actual hanging and
 MinContent/MaxContent contributions. Consumers cannot subtract generic trailing
@@ -209,6 +219,16 @@ hanging5; in width40 it hangs0 and centers as a 20px sequence. Preserve signed f
 separately from physical outward overlap, without taking absolute values or
 clamping signed contributions. A hanging glyph retains its advance, source,
 caret, Range and paint geometry.
+
+An unconstrained native selection retains one purpose-neutral Text metric frame,
+derived from its alignment measurement. Layout selects the corresponding intrinsic
+contribution for its sizing report and allocation; that choice does not replace
+the actual placed Text metric bounds or retained fragment geometry. For the
+conditional X10 plus SPACE10 case, MinContent can contribute 10px while the actual
+metric and fragment observations reach 20px. An intrinsic query does not impose a
+finite used width of 10px. Layout anchors the Text frame and intrinsic allocation
+with their respective physical widths, including in RTL. Overflow consumes actual
+geometry independently.
 
 Determine conditional overflow before justification from the actual natural
 candidate, including authored spacing and tab resolution. Earlier unconditional

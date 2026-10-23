@@ -570,6 +570,7 @@ fn prepare_wrapping_text() -> surgeist_text::PreparedText {
     let first = Source::new("AAAAA\u{200b}");
     let second = Source::new("AAAA");
     let analyzed = AnalyzedSource::from_paragraph(ParagraphInput {
+        terminal_edge: surgeist_text::ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
         source: Source::new("AAAAA\u{200b}AAAA"),
         base_style: style.clone(),

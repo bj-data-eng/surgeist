@@ -255,6 +255,7 @@ struct Capture {
     connection_orders: Vec<usize>,
     start: usize,
     domain: usize,
+    end_order: usize,
 }
 pub(super) struct Domain {
     pub(super) style: Style,
@@ -463,6 +464,7 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
                     return Err(invalid(SourceProcessingError::Nesting));
                 }
                 active_paragraphs[own] = None;
+                captures[index].end_order = order;
             }
             SourceProcessingEvent::Origin { origin, affinity } => {
                 take(&mut origins, origin)?;
@@ -744,7 +746,29 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
                 .max()
                 .unwrap_or(capture.start),
         );
+        // The validated event stream, not source/table order, proves whether
+        // this paragraph reaches its actual domain's block exit. Neutral scope
+        // closures do not add content; a later paragraph/occurrence or domain
+        // transition does. Occurrences before ExitParagraph belong to this
+        // paragraph and cannot revoke its own terminal custody.
+        let exit = context
+            .boundaries
+            .iter()
+            .find(|boundary| boundary.domain == capture.domain && boundary.block && !boundary.enter)
+            .ok_or_else(|| invalid(SourceProcessingError::Domain))?;
+        let terminal = input.events[capture.end_order + 1..exit.order]
+            .iter()
+            .all(|event| match *event {
+                SourceProcessingEvent::EnterScope(scope)
+                | SourceProcessingEvent::ExitScope(scope) => input.scopes[scope].style().is_none(),
+                _ => false,
+            });
         let data = ParagraphData {
+            terminal_edge: if terminal {
+                crate::ParagraphTerminalEdge::BlockEnd
+            } else {
+                crate::ParagraphTerminalEdge::NonBlockBoundary
+            },
             origins: capture
                 .origins
                 .iter()

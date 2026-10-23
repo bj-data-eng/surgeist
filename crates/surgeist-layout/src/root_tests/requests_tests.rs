@@ -2386,7 +2386,7 @@ fn fri06_c04_float_scroll_signed_fractional_geometry_and_source_order_both_scala
 #[test]
 fn prepared_text_atomic_source_gaps_and_repeat_keep_exact_occurrences_both_scalars() {
     fn assert_lane<S: LayoutScalar>() {
-        let first = PreparedParagraph::new(
+        let first = PreparedParagraph::at_boundary(
             vec![
                 ParagraphPart::text(
                     1,
@@ -2405,6 +2405,7 @@ fn prepared_text_atomic_source_gaps_and_repeat_keep_exact_occurrences_both_scala
             ],
             ahem_style(10.0, 10.0),
             surgeist_text::ParagraphBaseDirection::LeftToRight,
+            surgeist_text::ParagraphTerminalEdge::NonBlockBoundary,
         );
         let after = PreparedParagraph::plain(
             7,
@@ -3297,7 +3298,7 @@ fn fri06_c08_float_line_nonterminal_mixed_inline_keeps_integral_float_height_at_
             letter_spacing: 4.0,
             ..ahem_style(16.0, 20.0)
         };
-        let paragraph = PreparedParagraph::new(
+        let paragraph = PreparedParagraph::at_boundary(
             vec![
                 ParagraphPart::text(3, Source::new("XX"), style.clone()),
                 ParagraphPart::Atomic {
@@ -3307,6 +3308,7 @@ fn fri06_c08_float_line_nonterminal_mixed_inline_keeps_integral_float_height_at_
             ],
             style,
             surgeist_text::ParagraphBaseDirection::LeftToRight,
+            surgeist_text::ParagraphTerminalEdge::NonBlockBoundary,
         );
         let atomic = fri06_c08_native_atomic(28.0, 16.0);
         let terminal = NodeInputOf {

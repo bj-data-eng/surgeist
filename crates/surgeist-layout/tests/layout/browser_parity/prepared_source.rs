@@ -422,6 +422,7 @@ impl Capture {
         }
         let base = style(&value["baseStyle"])?;
         let analyzed = text::AnalyzedSource::from_paragraph(text::ParagraphInput {
+            terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
             tab_reference: None,
             source,
             base_style: base,

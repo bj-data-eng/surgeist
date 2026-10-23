@@ -37,10 +37,9 @@ use std::collections::BTreeSet;
 
 use super::prepared::{ParticipantData, PreparedBreakKind};
 use super::{
-    AtomicAllocation, HangingContext, LineContext, LineEnd, LineOrientation, LineStart,
-    ParagraphBaseDirection, PreparedParticipant, PreparedText, PresentationRange,
-    ProtocolContextField, ProtocolError, ProtocolHandleKind, SelectedLine, SpacingPolicy,
-    TabContext, protocol_error,
+    AtomicAllocation, LineContext, LineEnd, LineOrientation, LineStart, ParagraphBaseDirection,
+    PreparedParticipant, PreparedText, PresentationRange, ProtocolContextField, ProtocolError,
+    ProtocolHandleKind, SelectedLine, SpacingPolicy, TabContext, protocol_error,
 };
 use crate::{InlineBoxKind, Result, TextNumericError, TextNumericPhase};
 
@@ -441,11 +440,6 @@ fn validate_context(context: &LineContext, base_level: u8) -> Result<()> {
     {
         finite("tab origin", origin)?;
     }
-    if context.hanging != HangingContext::None {
-        return Err(protocol_error(ProtocolError::UnsupportedContext {
-            field: ProtocolContextField::Hanging,
-        }));
-    }
     if let Some(value) = context.available_inline {
         finite("available inline span", value)?;
         if value < 0.0 {
@@ -659,7 +653,7 @@ pub(crate) fn lower_standalone(
             indent: selection.indent,
             alignment: selection.alignment,
             tabs: TabContext::FontAdvance,
-            hanging: HangingContext::None,
+
             spacing: SpacingPolicy::Spaces,
         },
         atomics,

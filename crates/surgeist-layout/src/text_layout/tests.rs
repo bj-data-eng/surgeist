@@ -231,7 +231,8 @@ fn assert_intrinsic_line_box<S: LayoutScalar>() {
     .unwrap_or_else(|_| panic!("actual intrinsic paragraph finalizes"));
     // The same owning operation with a genuinely intrinsic request has no
     // definite allocation. Both Ahem code units advance 10px; its actual line
-    // box excludes the observed trailing 10px instead of using glyph advance.
+    // box includes the conditionally hangable space for this explicit maximum
+    // contribution. Its actual Text metric frame retains the same 20px width.
     assert_eq!(
         output.paragraph.lines[0]
             .line
@@ -248,7 +249,7 @@ fn assert_intrinsic_line_box<S: LayoutScalar>() {
             .map(|bounds| bounds.allocation)
             .collect::<Vec<_>>(),
         vec![
-            ScrollRectOf::try_new(Point::ZERO, Size::new(S::from_f64(10.0), S::from_f64(10.0)),)
+            ScrollRectOf::try_new(Point::ZERO, Size::new(S::from_f64(20.0), S::from_f64(10.0)),)
                 .unwrap()
         ]
     );
@@ -259,7 +260,7 @@ fn assert_intrinsic_line_box<S: LayoutScalar>() {
             .map(|bounds| bounds.metrics)
             .collect::<Vec<_>>(),
         vec![
-            ScrollRectOf::try_new(Point::ZERO, Size::new(S::from_f64(10.0), S::from_f64(10.0)))
+            ScrollRectOf::try_new(Point::ZERO, Size::new(S::from_f64(20.0), S::from_f64(10.0)))
                 .unwrap()
         ]
     );
@@ -271,7 +272,7 @@ fn assert_intrinsic_line_box<S: LayoutScalar>() {
     .unwrap();
     assert_eq!(
         intrinsic.lines()[0].bounds(),
-        surgeist_text::Rect::new(0.0, 0.0, 10.0, 10.0)
+        surgeist_text::Rect::new(0.0, 0.0, 20.0, 10.0)
     );
     assert_eq!(placed.source().text().code_units(), &[0x58, 0x20]);
     for entries in [batch.unrounded_entries(), batch.final_entries()] {
@@ -1221,7 +1222,15 @@ fn rtl_atomic_and_control_slots_share_the_actual_content_origin() {
 }
 
 fn assert_reused_preparation_runs<S: LayoutScalar>() {
-    let paragraph = PreparedParagraph::plain(1, Source::new("X"), ahem_style(10.0, 10.0));
+    // The same preparation serves distinct real end roles; do not invent one
+    // shared BlockEnd fact. Ordinary X does not consume the absent distinction.
+    let style = ahem_style(10.0, 10.0);
+    let paragraph = PreparedParagraph::at_boundary(
+        vec![ParagraphPart::text(1, Source::new("X"), style.clone())],
+        style,
+        ParagraphBaseDirection::LeftToRight,
+        surgeist_text::ParagraphTerminalEdge::Unknown,
+    );
     let first = paragraph.binding(0);
     let mut second = first.clone();
     second.nodes = vec![3];

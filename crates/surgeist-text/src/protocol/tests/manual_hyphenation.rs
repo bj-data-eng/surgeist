@@ -16,6 +16,7 @@ fn fixture(primary_hyphen: bool) -> Vec<u8> {
 fn prepare(bytes: &[u8]) -> PreparedText {
     let source = Source::new("A\u{ad}X");
     let value = ParagraphInput {
+        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
         source: source.clone(),
         base_style: Style {

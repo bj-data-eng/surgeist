@@ -46,6 +46,7 @@ fn prepare_paragraph(
     }));
     let length = source.text().len();
     let analysis = AnalyzedSource::from_paragraph(ParagraphInput {
+        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
         source: source.clone(),
         base_style: Style {

@@ -6,6 +6,7 @@ mod joining_context;
 mod joining_positioning;
 mod mandatory_breaks;
 mod manual_hyphenation;
+mod phase_two;
 mod tab_stops;
 mod whitespace_edges;
 
@@ -35,6 +36,7 @@ fn style() -> Style {
 fn prepared(system: &mut System, text: &str, whitespace: WhiteSpace) -> PreparedText {
     let source = Source::new(text);
     let input = ParagraphInput {
+        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
         source: source.clone(),
         paragraph_strut: ParagraphStrut::DefaultFont,
@@ -98,7 +100,7 @@ fn request(prepared: &PreparedText) -> LineSelectionRequest {
             indent: 0.0,
             alignment: crate::Alignment::Left,
             tabs: TabContext::NoTabs,
-            hanging: HangingContext::None,
+
             spacing: SpacingPolicy::Spaces,
         },
     }
@@ -362,6 +364,7 @@ fn selected_empty_control(policy: ParagraphStrut) -> SelectedLine {
         },
     );
     let analysis = AnalyzedSource::from_paragraph(ParagraphInput {
+        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
         source: source.clone(),
         base_style: Style {
@@ -575,6 +578,7 @@ fn native_unforced_break_keeps_arabic_joining_on_both_sides() {
     system.register_fonts(fixture.clone()).unwrap();
     let source = Source::new("\u{628}\u{628}\u{628}");
     let analyzed = AnalyzedSource::from_paragraph(ParagraphInput {
+        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
         source: source.clone(),
         base_style: Style {

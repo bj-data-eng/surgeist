@@ -851,6 +851,7 @@ mod tests {
         connection: crate::ParagraphConnectionKind,
     ) -> crate::AnalyzedSource {
         crate::AnalyzedSource::from_paragraph(crate::ParagraphInput {
+            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
             tab_reference: None,
             source: Source::new(Text::from_code_units(vec![0xd800, 0xdc00])),
             base_style: Style::default(),

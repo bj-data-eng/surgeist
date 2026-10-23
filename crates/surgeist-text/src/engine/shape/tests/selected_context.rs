@@ -1,10 +1,10 @@
 use crate::{
     Alignment, AnalyzedSource, ControlAllocation, DocumentSegmentBreaks, Font, FontCatalogueMode,
-    HangingContext, LineContext, LineEnd, LineOrientation, LineSelectionRequest, LineStart,
-    ParagraphBaseDirection, ParagraphInput, ParagraphOrigin, ParagraphOriginKind,
-    ParagraphReplacement, ParagraphReplacementDefinition, ParagraphStrut, PreparationOptions,
-    PreparedBreakKind, PreparedParticipant, PreparedTermination, Range, Source, SpacingAllocations,
-    SpacingPolicy, Style, System, SystemOptions, TabContext, Wrap,
+    LineContext, LineEnd, LineOrientation, LineSelectionRequest, LineStart, ParagraphBaseDirection,
+    ParagraphInput, ParagraphOrigin, ParagraphOriginKind, ParagraphReplacement,
+    ParagraphReplacementDefinition, ParagraphStrut, PreparationOptions, PreparedBreakKind,
+    PreparedParticipant, PreparedTermination, Range, Source, SpacingAllocations, SpacingPolicy,
+    Style, System, SystemOptions, TabContext, Wrap,
 };
 
 fn selected_computed_beh(separate_instance: bool) -> Vec<(Range, u32, f32)> {
@@ -24,6 +24,7 @@ fn selected_computed_beh(separate_instance: bool) -> Vec<(Range, u32, f32)> {
         );
     }
     let analyzed = AnalyzedSource::from_paragraph(ParagraphInput {
+        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
         source: source.clone(),
         base_style: style,
@@ -100,7 +101,7 @@ fn selected_computed_beh(separate_instance: bool) -> Vec<(Range, u32, f32)> {
             indent: 0.0,
             alignment: Alignment::Left,
             tabs: TabContext::NoTabs,
-            hanging: HangingContext::None,
+
             spacing: SpacingPolicy::None,
         },
     };

@@ -179,6 +179,7 @@ fn registered(
     let source = Source::new(source);
     let length = source.text().len();
     let analyzed = surgeist_text::AnalyzedSource::from_paragraph(surgeist_text::ParagraphInput {
+        terminal_edge: surgeist_text::ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
         source: source.clone(),
         base_style: style,

@@ -7,6 +7,7 @@ fn input(text: &str, mode: WhiteSpace) -> ParagraphInput {
     let source = Source::new(text);
     let length = source.text().len();
     ParagraphInput {
+        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
         source: source.clone(),
         base_style: Style {
@@ -128,7 +129,7 @@ fn select(prepared: &PreparedText, alternative: Option<PreparedAlternative>) -> 
                 indent: 0.0,
                 alignment: Alignment::Start,
                 tabs,
-                hanging: HangingContext::None,
+
                 spacing: SpacingPolicy::Spaces,
             },
         })

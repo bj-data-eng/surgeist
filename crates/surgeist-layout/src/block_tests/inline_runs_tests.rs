@@ -343,7 +343,7 @@ fn fri08_c07_t01_inline_transition_tree<S: LayoutScalar>(
             size: surgeist_text::Size::new(0.0, 0.0),
         },
     };
-    let paragraph = PreparedParagraph::with_strut(
+    let paragraph = PreparedParagraph::with_strut_at_boundary(
         vec![
             first,
             ParagraphPart::text(4, surgeist_text::Source::new("X"), style.clone()),
@@ -352,6 +352,7 @@ fn fri08_c07_t01_inline_transition_tree<S: LayoutScalar>(
         surgeist_text::ParagraphBaseDirection::LeftToRight,
         surgeist_text::ParagraphStrut::AllocatedContributions,
         Vec::new(),
+        surgeist_text::ParagraphTerminalEdge::NonBlockBoundary,
     );
     let fixed_size = |width, height| {
         Size::new(

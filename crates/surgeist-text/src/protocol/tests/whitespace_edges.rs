@@ -16,6 +16,7 @@ fn prepare(system: &mut System, text: &str, whitespace: WhiteSpace) -> PreparedT
     let source = Source::new(text);
     let end = source.text().len();
     let input = ParagraphInput {
+        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
         source: source.clone(),
         base_style: Style {
             size: 10.0,

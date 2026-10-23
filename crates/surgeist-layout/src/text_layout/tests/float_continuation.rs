@@ -182,7 +182,12 @@ fn native_one_paragraph_continues_after_forced_break_across_float_f64() {
 
 fn assert_two_explicit_paragraphs<S: LayoutScalar>() {
     let style = ahem_style(10.0, 10.0);
-    let first = PreparedParagraph::plain(1, Source::new("A\n"), style.clone());
+    let first = PreparedParagraph::at_boundary(
+        vec![ParagraphPart::text(1, Source::new("A\n"), style.clone())],
+        style.clone(),
+        ParagraphBaseDirection::LeftToRight,
+        surgeist_text::ParagraphTerminalEdge::NonBlockBoundary,
+    );
     let second = PreparedParagraph::plain(2, Source::new("X"), style);
     assert_ne!(first.prepared, second.prepared);
     let tree = tree::<S>(&first, &second, true);

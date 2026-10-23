@@ -1,6 +1,12 @@
 //! Actual intrinsic consumer observations of source-forced preserved whitespace.
 use super::*;
 
+#[path = "whitespace_edges/intrinsic_frame.rs"]
+mod intrinsic_frame;
+
+#[path = "whitespace_edges/measurements.rs"]
+mod measurements;
+
 fn intrinsic<S: LayoutScalar>(
     text: &str,
     available: AvailableOf<S>,
@@ -217,6 +223,3 @@ fn conditional_fit_stays_in_the_narrow_band_before_a_lower_transition_f32() {
 fn conditional_fit_stays_in_the_narrow_band_before_a_lower_transition_f64() {
     finite_fit::<f64>();
 }
-
-#[path = "whitespace_edges/intrinsic_frame.rs"]
-mod intrinsic_frame;

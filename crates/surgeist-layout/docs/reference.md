@@ -151,13 +151,20 @@ before the final finite placement pass. Clearance and expired float cohorts
 remain distinct.
 
 `TextJustification::Spaces` expands retained U+0020 slots using Text's finalized
-ownership and edge decisions. Layout distributes the remaining raw advance to
-those slots and finalizes the same selected line with the complete allocations.
-It reconciles an over-budget result against actual finalized advances; if that
-correction still exceeds the span, `TextSpacingBudget` reports the available span
-and actual advance. Text numeric refusals remain Text errors.
-`None` adds no spacing. This explicit profile does not implement CSS-wide
-justification methods or hanging-space adjustment. Vertical and sideways Text
+ownership and edge decisions. Layout distributes the remaining line capacity
+after subtracting Text's natural alignment measure to those slots, then finalizes
+the same selected line with the complete allocations. It reconciles an over-budget
+result against Text's actual allocated alignment measure; if that correction
+still exceeds the span, `TextSpacingBudget` reports the available span and actual
+alignment advance. Text numeric refusals remain Text errors.
+`None` adds no spacing. Native fitting and intrinsic queries consume the matching
+Text-issued measurements; an absent finite width is not an intrinsic-purpose
+tag. Intrinsic allocation/report width is separate from the actual Text metric
+frame and source-fragment geometry retained for scrollable overflow. A supplied
+block-end claim is checked against known later in-flow content in the captured
+container; unknown authority is never upgraded from numeric coverage.
+This explicit profile does not implement CSS-wide justification methods,
+BreakSpaces or styled inline hanging barriers. Vertical and sideways Text
 orientations remain explicit unsupported operations. A complete canonical
 frame, line allocation, ordered spacing allocations, and float-band basis governs
 same-invocation retries.

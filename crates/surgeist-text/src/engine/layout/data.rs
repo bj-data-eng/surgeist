@@ -247,6 +247,7 @@ pub(crate) struct FinalizedSpacingSlot {
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct FinalizedLineData {
+    pub(crate) measurements: Option<crate::LineMeasurements>,
     pub(crate) font_runs: Vec<PreparedRun>,
     pub(crate) runs: Vec<FinalizedRun>,
     /// Logical cluster order; each row records its actual visual position.

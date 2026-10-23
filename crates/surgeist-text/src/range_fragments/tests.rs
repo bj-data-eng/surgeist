@@ -24,6 +24,7 @@ fn input(
     direction: ParagraphBaseDirection,
 ) -> ParagraphInput {
     ParagraphInput {
+        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
         source: source.clone(),
         base_style: style,
@@ -140,7 +141,7 @@ fn select(
                 indent: 0.0,
                 alignment: Alignment::Start,
                 tabs: TabContext::NoTabs,
-                hanging: HangingContext::None,
+
                 spacing: SpacingPolicy::None,
             },
         })

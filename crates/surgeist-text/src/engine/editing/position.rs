@@ -446,6 +446,7 @@ mod tests {
         let source = Source::new(text);
         let source_end = source.text().len();
         let analyzed = AnalyzedSource::from_paragraph(ParagraphInput {
+            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
             tab_reference: None,
             source: source.clone(),
             base_style: Style {
@@ -563,7 +564,7 @@ mod tests {
                         indent: 0.0,
                         alignment: Alignment::Start,
                         tabs: TabContext::NoTabs,
-                        hanging: HangingContext::None,
+
                         spacing: SpacingPolicy::None,
                     },
                     atomics: Vec::new(),
@@ -691,6 +692,7 @@ mod tests {
             .unwrap();
         let source = Source::new("abcdef");
         let analysis = AnalyzedSource::from_paragraph(ParagraphInput {
+            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
             tab_reference: None,
             source: source.clone(),
             base_style: Style {
@@ -774,7 +776,7 @@ mod tests {
                     indent: 0.0,
                     alignment: Alignment::Start,
                     tabs: TabContext::NoTabs,
-                    hanging: HangingContext::None,
+
                     spacing: SpacingPolicy::None,
                 },
                 atomics: vec![],
@@ -949,6 +951,7 @@ mod tests {
         let source = Source::new(text);
         let end = text.encode_utf16().count();
         let analysis = AnalyzedSource::from_paragraph(ParagraphInput {
+            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
             tab_reference: None,
             source: source.clone(),
             base_style: Style {
@@ -1007,7 +1010,7 @@ mod tests {
                     indent: 0.0,
                     alignment: Alignment::Start,
                     tabs: TabContext::NoTabs,
-                    hanging: HangingContext::None,
+
                     spacing: SpacingPolicy::None,
                 },
                 atomics: vec![],
@@ -1390,7 +1393,7 @@ mod tests {
                         indent: 0.0,
                         alignment: Alignment::Start,
                         tabs: TabContext::NoTabs,
-                        hanging: HangingContext::None,
+
                         spacing: SpacingPolicy::None,
                     },
                     atomics: vec![],

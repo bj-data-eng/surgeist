@@ -102,6 +102,7 @@ pub enum TextBindingError {
     MissingParagraph,
     RootMismatch,
     TabReferenceDirection,
+    TerminalBlockEdge,
 }
 
 /// A complete, checked Text participation capture over one borrowed tree.
@@ -159,6 +160,21 @@ impl<'tree, Tree: crate::LayoutTree> TextLayoutInput<'tree, Tree> {
             let window = children
                 .windows(paragraph.nodes.len())
                 .position(|nodes| nodes == paragraph.nodes);
+            if paragraph.prepared.terminal_edge() == surgeist_text::ParagraphTerminalEdge::BlockEnd
+                && window.is_some_and(|start| {
+                    children[start + paragraph.nodes.len()..]
+                        .iter()
+                        .any(|&node| {
+                            let input = tree.layout_input(node);
+                            input.as_box().is_none_or(|input| {
+                                input.display != crate::Display::None
+                                    && input.position != crate::Position::Absolute
+                            })
+                        })
+                })
+            {
+                return Err(error(TextBindingError::TerminalBlockEdge));
+            }
             let complete_window = window.is_some_and(|start| {
                 let end = start + paragraph.nodes.len();
                 let transparent_float = |node| {

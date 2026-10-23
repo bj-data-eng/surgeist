@@ -18,6 +18,7 @@ fn prepare_direction(
 ) -> PreparedText {
     let end = source.text().len();
     let input = ParagraphInput {
+        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
         source: source.clone(),
         base_style,
         tab_reference: None,
@@ -615,4 +616,118 @@ fn partly_hanging_conditional_space_leaves_preceding_separator_terminal() {
     // SPACE20..30 partially hangs beyond25. It therefore counts as hanging,
     // leaving EM SPACE terminal: exclusion10+5, alignment30-15, center shift5.
     assert_eq!(observed, (15.0, vec![5.0, 15.0, 25.0]));
+}
+
+#[test]
+fn fitting_zero_advance_conditional_space_keeps_preceding_separator_nonterminal() {
+    let mut system = system();
+    controls(&mut system);
+    let base = Style {
+        size: 10.0,
+        white_space: WhiteSpace::Preserve,
+        ..style()
+    };
+    let mut source = Source::new("X\u{2003} \nY");
+    source.span(
+        Range::new(1, 2),
+        Style {
+            white_space: WhiteSpace::Collapse,
+            ..base.clone()
+        },
+    );
+    source.span(
+        Range::new(2, 3),
+        Style {
+            word_spacing: -10.0,
+            ..base.clone()
+        },
+    );
+    let p = prepare_source(&mut system, source, base);
+    let forced = ending(&p, PreparedBreakKind::Forced);
+    assert_eq!(forced.view().boundary().view().source_after().get(), 4);
+    let line = select(
+        &p,
+        first(&p),
+        forced.clone(),
+        40.0,
+        crate::Alignment::Center,
+    );
+    assert_eq!(line.feedback().advance, 20.0);
+    let rows = glyphs(&line, 3);
+    assert_eq!(
+        rows.iter().map(|r| (r.0, r.1, r.2)).collect::<Vec<_>>(),
+        [
+            (Range::new(0, 1), 58, 10.0),
+            (Range::new(1, 2), 247, 10.0),
+            (Range::new(2, 3), 3, 10.0)
+        ]
+    );
+    let observed = (
+        line.feedback().hanging_end,
+        rows.iter().map(|r| r.3).collect::<Vec<_>>(),
+    );
+    let next = continuation(&p, forced.view().boundary(), 40.0);
+    custody(&p, vec![line, next], &[88, 8195, 32, 10, 89]);
+    // The actual preserved SPACE ends at20, inside40. It does not hang, so
+    // the preceding EM SPACE is not terminal (CSS Text4 section9.2).
+    assert_eq!(observed, (0.0, vec![10.0, 20.0, 30.0]));
+}
+
+#[test]
+fn ordinary_start_alignment_uses_actual_geometry_without_hanging_capacity() {
+    let mut system = system();
+    controls(&mut system);
+    let p = prepare(&mut system, "X", WhiteSpace::Preserve);
+    let mut r = request(&p);
+    r.context.available_inline = Some(1e308);
+    r.context.indent = 1.0;
+    r.context.alignment = crate::Alignment::Start;
+    let line = p
+        .select(r)
+        .unwrap()
+        .finalize(SpacingAllocations::None)
+        .expect("ordinary start-aligned text consumes no hanging edge");
+    assert_eq!(line.feedback().advance, 10.0);
+    assert_eq!(
+        (line.feedback().hanging_start, line.feedback().hanging_end),
+        (0.0, 0.0)
+    );
+    assert_eq!(glyphs(&line, 1), [(Range::new(0, 1), 58, 10.0, 1.0)]);
+    custody(&p, vec![line], &[88]);
+}
+
+#[test]
+fn conditional_space_allocation_to_zero_preserves_source_and_alignment() {
+    let mut system = system();
+    controls(&mut system);
+    let p = prepare(&mut system, "X \nY", WhiteSpace::Preserve);
+    let forced = ending(&p, PreparedBreakKind::Forced);
+    let selection = selected(
+        &p,
+        first(&p),
+        forced.clone(),
+        15.0,
+        crate::Alignment::Center,
+    );
+    let natural = selection.finalize(SpacingAllocations::None).unwrap();
+    assert_eq!(natural.feedback().advance, 20.0);
+    assert_eq!(
+        glyphs(&natural, 2)
+            .iter()
+            .map(|r| (r.0, r.1, r.2))
+            .collect::<Vec<_>>(),
+        [(Range::new(0, 1), 58, 10.0), (Range::new(1, 2), 3, 10.0)]
+    );
+    let line = allocated(&selection, &[-10.0]);
+    assert_eq!(line.feedback().advance, 10.0);
+    assert_eq!(line.feedback().hanging_end, 0.0);
+    assert_eq!(
+        glyphs(&line, 2),
+        [
+            (Range::new(0, 1), 58, 10.0, 2.5),
+            (Range::new(1, 2), 3, 10.0, 12.5)
+        ]
+    );
+    let next = continuation(&p, forced.view().boundary(), 15.0);
+    custody(&p, vec![line, next], &[88, 32, 10, 89]);
 }

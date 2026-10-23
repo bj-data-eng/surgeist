@@ -2,6 +2,8 @@
 use crate::*;
 use std::sync::Arc;
 
+mod phase_two;
+
 fn style(mode: WhiteSpace, size: f32) -> Style {
     Style {
         white_space: mode,
@@ -154,7 +156,7 @@ fn line(prepared: &PreparedText) -> FinalizedLine {
                 indent: 0.0,
                 alignment: Alignment::Start,
                 tabs: TabContext::NoTabs,
-                hanging: HangingContext::None,
+
                 spacing: SpacingPolicy::Spaces,
             },
         })
@@ -932,7 +934,7 @@ fn contextual_source_defined_replacement_remains_presentation_only() {
                 indent: 0.0,
                 alignment: Alignment::Start,
                 tabs: TabContext::NoTabs,
-                hanging: HangingContext::None,
+
                 spacing: SpacingPolicy::Spaces,
             },
         })
@@ -1345,7 +1347,7 @@ fn selected_soft_wrap_does_not_reset_plaintext_context_or_copy_line_edge_deletio
                 indent: 0.0,
                 alignment: Alignment::Start,
                 tabs: TabContext::NoTabs,
-                hanging: HangingContext::None,
+
                 spacing: SpacingPolicy::Spaces,
             },
         })
@@ -1703,7 +1705,7 @@ fn right_line(prepared: &PreparedText) -> FinalizedLine {
                 indent: 0.0,
                 alignment: Alignment::Start,
                 tabs: TabContext::NoTabs,
-                hanging: HangingContext::None,
+
                 spacing: SpacingPolicy::Spaces,
             },
         })

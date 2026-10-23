@@ -2,11 +2,11 @@
 
 use crate::{TextAlign, TextAlignLast, TextJustification};
 use surgeist_text::{
-    Alignment, AtomicAllocation, ConditionalPurpose, ControlAllocation, FinalizedLine,
-    HangingContext, LineContext, LineEnd, LineOrientation, LineSelectionRequest, LineStart,
-    ParagraphBaseDirection, PreparedAlternative, PreparedBoundary, PreparedBreakKind,
-    PreparedParticipant, PreparedTermination, PreparedText, SelectedLine, SpacingAllocation,
-    SpacingAllocations, SpacingPolicy, SpacingSlotDisposition, TabContext, TabPreparation,
+    Alignment, AtomicAllocation, ConditionalPurpose, ControlAllocation, FinalizedLine, LineContext,
+    LineEnd, LineOrientation, LineSelectionRequest, LineStart, ParagraphBaseDirection,
+    PreparedAlternative, PreparedBoundary, PreparedBreakKind, PreparedParticipant,
+    PreparedTermination, PreparedText, SelectedLine, SpacingAllocation, SpacingAllocations,
+    SpacingPolicy, SpacingSlotDisposition, TabContext, TabPreparation,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -232,7 +232,8 @@ fn finalize_candidate(
             .available_inline
             .map(|width| {
                 finite(width - request.context.indent).and_then(|capacity| {
-                    finite(capacity - natural.feedback().advance).map(|extra| (capacity, extra))
+                    finite(capacity - natural.measurements().alignment().advance())
+                        .map(|extra| (capacity, extra))
                 })
             })
             .transpose()?;
@@ -241,8 +242,8 @@ fn finalize_candidate(
                 || (justification == TextJustification::Spaces && !retained.is_empty()))
         {
             if extra > 0.0 {
-                // RAW logical advance owns this target, independently of the
-                // retained trailing/hanging or occupied-fit observations.
+                // Eligibility comes from the natural line; complete allocations
+                // then remap its exclusions through the same Text finalizer.
                 let share = finite(extra / retained.len() as f64)?;
                 let mut supplied = 0.0;
                 for (ordinal, index) in retained.iter().enumerate() {
@@ -307,7 +308,7 @@ fn constrain_spacing_budget(
     amounts: &mut [f64],
     mut finalized: FinalizedLine,
 ) -> Result<FinalizedLine, FitError> {
-    if finalized.feedback().advance <= width {
+    if finalized.measurements().alignment().advance() <= width {
         return Ok(finalized);
     }
     // The ideal sum of amounts does not capture rounding in each real slot's
@@ -319,7 +320,7 @@ fn constrain_spacing_budget(
         .find(|&index| amounts[index] > 0.0)
     {
         let previous = amounts[index];
-        let overshoot = finite(finalized.feedback().advance - width)?;
+        let overshoot = finite(finalized.measurements().alignment().advance() - width)?;
         let reduced = finite(previous - overshoot)?.max(0.0);
         amounts[index] = if reduced < previous {
             reduced
@@ -327,7 +328,7 @@ fn constrain_spacing_budget(
             previous.next_down()
         };
         finalized = finalize_spacing(selected, amounts)?;
-        if finalized.feedback().advance <= width {
+        if finalized.measurements().alignment().advance() <= width {
             return Ok(finalized);
         }
     }
@@ -337,7 +338,7 @@ fn constrain_spacing_budget(
     // over-budget completed correction is Layout's own truthful refusal.
     Err(FitError::SpacingBudget {
         available: width,
-        advance: finalized.feedback().advance,
+        advance: finalized.measurements().alignment().advance(),
     })
 }
 
@@ -473,9 +474,14 @@ where
                 Available::Minimum => Some(finite((band.end - band.start).max(0.0))?),
                 Available::Definite(_) | Available::Maximum => request.context.available_inline,
             };
-            let occupied = finite(feedback.occupied_end - feedback.occupied_start)?;
+            let measurement = match input.available {
+                Available::Minimum => finalized.measurements().min_content_contribution(),
+                Available::Maximum => finalized.measurements().max_content_contribution(),
+                Available::Definite(_) => finalized.measurements().fit(),
+            };
+            let occupied = finite(measurement.occupied_end() - measurement.occupied_start())?;
             let fits = fit_width.is_none_or(|width| {
-                feedback.advance <= width - request.context.indent
+                measurement.advance() <= width - request.context.indent
                     && occupied <= width - request.context.indent
             });
             return Ok(EvaluatedCandidate {
@@ -640,7 +646,7 @@ fn selection_request(
             indent: input.indent.at(indent_state),
             alignment: text_alignment(input.alignment),
             tabs: TabContext::FontAdvance,
-            hanging: HangingContext::None,
+
             spacing: if input.justification == TextJustification::Spaces {
                 SpacingPolicy::Spaces
             } else {
@@ -908,17 +914,14 @@ pub(crate) fn fit(
             let end = candidate.request.end.view().participant_offset();
             indent_state.commit(ending == LineEnd::Forced);
             accept_encounters()?;
+            let available = candidate.finalized.metric_bounds().size.width;
             result.push(FittedLine {
                 encounters: candidate.encounters,
                 finalized: candidate.finalized,
                 amounts: candidate.amounts,
                 inline_start: candidate.bands.combined().start,
                 placed_start: candidate.placed_start,
-                available: candidate
-                    .request
-                    .context
-                    .available_inline
-                    .unwrap_or(feedback.advance),
+                available,
                 bands: candidate.bands,
                 flow: LineFlow {
                     start: position.logical_start,

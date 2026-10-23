@@ -9,6 +9,7 @@ use crate::{
 fn paragraph(source: Source) -> ParagraphInput {
     let len = source.text().len();
     ParagraphInput {
+        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
         source: source.clone(),
         base_style: Style {
@@ -806,7 +807,7 @@ fn context(end: LineEnd) -> LineContext {
         indent: 0.0,
         alignment: crate::Alignment::Start,
         tabs: TabContext::NoTabs,
-        hanging: HangingContext::None,
+
         spacing: SpacingPolicy::Spaces,
     }
 }

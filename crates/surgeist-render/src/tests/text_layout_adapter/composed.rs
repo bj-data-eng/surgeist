@@ -38,7 +38,7 @@ fn finalized(source: text::Source) -> (text::PreparedText, text::FinalizedLine) 
                 indent: 0.0,
                 alignment: text::Alignment::Left,
                 tabs: text::TabContext::NoTabs,
-                hanging: text::HangingContext::None,
+
                 spacing: text::SpacingPolicy::None,
             },
         })
@@ -221,7 +221,7 @@ fn actual_gpos_mark_placement_reaches_admitted_outline_ink_without_advance_subst
                 indent: 0.0,
                 alignment: text::Alignment::Left,
                 tabs: text::TabContext::NoTabs,
-                hanging: text::HangingContext::None,
+
                 spacing: text::SpacingPolicy::None,
             },
         })

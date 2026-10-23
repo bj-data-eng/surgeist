@@ -106,6 +106,7 @@ fn standalone_metric_policies_keep_unforced_arabic_joining() {
 fn native_input(source: Source) -> ParagraphInput {
     let length = source.text().len();
     ParagraphInput {
+        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
         source: source.clone(),
         base_style: breaking_style(),

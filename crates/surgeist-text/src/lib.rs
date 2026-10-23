@@ -84,15 +84,16 @@ pub use protocol::readback::{
 pub use protocol::{
     AtomicAllocation, AtomicBoxAllocation, AtomicFlowAllocation, AtomicLineAllocation,
     AtomicPlacement, AtomicSlotFeedback, ConditionalPurpose, ControlAllocation, ControlStrut,
-    FinalizedFragment, FinalizedLine, HangingContext, LineAnchor, LineBoxAlignment, LineContext,
-    LineEnd, LineFeedback, LineOrientation, LinePlacement, LineSelectionRequest, LineStart,
-    LineStrut, ParagraphBaseDirection, ParagraphInput, PlacementCoverage, PlacementRequest,
-    PreparationOptions, PreparedAlternative, PreparedAtomic, PreparedBoundary, PreparedBreakKind,
-    PreparedConditionalOpportunity, PreparedControl, PreparedOpportunity, PreparedOrigin,
-    PreparedParticipant, PreparedTermination, PreparedText, PreparedUnit, PresentationRange,
-    ProtocolContextField, ProtocolError, ProtocolHandleKind, SelectedLine, SpacingAllocation,
-    SpacingAllocations, SpacingPolicy, SpacingSlot, SpacingSlotDisposition, SpacingSlotFeedback,
-    SpacingSlotOwner, TabContext,
+    FinalizedFragment, FinalizedLine, InlineMeasure, LineAnchor, LineBoxAlignment, LineContext,
+    LineEdgeDisposition, LineEdgeOwner, LineEdgeSide, LineEdgeUnitView, LineEnd, LineFeedback,
+    LineMeasurements, LineOrientation, LinePlacement, LineSelectionRequest, LineStart, LineStrut,
+    ParagraphBaseDirection, ParagraphInput, ParagraphTerminalEdge, PhaseTwoContext,
+    PlacementCoverage, PlacementRequest, PreparationOptions, PreparedAlternative, PreparedAtomic,
+    PreparedBoundary, PreparedBreakKind, PreparedConditionalOpportunity, PreparedControl,
+    PreparedOpportunity, PreparedOrigin, PreparedParticipant, PreparedTermination, PreparedText,
+    PreparedUnit, PresentationRange, ProtocolContextField, ProtocolError, ProtocolHandleKind,
+    SelectedLine, SpacingAllocation, SpacingAllocations, SpacingPolicy, SpacingSlot,
+    SpacingSlotDisposition, SpacingSlotFeedback, SpacingSlotOwner, TabContext,
 };
 pub use range::{Range, SourcePosition, SourceRange};
 pub use source_model::{

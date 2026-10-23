@@ -728,6 +728,7 @@ pub surgeist_layout::TextBindingError::ParticipantRole
 pub surgeist_layout::TextBindingError::RootMismatch
 pub surgeist_layout::TextBindingError::RunMembership
 pub surgeist_layout::TextBindingError::TabReferenceDirection
+pub surgeist_layout::TextBindingError::TerminalBlockEdge
 pub enum surgeist_layout::TextJustification
 pub surgeist_layout::TextJustification::None
 pub surgeist_layout::TextJustification::Spaces

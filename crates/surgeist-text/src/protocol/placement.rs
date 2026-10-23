@@ -233,7 +233,16 @@ pub(crate) fn place_request(
             include(&mut bounds, atomic.border)?;
         }
         let indent = selected.request.context.indent.max(0.0);
-        let visible = (metrics.advance + indent - metrics.trailing_whitespace).max(0.0);
+        let visible = (placed
+            .finalized
+            .data
+            .measurements
+            .as_ref()
+            .expect("finalization installed actual measurements")
+            .alignment()
+            .advance()
+            + indent)
+            .max(0.0);
         let full = (metrics.advance + indent).max(0.0);
         finite("placed visible advance", visible)?;
         finite("placed full advance", full)?;
