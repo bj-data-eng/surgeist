@@ -69,6 +69,33 @@ struct SelectedFont {
     attrs: Attributes,
 }
 
+/// Exact pre-mapping font-query input and its genuinely realized resource.
+/// Source offsets are deliberately absent: mapping belongs to each projection.
+#[derive(Clone, Debug)]
+pub(crate) struct FontQueryWitness {
+    chars: Vec<Char>,
+    map_len: usize,
+    emoji: bool,
+    normalize: bool,
+    pub(crate) run: PreparedRun,
+}
+impl FontQueryWitness {
+    fn matches(
+        &self,
+        cluster: &CharCluster,
+        style: &ResolvedStyle,
+        script: Script,
+        styles: &[super::resolve::ResolvedStyleRun],
+    ) -> bool {
+        self.chars == cluster.chars
+            && self.map_len == cluster.map_len
+            && self.emoji == cluster.is_emoji
+            && self.normalize == cluster.force_normalize
+            && self.run.script == script
+            && same_shaping_style(style, &styles[self.run.style].style)
+    }
+}
+
 /// Provider-owned Unicode work shared by every font run in this actual domain.
 pub(crate) struct JoiningDomain {
     atoms: IndexRange<usize>,
@@ -79,63 +106,228 @@ pub(crate) struct JoiningDomain {
 
 pub(crate) fn prepare_joining_domains(
     analyzed: &super::AnalyzedData,
-    alternatives: &mut [crate::protocol::prepared::PreparedAlternativeShape],
+    shaped: &ShapedData,
+    alternatives: &[crate::protocol::prepared::PreparedIndicationFonts],
 ) -> Result<Vec<JoiningDomain>> {
+    if alternatives.is_empty() {
+        return Ok(Vec::new());
+    }
     let projection = &analyzed.projection;
-    let barriers: BTreeSet<_> = projection
-        .barriers
-        .iter()
-        .map(|at| {
-            projection
-                .atoms
-                .partition_point(|atom| atom.source.end <= *at)
-        })
-        .collect();
-    let mut domains: Vec<JoiningDomain> = Vec::new();
-    for alternative in alternatives {
-        for run in &alternative.shaped.runs {
-            let mut originals = alternative.original_atoms[run.atoms.clone()]
-                .iter()
-                .flatten();
-            let first_original = originals.next().copied();
-            let first = first_original.unwrap_or_else(|| {
-                alternative
-                    .base_insertion
-                    .min(projection.atoms.len().saturating_sub(1))
-            });
-            let last = originals.last().copied().unwrap_or(first);
-            let extent = bounded_context(first..first + 1, 0..projection.atoms.len(), &barriers);
-            if first_original.is_some() && !extent.contains(&last) {
-                return Err(super::shaping_refused(
-                    harfrust::ShapingRefusal::JoiningCorrespondence,
-                ));
-            }
-            let index = if let Some(index) = domains.iter().position(|domain| {
-                domain.atoms == extent
-                    && domain.script == run.script
-                    && domain.level == run.level & 1
-            }) {
-                index
-            } else {
-                let bytes = atom_bytes(projection, extent.clone());
+    let mut boundaries = vec![0, projection.atoms.len()];
+    boundaries.extend(
+        projection
+            .barriers
+            .iter()
+            .map(|at| projection.atoms.partition_point(|a| a.source.end <= *at)),
+    );
+    boundaries.sort_unstable();
+    boundaries.dedup();
+    let mut scripts = Vec::new();
+    for run in shaped.runs.iter().chain(
+        alternatives
+            .iter()
+            .flat_map(|a| a.font_queries.iter().map(|w| &w.run)),
+    ) {
+        if !scripts.contains(&run.script) {
+            scripts.push(run.script);
+        }
+    }
+    let mut domains = Vec::new();
+    for pair in boundaries.windows(2) {
+        for &script in &scripts {
+            for level in [0, 1] {
+                let atoms = pair[0]..pair[1];
+                let bytes = atom_bytes(projection, atoms.clone());
                 let source = harfrust::JoiningSource::analyze(
                     &projection.text[bytes],
-                    provider_script(run.script),
-                    provider_direction(run.level),
+                    provider_script(script),
+                    provider_direction(level),
                 )
                 .map_err(joining_source_error)?;
                 domains.push(JoiningDomain {
-                    atoms: extent,
-                    script: run.script,
-                    level: run.level & 1,
+                    atoms,
+                    script,
+                    level,
                     source,
                 });
-                domains.len() - 1
-            };
-            alternative.joining_domains.push(index);
+            }
         }
     }
     Ok(domains)
+}
+
+/// The original-only operation retains its actual captured scalar assignments;
+/// a selected substring does not invent another catalogue query prerequisite.
+pub(crate) fn retain_original_fonts(
+    prepared: &super::PreparedData,
+    projection: &crate::projection::SourceProjection,
+    originals: &[Option<usize>],
+) -> Result<Vec<crate::protocol::prepared::RetainedAssignment>> {
+    let mut result: Vec<crate::protocol::prepared::RetainedAssignment> = Vec::new();
+    let mut prior_run = None;
+    let mut prior_original = None;
+    for (atom, original) in originals.iter().enumerate() {
+        if prepared.options.tabs() == crate::TabPreparation::CssStops
+            && projection.atoms[atom].code_point == 9
+        {
+            continue;
+        }
+        let original = original.ok_or_else(|| {
+            Error::new(
+                ErrorCode::LayoutFailed,
+                "original assignment has no source scalar",
+            )
+        })?;
+        let run = prepared
+            .shaped
+            .runs
+            .partition_point(|r| r.atoms.end <= original);
+        let captured = prepared
+            .shaped
+            .runs
+            .get(run)
+            .filter(|r| r.atoms.contains(&original))
+            .ok_or_else(no_font)?;
+        if prior_run == Some(run)
+            && prior_original == original.checked_sub(1)
+            && let Some(last) = result.last_mut()
+        {
+            last.atoms.end = atom + 1;
+            last.run.atoms.end = atom + 1;
+        } else {
+            let mut captured = captured.clone();
+            captured.atoms = atom..atom + 1;
+            result.push(crate::protocol::prepared::RetainedAssignment {
+                atoms: atom..atom + 1,
+                run: captured,
+            });
+        }
+        prior_run = Some(run);
+        prior_original = Some(original);
+    }
+    Ok(result)
+}
+
+/// Replay only an exact genuinely executed matching input. The new projection,
+/// source mapping and provider glyph output are never borrowed from a witness.
+pub(crate) fn assign_fonts(
+    prepared: &super::PreparedData,
+    projection: &crate::projection::SourceProjection,
+    analysis: &super::analysis::Analysis,
+    scopes: &[crate::protocol::prepared::presentation::DirectionalScope],
+) -> Result<Vec<crate::protocol::prepared::RetainedAssignment>> {
+    let input = ShapingInput {
+        projection,
+        analysis,
+        styles: &prepared.styles,
+        boxes: prepared.analyzed.processed.source().boxes(),
+        font_catalogue: &prepared.font_catalogue,
+        paragraph: &prepared.analyzed.paragraph,
+        css_tabs: prepared.options.tabs() == crate::TabPreparation::CssStops,
+    };
+    let mut cluster = CharCluster::default();
+    let mut assignments: Vec<crate::protocol::prepared::RetainedAssignment> = Vec::new();
+    let mut script = analysis
+        .infos
+        .iter()
+        .map(|(i, _)| i.script)
+        .find(|&s| real_script(s))
+        .unwrap_or(Script::Latin);
+    let mut first = 0;
+    while first < projection.atoms.len() {
+        if input.css_tabs && projection.atoms[first].code_point == 9 {
+            first += 1;
+            continue;
+        }
+        let style = analysis.infos[first].1;
+        if real_script(analysis.infos[first].0.script) {
+            script = analysis.infos[first].0.script;
+        }
+        let mut end = first + 1;
+        while end < projection.atoms.len() {
+            let info = analysis.infos[end];
+            let next = if real_script(info.0.script) {
+                info.0.script
+            } else {
+                script
+            };
+            if (input.css_tabs && projection.atoms[end].code_point == 9)
+                || scopes[end] != scopes[first]
+                || (analysis.levels[end] & 1) != (analysis.levels[first] & 1)
+                || next != script
+                || !same_shaping_style(
+                    &prepared.styles[style].style,
+                    &prepared.styles[info.1].style,
+                )
+                || projection
+                    .barriers
+                    .contains(&projection.atoms[end].source.start)
+            {
+                break;
+            }
+            end += 1;
+        }
+        for egc in analysis
+            .graphemes
+            .iter()
+            .filter(|g| g.end > first && g.start < end)
+        {
+            let atoms = egc.start.max(first)..egc.end.min(end);
+            fill_cluster(&input, atoms.clone(), &mut cluster);
+            let witness = prepared
+                .shaped
+                .font_queries
+                .iter()
+                .chain(
+                    prepared
+                        .indication_fonts
+                        .iter()
+                        .flat_map(|a| a.font_queries.iter()),
+                )
+                .find(|w| {
+                    w.matches(
+                        &cluster,
+                        &prepared.styles[style].style,
+                        script,
+                        &prepared.styles,
+                    )
+                })
+                .ok_or_else(|| {
+                    crate::hyphenation::error(
+                        crate::HyphenationError::UncapturedIndicationFontQuery,
+                    )
+                })?;
+            let mut run = witness.run.clone();
+            run.style = style;
+            run.atoms = atoms.clone();
+            run.level = match scopes[first] {
+                crate::protocol::prepared::presentation::DirectionalScope::Outer(level) => level,
+                crate::protocol::prepared::presentation::DirectionalScope::Local(_, level) => level,
+            };
+            if let Some(prior) = assignments.last_mut()
+                && prior.atoms.end == atoms.start
+                && !projection
+                    .barriers
+                    .contains(&projection.atoms[atoms.start].source.start)
+                && scopes[prior.atoms.start] == scopes[first]
+                && prior.run.font == run.font
+                && prior.run.coords == run.coords
+                && prior.run.synthesis == run.synthesis
+                && prior.run.script == script
+                && same_shaping_style(
+                    &prepared.styles[prior.run.style].style,
+                    &prepared.styles[style].style,
+                )
+            {
+                prior.atoms.end = atoms.end;
+                prior.run.atoms.end = atoms.end;
+            } else {
+                assignments.push(crate::protocol::prepared::RetainedAssignment { atoms, run });
+            }
+        }
+        first = end;
+    }
+    Ok(assignments)
 }
 
 fn provider_script(script: Script) -> harfrust::Script {
@@ -171,11 +363,30 @@ impl PartialEq for SelectedFont {
 }
 
 pub(crate) fn shape(
-    mut query: Query<'_>,
+    query: Query<'_>,
     input: ShapingInput<'_>,
     scratch: &mut ShapeContext,
 ) -> Result<ShapedData> {
+    shape_impl(query, input, scratch, false)
+}
+
+/// Actual matching/instance capture without a redundant glyph-shaping operation.
+pub(crate) fn capture_fonts(
+    query: Query<'_>,
+    input: ShapingInput<'_>,
+    scratch: &mut ShapeContext,
+) -> Result<Vec<FontQueryWitness>> {
+    shape_impl(query, input, scratch, true).map(|output| output.font_queries)
+}
+
+fn shape_impl(
+    mut query: Query<'_>,
+    input: ShapingInput<'_>,
+    scratch: &mut ShapeContext,
+    capture_only: bool,
+) -> Result<ShapedData> {
     let mut output = ShapedData::default();
+    let mut queries = Vec::new();
     let sources = AnalysisDataSources;
     let barriers: BTreeSet<_> = input
         .projection
@@ -244,6 +455,13 @@ pub(crate) fn shape(
             for grapheme in &input.analysis.graphemes[grapheme_start..grapheme_end] {
                 let range = grapheme.start.max(item_start)..grapheme.end.min(item_end);
                 fill_cluster(&input, range.clone(), &mut scratch.cluster);
+                queries.push((
+                    range.clone(),
+                    scratch.cluster.chars.clone(),
+                    scratch.cluster.map_len,
+                    scratch.cluster.is_emoji,
+                    scratch.cluster.force_normalize,
+                ));
                 let selected =
                     select_font(&mut query, style, script, &mut scratch.cluster, &sources)
                         .ok_or_else(no_font)?;
@@ -261,6 +479,7 @@ pub(crate) fn shape(
                         },
                         scratch,
                         &mut output,
+                        capture_only,
                     )?;
                     segment_start = range.start;
                 }
@@ -279,11 +498,34 @@ pub(crate) fn shape(
                 },
                 scratch,
                 &mut output,
+                capture_only,
             )?;
             item_start = item_end;
         }
     }
-    install_mixed_order(&mut output, &input);
+    for (atoms, chars, map_len, emoji, normalize) in queries {
+        let run = output
+            .runs
+            .iter()
+            .find(|run| run.atoms.start <= atoms.start && run.atoms.end >= atoms.end)
+            .ok_or_else(|| {
+                Error::new(
+                    ErrorCode::LayoutFailed,
+                    "font query has no realized instance",
+                )
+            })?
+            .clone();
+        output.font_queries.push(FontQueryWitness {
+            chars,
+            map_len,
+            emoji,
+            normalize,
+            run,
+        });
+    }
+    if !capture_only {
+        install_mixed_order(&mut output, &input);
+    }
     Ok(output)
 }
 
@@ -324,6 +566,7 @@ pub(crate) fn default_metrics(
         },
         scratch,
         &mut output,
+        false,
     )?;
     Ok(output
         .empty_run
@@ -372,40 +615,61 @@ pub(crate) fn finalize(
             });
         }
     } else {
-        // Base-source cuts retain joining context from the actual processed
-        // capture, including continuation lines. A replacement additionally
-        // owns a selected-line Unicode domain for its computed contributions.
-        let captured_base = selected.request.alternative.is_none();
-        let context_projection = if captured_base {
-            &prepared.analyzed.projection
-        } else {
-            input.projection
-        };
-        let barriers: BTreeSet<_> = context_projection
+        let computed =
+            selected.request.alternative.is_some() || selected.request.incoming.is_some();
+        let barriers: BTreeSet<_> = input
+            .projection
             .barriers
             .iter()
             .map(|at| {
-                context_projection
+                input
+                    .projection
                     .atoms
-                    .partition_point(|atom| atom.source.end <= *at)
+                    .partition_point(|a| a.source.end <= *at)
             })
             .collect();
-        let allowed = 0..context_projection.atoms.len();
         let mut selected_domains: Vec<JoiningDomain> = Vec::new();
-        let mut selected_domain_rows = Vec::new();
-        if !captured_base {
-            for assignment in &presentation.assignments {
-                let variant = &prepared.alternative_shapes[assignment
-                    .alternative
-                    .expect("selected replacement capture")];
-                let run = &variant.shaped.runs[assignment.run];
-                let extent = bounded_context(assignment.atoms.clone(), allowed.clone(), &barriers);
-                let index = if let Some(index) = selected_domains.iter().position(|domain| {
-                    domain.atoms == extent
-                        && domain.script == run.script
-                        && domain.level == run.level & 1
+        for assignment in &presentation.assignments {
+            let run = &assignment.run;
+            let extent = bounded_context(
+                assignment.atoms.clone(),
+                0..input.projection.atoms.len(),
+                &barriers,
+            );
+            let mut context =
+                RunContext::new(input.projection, assignment.atoms.clone(), extent.clone());
+            if computed {
+                let original_anchor = presentation.originals[assignment.atoms.clone()]
+                    .iter()
+                    .flatten()
+                    .next()
+                    .copied()
+                    .unwrap_or_else(|| {
+                        prepared
+                            .analyzed
+                            .projection
+                            .atoms
+                            .partition_point(|a| {
+                                a.source.end
+                                    <= input.projection.atoms[assignment.atoms.start].source.start
+                            })
+                            .min(prepared.analyzed.projection.atoms.len().saturating_sub(1))
+                    });
+                let original = prepared
+                    .joining_domains
+                    .iter()
+                    .find(|d| {
+                        d.atoms.contains(&original_anchor)
+                            && d.script == run.script
+                            && d.level == (run.level & 1)
+                    })
+                    .ok_or_else(|| {
+                        super::shaping_refused(harfrust::ShapingRefusal::JoiningProfile)
+                    })?;
+                let index = if let Some(i) = selected_domains.iter().position(|d| {
+                    d.atoms == extent && d.script == run.script && d.level == (run.level & 1)
                 }) {
-                    index
+                    i
                 } else {
                     let bytes = atom_bytes(input.projection, extent.clone());
                     let source = harfrust::JoiningSource::analyze(
@@ -422,39 +686,64 @@ pub(crate) fn finalize(
                     });
                     selected_domains.len() - 1
                 };
-                selected_domain_rows.push(index);
-            }
-        }
-        for (assignment_row, assignment) in presentation.assignments.iter().enumerate() {
-            let captured = assignment.alternative.map_or(&prepared.shaped, |index| {
-                &prepared.alternative_shapes[index].shaped
-            });
-            let run = &captured.runs[assignment.run];
-            let context_atoms = if captured_base {
-                assignment.captured_atoms.clone()
-            } else {
-                assignment.atoms.clone()
-            };
-            let extent = bounded_context(context_atoms.clone(), allowed.clone(), &barriers);
-            let mut context = RunContext::new(context_projection, context_atoms, extent);
-            if let Some(index) = assignment.alternative {
-                let variant = &prepared.alternative_shapes[index];
-                let original = &prepared.joining_domains[variant.joining_domains[assignment.run]];
-                let presentation_domain = &selected_domains[selected_domain_rows[assignment_row]];
-                let mut original_map = Vec::with_capacity(assignment.captured_atoms.len());
-                for atom in &variant.original_atoms[assignment.captured_atoms.clone()] {
-                    original_map.push(atom.map(|atom| atom - original.atoms.start));
-                }
-                let mut presentation_map = Vec::with_capacity(assignment.atoms.len());
-                for atom in assignment.atoms.clone() {
-                    presentation_map.push(atom - presentation_domain.atoms.start);
-                }
+                let domain = &selected_domains[index];
+                let original_map = presentation.originals[assignment.atoms.clone()]
+                    .iter()
+                    .map(|value| {
+                        value
+                            .map(|i| {
+                                i.checked_sub(original.atoms.start)
+                                    .filter(|_| original.atoms.contains(&i))
+                                    .ok_or_else(|| {
+                                        super::shaping_refused(
+                                            harfrust::ShapingRefusal::JoiningCorrespondence,
+                                        )
+                                    })
+                            })
+                            .transpose()
+                    })
+                    .collect::<Result<Vec<_>>>()?;
+                let presentation_map = assignment
+                    .atoms
+                    .clone()
+                    .map(|i| i - domain.atoms.start)
+                    .collect();
                 context.joining = Some(JoiningRun {
                     original: &original.source,
                     original_map,
-                    presentation: &presentation_domain.source,
+                    presentation: &domain.source,
                     presentation_map,
                 });
+            } else {
+                let captured = presentation.originals[assignment.atoms.clone()]
+                    .iter()
+                    .flatten()
+                    .copied()
+                    .collect::<Vec<_>>();
+                if let (Some(&first), Some(&last)) = (captured.first(), captured.last()) {
+                    let original_barriers: BTreeSet<_> = prepared
+                        .analyzed
+                        .projection
+                        .barriers
+                        .iter()
+                        .map(|at| {
+                            prepared
+                                .analyzed
+                                .projection
+                                .atoms
+                                .partition_point(|a| a.source.end <= *at)
+                        })
+                        .collect();
+                    context = RunContext::new(
+                        &prepared.analyzed.projection,
+                        first..last + 1,
+                        bounded_context(
+                            first..last + 1,
+                            0..prepared.analyzed.projection.atoms.len(),
+                            &original_barriers,
+                        ),
+                    );
+                }
             }
             append_retained_run(
                 &input,
@@ -501,10 +790,7 @@ pub(crate) fn finalize(
                     });
                 }
             }
-            _ if value.atoms.is_empty() => output.items.push(ShapedItem::Anchor {
-                unit,
-                level: value.level,
-            }),
+            _ if value.atoms.is_empty() => output.items.push(ShapedItem::Anchor { unit }),
             _ => {
                 while let Some(&(index, cluster)) = clusters.peek() {
                     if cluster.atoms.start >= value.atoms.end {
@@ -779,6 +1065,7 @@ fn append_selected(
     segment: SelectedSegment,
     scratch: &mut ShapeContext,
     output: &mut ShapedData,
+    capture_only: bool,
 ) -> Result<()> {
     let selected = segment.font;
     let font = FontData::from_blob(
@@ -807,6 +1094,7 @@ fn append_selected(
         },
         scratch,
         output,
+        capture_only,
     )
 }
 
@@ -835,6 +1123,7 @@ fn append_retained_run(
         },
         scratch,
         output,
+        false,
     )
 }
 
@@ -842,6 +1131,7 @@ fn append_request(
     mut request: RunRequest<'_, '_>,
     scratch: &mut ShapeContext,
     output: &mut ShapedData,
+    capture_only: bool,
 ) -> Result<()> {
     let style = &request.input.styles[request.style].style;
     let resource = cache::ResourceKey(request.font.clone());
@@ -891,6 +1181,11 @@ fn append_request(
         .instance(Some(instance))
         .point_size(Some(style.font_size))
         .build();
+    if capture_only {
+        let (run, _, _) = resolved_run(&request, shaper.coords())?;
+        output.runs.push(run);
+        return Ok(());
+    }
     let direction = if request.level & 1 == 0 {
         harfrust::Direction::LeftToRight
     } else {
@@ -1057,12 +1352,10 @@ fn resolved_line_height(
     }
 }
 
-fn extract_run(
+fn resolved_run(
     request: &RunRequest<'_, '_>,
-    glyph_buffer: &harfrust::GlyphBuffer,
     coords: &[harfrust::NormalizedCoord],
-    output: &mut ShapedData,
-) -> Result<()> {
+) -> Result<(PreparedRun, f64, f64)> {
     let input = request.input;
     let style = &input.styles[request.style].style;
     let stored_coords: Vec<_> = coords.iter().map(|coord| coord.to_bits()).collect();
@@ -1134,6 +1427,19 @@ fn extract_run(
         atoms: request.atoms.clone(),
         metrics: run_metrics,
     };
+    Ok((run, scale, leading))
+}
+
+fn extract_run(
+    request: &RunRequest<'_, '_>,
+    glyph_buffer: &harfrust::GlyphBuffer,
+    coords: &[harfrust::NormalizedCoord],
+    output: &mut ShapedData,
+) -> Result<()> {
+    let input = request.input;
+    let (run, scale, leading) = resolved_run(request, coords)?;
+    let font_ref = skrifa::FontRef::from_index(request.font.bytes(), request.font.index())
+        .map_err(|_| Error::new(ErrorCode::FontLoadFailed, "invalid selected font face"))?;
     if request.atoms.is_empty() {
         output.empty_run = Some(run);
         return Ok(());
@@ -1236,7 +1542,12 @@ fn extract_run(
                 with_letter_spacing
             };
             output.clusters.push(PreparedCluster {
-                line_height: resolved_line_height(style, ascent, descent, leading)?,
+                line_height: resolved_line_height(
+                    style,
+                    run.metrics.ascent,
+                    run.metrics.descent,
+                    leading,
+                )?,
                 shaped_advance: base_advance,
                 logical_adjustments: [
                     style.letter_spacing,
@@ -1401,6 +1712,7 @@ pub(crate) fn measure_character(
         },
         scratch,
         &mut output,
+        false,
     )?;
     let run = output
         .empty_run

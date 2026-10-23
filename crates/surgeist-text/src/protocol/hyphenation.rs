@@ -402,6 +402,7 @@ pub struct PreparedWordPortion {
     pub(crate) start: usize,
     pub(crate) end: usize,
     pub(crate) alternative: Option<usize>,
+    pub(crate) incoming: Option<usize>,
 }
 impl PreparedWordPortion {
     #[must_use]
@@ -421,6 +422,13 @@ impl PreparedWordPortion {
             prepared: Arc::clone(&self.word.prepared),
             index: self.end,
         }
+    }
+    #[must_use]
+    pub fn incoming(&self) -> Option<super::HyphenationContinuation> {
+        super::HyphenationContinuation::from_alternative(super::PreparedAlternative {
+            prepared: Arc::clone(&self.word.prepared),
+            index: self.incoming?,
+        })
     }
     #[must_use]
     pub fn alternative(&self) -> Option<super::PreparedAlternative> {
@@ -462,6 +470,7 @@ impl PreparedWordPortion {
         }
         if request.start.index != self.start
             || request.end.index != self.end
+            || request.incoming != self.incoming()
             || request.alternative.as_ref().map(|row| row.index) != self.alternative
             || !self.word.view().portions()?.contains(self)
         {
@@ -503,6 +512,7 @@ impl PreparedWordView<'_> {
             .position(|row| row.participant == last)
             .ok_or_else(|| super::protocol_error(super::ProtocolError::InvalidWordPortion))?;
         let mut result = Vec::new();
+        let mut incoming = vec![None];
         for cut in &tables.hyphenation_cuts {
             if cut.word != Some(self.index)
                 || !matches!(
@@ -519,22 +529,40 @@ impl PreparedWordView<'_> {
                 continue;
             }
             for &alternative in &tables.opportunities[opportunity].alternatives {
-                result.push(PreparedWordPortion {
-                    word: self.handle(),
-                    start,
-                    end: cut.boundary,
-                    alternative: Some(alternative),
-                });
+                for &prior in &incoming {
+                    result.push(PreparedWordPortion {
+                        word: self.handle(),
+                        start,
+                        end: cut.boundary,
+                        alternative: Some(alternative),
+                        incoming: prior,
+                    });
+                }
             }
+            incoming = tables.opportunities[opportunity]
+                .alternatives
+                .iter()
+                .map(|&alternative| {
+                    let handle = super::PreparedAlternative {
+                        prepared: Arc::clone(self.prepared),
+                        index: alternative,
+                    };
+                    super::HyphenationContinuation::from_alternative(handle).map(|_| alternative)
+                })
+                .collect();
+            incoming.dedup();
             start = cut.boundary;
         }
         if start < end {
-            result.push(PreparedWordPortion {
-                word: self.handle(),
-                start,
-                end,
-                alternative: None,
-            });
+            for prior in incoming {
+                result.push(PreparedWordPortion {
+                    word: self.handle(),
+                    start,
+                    end,
+                    alternative: None,
+                    incoming: prior,
+                });
+            }
         }
         Ok(result)
     }

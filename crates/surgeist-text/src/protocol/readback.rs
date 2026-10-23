@@ -1343,6 +1343,7 @@ mod tests {
             .handle();
         let selected = prepared
             .select(LineSelectionRequest {
+                incoming: None,
                 start: prepared.boundary_views().next().unwrap().handle(),
                 end: termination.view().boundary(),
                 participants: prepared.participants().collect(),

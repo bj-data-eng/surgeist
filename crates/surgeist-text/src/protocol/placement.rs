@@ -143,6 +143,7 @@ pub(crate) fn place_request(
         source,
     };
     let mut next = start;
+    let mut incoming = None;
     let mut seen = BTreeSet::new();
     let count = request.lines.len();
     let mut lines = Vec::with_capacity(count);
@@ -173,6 +174,22 @@ pub(crate) fn place_request(
             return Err(protocol_error(ProtocolError::IncompleteLineCoverage {
                 line: ordinal,
             }));
+        }
+        if (ordinal > 0 || matches!(request.coverage, PlacementCoverage::WholeParagraph))
+            && selected.request.incoming != incoming
+        {
+            return Err(crate::hyphenation::error(
+                crate::HyphenationError::InvalidContinuation,
+            ));
+        }
+        incoming = placement.line.hyphenation_continuation();
+        if ordinal + 1 == count
+            && matches!(request.coverage, PlacementCoverage::WholeParagraph)
+            && incoming.is_some()
+        {
+            return Err(crate::hyphenation::error(
+                crate::HyphenationError::InvalidContinuation,
+            ));
         }
         let from = row(&selected.request.start)?.participant;
         let to = row(&selected.request.end)?.participant;

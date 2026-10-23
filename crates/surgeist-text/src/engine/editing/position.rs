@@ -542,6 +542,7 @@ mod tests {
             let to = end.view().participant_offset();
             let selected = prepared
                 .select(LineSelectionRequest {
+                    incoming: None,
                     start: start.clone(),
                     end: end.clone(),
                     participants: participants[from..to].to_vec(),
@@ -762,6 +763,7 @@ mod tests {
             .collect();
         let selected = prepared
             .select(LineSelectionRequest {
+                incoming: None,
                 start: start.clone(),
                 end: end.clone(),
                 participants,
@@ -996,6 +998,7 @@ mod tests {
             .handle();
         let selected = prepared
             .select(LineSelectionRequest {
+                incoming: None,
                 start: prepared.boundary_views().next().unwrap().handle(),
                 end: termination.view().boundary(),
                 participants: prepared.participants().collect(),
@@ -1371,6 +1374,7 @@ mod tests {
                 .collect();
             let selected = prepared
                 .select(LineSelectionRequest {
+                    incoming: None,
                     start: start.clone(),
                     end: end.clone(),
                     participants,

@@ -84,6 +84,7 @@ fn selected_computed_beh(separate_instance: bool) -> Vec<(Range, u32, f32)> {
         })
         .collect();
     let request = LineSelectionRequest {
+        incoming: None,
         start: prepared.boundary_views().next().unwrap().handle(),
         end,
         termination: PreparedTermination::Ordinary(offer.handle()),

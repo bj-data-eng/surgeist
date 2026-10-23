@@ -91,6 +91,12 @@ pub enum HyphenationError {
     EmptyNativeAlternatives,
     MissingPrimaryFont,
     UnsupportedPlacement(HyphenationPlacement),
+    InvalidContinuation,
+    MissingReceivingBidiAuthority,
+    UnsupportedReceivingRole,
+    UnsupportedIndicationSeparator,
+    UnsupportedIndicationComposition,
+    UncapturedIndicationFontQuery,
 }
 
 pub(crate) fn error(reason: HyphenationError) -> Error {
@@ -100,7 +106,12 @@ pub(crate) fn error(reason: HyphenationError) -> Error {
             | HyphenationError::ResourceStorage
             | HyphenationError::ResourceLengthOverflow => ErrorCode::LayoutFailed,
             HyphenationError::MissingPrimaryFont => ErrorCode::NoUsableFontFace,
-            HyphenationError::UnsupportedPlacement(_) => ErrorCode::UnsupportedFeature,
+            HyphenationError::UnsupportedPlacement(_)
+            | HyphenationError::MissingReceivingBidiAuthority
+            | HyphenationError::UnsupportedReceivingRole
+            | HyphenationError::UnsupportedIndicationSeparator
+            | HyphenationError::UnsupportedIndicationComposition
+            | HyphenationError::UncapturedIndicationFontQuery => ErrorCode::UnsupportedFeature,
             _ => ErrorCode::InvalidStyle,
         },
         "hyphenation admission failed",

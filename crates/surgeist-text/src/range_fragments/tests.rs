@@ -97,6 +97,7 @@ fn select(
         .collect();
     prepared
         .select(LineSelectionRequest {
+            incoming: None,
             start,
             end,
             termination: crate::PreparedTermination::Ordinary(termination.clone()),
@@ -921,7 +922,7 @@ fn selected_source_and_control_alternatives_keep_authentic_source_provenance() {
             let q = l.source_range_fragments(&o, Range::new(2, 3)).unwrap();
             assert_eq!(q.units().count(), 1);
             let actual = q.units().next().unwrap();
-            assert_eq!(actual.alternative(), Some(alternative.clone()));
+            assert_eq!(actual.alternatives().next(), Some(alternative.clone()));
             assert_eq!(
                 actual
                     .selected_intersections()
@@ -931,7 +932,7 @@ fn selected_source_and_control_alternatives_keep_authentic_source_provenance() {
                 Range::new(2, 3)
             );
             assert_eq!(
-                actual.defining_source().unwrap().local_range(),
+                actual.defining_sources().next().unwrap().local_range(),
                 Range::new(2, 3)
             );
             assert_eq!(actual.expanded_intersections().count(), 0);
@@ -1180,7 +1181,7 @@ fn source_definitions_select_only_the_exact_chosen_nonempty_replacement_and_keep
         let first = l
             .source_range_fragments(&origins[1], Range::new(0, 1))
             .unwrap();
-        assert!(first.units().all(|u| u.alternative().is_none()));
+        assert!(first.units().all(|u| u.alternatives().next().is_none()));
         near(rectangles(&first).iter().map(|r| r.size.width).sum(), 0.0);
         let defining = l
             .source_range_fragments(&origins[2], Range::new(0, 1))
@@ -1190,9 +1191,9 @@ fn source_definitions_select_only_the_exact_chosen_nonempty_replacement_and_keep
             usize::from(!replacement.is_empty())
         );
         if let Some(unit) = defining.units().next() {
-            assert_eq!(unit.alternative(), Some(alt));
+            assert_eq!(unit.alternatives().next(), Some(alt));
             assert_eq!(
-                unit.defining_source().unwrap().aggregate_range(),
+                unit.defining_sources().next().unwrap().aggregate_range(),
                 Range::new(3, 4)
             );
             assert_eq!(
@@ -1245,7 +1246,7 @@ fn source_definitions_select_only_the_exact_chosen_nonempty_replacement_and_keep
     let o = p.origin_views().next().unwrap().handle();
     let l = place(p, 0.0, 30.0);
     let q = l.source_range_fragments(&o, Range::new(1, 2)).unwrap();
-    assert!(q.units().all(|u| u.alternative().is_none()));
+    assert!(q.units().all(|u| u.alternatives().next().is_none()));
     near(rectangles(&q).iter().map(|r| r.size.width).sum(), 0.0);
 }
 #[test]
@@ -1289,7 +1290,7 @@ fn source_less_breaks_and_control_alternatives_with_incidental_origins_do_not_ac
         assert_eq!(q.units().count(), 5);
         assert!(
             q.units()
-                .all(|u| u.alternative().is_none() && u.defining_source().is_none())
+                .all(|u| u.alternatives().next().is_none() && u.defining_sources().next().is_none())
         );
         near(rectangles(&q).iter().map(|r| r.size.width).sum(), 50.0);
         let endpoint = l.source_range_fragments(&o, Range::new(0, 1)).unwrap();

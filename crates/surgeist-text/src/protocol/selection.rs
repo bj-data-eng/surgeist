@@ -56,6 +56,7 @@ pub(crate) fn select(
     request: LineSelectionRequest,
     metric_policy: LineMetricPolicy,
 ) -> Result<SelectedLine> {
+    super::continuation::validate(prepared, &request.start, request.incoming.as_ref())?;
     let tables = &prepared.inner.tables;
     require_prepared(
         prepared,
@@ -595,6 +596,7 @@ pub(crate) fn standalone_request(
         })
         .collect();
     let request = LineSelectionRequest {
+        incoming: None,
         start: PreparedBoundary {
             prepared: Arc::clone(&prepared),
             index: start,

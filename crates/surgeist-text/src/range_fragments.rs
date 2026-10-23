@@ -77,9 +77,9 @@ struct Unit<'a> {
     expanded: Vec<OriginIntersection>,
     fragments: Vec<usize>,
     pieces: Vec<Piece<'a>>,
-    alternative: Option<usize>,
-    defining: Option<OriginIntersection>,
-    attributed_cut: Option<usize>,
+    alternatives: Vec<usize>,
+    defining: Vec<OriginIntersection>,
+    attributed_cuts: Vec<usize>,
     presentation: Range,
 }
 #[derive(Debug)]
@@ -133,29 +133,36 @@ impl<'a> SourceRangeUnit<'a> {
     pub fn line_index(&self) -> usize {
         self.unit.line
     }
-    /// Actual selected alternative in this true unit, independent of source anchors.
-    pub fn alternative(&self) -> Option<PreparedAlternative> {
-        self.unit.alternative.map(|index| PreparedAlternative {
-            prepared: Arc::clone(&self.layout.inner.prepared),
-            index,
-        })
+    /// All actual contributing alternatives, independent of equal anchors.
+    pub fn alternatives(&self) -> impl ExactSizeIterator<Item = PreparedAlternative> + '_ {
+        self.unit
+            .alternatives
+            .iter()
+            .map(|&index| PreparedAlternative {
+                prepared: Arc::clone(&self.layout.inner.prepared),
+                index,
+            })
     }
-    /// Authentic complete Source definition, separate from its zero-source
-    /// Alternative fragment association and the positive queried intersection.
-    pub fn defining_source(&self) -> Option<PreparedOriginIntersectionView<'a>> {
+    /// Complete Source definitions, distinct from source-empty associations.
+    pub fn defining_sources(
+        &self,
+    ) -> impl ExactSizeIterator<Item = PreparedOriginIntersectionView<'a>> + '_ {
         self.unit
             .defining
-            .map(|association| PreparedOriginIntersectionView {
+            .iter()
+            .map(|&association| PreparedOriginIntersectionView {
                 prepared: &self.layout.inner.prepared,
                 association,
             })
     }
-    /// Exact automatic source-attribution relation, separate from the
-    /// presentation unit's owners and any source replacement definition.
-    pub fn hyphenation_cut(&self) -> Option<crate::PreparedHyphenationCut> {
+    /// Exact automatic source-attribution relations of every contributing owner.
+    pub fn hyphenation_cuts(
+        &self,
+    ) -> impl ExactSizeIterator<Item = crate::PreparedHyphenationCut> + '_ {
         self.unit
-            .attributed_cut
-            .map(|index| crate::PreparedHyphenationCut {
+            .attributed_cuts
+            .iter()
+            .map(|&index| crate::PreparedHyphenationCut {
                 prepared: Arc::clone(&self.layout.inner.prepared),
                 index,
             })
@@ -599,48 +606,54 @@ impl Layout {
                         );
                     }
                 }
-                let alternative =
-                    group_units
-                        .iter()
-                        .find_map(|&i| match presentation.units[i].kind {
-                            PresentationUnitKind::Replacement { alternative } => Some(alternative),
-                            _ => None,
-                        });
-                let defining = alternative.and_then(|index| {
-                    match self.inner.prepared.tables.alternatives[index].definition {
-                        AlternativeDefinition::Source {
-                            origin: owner,
-                            source,
-                        } => intersections(self, source)
-                            .into_iter()
-                            .find(|piece| piece.origin == owner),
-                        AlternativeDefinition::Control { .. }
-                        | AlternativeDefinition::Automatic { .. } => None,
-                    }
-                });
-                if let Some(definition) = defining
-                    && definition.origin == origin.index
-                    && let Some(source) = overlap(definition.aggregate, aggregate)
-                {
-                    selected.extend(
-                        intersections(self, source)
-                            .into_iter()
-                            .filter(|piece| piece.origin == origin.index),
-                    );
-                }
-                let attributed_cut = alternative.and_then(|index| {
-                    match self.inner.prepared.tables.alternatives[index].definition {
-                        AlternativeDefinition::Automatic { cut, .. } => Some(cut),
+                let mut alternative_owners = group_units
+                    .iter()
+                    .filter_map(|&i| match presentation.units[i].kind {
+                        PresentationUnitKind::Replacement { alternative } => Some(alternative),
                         _ => None,
+                    })
+                    .collect::<Vec<_>>();
+                alternative_owners.sort_unstable();
+                alternative_owners.dedup();
+                let defining = alternative_owners
+                    .iter()
+                    .filter_map(|&index| {
+                        match self.inner.prepared.tables.alternatives[index].definition {
+                            AlternativeDefinition::Source {
+                                origin: owner,
+                                source,
+                            } => intersections(self, source)
+                                .into_iter()
+                                .find(|piece| piece.origin == owner),
+                            _ => None,
+                        }
+                    })
+                    .collect::<Vec<_>>();
+                for definition in &defining {
+                    if definition.origin == origin.index
+                        && let Some(source) = overlap(definition.aggregate, aggregate)
+                    {
+                        selected.extend(
+                            intersections(self, source)
+                                .into_iter()
+                                .filter(|piece| piece.origin == origin.index),
+                        );
                     }
-                });
-                if let Some(cut) = attributed_cut {
+                }
+                let attributed_cuts = alternative_owners
+                    .iter()
+                    .filter_map(|&index| {
+                        match self.inner.prepared.tables.alternatives[index].definition {
+                            AlternativeDefinition::Automatic { cut, .. } => Some(cut),
+                            _ => None,
+                        }
+                    })
+                    .collect::<Vec<_>>();
+                for &cut in &attributed_cuts {
                     let row = &self.inner.prepared.tables.hyphenation_cuts[cut];
-                    let Some(atoms) = row.preceding.clone() else {
-                        return Err(crate::hyphenation::error(
-                            crate::HyphenationError::InvalidResourceMapping,
-                        ));
-                    };
+                    let atoms = row.preceding.clone().ok_or_else(|| {
+                        crate::hyphenation::error(crate::HyphenationError::InvalidResourceMapping)
+                    })?;
                     for atom in atoms {
                         let source = self.inner.prepared.analyzed.projection.atoms[atom].source;
                         if let Some(range) = overlap(source, aggregate) {
@@ -773,9 +786,9 @@ impl Layout {
                     expanded,
                     fragments,
                     pieces,
-                    alternative,
+                    alternatives: alternative_owners,
                     defining,
-                    attributed_cut,
+                    attributed_cuts,
                     presentation: extent,
                 });
             }

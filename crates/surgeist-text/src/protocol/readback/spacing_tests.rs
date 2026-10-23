@@ -112,6 +112,7 @@ fn select(prepared: &PreparedText, alternative: Option<PreparedAlternative>) -> 
     };
     prepared
         .select(LineSelectionRequest {
+            incoming: None,
             start: prepared.boundary_views().next().unwrap().handle(),
             end: termination.view().boundary(),
             participants: prepared

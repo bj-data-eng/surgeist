@@ -40,6 +40,7 @@ fn selected_end(
         .collect();
     prepared
         .select(LineSelectionRequest {
+            incoming: None,
             start: prepared.boundary_views().next().unwrap().handle(),
             end,
             termination: crate::PreparedTermination::Ordinary(termination.clone()),

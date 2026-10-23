@@ -52,7 +52,7 @@ pub(crate) struct CharCluster {
     best_ratio: Coverage,
 }
 
-#[derive(Copy, Clone, Debug, Default)]
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
 pub(crate) struct Char {
     /// The character.
     pub ch: char,

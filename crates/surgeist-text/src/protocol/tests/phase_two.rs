@@ -667,7 +667,7 @@ fn selected_replacement_space_and_css_tab_keep_alternative_custody_and_geometry(
             .unwrap();
         let units: Vec<_> = fragments.units().collect();
         assert_eq!(units.len(), 1);
-        assert_eq!(units[0].alternative(), Some(alternative));
+        assert_eq!(units[0].alternatives().next(), Some(alternative));
         assert_eq!(
             units[0]
                 .pieces()

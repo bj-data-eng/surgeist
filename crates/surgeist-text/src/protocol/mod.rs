@@ -11,6 +11,7 @@ use crate::{Alignment, FontCatalogueIdentity, Point, Range, Rect, Result};
 use selection::SelectedData;
 
 mod conditional;
+mod continuation;
 pub(crate) mod finalized;
 mod hyphenation;
 pub(crate) mod measurements;
@@ -20,6 +21,7 @@ pub(crate) mod prefix;
 pub(crate) mod prepared;
 pub(crate) mod readback;
 pub(crate) mod selection;
+pub use continuation::HyphenationContinuation;
 
 pub use conditional::{ConditionalDisposition, ConditionalPurpose, PreparedConditionalOpportunity};
 pub use hyphenation::{
@@ -311,6 +313,8 @@ pub struct LineSelectionRequest {
     pub participants: Vec<PreparedParticipant>,
     pub termination: PreparedTermination,
     pub alternative: Option<PreparedAlternative>,
+    /// Exact nonempty LogicalAfter choice emitted by the preceding selection.
+    pub incoming: Option<HyphenationContinuation>,
     pub context: LineContext,
     pub atomics: Vec<AtomicAllocation>,
     pub controls: Vec<ControlAllocation>,

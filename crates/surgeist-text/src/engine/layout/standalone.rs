@@ -22,6 +22,7 @@ pub(super) fn layout(
     let mut lines = Vec::new();
     let mut start = 0;
     let mut paragraph_start = true;
+    let mut incoming = None;
     loop {
         let scope = lines.is_empty() || (authored.indent.each_line && paragraph_start);
         let enabled =
@@ -31,8 +32,19 @@ pub(super) fn layout(
         } else {
             0.0
         };
-        let line = choose(&prepared, start, indent, options, scratch)?;
+        let line = choose(
+            &prepared,
+            start,
+            incoming.as_ref(),
+            indent,
+            options,
+            scratch,
+        )?;
         let request = &line.selected.request;
+        incoming = request
+            .alternative
+            .clone()
+            .and_then(crate::HyphenationContinuation::from_alternative);
         start = request.end.index;
         paragraph_start = request.context.end == crate::LineEnd::Forced;
         let done = request.context.end == crate::LineEnd::Paragraph;
@@ -108,32 +120,6 @@ fn raw_occupied(line: &FinalizedLine) -> Result<f64> {
     )
 }
 
-fn trial(
-    prepared: &Arc<PreparedData>,
-    start: usize,
-    termination: PreparedTermination,
-    alternative: Option<PreparedAlternative>,
-    indent: f64,
-    options: ValidatedOptions,
-    scratch: &mut ShapeContext,
-) -> Result<FinalizedLine> {
-    let request = standalone_request(
-        Arc::clone(prepared),
-        start,
-        termination,
-        alternative,
-        options.authored().width,
-        indent,
-        options.authored().alignment,
-    )?;
-    finalize_standalone(
-        Arc::clone(prepared),
-        request,
-        options.authored().quantize,
-        scratch,
-    )
-}
-
 fn automatic_allowed(
     prepared: &Arc<PreparedData>,
     alternative: usize,
@@ -160,13 +146,20 @@ fn automatic_allowed(
         {
             continue;
         }
-        let line = trial(
-            prepared,
+        let mut request = standalone_request(
+            Arc::clone(prepared),
             portion.start,
             PreparedTermination::Measurement(portion.clone()),
             portion.alternative(),
+            options.authored().width,
             indent,
-            options,
+            options.authored().alignment,
+        )?;
+        request.incoming = portion.incoming();
+        let line = finalize_standalone(
+            Arc::clone(prepared),
+            request,
+            options.authored().quantize,
             scratch,
         )?;
         if fits(&line, options.authored().width)? {
@@ -179,6 +172,7 @@ fn automatic_allowed(
 fn choose(
     prepared: &Arc<PreparedData>,
     start: usize,
+    incoming: Option<&crate::HyphenationContinuation>,
     indent: f64,
     options: ValidatedOptions,
     scratch: &mut ShapeContext,
@@ -260,8 +254,8 @@ fn choose(
             {
                 continue;
             }
-            let line = trial(
-                prepared,
+            let mut request = standalone_request(
+                Arc::clone(prepared),
                 start,
                 PreparedTermination::Ordinary(PreparedOpportunity {
                     prepared: Arc::clone(prepared),
@@ -271,8 +265,15 @@ fn choose(
                     prepared: Arc::clone(prepared),
                     index,
                 }),
+                options.authored().width,
                 indent,
-                options,
+                options.authored().alignment,
+            )?;
+            request.incoming = incoming.cloned();
+            let line = finalize_standalone(
+                Arc::clone(prepared),
+                request,
+                options.authored().quantize,
                 scratch,
             )?;
             let actual_fit = fits(&line, options.authored().width)?;
@@ -410,6 +411,79 @@ mod tests {
                 .unwrap()
                 .level,
             1
+        );
+    }
+
+    #[test]
+    fn trailing_out_of_flow_anchors_do_not_stop_original_l1_whitespace_reset() {
+        let mut observed = Vec::new();
+        for (kind, at) in [
+            (None, 6),
+            (Some(InlineBoxKind::OutOfFlow), 6),
+            (Some(InlineBoxKind::OutOfFlow), 5),
+            (Some(InlineBoxKind::InFlow), 6),
+        ] {
+            let (mut system, style) = system();
+            let mut source = Source::new("X\u{202b}\u{05d0}  \u{202c}");
+            if let Some(kind) = kind {
+                source.inline_box(crate::InlineBox::new(
+                    crate::Id::from_u64(91222),
+                    kind,
+                    at,
+                    crate::Size::new(0.0, 0.0),
+                ));
+            }
+            let output = system
+                .layout(
+                    source,
+                    style,
+                    crate::Options {
+                        quantize: false,
+                        ..crate::Options::default()
+                    },
+                )
+                .unwrap();
+            assert_eq!(
+                output.source().text().code_units(),
+                [88, 0x202b, 0x5d0, 32, 32, 0x202c]
+            );
+            let line = &output.inner.lines[0];
+            assert_eq!(output.inner.prepared.analyzed.analysis.base_level, 0);
+            assert_eq!(
+                line.finalized
+                    .data
+                    .clusters
+                    .iter()
+                    .find(|c| c.source.start == 2)
+                    .unwrap()
+                    .level,
+                1
+            );
+            let whitespace: Vec<_> = [3, 4]
+                .into_iter()
+                .map(|i| {
+                    let c = line
+                        .finalized
+                        .data
+                        .clusters
+                        .iter()
+                        .find(|c| c.source.start == i)
+                        .unwrap();
+                    assert_eq!(c.advance, 20.0);
+                    c.level
+                })
+                .collect();
+            assert_eq!(line.finalized.data.boxes.len(), usize::from(kind.is_some()));
+            observed.push((kind, at, whitespace));
+        }
+        assert_eq!(
+            observed,
+            [
+                (None, 6, vec![0, 0]),
+                (Some(InlineBoxKind::OutOfFlow), 6, vec![0, 0]),
+                (Some(InlineBoxKind::OutOfFlow), 5, vec![0, 0]),
+                (Some(InlineBoxKind::InFlow), 6, vec![1, 1])
+            ]
         );
     }
 

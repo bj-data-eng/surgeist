@@ -193,11 +193,11 @@ fn automatic_marked_pattern_keeps_both_preceding_egc_origins_and_actual_style_ow
         let observed = layout.source_range_fragments(origin, range).unwrap();
         let automatic: Vec<_> = observed
             .units()
-            .filter(|u| u.hyphenation_cut().is_some())
+            .filter(|u| u.hyphenation_cuts().next().is_some())
             .collect();
         assert_eq!(automatic.len(), 1);
-        assert_eq!(automatic[0].hyphenation_cut(), Some(cut.clone()));
-        assert!(automatic[0].defining_source().is_none());
+        assert_eq!(automatic[0].hyphenation_cuts().next(), Some(cut.clone()));
+        assert!(automatic[0].defining_sources().next().is_none());
         assert_eq!(
             automatic[0]
                 .selected_intersections()
@@ -211,7 +211,7 @@ fn automatic_marked_pattern_keeps_both_preceding_egc_origins_and_actual_style_ow
             .source_range_fragments(&origins[0], Range::new(3, 4))
             .unwrap()
             .units()
-            .all(|unit| unit.hyphenation_cut().is_none())
+            .all(|unit| unit.hyphenation_cuts().next().is_none())
     );
 }
 #[test]
@@ -241,7 +241,7 @@ fn formatting_egc_owns_insertion_even_with_zero_count_and_advance() {
             .source_range_fragments(&origin, Range::new(5, 6))
             .unwrap()
             .units()
-            .filter(|u| u.hyphenation_cut() == Some(cut.clone()))
+            .filter(|u| u.hyphenation_cuts().next() == Some(cut.clone()))
             .count(),
         1
     );
@@ -250,7 +250,7 @@ fn formatting_egc_owns_insertion_even_with_zero_count_and_advance() {
             .source_range_fragments(&origin, Range::new(4, 5))
             .unwrap()
             .units()
-            .all(|u| u.hyphenation_cut().is_none())
+            .all(|u| u.hyphenation_cuts().next().is_none())
     );
     assert_eq!(
         layout.source().text().code_units(),
@@ -451,6 +451,7 @@ fn conditional_automatic_dispositions_preserve_variant_custody_and_semantic_iden
     let cuts = p
         .conditional_opportunities(
             &start,
+            None,
             &ceiling,
             ConditionalPurpose::Overflow,
             &dispositions,
@@ -466,6 +467,7 @@ fn conditional_automatic_dispositions_preserve_variant_custody_and_semantic_iden
         cuts,
         p.conditional_opportunities(
             &start,
+            None,
             &ceiling,
             ConditionalPurpose::Overflow,
             &receipts(20.0)
@@ -481,13 +483,14 @@ fn conditional_automatic_dispositions_preserve_variant_custody_and_semantic_iden
         vec![dispositions[0].clone(), dispositions[0].clone()],
     ] {
         assert!(
-            p.conditional_opportunities(&start, &ceiling, ConditionalPurpose::Overflow, &bad)
+            p.conditional_opportunities(&start, None, &ceiling, ConditionalPurpose::Overflow, &bad)
                 .is_err()
         );
     }
     assert!(
         p.conditional_opportunities(
             &start,
+            None,
             &ceiling,
             ConditionalPurpose::MinContent,
             &dispositions
@@ -503,7 +506,13 @@ fn conditional_automatic_dispositions_preserve_variant_custody_and_semantic_iden
         })
         .collect::<Vec<_>>();
     let minimum = p
-        .conditional_opportunities(&start, &ceiling, ConditionalPurpose::MinContent, &intrinsic)
+        .conditional_opportunities(
+            &start,
+            None,
+            &ceiling,
+            ConditionalPurpose::MinContent,
+            &intrinsic,
+        )
         .unwrap();
     assert_eq!(
         minimum
@@ -513,8 +522,14 @@ fn conditional_automatic_dispositions_preserve_variant_custody_and_semantic_iden
         [1, 2, 3, 4, 5, 6, 7, 8]
     );
     assert!(
-        p.conditional_opportunities(&start, &ceiling, ConditionalPurpose::Overflow, &intrinsic)
-            .is_err()
+        p.conditional_opportunities(
+            &start,
+            None,
+            &ceiling,
+            ConditionalPurpose::Overflow,
+            &intrinsic
+        )
+        .is_err()
     );
     let foreign = prepare(input(Source::new("associate"), &[0, 9]));
     let wrong = ordinary_trial(
@@ -527,7 +542,7 @@ fn conditional_automatic_dispositions_preserve_variant_custody_and_semantic_iden
     let mut bad = dispositions.clone();
     bad[0] = crate::ConditionalDisposition::AutoFitExhausted(wrong);
     assert!(
-        p.conditional_opportunities(&start, &ceiling, ConditionalPurpose::Overflow, &bad)
+        p.conditional_opportunities(&start, None, &ceiling, ConditionalPurpose::Overflow, &bad)
             .is_err()
     );
 }
@@ -576,6 +591,7 @@ fn automatic_manual_priority_requires_exact_admitted_portion_and_measurements_ne
     assert!(
         !p.conditional_opportunities(
             &part.start(),
+            None,
             &ceiling,
             ConditionalPurpose::Overflow,
             &dispositions
@@ -586,6 +602,7 @@ fn automatic_manual_priority_requires_exact_admitted_portion_and_measurements_ne
     assert!(
         p.conditional_opportunities(
             &part.start(),
+            None,
             &ceiling,
             ConditionalPurpose::Overflow,
             &[crate::ConditionalDisposition::Phantom(portion.clone())]
@@ -595,6 +612,7 @@ fn automatic_manual_priority_requires_exact_admitted_portion_and_measurements_ne
     assert!(
         p.conditional_opportunities(
             &part.start(),
+            None,
             &ceiling,
             ConditionalPurpose::Overflow,
             &[crate::ConditionalDisposition::AutoFitExhausted(portion)]
@@ -617,6 +635,7 @@ fn automatic_manual_priority_requires_exact_admitted_portion_and_measurements_ne
     assert!(
         p.conditional_opportunities(
             &p.boundary_views().next().unwrap().handle(),
+            None,
             &ceiling,
             ConditionalPurpose::MinContent,
             &impossible
@@ -845,7 +864,7 @@ fn computed_mark_shares_real_egc_without_duplicate_source_attribution() {
         .unwrap();
     let units: Vec<_> = observed.units().collect();
     assert_eq!(units.len(), 1);
-    assert_eq!(units[0].hyphenation_cut(), Some(cut));
+    assert_eq!(units[0].hyphenation_cuts().next(), Some(cut));
     assert_eq!(
         units[0]
             .selected_intersections()
@@ -860,7 +879,7 @@ fn computed_mark_shares_real_egc_without_duplicate_source_attribution() {
             .collect::<Vec<_>>(),
         [Range::new(4, 5), Range::new(5, 6)]
     );
-    assert!(units[0].defining_source().is_none());
+    assert!(units[0].defining_sources().next().is_none());
 }
 
 #[test]
@@ -889,7 +908,10 @@ fn automatic_mixed_directional_occurrences_retain_actual_insertion_side() {
         .map(|cut| cut.handle())
         .collect();
     assert_eq!(cuts.len(), 3);
-    for (cut, (expected_level, controls)) in cuts.into_iter().zip([(0, 0), (1, 1), (0, 2)]) {
+    // X9 format controls inherit preceding original level0. The three cuts
+    // still attach to distinct original Text/RLO/PDF occurrences, rather than
+    // resolving each indication inside the original override stack.
+    for (cut, controls) in cuts.into_iter().zip([0, 1, 2]) {
         let mut value = request(&p);
         let offer = cut.view().opportunity().unwrap();
         value.end = offer.view().boundary();
@@ -919,6 +941,27 @@ fn automatic_mixed_directional_occurrences_retain_actual_insertion_side() {
             .unwrap()
             .finalize(SpacingAllocations::None)
             .unwrap();
+        let attachment = line.inner.selected.presentation.domains[0].attachment;
+        let super::super::prepared::presentation::Attachment::Before { participant, atom } =
+            attachment
+        else {
+            panic!("Before domain")
+        };
+        if controls == 0 {
+            assert!(atom.is_some());
+            assert!(matches!(
+                p.inner.tables.participants[participant],
+                super::super::prepared::ParticipantData::Text(_)
+            ));
+        } else {
+            assert!(atom.is_none());
+            let super::super::prepared::ParticipantData::Control(i) =
+                p.inner.tables.participants[participant]
+            else {
+                panic!("actual formatting control")
+            };
+            assert_eq!(p.inner.tables.controls[i].occurrence, controls - 1);
+        }
         assert_eq!(line.feedback().advance, 50.0);
         let computed: Vec<_> = line
             .run_views()
@@ -938,7 +981,7 @@ fn automatic_mixed_directional_occurrences_retain_actual_insertion_side() {
                 .filter(|cluster| cluster.source == Range::new(4, 4))
                 .map(|cluster| (cluster.level, cluster.advance))
                 .collect::<Vec<_>>(),
-            [(expected_level, 10.0)]
+            [(0, 10.0)]
         );
         assert_eq!(line.selected_line().request().controls.len(), controls);
     }
@@ -1121,6 +1164,7 @@ fn automatic_allowed_endpoint_keeps_its_nonhyphenating_variant_as_a_real_barrier
     assert!(
         p.conditional_opportunities(
             &start,
+            None,
             &ceiling,
             ConditionalPurpose::Overflow,
             &[crate::ConditionalDisposition::AutoFitExhausted(automatic)]
@@ -1130,6 +1174,7 @@ fn automatic_allowed_endpoint_keeps_its_nonhyphenating_variant_as_a_real_barrier
     assert!(
         p.conditional_opportunities(
             &start,
+            None,
             &ceiling,
             ConditionalPurpose::MinContent,
             &[crate::ConditionalDisposition::AutoIntrinsicRefinement(auto)]
@@ -1173,7 +1218,7 @@ fn automatic_range_units_keep_optional_ligature_shares_distinct() {
         .unwrap();
     let auto: Vec<_> = fragments
         .units()
-        .filter(|unit| unit.hyphenation_cut() == Some(cut.clone()))
+        .filter(|unit| unit.hyphenation_cuts().next() == Some(cut.clone()))
         .collect();
     assert_eq!(auto.len(), 2);
     assert_eq!(
@@ -1219,7 +1264,8 @@ fn line_limit_dispositions_authenticate_exact_automatic_variants_and_purpose() {
     };
     let zero = dispositions(0);
     let finite = dispositions(1);
-    let query = |purpose, rows: &[_]| p.conditional_opportunities(&start, &ceiling, purpose, rows);
+    let query =
+        |purpose, rows: &[_]| p.conditional_opportunities(&start, None, &ceiling, purpose, rows);
     let overflow = query(ConditionalPurpose::Overflow, &finite).unwrap();
     assert_eq!(
         overflow
@@ -1290,6 +1336,7 @@ fn line_limit_dispositions_authenticate_exact_automatic_variants_and_purpose() {
         manual
             .conditional_opportunities(
                 &manual.boundary_views().next().unwrap().handle(),
+                None,
                 &manual.opportunity_views().last().unwrap().handle(),
                 ConditionalPurpose::Overflow,
                 &[manual_disposition]
@@ -1518,6 +1565,140 @@ fn ordinary_word_fallbacks_preserve_transparent_mixed_cut_family() {
                 .end
                 .view()
                 .participant_offset()
+        );
+    }
+}
+
+#[test]
+fn before_auto_uses_the_actual_lri_occurrence_in_an_rtl_paragraph() {
+    let mut value = input(Source::new("associate"), &[0, 9]);
+    value.base_direction = ParagraphBaseDirection::RightToLeft;
+    value.base_style.hyphenate_character = HyphenateCharacter::String(Text::from("\u{5d0}A"));
+    value.controls = vec![crate::ParagraphControl {
+        at: 4,
+        kind: crate::ParagraphControlKind::LeftToRightIsolate,
+    }];
+    value.anchor_order = vec![crate::ParagraphAnchor {
+        item: crate::ParagraphAnchorItem::Control(0),
+        affinity: crate::Affinity::After,
+    }];
+    let mut cmaps: Vec<_> = (b'a'..=b'z').map(|cp| (u32::from(cp), 35)).collect();
+    cmaps.extend([(65, 35), (0x5d0, 36)]);
+    let bytes = crate::shaping_test_fonts::range_ligature_ahem(&[98, 99], &cmaps);
+    let mut system = System::new(SystemOptions {
+        font_catalogue: FontCatalogueMode::RegisteredOnly,
+    })
+    .unwrap();
+    system.register_fonts(bytes.clone()).unwrap();
+    let analyzed = crate::test_wrapping::bind_missing(
+        &AnalyzedSource::from_paragraph(value).unwrap(),
+        crate::Wrap::Word,
+    );
+    let p = system
+        .prepare(&analyzed, PreparationOptions::default())
+        .unwrap();
+    assert_eq!(p.inner.analyzed.projection.atoms[3].code_point, 111);
+    assert_eq!(p.inner.analyzed.analysis.levels[3], 2);
+    assert_eq!(p.inner.analyzed.analysis.control_levels, [1]);
+    let cuts: Vec<_> = p
+        .hyphenation_cut_views()
+        .filter(|v| v.boundary().view().source_before().get() == 4)
+        .map(|v| v.handle())
+        .collect();
+    assert_eq!(cuts.len(), 2);
+    for (cut, after_control) in cuts.into_iter().zip([false, true]) {
+        assert_eq!(
+            cut.view().counts(),
+            Some(crate::HyphenationCounts {
+                total: 9,
+                before: 4,
+                after: 5
+            })
+        );
+        let offer = cut.view().opportunity().unwrap();
+        let mut r = request(&p);
+        r.end = offer.view().boundary();
+        r.termination = PreparedTermination::Ordinary(offer.clone());
+        r.alternative = Some(offer.view().alternatives().next().unwrap().handle());
+        r.participants = p
+            .participants()
+            .take(r.end.view().participant_offset())
+            .collect();
+        r.controls = r
+            .participants
+            .iter()
+            .filter_map(|v| {
+                if let PreparedParticipant::Control(c) = v {
+                    Some(ControlAllocation {
+                        occurrence: c.clone(),
+                        strut: None,
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect();
+        r.context.base_direction = ParagraphBaseDirection::RightToLeft;
+        r.context.end = LineEnd::Soft;
+        let line = p
+            .select(r)
+            .unwrap()
+            .finalize(SpacingAllocations::None)
+            .unwrap();
+        assert_eq!(line.feedback().advance, 60.0);
+        let presentation = &line.inner.selected.presentation;
+        let domain = &presentation.domains[0];
+        assert_eq!(
+            (domain.outer, domain.base),
+            if after_control { (1, 1) } else { (2, 0) }
+        );
+        assert_eq!(
+            presentation.units[domain.units.clone()]
+                .iter()
+                .map(|u| u.level)
+                .collect::<Vec<_>>(),
+            if after_control {
+                vec![1, 2]
+            } else {
+                vec![1, 0]
+            }
+        );
+        let super::super::prepared::presentation::Attachment::Before { participant, atom } =
+            domain.attachment
+        else {
+            panic!("Before")
+        };
+        assert_eq!(atom.is_none(), after_control);
+        assert_eq!(
+            matches!(
+                p.inner.tables.participants[participant],
+                super::super::prepared::ParticipantData::Control(_)
+            ),
+            after_control
+        );
+        // Local Hebrew+Latin has levels1,0 at base0 (Hebrew,Latin),
+        // versus1,2 at base1 (Latin,Hebrew). Outer level is separate.
+        let ids: Vec<_> = line
+            .run_views()
+            .flat_map(|r| {
+                r.glyphs()
+                    .filter(|g| g.range() == Range::new(4, 4))
+                    .map(|g| g.id())
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        assert_eq!(
+            ids,
+            if after_control {
+                vec![35, 36]
+            } else {
+                vec![36, 35]
+            }
+        );
+        assert!(line.run_views().all(|r| r.face().bytes() == bytes));
+        assert_eq!(
+            p.inner.analyzed.processed.source().text().code_units(),
+            Source::new("associate").text().code_units()
         );
     }
 }

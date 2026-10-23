@@ -329,7 +329,7 @@ fn count_rejection_precedes_unsupported_placement_and_missing_primary_resolution
         "en-Latn",
         "Latn",
         Text::from("A"),
-        HyphenationPlacement::LogicalAfter,
+        HyphenationPlacement::BothSides,
     )
     .unwrap();
     for (minimum, admitted) in [
@@ -346,7 +346,7 @@ fn count_rejection_precedes_unsupported_placement_and_missing_primary_resolution
         if admitted {
             assert_eq!(
                 error_reason(&result.unwrap_err()),
-                HyphenationError::UnsupportedPlacement(HyphenationPlacement::LogicalAfter)
+                HyphenationError::UnsupportedPlacement(HyphenationPlacement::BothSides)
             );
         } else {
             assert!(cuts(&result.unwrap()).is_empty());

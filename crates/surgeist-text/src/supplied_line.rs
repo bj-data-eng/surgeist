@@ -179,6 +179,25 @@ impl<'a> SuppliedLine<'a> {
         }
     }
 
+    /// Admit the complete permutation produced by Text's hierarchical owner.
+    /// This private operation does not reinterpret local levels as outer levels.
+    pub(crate) fn composed_order<'o>(
+        self,
+        order: &'o [usize],
+    ) -> Option<SuppliedVisualOrder<'a, 'o>> {
+        if order.len() != self.participants.len() {
+            return None;
+        }
+        let mut seen = vec![false; order.len()];
+        for &i in order {
+            if *seen.get(i)? {
+                return None;
+            }
+            seen[i] = true;
+        }
+        Some(SuppliedVisualOrder { line: self, order })
+    }
+
     /// Fill caller-owned scratch with L2 order, preserving every logical slot.
     ///
     /// A length error leaves scratch unchanged. This operation allocates no

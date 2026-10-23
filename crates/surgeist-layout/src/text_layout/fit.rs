@@ -3,10 +3,11 @@
 use crate::{TextAlign, TextAlignLast, TextJustification};
 use surgeist_text::{
     Alignment, AtomicAllocation, ConditionalDisposition, ConditionalPurpose, ControlAllocation,
-    FinalizedLine, LineContext, LineEnd, LineOrientation, LineSelectionRequest, LineStart,
-    ParagraphBaseDirection, PreparedAlternative, PreparedBoundary, PreparedBreakKind,
-    PreparedParticipant, PreparedTermination, PreparedText, SelectedLine, SpacingAllocation,
-    SpacingAllocations, SpacingPolicy, SpacingSlotDisposition, TabContext, TabPreparation,
+    FinalizedLine, HyphenationContinuation, LineContext, LineEnd, LineOrientation,
+    LineSelectionRequest, LineStart, ParagraphBaseDirection, PreparedAlternative, PreparedBoundary,
+    PreparedBreakKind, PreparedParticipant, PreparedTermination, PreparedText, SelectedLine,
+    SpacingAllocation, SpacingAllocations, SpacingPolicy, SpacingSlotDisposition, TabContext,
+    TabPreparation,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -654,6 +655,7 @@ struct LineEndpoint {
 fn selection_request(
     input: &FitInput<'_>,
     start: &PreparedBoundary,
+    incoming: Option<&HyphenationContinuation>,
     endpoint: LineEndpoint,
     indent_state: crate::text_indent::IndentLineState,
 ) -> LineSelectionRequest {
@@ -693,6 +695,7 @@ fn selection_request(
         participants,
         termination: endpoint.termination,
         alternative: endpoint.alternative,
+        incoming: incoming.cloned(),
         context: LineContext {
             base_direction: input.base_direction,
             orientation: input.orientation,
@@ -781,6 +784,9 @@ pub(crate) fn fit(
         let mut minimum_block: Option<f64> = None;
         let mut indent_state = input.indent_state;
         let mut hyphenation_state = input.hyphenation_state;
+        // A rebuilt sequence owns fresh continuation custody. Requests below
+        // retain it in reuse, convergence and visited-choice identity.
+        let mut incoming = None;
         let mut completed_end = false;
         while !completed_end {
             let start_boundary = boundaries
@@ -856,6 +862,7 @@ pub(crate) fn fit(
                                 let request = selection_request(
                                     &input,
                                     &start_boundary,
+                                    incoming.as_ref(),
                                     LineEndpoint {
                                         boundary: offer.view().boundary(),
                                         termination: PreparedTermination::Ordinary(offer),
@@ -905,6 +912,7 @@ pub(crate) fn fit(
                         let request = selection_request(
                             &input,
                             &start_boundary,
+                            incoming.as_ref(),
                             LineEndpoint {
                                 boundary: opportunity.view().boundary(),
                                 termination: PreparedTermination::Ordinary(opportunity.clone()),
@@ -952,6 +960,7 @@ pub(crate) fn fit(
                                 let request = selection_request(
                                     &input,
                                     &portion.start(),
+                                    portion.incoming().as_ref(),
                                     LineEndpoint {
                                         boundary: portion.end(),
                                         termination: PreparedTermination::Measurement(
@@ -1059,6 +1068,7 @@ pub(crate) fn fit(
                     let mut fitting = None;
                     for opportunity in input.prepared.conditional_opportunities(
                         &start_boundary,
+                        incoming.as_ref(),
                         &ceiling,
                         purpose,
                         &skipped_ordinary,
@@ -1066,6 +1076,7 @@ pub(crate) fn fit(
                         let request = selection_request(
                             &input,
                             &start_boundary,
+                            incoming.as_ref(),
                             LineEndpoint {
                                 boundary: opportunity.boundary(),
                                 termination: PreparedTermination::Conditional(opportunity),
@@ -1166,6 +1177,9 @@ pub(crate) fn fit(
                 if matches!(input.available, Available::Definite(_)) && candidate.formatted {
                     hyphenation_state.commit(candidate.request.alternative.is_some());
                 }
+                // Trials and hypothetical manual portions do not mutate this
+                // state; only the accepted outgoing ending replaces it.
+                incoming = candidate.finalized.hyphenation_continuation();
                 let available = candidate.finalized.metric_bounds().size.width;
                 result.push(FittedLine {
                     zone_basis,

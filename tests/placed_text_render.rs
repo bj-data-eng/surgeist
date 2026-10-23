@@ -559,3 +559,231 @@ fn assert_retained_layout_composition(expanded: bool, indent: f32, contextual: b
         );
     }
 }
+
+#[test]
+fn after_indication_keeps_authored_carets_and_accessibility_through_paint_admission() {
+    const AHEM: &[u8] =
+        include_bytes!("../crates/surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
+    let mut system = text::System::new(text::SystemOptions {
+        font_catalogue: text::FontCatalogueMode::RegisteredOnly,
+    })
+    .unwrap();
+    system.register_fonts(AHEM.to_vec()).unwrap();
+    let source = text::Source::identified("AB\u{ad}CDE", text::Id::from_u64(66191), 4);
+    let style = text::Style {
+        font: text::Font::new().family("Ahem"),
+        size: 10.0,
+        line_height: text::LineHeight::Absolute(10.0),
+        hyphens: text::Hyphens::Manual,
+        locale: Some("und-Latn".into()),
+        hyphenate_character: text::HyphenateCharacter::Auto,
+        native_hyphenation_convention: Some(
+            text::NativeHyphenationConvention::language_script(
+                "und-Latn",
+                "Latn",
+                "A".into(),
+                text::HyphenationPlacement::LogicalAfter,
+            )
+            .unwrap(),
+        ),
+        ..text::Style::default()
+    };
+    let ancestor_wrap = style.wrap;
+    let analyzed = text::AnalyzedSource::from_paragraph(text::ParagraphInput {
+        source: source.clone(),
+        base_style: style,
+        segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
+        base_direction: text::ParagraphBaseDirection::LeftToRight,
+        paragraph_strut: text::ParagraphStrut::DefaultFont,
+        terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
+        tab_reference: None,
+        origins: vec![text::ParagraphOrigin {
+            source: source.clone(),
+            local: text::Range::new(0, 6),
+            aggregate: text::Range::new(0, 6),
+            kind: text::ParagraphOriginKind::Authored,
+        }],
+        connections: vec![],
+        controls: vec![],
+        boundary_policies: vec![],
+        replacements: vec![],
+        anchor_order: vec![],
+    })
+    .unwrap();
+    let policies = analyzed
+        .wrapping_relations()
+        .filter(|relation| relation.ancestor_wrap().is_none())
+        .map(|relation| text::WrappingPolicy {
+            relation: relation.handle(),
+            ancestor_wrap,
+        })
+        .collect();
+    let analyzed = analyzed.with_wrapping_policies(policies).unwrap();
+    let prepared = system
+        .prepare(&analyzed, text::PreparationOptions::default())
+        .unwrap();
+    let origin = prepared.origin_views().next().unwrap().handle();
+    let cut = prepared.hyphenation_cut_views().next().unwrap();
+    assert_eq!(
+        cut.counts(),
+        Some(text::HyphenationCounts {
+            total: 5,
+            before: 2,
+            after: 3,
+        })
+    );
+    let tree = Tree {
+        inputs: [
+            layout::LayoutInput::box_input(layout::NodeInput {
+                display: layout::Display::Block,
+                size: layout::Size::new(
+                    layout::PreferredSizeOf::value(layout::LengthPercentageOf::px(40.0).unwrap()),
+                    layout::PreferredSizeOf::AUTO,
+                ),
+                ..layout::NodeInput::DEFAULT
+            }),
+            layout::LayoutInput::InlineText(layout::TextParticipation::new(origin.clone())),
+        ],
+        non_box: layout::NodeInput::non_box(),
+    };
+    let capture = layout::TextLayoutInput::try_new(
+        &tree,
+        0,
+        vec![layout::TextParagraphBinding {
+            prepared,
+            container: 0,
+            nodes: vec![1],
+            origins: vec![layout::TextOriginBinding {
+                origin: origin.clone(),
+                node: 1,
+            }],
+            atomics: vec![],
+            controls: vec![],
+            line_strut: None,
+        }],
+    )
+    .unwrap();
+    let batch = layout::compute_layout_with_text(
+        &capture,
+        0,
+        layout::LayoutRootRequest::viewport(layout::Size::new(
+            layout::Available::Definite(40.0),
+            layout::Available::MaxContent,
+        ))
+        .unwrap(),
+    )
+    .unwrap();
+    let placed = batch.placed_text()[0].layout();
+    assert_eq!(placed.source(), &source);
+    assert_eq!(source.text().code_units(), [65, 66, 173, 67, 68, 69]);
+    assert_eq!(
+        placed
+            .lines()
+            .iter()
+            .map(|line| (line.range(), line.baseline()))
+            .collect::<Vec<_>>(),
+        [
+            (text::Range::new(0, 3), 8.0),
+            (text::Range::new(3, 6), 18.0)
+        ]
+    );
+    // Ahem's one-em cells independently give AB20 and incoming-A+CDE40.
+    let mut glyphs = Vec::new();
+    for run in placed.run_views() {
+        assert_eq!(run.face().bytes(), AHEM);
+        assert_eq!(run.effective_instance().unwrap().font_size(), 10.0);
+        for glyph in run.glyphs() {
+            if glyph.advance() == 0.0 {
+                // The actual original SHY may retain a formatting row, never
+                // a second visible indication or arbitrary zero-width glyph.
+                assert_eq!(run.line(), 0);
+                assert!(run.range().start <= 2 && run.range().end >= 3);
+                continue;
+            }
+            glyphs.push((
+                run.line(),
+                glyph.id(),
+                glyph.advance(),
+                run.origin().x + glyph.pen() + f64::from(glyph.x()),
+                run.origin().y + f64::from(glyph.y()),
+            ));
+        }
+    }
+    assert_eq!(
+        glyphs,
+        [
+            (0, 35, 10.0, 0.0, 8.0),
+            (0, 36, 10.0, 10.0, 8.0),
+            (1, 35, 10.0, 0.0, 18.0),
+            (1, 37, 10.0, 10.0, 18.0),
+            (1, 38, 10.0, 20.0, 18.0),
+            (1, 39, 10.0, 30.0, 18.0),
+        ]
+    );
+    let shy = placed
+        .source_range_fragments(&origin, text::Range::new(2, 3))
+        .unwrap();
+    let units = shy.units().collect::<Vec<_>>();
+    assert_eq!(units.len(), 1);
+    assert_eq!(units[0].line_index(), 1);
+    assert_eq!(units[0].alternatives().count(), 1);
+    assert_eq!(
+        units[0]
+            .pieces()
+            .map(|piece| piece.rect())
+            .collect::<Vec<_>>(),
+        [text::Rect::new(0.0, 10.0, 10.0, 10.0)]
+    );
+    let cursor = text::Cursor::new(3, text::Affinity::After);
+    let caret = placed.cursor(cursor).unwrap().rect();
+    assert_eq!(caret.origin, text::Point::new(10.0, 10.0));
+    assert_eq!(caret.size.height, 10.0);
+    drop(system);
+    let paint = render::prepare_text_layout(
+        placed,
+        render::Transform::identity(),
+        render::TextLayoutLimits::new(
+            render::GlyphRunLimits::new(32, 1024, 8 << 20, 8 << 20),
+            8,
+            32,
+            8,
+        ),
+    )
+    .unwrap();
+    assert!(!paint.scene().is_empty());
+    assert!(std::ptr::eq(paint.layout(), placed));
+    assert_eq!(paint.layout().cursor(cursor).unwrap().rect(), caret);
+    assert_eq!(paint.layout().source(), &source);
+    #[cfg(feature = "text-accessibility")]
+    {
+        let mut accessibility = text::Accessibility::new(10);
+        let parent = 1000_u64.into();
+        let update = paint
+            .layout()
+            .accessibility_update(
+                &mut accessibility,
+                parent,
+                parent,
+                text::Point::new(100.0, 200.0),
+            )
+            .unwrap();
+        let position = paint
+            .layout()
+            .access_position(&accessibility, cursor)
+            .unwrap()
+            .unwrap();
+        let node = &update
+            .nodes
+            .iter()
+            .find(|(id, _)| *id == position.node)
+            .unwrap()
+            .1;
+        assert_eq!(node.value(), Some("C"));
+        assert_eq!(position.character_index, 0);
+        let bounds = node.bounds().unwrap();
+        assert_eq!(
+            (bounds.x0, bounds.y0, bounds.x1, bounds.y1),
+            (110.0, 210.0, 120.0, 220.0)
+        );
+    }
+}

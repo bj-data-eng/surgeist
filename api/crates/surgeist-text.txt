@@ -314,13 +314,19 @@ pub surgeist_text::HyphenateCharacter::Auto
 pub surgeist_text::HyphenateCharacter::String(surgeist_text::Text)
 pub enum surgeist_text::HyphenationError
 pub surgeist_text::HyphenationError::EmptyNativeAlternatives
+pub surgeist_text::HyphenationError::InvalidContinuation
 pub surgeist_text::HyphenationError::InvalidConvention
 pub surgeist_text::HyphenationError::InvalidConventionBinding
 pub surgeist_text::HyphenationError::InvalidResourceMapping
 pub surgeist_text::HyphenationError::MissingPrimaryFont
+pub surgeist_text::HyphenationError::MissingReceivingBidiAuthority
 pub surgeist_text::HyphenationError::ResourceLengthOverflow
 pub surgeist_text::HyphenationError::ResourceStorage
+pub surgeist_text::HyphenationError::UncapturedIndicationFontQuery
+pub surgeist_text::HyphenationError::UnsupportedIndicationComposition
+pub surgeist_text::HyphenationError::UnsupportedIndicationSeparator
 pub surgeist_text::HyphenationError::UnsupportedPlacement(surgeist_text::HyphenationPlacement)
+pub surgeist_text::HyphenationError::UnsupportedReceivingRole
 pub enum surgeist_text::HyphenationMinimum
 pub surgeist_text::HyphenationMinimum::Auto
 pub surgeist_text::HyphenationMinimum::Count(usize)
@@ -1160,6 +1166,8 @@ impl surgeist_text::FinalizedLine
 pub fn surgeist_text::FinalizedLine::has_in_flow_content(&self) -> bool
 pub fn surgeist_text::FinalizedLine::spacing_slots(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::SpacingSlotFeedback> + '_
 impl surgeist_text::FinalizedLine
+pub fn surgeist_text::FinalizedLine::hyphenation_continuation(&self) -> core::option::Option<surgeist_text::HyphenationContinuation>
+impl surgeist_text::FinalizedLine
 pub fn surgeist_text::FinalizedLine::prefix_at(&self, seam: &surgeist_text::TextSeam) -> surgeist_text::Result<surgeist_text::FinalizedPrefixView<'_>>
 impl surgeist_text::FinalizedLine
 pub fn surgeist_text::FinalizedLine::prepared_text(&self) -> surgeist_text::PreparedText
@@ -1190,7 +1198,7 @@ pub const fn surgeist_text::FinalizedRunView<'_>::range(&self) -> surgeist_text:
 pub struct surgeist_text::FinalizedSharedUnitView<'a>
 impl surgeist_text::FinalizedSharedUnitView<'_>
 pub fn surgeist_text::FinalizedSharedUnitView<'_>::advance(&self) -> surgeist_text::Result<f64>
-pub fn surgeist_text::FinalizedSharedUnitView<'_>::alternative(&self) -> core::option::Option<surgeist_text::PreparedAlternative>
+pub fn surgeist_text::FinalizedSharedUnitView<'_>::alternatives(&self) -> impl core::iter::traits::iterator::Iterator<Item = surgeist_text::PreparedAlternative> + '_
 pub fn surgeist_text::FinalizedSharedUnitView<'_>::finalized_line(&self) -> &surgeist_text::FinalizedLine
 pub fn surgeist_text::FinalizedSharedUnitView<'_>::presentation_range(&self) -> surgeist_text::PresentationRange
 pub fn surgeist_text::FinalizedSharedUnitView<'_>::source_pieces(&self) -> impl core::iter::traits::iterator::Iterator<Item = surgeist_text::Range> + '_
@@ -1292,6 +1300,10 @@ pub struct surgeist_text::HyphenateLimitChars
 pub surgeist_text::HyphenateLimitChars::after: surgeist_text::HyphenationMinimum
 pub surgeist_text::HyphenateLimitChars::before: surgeist_text::HyphenationMinimum
 pub surgeist_text::HyphenateLimitChars::total: surgeist_text::HyphenationMinimum
+pub struct surgeist_text::HyphenationContinuation
+impl surgeist_text::HyphenationContinuation
+pub fn surgeist_text::HyphenationContinuation::alternative(&self) -> surgeist_text::PreparedAlternative
+pub fn surgeist_text::HyphenationContinuation::boundary(&self) -> surgeist_text::PreparedBoundary
 pub struct surgeist_text::HyphenationCounts
 pub surgeist_text::HyphenationCounts::after: usize
 pub surgeist_text::HyphenationCounts::before: usize
@@ -1451,6 +1463,7 @@ pub surgeist_text::LineSelectionRequest::atomics: alloc::vec::Vec<surgeist_text:
 pub surgeist_text::LineSelectionRequest::context: surgeist_text::LineContext
 pub surgeist_text::LineSelectionRequest::controls: alloc::vec::Vec<surgeist_text::ControlAllocation>
 pub surgeist_text::LineSelectionRequest::end: surgeist_text::PreparedBoundary
+pub surgeist_text::LineSelectionRequest::incoming: core::option::Option<surgeist_text::HyphenationContinuation>
 pub surgeist_text::LineSelectionRequest::line_strut: core::option::Option<surgeist_text::LineStrut>
 pub surgeist_text::LineSelectionRequest::participants: alloc::vec::Vec<surgeist_text::PreparedParticipant>
 pub surgeist_text::LineSelectionRequest::start: surgeist_text::PreparedBoundary
@@ -1782,7 +1795,7 @@ pub fn surgeist_text::PreparedText::preparation_options(&self) -> surgeist_text:
 pub fn surgeist_text::PreparedText::tab_reference(&self) -> core::option::Option<&surgeist_text::ParagraphTabReference>
 pub fn surgeist_text::PreparedText::terminal_edge(&self) -> surgeist_text::ParagraphTerminalEdge
 impl surgeist_text::PreparedText
-pub fn surgeist_text::PreparedText::conditional_opportunities(&self, start: &surgeist_text::PreparedBoundary, ceiling: &surgeist_text::PreparedOpportunity, purpose: surgeist_text::ConditionalPurpose, skipped_ordinary: &[surgeist_text::ConditionalDisposition]) -> surgeist_text::Result<alloc::vec::Vec<surgeist_text::PreparedConditionalOpportunity>>
+pub fn surgeist_text::PreparedText::conditional_opportunities(&self, start: &surgeist_text::PreparedBoundary, incoming: core::option::Option<&surgeist_text::HyphenationContinuation>, ceiling: &surgeist_text::PreparedOpportunity, purpose: surgeist_text::ConditionalPurpose, skipped_ordinary: &[surgeist_text::ConditionalDisposition]) -> surgeist_text::Result<alloc::vec::Vec<surgeist_text::PreparedConditionalOpportunity>>
 impl surgeist_text::PreparedText
 pub fn surgeist_text::PreparedText::hyphenation_cut_views(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::PreparedHyphenationCutView<'_>>
 pub fn surgeist_text::PreparedText::word_views(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::PreparedWordView<'_>>
@@ -1841,6 +1854,7 @@ impl surgeist_text::PreparedWordPortion
 pub fn surgeist_text::PreparedWordPortion::alternative(&self) -> core::option::Option<surgeist_text::PreparedAlternative>
 pub fn surgeist_text::PreparedWordPortion::end(&self) -> surgeist_text::PreparedBoundary
 pub fn surgeist_text::PreparedWordPortion::has_manual_partition(&self) -> bool
+pub fn surgeist_text::PreparedWordPortion::incoming(&self) -> core::option::Option<surgeist_text::HyphenationContinuation>
 pub fn surgeist_text::PreparedWordPortion::start(&self) -> surgeist_text::PreparedBoundary
 pub fn surgeist_text::PreparedWordPortion::word(&self) -> surgeist_text::PreparedWord
 pub struct surgeist_text::PreparedWordView<'a>
@@ -2080,12 +2094,12 @@ pub fn surgeist_text::SourceRangePiece<'a>::font_descent(&self) -> f64
 pub fn surgeist_text::SourceRangePiece<'a>::rect(&self) -> surgeist_text::Rect
 pub struct surgeist_text::SourceRangeUnit<'a>
 impl<'a> surgeist_text::SourceRangeUnit<'a>
-pub fn surgeist_text::SourceRangeUnit<'a>::alternative(&self) -> core::option::Option<surgeist_text::PreparedAlternative>
-pub fn surgeist_text::SourceRangeUnit<'a>::defining_source(&self) -> core::option::Option<surgeist_text::PreparedOriginIntersectionView<'a>>
+pub fn surgeist_text::SourceRangeUnit<'a>::alternatives(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::PreparedAlternative> + '_
+pub fn surgeist_text::SourceRangeUnit<'a>::defining_sources(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::PreparedOriginIntersectionView<'a>> + '_
 pub fn surgeist_text::SourceRangeUnit<'a>::expanded_intersections(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::PreparedOriginIntersectionView<'_>>
 pub fn surgeist_text::SourceRangeUnit<'a>::finalized_line(&self) -> surgeist_text::FinalizedLine
 pub fn surgeist_text::SourceRangeUnit<'a>::fragments(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::FinalizedFragment> + '_
-pub fn surgeist_text::SourceRangeUnit<'a>::hyphenation_cut(&self) -> core::option::Option<surgeist_text::PreparedHyphenationCut>
+pub fn surgeist_text::SourceRangeUnit<'a>::hyphenation_cuts(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::PreparedHyphenationCut> + '_
 pub fn surgeist_text::SourceRangeUnit<'a>::line_index(&self) -> usize
 pub fn surgeist_text::SourceRangeUnit<'a>::pieces(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::SourceRangePiece<'a>> + 'a
 pub fn surgeist_text::SourceRangeUnit<'a>::presentation_range(&self) -> surgeist_text::PresentationRange

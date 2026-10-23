@@ -8,8 +8,6 @@
 
 use std::{collections::BTreeMap, sync::Arc};
 
-use icu_properties::props::BidiClass;
-
 use crate::{
     Alignment, BidiLevel, Error, ErrorCode, InlineWhitespaceEdge, Point, Rect, Result,
     SuppliedInlineParticipant, SuppliedLine, TextNumericError, TextNumericPhase,
@@ -41,30 +39,18 @@ pub(super) fn finalize(
     let mut dispositions = collapse_edges(&selected, &mut shaped)?;
     let levels = line_levels(&selected, &shaped)?;
     let base = selected.presentation.analysis.base_level;
-    let participants: Vec<_> = shaped
-        .items
+    let ordered = crate::protocol::prepared::presentation::order_items(&selected, &shaped)?;
+    let participants = levels
         .iter()
-        .zip(&levels)
-        .map(|(item, &level)| {
-            let level = BidiLevel::try_new(level)
-                .map_err(|_| invalid("selected line has an invalid resolved level"))?;
-            Ok(match item {
-                ShapedItem::TextCluster(_) => SuppliedInlineParticipant::Text {
-                    level,
-                    edge: InlineWhitespaceEdge::Preserve,
-                },
-                ShapedItem::InlineBox { .. } => SuppliedInlineParticipant::Atomic { level },
-                ShapedItem::Anchor { .. } => SuppliedInlineParticipant::Boundary { level },
-            })
+        .map(|&level| {
+            crate::BidiLevel::try_new(level)
+                .map(|level| SuppliedInlineParticipant::Boundary { level })
+                .map_err(|_| invalid("selected line has an invalid resolved level"))
         })
-        .collect::<Result<_>>()?;
-    let supplied = SuppliedLine::new(&participants);
-    // Edge suppression was already applied through the canonical Text edge
-    // owner. The full mixed sequence now receives its one canonical L2 order.
-    let mut order = vec![0; participants.len()];
-    let order = supplied
-        .reorder_into(&mut order)
-        .map_err(|_| invalid("line order scratch does not match its actual participants"))?;
+        .collect::<Result<Vec<_>>>()?;
+    let order = SuppliedLine::new(&participants)
+        .composed_order(&ordered)
+        .ok_or_else(|| invalid("composed line order is not a complete permutation"))?;
     resolve_tabs(&selected, &mut shaped, &atomics, &order)?;
     let natural = if selected.metric_policy == LineMetricPolicy::Native {
         Some(phase_two::natural(
@@ -1626,121 +1612,21 @@ fn free_space(selection: &LineContext, width: f64, metrics: &LineMetrics) -> Res
     )
 }
 
-#[derive(Clone, Copy, Eq, PartialEq)]
-enum Reset {
-    Other,
-    White,
-    Removed,
-    Separator,
-}
-
 fn line_levels(selected: &SelectedData, shaped: &ShapedData) -> Result<Vec<u8>> {
-    let base = selected.presentation.analysis.base_level;
-    let mut levels = Vec::with_capacity(shaped.items.len());
-    let mut roles = Vec::with_capacity(shaped.items.len());
-    for item in &shaped.items {
-        match *item {
-            ShapedItem::Anchor { unit, level } => {
-                levels.push(level);
-                roles.push(anchor_reset(selected, unit)?);
-            }
-            ShapedItem::InlineBox { level, .. } => {
-                levels.push(level);
-                roles.push(Reset::Other);
-            }
-            ShapedItem::TextCluster(index) => {
-                let cluster = &shaped.clusters[index];
-                levels.push(cluster.level);
-                let infos = selected
-                    .presentation
-                    .analysis
-                    .infos
-                    .get(cluster.atoms.clone())
-                    .ok_or_else(|| invalid("cluster has no original bidi properties"))?;
-                let mut role = Reset::Removed;
-                for (info, _) in infos {
-                    let next = match info.bidi_class {
-                        BidiClass::ParagraphSeparator | BidiClass::SegmentSeparator => {
-                            Reset::Separator
-                        }
-                        BidiClass::WhiteSpace
-                        | BidiClass::LeftToRightIsolate
-                        | BidiClass::RightToLeftIsolate
-                        | BidiClass::FirstStrongIsolate
-                        | BidiClass::PopDirectionalIsolate => Reset::White,
-                        BidiClass::LeftToRightEmbedding
-                        | BidiClass::RightToLeftEmbedding
-                        | BidiClass::LeftToRightOverride
-                        | BidiClass::RightToLeftOverride
-                        | BidiClass::PopDirectionalFormat
-                        | BidiClass::BoundaryNeutral => Reset::Removed,
-                        _ => Reset::Other,
-                    };
-                    if next == Reset::Separator {
-                        role = next;
-                        break;
-                    }
-                    if next == Reset::Other {
-                        role = next;
-                        break;
-                    }
-                    if next == Reset::White {
-                        role = next;
-                    }
-                }
-                roles.push(role);
-            }
-        }
-    }
-    for index in 0..levels.len() {
-        if roles[index] != Reset::Separator {
-            continue;
-        }
-        levels[index] = base;
-        for prior in (0..index).rev() {
-            match roles[prior] {
-                Reset::Removed => continue,
-                Reset::White => levels[prior] = base,
-                _ => break,
-            }
-        }
-    }
-    for index in (0..levels.len()).rev() {
-        match roles[index] {
-            Reset::Removed => continue,
-            Reset::White => levels[index] = base,
-            _ => break,
-        }
-    }
-    Ok(levels)
-}
-
-fn anchor_reset(selected: &SelectedData, unit: usize) -> Result<Reset> {
-    let unit = selected
-        .presentation
-        .units
-        .get(unit)
-        .ok_or_else(|| invalid("anchor has no selected semantic unit"))?;
-    Ok(match unit.bidi_class {
-        Some(BidiClass::ParagraphSeparator | BidiClass::SegmentSeparator) => Reset::Separator,
-        Some(
-            BidiClass::WhiteSpace
-            | BidiClass::LeftToRightIsolate
-            | BidiClass::RightToLeftIsolate
-            | BidiClass::FirstStrongIsolate
-            | BidiClass::PopDirectionalIsolate,
-        ) => Reset::White,
-        Some(
-            BidiClass::LeftToRightEmbedding
-            | BidiClass::RightToLeftEmbedding
-            | BidiClass::LeftToRightOverride
-            | BidiClass::RightToLeftOverride
-            | BidiClass::PopDirectionalFormat
-            | BidiClass::BoundaryNeutral,
-        )
-        | None => Reset::Removed,
-        Some(_) => Reset::Other,
-    })
+    Ok(shaped
+        .items
+        .iter()
+        .map(|item| match *item {
+            ShapedItem::Anchor { unit, .. } => selected.presentation.units[unit].line_level,
+            ShapedItem::InlineBox { level, .. } => level,
+            ShapedItem::TextCluster(i) => selected
+                .presentation
+                .units
+                .iter()
+                .find(|u| u.atoms.contains(&shaped.clusters[i].atoms.start))
+                .map_or(shaped.clusters[i].level, |u| u.line_level),
+        })
+        .collect())
 }
 
 fn invalid(message: &'static str) -> Error {
@@ -1935,6 +1821,7 @@ mod tests {
         ParagraphControl, ParagraphControlKind, ParagraphOrigin, ParagraphOriginKind,
         ParagraphStrut,
     };
+    use icu_properties::props::BidiClass;
 
     fn selected(
         text: &str,
@@ -2084,6 +1971,7 @@ mod tests {
             .collect();
         prepared
             .select(LineSelectionRequest {
+                incoming: None,
                 start: boundaries[0].clone(),
                 end: boundaries.last().unwrap().clone(),
                 participants: prepared.participants().collect(),
@@ -2461,6 +2349,7 @@ mod tests {
             .handle();
         let line = prepared
             .select(LineSelectionRequest {
+                incoming: None,
                 start: prepared.boundary_views().next().unwrap().handle(),
                 end: prepared.boundary_views().last().unwrap().handle(),
                 participants: prepared.participants().collect(),
@@ -2827,6 +2716,7 @@ mod tests {
                 .collect();
             prepared
                 .select(LineSelectionRequest {
+                    incoming: None,
                     start,
                     end: termination.view().boundary(),
                     participants,

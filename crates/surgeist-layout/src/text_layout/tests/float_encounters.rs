@@ -1704,6 +1704,9 @@ fn captured_review_zero_height_float_queries_keep_sides_clear_expiry_and_signed_
 #[path = "conditional_cache.rs"]
 mod conditional_cache;
 
+#[path = "after_continuation.rs"]
+mod after_continuation;
+
 #[test]
 fn automatic_portion_retains_preceding_float_at_word_start_and_actual_fractional_frame() {
     fn check<S: LayoutScalar>() {

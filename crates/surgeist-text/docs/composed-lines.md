@@ -90,9 +90,23 @@ uses the same selected-line and placement machinery.
    This distinct probe has no script fallback or glyph-coverage filter: raw native
    catalogue registrations have unrestricted unicode ranges, and a space glyph is
    not required. It chooses U+2010 when present, otherwise U+002D; normal shaping
-   then resolves the chosen text. Missing primary fonts and known unsupported
-   nonempty after/both-side placement return typed errors. Suppressed or empty
-   indications do not consume those unused capabilities. Native conventions bind
+   then resolves the chosen text. LogicalBefore and LogicalAfter use independent
+   indication-local bidi attached to authenticated original levels; generated
+   strings never change original paragraph UBA. A nonempty LogicalAfter ending
+   lends `HyphenationContinuation` through `hyphenation_continuation()`. Supply
+   that exact choice in the next `LineSelectionRequest.incoming`; its indication
+   is shaped on the receiving line using its own owning style and actual receiver
+   direction. `PreparedWordPortion::incoming()` retains the corresponding
+   hypothetical manual choice for measurement. Conditional queries retain that
+   incoming identity too. No emission is pending for an empty indication.
+   Missing primary fonts, missing receiving authority, nonempty BothSides,
+   unsupported hard separators inside an indication and incompatible local/joint
+   shaping order return precise errors. Actual replacement TABs retain the chosen
+   CSS-stop or FontAdvance operation with local bidi-S and line L1 handling. Combined query units require exact font-match witnesses
+   retained by preparation; covering glyphs or two partial matches cannot replace
+   one complete query. Font witnesses never impose shaping boundaries or retain
+   final glyphs. Suppressed or empty indications do not consume unused capabilities.
+   Native conventions bind
    the complete locale, including variants/extensions. Indication conventions
    have no built-in language table; broader hyphenation resources or CSS font-face
    unicode-range support is not claimed.
@@ -143,7 +157,12 @@ uses the same selected-line and placement machinery.
    for current modes, supplied-spacing remapping and remaining styled barriers.
 5. Supply `PlacementRequest` to `Layout::from_finalized_lines`. Coverage is the
    actual whole paragraph or issued boundary range. Lines must cover it contiguously
-   under the same preparation. Each `LineAnchor` identifies physical local x=0 on
+   under the same preparation. Whole coverage requires an empty first incoming,
+   exact outgoing/incoming pairing and no unfulfilled final obligation. Range
+   coverage may retain an outgoing choice or begin with its authentic incoming;
+   it makes no claim about an omitted predecessor. Internal pairs still match.
+   Incoming ownership never extends original source-query coverage.
+   Each `LineAnchor` identifies physical local x=0 on
    the baseline. Text maps `(x,y)` as `(anchor.x+x, anchor.y+(y-local_baseline))`
    once; it does not independently snap origins or boxes. Physical atomic rows must
    match their exact finalized flow/box relation. All consumed geometry is qualified
@@ -165,7 +184,7 @@ independently of the descriptor's lifetime.
 
 An interior seam counts the whole smallest unit closed under both selected
 graphemes and actual provider-cluster associations. `interior_unit()` lends its
-presentation extent, actual original `source_pieces`, selected alternative and
+presentation extent, actual original `source_pieces`, every actual `alternatives()` owner and
 independently checked contribution. `source_range()` is only an enclosing extent;
 it does not claim text in contextual coverage holes. The prefix uses the actual
 logical metrics-fold receipt, including signed advances and spacing, rather than
@@ -190,8 +209,9 @@ Range semantics and refuse here.
 
 `units()` visits actual grapheme-based Range units in content order. Each unit
 retains its finalized line, fragments, presentation range and selected original
-intersections separately from expanded unit coverage and a selected alternative's
-defining source relation. `same_unit` compares actual placement and unit identity,
+intersections separately from expanded unit coverage. `alternatives()`,
+`defining_sources()` and `hyphenation_cuts()` expose all genuine contributing
+owners/relations, including a shared incoming/outgoing mark EGC. `same_unit` compares actual placement and unit identity,
 so equal offsets or rectangles do not establish identity. A partial surrogate or
 combining sequence selects the complete unit. An optional multi-grapheme ligature
 retains its separate Range units under the
@@ -261,3 +281,8 @@ can discharge an exact rejected hyphenated ordinary trial. Text authenticates th
 trial's preparation, unchanged start, alternative and context, not the consumer's
 policy verdict. Meaningful no-alternative, Forced and Paragraph variants remain
 barriers; these receipts neither advance phantom source nor admit intrinsic use.
+
+The [indication bidi contract](../../../docs/text-layout-contract.md#hyphenation-indication-bidi)
+defines the explicit local operation and its remaining capability limits. There
+is no language-convention table, BothSides implementation or general guarantee
+that arbitrary local control strings compose with joint provider units/runs.

@@ -82,6 +82,7 @@ impl ConditionalDisposition {
 pub struct PreparedConditionalOpportunity {
     prepared: PreparedText,
     start: usize,
+    incoming: Option<super::HyphenationContinuation>,
     ceiling: usize,
     purpose: ConditionalPurpose,
     end: usize,
@@ -93,6 +94,7 @@ impl PartialEq for PreparedConditionalOpportunity {
     fn eq(&self, other: &Self) -> bool {
         self.prepared == other.prepared
             && self.start == other.start
+            && self.incoming == other.incoming
             && self.ceiling == other.ceiling
             && self.purpose == other.purpose
             && self.end == other.end
@@ -104,6 +106,7 @@ impl Hash for PreparedConditionalOpportunity {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.prepared.hash(state);
         self.start.hash(state);
+        self.incoming.hash(state);
         self.ceiling.hash(state);
         self.purpose.hash(state);
         self.end.hash(state);
@@ -166,7 +169,8 @@ impl PreparedConditionalOpportunity {
                 end: request.end.index,
             })
         };
-        if request.start.index != self.start
+        if request.incoming != self.incoming
+            || request.start.index != self.start
             || request.end.index != self.end
             || request.alternative.is_some()
         {
@@ -253,10 +257,12 @@ impl PreparedText {
     pub fn conditional_opportunities(
         &self,
         start: &PreparedBoundary,
+        incoming: Option<&super::HyphenationContinuation>,
         ceiling: &PreparedOpportunity,
         purpose: ConditionalPurpose,
         skipped_ordinary: &[ConditionalDisposition],
     ) -> crate::Result<Vec<PreparedConditionalOpportunity>> {
+        super::continuation::validate(self, start, incoming)?;
         for (owner, kind, occurrence) in [
             (&start.prepared, ProtocolHandleKind::Boundary, start.index),
             (
@@ -288,7 +294,7 @@ impl PreparedText {
             return Err(invalid());
         }
         let (frontier, identities) =
-            validate_frontier(self, start, ceiling, purpose, skipped_ordinary)?;
+            validate_frontier(self, start, incoming, ceiling, purpose, skipped_ordinary)?;
         let end = tables.opportunities[ceiling.index].boundary;
         let boundaries = super::prepared::conditional_boundaries(
             &self.inner.analyzed,
@@ -305,6 +311,7 @@ impl PreparedText {
             .map(|end| PreparedConditionalOpportunity {
                 prepared: self.clone(),
                 start: start.index,
+                incoming: incoming.cloned(),
                 ceiling: ceiling.index,
                 purpose,
                 end,
@@ -318,6 +325,7 @@ impl PreparedText {
 fn validate_frontier(
     prepared: &PreparedText,
     start: &PreparedBoundary,
+    incoming: Option<&super::HyphenationContinuation>,
     ceiling: &PreparedOpportunity,
     purpose: ConditionalPurpose,
     dispositions: &[ConditionalDisposition],
@@ -412,7 +420,8 @@ fn validate_frontier(
                 | ConditionalDisposition::ConsumerHyphenationPolicy(receipt) => {
                     let selected = receipt.selected_line();
                     let request = selected.request();
-                    if request.start != *start
+                    if request.incoming.as_ref() != incoming
+                        || request.start != *start
                         || request.end.index != row.boundary
                         || !matches!(&request.termination, PreparedTermination::Ordinary(offer) if offer.index == index)
                         || request.alternative.as_ref().map(|alt| alt.index) != variant

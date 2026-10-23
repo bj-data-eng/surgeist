@@ -474,6 +474,15 @@ unsupported conventions, primary-font versus adjacent-fallback coverage, genuine
 source/control custody, min-content and unchanged authored/selection/search text.
 This determination supplies requirements, not an implementation-completion claim.
 
+A nonempty LogicalAfter ending retains a Text-issued continuation for its exact
+preparation, alternative and mixed cut. The receiving selection supplies that
+incoming choice separately from its own outgoing ending. Whole-paragraph
+placement requires exact adjacent pairing and no discarded final obligation.
+A range may retain an open outgoing obligation or authentic incoming choice
+without claiming an omitted predecessor was committed or widening original
+source-query coverage. Receiving an indication does not create another
+hyphenated ending for line-count policy.
+
 ### Hyphenation indication bidi
 
 Text resolves the original paragraph's bidi state without generated hyphenation
@@ -524,6 +533,12 @@ cannot be composed faithfully, return a specific capability refusal before
 publication. Paragraph or segment separators inside an indication require an
 explicit local handling rule or a precise refusal, never an invented original
 paragraph break. Refused strings remain outstanding support.
+
+U+0009 TAB follows the chosen prepared
+[preserved-tab operation](#preserved-css-tab-stops), with local L1 and actual
+ordered positioning. Its CSS-stop and native font-advance demands stay distinct;
+it does not introduce an original forced break. Other unsupported separators
+retain their precise capability refusal.
 
 This is explicit Surgeist policy. The pinned
 [WebKit display mechanism](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/layout/formattingContexts/inline/display/InlineDisplayContentBuilder.cpp#L210)
@@ -662,8 +677,9 @@ before automatic fallback. An automatic cut is available only within a portion
 that still cannot fit an otherwise available line after that manual partition;
 failing the whole word or the space left after unrelated content is insufficient.
 Include the actual indication and finalized occupied geometry in the fit test.
-For `as` + SHY + `sociate` with 10px letters and a 10px indication, width 80 takes
-the explicit cut after `as`; at width 60 its 70px residual portion permits
+For `as` + SHY + `sociate` with 10px letters and a 10px `LogicalBefore`
+indication, width 80 takes the explicit cut after `as`; at width 60 its 70px
+residual portion permits
 automatic fallback. Raw standalone layout also preserves this priority. Layout
 owns actual fit, float replay and committed-line state, while Text supplies the
 same word/cut authority. Rejected trials remain pure. Producer and consumers must
@@ -677,8 +693,9 @@ This is Surgeist's explicit intrinsic interpretation of the hyphenation rule and
 not a finite overflow receipt or an unrestricted replacement of the manual
 partition. Purpose and partition/candidate identity govern admission and reuse;
 absent available width proves neither intrinsic purpose nor failure to fit.
-For example, `as` + SHY + `sociate` with 10px letters and a 10px indication has
-MinContent 50px through pieces 30/30/50, refining its manual 30/70 partition.
+For example, `as` + SHY + `sociate` with 10px letters and a 10px
+`LogicalBefore` indication has MinContent 50px through pieces 30/30/50, refining
+its manual 30/70 partition.
 MaxContent measures the unbroken word at 90px without selecting hyphenation
 alternatives. Independent `anywhere` versus `break-word` intrinsic rules remain
 unchanged. Finite fit exclusions cannot be replayed as intrinsic determinations.
@@ -775,8 +792,9 @@ refinement. MaxContent remains unbroken. Carry explicit measurement purpose;
 missing available width alone does not identify an intrinsic query. Positive
 finite-fitting suppression cannot be replayed as an intrinsic exclusion.
 
-For the 10px-letter, 10px-indication `as` + SHY + `sociate` example, MinContent is
-50px at limit 1 or `no-limit`, and 70px at zero when no independent breaking
+For the 10px-letter, 10px-indication `as` + SHY + `sociate` example with
+`LogicalBefore`, MinContent is 50px at limit 1 or `no-limit`, and 70px at zero
+when no independent breaking
 opportunity applies. MaxContent remains 90px. Query order cannot change these
 measurements or the next actual line's eligibility. These intrinsic and emergency
 rules are explicit Surgeist policy, not a claim of uniquely specified CSS behavior

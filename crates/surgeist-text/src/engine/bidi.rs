@@ -843,3 +843,62 @@ impl BracketStack {
 const fn mask(t: BidiClass) -> u32 {
     1 << (t.to_icu4c_value() as u32)
 }
+
+/// Canonical selected-line L1 roles, also used inside an indication's local UBA.
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub(crate) enum LineReset {
+    Removed,
+    White,
+    Separator,
+    Other,
+}
+impl LineReset {
+    pub(crate) fn from_class(class: BidiClass) -> Self {
+        match class {
+            BidiClass::ParagraphSeparator | BidiClass::SegmentSeparator => Self::Separator,
+            BidiClass::WhiteSpace
+            | BidiClass::LeftToRightIsolate
+            | BidiClass::RightToLeftIsolate
+            | BidiClass::FirstStrongIsolate
+            | BidiClass::PopDirectionalIsolate => Self::White,
+            BidiClass::LeftToRightEmbedding
+            | BidiClass::RightToLeftEmbedding
+            | BidiClass::LeftToRightOverride
+            | BidiClass::RightToLeftOverride
+            | BidiClass::PopDirectionalFormat
+            | BidiClass::BoundaryNeutral => Self::Removed,
+            _ => Self::Other,
+        }
+    }
+    pub(crate) fn combine(self, next: Self) -> Self {
+        match (self, next) {
+            (Self::Separator, _) | (_, Self::Separator) => Self::Separator,
+            (Self::Other, _) | (_, Self::Other) => Self::Other,
+            (Self::White, _) | (_, Self::White) => Self::White,
+            _ => Self::Removed,
+        }
+    }
+}
+pub(crate) fn reset_line_levels(levels: &mut [u8], roles: &[LineReset], base: u8) {
+    debug_assert_eq!(levels.len(), roles.len());
+    for i in 0..levels.len() {
+        if roles[i] != LineReset::Separator {
+            continue;
+        }
+        levels[i] = base;
+        for j in (0..i).rev() {
+            match roles[j] {
+                LineReset::Removed => continue,
+                LineReset::White => levels[j] = base,
+                _ => break,
+            }
+        }
+    }
+    for i in (0..levels.len()).rev() {
+        match roles[i] {
+            LineReset::Removed => continue,
+            LineReset::White => levels[i] = base,
+            _ => break,
+        }
+    }
+}

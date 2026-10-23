@@ -100,13 +100,23 @@ impl FinalizedSharedUnitView<'_> {
             .advance
             .value()
     }
-    pub fn alternative(&self) -> Option<super::PreparedAlternative> {
+    pub fn alternatives(&self) -> impl Iterator<Item = super::PreparedAlternative> + '_ {
         let row = &self.line.inner.data.prefix.groups[self.index];
+        let mut seen = std::collections::BTreeSet::new();
         self.line.inner.selected.presentation.units[row.units.clone()]
             .iter()
-            .any(|unit| matches!(unit.kind, PresentationUnitKind::Replacement { .. }))
-            .then(|| self.line.inner.selected.request.alternative.clone())
-            .flatten()
+            .filter_map(move |unit| {
+                if let PresentationUnitKind::Replacement { alternative } = unit.kind
+                    && seen.insert(alternative)
+                {
+                    Some(super::PreparedAlternative {
+                        prepared: Arc::clone(&self.line.inner.selected.prepared),
+                        index: alternative,
+                    })
+                } else {
+                    None
+                }
+            })
     }
 }
 
@@ -215,35 +225,30 @@ impl PrefixData {
                 .participant_indices
                 .insert(participant_key(participant), i);
         }
-        let replacement_owner = selected
-            .request
-            .alternative
-            .as_ref()
-            .and_then(|alternative| {
-                let definition =
-                    selected.prepared.tables.alternatives[alternative.index].definition;
-                selected
-                    .request
-                    .participants
-                    .iter()
-                    .position(|p| match (definition, p) {
-                        (
-                            super::prepared::AlternativeDefinition::Control { control, .. },
-                            PreparedParticipant::Control(handle),
-                        ) => selected.prepared.tables.controls[handle.index].occurrence == control,
-                        (
-                            super::prepared::AlternativeDefinition::Source { source, .. },
-                            PreparedParticipant::Text(handle),
-                        ) => selected.prepared.tables.units[handle.index].source == source,
-                        (
-                            super::prepared::AlternativeDefinition::Automatic { atom, .. },
-                            PreparedParticipant::Text(handle),
-                        ) => selected.prepared.tables.units[handle.index]
-                            .atoms
-                            .contains(&(atom - 1)),
-                        _ => false,
-                    })
-            });
+        let replacement_owner = |alternative: usize| {
+            let definition = selected.prepared.tables.alternatives[alternative].definition;
+            selected
+                .request
+                .participants
+                .iter()
+                .position(|p| match (definition, p) {
+                    (
+                        super::prepared::AlternativeDefinition::Control { control, .. },
+                        PreparedParticipant::Control(handle),
+                    ) => selected.prepared.tables.controls[handle.index].occurrence == control,
+                    (
+                        super::prepared::AlternativeDefinition::Source { source, .. },
+                        PreparedParticipant::Text(handle),
+                    ) => selected.prepared.tables.units[handle.index].source == source,
+                    (
+                        super::prepared::AlternativeDefinition::Automatic { atom, .. },
+                        PreparedParticipant::Text(handle),
+                    ) => selected.prepared.tables.units[handle.index]
+                        .atoms
+                        .contains(&(atom - 1)),
+                    _ => false,
+                })
+        };
         let mut owner = 0;
         let mut item_units = Vec::with_capacity(shaped.items.len());
         let mut values = Vec::with_capacity(shaped.items.len());
@@ -325,10 +330,9 @@ impl PrefixData {
                 item += 1;
             }
             result.unit_cuts[index] = begin..item;
-            let participant = unit.participant.or_else(|| {
-                matches!(unit.kind, PresentationUnitKind::Replacement { .. })
-                    .then_some(replacement_owner)
-                    .flatten()
+            let participant = unit.participant.or_else(|| match unit.kind {
+                PresentationUnitKind::Replacement { alternative } => replacement_owner(alternative),
+                _ => None,
             });
             if let Some(participant) = participant {
                 match &mut result.participants[participant] {

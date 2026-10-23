@@ -113,7 +113,7 @@ pub(crate) fn prepare(
     catalogue: &mut crate::catalogue::Catalogue,
     analyzed: &crate::engine::AnalyzedData,
     styles: &[crate::engine::resolve::ResolvedStyleRun],
-    alternatives: &[crate::protocol::prepared::PreparedAlternativeShape],
+    alternatives: &[crate::protocol::prepared::PreparedIndicationFonts],
     options: crate::PreparationOptions,
     scratch: &mut crate::engine::shape::ShapeContext,
 ) -> Result<Vec<Option<ResolvedTab>>> {

@@ -63,7 +63,7 @@ fn offers(
 ) -> Vec<PreparedConditionalOpportunity> {
     let start = prepared.boundary_views().next().unwrap().handle();
     prepared
-        .conditional_opportunities(&start, &first_after(prepared, &start), purpose, &[])
+        .conditional_opportunities(&start, None, &first_after(prepared, &start), purpose, &[])
         .unwrap()
 }
 
@@ -245,7 +245,7 @@ fn conditional_interval_stops_at_first_ordinary_or_forced_endpoint() {
     assert!(matches!(
         reason(
             &prepared
-                .conditional_opportunities(&start, &end, ConditionalPurpose::Overflow, &[])
+                .conditional_opportunities(&start, None, &end, ConditionalPurpose::Overflow, &[])
                 .unwrap_err()
         ),
         ProtocolError::InvalidConditionalReceipt { .. }
@@ -253,7 +253,7 @@ fn conditional_interval_stops_at_first_ordinary_or_forced_endpoint() {
     assert_eq!(
         sources(
             &prepared
-                .conditional_opportunities(&start, &first, ConditionalPurpose::Overflow, &[])
+                .conditional_opportunities(&start, None, &first, ConditionalPurpose::Overflow, &[])
                 .unwrap()
         ),
         [1, 2]
@@ -347,6 +347,7 @@ fn conditional_cut_and_continuation_keep_actual_arabic_base_context() {
     let second_cuts = prepared
         .conditional_opportunities(
             &second_start,
+            None,
             &first_after(&prepared, &second_start),
             ConditionalPurpose::Overflow,
             &[],
@@ -586,6 +587,7 @@ fn missing_wrapping_fact_is_refused_only_on_the_path_that_consumes_it() {
             &prepared
                 .conditional_opportunities(
                     &start,
+                    None,
                     &first_after(&prepared, &start),
                     ConditionalPurpose::Overflow,
                     &[]
@@ -700,6 +702,7 @@ fn phantom_receipt_preserves_leading_original_custody_and_continuation() {
     let cuts = prepared
         .conditional_opportunities(
             &start,
+            None,
             &ceiling,
             ConditionalPurpose::Overflow,
             &[crate::ConditionalDisposition::Phantom(phantom.clone())],
@@ -793,6 +796,7 @@ fn phantom_receipts_cover_exact_same_offset_ordinals_and_recheck_strut_presence(
     let cuts = prepared
         .conditional_opportunities(
             &start,
+            None,
             ceiling,
             ConditionalPurpose::Overflow,
             &phantom_dispositions(&receipts),
@@ -804,6 +808,7 @@ fn phantom_receipts_cover_exact_same_offset_ordinals_and_recheck_strut_presence(
         prepared
             .conditional_opportunities(
                 &start,
+                None,
                 ceiling,
                 ConditionalPurpose::Overflow,
                 &phantom_dispositions(&receipts.clone())
@@ -827,6 +832,7 @@ fn phantom_receipts_cover_exact_same_offset_ordinals_and_recheck_strut_presence(
         prepared
             .conditional_opportunities(
                 &start,
+                None,
                 ceiling,
                 ConditionalPurpose::Overflow,
                 &phantom_dispositions(&other_trials)
@@ -851,6 +857,7 @@ fn phantom_receipts_cover_exact_same_offset_ordinals_and_recheck_strut_presence(
                 &prepared
                     .conditional_opportunities(
                         &start,
+                        None,
                         ceiling,
                         ConditionalPurpose::Overflow,
                         &phantom_dispositions(&bad)
@@ -875,6 +882,7 @@ fn phantom_receipts_cover_exact_same_offset_ordinals_and_recheck_strut_presence(
             &prepared
                 .conditional_opportunities(
                     &start,
+                    None,
                     ceiling,
                     ConditionalPurpose::MinContent,
                     &phantom_dispositions(&receipts)
@@ -900,6 +908,7 @@ fn phantom_receipts_cover_exact_same_offset_ordinals_and_recheck_strut_presence(
     let minimum = prepared
         .conditional_opportunities(
             &start,
+            None,
             ceiling,
             ConditionalPurpose::MinContent,
             &phantom_dispositions(&minimum_receipts),
@@ -932,6 +941,7 @@ fn retained_zero_or_signed_text_cannot_be_a_phantom_receipt() {
                 &prepared
                     .conditional_opportunities(
                         &start,
+                        None,
                         &ceiling,
                         ConditionalPurpose::Overflow,
                         &[crate::ConditionalDisposition::Phantom(receipt)]
@@ -1023,6 +1033,7 @@ fn phantom_frontier_requires_every_real_discretionary_variant() {
             &prepared
                 .conditional_opportunities(
                     &start,
+                    None,
                     &inventory[2],
                     ConditionalPurpose::Overflow,
                     &phantom_dispositions(&receipts)
@@ -1042,6 +1053,7 @@ fn phantom_frontier_requires_every_real_discretionary_variant() {
             &prepared
                 .conditional_opportunities(
                     &start,
+                    None,
                     &inventory[2],
                     ConditionalPurpose::Overflow,
                     &phantom_dispositions(&receipts)
@@ -1407,6 +1419,7 @@ fn raw_analysis_keeps_its_ordinary_model_without_additional_native_cuts() {
                 &prepared
                     .conditional_opportunities(
                         &foreign_start,
+                        None,
                         &first_after(&prepared, &start),
                         ConditionalPurpose::MinContent,
                         &[]
@@ -1705,13 +1718,14 @@ fn finite_consumer_policy_discharge_reaches_a_real_manual_later_ceiling() {
         .unwrap()
         .handle();
     assert!(
-        p.conditional_opportunities(&start, &ceiling, ConditionalPurpose::Overflow, &[])
+        p.conditional_opportunities(&start, None, &ceiling, ConditionalPurpose::Overflow, &[])
             .is_err()
     );
     let disposition = ConditionalDisposition::ConsumerHyphenationPolicy(first);
     let cuts = p
         .conditional_opportunities(
             &start,
+            None,
             &ceiling,
             ConditionalPurpose::Overflow,
             std::slice::from_ref(&disposition),
@@ -1743,6 +1757,7 @@ fn finite_consumer_policy_discharge_reaches_a_real_manual_later_ceiling() {
         cuts,
         p.conditional_opportunities(
             &start,
+            None,
             &ceiling,
             ConditionalPurpose::Overflow,
             &[ConditionalDisposition::ConsumerHyphenationPolicy(second)]
@@ -1752,6 +1767,7 @@ fn finite_consumer_policy_discharge_reaches_a_real_manual_later_ceiling() {
     assert!(
         p.conditional_opportunities(
             &start,
+            None,
             &ceiling,
             ConditionalPurpose::MinContent,
             std::slice::from_ref(&disposition)
@@ -1761,6 +1777,7 @@ fn finite_consumer_policy_discharge_reaches_a_real_manual_later_ceiling() {
     assert!(
         p.conditional_opportunities(
             &start,
+            None,
             &ceiling,
             ConditionalPurpose::Overflow,
             &[disposition.clone(), disposition]
@@ -1819,6 +1836,7 @@ fn finite_consumer_policy_receipts_preserve_barriers_start_and_context_identity(
     let query = |line| {
         p.conditional_opportunities(
             &start,
+            None,
             &ceiling,
             ConditionalPurpose::Overflow,
             &[ConditionalDisposition::ConsumerHyphenationPolicy(line)],
@@ -1873,6 +1891,7 @@ fn finite_consumer_policy_receipts_preserve_barriers_start_and_context_identity(
         plain
             .conditional_opportunities(
                 &begin,
+                None,
                 &end,
                 ConditionalPurpose::Overflow,
                 &[ConditionalDisposition::ConsumerHyphenationPolicy(line)]

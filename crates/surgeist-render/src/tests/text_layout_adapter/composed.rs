@@ -19,6 +19,7 @@ fn finalized(source: text::Source) -> (text::PreparedText, text::FinalizedLine) 
         .handle();
     let selected = prepared
         .select(text::LineSelectionRequest {
+            incoming: None,
             start: prepared.boundary_views().next().unwrap().handle(),
             end: termination.view().boundary(),
             termination: text::PreparedTermination::Ordinary(termination),
@@ -204,6 +205,7 @@ fn actual_gpos_mark_placement_reaches_admitted_outline_ink_without_advance_subst
         .handle();
     let finalized = prepared
         .select(text::LineSelectionRequest {
+            incoming: None,
             start: prepared.boundary_views().next().unwrap().handle(),
             end: termination.view().boundary(),
             termination: text::PreparedTermination::Ordinary(termination),

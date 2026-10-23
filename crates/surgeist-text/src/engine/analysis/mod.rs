@@ -116,6 +116,7 @@ impl CharInfo {
     }
 }
 
+#[derive(Clone)]
 pub(crate) struct Analysis {
     pub(crate) infos: Vec<(CharInfo, usize)>,
     pub(crate) levels: Vec<u8>,

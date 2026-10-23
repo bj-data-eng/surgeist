@@ -122,12 +122,12 @@ pub(crate) enum ShapedItem {
     /// Actual zero-presentation selected unit; it owns no synthetic glyph/metrics.
     Anchor {
         unit: usize,
-        level: u8,
     },
 }
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct ShapedData {
+    pub(crate) font_queries: Vec<super::super::shape::FontQueryWitness>,
     pub(crate) runs: Vec<PreparedRun>,
     pub(crate) clusters: Vec<PreparedCluster>,
     pub(crate) glyphs: Vec<GlyphData>,

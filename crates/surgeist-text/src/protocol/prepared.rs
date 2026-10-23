@@ -1,5 +1,6 @@
 //! Canonical preparation tables; handles borrow these actual issued rows.
 
+pub(crate) mod presentation;
 #[cfg(test)]
 mod tests;
 
@@ -109,6 +110,7 @@ pub(crate) struct OpportunityData {
 #[derive(Clone, Debug)]
 pub(crate) struct AlternativeData {
     pub(crate) text: crate::Text,
+    pub(crate) placement: crate::HyphenationPlacement,
     pub(crate) resolution: IndicationResolution,
     pub(crate) style: usize,
     pub(crate) opportunity: usize,
@@ -176,17 +178,11 @@ impl AlternativeData {
 /// issued public source/preparation. Every retained face/instance comes from
 /// actual resolution before publication. Finalization never queries a newer
 /// catalogue to reconstruct it.
-pub(crate) struct PreparedAlternativeShape {
-    pub(crate) alternative: usize,
+pub(crate) struct PreparedIndicationFonts {
     pub(crate) inserted_atoms: IndexRange<usize>,
     pub(crate) projection: SourceProjection,
     pub(crate) analysis: Analysis,
-    pub(crate) shaped: ShapedData,
-    /// Exact splice correspondence; inserted presentation has no base atom.
-    pub(crate) original_atoms: Vec<Option<usize>>,
-    pub(crate) base_insertion: usize,
-    /// One retained original joining domain per actual shaped run.
-    pub(crate) joining_domains: Vec<usize>,
+    pub(crate) font_queries: Vec<crate::engine::shape::FontQueryWitness>,
 }
 
 /// Exact selected presentation correspondence, separate from authored text.
@@ -203,6 +199,8 @@ pub(crate) struct SelectedPresentation {
     pub(crate) projection: SourceProjection,
     pub(crate) analysis: Analysis,
     pub(crate) assignments: Vec<RetainedAssignment>,
+    pub(crate) originals: Vec<Option<usize>>,
+    pub(crate) domains: Vec<presentation::IndicationDomain>,
     pub(crate) mapping: std::sync::Arc<SelectedMapping>,
 }
 
@@ -219,6 +217,8 @@ pub(crate) struct PresentationUnit {
     pub(crate) bidi_class: Option<icu_properties::props::BidiClass>,
     pub(crate) eligible_space: bool,
     pub(crate) level: u8,
+    /// Selected-line L1 authority, distinct from original/provider levels.
+    pub(crate) line_level: u8,
     pub(crate) kind: PresentationUnitKind,
 }
 
@@ -237,10 +237,7 @@ pub(crate) enum PresentationUnitKind {
 #[derive(Clone, Debug)]
 pub(crate) struct RetainedAssignment {
     pub(crate) atoms: IndexRange<usize>,
-    /// Exact atom interval in the retained base or alternative capture.
-    pub(crate) captured_atoms: IndexRange<usize>,
-    pub(crate) alternative: Option<usize>,
-    pub(crate) run: usize,
+    pub(crate) run: crate::engine::layout::data::PreparedRun,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -643,6 +640,7 @@ fn issue_opportunities(
                     .into_iter()
                     .map(|text| AlternativeData {
                         text,
+                        placement: used_placement(authored, &resolution),
                         resolution: resolution.clone(),
                         style,
                         opportunity: tables.opportunities.len(),
@@ -665,6 +663,7 @@ fn issue_opportunities(
             let (texts, resolution) = indication(catalogue, styles, authored, style, None)?;
             alternatives.extend(texts.into_iter().map(|text| AlternativeData {
                 text,
+                placement: used_placement(authored, &resolution),
                 resolution: resolution.clone(),
                 style,
                 opportunity: tables.opportunities.len(),
@@ -846,6 +845,22 @@ fn automatic_cut(
     Ok(Some((index, style, origin)))
 }
 
+fn used_placement(
+    style: &crate::Style,
+    resolution: &IndicationResolution,
+) -> crate::HyphenationPlacement {
+    if matches!(resolution, IndicationResolution::ResolvedNative) {
+        crate::HyphenationPlacement::LogicalBefore
+    } else {
+        style
+            .native_hyphenation_convention
+            .as_ref()
+            .map_or(crate::HyphenationPlacement::LogicalBefore, |value| {
+                value.placement()
+            })
+    }
+}
+
 fn indication(
     catalogue: &mut crate::catalogue::Catalogue,
     styles: &[ResolvedStyleRun],
@@ -880,7 +895,7 @@ fn indication(
         };
         if !text.is_empty()
             && let Some(convention) = &authored.native_hyphenation_convention
-            && convention.placement() != crate::HyphenationPlacement::LogicalBefore
+            && convention.placement() == crate::HyphenationPlacement::BothSides
         {
             return Err(crate::hyphenation::error(
                 crate::HyphenationError::UnsupportedPlacement(convention.placement()),
@@ -1089,16 +1104,16 @@ fn disappearing_space_wrap(analyzed: &AnalyzedData, atom: usize) -> Option<crate
 
 /// Performs actual alternative font matching/shaping while the original
 /// catalogue capture is still owned by preparation. No finalizer can requery it.
-pub(crate) fn prepare_alternatives(
+pub(crate) fn prepare_indication_fonts(
     catalogue: &mut crate::catalogue::Catalogue,
     analyzed: &std::sync::Arc<AnalyzedData>,
     styles: &[ResolvedStyleRun],
     tables: &PreparedTables,
     scratch: &mut crate::engine::shape::ShapeContext,
     css_tabs: bool,
-) -> crate::Result<Vec<PreparedAlternativeShape>> {
+) -> crate::Result<Vec<PreparedIndicationFonts>> {
     let mut alternatives = Vec::with_capacity(tables.alternatives.len());
-    for (index, row) in tables.alternatives.iter().enumerate() {
+    for row in &tables.alternatives {
         if let IndicationResolution::Primary(font) = &row.resolution
             && catalogue.identity() != font.catalogue_identity()
         {
@@ -1116,16 +1131,65 @@ pub(crate) fn prepare_alternatives(
             projection,
             inserted_atoms,
             original_atoms,
-            base_insertion,
         } = replacement_projection(analyzed, tables, input)?;
-        let (analysis, _) = crate::engine::analysis::analyze(
+        let (mut analysis, _) = crate::engine::analysis::analyze(
             &projection,
             &analyzed.styles,
             analyzed.processed.source().boxes(),
             &analyzed.paragraph,
         )?;
+        for (atom, original) in original_atoms.iter().enumerate() {
+            if let Some(original) = *original {
+                analysis.levels[atom] = analyzed.analysis.levels[original];
+            }
+        }
+        let base = presentation::before_attachment(analyzed, tables, row)?
+            .original_level(analyzed, tables)?;
+        presentation::local_levels(&projection, &mut analysis, inserted_atoms.clone(), base & 1)?;
+        // Capture only the genuine selected side. Unselected original text
+        // cannot change an indication's query EGC or script inheritance.
+        let side = match row.placement {
+            crate::HyphenationPlacement::LogicalAfter => {
+                inserted_atoms.start..projection.atoms.len()
+            }
+            _ => 0..inserted_atoms.end,
+        };
+        let offset = side.start;
+        let mut atoms = projection.atoms[side.clone()].to_vec();
+        let mut position = 0usize;
+        for atom in &mut atoms {
+            let end = position
+                .checked_add(atom.presentation.len())
+                .ok_or_else(crate::projection::length_overflow)?;
+            atom.presentation = Range::new(position, end);
+            position = end;
+        }
+        let projection =
+            SourceProjection::from_atoms(atoms, position, projection.barriers.clone())?;
+        let graphemes = projection
+            .graphemes
+            .windows(2)
+            .filter_map(|p| {
+                let a = projection
+                    .atoms
+                    .partition_point(|a| a.presentation.start < p[0]);
+                let b = projection
+                    .atoms
+                    .partition_point(|a| a.presentation.start < p[1]);
+                (a < b).then_some(a..b)
+            })
+            .collect();
+        let mut analysis = Analysis {
+            infos: analysis.infos[side.clone()].to_vec(),
+            levels: analysis.levels[side].to_vec(),
+            base_level: analysis.base_level,
+            box_levels: analysis.box_levels,
+            control_levels: analysis.control_levels,
+            graphemes,
+        };
+        let inserted_atoms = inserted_atoms.start - offset..inserted_atoms.end - offset;
         let catalogue_identity = catalogue.identity().clone();
-        let shaped = crate::engine::shape::shape(
+        let mut font_queries = crate::engine::shape::capture_fonts(
             catalogue.query(),
             crate::engine::ShapingInput {
                 projection: &projection,
@@ -1138,15 +1202,39 @@ pub(crate) fn prepare_alternatives(
             },
             scratch,
         )?;
-        alternatives.push(PreparedAlternativeShape {
-            alternative: index,
+        if row.placement == crate::HyphenationPlacement::LogicalAfter && !inserted_atoms.is_empty()
+        {
+            presentation::local_levels(
+                &projection,
+                &mut analysis,
+                inserted_atoms.clone(),
+                (base & 1) ^ 1,
+            )?;
+            font_queries.extend(crate::engine::shape::capture_fonts(
+                catalogue.query(),
+                crate::engine::ShapingInput {
+                    projection: &projection,
+                    analysis: &analysis,
+                    styles,
+                    boxes: analyzed.processed.source().boxes(),
+                    font_catalogue: &catalogue_identity,
+                    paragraph: &analyzed.paragraph,
+                    css_tabs,
+                },
+                scratch,
+            )?);
+            presentation::local_levels(
+                &projection,
+                &mut analysis,
+                inserted_atoms.clone(),
+                base & 1,
+            )?;
+        }
+        alternatives.push(PreparedIndicationFonts {
             inserted_atoms,
             projection,
             analysis,
-            shaped,
-            original_atoms,
-            base_insertion,
-            joining_domains: Vec::new(),
+            font_queries,
         });
     }
     Ok(alternatives)
@@ -1156,7 +1244,6 @@ struct ReplacementProjection {
     projection: SourceProjection,
     inserted_atoms: IndexRange<usize>,
     original_atoms: Vec<Option<usize>>,
-    base_insertion: usize,
 }
 
 fn replacement_projection(
@@ -1274,7 +1361,6 @@ fn replacement_projection(
         projection,
         inserted_atoms: inserted,
         original_atoms,
-        base_insertion: start,
     })
 }
 
@@ -1286,288 +1372,7 @@ pub(crate) fn select_presentation(
     prepared: &crate::engine::PreparedData,
     request: &super::LineSelectionRequest,
 ) -> crate::Result<SelectedPresentation> {
-    let tables = &prepared.tables;
-    let start = tables.boundaries[request.start.index];
-    let end = tables.boundaries[request.end.index];
-    let alternative = request.alternative.as_ref().map(|value| value.index);
-    let variant = alternative.map(|index| &prepared.alternative_shapes[index]);
-    let projection = variant.map_or(&prepared.analyzed.projection, |value| &value.projection);
-    let analysis = variant.map_or(&prepared.analyzed.analysis, |value| &value.analysis);
-    let shaped = variant.map_or(&prepared.shaped, |value| &value.shaped);
-    let definition = alternative.map(|i| tables.alternatives[i].definition);
-    let mut output = PresentationOutput::default();
-    let mut original_cursor = 0usize;
-    for (local, participant) in tables.participants[start.participant..end.participant]
-        .iter()
-        .enumerate()
-    {
-        let defining = match (definition, *participant) {
-            (Some(AlternativeDefinition::Source { source, .. }), ParticipantData::Text(i)) => {
-                !tables.units[i].deleted
-                    && tables.units[i].source.start <= source.start
-                    && tables.units[i].source.end >= source.end
-            }
-            (Some(AlternativeDefinition::Control { control, .. }), ParticipantData::Control(i)) => {
-                tables.controls[i].occurrence == control
-            }
-            _ => false,
-        };
-        // Source-defined SHY owns its deleted authored interval even when its
-        // computed replacement is empty. Native controls own no authored text.
-        if defining && let ParticipantData::Text(i) = *participant {
-            let row = &tables.units[i];
-            push_presentation_unit(
-                &mut output,
-                projection,
-                &[],
-                UnitCapture {
-                    source: row.source,
-                    processed: row.processed,
-                    participant: Some(local),
-                    kind: PresentationUnitKind::Deleted,
-                    level: row.level,
-                    bidi_class: None,
-                },
-            )?;
-        }
-        if defining {
-            let level = match *participant {
-                ParticipantData::Text(i) => tables.units[i].level,
-                ParticipantData::Control(i) => {
-                    analysis.control_levels[tables.controls[i].occurrence]
-                }
-                ParticipantData::Atomic(_) => {
-                    unreachable!("manual definitions are text or controls")
-                }
-            };
-            push_replacement(
-                &mut output,
-                prepared,
-                variant.expect("captured selected alternative"),
-                level,
-            )?;
-        }
-        match *participant {
-            ParticipantData::Text(i) if !defining => {
-                let row = &tables.units[i];
-                let kind = if let Some(origin) = row.empty_origin {
-                    PresentationUnitKind::EmptyOrigin { origin }
-                } else if row.deleted {
-                    PresentationUnitKind::Deleted
-                } else {
-                    PresentationUnitKind::Text
-                };
-                let mut selected_atoms = Vec::new();
-                if !row.atoms.is_empty() {
-                    while original_cursor < projection.atoms.len()
-                        && projection.atoms[original_cursor].source.end <= row.source.start
-                    {
-                        original_cursor += 1;
-                    }
-                    let mut index = original_cursor;
-                    while index < projection.atoms.len()
-                        && projection.atoms[index].source.start < row.source.end
-                    {
-                        if !variant.is_some_and(|v| v.inserted_atoms.contains(&index)) {
-                            selected_atoms.push(index);
-                        }
-                        index += 1;
-                    }
-                    original_cursor = index;
-                }
-                let level = selected_atoms
-                    .first()
-                    .map_or(row.level, |i| analysis.levels[*i]);
-                let class = selected_atoms
-                    .first()
-                    .map(|i| analysis.infos[*i].0.bidi_class);
-                push_presentation_unit(
-                    &mut output,
-                    projection,
-                    &selected_atoms,
-                    UnitCapture {
-                        source: row.source,
-                        processed: row.processed,
-                        participant: Some(local),
-                        kind,
-                        level,
-                        bidi_class: class,
-                    },
-                )?;
-            }
-            ParticipantData::Text(_) => {}
-            ParticipantData::Atomic(i) => {
-                let row = tables.atomics[i];
-                push_presentation_unit(
-                    &mut output,
-                    projection,
-                    &[],
-                    UnitCapture {
-                        source: Range::new(row.source, row.source),
-                        processed: Range::new(row.processed, row.processed),
-                        participant: Some(local),
-                        kind: PresentationUnitKind::Atomic {
-                            occurrence: row.occurrence,
-                        },
-                        level: analysis.box_levels[row.occurrence],
-                        bidi_class: None,
-                    },
-                )?;
-            }
-            ParticipantData::Control(i) => {
-                let row = tables.controls[i];
-                let kind = &prepared.analyzed.paragraph.controls[row.occurrence].kind;
-                let cp = if *kind == ParagraphControlKind::ForcedBreak {
-                    Some(0xa)
-                } else {
-                    kind.code_point()
-                };
-                let class = cp.map(|cp| {
-                    icu_properties::CodePointMapData::<icu_properties::props::BidiClass>::new()
-                        .get32(cp)
-                });
-                push_presentation_unit(
-                    &mut output,
-                    projection,
-                    &[],
-                    UnitCapture {
-                        source: Range::new(row.source, row.source),
-                        processed: Range::new(row.processed, row.processed),
-                        participant: Some(local),
-                        kind: PresentationUnitKind::Control {
-                            occurrence: row.occurrence,
-                        },
-                        level: analysis.control_levels[row.occurrence],
-                        bidi_class: class,
-                    },
-                )?;
-            }
-        }
-    }
-    if matches!(definition, Some(AlternativeDefinition::Automatic { .. })) {
-        push_replacement(
-            &mut output,
-            prepared,
-            variant.expect("captured automatic indication"),
-            analysis.base_level,
-        )?;
-    }
-    let PresentationOutput {
-        atoms,
-        indices,
-        units,
-        pieces,
-        position: presentation,
-    } = output;
-    let selected_projection =
-        SourceProjection::from_atoms(atoms, presentation, projection.barriers.clone())?;
-    let infos = indices.iter().map(|i| analysis.infos[*i]).collect();
-    let levels = indices.iter().map(|i| analysis.levels[*i]).collect();
-    let graphemes = selected_projection
-        .graphemes
-        .windows(2)
-        .filter_map(|pair| {
-            let start = selected_projection
-                .atoms
-                .partition_point(|a| a.presentation.start < pair[0]);
-            let end = selected_projection
-                .atoms
-                .partition_point(|a| a.presentation.start < pair[1]);
-            (start < end).then_some(start..end)
-        })
-        .collect();
-    let selected_analysis = Analysis {
-        infos,
-        levels,
-        graphemes,
-        base_level: analysis.base_level,
-        box_levels: analysis.box_levels.clone(),
-        control_levels: analysis.control_levels.clone(),
-    };
-    let mut assignments: Vec<RetainedAssignment> = Vec::new();
-    for (selected_atom, original_atom) in indices.into_iter().enumerate() {
-        if prepared.options.tabs() == crate::TabPreparation::CssStops
-            && selected_projection.atoms[selected_atom].code_point == 9
-        {
-            continue;
-        }
-        let run = shaped
-            .runs
-            .partition_point(|run| run.atoms.end <= original_atom);
-        if !shaped
-            .runs
-            .get(run)
-            .is_some_and(|run| run.atoms.contains(&original_atom))
-        {
-            return Err(crate::Error::new(
-                crate::ErrorCode::LayoutFailed,
-                "selected atom has no captured font assignment",
-            ));
-        }
-        if let Some(previous) = assignments.last_mut()
-            && previous.run == run
-            && previous.alternative == alternative
-            && previous.atoms.end == selected_atom
-            && previous.captured_atoms.end == original_atom
-        {
-            previous.atoms.end += 1;
-            previous.captured_atoms.end += 1;
-        } else {
-            assignments.push(RetainedAssignment {
-                atoms: selected_atom..selected_atom + 1,
-                captured_atoms: original_atom..original_atom + 1,
-                alternative,
-                run,
-            });
-        }
-    }
-    Ok(SelectedPresentation {
-        source: Range::new(start.source_after, end.source_before),
-        units,
-        projection: selected_projection,
-        analysis: selected_analysis,
-        assignments,
-        mapping: std::sync::Arc::new(SelectedMapping { pieces }),
-    })
-}
-
-fn push_replacement(
-    output: &mut PresentationOutput,
-    prepared: &crate::engine::PreparedData,
-    variant: &PreparedAlternativeShape,
-    empty_level: u8,
-) -> crate::Result<()> {
-    let row = &prepared.tables.alternatives[variant.alternative];
-    let processed = prepared
-        .analyzed
-        .processed
-        .project(row.insertion_anchor, crate::Affinity::After);
-    let capture = |level, bidi_class| UnitCapture {
-        source: Range::new(row.insertion_anchor, row.insertion_anchor),
-        processed: Range::new(processed, processed),
-        participant: None,
-        kind: PresentationUnitKind::Replacement {
-            alternative: variant.alternative,
-        },
-        level,
-        bidi_class,
-    };
-    if variant.inserted_atoms.is_empty() {
-        push_presentation_unit(output, &variant.projection, &[], capture(empty_level, None))?;
-    } else {
-        for atom in variant.inserted_atoms.clone() {
-            push_presentation_unit(
-                output,
-                &variant.projection,
-                &[atom],
-                capture(
-                    variant.analysis.levels[atom],
-                    Some(variant.analysis.infos[atom].0.bidi_class),
-                ),
-            )?;
-        }
-    }
-    Ok(())
+    presentation::select(prepared, request)
 }
 
 #[derive(Default)]
@@ -1624,6 +1429,7 @@ fn push_presentation_unit(
         code_point,
         bidi_class,
         level,
+        line_level: level,
         atoms: atom_start..output.atoms.len(),
         eligible_space: code_point == Some(0x20),
         kind,

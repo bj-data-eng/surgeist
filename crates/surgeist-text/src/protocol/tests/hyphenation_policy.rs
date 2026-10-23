@@ -280,10 +280,20 @@ fn convention_text_placement_and_native_group_have_distinct_authority() {
             native_hyphenation_convention: Some(convention("~", placement)),
             ..bound_style()
         };
-        assert_eq!(
-            reason(&capture(&mut system, input("AX\u{ad}XXX", base.clone())).unwrap_err()),
-            HyphenationError::UnsupportedPlacement(placement)
-        );
+        if placement == Placement::BothSides {
+            assert_eq!(
+                reason(&capture(&mut system, input("AX\u{ad}XXX", base.clone())).unwrap_err()),
+                HyphenationError::UnsupportedPlacement(placement)
+            );
+        } else {
+            // LogicalAfter is now a real continuation choice; it emits nothing
+            // on this ending while preserving its actual convention string.
+            let p = capture(&mut system, input("AX\u{ad}XXX", base.clone())).unwrap();
+            assert_eq!(texts(&p), [vec![126]]);
+            let line = finish(&p, 0);
+            assert_eq!(line.feedback().advance, 40.0);
+            assert!(line.hyphenation_continuation().is_some());
+        }
         let empty = Style {
             hyphenate_character: HyphenateCharacter::String(Text::from("")),
             ..base.clone()

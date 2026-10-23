@@ -9,13 +9,13 @@ use crate::projection::SourceProjection;
 use crate::protocol::{
     PreparationOptions,
     paragraph::ParagraphData,
-    prepared::{PreparedAlternativeShape, PreparedTables, SelectedMapping},
+    prepared::{PreparedIndicationFonts, PreparedTables, SelectedMapping},
     selection::SelectedData,
 };
 use crate::{FontCatalogueIdentity, InlineBox, Point, Range};
 
 pub(crate) mod analysis;
-mod bidi;
+pub(crate) mod bidi;
 mod convert;
 pub(crate) mod editing;
 pub(crate) mod layout;
@@ -78,7 +78,7 @@ pub(crate) struct PreparedData {
     pub(crate) default_style_index: Option<usize>,
     pub(crate) shaped: layout::data::ShapedData,
     pub(crate) tables: PreparedTables,
-    pub(crate) alternative_shapes: Vec<PreparedAlternativeShape>,
+    pub(crate) indication_fonts: Vec<PreparedIndicationFonts>,
     pub(crate) joining_domains: Vec<shape::JoiningDomain>,
 }
 
@@ -284,7 +284,7 @@ pub(crate) fn prepare(
     }
     let tables =
         crate::protocol::prepared::prepare_tables(catalogue, &styles, &analyzed, &shaped, profile)?;
-    let mut alternative_shapes = crate::protocol::prepared::prepare_alternatives(
+    let indication_fonts = crate::protocol::prepared::prepare_indication_fonts(
         catalogue,
         &analyzed,
         &styles,
@@ -292,12 +292,12 @@ pub(crate) fn prepare(
         scratch,
         options.tabs() == crate::TabPreparation::CssStops,
     )?;
-    let joining_domains = shape::prepare_joining_domains(&analyzed, &mut alternative_shapes)?;
+    let joining_domains = shape::prepare_joining_domains(&analyzed, &shaped, &indication_fonts)?;
     let tab_metrics = crate::tabs::prepare(
         catalogue,
         &analyzed,
         &styles,
-        &alternative_shapes,
+        &indication_fonts,
         options,
         scratch,
     )?;
@@ -310,7 +310,7 @@ pub(crate) fn prepare(
         default_style_index,
         shaped,
         tables,
-        alternative_shapes,
+        indication_fonts,
         joining_domains,
     }))
 }

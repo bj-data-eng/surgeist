@@ -139,6 +139,7 @@ fn line(prepared: &PreparedText) -> FinalizedLine {
     };
     let selected = prepared
         .select(LineSelectionRequest {
+            incoming: None,
             start: prepared.boundary_views().next().unwrap().handle(),
             end: termination.view().boundary(),
             termination: crate::PreparedTermination::Ordinary(termination),
@@ -917,6 +918,7 @@ fn contextual_source_defined_replacement_remains_presentation_only() {
     let termination = alternative.view().opportunity();
     let selected = prepared
         .select(LineSelectionRequest {
+            incoming: None,
             start: prepared.boundary_views().next().unwrap().handle(),
             end: termination.view().boundary(),
             termination: crate::PreparedTermination::Ordinary(termination),
@@ -1330,6 +1332,7 @@ fn selected_soft_wrap_does_not_reset_plaintext_context_or_copy_line_edge_deletio
     let count = boundary.view().participant_offset();
     let selected = prepared
         .select(LineSelectionRequest {
+            incoming: None,
             start: prepared.boundary_views().next().unwrap().handle(),
             end: boundary,
             termination: crate::PreparedTermination::Ordinary(termination),
@@ -1688,6 +1691,7 @@ fn right_line(prepared: &PreparedText) -> FinalizedLine {
     };
     let selected = prepared
         .select(LineSelectionRequest {
+            incoming: None,
             start: prepared.boundary_views().nth(2).unwrap().handle(),
             end: termination.view().boundary(),
             termination: crate::PreparedTermination::Ordinary(termination),

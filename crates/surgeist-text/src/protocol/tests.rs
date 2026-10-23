@@ -1,5 +1,7 @@
 //! Functional qualification of the new public phase front.
 
+mod after_continuation;
+mod after_standalone;
 mod automatic_model;
 mod automatic_opportunities;
 mod conditional;
@@ -89,6 +91,7 @@ fn request(prepared: &PreparedText) -> LineSelectionRequest {
         .unwrap()
         .handle();
     LineSelectionRequest {
+        incoming: None,
         start,
         end: termination.view().boundary(),
         termination: crate::PreparedTermination::Ordinary(termination),
@@ -438,6 +441,7 @@ fn selected_empty_control(policy: ParagraphStrut) -> SelectedLine {
         })
         .collect();
     p.select(LineSelectionRequest {
+        incoming: None,
         start: p.boundary_views().next().unwrap().handle(),
         end,
         termination: crate::PreparedTermination::Ordinary(termination),
