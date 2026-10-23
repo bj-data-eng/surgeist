@@ -715,6 +715,59 @@ measurements or the next actual line's eligibility. These intrinsic and emergenc
 rules are explicit Surgeist policy, not a claim of uniquely specified CSS behavior
 or implementation completion.
 
+### Unfragmented element-tail hyphenation restriction
+
+Layout owns the block container's computed `hyphenate-limit-last` policy, with
+`none` as the initial value. The consuming style adapter owns inheritance and
+conversion. The pinned [last-line clause](../references/css-text-4--WD-css-text-4-20260814--106c5cd086ab.md#hyphenate-line-limits)
+includes element, column, page and spread boundaries. The requirements below
+select the unfragmented element-terminal part of `always`; they do not establish
+fragmentation support or complete the five-value feature. They are explicit
+Surgeist policy where the specification leaves edge cases undetermined.
+
+For finite line selection with `always`, use the authenticated owning block's
+completed in-flow line sequence. Find its last line containing actual in-flow
+content, ignoring trailing empty lines only for this determination and retaining
+their source and layout geometry. Content is not defined by positive advance or
+visible ink. The protected line is that final content line's immediate
+soft-wrapped predecessor, in the same uninterrupted forced-break segment, which
+actually continues into it. Do not scan backward across a forced break. A
+one-line final segment has no protected predecessor; earlier segments are not
+retrospectively restricted. If the final content line ends with a genuine forced
+break and only empty terminal lines follow, its soft predecessor remains
+protected.
+
+The protected predecessor cannot end in an admitted Source, Control or Automatic
+hyphenation alternative, including an empty indication. Ordinary literal visible
+hyphen breaks remain distinct. This inclusive reading retains the unresolved
+[CSSWG issue 5090](https://github.com/w3c/csswg-drafts/issues/5090) dispute rather
+than claiming settled interoperability. An oversized final word grants no new
+hyphenation exception: use independently permitted nonhyphenating emergency
+breaking or ordinary overflow behavior. A genuine forced break between two
+content lines prevents the protected relationship.
+
+Reselect through the existing line-selection and finalization machinery, then
+validate the resulting complete tail before publication. Reflow can change the
+protected line. Rejected sequences cannot leave permanent bans or committed
+source, indentation, float or successive-line state; removing an already-shaped
+indication does not implement the restriction. For example, the pinned
+`to show Antarc-` / `tica.` example becomes `to show` / `Antarctica.`, subject to
+the actual line geometry, rather than merely banning an alternative on the
+paragraph's final line.
+
+`BlockEnd` alone cannot authenticate the completed in-flow tail or its actual
+soft/forced continuation relationships. `Unknown` cannot imply exemption, and
+`NonBlockBoundary` cannot prove a later formatted line. Missing necessary tail
+ownership is a capability limitation. Column, page and spread restrictions need
+genuine fragmentation-break production and line association; forced LF, grid
+columns, clipping and paint fragments do not supply that authority.
+
+MinContent retains its existing manual partition and automatic refinement rules
+without constructing a hypothetical protected tail. MaxContent remains unbroken.
+Neither intrinsic purpose consumes or produces finite last-line restriction
+evidence. This intrinsic exemption is native policy. These requirements do not
+assert implementation completion.
+
 ### Float encounters inside shared text units
 
 A float remains a Layout-owned box at its original source-order occurrence. It
