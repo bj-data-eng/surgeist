@@ -323,6 +323,11 @@ pub struct hb_ot_shape_context_t<'a> {
 
 // Pull it all together!
 pub fn shape_internal(ctx: &mut hb_ot_shape_context_t) {
+    let initial_vars = ctx.buffer.allocated_var_bits;
+    original_joining::begin(ctx.buffer);
+    if !ctx.buffer.successful && ctx.buffer.joining.request.is_some() {
+        return;
+    }
     ctx.buffer.allocate_unicode_vars();
 
     initialize_masks(ctx);
@@ -337,7 +342,14 @@ pub fn shape_internal(ctx: &mut hb_ot_shape_context_t) {
         func(ctx.plan, ctx.face, ctx.buffer);
     }
 
-    substitute_pre(ctx);
+    if !substitute_pre(ctx) {
+        // The new refusal can precede every shaper's GSUB cleanup pause.
+        // This invocation owns all phase-local allocations since entry;
+        // discard them together before publishing the refused lifecycle.
+        ctx.buffer.allocated_var_bits = initial_vars;
+        ctx.buffer.direction = ctx.target_direction;
+        return;
+    }
     position(ctx);
     substitute_post(ctx);
 
@@ -348,8 +360,10 @@ pub fn shape_internal(ctx: &mut hb_ot_shape_context_t) {
     ctx.buffer.direction = ctx.target_direction;
 }
 
-fn substitute_pre(ctx: &mut hb_ot_shape_context_t) {
-    hb_ot_substitute_default(ctx);
+fn substitute_pre(ctx: &mut hb_ot_shape_context_t) -> bool {
+    if !hb_ot_substitute_default(ctx) {
+        return false;
+    }
 
     ctx.buffer.allocate_gsubgpos_vars();
 
@@ -358,6 +372,7 @@ fn substitute_pre(ctx: &mut hb_ot_shape_context_t) {
     if ctx.plan.apply_morx && ctx.plan.apply_gpos {
         aat::layout::remove_deleted_glyphs(ctx.buffer);
     }
+    true
 }
 
 fn substitute_post(ctx: &mut hb_ot_shape_context_t) {
@@ -373,7 +388,7 @@ fn substitute_post(ctx: &mut hb_ot_shape_context_t) {
     }
 }
 
-fn hb_ot_substitute_default(ctx: &mut hb_ot_shape_context_t) {
+fn hb_ot_substitute_default(ctx: &mut hb_ot_shape_context_t) -> bool {
     rotate_chars(ctx);
 
     ctx.buffer
@@ -382,6 +397,12 @@ fn hb_ot_substitute_default(ctx: &mut hb_ot_shape_context_t) {
     ot_shape_normalize::_hb_ot_shape_normalize(ctx.plan, ctx.buffer, ctx.face);
 
     setup_masks(ctx);
+    original_joining::finish_masks(ctx.buffer);
+    if !ctx.buffer.successful && ctx.buffer.joining.request.is_some() {
+        ctx.buffer
+            .deallocate_var(GlyphInfo::NORMALIZER_GLYPH_INDEX_VAR);
+        return false;
+    }
 
     // This is unfortunate to go here, but necessary...
     if ctx.plan.fallback_mark_positioning {
@@ -394,6 +415,7 @@ fn hb_ot_substitute_default(ctx: &mut hb_ot_shape_context_t) {
 
     ctx.buffer
         .deallocate_var(GlyphInfo::NORMALIZER_GLYPH_INDEX_VAR);
+    true
 }
 
 fn hb_ot_substitute_plan(ctx: &mut hb_ot_shape_context_t) {
@@ -702,6 +724,7 @@ fn insert_dotted_circle(buffer: &mut hb_buffer_t, face: &hb_font_t) {
             cluster: buffer.cur(0).cluster,
             ..GlyphInfo::default()
         };
+        info.joining_lineage = original_joining::synthetic(buffer, 0x25cc);
 
         info.init_unicode_props(&mut buffer.scratch_flags);
         buffer.clear_output();
@@ -772,6 +795,13 @@ fn ensure_native_direction(buffer: &mut hb_buffer_t) {
         _hb_ot_layout_reverse_graphemes(buffer);
         buffer.direction = buffer.direction.reverse();
     }
+}
+
+pub(crate) fn prepare_joining_source(buffer: &mut hb_buffer_t) {
+    buffer.allocate_unicode_vars();
+    set_unicode_props(buffer);
+    form_clusters(buffer);
+    ensure_native_direction(buffer);
 }
 
 fn rotate_chars(ctx: &mut hb_ot_shape_context_t) {

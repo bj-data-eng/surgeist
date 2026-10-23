@@ -473,12 +473,18 @@ pub fn _hb_ot_shape_normalize(
                         }
 
                         // Merge and remove the second composable.
+                        let lineage = super::original_joining::union(
+                            ctx.buffer,
+                            ctx.buffer.out_info()[starter].joining_lineage,
+                            ctx.buffer.out_info()[ctx.buffer.out_len - 1].joining_lineage,
+                        );
                         ctx.buffer.merge_out_clusters(starter, ctx.buffer.out_len);
                         ctx.buffer.out_len -= 1;
 
                         // Modify starter and carry on.
                         let mut flags = ctx.buffer.scratch_flags;
                         let info = &mut ctx.buffer.out_info_mut()[starter];
+                        info.joining_lineage = lineage;
                         info.glyph_id = composed;
                         info.set_normalizer_glyph_index(u32::from(glyph_id));
                         info.init_unicode_props(&mut flags);

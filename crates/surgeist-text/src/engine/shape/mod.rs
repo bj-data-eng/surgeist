@@ -68,6 +68,96 @@ struct SelectedFont {
     attrs: Attributes,
 }
 
+/// Provider-owned Unicode work shared by every font run in this actual domain.
+pub(crate) struct JoiningDomain {
+    atoms: IndexRange<usize>,
+    script: Script,
+    level: u8,
+    source: harfrust::JoiningSource,
+}
+
+pub(crate) fn prepare_joining_domains(
+    analyzed: &super::AnalyzedData,
+    alternatives: &mut [crate::protocol::prepared::PreparedAlternativeShape],
+) -> Result<Vec<JoiningDomain>> {
+    let projection = &analyzed.projection;
+    let barriers: BTreeSet<_> = projection
+        .barriers
+        .iter()
+        .map(|at| {
+            projection
+                .atoms
+                .partition_point(|atom| atom.source.end <= *at)
+        })
+        .collect();
+    let mut domains: Vec<JoiningDomain> = Vec::new();
+    for alternative in alternatives {
+        for run in &alternative.shaped.runs {
+            let mut originals = alternative.original_atoms[run.atoms.clone()]
+                .iter()
+                .flatten();
+            let first_original = originals.next().copied();
+            let first = first_original.unwrap_or_else(|| {
+                alternative
+                    .base_insertion
+                    .min(projection.atoms.len().saturating_sub(1))
+            });
+            let last = originals.last().copied().unwrap_or(first);
+            let extent = bounded_context(first..first + 1, 0..projection.atoms.len(), &barriers);
+            if first_original.is_some() && !extent.contains(&last) {
+                return Err(super::shaping_refused(
+                    harfrust::ShapingRefusal::JoiningCorrespondence,
+                ));
+            }
+            let index = if let Some(index) = domains.iter().position(|domain| {
+                domain.atoms == extent
+                    && domain.script == run.script
+                    && domain.level == run.level & 1
+            }) {
+                index
+            } else {
+                let bytes = atom_bytes(projection, extent.clone());
+                let source = harfrust::JoiningSource::analyze(
+                    &projection.text[bytes],
+                    provider_script(run.script),
+                    provider_direction(run.level),
+                )
+                .map_err(joining_source_error)?;
+                domains.push(JoiningDomain {
+                    atoms: extent,
+                    script: run.script,
+                    level: run.level & 1,
+                    source,
+                });
+                domains.len() - 1
+            };
+            alternative.joining_domains.push(index);
+        }
+    }
+    Ok(domains)
+}
+
+fn provider_script(script: Script) -> harfrust::Script {
+    convert::script_to_harfrust(convert::script_to_fontique(script, &AnalysisDataSources))
+}
+
+fn provider_direction(level: u8) -> harfrust::Direction {
+    if level & 1 == 0 {
+        harfrust::Direction::LeftToRight
+    } else {
+        harfrust::Direction::RightToLeft
+    }
+}
+
+fn joining_source_error(error: harfrust::JoiningSourceError) -> Error {
+    super::shaping_refused(match error {
+        harfrust::JoiningSourceError::Refused(reason) => reason,
+        harfrust::JoiningSourceError::UnsupportedDirection => {
+            harfrust::ShapingRefusal::JoiningProfile
+        }
+    })
+}
+
 impl PartialEq for SelectedFont {
     fn eq(&self, other: &Self) -> bool {
         let (left, _) = self.font.blob.clone().into_raw_parts();
@@ -275,8 +365,8 @@ pub(crate) fn finalize(
         }
     } else {
         // Base-source cuts retain joining context from the actual processed
-        // capture, including continuation lines. A replacement owns a distinct
-        // selected projection; unbroken hyphenation context is a separate operation.
+        // capture, including continuation lines. A replacement additionally
+        // owns a selected-line Unicode domain for its computed contributions.
         let captured_base = selected.request.alternative.is_none();
         let context_projection = if captured_base {
             &prepared.analyzed.projection
@@ -293,7 +383,41 @@ pub(crate) fn finalize(
             })
             .collect();
         let allowed = 0..context_projection.atoms.len();
-        for assignment in &presentation.assignments {
+        let mut selected_domains: Vec<JoiningDomain> = Vec::new();
+        let mut selected_domain_rows = Vec::new();
+        if !captured_base {
+            for assignment in &presentation.assignments {
+                let variant = &prepared.alternative_shapes[assignment
+                    .alternative
+                    .expect("selected replacement capture")];
+                let run = &variant.shaped.runs[assignment.run];
+                let extent = bounded_context(assignment.atoms.clone(), allowed.clone(), &barriers);
+                let index = if let Some(index) = selected_domains.iter().position(|domain| {
+                    domain.atoms == extent
+                        && domain.script == run.script
+                        && domain.level == run.level & 1
+                }) {
+                    index
+                } else {
+                    let bytes = atom_bytes(input.projection, extent.clone());
+                    let source = harfrust::JoiningSource::analyze(
+                        &input.projection.text[bytes],
+                        provider_script(run.script),
+                        provider_direction(run.level),
+                    )
+                    .map_err(joining_source_error)?;
+                    selected_domains.push(JoiningDomain {
+                        atoms: extent,
+                        script: run.script,
+                        level: run.level & 1,
+                        source,
+                    });
+                    selected_domains.len() - 1
+                };
+                selected_domain_rows.push(index);
+            }
+        }
+        for (assignment_row, assignment) in presentation.assignments.iter().enumerate() {
             let captured = assignment.alternative.map_or(&prepared.shaped, |index| {
                 &prepared.alternative_shapes[index].shaped
             });
@@ -304,7 +428,26 @@ pub(crate) fn finalize(
                 assignment.atoms.clone()
             };
             let extent = bounded_context(context_atoms.clone(), allowed.clone(), &barriers);
-            let context = RunContext::new(context_projection, context_atoms, extent);
+            let mut context = RunContext::new(context_projection, context_atoms, extent);
+            if let Some(index) = assignment.alternative {
+                let variant = &prepared.alternative_shapes[index];
+                let original = &prepared.joining_domains[variant.joining_domains[assignment.run]];
+                let presentation_domain = &selected_domains[selected_domain_rows[assignment_row]];
+                let mut original_map = Vec::with_capacity(assignment.captured_atoms.len());
+                for atom in &variant.original_atoms[assignment.captured_atoms.clone()] {
+                    original_map.push(atom.map(|atom| atom - original.atoms.start));
+                }
+                let mut presentation_map = Vec::with_capacity(assignment.atoms.len());
+                for atom in assignment.atoms.clone() {
+                    presentation_map.push(atom - presentation_domain.atoms.start);
+                }
+                context.joining = Some(JoiningRun {
+                    original: &original.source,
+                    original_map,
+                    presentation: &presentation_domain.source,
+                    presentation_map,
+                });
+            }
             append_retained_run(
                 &input,
                 assignment.atoms.clone(),
@@ -554,6 +697,14 @@ fn install_mixed_order(data: &mut ShapedData, input: &ShapingInput<'_>) {
 struct RunContext<'a> {
     before: &'a str,
     after: &'a str,
+    joining: Option<JoiningRun<'a>>,
+}
+
+struct JoiningRun<'a> {
+    original: &'a harfrust::JoiningSource,
+    original_map: Vec<Option<usize>>,
+    presentation: &'a harfrust::JoiningSource,
+    presentation_map: Vec<usize>,
 }
 impl<'a> RunContext<'a> {
     fn new(
@@ -566,6 +717,7 @@ impl<'a> RunContext<'a> {
         Self {
             before: &projection.text[extent.start..bytes.start],
             after: &projection.text[bytes.end..extent.end],
+            joining: None,
         }
     }
 }
@@ -658,7 +810,7 @@ fn append_retained_run(
 }
 
 fn append_request(
-    request: RunRequest<'_, '_>,
+    mut request: RunRequest<'_, '_>,
     scratch: &mut ShapeContext,
     output: &mut ShapedData,
 ) -> Result<()> {
@@ -802,6 +954,22 @@ fn append_request(
     buffer.set_script(script);
     if let Some(language) = language {
         buffer.set_language(language);
+    }
+    // The provider retains its own validated compact map. Release these
+    // explicitly bounded adapter inputs before normalizing or shaping.
+    if let Some(joining) = request.context.joining.take()
+        && let Err(error) = buffer.set_joining_sources(
+            joining.original,
+            &joining.original_map,
+            joining.presentation,
+            &joining.presentation_map,
+        )
+    {
+        scratch.buffer = Some(buffer);
+        return Err(super::shaping_refused(match error {
+            harfrust::JoiningInputError::GrowthLimit => harfrust::ShapingRefusal::GrowthLimit,
+            _ => harfrust::ShapingRefusal::JoiningInput,
+        }));
     }
     let glyph_buffer = shaper.shape_with_plan(plan, buffer, &features);
     // This is the actual returned invocation's status. No glyph, position,

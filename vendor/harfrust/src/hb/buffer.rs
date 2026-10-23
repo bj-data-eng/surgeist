@@ -122,6 +122,8 @@ pub struct GlyphPosition {
     /// not affect how much the line advances.
     pub y_offset: i32,
     pub(crate) var: u32,
+    // Keep the interchangeable Info/Position allocation layouts equal.
+    pub(crate) _joining_reserved: u32,
 }
 
 impl GlyphPosition {
@@ -177,6 +179,8 @@ pub struct GlyphInfo {
     /// [Read more on clusters](https://harfbuzz.github.io/clusters.html).
     pub cluster: u32,
     pub(crate) vars: [u32; 2],
+    // Independent scalar lineage while normalization is active; never a cluster.
+    pub(crate) joining_lineage: u32,
 }
 
 #[allow(dead_code)]
@@ -429,9 +433,16 @@ pub enum ShapingRefusal {
     FeatureCapacityLimit,
     /// A ligature action required overwritten bounded component history.
     ComponentHistoryLimit,
+    /// A bound original source no longer corresponds to the final input.
+    JoiningInput,
+    /// Normalization has no unambiguous original joining-bearing correspondence.
+    JoiningCorrespondence,
+    /// The selected shaping profile cannot consume the requested source actions.
+    JoiningProfile,
 }
 
 pub struct hb_buffer_t {
+    pub(crate) joining: super::original_joining::JoiningState,
     // Information about how the text in the buffer should be treated.
     pub flags: BufferFlags,
     pub cluster_level: hb_buffer_cluster_level_t,
@@ -493,6 +504,7 @@ impl hb_buffer_t {
     /// Creates a new `Buffer`.
     pub fn new() -> Self {
         hb_buffer_t {
+            joining: super::original_joining::JoiningState::default(),
             flags: BufferFlags::empty(),
             cluster_level: HB_BUFFER_CLUSTER_LEVEL_DEFAULT,
             invisible: None,
@@ -642,6 +654,7 @@ impl hb_buffer_t {
     }
 
     fn clear(&mut self) {
+        self.joining = super::original_joining::JoiningState::default();
         self.direction = Direction::Invalid;
         self.script = None;
         self.language = None;
@@ -865,7 +878,14 @@ impl hb_buffer_t {
 
         self.merge_clusters(self.idx, self.idx + num_in);
 
-        let orig_info = self.info[self.idx];
+        let mut orig_info = self.info[self.idx];
+        for i in 1..num_in {
+            orig_info.joining_lineage = super::original_joining::union(
+                self,
+                orig_info.joining_lineage,
+                self.info[self.idx + i].joining_lineage,
+            );
+        }
         for i in 0..num_out {
             let ii = self.out_len + i;
             self.set_out_info(ii, orig_info);
@@ -1248,6 +1268,17 @@ impl hb_buffer_t {
         );
     }
 
+    /// Conservative dependencies of the dual-channel joining operation.
+    pub(crate) fn joining_dependencies(&mut self) {
+        self._set_glyph_flags(
+            UNSAFE_TO_BREAK | UNSAFE_TO_CONCAT,
+            None,
+            None,
+            Some(false),
+            None,
+        );
+    }
+
     pub fn safe_to_insert_tatweel(&mut self, start: Option<usize>, end: Option<usize>) {
         if !self
             .flags
@@ -1420,6 +1451,10 @@ impl hb_buffer_t {
     #[must_use]
     #[inline(always)]
     pub fn ensure(&mut self, size: usize) -> bool {
+        if !super::original_joining::room(self, size, 0) {
+            self.successful = false;
+            return false;
+        }
         if size <= self.info.len() {
             true
         } else {
@@ -1435,6 +1470,44 @@ impl hb_buffer_t {
             return false;
         }
 
+        if self.joining.request.is_some() {
+            let old_info = if size > self.info.capacity() {
+                self.info.capacity()
+            } else {
+                0
+            };
+            let old_pos = if size > self.pos.capacity() {
+                self.pos.capacity()
+            } else {
+                0
+            };
+            let overlap = old_info
+                .checked_mul(size_of::<GlyphInfo>())
+                .zip(old_pos.checked_mul(size_of::<GlyphPosition>()))
+                .map(|(info, pos)| info.max(pos));
+            let Some(overlap) = overlap else {
+                self.refuse(ShapingRefusal::GrowthLimit);
+                self.successful = false;
+                return false;
+            };
+            let relocation = (if old_info == 0 { 0 } else { self.info.len() })
+                .checked_add(if old_pos == 0 { 0 } else { self.pos.len() });
+            let Some(relocation) = relocation else {
+                self.refuse(ShapingRefusal::WorkLimit);
+                self.successful = false;
+                return false;
+            };
+            if !super::original_joining::room(self, size, overlap)
+                || !super::original_joining::work(self, relocation)
+            {
+                return false;
+            }
+            // Explicit bounded capacity requests avoid hidden geometric growth
+            // of the normalization row buffers alongside joining metadata.
+            self.info
+                .reserve_exact(size.saturating_sub(self.info.len()));
+            self.pos.reserve_exact(size.saturating_sub(self.pos.len()));
+        }
         self.info.resize(size, GlyphInfo::default());
         self.pos.resize(size, GlyphPosition::default());
         true
@@ -1800,6 +1873,46 @@ pub const HB_BUFFER_SCRATCH_FLAG_SHAPER0: u32 = 0x0100_0000;
 pub struct UnicodeBuffer(pub(crate) hb_buffer_t);
 
 impl UnicodeBuffer {
+    /// Bind both genuine Unicode joining domains to this emitted Unicode body.
+    ///
+    /// `original_map` contains strictly increasing original-domain scalar
+    /// indices, or `None` for computed presentation. `presentation_map` contains
+    /// strictly increasing scalar indices in the full actual selected-line
+    /// presentation domain. Both domains have the actual script and direction;
+    /// all mapped code points must match the emitted body exactly.
+    /// Admission is atomic. Shaping revalidates the final input and profile, so
+    /// appending after binding cannot silently retain stale correspondence.
+    /// Clearing the buffer clears this request; cluster changes do not identify
+    /// source scalars and do not invalidate it.
+    /// Normalization must prove exact joining-bearing correspondence on both
+    /// channels. The operation preserves joint substitution and positioning,
+    /// conservatively marks every emitted boundary unsafe, and refuses a
+    /// requested positive tatweel-safety capability as `JoiningProfile`.
+    ///
+    /// # Errors
+    /// Returns a typed profile, count, order, code-point or logical growth
+    /// admission error, leaving any existing binding unchanged. Normalization
+    /// ambiguity is instead a `JoiningCorrespondence` shaping refusal.
+    /// Admission includes the logical borrowed correspondence spans while
+    /// copying them. Arbitrary caller-held capacity and allocator overhead
+    /// beyond those spans are outside this provider-owned storage guarantee.
+    pub fn set_joining_sources(
+        &mut self,
+        original: &crate::JoiningSource,
+        original_map: &[Option<usize>],
+        presentation: &crate::JoiningSource,
+        presentation_map: &[usize],
+    ) -> Result<(), crate::JoiningInputError> {
+        let request = super::original_joining::JoiningRequest::new(
+            &self.0,
+            original,
+            original_map,
+            presentation,
+            presentation_map,
+        )?;
+        self.0.joining = super::original_joining::JoiningState::bound(request)?;
+        Ok(())
+    }
     /// Create a new `UnicodeBuffer`.
     #[inline]
     pub fn new() -> UnicodeBuffer {

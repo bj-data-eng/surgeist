@@ -86,3 +86,4 @@ fn kern_eight_pushes_pop_reuse_and_ninth_push_have_actual_context_outcomes() {
         assert_eq!(ac.buffer.shaping_status(), ShapingStatus::Complete);
     });
 }
+use alloc::vec::Vec;

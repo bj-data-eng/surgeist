@@ -66,6 +66,22 @@ fn get_joining_type(u: Codepoint, gc: GeneralCategory) -> hb_arabic_joining_type
     }
 }
 
+pub(crate) fn joining_class(cp: Codepoint) -> hb_arabic_joining_type_t {
+    get_joining_type(cp, cp.general_category())
+}
+
+pub(crate) fn no_joining_action() -> u8 {
+    arabic_action_t::NONE
+}
+
+pub(crate) fn source_joining_actions(script: Script, buffer: &mut hb_buffer_t) {
+    buffer.allocate_var(GlyphInfo::ARABIC_SHAPING_ACTION_VAR);
+    joining_actions(buffer, false);
+    if script == script::MONGOLIAN {
+        mongolian_variation_selectors(buffer);
+    }
+}
+
 fn feature_is_syriac(tag: hb_tag_t) -> bool {
     matches!(tag.to_be_bytes()[3], b'2' | b'3')
 }
@@ -299,6 +315,10 @@ pub fn data_create_arabic(plan: &hb_ot_shape_plan_t) -> arabic_shape_plan_t {
 }
 
 fn arabic_joining(buffer: &mut hb_buffer_t) {
+    joining_actions(buffer, true);
+}
+
+fn joining_actions(buffer: &mut hb_buffer_t, emit_flags: bool) {
     let mut prev: Option<usize> = None;
     let mut state = 0;
 
@@ -334,18 +354,24 @@ fn arabic_joining(buffer: &mut hb_buffer_t) {
         if entry.0 != arabic_action_t::NONE && prev.is_some() {
             if let Some(prev) = prev {
                 buffer.info[prev].set_arabic_shaping_action(entry.0);
-                buffer.safe_to_insert_tatweel(Some(prev), Some(i + 1));
+                if emit_flags {
+                    buffer.safe_to_insert_tatweel(Some(prev), Some(i + 1));
+                }
             }
         }
         // States that have a possible prev_action.
         else {
             if let Some(prev) = prev {
                 if this_type >= hb_arabic_joining_type_t::R || (2 <= state && state <= 5) {
-                    buffer.unsafe_to_concat(Some(prev), Some(i + 1));
+                    if emit_flags {
+                        buffer.unsafe_to_concat(Some(prev), Some(i + 1));
+                    }
                 }
             } else {
                 if this_type >= hb_arabic_joining_type_t::R {
-                    buffer.unsafe_to_concat_from_outbuffer(Some(0), Some(i + 1));
+                    if emit_flags {
+                        buffer.unsafe_to_concat_from_outbuffer(Some(0), Some(i + 1));
+                    }
                 }
             }
         }
@@ -369,13 +395,17 @@ fn arabic_joining(buffer: &mut hb_buffer_t) {
         if entry.0 != arabic_action_t::NONE && prev.is_some() {
             if let Some(prev) = prev {
                 buffer.info[prev].set_arabic_shaping_action(entry.0);
-                buffer.safe_to_insert_tatweel(Some(prev), Some(buffer.len));
+                if emit_flags {
+                    buffer.safe_to_insert_tatweel(Some(prev), Some(buffer.len));
+                }
             }
         }
         // States that have a possible prev_action.
         else if 2 <= state && state <= 5 {
             if let Some(prev) = prev {
-                buffer.unsafe_to_concat(Some(prev), Some(buffer.len));
+                if emit_flags {
+                    buffer.unsafe_to_concat(Some(prev), Some(buffer.len));
+                }
             }
         }
 
@@ -410,11 +440,18 @@ pub fn setup_masks_inner(
     script: Option<Script>,
     buffer: &mut hb_buffer_t,
 ) {
-    arabic_joining(buffer);
-    if script == Some(script::MONGOLIAN) {
-        mongolian_variation_selectors(buffer);
+    if buffer.joining.request.is_some() {
+        super::original_joining::apply(buffer);
+    } else {
+        arabic_joining(buffer);
+        if script == Some(script::MONGOLIAN) {
+            mongolian_variation_selectors(buffer);
+        }
     }
 
+    if !buffer.successful && buffer.joining.request.is_some() {
+        return;
+    }
     for info in buffer.info_slice_mut() {
         info.mask |= arabic_plan.mask_array[info.arabic_shaping_action() as usize];
     }

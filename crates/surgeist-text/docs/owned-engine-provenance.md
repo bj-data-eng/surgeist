@@ -31,6 +31,8 @@ Every original atom obtains its bidi class from ICU `get32` using the original c
 
 Every actual shaping result checks the maintained provider’s returned completion status before extraction, metric derivation or row publication. Resource/plan lookup caches retain their actual resources; successful Layout cache lookup also compares captured inputs and required analysis identity. Logical geometry and spacing use finite f64; actual provider font sizes and glyph offsets/advances remain canonical f32. Finalized pens and outer origins are retained separately.
 
+Selected replacements bind provider-owned joining analyses of the authentic unbroken source and the actual selected-line presentation through validated scalar correspondence. Original and computed ownership does not split otherwise-compatible shaping runs. The provider preserves correspondence through normalization before applying joining actions and joint substitution/positioning; Text accepts only a completed result. The [maintained provider provenance](../../../vendor/harfrust/PROVENANCE.md#joining-domains-and-selected-presentation) records the operation’s admission and resource limits.
+
 ## Preserved and selected metric behavior
 
 Line and strikeout metrics reuse the existing [same-instance owner](../src/font/metrics.rs), including its qualified variable-font selection and accumulation. Concrete synthesis follows the tracked contract’s executable x-shear and positive actual-size/36 translated-outline displacement; it changes outline ink without a spacing adjustment. Render owns execution and representation admission.

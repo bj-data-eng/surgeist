@@ -124,6 +124,11 @@ pub(crate) struct PreparedAlternativeShape {
     pub(crate) projection: SourceProjection,
     pub(crate) analysis: Analysis,
     pub(crate) shaped: ShapedData,
+    /// Exact splice correspondence; inserted presentation has no base atom.
+    pub(crate) original_atoms: Vec<Option<usize>>,
+    pub(crate) base_insertion: usize,
+    /// One retained original joining domain per actual shaped run.
+    pub(crate) joining_domains: Vec<usize>,
 }
 
 /// Exact selected presentation correspondence, separate from authored text.
@@ -727,7 +732,12 @@ pub(crate) fn prepare_alternatives(
     let mut alternatives = Vec::with_capacity(tables.alternatives.len());
     for (index, row) in tables.alternatives.iter().enumerate() {
         let input = &analyzed.paragraph.replacements[row.occurrence];
-        let (projection, inserted_atoms) = replacement_projection(analyzed, input)?;
+        let ReplacementProjection {
+            projection,
+            inserted_atoms,
+            original_atoms,
+            base_insertion,
+        } = replacement_projection(analyzed, input)?;
         let analysis = crate::engine::analysis::analyze(
             &projection,
             &analyzed.styles,
@@ -753,15 +763,25 @@ pub(crate) fn prepare_alternatives(
             projection,
             analysis,
             shaped,
+            original_atoms,
+            base_insertion,
+            joining_domains: Vec::new(),
         });
     }
     Ok(alternatives)
 }
 
+struct ReplacementProjection {
+    projection: SourceProjection,
+    inserted_atoms: IndexRange<usize>,
+    original_atoms: Vec<Option<usize>>,
+    base_insertion: usize,
+}
+
 fn replacement_projection(
     analyzed: &AnalyzedData,
     replacement: &super::paragraph::ParagraphReplacement,
-) -> crate::Result<(SourceProjection, IndexRange<usize>)> {
+) -> crate::Result<ReplacementProjection> {
     let original = &analyzed.projection;
     let start = if let Some(control) = replacement.control() {
         let anchor = analyzed
@@ -851,7 +871,17 @@ fn replacement_projection(
             }
         }
     }
-    Ok((projection, inserted))
+    let original_atoms = (0..start)
+        .map(Some)
+        .chain(inserted.clone().map(|_| None))
+        .chain((end..original.atoms.len()).map(Some))
+        .collect();
+    Ok(ReplacementProjection {
+        projection,
+        inserted_atoms: inserted,
+        original_atoms,
+        base_insertion: start,
+    })
 }
 
 /// Constructs the one selected semantic overlay after capability admission.

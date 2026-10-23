@@ -147,3 +147,4 @@ fn transparent_input_observes_pre_scan_capacity_but_nonjoining_post_needs_none()
         );
     });
 }
+use alloc::vec::Vec;

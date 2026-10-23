@@ -76,6 +76,7 @@ pub(crate) struct PreparedData {
     pub(crate) shaped: layout::data::ShapedData,
     pub(crate) tables: PreparedTables,
     pub(crate) alternative_shapes: Vec<PreparedAlternativeShape>,
+    pub(crate) joining_domains: Vec<shape::JoiningDomain>,
 }
 
 /// Inputs coupled to one shaping operation, without a mutable System escape.
@@ -283,9 +284,10 @@ pub(crate) fn prepare(
         )?);
     }
     let tables = crate::protocol::prepared::prepare_tables(&analyzed, &shaped)?;
-    let alternative_shapes = crate::protocol::prepared::prepare_alternatives(
+    let mut alternative_shapes = crate::protocol::prepared::prepare_alternatives(
         catalogue, &analyzed, &styles, &tables, scratch,
     )?;
+    let joining_domains = shape::prepare_joining_domains(&analyzed, &mut alternative_shapes)?;
     Ok(Arc::new(PreparedData {
         analyzed,
         font_catalogue,
@@ -294,5 +296,6 @@ pub(crate) fn prepare(
         shaped,
         tables,
         alternative_shapes,
+        joining_domains,
     }))
 }

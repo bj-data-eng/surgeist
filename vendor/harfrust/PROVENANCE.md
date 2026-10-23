@@ -13,8 +13,10 @@ The package's [VCS metadata](.cargo_vcs_info.json) identifies
 path `harfrust`. All 82 archive files were compared with the extracted cache before
 copying. Import baseline `5b6bf65cc368662dbd46fd1297961c215443a6dd`
 retains all 70 Rust source files at their exact package bytes. The maintained
-changes described below derive from that baseline. Ragel sources, generated Rust,
-Unicode companion data, upstream README, license and VCS metadata remain unchanged.
+changes described below derive from that baseline. Equivalent `Option` early
+returns are also simplified in handwritten `src/hb/{glyph_metrics,unicode}.rs`.
+Ragel sources, generated Rust, Unicode companion data, upstream README, license
+and VCS metadata remain unchanged.
 
 The original [workspace manifest](upstream/Cargo.toml.orig) and
 [normalized registry manifest](upstream/Cargo.toml.registry) are preserved as
@@ -94,11 +96,50 @@ pre-scan can report insufficient context even for transparent input; this does
 not claim that final glyph output must differ. A retained nontransparent
 terminator, an unselected shaper and empty shaping remain complete. Context
 overwrite/clear and the existing public-add post-context reset dispose the
-corresponding truncation fact; no context is enlarged and joining is unchanged.
+corresponding truncation fact. Ordinary requests retain their context capacity
+and joining behavior.
 
 The outcome describes logical implementation limits. It is not a general
 physical-allocation failure protocol, a font-conformance validator, or proof that
-a consuming layout/cache accepted the status. Current Parley consumers still
-require an explicit later owned completion join. No shaping replay, output-size
-heuristic, new provider trait, guard removal or generated-machine modification is
-part of this extension.
+a consuming layout/cache accepted the status. Text's owned adapter checks the
+actual returned status before accepting shaped output. No shaping replay,
+output-size heuristic, new provider trait, guard removal or generated-machine
+modification is part of this extension.
+
+## Joining domains and selected presentation
+
+The maintained provider also separates Unicode joining analysis from emitted
+presentation. The repository-authored `src/hb/original_joining.rs` owns this
+operation, with qualification in `src/hb/original_joining_tests.rs` and the Text
+tests. `JoiningSource::analyze` retains a complete Unicode domain for an
+explicit script and direction, independently of fonts. Text supplies the authentic
+unbroken source and the actual selected-line presentation as separate domains,
+following the [Text/Layout contract](../../docs/text-layout-contract.md).
+`UnicodeBuffer::set_joining_sources` validates both scalar correspondences against
+the actual emitted input without replacing a prior binding on admission failure.
+Shaping revalidates the final input and profile; clearing disposes the binding.
+An invalidated binding reports `JoiningInput` before shaping can accept it.
+Original contributions receive source-domain actions; computed contributions
+receive selected-presentation actions. Font and metric
+runs retain that Unicode context while actual substitution and positioning stay
+within otherwise-compatible shaping runs.
+
+Independent contributor lineage survives normalization. Before applying actions,
+the provider proves unique, compatible joining-bearing correspondence; ambiguous
+composition, class-changing normalization or unsupported selector contraction
+returns `JoiningCorrespondence`. At shaping, incompatible selected profiles or
+requested positive tatweel-safety flags return `JoiningProfile`. Admitted requests
+conservatively mark the emitted buffer unsafe to split or concatenate. These
+bounds do not promise all-Unicode normalization support or identical glyph IDs
+under legitimate contextual substitutions and ligatures.
+
+The Unicode analyses perform only required action work, without the ordinary
+five-character external-context scan or discarded flag-range work. Ordinary
+context, normalization, substitution and positioning guards retain their own
+completion reporting. Checked aggregate allowances cover the retained domains,
+input mappings, lineage, proof temporaries and their overlapping allocations and
+work. Borrowed correspondence spans contribute their logical sizes; spare
+caller-owned capacity and allocator overhead are outside this provider-owned
+storage guarantee. The independent lineage field grows both `GlyphInfo` and `GlyphPosition`
+from 20 to 24 bytes, including ordinary buffers; their equal layouts preserve
+the existing safe buffer casts.

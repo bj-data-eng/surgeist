@@ -497,6 +497,9 @@ pub enum ShapingRefusalReason {
     AttachmentNestingLimit,
     FeatureCapacityLimit,
     ComponentHistoryLimit,
+    JoiningInput,
+    JoiningCorrespondence,
+    JoiningProfile,
 }
 
 /// Operation at which geometry was rejected.
@@ -532,6 +535,9 @@ pub(crate) fn shaping_refused(reason: harfrust::ShapingRefusal) -> Error {
         Provider::AttachmentNestingLimit => ShapingRefusalReason::AttachmentNestingLimit,
         Provider::FeatureCapacityLimit => ShapingRefusalReason::FeatureCapacityLimit,
         Provider::ComponentHistoryLimit => ShapingRefusalReason::ComponentHistoryLimit,
+        Provider::JoiningInput => ShapingRefusalReason::JoiningInput,
+        Provider::JoiningCorrespondence => ShapingRefusalReason::JoiningCorrespondence,
+        Provider::JoiningProfile => ShapingRefusalReason::JoiningProfile,
     };
     Error::new(ErrorCode::ShapingRefused, "shaping did not complete")
         .with_detail(ErrorDetail::ShapingRefused { reason })

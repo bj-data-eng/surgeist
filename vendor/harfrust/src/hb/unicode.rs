@@ -596,9 +596,7 @@ pub fn compose(a: Codepoint, b: Codepoint) -> Option<Codepoint> {
         return Some(ab);
     }
 
-    let u: u32;
-
-    if (a & 0xFFFF_F800) == 0x0000 && (b & 0xFFFF_FF80) == 0x0300 {
+    let u = if (a & 0xFFFF_F800) == 0x0000 && (b & 0xFFFF_FF80) == 0x0300 {
         /* If "a" is small enough and "b" is in the U+0300 range,
          * the composition data is encoded in a 32bit array sorted
          * by "a,b" pair. */
@@ -611,11 +609,7 @@ pub fn compose(a: Codepoint, b: Codepoint) -> Option<Codepoint> {
             .ok()
             .map(|index| _hb_ucd_dm2_u32_map[index]);
 
-        if let Some(value) = v {
-            u = HB_CODEPOINT_DECODE3_11_7_14_3(value);
-        } else {
-            return None;
-        }
+        HB_CODEPOINT_DECODE3_11_7_14_3(v?)
     } else {
         /* Otherwise it is stored in a 64bit array sorted by
          * "a,b" pair. */
@@ -628,12 +622,8 @@ pub fn compose(a: Codepoint, b: Codepoint) -> Option<Codepoint> {
             .ok()
             .map(|index| _hb_ucd_dm2_u64_map[index]);
 
-        if let Some(value) = v {
-            u = HB_CODEPOINT_DECODE3_3(value);
-        } else {
-            return None;
-        }
-    }
+        HB_CODEPOINT_DECODE3_3(v?)
+    };
 
     if u == 0 {
         None

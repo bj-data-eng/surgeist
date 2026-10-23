@@ -582,6 +582,9 @@ pub surgeist_text::ShapingRefusalReason::ComponentHistoryLimit
 pub surgeist_text::ShapingRefusalReason::ContextLimit
 pub surgeist_text::ShapingRefusalReason::FeatureCapacityLimit
 pub surgeist_text::ShapingRefusalReason::GrowthLimit
+pub surgeist_text::ShapingRefusalReason::JoiningCorrespondence
+pub surgeist_text::ShapingRefusalReason::JoiningInput
+pub surgeist_text::ShapingRefusalReason::JoiningProfile
 pub surgeist_text::ShapingRefusalReason::LookupNestingLimit
 pub surgeist_text::ShapingRefusalReason::WorkLimit
 pub enum surgeist_text::Slant
