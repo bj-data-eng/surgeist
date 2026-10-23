@@ -6,6 +6,9 @@ use crate::test_fonts::replace_tables;
 
 const AHEM: &[u8] = include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf");
 
+#[path = "kana.rs"]
+mod kana;
+
 fn words(values: &[u16]) -> Vec<u8> {
     values
         .iter()
@@ -74,6 +77,24 @@ fn cmap(mappings: &[(u32, u32)]) -> Vec<u8> {
         output.extend(glyph.to_be_bytes());
     }
     output
+}
+
+/// Fixed cmap for A/C and small hiragana KO/full-size KO over licensed Ahem.
+/// Original U+1B132 uses p(82),1000 units; U+3053 uses B(36),500 units.
+/// These distinguish real source/font baselines without transforming any text.
+pub(crate) fn kana_ahem() -> Vec<u8> {
+    let mut hmtx = crate::test_fonts::table(AHEM, *b"hmtx").to_vec();
+    hmtx[36 * 4..36 * 4 + 2].copy_from_slice(&500_u16.to_be_bytes());
+    replace_tables(
+        AHEM,
+        vec![
+            (
+                *b"cmap",
+                cmap(&[(0x41, 35), (0x43, 37), (0x1b132, 82), (0x3053, 36)]),
+            ),
+            (*b"hmtx", hmtx),
+        ],
+    )
 }
 
 /// GSUB ccmp: original Ahem A(35) A(35) -> X(58), one 1000-unit glyph.
