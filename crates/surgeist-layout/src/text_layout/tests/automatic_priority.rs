@@ -4,8 +4,8 @@
 //! Surgeist's greedy furthest-fitting policy, not a CSS-mandated numeric choice.
 use super::*;
 use surgeist_text::{
-    HyphenateCharacter, Hyphens, LineEnd, OverflowWrap, PreparedBreakKind, PreparedTermination,
-    Range, Text,
+    HyphenateCharacter, HyphenateLimitChars, HyphenationCounts, HyphenationMinimum, Hyphens,
+    LineEnd, OverflowWrap, PreparedBreakKind, PreparedTermination, Range, Text,
 };
 
 const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
@@ -284,6 +284,103 @@ fn native_auto_without_shy_uses_actual_resource_cut_f32() {
 #[test]
 fn native_auto_without_shy_uses_actual_resource_cut_f64() {
     assert_choice::<f64>("associate", 80.0, 4, false);
+}
+
+#[test]
+fn native_character_minima_change_the_admitted_partition_and_real_line_choice() {
+    fn check<S: LayoutScalar>() {
+        let source = "as\u{ad}sociate";
+        // Nine genuine letters: initial 5/2/2 admits SHY after two letters,
+        // whose indicated prefix is 30px and residual is 70px, both fitting 80px.
+        // Requiring four before removes that manual partition. The unbroken
+        // word is 90px; source exception cut4 gives 50/50 with its 10px indication.
+        // Original UTF16 includes SHY, so those first endpoints are 3 and 5.
+        for (before, first_end, advances, manual) in [
+            (HyphenationMinimum::Auto, 3, [30.0, 70.0], true),
+            (HyphenationMinimum::Count(4), 5, [50.0, 50.0], false),
+        ] {
+            let limits = HyphenateLimitChars {
+                before,
+                ..HyphenateLimitChars::default()
+            };
+            let mut style = ahem_style(10.0, 10.0);
+            style.hyphens = Hyphens::Auto;
+            style.locale = Some("en-US".into());
+            style.hyphenate_character = HyphenateCharacter::String(Text::from("A"));
+            style.wrap = Wrap::Word;
+            style.overflow_wrap = OverflowWrap::Normal;
+            style.hyphenate_limit_chars = limits;
+            let paragraph = PreparedParagraph::plain(
+                1,
+                Source::identified(
+                    source,
+                    surgeist_text::Id::from_u64(SOURCE_ID),
+                    SOURCE_REVISION,
+                ),
+                style,
+            );
+            qualify_unbroken::<S>(&paragraph, source, 90.0);
+            assert_eq!(
+                paragraph
+                    .prepared
+                    .analyzed_source()
+                    .style()
+                    .hyphenate_limit_chars,
+                limits
+            );
+            let batch = compute::<S>(&paragraph, 80.0);
+            let layout = batch.placed_text()[0].layout();
+            let ranges = [Range::new(0, first_end), Range::new(first_end, 10)];
+            assert_eq!(
+                layout
+                    .lines()
+                    .iter()
+                    .map(|line| line.range())
+                    .collect::<Vec<_>>(),
+                ranges
+            );
+            assert_eq!(
+                layout.source().text().code_units(),
+                source.encode_utf16().collect::<Vec<_>>()
+            );
+            let lines = finalized_lines(&batch, &paragraph);
+            for (index, line) in lines.iter().enumerate() {
+                assert_eq!(line.feedback().advance, advances[index]);
+                assert_eq!(
+                    (line.feedback().occupied_start, line.feedback().occupied_end),
+                    (0.0, advances[index])
+                );
+                let mut expected = expected_letters(source, ranges[index]);
+                if index == 0 {
+                    expected.push((Range::new(first_end, first_end), 35, 10.0));
+                }
+                assert_eq!(glyphs(line), expected);
+            }
+            let selected = lines[0].selected_line();
+            let alternative = selected.request().alternative.as_ref().unwrap();
+            assert_eq!(alternative.view().text(), &Text::from("A"));
+            match (manual, alternative.view().definition()) {
+                (true, surgeist_text::PreparedAlternativeDefinition::Source { source, .. }) => {
+                    assert_eq!(source, Range::new(2, 3));
+                }
+                (false, surgeist_text::PreparedAlternativeDefinition::Automatic { cut }) => {
+                    assert_eq!(
+                        cut.view().counts(),
+                        Some(HyphenationCounts {
+                            total: 9,
+                            before: 4,
+                            after: 5
+                        })
+                    );
+                    assert_eq!(alternative.view().source_range(), None);
+                }
+                other => panic!("wrong admitted ending: {other:?}"),
+            }
+            assert!(lines[1].selected_line().request().alternative.is_none());
+        }
+    }
+    check::<f32>();
+    check::<f64>();
 }
 
 fn configured(source: &str, indication: &str, overflow: OverflowWrap) -> PreparedParagraph {

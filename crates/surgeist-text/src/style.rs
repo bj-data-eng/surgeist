@@ -256,6 +256,9 @@ pub struct Style {
     pub text_transform: TextTransform,
     /// Defaults to Manual; Auto also permits Text's qualified en-US resource.
     pub hyphens: crate::Hyphens,
+    /// Computed per-cut native minima, retaining symbolic Auto components.
+    /// Raw standalone layout does not consume these count restrictions.
+    pub hyphenate_limit_chars: crate::HyphenateLimitChars,
     /// Exact indication or native convention/first-available-font resolution.
     pub hyphenate_character: crate::HyphenateCharacter,
     /// Optional producer claim bound to this style's complete actual locale.
@@ -289,6 +292,7 @@ impl Default for Style {
             text_transform: TextTransform::None,
             tab_size: crate::TabSize::default(),
             hyphens: crate::Hyphens::Manual,
+            hyphenate_limit_chars: crate::HyphenateLimitChars::default(),
             hyphenate_character: crate::HyphenateCharacter::Auto,
             native_hyphenation_convention: None,
         }

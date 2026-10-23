@@ -64,8 +64,11 @@ uses the same selected-line and placement machinery.
    explicit hyphenation groups and automatic points. `Auto` also permits the
    exact [en-US resource](hyphenation-resources.md) over complete qualified
    lexical words, with retained source-exception and correction provenance.
-   Native preparation applies initial total/before/after limits of 5/2/2,
-   including empty indications; see the canonical
+   Native preparation consumes each cut's actual `Style::hyphenate_limit_chars`
+   computed triple, including empty indications. Each symbolic `Auto` minimum
+   independently resolves to total/before/after 5/2/2; explicit counts, including
+   zero, compare against the same complete-word map. Text supplies no CSS
+   specified-value expansion; see the canonical
    [count-unit policy](../../../docs/text-layout-contract.md#automatic-resources-word-custody-and-initial-limits).
    Raw `System::layout` and `layout_analyzed` retain their distinct unconstrained
    count operation. Borrow `word_views()` and `hyphenation_cut_views()` for

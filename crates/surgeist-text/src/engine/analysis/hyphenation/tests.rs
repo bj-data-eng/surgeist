@@ -45,7 +45,12 @@ fn complete_word_uses_one_count_map_with_format_controls_marks_and_supplementary
             }),
             "{text:?}"
         );
-        assert!(words.at(cut).unwrap().admits_initial());
+        assert!(
+            words
+                .at(cut)
+                .unwrap()
+                .admits(crate::HyphenateLimitChars::default())
+        );
     }
     for text in [
         "a\u{61c}\u{61c}\u{61c}\u{ad}\u{61c}\u{61c}\u{61c}b",
@@ -61,7 +66,10 @@ fn complete_word_uses_one_count_map_with_format_controls_marks_and_supplementary
             + 1;
         let counts = words.at(cut).unwrap();
         assert_eq!(counts.before, 1);
-        assert!(!counts.admits_initial(), "{text:?}");
+        assert!(
+            !counts.admits(crate::HyphenateLimitChars::default()),
+            "{text:?}"
+        );
     }
 }
 

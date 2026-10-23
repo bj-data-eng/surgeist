@@ -30,8 +30,9 @@ pub(crate) struct CutCounts {
     pub(crate) after: usize,
 }
 impl CutCounts {
-    pub(crate) fn admits_initial(self) -> bool {
-        self.total >= 5 && self.before >= 2 && self.after >= 2
+    pub(crate) fn admits(self, limits: crate::HyphenateLimitChars) -> bool {
+        let [total, before, after] = limits.native_minima();
+        self.total >= total && self.before >= before && self.after >= after
     }
 }
 

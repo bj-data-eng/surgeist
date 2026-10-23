@@ -141,8 +141,8 @@ pub use range_fragments::{
 };
 
 pub use hyphenation::{
-    HyphenateCharacter, HyphenationError, HyphenationPlacement, Hyphens,
-    NativeHyphenationConvention,
+    HyphenateCharacter, HyphenateLimitChars, HyphenationError, HyphenationMinimum,
+    HyphenationPlacement, Hyphens, NativeHyphenationConvention,
 };
 
 mod tabs;

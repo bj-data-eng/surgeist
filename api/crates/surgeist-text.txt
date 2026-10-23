@@ -317,6 +317,9 @@ pub surgeist_text::HyphenationError::MissingPrimaryFont
 pub surgeist_text::HyphenationError::ResourceLengthOverflow
 pub surgeist_text::HyphenationError::ResourceStorage
 pub surgeist_text::HyphenationError::UnsupportedPlacement(surgeist_text::HyphenationPlacement)
+pub enum surgeist_text::HyphenationMinimum
+pub surgeist_text::HyphenationMinimum::Auto
+pub surgeist_text::HyphenationMinimum::Count(usize)
 pub enum surgeist_text::HyphenationPlacement
 pub surgeist_text::HyphenationPlacement::BothSides
 pub surgeist_text::HyphenationPlacement::LogicalAfter
@@ -1280,6 +1283,10 @@ pub const fn surgeist_text::GlyphPlacement::id(self) -> u32
 pub const fn surgeist_text::GlyphPlacement::pen(self) -> f64
 pub const fn surgeist_text::GlyphPlacement::x(self) -> f32
 pub const fn surgeist_text::GlyphPlacement::y(self) -> f32
+pub struct surgeist_text::HyphenateLimitChars
+pub surgeist_text::HyphenateLimitChars::after: surgeist_text::HyphenationMinimum
+pub surgeist_text::HyphenateLimitChars::before: surgeist_text::HyphenationMinimum
+pub surgeist_text::HyphenateLimitChars::total: surgeist_text::HyphenationMinimum
 pub struct surgeist_text::HyphenationCounts
 pub surgeist_text::HyphenationCounts::after: usize
 pub surgeist_text::HyphenationCounts::before: usize
@@ -2125,6 +2132,7 @@ pub surgeist_text::Style::brush: surgeist_text::Brush
 pub surgeist_text::Style::direction: surgeist_text::Direction
 pub surgeist_text::Style::font: surgeist_text::Font
 pub surgeist_text::Style::hyphenate_character: surgeist_text::HyphenateCharacter
+pub surgeist_text::Style::hyphenate_limit_chars: surgeist_text::HyphenateLimitChars
 pub surgeist_text::Style::hyphens: surgeist_text::Hyphens
 pub surgeist_text::Style::letter_spacing: f64
 pub surgeist_text::Style::line_height: surgeist_text::LineHeight

@@ -54,6 +54,13 @@ on every genuine word contribution, compared without ASCII case distinctions;
 generic English and other locales have no automatic resource. See
 [resource support and attribution](hyphenation-resources.md).
 
+`Style::hyphenate_limit_chars` accepts a computed `HyphenateLimitChars` triple
+of `HyphenationMinimum` components. Native `Auto` components independently use
+5/2/2; explicit counts are nonnegative minima, with no sum or word-length clamp.
+The supplying style adapter owns specified-value expansion and checked integer
+conversion. The actual raw standalone operation stays unconstrained. See the
+[count contract](../../../docs/text-layout-contract.md#automatic-resources-word-custody-and-initial-limits).
+
 Word portions retain the admitted manual partition. A
 `PreparedTermination::Measurement` finalizes an issued portion through the same
 selected-line pipeline and cannot be placed. Consumers use

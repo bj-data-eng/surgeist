@@ -627,7 +627,7 @@ fn issue_opportunities(
                 || analyzed
                     .words
                     .at(boundary.atom)
-                    .is_some_and(|counts| counts.admits_initial());
+                    .is_some_and(|counts| counts.admits(authored.hyphenate_limit_chars));
             let eligible = count_admitted
                 && !before_hard
                 && authored.hyphens != crate::Hyphens::None
@@ -829,7 +829,7 @@ fn automatic_cut(
     });
     let authored = analyzed.styles[style].style.authored();
     let count_admitted = tables.profile == crate::engine::PreparationProfile::Standalone
-        || counts.is_some_and(|value| value.admits_initial());
+        || counts.is_some_and(|value| value.admits(authored.hyphenate_limit_chars));
     if !count_admitted
         || authored.hyphens != crate::Hyphens::Auto
         || authored.wrap != crate::Wrap::Word

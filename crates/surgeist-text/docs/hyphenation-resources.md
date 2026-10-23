@@ -37,7 +37,10 @@ do not become replacement characters in an English query. Source gaps and real
 EGC boundaries remain part of admission.
 
 The same complete-word count owner serves manual and automatic native
-admission. Every genuine language contribution must be exactly en-US, compared
+admission. The actual governing style supplies computed total/before/after
+`HyphenateLimitChars` minima. Symbolic `Auto` components independently use native
+5/2/2 fallbacks; explicit nonnegative minima do not change word or cut custody.
+Every genuine language contribution must be exactly en-US, compared
 without ASCII case distinctions. The logical-preceding text contribution owns
 each cut's style and indication. Ancestor wrapping permission is separate.
 Unavailable resources retain manual behavior and an explicit word observation.

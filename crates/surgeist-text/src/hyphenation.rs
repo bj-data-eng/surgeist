@@ -14,6 +14,48 @@ pub enum Hyphens {
     Auto,
 }
 
+/// One computed character-count minimum. It is not CSS specified-value syntax.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub enum HyphenationMinimum {
+    /// Native preparation uses the independent fallback for this component.
+    #[default]
+    Auto,
+    /// An exact nonnegative minimum, including zero.
+    Count(usize),
+}
+
+impl HyphenationMinimum {
+    const fn resolve(self, fallback: usize) -> usize {
+        match self {
+            Self::Auto => fallback,
+            Self::Count(value) => value,
+        }
+    }
+}
+
+/// Computed total/before/after character minima at the governing cut's Style.
+///
+/// The supplying style adapter owns CSS specified-value expansion and checked
+/// integer conversion. Every triple is valid independently; Text does not add or
+/// clamp these values. Native `Auto` components resolve independently to 5/2/2.
+/// Raw standalone layout retains its genuinely unconstrained count operation.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub struct HyphenateLimitChars {
+    pub total: HyphenationMinimum,
+    pub before: HyphenationMinimum,
+    pub after: HyphenationMinimum,
+}
+
+impl HyphenateLimitChars {
+    pub(crate) const fn native_minima(self) -> [usize; 3] {
+        [
+            self.total.resolve(5),
+            self.before.resolve(2),
+            self.after.resolve(2),
+        ]
+    }
+}
+
 /// Exact indication text, or resolution from captured native convention/font.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum HyphenateCharacter {
