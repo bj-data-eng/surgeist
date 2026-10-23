@@ -21,13 +21,9 @@ impl From<ParseStop> for Failure {
         Self::Session(value.into())
     }
 }
-/// This whole-color request resolves only source input. Broader CSS authored
-/// sites are not part of this adapter and retain their owning invariant error.
-pub(super) fn source_processing(c: &mut ParseControl, error: CssColorOperationError) -> Failure {
-    match crate::parser::control::HtmlColorProcessingError::from_source(error) {
-        Ok(error) => Failure::Processing(error),
-        Err(error) => Failure::Session(c.fail_invariant(error).into()),
-    }
+/// This whole-color request resolves only source input.
+pub(super) fn source_processing(error: CssColorOperationError) -> Failure {
+    Failure::Processing(crate::parser::control::HtmlColorProcessingError::from_source(error))
 }
 fn integrity(c: &mut ParseControl) -> SessionError {
     c.fail_invariant(crate::parser::control::Invariant::InputCursorState)

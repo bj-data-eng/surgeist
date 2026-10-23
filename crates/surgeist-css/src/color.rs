@@ -6,7 +6,7 @@ mod authored_input_tests;
 mod authored_resolution;
 pub(crate) use authored_resolution::authored_hue_degrees;
 pub use authored_resolution::*;
-use surgeist_color::{Color, ColorError};
+use surgeist_color::Color;
 
 mod bounded;
 mod component;

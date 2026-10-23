@@ -1,12 +1,19 @@
 //! Native numerical use and actual caller-owned continuation storage.
 use surgeist_color::format::{FiniteFormatter, FormatError, RoundingMode};
 use surgeist_color::{
-    ActionDescription as Action, Color, ColorError, ColorSpace as Space, Computation,
-    ComputationError, DigitSlot, InterpolationError, InterpolationMethod, NumericalRequest,
-    OperationOwner, PredefinedColorSpace as Predefined, ProtocolError, Serialization,
-    SerializationError, SerializationFamily, SerializationLimits, SerializationRequest,
-    SerializationResource, Transformation, serialize,
+    ActionDescription as Action, Color, ColorSpace as Space, Computation, DigitSlot, Finite,
+    InterpolationMethod, NumericalRequest, OperationOwner, PredefinedColorSpace as Predefined,
+    ProtocolError, Serialization, SerializationError, SerializationFamily, SerializationLimits,
+    SerializationRequest, SerializationResource, Transformation, UnitInterval, serialize,
 };
+
+fn color(space: Space, channels: [Option<f64>; 3], alpha: Option<f64>) -> Color {
+    Color::new(
+        space,
+        channels.map(|channel| channel.map(|value| Finite::new(value).unwrap())),
+        alpha.map(|value| UnitInterval::new(value).unwrap()),
+    )
+}
 
 fn limits() -> SerializationLimits {
     SerializationLimits {
@@ -70,7 +77,7 @@ fn finish<'owner>(
 #[test]
 fn computation_take_refusal_drop_and_recovery_preserve_exact_request() {
     let mut owner = OperationOwner::new();
-    let original = Color::try_new(Space::Lab, [Some(-0.0), None, Some(2.0)], None).unwrap();
+    let original = color(Space::Lab, [Some(-0.0), None, Some(2.0)], None);
     let request = NumericalRequest::Transform {
         value: original,
         transformation: Transformation::ForceOpaqueAlpha,
@@ -79,7 +86,7 @@ fn computation_take_refusal_drop_and_recovery_preserve_exact_request() {
     let pending = operation.as_ref().unwrap().action();
     assert_eq!(
         Computation::take(&mut operation),
-        Err(ComputationError::Protocol(ProtocolError::NotReady))
+        Err(ProtocolError::NotReady)
     );
     {
         let _withheld = operation.as_mut().unwrap().next_action();
@@ -88,7 +95,7 @@ fn computation_take_refusal_drop_and_recovery_preserve_exact_request() {
     operation.as_mut().unwrap().next_action().compute().unwrap();
     assert_eq!(
         operation.as_mut().unwrap().next_action().compute(),
-        Err(ComputationError::Protocol(ProtocolError::WrongAction))
+        Err(ProtocolError::WrongAction)
     );
     let result = Computation::take(&mut operation).unwrap();
     assert!(operation.is_none());
@@ -99,14 +106,14 @@ fn computation_take_refusal_drop_and_recovery_preserve_exact_request() {
     );
     assert_eq!(
         Computation::take(&mut operation),
-        Err(ComputationError::Protocol(ProtocolError::EmptySlot))
+        Err(ProtocolError::EmptySlot)
     );
     let mut second_owner = OperationOwner::new();
     let mut operation = Some(Computation::new(&mut second_owner, request).unwrap());
     operation.as_mut().unwrap().abandon();
     assert_eq!(
         Computation::take(&mut operation),
-        Err(ComputationError::Protocol(ProtocolError::Terminated))
+        Err(ProtocolError::Terminated)
     );
     let NumericalRequest::Transform {
         value,
@@ -121,61 +128,52 @@ fn computation_take_refusal_drop_and_recovery_preserve_exact_request() {
 }
 
 #[test]
-fn failed_computation_is_terminal_and_retains_first_error_and_original_bits() {
+fn proven_operand_requests_compute_once_and_keep_their_bits() {
+    // Construction and interpolation over proof-typed operands are total: the
+    // computation becomes ready, and recovery returns the exact request.
     let mut owner = OperationOwner::new();
-    let nan = f64::from_bits(0x7ff8_0000_0000_0123);
     let request = NumericalRequest::Construct {
         space: Space::Lab,
-        channels: [Some(nan), Some(f64::INFINITY), None],
-        alpha: Some(-1.0),
+        channels: [Finite::new(-0.0), Finite::new(f64::MAX), None],
+        alpha: UnitInterval::new(-0.0),
     };
     let mut operation = Some(Computation::new(&mut owner, request).unwrap());
-    let error = ComputationError::Numerical(ColorError::NonFinite { component: 0 });
-    assert_eq!(
-        operation.as_mut().unwrap().next_action().compute(),
-        Err(error)
-    );
-    assert_eq!(operation.as_ref().unwrap().action(), Action::Failed);
-    assert_eq!(Computation::take(&mut operation), Err(error));
-    assert!(operation.is_some());
-    assert_eq!(
-        operation.as_mut().unwrap().next_action().compute(),
-        Err(ComputationError::Protocol(ProtocolError::WrongAction))
-    );
-    operation.as_mut().unwrap().abandon();
-    assert_eq!(operation.as_ref().unwrap().failure(), Some(&error));
+    operation.as_mut().unwrap().next_action().compute().unwrap();
+    assert_eq!(operation.as_ref().unwrap().action(), Action::Ready);
+    let value = Computation::take(&mut operation).unwrap();
+    assert_eq!(value.channels()[0].unwrap().to_bits(), (-0.0_f64).to_bits());
+    assert_eq!(value.channels()[1], Some(f64::MAX));
+    assert_eq!(value.alpha().unwrap().to_bits(), (-0.0_f64).to_bits());
+    let mut operation = Some(Computation::new(&mut owner, request).unwrap());
     let NumericalRequest::Construct { channels, .. } =
         Computation::recover(&mut operation).unwrap()
     else {
         panic!("original construction")
     };
-    assert_eq!(channels[0].unwrap().to_bits(), nan.to_bits());
+    assert_eq!(channels[1].map(Finite::get), Some(f64::MAX));
 }
 
 #[test]
-fn admitted_interpolation_keeps_its_distinct_validation_error() {
+fn an_overflowing_interpolation_request_computes_its_closest_finite_value() {
+    // Converting sRGB red at f64::MAX to XYZ exceeds binary64 in every row;
+    // the operand prepares as f64::MAX and an even mix with black halves it.
     let mut owner = OperationOwner::new();
-    let value = Color::from_srgba8([0, 0, 0, 255]);
-    let method = InterpolationMethod::try_new(Space::Lab, None).unwrap();
-    let mut operation = Some(
-        Computation::new(
-            &mut owner,
-            NumericalRequest::Interpolate {
-                first: value,
-                second: value,
-                method,
-                progress: f64::NAN,
-            },
-        )
-        .unwrap(),
+    let red = color(
+        Space::Predefined(Predefined::Srgb),
+        [Some(f64::MAX), Some(0.0), Some(0.0)],
+        Some(1.0),
     );
-    let error = ComputationError::Interpolation(InterpolationError::InvalidProgress);
-    assert_eq!(
-        operation.as_mut().unwrap().next_action().compute(),
-        Err(error)
-    );
-    assert_eq!(Computation::take(&mut operation), Err(error));
-    assert!(operation.is_some());
+    let request = NumericalRequest::Interpolate {
+        first: red,
+        second: Color::opaque_black(),
+        method: InterpolationMethod::try_new(Space::Predefined(Predefined::XyzD65), None).unwrap(),
+        progress: UnitInterval::new(0.5).unwrap(),
+    };
+    let mut operation = Some(Computation::new(&mut owner, request).unwrap());
+    operation.as_mut().unwrap().next_action().compute().unwrap();
+    let mixed = Computation::take(&mut operation).unwrap();
+    assert_eq!(mixed.channels(), [Some(f64::MAX / 2.0); 3]);
+    assert!(mixed.identical(request.execute()));
 }
 
 #[test]
@@ -197,7 +195,7 @@ fn native_serialization_is_complete_before_take_and_owner_reuse() {
         Some(Serialization::new(&mut owner, value, SerializationRequest::Css).unwrap());
     assert!(matches!(
         Serialization::take(&mut operation),
-        Err(SerializationError::Protocol(ProtocolError::NotReady))
+        Err(ProtocolError::NotReady)
     ));
     let mut digits = Vec::new();
     let mut output = Vec::new();
@@ -276,7 +274,7 @@ fn foreign_digit_and_wrong_index_refusals_leave_real_write_pending() {
     operation.as_mut().unwrap().abandon();
     assert!(matches!(
         Serialization::take(&mut operation),
-        Err(SerializationError::Protocol(ProtocolError::Terminated))
+        Err(ProtocolError::Terminated)
     ));
     let recovery = Serialization::recover(&mut operation).unwrap();
     assert!(recovery.value().identical(value));
@@ -326,14 +324,12 @@ fn byte_proof_and_floating_alpha_determine_native_spelling() {
     );
     assert_eq!(
         spelling(
-            value
-                .with_serialization_family(SerializationFamily::ColorFunction)
-                .unwrap(),
+            value.with_color_function(),
             SerializationRequest::HtmlCompatible
         ),
         "#ff00ff"
     );
-    let floating = Color::try_new(value.space(), value.channels(), value.alpha()).unwrap();
+    let floating = color(value.space(), value.channels(), value.alpha());
     assert_eq!(
         spelling(floating, SerializationRequest::HtmlCompatible),
         "color(srgb 1 0 1)"
@@ -347,7 +343,7 @@ fn byte_proof_and_floating_alpha_determine_native_spelling() {
             expected
         );
     }
-    let floating = Color::try_new(value.space(), value.channels(), Some(237.0 / 255.0)).unwrap();
+    let floating = color(value.space(), value.channels(), Some(237.0 / 255.0));
     assert_eq!(
         spelling(floating, SerializationRequest::Css),
         "color(srgb 1 0 1 / 0.929412)"
@@ -389,10 +385,7 @@ fn missing_and_extended_native_coordinates_have_selected_natural_forms() {
         ),
     ] {
         assert_eq!(
-            spelling(
-                Color::try_new(space, channels, alpha).unwrap(),
-                SerializationRequest::Css
-            ),
+            spelling(color(space, channels, alpha), SerializationRequest::Css),
             expected
         );
     }
@@ -440,8 +433,14 @@ fn ordinary_native_output_has_exact_one_short_limit() {
 #[test]
 fn finite_formatter_exposes_real_plan_and_exact_integer_digits() {
     let mut owner = OperationOwner::new();
-    let mut operation =
-        Some(FiniteFormatter::new(&mut owner, f64::MAX, RoundingMode::AwayFromZero).unwrap());
+    let mut operation = Some(
+        FiniteFormatter::new(
+            &mut owner,
+            Finite::new(f64::MAX).unwrap(),
+            RoundingMode::AwayFromZero,
+        )
+        .unwrap(),
+    );
     assert!(matches!(
         FiniteFormatter::take(&mut operation),
         Err(FormatError::Protocol(ProtocolError::NotReady))
@@ -487,21 +486,23 @@ fn finite_formatter_exposes_real_plan_and_exact_integer_digits() {
 }
 
 #[test]
-fn finite_formatter_rejects_nonfinite_and_recovers_negative_zero_bits() {
+fn finite_formatter_recovers_negative_zero_bits() {
     let mut owner = OperationOwner::new();
-    assert!(matches!(
-        FiniteFormatter::new(&mut owner, f64::NAN, RoundingMode::AwayFromZero),
-        Err(FormatError::NonFinite)
-    ));
-    let mut operation =
-        Some(FiniteFormatter::new(&mut owner, -0.0, RoundingMode::TowardPositiveInfinity).unwrap());
+    let mut operation = Some(
+        FiniteFormatter::new(
+            &mut owner,
+            Finite::new(-0.0).unwrap(),
+            RoundingMode::TowardPositiveInfinity,
+        )
+        .unwrap(),
+    );
     operation.as_mut().unwrap().abandon();
     assert!(matches!(
         FiniteFormatter::take(&mut operation),
         Err(FormatError::Protocol(ProtocolError::Terminated))
     ));
     let recovery = FiniteFormatter::recover(&mut operation).unwrap();
-    assert_eq!(recovery.value().to_bits(), (-0.0_f64).to_bits());
+    assert_eq!(recovery.value().get().to_bits(), (-0.0_f64).to_bits());
     assert_eq!(recovery.rounding(), RoundingMode::TowardPositiveInfinity);
     assert_eq!(recovery.length(), 0);
 }
@@ -533,7 +534,7 @@ fn fixed_requests_use_checked_numerical_operands_without_language_context() {
         (
             NumericalRequest::WithAlpha {
                 value: red,
-                alpha: Some(0.5),
+                alpha: UnitInterval::new(0.5),
             },
             Space::Predefined(Predefined::Srgb),
             [Some(1.0), Some(0.0), Some(0.0)],
@@ -541,14 +542,24 @@ fn fixed_requests_use_checked_numerical_operands_without_language_context() {
             Some([255, 0, 0]),
         ),
         (
-            NumericalRequest::WithFamily {
-                value: red,
-                family: SerializationFamily::ColorFunction,
-            },
+            NumericalRequest::WithColorFunction { value: red },
             Space::Predefined(Predefined::Srgb),
             [Some(1.0), Some(0.0), Some(0.0)],
             Some(1.0),
             Some([255, 0, 0]),
+        ),
+        (
+            NumericalRequest::ToLegacySrgb {
+                value: color(
+                    Space::Hsl,
+                    [Some(120.0), Some(100.0), Some(50.0)],
+                    Some(1.0),
+                ),
+            },
+            Space::Predefined(Predefined::Srgb),
+            [Some(0.0), Some(1.0), Some(0.0)],
+            Some(1.0),
+            None,
         ),
         (
             NumericalRequest::BlackWhiteContrast {
@@ -574,12 +585,19 @@ fn fixed_requests_use_checked_numerical_operands_without_language_context() {
         }
         assert_eq!(result.alpha(), alpha);
         assert_eq!(result.srgb_bytes(), bytes);
-        if matches!(request, NumericalRequest::WithFamily { .. }) {
+        if matches!(request, NumericalRequest::WithColorFunction { .. }) {
             assert_eq!(
                 result.serialization_family(),
                 SerializationFamily::ColorFunction
             );
         }
+        if matches!(request, NumericalRequest::ToLegacySrgb { .. }) {
+            assert_eq!(
+                result.serialization_family(),
+                SerializationFamily::LegacySrgb
+            );
+        }
+        assert!(result.identical(request.execute()), "one numerical path");
     }
 }
 
@@ -588,13 +606,11 @@ fn overflowing_hsl_serializes_its_clipped_closest_finite_channels() {
     // Formerly the numerical-failure witness. Values 4: an unsupported range
     // converts to the closest supported value, so at hue 0 with S = L = 1e308
     // the red channel is -MAX and green/blue +MAX, clipped to 0 and 255.
-    let value =
-        Color::try_new(Space::Hsl, [Some(0.0), Some(1e308), Some(1e308)], Some(1.0)).unwrap();
+    let value = color(Space::Hsl, [Some(0.0), Some(1e308), Some(1e308)], Some(1.0));
     let mut owner = OperationOwner::new();
     let mut operation =
         Some(Serialization::new(&mut owner, value, SerializationRequest::Css).unwrap());
     assert_eq!(operation.as_mut().unwrap().next_action().compute(), Ok(()));
-    assert_eq!(operation.as_ref().unwrap().failure(), None);
     operation.as_mut().unwrap().abandon();
     let recovery = Serialization::recover(&mut operation).unwrap();
     assert!(recovery.value().identical(value));

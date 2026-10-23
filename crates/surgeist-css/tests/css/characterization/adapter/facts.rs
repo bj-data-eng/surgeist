@@ -90,7 +90,7 @@ fn link_facts(error: &(dyn StdError + 'static)) -> Vec<String> {
             ),
             other => format!(
                 "variant={}",
-                variant!(other, CssColorOperationError, [Facts, Numerical, Protocol])
+                variant!(other, CssColorOperationError, [Facts, Protocol])
             ),
         }];
     }

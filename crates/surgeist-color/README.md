@@ -25,9 +25,10 @@ converts, interpolates and transforms them. It imports only this crate:
 cargo run --offline --locked -j 1 -p surgeist-color --example native
 ```
 
-`Color::try_new` checks finite present components and alpha in `[0, 1]` while
-preserving missing components and extended finite channels. It does not infer
-byte provenance from integral floating-point values. `from_srgba8` establishes
+`Color::new` takes proof-typed operands: `Finite` channels and `UnitInterval`
+alpha, which reject NaN and both infinities when they are built. It preserves
+missing components and extended finite channels and does not infer byte
+provenance from integral floating-point values. `from_srgba8` establishes
 actual channel and alpha byte provenance; an explicit `QuantizeSrgb`
 transformation establishes channel bytes without inventing alpha bytes.
 `identical` compares representation, including missing values, signed zero,
@@ -36,11 +37,11 @@ stored value using floating-point equality.
 
 `ColorSpace` covers predefined RGB/XYZ spaces, HSL/HWB, Lab/LCH and
 Oklab/Oklch. `RectangularCoordinates`, `HslCoordinates`, `HwbCoordinates` and
-`PolarCoordinates` offer the corresponding checked numerical conversion APIs.
-Conversion preserves finite extended coordinates and reports an unrepresentable
-final result, except that forward HSL/HWB conversion returns the signed closest
-finite channel (the CSS Values 4 closest supported value); it does not apply a
-global gamut map. The implementation uses
+`PolarCoordinates` hold `Finite` coordinates for the corresponding numerical
+conversion APIs. Every operation is total: conversion preserves finite extended
+coordinates, and a result beyond binary64 is the signed closest finite value
+(the CSS Values 4 closest supported value). This is a numeric-range rule only;
+no gamut map is applied. The implementation uses
 binary64 significand arithmetic, not exact-real or correctly rounded arithmetic.
 Source-specific numerical policies remain documented in the conversion modules.
 

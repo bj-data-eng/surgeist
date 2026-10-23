@@ -170,13 +170,13 @@
 //! serialization limits. The numerical owner, [`surgeist_color`], supplies the
 //! independent concrete-sample helpers
 //! [`surgeist_color::naively_convert_cmyk_to_srgba`] and [`surgeist_color::naively_convert_srgba_to_cmyk`] implement
-//! the uncalibrated Color 5 numerical fallback with finite `f64` coordinates.
+//! the uncalibrated Color 5 numerical fallback with [`surgeist_color::Finite`] coordinates.
 //! They preserve alpha bits and do not resolve authored colors or device profiles.
 //! Source resolution consults explicit [`CssDeviceColorFact`] values; those
 //! contextual choices remain CSS-owned.
 //! [`surgeist_color::convert_lab_to_lch`] and [`surgeist_color::convert_oklab_to_oklch`] provide pure numerical
 //! rectangular-to-polar coordinates from Color 4, with space-specific missing-hue
-//! thresholds. [`surgeist_color::PolarCoordinates`] checks finite lightness/chroma and
+//! thresholds. [`surgeist_color::PolarCoordinates`] holds finite lightness/chroma and
 //! normalizes optional hue; [`surgeist_color::convert_lch_to_lab`] and [`surgeist_color::convert_oklch_to_oklab`]
 //! invert those coordinates, setting both axes to zero when hue is missing.
 //! These helpers use concrete number units independently of authored colors.
@@ -186,7 +186,7 @@
 //! [`surgeist_color::convert_hwb_to_srgb`] and [`surgeist_color::convert_srgb_to_hwb`] convert encoded sRGB
 //! samples without gamut clipping. Inverse conversion marks powerless hue
 //! missing while retaining the other coordinates; forward missing hue uses zero.
-//! [`surgeist_color::RectangularCoordinates`] checks concrete RGB, XYZ, Lab and Oklab
+//! [`surgeist_color::RectangularCoordinates`] holds finite RGB, XYZ, Lab and Oklab
 //! channels with explicit missingness. Its [`convert_to`](surgeist_color::RectangularCoordinates::convert_to)
 //! method converts among [`surgeist_color::RectangularSpace`] values without gamut
 //! clipping, preserving intermediate range with binary64 significand precision.
@@ -1807,7 +1807,7 @@ pub use color::{
     CssColorPathReservationLayout, CssColorPathReservationStatus, CssColorPathStep,
     CssColorProfileAvailability, CssColorProfileBinding, CssColorProfileConversion,
     CssColorProfileConversionRecord, CssColorPropertyFacts, CssColorProtocolError,
-    CssColorResolutionSite, CssColorSchemeFact, CssColorSerialization, CssColorSerializationAction,
+    CssColorSchemeFact, CssColorSerialization, CssColorSerializationAction,
     CssColorSerializationReceipt, CssColorSlot, CssColorSlotKind, CssColorSourceDescriptor,
     CssColorStandardFailure, CssColorStandardFailureKind, CssColorTransformAction,
     CssColorTransformation, CssColorUnavailable, CssColorUnsupported, CssDeviceColorFact,

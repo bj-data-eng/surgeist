@@ -193,10 +193,6 @@ pub enum DomMetaError {
     ThemeColorUnavailable(surgeist_css::CssColorUnavailable),
     ThemeColorUnsupported(surgeist_css::CssColorUnsupported),
     ThemeColorFacts(surgeist_css::CssColorFactError),
-    ThemeColorNumerical {
-        error: surgeist_color::ColorError,
-        input: surgeist_css::CssColorInputRange,
-    },
     ThemeColorScratchLimit {
         limit: usize,
     },

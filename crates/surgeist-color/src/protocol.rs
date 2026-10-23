@@ -79,7 +79,7 @@ impl From<FormatProtocolError> for ProtocolError {
             FormatProtocolError::WrongIndex => Self::WrongIndex,
             FormatProtocolError::InvalidDigit | FormatProtocolError::WrongDigit => Self::WrongDigit,
             FormatProtocolError::Terminated => Self::Terminated,
-            FormatProtocolError::WrongReply | FormatProtocolError::NonFinite => Self::WrongReply,
+            FormatProtocolError::WrongReply => Self::WrongReply,
         }
     }
 }
@@ -149,7 +149,8 @@ pub enum Kernel {
     Interpolate,
     Transform(Transformation),
     WithAlpha,
-    WithFamily,
+    WithColorFunction,
+    ToLegacySrgb,
     BlackWhiteContrast,
     SerializationPlan,
     SerializationPiece,
@@ -182,7 +183,6 @@ pub enum ActionDescription {
     ReplaceDigit { index: usize },
     EmitByte { unit: u8 },
     Ready,
-    Failed,
     Abandoned,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

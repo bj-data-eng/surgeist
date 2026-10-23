@@ -321,8 +321,7 @@ the outcome contains a numerical color or the actual standard-failure cause.
 steps and actions. The controlled `CssAuthoredColorOperation` services the same
 resolver with caller-owned banks and a `CssColorPathBuffer`, preserving Parsed,
 Programmatic and ImplicitClosure origins without serialization or reparsing.
-Authored numerical errors transfer their reached component path and applicable
-origin through `CssColorResolutionSite::Authored`. See the
+Colour numerics are total, so resolution has no numerical error. See the
 [public authored-resolution examples](tests/css/color/color_authored_resolution.rs).
 
 Resolution observes only reached dependencies. The no-element
@@ -396,9 +395,10 @@ removes it and returns its original committed checkpoint, including source,
 facts and standard-failure context. Recovery does not complete pending work or
 restart a cancelled controller. A standard-failure checkpoint can accept an
 explicitly checked caller fallback while retaining that context. Unavailable,
-unsupported, malformed-fact, numerical and protocol errors remain distinct from
-standard invalidity. Numerical errors carry Color's `ColorError` and the
-actual reached CSS recipe's `CssColorResolutionSite::Source` range. Resource
+unsupported, malformed-fact and protocol errors remain distinct from standard
+invalidity. A channel value beyond binary64, including a top-level infinite
+calculation, is the closest supported finite value, so no numerical error
+exists. Resource
 refusal and cancellation belong to the original controlled consumer. See the
 [controlled protocol](src/color/bounded.rs) and [fact carriers](src/color/facts.rs).
 

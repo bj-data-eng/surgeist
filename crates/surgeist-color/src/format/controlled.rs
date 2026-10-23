@@ -2,7 +2,7 @@
 use super::{FormatError, RoundingMode};
 use crate::controlled::{Original, Stream};
 use crate::{
-    ActionDescription, ActionLayout, DigitSlot, OperationOwner, ProtocolError, StreamAction,
+    ActionDescription, ActionLayout, DigitSlot, Finite, OperationOwner, ProtocolError, StreamAction,
 };
 
 pub struct FiniteFormatter<'owner> {
@@ -23,12 +23,12 @@ impl FormatSummary {
 }
 #[derive(Debug)]
 pub struct FormatRecovery {
-    value: f64,
+    value: Finite,
     rounding: RoundingMode,
     length: usize,
 }
 impl FormatRecovery {
-    pub const fn value(&self) -> f64 {
+    pub const fn value(&self) -> Finite {
         self.value
     }
     pub const fn rounding(&self) -> RoundingMode {
@@ -47,7 +47,7 @@ impl<'owner> FiniteFormatter<'owner> {
     }
     pub fn new(
         owner: &'owner mut OperationOwner,
-        value: f64,
+        value: Finite,
         rounding: RoundingMode,
     ) -> Result<Self, FormatError> {
         Ok(Self {
@@ -105,10 +105,7 @@ impl<'owner> FiniteFormatAction<'_, 'owner> {
         self.inner.layout()
     }
     pub fn compute(self) -> Result<(), FormatError> {
-        self.inner.compute().map_err(|e| match e {
-            crate::SerializationError::Protocol(e) => FormatError::Protocol(e),
-            _ => unreachable!("finite formatter has no color numerical kernel"),
-        })
+        self.inner.compute().map_err(FormatError::Protocol)
     }
     pub fn read_digit(self, index: usize, slot: &DigitSlot<'_>) -> Result<(), ProtocolError> {
         self.inner.read_digit(index, slot)

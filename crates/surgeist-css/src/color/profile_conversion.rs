@@ -1,13 +1,14 @@
 //! Admitted custom-channel normalization and concrete forward conversion join.
 
+use super::Color;
 use super::channels::{self, Component};
 use super::facts::{
     CssColorFactIdentity, CssColorFacts, CssColorProfileAvailability, CssColorProfileConversion,
 };
 use super::profile::ProfileSelection;
 use super::protocol::{CssColorProtocolError, CssColorSlot, Data, RecordTable};
-use super::{Color, ColorError};
 use crate::{ColorSpace, color::protocol::RecordRange};
+use surgeist_color::UnitInterval;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum Error {
@@ -18,7 +19,6 @@ pub(crate) enum Error {
     Unavailable,
     Unsupported,
     DuplicateConversion,
-    Numerical(ColorError),
     Stopped,
 }
 fn checked_header(facts: &CssColorFacts<'_>, selection: ProfileSelection) -> Result<(), Error> {
@@ -61,7 +61,7 @@ pub(crate) struct ProfileInputs<'owner> {
     table: RecordTable<'owner>,
     selection: ProfileSelection,
     span: RecordRange,
-    alpha: Option<f64>,
+    alpha: Option<UnitInterval>,
 }
 impl ProfileInputs<'_> {
     pub(crate) const fn length(&self) -> usize {
@@ -127,7 +127,7 @@ pub(crate) struct ProfileInputBuilder<'owner, 'facts> {
     output: usize,
     base: usize,
     pending: Option<f64>,
-    alpha: Option<f64>,
+    alpha: Option<UnitInterval>,
     state: InputState,
 }
 impl<'owner, 'facts> ProfileInputBuilder<'owner, 'facts> {
@@ -137,16 +137,13 @@ impl<'owner, 'facts> ProfileInputBuilder<'owner, 'facts> {
         selection: ProfileSelection,
         supplied: usize,
         base: usize,
-        alpha: Option<f64>,
+        alpha: Option<UnitInterval>,
     ) -> Result<Self, Error> {
         if supplied == 0 {
             return Err(Error::InvalidColor);
         }
         if base < table.length || base.checked_add(selection.parameter_count).is_none() {
             return Err(Error::Protocol(CssColorProtocolError::Overflow));
-        }
-        if alpha.is_some_and(|value| !value.is_finite() || !(0.0..=1.0).contains(&value)) {
-            return Err(Error::InvalidColor);
         }
         Ok(Self {
             table: *table,
@@ -526,10 +523,7 @@ impl<'owner, 'facts> ProfileConversionLookup<'owner, 'facts> {
                 else {
                     return self.fail(Error::InvalidMetadata);
                 };
-                let value = match record.value.with_alpha(self.inputs.alpha) {
-                    Ok(value) => value,
-                    Err(error) => return self.fail(Error::Numerical(error)),
-                };
+                let value = record.value.with_alpha(self.inputs.alpha);
                 self.result = Some(ProfileResult {
                     value,
                     facts: self.inputs.selection.facts,
@@ -622,7 +616,7 @@ mod tests {
         facts: &'facts CssColorFacts<'facts>,
         selection: ProfileSelection,
         components: &[Component],
-        alpha: Option<f64>,
+        alpha: Option<UnitInterval>,
         slots: &mut Vec<CssColorSlot<'owner>>,
     ) -> Result<ProfileInputs<'owner>, Error> {
         let mut builder = ProfileInputBuilder::start(
@@ -678,12 +672,15 @@ mod tests {
         )
     }
     fn srgb() -> Color {
-        Color::try_new(
+        Color::new(
             ColorSpace::Predefined(PredefinedColorSpace::Srgb),
-            [Some(0.2), Some(0.4), Some(0.6)],
-            Some(1.0),
+            [
+                surgeist_color::Finite::new(0.2),
+                surgeist_color::Finite::new(0.4),
+                surgeist_color::Finite::new(0.6),
+            ],
+            UnitInterval::new(1.0),
         )
-        .unwrap()
     }
     #[test]
     fn unnamed_four_parameter_inputs_default_zero_and_join_exact_forward_record() {
@@ -787,7 +784,7 @@ mod tests {
                 Component::number(f64::INFINITY),
                 Component::number(0.75),
             ],
-            Some(0.5),
+            UnitInterval::new(0.5),
             &mut slots,
         )
         .unwrap();
@@ -807,7 +804,7 @@ mod tests {
             selection,
             3,
             slots.len(),
-            Some(1.0),
+            UnitInterval::new(1.0),
         )
         .unwrap();
         builder.read_header().unwrap();
@@ -875,7 +872,7 @@ mod tests {
             &facts,
             selection,
             &[Component::number(-0.0)],
-            Some(1.0),
+            UnitInterval::new(1.0),
             &mut slots,
         )
         .unwrap();
@@ -955,7 +952,7 @@ mod tests {
             selection,
             1,
             slots.len(),
-            Some(1.0),
+            UnitInterval::new(1.0),
         )
         .unwrap();
         builder.read_header().unwrap();
@@ -980,7 +977,7 @@ mod tests {
             other_selection,
             1,
             slots.len(),
-            Some(1.0),
+            UnitInterval::new(1.0),
         )
         .unwrap();
         other_builder.read_header().unwrap();

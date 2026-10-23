@@ -353,10 +353,6 @@ pub enum DomError {
     InputColorUnavailable(surgeist_css::CssColorUnavailable),
     InputColorUnsupported(surgeist_css::CssColorUnsupported),
     InputColorFacts(surgeist_css::CssColorFactError),
-    InputColorNumerical {
-        error: surgeist_color::ColorError,
-        input: surgeist_css::CssColorInputRange,
-    },
     StyleCompositionRequired(surgeist_html::HtmlStyleUpdateAction),
     StyleOwnerAttributesCompositionRequired,
     StyleDisabledCompositionRequired,

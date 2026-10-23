@@ -38,10 +38,6 @@ pub(crate) struct StandardFailure {
 pub(crate) enum Error {
     Protocol(CssColorProtocolError),
     Resolution(super::resolution::Error),
-    Numerical {
-        error: super::ColorError,
-        site: Site,
-    },
 }
 impl From<CssColorProtocolError> for Error {
     fn from(error: CssColorProtocolError) -> Self {
@@ -681,27 +677,11 @@ impl<'owner, 'facts> ColorOperation<'owner, 'facts> {
     fn resolution_error(&mut self, error: super::resolution::Error) -> Result<(), Error> {
         use super::profile_conversion::Error as C;
         use super::resolution::Error as R;
-        let numerical = match error {
-            R::Numerical(e)
-            | R::Channel(super::channels::Error::Numerical(e))
-            | R::Component(super::component_value::Error::Channel(
-                super::channels::Error::Numerical(e),
-            ))
-            | R::Conversion(C::Numerical(e))
-            | R::Device(super::device::DeviceError::Numerical(e))
-            | R::Interpolation(super::interpolate::Error::Numerical(e)) => Some(e),
-            R::Interpolation(super::interpolate::Error::Overflow) => {
-                Some(super::ColorError::Unrepresentable)
-            }
-            _ => None,
-        };
-        if let Some(error) = numerical {
-            let Phase::Resolution(cursor) = &self.phase else {
-                return Err(CssColorProtocolError::WrongAction.into());
-            };
-            let site = cursor.reached_site()?;
+        // Exhausting the mix argument counter is not a reachable input; it
+        // stops the operation as a counter overflow.
+        if let R::Interpolation(super::interpolate::Error::Overflow) = error {
             self.abandon();
-            return Err(Error::Numerical { error, site });
+            return Err(CssColorProtocolError::Overflow.into());
         }
         // Only an actual standard-invalid branch can mint a fallback checkpoint.
         let reason = match error {
@@ -1266,18 +1246,22 @@ mod tests {
             )
             .unwrap(),
         );
-        assert!(matches!(
-            transformation.as_mut().unwrap().next_action().compute(),
-            Err(crate::CssColorOperationError::Numerical {
-                error: super::super::ColorError::Unrepresentable,
-                ..
-            })
-        ));
-        transformation.as_mut().unwrap().abandon();
-        let checkpoint = CssColorTransformation::recover(&mut transformation)
+        // XYZ Z is 1.089 times the shared channel, beyond binary64, so it is
+        // the closest finite value; X and Y (0.95 and 1.0 times) stay exact.
+        transformation
+            .as_mut()
+            .unwrap()
+            .next_action()
+            .compute()
+            .unwrap();
+        let checkpoint = CssColorTransformation::take(&mut transformation)
             .unwrap()
             .checkpoint;
-        assert!(checkpoint.value().identical(original));
+        let [x, y, z] = checkpoint.value().channels();
+        assert!(x.is_some_and(|x| x.is_finite() && x < f64::MAX));
+        assert!(y.is_some_and(|y| y.is_finite() && y < f64::MAX));
+        assert_eq!(z, Some(f64::MAX));
+        assert!(!checkpoint.value().identical(original));
         assert_eq!(checkpoint.standard_failure(), None);
     }
     #[test]

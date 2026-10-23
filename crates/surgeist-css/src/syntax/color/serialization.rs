@@ -1496,12 +1496,8 @@ fn converted_rgb_text(
         components,
         None,
     )
-    .and_then(|color| {
-        color
-            .converted(ColorSpace::Predefined(PredefinedColorSpace::Srgb))
-            .map_err(channels::Error::Numerical)
-    })
-    .map_err(|_| unrepresentable())?;
+    .map_err(|_| unrepresentable())?
+    .converted(ColorSpace::Predefined(PredefinedColorSpace::Srgb));
     let mut text = [String::new(), String::new(), String::new()];
     for (target, channel) in text.iter_mut().zip(color.channels()) {
         let channel = channel.ok_or_else(unrepresentable)?;

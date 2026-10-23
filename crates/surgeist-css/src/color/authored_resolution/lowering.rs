@@ -1428,8 +1428,15 @@ mod tests {
         )];
         let inputs = [0.1, 0.2, 0.3, 0.4, 0.5];
         let target = ColorSpace::Predefined(PredefinedColorSpace::XyzD50);
-        let converted =
-            Color::try_new(target, [Some(0.2), Some(0.3), Some(0.4)], Some(1.0)).unwrap();
+        let converted = Color::new(
+            target,
+            [
+                surgeist_color::Finite::new(0.2),
+                surgeist_color::Finite::new(0.3),
+                surgeist_color::Finite::new(0.4),
+            ],
+            surgeist_color::UnitInterval::new(1.0),
+        );
         let conversions = [crate::CssColorProfileConversion::Resolved(
             crate::CssColorProfileConversionRecord::new(
                 resource, &inputs, intent, target, converted,

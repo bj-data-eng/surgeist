@@ -11,6 +11,14 @@ use surgeist_css::{
     parse_used_color,
 };
 
+/// A finite numerical color from plain test coordinates.
+fn numerical_color(space: ColorSpace, channels: [Option<f64>; 3], alpha: Option<f64>) -> Color {
+    Color::new(
+        space,
+        channels.map(|channel| channel.map(|value| surgeist_color::Finite::new(value).unwrap())),
+        alpha.map(|value| surgeist_color::UnitInterval::new(value).unwrap()),
+    )
+}
 fn limits() -> CssColorOrdinaryLimits {
     // Explicit ordinary logical allowances for these short literal fixtures.
     // They are neither a physical allocator bound nor an HTML work ledger.
@@ -205,13 +213,11 @@ fn missing_components_and_alpha_are_preserved_until_explicit_transform() {
         "hsl(none 100% 50% / none)"
     );
     let present = value("rgb(100% 0 0 / .5)", &facts);
-    let opaque = present
-        .transformed(Transformation::ForceOpaqueAlpha)
-        .unwrap();
+    let opaque = present.transformed(Transformation::ForceOpaqueAlpha);
     assert_eq!(present.alpha(), Some(0.5));
     assert_eq!(opaque.alpha(), Some(1.0));
     assert_eq!(opaque.srgb_bytes(), None);
-    let bytes = opaque.transformed(Transformation::QuantizeSrgb).unwrap();
+    let bytes = opaque.transformed(Transformation::QuantizeSrgb);
     assert_eq!(bytes.srgb_bytes(), Some([255, 0, 0]));
     assert_eq!(
         surgeist_color::serialize(
@@ -297,15 +303,12 @@ fn utf16_prefix_input_and_native_conversion_retain_actual_units_and_phase_meanin
         result.outcome(),
         CssColorOrdinaryOutcome::Used(Color::from_srgba8([255, 0, 0, 255]))
     );
-    let modern = Color::try_new(
+    let modern = numerical_color(
         ColorSpace::Predefined(PredefinedColorSpace::Srgb),
         [Some(1.0), Some(0.0), Some(0.0)],
         Some(1.0),
-    )
-    .unwrap();
-    let cylindrical = modern
-        .transformed(Transformation::Convert(ColorSpace::Hwb))
-        .unwrap();
+    );
+    let cylindrical = modern.transformed(Transformation::Convert(ColorSpace::Hwb));
     assert_eq!(cylindrical.channels(), [Some(0.0); 3]);
     assert_eq!(
         surgeist_color::serialize(cylindrical, SerializationRequest::Css, numerical_limits())
@@ -525,10 +528,12 @@ fn wrapper_and_utf16_prefix_results_complete_only_the_final_used_color() {
 }
 
 #[test]
-fn numerical_failure_reports_reached_nested_recipe_in_original_utf16_units() {
-    // The impossible finite conversion occurs while resolving the inner mix.
-    // A leading supplementary character in a comment distinguishes original
-    // UTF-16 units from UTF-8 bytes without changing the CSS recipe.
+fn nested_overflowing_mix_resolves_to_closest_finite_srgb_in_original_utf16_units() {
+    // lab(0 1e308 0) has X far beyond binary64 and Y = Z = 0; its D50-adapted
+    // linear sRGB column is (+, -, +), so Color 4 conversion saturates it to
+    // (MAX, -MAX, MAX). Even mixes with red and then blue halve and quarter
+    // those channels exactly. A leading supplementary character in a comment
+    // distinguishes original UTF-16 units from UTF-8 bytes.
     let facts = absent_facts();
     let inner = "color-mix(in srgb, lab(0 1e308 0), red)";
     let prefix = "/*🦀*/color-mix(in srgb, ";
@@ -536,27 +541,34 @@ fn numerical_failure_reports_reached_nested_recipe_in_original_utf16_units() {
     let input: Vec<u16> = text.encode_utf16().collect();
     let mut allowance = limits();
     // Exact conversion of a large authored exponent runs through the original
-    // incremental decimal owner before the fixed numerical failure is reached.
+    // incremental decimal owner.
     allowance.actions = 100_000_000;
-    let error = parse_used_color(
+    let result = parse_used_color(
         CssColorInput::Utf16(&input),
         CssColorGrammarRequest::WholeColor,
         &facts,
         facts.identity(),
         allowance,
     )
-    .err()
-    .expect("inner conversion cannot produce finite sRGB");
+    .unwrap();
+    assert_eq!(result.source().consumed.start, 0);
+    assert_eq!(result.source().consumed.end, input.len());
+    let CssColorOrdinaryOutcome::Used(value) = result.outcome() else {
+        panic!("a finite used color")
+    };
     assert_eq!(
-        error,
-        CssColorOrdinaryError::Operation(CssColorOperationError::Numerical {
-            error: surgeist_color::ColorError::Unrepresentable,
-            site: surgeist_css::CssColorResolutionSite::Source(surgeist_css::CssColorInputRange {
-                start: prefix.encode_utf16().count(),
-                end: prefix.encode_utf16().count() + inner.encode_utf16().count(),
-            }),
-        })
+        value.space(),
+        ColorSpace::Predefined(PredefinedColorSpace::Srgb)
     );
+    assert_eq!(
+        value.channels(),
+        [
+            Some(f64::MAX / 4.0),
+            Some(-f64::MAX / 4.0),
+            Some(f64::MAX / 4.0)
+        ]
+    );
+    assert_eq!(value.alpha(), Some(1.0));
 }
 
 #[test]

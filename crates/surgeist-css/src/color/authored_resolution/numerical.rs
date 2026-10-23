@@ -1,16 +1,11 @@
 //! Authored-qualified checkpoints over the actual external numerical owner.
 
-use super::{
-    CssAuthoredColorCheckpoint, CssAuthoredColorOutcome, CssAuthoredColorStandardFailure,
-    CssColorComponentPath,
-};
-use crate::color::bounded::{
-    computation_failure, numerical_description, numerical_layout, serialization_failure,
-};
+use super::{CssAuthoredColorCheckpoint, CssAuthoredColorOutcome, CssAuthoredColorStandardFailure};
+use crate::color::bounded::{numerical_description, numerical_layout};
 use crate::{
     CssColor, CssColorActionDescription, CssColorActionLayout, CssColorBankLengths,
     CssColorFactIdentity, CssColorFacts, CssColorOperationError, CssColorOperationOwner,
-    CssColorProtocolError, CssColorResolutionSite,
+    CssColorProtocolError,
 };
 use std::mem::size_of;
 use surgeist_color::{
@@ -35,8 +30,7 @@ impl Context<'_, '_, '_> {
     }
 }
 /// A used value with its actual checked root, facts and optional original cause.
-/// The standard-failure allocation moves into this context once; it is never
-/// used as backing for a later whole-value numerical error.
+/// The standard-failure allocation moves into this context once.
 pub struct CssAuthoredUsedColorCheckpoint<'css, 'authored, 'facts> {
     context: Context<'css, 'authored, 'facts>,
     value: Color,
@@ -126,10 +120,6 @@ impl<'css, 'authored, 'facts> CssAuthoredUsedColorCheckpoint<'css, 'authored, 'f
     pub fn is_current(&self) -> bool {
         self.context.require_current().is_ok()
     }
-    #[expect(
-        clippy::result_large_err,
-        reason = "The common CSS error owns its admitted path and origin inline; preserving that type avoids allocation on the failure path"
-    )]
     pub fn transform<'num>(
         slot: &mut Option<Self>,
         numerical_owner: &'num mut OperationOwner,
@@ -140,9 +130,6 @@ impl<'css, 'authored, 'facts> CssAuthoredUsedColorCheckpoint<'css, 'authored, 'f
         let actual = slot.as_ref().ok_or(CssColorProtocolError::EmptySlot)?;
         banks.empty()?;
         let next = actual.context.owner.prepare_advance(actual.context.phase)?;
-        // This real empty Vec header is prepared before numerical work. It has
-        // no allocation and is independent of any original fallback cause.
-        let root_site = Some(CssColorComponentPath::root());
         let numerical = Computation::new(
             numerical_owner,
             NumericalRequest::Transform {
@@ -159,14 +146,9 @@ impl<'css, 'authored, 'facts> CssAuthoredUsedColorCheckpoint<'css, 'authored, 'f
         checkpoint.context.phase = next;
         Ok(CssAuthoredColorTransformation {
             checkpoint,
-            root_site,
             numerical: Some(numerical),
         })
     }
-    #[expect(
-        clippy::result_large_err,
-        reason = "The common CSS error owns its admitted path and origin inline; preserving that type avoids allocation on the failure path"
-    )]
     pub fn serialize<'num>(
         slot: &mut Option<Self>,
         numerical_owner: &'num mut OperationOwner,
@@ -184,7 +166,6 @@ impl<'css, 'authored, 'facts> CssAuthoredUsedColorCheckpoint<'css, 'authored, 'f
             .into());
         }
         let next = actual.context.owner.prepare_advance(actual.context.phase)?;
-        let root_site = Some(CssColorComponentPath::root());
         let numerical = Serialization::new(numerical_owner, actual.value, request)
             .map_err(CssColorProtocolError::NumericalProtocol)?;
         actual
@@ -195,14 +176,13 @@ impl<'css, 'authored, 'facts> CssAuthoredUsedColorCheckpoint<'css, 'authored, 'f
         checkpoint.context.phase = next;
         Ok(CssAuthoredColorSerialization {
             checkpoint,
-            root_site,
             numerical: Some(numerical),
         })
     }
 }
 /// Fixed observations/copies and actual inline construction at numerical entry.
-/// `register_bytes` includes context, prepared root path and native continuation
-/// once. The other fields describe work, not additional register allocations.
+/// `register_bytes` includes context and native continuation once. The other
+/// fields describe work, not additional register allocations.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CssAuthoredColorNumericalInitializationLayout {
     pub checkpoint_bytes: usize,
@@ -210,16 +190,13 @@ pub struct CssAuthoredColorNumericalInitializationLayout {
     pub numerical_owner_bytes: usize,
     pub bank_length_bytes: usize,
     pub numerical_digit_length_bytes: usize,
-    pub root_path_header_bytes: usize,
     pub register_bytes: usize,
 }
-/// Actual external numerical payloads plus the prepared owned error-site move.
+/// Actual external numerical payloads and the CSS owner observation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CssAuthoredColorNumericalActionLayout {
     pub numerical: CssColorActionLayout,
     pub css_owner_read_bytes: usize,
-    pub root_path_read_bytes: usize,
-    pub root_path_write_bytes: usize,
     pub result_bytes: usize,
 }
 fn initialization(
@@ -233,7 +210,6 @@ fn initialization(
         numerical_owner_bytes: OperationOwner::layout_bytes(),
         bank_length_bytes: size_of::<CssColorBankLengths>(),
         numerical_digit_length_bytes,
-        root_path_header_bytes: size_of::<Option<CssColorComponentPath>>(),
         register_bytes,
     }
 }
@@ -241,7 +217,6 @@ fn action_layout(
     description: CssColorActionDescription,
     native: surgeist_color::ActionLayout,
 ) -> CssAuthoredColorNumericalActionLayout {
-    let semantic = matches!(description, CssColorActionDescription::Compute(_));
     let result_bytes = match description {
         CssColorActionDescription::AppendNumericalDigit { .. }
         | CssColorActionDescription::UpdateNumericalDigit { .. } => {
@@ -252,46 +227,12 @@ fn action_layout(
     CssAuthoredColorNumericalActionLayout {
         numerical: numerical_layout(description, native),
         css_owner_read_bytes: size_of::<CssColorOperationOwner>(),
-        root_path_read_bytes: size_of::<Option<CssColorComponentPath>>(),
-        root_path_write_bytes: if semantic {
-            size_of::<Option<CssColorComponentPath>>()
-        } else {
-            0
-        },
         result_bytes,
-    }
-}
-fn require_action(
-    context: &Context<'_, '_, '_>,
-    site: &Option<CssColorComponentPath>,
-) -> Result<(), CssColorProtocolError> {
-    context.require_current()?;
-    if site.is_none() {
-        return Err(CssColorProtocolError::Terminal);
-    }
-    Ok(())
-}
-fn attach_failure(
-    error: Result<surgeist_color::ColorError, CssColorProtocolError>,
-    site: &mut Option<CssColorComponentPath>,
-) -> CssColorOperationError {
-    match error {
-        Ok(error) => CssColorOperationError::Numerical {
-            error,
-            site: CssColorResolutionSite::Authored {
-                path: site
-                    .take()
-                    .expect("semantic action admitted a prepared root site"),
-                origin: None,
-            },
-        },
-        Err(error) => error.into(),
     }
 }
 /// Delegates one transformation; only successful take commits the new Color.
 pub struct CssAuthoredColorTransformation<'css, 'num, 'authored, 'facts> {
     checkpoint: CssAuthoredUsedColorCheckpoint<'css, 'authored, 'facts>,
-    root_site: Option<CssColorComponentPath>,
     numerical: Option<Computation<'num>>,
 }
 impl<'css, 'num, 'authored, 'facts> CssAuthoredColorTransformation<'css, 'num, 'authored, 'facts> {
@@ -309,9 +250,6 @@ impl<'css, 'num, 'authored, 'facts> CssAuthoredColorTransformation<'css, 'num, '
         )
     }
     pub fn action(&self) -> CssColorActionDescription {
-        if self.root_site.is_none() {
-            return CssColorActionDescription::Stopped;
-        }
         match self.numerical.as_ref().expect("owned computation").action() {
             surgeist_color::ActionDescription::Ready => CssColorActionDescription::UsedReady,
             description => numerical_description(description),
@@ -322,7 +260,6 @@ impl<'css, 'num, 'authored, 'facts> CssAuthoredColorTransformation<'css, 'num, '
     ) -> CssAuthoredColorTransformAction<'_, 'css, 'num, 'authored, 'facts> {
         CssAuthoredColorTransformAction {
             context: &self.checkpoint.context,
-            root_site: &mut self.root_site,
             numerical: self
                 .numerical
                 .as_mut()
@@ -336,18 +273,14 @@ impl<'css, 'num, 'authored, 'facts> CssAuthoredColorTransformation<'css, 'num, '
             .expect("owned computation")
             .abandon();
     }
-    #[expect(
-        clippy::result_large_err,
-        reason = "The common CSS error owns its admitted path and origin inline; preserving that type avoids allocation on the failure path"
-    )]
     pub fn take(
         slot: &mut Option<Self>,
     ) -> Result<CssAuthoredUsedColorCheckpoint<'css, 'authored, 'facts>, CssColorOperationError>
     {
         let actual = slot.as_mut().ok_or(CssColorProtocolError::EmptySlot)?;
-        require_action(&actual.checkpoint.context, &actual.root_site)?;
+        actual.checkpoint.context.require_current()?;
         let value = Computation::take(&mut actual.numerical)
-            .map_err(|e| attach_failure(computation_failure(e), &mut actual.root_site))?;
+            .map_err(CssColorProtocolError::NumericalProtocol)?;
         let mut actual = slot.take().expect("native take succeeded");
         actual.checkpoint.value = value;
         Ok(actual.checkpoint)
@@ -365,14 +298,10 @@ impl<'css, 'num, 'authored, 'facts> CssAuthoredColorTransformation<'css, 'num, '
 /// Lends the actual native numerical guard and the independent prepared site.
 pub struct CssAuthoredColorTransformAction<'step, 'css, 'num, 'authored, 'facts> {
     context: &'step Context<'css, 'authored, 'facts>,
-    root_site: &'step mut Option<CssColorComponentPath>,
     numerical: ComputationAction<'step, 'num>,
 }
 impl CssAuthoredColorTransformAction<'_, '_, '_, '_, '_> {
     pub fn description(&self) -> CssColorActionDescription {
-        if self.root_site.is_none() {
-            return CssColorActionDescription::Stopped;
-        }
         match self.numerical.description() {
             surgeist_color::ActionDescription::Ready => CssColorActionDescription::UsedReady,
             description => numerical_description(description),
@@ -381,21 +310,16 @@ impl CssAuthoredColorTransformAction<'_, '_, '_, '_, '_> {
     pub fn layout(&self) -> CssAuthoredColorNumericalActionLayout {
         action_layout(self.description(), self.numerical.layout())
     }
-    #[expect(
-        clippy::result_large_err,
-        reason = "The common CSS error owns its admitted path and origin inline; preserving that type avoids allocation on the failure path"
-    )]
     pub fn compute(self) -> Result<(), CssColorOperationError> {
-        require_action(self.context, self.root_site)?;
+        self.context.require_current()?;
         self.numerical
             .compute()
-            .map_err(|e| attach_failure(computation_failure(e), self.root_site))
+            .map_err(|e| CssColorProtocolError::NumericalProtocol(e).into())
     }
 }
 /// Resolved serialization owns no digit/output storage; the caller owns it.
 pub struct CssAuthoredColorSerialization<'css, 'num, 'authored, 'facts> {
     checkpoint: CssAuthoredUsedColorCheckpoint<'css, 'authored, 'facts>,
-    root_site: Option<CssColorComponentPath>,
     numerical: Option<Serialization<'num>>,
 }
 impl<'css, 'num, 'authored, 'facts> CssAuthoredColorSerialization<'css, 'num, 'authored, 'facts> {
@@ -413,23 +337,18 @@ impl<'css, 'num, 'authored, 'facts> CssAuthoredColorSerialization<'css, 'num, 'a
         )
     }
     pub fn action(&self) -> CssColorActionDescription {
-        if self.root_site.is_none() {
-            CssColorActionDescription::Stopped
-        } else {
-            numerical_description(
-                self.numerical
-                    .as_ref()
-                    .expect("owned serialization")
-                    .action(),
-            )
-        }
+        numerical_description(
+            self.numerical
+                .as_ref()
+                .expect("owned serialization")
+                .action(),
+        )
     }
     pub fn next_action(
         &mut self,
     ) -> CssAuthoredColorSerializationAction<'_, 'css, 'num, 'authored, 'facts> {
         CssAuthoredColorSerializationAction {
             context: &self.checkpoint.context,
-            root_site: &mut self.root_site,
             numerical: self
                 .numerical
                 .as_mut()
@@ -443,18 +362,14 @@ impl<'css, 'num, 'authored, 'facts> CssAuthoredColorSerialization<'css, 'num, 'a
             .expect("owned serialization")
             .abandon();
     }
-    #[expect(
-        clippy::result_large_err,
-        reason = "The common CSS error owns its admitted path and origin inline; preserving that type avoids allocation on the failure path"
-    )]
     pub fn take(
         slot: &mut Option<Self>,
     ) -> Result<CssAuthoredColorSerializationReceipt<'css, 'authored, 'facts>, CssColorOperationError>
     {
         let actual = slot.as_mut().ok_or(CssColorProtocolError::EmptySlot)?;
-        require_action(&actual.checkpoint.context, &actual.root_site)?;
+        actual.checkpoint.context.require_current()?;
         let receipt = Serialization::take(&mut actual.numerical)
-            .map_err(|e| attach_failure(serialization_failure(e), &mut actual.root_site))?;
+            .map_err(CssColorProtocolError::NumericalProtocol)?;
         let actual = slot.take().expect("native take succeeded");
         Ok(CssAuthoredColorSerializationReceipt {
             checkpoint: actual.checkpoint,
@@ -473,40 +388,27 @@ impl<'css, 'num, 'authored, 'facts> CssAuthoredColorSerialization<'css, 'num, 'a
 }
 pub struct CssAuthoredColorSerializationAction<'step, 'css, 'num, 'authored, 'facts> {
     context: &'step Context<'css, 'authored, 'facts>,
-    root_site: &'step mut Option<CssColorComponentPath>,
     numerical: StreamAction<'step, 'num>,
 }
 impl<'num> CssAuthoredColorSerializationAction<'_, '_, 'num, '_, '_> {
     pub fn description(&self) -> CssColorActionDescription {
-        if self.root_site.is_none() {
-            CssColorActionDescription::Stopped
-        } else {
-            numerical_description(self.numerical.description())
-        }
+        numerical_description(self.numerical.description())
     }
     pub fn layout(&self) -> CssAuthoredColorNumericalActionLayout {
         action_layout(self.description(), self.numerical.layout())
     }
-    #[expect(
-        clippy::result_large_err,
-        reason = "The common CSS error owns its admitted path and origin inline; preserving that type avoids allocation on the failure path"
-    )]
     pub fn compute(self) -> Result<(), CssColorOperationError> {
-        require_action(self.context, self.root_site)?;
+        self.context.require_current()?;
         self.numerical
             .compute()
-            .map_err(|e| attach_failure(serialization_failure(e), self.root_site))
+            .map_err(|e| CssColorProtocolError::NumericalProtocol(e).into())
     }
-    #[expect(
-        clippy::result_large_err,
-        reason = "The common CSS error owns its admitted path and origin inline; preserving that type avoids allocation on the failure path"
-    )]
     pub fn read_numerical_digit(
         self,
         index: usize,
         slot: &DigitSlot<'_>,
     ) -> Result<(), CssColorOperationError> {
-        require_action(self.context, self.root_site)?;
+        self.context.require_current()?;
         self.numerical
             .read_digit(index, slot)
             .map_err(|e| CssColorProtocolError::NumericalProtocol(e).into())
@@ -544,36 +446,24 @@ impl<'num> CssAuthoredColorSerializationAction<'_, '_, 'num, '_, '_> {
     ///     drop(next);
     /// }
     /// ```
-    #[expect(
-        clippy::result_large_err,
-        reason = "The common CSS error owns its admitted path and origin inline; preserving that type avoids allocation on the failure path"
-    )]
     pub fn numerical_record(&mut self) -> Result<DigitSlot<'num>, CssColorOperationError> {
-        require_action(self.context, self.root_site)?;
+        self.context.require_current()?;
         self.numerical
             .record()
             .map_err(|e| CssColorProtocolError::NumericalProtocol(e).into())
     }
-    #[expect(
-        clippy::result_large_err,
-        reason = "The common CSS error owns its admitted path and origin inline; preserving that type avoids allocation on the failure path"
-    )]
     pub fn numerical_written(
         self,
         index: usize,
         slot: &DigitSlot<'_>,
     ) -> Result<(), CssColorOperationError> {
-        require_action(self.context, self.root_site)?;
+        self.context.require_current()?;
         self.numerical
             .written(index, slot)
             .map_err(|e| CssColorProtocolError::NumericalProtocol(e).into())
     }
-    #[expect(
-        clippy::result_large_err,
-        reason = "The common CSS error owns its admitted path and origin inline; preserving that type avoids allocation on the failure path"
-    )]
     pub fn emitted(self, unit: u8) -> Result<(), CssColorOperationError> {
-        require_action(self.context, self.root_site)?;
+        self.context.require_current()?;
         self.numerical
             .emitted(unit)
             .map_err(|e| CssColorProtocolError::NumericalProtocol(e).into())

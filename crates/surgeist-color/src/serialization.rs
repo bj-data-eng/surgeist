@@ -3,8 +3,9 @@
 //! This numerical cursor has no CSS source, fact, owner or resolver record.
 //! Its adapter qualifies the caller bank before lending one actual digit.
 
-use super::value::{Color, ColorError};
+use super::value::Color;
 use crate::alpha::byte_alpha_for_serialization;
+use crate::finite::{Finite, closest_finite};
 use crate::format::RoundingMode;
 use crate::format::bounded::{FiniteFormatCursor, FormatDigit, FormatReply, FormatRequest};
 use crate::{ColorSpace as Space, PredefinedColorSpace as Predefined};
@@ -19,7 +20,7 @@ pub enum SerializationRequest {
 #[derive(Clone, Copy)]
 enum Piece {
     Literal(&'static [u8]),
-    Number(f64),
+    Number(Finite),
     None,
     Hex(u8),
     End,
@@ -29,7 +30,7 @@ struct Plan {
     pieces: [Piece; 19],
 }
 impl Plan {
-    fn new(value: Color, request: SerializationRequest) -> Result<Self, ColorError> {
+    fn new(value: Color, request: SerializationRequest) -> Self {
         let mut pieces = [Piece::End; 19];
         if request == SerializationRequest::HtmlCompatible
             && value.alpha() == Some(1.0)
@@ -41,11 +42,11 @@ impl Plan {
                 Piece::Hex(g),
                 Piece::Hex(b),
             ]);
-            return Ok(Self { pieces });
+            return Self { pieces };
         }
         let missing = value.channels().contains(&None) || value.alpha().is_none();
         let value = if matches!(value.space(), Space::Hsl | Space::Hwb) && !missing {
-            let converted = value.converted(Space::Predefined(Predefined::Srgb))?;
+            let converted = value.converted(Space::Predefined(Predefined::Srgb));
             if value.uses_color_function() {
                 converted.with_color_function()
             } else {
@@ -86,11 +87,11 @@ impl Plan {
         // Exactly three fixed channels, never a variable component/profile scan.
         for (index, channel) in channels.into_iter().enumerate() {
             pieces[next] = match channel {
-                Some(number) => Piece::Number(if legacy {
+                Some(number) => Piece::Number(closest_finite(if legacy {
                     number.clamp(0.0, 1.0) * 255.0
                 } else {
                     number
-                }),
+                })),
                 None => Piece::None,
             };
             next += 1;
@@ -108,18 +109,18 @@ impl Plan {
             next += 1;
             pieces[next] = match value.alpha() {
                 None => Piece::None,
-                Some(number) => Piece::Number(if legacy {
+                Some(number) => Piece::Number(closest_finite(if legacy {
                     value
                         .alpha_byte()
                         .map_or(number, byte_alpha_for_serialization)
                 } else {
                     number
-                }),
+                })),
             };
             next += 1;
         }
         pieces[next] = Piece::Literal(b")");
-        Ok(Self { pieces })
+        Self { pieces }
     }
 }
 
@@ -139,11 +140,6 @@ pub(crate) enum SerializationKernel {
     Plan,
     Format,
     Transition,
-}
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum SerializationError {
-    Protocol(crate::ProtocolError),
-    Numerical(ColorError),
 }
 enum Stage {
     Plan,
@@ -239,60 +235,39 @@ impl SerializationCursor {
             _ => None,
         }
     }
-    pub(crate) fn compute(&mut self) -> Result<(), SerializationError> {
+    pub(crate) fn compute(&mut self) -> Result<(), crate::ProtocolError> {
         match &mut self.stage {
             Stage::Plan => {
-                let plan = match Plan::new(self.value, self.request) {
-                    Ok(plan) => plan,
-                    Err(error) => {
-                        self.stage = Stage::Stopped;
-                        return Err(SerializationError::Numerical(error));
-                    }
-                };
-                self.plan = Some(plan);
+                self.plan = Some(Plan::new(self.value, self.request));
                 self.stage = Stage::Pieces;
             }
             Stage::Pieces => match self.plan.as_ref().expect("planned pieces").pieces[self.piece] {
                 Piece::Number(value) => {
                     self.digit_base = self.digits;
-                    self.stage = Stage::Format(
-                        FiniteFormatCursor::new(value, RoundingMode::TowardPositiveInfinity)
-                            .map_err(|_| {
-                                SerializationError::Numerical(ColorError::Unrepresentable)
-                            })?,
-                    );
+                    self.stage = Stage::Format(FiniteFormatCursor::new(
+                        value,
+                        RoundingMode::TowardPositiveInfinity,
+                    ));
                 }
                 Piece::End => self.stage = Stage::Done,
                 _ if self.action() == SerializationAction::Compute => {
                     self.piece += 1;
                     self.offset = 0;
                 }
-                _ => {
-                    return Err(SerializationError::Protocol(
-                        crate::ProtocolError::WrongAction,
-                    ));
-                }
+                _ => return Err(crate::ProtocolError::WrongAction),
             },
             Stage::Format(cursor) => match cursor.next_request() {
                 FormatRequest::Compute(kernel) => cursor
                     .complete(FormatReply::Computed(kernel))
-                    .map_err(|error| SerializationError::Protocol(error.into()))?,
+                    .map_err(crate::ProtocolError::from)?,
                 FormatRequest::Done(_) => {
                     self.stage = Stage::Pieces;
                     self.piece += 1;
                     self.offset = 0;
                 }
-                _ => {
-                    return Err(SerializationError::Protocol(
-                        crate::ProtocolError::WrongAction,
-                    ));
-                }
+                _ => return Err(crate::ProtocolError::WrongAction),
             },
-            Stage::Done | Stage::Stopped => {
-                return Err(SerializationError::Protocol(
-                    crate::ProtocolError::Terminated,
-                ));
-            }
+            Stage::Done | Stage::Stopped => return Err(crate::ProtocolError::Terminated),
         }
         Ok(())
     }

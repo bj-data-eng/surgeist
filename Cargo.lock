@@ -3681,6 +3681,9 @@ dependencies = [
 [[package]]
 name = "surgeist-color"
 version = "0.1.0"
+dependencies = [
+ "surgeist-fuzz",
+]
 
 [[package]]
 name = "surgeist-css"
@@ -3692,6 +3695,7 @@ dependencies = [
  "serde_json",
  "stats_alloc",
  "surgeist-color",
+ "surgeist-fuzz",
  "unicode-segmentation",
 ]
 

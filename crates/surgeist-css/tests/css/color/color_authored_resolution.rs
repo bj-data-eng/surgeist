@@ -2,6 +2,15 @@ use crate::css::support::{checked_color as color, declaration_color};
 use surgeist_color::{Color, ColorSpace, PredefinedColorSpace};
 use surgeist_css::*;
 
+/// A finite numerical color from plain test coordinates.
+fn numerical_color(space: ColorSpace, channels: [Option<f64>; 3], alpha: Option<f64>) -> Color {
+    Color::new(
+        space,
+        channels.map(|channel| channel.map(|value| surgeist_color::Finite::new(value).unwrap())),
+        alpha.map(|value| surgeist_color::UnitInterval::new(value).unwrap()),
+    )
+}
+
 fn facts() -> CssColorFacts<'static> {
     CssColorFacts::new(
         CssColorFactIdentity::new(41, 7),
@@ -141,7 +150,7 @@ fn custom_profile_payloads_are_contiguous_and_keep_their_original_channel_order(
     )];
     let inputs = [0.1, 0.2, 0.3, 0.4, 0.5];
     let target = ColorSpace::Predefined(PredefinedColorSpace::XyzD50);
-    let converted = Color::try_new(target, [Some(0.2), Some(0.3), Some(0.4)], Some(1.0)).unwrap();
+    let converted = numerical_color(target, [Some(0.2), Some(0.3), Some(0.4)], Some(1.0));
     let conversions = [CssColorProfileConversion::Resolved(
         CssColorProfileConversionRecord::new(resource, &inputs, intent, target, converted),
     )];
@@ -177,10 +186,6 @@ fn bank(bank: CssColorBank) -> usize {
         CssColorBank::Evaluation => 2,
     }
 }
-#[expect(
-    clippy::result_large_err,
-    reason = "The real controlled fixture propagates the actual inline owned path and origin without allocating or cloning an error"
-)]
 fn step<'path, 'css, 'authored: 'css, 'facts>(
     op: &mut CssAuthoredColorOperation<'path, 'css, 'authored, 'facts>,
     banks: &mut [Vec<CssColorSlot<'css>>; 3],
@@ -316,7 +321,7 @@ fn controlled_site_less_failure_retains_its_actual_backing_until_explicit_recove
 }
 
 #[test]
-fn numerical_error_moves_the_reached_branch_path_before_stopping() {
+fn an_infinite_branch_channel_resolves_to_the_largest_finite_value() {
     let facts = CssColorFacts::new(
         CssColorFactIdentity::new(41, 7),
         CssColorPropertyFacts::Unavailable,
@@ -340,39 +345,21 @@ fn numerical_error_moves_the_reached_branch_path_before_stopping() {
         )
         .unwrap(),
     );
-    let error = loop {
-        if let Err(error) = step(op.as_mut().unwrap(), &mut banks) {
-            break error;
-        }
+    // Values 4 §10.9.1: the dark branch's infinite Lab axis clamps to the
+    // largest finite value instead of escaping the top-level calculation.
+    while op.as_ref().unwrap().action() != CssAuthoredColorActionDescription::Ready {
+        step(op.as_mut().unwrap(), &mut banks).unwrap();
+    }
+    let result = CssAuthoredColorOperation::take(&mut op).unwrap();
+    let CssAuthoredColorOutcome::Used(value) = result.outcome() else {
+        panic!("{:?}", result.outcome())
     };
-    let CssColorOperationError::Numerical {
-        error,
-        site: CssColorResolutionSite::Authored { path, origin },
-    } = &error
-    else {
-        panic!("{error:?}")
-    };
-    assert_eq!(
-        *error,
-        surgeist_color::ColorError::NonFinite { component: 1 }
-    );
-    assert_eq!(path.steps(), [CssColorPathStep::Second]);
-    assert!(path.capacity() >= 1);
-    assert_eq!(*origin, None);
-    assert_eq!(
-        CssAuthoredColorOperation::take(&mut op).err(),
-        Some(CssColorProtocolError::Terminal)
-    );
-    op.as_mut().unwrap().abandon();
-    let _ = CssAuthoredColorOperation::recover(&mut op).unwrap();
+    assert_eq!(value.space(), surgeist_color::ColorSpace::Lab);
+    assert_eq!(value.channels(), [Some(50.0), Some(f64::MAX), Some(0.0)]);
+    drop(result);
     drop(op);
     drop(banks);
     assert_eq!(buffer.len(), 0);
-    assert_eq!(
-        buffer.capacity(),
-        0,
-        "the external numerical error owns the sole allocation"
-    );
     buffer.cleanup().unwrap();
 }
 
@@ -1376,7 +1363,7 @@ fn completed<'css, 'authored: 'css, 'facts>(
 fn native_digit(owner: &mut surgeist_color::OperationOwner) -> surgeist_color::DigitSlot<'_> {
     let mut formatter = surgeist_color::format::FiniteFormatter::new(
         owner,
-        1.0,
+        surgeist_color::Finite::new(1.0).unwrap(),
         surgeist_color::format::RoundingMode::TowardPositiveInfinity,
     )
     .unwrap();
@@ -1490,8 +1477,6 @@ fn authored_numerical_success_commits_only_on_take_and_receipt_releases_the_nume
         assert_eq!(layout.numerical.input_unit_bytes, 0);
         assert_eq!(layout.numerical.slot_read_bytes, 0);
         assert_eq!(layout.numerical.fact_records, [0; 3]);
-        assert!(layout.root_path_read_bytes >= std::mem::size_of::<CssColorComponentPath>());
-        assert!(layout.root_path_write_bytes >= std::mem::size_of::<CssColorComponentPath>());
         action.compute().unwrap();
         used = Some(CssAuthoredColorTransformation::take(&mut transform).unwrap());
         assert!(transform.is_none());
@@ -1593,9 +1578,7 @@ fn authored_numerical_success_commits_only_on_take_and_receipt_releases_the_nume
     };
     let expected = value
         .transformed(Transformation::ForceOpaqueAlpha)
-        .unwrap()
-        .transformed(Transformation::QuantizeSrgb)
-        .unwrap();
+        .transformed(Transformation::QuantizeSrgb);
     assert!(expected.identical(receipt.value()));
 }
 
@@ -1713,8 +1696,12 @@ fn numerical_initialization_refusals_preserve_the_original_checkpoint_and_phase(
 }
 
 #[test]
-fn numerical_failure_transfers_one_root_site_and_recovers_the_distinct_original_fallback_cause() {
-    use surgeist_color::{ColorError, OperationOwner, Transformation};
+fn quantizing_a_non_srgb_fallback_converts_it_first_and_keeps_the_original_cause() {
+    // QuantizeSrgb converts a non-sRGB value to sRGB before quantizing, so a
+    // Lab fallback no longer stops the transformation. Lab L = 50 is the
+    // neutral luminance ((50 + 16) / 116)^3 = 0.18419, which sRGB encodes as
+    // 1.055 * 0.18419^(1/2.4) - 0.055 = 0.46628, byte 119.
+    use surgeist_color::{OperationOwner, Transformation};
     let facts = facts();
     let root = color("light-dark(color-mix(in srgb,red calc(-1%),blue),blue)");
     let mut css_owner = CssColorOperationOwner::new();
@@ -1728,12 +1715,11 @@ fn numerical_failure_transfers_one_root_site_and_recovers_the_distinct_original_
         CssValueOrigin::Parsed(origin) => origin.source().as_str().as_ptr(),
         _ => panic!("parsed"),
     };
-    let fallback = Color::try_new(
+    let fallback = numerical_color(
         ColorSpace::Lab,
         [Some(50.0), Some(0.0), Some(0.0)],
         Some(0.5),
-    )
-    .unwrap();
+    );
     let mut used = Some(CssAuthoredColorCheckpoint::fallback(&mut resolved, fallback).unwrap());
     let mut numerical_owner = OperationOwner::new();
     let mut transform = Some(
@@ -1745,46 +1731,16 @@ fn numerical_failure_transfers_one_root_site_and_recovers_the_distinct_original_
         )
         .unwrap(),
     );
-    let error = transform
-        .as_mut()
-        .unwrap()
-        .next_action()
-        .compute()
-        .unwrap_err();
-    let CssColorOperationError::Numerical {
-        error,
-        site: CssColorResolutionSite::Authored { path, origin },
-    } = error
-    else {
-        panic!("authored numerical site")
-    };
-    assert_eq!(error, ColorError::RequiresSrgb);
-    assert!(path.steps().is_empty());
-    assert_eq!(path.capacity(), 0);
-    assert!(origin.is_none());
+    transform.as_mut().unwrap().next_action().compute().unwrap();
+    let quantized = CssAuthoredColorTransformation::take(&mut transform).unwrap();
     assert_eq!(
-        transform.as_ref().unwrap().action(),
-        CssColorActionDescription::Stopped
+        quantized.value().space(),
+        ColorSpace::Predefined(PredefinedColorSpace::Srgb)
     );
-    assert_eq!(
-        transform.as_mut().unwrap().next_action().compute(),
-        Err(CssColorOperationError::Protocol(
-            CssColorProtocolError::Terminal
-        ))
-    );
-    assert!(matches!(
-        CssAuthoredColorTransformation::take(&mut transform),
-        Err(CssColorOperationError::Protocol(
-            CssColorProtocolError::Terminal
-        ))
-    ));
-    assert!(transform.is_some());
-    transform.as_mut().unwrap().abandon();
-    let recovered = CssAuthoredColorTransformation::recover(&mut transform).unwrap();
-    assert!(recovered.value().identical(fallback));
-    assert!(std::ptr::eq(recovered.authored(), &root));
-    assert!(std::ptr::eq(recovered.facts(), &facts));
-    let cause = recovered.standard_failure().unwrap();
+    assert_eq!(quantized.value().srgb_bytes(), Some([119; 3]));
+    assert_eq!(quantized.value().alpha(), Some(0.5));
+    assert!(std::ptr::eq(quantized.authored(), &root));
+    let cause = quantized.standard_failure().unwrap();
     assert_eq!(
         cause.path.steps(),
         [CssColorPathStep::First, CssColorPathStep::MixWeight(0)]
@@ -1795,7 +1751,7 @@ fn numerical_failure_transfers_one_root_site_and_recovers_the_distinct_original_
     };
     assert_eq!(origin.source().as_str().as_ptr(), origin_source_ptr);
     assert_eq!(origin.span().start().byte_offset().value(), 33);
-    assert!(recovered.is_current());
+    assert!(quantized.is_current());
 }
 
 #[test]
@@ -1808,12 +1764,11 @@ fn overflowing_hsl_serialization_computes_and_recovery_keeps_the_original_cause(
     let root = color("light-dark(color-mix(in srgb,red calc(-1%),blue),blue)");
     let mut css_owner = CssColorOperationOwner::new();
     let mut resolved = Some(completed(&mut css_owner, &root, &facts));
-    let original = Color::try_new(
+    let original = numerical_color(
         ColorSpace::Hsl,
         [Some(0.0), Some(1e308), Some(1e308)],
         Some(1.0),
-    )
-    .unwrap();
+    );
     let mut used = Some(CssAuthoredColorCheckpoint::fallback(&mut resolved, original).unwrap());
     let cause_ptr = used
         .as_ref()
@@ -1858,12 +1813,11 @@ fn computed_but_untaken_authored_transform_recovers_original_color_and_same_fall
     let root = color("light-dark(color-mix(in srgb,red calc(-1%),blue),blue)");
     let mut css_owner = CssColorOperationOwner::new();
     let mut resolved = Some(completed(&mut css_owner, &root, &facts));
-    let original = Color::try_new(
+    let original = numerical_color(
         ColorSpace::Predefined(PredefinedColorSpace::Srgb),
         [Some(0.5), Some(0.0), Some(1.0)],
         Some(0.5),
-    )
-    .unwrap();
+    );
     let mut used = Some(CssAuthoredColorCheckpoint::fallback(&mut resolved, original).unwrap());
     let backing = used
         .as_ref()

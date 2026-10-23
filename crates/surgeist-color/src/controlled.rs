@@ -3,22 +3,20 @@ use crate::format::bounded::{
     FiniteFormatCursor, FiniteFormatSummary, FormatDigit, FormatReply, FormatRequest,
 };
 use crate::format::{FormatError, RoundingMode};
-use crate::serialization::{
-    SerializationAction, SerializationCursor, SerializationError as CursorError,
-    SerializationKernel,
-};
+use crate::serialization::{SerializationAction, SerializationCursor, SerializationKernel};
 use crate::{
-    ActionDescription as Action, ActionLayout, Color, ColorError, ColorSpace, DigitSlot,
-    InterpolationError, InterpolationMethod, Kernel, OperationOwner, ProtocolError,
-    SerializationFamily, SerializationRequest, Transformation,
+    ActionDescription as Action, ActionLayout, Color, ColorSpace, DigitSlot, Finite,
+    InterpolationMethod, Kernel, OperationOwner, ProtocolError, SerializationRequest,
+    Transformation, UnitInterval,
 };
 
+/// One numerical operation over proven operands; every request is total.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum NumericalRequest {
     Construct {
         space: ColorSpace,
-        channels: [Option<f64>; 3],
-        alpha: Option<f64>,
+        channels: [Option<Finite>; 3],
+        alpha: Option<UnitInterval>,
     },
     Convert {
         value: Color,
@@ -32,106 +30,74 @@ pub enum NumericalRequest {
         first: Color,
         second: Color,
         method: InterpolationMethod,
-        progress: f64,
+        progress: UnitInterval,
+    },
+    WithAlpha {
+        value: Color,
+        alpha: Option<UnitInterval>,
+    },
+    WithColorFunction {
+        value: Color,
+    },
+    ToLegacySrgb {
+        value: Color,
+    },
+    BlackWhiteContrast {
+        value: Color,
     },
     Transform {
         value: Color,
         transformation: Transformation,
     },
-    WithAlpha {
-        value: Color,
-        alpha: Option<f64>,
-    },
-    WithFamily {
-        value: Color,
-        family: SerializationFamily,
-    },
-    BlackWhiteContrast {
-        value: Color,
-    },
 }
 impl NumericalRequest {
-    fn kernel(self) -> Kernel {
+    /// The fixed kernel this request executes.
+    #[must_use]
+    pub const fn kernel(self) -> Kernel {
         match self {
             Self::Construct { .. } => Kernel::Construct,
             Self::Convert { destination, .. } => Kernel::Convert(destination),
             Self::Prepare { destination, .. } => Kernel::Prepare(destination),
             Self::Interpolate { .. } => Kernel::Interpolate,
-            Self::Transform { transformation, .. } => Kernel::Transform(transformation),
             Self::WithAlpha { .. } => Kernel::WithAlpha,
-            Self::WithFamily { .. } => Kernel::WithFamily,
+            Self::WithColorFunction { .. } => Kernel::WithColorFunction,
+            Self::ToLegacySrgb { .. } => Kernel::ToLegacySrgb,
             Self::BlackWhiteContrast { .. } => Kernel::BlackWhiteContrast,
+            Self::Transform { transformation, .. } => Kernel::Transform(transformation),
         }
     }
-    fn execute(self) -> Result<Color, ComputationError> {
-        Ok(match self {
+    /// Executes the request with the same kernels as the `Color` methods.
+    #[must_use]
+    pub fn execute(self) -> Color {
+        match self {
             Self::Construct {
                 space,
                 channels,
                 alpha,
-            } => Color::try_new(space, channels, alpha)?,
-            Self::Convert { value, destination } => value.converted(destination)?,
-            Self::Prepare { value, destination } => {
-                value.prepared_for_interpolation(destination)?
-            }
+            } => Color::new(space, channels, alpha),
+            Self::Convert { value, destination } => value.converted(destination),
+            Self::Prepare { value, destination } => value.prepared_for_interpolation(destination),
             Self::Interpolate {
                 first,
                 second,
                 method,
                 progress,
-            } => first
-                .interpolated(second, method, progress)
-                .map_err(ComputationError::Interpolation)?,
+            } => first.interpolated(second, method, progress),
+            Self::WithAlpha { value, alpha } => value.with_alpha(alpha),
+            Self::WithColorFunction { value } => value.with_color_function(),
+            Self::ToLegacySrgb { value } => value.to_legacy_srgb(),
+            Self::BlackWhiteContrast { value } => value.black_white_contrast(),
             Self::Transform {
                 value,
                 transformation,
-            } => value.transformed(transformation)?,
-            Self::WithAlpha { value, alpha } => value.with_alpha(alpha)?,
-            Self::WithFamily { value, family } => value.with_serialization_family(family)?,
-            Self::BlackWhiteContrast { value } => value.black_white_contrast()?,
-        })
-    }
-}
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum ComputationError {
-    Numerical(ColorError),
-    Interpolation(InterpolationError),
-    Protocol(ProtocolError),
-}
-impl From<ColorError> for ComputationError {
-    fn from(e: ColorError) -> Self {
-        Self::Numerical(e)
-    }
-}
-impl From<ProtocolError> for ComputationError {
-    fn from(e: ProtocolError) -> Self {
-        Self::Protocol(e)
-    }
-}
-impl std::fmt::Display for ComputationError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Numerical(e) => e.fmt(f),
-            Self::Interpolation(e) => e.fmt(f),
-            Self::Protocol(e) => e.fmt(f),
+            } => value.transformed(transformation),
         }
-    }
-}
-impl std::error::Error for ComputationError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        Some(match self {
-            Self::Numerical(e) => e,
-            Self::Interpolation(e) => e,
-            Self::Protocol(e) => e,
-        })
     }
 }
 #[derive(Clone, Copy)]
 enum Status {
     Pending,
     Ready,
-    Failed,
     Abandoned,
 }
 pub struct Computation<'owner> {
@@ -139,7 +105,6 @@ pub struct Computation<'owner> {
     original: NumericalRequest,
     status: Status,
     value: Option<Color>,
-    failure: Option<ComputationError>,
 }
 impl<'owner> Computation<'owner> {
     pub const fn register_bytes() -> usize {
@@ -158,7 +123,6 @@ impl<'owner> Computation<'owner> {
             original: request,
             status: Status::Pending,
             value: None,
-            failure: None,
         })
     }
     pub const fn original(&self) -> NumericalRequest {
@@ -168,29 +132,20 @@ impl<'owner> Computation<'owner> {
         match self.status {
             Status::Pending => Action::Compute(self.original.kernel()),
             Status::Ready => Action::Ready,
-            Status::Failed => Action::Failed,
             Status::Abandoned => Action::Abandoned,
         }
     }
     pub fn next_action(&mut self) -> ComputationAction<'_, 'owner> {
         ComputationAction { operation: self }
     }
-    pub fn failure(&self) -> Option<&ComputationError> {
-        self.failure.as_ref()
-    }
     pub fn abandon(&mut self) {
         self.status = Status::Abandoned;
     }
-    pub fn take(slot: &mut Option<Self>) -> Result<Color, ComputationError> {
+    pub fn take(slot: &mut Option<Self>) -> Result<Color, ProtocolError> {
         let operation = slot.as_ref().ok_or(ProtocolError::EmptySlot)?;
         match operation.status {
-            Status::Pending => return Err(ProtocolError::NotReady.into()),
-            Status::Failed => {
-                return Err(operation
-                    .failure
-                    .expect("failed computation retains its first error"));
-            }
-            Status::Abandoned => return Err(ProtocolError::Terminated.into()),
+            Status::Pending => return Err(ProtocolError::NotReady),
+            Status::Abandoned => return Err(ProtocolError::Terminated),
             Status::Ready => {}
         }
         Ok(slot
@@ -213,22 +168,13 @@ impl ComputationAction<'_, '_> {
     pub fn layout(&self) -> ActionLayout {
         crate::protocol::layout(self.description())
     }
-    pub fn compute(self) -> Result<(), ComputationError> {
+    pub fn compute(self) -> Result<(), ProtocolError> {
         if !matches!(self.operation.status, Status::Pending) {
-            return Err(ProtocolError::WrongAction.into());
+            return Err(ProtocolError::WrongAction);
         }
-        match self.operation.original.execute() {
-            Ok(value) => {
-                self.operation.value = Some(value);
-                self.operation.status = Status::Ready;
-                Ok(())
-            }
-            Err(error) => {
-                self.operation.failure = Some(error);
-                self.operation.status = Status::Failed;
-                Err(error)
-            }
-        }
+        self.operation.value = Some(self.operation.original.execute());
+        self.operation.status = Status::Ready;
+        Ok(())
     }
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -246,7 +192,6 @@ pub struct SerializationLimits {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum SerializationError {
-    Numerical(ColorError),
     Protocol(ProtocolError),
     Limit {
         resource: SerializationResource,
@@ -266,7 +211,6 @@ impl From<ProtocolError> for SerializationError {
 impl std::fmt::Display for SerializationError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Numerical(e) => e.fmt(f),
             Self::Protocol(e) => e.fmt(f),
             _ => write!(f, "color serialization: {self:?}"),
         }
@@ -275,7 +219,6 @@ impl std::fmt::Display for SerializationError {
 impl std::error::Error for SerializationError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            Self::Numerical(e) => Some(e),
             Self::Protocol(e) => Some(e),
             _ => None,
         }
@@ -284,7 +227,7 @@ impl std::error::Error for SerializationError {
 #[derive(Clone, Copy)]
 pub(crate) enum Original {
     Serialization(Color, SerializationRequest),
-    Format(f64, RoundingMode),
+    Format(Finite, RoundingMode),
 }
 #[expect(
     clippy::large_enum_variant,
@@ -300,7 +243,6 @@ pub(crate) struct Stream<'owner> {
     pub(crate) original: Original,
     cursor: Cursor,
     status: Status,
-    failure: Option<SerializationError>,
     pub(crate) emitted: usize,
 }
 impl<'owner> Stream<'owner> {
@@ -316,31 +258,26 @@ impl<'owner> Stream<'owner> {
             original: Original::Serialization(value, request),
             cursor: Cursor::Serialization(SerializationCursor::new(value, request)),
             status: Status::Pending,
-            failure: None,
             emitted: 0,
         })
     }
     pub(crate) fn format(
         owner: &'owner mut OperationOwner,
-        value: f64,
+        value: Finite,
         rounding: RoundingMode,
     ) -> Result<Self, FormatError> {
-        let cursor =
-            FiniteFormatCursor::new(value, rounding).map_err(|_| FormatError::NonFinite)?;
         let phase = owner.begin().map_err(FormatError::Protocol)?;
         Ok(Self {
             owner,
             phase,
             original: Original::Format(value, rounding),
-            cursor: Cursor::Format(cursor),
+            cursor: Cursor::Format(FiniteFormatCursor::new(value, rounding)),
             status: Status::Pending,
-            failure: None,
             emitted: 0,
         })
     }
     pub(crate) fn action(&self) -> Action {
         match self.status {
-            Status::Failed => return Action::Failed,
             Status::Abandoned => return Action::Abandoned,
             Status::Ready => return Action::Ready,
             Status::Pending => {}
@@ -373,19 +310,18 @@ impl<'owner> Stream<'owner> {
             },
         }
     }
-    pub(crate) fn ready(&self) -> Result<(), SerializationError> {
+    pub(crate) fn ready(&self) -> Result<(), ProtocolError> {
         match self.status {
-            Status::Failed => Err(self.failure.expect("failed stream retains first error")),
-            Status::Abandoned => Err(ProtocolError::Terminated.into()),
+            Status::Abandoned => Err(ProtocolError::Terminated),
             _ if self.action() == Action::Ready => {
                 if let Cursor::Serialization(c) = &self.cursor
                     && c.completed_length()? != self.emitted
                 {
-                    return Err(ProtocolError::WrongIndex.into());
+                    return Err(ProtocolError::WrongIndex);
                 }
                 Ok(())
             }
-            _ => Err(ProtocolError::NotReady.into()),
+            _ => Err(ProtocolError::NotReady),
         }
     }
     pub(crate) fn abandon(&mut self) {
@@ -401,10 +337,7 @@ impl<'owner> Stream<'owner> {
         }
     }
     pub(crate) fn summary(&self) -> Result<FiniteFormatSummary, FormatError> {
-        self.ready().map_err(|e| match e {
-            SerializationError::Protocol(p) => FormatError::Protocol(p),
-            _ => FormatError::Protocol(ProtocolError::WrongReply),
-        })?;
+        self.ready().map_err(FormatError::Protocol)?;
         match &self.cursor {
             Cursor::Format(c) => match c.next_request() {
                 FormatRequest::Done(s) => Ok(s),
@@ -413,28 +346,19 @@ impl<'owner> Stream<'owner> {
             _ => Err(FormatError::Protocol(ProtocolError::WrongAction)),
         }
     }
-    fn compute(&mut self) -> Result<(), SerializationError> {
+    fn compute(&mut self) -> Result<(), ProtocolError> {
         if !matches!(self.action(), Action::Compute(_)) {
-            return Err(ProtocolError::WrongAction.into());
+            return Err(ProtocolError::WrongAction);
         }
-        let result = match &mut self.cursor {
-            Cursor::Serialization(c) => c.compute().map_err(|e| match e {
-                CursorError::Numerical(e) => SerializationError::Numerical(e),
-                CursorError::Protocol(e) => SerializationError::Protocol(e),
-            }),
+        match &mut self.cursor {
+            Cursor::Serialization(c) => c.compute(),
             Cursor::Format(c) => {
                 let FormatRequest::Compute(k) = c.next_request() else {
                     unreachable!()
                 };
-                c.complete(FormatReply::Computed(k))
-                    .map_err(|e| SerializationError::Protocol(e.into()))
+                c.complete(FormatReply::Computed(k)).map_err(Into::into)
             }
-        };
-        if let Err(e @ SerializationError::Numerical(_)) = result {
-            self.failure = Some(e);
-            self.status = Status::Failed;
         }
-        result
     }
     fn digit(&self, index: usize) -> Result<FormatDigit, ProtocolError> {
         match &self.cursor {
@@ -461,7 +385,7 @@ impl<'owner> StreamAction<'_, 'owner> {
     pub fn layout(&self) -> ActionLayout {
         crate::protocol::layout(self.description())
     }
-    pub fn compute(self) -> Result<(), SerializationError> {
+    pub fn compute(self) -> Result<(), ProtocolError> {
         self.stream.compute()
     }
     pub fn read_digit(self, index: usize, slot: &DigitSlot<'_>) -> Result<(), ProtocolError> {
@@ -584,13 +508,10 @@ impl<'owner> Serialization<'owner> {
             stream: &mut self.stream,
         }
     }
-    pub fn failure(&self) -> Option<&SerializationError> {
-        self.stream.failure.as_ref()
-    }
     pub fn abandon(&mut self) {
         self.stream.abandon();
     }
-    pub fn take(slot: &mut Option<Self>) -> Result<SerializationReceipt, SerializationError> {
+    pub fn take(slot: &mut Option<Self>) -> Result<SerializationReceipt, ProtocolError> {
         slot.as_ref()
             .ok_or(ProtocolError::EmptySlot)?
             .stream

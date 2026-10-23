@@ -14,8 +14,8 @@ use surgeist_css::{
     CssColorActionDescription as Action, CssColorActionLayout, CssColorBank, CssColorBankLengths,
     CssColorFactIdentity, CssColorFacts, CssColorGrammarRequest, CssColorInputKind,
     CssColorOperation, CssColorOperationError, CssColorOperationOwner, CssColorParseOutcome,
-    CssColorPropertyFacts, CssColorResolutionSite, CssColorSchemeFact, CssColorSerialization,
-    CssColorSlot, CssColorTransformation, CssDeviceColorFact, CssUsedColorCheckpoint,
+    CssColorPropertyFacts, CssColorSchemeFact, CssColorSerialization, CssColorSlot,
+    CssColorTransformation, CssDeviceColorFact, CssUsedColorCheckpoint,
 };
 use surgeist_html::{HtmlInputColorEffect, HtmlInputColorSerialization, HtmlInputColorSpace};
 
@@ -26,11 +26,6 @@ fn error(error: CssColorOperationError) -> DomError {
         E::Unavailable(value) => DomError::InputColorUnavailable(value),
         E::Unsupported(value) => DomError::InputColorUnsupported(value),
         E::Facts(value) => DomError::InputColorFacts(value),
-        E::Numerical {
-            error,
-            site: CssColorResolutionSite::Source(input),
-        } => DomError::InputColorNumerical { error, input },
-        E::Numerical { .. } => DomError::InputProcessingProtocol,
     }
 }
 
@@ -665,7 +660,7 @@ mod tests {
     }
 
     #[test]
-    fn color_unavailable_and_numerical_failure_remain_typed_errors_not_black() {
+    fn color_unavailable_remains_a_typed_error_and_an_overflowing_axis_is_closest_finite() {
         let cancel = AtomicBool::new(false);
         let mut meter = super::super::tests::fixture();
         assert_eq!(
@@ -686,21 +681,15 @@ mod tests {
         );
         assert_eq!(meter.live, 0);
 
+        // Lab a* is unclamped; its cubic XYZ exceeds binary64, so Color 4
+        // conversion takes the closest finite sRGB channels, signed by the D50
+        // XYZ-to-sRGB X column (+, -, +), and limited sRGB quantizes them.
         let mut meter = semantic_fixture();
         let raw = DocumentString::from("lab(50 1e308 0)");
         let actual = meter
             .color(&raw, false, HtmlInputColorSpace::LimitedSrgb, None, &cancel)
             .map(|output| output.value);
-        assert_eq!(
-            actual,
-            Err(DomError::InputColorNumerical {
-                error: surgeist_color::ColorError::Unrepresentable,
-                input: surgeist_css::CssColorInputRange {
-                    start: 0,
-                    end: raw.len()
-                },
-            })
-        );
+        assert_eq!(actual, Ok(DocumentString::from("#ff00ff")));
         assert_eq!(meter.live, 0);
     }
 

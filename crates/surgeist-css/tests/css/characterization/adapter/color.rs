@@ -319,10 +319,6 @@ struct ActionCounts {
 }
 
 /// Services every parse action until the operation is ready or failed.
-#[expect(
-    clippy::result_large_err,
-    reason = "the colour operation error is the public protocol's own error type"
-)]
 fn drive_parse<'owner>(
     operation: &mut CssColorOperation<'owner, '_>,
     input: &[u16],
@@ -370,10 +366,6 @@ fn drive_parse<'owner>(
 }
 
 /// Services every transformation action; returns the number computed.
-#[expect(
-    clippy::result_large_err,
-    reason = "the colour operation error is the public protocol's own error type"
-)]
 fn drive_transformation(
     transformation: &mut CssColorTransformation<'_, '_, '_>,
 ) -> Result<usize, CssColorOperationError> {
@@ -386,10 +378,6 @@ fn drive_transformation(
 }
 
 /// Services every serialization action, collecting the emitted text.
-#[expect(
-    clippy::result_large_err,
-    reason = "the colour operation error is the public protocol's own error type"
-)]
 fn drive_serialization<'num>(
     serialization: &mut CssColorSerialization<'_, 'num, '_>,
     digits: &mut Vec<DigitSlot<'num>>,
@@ -692,7 +680,6 @@ fn ordinary_error(error: &CssColorOrdinaryError) -> String {
     let category = match error {
         CssColorOrdinaryError::Operation(operation) => match operation {
             CssColorOperationError::Facts(_) => "operation:facts".to_owned(),
-            CssColorOperationError::Numerical { .. } => "operation:numerical".to_owned(),
             CssColorOperationError::Protocol(_) => "operation:protocol".to_owned(),
             CssColorOperationError::Unavailable(unavailable) => {
                 format!("operation:unavailable:{}", unavailable_name(unavailable))

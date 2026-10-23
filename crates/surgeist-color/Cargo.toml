@@ -11,3 +11,6 @@ readme = "README.md"
 [lib]
 name = "surgeist_color"
 path = "src/lib.rs"
+
+[dev-dependencies]
+surgeist-fuzz = { path = "../surgeist-fuzz", features = ["property"] }

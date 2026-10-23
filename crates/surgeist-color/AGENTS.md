@@ -34,8 +34,10 @@ cargo run --offline --locked -j 1 -p surgeist-color --example native
 cargo fmt -p surgeist-color -- --check
 ```
 
-Conversion tests preserve extended/missing coordinates and final-overflow
-behavior. Controlled-operation tests cover native use, actual guard lifetimes,
+Conversion tests preserve extended/missing coordinates and closest-finite
+overflow behavior. Controlled-operation tests cover native use, actual guard lifetimes,
 foreign digits, refusal, recovery, finite limits and emitted output. CSS and
-HTML own cross-crate behavior tests. Existing fuzz harness maintenance stays with
-its consumer; new fuzz adoption and campaigns remain deferred under #1172.
+HTML own cross-crate behavior tests. The [property tests](tests/property.rs)
+generate proof-typed operands through `surgeist-fuzz`'s `property` feature, a
+dev-dependency, and run under ordinary `cargo test`; this crate owns their
+cases and codec. Fuzz campaigns are not adopted here.

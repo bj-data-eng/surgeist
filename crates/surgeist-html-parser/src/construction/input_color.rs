@@ -983,33 +983,25 @@ mod tests {
         }
     }
     #[test]
-    fn color_numerical_failure_preserves_selected_field_range_and_reclaims_storage() {
+    fn color_overflowing_lab_axis_quantizes_its_closest_finite_srgb_and_reclaims_storage() {
         // Unlike CSS Lab lightness, a* is not clamped. Its cubic XYZ
-        // reconstruction followed by sRGB's 1/2.4 transfer exponent exceeds
-        // binary64 for this finite authored coordinate.
+        // reconstruction exceeds binary64; Color 4 conversion takes the
+        // closest finite sRGB channels, signed by the D50 XYZ-to-sRGB X
+        // column (+, -, +), which limited-sRGB quantization clamps to #ff00ff.
         let input: Vec<u16> = "lab(50 1e308 0)".encode_utf16().collect();
         let mut c = ParseControl::new(color_limits(), crate::HtmlParseCancellation::new());
-        assert!(
-            execute(
-                &mut c,
-                &input,
-                false,
-                crate::HtmlInputColorSpace::LimitedSrgb
-            )
-            .is_err()
-        );
-        assert_eq!(
-            c.stop(),
-            Some(ParseStop::ColorProcessing(
-                crate::HtmlColorProcessingError::Numerical {
-                    error: surgeist_color::ColorError::Unrepresentable,
-                    input: surgeist_css::CssColorInputRange {
-                        start: 0,
-                        end: input.len()
-                    },
-                }
-            ))
-        );
+        let (output, value, failure) = execute(
+            &mut c,
+            &input,
+            false,
+            crate::HtmlInputColorSpace::LimitedSrgb,
+        )
+        .unwrap();
+        assert_eq!(output.units(), "#ff00ff".encode_utf16().collect::<Vec<_>>());
+        assert_eq!(value.srgb_bytes(), Some([255, 0, 255]));
+        assert_eq!(failure, None);
+        assert!(c.stop().is_none());
+        output.release(&mut c).unwrap();
         super::super::tests::storage_zero(&c);
         assert_eq!(c.usage().actual_capacity_bytes, 0);
     }

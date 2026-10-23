@@ -197,10 +197,6 @@ pub struct CssAuthoredColorOperation<'path, 'css, 'authored: 'css, 'facts> {
 impl<'path, 'css, 'authored: 'css, 'facts>
     CssAuthoredColorOperation<'path, 'css, 'authored, 'facts>
 {
-    #[expect(
-        clippy::result_large_err,
-        reason = "The common CSS error propagates an admitted owned path and actual origin inline without allocation on failure"
-    )]
     pub fn resolve_authored(
         owner: &'css mut CssColorOperationOwner,
         root: &'authored CssColor,
@@ -462,10 +458,6 @@ impl<'path, 'css, 'authored: 'css, 'facts>
         self.target = None;
         self.plan()
     }
-    #[expect(
-        clippy::result_large_err,
-        reason = "The common CSS error propagates an admitted owned path and actual origin inline without allocation on failure"
-    )]
     fn after(&mut self) -> Result<(), CssColorOperationError> {
         if !matches!(self.work, Work::Ready) {
             self.banks = [
@@ -481,24 +473,7 @@ impl<'path, 'css, 'authored: 'css, 'facts>
     }
     fn fail(&mut self, error: core::Error) -> CssColorOperationError {
         self.stopped = true;
-        match error {
-            core::Error::Numerical {
-                error,
-                site: Site::Authored { record },
-            } => {
-                assert_eq!(
-                    self.path.prepared_site(),
-                    Some(record),
-                    "numerical action owns its actual prepared reached site"
-                );
-                let PreparedSite { path, origin, .. } = self.path.take_site();
-                CssColorOperationError::Numerical {
-                    error,
-                    site: CssColorResolutionSite::Authored { path, origin },
-                }
-            }
-            error => error.into(),
-        }
+        error.into()
     }
     pub fn next_action(&mut self) -> CssAuthoredColorAction<'_, 'path, 'css, 'authored, 'facts> {
         let description = self.action();
@@ -668,10 +643,6 @@ impl<'path, 'css, 'authored: 'css, 'facts>
         }
         Ok(result)
     }
-    #[expect(
-        clippy::result_large_err,
-        reason = "The common CSS error propagates an admitted owned path and actual origin inline without allocation on failure"
-    )]
     fn complete(
         &mut self,
         result: Result<(), CssColorOperationError>,
@@ -687,10 +658,6 @@ impl<'path, 'css, 'authored: 'css, 'facts>
         }
         result
     }
-    #[expect(
-        clippy::result_large_err,
-        reason = "The common CSS error propagates an admitted owned path and actual origin inline without allocation on failure"
-    )]
     pub fn read_authored(mut self) -> Result<(), CssColorOperationError> {
         if !matches!(
             self.description,
@@ -704,10 +671,6 @@ impl<'path, 'css, 'authored: 'css, 'facts>
         };
         self.complete(result)
     }
-    #[expect(
-        clippy::result_large_err,
-        reason = "The common CSS error propagates an admitted owned path and actual origin inline without allocation on failure"
-    )]
     pub fn read_slot(
         mut self,
         bank: CssColorBank,
@@ -760,10 +723,6 @@ impl<'path, 'css, 'authored: 'css, 'facts>
         let result = result.map_err(|e| self.operation.fail(e));
         self.complete(result)
     }
-    #[expect(
-        clippy::result_large_err,
-        reason = "The common CSS error propagates an admitted owned path and actual origin inline without allocation on failure"
-    )]
     pub fn record(&mut self) -> Result<CssColorSlot<'css>, CssColorOperationError> {
         if self.issued {
             return Err(CssColorProtocolError::WrongAction.into());
@@ -782,10 +741,6 @@ impl<'path, 'css, 'authored: 'css, 'facts>
         self.issued = result.is_ok();
         result
     }
-    #[expect(
-        clippy::result_large_err,
-        reason = "The common CSS error propagates an admitted owned path and actual origin inline without allocation on failure"
-    )]
     pub fn written(
         mut self,
         bank: CssColorBank,
@@ -820,10 +775,6 @@ impl<'path, 'css, 'authored: 'css, 'facts>
         self.attempted = result.is_ok();
         result
     }
-    #[expect(
-        clippy::result_large_err,
-        reason = "The common CSS error propagates an admitted owned path and actual origin inline without allocation on failure"
-    )]
     pub fn capacity_observed(mut self) -> Result<(), CssColorOperationError> {
         if !self.attempted {
             return Err(CssColorProtocolError::WrongAction.into());
@@ -842,10 +793,6 @@ impl<'path, 'css, 'authored: 'css, 'facts>
         )?;
         Ok(())
     }
-    #[expect(
-        clippy::result_large_err,
-        reason = "The common CSS error propagates an admitted owned path and actual origin inline without allocation on failure"
-    )]
     pub fn append_path(mut self) -> Result<(), CssColorOperationError> {
         let CssAuthoredColorActionDescription::AppendPath(step) = self.description else {
             return Err(CssColorProtocolError::WrongAction.into());
@@ -857,10 +804,6 @@ impl<'path, 'css, 'authored: 'css, 'facts>
         self.operation.plan()?;
         Ok(())
     }
-    #[expect(
-        clippy::result_large_err,
-        reason = "The common CSS error propagates an admitted owned path and actual origin inline without allocation on failure"
-    )]
     pub fn truncate_path(mut self) -> Result<(), CssColorOperationError> {
         let CssAuthoredColorActionDescription::TruncatePath(length) = self.description else {
             return Err(CssColorProtocolError::WrongAction.into());
@@ -874,10 +817,6 @@ impl<'path, 'css, 'authored: 'css, 'facts>
         )?;
         Ok(())
     }
-    #[expect(
-        clippy::result_large_err,
-        reason = "The common CSS error propagates an admitted owned path and actual origin inline without allocation on failure"
-    )]
     pub fn prepare_site(mut self) -> Result<(), CssColorOperationError> {
         if self.description != CssAuthoredColorActionDescription::PrepareSite {
             return Err(CssColorProtocolError::WrongAction.into());
@@ -892,10 +831,6 @@ impl<'path, 'css, 'authored: 'css, 'facts>
         self.completed = true;
         Ok(())
     }
-    #[expect(
-        clippy::result_large_err,
-        reason = "The common CSS error propagates an admitted owned path and actual origin inline without allocation on failure"
-    )]
     pub fn restore_site(mut self) -> Result<(), CssColorOperationError> {
         if self.description != CssAuthoredColorActionDescription::RestoreSite {
             return Err(CssColorProtocolError::WrongAction.into());
@@ -906,10 +841,6 @@ impl<'path, 'css, 'authored: 'css, 'facts>
         self.operation.plan()?;
         Ok(())
     }
-    #[expect(
-        clippy::result_large_err,
-        reason = "The common CSS error propagates an admitted owned path and actual origin inline without allocation on failure"
-    )]
     pub fn compute(mut self) -> Result<(), CssColorOperationError> {
         use CssAuthoredColorActionDescription as A;
         if !matches!(self.description, A::Compute(_) | A::ReadFact(_)) {

@@ -28,10 +28,6 @@ impl<'authored, 'facts> CssAuthoredColorResult<'authored, 'facts> {
         &self.outcome
     }
 }
-#[expect(
-    clippy::result_large_err,
-    reason = "The common CSS error propagates an admitted owned path and actual origin inline without allocation on failure"
-)]
 fn admit(
     resource: CssColorOrdinaryResource,
     required: usize,
@@ -71,10 +67,6 @@ fn maximum(limits: CssAuthoredColorOrdinaryLimits, bank: CssColorBank) -> usize 
 /// Resolve borrowed checked values without serialization, source reconstruction,
 /// or an additional controller. Required and actual retained capacities are
 /// checked separately for each of the three banks and the real path allocation.
-#[expect(
-    clippy::result_large_err,
-    reason = "The common CSS error propagates an admitted owned path and actual origin inline without allocation on failure"
-)]
 pub fn resolve_authored_color<'authored, 'facts>(
     root: &'authored CssColor,
     facts: &'facts CssColorFacts<'facts>,

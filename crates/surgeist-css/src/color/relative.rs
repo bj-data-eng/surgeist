@@ -35,9 +35,7 @@ impl Binding {
             Environment::Oklch => Space::Oklch,
             Environment::PredefinedRgb(space) | Environment::Xyz(space) => Space::Predefined(space),
         };
-        let origin = origin
-            .prepared_for_interpolation(space)
-            .map_err(Error::Numerical)?;
+        let origin = origin.prepared_for_interpolation(space);
         Ok(Self {
             environment,
             origin,
@@ -66,9 +64,11 @@ impl Binding {
                 .iter()
                 .position(|value| *value == channel)
                 .ok_or(Error::Grammar)?;
+            // An rgb() channel keyword is the origin channel in 0..255 units;
+            // a product beyond binary64 is the closest supported value.
             self.origin.channels()[index].map(|value| {
                 if self.environment == Environment::Rgb {
-                    value * 255.0
+                    channels::supported(value * 255.0).get()
                 } else {
                     value
                 }
@@ -94,20 +94,19 @@ pub(crate) fn coordinates(
     let alpha = if let Some(alpha) = alpha {
         channels::alpha(Some(alpha), false)?
     } else {
-        origin.alpha()
+        origin.unit_alpha()
     };
     let space = channels::function_space(function, predefined)?;
     let channels = channels::relative_channels(function, components)?;
     // Relative color results use Color5 serialization, including complete
     // HSL/HWB results lowered to color(srgb) by the serialization owner.
-    Ok(Color::try_new(space, channels, alpha)?
-        .with_serialization_family(surgeist_color::SerializationFamily::ColorFunction)?)
+    Ok(Color::new(space, channels, alpha).with_color_function())
 }
 pub(crate) fn alpha_only(origin: Color, component: Option<Component>) -> Result<Color, Error> {
     let Some(component) = component else {
         return Ok(origin);
     };
-    Ok(origin.with_alpha(channels::alpha(Some(component), false)?)?)
+    Ok(origin.with_alpha(channels::alpha(Some(component), false)?))
 }
 
 #[cfg(test)]
@@ -131,7 +130,15 @@ mod tests {
             Ok(Component::number(128.0 / 255.0))
         );
         assert_eq!(rgb.channel(Channel::H, false), Err(Error::Grammar));
-        let missing = Color::try_new(Space::Oklch, [Some(0.526), Some(0.115), None], None).unwrap();
+        let missing = Color::new(
+            Space::Oklch,
+            [
+                surgeist_color::Finite::new(0.526),
+                surgeist_color::Finite::new(0.115),
+                None,
+            ],
+            None,
+        );
         let binding = Binding::new(Environment::Oklch, missing).unwrap();
         assert_eq!(binding.channel(Channel::H, false), Ok(Component::MISSING));
         assert_eq!(

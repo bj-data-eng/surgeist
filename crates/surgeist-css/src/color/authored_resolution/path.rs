@@ -22,9 +22,6 @@ pub struct CssColorComponentPath {
     steps: Vec<CssColorPathStep>,
 }
 impl CssColorComponentPath {
-    pub(super) const fn root() -> Self {
-        Self { steps: Vec::new() }
-    }
     pub fn steps(&self) -> &[CssColorPathStep] {
         &self.steps
     }

@@ -3,6 +3,7 @@
 //! Checked syntax is shared by every branch. Only an influencing recipe reads
 //! facts or evaluates components. There is no recursive evaluator or source reparse.
 
+use super::Color;
 use super::channels::{self, Component, Domain};
 use super::component_value::{Action as ComponentAction, ComponentValue};
 use super::device::{ComputedCmyk, DeviceAction, DeviceResolution};
@@ -22,7 +23,6 @@ use super::profile_conversion::{
 use super::protocol::{CssColorBank, CssColorProtocolError, CssColorSlot, Data};
 use super::relative::Binding;
 use super::syntax_pass::ValidatedGrammar;
-use super::{Color, ColorError};
 use crate::{
     ColorSpace as Space, CssRelativeColorEnvironment as Environment,
     PredefinedColorSpace as Predefined,
@@ -33,7 +33,6 @@ pub(crate) enum Error {
     Protocol(CssColorProtocolError),
     Component(super::component_value::Error),
     Channel(channels::Error),
-    Numerical(ColorError),
     Palette(super::palette::PaletteError),
     Profile(super::profile::ProfileError),
     ProfileComponent(super::profile::ComponentNameError),
@@ -966,23 +965,14 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
                     // Only the final complete used result resolves to sRGB;
                     // missing channels or alpha preserve the natural function.
                     let value = if Self::complete_cylindrical(value) {
-                        let converted = value
-                            .converted(Space::Predefined(Predefined::Srgb))
-                            .map_err(Error::Numerical)?;
                         if value.serialization_family()
                             == surgeist_color::SerializationFamily::ColorFunction
                         {
-                            converted
-                                .with_serialization_family(
-                                    surgeist_color::SerializationFamily::ColorFunction,
-                                )
-                                .map_err(Error::Numerical)?
+                            value
+                                .converted(Space::Predefined(Predefined::Srgb))
+                                .with_color_function()
                         } else {
-                            converted
-                                .with_serialization_family(
-                                    surgeist_color::SerializationFamily::LegacySrgb,
-                                )
-                                .map_err(Error::Numerical)?
+                            value.to_legacy_srgb()
                         }
                     } else {
                         value
@@ -1236,7 +1226,7 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
             }
             FrameState::WrapperFinish(origin) => {
                 let value = if frame.recipe.function == F::Contrast {
-                    origin.black_white_contrast().map_err(Error::Numerical)?
+                    origin.black_white_contrast()
                 } else {
                     origin
                 };
@@ -1289,7 +1279,11 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
                 let alpha = if custom.alpha.is_some() {
                     channels::alpha(custom.alpha, false).map_err(Error::Channel)?
                 } else {
-                    custom.origin.map_or(Some(1.0), |origin| origin.alpha())
+                    custom
+                        .origin
+                        .map_or(surgeist_color::UnitInterval::new(1.0), |origin| {
+                            origin.unit_alpha()
+                        })
                 };
                 self.state = State::CustomBuilder(
                     ProfileInputBuilder::start(
@@ -1815,12 +1809,15 @@ mod tests {
             &[],
         )];
         let input = [0.2, 0.3, 0.0];
-        let expected = Color::try_new(
+        let expected = Color::new(
             Space::Predefined(Predefined::XyzD50),
-            [Some(0.4), Some(0.5), Some(0.6)],
-            Some(1.0),
-        )
-        .unwrap();
+            [
+                surgeist_color::Finite::new(0.4),
+                surgeist_color::Finite::new(0.5),
+                surgeist_color::Finite::new(0.6),
+            ],
+            surgeist_color::UnitInterval::new(1.0),
+        );
         let conversions = [CssColorProfileConversion::Resolved(
             CssColorProfileConversionRecord::new(
                 profile,

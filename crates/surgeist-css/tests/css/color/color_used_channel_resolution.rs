@@ -159,29 +159,12 @@ fn complete_relative_hsl_resolves_to_extended_srgb_and_missing_keeps_hsl() {
 }
 
 #[test]
-fn infinite_lab_axis_is_a_numerical_failure_at_the_used_boundary() {
-    // A Lab a/b axis has no range clamp, so a calculation that is genuinely
-    // infinite reaches the finite numerical color check and fails there.
-    let facts = facts();
-    let error = parse_used_color(
-        CssColorInput::Utf8(b"lab(50 calc(infinity) 0)"),
-        CssColorGrammarRequest::WholeColor,
-        &facts,
-        facts.identity(),
-        limits(),
-    )
-    .err()
-    .expect("an infinite Lab axis is not a finite used color");
-    assert!(
-        matches!(
-            error,
-            surgeist_css::CssColorOrdinaryError::Operation(
-                surgeist_css::CssColorOperationError::Numerical {
-                    error: surgeist_color::ColorError::NonFinite { component: 1 },
-                    ..
-                }
-            )
-        ),
-        "{error:?}"
-    );
+fn infinite_lab_axis_is_the_largest_finite_value_at_the_used_boundary() {
+    // Values 4 §10.9.1: an infinity does not escape a top-level calculation;
+    // it clamps to the largest value allowed, and a Lab a/b axis has no
+    // range clamp, so the axis is f64::MAX.
+    let value = color("lab(50 calc(infinity) 0)");
+    assert_eq!(value.space(), ColorSpace::Lab);
+    assert_eq!(value.channels(), [Some(50.0), Some(f64::MAX), Some(0.0)]);
+    assert_eq!(value.alpha(), Some(1.0));
 }

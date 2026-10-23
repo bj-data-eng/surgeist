@@ -6,7 +6,7 @@ use surgeist_css::{
     CssColorActionDescription as Action, CssColorActionLayout, CssColorBank, CssColorFactIdentity,
     CssColorFacts, CssColorGrammarRequest, CssColorInputKind, CssColorOperation,
     CssColorOperationError, CssColorOperationOwner, CssColorParseOutcome, CssColorPropertyFacts,
-    CssColorResolutionSite, CssColorSchemeFact, CssColorSlot, CssDeviceColorFact,
+    CssColorSchemeFact, CssColorSlot, CssDeviceColorFact,
 };
 
 fn error(error: CssColorOperationError) -> DomError {
@@ -16,11 +16,6 @@ fn error(error: CssColorOperationError) -> DomError {
         E::Unavailable(value) => Failure::ThemeColorUnavailable(value),
         E::Unsupported(value) => Failure::ThemeColorUnsupported(value),
         E::Facts(value) => Failure::ThemeColorFacts(value),
-        E::Numerical {
-            error,
-            site: CssColorResolutionSite::Source(input),
-        } => Failure::ThemeColorNumerical { error, input },
-        E::Numerical { .. } => Failure::CssProcessingProtocol,
     })
 }
 fn index(bank: CssColorBank) -> usize {
