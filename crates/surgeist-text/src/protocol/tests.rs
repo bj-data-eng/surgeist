@@ -7,6 +7,7 @@ mod joining_positioning;
 mod mandatory_breaks;
 mod manual_hyphenation;
 mod tab_stops;
+mod whitespace_edges;
 
 use super::*;
 use crate::{
