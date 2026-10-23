@@ -948,7 +948,7 @@ fn selected_source_shy_context_stops_at_actual_disconnected_origin() {
 }
 
 #[test]
-fn selected_source_shy_full_original_context_preserves_provider_refusal_and_prior_results() {
+fn selected_source_shy_complete_original_context_preserves_joining_and_prior_results() {
     let source = Source::new(format!("\u{628}\u{ad}{}\u{628}", "\u{61c}".repeat(6)));
     let input = discretionary_input(
         source.clone(),
@@ -974,10 +974,10 @@ fn selected_source_shy_full_original_context_preserves_provider_refusal_and_prio
     assert_eq!(prepared.analyzed_source().source(), &source);
     assert_eq!(system.stats(), stats);
     assert_eq!(system.font_catalogue_identity(), &catalogue);
+    // All original characters are available as the joining-analysis body.
+    // The old five-cell external post-context limit does not bound that body.
     assert_eq!(
-        trial.as_ref().err().map(crate::Error::detail),
-        Some(Some(&crate::ErrorDetail::ShapingRefused {
-            reason: crate::ShapingRefusalReason::ContextLimit
-        }))
+        original_beh_forms(&trial.unwrap()),
+        [(Range::new(0, 1), 100, 20.0)]
     );
 }

@@ -177,3 +177,62 @@ pub(crate) fn arabic_ahem() -> Vec<u8> {
         ],
     )
 }
+
+fn pair_adjustment(first: u16, second: u16) -> Vec<u8> {
+    // PairPos format1, ValueFormat1=xAdvance, no second value record.
+    // Coverage and PairSet each contain exactly one actual glyph.
+    words(&[
+        1,
+        18,
+        4,
+        0,
+        1,
+        12,
+        1,
+        second,
+        u16::from_be_bytes((-500_i16).to_be_bytes()),
+        1,
+        1,
+        first,
+    ])
+}
+
+/// GPOS kern: A35 before B36 has xAdvance -500 at UPEM1000.
+/// At20px the joint AB advance is30; independently shaped A and B total40.
+pub(crate) fn pair_adjusted_ahem() -> Vec<u8> {
+    replace_tables(
+        AHEM,
+        vec![(
+            *b"GPOS",
+            layout_table(*b"DFLT", vec![(*b"kern", 2, pair_adjustment(35, 36))]),
+        )],
+    )
+}
+
+/// Arabic GSUB is unchanged. Nonjoining HAMZA U+0621 maps to B36; only
+/// original medial Beh277 followed by36 receives the -500-unit kern.
+/// This distinguishes preserving the original action before joint GPOS from
+/// either accepting presentation-derived final82 or splitting the two roles.
+pub(crate) fn arabic_pair_adjusted_ahem() -> Vec<u8> {
+    replace_tables(
+        &arabic_ahem(),
+        vec![
+            (
+                *b"cmap",
+                cmap(&[
+                    (0x20, 3),
+                    (0x621, 36),
+                    (0x627, 58),
+                    (0x628, 35),
+                    (0x62c, 36),
+                    (0x200c, 253),
+                    (0x200d, 253),
+                ]),
+            ),
+            (
+                *b"GPOS",
+                layout_table(*b"arab", vec![(*b"kern", 2, pair_adjustment(277, 36))]),
+            ),
+        ],
+    )
+}

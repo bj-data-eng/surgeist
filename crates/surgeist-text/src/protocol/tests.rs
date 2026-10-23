@@ -2,6 +2,7 @@
 
 mod conditional;
 mod joining_context;
+mod joining_positioning;
 mod mandatory_breaks;
 
 use super::*;
