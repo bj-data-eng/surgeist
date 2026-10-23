@@ -762,22 +762,24 @@ fn discretionary_control_float_seam_lends_the_actual_selected_replacement_bundle
             ParagraphPart::Control {
                 node: 20,
                 kind: ParagraphControlKind::DiscretionaryBreak {
-                    wrap: text::Wrap::Word,
+                    style: Box::new(style.clone()),
                 },
             },
             ParagraphPart::text(11, Source::new("XXX"), style.clone()),
         ],
         style,
         text::ParagraphBaseDirection::LeftToRight,
-        vec![text::ParagraphReplacement {
-            definition: text::ParagraphReplacementDefinition::Control {
-                control: 0,
-                origin: None,
-            },
-            insertion_anchor: 1,
-            style_anchor: 0,
-            text: "X".into(),
-        }],
+        vec![
+            text::ParagraphReplacement::resolved_native_logical_before(
+                text::ParagraphReplacementDefinition::Control {
+                    control: 0,
+                    origin: None,
+                },
+                1,
+                vec!["X".into()],
+            )
+            .unwrap(),
+        ],
     );
     let mut binding = paragraph.binding(2);
     let alternative = binding

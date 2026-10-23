@@ -3,8 +3,8 @@
 use std::sync::Arc;
 
 use crate::{
-    Affinity, AnalyzedSource, DocumentSegmentBreaks, ProcessedSource, Range, Result, Source,
-    SourcePosition, Style, Text, Wrap,
+    Affinity, AnalyzedSource, DocumentSegmentBreaks, ProcessedSource, Range, Result, Source, Style,
+    Text, Wrap,
 };
 
 use super::{ProtocolError, ProtocolHandleKind, protocol_error};
@@ -56,7 +56,7 @@ pub struct ParagraphConnection {
 }
 
 /// An actual semantic control, not authored characters manufactured for painting.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum ParagraphControlKind {
     InlineBoundaryStart,
     InlineBoundaryEnd,
@@ -65,8 +65,9 @@ pub enum ParagraphControlKind {
     OptionalBreak {
         wrap: Wrap,
     },
+    /// Genuine authored discretionary control with its own complete style.
     DiscretionaryBreak {
-        wrap: Wrap,
+        style: Box<Style>,
     },
     LeftToRightEmbedding,
     RightToLeftEmbedding,
@@ -80,7 +81,7 @@ pub enum ParagraphControlKind {
 }
 
 impl ParagraphControlKind {
-    pub(crate) const fn code_point(self) -> Option<u32> {
+    pub(crate) const fn code_point(&self) -> Option<u32> {
         match self {
             Self::LeftToRightEmbedding => Some(0x202a),
             Self::RightToLeftEmbedding => Some(0x202b),
@@ -101,7 +102,7 @@ impl ParagraphControlKind {
 }
 
 /// Same-anchor controls preserve their actual supplied vector order.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ParagraphControl {
     pub at: usize,
     pub kind: ParagraphControlKind,
@@ -164,29 +165,105 @@ pub enum ParagraphReplacementDefinition {
     },
 }
 
-/// Computed presentation text for a genuine source/control-defined alternative.
-/// No automatic hyphen character or dictionary result is inferred.
+/// Genuine group identity excludes a control's optional source provenance.
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub(crate) enum ReplacementOwner {
+    Source {
+        origin: usize,
+        start: usize,
+        end: usize,
+    },
+    Control(usize),
+}
+impl ParagraphReplacementDefinition {
+    pub(crate) const fn owner(self) -> ReplacementOwner {
+        match self {
+            Self::Source { origin, source } => ReplacementOwner::Source {
+                origin,
+                start: source.start,
+                end: source.end,
+            },
+            Self::Control { control, .. } => ReplacementOwner::Control(control),
+        }
+    }
+}
+
+/// One genuine source/control-owned indication group.
 #[derive(Clone, Debug)]
 pub struct ParagraphReplacement {
-    pub definition: ParagraphReplacementDefinition,
-    pub insertion_anchor: usize,
-    pub style_anchor: usize,
-    pub text: Text,
+    pub(crate) definition: ParagraphReplacementDefinition,
+    pub(crate) insertion_anchor: usize,
+    pub(crate) presentation: ReplacementPresentation,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) enum ReplacementPresentation {
+    StyleDriven,
+    ResolvedNative(Vec<Text>),
 }
 
 impl ParagraphReplacement {
+    /// Resolve one actual SHY/control from its own captured Style at preparation.
+    /// Analysis validates the genuine definition, anchor and unique owner.
+    #[must_use]
+    pub const fn style_driven(
+        definition: ParagraphReplacementDefinition,
+        insertion_anchor: usize,
+    ) -> Self {
+        Self {
+            definition,
+            insertion_anchor,
+            presentation: ReplacementPresentation::StyleDriven,
+        }
+    }
+    /// Capture a native producer's exact ordered logical-before alternatives.
+    /// This route does not reinterpret Style's indication string or convention.
+    /// Each string may be empty; the list must contain at least one choice.
+    /// Analysis validates the genuine definition, anchor and unique owner.
+    ///
+    /// # Errors
+    /// Returns `HyphenationError::EmptyNativeAlternatives` for an empty list.
+    pub fn resolved_native_logical_before(
+        definition: ParagraphReplacementDefinition,
+        insertion_anchor: usize,
+        alternatives: Vec<Text>,
+    ) -> Result<Self> {
+        if alternatives.is_empty() {
+            return Err(crate::hyphenation::error(
+                crate::HyphenationError::EmptyNativeAlternatives,
+            ));
+        }
+        Ok(Self {
+            definition,
+            insertion_anchor,
+            presentation: ReplacementPresentation::ResolvedNative(alternatives),
+        })
+    }
+    /// Actual defining occurrence, before analysis issues any capability.
+    #[must_use]
+    pub const fn definition(&self) -> ParagraphReplacementDefinition {
+        self.definition
+    }
+    /// Captured original insertion anchor, validated with the definition.
+    #[must_use]
+    pub const fn insertion_anchor(&self) -> usize {
+        self.insertion_anchor
+    }
+    /// None denotes style-driven resolution; Some preserves exact native order.
+    #[must_use]
+    pub fn native_alternatives(&self) -> Option<&[Text]> {
+        match &self.presentation {
+            ReplacementPresentation::StyleDriven => None,
+            ReplacementPresentation::ResolvedNative(text) => Some(text),
+        }
+    }
+
     pub(crate) fn replaced_source(&self) -> Range {
         match self.definition {
             ParagraphReplacementDefinition::Source { source, .. } => source,
             ParagraphReplacementDefinition::Control { .. } => {
                 Range::new(self.insertion_anchor, self.insertion_anchor)
             }
-        }
-    }
-    pub(crate) fn control(&self) -> Option<usize> {
-        match self.definition {
-            ParagraphReplacementDefinition::Control { control, .. } => Some(control),
-            ParagraphReplacementDefinition::Source { .. } => None,
         }
     }
 }
@@ -748,6 +825,7 @@ fn validate_replacements(
     controls: &[ParagraphControl],
     replacements: &[ParagraphReplacement],
 ) -> Result<()> {
+    let mut owners = std::collections::BTreeMap::new();
     for (index, replacement) in replacements.iter().enumerate() {
         let range = replacement.replaced_source();
         let valid = match replacement.definition {
@@ -775,16 +853,18 @@ fn validate_replacements(
                 })
             }
         };
-        if !valid
-            || replacement.insertion_anchor != range.end
-            || replacement.style_anchor > owner_source.text().len()
-        {
+        if !valid || replacement.insertion_anchor != range.end {
             return Err(protocol_error(ProtocolError::InvalidReplacement {
                 alternative: index,
                 source: range,
             }));
         }
-        SourcePosition::try_new(owner_source.text(), replacement.style_anchor)?;
+        if let Some(prior) = owners.insert(replacement.definition.owner(), index) {
+            return Err(protocol_error(ProtocolError::DuplicateReplacement {
+                alternative: index,
+                prior,
+            }));
+        }
     }
     Ok(())
 }

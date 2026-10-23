@@ -264,6 +264,83 @@ fn native_break_word_min_content_retains_the_ordinary_forty_pixel_word() {
     );
     assert_eq!(actual, (expected.clone(), expected));
 }
+
+#[test]
+fn native_hyphen_policy_and_empty_indication_preserve_intrinsic_wrap_distinctions() {
+    fn check<S: LayoutScalar>() {
+        for (hyphens, ordinary_minimum) in [
+            (surgeist_text::Hyphens::Manual, 20.0),
+            (surgeist_text::Hyphens::None, 40.0),
+        ] {
+            for (overflow, minimum) in [
+                (OverflowWrap::Normal, ordinary_minimum),
+                (OverflowWrap::BreakWord, ordinary_minimum),
+                (OverflowWrap::Anywhere, 10.0),
+            ] {
+                let mut style = ahem_style(10.0, 10.0);
+                style.hyphens = hyphens;
+                style.hyphenate_character =
+                    surgeist_text::HyphenateCharacter::String(surgeist_text::Text::from(""));
+                style.overflow_wrap = overflow;
+                let paragraph = PreparedParagraph::plain(1, Source::new("AA\u{ad}AA"), style);
+                let alternatives: Vec<_> = paragraph.prepared.alternative_views().collect();
+                assert_eq!(
+                    alternatives.len(),
+                    usize::from(hyphens == surgeist_text::Hyphens::Manual)
+                );
+                assert!(
+                    alternatives
+                        .iter()
+                        .all(|alternative| alternative.text().is_empty())
+                );
+
+                let tree = PublicLayoutTreeOf::<S>::new()
+                    .children(0, [1])
+                    .children(1, [])
+                    .style(
+                        0,
+                        NodeInputOf {
+                            display: Display::Block,
+                            ..NodeInputOf::default()
+                        },
+                    )
+                    .input(1, paragraph.text_input(1));
+                let capture =
+                    TextLayoutInput::try_new(&tree, 0, vec![paragraph.binding(0)]).unwrap();
+                // Four actual Ahem glyphs are 40px unbroken; manual's empty
+                // indication splits into 20px halves. Only Anywhere admits
+                // the 10px emergency pieces into min-content.
+                for (available, expected) in [
+                    (AvailableOf::MIN_CONTENT, minimum),
+                    (AvailableOf::MAX_CONTENT, 40.0),
+                ] {
+                    let request = LayoutRootRequestOf::viewport(Size::new(
+                        available,
+                        AvailableOf::MAX_CONTENT,
+                    ))
+                    .unwrap();
+                    let batch = compute_layout_with_text(&capture, 0, request).unwrap();
+                    let width = batch
+                        .final_entries()
+                        .iter()
+                        .find(|entry| entry.node() == 0)
+                        .unwrap()
+                        .output()
+                        .size
+                        .width
+                        .to_f64();
+                    assert_eq!(width, expected, "{hyphens:?}/{overflow:?}/{available:?}");
+                    assert_eq!(
+                        batch.placed_text()[0].layout().source().text().code_units(),
+                        [65, 65, 173, 65, 65]
+                    );
+                }
+            }
+        }
+    }
+    check::<f32>();
+    check::<f64>();
+}
 #[test]
 fn native_max_content_keeps_both_overflow_wrap_modes_unbroken() {
     let expected = (40.0, vec![line(0, 4, 40.0, 40.0, 0.0, 0.0, false)]);

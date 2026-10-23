@@ -253,6 +253,12 @@ pub struct Style {
     pub wrap: Wrap,
     pub overflow_wrap: OverflowWrap,
     pub text_transform: TextTransform,
+    /// Defaults to Manual; Auto currently adds no dictionary-derived points.
+    pub hyphens: crate::Hyphens,
+    /// Exact indication or native convention/first-available-font resolution.
+    pub hyphenate_character: crate::HyphenateCharacter,
+    /// Optional producer claim bound to this style's complete actual locale.
+    pub native_hyphenation_convention: Option<crate::NativeHyphenationConvention>,
 }
 
 impl Style {
@@ -280,6 +286,9 @@ impl Default for Style {
             wrap: Wrap::Word,
             overflow_wrap: OverflowWrap::Normal,
             text_transform: TextTransform::None,
+            hyphens: crate::Hyphens::Manual,
+            hyphenate_character: crate::HyphenateCharacter::Auto,
+            native_hyphenation_convention: None,
         }
     }
 }
@@ -624,6 +633,9 @@ fn validate_style(style: &Style, phase: StyleInputPhase) -> Result<ParsedStyle> 
     validate_decoration(style.underline, "underline")?;
     validate_decoration(style.strikethrough, "strikethrough")?;
     let locale = style.locale.as_deref().map(parse_language).transpose()?;
+    if let Some(convention) = &style.native_hyphenation_convention {
+        convention.bind(style.locale.as_deref())?;
+    }
     let font_family = parse_font_families(&style.font.family)?;
     let font_features = font_settings_source(&style.font.features);
     if let Some(features) = &font_features {

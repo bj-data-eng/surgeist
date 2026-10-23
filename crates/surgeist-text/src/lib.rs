@@ -16,6 +16,7 @@ mod engine;
 mod error;
 mod font;
 mod geometry;
+mod hyphenation;
 mod id;
 mod layout;
 mod options;
@@ -133,4 +134,9 @@ mod shaping_test_fonts;
 mod range_fragments;
 pub use range_fragments::{
     SourceRangeFragmentError, SourceRangeFragments, SourceRangePiece, SourceRangeUnit,
+};
+
+pub use hyphenation::{
+    HyphenateCharacter, HyphenationError, HyphenationPlacement, Hyphens,
+    NativeHyphenationConvention,
 };

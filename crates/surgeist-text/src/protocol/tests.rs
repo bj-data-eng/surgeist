@@ -1,6 +1,7 @@
 //! Functional qualification of the new public phase front.
 
 mod conditional;
+mod hyphenation_policy;
 mod joining_context;
 mod joining_positioning;
 mod mandatory_breaks;

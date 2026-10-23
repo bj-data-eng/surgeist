@@ -27,6 +27,8 @@ pub(crate) struct PreparedTables {
     pub(crate) boundaries: Vec<BoundaryData>,
     pub(crate) opportunities: Vec<OpportunityData>,
     pub(crate) alternatives: Vec<AlternativeData>,
+    /// Derived index of actual soft opportunities for the private raw chooser.
+    pub(crate) soft_preliminary_items: std::collections::BTreeSet<usize>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -46,7 +48,6 @@ pub(crate) struct UnitData {
     pub(crate) source: Range,
     pub(crate) processed: Range,
     pub(crate) atoms: IndexRange<usize>,
-    pub(crate) participant: usize,
     pub(crate) advance: f64,
     pub(crate) ascent: f64,
     pub(crate) descent: f64,
@@ -69,10 +70,8 @@ pub(crate) struct AtomicData {
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ControlData {
     pub(crate) occurrence: usize,
-    pub(crate) participant: usize,
     pub(crate) source: usize,
     pub(crate) processed: usize,
-    pub(crate) kind: ParagraphControlKind,
     pub(crate) level: u8,
 }
 
@@ -104,12 +103,40 @@ pub(crate) struct OpportunityData {
     pub(crate) alternatives: Vec<usize>,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct AlternativeData {
-    pub(crate) occurrence: usize,
+    pub(crate) text: crate::Text,
+    pub(crate) resolution: IndicationResolution,
+    pub(crate) style: usize,
     pub(crate) opportunity: usize,
     pub(crate) definition: super::paragraph::ParagraphReplacementDefinition,
     pub(crate) insertion_anchor: usize,
+}
+
+/// Resolution provenance is retained with the canonical owning style row.
+#[derive(Clone, Debug)]
+pub(crate) enum IndicationResolution {
+    Specified,
+    Convention,
+    Primary(crate::FontData),
+    ResolvedNative,
+}
+
+impl AlternativeData {
+    fn control(&self) -> Option<usize> {
+        match self.definition {
+            super::paragraph::ParagraphReplacementDefinition::Control { control, .. } => {
+                Some(control)
+            }
+            _ => None,
+        }
+    }
+    fn replaced_source(&self) -> Range {
+        match self.definition {
+            super::paragraph::ParagraphReplacementDefinition::Source { source, .. } => source,
+            _ => Range::new(self.insertion_anchor, self.insertion_anchor),
+        }
+    }
 }
 
 /// Actual replacement-context preparation under the same catalogue capture.
@@ -203,6 +230,8 @@ pub(crate) enum SelectedMappingKind {
 /// Issues canonical units from actual atoms, executed deletions and captured
 /// anchor occurrences. No preliminary item/source offset issues a public handle.
 pub(crate) fn prepare_tables(
+    catalogue: &mut crate::catalogue::Catalogue,
+    styles: &[ResolvedStyleRun],
     analyzed: &AnalyzedData,
     shaped: &ShapedData,
 ) -> crate::Result<PreparedTables> {
@@ -270,7 +299,6 @@ pub(crate) fn prepare_tables(
                     source: value.source,
                     processed: value.processed,
                     atoms: index..index + 1,
-                    participant,
                     advance: cluster.map_or(0.0, |cluster| cluster.advance),
                     ascent: metrics.ascent,
                     descent: metrics.descent,
@@ -293,7 +321,6 @@ pub(crate) fn prepare_tables(
                     source: range,
                     processed: Range::new(at, at),
                     atoms: atom..atom,
-                    participant,
                     advance: 0.0,
                     ascent: 0.0,
                     descent: 0.0,
@@ -321,7 +348,6 @@ pub(crate) fn prepare_tables(
                     source: range,
                     processed: Range::new(processed_at, processed_at),
                     atoms: atom..atom,
-                    participant,
                     advance: 0.0,
                     ascent: 0.0,
                     descent: 0.0,
@@ -357,13 +383,11 @@ pub(crate) fn prepare_tables(
                 ..
             }) => {
                 let row = tables.controls.len();
-                let control = paragraph.controls[occurrence];
+                let control = &paragraph.controls[occurrence];
                 tables.controls.push(ControlData {
                     occurrence,
-                    participant,
                     source: control.at,
                     processed: processed_at,
-                    kind: control.kind,
                     level: analyzed.analysis.control_levels[occurrence],
                 });
                 tables.participants.push(ParticipantData::Control(row));
@@ -413,40 +437,50 @@ pub(crate) fn prepare_tables(
     for (row, control) in tables.controls.iter().enumerate() {
         tables.control_rows[control.occurrence] = row;
     }
-    issue_opportunities(analyzed, &mut tables)?;
+    issue_opportunities(catalogue, analyzed, styles, &mut tables)?;
+    if paragraph.base_direction.is_none() {
+        tables.soft_preliminary_items = tables
+            .opportunities
+            .iter()
+            .filter(|row| {
+                matches!(
+                    row.kind,
+                    PreparedBreakKind::Allowed | PreparedBreakKind::Discretionary
+                )
+            })
+            .filter_map(|row| tables.boundaries[row.boundary].preliminary_item)
+            .collect();
+    }
     Ok(tables)
 }
 
-fn issue_opportunities(analyzed: &AnalyzedData, tables: &mut PreparedTables) -> crate::Result<()> {
-    use super::paragraph::ParagraphReplacementDefinition;
-    let source_owners: std::collections::BTreeMap<_, _> = tables
-        .units
+fn issue_opportunities(
+    catalogue: &mut crate::catalogue::Catalogue,
+    analyzed: &AnalyzedData,
+    styles: &[ResolvedStyleRun],
+    tables: &mut PreparedTables,
+) -> crate::Result<()> {
+    let groups: std::collections::BTreeMap<_, _> = analyzed
+        .paragraph
+        .replacements
         .iter()
-        .filter(|unit| !unit.deleted && !unit.source.is_empty())
-        .map(|unit| ((unit.source.start, unit.source.end), unit.participant + 1))
+        .map(|row| (row.definition.owner(), row))
         .collect();
-    let mut alternatives_by_owner: std::collections::BTreeMap<usize, Vec<usize>> =
-        std::collections::BTreeMap::new();
-    for (occurrence, replacement) in analyzed.paragraph.replacements.iter().enumerate() {
-        let owner = match replacement.definition {
-            ParagraphReplacementDefinition::Source { source, .. } => {
-                source_owners.get(&(source.start, source.end)).copied()
-            }
-            ParagraphReplacementDefinition::Control { control, .. } => {
-                Some(tables.controls[tables.control_rows[control]].participant + 1)
-            }
-        };
-        if let Some(owner) = owner {
-            alternatives_by_owner
-                .entry(owner)
-                .or_default()
-                .push(occurrence);
-        }
-    }
+    let control_styles: std::collections::BTreeMap<_, _> = analyzed
+        .styles
+        .iter()
+        .enumerate()
+        .filter_map(|(index, row)| match row.owner {
+            crate::engine::resolve::AnalyzedStyleOwner::Control(control) => Some((control, index)),
+            _ => None,
+        })
+        .collect();
     for (index, boundary) in tables.boundaries.iter().enumerate().skip(1) {
         let previous = tables.participants.get(boundary.participant - 1);
         let control = previous.and_then(|item| match *item {
-            ParticipantData::Control(i) => Some(tables.controls[i].kind),
+            ParticipantData::Control(i) => {
+                Some(&analyzed.paragraph.controls[tables.controls[i].occurrence].kind)
+            }
             _ => None,
         });
         let source_break = previous.is_some_and(|item| match *item {
@@ -456,11 +490,119 @@ fn issue_opportunities(analyzed: &AnalyzedData, tables: &mut PreparedTables) -> 
                 .any(|atom| is_hard_separator(analyzed.projection.atoms[atom].code_point)),
             _ => false,
         });
-        let alternative_inputs = alternatives_by_owner
-            .get(&boundary.participant)
-            .cloned()
-            .unwrap_or_default();
-        let kind = if control == Some(ParagraphControlKind::ForcedBreak) || source_break {
+        // Only actual surviving source SHY/control occurrences own indications.
+        let owner = match previous {
+            Some(ParticipantData::Control(i))
+                if matches!(
+                    control,
+                    Some(ParagraphControlKind::DiscretionaryBreak { .. })
+                ) =>
+            {
+                let occurrence = tables.controls[*i].occurrence;
+                let style = control_styles[&occurrence];
+                Some((
+                    super::paragraph::ParagraphReplacementDefinition::Control {
+                        control: occurrence,
+                        origin: None,
+                    },
+                    tables.controls[*i].source,
+                    style,
+                ))
+            }
+            Some(ParticipantData::Text(i))
+                if !tables.units[*i].deleted && tables.units[*i].atoms.len() == 1 =>
+            {
+                let atom = tables.units[*i].atoms.start;
+                let value = &analyzed.projection.atoms[atom];
+                if value.code_point == 0xad {
+                    let origin = analyzed
+                        .paragraph
+                        .origin_intersections(&analyzed.processed, value.source)
+                        .find(|intersection| intersection.aggregate == value.source)
+                        .expect("validated positive original SHY contribution")
+                        .origin;
+                    Some((
+                        super::paragraph::ParagraphReplacementDefinition::Source {
+                            origin,
+                            source: value.source,
+                        },
+                        value.source.end,
+                        analyzed.analysis.infos[atom].1,
+                    ))
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        };
+        let hyphenation = owner.is_some();
+        let mut alternatives = Vec::new();
+        if let Some((definition, anchor, style)) = owner {
+            let authored = analyzed.styles[style].style.authored();
+            let before_hard = analyzed.paragraph.base_direction.is_some()
+                && analyzed.logical.relations[analyzed.logical.cuts[boundary.participant]]
+                    .before_hard_separator;
+            let eligible = !before_hard
+                && authored.hyphens != crate::Hyphens::None
+                && authored.wrap == crate::Wrap::Word
+                && (control.is_some() || wrapping_allowed(analyzed, boundary)?);
+            if eligible {
+                let supplied = groups.get(&definition.owner()).copied();
+                let definition = supplied.map_or(definition, |row| row.definition);
+                let (texts, resolution) =
+                    if let Some(super::paragraph::ReplacementPresentation::ResolvedNative(texts)) =
+                        supplied.map(|row| &row.presentation)
+                    {
+                        (texts.clone(), IndicationResolution::ResolvedNative)
+                    } else {
+                        let (text, resolution) = match &authored.hyphenate_character {
+                            crate::HyphenateCharacter::String(text) => {
+                                (text.clone(), IndicationResolution::Specified)
+                            }
+                            crate::HyphenateCharacter::Auto => match &authored
+                                .native_hyphenation_convention
+                            {
+                                Some(convention) => (
+                                    convention.automatic_text().clone(),
+                                    IndicationResolution::Convention,
+                                ),
+                                None => {
+                                    let identity = catalogue.identity().clone();
+                                    let (text, primary) = crate::engine::shape::automatic_hyphen(
+                                        catalogue.query(),
+                                        &styles[style].style,
+                                        &identity,
+                                    )?;
+                                    (text, IndicationResolution::Primary(primary))
+                                }
+                            },
+                        };
+                        if !text.is_empty()
+                            && let Some(convention) = &authored.native_hyphenation_convention
+                            && convention.placement() != crate::HyphenationPlacement::LogicalBefore
+                        {
+                            return Err(crate::hyphenation::error(
+                                crate::HyphenationError::UnsupportedPlacement(
+                                    convention.placement(),
+                                ),
+                            ));
+                        }
+                        (vec![text], resolution)
+                    };
+                alternatives = texts
+                    .into_iter()
+                    .map(|text| AlternativeData {
+                        text,
+                        resolution: resolution.clone(),
+                        style,
+                        opportunity: tables.opportunities.len(),
+                        definition,
+                        insertion_anchor: anchor,
+                    })
+                    .collect();
+            }
+        }
+        let kind = if control == Some(&ParagraphControlKind::ForcedBreak) || source_break {
             Some(PreparedBreakKind::Forced)
         } else if analyzed.paragraph.base_direction.is_some()
             && analyzed.logical.relations[analyzed.logical.cuts[boundary.participant]]
@@ -470,16 +612,8 @@ fn issue_opportunities(analyzed: &AnalyzedData, tables: &mut PreparedTables) -> 
             // after preserving that mandatory offer may LB6 suppress every
             // soft owner before the next real hard separator, including CB.
             None
-        } else if matches!(
-            control,
-            Some(ParagraphControlKind::DiscretionaryBreak {
-                wrap: crate::Wrap::Word
-            })
-        ) || (!alternative_inputs.is_empty()
-            && control.is_none()
-            && wrapping_allowed(analyzed, boundary)?)
-        {
-            Some(PreparedBreakKind::Discretionary)
+        } else if hyphenation {
+            (!alternatives.is_empty()).then_some(PreparedBreakKind::Discretionary)
         } else if matches!(
             control,
             Some(ParagraphControlKind::OptionalBreak {
@@ -497,6 +631,18 @@ fn issue_opportunities(analyzed: &AnalyzedData, tables: &mut PreparedTables) -> 
             None
         } else if let Some(allowed) = atomic_permission(analyzed, boundary)? {
             allowed.then_some(PreparedBreakKind::Allowed)
+        } else if standalone_atomic_opportunity(analyzed, tables, boundary) {
+            Some(PreparedBreakKind::Allowed)
+        } else if boundary
+            .atom
+            .checked_sub(1)
+            .is_some_and(|atom| analyzed.projection.atoms[atom].code_point == 0xad)
+        {
+            // Only the genuine defining SHY cut owns its indication ending.
+            // A later transparent occurrence adds custody, never a second,
+            // indication-free copy of the SHY's ICU permission. Independent
+            // explicit controls and atomic permission were considered above.
+            None
         } else if standalone_opportunity(analyzed, tables, boundary)
             || (boundary.participant < tables.participants.len()
                 && analyzed
@@ -512,17 +658,12 @@ fn issue_opportunities(analyzed: &AnalyzedData, tables: &mut PreparedTables) -> 
         };
         if let Some(kind) = kind {
             let opportunity = tables.opportunities.len();
-            let alternatives = alternative_inputs
+            let alternatives = alternatives
                 .into_iter()
-                .map(|occurrence| {
-                    let input = &analyzed.paragraph.replacements[occurrence];
+                .map(|mut row| {
+                    row.opportunity = opportunity;
                     let index = tables.alternatives.len();
-                    tables.alternatives.push(AlternativeData {
-                        occurrence,
-                        opportunity,
-                        definition: input.definition,
-                        insertion_anchor: input.insertion_anchor,
-                    });
+                    tables.alternatives.push(row);
                     index
                 })
                 .collect();
@@ -640,6 +781,28 @@ pub(crate) fn conditional_boundaries(
     Ok(result)
 }
 
+/// The raw source model's actual atomic sides remain independent of a
+/// neighboring SHY. This retains its characterized rule, without lending
+/// native ancestor permission from incidental participant adjacency.
+fn standalone_atomic_opportunity(
+    analyzed: &AnalyzedData,
+    tables: &PreparedTables,
+    boundary: &BoundaryData,
+) -> bool {
+    if analyzed.paragraph.base_direction.is_some() {
+        return false;
+    }
+    let previous = boundary
+        .participant
+        .checked_sub(1)
+        .and_then(|i| tables.participants.get(i));
+    matches!(previous, Some(ParticipantData::Atomic(_)))
+        || matches!(
+            tables.participants.get(boundary.participant),
+            Some(ParticipantData::Atomic(_))
+        )
+}
+
 fn standalone_opportunity(
     analyzed: &AnalyzedData,
     tables: &PreparedTables,
@@ -653,11 +816,6 @@ fn standalone_opportunity(
         .checked_sub(1)
         .and_then(|i| tables.participants.get(i));
     let next = tables.participants.get(boundary.participant);
-    if matches!(previous, Some(ParticipantData::Atomic(_)))
-        || matches!(next, Some(ParticipantData::Atomic(_)))
-    {
-        return true;
-    }
     if previous.is_some_and(|row|matches!(*row,ParticipantData::Text(i)
         if tables.units[i].atoms.clone().any(|atom|matches!(analyzed.projection.atoms[atom].code_point,0x20|0xa0)))) {
         return true;
@@ -731,7 +889,19 @@ pub(crate) fn prepare_alternatives(
 ) -> crate::Result<Vec<PreparedAlternativeShape>> {
     let mut alternatives = Vec::with_capacity(tables.alternatives.len());
     for (index, row) in tables.alternatives.iter().enumerate() {
-        let input = &analyzed.paragraph.replacements[row.occurrence];
+        if let IndicationResolution::Primary(font) = &row.resolution
+            && catalogue.identity() != font.catalogue_identity()
+        {
+            return Err(crate::Error::new(
+                crate::ErrorCode::FontCatalogueMismatch,
+                "indication primary belongs to a different preparation catalogue",
+            )
+            .with_detail(crate::ErrorDetail::FontCatalogueMismatch {
+                expected: catalogue.identity().clone(),
+                actual: font.catalogue_identity().clone(),
+            }));
+        }
+        let input = row;
         let ReplacementProjection {
             projection,
             inserted_atoms,
@@ -780,7 +950,7 @@ struct ReplacementProjection {
 
 fn replacement_projection(
     analyzed: &AnalyzedData,
-    replacement: &super::paragraph::ParagraphReplacement,
+    replacement: &AlternativeData,
 ) -> crate::Result<ReplacementProjection> {
     let original = &analyzed.projection;
     let start = if let Some(control) = replacement.control() {
@@ -844,9 +1014,9 @@ fn replacement_projection(
     }
     let mut projection =
         SourceProjection::from_atoms(atoms, presentation, original.barriers.clone())?;
-    projection.style_anchors = vec![None; projection.atoms.len()];
+    projection.style_rows = vec![None; projection.atoms.len()];
     for atom in inserted.clone() {
-        projection.style_anchors[atom] = Some(replacement.style_anchor);
+        projection.style_rows[atom] = Some(replacement.style);
     }
     projection.anchor_atoms = vec![None; analyzed.paragraph.anchor_order.len()];
     if let Some(control) = replacement.control() {
@@ -1061,10 +1231,11 @@ pub(crate) fn select_presentation(
             }
             ParticipantData::Control(i) => {
                 let row = tables.controls[i];
-                let cp = if row.kind == ParagraphControlKind::ForcedBreak {
+                let kind = &prepared.analyzed.paragraph.controls[row.occurrence].kind;
+                let cp = if *kind == ParagraphControlKind::ForcedBreak {
                     Some(0xa)
                 } else {
-                    row.kind.code_point()
+                    kind.code_point()
                 };
                 let class = cp.map(|cp| {
                     icu_properties::CodePointMapData::<icu_properties::props::BidiClass>::new()
@@ -1253,7 +1424,7 @@ pub(crate) fn selected_origin_intersections(
                 source: None,
             }),
             PresentationUnitKind::Replacement { alternative } => {
-                let row = selected.prepared.tables.alternatives[alternative];
+                let row = &selected.prepared.tables.alternatives[alternative];
                 let origin = match row.definition {
                     ParagraphReplacementDefinition::Source { origin, .. } => Some(origin),
                     ParagraphReplacementDefinition::Control { origin, .. } => origin,

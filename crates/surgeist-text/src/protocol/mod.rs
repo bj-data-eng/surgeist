@@ -517,6 +517,11 @@ pub enum ProtocolError {
         policy: usize,
         at: usize,
     },
+    /// A second group claims the same genuine defining occurrence.
+    DuplicateReplacement {
+        alternative: usize,
+        prior: usize,
+    },
     InvalidReplacement {
         alternative: usize,
         source: Range,

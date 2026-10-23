@@ -317,7 +317,7 @@ fn native_atomic_transparent_occurrences_do_not_reintroduce_a_forbidden_break() 
     );
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 enum TransparentAtomicNeighbor {
     OutOfFlow,
     InlineBoundary,
@@ -481,7 +481,7 @@ fn native_hard_separator_precedence_keeps_earlier_soft_control_owners() {
         ),
         (
             ParagraphControlKind::DiscretionaryBreak {
-                wrap: crate::Wrap::Word,
+                style: Box::new(paragraph(Source::new("")).base_style),
             },
             PreparedBreakKind::Discretionary,
         ),
@@ -501,15 +501,17 @@ fn native_hard_separator_precedence_keeps_earlier_soft_control_owners() {
             })
             .collect();
         if expected == PreparedBreakKind::Discretionary {
-            input.replacements.push(ParagraphReplacement {
-                definition: ParagraphReplacementDefinition::Control {
-                    control: 0,
-                    origin: None,
-                },
-                insertion_anchor: 0,
-                style_anchor: 0,
-                text: Text::from("-"),
-            });
+            input.replacements.push(
+                ParagraphReplacement::resolved_native_logical_before(
+                    ParagraphReplacementDefinition::Control {
+                        control: 0,
+                        origin: None,
+                    },
+                    0,
+                    vec![Text::from("-")],
+                )
+                .unwrap(),
+            );
         }
         assert_eq!(
             prepare_opportunity_inventory(input),
@@ -586,7 +588,7 @@ fn native_atomic_directional_controls_do_not_hide_incident_glue() {
                 prepare_opportunity_inventory(atomic_transparent_input(
                     text,
                     1,
-                    TransparentAtomicNeighbor::Directional(kind),
+                    TransparentAtomicNeighbor::Directional(kind.clone()),
                     false,
                 )),
                 [
@@ -607,7 +609,12 @@ fn native_atomic_transparent_semantic_edges_create_no_extra_soft_line() {
         TransparentAtomicNeighbor::EmptyOrigin,
     ] {
         assert_eq!(
-            prepare_opportunity_inventory(atomic_transparent_input("X", 1, transparent, false)),
+            prepare_opportunity_inventory(atomic_transparent_input(
+                "X",
+                1,
+                transparent.clone(),
+                false
+            )),
             [
                 (1, PreparedBreakKind::Allowed),
                 (3, PreparedBreakKind::ParagraphEnd),
@@ -980,15 +987,17 @@ fn explicit_transparent_half_pair_affinity_does_not_split_but_inflow_really_does
 #[test]
 fn selected_source_replacement_is_actual_retained_text_with_zero_authored_extent() {
     let mut input = paragraph(Source::new("A\u{ad}B"));
-    input.replacements = vec![ParagraphReplacement {
-        definition: ParagraphReplacementDefinition::Source {
-            origin: 0,
-            source: Range::new(1, 2),
-        },
-        insertion_anchor: 2,
-        style_anchor: 0,
-        text: Text::from("- "),
-    }];
+    input.replacements = vec![
+        ParagraphReplacement::resolved_native_logical_before(
+            ParagraphReplacementDefinition::Source {
+                origin: 0,
+                source: Range::new(1, 2),
+            },
+            2,
+            vec![Text::from("- ")],
+        )
+        .unwrap(),
+    ];
     let analyzed = AnalyzedSource::from_paragraph(input).unwrap();
     let mut system = system();
     let prepared = system
@@ -1065,22 +1074,24 @@ fn source_less_discretionary_control_and_empty_replacement_keep_real_owners() {
     input.controls = vec![ParagraphControl {
         at: 0,
         kind: ParagraphControlKind::DiscretionaryBreak {
-            wrap: crate::Wrap::Word,
+            style: Box::new(paragraph(Source::new("")).base_style),
         },
     }];
     input.anchor_order = vec![ParagraphAnchor {
         item: ParagraphAnchorItem::Control(0),
         affinity: Affinity::Before,
     }];
-    input.replacements = vec![ParagraphReplacement {
-        definition: ParagraphReplacementDefinition::Control {
-            control: 0,
-            origin: None,
-        },
-        insertion_anchor: 0,
-        style_anchor: 0,
-        text: Text::from(""),
-    }];
+    input.replacements = vec![
+        ParagraphReplacement::resolved_native_logical_before(
+            ParagraphReplacementDefinition::Control {
+                control: 0,
+                origin: None,
+            },
+            0,
+            vec![Text::from("")],
+        )
+        .unwrap(),
+    ];
     let analyzed = AnalyzedSource::from_paragraph(input).unwrap();
     let mut system = system();
     let prepared = system

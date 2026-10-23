@@ -484,8 +484,8 @@ impl PreparedAtomicView<'_> {
 impl PreparedControlView<'_> {
     /// Actual captured semantic control, rather than fabricated authored text.
     #[must_use]
-    pub fn kind(&self) -> ParagraphControlKind {
-        self.data().kind
+    pub fn kind(&self) -> &ParagraphControlKind {
+        &self.prepared.analyzed.paragraph.controls[self.data().occurrence].kind
     }
 
     /// Original aggregate source anchor.
@@ -618,7 +618,7 @@ impl PreparedAlternativeView<'_> {
     /// Exact retained computed replacement text, not text inferred from glyphs.
     #[must_use]
     pub fn text(&self) -> &Text {
-        &self.prepared.analyzed.paragraph.replacements[self.data().occurrence].text
+        &self.data().text
     }
 }
 

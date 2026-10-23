@@ -1252,3 +1252,33 @@ fn whitespace(code_point: u32) -> Whitespace {
         _ => Whitespace::None,
     }
 }
+
+/// Native first-available family probe. Raw registrations have unrestricted
+/// unicode ranges. Glyph presence (including U+0020) does not select the face.
+pub(crate) fn automatic_hyphen(
+    mut query: Query<'_>,
+    style: &ResolvedStyle,
+    catalogue: &crate::FontCatalogueIdentity,
+) -> Result<(crate::Text, FontData)> {
+    query.set_families(style.font_family.iter().copied().map(QueryFamily::Id));
+    query.set_attributes(attributes(style));
+    let mut indication = None;
+    query.matches_with(|font| {
+        indication = Some((
+            if font
+                .charmap()
+                .and_then(|map| map.map('\u{2010}'))
+                .is_some_and(|glyph| glyph != 0)
+            {
+                "\u{2010}"
+            } else {
+                "-"
+            },
+            FontData::from_blob(font.blob.clone(), font.index, catalogue.clone()),
+        ));
+        QueryStatus::Stop
+    });
+    indication
+        .map(|(text, font)| (crate::Text::from(text), font))
+        .ok_or_else(|| crate::hyphenation::error(crate::HyphenationError::MissingPrimaryFont))
+}

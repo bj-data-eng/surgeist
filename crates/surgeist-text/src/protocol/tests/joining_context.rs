@@ -606,7 +606,7 @@ fn discretionary_input(
             input.controls.push(paragraph::ParagraphControl {
                 at: 2,
                 kind: paragraph::ParagraphControlKind::DiscretionaryBreak {
-                    wrap: crate::Wrap::Word,
+                    style: Box::new(input.base_style.clone()),
                 },
             });
             input.anchor_order.push(paragraph::ParagraphAnchor {
@@ -616,12 +616,14 @@ fn discretionary_input(
             2
         }
     };
-    input.replacements.push(paragraph::ParagraphReplacement {
-        definition,
-        insertion_anchor: anchor,
-        style_anchor: 0,
-        text: crate::Text::from(text),
-    });
+    input.replacements.push(
+        paragraph::ParagraphReplacement::resolved_native_logical_before(
+            definition,
+            anchor,
+            vec![crate::Text::from(text)],
+        )
+        .unwrap(),
+    );
     input
 }
 
@@ -755,15 +757,17 @@ fn selected_source_shy_on_continuation_keeps_both_original_context_sides() {
         },
         "-",
     );
-    input.replacements.push(paragraph::ParagraphReplacement {
-        definition: paragraph::ParagraphReplacementDefinition::Source {
-            origin: 0,
-            source: Range::new(4, 5),
-        },
-        insertion_anchor: 5,
-        style_anchor: 0,
-        text: crate::Text::from("-"),
-    });
+    input.replacements.push(
+        paragraph::ParagraphReplacement::resolved_native_logical_before(
+            paragraph::ParagraphReplacementDefinition::Source {
+                origin: 0,
+                source: Range::new(4, 5),
+            },
+            5,
+            vec![crate::Text::from("-")],
+        )
+        .unwrap(),
+    );
     let mut system = arabic_system();
     let prepared = native_prepare(&mut system, input);
     let start = prepared.boundary_views().next().unwrap().handle();

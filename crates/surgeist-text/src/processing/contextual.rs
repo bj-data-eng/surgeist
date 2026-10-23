@@ -751,7 +751,7 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
             controls: capture
                 .controls
                 .iter()
-                .map(|i| input.controls[*i])
+                .map(|i| input.controls[*i].clone())
                 .collect(),
             boundary_policies: policies,
             replacements,
@@ -764,10 +764,6 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
         };
         for replacement in &data.replacements {
             data.admit(&input.source, replacement.replaced_source())?;
-            data.admit(
-                &input.source,
-                Range::new(replacement.style_anchor, replacement.style_anchor),
-            )?;
         }
         validate_facts(&input.source, &data)?;
         records.push(Some(ParagraphRecord { data }));

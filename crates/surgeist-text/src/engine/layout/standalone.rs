@@ -239,7 +239,11 @@ fn nominate(
                 previous_wrap = style.wrap;
                 any_text = true;
                 any_wrapped_text |= style.wrap == Wrap::Word;
-                if wrapping && !cluster.ligature_component && advance != 0.0 {
+                if wrapping
+                    && !cluster.ligature_component
+                    && advance != 0.0
+                    && has_soft_opportunity(prepared, cursor)
+                {
                     if cluster.boundary == Boundary::Line {
                         record(&mut result.regular, cursor, start);
                     } else if style.overflow_wrap != OverflowWrap::Normal {
@@ -295,6 +299,12 @@ fn nominate(
     }
     result.unwrapped = any_text && !any_wrapped_text;
     Ok(result)
+}
+
+/// The same prepared inventory owns disappearing-SHY eligibility and its
+/// resolved indication. The chooser cannot turn a suppressed SHY into Allowed.
+fn has_soft_opportunity(prepared: &PreparedData, item: usize) -> bool {
+    prepared.tables.soft_preliminary_items.contains(&item)
 }
 
 fn record(endpoints: &mut Vec<usize>, end: usize, start: usize) {

@@ -822,7 +822,9 @@ fn selected_source_and_control_alternatives_keep_authentic_source_provenance() {
         let definition = if control {
             capture.controls.push(ParagraphControl {
                 at: 1,
-                kind: ParagraphControlKind::DiscretionaryBreak { wrap: Wrap::Word },
+                kind: ParagraphControlKind::DiscretionaryBreak {
+                    style: Box::new(capture.base_style.clone()),
+                },
             });
             capture.anchor_order.push(ParagraphAnchor {
                 item: ParagraphAnchorItem::Control(0),
@@ -838,12 +840,14 @@ fn selected_source_and_control_alternatives_keep_authentic_source_provenance() {
                 source: Range::new(1, 2),
             }
         };
-        capture.replacements.push(ParagraphReplacement {
-            definition,
-            insertion_anchor: if control { 1 } else { 2 },
-            style_anchor: 0,
-            text: Text::from(replacement),
-        });
+        capture.replacements.push(
+            ParagraphReplacement::resolved_native_logical_before(
+                definition,
+                if control { 1 } else { 2 },
+                vec![Text::from(replacement)],
+            )
+            .unwrap(),
+        );
         let p = prepare(
             capture,
             if replacement == "A" {
@@ -1143,20 +1147,24 @@ fn source_definitions_select_only_the_exact_chosen_nonempty_replacement_and_keep
             origin.source = Source::new(text);
             origin.local = Range::new(0, 1);
         }
-        capture.replacements.push(ParagraphReplacement {
-            definition: ParagraphReplacementDefinition::Source {
-                origin: 1,
-                source: Range::new(1, 2),
-            },
-            insertion_anchor: 2,
-            style_anchor: 1,
-            text: Text::from(replacement),
-        });
+        capture.replacements.push(
+            ParagraphReplacement::resolved_native_logical_before(
+                ParagraphReplacementDefinition::Source {
+                    origin: 1,
+                    source: Range::new(1, 2),
+                },
+                2,
+                vec![Text::from(replacement)],
+            )
+            .unwrap(),
+        );
         let p = prepare(capture, AHEM.to_vec());
         let origins: Vec<_> = p.origin_views().map(|v| v.handle()).collect();
         let offer = p
             .opportunity_views()
-            .find(|v| v.alternatives().next().is_some())
+            .find(|v| {
+                v.boundary().view().source_before().get() == 2 && v.alternatives().next().is_some()
+            })
             .unwrap()
             .handle();
         let alt = offer.view().alternatives().next().unwrap().handle();
@@ -1214,15 +1222,17 @@ fn source_definitions_select_only_the_exact_chosen_nonempty_replacement_and_keep
         &[0, 3],
         ParagraphBaseDirection::LeftToRight,
     );
-    capture.replacements.push(ParagraphReplacement {
-        definition: ParagraphReplacementDefinition::Source {
-            origin: 0,
-            source: Range::new(1, 2),
-        },
-        insertion_anchor: 2,
-        style_anchor: 0,
-        text: Text::from("-"),
-    });
+    capture.replacements.push(
+        ParagraphReplacement::resolved_native_logical_before(
+            ParagraphReplacementDefinition::Source {
+                origin: 0,
+                source: Range::new(1, 2),
+            },
+            2,
+            vec![Text::from("-")],
+        )
+        .unwrap(),
+    );
     let p = prepare(capture, AHEM.to_vec());
     let o = p.origin_views().next().unwrap().handle();
     let l = place(p, 0.0, 30.0);
@@ -1242,18 +1252,22 @@ fn source_less_breaks_and_control_alternatives_with_incidental_origins_do_not_ac
         );
         capture.controls.push(ParagraphControl {
             at: 1,
-            kind: ParagraphControlKind::DiscretionaryBreak { wrap: Wrap::Word },
+            kind: ParagraphControlKind::DiscretionaryBreak {
+                style: Box::new(capture.base_style.clone()),
+            },
         });
         capture.anchor_order.push(ParagraphAnchor {
             item: ParagraphAnchorItem::Control(0),
             affinity: Affinity::Before,
         });
-        capture.replacements.push(ParagraphReplacement {
-            definition: ParagraphReplacementDefinition::Control { control: 0, origin },
-            insertion_anchor: 1,
-            style_anchor: 0,
-            text: Text::from("-"),
-        });
+        capture.replacements.push(
+            ParagraphReplacement::resolved_native_logical_before(
+                ParagraphReplacementDefinition::Control { control: 0, origin },
+                1,
+                vec![Text::from("-")],
+            )
+            .unwrap(),
+        );
         let p = prepare(capture, AHEM.to_vec());
         let o = p.origin_views().next().unwrap().handle();
         let offer = p

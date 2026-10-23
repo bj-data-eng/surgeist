@@ -400,17 +400,21 @@ fn finalized_prefix_replacement_is_bundled_with_its_real_defining_control() {
         style(),
         vec![ParagraphControl {
             at: 1,
-            kind: ParagraphControlKind::DiscretionaryBreak { wrap: Wrap::Word },
-        }],
-        vec![ParagraphReplacement {
-            definition: ParagraphReplacementDefinition::Control {
-                control: 0,
-                origin: None,
+            kind: ParagraphControlKind::DiscretionaryBreak {
+                style: Box::new(style()),
             },
-            insertion_anchor: 1,
-            style_anchor: 0,
-            text: Text::from(" X "),
         }],
+        vec![
+            ParagraphReplacement::resolved_native_logical_before(
+                ParagraphReplacementDefinition::Control {
+                    control: 0,
+                    origin: None,
+                },
+                1,
+                vec![Text::from(" X ")],
+            )
+            .unwrap(),
+        ],
     );
     let alternative = prepared.alternative_views().next().unwrap().handle();
     let selected = selected_end(
@@ -624,17 +628,21 @@ fn finalized_original_prefix_membership_uses_actual_control_bundle_and_allocated
         style(),
         vec![ParagraphControl {
             at: 0,
-            kind: ParagraphControlKind::DiscretionaryBreak { wrap: Wrap::Word },
-        }],
-        vec![ParagraphReplacement {
-            definition: ParagraphReplacementDefinition::Control {
-                control: 0,
-                origin: None,
+            kind: ParagraphControlKind::DiscretionaryBreak {
+                style: Box::new(style()),
             },
-            insertion_anchor: 0,
-            style_anchor: 0,
-            text: Text::from("A"),
         }],
+        vec![
+            ParagraphReplacement::resolved_native_logical_before(
+                ParagraphReplacementDefinition::Control {
+                    control: 0,
+                    origin: None,
+                },
+                0,
+                vec![Text::from("A")],
+            )
+            .unwrap(),
+        ],
     );
     let alternative = prepared.alternative_views().next().unwrap().handle();
     let line = selected_end(
@@ -740,15 +748,17 @@ fn finalized_original_prefix_source_replacement_keeps_its_defining_source_bundle
         "\u{ad}X",
         style(),
         vec![],
-        vec![ParagraphReplacement {
-            definition: ParagraphReplacementDefinition::Source {
-                origin: 0,
-                source: Range::new(0, 1),
-            },
-            insertion_anchor: 1,
-            style_anchor: 0,
-            text: Text::from("A"),
-        }],
+        vec![
+            ParagraphReplacement::resolved_native_logical_before(
+                ParagraphReplacementDefinition::Source {
+                    origin: 0,
+                    source: Range::new(0, 1),
+                },
+                1,
+                vec![Text::from("A")],
+            )
+            .unwrap(),
+        ],
     );
     let alternative = prepared.alternative_views().next().unwrap().handle();
     let line = selected_end(

@@ -263,21 +263,22 @@ impl<'tree, Tree: crate::LayoutTree> TextLayoutInput<'tree, Tree> {
                 return Err(error(TextBindingError::ControlCoverage));
             }
             for binding in &paragraph.controls {
-                let kind = binding.occurrence.view().kind();
+                let occurrence = binding.occurrence.view();
+                let kind = occurrence.kind();
                 let applicable = match tree.layout_input(binding.node) {
                     crate::LayoutInputViewOf::TextControl(input) => {
                         input.occurrence() == &binding.occurrence
                     }
                     crate::LayoutInputViewOf::LineBreak(input) => {
                         !input.display().is_none()
-                            && kind == surgeist_text::ParagraphControlKind::ForcedBreak
+                            && kind == &surgeist_text::ParagraphControlKind::ForcedBreak
                     }
                     crate::LayoutInputViewOf::InlineBoundary(input) => match input.kind() {
                         crate::InlineBoundaryKind::Start => {
-                            kind == surgeist_text::ParagraphControlKind::InlineBoundaryStart
+                            kind == &surgeist_text::ParagraphControlKind::InlineBoundaryStart
                         }
                         crate::InlineBoundaryKind::End => {
-                            kind == surgeist_text::ParagraphControlKind::InlineBoundaryEnd
+                            kind == &surgeist_text::ParagraphControlKind::InlineBoundaryEnd
                         }
                     },
                     _ => false,

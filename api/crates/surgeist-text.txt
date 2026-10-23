@@ -121,6 +121,8 @@ pub surgeist_text::ErrorDetail::FontMetricVariationArithmetic::tag: [u8; 4]
 pub surgeist_text::ErrorDetail::FontOutline
 pub surgeist_text::ErrorDetail::FontOutline::glyph: u32
 pub surgeist_text::ErrorDetail::FontOutline::reason: surgeist_text::FontOutlineError
+pub surgeist_text::ErrorDetail::Hyphenation
+pub surgeist_text::ErrorDetail::Hyphenation::reason: surgeist_text::HyphenationError
 pub surgeist_text::ErrorDetail::InvalidDocumentSegmentBreak
 pub surgeist_text::ErrorDetail::InvalidDocumentSegmentBreak::occurrence: usize
 pub surgeist_text::ErrorDetail::InvalidDocumentSegmentBreak::range: surgeist_text::Range
@@ -301,6 +303,23 @@ pub enum surgeist_text::Hit
 pub surgeist_text::Hit::InlineBox(surgeist_text::Id)
 pub surgeist_text::Hit::None
 pub surgeist_text::Hit::Text(surgeist_text::PlacedPosition)
+pub enum surgeist_text::HyphenateCharacter
+pub surgeist_text::HyphenateCharacter::Auto
+pub surgeist_text::HyphenateCharacter::String(surgeist_text::Text)
+pub enum surgeist_text::HyphenationError
+pub surgeist_text::HyphenationError::EmptyNativeAlternatives
+pub surgeist_text::HyphenationError::InvalidConvention
+pub surgeist_text::HyphenationError::InvalidConventionBinding
+pub surgeist_text::HyphenationError::MissingPrimaryFont
+pub surgeist_text::HyphenationError::UnsupportedPlacement(surgeist_text::HyphenationPlacement)
+pub enum surgeist_text::HyphenationPlacement
+pub surgeist_text::HyphenationPlacement::BothSides
+pub surgeist_text::HyphenationPlacement::LogicalAfter
+pub surgeist_text::HyphenationPlacement::LogicalBefore
+pub enum surgeist_text::Hyphens
+pub surgeist_text::Hyphens::Auto
+pub surgeist_text::Hyphens::Manual
+pub surgeist_text::Hyphens::None
 pub enum surgeist_text::InlineBoxKind
 pub surgeist_text::InlineBoxKind::InFlow
 pub surgeist_text::InlineBoxKind::OutOfFlow
@@ -367,7 +386,7 @@ pub surgeist_text::ParagraphConnectionKind::Continuous
 pub surgeist_text::ParagraphConnectionKind::Disconnected
 pub enum surgeist_text::ParagraphControlKind
 pub surgeist_text::ParagraphControlKind::DiscretionaryBreak
-pub surgeist_text::ParagraphControlKind::DiscretionaryBreak::wrap: surgeist_text::Wrap
+pub surgeist_text::ParagraphControlKind::DiscretionaryBreak::style: alloc::boxed::Box<surgeist_text::Style>
 pub surgeist_text::ParagraphControlKind::FirstStrongIsolate
 pub surgeist_text::ParagraphControlKind::ForcedBreak
 pub surgeist_text::ParagraphControlKind::InlineBoundaryEnd
@@ -452,6 +471,9 @@ pub surgeist_text::ProtocolError::DuplicateControl
 pub surgeist_text::ProtocolError::DuplicateControl::occurrence: usize
 pub surgeist_text::ProtocolError::DuplicateLine
 pub surgeist_text::ProtocolError::DuplicateLine::line: usize
+pub surgeist_text::ProtocolError::DuplicateReplacement
+pub surgeist_text::ProtocolError::DuplicateReplacement::alternative: usize
+pub surgeist_text::ProtocolError::DuplicateReplacement::prior: usize
 pub surgeist_text::ProtocolError::DuplicateSpacingSlot
 pub surgeist_text::ProtocolError::DuplicateSpacingSlot::slot: usize
 pub surgeist_text::ProtocolError::DuplicateWrappingPolicy
@@ -1343,6 +1365,14 @@ pub const fn surgeist_text::Metrics::line_count(self) -> usize
 pub const fn surgeist_text::Metrics::new(size: surgeist_text::Size, full_width: f64, line_count: usize, first_baseline: core::option::Option<f64>, last_baseline: core::option::Option<f64>, overflow: bool) -> Self
 pub const fn surgeist_text::Metrics::overflow(self) -> bool
 pub const fn surgeist_text::Metrics::size(self) -> surgeist_text::Size
+pub struct surgeist_text::NativeHyphenationConvention
+impl surgeist_text::NativeHyphenationConvention
+pub fn surgeist_text::NativeHyphenationConvention::automatic_text(&self) -> &surgeist_text::Text
+pub fn surgeist_text::NativeHyphenationConvention::declared_script(script: &str, automatic_text: surgeist_text::Text, placement: surgeist_text::HyphenationPlacement) -> surgeist_text::Result<Self>
+pub fn surgeist_text::NativeHyphenationConvention::language_script(locale: &str, script: &str, automatic_text: surgeist_text::Text, placement: surgeist_text::HyphenationPlacement) -> surgeist_text::Result<Self>
+pub fn surgeist_text::NativeHyphenationConvention::locale(&self) -> core::option::Option<&str>
+pub const fn surgeist_text::NativeHyphenationConvention::placement(&self) -> surgeist_text::HyphenationPlacement
+pub fn surgeist_text::NativeHyphenationConvention::script(&self) -> &str
 pub struct surgeist_text::Options
 pub surgeist_text::Options::alignment: surgeist_text::Alignment
 pub surgeist_text::Options::indent: surgeist_text::Indent
@@ -1401,10 +1431,12 @@ pub surgeist_text::ParagraphOrigin::kind: surgeist_text::ParagraphOriginKind
 pub surgeist_text::ParagraphOrigin::local: surgeist_text::Range
 pub surgeist_text::ParagraphOrigin::source: surgeist_text::Source
 pub struct surgeist_text::ParagraphReplacement
-pub surgeist_text::ParagraphReplacement::definition: surgeist_text::ParagraphReplacementDefinition
-pub surgeist_text::ParagraphReplacement::insertion_anchor: usize
-pub surgeist_text::ParagraphReplacement::style_anchor: usize
-pub surgeist_text::ParagraphReplacement::text: surgeist_text::Text
+impl surgeist_text::ParagraphReplacement
+pub const fn surgeist_text::ParagraphReplacement::definition(&self) -> surgeist_text::ParagraphReplacementDefinition
+pub const fn surgeist_text::ParagraphReplacement::insertion_anchor(&self) -> usize
+pub fn surgeist_text::ParagraphReplacement::native_alternatives(&self) -> core::option::Option<&[surgeist_text::Text]>
+pub fn surgeist_text::ParagraphReplacement::resolved_native_logical_before(definition: surgeist_text::ParagraphReplacementDefinition, insertion_anchor: usize, alternatives: alloc::vec::Vec<surgeist_text::Text>) -> surgeist_text::Result<Self>
+pub const fn surgeist_text::ParagraphReplacement::style_driven(definition: surgeist_text::ParagraphReplacementDefinition, insertion_anchor: usize) -> Self
 pub struct surgeist_text::PlacedPosition
 impl surgeist_text::PlacedPosition
 pub fn surgeist_text::PlacedPosition::source_cursor(&self) -> surgeist_text::Cursor
@@ -1538,7 +1570,7 @@ pub struct surgeist_text::PreparedControlView<'a>
 impl surgeist_text::PreparedControlView<'_>
 pub fn surgeist_text::PreparedControlView<'_>::handle(&self) -> surgeist_text::PreparedControl
 impl surgeist_text::PreparedControlView<'_>
-pub fn surgeist_text::PreparedControlView<'_>::kind(&self) -> surgeist_text::ParagraphControlKind
+pub fn surgeist_text::PreparedControlView<'_>::kind(&self) -> &surgeist_text::ParagraphControlKind
 pub fn surgeist_text::PreparedControlView<'_>::level(&self) -> surgeist_text::BidiLevel
 pub fn surgeist_text::PreparedControlView<'_>::processed_position(&self) -> surgeist_text::ProcessedPosition
 pub fn surgeist_text::PreparedControlView<'_>::source_position(&self) -> surgeist_text::SourcePosition
@@ -1927,9 +1959,12 @@ pub struct surgeist_text::Style
 pub surgeist_text::Style::brush: surgeist_text::Brush
 pub surgeist_text::Style::direction: surgeist_text::Direction
 pub surgeist_text::Style::font: surgeist_text::Font
+pub surgeist_text::Style::hyphenate_character: surgeist_text::HyphenateCharacter
+pub surgeist_text::Style::hyphens: surgeist_text::Hyphens
 pub surgeist_text::Style::letter_spacing: f64
 pub surgeist_text::Style::line_height: surgeist_text::LineHeight
 pub surgeist_text::Style::locale: core::option::Option<alloc::string::String>
+pub surgeist_text::Style::native_hyphenation_convention: core::option::Option<surgeist_text::NativeHyphenationConvention>
 pub surgeist_text::Style::overflow_wrap: surgeist_text::OverflowWrap
 pub surgeist_text::Style::size: f32
 pub surgeist_text::Style::strikethrough: surgeist_text::Decoration

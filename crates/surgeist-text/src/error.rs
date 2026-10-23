@@ -89,6 +89,10 @@ pub enum ErrorCode {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ErrorDetail {
+    /// Exact native hyphenation input/resource refusal.
+    Hyphenation {
+        reason: crate::HyphenationError,
+    },
     /// Admission or retained-association failure for a nonempty source range.
     SourceRangeFragments {
         reason: crate::SourceRangeFragmentError,

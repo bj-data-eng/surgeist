@@ -38,15 +38,17 @@ fn selected_computed_beh(separate_instance: bool) -> Vec<(Range, u32, f32)> {
         connections: vec![],
         controls: vec![],
         boundary_policies: vec![],
-        replacements: vec![ParagraphReplacement {
-            definition: ParagraphReplacementDefinition::Source {
-                origin: 0,
-                source: Range::new(2, 3),
-            },
-            insertion_anchor: 3,
-            style_anchor: 2,
-            text: "\u{628}".into(),
-        }],
+        replacements: vec![
+            ParagraphReplacement::resolved_native_logical_before(
+                ParagraphReplacementDefinition::Source {
+                    origin: 0,
+                    source: Range::new(2, 3),
+                },
+                3,
+                vec!["\u{628}".into()],
+            )
+            .unwrap(),
+        ],
         anchor_order: vec![],
     })
     .unwrap();

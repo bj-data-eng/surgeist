@@ -36,7 +36,7 @@ pub(crate) enum Influence {
     },
     Control {
         participant: usize,
-        kind: ParagraphControlKind,
+        occurrence: usize,
     },
 }
 
@@ -56,10 +56,12 @@ impl Influence {
         }
     }
 
-    fn starts_hard_separator(self, atoms: &[OriginalAtom]) -> bool {
+    fn starts_hard_separator(self, atoms: &[OriginalAtom], paragraph: &ParagraphData) -> bool {
         match self {
             Self::Text { atom, .. } => is_hard_separator(atoms[atom].code_point),
-            Self::Control { kind, .. } => kind == ParagraphControlKind::ForcedBreak,
+            Self::Control { occurrence, .. } => {
+                paragraph.controls[occurrence].kind == ParagraphControlKind::ForcedBreak
+            }
             Self::Atomic { .. } => false,
         }
     }
@@ -117,12 +119,15 @@ impl LogicalParagraph {
                     item: ParagraphAnchorItem::Control(control),
                     ..
                 }) => {
-                    let kind = paragraph.controls[control].kind;
+                    let kind = &paragraph.controls[control].kind;
                     match kind {
                         ParagraphControlKind::ForcedBreak
                         | ParagraphControlKind::OptionalBreak { .. }
                         | ParagraphControlKind::DiscretionaryBreak { .. } => {
-                            Some(Influence::Control { participant, kind })
+                            Some(Influence::Control {
+                                participant,
+                                occurrence: control,
+                            })
                         }
                         _ => None,
                     }
@@ -162,7 +167,7 @@ impl LogicalParagraph {
                 after,
                 neighbors,
                 before_hard_separator: after
-                    .is_some_and(|value| value.starts_hard_separator(&projection.atoms)),
+                    .is_some_and(|value| value.starts_hard_separator(&projection.atoms, paragraph)),
                 atomic: [before, after]
                     .into_iter()
                     .flatten()

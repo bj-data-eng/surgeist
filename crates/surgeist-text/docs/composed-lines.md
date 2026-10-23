@@ -54,6 +54,23 @@ uses the same selected-line and placement machinery.
    explicit absence. `line_strut` can allocate a genuine line contribution without
    inventing a control or a font. A taken discretionary break requires its own issued alternative;
    an empty replacement is valid, and a natural end does not imply a hyphen.
+   `Style::hyphens` defaults to `Manual`; `None` suppresses both bare SHY and
+   explicit hyphenation groups, while `Auto` currently adds no dictionary points.
+   `ParagraphReplacement::style_driven` resolves the actual defining style;
+   `resolved_native_logical_before` captures one nonempty ordered list (individual
+   strings may be empty). A discretionary control owns its complete boxed Style.
+   There is no replacement style anchor or independent wrapping flag.
+   Exact `hyphenate_character` text wins over convention text. Auto uses an
+   applicable `NativeHyphenationConvention`, otherwise probes the first available
+   font among the owning style's families/resolved generics and actual attributes.
+   This distinct probe has no script fallback or glyph-coverage filter: raw native
+   catalogue registrations have unrestricted unicode ranges, and a space glyph is
+   not required. It chooses U+2010 when present, otherwise U+002D; normal shaping
+   then resolves the chosen text. Missing primary fonts and known unsupported
+   nonempty after/both-side placement return typed errors. Suppressed or empty
+   indications do not consume those unused capabilities. Native conventions bind
+   the complete locale, including variants/extensions; no built-in language table,
+   CSS font-face unicode-range or dictionary support is claimed.
 4. `PreparedText::select` returns `SelectedLine`. Its slots identify actual selected
    presentation contributions, including replacement spaces. Finalize first with
    `SpacingAllocations::None`, or provide a complete slot table including zeros.

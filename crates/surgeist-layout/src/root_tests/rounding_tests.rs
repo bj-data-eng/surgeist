@@ -206,15 +206,17 @@ fn prepared_text_fractional_rounding_preserves_issued_owner_and_selected_alterna
             WritingMode::HorizontalTb,
             Direction::Ltr,
             TextAlign::Start,
-            vec![ParagraphReplacement {
-                definition: ParagraphReplacementDefinition::Source {
-                    origin: 0,
-                    source: Range::new(1, 2),
-                },
-                insertion_anchor: 2,
-                style_anchor: 2,
-                text: Text::from("-"),
-            }],
+            vec![
+                ParagraphReplacement::resolved_native_logical_before(
+                    ParagraphReplacementDefinition::Source {
+                        origin: 0,
+                        source: Range::new(1, 2),
+                    },
+                    2,
+                    vec![Text::from("-")],
+                )
+                .unwrap(),
+            ],
         )
         .unwrap();
         let unrounded = batch.unrounded_inline_fragments();

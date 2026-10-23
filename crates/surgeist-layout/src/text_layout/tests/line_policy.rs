@@ -291,15 +291,17 @@ fn assert_alternative_spacing<S: LayoutScalar>() {
         )],
         style,
         ParagraphBaseDirection::LeftToRight,
-        vec![surgeist_text::ParagraphReplacement {
-            definition: surgeist_text::ParagraphReplacementDefinition::Source {
-                origin: 0,
-                source: surgeist_text::Range::new(1, 2),
-            },
-            insertion_anchor: 2,
-            style_anchor: 0,
-            text: " X ".into(),
-        }],
+        vec![
+            surgeist_text::ParagraphReplacement::resolved_native_logical_before(
+                surgeist_text::ParagraphReplacementDefinition::Source {
+                    origin: 0,
+                    source: surgeist_text::Range::new(1, 2),
+                },
+                2,
+                vec![" X ".into()],
+            )
+            .unwrap(),
+        ],
     );
     let alternative = paragraph
         .prepared

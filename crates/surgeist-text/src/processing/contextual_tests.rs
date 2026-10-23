@@ -736,12 +736,12 @@ fn same_offset_nested_empty_scopes_and_consecutive_controls_retain_actual_order_
     assert_eq!(
         prepared
             .control_views()
-            .map(|row| row.kind())
+            .map(|row| row.kind().clone())
             .collect::<Vec<_>>(),
         capture
             .controls
             .iter()
-            .map(|row| row.kind)
+            .map(|row| row.kind.clone())
             .collect::<Vec<_>>()
     );
     let finalized = line(&prepared);
@@ -893,15 +893,17 @@ fn genuinely_connected_original_pair_crosses_origin_boundary_but_not_an_internal
 #[test]
 fn contextual_source_defined_replacement_remains_presentation_only() {
     let mut capture = input("A\u{ad}B", WhiteSpace::Preserve);
-    capture.replacements = vec![ParagraphReplacement {
-        definition: ParagraphReplacementDefinition::Source {
-            origin: 0,
-            source: Range::new(1, 2),
-        },
-        insertion_anchor: 2,
-        style_anchor: 1,
-        text: Text::from("-"),
-    }];
+    capture.replacements = vec![
+        ParagraphReplacement::resolved_native_logical_before(
+            ParagraphReplacementDefinition::Source {
+                origin: 0,
+                source: Range::new(1, 2),
+            },
+            2,
+            vec![Text::from("-")],
+        )
+        .unwrap(),
+    ];
     let result = Arc::new(process_contextual_source(capture).unwrap());
     let prepared = prepare(&mut system(), result.paragraphs().next().unwrap());
     let alternative = prepared.alternative_views().next().unwrap().handle();

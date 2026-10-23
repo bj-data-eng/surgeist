@@ -390,15 +390,17 @@ fn conditional_termination_cannot_select_failed_ordinary_replacement() {
     use paragraph::{ParagraphReplacement, ParagraphReplacementDefinition};
     let mut system = system();
     let mut value = input("A\u{ad}AAA", OverflowWrap::Anywhere);
-    value.replacements.push(ParagraphReplacement {
-        definition: ParagraphReplacementDefinition::Source {
-            origin: 0,
-            source: Range::new(1, 2),
-        },
-        insertion_anchor: 2,
-        style_anchor: 0,
-        text: crate::Text::from("-"),
-    });
+    value.replacements.push(
+        ParagraphReplacement::resolved_native_logical_before(
+            ParagraphReplacementDefinition::Source {
+                origin: 0,
+                source: Range::new(1, 2),
+            },
+            2,
+            vec![crate::Text::from("-")],
+        )
+        .unwrap(),
+    );
     let prepared = prepare(&mut system, value);
     let first = prepared.opportunity_views().next().unwrap();
     assert_eq!(first.kind(), PreparedBreakKind::Discretionary);
@@ -935,23 +937,25 @@ fn phantom_frontier_requires_every_real_discretionary_variant() {
     value.base_style.white_space = WhiteSpace::Collapse;
     value.controls.push(ParagraphControl {
         at: 1,
-        kind: ParagraphControlKind::DiscretionaryBreak { wrap: Wrap::Word },
+        kind: ParagraphControlKind::DiscretionaryBreak {
+            style: Box::new(value.base_style.clone()),
+        },
     });
     value.anchor_order.push(ParagraphAnchor {
         item: ParagraphAnchorItem::Control(0),
         affinity: crate::Affinity::Before,
     });
-    value.replacements = ["", "A"]
-        .map(|text| ParagraphReplacement {
-            definition: ParagraphReplacementDefinition::Control {
+    value.replacements = vec![
+        ParagraphReplacement::resolved_native_logical_before(
+            ParagraphReplacementDefinition::Control {
                 control: 0,
                 origin: None,
             },
-            insertion_anchor: 1,
-            style_anchor: 0,
-            text: crate::Text::from(text),
-        })
-        .to_vec();
+            1,
+            vec![crate::Text::from(""), crate::Text::from("A")],
+        )
+        .unwrap(),
+    ];
     let mut invalid = value.clone();
     invalid.controls[0].kind = ParagraphControlKind::OptionalBreak { wrap: Wrap::Word };
     assert!(matches!(
@@ -1226,15 +1230,17 @@ fn conditional_context_uses_base_capture_after_actual_hyphen_variant_trial() {
         .unwrap();
     let mut value = input("\u{628}\u{ad}\u{628}", OverflowWrap::Anywhere);
     value.base_direction = ParagraphBaseDirection::RightToLeft;
-    value.replacements.push(ParagraphReplacement {
-        definition: ParagraphReplacementDefinition::Source {
-            origin: 0,
-            source: Range::new(1, 2),
-        },
-        insertion_anchor: 2,
-        style_anchor: 0,
-        text: crate::Text::from("-"),
-    });
+    value.replacements.push(
+        ParagraphReplacement::resolved_native_logical_before(
+            ParagraphReplacementDefinition::Source {
+                origin: 0,
+                source: Range::new(1, 2),
+            },
+            2,
+            vec![crate::Text::from("-")],
+        )
+        .unwrap(),
+    );
     let prepared = prepare(&mut system, value);
     let mut whole_request = request(&prepared);
     whole_request.context.base_direction = ParagraphBaseDirection::RightToLeft;

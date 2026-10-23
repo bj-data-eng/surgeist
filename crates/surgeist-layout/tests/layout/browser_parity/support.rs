@@ -6011,7 +6011,7 @@ mod tests {
         assert_eq!(
             controls
                 .iter()
-                .map(|(_, control)| control.view().kind())
+                .map(|(_, control)| control.view().kind().clone())
                 .collect::<Vec<_>>(),
             vec![
                 surgeist_text::ParagraphControlKind::InlineBoundaryStart,

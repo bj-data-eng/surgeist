@@ -395,6 +395,9 @@ fn hash_style<H: Hasher>(style: &Style, hasher: &mut H) {
     style.wrap.hash(hasher);
     style.overflow_wrap.hash(hasher);
     style.text_transform.hash(hasher);
+    style.hyphens.hash(hasher);
+    style.hyphenate_character.hash(hasher);
+    style.native_hyphenation_convention.hash(hasher);
 }
 
 fn hash_font<H: Hasher>(font: &Font, hasher: &mut H) {

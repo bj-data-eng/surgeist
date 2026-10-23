@@ -4008,15 +4008,15 @@ fn supplied_line_bidi_and_actual_atomic_geometry_preserve_nested_levels_and_slot
 #[test]
 fn prepared_text_latest_replacement_mandatory_final_and_overwide_progress_both_scalars() {
     fn replacement() -> ParagraphReplacement {
-        ParagraphReplacement {
-            definition: ParagraphReplacementDefinition::Source {
+        ParagraphReplacement::resolved_native_logical_before(
+            ParagraphReplacementDefinition::Source {
                 origin: 0,
                 source: surgeist_text::Range::new(3, 4),
             },
-            insertion_anchor: 4,
-            style_anchor: 4,
-            text: Text::from("-"),
-        }
+            4,
+            vec![Text::from("-")],
+        )
+        .unwrap()
     }
     fn assert_lane<S: LayoutScalar>() {
         // Seven authored Xs at5px plus a source-defined soft hyphen. The selected
@@ -4307,15 +4307,17 @@ fn prepared_text_intrinsic_uses_actual_selected_replacement_min_and_unselected_m
                 WritingMode::HorizontalTb,
                 Direction::Ltr,
                 TextAlign::Start,
-                vec![ParagraphReplacement {
-                    definition: ParagraphReplacementDefinition::Source {
-                        origin: 0,
-                        source: surgeist_text::Range::new(3, 4),
-                    },
-                    insertion_anchor: 4,
-                    style_anchor: 4,
-                    text: Text::from("-"),
-                }],
+                vec![
+                    ParagraphReplacement::resolved_native_logical_before(
+                        ParagraphReplacementDefinition::Source {
+                            origin: 0,
+                            source: surgeist_text::Range::new(3, 4),
+                        },
+                        4,
+                        vec![Text::from("-")],
+                    )
+                    .unwrap(),
+                ],
             )
             .unwrap()
         };
@@ -4441,15 +4443,17 @@ fn fri06_c02_block_text_adjacent_nodes_share_soft_mandatory_and_bidi_lines_both_
             ],
             style,
             surgeist_text::ParagraphBaseDirection::LeftToRight,
-            vec![ParagraphReplacement {
-                definition: ParagraphReplacementDefinition::Source {
-                    origin: 0,
-                    source: surgeist_text::Range::new(3, 4),
-                },
-                insertion_anchor: 4,
-                style_anchor: 4,
-                text: Text::from("-"),
-            }],
+            vec![
+                ParagraphReplacement::resolved_native_logical_before(
+                    ParagraphReplacementDefinition::Source {
+                        origin: 0,
+                        source: surgeist_text::Range::new(3, 4),
+                    },
+                    4,
+                    vec![Text::from("-")],
+                )
+                .unwrap(),
+            ],
         );
         let intrinsic_batch = |available: AvailableOf<S>| {
             super::fixtures::prepared_mixed_batch(
@@ -4489,15 +4493,17 @@ fn fri06_c02_scroll_uses_actual_source_and_replacement_fragment_rects_both_scala
             ],
             style,
             surgeist_text::ParagraphBaseDirection::LeftToRight,
-            vec![ParagraphReplacement {
-                definition: ParagraphReplacementDefinition::Source {
-                    origin: 0,
-                    source: surgeist_text::Range::new(3, 4),
-                },
-                insertion_anchor: 4,
-                style_anchor: 4,
-                text: Text::from("-"),
-            }],
+            vec![
+                ParagraphReplacement::resolved_native_logical_before(
+                    ParagraphReplacementDefinition::Source {
+                        origin: 0,
+                        source: surgeist_text::Range::new(3, 4),
+                    },
+                    4,
+                    vec![Text::from("-")],
+                )
+                .unwrap(),
+            ],
         );
         let root = NodeInputOf {
             display: Display::Block,

@@ -905,24 +905,25 @@ fn assert_discretionary_alternatives<S: LayoutScalar>() {
             ParagraphPart::text(1, Source::new("XX"), style.clone()),
             ParagraphPart::Control {
                 node: 2,
-                kind: ParagraphControlKind::DiscretionaryBreak { wrap: Wrap::Word },
+                kind: ParagraphControlKind::DiscretionaryBreak {
+                    style: Box::new(style.clone()),
+                },
             },
             ParagraphPart::text(3, Source::new("XXXX"), style.clone()),
         ],
         style,
         ParagraphBaseDirection::LeftToRight,
-        ["XX", "X"]
-            .into_iter()
-            .map(|text| surgeist_text::ParagraphReplacement {
-                definition: surgeist_text::ParagraphReplacementDefinition::Control {
+        vec![
+            surgeist_text::ParagraphReplacement::resolved_native_logical_before(
+                surgeist_text::ParagraphReplacementDefinition::Control {
                     control: 0,
                     origin: None,
                 },
-                insertion_anchor: 2,
-                style_anchor: 2,
-                text: text.into(),
-            })
-            .collect(),
+                2,
+                vec!["XX".into(), "X".into()],
+            )
+            .unwrap(),
+        ],
     );
     let opportunity = paragraph
         .prepared

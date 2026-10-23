@@ -147,10 +147,13 @@ impl LocaleIndex {
     fn new(styles: &[crate::engine::resolve::AnalyzedStyleRun]) -> Self {
         let mut runs = Vec::new();
         for run in styles {
+            let Some(range) = run.source_range() else {
+                continue;
+            };
             Self::push(
                 &mut runs,
-                run.range.start,
-                run.range.end,
+                range.start,
+                range.end,
                 run.style.authored().locale.clone(),
             );
         }

@@ -39,8 +39,22 @@ pub(crate) struct ResolvedStyle {
 
 #[derive(Clone, Debug)]
 pub(crate) struct AnalyzedStyleRun {
-    pub(crate) range: Range,
+    pub(crate) owner: AnalyzedStyleOwner,
     pub(crate) style: ValidatedStyle,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum AnalyzedStyleOwner {
+    Source(Range),
+    Control(usize),
+}
+impl AnalyzedStyleRun {
+    pub(crate) fn source_range(&self) -> Option<Range> {
+        match self.owner {
+            AnalyzedStyleOwner::Source(range) => Some(range),
+            AnalyzedStyleOwner::Control(_) => None,
+        }
+    }
 }
 
 pub(crate) fn analyze_styles(
@@ -72,10 +86,12 @@ pub(crate) fn analyze_styles(
                 && let Some(last) = result.last_mut()
                 && last.style.authored() == style.authored()
             {
-                last.range.end = range.end;
+                if let AnalyzedStyleOwner::Source(source) = &mut last.owner {
+                    source.end = range.end;
+                }
             } else {
                 result.push(AnalyzedStyleRun {
-                    range,
+                    owner: AnalyzedStyleOwner::Source(range),
                     style: style.clone(),
                 });
             }
@@ -83,7 +99,7 @@ pub(crate) fn analyze_styles(
     }
     if result.is_empty() {
         result.push(AnalyzedStyleRun {
-            range: Range::new(extent.start, extent.start),
+            owner: AnalyzedStyleOwner::Source(Range::new(extent.start, extent.start)),
             style: default_style.clone(),
         });
     }
@@ -270,4 +286,15 @@ fn scaled_logical(value: f64, scale: f32, positive: bool, field: &'static str) -
         ));
     }
     Ok(result)
+}
+
+/// Canonical source-style row; control rows never acquire source membership.
+pub(crate) fn source_style(styles: &[AnalyzedStyleRun], at: usize) -> usize {
+    // Analysis appends genuine control rows after the ordered source rows.
+    // Search only source membership; neither an empty source nor end affinity
+    // may accidentally borrow a control's unrelated style.
+    let source_count = styles.partition_point(|row| row.source_range().is_some());
+    styles[..source_count]
+        .partition_point(|row| row.source_range().is_some_and(|range| range.end <= at))
+        .min(source_count - 1)
 }

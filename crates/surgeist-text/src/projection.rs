@@ -21,8 +21,8 @@ pub(crate) struct SourceProjection {
     /// Real variant-specific positions of captured anchor occurrences, when a
     /// selected replacement occupies a zero-authored insertion anchor.
     pub(crate) anchor_atoms: Vec<Option<usize>>,
-    /// Captured replacement style locations; absence uses original source start.
-    pub(crate) style_anchors: Vec<Option<usize>>,
+    /// Canonical replacement style rows; absence resolves original source ownership.
+    pub(crate) style_rows: Vec<Option<usize>>,
     segmentation_offsets: Vec<(usize, usize)>,
     /// Genuine zero-width original occurrences that need no incident atom.
     #[cfg(any(test, feature = "text-accessibility"))]
@@ -114,7 +114,7 @@ impl SourceProjection {
             graphemes: Vec::new(),
             barriers: Vec::new(),
             anchor_atoms: Vec::new(),
-            style_anchors: Vec::new(),
+            style_rows: Vec::new(),
         };
         projection.graphemes = GraphemeClusterSegmenter::new()
             .segment_str(&projection.segmentation)
@@ -263,7 +263,7 @@ impl SourceProjection {
             graphemes: Vec::new(),
             barriers,
             anchor_atoms: Vec::new(),
-            style_anchors: Vec::new(),
+            style_rows: Vec::new(),
             segmentation_offsets,
             #[cfg(any(test, feature = "text-accessibility"))]
             original_points: Vec::new(),

@@ -64,7 +64,7 @@ fn prepare_paragraph(
         connections: Vec::new(),
         controls: kinds
             .iter()
-            .copied()
+            .cloned()
             .map(|kind| ParagraphControl { at: 0, kind })
             .collect(),
         boundary_policies: [
@@ -83,15 +83,15 @@ fn prepare_paragraph(
             .enumerate()
             .filter_map(|(control, kind)| {
                 matches!(kind, ParagraphControlKind::DiscretionaryBreak { .. }).then_some(
-                    ParagraphReplacement {
-                        definition: ParagraphReplacementDefinition::Control {
+                    ParagraphReplacement::resolved_native_logical_before(
+                        ParagraphReplacementDefinition::Control {
                             control,
                             origin: None,
                         },
-                        insertion_anchor: 0,
-                        style_anchor: 0,
-                        text: Text::from("-"),
-                    },
+                        0,
+                        vec![Text::from("-")],
+                    )
+                    .unwrap(),
                 )
             })
             .collect(),
@@ -124,7 +124,7 @@ fn prepare_paragraph(
     assert_eq!(
         prepared
             .control_views()
-            .map(|control| control.kind())
+            .map(|control| control.kind().clone())
             .collect::<Vec<_>>(),
         kinds
     );
@@ -173,7 +173,7 @@ fn native_hard_positions(prepared: &PreparedText) -> Vec<usize> {
         .enumerate()
         .filter_map(|(index, participant)| match participant {
             PreparedParticipant::Control(control)
-                if control.view().kind() == ParagraphControlKind::ForcedBreak =>
+                if control.view().kind() == &ParagraphControlKind::ForcedBreak =>
             {
                 Some(index)
             }
@@ -331,7 +331,9 @@ fn discretionary_offer_immediately_before_a_hard_control_is_prohibited() {
     let prepared = prepare_paragraph(
         "X",
         &[
-            ParagraphControlKind::DiscretionaryBreak { wrap: Wrap::Word },
+            ParagraphControlKind::DiscretionaryBreak {
+                style: Box::new(style()),
+            },
             ParagraphControlKind::ForcedBreak,
         ],
         false,
@@ -350,7 +352,9 @@ fn optional_and_discretionary_owners_keep_permission_without_a_hard_neighbor() {
             PreparedBreakKind::Allowed,
         ),
         (
-            ParagraphControlKind::DiscretionaryBreak { wrap: Wrap::Word },
+            ParagraphControlKind::DiscretionaryBreak {
+                style: Box::new(style()),
+            },
             PreparedBreakKind::Discretionary,
         ),
     ] {

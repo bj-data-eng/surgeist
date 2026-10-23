@@ -397,21 +397,25 @@ fn computed_replacement_spaces_keep_actual_alternative_and_empty_source_anchors(
     let mut captured = input("", WhiteSpace::Collapse);
     captured.controls.push(ParagraphControl {
         at: 0,
-        kind: ParagraphControlKind::DiscretionaryBreak { wrap: Wrap::Word },
+        kind: ParagraphControlKind::DiscretionaryBreak {
+            style: Box::new(captured.base_style.clone()),
+        },
     });
     captured.anchor_order.push(ParagraphAnchor {
         item: ParagraphAnchorItem::Control(0),
         affinity: Affinity::Before,
     });
-    captured.replacements.push(ParagraphReplacement {
-        definition: ParagraphReplacementDefinition::Control {
-            control: 0,
-            origin: None,
-        },
-        insertion_anchor: 0,
-        style_anchor: 0,
-        text: Text::from(" X "),
-    });
+    captured.replacements.push(
+        ParagraphReplacement::resolved_native_logical_before(
+            ParagraphReplacementDefinition::Control {
+                control: 0,
+                origin: None,
+            },
+            0,
+            vec![Text::from(" X ")],
+        )
+        .unwrap(),
+    );
     let prepared = prepare(captured);
     let alternative = prepared.alternative_views().next().unwrap().handle();
     let selected = select(&prepared, Some(alternative.clone()));

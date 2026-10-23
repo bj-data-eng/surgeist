@@ -155,7 +155,7 @@ fn replaced(
         value.controls.push(ParagraphControl {
             at: anchor,
             kind: ParagraphControlKind::DiscretionaryBreak {
-                wrap: crate::Wrap::Word,
+                style: Box::new(value.base_style.clone()),
             },
         });
         value.anchor_order.push(ParagraphAnchor {
@@ -164,12 +164,14 @@ fn replaced(
         });
         ParagraphReplacementDefinition::Control { control: 0, origin }
     };
-    value.replacements.push(ParagraphReplacement {
-        definition,
-        insertion_anchor: anchor,
-        style_anchor: 0,
-        text: crate::Text::from(replacement),
-    });
+    value.replacements.push(
+        ParagraphReplacement::resolved_native_logical_before(
+            definition,
+            anchor,
+            vec![crate::Text::from(replacement)],
+        )
+        .unwrap(),
+    );
     value
 }
 

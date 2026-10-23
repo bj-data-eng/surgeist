@@ -323,7 +323,9 @@ fn select(
                     occurrence: control.index,
                 }));
             }
-            let kind = tables.controls[control.index].kind;
+            let kind = &prepared.inner.analyzed.paragraph.controls
+                [tables.controls[control.index].occurrence]
+                .kind;
             if !matches!(
                 kind,
                 super::paragraph::ParagraphControlKind::ForcedBreak
@@ -534,16 +536,35 @@ pub(crate) fn lower_standalone(
     {
         return Err(invalid());
     }
-    let kind = match selection.break_kind {
-        crate::engine::BreakKind::Soft => PreparedBreakKind::Allowed,
-        crate::engine::BreakKind::Explicit => PreparedBreakKind::Forced,
-        crate::engine::BreakKind::End => PreparedBreakKind::ParagraphEnd,
-    };
     let termination = tables
         .opportunities
         .iter()
-        .position(|row| row.boundary == end && row.kind == kind)
+        .position(|row| {
+            row.boundary == end
+                && match selection.break_kind {
+                    crate::engine::BreakKind::Soft => matches!(
+                        row.kind,
+                        PreparedBreakKind::Allowed | PreparedBreakKind::Discretionary
+                    ),
+                    crate::engine::BreakKind::Explicit => row.kind == PreparedBreakKind::Forced,
+                    crate::engine::BreakKind::End => row.kind == PreparedBreakKind::ParagraphEnd,
+                }
+        })
         .ok_or_else(|| protocol_error(ProtocolError::IllegalOpportunity { opportunity: end }))?;
+    let kind = tables.opportunities[termination].kind;
+    let alternative = if kind == PreparedBreakKind::Discretionary {
+        // The raw Source front has no native resolved groups or typed controls.
+        // Each surviving bare SHY resolves exactly one style-driven string.
+        let [index] = tables.opportunities[termination].alternatives.as_slice() else {
+            unreachable!("a raw style-driven SHY owns exactly one resolved indication")
+        };
+        Some(super::PreparedAlternative {
+            prepared: Arc::clone(&prepared),
+            index: *index,
+        })
+    } else {
+        None
+    };
     let from = tables.boundaries[start].participant;
     let to = tables.boundaries[end].participant;
     if from > to {
@@ -603,7 +624,7 @@ pub(crate) fn lower_standalone(
             prepared: Arc::clone(&prepared),
             index: termination,
         }),
-        alternative: None,
+        alternative,
         context: LineContext {
             base_direction: if prepared.analyzed.analysis.base_level & 1 == 0 {
                 ParagraphBaseDirection::LeftToRight

@@ -134,14 +134,17 @@ pub(crate) fn analyze(
     let sources = AnalysisDataSources;
     for (policy, row) in paragraph.boundary_policies.iter().enumerate() {
         let at = row.at(paragraph, boxes);
-        let original_end = styles.last().map_or(0, |style| style.range.end);
+        let original_end = styles
+            .iter()
+            .filter_map(|style| style.source_range())
+            .map(|range| range.end)
+            .max()
+            .unwrap_or(0);
         let wrap_at = |at| {
-            styles[styles
-                .partition_point(|run| run.range.end <= at)
-                .min(styles.len() - 1)]
-            .style
-            .authored()
-            .wrap
+            styles[crate::engine::resolve::source_style(styles, at)]
+                .style
+                .authored()
+                .wrap
         };
         let before_at = match row.definition {
             crate::ParagraphBoundaryDefinition::Connection(i) => paragraph
@@ -383,14 +386,13 @@ pub(crate) fn analyze(
 }
 
 fn style_at(projection: &SourceProjection, styles: &[AnalyzedStyleRun], atom: usize) -> usize {
-    let anchor = projection
-        .style_anchors
+    projection
+        .style_rows
         .get(atom)
         .and_then(|value| *value)
-        .unwrap_or(projection.atoms[atom].source.start);
-    styles
-        .partition_point(|run| run.range.end <= anchor)
-        .min(styles.len() - 1)
+        .unwrap_or_else(|| {
+            crate::engine::resolve::source_style(styles, projection.atoms[atom].source.start)
+        })
 }
 
 enum BidiOwner {
@@ -489,7 +491,7 @@ fn push_bidi_anchor(
             (0xfffc, BidiOwner::Atomic(index))
         }
         ParagraphAnchorItem::Control(index) => {
-            let control = paragraph.controls[index];
+            let control = &paragraph.controls[index];
             let cp =
                 if control.kind == crate::protocol::paragraph::ParagraphControlKind::ForcedBreak {
                     Some(0xa)
@@ -570,7 +572,7 @@ mod tests {
         ]));
         let projection = SourceProjection::new(&source).expect("original units are retained");
         let styles = [AnalyzedStyleRun {
-            range: crate::Range::new(0, 4),
+            owner: crate::engine::resolve::AnalyzedStyleOwner::Source(crate::Range::new(0, 4)),
             style: crate::ValidatedStyle::try_from(crate::Style::default()).expect("default style"),
         }];
         let analysis = analyze(

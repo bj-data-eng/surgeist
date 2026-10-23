@@ -179,8 +179,16 @@ pub(crate) fn analyze_paragraph(
         host_projection.graphemes.dedup();
     }
     let projection = SourceProjection::from_processed(&processed, &paragraph)?;
-    let styles =
+    let mut styles =
         resolve::analyze_styles(processed.source(), &span_styles, &default_style, &paragraph);
+    for (index, control) in paragraph.controls.iter().enumerate() {
+        if let crate::ParagraphControlKind::DiscretionaryBreak { style } = &control.kind {
+            styles.push(resolve::AnalyzedStyleRun {
+                owner: resolve::AnalyzedStyleOwner::Control(index),
+                style: crate::ValidatedStyle::for_processed((**style).clone())?,
+            });
+        }
+    }
     let analysis = analysis::analyze(&projection, &styles, processed.source().boxes(), &paragraph)?;
     let logical = analysis::wrapping::LogicalParagraph::new(
         &processed,
@@ -283,7 +291,7 @@ pub(crate) fn prepare(
             scratch,
         )?);
     }
-    let tables = crate::protocol::prepared::prepare_tables(&analyzed, &shaped)?;
+    let tables = crate::protocol::prepared::prepare_tables(catalogue, &styles, &analyzed, &shaped)?;
     let mut alternative_shapes = crate::protocol::prepared::prepare_alternatives(
         catalogue, &analyzed, &styles, &tables, scratch,
     )?;
