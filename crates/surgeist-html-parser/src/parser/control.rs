@@ -5071,11 +5071,9 @@ mod tests {
         assert!(owner.stopped_source_binding().unwrap().is_none());
     }
     #[test]
-    fn source_color_protocol_projection_preserves_numerical_protocol_kind() {
+    fn source_color_protocol_projection_preserves_protocol_kind() {
         let mut owner = control();
-        let protocol = surgeist_css::CssColorProtocolError::NumericalProtocol(
-            surgeist_color::ProtocolError::ForeignSlot,
-        );
+        let protocol = surgeist_css::CssColorProtocolError::ForeignSlot;
         assert_eq!(
             owner.stop_color_processing(protocol.into()),
             ParseStop::ColorProcessing(HtmlColorProcessingError::Protocol(protocol))

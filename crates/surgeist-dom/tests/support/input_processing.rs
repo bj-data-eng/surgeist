@@ -2,11 +2,12 @@
 // Work is cumulative across the actual bounded UPDATE count; sequential
 // operations share the same simultaneous scratch phase maximum.
 use std::mem::{align_of, size_of};
-use surgeist_color::{DigitSlot, OperationOwner};
+use surgeist_color::{
+    ActionLayout, DigitSlot, OperationOwner, Serialization, SerializationReceipt,
+};
 use surgeist_css::{
     CssColorActionDescription as Action, CssColorActionLayout, CssColorFacts, CssColorOperation,
-    CssColorParseOutcome, CssColorSerialization, CssColorSlot, CssColorTransformation,
-    CssUsedColorCheckpoint,
+    CssColorParseOutcome, CssColorSlot, CssColorTransformation, CssUsedColorCheckpoint,
 };
 use surgeist_dom::{DocumentString, DomError};
 use surgeist_html::HtmlInputColorSerialization;
@@ -59,7 +60,7 @@ pub fn color_limits(updates: u64) -> (usize, u64) {
     let register = [
         CssColorOperation::register_bytes(),
         CssColorTransformation::register_bytes(),
-        CssColorSerialization::register_bytes(),
+        Serialization::register_bytes(),
     ]
     .into_iter()
     .max()
@@ -67,7 +68,7 @@ pub fn color_limits(updates: u64) -> (usize, u64) {
     let guard = [
         CssColorOperation::action_bytes(),
         CssColorTransformation::action_bytes(),
-        CssColorSerialization::action_bytes(),
+        Serialization::action_bytes(),
     ]
     .into_iter()
     .max()
@@ -123,13 +124,15 @@ pub fn color_limits(updates: u64) -> (usize, u64) {
         action,
     ])
     .unwrap();
+    // A Color action is its own description; it is observed with its layout.
+    let numerical_action = size_of::<ActionLayout>();
     let serialize = sum(&[
-        size_of::<Option<CssColorSerialization<'_, '_, '_>>>(),
+        size_of::<Option<Serialization<'_>>>(),
         size_of::<Vec<DigitSlot<'_>>>(),
         size_of::<Vec<u16>>(),
-        size_of::<surgeist_css::CssColorSerializationReceipt<'_, '_>>(),
-        CssColorSerialization::action_bytes(),
-        action,
+        size_of::<SerializationReceipt>(),
+        Serialization::action_bytes(),
+        numerical_action,
         growth_header,
         serialize_capacity,
     ])

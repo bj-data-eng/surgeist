@@ -1,16 +1,16 @@
 //! Authored-qualified checkpoints over the actual external numerical owner.
 
 use super::{CssAuthoredColorCheckpoint, CssAuthoredColorOutcome, CssAuthoredColorStandardFailure};
-use crate::color::bounded::{numerical_description, numerical_layout};
+use crate::color::bounded::numerical_layout;
+use crate::color::numerical::{NumericalComputation, NumericalSerialization};
 use crate::{
-    CssColor, CssColorActionDescription, CssColorActionLayout, CssColorBankLengths,
-    CssColorFactIdentity, CssColorFacts, CssColorOperationError, CssColorOperationOwner,
-    CssColorProtocolError,
+    CssColor, CssColorActionDescription, CssColorActionLayout, CssColorFactIdentity, CssColorFacts,
+    CssColorOperationError, CssColorOperationOwner, CssColorProtocolError,
 };
 use std::mem::size_of;
 use surgeist_color::{
-    Color, Computation, ComputationAction, DigitSlot, NumericalRequest, OperationOwner,
-    Serialization, SerializationRequest, StreamAction, Transformation,
+    Color, Computation, DigitSlot, NumericalRequest, OperationOwner, Serialization,
+    SerializationRequest, Transformation,
 };
 
 struct Context<'css, 'authored, 'facts> {
@@ -124,11 +124,9 @@ impl<'css, 'authored, 'facts> CssAuthoredUsedColorCheckpoint<'css, 'authored, 'f
         slot: &mut Option<Self>,
         numerical_owner: &'num mut OperationOwner,
         transformation: Transformation,
-        banks: CssColorBankLengths,
     ) -> Result<CssAuthoredColorTransformation<'css, 'num, 'authored, 'facts>, CssColorOperationError>
     {
         let actual = slot.as_ref().ok_or(CssColorProtocolError::EmptySlot)?;
-        banks.empty()?;
         let next = actual.context.owner.prepare_advance(actual.context.phase)?;
         let numerical = Computation::new(
             numerical_owner,
@@ -136,8 +134,7 @@ impl<'css, 'authored, 'facts> CssAuthoredUsedColorCheckpoint<'css, 'authored, 'f
                 value: actual.value,
                 transformation,
             },
-        )
-        .map_err(CssColorProtocolError::NumericalProtocol)?;
+        );
         actual
             .context
             .owner
@@ -146,28 +143,18 @@ impl<'css, 'authored, 'facts> CssAuthoredUsedColorCheckpoint<'css, 'authored, 'f
         checkpoint.context.phase = next;
         Ok(CssAuthoredColorTransformation {
             checkpoint,
-            numerical: Some(numerical),
+            numerical: NumericalComputation::Pending(numerical),
         })
     }
     pub fn serialize<'num>(
         slot: &mut Option<Self>,
         numerical_owner: &'num mut OperationOwner,
         request: SerializationRequest,
-        banks: CssColorBankLengths,
-        numerical_digits: usize,
     ) -> Result<CssAuthoredColorSerialization<'css, 'num, 'authored, 'facts>, CssColorOperationError>
     {
         let actual = slot.as_ref().ok_or(CssColorProtocolError::EmptySlot)?;
-        banks.empty()?;
-        if numerical_digits != 0 {
-            return Err(CssColorProtocolError::NumericalProtocol(
-                surgeist_color::ProtocolError::StorageNotEmpty,
-            )
-            .into());
-        }
         let next = actual.context.owner.prepare_advance(actual.context.phase)?;
-        let numerical = Serialization::new(numerical_owner, actual.value, request)
-            .map_err(CssColorProtocolError::NumericalProtocol)?;
+        let numerical = Serialization::new(numerical_owner, actual.value, request);
         actual
             .context
             .owner
@@ -176,7 +163,7 @@ impl<'css, 'authored, 'facts> CssAuthoredUsedColorCheckpoint<'css, 'authored, 'f
         checkpoint.context.phase = next;
         Ok(CssAuthoredColorSerialization {
             checkpoint,
-            numerical: Some(numerical),
+            numerical: NumericalSerialization::new(numerical),
         })
     }
 }
@@ -188,8 +175,6 @@ pub struct CssAuthoredColorNumericalInitializationLayout {
     pub checkpoint_bytes: usize,
     pub css_owner_bytes: usize,
     pub numerical_owner_bytes: usize,
-    pub bank_length_bytes: usize,
-    pub numerical_digit_length_bytes: usize,
     pub register_bytes: usize,
 }
 /// Actual external numerical payloads and the CSS owner observation.
@@ -202,14 +187,11 @@ pub struct CssAuthoredColorNumericalActionLayout {
 fn initialization(
     register_bytes: usize,
     checkpoint_bytes: usize,
-    numerical_digit_length_bytes: usize,
 ) -> CssAuthoredColorNumericalInitializationLayout {
     CssAuthoredColorNumericalInitializationLayout {
         checkpoint_bytes,
         css_owner_bytes: size_of::<CssColorOperationOwner>(),
         numerical_owner_bytes: OperationOwner::layout_bytes(),
-        bank_length_bytes: size_of::<CssColorBankLengths>(),
-        numerical_digit_length_bytes,
         register_bytes,
     }
 }
@@ -233,7 +215,7 @@ fn action_layout(
 /// Delegates one transformation; only successful take commits the new Color.
 pub struct CssAuthoredColorTransformation<'css, 'num, 'authored, 'facts> {
     checkpoint: CssAuthoredUsedColorCheckpoint<'css, 'authored, 'facts>,
-    numerical: Option<Computation<'num>>,
+    numerical: NumericalComputation<'num>,
 }
 impl<'css, 'num, 'authored, 'facts> CssAuthoredColorTransformation<'css, 'num, 'authored, 'facts> {
     pub const fn register_bytes() -> usize {
@@ -246,32 +228,21 @@ impl<'css, 'num, 'authored, 'facts> CssAuthoredColorTransformation<'css, 'num, '
         initialization(
             Self::register_bytes(),
             CssAuthoredUsedColorCheckpoint::register_bytes(),
-            0,
         )
     }
     pub fn action(&self) -> CssColorActionDescription {
-        match self.numerical.as_ref().expect("owned computation").action() {
-            surgeist_color::ActionDescription::Ready => CssColorActionDescription::UsedReady,
-            description => numerical_description(description),
-        }
+        self.numerical.description()
     }
     pub fn next_action(
         &mut self,
     ) -> CssAuthoredColorTransformAction<'_, 'css, 'num, 'authored, 'facts> {
         CssAuthoredColorTransformAction {
             context: &self.checkpoint.context,
-            numerical: self
-                .numerical
-                .as_mut()
-                .expect("owned computation")
-                .next_action(),
+            numerical: &mut self.numerical,
         }
     }
     pub fn abandon(&mut self) {
-        self.numerical
-            .as_mut()
-            .expect("owned computation")
-            .abandon();
+        self.numerical.abandon();
     }
     pub fn take(
         slot: &mut Option<Self>,
@@ -279,8 +250,7 @@ impl<'css, 'num, 'authored, 'facts> CssAuthoredColorTransformation<'css, 'num, '
     {
         let actual = slot.as_mut().ok_or(CssColorProtocolError::EmptySlot)?;
         actual.checkpoint.context.require_current()?;
-        let value = Computation::take(&mut actual.numerical)
-            .map_err(CssColorProtocolError::NumericalProtocol)?;
+        let value = actual.numerical.value()?;
         let mut actual = slot.take().expect("native take succeeded");
         actual.checkpoint.value = value;
         Ok(actual.checkpoint)
@@ -289,38 +259,33 @@ impl<'css, 'num, 'authored, 'facts> CssAuthoredColorTransformation<'css, 'num, '
         slot: &mut Option<Self>,
     ) -> Result<CssAuthoredUsedColorCheckpoint<'css, 'authored, 'facts>, CssColorProtocolError>
     {
-        let actual = slot.as_mut().ok_or(CssColorProtocolError::EmptySlot)?;
-        Computation::recover(&mut actual.numerical)
-            .map_err(CssColorProtocolError::NumericalProtocol)?;
-        Ok(slot.take().expect("native recovery succeeded").checkpoint)
+        Ok(slot
+            .take()
+            .ok_or(CssColorProtocolError::EmptySlot)?
+            .checkpoint)
     }
 }
-/// Lends the actual native numerical guard and the independent prepared site.
+/// Lends the actual native numerical state and the independent prepared site.
 pub struct CssAuthoredColorTransformAction<'step, 'css, 'num, 'authored, 'facts> {
     context: &'step Context<'css, 'authored, 'facts>,
-    numerical: ComputationAction<'step, 'num>,
+    numerical: &'step mut NumericalComputation<'num>,
 }
 impl CssAuthoredColorTransformAction<'_, '_, '_, '_, '_> {
     pub fn description(&self) -> CssColorActionDescription {
-        match self.numerical.description() {
-            surgeist_color::ActionDescription::Ready => CssColorActionDescription::UsedReady,
-            description => numerical_description(description),
-        }
+        self.numerical.description()
     }
     pub fn layout(&self) -> CssAuthoredColorNumericalActionLayout {
         action_layout(self.description(), self.numerical.layout())
     }
     pub fn compute(self) -> Result<(), CssColorOperationError> {
         self.context.require_current()?;
-        self.numerical
-            .compute()
-            .map_err(|e| CssColorProtocolError::NumericalProtocol(e).into())
+        self.numerical.compute().map_err(Into::into)
     }
 }
 /// Resolved serialization owns no digit/output storage; the caller owns it.
 pub struct CssAuthoredColorSerialization<'css, 'num, 'authored, 'facts> {
     checkpoint: CssAuthoredUsedColorCheckpoint<'css, 'authored, 'facts>,
-    numerical: Option<Serialization<'num>>,
+    numerical: NumericalSerialization<'num>,
 }
 impl<'css, 'num, 'authored, 'facts> CssAuthoredColorSerialization<'css, 'num, 'authored, 'facts> {
     pub const fn register_bytes() -> usize {
@@ -333,34 +298,21 @@ impl<'css, 'num, 'authored, 'facts> CssAuthoredColorSerialization<'css, 'num, 'a
         initialization(
             Self::register_bytes(),
             CssAuthoredUsedColorCheckpoint::register_bytes(),
-            size_of::<usize>(),
         )
     }
     pub fn action(&self) -> CssColorActionDescription {
-        numerical_description(
-            self.numerical
-                .as_ref()
-                .expect("owned serialization")
-                .action(),
-        )
+        self.numerical.description()
     }
     pub fn next_action(
         &mut self,
     ) -> CssAuthoredColorSerializationAction<'_, 'css, 'num, 'authored, 'facts> {
         CssAuthoredColorSerializationAction {
             context: &self.checkpoint.context,
-            numerical: self
-                .numerical
-                .as_mut()
-                .expect("owned serialization")
-                .next_action(),
+            numerical: &mut self.numerical,
         }
     }
     pub fn abandon(&mut self) {
-        self.numerical
-            .as_mut()
-            .expect("owned serialization")
-            .abandon();
+        self.numerical.abandon();
     }
     pub fn take(
         slot: &mut Option<Self>,
@@ -368,57 +320,56 @@ impl<'css, 'num, 'authored, 'facts> CssAuthoredColorSerialization<'css, 'num, 'a
     {
         let actual = slot.as_mut().ok_or(CssColorProtocolError::EmptySlot)?;
         actual.checkpoint.context.require_current()?;
-        let receipt = Serialization::take(&mut actual.numerical)
-            .map_err(CssColorProtocolError::NumericalProtocol)?;
+        let length = actual.numerical.length()?;
         let actual = slot.take().expect("native take succeeded");
         Ok(CssAuthoredColorSerializationReceipt {
             checkpoint: actual.checkpoint,
-            length: receipt.length(),
+            length,
         })
     }
     pub fn recover(
         slot: &mut Option<Self>,
     ) -> Result<CssAuthoredUsedColorCheckpoint<'css, 'authored, 'facts>, CssColorProtocolError>
     {
-        let actual = slot.as_mut().ok_or(CssColorProtocolError::EmptySlot)?;
-        Serialization::recover(&mut actual.numerical)
-            .map_err(CssColorProtocolError::NumericalProtocol)?;
-        Ok(slot.take().expect("native recovery succeeded").checkpoint)
+        Ok(slot
+            .take()
+            .ok_or(CssColorProtocolError::EmptySlot)?
+            .checkpoint)
     }
 }
 pub struct CssAuthoredColorSerializationAction<'step, 'css, 'num, 'authored, 'facts> {
     context: &'step Context<'css, 'authored, 'facts>,
-    numerical: StreamAction<'step, 'num>,
+    numerical: &'step mut NumericalSerialization<'num>,
 }
 impl<'num> CssAuthoredColorSerializationAction<'_, '_, 'num, '_, '_> {
     pub fn description(&self) -> CssColorActionDescription {
-        numerical_description(self.numerical.description())
+        self.numerical.description()
     }
     pub fn layout(&self) -> CssAuthoredColorNumericalActionLayout {
         action_layout(self.description(), self.numerical.layout())
     }
     pub fn compute(self) -> Result<(), CssColorOperationError> {
         self.context.require_current()?;
-        self.numerical
-            .compute()
-            .map_err(|e| CssColorProtocolError::NumericalProtocol(e).into())
+        self.numerical.compute().map_err(Into::into)
     }
+    /// # Panics
+    ///
+    /// If `slot` was minted by another numerical operation or for another index.
+    #[track_caller]
     pub fn read_numerical_digit(
         self,
         index: usize,
         slot: &DigitSlot<'_>,
     ) -> Result<(), CssColorOperationError> {
         self.context.require_current()?;
-        self.numerical
-            .read_digit(index, slot)
-            .map_err(|e| CssColorProtocolError::NumericalProtocol(e).into())
+        self.numerical.read(index, slot).map_err(Into::into)
     }
     /// The record borrows the external numerical owner, beyond this guard and
     /// serializer. Recovering CSS provenance does not end that real borrow.
     ///
     /// ```compile_fail,E0499
     /// use surgeist_css::{CssAuthoredUsedColorCheckpoint, CssAuthoredColorSerialization,
-    ///     CssColorActionDescription as A, CssColorBankLengths};
+    ///     CssColorActionDescription as A};
     /// use surgeist_color::{Computation, NumericalRequest, OperationOwner,
     ///     SerializationRequest, Transformation};
     /// fn retained_digit<'css, 'authored, 'facts>(
@@ -426,8 +377,7 @@ impl<'num> CssAuthoredColorSerializationAction<'_, '_, 'num, '_, '_> {
     ///     owner: &mut OperationOwner,
     /// ) {
     ///     let mut serializer = Some(CssAuthoredUsedColorCheckpoint::serialize(
-    ///         &mut used, owner, SerializationRequest::Css,
-    ///         CssColorBankLengths::new(0, 0, 0), 0).unwrap());
+    ///         &mut used, owner, SerializationRequest::Css).unwrap());
     ///     let digit = loop {
     ///         let mut action = serializer.as_mut().unwrap().next_action();
     ///         match action.description() {
@@ -441,32 +391,30 @@ impl<'num> CssAuthoredColorSerializationAction<'_, '_, 'num, '_, '_> {
     ///     drop(serializer);
     ///     let next = Computation::new(owner, NumericalRequest::Transform {
     ///         value: checkpoint.value(), transformation: Transformation::QuantizeSrgb,
-    ///     }).unwrap();
+    ///     });
     ///     drop(digit);
     ///     drop(next);
     /// }
     /// ```
     pub fn numerical_record(&mut self) -> Result<DigitSlot<'num>, CssColorOperationError> {
         self.context.require_current()?;
-        self.numerical
-            .record()
-            .map_err(|e| CssColorProtocolError::NumericalProtocol(e).into())
+        self.numerical.record().map_err(Into::into)
     }
+    /// # Panics
+    ///
+    /// If `slot` is not the record minted for the pending write.
+    #[track_caller]
     pub fn numerical_written(
         self,
         index: usize,
         slot: &DigitSlot<'_>,
     ) -> Result<(), CssColorOperationError> {
         self.context.require_current()?;
-        self.numerical
-            .written(index, slot)
-            .map_err(|e| CssColorProtocolError::NumericalProtocol(e).into())
+        self.numerical.written(index, slot).map_err(Into::into)
     }
     pub fn emitted(self, unit: u8) -> Result<(), CssColorOperationError> {
         self.context.require_current()?;
-        self.numerical
-            .emitted(unit)
-            .map_err(|e| CssColorProtocolError::NumericalProtocol(e).into())
+        self.numerical.emitted(unit).map_err(Into::into)
     }
 }
 /// A successful receipt retains authored provenance, not the numerical borrow.
@@ -545,7 +493,6 @@ mod tests {
                 &mut used,
                 &mut numerical_owner,
                 Transformation::ForceOpaqueAlpha,
-                CssColorBankLengths::new(0, 0, 0)
             ),
             Err(CssColorOperationError::Protocol(
                 CssColorProtocolError::ForeignSlot
@@ -559,7 +506,6 @@ mod tests {
                 &mut used,
                 &mut numerical_owner,
                 Transformation::QuantizeSrgb,
-                CssColorBankLengths::new(0, 0, 0),
             )
             .unwrap(),
         );
@@ -582,8 +528,6 @@ mod tests {
                 &mut used,
                 &mut numerical_owner,
                 SerializationRequest::Css,
-                CssColorBankLengths::new(0, 0, 0),
-                0,
             )
             .unwrap(),
         );
@@ -591,7 +535,7 @@ mod tests {
         assert!(matches!(
             serializer.as_mut().unwrap().next_action().emitted(b'x'),
             Err(CssColorOperationError::Protocol(
-                CssColorProtocolError::NumericalProtocol(surgeist_color::ProtocolError::WrongReply)
+                CssColorProtocolError::WrongAction
             ))
         ));
         assert_eq!(css_owner.current_phase(), 3);

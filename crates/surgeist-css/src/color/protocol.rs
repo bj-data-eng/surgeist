@@ -428,16 +428,11 @@ pub enum CssColorProtocolError {
     Overflow,
     Input,
     Terminal,
-    StorageNotEmpty,
     EmptySlot,
-    NumericalProtocol(surgeist_color::ProtocolError),
 }
 
 impl std::fmt::Display for CssColorProtocolError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let Self::NumericalProtocol(error) = self {
-            return std::fmt::Display::fmt(error, f);
-        }
         f.write_str(match self {
             Self::WrongAction => "color action does not match the pending request",
             Self::WrongIndex => "color record index does not match the requested ordinal",
@@ -446,20 +441,11 @@ impl std::fmt::Display for CssColorProtocolError {
             Self::Overflow => "color operation extent cannot be represented",
             Self::Input => "color input observation violates its declared encoding or record",
             Self::Terminal => "color operation has no completed result",
-            Self::StorageNotEmpty => "color scratch banks have not been retired",
             Self::EmptySlot => "color transition has no caller-owned checkpoint",
-            Self::NumericalProtocol(_) => unreachable!("handled numerical protocol source"),
         })
     }
 }
-impl std::error::Error for CssColorProtocolError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::NumericalProtocol(e) => Some(e),
-            _ => None,
-        }
-    }
-}
+impl std::error::Error for CssColorProtocolError {}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum ActionDescription {

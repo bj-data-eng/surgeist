@@ -1,13 +1,16 @@
 //! Fixed numerical requests and caller-owned finite continuations.
+//!
+//! Each continuation is a typestate: a transition consumes it and returns the
+//! next state, and only the action a step issues exposes that action's single
+//! completion method. Dropping a continuation or an action abandons it.
+use crate::format::RoundingMode;
 use crate::format::bounded::{
     FiniteFormatCursor, FiniteFormatSummary, FormatDigit, FormatReply, FormatRequest,
 };
-use crate::format::{FormatError, RoundingMode};
-use crate::serialization::{SerializationAction, SerializationCursor, SerializationKernel};
+use crate::serialization::{SerializationCursor, SerializationKernel};
 use crate::{
-    ActionDescription as Action, ActionLayout, Color, ColorSpace, DigitSlot, Finite,
-    InterpolationMethod, Kernel, OperationOwner, ProtocolError, SerializationRequest,
-    Transformation, UnitInterval,
+    ActionLayout, Color, ColorSpace, DigitSlot, Finite, InterpolationMethod, Kernel,
+    OperationOwner, SerializationRequest, Transformation, UnitInterval,
 };
 
 /// One numerical operation over proven operands; every request is total.
@@ -94,89 +97,62 @@ impl NumericalRequest {
         }
     }
 }
-#[derive(Clone, Copy)]
-enum Status {
-    Pending,
-    Ready,
-    Abandoned,
-}
+
+/// One pending fixed-register numerical computation over an exclusive owner.
+///
+/// Computing consumes the continuation and returns the total result, which no
+/// longer borrows the owner. Dropping it abandons the request.
 pub struct Computation<'owner> {
     _owner: &'owner OperationOwner,
-    original: NumericalRequest,
-    status: Status,
-    value: Option<Color>,
+    request: NumericalRequest,
 }
 impl<'owner> Computation<'owner> {
+    /// Begins one computation; the owner stays borrowed until it ends.
+    ///
+    /// # Panics
+    ///
+    /// If `owner` has already begun `usize::MAX` operations.
+    pub fn new(owner: &'owner mut OperationOwner, request: NumericalRequest) -> Self {
+        owner.begin();
+        Self {
+            _owner: owner,
+            request,
+        }
+    }
+    /// Actual compiled continuation layout, admitted before construction.
+    #[must_use]
     pub const fn register_bytes() -> usize {
         std::mem::size_of::<Self>()
     }
-    pub const fn action_bytes() -> usize {
-        std::mem::size_of::<ComputationAction<'_, '_>>()
+    /// The fixed kernel [`compute`](Self::compute) executes.
+    #[must_use]
+    pub const fn kernel(&self) -> Kernel {
+        self.request.kernel()
     }
-    pub fn new(
-        owner: &'owner mut OperationOwner,
-        request: NumericalRequest,
-    ) -> Result<Self, ProtocolError> {
-        owner.begin()?;
-        Ok(Self {
-            _owner: owner,
-            original: request,
-            status: Status::Pending,
-            value: None,
-        })
+    /// The computation observes no record and emits nothing.
+    #[must_use]
+    pub const fn layout(&self) -> ActionLayout {
+        ActionLayout::COMPUTE
     }
-    pub const fn original(&self) -> NumericalRequest {
-        self.original
+    /// Executes the kernel; the result is total over proven operands.
+    #[must_use]
+    pub fn compute(self) -> Color {
+        self.request.execute()
     }
-    pub fn action(&self) -> Action {
-        match self.status {
-            Status::Pending => Action::Compute(self.original.kernel()),
-            Status::Ready => Action::Ready,
-            Status::Abandoned => Action::Abandoned,
-        }
-    }
-    pub fn next_action(&mut self) -> ComputationAction<'_, 'owner> {
-        ComputationAction { operation: self }
-    }
-    pub fn abandon(&mut self) {
-        self.status = Status::Abandoned;
-    }
-    pub fn take(slot: &mut Option<Self>) -> Result<Color, ProtocolError> {
-        let operation = slot.as_ref().ok_or(ProtocolError::EmptySlot)?;
-        match operation.status {
-            Status::Pending => return Err(ProtocolError::NotReady),
-            Status::Abandoned => return Err(ProtocolError::Terminated),
-            Status::Ready => {}
-        }
-        Ok(slot
-            .take()
-            .expect("shared preflight proved ready")
-            .value
-            .expect("ready computation has a value"))
-    }
-    pub fn recover(slot: &mut Option<Self>) -> Result<NumericalRequest, ProtocolError> {
-        Ok(slot.take().ok_or(ProtocolError::EmptySlot)?.original)
+    /// Declines the computation and returns its unexecuted request.
+    #[must_use]
+    pub const fn into_request(self) -> NumericalRequest {
+        self.request
     }
 }
-pub struct ComputationAction<'step, 'owner> {
-    operation: &'step mut Computation<'owner>,
-}
-impl ComputationAction<'_, '_> {
-    pub fn description(&self) -> Action {
-        self.operation.action()
-    }
-    pub fn layout(&self) -> ActionLayout {
-        crate::protocol::layout(self.description())
-    }
-    pub fn compute(self) -> Result<(), ProtocolError> {
-        if !matches!(self.operation.status, Status::Pending) {
-            return Err(ProtocolError::WrongAction);
-        }
-        self.operation.value = Some(self.operation.original.execute());
-        self.operation.status = Status::Ready;
-        Ok(())
+impl std::fmt::Debug for Computation<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Computation")
+            .field("request", &self.request)
+            .finish_non_exhaustive()
     }
 }
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SerializationResource {
     Actions,
@@ -189,10 +165,10 @@ pub struct SerializationLimits {
     pub digits: usize,
     pub output_bytes: usize,
 }
+/// A refused ordinary serialization resource.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum SerializationError {
-    Protocol(ProtocolError),
     Limit {
         resource: SerializationResource,
         required: usize,
@@ -203,31 +179,22 @@ pub enum SerializationError {
     },
     CountOverflow,
 }
-impl From<ProtocolError> for SerializationError {
-    fn from(e: ProtocolError) -> Self {
-        Self::Protocol(e)
-    }
-}
 impl std::fmt::Display for SerializationError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Protocol(e) => e.fmt(f),
-            _ => write!(f, "color serialization: {self:?}"),
-        }
+        write!(f, "color serialization: {self:?}")
     }
 }
-impl std::error::Error for SerializationError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::Protocol(e) => Some(e),
-            _ => None,
-        }
-    }
-}
-#[derive(Clone, Copy)]
-pub(crate) enum Original {
-    Serialization(Color, SerializationRequest),
-    Format(Finite, RoundingMode),
+impl std::error::Error for SerializationError {}
+
+/// The single request a digit-banked continuation waits on.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum Pending {
+    Compute(Kernel),
+    ReadDigit { index: usize },
+    AppendDigit { index: usize, digit: FormatDigit },
+    ReplaceDigit { index: usize, digit: FormatDigit },
+    Emit { unit: u8 },
+    Complete,
 }
 #[expect(
     clippy::large_enum_variant,
@@ -237,306 +204,493 @@ enum Cursor {
     Serialization(SerializationCursor),
     Format(FiniteFormatCursor),
 }
+/// The shared digit-banked continuation behind serialization and formatting.
+///
+/// Typed actions call only the completion of the request they were issued
+/// for. Record identity is the caller's input and is checked; every other
+/// mismatch is a defect in this crate and panics.
 pub(crate) struct Stream<'owner> {
     owner: &'owner OperationOwner,
     phase: usize,
-    pub(crate) original: Original,
     cursor: Cursor,
-    status: Status,
-    pub(crate) emitted: usize,
+    emitted: usize,
 }
 impl<'owner> Stream<'owner> {
     pub(crate) fn serialization(
         owner: &'owner mut OperationOwner,
         value: Color,
         request: SerializationRequest,
-    ) -> Result<Self, ProtocolError> {
-        let phase = owner.begin()?;
-        Ok(Self {
+    ) -> Self {
+        let phase = owner.begin();
+        Self {
             owner,
             phase,
-            original: Original::Serialization(value, request),
             cursor: Cursor::Serialization(SerializationCursor::new(value, request)),
-            status: Status::Pending,
             emitted: 0,
-        })
+        }
     }
     pub(crate) fn format(
         owner: &'owner mut OperationOwner,
         value: Finite,
         rounding: RoundingMode,
-    ) -> Result<Self, FormatError> {
-        let phase = owner.begin().map_err(FormatError::Protocol)?;
-        Ok(Self {
+    ) -> Self {
+        let phase = owner.begin();
+        Self {
             owner,
             phase,
-            original: Original::Format(value, rounding),
             cursor: Cursor::Format(FiniteFormatCursor::new(value, rounding)),
-            status: Status::Pending,
             emitted: 0,
-        })
-    }
-    pub(crate) fn action(&self) -> Action {
-        match self.status {
-            Status::Abandoned => return Action::Abandoned,
-            Status::Ready => return Action::Ready,
-            Status::Pending => {}
         }
+    }
+    pub(crate) fn pending(&self) -> Pending {
         match &self.cursor {
-            Cursor::Serialization(cursor) => match cursor.action() {
-                SerializationAction::Plan | SerializationAction::Compute => {
-                    Action::Compute(match cursor.kernel() {
+            Cursor::Serialization(cursor) => {
+                use crate::serialization::SerializationAction as A;
+                match cursor.action() {
+                    A::Plan | A::Compute => Pending::Compute(match cursor.kernel() {
                         SerializationKernel::Plan => Kernel::SerializationPlan,
                         SerializationKernel::Format => cursor
                             .format_kernel()
                             .map_or(Kernel::SerializationPiece, Into::into),
                         SerializationKernel::Transition => Kernel::SerializationPiece,
-                    })
+                    }),
+                    A::ReadDigit { index } => Pending::ReadDigit { index },
+                    A::AppendDigit { index } => Pending::AppendDigit {
+                        index,
+                        digit: cursor.pending_digit(index),
+                    },
+                    A::ReplaceDigit { index } => Pending::ReplaceDigit {
+                        index,
+                        digit: cursor.pending_digit(index),
+                    },
+                    A::Emit { unit } => Pending::Emit { unit },
+                    A::Done => {
+                        assert_eq!(
+                            cursor.emitted(),
+                            self.emitted,
+                            "the serialization plan and its acknowledged output agree"
+                        );
+                        Pending::Complete
+                    }
                 }
-                SerializationAction::ReadDigit { index } => Action::ReadDigit { index },
-                SerializationAction::AppendDigit { index } => Action::AppendDigit { index },
-                SerializationAction::ReplaceDigit { index } => Action::ReplaceDigit { index },
-                SerializationAction::Emit { unit } => Action::EmitByte { unit },
-                SerializationAction::Done => Action::Ready,
-                SerializationAction::Stopped => Action::Abandoned,
-            },
-            Cursor::Format(cursor) => match cursor.next_request() {
-                FormatRequest::Compute(kernel) => Action::Compute(kernel.into()),
-                FormatRequest::ReadDigit { index } => Action::ReadDigit { index },
-                FormatRequest::AppendDigit { index, .. } => Action::AppendDigit { index },
-                FormatRequest::ReplaceDigit { index, .. } => Action::ReplaceDigit { index },
-                FormatRequest::EmitByte { unit } => Action::EmitByte { unit },
-                FormatRequest::Done(_) => Action::Ready,
-            },
-        }
-    }
-    pub(crate) fn ready(&self) -> Result<(), ProtocolError> {
-        match self.status {
-            Status::Abandoned => Err(ProtocolError::Terminated),
-            _ if self.action() == Action::Ready => {
-                if let Cursor::Serialization(c) = &self.cursor
-                    && c.completed_length()? != self.emitted
-                {
-                    return Err(ProtocolError::WrongIndex);
-                }
-                Ok(())
             }
-            _ => Err(ProtocolError::NotReady),
+            Cursor::Format(cursor) => match cursor.next_request() {
+                FormatRequest::Compute(kernel) => Pending::Compute(kernel.into()),
+                FormatRequest::ReadDigit { index } => Pending::ReadDigit { index },
+                FormatRequest::AppendDigit { index, digit } => {
+                    Pending::AppendDigit { index, digit }
+                }
+                FormatRequest::ReplaceDigit { index, digit } => {
+                    Pending::ReplaceDigit { index, digit }
+                }
+                FormatRequest::EmitByte { unit } => Pending::Emit { unit },
+                FormatRequest::Done(_) => Pending::Complete,
+            },
         }
     }
-    pub(crate) fn abandon(&mut self) {
-        if let Cursor::Serialization(c) = &mut self.cursor {
-            c.abandon();
+    pub(crate) const fn emitted(&self) -> usize {
+        self.emitted
+    }
+    pub(crate) fn serialized_value(&self) -> Color {
+        match &self.cursor {
+            Cursor::Serialization(cursor) => cursor.value(),
+            Cursor::Format(_) => panic!("a finite formatter serializes no color"),
         }
-        self.status = Status::Abandoned;
     }
     pub(crate) fn planned_length(&self) -> Option<usize> {
         match &self.cursor {
-            Cursor::Format(c) => c.planned_length(),
-            _ => None,
+            Cursor::Format(cursor) => cursor.planned_length(),
+            Cursor::Serialization(_) => None,
         }
     }
-    pub(crate) fn summary(&self) -> Result<FiniteFormatSummary, FormatError> {
-        self.ready().map_err(FormatError::Protocol)?;
+    pub(crate) fn summary(&self) -> FiniteFormatSummary {
         match &self.cursor {
-            Cursor::Format(c) => match c.next_request() {
-                FormatRequest::Done(s) => Ok(s),
-                _ => Err(FormatError::Protocol(ProtocolError::NotReady)),
+            Cursor::Format(cursor) => match cursor.next_request() {
+                FormatRequest::Done(summary) => summary,
+                request => panic!("a format summary was requested while {request:?} is pending"),
             },
-            _ => Err(FormatError::Protocol(ProtocolError::WrongAction)),
+            Cursor::Serialization(_) => panic!("a color serialization has no format summary"),
         }
     }
-    fn compute(&mut self) -> Result<(), ProtocolError> {
-        if !matches!(self.action(), Action::Compute(_)) {
-            return Err(ProtocolError::WrongAction);
-        }
+    pub(crate) fn compute(&mut self) {
         match &mut self.cursor {
-            Cursor::Serialization(c) => c.compute(),
-            Cursor::Format(c) => {
-                let FormatRequest::Compute(k) = c.next_request() else {
-                    unreachable!()
-                };
-                c.complete(FormatReply::Computed(k)).map_err(Into::into)
-            }
-        }
-    }
-    fn digit(&self, index: usize) -> Result<FormatDigit, ProtocolError> {
-        match &self.cursor {
-            Cursor::Serialization(c) => c.digit_record(index),
-            Cursor::Format(c) => match c.next_request() {
-                FormatRequest::AppendDigit { index: i, digit }
-                | FormatRequest::ReplaceDigit { index: i, digit }
-                    if index == i =>
-                {
-                    Ok(digit)
-                }
-                _ => Err(ProtocolError::WrongIndex),
+            Cursor::Serialization(cursor) => cursor.compute(),
+            Cursor::Format(cursor) => match cursor.next_request() {
+                FormatRequest::Compute(kernel) => cursor
+                    .complete(FormatReply::Computed(kernel))
+                    .expect("a pending format kernel accepts its own completion"),
+                request => panic!("format compute issued for pending {request:?}"),
             },
         }
     }
-}
-pub struct StreamAction<'step, 'owner> {
-    pub(crate) stream: &'step mut Stream<'owner>,
-}
-impl<'owner> StreamAction<'_, 'owner> {
-    pub fn description(&self) -> Action {
-        self.stream.action()
-    }
-    pub fn layout(&self) -> ActionLayout {
-        crate::protocol::layout(self.description())
-    }
-    pub fn compute(self) -> Result<(), ProtocolError> {
-        self.stream.compute()
-    }
-    pub fn read_digit(self, index: usize, slot: &DigitSlot<'_>) -> Result<(), ProtocolError> {
-        if self.description() != (Action::ReadDigit { index }) {
-            return Err(ProtocolError::WrongAction);
-        }
-        let digit = slot.qualify(self.stream.owner, self.stream.phase, index)?;
-        match &mut self.stream.cursor {
-            Cursor::Serialization(c) => c.read_digit(index, digit),
-            Cursor::Format(c) => c
+    /// Completes the pending read at `index` with the caller's record.
+    ///
+    /// # Panics
+    ///
+    /// If `slot` belongs to another operation or index.
+    #[track_caller]
+    pub(crate) fn read(&mut self, index: usize, slot: &DigitSlot<'_>) {
+        let digit = slot.digit_for(self.owner, self.phase, index);
+        match &mut self.cursor {
+            Cursor::Serialization(cursor) => cursor.read_digit(index, digit),
+            Cursor::Format(cursor) => cursor
                 .complete(FormatReply::Digit { index, digit })
-                .map_err(Into::into),
+                .expect("a pending digit read accepts its own record"),
         }
     }
-    pub fn record(&mut self) -> Result<DigitSlot<'owner>, ProtocolError> {
-        let index = match self.description() {
-            Action::AppendDigit { index } | Action::ReplaceDigit { index } => index,
-            _ => return Err(ProtocolError::WrongAction),
-        };
-        let digit = self.stream.digit(index)?;
-        Ok(DigitSlot::new(
-            self.stream.owner,
-            self.stream.phase,
-            index,
-            digit,
-        ))
+    /// Mints the record of the pending write at `index`.
+    pub(crate) fn record(&self, index: usize, digit: FormatDigit) -> DigitSlot<'owner> {
+        DigitSlot::new(self.owner, self.phase, index, digit)
     }
-    pub fn written(self, index: usize, slot: &DigitSlot<'_>) -> Result<(), ProtocolError> {
-        let action = self.description();
-        let digit = slot.qualify(self.stream.owner, self.stream.phase, index)?;
-        match &mut self.stream.cursor {
-            Cursor::Serialization(c) => c.digit_written(index, digit),
-            Cursor::Format(c) => {
-                let reply = match action {
-                    Action::AppendDigit { index: i } if i == index => {
-                        FormatReply::Appended { index, digit }
-                    }
-                    Action::ReplaceDigit { index: i } if i == index => {
-                        FormatReply::Replaced { index, digit }
-                    }
-                    _ => return Err(ProtocolError::WrongAction),
+    /// Acknowledges that the caller stored the record minted for `index`.
+    ///
+    /// # Panics
+    ///
+    /// If `stored` belongs to another operation or index, or holds another digit.
+    #[track_caller]
+    pub(crate) fn store(&mut self, index: usize, digit: FormatDigit, stored: &DigitSlot<'_>) {
+        assert!(
+            stored.digit_for(self.owner, self.phase, index) == digit,
+            "stored digit record is not the record minted for index {index}"
+        );
+        match &mut self.cursor {
+            Cursor::Serialization(cursor) => cursor.digit_written(index, digit),
+            Cursor::Format(cursor) => {
+                let reply = match cursor.next_request() {
+                    FormatRequest::AppendDigit { .. } => FormatReply::Appended { index, digit },
+                    FormatRequest::ReplaceDigit { .. } => FormatReply::Replaced { index, digit },
+                    request => panic!("digit write issued for pending {request:?}"),
                 };
-                c.complete(reply).map_err(Into::into)
+                cursor
+                    .complete(reply)
+                    .expect("a pending digit write accepts its own record");
             }
         }
     }
-    pub fn emitted(self, unit: u8) -> Result<(), ProtocolError> {
-        if self.description() != (Action::EmitByte { unit }) {
-            return Err(ProtocolError::WrongReply);
-        }
+    pub(crate) fn emit(&mut self, unit: u8) {
         let next = self
-            .stream
             .emitted
             .checked_add(1)
-            .ok_or(ProtocolError::Overflow)?;
-        match &mut self.stream.cursor {
-            Cursor::Serialization(c) => c.emitted(unit)?,
-            Cursor::Format(c) => c
+            .expect("emitted output length fits in usize");
+        match &mut self.cursor {
+            Cursor::Serialization(cursor) => cursor.emitted_unit(unit),
+            Cursor::Format(cursor) => cursor
                 .complete(FormatReply::Emitted { unit })
-                .map_err(ProtocolError::from)?,
-        };
-        self.stream.emitted = next;
-        Ok(())
+                .expect("a pending emission accepts its own byte"),
+        }
+        self.emitted = next;
     }
 }
+/// Shows the operation phase, acknowledged output and pending request; the
+/// owner anchor and the cursor's plan and registers stay private.
+impl std::fmt::Debug for Stream<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Stream")
+            .field("phase", &self.phase)
+            .field("emitted", &self.emitted)
+            .field("pending", &self.pending())
+            .finish_non_exhaustive()
+    }
+}
+
+/// A pending resolved serialization over an exclusive owner.
+///
+/// The caller owns every digit record and output byte. [`step`](Self::step)
+/// consumes the serialization and yields either its next action or its
+/// receipt; dropping it, or an action, abandons the serialization.
 pub struct Serialization<'owner> {
     stream: Stream<'owner>,
 }
+impl<'owner> Serialization<'owner> {
+    /// Begins one serialization; the owner stays borrowed until it ends and
+    /// every record it minted is dropped.
+    ///
+    /// # Panics
+    ///
+    /// If `owner` has already begun `usize::MAX` operations.
+    pub fn new(
+        owner: &'owner mut OperationOwner,
+        value: Color,
+        request: SerializationRequest,
+    ) -> Self {
+        Self {
+            stream: Stream::serialization(owner, value, request),
+        }
+    }
+    /// Actual compiled continuation layout, admitted before construction.
+    #[must_use]
+    pub const fn register_bytes() -> usize {
+        std::mem::size_of::<Self>()
+    }
+    /// Actual compiled layout of one issued action, which owns the continuation.
+    #[must_use]
+    pub const fn action_bytes() -> usize {
+        std::mem::size_of::<SerializationAction<'static>>()
+    }
+    /// Consumes the serialization and yields its next action or its receipt.
+    #[must_use]
+    pub fn step(self) -> SerializationStep<'owner> {
+        let stream = self.stream;
+        SerializationStep::Pending(match stream.pending() {
+            Pending::Compute(kernel) => {
+                SerializationAction::Compute(SerializationCompute { stream, kernel })
+            }
+            Pending::ReadDigit { index } => {
+                SerializationAction::ReadDigit(ReadDigit { stream, index })
+            }
+            Pending::AppendDigit { index, digit } => SerializationAction::AppendDigit(WriteDigit {
+                stream,
+                index,
+                digit,
+            }),
+            Pending::ReplaceDigit { index, digit } => {
+                SerializationAction::ReplaceDigit(WriteDigit {
+                    stream,
+                    index,
+                    digit,
+                })
+            }
+            Pending::Emit { unit } => SerializationAction::Emit(Emit { stream, unit }),
+            Pending::Complete => {
+                return SerializationStep::Complete(SerializationReceipt {
+                    value: stream.serialized_value(),
+                    length: stream.emitted(),
+                });
+            }
+        })
+    }
+}
+impl std::fmt::Debug for Serialization<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Serialization")
+            .field("stream", &self.stream)
+            .finish()
+    }
+}
+/// The next action of a pending serialization, or its completed receipt.
+#[derive(Debug)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "A pending action owns the inline serialization continuation, whose register layout callers admit; boxing it would add an unadmitted heap allocation per step"
+)]
+pub enum SerializationStep<'owner> {
+    Pending(SerializationAction<'owner>),
+    Complete(SerializationReceipt),
+}
+/// Exactly one pending action; it owns the serialization until completion.
+#[derive(Debug)]
+pub enum SerializationAction<'owner> {
+    Compute(SerializationCompute<'owner>),
+    ReadDigit(ReadDigit<'owner>),
+    AppendDigit(WriteDigit<'owner>),
+    ReplaceDigit(WriteDigit<'owner>),
+    Emit(Emit<'owner>),
+}
+impl<'owner> SerializationAction<'owner> {
+    /// Payload observations and writes to admit before completing the action.
+    #[must_use]
+    pub const fn layout(&self) -> ActionLayout {
+        match self {
+            Self::Compute(_) => ActionLayout::COMPUTE,
+            Self::ReadDigit(_) => ActionLayout::READ_DIGIT,
+            Self::AppendDigit(_) | Self::ReplaceDigit(_) => ActionLayout::WRITE_DIGIT,
+            Self::Emit(_) => ActionLayout::EMIT,
+        }
+    }
+    /// Declines the action without effect; the serialization stays pending.
+    #[must_use]
+    pub fn into_serialization(self) -> Serialization<'owner> {
+        let stream = match self {
+            Self::Compute(SerializationCompute { stream, .. })
+            | Self::ReadDigit(ReadDigit { stream, .. })
+            | Self::AppendDigit(WriteDigit { stream, .. })
+            | Self::ReplaceDigit(WriteDigit { stream, .. })
+            | Self::Emit(Emit { stream, .. }) => stream,
+        };
+        Serialization { stream }
+    }
+}
+/// One pending fixed-register planning or formatting kernel.
+pub struct SerializationCompute<'owner> {
+    stream: Stream<'owner>,
+    kernel: Kernel,
+}
+impl<'owner> SerializationCompute<'owner> {
+    /// The fixed kernel [`compute`](Self::compute) executes.
+    #[must_use]
+    pub const fn kernel(&self) -> Kernel {
+        self.kernel
+    }
+    /// Executes the kernel.
+    #[must_use]
+    pub fn compute(mut self) -> Serialization<'owner> {
+        self.stream.compute();
+        Serialization {
+            stream: self.stream,
+        }
+    }
+}
+impl std::fmt::Debug for SerializationCompute<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SerializationCompute")
+            .field("kernel", &self.kernel)
+            .finish_non_exhaustive()
+    }
+}
+/// One pending read of a caller-owned digit record this serialization minted.
+pub struct ReadDigit<'owner> {
+    stream: Stream<'owner>,
+    index: usize,
+}
+impl<'owner> ReadDigit<'owner> {
+    /// The caller-owned record index to read.
+    #[must_use]
+    pub const fn index(&self) -> usize {
+        self.index
+    }
+    /// Reads the caller's record stored at [`index`](Self::index).
+    ///
+    /// # Panics
+    ///
+    /// If `slot` was minted by another operation or for another index.
+    #[must_use]
+    #[track_caller]
+    pub fn read(mut self, slot: &DigitSlot<'_>) -> Serialization<'owner> {
+        self.stream.read(self.index, slot);
+        Serialization {
+            stream: self.stream,
+        }
+    }
+}
+impl std::fmt::Debug for ReadDigit<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ReadDigit")
+            .field("index", &self.index)
+            .finish_non_exhaustive()
+    }
+}
+/// One pending append or replacement of a caller-owned digit record.
+pub struct WriteDigit<'owner> {
+    stream: Stream<'owner>,
+    index: usize,
+    digit: FormatDigit,
+}
+impl<'owner> WriteDigit<'owner> {
+    /// The caller-owned record index to write.
+    #[must_use]
+    pub const fn index(&self) -> usize {
+        self.index
+    }
+    /// Mints the record to store at [`index`](Self::index). Mint it only after
+    /// the storage admission; the receipt acknowledges actual storage.
+    #[must_use]
+    pub fn record(self) -> (DigitSlot<'owner>, DigitReceipt<'owner>) {
+        (
+            self.stream.record(self.index, self.digit),
+            DigitReceipt {
+                stream: self.stream,
+                index: self.index,
+                digit: self.digit,
+            },
+        )
+    }
+}
+impl std::fmt::Debug for WriteDigit<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WriteDigit")
+            .field("index", &self.index)
+            .finish_non_exhaustive()
+    }
+}
+/// A minted digit record awaiting its storage acknowledgement.
+pub struct DigitReceipt<'owner> {
+    stream: Stream<'owner>,
+    index: usize,
+    digit: FormatDigit,
+}
+impl<'owner> DigitReceipt<'owner> {
+    /// Acknowledges that `stored` now holds the minted record.
+    ///
+    /// The caller must pass the record it actually stored at this index. The
+    /// check covers only the record's operation, index and digit, so a
+    /// substituted record with the same identity is accepted, and a later
+    /// read of a different stored record yields wrong output that the fixed
+    /// registers cannot detect.
+    ///
+    /// # Panics
+    ///
+    /// If `stored` is not the record minted by the matching `record`.
+    #[must_use]
+    #[track_caller]
+    pub fn stored(mut self, stored: &DigitSlot<'_>) -> Serialization<'owner> {
+        self.stream.store(self.index, self.digit, stored);
+        Serialization {
+            stream: self.stream,
+        }
+    }
+    /// Storage was refused: the minted record is discarded and the
+    /// serialization waits at the same write.
+    #[must_use]
+    pub fn into_serialization(self) -> Serialization<'owner> {
+        Serialization {
+            stream: self.stream,
+        }
+    }
+}
+impl std::fmt::Debug for DigitReceipt<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DigitReceipt")
+            .field("index", &self.index)
+            .finish_non_exhaustive()
+    }
+}
+/// One pending output byte.
+pub struct Emit<'owner> {
+    stream: Stream<'owner>,
+    unit: u8,
+}
+impl<'owner> Emit<'owner> {
+    /// The ASCII byte to append to the caller's output.
+    #[must_use]
+    pub const fn unit(&self) -> u8 {
+        self.unit
+    }
+    /// Acknowledges that the caller appended [`unit`](Self::unit).
+    #[must_use]
+    pub fn emitted(mut self) -> Serialization<'owner> {
+        self.stream.emit(self.unit);
+        Serialization {
+            stream: self.stream,
+        }
+    }
+}
+impl std::fmt::Debug for Emit<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Emit")
+            .field("unit", &self.unit)
+            .finish_non_exhaustive()
+    }
+}
+/// A completed serialization. It no longer borrows the numerical owner.
 #[derive(Debug)]
 pub struct SerializationReceipt {
     value: Color,
     length: usize,
 }
 impl SerializationReceipt {
+    /// The serialized value.
+    #[must_use]
     pub const fn value(&self) -> Color {
         self.value
     }
+    /// Count of acknowledged output bytes.
+    #[must_use]
     pub const fn length(&self) -> usize {
         self.length
     }
 }
-#[derive(Debug)]
-pub struct SerializationRecovery {
-    value: Color,
-    request: SerializationRequest,
-    length: usize,
-}
-impl SerializationRecovery {
-    pub const fn value(&self) -> Color {
-        self.value
-    }
-    pub const fn request(&self) -> SerializationRequest {
-        self.request
-    }
-    pub const fn length(&self) -> usize {
-        self.length
-    }
-}
-impl<'owner> Serialization<'owner> {
-    pub const fn register_bytes() -> usize {
-        std::mem::size_of::<Self>()
-    }
-    pub const fn action_bytes() -> usize {
-        std::mem::size_of::<StreamAction<'_, '_>>()
-    }
-    pub fn new(
-        owner: &'owner mut OperationOwner,
-        value: Color,
-        request: SerializationRequest,
-    ) -> Result<Self, ProtocolError> {
-        Ok(Self {
-            stream: Stream::serialization(owner, value, request)?,
-        })
-    }
-    pub fn action(&self) -> Action {
-        self.stream.action()
-    }
-    pub fn next_action(&mut self) -> StreamAction<'_, 'owner> {
-        StreamAction {
-            stream: &mut self.stream,
-        }
-    }
-    pub fn abandon(&mut self) {
-        self.stream.abandon();
-    }
-    pub fn take(slot: &mut Option<Self>) -> Result<SerializationReceipt, ProtocolError> {
-        slot.as_ref()
-            .ok_or(ProtocolError::EmptySlot)?
-            .stream
-            .ready()?;
-        let s = slot.take().expect("shared preflight proved ready").stream;
-        let Original::Serialization(value, _) = s.original else {
-            unreachable!()
-        };
-        Ok(SerializationReceipt {
-            value,
-            length: s.emitted,
-        })
-    }
-    pub fn recover(slot: &mut Option<Self>) -> Result<SerializationRecovery, ProtocolError> {
-        let s = slot.take().ok_or(ProtocolError::EmptySlot)?.stream;
-        let Original::Serialization(value, request) = s.original else {
-            unreachable!()
-        };
-        Ok(SerializationRecovery {
-            value,
-            request,
-            length: s.emitted,
-        })
-    }
-}
+/// Serializes `value` through the same controlled continuation, with explicit
+/// action, digit and output limits and fallible allocation.
 pub fn serialize(
     value: Color,
     request: SerializationRequest,
@@ -558,32 +712,30 @@ pub fn serialize(
         }
     }
     let mut owner = OperationOwner::new();
-    let mut operation = Some(Serialization::new(&mut owner, value, request)?);
-    let mut digits = Vec::new();
+    let mut serialization = Serialization::new(&mut owner, value, request);
+    let mut digits: Vec<DigitSlot<'_>> = Vec::new();
     let mut output = Vec::new();
     let mut actions = 0usize;
-    loop {
-        let op = operation.as_mut().expect("live serialization");
-        if op.action() == Action::Ready {
-            break;
-        }
+    let receipt = loop {
+        let action = match serialization.step() {
+            SerializationStep::Complete(receipt) => break receipt,
+            SerializationStep::Pending(action) => action,
+        };
         actions = actions
             .checked_add(1)
             .ok_or(SerializationError::CountOverflow)?;
         admit(SerializationResource::Actions, actions, limits.actions)?;
-        let mut guard = op.next_action();
-        match guard.description() {
-            Action::Compute(_) => guard.compute()?,
-            Action::ReadDigit { index } => {
-                guard.read_digit(index, digits.get(index).ok_or(ProtocolError::WrongIndex)?)?
+        serialization = match action {
+            SerializationAction::Compute(compute) => compute.compute(),
+            SerializationAction::ReadDigit(read) => {
+                let slot = &digits[read.index()];
+                read.read(slot)
             }
-            Action::AppendDigit { index } => {
-                if index != digits.len() {
-                    return Err(ProtocolError::WrongIndex.into());
-                }
+            SerializationAction::AppendDigit(write) => {
                 admit(
                     SerializationResource::Digits,
-                    index
+                    write
+                        .index()
                         .checked_add(1)
                         .ok_or(SerializationError::CountOverflow)?,
                     limits.digits,
@@ -593,15 +745,17 @@ pub fn serialize(
                     .map_err(|_| SerializationError::Allocation {
                         resource: SerializationResource::Digits,
                     })?;
-                digits.push(guard.record()?);
-                guard.written(index, &digits[index])?
+                let (record, receipt) = write.record();
+                digits.push(record);
+                receipt.stored(digits.last().expect("the record was just appended"))
             }
-            Action::ReplaceDigit { index } => {
-                let actual = digits.get_mut(index).ok_or(ProtocolError::WrongIndex)?;
-                *actual = guard.record()?;
-                guard.written(index, actual)?
+            SerializationAction::ReplaceDigit(write) => {
+                let index = write.index();
+                let (record, receipt) = write.record();
+                digits[index] = record;
+                receipt.stored(&digits[index])
             }
-            Action::EmitByte { unit } => {
+            SerializationAction::Emit(emit) => {
                 admit(
                     SerializationResource::OutputBytes,
                     output
@@ -615,15 +769,11 @@ pub fn serialize(
                     .map_err(|_| SerializationError::Allocation {
                         resource: SerializationResource::OutputBytes,
                     })?;
-                output.push(unit);
-                guard.emitted(unit)?
+                output.push(emit.unit());
+                emit.emitted()
             }
-            _ => return Err(ProtocolError::Terminated.into()),
-        }
-    }
-    let receipt = Serialization::take(&mut operation)?;
-    if receipt.length() != output.len() {
-        return Err(ProtocolError::WrongIndex.into());
-    }
-    String::from_utf8(output).map_err(|_| ProtocolError::WrongReply.into())
+        };
+    };
+    debug_assert_eq!(receipt.length(), output.len());
+    Ok(String::from_utf8(output).expect("color serialization emits ASCII"))
 }

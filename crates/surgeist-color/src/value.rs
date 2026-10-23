@@ -180,6 +180,9 @@ impl Color {
     }
 
     /// Fixed finite/missing coordinates; byte channels are normalized to zero to one.
+    ///
+    /// This plain-number view serves arithmetic and display. Pass coordinates
+    /// back into a proof-typed operation through [`finite_channels`](Self::finite_channels).
     #[must_use]
     pub fn channels(&self) -> [Option<f64>; 3] {
         self.finite_channels()
@@ -199,6 +202,9 @@ impl Color {
     }
 
     /// Resolved alpha, including explicitly missing alpha.
+    ///
+    /// This plain-number view serves arithmetic and display. Pass alpha back
+    /// into a proof-typed operation through [`unit_alpha`](Self::unit_alpha).
     #[must_use]
     pub const fn alpha(&self) -> Option<f64> {
         self.alpha.value()

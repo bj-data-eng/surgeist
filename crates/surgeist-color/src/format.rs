@@ -8,7 +8,10 @@ pub(crate) mod bounded;
 mod controlled;
 use crate::Finite;
 use bounded::{FiniteFormatCursor, FormatReply, FormatRequest};
-pub use controlled::{FiniteFormatAction, FiniteFormatter, FormatRecovery, FormatSummary};
+pub use controlled::{
+    FiniteFormatter, FormatAction, FormatCompute, FormatDigitReceipt, FormatEmit, FormatReadDigit,
+    FormatStep, FormatSummary, FormatWriteDigit,
+};
 
 /// A refused finite formatting output or allocation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -16,7 +19,6 @@ pub use controlled::{FiniteFormatAction, FiniteFormatter, FormatRecovery, Format
 pub enum FormatError {
     ByteLimit,
     CapacityOverflow,
-    Protocol(crate::ProtocolError),
 }
 
 impl std::fmt::Display for FormatError {
@@ -24,18 +26,10 @@ impl std::fmt::Display for FormatError {
         match self {
             Self::ByteLimit => f.write_str("finite formatted output exceeds the byte limit"),
             Self::CapacityOverflow => f.write_str("finite formatting storage capacity exceeded"),
-            Self::Protocol(error) => error.fmt(f),
         }
     }
 }
-impl std::error::Error for FormatError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::Protocol(error) => Some(error),
-            _ => None,
-        }
-    }
-}
+impl std::error::Error for FormatError {}
 
 /// Generic specified coefficients use away-from-zero ties; exact color
 /// rationals and final ordinary sRGB scalars use ties toward positive infinity.

@@ -3,62 +3,74 @@
 
 pub mod surgeist_color
 pub mod surgeist_color::format
+pub enum surgeist_color::format::FormatAction<'owner>
+pub surgeist_color::format::FormatAction::AppendDigit(surgeist_color::format::FormatWriteDigit<'owner>)
+pub surgeist_color::format::FormatAction::Compute(surgeist_color::format::FormatCompute<'owner>)
+pub surgeist_color::format::FormatAction::Emit(surgeist_color::format::FormatEmit<'owner>)
+pub surgeist_color::format::FormatAction::ReadDigit(surgeist_color::format::FormatReadDigit<'owner>)
+pub surgeist_color::format::FormatAction::ReplaceDigit(surgeist_color::format::FormatWriteDigit<'owner>)
+impl<'owner> surgeist_color::format::FormatAction<'owner>
+pub fn surgeist_color::format::FormatAction<'owner>::into_formatter(self) -> surgeist_color::format::FiniteFormatter<'owner>
+pub const fn surgeist_color::format::FormatAction<'owner>::layout(&self) -> surgeist_color::ActionLayout
 #[non_exhaustive] pub enum surgeist_color::format::FormatError
 pub surgeist_color::format::FormatError::ByteLimit
 pub surgeist_color::format::FormatError::CapacityOverflow
-pub surgeist_color::format::FormatError::Protocol(surgeist_color::ProtocolError)
 impl core::error::Error for surgeist_color::format::FormatError
-pub fn surgeist_color::format::FormatError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_color::format::FormatError
 pub fn surgeist_color::format::FormatError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_color::format::FormatStep<'owner>
+pub surgeist_color::format::FormatStep::Complete(surgeist_color::format::FormatSummary)
+pub surgeist_color::format::FormatStep::Pending(surgeist_color::format::FormatAction<'owner>)
 pub enum surgeist_color::format::RoundingMode
 pub surgeist_color::format::RoundingMode::AwayFromZero
 pub surgeist_color::format::RoundingMode::TowardPositiveInfinity
 impl surgeist_color::format::RoundingMode
 pub fn surgeist_color::format::RoundingMode::rounds_up(self, ordering: core::cmp::Ordering, negative: bool) -> bool
-pub struct surgeist_color::format::FiniteFormatAction<'step, 'owner>
-impl<'owner> surgeist_color::format::FiniteFormatAction<'_, 'owner>
-pub fn surgeist_color::format::FiniteFormatAction<'_, 'owner>::compute(self) -> core::result::Result<(), surgeist_color::format::FormatError>
-pub fn surgeist_color::format::FiniteFormatAction<'_, 'owner>::description(&self) -> surgeist_color::ActionDescription
-pub fn surgeist_color::format::FiniteFormatAction<'_, 'owner>::emitted(self, unit: u8) -> core::result::Result<(), surgeist_color::ProtocolError>
-pub fn surgeist_color::format::FiniteFormatAction<'_, 'owner>::layout(&self) -> surgeist_color::ActionLayout
-pub fn surgeist_color::format::FiniteFormatAction<'_, 'owner>::read_digit(self, index: usize, slot: &surgeist_color::DigitSlot<'_>) -> core::result::Result<(), surgeist_color::ProtocolError>
-pub fn surgeist_color::format::FiniteFormatAction<'_, 'owner>::record(&mut self) -> core::result::Result<surgeist_color::DigitSlot<'owner>, surgeist_color::ProtocolError>
-pub fn surgeist_color::format::FiniteFormatAction<'_, 'owner>::written(self, index: usize, slot: &surgeist_color::DigitSlot<'_>) -> core::result::Result<(), surgeist_color::ProtocolError>
 pub struct surgeist_color::format::FiniteFormatter<'owner>
 impl<'owner> surgeist_color::format::FiniteFormatter<'owner>
-pub fn surgeist_color::format::FiniteFormatter<'owner>::abandon(&mut self)
-pub fn surgeist_color::format::FiniteFormatter<'owner>::action(&self) -> surgeist_color::ActionDescription
 pub const fn surgeist_color::format::FiniteFormatter<'owner>::action_bytes() -> usize
-pub fn surgeist_color::format::FiniteFormatter<'owner>::new(owner: &'owner mut surgeist_color::OperationOwner, value: surgeist_color::Finite, rounding: surgeist_color::format::RoundingMode) -> core::result::Result<Self, surgeist_color::format::FormatError>
-pub fn surgeist_color::format::FiniteFormatter<'owner>::next_action(&mut self) -> surgeist_color::format::FiniteFormatAction<'_, 'owner>
+pub fn surgeist_color::format::FiniteFormatter<'owner>::new(owner: &'owner mut surgeist_color::OperationOwner, value: surgeist_color::Finite, rounding: surgeist_color::format::RoundingMode) -> Self
 pub fn surgeist_color::format::FiniteFormatter<'owner>::planned_length(&self) -> core::option::Option<usize>
-pub fn surgeist_color::format::FiniteFormatter<'owner>::recover(slot: &mut core::option::Option<Self>) -> core::result::Result<surgeist_color::format::FormatRecovery, surgeist_color::ProtocolError>
 pub const fn surgeist_color::format::FiniteFormatter<'owner>::register_bytes() -> usize
-pub fn surgeist_color::format::FiniteFormatter<'owner>::take(slot: &mut core::option::Option<Self>) -> core::result::Result<surgeist_color::format::FormatSummary, surgeist_color::format::FormatError>
-pub struct surgeist_color::format::FormatRecovery
-impl surgeist_color::format::FormatRecovery
-pub const fn surgeist_color::format::FormatRecovery::length(&self) -> usize
-pub const fn surgeist_color::format::FormatRecovery::rounding(&self) -> surgeist_color::format::RoundingMode
-pub const fn surgeist_color::format::FormatRecovery::value(&self) -> surgeist_color::Finite
+pub fn surgeist_color::format::FiniteFormatter<'owner>::step(self) -> surgeist_color::format::FormatStep<'owner>
+impl core::fmt::Debug for surgeist_color::format::FiniteFormatter<'_>
+pub fn surgeist_color::format::FiniteFormatter<'_>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_color::format::FormatCompute<'owner>
+impl<'owner> surgeist_color::format::FormatCompute<'owner>
+pub fn surgeist_color::format::FormatCompute<'owner>::compute(self) -> surgeist_color::format::FiniteFormatter<'owner>
+pub const fn surgeist_color::format::FormatCompute<'owner>::kernel(&self) -> surgeist_color::Kernel
+impl core::fmt::Debug for surgeist_color::format::FormatCompute<'_>
+pub fn surgeist_color::format::FormatCompute<'_>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_color::format::FormatDigitReceipt<'owner>
+impl<'owner> surgeist_color::format::FormatDigitReceipt<'owner>
+pub fn surgeist_color::format::FormatDigitReceipt<'owner>::into_formatter(self) -> surgeist_color::format::FiniteFormatter<'owner>
+pub fn surgeist_color::format::FormatDigitReceipt<'owner>::stored(self, stored: &surgeist_color::DigitSlot<'_>) -> surgeist_color::format::FiniteFormatter<'owner>
+impl core::fmt::Debug for surgeist_color::format::FormatDigitReceipt<'_>
+pub fn surgeist_color::format::FormatDigitReceipt<'_>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_color::format::FormatEmit<'owner>
+impl<'owner> surgeist_color::format::FormatEmit<'owner>
+pub fn surgeist_color::format::FormatEmit<'owner>::emitted(self) -> surgeist_color::format::FiniteFormatter<'owner>
+pub const fn surgeist_color::format::FormatEmit<'owner>::unit(&self) -> u8
+impl core::fmt::Debug for surgeist_color::format::FormatEmit<'_>
+pub fn surgeist_color::format::FormatEmit<'_>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_color::format::FormatReadDigit<'owner>
+impl<'owner> surgeist_color::format::FormatReadDigit<'owner>
+pub const fn surgeist_color::format::FormatReadDigit<'owner>::index(&self) -> usize
+pub fn surgeist_color::format::FormatReadDigit<'owner>::read(self, slot: &surgeist_color::DigitSlot<'_>) -> surgeist_color::format::FiniteFormatter<'owner>
+impl core::fmt::Debug for surgeist_color::format::FormatReadDigit<'_>
+pub fn surgeist_color::format::FormatReadDigit<'_>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_color::format::FormatSummary
 impl surgeist_color::format::FormatSummary
 pub const fn surgeist_color::format::FormatSummary::emitted(&self) -> usize
 pub const fn surgeist_color::format::FormatSummary::is_zero(&self) -> bool
+pub struct surgeist_color::format::FormatWriteDigit<'owner>
+impl<'owner> surgeist_color::format::FormatWriteDigit<'owner>
+pub const fn surgeist_color::format::FormatWriteDigit<'owner>::index(&self) -> usize
+pub fn surgeist_color::format::FormatWriteDigit<'owner>::record(self) -> (surgeist_color::DigitSlot<'owner>, surgeist_color::format::FormatDigitReceipt<'owner>)
+impl core::fmt::Debug for surgeist_color::format::FormatWriteDigit<'_>
+pub fn surgeist_color::format::FormatWriteDigit<'_>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub fn surgeist_color::format::format_finite(value: surgeist_color::Finite, rounding: surgeist_color::format::RoundingMode, byte_limit: usize) -> core::result::Result<alloc::string::String, surgeist_color::format::FormatError>
 pub fn surgeist_color::format::rounds_to_zero(value: surgeist_color::Finite, rounding: surgeist_color::format::RoundingMode) -> bool
-pub enum surgeist_color::ActionDescription
-pub surgeist_color::ActionDescription::Abandoned
-pub surgeist_color::ActionDescription::AppendDigit
-pub surgeist_color::ActionDescription::AppendDigit::index: usize
-pub surgeist_color::ActionDescription::Compute(surgeist_color::Kernel)
-pub surgeist_color::ActionDescription::EmitByte
-pub surgeist_color::ActionDescription::EmitByte::unit: u8
-pub surgeist_color::ActionDescription::ReadDigit
-pub surgeist_color::ActionDescription::ReadDigit::index: usize
-pub surgeist_color::ActionDescription::Ready
-pub surgeist_color::ActionDescription::ReplaceDigit
-pub surgeist_color::ActionDescription::ReplaceDigit::index: usize
 #[non_exhaustive] pub enum surgeist_color::ColorSpace
 pub surgeist_color::ColorSpace::Hsl
 pub surgeist_color::ColorSpace::Hwb
@@ -139,26 +151,19 @@ pub surgeist_color::PredefinedColorSpace::Srgb
 pub surgeist_color::PredefinedColorSpace::SrgbLinear
 pub surgeist_color::PredefinedColorSpace::XyzD50
 pub surgeist_color::PredefinedColorSpace::XyzD65
-#[non_exhaustive] pub enum surgeist_color::ProtocolError
-pub surgeist_color::ProtocolError::EmptySlot
-pub surgeist_color::ProtocolError::ForeignSlot
-pub surgeist_color::ProtocolError::NotReady
-pub surgeist_color::ProtocolError::Overflow
-pub surgeist_color::ProtocolError::StorageNotEmpty
-pub surgeist_color::ProtocolError::Terminated
-pub surgeist_color::ProtocolError::WrongAction
-pub surgeist_color::ProtocolError::WrongDigit
-pub surgeist_color::ProtocolError::WrongIndex
-pub surgeist_color::ProtocolError::WrongReply
-impl core::convert::From<surgeist_color::ProtocolError> for surgeist_color::SerializationError
-pub fn surgeist_color::SerializationError::from(e: surgeist_color::ProtocolError) -> Self
-impl core::error::Error for surgeist_color::ProtocolError
-impl core::fmt::Display for surgeist_color::ProtocolError
-pub fn surgeist_color::ProtocolError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 #[non_exhaustive] pub enum surgeist_color::RectangularSpace
 pub surgeist_color::RectangularSpace::Lab
 pub surgeist_color::RectangularSpace::Oklab
 pub surgeist_color::RectangularSpace::Predefined(surgeist_color::PredefinedColorSpace)
+pub enum surgeist_color::SerializationAction<'owner>
+pub surgeist_color::SerializationAction::AppendDigit(surgeist_color::WriteDigit<'owner>)
+pub surgeist_color::SerializationAction::Compute(surgeist_color::SerializationCompute<'owner>)
+pub surgeist_color::SerializationAction::Emit(surgeist_color::Emit<'owner>)
+pub surgeist_color::SerializationAction::ReadDigit(surgeist_color::ReadDigit<'owner>)
+pub surgeist_color::SerializationAction::ReplaceDigit(surgeist_color::WriteDigit<'owner>)
+impl<'owner> surgeist_color::SerializationAction<'owner>
+pub fn surgeist_color::SerializationAction<'owner>::into_serialization(self) -> surgeist_color::Serialization<'owner>
+pub const fn surgeist_color::SerializationAction<'owner>::layout(&self) -> surgeist_color::ActionLayout
 #[non_exhaustive] pub enum surgeist_color::SerializationError
 pub surgeist_color::SerializationError::Allocation
 pub surgeist_color::SerializationError::Allocation::resource: surgeist_color::SerializationResource
@@ -167,11 +172,7 @@ pub surgeist_color::SerializationError::Limit
 pub surgeist_color::SerializationError::Limit::allowed: usize
 pub surgeist_color::SerializationError::Limit::required: usize
 pub surgeist_color::SerializationError::Limit::resource: surgeist_color::SerializationResource
-pub surgeist_color::SerializationError::Protocol(surgeist_color::ProtocolError)
-impl core::convert::From<surgeist_color::ProtocolError> for surgeist_color::SerializationError
-pub fn surgeist_color::SerializationError::from(e: surgeist_color::ProtocolError) -> Self
 impl core::error::Error for surgeist_color::SerializationError
-pub fn surgeist_color::SerializationError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_color::SerializationError
 pub fn surgeist_color::SerializationError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_color::SerializationFamily
@@ -185,6 +186,9 @@ pub enum surgeist_color::SerializationResource
 pub surgeist_color::SerializationResource::Actions
 pub surgeist_color::SerializationResource::Digits
 pub surgeist_color::SerializationResource::OutputBytes
+pub enum surgeist_color::SerializationStep<'owner>
+pub surgeist_color::SerializationStep::Complete(surgeist_color::SerializationReceipt)
+pub surgeist_color::SerializationStep::Pending(surgeist_color::SerializationAction<'owner>)
 pub enum surgeist_color::Transformation
 pub surgeist_color::Transformation::ColorFunction
 pub surgeist_color::Transformation::Convert(surgeist_color::ColorSpace)
@@ -218,21 +222,27 @@ pub fn surgeist_color::Color::with_alpha(self, alpha: core::option::Option<surge
 pub const fn surgeist_color::Color::with_color_function(self) -> Self
 pub struct surgeist_color::Computation<'owner>
 impl<'owner> surgeist_color::Computation<'owner>
-pub fn surgeist_color::Computation<'owner>::abandon(&mut self)
-pub fn surgeist_color::Computation<'owner>::action(&self) -> surgeist_color::ActionDescription
-pub const fn surgeist_color::Computation<'owner>::action_bytes() -> usize
-pub fn surgeist_color::Computation<'owner>::new(owner: &'owner mut surgeist_color::OperationOwner, request: surgeist_color::NumericalRequest) -> core::result::Result<Self, surgeist_color::ProtocolError>
-pub fn surgeist_color::Computation<'owner>::next_action(&mut self) -> surgeist_color::ComputationAction<'_, 'owner>
-pub const fn surgeist_color::Computation<'owner>::original(&self) -> surgeist_color::NumericalRequest
-pub fn surgeist_color::Computation<'owner>::recover(slot: &mut core::option::Option<Self>) -> core::result::Result<surgeist_color::NumericalRequest, surgeist_color::ProtocolError>
+pub fn surgeist_color::Computation<'owner>::compute(self) -> surgeist_color::Color
+pub const fn surgeist_color::Computation<'owner>::into_request(self) -> surgeist_color::NumericalRequest
+pub const fn surgeist_color::Computation<'owner>::kernel(&self) -> surgeist_color::Kernel
+pub const fn surgeist_color::Computation<'owner>::layout(&self) -> surgeist_color::ActionLayout
+pub fn surgeist_color::Computation<'owner>::new(owner: &'owner mut surgeist_color::OperationOwner, request: surgeist_color::NumericalRequest) -> Self
 pub const fn surgeist_color::Computation<'owner>::register_bytes() -> usize
-pub fn surgeist_color::Computation<'owner>::take(slot: &mut core::option::Option<Self>) -> core::result::Result<surgeist_color::Color, surgeist_color::ProtocolError>
-pub struct surgeist_color::ComputationAction<'step, 'owner>
-impl surgeist_color::ComputationAction<'_, '_>
-pub fn surgeist_color::ComputationAction<'_, '_>::compute(self) -> core::result::Result<(), surgeist_color::ProtocolError>
-pub fn surgeist_color::ComputationAction<'_, '_>::description(&self) -> surgeist_color::ActionDescription
-pub fn surgeist_color::ComputationAction<'_, '_>::layout(&self) -> surgeist_color::ActionLayout
+impl core::fmt::Debug for surgeist_color::Computation<'_>
+pub fn surgeist_color::Computation<'_>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_color::DigitReceipt<'owner>
+impl<'owner> surgeist_color::DigitReceipt<'owner>
+pub fn surgeist_color::DigitReceipt<'owner>::into_serialization(self) -> surgeist_color::Serialization<'owner>
+pub fn surgeist_color::DigitReceipt<'owner>::stored(self, stored: &surgeist_color::DigitSlot<'_>) -> surgeist_color::Serialization<'owner>
+impl core::fmt::Debug for surgeist_color::DigitReceipt<'_>
+pub fn surgeist_color::DigitReceipt<'_>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_color::DigitSlot<'owner>
+pub struct surgeist_color::Emit<'owner>
+impl<'owner> surgeist_color::Emit<'owner>
+pub fn surgeist_color::Emit<'owner>::emitted(self) -> surgeist_color::Serialization<'owner>
+pub const fn surgeist_color::Emit<'owner>::unit(&self) -> u8
+impl core::fmt::Debug for surgeist_color::Emit<'_>
+pub fn surgeist_color::Emit<'_>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_color::Finite(_)
 impl surgeist_color::Finite
 pub const fn surgeist_color::Finite::get(self) -> f64
@@ -266,6 +276,12 @@ pub const fn surgeist_color::PolarCoordinates::chroma(&self) -> surgeist_color::
 pub const fn surgeist_color::PolarCoordinates::hue_degrees(&self) -> core::option::Option<surgeist_color::Finite>
 pub const fn surgeist_color::PolarCoordinates::lightness(&self) -> surgeist_color::Finite
 pub fn surgeist_color::PolarCoordinates::new(lightness: surgeist_color::Finite, chroma: surgeist_color::Finite, hue_degrees: core::option::Option<surgeist_color::Finite>) -> Self
+pub struct surgeist_color::ReadDigit<'owner>
+impl<'owner> surgeist_color::ReadDigit<'owner>
+pub const fn surgeist_color::ReadDigit<'owner>::index(&self) -> usize
+pub fn surgeist_color::ReadDigit<'owner>::read(self, slot: &surgeist_color::DigitSlot<'_>) -> surgeist_color::Serialization<'owner>
+impl core::fmt::Debug for surgeist_color::ReadDigit<'_>
+pub fn surgeist_color::ReadDigit<'_>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_color::RectangularCoordinates
 impl surgeist_color::RectangularCoordinates
 pub const fn surgeist_color::RectangularCoordinates::channels(&self) -> [core::option::Option<surgeist_color::Finite>; 3]
@@ -274,14 +290,18 @@ pub const fn surgeist_color::RectangularCoordinates::new(space: surgeist_color::
 pub const fn surgeist_color::RectangularCoordinates::space(&self) -> surgeist_color::RectangularSpace
 pub struct surgeist_color::Serialization<'owner>
 impl<'owner> surgeist_color::Serialization<'owner>
-pub fn surgeist_color::Serialization<'owner>::abandon(&mut self)
-pub fn surgeist_color::Serialization<'owner>::action(&self) -> surgeist_color::ActionDescription
 pub const fn surgeist_color::Serialization<'owner>::action_bytes() -> usize
-pub fn surgeist_color::Serialization<'owner>::new(owner: &'owner mut surgeist_color::OperationOwner, value: surgeist_color::Color, request: surgeist_color::SerializationRequest) -> core::result::Result<Self, surgeist_color::ProtocolError>
-pub fn surgeist_color::Serialization<'owner>::next_action(&mut self) -> surgeist_color::StreamAction<'_, 'owner>
-pub fn surgeist_color::Serialization<'owner>::recover(slot: &mut core::option::Option<Self>) -> core::result::Result<surgeist_color::SerializationRecovery, surgeist_color::ProtocolError>
+pub fn surgeist_color::Serialization<'owner>::new(owner: &'owner mut surgeist_color::OperationOwner, value: surgeist_color::Color, request: surgeist_color::SerializationRequest) -> Self
 pub const fn surgeist_color::Serialization<'owner>::register_bytes() -> usize
-pub fn surgeist_color::Serialization<'owner>::take(slot: &mut core::option::Option<Self>) -> core::result::Result<surgeist_color::SerializationReceipt, surgeist_color::ProtocolError>
+pub fn surgeist_color::Serialization<'owner>::step(self) -> surgeist_color::SerializationStep<'owner>
+impl core::fmt::Debug for surgeist_color::Serialization<'_>
+pub fn surgeist_color::Serialization<'_>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_color::SerializationCompute<'owner>
+impl<'owner> surgeist_color::SerializationCompute<'owner>
+pub fn surgeist_color::SerializationCompute<'owner>::compute(self) -> surgeist_color::Serialization<'owner>
+pub const fn surgeist_color::SerializationCompute<'owner>::kernel(&self) -> surgeist_color::Kernel
+impl core::fmt::Debug for surgeist_color::SerializationCompute<'_>
+pub fn surgeist_color::SerializationCompute<'_>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_color::SerializationLimits
 pub surgeist_color::SerializationLimits::actions: usize
 pub surgeist_color::SerializationLimits::digits: usize
@@ -290,25 +310,17 @@ pub struct surgeist_color::SerializationReceipt
 impl surgeist_color::SerializationReceipt
 pub const fn surgeist_color::SerializationReceipt::length(&self) -> usize
 pub const fn surgeist_color::SerializationReceipt::value(&self) -> surgeist_color::Color
-pub struct surgeist_color::SerializationRecovery
-impl surgeist_color::SerializationRecovery
-pub const fn surgeist_color::SerializationRecovery::length(&self) -> usize
-pub const fn surgeist_color::SerializationRecovery::request(&self) -> surgeist_color::SerializationRequest
-pub const fn surgeist_color::SerializationRecovery::value(&self) -> surgeist_color::Color
-pub struct surgeist_color::StreamAction<'step, 'owner>
-impl<'owner> surgeist_color::StreamAction<'_, 'owner>
-pub fn surgeist_color::StreamAction<'_, 'owner>::compute(self) -> core::result::Result<(), surgeist_color::ProtocolError>
-pub fn surgeist_color::StreamAction<'_, 'owner>::description(&self) -> surgeist_color::ActionDescription
-pub fn surgeist_color::StreamAction<'_, 'owner>::emitted(self, unit: u8) -> core::result::Result<(), surgeist_color::ProtocolError>
-pub fn surgeist_color::StreamAction<'_, 'owner>::layout(&self) -> surgeist_color::ActionLayout
-pub fn surgeist_color::StreamAction<'_, 'owner>::read_digit(self, index: usize, slot: &surgeist_color::DigitSlot<'_>) -> core::result::Result<(), surgeist_color::ProtocolError>
-pub fn surgeist_color::StreamAction<'_, 'owner>::record(&mut self) -> core::result::Result<surgeist_color::DigitSlot<'owner>, surgeist_color::ProtocolError>
-pub fn surgeist_color::StreamAction<'_, 'owner>::written(self, index: usize, slot: &surgeist_color::DigitSlot<'_>) -> core::result::Result<(), surgeist_color::ProtocolError>
 pub struct surgeist_color::UnitInterval(_)
 impl surgeist_color::UnitInterval
 pub fn surgeist_color::UnitInterval::clamped(value: surgeist_color::Finite) -> Self
 pub const fn surgeist_color::UnitInterval::get(self) -> f64
 pub const fn surgeist_color::UnitInterval::new(value: f64) -> core::option::Option<Self>
+pub struct surgeist_color::WriteDigit<'owner>
+impl<'owner> surgeist_color::WriteDigit<'owner>
+pub const fn surgeist_color::WriteDigit<'owner>::index(&self) -> usize
+pub fn surgeist_color::WriteDigit<'owner>::record(self) -> (surgeist_color::DigitSlot<'owner>, surgeist_color::DigitReceipt<'owner>)
+impl core::fmt::Debug for surgeist_color::WriteDigit<'_>
+pub fn surgeist_color::WriteDigit<'_>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub fn surgeist_color::byte_alpha_for_serialization(alpha: u8) -> f64
 pub fn surgeist_color::convert_hsl_to_srgb(hsl: &surgeist_color::HslCoordinates) -> [surgeist_color::Finite; 3]
 pub fn surgeist_color::convert_hwb_to_srgb(hwb: &surgeist_color::HwbCoordinates) -> [surgeist_color::Finite; 3]

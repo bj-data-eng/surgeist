@@ -2,20 +2,20 @@
 //! controlled protocol with an HTML-style transformation sequence.
 
 use surgeist_color::{
-    Color, ColorSpace, DigitSlot, OperationOwner, PredefinedColorSpace, SerializationFamily,
-    SerializationRequest, Transformation,
+    Color, ColorSpace, DigitSlot, OperationOwner, PredefinedColorSpace, Serialization,
+    SerializationAction, SerializationFamily, SerializationReceipt, SerializationRequest,
+    SerializationStep, Transformation,
 };
 use surgeist_css::{
     CssAuthoredColorOrdinaryLimits, CssAuthoredColorOutcome, CssColorActionDescription as Action,
-    CssColorBank, CssColorBankLengths, CssColorFactIdentity, CssColorFacts, CssColorGrammarRequest,
-    CssColorInput, CssColorInputKind, CssColorOperation, CssColorOperationError,
-    CssColorOperationOwner, CssColorOrdinaryError, CssColorOrdinaryLimits, CssColorOrdinaryOutcome,
+    CssColorBank, CssColorFactIdentity, CssColorFacts, CssColorGrammarRequest, CssColorInput,
+    CssColorInputKind, CssColorOperation, CssColorOperationError, CssColorOperationOwner,
+    CssColorOrdinaryError, CssColorOrdinaryLimits, CssColorOrdinaryOutcome,
     CssColorOrdinaryResource, CssColorPaletteEntry, CssColorParseOutcome, CssColorPropertyFacts,
-    CssColorSchemeFact, CssColorSerialization, CssColorSlot, CssColorStandardFailure,
-    CssColorStandardFailureKind, CssColorTransformation, CssColorUnavailable, CssColorUnsupported,
-    CssDeviceColorFact, CssImportance, CssKnownProperty, CssKnownPropertyValueRef,
-    CssPropertyNameRef, CssUsedColorCheckpoint, parse_property_value_text, parse_used_color,
-    resolve_authored_color,
+    CssColorSchemeFact, CssColorSlot, CssColorStandardFailure, CssColorStandardFailureKind,
+    CssColorTransformation, CssColorUnavailable, CssColorUnsupported, CssDeviceColorFact,
+    CssImportance, CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef,
+    CssUsedColorCheckpoint, parse_property_value_text, parse_used_color, resolve_authored_color,
 };
 
 use super::{Observation, emitted, error_chain};
@@ -377,45 +377,50 @@ fn drive_transformation(
     Ok(computed)
 }
 
-/// Services every serialization action, collecting the emitted text.
+/// Services every action of Color's serialization of the checkpoint value,
+/// collecting the emitted text and counting actions by kind.
 fn drive_serialization<'num>(
-    serialization: &mut CssColorSerialization<'_, 'num, '_>,
+    mut serialization: Serialization<'num>,
     digits: &mut Vec<DigitSlot<'num>>,
     text: &mut String,
     stream: &mut [usize; 5],
-) -> Result<(), CssColorOperationError> {
-    while serialization.action() != Action::Serialized {
-        let mut action = serialization.next_action();
-        match action.description() {
-            Action::Compute(_) => {
+) -> SerializationReceipt {
+    loop {
+        let action = match serialization.step() {
+            SerializationStep::Complete(receipt) => return receipt,
+            SerializationStep::Pending(action) => action,
+        };
+        serialization = match action {
+            SerializationAction::Compute(compute) => {
                 stream[0] += 1;
-                action.compute()?;
+                compute.compute()
             }
-            Action::ReadNumericalDigit { index } => {
+            SerializationAction::ReadDigit(read) => {
                 stream[1] += 1;
-                action.read_numerical_digit(index, &digits[index])?;
+                let slot = &digits[read.index()];
+                read.read(slot)
             }
-            Action::AppendNumericalDigit { index } => {
+            SerializationAction::AppendDigit(write) => {
                 stream[2] += 1;
-                assert_eq!(index, digits.len(), "append at the digit end");
-                let record = action.numerical_record()?;
+                assert_eq!(write.index(), digits.len(), "append at the digit end");
+                let (record, receipt) = write.record();
                 digits.push(record);
-                action.numerical_written(index, &digits[index])?;
+                receipt.stored(&digits[digits.len() - 1])
             }
-            Action::UpdateNumericalDigit { index } => {
+            SerializationAction::ReplaceDigit(write) => {
                 stream[3] += 1;
-                digits[index] = action.numerical_record()?;
-                action.numerical_written(index, &digits[index])?;
+                let index = write.index();
+                let (record, receipt) = write.record();
+                digits[index] = record;
+                receipt.stored(&digits[index])
             }
-            Action::EmitUnit { unit } => {
+            SerializationAction::Emit(emit) => {
                 stream[4] += 1;
-                text.push(char::from(unit));
-                action.emitted(unit)?;
+                text.push(char::from(emit.unit()));
+                emit.emitted()
             }
-            _ => panic!("unexpected colour serialization action"),
-        }
+        };
     }
-    Ok(())
 }
 
 /// The controlled protocol over UTF-16 input: parse actions by kind, final
@@ -492,7 +497,6 @@ fn protocol(
     };
     observation.add_fact(format!("parsed={}", color_bits(checkpoint.value())));
     banks.iter_mut().for_each(Vec::clear);
-    let empty = CssColorBankLengths::new(0, 0, 0);
     let mut numerical_owner = OperationOwner::new();
     let mut slot = Some(checkpoint);
     for transformation in transformations {
@@ -501,7 +505,6 @@ fn protocol(
             &mut slot,
             &mut numerical_owner,
             *transformation,
-            empty,
         ) {
             Ok(actual) => actual,
             Err(error) => {
@@ -534,47 +537,30 @@ fn protocol(
             }
         }
     }
+    // CSS does not wrap serialization: the consumer serializes the checkpoint
+    // value with Color and keeps the checkpoint's standard failure.
+    let checkpoint = slot.expect("the last transformation returned its checkpoint");
+    let failure = checkpoint.standard_failure();
     let mut digits = Vec::new();
     let mut text = String::new();
     let mut stream = [0usize; 5];
-    let mut serialization =
-        match CssUsedColorCheckpoint::serialize(&mut slot, &mut numerical_owner, request, empty, 0)
-        {
-            Ok(serialization) => serialization,
-            Err(error) => {
-                observation.shape = "err".to_owned();
-                observation.add_fact(format!("serialize-error={}", error_chain(&error)));
-                return observation;
-            }
-        };
-    let streamed = drive_serialization(&mut serialization, &mut digits, &mut text, &mut stream);
+    let receipt = drive_serialization(
+        Serialization::new(&mut numerical_owner, checkpoint.value(), request),
+        &mut digits,
+        &mut text,
+        &mut stream,
+    );
     observation.add_fact(format!(
         "serialize-actions:compute={},read-digit={},append-digit={},update-digit={},emit={}",
         stream[0], stream[1], stream[2], stream[3], stream[4]
     ));
-    if let Err(error) = streamed {
-        serialization.abandon();
-        observation.shape = "err".to_owned();
-        observation.add_fact(format!("serialize-error={}", error_chain(&error)));
-        return observation;
-    }
-    match CssColorSerialization::take(&mut Some(serialization)) {
-        Ok(receipt) => {
-            observation.specified = emitted(text);
-            observation.add_fact(format!(
-                "receipt:length={} value={} failure={}",
-                receipt.length(),
-                color_bits(receipt.value()),
-                receipt
-                    .standard_failure()
-                    .map_or_else(|| "-".to_owned(), standard_failure)
-            ));
-        }
-        Err(error) => {
-            observation.shape = "err".to_owned();
-            observation.add_fact(format!("serialize-error={}", error_chain(&error)));
-        }
-    }
+    observation.specified = emitted(text);
+    observation.add_fact(format!(
+        "receipt:length={} value={} failure={}",
+        receipt.length(),
+        color_bits(receipt.value()),
+        failure.map_or_else(|| "-".to_owned(), standard_failure)
+    ));
     observation
 }
 

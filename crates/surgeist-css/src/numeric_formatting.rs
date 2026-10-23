@@ -132,9 +132,6 @@ fn format_finite_number(value: f64, limit: usize, rounding: RoundingMode) -> Res
     format::format_finite(value, rounding, limit).map_err(|error| match error {
         FormatError::ByteLimit => Error::new(ByteLimit),
         FormatError::CapacityOverflow => Error::new(CapacityOverflow),
-        FormatError::Protocol(_) => {
-            unreachable!("the ordinary formatter owns every acknowledgement")
-        }
         _ => unreachable!("all format errors in the pinned numerical color edition are handled"),
     })
 }

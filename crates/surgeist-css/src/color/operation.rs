@@ -934,11 +934,11 @@ fn same_lexical(left: &CssColorSlot<'_>, right: &CssColorSlot<'_>) -> bool {
 mod tests {
     use super::super::facts::{CssColorPropertyFacts, CssColorSchemeFact, CssDeviceColorFact};
     use super::*;
-    use crate::{
-        CssColorActionDescription as PublicAction, CssColorBankLengths, CssColorSerialization,
-        CssColorTransformation, CssUsedColorCheckpoint,
+    use crate::{CssColorTransformation, CssUsedColorCheckpoint};
+    use surgeist_color::{
+        SerializationAction as NumericalAction, SerializationRequest, SerializationStep,
+        Transformation,
     };
-    use surgeist_color::{SerializationRequest, Transformation};
     fn facts() -> CssColorFacts<'static> {
         CssColorFacts::new(
             CssColorFactIdentity::new(3, 5),
@@ -1018,60 +1018,56 @@ mod tests {
             .map(|byte| u16::from(*byte))
             .collect()
     }
+    /// Serializes the checkpoint's value with Color's serialization, refusing
+    /// the emission beyond `cap` output bytes as a consumer's admission would.
     fn serialize(
         checkpoint: UsedCheckpoint<'_, '_>,
         cap: usize,
     ) -> Result<(String, usize, Option<StandardFailure>), usize> {
         let failure = checkpoint.standard_failure();
         let mut numerical_owner = surgeist_color::OperationOwner::new();
-        let mut serializer = Some(
-            CssUsedColorCheckpoint::serialize(
-                &mut Some(CssUsedColorCheckpoint { checkpoint }),
-                &mut numerical_owner,
-                SerializationRequest::HtmlCompatible,
-                CssColorBankLengths::new(0, 0, 0),
-                0,
-            )
-            .unwrap(),
+        let mut serialization = surgeist_color::Serialization::new(
+            &mut numerical_owner,
+            checkpoint.value(),
+            SerializationRequest::HtmlCompatible,
         );
         let mut digits = Vec::new();
         let mut output = Vec::new();
-        loop {
-            let current = serializer.as_mut().unwrap();
-            if current.action() == PublicAction::Serialized {
-                break;
-            }
-            let mut action = current.next_action();
-            match action.description() {
-                PublicAction::Compute(_) => action.compute().unwrap(),
-                PublicAction::ReadNumericalDigit { index } => {
-                    action.read_numerical_digit(index, &digits[index]).unwrap()
+        let receipt = loop {
+            let action = match serialization.step() {
+                SerializationStep::Complete(receipt) => break receipt,
+                SerializationStep::Pending(action) => action,
+            };
+            serialization = match action {
+                NumericalAction::Compute(compute) => compute.compute(),
+                NumericalAction::ReadDigit(read) => {
+                    let slot = &digits[read.index()];
+                    read.read(slot)
                 }
-                PublicAction::AppendNumericalDigit { index } => {
-                    assert_eq!(index, digits.len());
-                    digits.push(action.numerical_record().unwrap());
-                    action.numerical_written(index, &digits[index]).unwrap()
+                NumericalAction::AppendDigit(write) => {
+                    assert_eq!(write.index(), digits.len());
+                    let (record, receipt) = write.record();
+                    digits.push(record);
+                    receipt.stored(&digits[digits.len() - 1])
                 }
-                PublicAction::UpdateNumericalDigit { index } => {
-                    digits[index] = action.numerical_record().unwrap();
-                    action.numerical_written(index, &digits[index]).unwrap()
+                NumericalAction::ReplaceDigit(write) => {
+                    let index = write.index();
+                    let (record, receipt) = write.record();
+                    digits[index] = record;
+                    receipt.stored(&digits[index])
                 }
-                PublicAction::EmitUnit { unit } => {
+                NumericalAction::Emit(emit) => {
                     if output.len() == cap {
-                        serializer.as_mut().unwrap().abandon();
-                        assert!(CssColorSerialization::take(&mut serializer).is_err());
+                        // Refused admission abandons the serialization.
                         digits.clear();
                         return Err(output.len());
                     }
-                    output.push(unit);
-                    action.emitted(unit).unwrap()
+                    output.push(emit.unit());
+                    emit.emitted()
                 }
-                other => panic!("unexpected {other:?}"),
-            }
-        }
-        let receipt = CssColorSerialization::take(&mut serializer).unwrap();
+            };
+        };
         assert_eq!(receipt.value().alpha(), Some(1.0));
-        assert_eq!(receipt.standard_failure().is_some(), failure.is_some());
         Ok((
             String::from_utf8(output).unwrap(),
             receipt.length(),
@@ -1089,7 +1085,6 @@ mod tests {
                 &mut Some(CssUsedColorCheckpoint { checkpoint }),
                 &mut numerical_owner,
                 effect,
-                CssColorBankLengths::new(0, 0, 0),
             )
             .unwrap(),
         );
@@ -1242,7 +1237,6 @@ mod tests {
                 Transformation::Convert(crate::ColorSpace::Predefined(
                     crate::PredefinedColorSpace::XyzD65,
                 )),
-                CssColorBankLengths::new(0, 0, 0),
             )
             .unwrap(),
         );

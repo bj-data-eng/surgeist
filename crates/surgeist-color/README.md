@@ -54,25 +54,32 @@ formatting and rounding, including non-color CSS consumers;
 
 ## Controlled operations
 
-`Computation`, `Serialization` and `format::FiniteFormatter` expose pending
-actions and their actual register/read/write/output layouts. A caller admits an
-action before executing its guard. Dropping an unexecuted guard leaves the
-pending action unchanged. Numerical computations use fixed registers;
-serialization and finite formatting lend `DigitSlot` records to caller-owned
-banks and emit one byte at a time. They allocate no hidden digit bank.
+`Computation`, `Serialization` and `format::FiniteFormatter` are typestates.
+Each transition consumes its continuation and returns the next state, so a
+used, completed or abandoned operation cannot be driven again. A computation
+exposes its kernel and layout; `compute` returns the total result and
+`into_request` declines it. `step` on a serialization or formatter yields
+exactly one pending action, or the completed `SerializationReceipt` or
+`FormatSummary`; only that action's completion method exists on it. A compute
+action computes, a digit read reads one record, a digit write mints a record
+and a receipt that acknowledges its actual storage, and an emission
+acknowledges the byte it issued. A caller admits each action's register and
+`ActionLayout` before completing it. Declining an action, or refusing storage
+through the receipt, returns the unchanged continuation. Dropping a
+continuation or an action abandons it without further numerical work.
 
-Keep `OperationOwner` as a separate stack local. Operations and records borrow
-its real identity, phase and lifetime; retained records prevent owner reuse.
-Foreign records, wrong indices/replies and terminated operations produce typed
-protocol errors. Bank disposal remains the caller's responsibility.
-
-`take(&mut Option<Operation>)` removes only a completed success. A refusal
-preserves the operation. `recover` returns its original request or value and
-removes the operation without completing more numerical work. A computed result
-is committed only by successful `take`. Serialization recovery also reports
-already emitted length; the consumer owns its output buffer and atomic
-publication. Ordinary `serialize` services this same protocol with explicit
-action, digit and output limits and fallible allocation.
+Keep `OperationOwner` as a separate stack local. Operations and `DigitSlot`
+records borrow its real identity, phase and lifetime; a retained record
+prevents owner reuse at compile time. A record of another operation or index
+is a defect in the driving code and panics when it is read or acknowledged,
+as slice indexing does. The record a receipt acknowledges must be the one the
+caller actually stored at that index: the check covers only the record's
+operation, index and digit, so a substituted record with the same identity is
+accepted, and reading back a different stored record yields wrong output that
+the fixed registers cannot detect. Bank disposal remains the caller's
+responsibility. The consumer owns its output buffer and atomic publication.
+Ordinary `serialize` services this same continuation with explicit action,
+digit and output limits and fallible allocation.
 
 ## Scope and sources
 

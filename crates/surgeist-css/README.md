@@ -376,24 +376,23 @@ outcome; refusal preserves the operation. Dropping an action leaves it pending;
 controller.
 
 Retire actual CSS scratch through its original owner before moving a used
-checkpoint to a transformation or serializer. `CssColorBankLengths` checks empty
-logical banks but cannot prove ticket disposal. Keep a separate
-`surgeist_color::OperationOwner` stack local for the numerical continuation.
-`CssUsedColorCheckpoint::transform` lends that anchor to Color's computation;
-`serialize` lends it to Color's serializer and checks an empty numerical bank.
-The consumer owns a fourth bank of Color `DigitSlot` records, distinct from the
-three CSS parse banks. `ReadNumericalDigit`, `AppendNumericalDigit` and
-`UpdateNumericalDigit` actions expose its actual read/write layout; the
-serialization guard uses `read_numerical_digit`, `numerical_record` and
-`numerical_written`. Output remains one admitted unit at a time. Release and
-drop every digit record before reusing its numerical anchor.
+checkpoint to a transformation; bank disposal is the consumer's policy. Keep a
+separate `surgeist_color::OperationOwner` stack local for the numerical
+continuation. `CssUsedColorCheckpoint::transform` lends that anchor to Color's
+computation. CSS does not wrap serialization: the consumer serializes
+`checkpoint.value()` with `surgeist_color::Serialization` directly and keeps the
+checkpoint's `standard_failure()` and `source()` for publication. That
+serializer's own typed actions lend a fourth, consumer-owned bank of Color
+`DigitSlot` records, distinct from the three CSS parse banks, and emit one
+admitted unit at a time. Digit records borrow the numerical anchor, so it
+cannot be reused while any of them lives.
 
-Transformation and serialization `take(&mut Option<Self>)` remove only a
-completed success. A computed result becomes the checkpoint's committed value
-only at successful take. Refused take leaves the wrapper intact; `recover`
-removes it and returns its original committed checkpoint, including source,
-facts and standard-failure context. Recovery does not complete pending work or
-restart a cancelled controller. A standard-failure checkpoint can accept an
+Transformation `take(&mut Option<Self>)` removes only a completed success. A
+computed result becomes the checkpoint's committed value only at successful
+take. Refused take leaves the wrapper intact; `recover` removes it and returns
+its original committed checkpoint, including source, facts and
+standard-failure context. Recovery does not complete pending work or restart a
+cancelled controller. A standard-failure checkpoint can accept an
 explicitly checked caller fallback while retaining that context. Unavailable,
 unsupported, malformed-fact and protocol errors remain distinct from standard
 invalidity. A channel value beyond binary64, including a top-level infinite

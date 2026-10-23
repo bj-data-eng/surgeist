@@ -354,12 +354,11 @@ fn color_utf16_reference_default_and_generated_history_keep_distinct_actual_valu
 // factor16 bounds fixed grammar/evaluation/slot handoffs around these requests;
 // reserve/copy allowance is included in per-action compiled slot/layout cost.
 fn matrix_limits() -> HtmlParseLimits {
-    use surgeist_css::{
-        CssColorOperation, CssColorSerialization, CssColorSlot, CssColorTransformation,
-    };
+    use surgeist_color::Serialization;
+    use surgeist_css::{CssColorOperation, CssColorSlot, CssColorTransformation};
     let register = [
         CssColorOperation::register_bytes(),
-        CssColorSerialization::register_bytes(),
+        Serialization::register_bytes(),
         CssColorTransformation::register_bytes(),
     ]
     .into_iter()
@@ -367,7 +366,7 @@ fn matrix_limits() -> HtmlParseLimits {
     .unwrap() as u64;
     let guard = [
         CssColorOperation::action_bytes(),
-        CssColorSerialization::action_bytes(),
+        Serialization::action_bytes(),
         CssColorTransformation::action_bytes(),
     ]
     .into_iter()

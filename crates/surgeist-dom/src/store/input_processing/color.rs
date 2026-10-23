@@ -7,15 +7,16 @@ use super::{
 use crate::DocumentString;
 use std::{mem::size_of, sync::atomic::AtomicBool};
 use surgeist_color::{
-    Color, ColorSpace, DigitSlot, OperationOwner, PredefinedColorSpace, SerializationRequest,
-    Transformation,
+    ActionLayout, Color, ColorSpace, DigitSlot, OperationOwner, PredefinedColorSpace,
+    Serialization, SerializationAction, SerializationReceipt, SerializationRequest,
+    SerializationStep, Transformation,
 };
 use surgeist_css::{
-    CssColorActionDescription as Action, CssColorActionLayout, CssColorBank, CssColorBankLengths,
-    CssColorFactIdentity, CssColorFacts, CssColorGrammarRequest, CssColorInputKind,
-    CssColorOperation, CssColorOperationError, CssColorOperationOwner, CssColorParseOutcome,
-    CssColorPropertyFacts, CssColorSchemeFact, CssColorSerialization, CssColorSlot,
-    CssColorTransformation, CssDeviceColorFact, CssUsedColorCheckpoint,
+    CssColorActionDescription as Action, CssColorActionLayout, CssColorBank, CssColorFactIdentity,
+    CssColorFacts, CssColorGrammarRequest, CssColorInputKind, CssColorOperation,
+    CssColorOperationError, CssColorOperationOwner, CssColorParseOutcome, CssColorPropertyFacts,
+    CssColorSchemeFact, CssColorSlot, CssColorTransformation, CssDeviceColorFact,
+    CssUsedColorCheckpoint,
 };
 use surgeist_html::{HtmlInputColorEffect, HtmlInputColorSerialization, HtmlInputColorSpace};
 
@@ -53,6 +54,34 @@ fn begin_action(
     ])?;
     meter.fixed(fixed, fixed, source, cancel)?;
     Ok(fixed)
+}
+
+/// A Color action is its own description; it is observed with its layout.
+fn begin_numerical_action(
+    meter: &mut InputProcessing,
+    register: usize,
+    guard: usize,
+    source: Option<&Formation>,
+    cancel: &AtomicBool,
+) -> Result<usize, DomError> {
+    // The register is observed and its acknowledged transition may copy it.
+    meter.charge(sum(&[register, register])?, source, cancel)?;
+    let fixed = sum(&[guard, size_of::<ActionLayout>()])?;
+    meter.fixed(fixed, fixed, source, cancel)?;
+    Ok(fixed)
+}
+
+fn numerical_payload(
+    meter: &mut InputProcessing,
+    layout: ActionLayout,
+    source: Option<&Formation>,
+    cancel: &AtomicBool,
+) -> Result<(), DomError> {
+    meter.charge(
+        sum(&[layout.read_bytes, layout.write_bytes, layout.output_bytes])?,
+        source,
+        cancel,
+    )
 }
 
 fn payload(
@@ -229,15 +258,8 @@ fn transform<'css, 'facts>(
         cancel,
     )?;
     let result = (|| {
-        let mut operation = Some(
-            CssUsedColorCheckpoint::transform(
-                checkpoint,
-                owner,
-                effect,
-                CssColorBankLengths::new(0, 0, 0),
-            )
-            .map_err(error)?,
-        );
+        let mut operation =
+            Some(CssUsedColorCheckpoint::transform(checkpoint, owner, effect).map_err(error)?);
         let transformed = (|| {
             loop {
                 meter.poll(cancel)?;
@@ -286,6 +308,7 @@ fn transform<'css, 'facts>(
     result
 }
 
+/// CSS does not wrap serialization: Color serializes the checkpoint's value.
 fn serialize<'css, 'facts>(
     meter: &mut InputProcessing,
     checkpoint: &mut Option<CssUsedColorCheckpoint<'css, 'facts>>,
@@ -298,65 +321,62 @@ fn serialize<'css, 'facts>(
     let marker = source_marker(source);
     meter.fixed(
         sum(&[
-            size_of::<Option<CssColorSerialization<'_, '_, '_>>>(),
+            size_of::<Option<Serialization<'_>>>(),
             size_of::<Vec<DigitSlot<'_>>>(),
             size_of::<Vec<u16>>(),
-            size_of::<surgeist_css::CssColorSerializationReceipt<'_, '_>>(),
+            size_of::<SerializationReceipt>(),
         ])?,
         sum(&[
-            size_of::<Option<CssColorSerialization<'_, '_, '_>>>(),
+            size_of::<Option<Serialization<'_>>>(),
             size_of::<Vec<DigitSlot<'_>>>(),
             size_of::<Vec<u16>>(),
-            size_of::<surgeist_css::CssColorSerializationReceipt<'_, '_>>(),
+            size_of::<SerializationReceipt>(),
         ])?,
         source,
         cancel,
     )?;
     let result = (|| {
+        let value = checkpoint
+            .take()
+            .ok_or(DomError::InputProcessingProtocol)?
+            .value();
         #[cfg(test)]
         let mut written = crate::store::CopyObservation::default();
         let mut digits: Vec<DigitSlot<'_>> = Vec::new();
         let mut output = Vec::new();
         let serialized = {
-            let mut operation = Some(
-                CssUsedColorCheckpoint::serialize(
-                    checkpoint,
-                    owner,
-                    request,
-                    CssColorBankLengths::new(0, 0, 0),
-                    0,
-                )
-                .map_err(error)?,
-            );
+            let mut serialization = Some(Serialization::new(owner, value, request));
             let serialized = (|| {
-                loop {
+                let receipt = loop {
                     meter.poll(cancel)?;
                     meter.inspect(source, cancel)?;
-                    let actual = operation
-                        .as_mut()
-                        .ok_or(DomError::InputProcessingProtocol)?;
-                    if actual.action() == Action::Serialized {
-                        break;
-                    }
-                    let bytes = begin_action(
+                    let action = match serialization
+                        .take()
+                        .ok_or(DomError::InputProcessingProtocol)?
+                        .step()
+                    {
+                        SerializationStep::Complete(receipt) => break receipt,
+                        SerializationStep::Pending(action) => action,
+                    };
+                    let bytes = begin_numerical_action(
                         meter,
-                        CssColorSerialization::register_bytes(),
-                        CssColorSerialization::action_bytes(),
+                        Serialization::register_bytes(),
+                        Serialization::action_bytes(),
                         source,
                         cancel,
                     )?;
                     let serviced = (|| {
-                        let mut action = actual.next_action();
-                        payload(meter, action.layout(), source, cancel)?;
-                        match action.description() {
-                            Action::Compute(_) => action.compute().map_err(error),
-                            Action::ReadNumericalDigit { index } => action
-                                .read_numerical_digit(
-                                    index,
-                                    digits.get(index).ok_or(DomError::InputProcessingProtocol)?,
-                                )
-                                .map_err(error),
-                            Action::AppendNumericalDigit { index } => {
+                        numerical_payload(meter, action.layout(), source, cancel)?;
+                        Ok(match action {
+                            SerializationAction::Compute(compute) => compute.compute(),
+                            SerializationAction::ReadDigit(read) => {
+                                let slot = digits
+                                    .get(read.index())
+                                    .ok_or(DomError::InputProcessingProtocol)?;
+                                read.read(slot)
+                            }
+                            SerializationAction::AppendDigit(write) => {
+                                let index = write.index();
                                 if index != digits.len() {
                                     return Err(DomError::InputProcessingProtocol);
                                 }
@@ -369,24 +389,24 @@ fn serialize<'css, 'facts>(
                                     source,
                                     cancel,
                                 )?;
-                                digits.push(action.numerical_record().map_err(error)?);
+                                let (record, receipt) = write.record();
+                                digits.push(record);
                                 #[cfg(test)]
                                 written.pushed::<DigitSlot<'_>>();
-                                action
-                                    .numerical_written(index, &digits[index])
-                                    .map_err(error)?;
+                                let next = receipt.stored(&digits[index]);
                                 #[cfg(test)]
                                 super::committed(super::Commit::ColorDigit, cancel);
-                                Ok(())
+                                next
                             }
-                            Action::UpdateNumericalDigit { index } => {
+                            SerializationAction::ReplaceDigit(write) => {
                                 let stored = digits
-                                    .get_mut(index)
+                                    .get_mut(write.index())
                                     .ok_or(DomError::InputProcessingProtocol)?;
-                                *stored = action.numerical_record().map_err(error)?;
-                                action.numerical_written(index, stored).map_err(error)
+                                let (record, receipt) = write.record();
+                                *stored = record;
+                                receipt.stored(stored)
                             }
-                            Action::EmitUnit { unit } => {
+                            SerializationAction::Emit(emit) => {
                                 let required = output
                                     .len()
                                     .checked_add(1)
@@ -401,39 +421,30 @@ fn serialize<'css, 'facts>(
                                 // Producer emission is a byte; actual stored output
                                 // and its capacity are UTF16, at two bytes per unit.
                                 meter.charge(size_of::<u16>(), source, cancel)?;
-                                output.push(u16::from(unit));
+                                output.push(u16::from(emit.unit()));
                                 #[cfg(test)]
                                 written.pushed::<u16>();
-                                action.emitted(unit).map_err(error)?;
+                                let next = emit.emitted();
                                 #[cfg(test)]
                                 super::committed(super::Commit::OutputUnit, cancel);
-                                Ok(())
+                                next
                             }
-                            _ => Err(DomError::InputProcessingProtocol),
-                        }
+                        })
                     })();
                     meter.release(bytes, metadata(bytes), source);
-                    serviced?;
-                }
+                    serialization = Some(serviced?);
+                };
                 meter.charge(
-                    sum(&[
-                        1,
-                        size_of::<surgeist_css::CssColorSerializationReceipt<'_, '_>>(),
-                    ])?,
+                    sum(&[1, size_of::<SerializationReceipt>()])?,
                     source,
                     cancel,
                 )?;
-                let receipt = CssColorSerialization::take(&mut operation).map_err(error)?;
                 if receipt.length() != output.len() {
                     return Err(DomError::InputProcessingProtocol);
                 }
                 Ok(())
             })();
-            if serialized.is_err()
-                && let Some(operation) = operation.as_mut()
-            {
-                operation.abandon();
-            }
+            // An unfinished serialization ends here, before its records go.
             serialized
         };
         drop(digits);

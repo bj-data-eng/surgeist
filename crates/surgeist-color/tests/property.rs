@@ -523,17 +523,9 @@ mod api {
         ]
     }
     /// Executes the request through the controlled computation.
-    pub(super) fn compute(request: NumericalRequest) -> std::result::Result<Color, String> {
+    pub(super) fn compute(request: NumericalRequest) -> Color {
         let mut owner = OperationOwner::new();
-        let mut computation =
-            Some(Computation::new(&mut owner, request).map_err(|e| e.to_string())?);
-        computation
-            .as_mut()
-            .expect("live computation")
-            .next_action()
-            .compute()
-            .map_err(|e| e.to_string())?;
-        Computation::take(&mut computation).map_err(|e| e.to_string())
+        Computation::new(&mut owner, request).compute()
     }
     pub(super) fn rectangular(space: Space) -> RectangularSpace {
         match space {
@@ -688,14 +680,12 @@ fn interpolation_endpoints(case: &Case, first: Color, second: Color) -> Check {
 
 fn computation_matches_direct(case: &Case) -> Check {
     for (operation, direct, request) in api::operations(case) {
-        match api::compute(request) {
-            Ok(computed) if computed.identical(direct) => {}
-            other => {
-                return Err((
-                    operation,
-                    format!("computation {other:?} differs from direct {direct:?}"),
-                ));
-            }
+        let computed = api::compute(request);
+        if !computed.identical(direct) {
+            return Err((
+                operation,
+                format!("computation {computed:?} differs from direct {direct:?}"),
+            ));
         }
     }
     Ok(())

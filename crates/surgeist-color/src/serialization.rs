@@ -133,7 +133,6 @@ pub(crate) enum SerializationAction {
     ReplaceDigit { index: usize },
     Emit { unit: u8 },
     Done,
-    Stopped,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum SerializationKernel {
@@ -146,10 +145,13 @@ enum Stage {
     Pieces,
     Format(FiniteFormatCursor),
     Done,
-    Stopped,
 }
 
 /// Fixed state only. The caller owns all digits and every final output byte.
+///
+/// Each completion method requires its own pending action. The typed actions
+/// in `controlled` call only the method of the action they were issued for,
+/// so a mismatch is a defect in this crate and panics.
 pub(crate) struct SerializationCursor {
     value: Color,
     request: SerializationRequest,
@@ -176,6 +178,14 @@ impl SerializationCursor {
             digits: 0,
             emitted: 0,
         }
+    }
+    /// The serialized value, unchanged by planning.
+    pub(crate) const fn value(&self) -> Color {
+        self.value
+    }
+    /// Count of acknowledged output bytes.
+    pub(crate) const fn emitted(&self) -> usize {
+        self.emitted
     }
     pub(crate) fn action(&self) -> SerializationAction {
         match &self.stage {
@@ -214,7 +224,6 @@ impl SerializationCursor {
                 FormatRequest::EmitByte { unit } => SerializationAction::Emit { unit },
             },
             Stage::Done => SerializationAction::Done,
-            Stage::Stopped => SerializationAction::Stopped,
         }
     }
     pub(crate) fn kernel(&self) -> SerializationKernel {
@@ -235,7 +244,8 @@ impl SerializationCursor {
             _ => None,
         }
     }
-    pub(crate) fn compute(&mut self) -> Result<(), crate::ProtocolError> {
+    pub(crate) fn compute(&mut self) {
+        let pending = self.action();
         match &mut self.stage {
             Stage::Plan => {
                 self.plan = Some(Plan::new(self.value, self.request));
@@ -250,50 +260,52 @@ impl SerializationCursor {
                     ));
                 }
                 Piece::End => self.stage = Stage::Done,
-                _ if self.action() == SerializationAction::Compute => {
+                _ => {
+                    assert_eq!(
+                        pending,
+                        SerializationAction::Compute,
+                        "a piece transition is computed only after its last byte"
+                    );
                     self.piece += 1;
                     self.offset = 0;
                 }
-                _ => return Err(crate::ProtocolError::WrongAction),
             },
             Stage::Format(cursor) => match cursor.next_request() {
                 FormatRequest::Compute(kernel) => cursor
                     .complete(FormatReply::Computed(kernel))
-                    .map_err(crate::ProtocolError::from)?,
+                    .expect("a pending format kernel accepts its own completion"),
                 FormatRequest::Done(_) => {
                     self.stage = Stage::Pieces;
                     self.piece += 1;
                     self.offset = 0;
                 }
-                _ => return Err(crate::ProtocolError::WrongAction),
+                request => panic!("serialization compute issued for pending {request:?}"),
             },
-            Stage::Done | Stage::Stopped => return Err(crate::ProtocolError::Terminated),
+            Stage::Done => panic!("a complete serialization has no pending computation"),
         }
-        Ok(())
     }
-    pub(crate) fn read_digit(
-        &mut self,
-        index: usize,
-        digit: FormatDigit,
-    ) -> Result<(), crate::ProtocolError> {
-        if self.action() != (SerializationAction::ReadDigit { index }) {
-            return Err(crate::ProtocolError::WrongAction);
-        }
+    pub(crate) fn read_digit(&mut self, index: usize, digit: FormatDigit) {
+        assert_eq!(
+            self.action(),
+            SerializationAction::ReadDigit { index },
+            "a digit read is issued only for the pending read"
+        );
         let Stage::Format(cursor) = &mut self.stage else {
-            return Err(crate::ProtocolError::WrongAction);
+            panic!("a pending digit read belongs to a number")
         };
         cursor
             .complete(FormatReply::Digit {
                 index: index - self.digit_base,
                 digit,
             })
-            .map_err(crate::ProtocolError::from)
+            .expect("a pending digit read accepts its own record");
     }
-    pub(crate) fn digit_record(&self, index: usize) -> Result<FormatDigit, crate::ProtocolError> {
+    /// The digit the pending append or replacement at `index` writes.
+    pub(crate) fn pending_digit(&self, index: usize) -> FormatDigit {
         let Stage::Format(cursor) = &self.stage else {
-            return Err(crate::ProtocolError::WrongAction);
+            panic!("a pending digit write belongs to a number")
         };
-        let digit = match cursor.next_request() {
+        match cursor.next_request() {
             FormatRequest::AppendDigit {
                 index: expected,
                 digit,
@@ -302,80 +314,61 @@ impl SerializationCursor {
                 index: expected,
                 digit,
             } if self.digit_base + expected == index => digit,
-            _ => return Err(crate::ProtocolError::WrongIndex),
-        };
-        if matches!(self.action(), SerializationAction::AppendDigit { .. }) {
-            self.digits
-                .checked_add(1)
-                .ok_or(crate::ProtocolError::Overflow)?;
+            request => panic!("digit write at index {index} issued for pending {request:?}"),
         }
-        Ok(digit)
     }
     /// Called only after the actual append/replacement succeeds. Refused storage
     /// leaves the same request available, including the exact old digit.
-    pub(crate) fn digit_written(
-        &mut self,
-        index: usize,
-        digit: FormatDigit,
-    ) -> Result<(), crate::ProtocolError> {
+    pub(crate) fn digit_written(&mut self, index: usize, digit: FormatDigit) {
         let action = self.action();
-        let reply = match action {
+        let (reply, next) = match action {
             SerializationAction::AppendDigit { index: expected }
                 if index == expected && index == self.digits =>
             {
-                FormatReply::Appended {
-                    index: index - self.digit_base,
-                    digit,
-                }
+                (
+                    FormatReply::Appended {
+                        index: index - self.digit_base,
+                        digit,
+                    },
+                    self.digits
+                        .checked_add(1)
+                        .expect("at most 309 digits per number fit in usize"),
+                )
             }
-            SerializationAction::ReplaceDigit { index: expected } if index == expected => {
+            SerializationAction::ReplaceDigit { index: expected } if index == expected => (
                 FormatReply::Replaced {
                     index: index - self.digit_base,
                     digit,
-                }
-            }
-            _ => return Err(crate::ProtocolError::WrongIndex),
-        };
-        let next = if matches!(action, SerializationAction::AppendDigit { .. }) {
-            self.digits
-                .checked_add(1)
-                .ok_or(crate::ProtocolError::Overflow)?
-        } else {
-            self.digits
+                },
+                self.digits,
+            ),
+            _ => panic!("digit write at index {index} issued for pending {action:?}"),
         };
         let Stage::Format(cursor) = &mut self.stage else {
-            return Err(crate::ProtocolError::WrongAction);
+            panic!("a pending digit write belongs to a number")
         };
-        cursor.complete(reply).map_err(crate::ProtocolError::from)?;
+        cursor
+            .complete(reply)
+            .expect("a pending digit write accepts its own record");
         self.digits = next;
-        Ok(())
     }
-    pub(crate) fn emitted(&mut self, unit: u8) -> Result<(), crate::ProtocolError> {
-        if self.action() != (SerializationAction::Emit { unit }) {
-            return Err(crate::ProtocolError::WrongAction);
-        }
+    pub(crate) fn emitted_unit(&mut self, unit: u8) {
+        assert_eq!(
+            self.action(),
+            SerializationAction::Emit { unit },
+            "an emission is acknowledged only for its own pending byte"
+        );
         let next = self
             .emitted
             .checked_add(1)
-            .ok_or(crate::ProtocolError::Overflow)?;
+            .expect("serialized output length fits in usize");
         match &mut self.stage {
             Stage::Format(cursor) => cursor
                 .complete(FormatReply::Emitted { unit })
-                .map_err(crate::ProtocolError::from)?,
+                .expect("a pending emission accepts its own byte"),
             Stage::Pieces => self.offset += 1,
-            _ => return Err(crate::ProtocolError::WrongAction),
+            _ => panic!("an emission belongs to a piece or a number"),
         }
         self.emitted = next;
-        Ok(())
-    }
-    pub(crate) fn abandon(&mut self) {
-        self.stage = Stage::Stopped;
-    }
-    pub(crate) fn completed_length(&self) -> Result<usize, crate::ProtocolError> {
-        if matches!(self.stage, Stage::Done) {
-            Ok(self.emitted)
-        } else {
-            Err(crate::ProtocolError::Terminated)
-        }
     }
 }

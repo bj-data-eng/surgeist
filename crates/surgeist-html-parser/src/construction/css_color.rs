@@ -110,6 +110,21 @@ pub(super) fn action_layout(
     c.checkpoint()?;
     Ok(())
 }
+/// Charges one Color serialization action's digit-record and output payload,
+/// with the same categories as the numerical part of a CSS action layout.
+pub(super) fn numerical_layout(
+    c: &mut ParseControl,
+    layout: surgeist_color::ActionLayout,
+) -> Result<(), SessionError> {
+    c.charge(WorkCategory::InspectByte, layout.read_bytes as u64)?;
+    c.charge(WorkCategory::CopyByte, layout.write_bytes as u64)?;
+    if layout.write_bytes != 0 {
+        c.charge(WorkCategory::RecordWrite, 1)?;
+    }
+    c.charge(WorkCategory::CopyByte, layout.output_bytes as u64)?;
+    c.checkpoint()?;
+    Ok(())
+}
 pub(super) fn parse<'owner, 'facts, E: From<SessionError> + From<ParseStop>>(
     c: &mut ParseControl,
     input: &[u16],

@@ -1361,26 +1361,19 @@ fn completed<'css, 'authored: 'css, 'facts>(
     checkpoint
 }
 fn native_digit(owner: &mut surgeist_color::OperationOwner) -> surgeist_color::DigitSlot<'_> {
-    let mut formatter = surgeist_color::format::FiniteFormatter::new(
+    use surgeist_color::format::{FiniteFormatter, FormatAction, FormatStep, RoundingMode};
+    let mut formatter = FiniteFormatter::new(
         owner,
         surgeist_color::Finite::new(1.0).unwrap(),
-        surgeist_color::format::RoundingMode::TowardPositiveInfinity,
-    )
-    .unwrap();
+        RoundingMode::TowardPositiveInfinity,
+    );
     loop {
-        let mut action = formatter.next_action();
-        match action.description() {
-            surgeist_color::ActionDescription::Compute(_) => action.compute().unwrap(),
-            surgeist_color::ActionDescription::AppendDigit { .. } => {
-                break action.record().unwrap();
-            }
-            other => panic!("native digit fixture {other:?}"),
-        }
+        formatter = match formatter.step() {
+            FormatStep::Pending(FormatAction::Compute(compute)) => compute.compute(),
+            FormatStep::Pending(FormatAction::AppendDigit(write)) => break write.record().0,
+            _ => panic!("a coefficient digit precedes every read"),
+        };
     }
-}
-
-fn empty_banks() -> CssColorBankLengths {
-    CssColorBankLengths::new(0, 0, 0)
 }
 
 #[test]
@@ -1460,7 +1453,6 @@ fn authored_numerical_success_commits_only_on_take_and_receipt_releases_the_nume
                 &mut used,
                 &mut numerical_owner,
                 transformation,
-                empty_banks(),
             )
             .unwrap(),
         );
@@ -1468,7 +1460,7 @@ fn authored_numerical_success_commits_only_on_take_and_receipt_releases_the_nume
         assert!(matches!(
             CssAuthoredColorTransformation::take(&mut transform),
             Err(CssColorOperationError::Protocol(
-                CssColorProtocolError::NumericalProtocol(surgeist_color::ProtocolError::NotReady)
+                CssColorProtocolError::Terminal
             ))
         ));
         assert!(transform.is_some());
@@ -1491,15 +1483,13 @@ fn authored_numerical_success_commits_only_on_take_and_receipt_releases_the_nume
             &mut used,
             &mut numerical_owner,
             SerializationRequest::HtmlCompatible,
-            empty_banks(),
-            0,
         )
         .unwrap(),
     );
     assert!(matches!(
         CssAuthoredColorSerialization::take(&mut serializer),
         Err(CssColorOperationError::Protocol(
-            CssColorProtocolError::NumericalProtocol(surgeist_color::ProtocolError::NotReady)
+            CssColorProtocolError::Terminal
         ))
     ));
     let mut digits = Vec::new();
@@ -1545,18 +1535,14 @@ fn authored_numerical_success_commits_only_on_take_and_receipt_releases_the_nume
     assert_eq!(receipt.fact_identity(), facts.identity());
     drop(digits);
     drop(serializer);
-    let mut next = Some(
-        Computation::new(
-            &mut numerical_owner,
-            NumericalRequest::WithAlpha {
-                value: receipt.value(),
-                alpha: None,
-            },
-        )
-        .unwrap(),
+    let next = Computation::new(
+        &mut numerical_owner,
+        NumericalRequest::WithAlpha {
+            value: receipt.value(),
+            alpha: None,
+        },
     );
-    next.as_mut().unwrap().next_action().compute().unwrap();
-    assert_eq!(Computation::take(&mut next).unwrap().alpha(), None);
+    assert_eq!(next.compute().alpha(), None);
     assert_eq!(receipt.length(), output.len());
     // Literal expected output above is the oracle; source parity is additional.
     let source = parse_used_color(
@@ -1583,65 +1569,15 @@ fn authored_numerical_success_commits_only_on_take_and_receipt_releases_the_nume
 }
 
 #[test]
-fn numerical_initialization_refusals_preserve_the_original_checkpoint_and_phase() {
-    use surgeist_color::{OperationOwner, SerializationRequest, Transformation};
+fn numerical_initialization_layouts_and_declined_transformation_preserve_the_checkpoint() {
+    use surgeist_color::{OperationOwner, Transformation};
     let facts = facts();
     let root = color("rgb(calc(1 + 2) 0 0)");
     let mut css_owner = CssColorOperationOwner::new();
-    let (checkpoint, mut banks) = completed_with_banks(&mut css_owner, &root, &facts);
-    let mut resolved = Some(checkpoint);
+    let mut resolved = Some(completed(&mut css_owner, &root, &facts));
     let mut used = Some(CssAuthoredColorCheckpoint::take_used(&mut resolved).unwrap());
     let original = used.as_ref().unwrap().value();
     let mut numerical_owner = OperationOwner::new();
-    for index in 0..3 {
-        assert!(!banks[index].is_empty());
-        let lengths = CssColorBankLengths::new(banks[0].len(), banks[1].len(), banks[2].len());
-        assert!(matches!(
-            CssAuthoredUsedColorCheckpoint::transform(
-                &mut used,
-                &mut numerical_owner,
-                Transformation::ForceOpaqueAlpha,
-                lengths
-            ),
-            Err(CssColorOperationError::Protocol(
-                CssColorProtocolError::StorageNotEmpty
-            ))
-        ));
-        assert!(used.as_ref().unwrap().is_current());
-        assert!(used.as_ref().unwrap().value().identical(original));
-        assert!(matches!(
-            CssAuthoredUsedColorCheckpoint::serialize(
-                &mut used,
-                &mut numerical_owner,
-                SerializationRequest::Css,
-                lengths,
-                0
-            ),
-            Err(CssColorOperationError::Protocol(
-                CssColorProtocolError::StorageNotEmpty
-            ))
-        ));
-        assert!(used.as_ref().unwrap().is_current());
-        drop(std::mem::take(&mut banks[index]));
-    }
-    drop(banks);
-    let mut occupied_owner = OperationOwner::new();
-    let occupied_digits = vec![native_digit(&mut occupied_owner)];
-    assert!(matches!(
-        CssAuthoredUsedColorCheckpoint::serialize(
-            &mut used,
-            &mut numerical_owner,
-            SerializationRequest::Css,
-            empty_banks(),
-            occupied_digits.len()
-        ),
-        Err(CssColorOperationError::Protocol(
-            CssColorProtocolError::NumericalProtocol(
-                surgeist_color::ProtocolError::StorageNotEmpty
-            )
-        ))
-    ));
-    drop(occupied_digits);
     assert!(used.as_ref().unwrap().is_current());
     assert!(std::ptr::eq(used.as_ref().unwrap().authored(), &root));
     assert!(std::ptr::eq(used.as_ref().unwrap().facts(), &facts));
@@ -1659,16 +1595,7 @@ fn numerical_initialization_refusals_preserve_the_original_checkpoint_and_phase(
         std::mem::size_of::<CssColorOperationOwner>()
     );
     assert_eq!(init.numerical_owner_bytes, OperationOwner::layout_bytes());
-    assert_eq!(
-        init.bank_length_bytes,
-        std::mem::size_of::<CssColorBankLengths>()
-    );
-    assert_eq!(init.numerical_digit_length_bytes, 0);
     let serialization_init = CssAuthoredColorSerialization::initialization_layout();
-    assert_eq!(
-        serialization_init.numerical_digit_length_bytes,
-        std::mem::size_of::<usize>()
-    );
     assert_eq!(
         serialization_init.register_bytes,
         CssAuthoredColorSerialization::register_bytes()
@@ -1678,7 +1605,6 @@ fn numerical_initialization_refusals_preserve_the_original_checkpoint_and_phase(
             &mut used,
             &mut numerical_owner,
             Transformation::QuantizeSrgb,
-            empty_banks(),
         )
         .unwrap(),
     );
@@ -1727,7 +1653,6 @@ fn quantizing_a_non_srgb_fallback_converts_it_first_and_keeps_the_original_cause
             &mut used,
             &mut numerical_owner,
             Transformation::QuantizeSrgb,
-            empty_banks(),
         )
         .unwrap(),
     );
@@ -1784,8 +1709,6 @@ fn overflowing_hsl_serialization_computes_and_recovery_keeps_the_original_cause(
             &mut used,
             &mut numerical_owner,
             SerializationRequest::Css,
-            empty_banks(),
-            0,
         )
         .unwrap(),
     );
@@ -1833,7 +1756,6 @@ fn computed_but_untaken_authored_transform_recovers_original_color_and_same_fall
             &mut used,
             &mut numerical_owner,
             Transformation::QuantizeSrgb,
-            empty_banks(),
         )
         .unwrap(),
     );
@@ -1859,7 +1781,6 @@ fn computed_but_untaken_authored_transform_recovers_original_color_and_same_fall
             &mut used,
             &mut numerical_owner,
             Transformation::QuantizeSrgb,
-            empty_banks(),
         )
         .unwrap(),
     );
@@ -1895,16 +1816,12 @@ fn authored_serialization_qualifies_real_digits_and_output_and_preserves_cause_i
         .path
         .steps()
         .as_ptr();
-    let mut foreign_owner = OperationOwner::new();
-    let foreign = native_digit(&mut foreign_owner);
     let mut numerical_owner = OperationOwner::new();
     let mut serializer = Some(
         CssAuthoredUsedColorCheckpoint::serialize(
             &mut used,
             &mut numerical_owner,
             SerializationRequest::Css,
-            empty_banks(),
-            0,
         )
         .unwrap(),
     );
@@ -1927,9 +1844,7 @@ fn authored_serialization_qualifies_real_digits_and_output_and_preserves_cause_i
                 assert!(matches!(
                     action.numerical_record(),
                     Err(CssColorOperationError::Protocol(
-                        CssColorProtocolError::NumericalProtocol(
-                            surgeist_color::ProtocolError::WrongAction
-                        )
+                        CssColorProtocolError::WrongAction
                     ))
                 ));
                 action.compute().unwrap();
@@ -1942,11 +1857,9 @@ fn authored_serialization_qualifies_real_digits_and_output_and_preserves_cause_i
                 );
                 if !rejected_read {
                     assert_eq!(
-                        action.read_numerical_digit(index, &foreign),
+                        action.read_numerical_digit(index + 1, &digits[index]),
                         Err(CssColorOperationError::Protocol(
-                            CssColorProtocolError::NumericalProtocol(
-                                surgeist_color::ProtocolError::ForeignSlot
-                            )
+                            CssColorProtocolError::WrongAction
                         ))
                     );
                     assert_eq!(serializer.as_ref().unwrap().action(), pending);
@@ -1968,9 +1881,7 @@ fn authored_serialization_qualifies_real_digits_and_output_and_preserves_cause_i
                     assert_eq!(
                         action.numerical_written(index + 1, &record),
                         Err(CssColorOperationError::Protocol(
-                            CssColorProtocolError::NumericalProtocol(
-                                surgeist_color::ProtocolError::WrongIndex
-                            )
+                            CssColorProtocolError::WrongIndex
                         ))
                     );
                     assert_eq!(serializer.as_ref().unwrap().action(), pending);
@@ -1996,9 +1907,7 @@ fn authored_serialization_qualifies_real_digits_and_output_and_preserves_cause_i
                     assert_eq!(
                         action.emitted(unit.wrapping_add(1)),
                         Err(CssColorOperationError::Protocol(
-                            CssColorProtocolError::NumericalProtocol(
-                                surgeist_color::ProtocolError::WrongReply
-                            )
+                            CssColorProtocolError::WrongAction
                         ))
                     );
                     assert_eq!(serializer.as_ref().unwrap().action(), pending);
@@ -2039,18 +1948,14 @@ fn authored_serialization_qualifies_real_digits_and_output_and_preserves_cause_i
     ));
     drop(digits);
     drop(serializer);
-    let mut next = Some(
-        Computation::new(
-            &mut numerical_owner,
-            NumericalRequest::WithAlpha {
-                value: receipt.value(),
-                alpha: None,
-            },
-        )
-        .unwrap(),
+    let next = Computation::new(
+        &mut numerical_owner,
+        NumericalRequest::WithAlpha {
+            value: receipt.value(),
+            alpha: None,
+        },
     );
-    next.as_mut().unwrap().next_action().compute().unwrap();
-    assert_eq!(Computation::take(&mut next).unwrap().alpha(), None);
+    assert_eq!(next.compute().alpha(), None);
     assert!(receipt.is_current());
 }
 
@@ -2070,8 +1975,6 @@ fn abandoning_an_unacknowledged_numerical_record_recovers_original_without_publi
             &mut used,
             &mut numerical_owner,
             SerializationRequest::Css,
-            empty_banks(),
-            0,
         )
         .unwrap(),
     );
@@ -2108,7 +2011,7 @@ fn abandoning_an_unacknowledged_numerical_record_recovers_original_without_publi
     assert!(matches!(
         CssAuthoredColorSerialization::take(&mut serializer),
         Err(CssColorOperationError::Protocol(
-            CssColorProtocolError::NumericalProtocol(surgeist_color::ProtocolError::Terminated)
+            CssColorProtocolError::Terminal
         ))
     ));
     let recovered = CssAuthoredColorSerialization::recover(&mut serializer).unwrap();
@@ -2119,4 +2022,44 @@ fn abandoning_an_unacknowledged_numerical_record_recovers_original_without_publi
     partial.clear();
     assert!(partial.is_empty());
     assert!(serializer.is_none());
+}
+
+#[test]
+#[should_panic(expected = "digit record belongs to another numerical operation")]
+fn authored_serialization_reading_a_foreign_numerical_digit_panics() {
+    use surgeist_color::{OperationOwner, SerializationRequest};
+    let facts = facts();
+    let root = color("rgb(3 0 0)");
+    let mut css_owner = CssColorOperationOwner::new();
+    let mut resolved = Some(completed(&mut css_owner, &root, &facts));
+    let mut used = Some(CssAuthoredColorCheckpoint::take_used(&mut resolved).unwrap());
+    let mut foreign_owner = OperationOwner::new();
+    let foreign = native_digit(&mut foreign_owner);
+    let mut numerical_owner = OperationOwner::new();
+    let mut serializer = Some(
+        CssAuthoredUsedColorCheckpoint::serialize(
+            &mut used,
+            &mut numerical_owner,
+            SerializationRequest::Css,
+        )
+        .unwrap(),
+    );
+    let mut digits = Vec::new();
+    loop {
+        let pending = serializer.as_ref().unwrap().action();
+        let mut action = serializer.as_mut().unwrap().next_action();
+        match pending {
+            CssColorActionDescription::Compute(_) => action.compute().unwrap(),
+            CssColorActionDescription::EmitUnit { unit } => action.emitted(unit).unwrap(),
+            CssColorActionDescription::AppendNumericalDigit { index } => {
+                digits.push(action.numerical_record().unwrap());
+                action.numerical_written(index, &digits[index]).unwrap();
+            }
+            CssColorActionDescription::ReadNumericalDigit { index } => {
+                let _ = action.read_numerical_digit(index, &foreign);
+                return;
+            }
+            other => panic!("{other:?}"),
+        }
+    }
 }

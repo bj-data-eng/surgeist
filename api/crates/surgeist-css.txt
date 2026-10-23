@@ -867,9 +867,7 @@ pub enum surgeist_css::CssColorProtocolError
 pub surgeist_css::CssColorProtocolError::EmptySlot
 pub surgeist_css::CssColorProtocolError::ForeignSlot
 pub surgeist_css::CssColorProtocolError::Input
-pub surgeist_css::CssColorProtocolError::NumericalProtocol(surgeist_color::protocol::ProtocolError)
 pub surgeist_css::CssColorProtocolError::Overflow
-pub surgeist_css::CssColorProtocolError::StorageNotEmpty
 pub surgeist_css::CssColorProtocolError::Terminal
 pub surgeist_css::CssColorProtocolError::WrongAction
 pub surgeist_css::CssColorProtocolError::WrongIndex
@@ -879,7 +877,6 @@ pub fn surgeist_css::CssColorOperationError::from(error: surgeist_css::CssColorP
 impl core::convert::From<surgeist_css::CssColorProtocolError> for surgeist_css::CssColorOrdinaryError
 pub fn surgeist_css::CssColorOrdinaryError::from(error: surgeist_css::CssColorProtocolError) -> Self
 impl core::error::Error for surgeist_css::CssColorProtocolError
-pub fn surgeist_css::CssColorProtocolError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_css::CssColorProtocolError
 pub fn surgeist_css::CssColorProtocolError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 #[non_exhaustive] pub enum surgeist_css::CssColorScalarErrorKind
@@ -6681,10 +6678,8 @@ pub surgeist_css::CssAuthoredColorNumericalActionLayout::css_owner_read_bytes: u
 pub surgeist_css::CssAuthoredColorNumericalActionLayout::numerical: surgeist_css::CssColorActionLayout
 pub surgeist_css::CssAuthoredColorNumericalActionLayout::result_bytes: usize
 pub struct surgeist_css::CssAuthoredColorNumericalInitializationLayout
-pub surgeist_css::CssAuthoredColorNumericalInitializationLayout::bank_length_bytes: usize
 pub surgeist_css::CssAuthoredColorNumericalInitializationLayout::checkpoint_bytes: usize
 pub surgeist_css::CssAuthoredColorNumericalInitializationLayout::css_owner_bytes: usize
-pub surgeist_css::CssAuthoredColorNumericalInitializationLayout::numerical_digit_length_bytes: usize
 pub surgeist_css::CssAuthoredColorNumericalInitializationLayout::numerical_owner_bytes: usize
 pub surgeist_css::CssAuthoredColorNumericalInitializationLayout::register_bytes: usize
 pub struct surgeist_css::CssAuthoredColorOperation<'path, 'css, 'authored: 'css, 'facts>
@@ -6787,9 +6782,9 @@ pub const fn surgeist_css::CssAuthoredUsedColorCheckpoint<'css, 'authored, 'fact
 pub const fn surgeist_css::CssAuthoredUsedColorCheckpoint<'css, 'authored, 'facts>::facts(&self) -> &'facts surgeist_css::CssColorFacts<'facts>
 pub fn surgeist_css::CssAuthoredUsedColorCheckpoint<'css, 'authored, 'facts>::is_current(&self) -> bool
 pub const fn surgeist_css::CssAuthoredUsedColorCheckpoint<'css, 'authored, 'facts>::register_bytes() -> usize
-pub fn surgeist_css::CssAuthoredUsedColorCheckpoint<'css, 'authored, 'facts>::serialize<'num>(slot: &mut core::option::Option<Self>, numerical_owner: &'num mut surgeist_color::protocol::OperationOwner, request: surgeist_color::serialization::SerializationRequest, banks: surgeist_css::CssColorBankLengths, numerical_digits: usize) -> core::result::Result<surgeist_css::CssAuthoredColorSerialization<'css, 'num, 'authored, 'facts>, surgeist_css::CssColorOperationError>
+pub fn surgeist_css::CssAuthoredUsedColorCheckpoint<'css, 'authored, 'facts>::serialize<'num>(slot: &mut core::option::Option<Self>, numerical_owner: &'num mut surgeist_color::protocol::OperationOwner, request: surgeist_color::serialization::SerializationRequest) -> core::result::Result<surgeist_css::CssAuthoredColorSerialization<'css, 'num, 'authored, 'facts>, surgeist_css::CssColorOperationError>
 pub const fn surgeist_css::CssAuthoredUsedColorCheckpoint<'css, 'authored, 'facts>::standard_failure(&self) -> core::option::Option<&surgeist_css::CssAuthoredColorStandardFailure>
-pub fn surgeist_css::CssAuthoredUsedColorCheckpoint<'css, 'authored, 'facts>::transform<'num>(slot: &mut core::option::Option<Self>, numerical_owner: &'num mut surgeist_color::protocol::OperationOwner, transformation: surgeist_color::value::Transformation, banks: surgeist_css::CssColorBankLengths) -> core::result::Result<surgeist_css::CssAuthoredColorTransformation<'css, 'num, 'authored, 'facts>, surgeist_css::CssColorOperationError>
+pub fn surgeist_css::CssAuthoredUsedColorCheckpoint<'css, 'authored, 'facts>::transform<'num>(slot: &mut core::option::Option<Self>, numerical_owner: &'num mut surgeist_color::protocol::OperationOwner, transformation: surgeist_color::value::Transformation) -> core::result::Result<surgeist_css::CssAuthoredColorTransformation<'css, 'num, 'authored, 'facts>, surgeist_css::CssColorOperationError>
 pub const fn surgeist_css::CssAuthoredUsedColorCheckpoint<'css, 'authored, 'facts>::value(&self) -> surgeist_color::value::Color
 pub struct surgeist_css::CssAutospaceValues
 impl surgeist_css::CssAutospaceValues
@@ -7618,9 +7613,6 @@ pub const fn surgeist_css::CssColorAlphaScalarRef<'a>::is_interior(&self) -> boo
 pub const fn surgeist_css::CssColorAlphaScalarRef<'a>::is_one(&self) -> bool
 pub const fn surgeist_css::CssColorAlphaScalarRef<'a>::is_zero(&self) -> bool
 pub fn surgeist_css::CssColorAlphaScalarRef<'a>::origin(&self) -> &'a surgeist_css::CssValueOrigin
-pub struct surgeist_css::CssColorBankLengths
-impl surgeist_css::CssColorBankLengths
-pub const fn surgeist_css::CssColorBankLengths::new(algorithm: usize, arithmetic: usize, evaluation: usize) -> Self
 pub struct surgeist_css::CssColorComponentName(_)
 impl surgeist_css::CssColorComponentName
 pub fn surgeist_css::CssColorComponentName::as_str(&self) -> &str
@@ -7869,30 +7861,6 @@ pub struct surgeist_css::CssColorSchemePropertyValue
 impl surgeist_css::CssColorSchemePropertyValue
 pub fn surgeist_css::CssColorSchemePropertyValue::as_css(&self) -> &str
 pub const fn surgeist_css::CssColorSchemePropertyValue::value(&self) -> &surgeist_css::CssColorScheme
-pub struct surgeist_css::CssColorSerialization<'css, 'num, 'facts>
-impl<'css, 'num, 'facts> surgeist_css::CssColorSerialization<'css, 'num, 'facts>
-pub fn surgeist_css::CssColorSerialization<'css, 'num, 'facts>::abandon(&mut self)
-pub fn surgeist_css::CssColorSerialization<'css, 'num, 'facts>::action(&self) -> surgeist_css::CssColorActionDescription
-pub const fn surgeist_css::CssColorSerialization<'css, 'num, 'facts>::action_bytes() -> usize
-pub fn surgeist_css::CssColorSerialization<'css, 'num, 'facts>::next_action(&mut self) -> surgeist_css::CssColorSerializationAction<'_, 'css, 'num, 'facts>
-pub fn surgeist_css::CssColorSerialization<'css, 'num, 'facts>::recover(slot: &mut core::option::Option<Self>) -> core::result::Result<surgeist_css::CssUsedColorCheckpoint<'css, 'facts>, surgeist_css::CssColorProtocolError>
-pub const fn surgeist_css::CssColorSerialization<'css, 'num, 'facts>::register_bytes() -> usize
-pub fn surgeist_css::CssColorSerialization<'css, 'num, 'facts>::take(slot: &mut core::option::Option<Self>) -> core::result::Result<surgeist_css::CssColorSerializationReceipt<'css, 'facts>, surgeist_css::CssColorOperationError>
-pub struct surgeist_css::CssColorSerializationAction<'step, 'css, 'num, 'facts>
-impl<'num> surgeist_css::CssColorSerializationAction<'_, '_, 'num, '_>
-pub fn surgeist_css::CssColorSerializationAction<'_, '_, 'num, '_>::compute(self) -> core::result::Result<(), surgeist_css::CssColorOperationError>
-pub fn surgeist_css::CssColorSerializationAction<'_, '_, 'num, '_>::description(&self) -> surgeist_css::CssColorActionDescription
-pub fn surgeist_css::CssColorSerializationAction<'_, '_, 'num, '_>::emitted(self, unit: u8) -> core::result::Result<(), surgeist_css::CssColorOperationError>
-pub fn surgeist_css::CssColorSerializationAction<'_, '_, 'num, '_>::layout(&mut self) -> surgeist_css::CssColorActionLayout
-pub fn surgeist_css::CssColorSerializationAction<'_, '_, 'num, '_>::numerical_record(&mut self) -> core::result::Result<surgeist_color::protocol::DigitSlot<'num>, surgeist_css::CssColorOperationError>
-pub fn surgeist_css::CssColorSerializationAction<'_, '_, 'num, '_>::numerical_written(self, index: usize, slot: &surgeist_color::protocol::DigitSlot<'_>) -> core::result::Result<(), surgeist_css::CssColorOperationError>
-pub fn surgeist_css::CssColorSerializationAction<'_, '_, 'num, '_>::read_numerical_digit(self, index: usize, slot: &surgeist_color::protocol::DigitSlot<'_>) -> core::result::Result<(), surgeist_css::CssColorOperationError>
-pub struct surgeist_css::CssColorSerializationReceipt<'css, 'facts>
-impl surgeist_css::CssColorSerializationReceipt<'_, '_>
-pub const fn surgeist_css::CssColorSerializationReceipt<'_, '_>::length(&self) -> usize
-pub fn surgeist_css::CssColorSerializationReceipt<'_, '_>::source(&self) -> surgeist_css::CssColorSourceDescriptor
-pub fn surgeist_css::CssColorSerializationReceipt<'_, '_>::standard_failure(&self) -> core::option::Option<surgeist_css::CssColorStandardFailure>
-pub fn surgeist_css::CssColorSerializationReceipt<'_, '_>::value(&self) -> surgeist_color::value::Color
 pub struct surgeist_css::CssColorSlot<'owner>
 impl<'owner> surgeist_css::CssColorSlot<'owner>
 pub const fn surgeist_css::CssColorSlot<'owner>::bank(&self) -> surgeist_css::CssColorBank
@@ -13678,9 +13646,8 @@ impl core::fmt::Debug for surgeist_css::CssUrlModifierFunction
 pub fn surgeist_css::CssUrlModifierFunction::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_css::CssUsedColorCheckpoint<'owner, 'facts>
 impl<'css, 'facts> surgeist_css::CssUsedColorCheckpoint<'css, 'facts>
-pub fn surgeist_css::CssUsedColorCheckpoint<'css, 'facts>::serialize<'num>(slot: &mut core::option::Option<Self>, numerical_owner: &'num mut surgeist_color::protocol::OperationOwner, request: surgeist_color::serialization::SerializationRequest, banks: surgeist_css::CssColorBankLengths, numerical_digits: usize) -> core::result::Result<surgeist_css::CssColorSerialization<'css, 'num, 'facts>, surgeist_css::CssColorOperationError>
 pub fn surgeist_css::CssUsedColorCheckpoint<'css, 'facts>::source(&self) -> surgeist_css::CssColorSourceDescriptor
-pub fn surgeist_css::CssUsedColorCheckpoint<'css, 'facts>::transform<'num>(slot: &mut core::option::Option<Self>, numerical_owner: &'num mut surgeist_color::protocol::OperationOwner, transformation: surgeist_color::value::Transformation, banks: surgeist_css::CssColorBankLengths) -> core::result::Result<surgeist_css::CssColorTransformation<'css, 'num, 'facts>, surgeist_css::CssColorOperationError>
+pub fn surgeist_css::CssUsedColorCheckpoint<'css, 'facts>::transform<'num>(slot: &mut core::option::Option<Self>, numerical_owner: &'num mut surgeist_color::protocol::OperationOwner, transformation: surgeist_color::value::Transformation) -> core::result::Result<surgeist_css::CssColorTransformation<'css, 'num, 'facts>, surgeist_css::CssColorOperationError>
 impl<'owner, 'facts> surgeist_css::CssUsedColorCheckpoint<'owner, 'facts>
 pub fn surgeist_css::CssUsedColorCheckpoint<'owner, 'facts>::consumed(&self) -> surgeist_css::CssColorInputRange
 pub const fn surgeist_css::CssUsedColorCheckpoint<'owner, 'facts>::fact_identity(&self) -> surgeist_css::CssColorFactIdentity
