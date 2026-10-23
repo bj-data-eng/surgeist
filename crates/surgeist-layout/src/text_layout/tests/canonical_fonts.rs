@@ -198,3 +198,55 @@ pub(crate) fn mark_ahem() -> Vec<u8> {
         ],
     )
 }
+
+/// GSUB ccmp: A(35) A(35) A(35) -> X(58), exactly one1000-unit glyph.
+/// Thus AA is20px but AAA is10px at10px: a real nonmonotonic cut fixture.
+pub(crate) fn triple_ligature_ahem() -> Vec<u8> {
+    let subtable = words(&[1, 20, 1, 8, 1, 4, 58, 3, 35, 35, 1, 1, 35]);
+    replace_tables(
+        AHEM,
+        vec![(
+            *b"GSUB",
+            layout_table(*b"DFLT", vec![(*b"ccmp", 4, subtable)]),
+        )],
+    )
+}
+
+/// Same Arabic joining fixture as Text's test_fonts/shaping.rs: real arab
+/// isol/init/medi/fina masks select Beh35/100/277/82 respectively.
+pub(crate) fn arabic_ahem() -> Vec<u8> {
+    let single = |input: &[u16], output: &[u16]| {
+        assert_eq!(input.len(), output.len());
+        let mut value = words(&[
+            2,
+            u16::try_from(6 + output.len() * 2).unwrap(),
+            u16::try_from(output.len()).unwrap(),
+        ]);
+        value.extend(words(output));
+        value.extend(words(&[1, u16::try_from(input.len()).unwrap()]));
+        value.extend(words(input));
+        value
+    };
+    let features = vec![
+        (*b"fina", 1, single(&[35, 58], &[82, 274])),
+        (*b"init", 1, single(&[35], &[100])),
+        (*b"isol", 1, single(&[35], &[35])),
+        (*b"medi", 1, single(&[35], &[277])),
+    ];
+    replace_tables(
+        AHEM,
+        vec![
+            (
+                *b"cmap",
+                cmap(&[
+                    (0x20, 3),
+                    (0x627, 58),
+                    (0x628, 35),
+                    (0x200c, 253),
+                    (0x200d, 253),
+                ]),
+            ),
+            (*b"GSUB", layout_table(*b"arab", features)),
+        ],
+    )
+}

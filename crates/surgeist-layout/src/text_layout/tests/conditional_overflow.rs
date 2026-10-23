@@ -390,3 +390,6 @@ fn native_no_conditional_permission_retains_the_existing_float_deferral() {
     );
     assert_eq!(actual, (expected.clone(), expected));
 }
+
+#[path = "conditional_progress.rs"]
+mod progress;
