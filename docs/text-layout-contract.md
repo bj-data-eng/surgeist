@@ -190,8 +190,9 @@ Text owns an occurrence-qualified nonempty original-source range query over the
 actual placed result. Its ordered observations retain selected source
 intersections, expanded typographic-unit coverage where applicable, finalized
 line/fragment and placement identities, advance edges and associated font-metric
-extent. This is a required observation boundary, not a claim that the query is
-already implemented. Generic source slots and caret affinities are distinct.
+extent. Native `Layout::source_range_fragments` implements this observation
+boundary for admitted horizontal placements; the complete web consumer remains
+separate. Generic source slots and caret affinities are distinct.
 The selected evidence is the [current CSSOM View §9 capture](../references/cssom-view-range--editor-capture-20261022.md),
 checked with the [bounded CSSWG and browser-test audit](../references/range-geometry-csswg-tests--20261022.md).
 That audit found no adopted resolution for the remaining endpoint choices in

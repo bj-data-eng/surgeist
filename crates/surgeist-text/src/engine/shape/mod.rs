@@ -1007,6 +1007,16 @@ fn extract_run(
                 with_letter_spacing
             };
             output.clusters.push(PreparedCluster {
+                shaped_advance: base_advance,
+                logical_adjustments: [
+                    style.letter_spacing,
+                    if whitespace.is_space_or_nbsp() {
+                        style.word_spacing
+                    } else {
+                        0.0
+                    },
+                    0.0,
+                ],
                 source: original.source,
                 atoms: atom..atom + 1,
                 provider_group: atom_start..atom_end,

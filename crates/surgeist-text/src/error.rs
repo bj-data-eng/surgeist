@@ -89,6 +89,10 @@ pub enum ErrorCode {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ErrorDetail {
+    /// Admission or retained-association failure for a nonempty source range.
+    SourceRangeFragments {
+        reason: crate::SourceRangeFragmentError,
+    },
     /// Atomic rejection of contextual source facts or view membership.
     SourceProcessing {
         reason: super::SourceProcessingError,
@@ -498,6 +502,7 @@ pub enum ShapingRefusalReason {
 /// Operation at which geometry was rejected.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TextNumericPhase {
+    SourceRangeFragments,
     Selection,
     Preparation,
     Shaping,

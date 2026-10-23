@@ -122,3 +122,8 @@ mod test_fonts;
 #[cfg(test)]
 #[path = "test_fonts/shaping.rs"]
 mod shaping_test_fonts;
+
+mod range_fragments;
+pub use range_fragments::{
+    SourceRangeFragmentError, SourceRangeFragments, SourceRangePiece, SourceRangeUnit,
+};

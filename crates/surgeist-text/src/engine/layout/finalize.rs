@@ -103,7 +103,12 @@ pub(super) fn finalize(
         clusters: shaped
             .clusters
             .iter()
-            .map(|cluster| FinalizedCluster {
+            .enumerate()
+            .map(|(index, cluster)| FinalizedCluster {
+                shaped_advance: cluster.shaped_advance,
+                logical_adjustments: cluster.logical_adjustments,
+                provider_atoms: cluster.provider_group.clone(),
+                disposition: dispositions[index],
                 source: cluster.source,
                 presentation: {
                     let atoms = &selected.presentation.projection.atoms[cluster.atoms.clone()];
@@ -1383,6 +1388,7 @@ fn apply_spacing(
             cluster.advance,
             amount,
         )?;
+        cluster.logical_adjustments[2] = amount;
         spacing_slots.push(FinalizedSpacingSlot {
             cluster: index,
             disposition: dispositions[index],

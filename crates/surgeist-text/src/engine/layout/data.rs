@@ -72,6 +72,10 @@ pub(crate) struct PreparedRun {
 /// A logical shaped cluster. Ligature components retain separate source associations.
 #[derive(Clone, Debug)]
 pub(crate) struct PreparedCluster {
+    /// Actual provider contribution before caller-owned spacing.
+    pub(crate) shaped_advance: f64,
+    /// Executed letter, word, and selected allocation terms, without regrouping.
+    pub(crate) logical_adjustments: [f64; 3],
     pub(crate) source: Range,
     pub(crate) atoms: IndexRange<usize>,
     /// Actual provider group before scalar component extraction.
@@ -156,6 +160,13 @@ pub(crate) struct FinalizedGlyph {
 
 #[derive(Clone, Debug)]
 pub(crate) struct FinalizedCluster {
+    /// Actual provider contribution before caller-owned spacing.
+    pub(crate) shaped_advance: f64,
+    /// Executed letter, word, and selected allocation terms, without regrouping.
+    pub(crate) logical_adjustments: [f64; 3],
+    /// Actual provider membership retained independently of operation-specific units.
+    pub(crate) provider_atoms: IndexRange<usize>,
+    pub(crate) disposition: crate::SpacingSlotDisposition,
     pub(crate) source: Range,
     pub(crate) presentation: Range,
     pub(crate) run: usize,

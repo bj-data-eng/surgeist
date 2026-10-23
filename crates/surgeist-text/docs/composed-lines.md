@@ -94,6 +94,33 @@ prefix queries. These observations create no caret or break opportunity and do
 not move the original seam. Layout owns float placement and replay under the
 [shared-unit policy](../../../docs/text-layout-contract.md#float-encounters-inside-shared-text-units).
 
+`Layout::source_range_fragments(&origin, local)` observes a nonempty original-local
+`Range` of an issued `PreparedOrigin` in that placement. It validates the entire
+request before returning borrowed `SourceRangeFragments`. A valid fully removed
+range can return no units; foreign origins, absent coverage and unsupported
+partitions return typed errors. Empty requests are separate from collapsed DOM
+Range semantics and refuse here.
+
+`units()` visits actual grapheme-based Range units in content order. Each unit
+retains its finalized line, fragments, presentation range and selected original
+intersections separately from expanded unit coverage and a selected alternative's
+defining source relation. `same_unit` compares actual placement and unit identity,
+so equal offsets or rectangles do not establish identity. A partial surrogate or
+combining sequence selects the complete unit. An optional multi-grapheme ligature
+retains its separate Range units under the
+[Range allocation policy](../../../docs/text-layout-contract.md#nonempty-text-range-fragments).
+
+Each unit's `pieces()` lends actual font-metric rectangles, advance edges,
+baseline, effective instance and contributing finalized cluster indices. It keeps
+distinct font pieces and genuine zero-width rectangles. Shared provider advance
+uses the qualified allocation policy while retaining each unit's actual letter,
+word and selected spacing contributions. Queries neither reshape text nor choose
+fonts. A preserved authored newline belongs to its terminating line; a terminal
+empty line adds no selected authored unit. Deleted custody and source-less control
+anchors do not invent rectangles. These are native Text observations; DOM
+membership, element boxes, collapsed ranges, transforms and web rectangle grouping
+remain consumer responsibilities.
+
 `Layout::bounds` reports admitted physical placement bounds. `positions()` issues
 placement-bound `PlacedPosition` values from actual interaction occurrences.
 `position_geometry`, `move_position` and `position_selection` validate that same

@@ -416,8 +416,8 @@ impl PreparedUnitView<'_> {
 /// A queried intersection from the canonical original occurrence owner.
 /// No glyph run or content hash is used to reconstruct this association.
 pub struct PreparedOriginIntersectionView<'a> {
-    prepared: &'a Arc<PreparedData>,
-    association: OriginIntersection,
+    pub(crate) prepared: &'a Arc<PreparedData>,
+    pub(crate) association: OriginIntersection,
 }
 
 impl fmt::Debug for PreparedOriginIntersectionView<'_> {

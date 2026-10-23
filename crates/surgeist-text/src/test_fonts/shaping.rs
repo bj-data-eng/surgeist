@@ -88,6 +88,32 @@ pub(crate) fn ligature_ahem() -> Vec<u8> {
     )
 }
 
+/// A real optional provider ligature with caller-owned test cmap/sequence.
+pub(crate) fn range_ligature_ahem(components: &[u16], mappings: &[(u32, u32)]) -> Vec<u8> {
+    let mut data = vec![
+        1,
+        offset((7 + components.len()) * 2),
+        1,
+        8,
+        1,
+        4,
+        58,
+        offset(components.len()),
+    ];
+    data.extend_from_slice(&components[1..]);
+    data.extend_from_slice(&[1, 1, components[0]]);
+    replace_tables(
+        AHEM,
+        vec![
+            (*b"cmap", cmap(mappings)),
+            (
+                *b"GSUB",
+                layout_table(*b"DFLT", vec![(*b"ccmp", 4, words(&data))]),
+            ),
+        ],
+    )
+}
+
 /// GPOS mark-to-base: base anchor(400,600), mark anchor(100,200).
 /// At size10/UPEM1000, the actual mark is at logical(3,-4), advance0.
 pub(crate) fn mark_ahem() -> Vec<u8> {

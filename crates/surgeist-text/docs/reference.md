@@ -37,6 +37,7 @@ private implementation organization.
 | Font resources and metrics | `FontData`, `FontFace`, `EffectiveFontInstance`, `FontMetrics`, `StrikeoutMetrics` | [font.rs](../src/font.rs), [font/metrics.rs](../src/font/metrics.rs) |
 | Borrowed readback | `RunView`, positioned `GlyphPlacement`, actual decorations | [views.rs](../src/views.rs) |
 | Finalized logical prefixes | `TextSeam`, `FinalizedPrefixView`, `FinalizedSharedUnitView`, `FinalizedLine::prefix_at` | [prefix.rs](../src/protocol/prefix.rs), [composition guide](composed-lines.md) |
+| Placed original-source fragments | `SourceRangeFragments`, `SourceRangeUnit`, `SourceRangePiece`, `SourceRangeFragmentError`, `Layout::source_range_fragments` | [range_fragments.rs](../src/range_fragments.rs), [composition guide](composed-lines.md) |
 | Output and interaction | `Layout`, glyph runs, line/box facts, cursors, selections, movement | [layout.rs](../src/layout.rs) |
 | Ranges and edits | `Range`, `SourcePosition`, `SourceRange`, `Edit`, `TextEdit` | [range.rs](../src/range.rs), [edit.rs](../src/edit.rs) |
 | Cache identity | `Key`, `SourceKey`, `StyleKey`, `OptionsKey`, `FontGeneration`, `Stats` | [cache.rs](../src/cache.rs) |
@@ -390,4 +391,5 @@ be available locally as well.
 
 [The composed-line guide](composed-lines.md) describes actual preparation-issued
 handles, selected spacing, feedback, authentic original/control/replacement
-fragments, explicit baseline placement and placement-bound positions.
+fragments, explicit baseline placement, placement-bound positions and nonempty
+original-source font-metric observations.
