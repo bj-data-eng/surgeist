@@ -148,6 +148,7 @@ pub(super) fn finalize(
             .iter()
             .enumerate()
             .map(|(index, cluster)| FinalizedCluster {
+                line_height: cluster.line_height,
                 shaped_advance: cluster.shaped_advance,
                 logical_adjustments: cluster.logical_adjustments,
                 provider_atoms: cluster.provider_group.clone(),
@@ -483,7 +484,10 @@ pub(super) fn finalize(
         )?;
         let (top, height) = if selected.metric_policy == LineMetricPolicy::Native {
             if let Some(run) = cluster.content.font_run() {
-                let font = data.font_runs[run].metrics;
+                let font = RunMetrics {
+                    line_height: cluster.line_height,
+                    ..data.font_runs[run].metrics
+                };
                 let (before, _) = font_strut(font)?;
                 (
                     finite(
@@ -973,6 +977,11 @@ fn validate_rows(selected: &SelectedData, shaped: &ShapedData) -> Result<()> {
             ));
         }
         finite(
+            "cluster line height",
+            TextNumericPhase::Finalization,
+            cluster.line_height,
+        )?;
+        finite(
             "cluster advance",
             TextNumericPhase::Finalization,
             cluster.advance,
@@ -1020,15 +1029,16 @@ fn line_metrics(
 ) -> Result<LineMetrics> {
     let mut result = LineMetrics::default();
     let mut have_metrics = false;
+    let mut have_cluster_height = false;
     prefix_receipts.push(0.0);
     for item in &shaped.items {
         match *item {
             ShapedItem::Anchor { .. } => {}
             ShapedItem::TextCluster(index) => {
                 let cluster = &shaped.clusters[index];
-                if let Some(run) = cluster.content.font_run() {
-                    result.line_height =
-                        result.line_height.max(shaped.runs[run].metrics.line_height);
+                if cluster.content.font_run().is_some() {
+                    have_cluster_height = true;
+                    result.line_height = result.line_height.max(cluster.line_height);
                 }
                 if cluster.whitespace != Whitespace::Newline {
                     result.advance = add(
@@ -1111,7 +1121,11 @@ fn line_metrics(
         if let Some(font) = shaped.runs.first().or(shaped.empty_run.as_ref()) {
             result.ascent = font.metrics.ascent;
             result.descent = font.metrics.descent;
-            result.line_height = result.line_height.max(font.metrics.line_height);
+            // Nonempty whitespace already supplied its actual component heights.
+            // A retained run's initial style may belong to unselected content.
+            if !have_cluster_height {
+                result.line_height = result.line_height.max(font.metrics.line_height);
+            }
         } else if selected.request.line_strut.is_none()
             && !selected
                 .request
@@ -1285,9 +1299,15 @@ fn native_metrics(
         let (before, after) = font_strut(font.metrics)?;
         groups.include(before, after, LineBoxAlignment::Baseline)?;
     }
-    for font in &shaped.runs {
-        let (before, after) = font_strut(font.metrics)?;
-        groups.include(before, after, LineBoxAlignment::Baseline)?;
+    for cluster in &shaped.clusters {
+        if let Some(run) = cluster.content.font_run() {
+            let metrics = RunMetrics {
+                line_height: cluster.line_height,
+                ..shaped.runs[run].metrics
+            };
+            let (before, after) = font_strut(metrics)?;
+            groups.include(before, after, LineBoxAlignment::Baseline)?;
+        }
     }
     for item in &shaped.items {
         if let ShapedItem::InlineBox { occurrence, .. } = *item {

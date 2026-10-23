@@ -1039,6 +1039,24 @@ fn bounded_context(
     allowed
 }
 
+/// Metric attribution does not split otherwise compatible joint shaping.
+fn resolved_line_height(
+    style: &ResolvedStyle,
+    ascent: f64,
+    descent: f64,
+    leading: f64,
+) -> Result<f64> {
+    match style.line_height {
+        LineHeight::Absolute(value) => Ok(value),
+        LineHeight::FontSizeRelative(value) => {
+            logical_multiply("line height", value, f64::from(style.font_size))
+        }
+        LineHeight::MetricsRelative(value) => {
+            logical_multiply("line height", value, ascent + descent + leading)
+        }
+    }
+}
+
 fn extract_run(
     request: &RunRequest<'_, '_>,
     glyph_buffer: &harfrust::GlyphBuffer,
@@ -1065,15 +1083,7 @@ fn extract_run(
     let ascent = metrics.ascent();
     let descent = -metrics.descent();
     let leading = metrics.leading();
-    let line_height = match style.line_height {
-        LineHeight::Absolute(value) => value,
-        LineHeight::FontSizeRelative(value) => {
-            logical_multiply("line height", value, f64::from(style.font_size))?
-        }
-        LineHeight::MetricsRelative(value) => {
-            logical_multiply("line height", value, ascent + descent + leading)?
-        }
-    };
+    let line_height = resolved_line_height(style, ascent, descent, leading)?;
     let underline = raw_metrics.underline;
     let underline_top = underline.map_or(f64::from(metrics.units_per_em()) / 18.0, |value| {
         f64::from(value.offset)
@@ -1226,6 +1236,7 @@ fn extract_run(
                 with_letter_spacing
             };
             output.clusters.push(PreparedCluster {
+                line_height: resolved_line_height(style, ascent, descent, leading)?,
                 shaped_advance: base_advance,
                 logical_adjustments: [
                     style.letter_spacing,
@@ -1316,6 +1327,8 @@ fn append_tab(input: &ShapingInput<'_>, atom: usize, font: Option<usize>, output
     let original = &input.projection.atoms[atom];
     let (info, style) = input.analysis.infos[atom];
     output.clusters.push(PreparedCluster {
+        // The admitted tab font was measured under this tab's actual style.
+        line_height: font.map_or(0.0, |run| output.runs[run].metrics.line_height),
         shaped_advance: 0.0,
         logical_adjustments: [0.0; 3],
         source: original.source,

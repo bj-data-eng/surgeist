@@ -80,6 +80,8 @@ pub struct NodeInputOf<S: LayoutScalar = DefaultScalar> {
     pub text_indent: TextIndentOf<S>,
     /// Block-owned computed successive-line limit; defaults to no limit.
     pub hyphenate_limit_lines: crate::HyphenateLimitLines,
+    /// Computed signed length/percentage, resolved against the natural fallback line box.
+    pub hyphenate_limit_zone: crate::LengthPercentageOf<S>,
     pub text_align: TextAlign,
     pub text_align_last: TextAlignLast,
     pub text_justification: TextJustification,
@@ -180,6 +182,7 @@ impl NodeInputOf<DefaultScalar> {
         block_generation: BlockGeneration::Principal,
         text_indent: TextIndentOf::ZERO,
         hyphenate_limit_lines: crate::HyphenateLimitLines::NoLimit,
+        hyphenate_limit_zone: crate::LengthPercentageOf::ZERO,
         text_align: TextAlign::Start,
         text_align_last: TextAlignLast::Auto,
         text_justification: TextJustification::None,
@@ -262,6 +265,7 @@ impl<S: LayoutScalar> Default for NodeInputOf<S> {
             block_generation: BlockGeneration::Principal,
             text_indent: TextIndentOf::ZERO,
             hyphenate_limit_lines: crate::HyphenateLimitLines::NoLimit,
+            hyphenate_limit_zone: crate::LengthPercentageOf::ZERO,
             text_align: TextAlign::Start,
             text_align_last: TextAlignLast::Auto,
             text_justification: TextJustification::None,

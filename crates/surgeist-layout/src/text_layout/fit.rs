@@ -127,6 +127,7 @@ pub(crate) struct LineFlow {
 }
 
 pub(crate) struct FittedLine {
+    pub zone_basis: ZoneBasis,
     pub hyphenation_end: crate::hyphenation::LineHyphenationState,
     pub encounters: Vec<EncounterBasis>,
     pub finalized: FinalizedLine,
@@ -152,6 +153,7 @@ pub(crate) enum FitError {
     Numeric(f64, crate::LayoutTextNumericError),
     InvalidGeometry,
     Dependency,
+    MissingZoneBasis,
 }
 
 impl From<surgeist_text::Error> for FitError {
@@ -171,6 +173,7 @@ pub(crate) struct FitInput<'a> {
     pub indent: crate::text_indent::ResolvedTextIndent<f64>,
     pub indent_state: crate::text_indent::IndentLineState,
     pub hyphenation_state: crate::hyphenation::LineHyphenationState,
+    pub hyphenate_limit_zone: crate::LengthPercentageOf<f64>,
     pub orientation: LineOrientation,
     pub atomics: &'a [AtomicAllocation],
     pub controls: &'a [ControlAllocation],
@@ -394,9 +397,20 @@ where
     fn evaluate(
         &mut self,
         input: &FitInput<'_>,
+        request: LineSelectionRequest,
+        position: &CandidatePosition,
+        preceding: Option<&EvaluatedCandidate>,
+    ) -> Result<EvaluatedCandidate, FitError> {
+        self.evaluate_mode(input, request, position, preceding, false)
+    }
+
+    fn evaluate_mode(
+        &mut self,
+        input: &FitInput<'_>,
         mut request: LineSelectionRequest,
         position: &CandidatePosition,
         preceding: Option<&EvaluatedCandidate>,
+        natural_only: bool,
     ) -> Result<EvaluatedCandidate, FitError> {
         (self.reset)();
         let mut height = 0.0;
@@ -409,14 +423,23 @@ where
             request.context.tabs = tab_context(input, band, request.context.available_inline)?;
             let mut allocation_bases = Vec::new();
             let (finalized, amounts) = loop {
-                let candidate = finalize_candidate(
-                    input.prepared,
-                    input.reusable,
-                    request,
-                    input.alignment,
-                    input.last_alignment,
-                    input.justification,
-                )?;
+                let candidate = if natural_only {
+                    let finalized = natural_line(input.prepared, input.reusable, &request)?;
+                    FinalizedCandidate {
+                        amounts: vec![0.0; finalized.selected_line().spacing_slots().len()],
+                        request,
+                        finalized,
+                    }
+                } else {
+                    finalize_candidate(
+                        input.prepared,
+                        input.reusable,
+                        request,
+                        input.alignment,
+                        input.last_alignment,
+                        input.justification,
+                    )?
+                };
                 request = candidate.request;
                 (self.replay)(
                     &candidate.finalized,
@@ -750,6 +773,10 @@ pub(crate) fn fit(
             let mut choice: Option<EvaluatedCandidate> = None;
             let mut first_ceiling = None;
             let mut skipped_ordinary = Vec::new();
+            let mut zone_basis = ZoneBasis {
+                policy: input.hyphenate_limit_zone,
+                references: Vec::new(),
+            };
             for (end, opportunity, kind, alternatives) in &opportunities {
                 if *end < start || (*end == start && *kind != PreparedBreakKind::ParagraphEnd) {
                     continue;
@@ -782,6 +809,61 @@ pub(crate) fn fit(
                             limit,
                         });
                         continue;
+                    }
+                    if let Some(cut) = &automatic
+                        && matches!(input.available, Available::Definite(_))
+                        && let Some(word) = cut.view().word()
+                    {
+                        let mut fallback: Option<EvaluatedCandidate> = None;
+                        for offer in word.view().ordinary_fallbacks(&start_boundary)? {
+                            let request = selection_request(
+                                &input,
+                                &start_boundary,
+                                LineEndpoint {
+                                    boundary: offer.view().boundary(),
+                                    termination: PreparedTermination::Ordinary(offer),
+                                    alternative: None,
+                                    ending: LineEnd::Soft,
+                                },
+                                indent_state,
+                            );
+                            let trial = environment
+                                .evaluate_mode(&input, request, &position, None, true)?;
+                            if !trial.formatted {
+                                continue;
+                            }
+                            if fallback.is_none() || trial.fits {
+                                fallback = Some(trial);
+                            }
+                        }
+                        if let Some(fallback) = fallback {
+                            let span = fallback
+                                .request
+                                .context
+                                .available_inline
+                                .ok_or(FitError::MissingZoneBasis)?;
+                            let zone = used_zone(input.hyphenate_limit_zone, span)?;
+                            let end = super::run::add(
+                                fallback.request.context.indent,
+                                fallback.finalized.measurements().alignment().advance(),
+                            )?;
+                            let gap = super::run::add(span, -end)?.max(0.0);
+                            zone_basis.references.push(ZoneReference {
+                                alternative: alternative.clone().expect("automatic variant"),
+                                request: fallback.request.clone(),
+                                zone,
+                                measure: fallback.finalized.measurements().alignment(),
+                                bands: fallback.bands,
+                                encounters: fallback.encounters.clone(),
+                                placed_start: fallback.placed_start,
+                            });
+                            if gap <= zone {
+                                // The genuine meaningful fallback's earlier None variant
+                                // is already the ordinary ceiling. It cannot be discharged
+                                // as phantom or by an automatic-only disposition.
+                                continue;
+                            }
+                        }
                     }
                     let request = selection_request(
                         &input,
@@ -952,6 +1034,7 @@ pub(crate) fn fit(
                 position.logical_start,
                 position.minimum_block,
                 position.deferred_from.clone(),
+                zone_basis.clone(),
             );
             if transitions.contains(&basis) {
                 return Err(FitError::FeedbackCycle);
@@ -1015,6 +1098,7 @@ pub(crate) fn fit(
             }
             let available = candidate.finalized.metric_bounds().size.width;
             result.push(FittedLine {
+                zone_basis,
                 hyphenation_end: hyphenation_state,
                 encounters: candidate.encounters,
                 finalized: candidate.finalized,
@@ -1068,6 +1152,34 @@ fn finite(value: f64) -> Result<f64, FitError> {
         Ok(value)
     } else {
         Err(FitError::NonFinite(value))
+    }
+}
+
+/// The actual reference context participates in pass/cycle identity, independently
+/// of a candidate's possibly different font-height/float allocation frame.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct ZoneBasis {
+    policy: crate::LengthPercentageOf<f64>,
+    references: Vec<ZoneReference>,
+}
+#[derive(Clone, Debug, PartialEq)]
+struct ZoneReference {
+    alternative: PreparedAlternative,
+    request: LineSelectionRequest,
+    zone: f64,
+    measure: surgeist_text::InlineMeasure,
+    bands: LineBands,
+    encounters: Vec<EncounterBasis>,
+    placed_start: f64,
+}
+fn used_zone(policy: crate::LengthPercentageOf<f64>, span: f64) -> Result<f64, FitError> {
+    let basis = crate::PercentageBasisOf::definite(span).map_err(|_| FitError::InvalidGeometry)?;
+    match policy.resolve_against(basis) {
+        crate::NumericResolutionOf::Resolved(value) => Ok(if value == 0.0 { 0.0 } else { value }),
+        crate::NumericResolutionOf::MissingBasis { .. } => Err(FitError::MissingZoneBasis),
+        crate::NumericResolutionOf::InvalidNumeric { resolved, .. } => {
+            Err(FitError::NonFinite(resolved))
+        }
     }
 }
 

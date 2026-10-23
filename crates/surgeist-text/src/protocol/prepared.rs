@@ -352,7 +352,9 @@ pub(crate) fn prepare_tables(
                     advance: cluster.map_or(0.0, |cluster| cluster.advance),
                     ascent: metrics.ascent,
                     descent: metrics.descent,
-                    line_height: metrics.line_height,
+                    line_height: cluster
+                        .filter(|cluster| cluster.content.font_run().is_some())
+                        .map_or(0.0, |cluster| cluster.line_height),
                     level: analyzed.analysis.levels[index],
                     is_whitespace: cluster.is_some_and(|cluster| cluster.is_whitespace),
                 };

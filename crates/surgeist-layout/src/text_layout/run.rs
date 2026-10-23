@@ -54,6 +54,7 @@ pub(crate) struct Context<S: LayoutScalar> {
     pub indent: crate::text_indent::ResolvedTextIndent<S>,
     pub indent_state: crate::text_indent::IndentLineState,
     pub hyphenation_state: crate::hyphenation::LineHyphenationState,
+    pub hyphenate_limit_zone: crate::LengthPercentageOf<S>,
 }
 
 impl<S: LayoutScalar> Context<S> {
@@ -177,6 +178,11 @@ pub(crate) fn layout<Node: Copy + Eq, S: LayoutScalar>(
             indent: context.indent.widened(),
             indent_state: context.indent_state,
             hyphenation_state: context.hyphenation_state,
+            hyphenate_limit_zone: crate::LengthPercentageOf::from_coefficients(
+                context.hyphenate_limit_zone.absolute_px().to_f64(),
+                context.hyphenate_limit_zone.percent_fraction().to_f64(),
+            )
+            .map_err(|_| FitError::InvalidGeometry)?,
             orientation,
             atomics: &allocations,
             controls: &control_allocations,
@@ -527,6 +533,7 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
     let mut flows = Vec::new();
     let mut amounts = Vec::new();
     let mut encounters = Vec::new();
+    let mut zones = Vec::new();
     let mut line_bounds = Vec::new();
     let mut fragments = Vec::new();
     let mut atomic_origins = Vec::new();
@@ -757,6 +764,7 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
         flows.push(line.flow);
         amounts.push(line.amounts);
         encounters.push(line.encounters);
+        zones.push(line.zone_basis);
         placements.push(LinePlacement {
             line: line.finalized,
             anchor,
@@ -781,6 +789,7 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
             flows,
             amounts,
             encounters,
+            zones,
             outflows,
             indent: context.indent.widened(),
             indent_start: context.indent_state,

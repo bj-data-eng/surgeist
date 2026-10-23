@@ -172,6 +172,20 @@ no-limit retain refinement. Max-content stays unbroken. See the
 [successive-line contract](../../../docs/text-layout-contract.md#successive-hyphenated-lines-and-intrinsic-measurement).
 
 
+`NodeInputOf::hyphenate_limit_zone` supplies a signed length/percentage, default
+zero. For each automatic candidate with a genuine ordinary fallback immediately
+before its word, Layout converges that fallback with no supplied spacing through
+the same shaping, allocation, float replay and height loops. Its own natural
+alignment measure and actual indentation determine the unused inline gap;
+percentages use its full float-constrained line-box span before indentation.
+Only a gap strictly greater than the used zone permits automatic hyphenation.
+Manual endings, including empty indications, remain independent. No legal
+fallback at a line start or inside a continued word makes this gate inapplicable;
+an existing fallback that fails finalization propagates its error. Min-content
+is zone-exempt, while max-content stays unbroken. These reference trials remain
+unpublished, and changed policy, bands or encounters rebuild their private pass
+basis. See the [zone contract](../../../docs/text-layout-contract.md#hyphenation-zone-and-the-ordinary-fallback-line).
+
 `TextJustification::Spaces` expands retained U+0020 slots using Text's finalized
 ownership and edge decisions. Layout distributes the remaining line capacity
 after subtracting Text's natural alignment measure to those slots, then finalizes

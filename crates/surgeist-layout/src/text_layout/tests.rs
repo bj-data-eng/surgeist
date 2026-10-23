@@ -26,6 +26,8 @@ mod manual_css_minima;
 mod tab_stops;
 #[path = "tests/whitespace_edges.rs"]
 mod whitespace_edges;
+#[path = "tests/zone_composition.rs"]
+mod zone_composition;
 
 fn assert_native_invalidation_source_order<S: LayoutScalar>() {
     let style = ahem_style(10.0, 10.0);
@@ -220,6 +222,7 @@ fn assert_intrinsic_line_box<S: LayoutScalar>() {
             indent: crate::text_indent::ResolvedTextIndent::ZERO,
             indent_state: crate::text_indent::IndentLineState::default(),
             hyphenation_state: crate::hyphenation::LineHyphenationState::default(),
+            hyphenate_limit_zone: crate::LengthPercentageOf::ZERO,
         },
         &[],
         super::run::LineEnvironment {
@@ -1809,3 +1812,6 @@ mod float_encounters;
 
 #[path = "tests/hyphenation_zone.rs"]
 mod hyphenation_zone;
+
+#[path = "tests/hyphenation_zone_policy.rs"]
+mod hyphenation_zone_policy;

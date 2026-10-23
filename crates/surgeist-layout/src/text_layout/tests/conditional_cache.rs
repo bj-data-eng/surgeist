@@ -1,7 +1,7 @@
 //! Conditional selections use the same accepted child and publication boundary.
 use super::*;
 
-fn assert_same<S: LayoutScalar>(
+pub(super) fn assert_same<S: LayoutScalar>(
     a: &CompletedLayoutBatchOf<u32, S>,
     b: &CompletedLayoutBatchOf<u32, S>,
 ) {

@@ -722,6 +722,7 @@ where
             indent: resolve_text_indent(container, constants.text_indent, available)?,
             indent_state,
             hyphenation_state,
+            hyphenate_limit_zone: constants.hyphenate_limit_zone,
         };
         let text_controls = binding
             .controls
@@ -1342,6 +1343,9 @@ pub(super) fn text_run_error<Node: Copy, S: LayoutScalar, M>(
         crate::text_layout::fit::FitError::InvalidGeometry => LayoutErrorKindOf::InternalInvariant(
             crate::LayoutInternalInvariant::InvalidRoundedInlineFragmentGeometry,
         ),
+        crate::text_layout::fit::FitError::MissingZoneBasis => {
+            LayoutErrorKindOf::MissingContext(crate::LayoutMissingContext::RequiredBasis)
+        }
         crate::text_layout::fit::FitError::Dependency => {
             unreachable!("the actual dependency error is returned before Text adaptation")
         }

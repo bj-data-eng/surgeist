@@ -75,7 +75,11 @@ uses the same selected-line and placement machinery.
    actual lexical/resource/count and source-piece observations. Automatic
    alternatives carry `PreparedAlternativeDefinition::Automatic`, consuming no
    authored interval. Their cut retains the preceding original EGC separately
-   from the generating mixed boundary and computed presentation.
+   from the generating mixed boundary and computed presentation. A word's
+   `ordinary_fallbacks(start)` exposes genuine Allowed/no-alternative endings
+   immediately before its first influencing text occurrence. It preserves mixed
+   custody and does not nominate synthetic empty endings or make fit decisions;
+   Layout owns the natural fallback trials used by its automatic hyphenation zone.
    `ParagraphReplacement::style_driven` resolves the actual defining style;
    `resolved_native_logical_before` captures one nonempty ordered list (individual
    strings may be empty). A discretionary control owns its complete boxed Style.
@@ -112,6 +116,10 @@ uses the same selected-line and placement machinery.
    Foreign, missing and duplicate slots refuse. Actual feedback carries advances,
    occupied/hanging extents, metrics and atomic slots; the consumer decides fit.
    Raw provider glyph advances remain `f32`, separate from logical `f64` pens.
+   Line-height changes preserve compatible joint shaping: each actual component
+   retains its own style's height resolved against the shared font instance.
+   Native line struts, preliminary unit heights and source-fragment bounds consume
+   those contributions without assigning every unit the run's maximum height.
    Borrow `FinalizedLine::measurements()` for native fit, alignment and the
    min/max-content contributions of this exact selection. These signed flow
    observations exclude indentation; their ordered occupied intervals are in

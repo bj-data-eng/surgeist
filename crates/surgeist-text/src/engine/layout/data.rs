@@ -43,6 +43,7 @@ impl Whitespace {
 pub(crate) struct RunMetrics {
     pub(crate) ascent: f64,
     pub(crate) descent: f64,
+    /// Initial run-style/default strut height; actual components retain their own.
     pub(crate) line_height: f64,
     /// Distance from baseline to the underline's top, positive upward.
     pub(crate) underline_top: f64,
@@ -87,6 +88,9 @@ impl ClusterContent {
 /// A logical shaped cluster. Ligature components retain separate source associations.
 #[derive(Clone, Debug)]
 pub(crate) struct PreparedCluster {
+    /// Owning component style resolved against its actual font instance.
+    /// Font-free controls have no strut contribution.
+    pub(crate) line_height: f64,
     /// Actual provider contribution before caller-owned spacing.
     pub(crate) shaped_advance: f64,
     /// Executed letter, word, and selected allocation terms, without regrouping.
@@ -175,6 +179,8 @@ pub(crate) struct FinalizedGlyph {
 
 #[derive(Clone, Debug)]
 pub(crate) struct FinalizedCluster {
+    /// The actually selected component's resolved font-backed line height.
+    pub(crate) line_height: f64,
     /// Actual provider contribution before caller-owned spacing.
     pub(crate) shaped_advance: f64,
     /// Executed letter, word, and selected allocation terms, without regrouping.

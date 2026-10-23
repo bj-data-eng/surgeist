@@ -1850,6 +1850,7 @@ pub fn surgeist_text::PreparedWordView<'_>::query(&self) -> core::option::Option
 pub fn surgeist_text::PreparedWordView<'_>::resource(&self) -> surgeist_text::HyphenationResource
 pub fn surgeist_text::PreparedWordView<'_>::source_pieces(&self) -> impl core::iter::traits::iterator::Iterator<Item = surgeist_text::HyphenationSourcePieceView<'_>>
 impl surgeist_text::PreparedWordView<'_>
+pub fn surgeist_text::PreparedWordView<'_>::ordinary_fallbacks(&self, start: &surgeist_text::PreparedBoundary) -> surgeist_text::Result<alloc::vec::Vec<surgeist_text::PreparedOpportunity>>
 pub fn surgeist_text::PreparedWordView<'_>::portions(&self) -> surgeist_text::Result<alloc::vec::Vec<surgeist_text::PreparedWordPortion>>
 impl core::fmt::Debug for surgeist_text::PreparedWordView<'_>
 pub fn surgeist_text::PreparedWordView<'_>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result

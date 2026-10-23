@@ -538,4 +538,63 @@ impl PreparedWordView<'_> {
         }
         Ok(result)
     }
+
+    /// Actual `Allowed`/no-alternative fallbacks immediately before this word,
+    /// in mixed custody order. No fit decision or synthetic empty offer is made.
+    /// `start` is the unchanged incoming line start in this preparation.
+    pub fn ordinary_fallbacks(
+        &self,
+        start: &PreparedBoundary,
+    ) -> crate::Result<Vec<PreparedOpportunity>> {
+        if !Arc::ptr_eq(self.prepared, &start.prepared) {
+            return Err(super::protocol_error(
+                super::ProtocolError::ForeignPreparation {
+                    kind: super::ProtocolHandleKind::Boundary,
+                    occurrence: start.index,
+                },
+            ));
+        }
+        Ok((0..self.prepared.tables.opportunities.len())
+            .filter(|&index| ordinary_fallback(self.prepared, self.index, start.index, index))
+            .map(|index| PreparedOpportunity {
+                prepared: Arc::clone(self.prepared),
+                index,
+            })
+            .collect())
+    }
+}
+
+/// Transparent mixed cuts keep distinct custody; in-flow atomic and control influences are not text aliases.
+fn ordinary_fallback(
+    prepared: &Arc<PreparedData>,
+    word: usize,
+    start: usize,
+    offer: usize,
+) -> bool {
+    use super::prepared::ParticipantData;
+    use crate::engine::analysis::wrapping::Influence;
+    let tables = &prepared.tables;
+    let Some(row) = tables.opportunities.get(offer) else {
+        return false;
+    };
+    if row.kind != super::PreparedBreakKind::Allowed {
+        return false;
+    }
+    let boundary = tables.boundaries[row.boundary];
+    let from = tables.boundaries[start].participant;
+    if boundary.participant <= from {
+        return false;
+    }
+    if tables.opportunities.iter().any(|row| {
+        row.kind == super::PreparedBreakKind::Forced
+            && tables.boundaries[row.boundary].participant > from
+            && tables.boundaries[row.boundary].participant <= boundary.participant
+    }) {
+        return false;
+    }
+    let lexical = &prepared.analyzed.words.rows()[tables.words[word].lexical];
+    let first=tables.participants.iter().position(|part| matches!(part,ParticipantData::Text(i) if tables.units[*i].atoms.contains(&lexical.atoms.start)));
+    let relation =
+        &prepared.analyzed.logical.relations[prepared.analyzed.logical.cuts[boundary.participant]];
+    matches!(relation.after,Some(Influence::Text { atom, participant }) if atom==lexical.atoms.start && Some(participant)==first)
 }

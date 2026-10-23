@@ -10,6 +10,7 @@ mod joining_context;
 mod joining_positioning;
 mod mandatory_breaks;
 mod manual_hyphenation;
+mod metric_heights;
 mod phase_two;
 mod raw_automatic_hyphenation;
 mod tab_stops;

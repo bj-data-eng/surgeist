@@ -1951,3 +1951,6 @@ fn automatic_internal_float_retries_changed_band_and_preserves_committed_results
 
 #[path = "line_limit_retry.rs"]
 mod line_limit_retry;
+
+#[path = "zone_cache.rs"]
+mod zone_cache;

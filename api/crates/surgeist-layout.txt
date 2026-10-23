@@ -1285,6 +1285,7 @@ pub surgeist_layout::NodeInputOf::grid_template_areas: surgeist_layout::GridTemp
 pub surgeist_layout::NodeInputOf::grid_template_columns: alloc::vec::Vec<surgeist_layout::TrackComponentOf<S>>
 pub surgeist_layout::NodeInputOf::grid_template_rows: alloc::vec::Vec<surgeist_layout::TrackComponentOf<S>>
 pub surgeist_layout::NodeInputOf::hyphenate_limit_lines: surgeist_layout::HyphenateLimitLines
+pub surgeist_layout::NodeInputOf::hyphenate_limit_zone: surgeist_layout::LengthPercentageOf<S>
 pub surgeist_layout::NodeInputOf::inset: surgeist_layout::Edges<surgeist_layout::LengthAutoOf<S>>
 pub surgeist_layout::NodeInputOf::item_is_replaced: bool
 pub surgeist_layout::NodeInputOf::item_is_table: bool

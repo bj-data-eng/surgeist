@@ -36,6 +36,7 @@ fn observed<S: LayoutScalar>(
             indent: crate::text_indent::ResolvedTextIndent::ZERO,
             indent_state: crate::text_indent::IndentLineState::default(),
             hyphenation_state: crate::hyphenation::LineHyphenationState::default(),
+            hyphenate_limit_zone: crate::LengthPercentageOf::ZERO,
         },
         &[],
         super::super::super::run::LineEnvironment {

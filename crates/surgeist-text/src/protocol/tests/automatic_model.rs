@@ -3,7 +3,7 @@ use super::*;
 use crate::{
     HyphenateCharacter, HyphenationCounts, HyphenationProvenance, HyphenationResource, Hyphens,
     ParagraphConnection, ParagraphConnectionKind, ParagraphOrigin, ParagraphOriginKind,
-    ParagraphTerminalEdge, Range, Text,
+    ParagraphTerminalEdge, Range, Text, Wrap,
 };
 
 fn automatic_style(size: f32) -> Style {
@@ -1296,4 +1296,228 @@ fn line_limit_dispositions_authenticate_exact_automatic_variants_and_purpose() {
             )
             .is_err()
     );
+}
+
+#[test]
+fn word_ordinary_fallbacks_keep_genuine_custody_and_require_the_influencing_text_occurrence() {
+    let p = prepare(input(Source::new("A associate"), &[0, 2, 11]));
+    let start = p.boundary_views().next().unwrap().handle();
+    let word = p
+        .word_views()
+        .find(|word| word.query() == Some("associate"))
+        .unwrap();
+    let offers = word.ordinary_fallbacks(&start).unwrap();
+    assert_eq!(offers.len(), 1);
+    assert_eq!(offers[0].view().kind(), PreparedBreakKind::Allowed);
+    assert_eq!(offers[0].view().boundary().view().source_before().get(), 2);
+    assert!(
+        word.ordinary_fallbacks(&offers[0].view().boundary())
+            .unwrap()
+            .is_empty()
+    );
+    let inside = cut_at(&p, 4).view().boundary();
+    assert!(word.ordinary_fallbacks(&inside).unwrap().is_empty());
+    let foreign = prepare(input(Source::new("A associate"), &[0, 11]));
+    let error = word
+        .ordinary_fallbacks(&foreign.boundary_views().next().unwrap().handle())
+        .unwrap_err();
+    assert!(matches!(
+        error.detail(),
+        Some(crate::ErrorDetail::InvalidTextProtocol {
+            reason: crate::ProtocolError::ForeignPreparation {
+                kind: crate::ProtocolHandleKind::Boundary,
+                ..
+            }
+        })
+    ));
+    assert!(
+        p.word_views()
+            .find(|word| word.query() == Some("A"))
+            .unwrap()
+            .ordinary_fallbacks(&start)
+            .unwrap()
+            .is_empty()
+    );
+    let p = prepare(input(Source::new("A\nA associate"), &[0, 13]));
+    let word = p
+        .word_views()
+        .find(|word| word.query() == Some("associate"))
+        .unwrap();
+    assert!(
+        word.ordinary_fallbacks(&p.boundary_views().next().unwrap().handle())
+            .unwrap()
+            .is_empty()
+    );
+    let after = p
+        .opportunity_views()
+        .find(|offer| offer.kind() == PreparedBreakKind::Forced)
+        .unwrap()
+        .boundary();
+    assert_eq!(
+        word.ordinary_fallbacks(&after)
+            .unwrap()
+            .iter()
+            .map(|offer| offer.view().boundary().view().source_before().get())
+            .collect::<Vec<_>>(),
+        [4]
+    );
+
+    let mut source = Source::new("Aassociate");
+    source.inline_box(crate::InlineBox::new(
+        crate::Id::from_u64(444),
+        crate::InlineBoxKind::InFlow,
+        1,
+        crate::Size::new(10.0, 10.0),
+    ));
+    let mut value = input(source, &[0, 1, 10]);
+    value.anchor_order = vec![crate::ParagraphAnchor {
+        item: crate::ParagraphAnchorItem::Atomic(0),
+        affinity: crate::Affinity::Before,
+    }];
+    value.boundary_policies.extend([
+        crate::ParagraphBoundaryPolicy {
+            definition: crate::ParagraphBoundaryDefinition::AtomicBefore(0),
+            preceding_wrap: Wrap::Word,
+            following_wrap: Wrap::Word,
+            ancestor_wrap: Wrap::Word,
+        },
+        crate::ParagraphBoundaryPolicy {
+            definition: crate::ParagraphBoundaryDefinition::AtomicAfter(0),
+            preceding_wrap: Wrap::Word,
+            following_wrap: Wrap::Word,
+            ancestor_wrap: Wrap::None,
+        },
+    ]);
+    let p = prepare(value);
+    let word = p
+        .word_views()
+        .find(|word| word.query() == Some("associate"))
+        .unwrap();
+    let atomic = p.atomic_views().next().unwrap().handle();
+    let before = p
+        .opportunity_views()
+        .find(|offer| {
+            offer.kind() == PreparedBreakKind::Allowed
+                && offer.boundary().view().participant_offset() == 1
+        })
+        .unwrap();
+    assert_eq!(before.boundary().view().source_before().get(), 1);
+    assert!(
+        matches!(p.participants().nth(1),Some(PreparedParticipant::Atomic(ref actual)) if *actual==atomic)
+    );
+    // The earlier AtomicBefore offer shares the atom cursor with the word, but
+    // its next influence is the atomic, never this word's first text occurrence.
+    assert!(
+        word.ordinary_fallbacks(&p.boundary_views().next().unwrap().handle())
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[test]
+fn ordinary_word_fallbacks_preserve_transparent_mixed_cut_family() {
+    let mut source = Source::new("A associate");
+    source.inline_box(crate::InlineBox::new(
+        crate::Id::from_u64(445),
+        crate::InlineBoxKind::OutOfFlow,
+        2,
+        crate::Size::new(0.0, 0.0),
+    ));
+    let mut value = input(source, &[0, 2, 2, 11]);
+    value.controls = vec![
+        crate::ParagraphControl {
+            at: 2,
+            kind: crate::ParagraphControlKind::RightToLeftOverride,
+        },
+        crate::ParagraphControl {
+            at: 2,
+            kind: crate::ParagraphControlKind::PopDirectionalFormat,
+        },
+    ];
+    value.anchor_order = [
+        crate::ParagraphAnchorItem::EmptyOrigin(1),
+        crate::ParagraphAnchorItem::Atomic(0),
+        crate::ParagraphAnchorItem::Control(0),
+        crate::ParagraphAnchorItem::Control(1),
+    ]
+    .into_iter()
+    .map(|item| crate::ParagraphAnchor {
+        item,
+        affinity: crate::Affinity::After,
+    })
+    .collect();
+    let p = prepare(value);
+    let start = p.boundary_views().next().unwrap().handle();
+    let word = p
+        .word_views()
+        .find(|word| word.query() == Some("associate"))
+        .unwrap();
+    let offers = word.ordinary_fallbacks(&start).unwrap();
+    assert_eq!(offers.len(), 5);
+    assert_eq!(
+        offers
+            .iter()
+            .map(|offer| offer.view().boundary().view().source_before().get())
+            .collect::<Vec<_>>(),
+        [2; 5]
+    );
+    let positions = offers
+        .iter()
+        .map(|offer| offer.view().boundary().view().participant_offset())
+        .collect::<Vec<_>>();
+    assert!(positions.windows(2).all(|pair| pair[0] + 1 == pair[1]));
+    for offer in offers {
+        assert_eq!(offer.view().kind(), PreparedBreakKind::Allowed);
+        let mut value = request(&p);
+        value.end = offer.view().boundary();
+        value.participants = p
+            .participants()
+            .take(value.end.view().participant_offset())
+            .collect();
+        value.termination = PreparedTermination::Ordinary(offer);
+        value.alternative = None;
+        value.context.end = LineEnd::Soft;
+        value.atomics = value
+            .participants
+            .iter()
+            .filter_map(|part| {
+                if let PreparedParticipant::Atomic(occurrence) = part {
+                    Some(AtomicAllocation {
+                        occurrence: occurrence.clone(),
+                        allocation: AtomicLineAllocation::OutOfFlow,
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect();
+        value.controls = value
+            .participants
+            .iter()
+            .filter_map(|p| {
+                if let PreparedParticipant::Control(control) = p {
+                    Some(ControlAllocation {
+                        occurrence: control.clone(),
+                        strut: None,
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect();
+        let line = p
+            .select(value)
+            .unwrap()
+            .finalize(SpacingAllocations::None)
+            .unwrap();
+        assert_eq!(line.feedback().advance, 20.0);
+        assert_eq!(
+            line.selected_line().request().participants.len(),
+            line.selected_line()
+                .request()
+                .end
+                .view()
+                .participant_offset()
+        );
+    }
 }
