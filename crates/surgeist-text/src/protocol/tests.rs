@@ -6,6 +6,7 @@ mod joining_context;
 mod joining_positioning;
 mod mandatory_breaks;
 mod manual_hyphenation;
+mod tab_stops;
 
 use super::*;
 use crate::{
