@@ -474,6 +474,78 @@ unsupported conventions, primary-font versus adjacent-fallback coverage, genuine
 source/control custody, min-content and unchanged authored/selection/search text.
 This determination supplies requirements, not an implementation-completion claim.
 
+### Automatic resources, word custody and initial limits
+
+The selected first automatic resource is Hypher 0.1.8 with allocation and only
+English enabled, using its pinned American-English 2005-05-30 patterns. Apply all
+14 source exceptions, including explicit zero-cut entries; absence of an
+exception differs from an exception forbidding cuts. Keep the provider and source
+data exact. Text separately selects the source's stated `democrat` correction at
+character boundaries 3 and 4, for that exact word only. Match exceptions and this
+correction without ASCII case distinctions; do not imply Unicode case folding,
+derivative-word corrections or complete English coverage.
+
+A lexical word spans connected text origins, styles, fonts and transparent
+out-of-flow occurrences. Actual hard separators, in-flow atomics and disconnected
+text remain genuine domain boundaries. Resource qualification examines every
+actual language contribution to the complete word: this resource admits only
+`en-US`, ignoring ASCII case. Other regions, generic `en`, variants and extensions
+do not acquire implicit coverage. An unqualified mixed-language word retains
+manual opportunities and a truthful resource observation; it is not split into
+artificial independently hyphenated words.
+
+The logical-preceding actual text contribution owns an automatic cut's style,
+origin, `hyphens`, indication, convention and font-selection authority. Its
+`Auto` admits automatic production; its `Manual` or `None` does not. Empty
+wrappers and out-of-flow occurrences cannot own the cut. Nearest-common-ancestor
+wrapping permission remains separate. Neither a first-run style nor the adjacent
+effective fallback font can replace the actual owner. These mixed-style and
+resource choices are explicit Surgeist policy where the pinned specification
+does not fully determine the result.
+
+Text retains complete-word and cut observations with their exact ordered source
+pieces, processed correspondence, mixed boundary, governing contribution, counts
+and pattern/source-exception/Text-correction provenance. An automatic indication
+is a genuine computed insertion consuming no authored interval, rather than an
+injected SHY, fabricated control or caller-authored replacement. Provider UTF-8 is
+a temporary mapped view: preserve original SHY occurrences and exact UTF-16
+custody, validate scalar/grapheme boundaries, and never fuse isolated surrogate
+halves across removed pieces. Long words use checked lengths and allocation
+without an arbitrary word quota.
+
+For the native CSS operation, resolve initial character limits to total 5,
+before 2 and after 2, for manual and automatic hyphenation, including an empty
+indication. Text owns these counts and admission. Exclude nonspacing marks and
+intra-word punctuation as specified by
+[hyphenate-limit-chars](../references/css-text-4--WD-css-text-4-20260814--106c5cd086ab.md#hyphenate-char-limits);
+SHY and the inserted indication are not authored lexical letters. The numeric
+resolution is a Surgeist choice. Applying these limits to SHY follows the pinned
+inclusive prose; the CSSWG issue 5090 dispute remains unresolved, so this is not
+a claim of standards consensus or universal browser agreement. The initial zone
+is zero, successive-line limit is unbounded and last-line exclusion is none.
+Nondefault limits and broader resource coverage remain separate requirements.
+
+Preserve the existing raw `System::layout`/`layout_analyzed` count policy at its
+actual operation boundary. Native preparation remains the CSS operation even
+without an explicit paragraph direction. A direct Text consumer uses the same
+selected-line protocol; no second CSS formatter or compatibility lane is needed.
+Candidate provenance remains distinct from admitted selectable opportunities.
+
+Every enabled chooser must prefer actual eligible explicit conditional hyphens
+before automatic fallback. An automatic cut is available only within a portion
+that still cannot fit an otherwise available line after that manual partition;
+failing the whole word or the space left after unrelated content is insufficient.
+Include the actual indication and finalized occupied geometry in the fit test.
+For `as` + SHY + `sociate` with 10px letters and a 10px indication, width 80 takes
+the explicit cut after `as`; at width 60 its 70px residual portion permits
+automatic fallback. Raw standalone layout also preserves this priority. Layout
+owns actual fit, float replay and committed-line state, while Text supplies the
+same word/cut authority. Rejected trials remain pure. Producer and consumers must
+deliver these semantics together before automatic offers become selectable.
+
+These are integration requirements, not a claim that automatic resource delivery
+or the complete hyphenation contribution is implemented.
+
 ### Float encounters inside shared text units
 
 A float remains a Layout-owned box at its original source-order occurrence. It
