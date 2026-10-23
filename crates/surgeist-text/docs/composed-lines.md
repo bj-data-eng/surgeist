@@ -256,7 +256,7 @@ the real nearest block Style and used direction. It readies every selectable
 original and replacement tab under the exact catalogue and scale. The line
 request supplies `TabContext::CssStops { origin }`: the physical block start
 relative to unaligned paragraph start, or `None` for a genuinely unknown phase.
-Positive tabs consume that phase; zero tabs retain custody without unused font
+Nonzero tabs consume that phase; zero tabs retain custody without unused font
 probes. Hypothetical character metrics use the native isolated Common-to-Latin
 profile with actual settings, coordinates and locale: SPACE follows the captured
 block direction; ZERO retains its even/LTR level. This does not borrow a source
@@ -264,9 +264,11 @@ run script or claim arbitrary script-sensitive metric conformance. The shared
 finalizer orders the mixed line, resolves glyph-free tab
 advances with actual spacing/atomic contributions, then builds prefix, metrics,
 paint and interaction rows. Re-finalization recomputes stops; alignment follows.
-Fontless tabs cannot invent font metrics for Range observations. Negative
-computed intervals and consumed unknown intrinsic phase remain explicit bounded
-capability refusals. Native whitespace-edge measurements follow the captured
+Fontless tabs cannot invent font metrics for Range observations. A nonzero signed
+spacing-derived interval retains its actual SPACE and ZERO resources. Both
+nonzero signs use the same forward grid with the interval's magnitude and exactly
+one threshold bump; this is an explicit native policy. Consumed unknown intrinsic
+phase remains a precise capability refusal. Native whitespace-edge measurements follow the captured
 terminal role and actual line ending; callers do not supply numeric hanging.
 Other whitespace modes, styled boundary barriers and vertical orientation remain
 outside this contribution.

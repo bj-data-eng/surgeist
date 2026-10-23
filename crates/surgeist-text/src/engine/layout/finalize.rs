@@ -1655,7 +1655,7 @@ fn resolve_tabs(
             let metric = selected.prepared.tab_metrics[cluster.style]
                 .as_ref()
                 .ok_or_else(|| invalid("CSS tab has no prepared metric"))?;
-            remaining_tabs += usize::from(metric.period > 0.0);
+            remaining_tabs += usize::from(metric.period != 0.0);
         }
     }
     if remaining_tabs == 0 {
@@ -1691,14 +1691,17 @@ fn resolve_tabs(
                                 field: crate::ProtocolContextField::IntrinsicTabPhase,
                             })
                         })?;
-                        let mut distance = tab_grid_distance(origin, pen, sign, metric.period)?;
+                        // Retain the actual signed interval in preparation. Both
+                        // signs execute this one forward grid by its magnitude.
+                        let period = metric.period.abs();
+                        let mut distance = tab_grid_distance(origin, pen, sign, period)?;
                         if distance < metric.threshold {
-                            distance = tab_grid_add("tab threshold bump", distance, metric.period)?;
+                            distance = tab_grid_add("tab threshold bump", distance, period)?;
                         }
                         distance
                     };
                     cluster.advance = advance;
-                    if metric.period > 0.0 {
+                    if metric.period != 0.0 {
                         remaining_tabs -= 1;
                         if remaining_tabs == 0 {
                             // This tab's resolved advance is the last consumed

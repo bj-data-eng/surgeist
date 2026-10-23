@@ -1305,9 +1305,13 @@ covered `css/css-text/white-space/tab-bidi-001.html` and
 `css/css-text/tab-size/tab-size-spacing-002.html` / `003.html`. These cover bidi
 embeddings/overrides and positive spacing; they do not establish plaintext
 direction mismatch or negative-interval behavior. No browser execution is claimed.
-The signed grid beyond block edges is an explicit native policy. Negative
-intervals and unresolved opposite-edge intrinsic phases remain bounded capability
-limitations, not invalid CSS or completed positive acceptance.
+The signed grid beyond block edges is an explicit native policy. The
+[negative spacing-derived interval determination](https://github.com/bj-data-eng/surgeist/issues/64#issuecomment-6374973383)
+adopts the same stop set with the magnitude of a finite nonzero interval,
+traversed strictly forward in paragraph progression. Retain the signed metric
+and provenance; apply exactly one half-ch bump. This completes a source gap as
+native policy, without a browser-equivalence or CSSWG-resolution claim.
+Unresolved opposite-edge intrinsic phases remain a separate capability limit.
 
 ## Nonempty formatting-unit Range geometry
 

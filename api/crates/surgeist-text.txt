@@ -509,7 +509,6 @@ pub surgeist_text::ProtocolContextField::CssParagraphBoundary
 pub surgeist_text::ProtocolContextField::IntrinsicTabPhase
 pub surgeist_text::ProtocolContextField::LineEnd
 pub surgeist_text::ProtocolContextField::LineStart
-pub surgeist_text::ProtocolContextField::NegativeTabInterval
 pub surgeist_text::ProtocolContextField::Orientation
 pub surgeist_text::ProtocolContextField::Spacing
 pub surgeist_text::ProtocolContextField::TabMetrics

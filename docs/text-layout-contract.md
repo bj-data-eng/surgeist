@@ -295,7 +295,7 @@ the capture, style and demand in their owning cache identities.
 A checked tab size is either a finite nonnegative number or absolute length,
 initially eight spaces. A number multiplies the nearest block's hypothetical
 SPACE advance including that block's letter- and word-spacing. A length bypasses
-that measurement. A positive interval uses half of the hypothetical ZERO advance
+that measurement. A nonzero resolved interval uses half of the hypothetical ZERO advance
 under the tab's own style for its threshold. Resolve these metrics through their
 actual font-selection authorities, without fabricated authored characters or
 neighboring-font substitution. The pinned [ch definition](../references/css-values-4--WD-css-values-4-20240312--7b6b68c34d00.md#ch)
@@ -316,23 +316,36 @@ settings; they do not prescribe a nominal-only measurement algorithm.
 Authored zero suppresses advance and paint without SPACE, ZERO or TAB probes.
 A spacing-derived zero may consume SPACE to establish zero, then needs no
 threshold metric. Preserve original source, caret endpoints and selection custody
-even at zero extent. A negative resolved interval currently requires a precise
-unsupported capability: it is not invalid CSS and must not be clamped, made
-positive or recomputed without spacing. Nonfinite arithmetic, overflow and
-nonzero numeric collapse are distinct numeric failures, never semantic zero.
-Negative-interval execution remains required work for full #64/#72 acceptance.
+even at zero extent. Nonfinite arithmetic, overflow and nonzero numeric collapse
+are distinct numeric failures, never semantic zero. A negative specified tab size
+remains invalid; a negative interval derived from valid sizing and actual spacing
+is a separate state.
 
 Use physical +x coordinates temporarily, with unaligned paragraph progression
 start defined as zero. The initial pen is +indent for LTR and -indent for RTL.
 Layout supplies the actual block content-start minus actual paragraph-start
 displacement in this frame, recomputed for each float band and retry. Direction
-alone does not prove that displacement. With block origin O and positive period T,
-the grid is O+k*T for signed integer k. Paragraph progression selects the closest
-strictly ahead stop, followed by exactly one additional stop if the distance is
-below half-ch. Extending this grid beyond the block edges is an explicit Surgeist
-policy, not an established browser or CSSWG resolution. For example, block RTL
-origin 100, paragraph LTR pen zero and period 40 select stop 20 when half-ch is at
-most 20; a larger threshold selects 60.
+alone does not prove that displacement. Retain the signed finite resolved
+interval T and its metric provenance. For T != 0, use grid period D=abs(T):
+O+k*T and O+k*D describe the same stop set for signed integer k. With physical pen
+p and paragraph sign s=+1 for LTR or -1 for RTL, let q=s*(p-O). Select
+k=floor(q/D)+1, then increment k exactly once if k*D-q is below the authentic
+half-ch threshold. Equality does not bump. The destination is O+s*k*D; aligned
+pens advance to the next stop. Use mathematical floor for negative coordinates.
+Do not loop until the threshold is reached, advance backward or clamp to zero.
+An unrepresentable consumed phase, gap or destination is a numeric failure.
+
+Applying this forward grid to negative spacing-derived intervals is the
+[adopted native policy](https://github.com/bj-data-eng/surgeist/issues/64#issuecomment-6374973383).
+The magnitude is a grid period, not a rewrite of the signed SPACE metric or
+specified spacing. Pinned CSS and inspected WebKit do not establish this
+negative-interval algorithm. Extending the grid beyond block edges is also an
+explicit Surgeist policy, not an established browser or CSSWG resolution.
+For example, block RTL origin 100, paragraph LTR pen zero and period 40 select
+stop 20 when half-ch is at most 20; a larger threshold selects 60. With Ahem's
+20px SPACE, zero letter-spacing, `word-spacing: -21px` and `tab-size: 4`, T=-4px.
+For a 20px ZERO, half-ch=10px, O=0 and pen=0, LTR advances to 8px and RTL to -8px:
+the one bump may still leave a gap below half-ch.
 
 Resolve after canonical line bidi ordering, using actual ordered text, atomics
 and supplied spacing. A CSS tab has source-owned, glyph-free cluster content;
@@ -348,7 +361,7 @@ require their own precise missing-metric result.
 Changed spacing allocations require tab recomputation: expansion before a tab
 may be absorbed by a shorter tab advance. Layout uses actual finalized feedback
 for fit, floats, intrinsic sizing and justification, retaining request identity
-and cycle detection. Unknown block extent remains unknown. A positive preserved
+and cycle detection. Unknown block extent remains unknown. A nonzero preserved
 tab whose intrinsic phase depends on an unknown opposite edge requires a precise
 unresolved-intrinsic-tab-phase capability; zero or removed tabs do not demand that
 edge. A known placement frame does not redefine an unconstrained intrinsic query.

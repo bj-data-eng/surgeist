@@ -206,7 +206,7 @@ pub enum TabContext {
     /// Actual retained-font shaping advance, without a tab-stop algorithm.
     FontAdvance,
     /// Physical nearest-block start relative to unaligned paragraph start.
-    /// None preserves an unknown intrinsic phase; only positive tabs consume it.
+    /// None preserves an unknown intrinsic phase; only nonzero tabs consume it.
     CssStops {
         origin: Option<f64>,
     },
@@ -515,7 +515,6 @@ pub enum ProtocolContextField {
     TabPreparation,
     TabReference,
     TabMetrics,
-    NegativeTabInterval,
     IntrinsicTabPhase,
     CssParagraphBoundary,
     Spacing,

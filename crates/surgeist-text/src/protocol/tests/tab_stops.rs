@@ -222,7 +222,7 @@ fn spacing_before_tab_is_absorbed_and_recomputed_from_selected_rows() {
 }
 
 #[test]
-fn unknown_phase_is_consumed_only_by_positive_retained_tabs() {
+fn zero_tabs_bypass_unknown_phase_while_positive_tabs_consume_it() {
     let mut system = system();
     let zero = css(
         &mut system,
@@ -447,7 +447,7 @@ fn zero_tab_is_fontless_but_still_needs_actual_line_metrics() {
     );
 }
 #[test]
-fn spacing_derived_zero_skips_threshold_and_negative_interval_is_precise() {
+fn spacing_derived_zero_skips_threshold_and_negative_interval_executes_forward() {
     let mut system = system();
     let body = Style {
         white_space: WhiteSpace::Preserve,
@@ -474,24 +474,37 @@ fn spacing_derived_zero_skips_threshold_and_negative_interval_is_precise() {
         word_spacing: -21.0,
         ..style()
     };
-    assert!(matches!(
-        reason(
-            &css_capture(
-                &mut system,
-                captured(
-                    "A\tB",
-                    body,
-                    Some(block),
-                    ParagraphBaseDirection::LeftToRight
-                ),
-                1.0
-            )
-            .unwrap_err()
+    let negative = css_capture(
+        &mut system,
+        captured(
+            "A\tB",
+            body,
+            Some(block),
+            ParagraphBaseDirection::LeftToRight,
         ),
-        ProtocolError::UnsupportedContext {
-            field: ProtocolContextField::NegativeTabInterval
-        }
-    ));
+        1.0,
+    )
+    .unwrap();
+    let metric = negative.inner.tab_metrics.iter().flatten().next().unwrap();
+    assert_eq!((metric.period, metric.threshold), (-4.0, 10.0));
+    assert!(metric.font.is_some() && metric._block_font.is_some());
+    // Ahem20: A ends at20. D=abs(-4), first gap4, one bump gives8.
+    // The actual SPACE+spacing remains signed; only grid progression uses D.
+    let line = finish(&negative, Some(0.0), 0.0).unwrap();
+    assert_eq!(line.feedback().advance, 48.0);
+    assert_eq!(
+        line.run_views()
+            .flat_map(|run| run
+                .glyphs()
+                .map(|g| (g.id(), run.origin().x + g.pen()))
+                .collect::<Vec<_>>())
+            .collect::<Vec<_>>(),
+        [(35, 0.0), (36, 28.0)]
+    );
+    assert_eq!(
+        negative.analyzed_source().source().text().code_units(),
+        [65, 9, 66]
+    );
     assert_eq!(finish(&p, None, 0.0).unwrap().feedback().advance, 40.0);
 }
 #[test]
@@ -1516,7 +1529,7 @@ fn zero_en_metric_stays_ltr_even_when_block_and_paragraph_are_rtl() {
 }
 
 #[test]
-fn absence_of_positive_tabs_does_not_consume_a_temporary_signed_pen() {
+fn absent_tabs_do_not_consume_a_temporary_signed_pen() {
     let mut system = system();
     let input = captured("A", style(), None, ParagraphBaseDirection::RightToLeft);
     let analyzed = crate::test_wrapping::bind_missing(
@@ -1708,3 +1721,6 @@ fn missing_space_metric_is_distinct_from_missing_capture_and_zero_bypasses_it() 
     );
     assert_eq!(finish(&zero, None, 0.0).unwrap().feedback().advance, 40.0);
 }
+
+#[path = "negative_tab_consumption.rs"]
+mod negative_tab_consumption;

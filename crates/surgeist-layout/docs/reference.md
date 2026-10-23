@@ -98,12 +98,13 @@ so fit and placement consume actual finalized advances.
 
 Matching block/paragraph starts establish intrinsic phase through their shared
 edge. Opposite starts in an unconstrained intrinsic query remain a precise
-`IntrinsicTabPhase` capability refusal when a positive tab consumes that phase;
+`IntrinsicTabPhase` capability refusal when a nonzero tab consumes that phase;
 neither a provisional width nor the final canonical block width supplies the
-candidate's missing line allocation. Zero tabs do not need it. Negative resolved
-periods remain Text's `NegativeTabInterval` capability limit. These limits leave
-the corresponding positive CSS cases open; the [tab contract](../../../docs/text-layout-contract.md#preserved-css-tab-stops)
-records the selected operation and sources.
+candidate's missing line allocation. Zero tabs do not need it. A finite negative
+spacing-derived interval retains its signed metric and uses the same forward
+grid with the interval's magnitude as period. This is an explicit native policy;
+the [tab contract](../../../docs/text-layout-contract.md#preserved-css-tab-stops)
+records the operation, source boundary and remaining intrinsic limitation.
 
 `text_align` supplies normal line alignment;
 `text_align_last` supplies paragraph-ending and forced-line alignment. Logical

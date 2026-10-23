@@ -81,6 +81,7 @@ pub enum TabPreparation {
 
 /// One actual style's resolved operation; metric resources remain strongly owned.
 pub(crate) struct ResolvedTab {
+    /// Actual signed spacing-derived interval; nonzero grids use its magnitude.
     pub(crate) period: f64,
     pub(crate) threshold: f64,
     pub(crate) font: Option<crate::engine::layout::data::PreparedRun>,
@@ -194,9 +195,6 @@ pub(crate) fn prepare(
             metric._block_font = Some(font);
         } else {
             metric.period = multiply("tab length", size.value, f64::from(options.scale()))?;
-        }
-        if metric.period < 0.0 {
-            return Err(capability(crate::ProtocolContextField::NegativeTabInterval));
         }
         if metric.period != 0.0 {
             let input = crate::engine::ShapingInput {

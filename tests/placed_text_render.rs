@@ -70,6 +70,17 @@ fn contextual_trim_keeps_original_offsets_through_paint_and_interaction() {
 
 #[test]
 fn css_tab_geometry_supplies_the_same_source_carets_and_render_admission() {
+    assert_css_tab_composition(text::TabSize::length(80.0).unwrap(), 0.0, 80.0);
+}
+
+#[test]
+fn negative_css_tab_geometry_supplies_the_same_source_carets_and_render_admission() {
+    // Ahem SPACE20 plus block word-spacing -21 derives T=-4; ZERO20 gives
+    // half-ch10. From pen20 the next stop24 receives one bump to28.
+    assert_css_tab_composition(text::TabSize::spaces(4.0).unwrap(), -21.0, 28.0);
+}
+
+fn assert_css_tab_composition(tab_size: text::TabSize, block_spacing: f64, b_x: f64) {
     let mut system = text::System::new(text::SystemOptions {
         font_catalogue: text::FontCatalogueMode::RegisteredOnly,
     })
@@ -85,7 +96,7 @@ fn css_tab_geometry_supplies_the_same_source_carets_and_render_admission() {
         size: 20.0,
         line_height: text::LineHeight::Absolute(20.0),
         white_space: text::WhiteSpace::Preserve,
-        tab_size: text::TabSize::length(80.0).unwrap(),
+        tab_size,
         ..text::Style::default()
     };
     let ancestor_wrap = style.wrap;
@@ -93,7 +104,10 @@ fn css_tab_geometry_supplies_the_same_source_carets_and_render_admission() {
         terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
         tab_reference: Some(
             text::ParagraphTabReference::new(
-                style.clone(),
+                text::Style {
+                    word_spacing: block_spacing,
+                    ..style.clone()
+                },
                 text::ParagraphBaseDirection::LeftToRight,
             )
             .unwrap(),
@@ -153,7 +167,10 @@ fn css_tab_geometry_supplies_the_same_source_carets_and_render_admission() {
             prepared,
             container: 0,
             nodes: vec![1],
-            origins: vec![layout::TextOriginBinding { origin, node: 1 }],
+            origins: vec![layout::TextOriginBinding {
+                origin: origin.clone(),
+                node: 1,
+            }],
             atomics: vec![],
             controls: vec![],
             line_strut: None,
@@ -181,8 +198,17 @@ fn css_tab_geometry_supplies_the_same_source_carets_and_render_admission() {
                 .collect::<Vec<_>>()
         })
         .collect::<Vec<_>>();
-    assert_eq!(glyphs, [(35, 0.0, 20.0), (36, 80.0, 20.0)]);
-    for (index, x) in [(1, 20.0), (2, 80.0)] {
+    assert_eq!(glyphs, [(35, 0.0, 20.0), (36, b_x, 20.0)]);
+    let tab = placed
+        .source_range_fragments(&origin, text::Range::new(1, 2))
+        .unwrap();
+    assert_eq!(
+        tab.units()
+            .flat_map(|unit| unit.pieces().map(|piece| piece.rect()).collect::<Vec<_>>())
+            .collect::<Vec<_>>(),
+        [text::Rect::new(20.0, 0.0, b_x - 20.0, 20.0)]
+    );
+    for (index, x) in [(1, 20.0), (2, b_x)] {
         assert_eq!(
             placed
                 .cursor(text::Cursor::new(index, text::Affinity::After))
