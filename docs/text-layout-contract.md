@@ -102,6 +102,60 @@ The standalone `System::layout` convenience path retains the currently supported
 
 The explicit native `TabContext::FontAdvance` policy uses the selected font's actual U+0009 glyph advance, preserving the standalone policy through the same finalizer. It does not approximate a tab with a space or implement CSS tab stops. `NoTabs` validates actual absence; requested `Stops` remains a precise unsupported capability until implemented. A taken discretionary opportunity requires its actual issued alternative, including an explicitly computed empty replacement; a natural paragraph end does not select a hyphen merely because the preceding source contains SHY. A source-defined replacement validates its real defining source occurrence. A control-defined replacement retains its exact control/opportunity/alternative owner and may have no text origin; incidental source-anchor provenance must be supplied and validated, never guessed from the numeric offset.
 
+### Float encounters inside shared text units
+
+A float remains a Layout-owned box at its original source-order occurrence. It
+does not divide a prepared paragraph or create a Text atomic, control, caret or
+break opportunity. Layout replays float encounters while selecting and fitting
+the paragraph's actual lines, retaining the same preparation and source mapping.
+
+The pinned CSS Text [character-unit discussion](../references/css-text-4--WD-css-text-4-20260814--106c5cd086ab.md#characters),
+[text-processing adjacency](../references/css-text-4--WD-css-text-4-20260814--106c5cd086ab.md#text-encoding)
+and [boundary-shaping rules](../references/css-text-4--WD-css-text-4-20260814--106c5cd086ab.md#boundary-shaping)
+do not specify a numeric prefix advance for a float seam strictly inside one
+shared typographic or shaping unit. Surgeist uses the following deterministic
+accounting policy for that gap; this is not a browser-equivalence claim.
+
+Text identifies the smallest enclosing finalized grouping closed under both
+grapheme indivisibility and actual shared provider-cluster associations. Neither
+association alone nor extraction components define this grouping. At an interior
+seam, the encounter's logical text prefix includes
+that whole unit's real advance exactly once. At its start the unit is excluded;
+at its end it is included. Logical end is independent of text direction and
+float side. Two floats inside the same unit have the same text-prefix
+contribution, while their distinct box placements and exclusions accumulate in
+source order. Signed advances need not grow with source order; encounter progress
+does not follow numeric prefix size. Prefix advance is distinct from occupied
+extent, ink and physical bidi position. For a shared 12.5px ligature, the interior
+seam counts 12.5px, not a 6.25px extraction component. This does not assert independently shaped
+prefix geometry or change glyphs, extraction rectangles, source ranges or carets.
+
+The observation belongs to the exact finalized line, preparation, queried
+original occurrence and selected context. Text returns the original seam and
+effective whole-unit accounting contribution distinctly, preserving signed
+advance and actual spacing, trailing-collapse and hanging facts. Layout does not
+reconstruct this from glyph ink, average character widths or extraction clusters.
+
+Layout uses that observation with actual margin-box, clear, fit and source-order
+constraints. Changed bands, allocations or legal line-break reshaping require
+the corresponding candidate to be finalized and checked again. If the unit moves
+to another line, replay its float encounter against that candidate; do not keep
+an obsolete placement above it or fabricate a partial glyph/accounting split.
+A genuine Text-issued legal break may reshape or dissolve an optional ligature;
+derive the grouping anew from that finalized candidate. Rewinds restore provisional
+float state without double insertion. Complete feedback/cycle identity includes
+event progress and provisional placements. Only a coherent accepted result is
+published; refusal preserves the previous batch.
+
+Qualification includes real shared ligatures and combining graphemes, start,
+interior and end seams, two floats in one unit, both directions and float sides,
+and a fit threshold distinguishing a half-unit from the whole unit. Include
+negative and zero advances, line-edge discards, replacements and equal-offset
+occurrence ties. Preserve
+glyph/source/caret mapping and exercise actual deferral, legal-break reshaping,
+replay, repeated-state refusal and rollback. The policy does not itself qualify
+the general float algorithm or resolve live Style/DOM producer authentication.
+
 ### Canonical boxes and coherent line placement
 
 For composed horizontal lines, Layout settles its canonical boxes, available spans, float bands and atomic allocations before accepting Text's finalized geometry. This includes the selected Layout pixel-rounding policy wherever it affects those facts. Pixel snapping is distinct from scalar conversion and canonical provider precision. If final ancestor placement changes the rounding phase and thereby changes a dimension, relative baseline or float intersection, Layout reevaluates the affected candidate and its feedback before placement. A final rounding pass cannot silently change an accepted line's inputs. This replaces independent rounding of text-fragment origins, ends and baselines for the composed protocol.
