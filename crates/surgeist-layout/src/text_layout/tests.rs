@@ -14,6 +14,8 @@ mod float_fit;
 mod indent;
 #[path = "tests/line_policy.rs"]
 mod line_policy;
+#[path = "tests/manual_css_minima.rs"]
+mod manual_css_minima;
 #[path = "tests/tab_stops.rs"]
 mod tab_stops;
 #[path = "tests/whitespace_edges.rs"]
