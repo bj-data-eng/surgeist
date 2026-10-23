@@ -79,6 +79,36 @@ This is the extracted-path policy. Appending contours is not a geometric boolean
 
 Native atomic-neighbor opportunities use the captured [nearest-common-ancestor wrapping policy](../references/css-text-3--CRD-css-text-3-20260814--17c26f1b4145.md#line-breaking-scope) and the pinned [GL/WJ/ZWJ restrictions](../references/css-text-3--CRD-css-text-3-20260814--17c26f1b4145.md#atomic-compat-wrap), including the NBSP exception. An independently qualified opportunity created by a disappearing SPACE retains its containing box's wrapping authority; denying atomic-created permission cannot erase that separate owner. Out-of-flow occurrences, neutral controls and empty origins do not create permission. When they separate two influencing neighbors, each existing mixed cut may lend the same permitted semantic opportunity; equivalent cuts must agree on that relation's captured wrapping policy. Selecting the exact cut determines the retained occurrences' line ownership. No canonical cut is invented from their shared source offset. An absent influencing neighbor at the beginning or end does not create an atomic soft opportunity; the actual paragraph terminator still includes all trailing occurrences. Explicit forced, optional and discretionary controls retain their own break authority.
 
+The wrapping fact belongs to the true ordered influencing-neighbor relation,
+including text/text and in-flow atomic relations. A captured relation identifies
+its original endpoint occurrences and, for text, the relevant source boundaries
+or spans within them, together with their actual nearest-common-ancestor wrapping
+permission. An aggregate source offset or adjacent-origin connection index alone
+does not identify that pair. Distinct immediate connection policies through empty
+or out-of-flow occurrences may legitimately differ; do not select one by cut
+position, combine their booleans or require them to agree. All eligible mixed cuts
+in the same relation consult its permission while retaining their distinct
+occurrence custody. Permission alone creates no EGC opportunity.
+
+The consuming capture producer computes this ancestor permission from its actual
+input model. Text derives the influencing relation after its admitted processing
+and transparency rules, validates the supplied endpoint correspondence, and
+rejects foreign, reversed, non-neighbor or conflicting same-relation declarations.
+Keep one semantic permission owner for text and atomic endpoints. Reuse captured
+occurrence/source identity; do not add a DOM tree or generic style interface to
+Text. If attachment requires Text's processed neighbors, expose only the narrow
+analyzed relation/provenance view needed by the producer. Native fixtures may
+explicitly author these facts without claiming live Style authentication.
+
+If an operation requires a relation permission that the capture cannot establish,
+return a typed missing-relation-wrap capability error for that operation. Do not
+silently omit otherwise-required conditional opportunities or reject independent
+ordinary/forced operations that do not consume the missing fact. This bounded
+refusal leaves the producer/model extension required under #66/#75/#72. The true
+ancestor owner follows the retained [Text4 line-breaking scope](../references/style-specialized-determinations-css-text-4--editor-capture-20261011--2bb0ce6fbd6f.md#line-breaking-scope);
+the logical-before `overflow-wrap` owner remains the separately adopted #75 policy.
+Disappearing-character and explicit-control authority remain distinct.
+
 Hard-break precedence belongs to Text’s opportunity inventory under the [pinned UAX #14 dependency](../references/uax14--17.0.0--rev55-metadata.md). A soft or discretionary opportunity cannot precede an actual processed hard separator or semantic `ForcedBreak`, including across transparent occurrences. Preserve the forced-after opportunities, including consecutive hard separators. An original newline processed into collapsible SPACE is not a hard separator. Layout consumes those legal offers; available width does not determine their legality.
 
 1. `System::prepare` obtains or retains the immutable analyzed source, resolves fonts and returns `PreparedText`. It does not choose the composed paragraph's line breaks. Its preliminary measurements/opportunities are explicitly preliminary wherever selected boundaries can change shaping or line-edge processing.
