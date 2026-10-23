@@ -204,11 +204,39 @@ This is an explicit policy for a gap in the pinned
 The [bounded Blink witness](../references/blink-formatting-unit-range--daf70f9ddee4.md)
 does not establish a universal alternative endpoint convention.
 
-Collapsed ranges, removed/collapsed whitespace and newline selection retain
-their separate semantics. Selecting part of an actual indivisible typographic
-unit includes that whole unit. Do not relocate a selected formatting unit to a
-neighboring visible run, matching isolate end, pre-L1 position or chosen caret.
+Collapsed ranges retain their separate endpoint semantics. Selecting part of an
+actual indivisible typographic unit includes that whole unit. Do not relocate a
+selected formatting unit to a neighboring visible run, matching isolate end,
+pre-L1 position or chosen caret.
 Keep genuine zero-width rectangles; bounding-rectangle aggregation is separate.
+
+For valid, fully covered nonempty selections consisting only of executed
+trim/discard/segment-break deletions or Phase-II removed edge spaces, the query
+succeeds with no geometry observations. Apply the same explicit no-observation
+policy to suppressed collapsed duplicates, while preserving their distinct
+source anchors and opportunity facts. A surviving space representative supplies
+geometry only when its own original contribution is selected. Carrying deleted
+or duplicate custody alongside it does not select its advance. Preserved spaces
+with genuine zero allocations and retained formatting units remain distinct.
+Mixed queries report eligible retained units in content order and account for
+the complete requested source coverage; absent or ambiguous mapping is an error,
+not a successful empty result. A wholly removed origin needs no synthesized font
+or endpoint rectangle. These are Surgeist query dispositions for gaps in the
+pinned Range rules, using the executed
+[CSS Text whitespace distinctions](../references/css-text-4--WD-css-text-4-20260814--106c5cd086ab.md#white-space-processing).
+
+A selected preserved authored newline contributes one zero-inline-advance
+font-metric rectangle at its actual finalized position on the line it terminates.
+Use that item's retained resolved font and placed baseline, including newline-only
+and consecutive-newline lines; missing required metrics or placement refuses.
+Keep this zero rectangle in a larger query. Where the admitted processing mode
+maps CRLF to one forced-break unit, selecting either original half or both yields
+that unit once, with selected intersections separate from expanded unit coverage.
+Do not introduce CRLF normalization into other modes. A terminal newline adds
+only its terminating-line rectangle; the following empty line has no additional
+selected authored unit. A source-less `br` has no Text-source rectangle. This
+explicit newline policy uses neither a chosen caret nor the editing-selection
+marker, and does not assert exact browser equivalence.
 
 Layout supplies committed placement and node/occurrence associations. Its
 [#860 CSSOM View consumer](https://github.com/bj-data-eng/surgeist/issues/860),
