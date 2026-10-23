@@ -3,6 +3,7 @@ use super::*;
 
 mod catalogue;
 mod utf16;
+mod whitespace_line_height;
 
 #[test]
 fn rejects_out_of_bounds_unit_span() {
