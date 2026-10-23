@@ -14,6 +14,11 @@ pub(crate) fn selection(layout: &PlacedLayout, value: Selection) -> Result<Selec
         layout.prepared.analyzed.processed.source().text(),
         value.range(),
     )?;
+    layout
+        .prepared
+        .analyzed
+        .paragraph
+        .admit(layout.prepared.analyzed.processed.source(), value.range())?;
     super::position::validate_source(layout, value.anchor())?;
     super::position::validate_source(layout, value.focus())?;
     if value.is_collapsed() {

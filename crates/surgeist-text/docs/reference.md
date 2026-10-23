@@ -28,7 +28,7 @@ private implementation organization.
 | --- | --- | --- |
 | Authored text | `Text`, `Source`, `Span`, `InlineBox`, `SourceIdentity`, `SourceRevision` | [text.rs](../src/text.rs), [source.rs](../src/source.rs) |
 | Composition | `source`, `compose`, `Composer`, `Mark` | [composer.rs](../src/composer.rs) |
-| Pre-font source processing | `process_source_whitespace`, `ProcessedSource`, `DocumentSegmentBreaks`, processed positions/ranges and partial plaintext views | [processing.rs](../src/processing.rs) |
+| Pre-font source processing | `process_source_whitespace`, `process_contextual_source`, `ProcessedSource`, issued `ProcessedParagraph` views and partial plaintext | [processing.rs](../src/processing.rs), [contextual capture](../src/processing/contextual.rs) |
 | Style and fonts | `Style`, `Font`, `Brush`, decorations, flow settings | [style.rs](../src/style.rs) |
 | Supplied mixed lines | `BidiLevel`, `InlineWhitespaceEdge`, `SuppliedLine`, edge decisions and borrowed visual order | [supplied_line.rs](../src/supplied_line.rs) |
 | Paragraph layout | `Options`, `Alignment`, `Indent`, `ValidatedOptions` | [options.rs](../src/options.rs) |
@@ -152,6 +152,42 @@ Source-local input does not provide ordinary host box edges, NCA wrap permission
 trim/block facts or selected lines. Those producers remain necessary for the
 full document/line pipeline. All four current whitespace modes execute in this
 source-processing phase; actual cross-delimiter mode errors remain precise.
+
+### Contextual source processing
+
+`process_contextual_source(ContextualSourceInput)` consumes one complete captured
+envelope. Its `SourceProcessingEvent` stream orders actual scopes, paragraphs,
+origins, connections, controls and atomic occurrences; referenced tables provide
+their facts. `Source::boxes` remains the atomic inventory. Inline, block,
+atomic-block and out-of-flow-block roles are explicit. Lexical scopes can remain
+open while a block inside an inline ends and resumes a paragraph.
+
+Full effective paragraph styles, delimiter policy, direction, strut and
+`WhiteSpaceTrim` facts are captured before trimming and the shared Phase I pass.
+`IncompleteExterior` refuses when required surrounding context is absent. These
+are normalized producer facts, without authentication of a live DOM or Style tree.
+
+Retain the result in `Arc<ProcessedSource>` and obtain views from `paragraphs()`.
+`AnalyzedSource::from_processed_paragraph` consumes an issued view with its fixed
+style and coverage; no later range or replacement style can rebind it.
+`admit_paragraph` checks the actual processing owner, not equal input values.
+
+Paragraph coordinates remain original UTF-16 positions. `source_range()` is the
+minimal envelope of original owned pieces and genuine empty/control/atomic
+occurrences, including text subsequently deleted by trimming or collapse.
+`source_pieces()` and issued occurrences retain membership; a middle child hole
+does not become parent text merely because it lies inside that envelope.
+Preparation, placement, interaction and accessibility preserve those boundaries.
+An out-of-flow child remains transparent to parent shaping without transferring
+its internal source or styles to the parent.
+
+Paragraph `plaintext_items` reads the same processed correspondence and original
+owned contributions. It does not add presentation characters, allocated spacing or
+hyphenation glyphs. Actual block/forced-break starts govern leading collapsible
+space removal; soft wrapping does not create a source break. In-flow atomic
+occurrences end leading-space eligibility, while out-of-flow occurrences remain
+transparent. This remains a partial plaintext projection, not serialization of
+a document or generated alternative content.
 
 ## Font catalogue publications
 

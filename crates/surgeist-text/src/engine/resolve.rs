@@ -6,8 +6,8 @@ use fontique::{Collection, FamilyId, FontStyle, FontWeight, FontWidth, GenericFa
 use parlance::{FontFamilyName, FontFeature, FontVariation};
 
 use crate::{
-    Brush, Decoration, Error, ErrorCode, LineHeight, OverflowWrap, Range, Result, TextNumericError,
-    TextNumericPhase, ValidatedSource, ValidatedStyle, Wrap,
+    Brush, Decoration, Error, ErrorCode, LineHeight, OverflowWrap, Range, Result, Source,
+    TextNumericError, TextNumericPhase, ValidatedStyle, Wrap,
 };
 
 #[derive(Clone, Debug)]
@@ -44,33 +44,46 @@ pub(crate) struct AnalyzedStyleRun {
 }
 
 pub(crate) fn analyze_styles(
-    source: &ValidatedSource,
+    source: &Source,
+    spans: &[crate::source_model::ValidatedSpan],
     default_style: &ValidatedStyle,
+    paragraph: &crate::protocol::paragraph::ParagraphData,
 ) -> Vec<AnalyzedStyleRun> {
-    let mut boundaries = vec![0, source.source().text().len()];
-    for span in source.span_styles() {
-        boundaries.push(span.range().start);
-        boundaries.push(span.range().end);
+    let extent = paragraph.extent_in(source);
+    let mut boundaries = vec![extent.start, extent.end];
+    for span in spans {
+        boundaries.push(span.range().start.clamp(extent.start, extent.end));
+        boundaries.push(span.range().end.clamp(extent.start, extent.end));
     }
     boundaries.sort_unstable();
     boundaries.dedup();
-    let mut result = Vec::new();
+    let mut result: Vec<AnalyzedStyleRun> = Vec::new();
     for endpoints in boundaries.windows(2) {
-        let range = Range::new(endpoints[0], endpoints[1]);
-        let style = source
-            .span_styles()
-            .iter()
-            .rev()
-            .find(|span| span.range().start <= range.start && span.range().end >= range.end)
-            .map_or(default_style, |span| span.style());
-        result.push(AnalyzedStyleRun {
-            range,
-            style: style.clone(),
-        });
+        for range in paragraph.intersections(Range::new(endpoints[0], endpoints[1])) {
+            let style = spans
+                .iter()
+                .rev()
+                .find(|span| span.range().start <= range.start && span.range().end >= range.end)
+                .map_or(default_style, |span| span.style());
+            // A transparent child hole contributes no parent style transition.
+            // Equal actual styles therefore retain one shaping row across it;
+            // paragraph coverage continues to own the original-piece authority.
+            if paragraph.coverage.is_some()
+                && let Some(last) = result.last_mut()
+                && last.style.authored() == style.authored()
+            {
+                last.range.end = range.end;
+            } else {
+                result.push(AnalyzedStyleRun {
+                    range,
+                    style: style.clone(),
+                });
+            }
+        }
     }
     if result.is_empty() {
         result.push(AnalyzedStyleRun {
-            range: Range::new(0, 0),
+            range: Range::new(extent.start, extent.start),
             style: default_style.clone(),
         });
     }

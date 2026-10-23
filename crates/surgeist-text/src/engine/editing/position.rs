@@ -322,12 +322,20 @@ pub(crate) fn selection(
 }
 
 pub(crate) fn validate_source(layout: &PlacedLayout, value: Cursor) -> Result<()> {
+    layout.prepared.analyzed.paragraph.admit(
+        layout.prepared.analyzed.processed.source(),
+        Range::new(value.index(), value.index()),
+    )?;
     let coverage = layout.coverage.source;
-    let original_end = layout.prepared.analyzed.processed.source().text().len();
-    let outside_facing_start = coverage.start != 0
+    let paragraph = layout
+        .prepared
+        .analyzed
+        .paragraph
+        .extent(&layout.prepared.analyzed.processed);
+    let outside_facing_start = coverage.start != paragraph.start
         && value.index() == coverage.start
         && value.affinity() == Affinity::Before;
-    let outside_facing_end = coverage.end != original_end
+    let outside_facing_end = coverage.end != paragraph.end
         && value.index() == coverage.end
         && value.affinity() == Affinity::After;
     if value.index() < coverage.start

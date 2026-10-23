@@ -51,6 +51,8 @@ impl error::Error for Error {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ErrorCode {
+    /// Invalid complete contextual source-processing capture.
+    InvalidSourceProcessing,
     FontSystemUnavailable,
     /// Font resolution found no usable face for required shaping or metrics.
     NoUsableFontFace,
@@ -87,6 +89,10 @@ pub enum ErrorCode {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ErrorDetail {
+    /// Atomic rejection of contextual source facts or view membership.
+    SourceProcessing {
+        reason: super::SourceProcessingError,
+    },
     /// Actual phase association or request admission failure.
     InvalidTextProtocol {
         reason: super::ProtocolError,

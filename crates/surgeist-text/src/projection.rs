@@ -24,6 +24,9 @@ pub(crate) struct SourceProjection {
     /// Captured replacement style locations; absence uses original source start.
     pub(crate) style_anchors: Vec<Option<usize>>,
     segmentation_offsets: Vec<(usize, usize)>,
+    /// Genuine zero-width original occurrences that need no incident atom.
+    #[cfg(any(test, feature = "text-accessibility"))]
+    original_points: Vec<(usize, usize)>,
 }
 
 impl SourceProjection {
@@ -106,6 +109,8 @@ impl SourceProjection {
             segmentation,
             atoms,
             segmentation_offsets,
+            #[cfg(any(test, feature = "text-accessibility"))]
+            original_points: Vec::new(),
             graphemes: Vec::new(),
             barriers: Vec::new(),
             anchor_atoms: Vec::new(),
@@ -128,10 +133,48 @@ impl SourceProjection {
             return Self::new(source);
         }
         let barriers = paragraph_barriers(source, paragraph);
-        admit_connected(source, &barriers)?;
+        admit_connected(source, &barriers, paragraph)?;
         let mut atoms = Vec::new();
-        decode_copy(source.text().code_units(), 0, 0, &barriers, &mut atoms)?;
-        Self::from_atoms(atoms, source.text().len(), barriers)
+        for range in paragraph.intersections(Range::new(0, source.text().len())) {
+            decode_copy(
+                &source.text().code_units()[range.start..range.end],
+                range.start,
+                range.start,
+                &barriers,
+                &mut atoms,
+            )?;
+        }
+        let projection = Self::from_atoms(atoms, paragraph.extent_in(source).end, barriers)?;
+        #[cfg(any(test, feature = "text-accessibility"))]
+        let projection = {
+            let mut projection = projection;
+            let extent = paragraph.extent_in(source);
+            let mut points: Vec<_> = paragraph
+                .anchor_order
+                .iter()
+                .map(|anchor| {
+                    crate::engine::analysis::anchor_position(anchor.item, paragraph, source.boxes())
+                })
+                .chain([extent.start, extent.end])
+                .collect();
+            points.sort_unstable();
+            points.dedup();
+            projection.original_points = points
+                .into_iter()
+                .map(|at| {
+                    let index = projection
+                        .atoms
+                        .partition_point(|atom| atom.source.end <= at);
+                    let byte = projection
+                        .atoms
+                        .get(index)
+                        .map_or(projection.text.len(), |atom| atom.glyph_bytes.start);
+                    (at, byte)
+                })
+                .collect();
+            projection
+        };
+        Ok(projection)
     }
 
     /// Builds semantic input from actual executed correspondence, decoding Copy
@@ -143,19 +186,26 @@ impl SourceProjection {
         use crate::processing::MappingKind;
         let source = processed.source();
         let barriers = paragraph_barriers(source, paragraph);
-        admit_connected(source, &barriers)?;
+        admit_connected(source, &barriers, paragraph)?;
         let mut atoms = Vec::new();
         for piece in processed.operations() {
             match piece.kind {
-                MappingKind::Copy => decode_copy(
-                    &source.text().code_units()[piece.source.start..piece.source.end],
-                    piece.source.start,
-                    piece.processed,
-                    &barriers,
-                    &mut atoms,
-                )?,
+                MappingKind::Copy => {
+                    for range in paragraph.intersections(piece.source) {
+                        decode_copy(
+                            &source.text().code_units()[range.start..range.end],
+                            range.start,
+                            piece.processed + range.start - piece.source.start,
+                            &barriers,
+                            &mut atoms,
+                        )?;
+                    }
+                }
                 MappingKind::Delete(_) => {}
                 MappingKind::Replace => {
+                    if !paragraph.contains(source, piece.source) {
+                        continue;
+                    }
                     let cp = u32::from(processed.processed_text().code_units()[piece.processed]);
                     let glyph = char::from_u32(cp).ok_or_else(length_overflow)?;
                     let range = Range::new(piece.processed, piece.processed_end());
@@ -170,7 +220,11 @@ impl SourceProjection {
                 }
             }
         }
-        Self::from_atoms(atoms, processed.processed_text().len(), barriers)
+        Self::from_atoms(
+            atoms,
+            processed.project(paragraph.extent(processed).end, crate::Affinity::After),
+            barriers,
+        )
     }
 
     /// Reuses exact admitted atom provenance for a selected substituted sequence.
@@ -211,6 +265,8 @@ impl SourceProjection {
             anchor_atoms: Vec::new(),
             style_anchors: Vec::new(),
             segmentation_offsets,
+            #[cfg(any(test, feature = "text-accessibility"))]
+            original_points: Vec::new(),
         };
         let mut stops: Vec<_> = projection
             .barriers
@@ -237,7 +293,7 @@ impl SourceProjection {
             }
         }
         if graphemes.is_empty() {
-            graphemes.push(0);
+            graphemes.push(semantic_len);
         }
         projection.graphemes = graphemes;
         Ok(projection)
@@ -245,20 +301,43 @@ impl SourceProjection {
 
     #[cfg(any(test, feature = "text-accessibility"))]
     pub(crate) fn byte(&self, unit: usize) -> ProviderIndex {
-        if unit == self.atoms.last().map_or(0, |atom| atom.source.end) {
+        if let Ok(index) = self
+            .original_points
+            .binary_search_by_key(&unit, |point| point.0)
+        {
+            return ProviderIndex(self.original_points[index].1);
+        }
+        if unit
+            == self
+                .segmentation_offsets
+                .last()
+                .expect("projection terminal endpoint")
+                .0
+        {
             return ProviderIndex(self.text.len());
         }
-        let index = self
+        if let Ok(index) = self
             .atoms
             .binary_search_by_key(&unit, |atom| atom.source.start)
-            .expect("validated shaping boundary");
-        ProviderIndex(self.atoms[index].glyph_bytes.start)
+        {
+            ProviderIndex(self.atoms[index].glyph_bytes.start)
+        } else {
+            let index = self
+                .atoms
+                .binary_search_by_key(&unit, |atom| atom.source.end)
+                .expect("validated original piece endpoint");
+            ProviderIndex(self.atoms[index].glyph_bytes.end)
+        }
     }
 
     #[cfg(test)]
     pub(crate) fn unit(&self, byte: ProviderIndex) -> Result<usize> {
         if byte.0 == self.text.len() {
-            return Ok(self.atoms.last().map_or(0, |atom| atom.source.end));
+            return Ok(self
+                .segmentation_offsets
+                .last()
+                .expect("projection terminal endpoint")
+                .0);
         }
         self.atoms
             .binary_search_by_key(&byte.0, |atom| atom.glyph_bytes.start)
@@ -292,8 +371,15 @@ fn paragraph_barriers(
         source
             .boxes()
             .iter()
-            .filter(|item| item.kind() == crate::InlineBoxKind::InFlow)
-            .map(|item| item.index()),
+            .enumerate()
+            .filter(|(i, item)| {
+                item.kind() == crate::InlineBoxKind::InFlow
+                    && paragraph
+                        .anchor_order
+                        .iter()
+                        .any(|anchor| anchor.item == crate::ParagraphAnchorItem::Atomic(*i))
+            })
+            .map(|(_, item)| item.index()),
     );
     barriers.extend(
         paragraph
@@ -309,13 +395,29 @@ fn paragraph_barriers(
     barriers
 }
 
-fn admit_connected(source: &Source, barriers: &[usize]) -> Result<()> {
+fn admit_connected(
+    source: &Source,
+    barriers: &[usize],
+    paragraph: &crate::protocol::paragraph::ParagraphData,
+) -> Result<()> {
+    let owned_text = paragraph
+        .coverage
+        .as_ref()
+        .map(|_| paragraph.intersections(paragraph.extent_in(source)));
     for span in source.spans() {
         for (at, kind) in [
             (span.range().start, super::ShapingBoundary::SpanStart),
             (span.range().end, super::ShapingBoundary::SpanEnd),
         ] {
-            if barriers.binary_search(&at).is_err() {
+            // Scalar boundaries constrain incident original text. An authentic
+            // parent occurrence inside a child hole owns only its point; it
+            // cannot import the child's span boundary into parent shaping.
+            let incident_text = owned_text.as_ref().is_none_or(|pieces| {
+                pieces
+                    .iter()
+                    .any(|piece| piece.start < at && at < piece.end)
+            });
+            if incident_text && barriers.binary_search(&at).is_err() {
                 SourceProjection::admit_boundary(source.text(), at, kind)?;
             }
         }

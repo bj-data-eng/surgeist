@@ -5,7 +5,15 @@ owners. It does not construct another independently wrapped paragraph. The
 standalone `System::layout` convenience retains its raw Preserve behavior and
 uses the same selected-line and placement machinery.
 
-1. Construct `ParagraphInput` from the actual aggregate `Source`, base `Style`,
+1. For captured box/paragraph context, call `process_contextual_source` with the
+   actual ordered envelope and retain its result in `Arc<ProcessedSource>`.
+   Obtain an issued paragraph from `paragraphs()` and analyze it through
+   `AnalyzedSource::from_processed_paragraph`. Its style and original coverage
+   were fixed before trim and Phase I. Child domains remain separate, including
+   where a parent glyph shapes across an out-of-flow child hole. See
+   [contextual source processing](reference.md#contextual-source-processing).
+   For one complete native paragraph, construct `ParagraphInput` from the actual
+   aggregate `Source`, base `Style`,
    document delimiter policy, explicit base direction and original occurrences.
    `paragraph_strut: ParagraphStrut::DefaultFont` requests an actual base-style
    font strut on every native line, even when body spans select other styles.
@@ -15,13 +23,14 @@ uses the same selected-line and placement machinery.
    Supply connections, ordered anchor occurrences with original endpoint affinity,
    controls, wrapping facts and any actual computed discretionary replacements.
    `AnalyzedSource::from_paragraph` validates this complete capture and retains the
-   executed `ProcessedSource`; original plaintext and accessibility remain original.
+   executed `ProcessedSource`; original code-unit ownership remains available
+   through the processed correspondence.
 2. Call `System::prepare(&analysis, PreparationOptions)` with the actual scale.
    Preparation resolves resources and preliminary measurements without choosing
    breaks. Public preparation of `AnalyzedSource::new` also requests the genuine
    native base-font strut. For an allocated-only fontless box/control paragraph,
    use explicit `ParagraphInput` with `ParagraphStrut::AllocatedContributions`.
-   The old `System::layout` convenience retains its actual standalone metric policy;
+   `System::layout` retains its actual standalone metric policy;
    there is no additional public preparation switch.
    Borrowed views expose actual rows; their `handle()` methods retain the
    issued capability. Equal text prepared independently has different authority.

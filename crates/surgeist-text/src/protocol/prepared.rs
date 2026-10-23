@@ -226,25 +226,27 @@ pub(crate) fn prepare_tables(
         if !matches!(piece.kind, MappingKind::Delete(_)) {
             continue;
         }
-        let first = cuts.partition_point(|at| *at <= piece.source.start);
-        let last = cuts.partition_point(|at| *at < piece.source.end);
-        let ends = cuts[first..last]
-            .iter()
-            .copied()
-            .chain(std::iter::once(piece.source.end));
-        let mut start = piece.source.start;
-        for end in ends {
-            let atom = projection
-                .atoms
-                .partition_point(|value| value.source.end <= start);
-            events.push((
-                atom,
-                0,
-                start,
-                usize::MAX,
-                Event::Deleted(Range::new(start, end), piece.processed),
-            ));
-            start = end;
+        for piece_range in paragraph.intersections(piece.source) {
+            let first = cuts.partition_point(|at| *at <= piece_range.start);
+            let last = cuts.partition_point(|at| *at < piece_range.end);
+            let ends = cuts[first..last]
+                .iter()
+                .copied()
+                .chain(std::iter::once(piece_range.end));
+            let mut start = piece_range.start;
+            for end in ends {
+                let atom = projection
+                    .atoms
+                    .partition_point(|value| value.source.end <= start);
+                events.push((
+                    atom,
+                    0,
+                    start,
+                    usize::MAX,
+                    Event::Deleted(Range::new(start, end), piece.processed),
+                ));
+                start = end;
+            }
         }
     }
     for (order, &anchor) in paragraph.anchor_order.iter().enumerate() {
@@ -272,25 +274,30 @@ pub(crate) fn prepare_tables(
     let mut seen_items = vec![false; shaped.items.len()];
     let mut item_prefix = 0;
     let mut item_count = 0;
-    let mut owned_source = 0;
+    let mut owned_source = paragraph.extent(&analyzed.processed).start;
     let mut atom_cursor = 0;
     tables.boundaries.push(BoundaryData {
         participant: 0,
         atom: 0,
-        processed: 0,
-        source_before: 0,
-        source_after: 0,
+        processed: analyzed
+            .processed
+            .project(owned_source, crate::Affinity::Before),
+        source_before: owned_source,
+        source_after: owned_source,
         preliminary_item: Some(0),
         wrap: None,
     });
-    for (atom, _, _, _, event) in events {
+    let mut events = events.into_iter().peekable();
+    while let Some((atom, _, source_at, _, event)) = events.next() {
+        owned_source = owned_source.max(source_at);
         let participant = tables.participants.len();
-        let processed_at = projection
-            .atoms
-            .get(atom)
-            .map_or(analyzed.processed.processed_text().len(), |value| {
-                value.processed.start
-            });
+        let processed_at = projection.atoms.get(atom).map_or(
+            analyzed.processed.project(
+                paragraph.extent(&analyzed.processed).end,
+                crate::Affinity::After,
+            ),
+            |value| value.processed.start,
+        );
         let mut preliminary = None;
         match event {
             Event::Text(index) => {
@@ -415,12 +422,13 @@ pub(crate) fn prepare_tables(
             }
         }
         let next_atom = atom_cursor.max(atom);
-        let at = projection
-            .atoms
-            .get(next_atom)
-            .map_or(analyzed.processed.processed_text().len(), |value| {
-                value.presentation.start
-            });
+        let at = projection.atoms.get(next_atom).map_or(
+            analyzed.processed.project(
+                paragraph.extent(&analyzed.processed).end,
+                crate::Affinity::After,
+            ),
+            |value| value.presentation.start,
+        );
         // The existing raw standalone chooser treats each actual CR and LF as
         // a forced item boundary, even within the original CRLF grapheme.
         // Native processed paragraphs retain their typography-safe boundaries.
@@ -438,7 +446,7 @@ pub(crate) fn prepare_tables(
                 atom: next_atom,
                 processed: at,
                 source_before: owned_source,
-                source_after: owned_source,
+                source_after: events.peek().map_or(owned_source, |event| event.2),
                 preliminary_item: (item_count == item_prefix && !shared_ligature)
                     .then_some(item_prefix),
                 wrap: None,
@@ -544,7 +552,15 @@ fn apply_boundary_policies(
         let boundary = &mut tables.boundaries[index];
         if matches!(row.definition, ParagraphBoundaryDefinition::Connection(_))
             && boundary.source_before
-                != row.at(&analyzed.paragraph, analyzed.processed.source().boxes())
+                != match row.definition {
+                    ParagraphBoundaryDefinition::Connection(i) => {
+                        analyzed.paragraph.connection_ends.as_ref().map_or(
+                            row.at(&analyzed.paragraph, analyzed.processed.source().boxes()),
+                            |ends| ends[i].0,
+                        )
+                    }
+                    _ => row.at(&analyzed.paragraph, analyzed.processed.source().boxes()),
+                }
         {
             continue;
         }

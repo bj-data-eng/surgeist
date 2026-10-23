@@ -10,14 +10,13 @@ paragraphs execute source processing and capture their actual base direction;
 inline-box alignment requests do not imply CSS vertical-alignment execution.
 See the [support reference](docs/reference.md) for the current contract.
 
-`process_source_whitespace` executes source-local Collapse, Discard, Preserve and
-PreserveSpaces before fonts, retaining exact original source, document delimiter
-facts and UTF-16 correspondence. Explicit affinity projects contraction interiors
-and transparent box anchors. Its partial plaintext iterator returns same-result
-slices and real box occurrences, without document serialization or opportunity
-analysis. Collapse retains executed deletion causes and uses a selected Unicode
-context policy for segment breaks, without selected-line trimming. `AnalyzedSource::from_paragraph` retains this executed phase and its exact
-occurrence capture for composed preparation; standalone Preserve remains unchanged.
+`process_source_whitespace` executes source-local whitespace processing before
+fonts. `process_contextual_source` additionally consumes captured box, paragraph
+and trim facts in original order. Its issued paragraph views retain their styles,
+source pieces and occurrences through analysis, preparation and placement;
+internal child text remains outside the parent view. Both fronts share whitespace
+correspondence and partial plaintext without inserting presentation characters.
+See [contextual processing](docs/reference.md#contextual-source-processing).
 
 `Text` retains exact UTF-16 code units, and public source positions and ranges
 count those units. Edits can split or join surrogate pairs. `AnalyzedSource`

@@ -217,13 +217,13 @@ pub struct ParagraphInput {
 
 /// One original resource authority: Canonical refers through ProcessedSource,
 /// while Captured retains a distinct original occurrence resource.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) enum OriginSource {
     Canonical,
     Captured(Source),
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct OriginData {
     pub(crate) source: OriginSource,
     pub(crate) local: Range,
@@ -241,10 +241,12 @@ impl OriginData {
 }
 
 /// Validated occurrence/context facts retained by the actual analysis allocation.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct ParagraphData {
     pub(crate) origins: Vec<OriginData>,
     pub(crate) connections: Vec<ParagraphConnection>,
+    /// Real preceding/following original endpoints for contextual connections.
+    pub(crate) connection_ends: Option<Vec<(usize, usize)>>,
     pub(crate) controls: Vec<ParagraphControl>,
     pub(crate) boundary_policies: Vec<ParagraphBoundaryPolicy>,
     pub(crate) replacements: Vec<ParagraphReplacement>,
@@ -252,9 +254,86 @@ pub(crate) struct ParagraphData {
     /// None is the standalone front's genuine Auto policy.
     pub(crate) base_direction: Option<ParagraphBaseDirection>,
     pub(crate) paragraph_strut: ParagraphStrut,
+    pub(crate) coverage: Option<Vec<Range>>,
+    pub(crate) envelope: Option<Range>,
+    pub(crate) domain_style: Option<Style>,
 }
 
 impl ParagraphData {
+    pub(crate) fn base_style<'a>(&'a self, processed: &'a ProcessedSource) -> &'a Style {
+        self.domain_style.as_ref().unwrap_or(processed.base_style())
+    }
+    pub(crate) fn extent_in(&self, source: &Source) -> Range {
+        self.envelope.unwrap_or(Range::new(0, source.text().len()))
+    }
+    pub(crate) fn extent(&self, processed: &ProcessedSource) -> Range {
+        self.envelope
+            .unwrap_or(Range::new(0, processed.source().text().len()))
+    }
+    pub(crate) fn contains(&self, source: &Source, range: Range) -> bool {
+        self.coverage.as_ref().is_none_or(|pieces| {
+            // A real parent occurrence owns its original point even between
+            // child domains. It grants no positive text interval or fabricated
+            // occurrence identity; geometric callers still qualify ambiguity.
+            if range.is_empty()
+                && (self
+                    .envelope
+                    .is_some_and(|extent| range.start == extent.start || range.start == extent.end)
+                    || self.anchor_order.iter().any(|anchor| {
+                        let at = match anchor.item {
+                            ParagraphAnchorItem::EmptyOrigin(origin) => {
+                                self.origins[origin].aggregate.start
+                            }
+                            ParagraphAnchorItem::Control(control) => self.controls[control].at,
+                            ParagraphAnchorItem::Atomic(atomic) => source.boxes()[atomic].index(),
+                        };
+                        at == range.start
+                    }))
+            {
+                return true;
+            }
+            let mut cursor = range.start;
+            for piece in pieces {
+                if piece.start <= cursor && cursor <= piece.end {
+                    cursor = cursor.max(piece.end);
+                    if cursor >= range.end {
+                        return true;
+                    }
+                }
+            }
+            false
+        })
+    }
+    pub(crate) fn admit(&self, source: &Source, range: Range) -> Result<()> {
+        if self.contains(source, range) {
+            Ok(())
+        } else {
+            Err(crate::processing::contextual::invalid(
+                crate::SourceProcessingError::OutsideParagraph,
+            ))
+        }
+    }
+    pub(crate) fn intersections(&self, range: Range) -> Vec<Range> {
+        match &self.coverage {
+            None => vec![range],
+            Some(pieces) => {
+                let mut result: Vec<Range> = Vec::new();
+                for piece in pieces {
+                    let start = piece.start.max(range.start);
+                    let end = piece.end.min(range.end);
+                    if start < end {
+                        if let Some(last) = result.last_mut().filter(|last| last.end == start) {
+                            last.end = end;
+                        } else {
+                            result.push(Range::new(start, end));
+                        }
+                    }
+                }
+                result
+            }
+        }
+    }
+
     pub(crate) fn standalone(source: &Source) -> Self {
         let source_len = source.text().len();
         let mut anchors: Vec<_> = source
@@ -288,21 +367,31 @@ impl ParagraphData {
                 kind: ParagraphOriginKind::Authored,
             }],
             connections: Vec::new(),
+            connection_ends: None,
             controls: Vec::new(),
             boundary_policies: Vec::new(),
             replacements: Vec::new(),
             anchor_order,
             base_direction: None,
             paragraph_strut: ParagraphStrut::DefaultFont,
+            coverage: None,
+            envelope: None,
+            domain_style: None,
         }
     }
 
     /// Only actual disconnected connections sever original text adjacency.
     /// In-flow box barriers are independently read from the canonical source.
     pub(crate) fn disconnections(&self) -> impl Iterator<Item = usize> + '_ {
-        self.connections.iter().filter_map(|connection| {
-            (connection.kind == ParagraphConnectionKind::Disconnected).then_some(connection.at)
-        })
+        self.connections
+            .iter()
+            .enumerate()
+            .filter(|(_, connection)| connection.kind == ParagraphConnectionKind::Disconnected)
+            .flat_map(|(i, connection)| {
+                self.connection_ends
+                    .as_ref()
+                    .map_or([connection.at; 2], |ends| [ends[i].0, ends[i].1])
+            })
     }
 
     /// Candidate origin intersections in original vector order, including
@@ -393,12 +482,16 @@ impl AnalyzedSource {
                 })
                 .collect(),
             connections,
+            connection_ends: None,
             controls,
             boundary_policies,
             replacements,
             anchor_order,
             base_direction: Some(base_direction),
             paragraph_strut,
+            coverage: None,
+            envelope: None,
+            domain_style: None,
         };
         let processed = Arc::new(crate::processing::process_paragraph(
             source,
@@ -416,10 +509,20 @@ fn validate(input: &ParagraphInput) -> Result<()> {
     crate::source_model::validate_structure(&input.source)?;
     validate_origins(input)?;
     validate_connections(input)?;
-    validate_controls(input)?;
+    validate_controls(&input.source, &input.controls)?;
     validate_anchor_order(input)?;
-    validate_boundaries(input)?;
-    validate_replacements(input)
+    validate_boundaries(
+        &input.source,
+        &input.connections,
+        &input.anchor_order,
+        &input.boundary_policies,
+    )?;
+    validate_replacements(
+        &input.source,
+        |i| input.origins.get(i).map(|origin| origin.aggregate),
+        &input.controls,
+        &input.replacements,
+    )
 }
 
 fn validate_anchor_order(input: &ParagraphInput) -> Result<()> {
@@ -571,10 +674,10 @@ fn validate_connections(input: &ParagraphInput) -> Result<()> {
     Ok(())
 }
 
-fn validate_controls(input: &ParagraphInput) -> Result<()> {
+fn validate_controls(source: &Source, controls: &[ParagraphControl]) -> Result<()> {
     let mut previous = 0;
-    for (index, control) in input.controls.iter().enumerate() {
-        if control.at > input.source.text().len() || control.at < previous {
+    for (index, control) in controls.iter().enumerate() {
+        if control.at > source.text().len() || control.at < previous {
             return Err(protocol_error(ProtocolError::InvalidControl {
                 control: index,
                 at: control.at,
@@ -585,34 +688,43 @@ fn validate_controls(input: &ParagraphInput) -> Result<()> {
     Ok(())
 }
 
-fn validate_boundaries(input: &ParagraphInput) -> Result<()> {
+fn validate_boundaries(
+    source: &Source,
+    connections: &[ParagraphConnection],
+    anchors: &[ParagraphAnchor],
+    policies: &[ParagraphBoundaryPolicy],
+) -> Result<()> {
     let mut definitions = std::collections::BTreeSet::new();
-    for (policy, row) in input.boundary_policies.iter().enumerate() {
+    for (policy, row) in policies.iter().enumerate() {
         let at = match row.definition {
-            ParagraphBoundaryDefinition::Connection(i) => input.connections.get(i).map(|c| c.at),
+            ParagraphBoundaryDefinition::Connection(i) => connections.get(i).map(|c| c.at),
             ParagraphBoundaryDefinition::AtomicBefore(i)
             | ParagraphBoundaryDefinition::AtomicAfter(i) => {
-                input.source.boxes().get(i).map(|b| b.index())
+                source.boxes().get(i).map(|b| b.index())
             }
         };
         if at.is_none() || !definitions.insert(row.definition) {
             return Err(protocol_error(ProtocolError::InvalidBoundaryPolicy {
                 policy,
-                at: at.unwrap_or(input.source.text().len()),
+                at: at.unwrap_or(source.text().len()),
             }));
         }
     }
-    for (i, connection) in input.connections.iter().enumerate() {
+    for (i, connection) in connections.iter().enumerate() {
         if connection.kind == ParagraphConnectionKind::Continuous
             && !definitions.contains(&ParagraphBoundaryDefinition::Connection(i))
         {
             return Err(protocol_error(ProtocolError::InvalidBoundaryPolicy {
-                policy: input.boundary_policies.len(),
+                policy: policies.len(),
                 at: connection.at,
             }));
         }
     }
-    for (i, box_) in input.source.boxes().iter().enumerate() {
+    for (i, box_) in source.boxes().iter().enumerate().filter(|(i, _)| {
+        anchors
+            .iter()
+            .any(|anchor| anchor.item == ParagraphAnchorItem::Atomic(*i))
+    }) {
         if box_.kind() == crate::InlineBoxKind::InFlow {
             for definition in [
                 ParagraphBoundaryDefinition::AtomicBefore(i),
@@ -620,7 +732,7 @@ fn validate_boundaries(input: &ParagraphInput) -> Result<()> {
             ] {
                 if !definitions.contains(&definition) {
                     return Err(protocol_error(ProtocolError::InvalidBoundaryPolicy {
-                        policy: input.boundary_policies.len(),
+                        policy: policies.len(),
                         at: box_.index(),
                     }));
                 }
@@ -630,44 +742,49 @@ fn validate_boundaries(input: &ParagraphInput) -> Result<()> {
     Ok(())
 }
 
-fn validate_replacements(input: &ParagraphInput) -> Result<()> {
-    for (index, replacement) in input.replacements.iter().enumerate() {
+fn validate_replacements(
+    owner_source: &Source,
+    origin_range: impl Fn(usize) -> Option<Range>,
+    controls: &[ParagraphControl],
+    replacements: &[ParagraphReplacement],
+) -> Result<()> {
+    for (index, replacement) in replacements.iter().enumerate() {
         let range = replacement.replaced_source();
         let valid = match replacement.definition {
             ParagraphReplacementDefinition::Source { origin, source } => {
                 source.start < source.end
                     && source.end - source.start == 1
-                    && source.start < input.source.text().len()
-                    && input.source.text().code_units()[source.start] == 0xad
-                    && input.origins.get(origin).is_some_and(|origin| {
-                        origin.aggregate.start <= source.start && source.end <= origin.aggregate.end
+                    && source.start < owner_source.text().len()
+                    && owner_source.text().code_units()[source.start] == 0xad
+                    && origin_range(origin).is_some_and(|origin| {
+                        origin.start <= source.start && source.end <= origin.end
                     })
             }
             ParagraphReplacementDefinition::Control { control, origin } => {
-                input.controls.get(control).is_some_and(|control| {
+                controls.get(control).is_some_and(|control| {
                     control.at == replacement.insertion_anchor
                         && matches!(
                             control.kind,
                             ParagraphControlKind::DiscretionaryBreak { .. }
                         )
                 }) && origin.is_none_or(|i| {
-                    input.origins.get(i).is_some_and(|origin| {
-                        origin.aggregate.start <= replacement.insertion_anchor
-                            && replacement.insertion_anchor <= origin.aggregate.end
+                    origin_range(i).is_some_and(|origin| {
+                        origin.start <= replacement.insertion_anchor
+                            && replacement.insertion_anchor <= origin.end
                     })
                 })
             }
         };
         if !valid
             || replacement.insertion_anchor != range.end
-            || replacement.style_anchor > input.source.text().len()
+            || replacement.style_anchor > owner_source.text().len()
         {
             return Err(protocol_error(ProtocolError::InvalidReplacement {
                 alternative: index,
                 source: range,
             }));
         }
-        SourcePosition::try_new(input.source.text(), replacement.style_anchor)?;
+        SourcePosition::try_new(owner_source.text(), replacement.style_anchor)?;
     }
     Ok(())
 }
@@ -685,4 +802,20 @@ pub(crate) enum FragmentOwner {
 pub(crate) struct FragmentAssociation {
     pub(crate) owner: FragmentOwner,
     pub(crate) source: Option<OriginIntersection>,
+}
+
+pub(crate) fn validate_contextual_facts(source: &Source, data: &ParagraphData) -> Result<()> {
+    validate_controls(source, &data.controls)?;
+    validate_boundaries(
+        source,
+        &data.connections,
+        &data.anchor_order,
+        &data.boundary_policies,
+    )?;
+    validate_replacements(
+        source,
+        |i| data.origins.get(i).map(|origin| origin.aggregate),
+        &data.controls,
+        &data.replacements,
+    )
 }

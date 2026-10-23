@@ -110,7 +110,7 @@ impl Key {
     ) -> Self {
         Self::from_parts(
             analyzed.processed.source(),
-            analyzed.processed.base_style(),
+            analyzed.paragraph.base_style(&analyzed.processed),
             options,
             font_catalogue,
         )
@@ -155,7 +155,7 @@ impl Key {
     pub(crate) fn from_placement(request: &crate::PlacementRequest) -> Self {
         let analyzed = &request.prepared.inner.analyzed;
         let source = analyzed.processed.source();
-        let style = analyzed.processed.base_style();
+        let style = analyzed.paragraph.base_style(&analyzed.processed);
         Self {
             source: SourceKey::new(source.id(), source.revision(), stable_hash_source(source)),
             styles: StyleKey::new(0, stable_hash_style(style, source)),

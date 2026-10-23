@@ -45,7 +45,10 @@ impl PlacedCoverage {
                 prepared: Arc::clone(prepared),
                 index: end,
             },
-            source: Range::new(0, prepared.analyzed.processed.source().text().len()),
+            source: prepared
+                .analyzed
+                .paragraph
+                .extent(&prepared.analyzed.processed),
         })
     }
 }
@@ -253,7 +256,11 @@ pub(crate) fn place_request(
         }));
     }
     if matches!(request.coverage, PlacementCoverage::WholeParagraph)
-        && (source.start != 0 || source.end != prepared.analyzed.processed.source().text().len())
+        && (source
+            != prepared
+                .analyzed
+                .paragraph
+                .extent(&prepared.analyzed.processed))
     {
         return Err(protocol_error(ProtocolError::IncompleteLineCoverage {
             line: count,

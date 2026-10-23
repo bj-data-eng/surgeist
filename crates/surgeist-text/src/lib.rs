@@ -59,8 +59,11 @@ pub use layout::{
 };
 pub use options::{Alignment, Indent, Options, TextAlignLast, TextOverflow, ValidatedOptions};
 pub use processing::{
-    DocumentSegmentBreaks, PlaintextItem, PlaintextItems, ProcessedInlineBox, ProcessedPosition,
-    ProcessedRange, ProcessedSource, ProcessedSpan, ProcessedText, process_source_whitespace,
+    ContextualSourceInput, DocumentSegmentBreaks, PlaintextItem, PlaintextItems,
+    ProcessedInlineBox, ProcessedParagraph, ProcessedPosition, ProcessedRange, ProcessedSource,
+    ProcessedSpan, ProcessedText, SourceProcessingConnection, SourceProcessingEnvelope,
+    SourceProcessingError, SourceProcessingEvent, SourceProcessingParagraph, SourceProcessingScope,
+    WhiteSpaceTrim, process_contextual_source, process_source_whitespace,
 };
 pub use protocol::paragraph::{
     ParagraphAnchor, ParagraphAnchorItem, ParagraphBoundaryDefinition, ParagraphBoundaryPolicy,
@@ -114,3 +117,7 @@ mod tests;
 
 #[cfg(test)]
 mod test_fonts;
+
+#[cfg(test)]
+#[path = "test_fonts/shaping.rs"]
+mod shaping_test_fonts;

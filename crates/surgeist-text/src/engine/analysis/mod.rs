@@ -142,10 +142,34 @@ pub(crate) fn analyze(
             .authored()
             .wrap
         };
-        if at
-            .checked_sub(1)
-            .is_some_and(|at| wrap_at(at) != row.preceding_wrap)
-            || (at < original_end && wrap_at(at) != row.following_wrap)
+        let before_at = match row.definition {
+            crate::ParagraphBoundaryDefinition::Connection(i) => paragraph
+                .connection_ends
+                .as_ref()
+                .map_or(at, |ends| ends[i].0),
+            _ => at,
+        };
+        let preceding = paragraph.coverage.as_ref().map_or_else(
+            || before_at.checked_sub(1),
+            |pieces| {
+                pieces
+                    .iter()
+                    .rev()
+                    .find(|piece| !piece.is_empty() && piece.start < before_at)
+                    .map(|piece| piece.end.min(before_at) - 1)
+            },
+        );
+        let following = paragraph.coverage.as_ref().map_or_else(
+            || (at < original_end).then_some(at),
+            |pieces| {
+                pieces
+                    .iter()
+                    .find(|piece| !piece.is_empty() && piece.end > at)
+                    .map(|piece| piece.start.max(at))
+            },
+        );
+        if preceding.is_some_and(|at| wrap_at(at) != row.preceding_wrap)
+            || following.is_some_and(|at| wrap_at(at) != row.following_wrap)
         {
             return Err(crate::protocol::protocol_error(
                 crate::protocol::ProtocolError::InvalidBoundaryPolicy { policy, at },

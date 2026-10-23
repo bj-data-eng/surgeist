@@ -49,21 +49,26 @@ impl layout::LayoutTree for Tree {
 
 #[test]
 fn actual_layout_lines_supply_paint_and_interaction_without_rewrapping() {
-    assert_retained_layout_composition(false, 0.0);
+    assert_retained_layout_composition(false, 0.0, false);
 }
 
 #[cfg(feature = "text-accessibility")]
 #[test]
 fn expanded_spaces_supply_same_paint_cursor_and_geometric_accessibility() {
-    assert_retained_layout_composition(true, 0.0);
+    assert_retained_layout_composition(true, 0.0, false);
 }
 
 #[test]
 fn indented_lines_supply_retained_paint_and_interaction() {
-    assert_retained_layout_composition(false, 5.0);
+    assert_retained_layout_composition(false, 5.0, false);
 }
 
-fn assert_retained_layout_composition(expanded: bool, indent: f32) {
+#[test]
+fn contextual_trim_keeps_original_offsets_through_paint_and_interaction() {
+    assert_retained_layout_composition(false, 0.0, true);
+}
+
+fn assert_retained_layout_composition(expanded: bool, indent: f32, contextual: bool) {
     let mut system = text::System::new(text::SystemOptions {
         font_catalogue: text::FontCatalogueMode::RegisteredOnly,
     })
@@ -73,31 +78,94 @@ fn assert_retained_layout_composition(expanded: bool, indent: f32) {
             include_bytes!("../crates/surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf").to_vec(),
         )
         .unwrap();
-    let source = text::Source::new(if expanded { "A X X" } else { "AX AX" });
-    let analyzed = text::AnalyzedSource::from_paragraph(text::ParagraphInput {
+    let source = text::Source::new(if contextual {
+        "  A X  "
+    } else if expanded {
+        "A X X"
+    } else {
+        "AX AX"
+    });
+    let style = text::Style {
+        font: text::Font::new().family("Ahem"),
+        size: 20.0,
+        line_height: text::LineHeight::Absolute(20.0),
+        white_space: text::WhiteSpace::Collapse,
+        ..text::Style::default()
+    };
+    let origins = vec![text::ParagraphOrigin {
         source: source.clone(),
-        base_style: text::Style {
-            font: text::Font::new().family("Ahem"),
-            size: 20.0,
-            line_height: text::LineHeight::Absolute(20.0),
-            white_space: text::WhiteSpace::Collapse,
-            ..text::Style::default()
-        },
-        segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-        base_direction: text::ParagraphBaseDirection::LeftToRight,
-        paragraph_strut: text::ParagraphStrut::DefaultFont,
-        origins: vec![text::ParagraphOrigin {
-            source,
-            local: text::Range::new(0, 5),
-            aggregate: text::Range::new(0, 5),
-            kind: text::ParagraphOriginKind::Authored,
-        }],
-        connections: vec![],
-        controls: vec![],
-        boundary_policies: vec![],
-        replacements: vec![],
-        anchor_order: vec![],
-    })
+        local: text::Range::new(0, source.text().len()),
+        aggregate: text::Range::new(0, source.text().len()),
+        kind: text::ParagraphOriginKind::Authored,
+    }];
+    let analyzed = if contextual {
+        let processed = std::sync::Arc::new(
+            text::process_contextual_source(text::ContextualSourceInput {
+                source: source.clone(),
+                segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
+                envelope: text::SourceProcessingEnvelope::Complete,
+                origins,
+                connections: vec![],
+                controls: vec![],
+                boundary_policies: vec![],
+                replacements: vec![],
+                scopes: vec![
+                    text::SourceProcessingScope::Block {
+                        trim: text::WhiteSpaceTrim::default(),
+                        base_style: style,
+                    },
+                    text::SourceProcessingScope::Inline {
+                        trim: text::WhiteSpaceTrim {
+                            discard_inner: true,
+                            ..text::WhiteSpaceTrim::default()
+                        },
+                    },
+                ],
+                paragraphs: vec![text::SourceProcessingParagraph {
+                    base_direction: text::ParagraphBaseDirection::LeftToRight,
+                    paragraph_strut: text::ParagraphStrut::DefaultFont,
+                }],
+                events: vec![
+                    text::SourceProcessingEvent::EnterScope(0),
+                    text::SourceProcessingEvent::EnterParagraph(0),
+                    text::SourceProcessingEvent::EnterScope(1),
+                    text::SourceProcessingEvent::Origin {
+                        origin: 0,
+                        affinity: text::Affinity::After,
+                    },
+                    text::SourceProcessingEvent::ExitScope(1),
+                    text::SourceProcessingEvent::ExitParagraph(0),
+                    text::SourceProcessingEvent::ExitScope(0),
+                ],
+            })
+            .unwrap(),
+        );
+        let paragraph = processed.paragraphs().next().unwrap();
+        assert_eq!(paragraph.source_range(), text::Range::new(0, 7));
+        let plaintext: Vec<u16> = paragraph
+            .plaintext_items(text::Affinity::Before)
+            .flat_map(|item| match item {
+                text::PlaintextItem::Text(text) => text.code_units().to_vec(),
+                text::PlaintextItem::InlineBox(_) => panic!("no authored atomic"),
+            })
+            .collect();
+        assert_eq!(plaintext, "A X".encode_utf16().collect::<Vec<_>>());
+        text::AnalyzedSource::from_processed_paragraph(paragraph)
+    } else {
+        text::AnalyzedSource::from_paragraph(text::ParagraphInput {
+            source: source.clone(),
+            base_style: style,
+            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: text::ParagraphBaseDirection::LeftToRight,
+            paragraph_strut: text::ParagraphStrut::DefaultFont,
+            origins,
+            connections: vec![],
+            controls: vec![],
+            boundary_policies: vec![],
+            replacements: vec![],
+            anchor_order: vec![],
+        })
+    }
     .unwrap();
     let prepared = system
         .prepare(&analyzed, text::PreparationOptions::default())
@@ -156,11 +224,14 @@ fn assert_retained_layout_composition(expanded: bool, indent: f32) {
     assert_eq!(lines.len(), 2);
     assert_eq!(
         lines[0].range(),
-        text::Range::new(0, if expanded { 4 } else { 3 })
+        text::Range::new(0, if expanded || contextual { 4 } else { 3 })
     );
     assert_eq!(
         lines[1].range(),
-        text::Range::new(if expanded { 4 } else { 3 }, 5)
+        text::Range::new(
+            if expanded || contextual { 4 } else { 3 },
+            if contextual { 7 } else { 5 }
+        )
     );
     // Ahem's one-em cells, 0.8em ascent, and explicit 20px line height
     // independently determine the glyph advances and baselines. Each line
@@ -185,6 +256,8 @@ fn assert_retained_layout_composition(expanded: bool, indent: f32) {
             .collect::<Vec<_>>(),
         if expanded {
             vec![65.0, 20.0]
+        } else if contextual {
+            vec![20.0, 20.0]
         } else {
             vec![40.0, 40.0]
         }
@@ -200,6 +273,8 @@ fn assert_retained_layout_composition(expanded: bool, indent: f32) {
             .origin,
         if expanded {
             text::Point::new(45.0, 0.0)
+        } else if contextual {
+            text::Point::new(0.0, 20.0)
         } else {
             text::Point::new(20.0, 20.0)
         }
@@ -209,7 +284,10 @@ fn assert_retained_layout_composition(expanded: bool, indent: f32) {
     // Its first caret moves by that indent; the second line stays unindented.
     assert_eq!(
         placed
-            .cursor(text::Cursor::new(0, text::Affinity::After))
+            .cursor(text::Cursor::new(
+                if contextual { 2 } else { 0 },
+                text::Affinity::After
+            ))
             .unwrap()
             .rect()
             .origin,
@@ -275,6 +353,8 @@ fn assert_retained_layout_composition(expanded: bool, indent: f32) {
             (bounds.x0, bounds.y0, bounds.x1, bounds.y1),
             if expanded {
                 (145.0, 200.0, 165.0, 220.0)
+            } else if contextual {
+                (100.0, 220.0, 120.0, 240.0)
             } else {
                 (120.0, 220.0, 140.0, 240.0)
             }
@@ -284,7 +364,10 @@ fn assert_retained_layout_composition(expanded: bool, indent: f32) {
         assert_eq!(node.font_size(), Some(20.0));
         let first = paint
             .layout()
-            .access_position(&accessibility, text::Cursor::new(0, text::Affinity::After))
+            .access_position(
+                &accessibility,
+                text::Cursor::new(if contextual { 2 } else { 0 }, text::Affinity::After),
+            )
             .unwrap()
             .unwrap();
         let first_node = &update

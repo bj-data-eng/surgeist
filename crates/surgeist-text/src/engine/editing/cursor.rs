@@ -126,24 +126,24 @@ fn normalize(layout: &PlacedLayout, index: usize, affinity: Affinity) -> Cursor 
     // The original empty source has one raw endpoint. Retaining a genuine
     // empty-origin slot does not add authored cursor affinity states. Native
     // occurrence handles remain separate and never pass through this projection.
-    if layout
-        .prepared
-        .analyzed
-        .processed
-        .source()
-        .text()
-        .is_empty()
+    if layout.coverage.source.is_empty()
         && layout
             .lines
             .iter()
             .all(|line| line.finalized.data.clusters.is_empty())
     {
-        return Cursor::new(0, Affinity::Before);
+        return Cursor::new(layout.coverage.source.start, Affinity::Before);
     }
-    let original_end = layout.prepared.analyzed.processed.source().text().len();
-    if original_end != 0 {
-        if index == 0 {
-            return Cursor::new(0, Affinity::After);
+    let extent = layout
+        .prepared
+        .analyzed
+        .paragraph
+        .extent(&layout.prepared.analyzed.processed);
+    let original_end = extent.end;
+    let original_start = extent.start;
+    if original_end != original_start {
+        if index == original_start {
+            return Cursor::new(original_start, Affinity::After);
         }
         if index == original_end {
             return Cursor::new(original_end, Affinity::Before);
@@ -153,7 +153,7 @@ fn normalize(layout: &PlacedLayout, index: usize, affinity: Affinity) -> Cursor 
         let index = cluster.get(layout).source.start;
         Cursor::new(
             index,
-            if index == 0 {
+            if index == original_start {
                 Affinity::After
             } else {
                 affinity
@@ -563,11 +563,27 @@ pub(crate) fn move_cursor(
 ) -> Result<Cursor> {
     let value = admit(layout, value)?;
     let result = match movement {
-        Movement::DocumentStart => admit(layout, Cursor::new(0, Affinity::After))?,
+        Movement::DocumentStart => admit(
+            layout,
+            Cursor::new(
+                layout
+                    .prepared
+                    .analyzed
+                    .paragraph
+                    .extent(&layout.prepared.analyzed.processed)
+                    .start,
+                Affinity::After,
+            ),
+        )?,
         Movement::DocumentEnd => admit(
             layout,
             Cursor::new(
-                layout.prepared.analyzed.processed.source().text().len(),
+                layout
+                    .prepared
+                    .analyzed
+                    .paragraph
+                    .extent(&layout.prepared.analyzed.processed)
+                    .end,
                 Affinity::Before,
             ),
         )?,
@@ -611,8 +627,11 @@ pub(crate) fn move_cursor(
         }
         Movement::PreviousWord | Movement::NextWord => {
             let forward = movement == Movement::NextWord;
-            let complete =
-                crate::Range::new(0, layout.prepared.analyzed.processed.source().text().len());
+            let complete = layout
+                .prepared
+                .analyzed
+                .paragraph
+                .extent(&layout.prepared.analyzed.processed);
             if layout.coverage.source == complete {
                 logical_word(layout, value, forward)
             } else {
@@ -622,7 +641,7 @@ pub(crate) fn move_cursor(
                 let target = word_target(
                     value,
                     forward,
-                    complete.end,
+                    complete,
                     |index| {
                         // Base preparation emits nonoverlapping original atoms in
                         // logical order; selected replacements are not this owner.
@@ -689,10 +708,7 @@ fn source_line(layout: &PlacedLayout, index: usize) -> Option<usize> {
                 range.end == index && !range.is_empty()
             })
         })
-        .or_else(|| {
-            (index >= layout.prepared.analyzed.processed.source().text().len())
-                .then_some(layout.lines.len() - 1)
-        })
+        .or_else(|| (index >= layout.coverage.source.end).then_some(layout.lines.len() - 1))
 }
 
 fn visible_end(layout: &PlacedLayout, line: &PlacedLine) -> usize {
@@ -706,7 +722,13 @@ fn visible_end(layout: &PlacedLayout, line: &PlacedLine) -> usize {
         .code_units();
     let mut end = range.end;
     // Preserve the existing standalone wrapper's exact CR/LF policy.
-    while end > range.start && matches!(units[end - 1], 0x0a | 0x0d) {
+    while end > range.start
+        && layout.prepared.analyzed.paragraph.contains(
+            layout.prepared.analyzed.processed.source(),
+            crate::Range::new(end - 1, end),
+        )
+        && matches!(units[end - 1], 0x0a | 0x0d)
+    {
         end -= 1;
     }
     end
@@ -740,7 +762,7 @@ pub(super) fn logical_word_target(
     word_target(
         value,
         forward,
-        layout.coverage.source.end,
+        layout.coverage.source,
         |index| {
             logical_pair(layout, Cursor::new(index, value.affinity()))
                 .map(|path| path.map(|path| (path.line, path.cluster)))
@@ -763,7 +785,7 @@ pub(super) fn logical_word_from_cluster(
     word_target(
         value,
         forward,
-        layout.coverage.source.end,
+        layout.coverage.source,
         |_| {
             if trailing {
                 [Some(row), adjacent_word_row(layout, row, true)]
@@ -807,7 +829,7 @@ pub(super) fn logical_word_from_anchor(
     word_target(
         value,
         forward,
-        layout.coverage.source.end,
+        layout.coverage.source,
         |_| neighbors,
         |(line, cluster)| {
             let cluster = &layout.lines[line].finalized.data.clusters[cluster];
@@ -853,7 +875,7 @@ fn adjacent_word_row(
 fn word_target<K: Copy>(
     value: Cursor,
     forward: bool,
-    end: usize,
+    extent: crate::Range,
     neighbors: impl Fn(usize) -> [Option<K>; 2],
     facts: impl Fn(K) -> (crate::Range, Boundary, u8),
     adjacent: impl Fn(K, bool) -> Option<K>,
@@ -870,7 +892,7 @@ fn word_target<K: Copy>(
         // No original row precedes this source side. A deleted prefix is not
         // permission to move forward into the first surviving word.
         return WordTarget {
-            cursor: Cursor::new(0, Affinity::After),
+            cursor: Cursor::new(extent.start, Affinity::After),
             row: None,
         };
     }
@@ -902,7 +924,7 @@ fn word_target<K: Copy>(
         let Some(next) = adjacent(current, forward) else {
             return if forward {
                 WordTarget {
-                    cursor: Cursor::new(end, Affinity::Before),
+                    cursor: Cursor::new(extent.end, Affinity::Before),
                     row: Some((current, true)),
                 }
             } else {

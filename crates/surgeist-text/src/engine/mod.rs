@@ -121,20 +121,51 @@ pub(crate) fn analyze_paragraph(
     processed: Arc<crate::ProcessedSource>,
     paragraph: ParagraphData,
 ) -> crate::Result<Arc<AnalyzedData>> {
-    let (source, default_style) = if paragraph.base_direction.is_some() {
+    let (span_styles, default_style) = if paragraph.base_direction.is_some() {
         (
-            crate::ValidatedSource::for_processed(processed.source().clone())?,
-            crate::ValidatedStyle::for_processed(processed.base_style().clone())?,
+            crate::source_model::processed_span_styles(
+                processed.source(),
+                paragraph.coverage.as_deref(),
+            )?,
+            crate::ValidatedStyle::for_processed(
+                paragraph
+                    .domain_style
+                    .as_ref()
+                    .unwrap_or(processed.base_style())
+                    .clone(),
+            )?,
         )
     } else {
         (
-            crate::ValidatedSource::try_from(processed.source().clone())?,
+            crate::ValidatedSource::try_from(processed.source().clone())?
+                .span_styles()
+                .to_vec(),
             crate::ValidatedStyle::try_from(processed.base_style().clone())?,
         )
     };
-    let host_projection = SourceProjection::host(processed.source(), &paragraph)?;
+    let mut host_projection = SourceProjection::host(processed.source(), &paragraph)?;
+    if let Some(coverage) = &paragraph.coverage {
+        host_projection.graphemes.retain(|at| {
+            coverage
+                .iter()
+                .any(|piece| piece.start <= *at && *at <= piece.end)
+        });
+        host_projection.graphemes.extend(
+            paragraph
+                .intersections(paragraph.extent(&processed))
+                .iter()
+                .flat_map(|piece| [piece.start, piece.end]),
+        );
+        host_projection.graphemes.extend([
+            paragraph.extent(&processed).start,
+            paragraph.extent(&processed).end,
+        ]);
+        host_projection.graphemes.sort_unstable();
+        host_projection.graphemes.dedup();
+    }
     let projection = SourceProjection::from_processed(&processed, &paragraph)?;
-    let styles = resolve::analyze_styles(&source, &default_style);
+    let styles =
+        resolve::analyze_styles(processed.source(), &span_styles, &default_style, &paragraph);
     let analysis = analysis::analyze(&projection, &styles, processed.source().boxes(), &paragraph)?;
     Ok(Arc::new(AnalyzedData {
         processed,
@@ -169,7 +200,14 @@ pub(crate) fn prepare(
     let default_style_index = if profile == PreparationProfile::Native
         && analyzed.paragraph.paragraph_strut == crate::ParagraphStrut::DefaultFont
     {
-        let base = crate::ValidatedStyle::for_processed(analyzed.processed.base_style().clone())?;
+        let base = crate::ValidatedStyle::for_processed(
+            analyzed
+                .paragraph
+                .domain_style
+                .as_ref()
+                .unwrap_or(analyzed.processed.base_style())
+                .clone(),
+        )?;
         let index = styles.len();
         styles.push(resolve::resolve_default(
             catalogue.collection_mut(),

@@ -268,6 +268,10 @@ pub(crate) fn analyzed_access_position(
         cursor.index(),
         "accessibility cursor",
     )?;
+    analyzed.paragraph.admit(
+        analyzed.processed.source(),
+        Range::new(cursor.index(), cursor.index()),
+    )?;
     let unit = crate::engine::editing::caret_at(
         &analyzed.host_projection.graphemes,
         cursor.index(),
@@ -283,6 +287,9 @@ pub(crate) fn analyzed_access_selection(
 ) -> Result<Option<TextSelection>> {
     validate_binding(state, analyzed, None)?;
     crate::range::validate(analyzed.processed.source().text(), selection.range())?;
+    analyzed
+        .paragraph
+        .admit(analyzed.processed.source(), selection.range())?;
     let (anchor, focus) = if selection.is_collapsed() {
         let point = analyzed_access_position(analyzed, state, selection.focus())?;
         (point, point)
@@ -398,8 +405,13 @@ fn update(
             .host_projection
             .graphemes
             .windows(2)
-            .map(|pair| NodeDescriptor {
-                range: Range::new(pair[0], pair[1]),
+            .flat_map(|pair| {
+                analyzed
+                    .paragraph
+                    .intersections(Range::new(pair[0], pair[1]))
+            })
+            .map(|range| NodeDescriptor {
+                range,
                 empty_line: None,
             })
             .collect(),
@@ -407,6 +419,7 @@ fn update(
             .inner
             .interaction
             .selectable_ranges()
+            .flat_map(|range| analyzed.paragraph.intersections(range))
             .map(|range| NodeDescriptor {
                 range,
                 empty_line: None,
@@ -414,10 +427,10 @@ fn update(
             .collect(),
     };
     if matches!(projection, Projection::Analyzed(_))
-        && analyzed.processed.source().text().is_empty()
+        && analyzed.paragraph.extent(&analyzed.processed).is_empty()
     {
         descriptors.push(NodeDescriptor {
-            range: Range::new(0, 0),
+            range: analyzed.paragraph.extent(&analyzed.processed),
             empty_line: None,
         });
     }
@@ -681,6 +694,11 @@ impl Layout {
     ) -> Result<Option<TextSelection>> {
         self.validate_accessibility(state)?;
         super::range::validate(self.source().text(), selection.range())?;
+        self.inner
+            .prepared
+            .analyzed
+            .paragraph
+            .admit(self.source(), selection.range())?;
         crate::engine::editing::position::validate_source(&self.inner, selection.anchor())?;
         crate::engine::editing::position::validate_source(&self.inner, selection.focus())?;
         let (anchor, focus) = if selection.is_collapsed() {
@@ -1094,7 +1112,12 @@ mod tests {
             ..Style::default()
         })
         .unwrap();
-        let styles = crate::engine::resolve::analyze_styles(&source, &default);
+        let styles = crate::engine::resolve::analyze_styles(
+            source.source(),
+            source.span_styles(),
+            &default,
+            &crate::protocol::paragraph::ParagraphData::standalone(source.source()),
+        );
         let index = LocaleIndex::new(&styles);
         assert_eq!(index.uniform(Range::new(0, 2)).as_deref(), Some("fr"));
         assert_eq!(index.uniform(Range::new(2, 4)).as_deref(), Some("de"));

@@ -72,7 +72,11 @@ impl Layout {
     }
 
     pub(crate) fn default_style(&self) -> &Style {
-        self.inner.prepared.analyzed.processed.base_style()
+        self.inner
+            .prepared
+            .analyzed
+            .paragraph
+            .base_style(&self.inner.prepared.analyzed.processed)
     }
 
     /// Actual admitted physical bounds, including the explicit line origins.
@@ -182,7 +186,11 @@ impl Layout {
                     })
                     .collect();
                 let authored_style = if self.inner.prepared.default_style_index == Some(run.style) {
-                    self.inner.prepared.analyzed.processed.base_style()
+                    self.inner
+                        .prepared
+                        .analyzed
+                        .paragraph
+                        .base_style(&self.inner.prepared.analyzed.processed)
                 } else {
                     self.inner.prepared.analyzed.styles[run.style]
                         .style
@@ -394,19 +402,35 @@ impl Layout {
         extend: bool,
     ) -> Result<Selection> {
         super::range::validate(self.source().text(), selection.range())?;
+        self.inner
+            .prepared
+            .analyzed
+            .paragraph
+            .admit(self.source(), selection.range())?;
         editing::position::validate_source(&self.inner, selection.anchor())?;
         editing::position::validate_source(&self.inner, selection.focus())?;
         let moved = self.move_cursor(selection.focus(), movement)?;
-        Ok(if extend {
+        let result = if extend {
             Selection::new(selection.anchor(), moved)
         } else {
             Selection::collapsed(moved)
-        })
+        };
+        self.inner
+            .prepared
+            .analyzed
+            .paragraph
+            .admit(self.source(), result.range())?;
+        Ok(result)
     }
 
     pub fn apply(&self, edit: Edit) -> Result<Source> {
-        edit.normalize(self.source())?
-            .apply_to(self.source().clone())
+        let edit = edit.normalize(self.source())?;
+        self.inner
+            .prepared
+            .analyzed
+            .paragraph
+            .admit(self.source(), edit.range())?;
+        edit.apply_to(self.source().clone())
     }
 }
 

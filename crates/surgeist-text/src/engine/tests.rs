@@ -1,10 +1,8 @@
+use crate::shaping_test_fonts::{arabic_ahem, ligature_ahem, mark_ahem};
 use crate::{
     ErrorCode, ErrorDetail, Font, FontCatalogueMode, Glyph, Id, InlineBox, InlineBoxKind,
     LineHeight, Options, Range, ShapingRefusalReason, Size, Source, Style, System, SystemOptions,
 };
-#[path = "../test_fonts/shaping.rs"]
-mod shaping;
-use shaping::{arabic_ahem, ligature_ahem, mark_ahem};
 
 const AHEM: &[u8] = include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf");
 

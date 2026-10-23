@@ -1,6 +1,8 @@
 use std::collections::BTreeSet;
 
+pub(crate) mod contextual;
 mod lexical;
+pub use contextual::*;
 
 use crate::{
     Affinity, DocumentSegmentBreakError, Error, ErrorCode, ErrorDetail, InlineBox, InlineBoxKind,
@@ -75,6 +77,7 @@ pub(crate) enum DeletionCause {
     DuplicateSegmentBreak,
     ContextualSegmentBreak,
     CollapsedSpace,
+    Trim,
 }
 
 #[derive(Debug)]
@@ -95,11 +98,24 @@ impl MappingPiece {
     }
 }
 
+/// Token facts survive mapping coalescence. In particular PreserveSpaces tab
+/// output and a collapsed delimiter's output can both be U+0020 without having
+/// the same lexical eligibility or line-context effect.
+#[derive(Debug)]
+pub(super) struct PlaintextToken {
+    pub(super) processed: Range,
+    pub(super) domain: usize,
+    pub(super) collapsible: bool,
+    pub(super) reset: bool,
+    pub(super) transparent: bool,
+}
+
 /// Immutable captured source and its exact executed whitespace correspondence.
 ///
-/// This source-local phase performs no fonts, shaping, opportunity analysis,
-/// trimming, line selection or complete document serialization. Actual in-flow
-/// boxes remain adjacency barriers independently of equal projected offsets.
+/// The source-local front executes Phase I; the contextual front first trims
+/// actual scopes and freezes issued paragraph coverage. Neither performs fonts,
+/// shaping, opportunity analysis, line selection or document serialization.
+/// Actual in-flow boxes remain barriers independently of equal mapped offsets.
 #[derive(Debug)]
 pub struct ProcessedSource {
     source: Source,
@@ -108,6 +124,8 @@ pub struct ProcessedSource {
     processed: Text,
     map: Vec<MappingPiece>,
     box_order: Vec<usize>,
+    pub(crate) paragraphs: Vec<contextual::ParagraphRecord>,
+    plaintext_tokens: Vec<PlaintextToken>,
 }
 
 /// Executes source-local Collapse, Discard, Preserve or PreserveSpaces.
@@ -204,7 +222,13 @@ fn process_with_boundaries(
     let modes = effective_modes(&source, &base_style)?;
     validate_modes(&modes, &segment_breaks)?;
 
-    let (units, map) = lexical::execute(&source, &segment_breaks, &modes, &box_order, barriers)?;
+    let (units, map, _) = lexical::execute(lexical::ValidatedProcessingRequest::SourceLocal {
+        source: &source,
+        breaks: &segment_breaks,
+        modes: &modes,
+        box_order: &box_order,
+        barriers,
+    })?;
     Ok(ProcessedSource {
         source,
         base_style,
@@ -212,6 +236,8 @@ fn process_with_boundaries(
         processed: Text::from_code_units(units),
         map,
         box_order,
+        paragraphs: Vec::new(),
+        plaintext_tokens: Vec::new(),
     })
 }
 
@@ -238,6 +264,8 @@ pub(crate) fn identity(source: Source, base_style: Style) -> Result<ProcessedSou
         segment_breaks: DocumentSegmentBreaks::Defined(Vec::new()),
         map,
         box_order,
+        paragraphs: Vec::new(),
+        plaintext_tokens: Vec::new(),
     })
 }
 
@@ -372,15 +400,43 @@ impl ProcessedSource {
     /// is inserted, and this partial query does not serialize a whole document.
     /// OutOfFlow anchors inside a contraction appear before its output unit for
     /// Before and after it for After. Both retain the exact original anchor;
-    /// neither creates an adjacency barrier. Text slices partition the same
-    /// processed backing exactly once under either choice.
+    /// neither creates an adjacency barrier. Contextual plaintext additionally
+    /// omits leading collapsible tokens at actual block/forced-break starts,
+    /// using retained lexical eligibility. These extra deletions leave the
+    /// processed backing and layout correspondence unchanged. No block separator,
+    /// atomic alternate content or presentation replacement is serialized.
     pub fn plaintext_items(&self, affinity: Affinity) -> PlaintextItems<'_> {
         PlaintextItems {
             source: self,
             affinity,
             next_box: 0,
             text_cursor: 0,
+            deletions: self.plaintext_deletions(),
         }
+    }
+
+    fn plaintext_deletions(&self) -> Vec<Range> {
+        let mut leading = std::collections::BTreeMap::new();
+        let mut deleted = Vec::new();
+        for token in &self.plaintext_tokens {
+            let start = leading.entry(token.domain).or_insert(true);
+            if token.reset {
+                *start = true;
+            }
+            if token.transparent {
+                continue;
+            }
+            if token.processed.is_empty() {
+                *start = false;
+                continue;
+            }
+            if *start && token.collapsible {
+                deleted.push(token.processed);
+            } else if !token.reset {
+                *start = false;
+            }
+        }
+        deleted
     }
 
     pub(crate) fn project(&self, at: usize, affinity: Affinity) -> usize {
@@ -495,33 +551,55 @@ pub struct PlaintextItems<'a> {
     affinity: Affinity,
     next_box: usize,
     text_cursor: usize,
+    deletions: Vec<Range>,
 }
 impl<'a> Iterator for PlaintextItems<'a> {
     type Item = PlaintextItem<'a>;
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(&ordinal) = self.source.box_order.get(self.next_box) {
-            let original = &self.source.source.boxes()[ordinal];
-            let at = self.source.project(original.index(), self.affinity);
-            if self.text_cursor < at {
-                return Some(self.text_to(at));
-            }
+        let next_box = self.source.box_order.get(self.next_box).copied();
+        let end = next_box.map_or(self.source.processed.len(), |ordinal| {
+            self.source
+                .project(self.source.source.boxes()[ordinal].index(), self.affinity)
+        });
+        if self.text_cursor < end
+            && let Some(text) = self.text_to(end)
+        {
+            return Some(text);
+        }
+        if let Some(ordinal) = next_box {
             self.next_box += 1;
             return Some(PlaintextItem::InlineBox(
-                self.source.box_view(ordinal, original),
+                self.source
+                    .box_view(ordinal, &self.source.source.boxes()[ordinal]),
             ));
         }
-        (self.text_cursor < self.source.processed.len())
-            .then(|| self.text_to(self.source.processed.len()))
+        None
     }
 }
+
 impl<'a> PlaintextItems<'a> {
-    fn text_to(&mut self, end: usize) -> PlaintextItem<'a> {
-        let start = self.text_cursor;
-        self.text_cursor = end;
-        PlaintextItem::Text(ProcessedText {
-            units: &self.source.processed.code_units()[start..end],
-            range: processed_range(start, end),
-        })
+    fn text_to(&mut self, end: usize) -> Option<PlaintextItem<'a>> {
+        loop {
+            let next = self
+                .deletions
+                .iter()
+                .find(|range| range.end > self.text_cursor);
+            if let Some(range) = next.filter(|range| range.start <= self.text_cursor) {
+                self.text_cursor = range.end.min(end);
+                if self.text_cursor == end {
+                    return None;
+                }
+                continue;
+            }
+            let start = self.text_cursor;
+            self.text_cursor = next.map_or(end, |range| end.min(range.start));
+            return (start < self.text_cursor).then(|| {
+                PlaintextItem::Text(ProcessedText {
+                    units: &self.source.processed.code_units()[start..self.text_cursor],
+                    range: processed_range(start, self.text_cursor),
+                })
+            });
+        }
     }
 }
 
@@ -721,3 +799,6 @@ fn overflow() -> Error {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod contextual_tests;
