@@ -32,6 +32,8 @@ mod line_policy;
 mod logical_after;
 #[path = "tests/manual_css_minima.rs"]
 mod manual_css_minima;
+#[path = "tests/negative_tabs.rs"]
+mod negative_tabs;
 #[path = "tests/tab_stops.rs"]
 mod tab_stops;
 #[path = "tests/whitespace_edges.rs"]

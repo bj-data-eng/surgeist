@@ -13,6 +13,7 @@ mod joining_positioning;
 mod mandatory_breaks;
 mod manual_hyphenation;
 mod metric_heights;
+mod negative_tabs;
 mod phase_two;
 mod raw_automatic_hyphenation;
 mod tab_stops;
