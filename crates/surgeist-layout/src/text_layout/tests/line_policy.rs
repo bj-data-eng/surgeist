@@ -2,6 +2,9 @@
 use super::*;
 use surgeist_text::{SpacingSlotDisposition, SpacingSlotOwner, WhiteSpace};
 
+#[path = "line_policy/phase_two_red.rs"]
+mod phase_two_red;
+
 fn prepare(source: &str, whitespace: WhiteSpace, rtl: bool) -> PreparedParagraph {
     let mut style = ahem_style(10.0, 10.0);
     style.white_space = whitespace;
