@@ -12,6 +12,8 @@ use surgeist_text::{ParagraphBaseDirection, ParagraphControlKind, Source, Wrap};
 mod automatic_priority;
 #[path = "tests/before_indication_bidi.rs"]
 mod before_indication_bidi;
+#[path = "tests/both_sides.rs"]
+mod both_sides;
 #[path = "tests/canonical.rs"]
 mod canonical;
 #[path = "tests/conditional_overflow.rs"]
