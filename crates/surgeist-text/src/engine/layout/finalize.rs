@@ -2097,6 +2097,94 @@ mod tests {
         }
     }
 
+    #[test]
+    fn compatible_shaping_spans_keep_their_own_line_heights() {
+        use crate::Range;
+
+        let mut short = ahem_strut(10.0, 10.0);
+        short.white_space = WhiteSpace::Collapse;
+        let mut tall = short.clone();
+        tall.line_height = crate::LineHeight::Absolute(20.0);
+        let mut observations = Vec::new();
+        for tall_first in [false, true] {
+            let mut source = Source::new("X X");
+            source.span(
+                if tall_first {
+                    Range::new(0, 1)
+                } else {
+                    Range::new(2, 3)
+                },
+                tall.clone(),
+            );
+            let selected = selected_with_source(source, short.clone(), None, None);
+            let whole = selected.finalize(SpacingAllocations::None).unwrap();
+            // Real Ahem has one-em advances, ascent8/descent2 at10px. Only
+            // the authored line-height differs; both original X glyphs keep
+            // their same face, size and source custody.
+            let mut glyphs = whole
+                .run_views()
+                .flat_map(|run| {
+                    assert_eq!(
+                        run.face().bytes(),
+                        include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf")
+                    );
+                    assert_eq!(run.effective_instance().unwrap().font_size(), 10.0);
+                    run.glyphs()
+                        .map(|g| (g.range(), g.id(), g.advance()))
+                        .collect::<Vec<_>>()
+                })
+                .collect::<Vec<_>>();
+            glyphs.sort_by_key(|g| g.0.start);
+            assert_eq!(
+                glyphs,
+                [
+                    (Range::new(0, 1), 58, 10.0),
+                    (Range::new(1, 2), 3, 10.0),
+                    (Range::new(2, 3), 58, 10.0)
+                ]
+            );
+            assert_eq!(whole.feedback().advance, 30.0);
+
+            let prepared = whole.prepared_text();
+            let offer = prepared
+                .opportunity_views()
+                .find(|offer| {
+                    offer.kind() == PreparedBreakKind::Allowed
+                        && offer.boundary().view().source_before().get() == 2
+                })
+                .unwrap()
+                .handle();
+            let mut request = selected.request().clone();
+            request.end = offer.view().boundary();
+            request.participants = prepared
+                .participants()
+                .take(request.end.view().participant_offset())
+                .collect();
+            request.termination = PreparedTermination::Ordinary(offer);
+            request.context.end = LineEnd::Soft;
+            let prefix = prepared
+                .select(request)
+                .unwrap()
+                .finalize(SpacingAllocations::None)
+                .unwrap();
+            assert_eq!(prefix.feedback().advance, 10.0);
+            observations.push((
+                whole.feedback().baseline,
+                whole.feedback().line_height,
+                prefix.feedback().baseline,
+                prefix.feedback().line_height,
+            ));
+        }
+        // Both spans contribute their own half-leading: tall has13 before
+        // and7 after baseline. The ordinary prefix sees only its actual X.
+        // Qualify both orders before the regression assertion; taking the
+        // initial shaping style's metrics incorrectly makes the first10px.
+        assert_eq!(
+            observations,
+            [(13.0, 20.0, 8.0, 10.0), (13.0, 20.0, 13.0, 20.0)]
+        );
+    }
+
     fn native_strut_line(
         line_height: f64,
         before: Option<f64>,
