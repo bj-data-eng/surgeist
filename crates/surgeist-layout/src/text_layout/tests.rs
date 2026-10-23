@@ -4,6 +4,8 @@ use crate::test_support::text::{ParagraphPart, PreparedParagraph, ahem_style};
 use crate::*;
 use surgeist_text::{ParagraphBaseDirection, ParagraphControlKind, Source, Wrap};
 
+#[path = "tests/automatic_priority.rs"]
+mod automatic_priority;
 #[path = "tests/canonical.rs"]
 mod canonical;
 #[path = "tests/conditional_overflow.rs"]

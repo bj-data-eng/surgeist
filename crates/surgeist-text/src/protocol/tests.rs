@@ -8,6 +8,7 @@ mod joining_positioning;
 mod mandatory_breaks;
 mod manual_hyphenation;
 mod phase_two;
+mod raw_automatic_hyphenation;
 mod tab_stops;
 mod whitespace_edges;
 

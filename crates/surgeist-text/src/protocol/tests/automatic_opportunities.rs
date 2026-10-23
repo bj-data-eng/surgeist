@@ -251,3 +251,84 @@ fn native_automatic_en_us_requires_auto_and_the_qualified_language() {
         assert_auto_case("associate", hyphens, locale, &[]);
     }
 }
+
+#[test]
+fn native_direct_analysis_counts_differ_from_the_actual_raw_standalone_operation() {
+    let bytes = auto_fixture();
+    let source = Source::identified("ab\u{ad}cd", crate::Id::from_u64(4202), 8);
+    let own = Style {
+        size: 10.0,
+        line_height: LineHeight::Absolute(10.0),
+        hyphens: Hyphens::Manual,
+        hyphenate_character: HyphenateCharacter::String(Text::from("")),
+        ..style()
+    };
+    let mut system = System::new(SystemOptions {
+        font_catalogue: FontCatalogueMode::RegisteredOnly,
+    })
+    .unwrap();
+    system.register_fonts(bytes.clone()).unwrap();
+    let analyzed = AnalyzedSource::new(source.clone(), own.clone()).unwrap();
+    // This existing operation is genuinely raw and remains unconstrained.
+    let raw = system
+        .layout_analyzed(
+            &analyzed,
+            crate::Options {
+                width: Some(20.0),
+                quantize: false,
+                ..crate::Options::default()
+            },
+        )
+        .unwrap();
+    assert_eq!(raw.source().text().code_units(), [97, 98, 0xad, 99, 100]);
+    assert_eq!(
+        raw.lines()
+            .iter()
+            .map(|line| line.range())
+            .collect::<Vec<_>>(),
+        [Range::new(0, 3), Range::new(3, 5)]
+    );
+    let mut advances = vec![0.0; raw.lines().len()];
+    for run in raw.inline_metric_facts().runs() {
+        advances[run.line()] += run.advance();
+    }
+    assert_eq!(advances, [20.0, 20.0]);
+    // System::prepare is Native even for this same direct analysis allocation.
+    let native = system
+        .prepare(&analyzed, PreparationOptions::default())
+        .unwrap();
+    assert_eq!(native.analyzed_source().identity(), analyzed.identity());
+    let whole = native
+        .select(request(&native))
+        .unwrap()
+        .finalize(SpacingAllocations::None)
+        .unwrap();
+    assert_eq!(
+        (
+            whole.feedback().advance,
+            whole.feedback().baseline,
+            whole.feedback().line_height
+        ),
+        (40.0, 8.0, 10.0)
+    );
+    assert_eq!(
+        auto_glyphs(&whole, &bytes)
+            .into_iter()
+            .filter(|(_, _, advance)| *advance != 0.0)
+            .collect::<Vec<_>>(),
+        [
+            (Range::new(0, 1), 35, 10.0),
+            (Range::new(1, 2), 35, 10.0),
+            (Range::new(3, 4), 35, 10.0),
+            (Range::new(4, 5), 35, 10.0)
+        ]
+    );
+    assert_eq!(
+        native
+            .opportunity_views()
+            .map(|offer| (offer.boundary().view().source_before().get(), offer.kind()))
+            .collect::<Vec<_>>(),
+        [(5, PreparedBreakKind::ParagraphEnd)],
+        "Native admission must not infer raw semantics from absent explicit paragraph direction"
+    );
+}
