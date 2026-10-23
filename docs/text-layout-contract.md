@@ -525,6 +525,35 @@ a claim of standards consensus or universal browser agreement. The initial zone
 is zero, successive-line limit is unbounded and last-line exclusion is none.
 Nondefault limits and broader resource coverage remain separate requirements.
 
+Compute total, before and after from one complete-word extended-grapheme map,
+using the selected Unicode rules across transparent origin/style boundaries and
+retaining actual source correspondence. Do not delete formatting controls and
+resegment, or independently resegment the two sides of a cut. Each counting unit
+contributes zero or one, independently of scalar/UTF-16 length, glyph count or
+advance. An optional ligature does not merge independent counting units, and a
+count map cannot authorize a cut inside an otherwise indivisible unit.
+
+Use [CSS Text §1.4](../references/css-text-4--WD-css-text-4-20260814--106c5cd086ab.md#characters)
+and [Appendix E](../references/css-text-4--WD-css-text-4-20260814--106c5cd086ab.md#character-properties)
+for the unit basis and effective category, including the Common-script enclosing
+mark exceptions. Apply the specified Mn and intra-word P* exclusions. A base
+with nonspacing or spacing combining marks normally counts one unit; a standalone
+Mn unit counts zero, while an otherwise eligible standalone Mc unit can count
+one. A Common-script enclosing mark can change the effective category; do not
+reject its cluster solely because the underlying base is punctuation. Numbers,
+symbols and other eligible units are not excluded merely for being nonletters;
+lexical-word membership remains a separate determination.
+
+Additionally, Surgeist selects a zero independent contribution for formatting
+controls (General_Category=Cf), including ALM, bidi controls, ZWJ and ZWNJ. A
+control within an otherwise countable unit neither adds a count nor disqualifies
+that unit; a control-only unit counts zero. This is operation-specific native
+tailoring, not an exclusion expressly supplied by the character-limit clause.
+Original SHY and generated indication characters also count zero. Retain their
+source, bidi, shaping and opportunity provenance. Qualification includes ALM on
+both sides and repeated ALM, base/standalone marks, intra-word punctuation,
+enclosing-mark cases, supplementary characters, SHY and empty indications.
+
 Preserve the existing raw `System::layout`/`layout_analyzed` count policy at its
 actual operation boundary. Native preparation remains the CSS operation even
 without an explicit paragraph direction. A direct Text consumer uses the same
