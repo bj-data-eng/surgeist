@@ -619,6 +619,60 @@ unchanged. Finite fit exclusions cannot be replayed as intrinsic determinations.
 These are integration requirements, not a claim that automatic resource delivery
 or the complete hyphenation contribution is implemented.
 
+### Hyphenation zone and the ordinary fallback line
+
+Layout consumes the block container's computed `hyphenate-limit-zone` as a signed
+finite length-percentage, initially zero. The consuming style adapter owns
+inheritance and conversion. The pinned [zone clause](../references/css-text-4--WD-css-text-4-20260814--106c5cd086ab.md#hyphenate-size-limits)
+defines pre-justification unfilled space and percentages relative to the line-box
+length. Its un-ranged grammar permits signed values under the
+[numeric range rules](../references/css-values-4--WD-css-values-4-20240312--7b6b68c34d00.md#numeric-ranges);
+do not reject or clamp a negative computed zone.
+
+Surgeist applies the zone gate only to automatic hyphenation, including an empty
+automatic indication. Otherwise admitted manual SHY and explicit empty endings
+remain eligible. Passing this gate permits consideration without overriding
+manual priority, character or sequence limits, wrapping permission or actual fit.
+This applicability choice and the reference-frame and intrinsic rules below are
+explicit native policies where the source does not fully determine behavior.
+
+Use the genuine legal ordinary, unhyphenated fallback that would leave the word
+for the next line. Finalize it independently from the unchanged incoming line
+start with no spacing allocations, actual line-edge processing and contextual
+shaping, in its own converged float and height frame. Retain its prealignment
+typographic alignment measure, including selected hanging exclusions. A prefix
+fold on a longer hyphenated line does not finalize that shorter line ending;
+glyph ink bounds and an occupied bounding rectangle are also different measures.
+
+In coordinates increasing toward logical line end, define unfilled space as
+`U = max(0, fallback_line_end - (actual_content_start + alignment_measure))`.
+The authentic content start includes indent and displacement. Preserve signed
+advances; the zero floor defines unfilled space rather than clamping authored
+spacing. Resolve the percentage component against the full fallback line-box
+inline span after float constraints, before subtracting indent or consumed
+content. Preserve typed numeric failures when consuming that basis.
+
+Permit automatic consideration exactly when `U > Z`, where `Z` is the used zone.
+Equality is within the permitted unfilled space: `U = 0, Z = 0` fails this gate,
+while the same gap with a negative zone passes. The partial-word candidate must
+then satisfy its own fit and convergence; it cannot impose its frame on the
+fallback. For example, collapsed `X SPACE associate` in a 60px line with 10px
+letters has a natural fallback advance of 10px and unfilled space of 50px. A
+45px zone permits consideration; counting its discarded trailing space would
+incorrectly reduce that gap to 40px.
+
+At line start or with genuinely no legal ordinary fallback leaving the word for
+the next line, the zone gate is inapplicable. Do not manufacture an empty line,
+ordinary offer or measurement role. Zero advance alone does not prove absence
+of a formatted prefix. Failure to represent or finalize an existing legal
+fallback is a capability failure, not this exemption. MinContent does not apply
+the zone gate and retains its existing manual-partition/automatic-refinement
+policy and independent sequence-limit-zero rule. MaxContent remains unbroken.
+Zone probes and suppression dispositions preserve actual source, opportunity,
+reference-frame and purpose identity without committing history or claiming
+phantom participation or fit exhaustion. These requirements do not establish
+implementation completion.
+
 ### Successive hyphenated lines and intrinsic measurement
 
 Layout consumes the block container's computed `hyphenate-limit-lines` value:
