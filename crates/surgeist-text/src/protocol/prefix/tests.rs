@@ -103,6 +103,7 @@ fn native(
         });
     }
     let analyzed = AnalyzedSource::from_paragraph(ParagraphInput {
+        tab_reference: None,
         source: source.clone(),
         base_style: style,
         segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
@@ -669,6 +670,7 @@ fn finalized_original_prefix_membership_uses_actual_control_bundle_and_allocated
 #[test]
 fn finalized_original_prefix_empty_occurrences_inherit_only_actual_preceding_content() {
     let analyzed = AnalyzedSource::from_paragraph(ParagraphInput {
+        tab_reference: None,
         source: Source::new("A"),
         base_style: style(),
         segment_breaks: DocumentSegmentBreaks::LineFeedDefault,

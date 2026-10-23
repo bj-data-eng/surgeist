@@ -238,6 +238,7 @@ impl From<Slant> for FontStyle {
 /// Resolved text style accepted by the text layout engine.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Style {
+    pub tab_size: crate::TabSize,
     pub font: Font,
     pub size: f32,
     pub line_height: LineHeight,
@@ -286,6 +287,7 @@ impl Default for Style {
             wrap: Wrap::Word,
             overflow_wrap: OverflowWrap::Normal,
             text_transform: TextTransform::None,
+            tab_size: crate::TabSize::default(),
             hyphens: crate::Hyphens::Manual,
             hyphenate_character: crate::HyphenateCharacter::Auto,
             native_hyphenation_convention: None,

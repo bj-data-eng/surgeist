@@ -69,6 +69,21 @@ pub(crate) struct PreparedRun {
     pub(crate) metrics: RunMetrics,
 }
 
+/// Actual font-backed provider output or a glyph-free CSS positioning control.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ClusterContent {
+    Provider(usize),
+    CssTab(Option<usize>),
+}
+impl ClusterContent {
+    pub(crate) fn font_run(self) -> Option<usize> {
+        match self {
+            Self::Provider(i) => Some(i),
+            Self::CssTab(i) => i,
+        }
+    }
+}
+
 /// A logical shaped cluster. Ligature components retain separate source associations.
 #[derive(Clone, Debug)]
 pub(crate) struct PreparedCluster {
@@ -81,7 +96,7 @@ pub(crate) struct PreparedCluster {
     /// Actual provider group before scalar component extraction.
     pub(crate) provider_group: IndexRange<usize>,
     pub(crate) glyphs: IndexRange<usize>,
-    pub(crate) run: usize,
+    pub(crate) content: ClusterContent,
     pub(crate) style: usize,
     pub(crate) level: u8,
     pub(crate) advance: f64,
@@ -169,7 +184,9 @@ pub(crate) struct FinalizedCluster {
     pub(crate) disposition: crate::SpacingSlotDisposition,
     pub(crate) source: Range,
     pub(crate) presentation: Range,
-    pub(crate) run: usize,
+    pub(crate) content: ClusterContent,
+    #[cfg(feature = "text-accessibility")]
+    pub(crate) style: usize,
     pub(crate) x: f64,
     pub(crate) advance: f64,
     pub(crate) level: u8,

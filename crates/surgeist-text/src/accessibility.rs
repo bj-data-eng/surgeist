@@ -382,7 +382,7 @@ fn update(
             let data = &line.finalized.data;
             let metrics = &data.metrics;
             for cluster in &data.clusters {
-                let run = &data.font_runs[cluster.run];
+                let run = cluster.content.font_run().map(|run| &data.font_runs[run]);
                 fragments.push(Fragment {
                     range: cluster.source,
                     bounds: crate::layout::line_rect(
@@ -398,7 +398,26 @@ fn update(
                     rtl: cluster.level & 1 != 0,
                     word: cluster.boundary >= crate::engine::analysis::Boundary::Word
                         && !cluster.whitespace.is_space_or_nbsp(),
-                    metadata: Metadata::from_run(run, locales.uniform(cluster.source)),
+                    metadata: run.map_or_else(
+                        || Metadata {
+                            family: None,
+                            size: line.finalized.selected.prepared.styles[cluster.style]
+                                .style
+                                .font_size,
+                            weight: line.finalized.selected.prepared.styles[cluster.style]
+                                .style
+                                .font_weight
+                                .value(),
+                            italic: matches!(
+                                line.finalized.selected.prepared.styles[cluster.style]
+                                    .style
+                                    .font_style,
+                                fontique::FontStyle::Italic
+                            ),
+                            locale: locales.uniform(cluster.source),
+                        },
+                        |run| Metadata::from_run(run, locales.uniform(cluster.source)),
+                    ),
                 });
             }
         }
@@ -832,6 +851,7 @@ mod tests {
         connection: crate::ParagraphConnectionKind,
     ) -> crate::AnalyzedSource {
         crate::AnalyzedSource::from_paragraph(crate::ParagraphInput {
+            tab_reference: None,
             source: Source::new(Text::from_code_units(vec![0xd800, 0xdc00])),
             base_style: Style::default(),
             segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,

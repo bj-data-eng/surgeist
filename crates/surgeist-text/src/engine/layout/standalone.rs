@@ -263,7 +263,7 @@ fn nominate(
                             break;
                         };
                         let next = &prepared.shaped.clusters[next];
-                        if !next.ligature_component || next.run != cluster.run {
+                        if !next.ligature_component || next.content != cluster.content {
                             break;
                         }
                         delta = finite(

@@ -25,7 +25,8 @@ use super::{
     },
     convert,
     layout::data::{
-        GlyphData, PreparedCluster, PreparedRun, RunMetrics, ShapedData, ShapedItem, Whitespace,
+        ClusterContent, GlyphData, PreparedCluster, PreparedRun, RunMetrics, ShapedData,
+        ShapedItem, Whitespace,
     },
     lru_cache::LruCache,
     resolve::ResolvedStyle,
@@ -200,6 +201,11 @@ pub(crate) fn shape(
             .find(|script| real_script(*script))
             .unwrap_or(Script::Latin);
         while item_start < count {
+            if input.css_tabs && input.projection.atoms[item_start].code_point == 9 {
+                append_tab(&input, item_start, None, &mut output);
+                item_start += 1;
+                continue;
+            }
             let style_index = input.analysis.infos[item_start].1;
             let style = &input.styles[style_index].style;
             let level = input.analysis.levels[item_start];
@@ -214,7 +220,8 @@ pub(crate) fn shape(
                 } else {
                     script
                 };
-                if input.analysis.levels[item_end] != level
+                if (input.css_tabs && input.projection.atoms[item_end].code_point == 9)
+                    || input.analysis.levels[item_end] != level
                     || next_script != script
                     || !same_shaping_style(style, &input.styles[next_style].style)
                     || barriers.contains(&item_end)
@@ -342,6 +349,7 @@ pub(crate) fn finalize(
         boxes: prepared.analyzed.processed.source().boxes(),
         font_catalogue: &prepared.font_catalogue,
         paragraph: &prepared.analyzed.paragraph,
+        css_tabs: prepared.options.tabs() == crate::TabPreparation::CssStops,
     };
     let mut output = ShapedData::default();
     let native = selected.metric_policy == crate::protocol::selection::LineMetricPolicy::Native;
@@ -458,6 +466,27 @@ pub(crate) fn finalize(
                 &mut output,
             )?;
         }
+    }
+    if input.css_tabs {
+        for atom in 0..input.projection.atoms.len() {
+            if input.projection.atoms[atom].code_point == 9 {
+                let style = input.analysis.infos[atom].1;
+                let font = if let Some(run) = prepared.tab_metrics[style]
+                    .as_ref()
+                    .and_then(|metric| metric.font.as_ref())
+                {
+                    let mut run = run.clone();
+                    run.atoms = atom..atom + 1;
+                    let index = output.runs.len();
+                    output.runs.push(run);
+                    Some(index)
+                } else {
+                    None
+                };
+                append_tab(&input, atom, font, &mut output);
+            }
+        }
+        output.clusters.sort_by_key(|cluster| cluster.atoms.start);
     }
     // Each real atom receives one extracted cluster; ligature components lend
     // their actual shared glyph association rather than duplicating glyphs.
@@ -1215,7 +1244,7 @@ fn extract_run(
                 } else {
                     glyphs.end..glyphs.end
                 },
-                run: run_index,
+                content: ClusterContent::Provider(run_index),
                 style: style_index,
                 level: request.level,
                 advance: cluster_advance,
@@ -1281,4 +1310,161 @@ pub(crate) fn automatic_hyphen(
     indication
         .map(|(text, font)| (crate::Text::from(text), font))
         .ok_or_else(|| crate::hyphenation::error(crate::HyphenationError::MissingPrimaryFont))
+}
+
+fn append_tab(input: &ShapingInput<'_>, atom: usize, font: Option<usize>, output: &mut ShapedData) {
+    let original = &input.projection.atoms[atom];
+    let (info, style) = input.analysis.infos[atom];
+    output.clusters.push(PreparedCluster {
+        shaped_advance: 0.0,
+        logical_adjustments: [0.0; 3],
+        source: original.source,
+        atoms: atom..atom + 1,
+        provider_group: atom..atom + 1,
+        glyphs: output.glyphs.len()..output.glyphs.len(),
+        content: ClusterContent::CssTab(font),
+        style,
+        level: input.analysis.levels[atom],
+        advance: 0.0,
+        boundary: info.boundary,
+        whitespace: Whitespace::Tab,
+        is_whitespace: true,
+        ligature_start: false,
+        ligature_component: false,
+    });
+}
+
+/// Internal hypothetical character operation. No authored source or occurrence is created.
+pub(crate) fn measure_character(
+    mut query: Query<'_>,
+    input: ShapingInput<'_>,
+    style_index: usize,
+    ch: char,
+    direction: crate::ParagraphBaseDirection,
+    scratch: &mut ShapeContext,
+) -> Result<Option<(f64, PreparedRun)>> {
+    // Independent hypothetical character analysis: Common uses the existing
+    // isolated Latin fallback. SPACE WS follows the actual block base, while
+    // ZERO EN is requested with its even/LTR resolved level.
+    let level = u8::from(direction == crate::ParagraphBaseDirection::RightToLeft);
+    let direction = provider_direction(level);
+    let style = &input.styles[style_index].style;
+    configure_query(
+        &mut query,
+        style,
+        Script::Latin,
+        false,
+        &AnalysisDataSources,
+    );
+    let mut selected = None;
+    query.matches_with(|font| {
+        if font
+            .charmap()
+            .and_then(|map| map.map(ch))
+            .is_some_and(|id| id != 0)
+        {
+            selected = Some(SelectedFont {
+                font: font.clone(),
+                attrs: attributes(style),
+            });
+            QueryStatus::Stop
+        } else {
+            QueryStatus::Continue
+        }
+    });
+    let Some(font) = selected else {
+        return Ok(None);
+    };
+    let mut output = ShapedData::default();
+    append_selected(
+        &input,
+        SelectedSegment {
+            atoms: 0..0,
+            style: style_index,
+            script: Script::Latin,
+            level,
+            font,
+            context: 0..0,
+        },
+        scratch,
+        &mut output,
+    )?;
+    let run = output
+        .empty_run
+        .expect("zero-atom metric operation retains its actual face");
+    let font = harfrust::FontRef::from_index(run.font.bytes(), run.font.index())
+        .map_err(|_| Error::new(ErrorCode::FontLoadFailed, "invalid metric face"))?;
+    let instance = harfrust::ShaperInstance::from_coords(
+        &font,
+        run.coords
+            .iter()
+            .copied()
+            .map(harfrust::NormalizedCoord::from_bits),
+    );
+    let data = harfrust::ShaperData::new(&font);
+    let shaper = data
+        .shaper(&font)
+        .instance(Some(&instance))
+        .point_size(Some(style.font_size))
+        .build();
+    let features: Vec<_> = style
+        .font_features
+        .iter()
+        .map(|f| {
+            harfrust::Feature::new(
+                harfrust::Tag::new(&f.tag.to_bytes()),
+                u32::from(f.value),
+                ..,
+            )
+        })
+        .collect();
+    let language = style
+        .locale
+        .as_ref()
+        .map(|locale| locale.language().parse::<harfrust::Language>())
+        .transpose()
+        .map_err(|_| Error::new(ErrorCode::InvalidStyle, "invalid metric language"))?;
+    let plan = harfrust::ShapePlan::new(
+        &shaper,
+        direction,
+        Some(provider_script(Script::Latin)),
+        language.as_ref(),
+        &features,
+    );
+    let mut buffer = harfrust::UnicodeBuffer::new();
+    buffer.add(ch, 0);
+    buffer.set_direction(direction);
+    buffer.set_script(provider_script(Script::Latin));
+    if let Some(language) = language {
+        buffer.set_language(language);
+    }
+    let buffer = shaper.shape_with_plan(&plan, buffer, &features);
+    if let harfrust::ShapingStatus::Refused(reason) = buffer.shaping_status() {
+        return Err(super::shaping_refused(reason));
+    }
+    let advance = buffer
+        .glyph_positions()
+        .iter()
+        .try_fold(0.0, |total, position| {
+            logical_add(
+                "tab character advance",
+                total,
+                f64::from(position.x_advance),
+            )
+        })?
+        * f64::from(style.font_size)
+        / f64::from(
+            font.head()
+                .map_err(|_| Error::new(ErrorCode::FontLoadFailed, "metric font lacks head"))?
+                .units_per_em(),
+        );
+    if !advance.is_finite() {
+        return Err(super::text_numeric_error(
+            "tab character advance",
+            TextNumericPhase::Preparation,
+            TextNumericError::NonFinite,
+            advance,
+        ));
+    }
+    Ok(Some((advance, run)))
 }

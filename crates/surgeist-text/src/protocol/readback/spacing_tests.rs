@@ -7,6 +7,7 @@ fn input(text: &str, mode: WhiteSpace) -> ParagraphInput {
     let source = Source::new(text);
     let length = source.text().len();
     ParagraphInput {
+        tab_reference: None,
         source: source.clone(),
         base_style: Style {
             font: Font::new().family("Ahem"),

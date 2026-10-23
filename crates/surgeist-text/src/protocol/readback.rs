@@ -1264,6 +1264,7 @@ mod tests {
         system.register_fonts(AHEM.to_vec()).unwrap();
         let source = Source::new("A");
         let analysis = crate::AnalyzedSource::from_paragraph(ParagraphInput {
+            tab_reference: None,
             source: source.clone(),
             base_style: Style {
                 font: Font::new().family("Ahem"),

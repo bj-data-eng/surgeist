@@ -34,6 +34,7 @@ fn style() -> Style {
 fn prepared(system: &mut System, text: &str, whitespace: WhiteSpace) -> PreparedText {
     let source = Source::new(text);
     let input = ParagraphInput {
+        tab_reference: None,
         source: source.clone(),
         paragraph_strut: ParagraphStrut::DefaultFont,
         base_style: Style {
@@ -360,6 +361,7 @@ fn selected_empty_control(policy: ParagraphStrut) -> SelectedLine {
         },
     );
     let analysis = AnalyzedSource::from_paragraph(ParagraphInput {
+        tab_reference: None,
         source: source.clone(),
         base_style: Style {
             size: 10.0,
@@ -572,6 +574,7 @@ fn native_unforced_break_keeps_arabic_joining_on_both_sides() {
     system.register_fonts(fixture.clone()).unwrap();
     let source = Source::new("\u{628}\u{628}\u{628}");
     let analyzed = AnalyzedSource::from_paragraph(ParagraphInput {
+        tab_reference: None,
         source: source.clone(),
         base_style: Style {
             word_break: crate::WordBreak::BreakAll,

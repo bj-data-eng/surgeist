@@ -104,7 +104,10 @@ impl System {
         let prepared = engine::prepare(
             &mut self.catalogue,
             analyzed,
-            crate::PreparationOptions::try_new(options.authored().scale)?,
+            crate::PreparationOptions::try_new(
+                options.authored().scale,
+                crate::TabPreparation::FontAdvance,
+            )?,
             engine::PreparationProfile::Standalone,
             &mut self.shape_context,
         )?;

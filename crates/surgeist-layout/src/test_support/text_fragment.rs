@@ -19,6 +19,7 @@ pub(crate) fn fragment_for(
             prepared,
             available: crate::text_layout::fit::Available::Maximum,
             base_direction: surgeist_text::ParagraphBaseDirection::LeftToRight,
+            block_direction: surgeist_text::ParagraphBaseDirection::LeftToRight,
             alignment: crate::TextAlign::Start,
             last_alignment: crate::TextAlignLast::Auto,
             justification: crate::TextJustification::None,

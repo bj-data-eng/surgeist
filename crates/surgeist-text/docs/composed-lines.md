@@ -25,7 +25,8 @@ uses the same selected-line and placement machinery.
    `AnalyzedSource::from_paragraph` validates this complete capture and retains the
    executed `ProcessedSource`; original code-unit ownership remains available
    through the processed correspondence.
-2. Call `System::prepare(&analysis, PreparationOptions)` with the actual scale.
+2. Call `System::prepare(&analysis, PreparationOptions)` with the actual scale and
+   `TabPreparation::FontAdvance` or `TabPreparation::CssStops` demand.
    Preparation resolves resources and preliminary measurements without choosing
    breaks. Public preparation of `AnalyzedSource::new` also requests the genuine
    native base-font strut. For an allocated-only fontless box/control paragraph,
@@ -160,10 +161,24 @@ processed offsets. Word movement follows actual neighboring source-associated
 rows across deleted intervals. Source-only accessibility remains bound to analysis; placed
 accessibility enriches the same original semantics with exact placed geometry.
 
-The initial composed profile is horizontal. `TabContext::FontAdvance` executes the
+The composed profile is horizontal. `TabContext::FontAdvance` executes the
 retained-font U+0009 glyph advance, which can be the actual `.notdef` advance; it is
-not CSS tab stops. `NoTabs` requires absence, and requested stop/hanging profiles
-without implementations refuse precisely. This contribution does not claim all
-Text, CSS whitespace, line-opportunity, writing-mode or Layout integration criteria.
+not CSS tab stops. `NoTabs` requires actual selected absence. CSS preparation
+uses `TabPreparation::CssStops` and a captured `ParagraphTabReference` containing
+the real nearest block Style and used direction. It readies every selectable
+original and replacement tab under the exact catalogue and scale. The line
+request supplies `TabContext::CssStops { origin }`: the physical block start
+relative to unaligned paragraph start, or `None` for a genuinely unknown phase.
+Positive tabs consume that phase; zero tabs retain custody without unused font
+probes. Hypothetical character metrics use the native isolated Common-to-Latin
+profile with actual settings, coordinates and locale: SPACE follows the captured
+block direction; ZERO retains its even/LTR level. This does not borrow a source
+run script or claim arbitrary script-sensitive metric conformance. The shared finalizer orders the mixed line, resolves glyph-free tab
+advances with actual spacing/atomic contributions, then builds prefix, metrics,
+paint and interaction rows. Re-finalization recomputes stops; alignment follows.
+Fontless tabs cannot invent font metrics for Range observations. Negative
+computed intervals and consumed unknown intrinsic phase remain explicit bounded
+capability refusals. Hanging requests remain unsupported. This contribution does
+not claim all CSS whitespace, orientation or intrinsic cases.
 See the [owning contract](../../../docs/text-layout-contract.md) for phase ownership
 and coherent placement policy, and [reference](reference.md) for supported styles.

@@ -14,6 +14,8 @@ mod float_fit;
 mod indent;
 #[path = "tests/line_policy.rs"]
 mod line_policy;
+#[path = "tests/tab_stops.rs"]
+mod tab_stops;
 
 fn assert_native_invalidation_source_order<S: LayoutScalar>() {
     let style = ahem_style(10.0, 10.0);

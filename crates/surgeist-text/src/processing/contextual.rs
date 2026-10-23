@@ -27,15 +27,18 @@ pub enum SourceProcessingScope {
     Block {
         trim: WhiteSpaceTrim,
         base_style: Style,
+        used_direction: ParagraphBaseDirection,
     },
     AtomicBlock {
         trim: WhiteSpaceTrim,
         base_style: Style,
+        used_direction: ParagraphBaseDirection,
         atomic: usize,
     },
     OutOfFlowBlock {
         trim: WhiteSpaceTrim,
         base_style: Style,
+        used_direction: ParagraphBaseDirection,
         atomic: usize,
     },
 }
@@ -255,6 +258,7 @@ struct Capture {
 }
 pub(super) struct Domain {
     pub(super) style: Style,
+    pub(super) direction: ParagraphBaseDirection,
 }
 pub(super) struct TrimBoundary {
     pub(super) scope: usize,
@@ -365,6 +369,14 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
                     let own = context.domains.len();
                     context.domains.push(Domain {
                         style: style.clone(),
+                        direction: match scope {
+                            SourceProcessingScope::Block { used_direction, .. }
+                            | SourceProcessingScope::AtomicBlock { used_direction, .. }
+                            | SourceProcessingScope::OutOfFlowBlock { used_direction, .. } => {
+                                *used_direction
+                            }
+                            SourceProcessingScope::Inline { .. } => unreachable!(),
+                        },
                     });
                     active_paragraphs.push(None);
                     own
@@ -761,6 +773,10 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
             coverage: Some(coverage),
             envelope: Some(extent),
             domain_style: Some(context.domains[capture.domain].style.clone()),
+            tab_reference: Some(crate::ParagraphTabReference::new(
+                context.domains[capture.domain].style.clone(),
+                context.domains[capture.domain].direction,
+            )?),
         };
         for replacement in &data.replacements {
             data.admit(&input.source, replacement.replaced_source())?;

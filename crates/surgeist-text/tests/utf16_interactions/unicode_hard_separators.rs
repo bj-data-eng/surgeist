@@ -24,6 +24,7 @@ fn native_hard_separator(separator: u16, class: LineBreak, white_space: WhiteSpa
     );
     let source = original(separator);
     let analyzed = AnalyzedSource::from_paragraph(ParagraphInput {
+        tab_reference: None,
         source: source.clone(),
         base_style: Style {
             white_space,

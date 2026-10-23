@@ -40,6 +40,31 @@ pub(super) fn finalize(
     let mut spacing_slots = apply_spacing(&selected, &mut shaped, amounts, &dispositions)?;
     let levels = line_levels(&selected, &shaped)?;
     let base = selected.presentation.analysis.base_level;
+    let participants: Vec<_> = shaped
+        .items
+        .iter()
+        .zip(&levels)
+        .map(|(item, &level)| {
+            let level = BidiLevel::try_new(level)
+                .map_err(|_| invalid("selected line has an invalid resolved level"))?;
+            Ok(match item {
+                ShapedItem::TextCluster(_) => SuppliedInlineParticipant::Text {
+                    level,
+                    edge: InlineWhitespaceEdge::Preserve,
+                },
+                ShapedItem::InlineBox { .. } => SuppliedInlineParticipant::Atomic { level },
+                ShapedItem::Anchor { .. } => SuppliedInlineParticipant::Boundary { level },
+            })
+        })
+        .collect::<Result<_>>()?;
+    let supplied = SuppliedLine::new(&participants);
+    // Edge suppression was already applied through the canonical Text edge
+    // owner. The full mixed sequence now receives its one canonical L2 order.
+    let mut order = vec![0; participants.len()];
+    let order = supplied
+        .reorder_into(&mut order)
+        .map_err(|_| invalid("line order scratch does not match its actual participants"))?;
+    resolve_tabs(&selected, &mut shaped, &atomics, &order)?;
     let mut prefix_receipts = Vec::with_capacity(shaped.items.len() + 1);
     let mut metrics = line_metrics(
         &selected,
@@ -79,30 +104,6 @@ pub(super) fn finalize(
     metrics.inline_max = width;
     metrics.offset = alignment_offset(selection, base, width, &metrics)?;
 
-    let participants: Vec<_> = shaped
-        .items
-        .iter()
-        .zip(&levels)
-        .map(|(item, &level)| {
-            let level = BidiLevel::try_new(level)
-                .map_err(|_| invalid("selected line has an invalid resolved level"))?;
-            Ok(match item {
-                ShapedItem::TextCluster(_) => SuppliedInlineParticipant::Text {
-                    level,
-                    edge: InlineWhitespaceEdge::Preserve,
-                },
-                ShapedItem::InlineBox { .. } => SuppliedInlineParticipant::Atomic { level },
-                ShapedItem::Anchor { .. } => SuppliedInlineParticipant::Boundary { level },
-            })
-        })
-        .collect::<Result<_>>()?;
-    let supplied = SuppliedLine::new(&participants);
-    // Edge suppression was already applied through the canonical Text edge
-    // owner. The full mixed sequence now receives its one canonical L2 order.
-    let mut order = vec![0; participants.len()];
-    let order = supplied
-        .reorder_into(&mut order)
-        .map_err(|_| invalid("line order scratch does not match its actual participants"))?;
     let mut data = FinalizedLineData {
         spacing_slots,
         prefix,
@@ -123,7 +124,9 @@ pub(super) fn finalize(
                         atoms[atoms.len() - 1].presentation.end,
                     )
                 },
-                run: cluster.run,
+                content: cluster.content,
+                #[cfg(feature = "text-accessibility")]
+                style: cluster.style,
                 x: 0.0,
                 advance: cluster.advance,
                 level: cluster.level,
@@ -222,7 +225,9 @@ pub(super) fn finalize(
                 let component_shift = if level & 1 != 0 && cluster.ligature_start {
                     shaped.clusters[cluster_index + 1..]
                         .iter()
-                        .take_while(|next| next.ligature_component && next.run == cluster.run)
+                        .take_while(|next| {
+                            next.ligature_component && next.content == cluster.content
+                        })
                         .try_fold(0.0, |total, next| {
                             add(
                                 "ligature component advance",
@@ -245,14 +250,26 @@ pub(super) fn finalize(
                     for glyph in &shaped.glyphs[cluster.glyphs.clone()] {
                         let continue_run = last_run.filter(|&run_index| {
                             let run: &FinalizedRun = &data.runs[run_index];
-                            run.run == cluster.run && run.style == glyph.style && run.level == level
+                            cluster.content.font_run().is_some_and(|font| {
+                                run.run == font
+                                    || (selected.prepared.options.tabs()
+                                        == crate::TabPreparation::CssStops
+                                        && same_paint_font(
+                                            &shaped.runs[run.run],
+                                            &shaped.runs[font],
+                                        ))
+                            }) && run.style == glyph.style
+                                && run.level == level
                         });
                         let run_index = if let Some(index) = continue_run {
                             index
                         } else {
                             let index = data.runs.len();
                             data.runs.push(FinalizedRun {
-                                run: cluster.run,
+                                run: cluster
+                                    .content
+                                    .font_run()
+                                    .expect("provider glyph owns its font"),
                                 style: glyph.style,
                                 level,
                                 source: glyph.source,
@@ -316,7 +333,12 @@ pub(super) fn finalize(
                 };
                 if let Some(index) = last_run {
                     let run = &mut data.runs[index];
-                    if run.run == cluster.run && run.level == level {
+                    if cluster.content.font_run().is_some_and(|font| {
+                        run.run == font
+                            || (selected.prepared.options.tabs() == crate::TabPreparation::CssStops
+                                && same_paint_font(&shaped.runs[run.run], &shaped.runs[font]))
+                    }) && run.level == level
+                    {
                         run.advance = add(
                             "paint run logical advance",
                             TextNumericPhase::Finalization,
@@ -424,16 +446,20 @@ pub(super) fn finalize(
             cluster.advance,
         )?;
         let (top, height) = if selected.metric_policy == LineMetricPolicy::Native {
-            let font = data.font_runs[cluster.run].metrics;
-            let (before, _) = font_strut(font)?;
-            (
-                finite(
-                    "source fragment strut top",
-                    TextNumericPhase::Finalization,
-                    metrics.baseline - before,
-                )?,
-                font.line_height,
-            )
+            if let Some(run) = cluster.content.font_run() {
+                let font = data.font_runs[run].metrics;
+                let (before, _) = font_strut(font)?;
+                (
+                    finite(
+                        "source fragment strut top",
+                        TextNumericPhase::Finalization,
+                        metrics.baseline - before,
+                    )?,
+                    font.line_height,
+                )
+            } else {
+                (metrics.baseline, 0.0)
+            }
         } else {
             (metrics.block_min, metrics.block_max - metrics.block_min)
         };
@@ -897,7 +923,10 @@ fn validate_rows(selected: &SelectedData, shaped: &ShapedData) -> Result<()> {
             selected.prepared.analyzed.processed.source().text(),
             cluster.source,
         )?;
-        if cluster.run >= shaped.runs.len()
+        if cluster
+            .content
+            .font_run()
+            .is_some_and(|run| run >= shaped.runs.len())
             || cluster.glyphs.start > cluster.glyphs.end
             || cluster.glyphs.end > shaped.glyphs.len()
             || cluster.atoms.start >= cluster.atoms.end
@@ -961,8 +990,10 @@ fn line_metrics(
             ShapedItem::Anchor { .. } => {}
             ShapedItem::TextCluster(index) => {
                 let cluster = &shaped.clusters[index];
-                let metrics = shaped.runs[cluster.run].metrics;
-                result.line_height = result.line_height.max(metrics.line_height);
+                if let Some(run) = cluster.content.font_run() {
+                    result.line_height =
+                        result.line_height.max(shaped.runs[run].metrics.line_height);
+                }
                 if cluster.whitespace != Whitespace::Newline {
                     result.advance = add(
                         "line advance",
@@ -1007,7 +1038,10 @@ fn line_metrics(
                 if !have_metrics && cluster.is_whitespace {
                     continue;
                 }
-                let metrics = shaped.runs[cluster.run].metrics;
+                let Some(run) = cluster.content.font_run() else {
+                    continue;
+                };
+                let metrics = shaped.runs[run].metrics;
                 result.ascent = result.ascent.max(metrics.ascent);
                 result.descent = result.descent.max(metrics.descent);
                 have_metrics = true;
@@ -1645,6 +1679,181 @@ fn invalid(message: &'static str) -> Error {
     Error::new(ErrorCode::LayoutFailed, message)
 }
 
+/// CSS positioning follows the actual post-L1/L2 sequence. Only advance deltas
+/// escape this temporary signed, unaligned frame.
+fn resolve_tabs(
+    selected: &SelectedData,
+    shaped: &mut ShapedData,
+    atomics: &BTreeMap<usize, &AtomicAllocation>,
+    order: &crate::SuppliedVisualOrder<'_, '_>,
+) -> Result<()> {
+    if selected.prepared.options.tabs() != crate::TabPreparation::CssStops {
+        return Ok(());
+    }
+    let crate::TabContext::CssStops { origin } = selected.request.context.tabs else {
+        return Ok(());
+    };
+    // The signed grid frame is a consumed capability, not another general
+    // line-geometry pass. Absent and zero tabs cannot require its arithmetic.
+    let mut remaining_tabs = 0;
+    for cluster in &shaped.clusters {
+        if matches!(cluster.content, ClusterContent::CssTab(_)) {
+            let metric = selected.prepared.tab_metrics[cluster.style]
+                .as_ref()
+                .ok_or_else(|| invalid("CSS tab has no prepared metric"))?;
+            remaining_tabs += usize::from(metric.period > 0.0);
+        }
+    }
+    if remaining_tabs == 0 {
+        return Ok(());
+    }
+    let sign = if selected.presentation.analysis.base_level & 1 == 0 {
+        1.0
+    } else {
+        -1.0
+    };
+    let mut pen = sign * selected.request.context.indent;
+    let mut ordinals: Vec<_> = order.iter().map(|(ordinal, _)| ordinal).collect();
+    if sign < 0.0 {
+        ordinals.reverse();
+    }
+    for ordinal in ordinals {
+        let advance = match shaped.items[ordinal] {
+            ShapedItem::Anchor { .. } => 0.0,
+            ShapedItem::InlineBox { occurrence, .. } => {
+                inflow_allocation(atomics[&occurrence])?.0.advance
+            }
+            ShapedItem::TextCluster(index) => {
+                let cluster = &mut shaped.clusters[index];
+                if matches!(cluster.content, ClusterContent::CssTab(_)) {
+                    let metric = selected.prepared.tab_metrics[cluster.style]
+                        .as_ref()
+                        .ok_or_else(|| invalid("CSS tab has no prepared metric"))?;
+                    let advance = if metric.period == 0.0 {
+                        0.0
+                    } else {
+                        let origin = origin.ok_or_else(|| {
+                            protocol_error(ProtocolError::UnsupportedContext {
+                                field: crate::ProtocolContextField::IntrinsicTabPhase,
+                            })
+                        })?;
+                        let mut distance = tab_grid_distance(origin, pen, sign, metric.period)?;
+                        if distance < metric.threshold {
+                            distance = tab_grid_add("tab threshold bump", distance, metric.period)?;
+                        }
+                        distance
+                    };
+                    cluster.advance = advance;
+                    if metric.period > 0.0 {
+                        remaining_tabs -= 1;
+                        if remaining_tabs == 0 {
+                            // This tab's resolved advance is the last consumed
+                            // phase result. Its destination and later items use
+                            // ordinary finalized geometry, not this grid frame.
+                            return Ok(());
+                        }
+                    }
+                }
+                if cluster.whitespace == Whitespace::Newline {
+                    0.0
+                } else {
+                    cluster.advance
+                }
+            }
+        };
+        pen = tab_grid_add("tab traversal pen", pen, sign * advance)?;
+    }
+    Ok(())
+}
+
+/// Both operands define the consumed grid phase, unlike an ordinary adjustment
+/// to an already established base. Neither may silently vanish.
+fn tab_grid_add(field: &'static str, base: f64, delta: f64) -> Result<f64> {
+    let actual = add(field, TextNumericPhase::Finalization, base, delta)?;
+    if base != 0.0 && actual == delta {
+        return Err(super::super::text_numeric_error(
+            field,
+            TextNumericPhase::Finalization,
+            TextNumericError::NonZeroLost,
+            base,
+        ));
+    }
+    Ok(actual)
+}
+
+fn tab_grid_distance(origin: f64, pen: f64, sign: f64, period: f64) -> Result<f64> {
+    const FIELD: &str = "tab grid displacement";
+    // Reduce each coordinate before subtracting: a large whole-period offset
+    // must not round away a small, representable distance to the next stop.
+    // Keep signed remainders; normalizing a tiny negative remainder to a huge
+    // positive period first could itself erase the required contribution.
+    let origin = (sign * origin) % period;
+    let pen = (sign * pen) % period;
+    let cyclic_sum = |a: f64, b: f64, reverse: bool| -> Result<f64> {
+        let (large, small) = if a >= b { (a, b) } else { (b, a) };
+        if large < period * 0.5 {
+            let sum = tab_grid_add(FIELD, large, small)?;
+            return if reverse && sum != 0.0 {
+                tab_grid_add(FIELD, period, -sum)
+            } else {
+                Ok(sum)
+            };
+        }
+        // In the upper half, period-large is an exact binary64 subtraction.
+        // Compare against that gap before adding, avoiding both overflow and
+        // rounding a value just beyond the period back onto the period.
+        let gap = tab_grid_add(FIELD, period, -large)?;
+        let difference = tab_grid_add(FIELD, small, -gap)?;
+        // Compute the requested direction directly. Its opposite may be an
+        // unrepresentable period-small value even when this distance is exact.
+        let directed = if reverse { -difference } else { difference };
+        if directed < 0.0 {
+            tab_grid_add(FIELD, period, directed)
+        } else {
+            Ok(directed)
+        }
+    };
+    let forward_difference = |following: f64, preceding: f64| -> Result<f64> {
+        if following >= preceding {
+            return tab_grid_add(FIELD, following, -preceding);
+        }
+        let distance = if preceding >= period * 0.5 {
+            let gap = tab_grid_add(FIELD, period, -preceding)?;
+            tab_grid_add(FIELD, gap, following)?
+        } else {
+            let backwards = tab_grid_add(FIELD, preceding, -following)?;
+            tab_grid_add(FIELD, period, -backwards)?
+        };
+        if distance == period {
+            return Err(super::super::text_numeric_error(
+                FIELD,
+                TextNumericPhase::Finalization,
+                TextNumericError::NonZeroLost,
+                preceding - following,
+            ));
+        }
+        Ok(distance)
+    };
+    let distance = if origin >= 0.0 && pen < 0.0 {
+        cyclic_sum(origin, -pen, false)?
+    } else if origin < 0.0 && pen >= 0.0 {
+        cyclic_sum(-origin, pen, true)?
+    } else if origin < 0.0 {
+        forward_difference(-pen, -origin)?
+    } else {
+        forward_difference(origin, pen)?
+    };
+    Ok(if distance == 0.0 { period } else { distance })
+}
+
+fn same_paint_font(a: &PreparedRun, b: &PreparedRun) -> bool {
+    a.font == b.font
+        && a.font_size == b.font_size
+        && a.font_attrs == b.font_attrs
+        && a.synthesis == b.synthesis
+        && a.coords == b.coords
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1713,6 +1922,7 @@ mod tests {
             });
         }
         let analyzed = crate::AnalyzedSource::from_paragraph(ParagraphInput {
+            tab_reference: None,
             source: source.clone(),
             base_style: style,
             segment_breaks: crate::DocumentSegmentBreaks::Defined(Vec::new()),
@@ -2048,6 +2258,7 @@ mod tests {
             crate::Size::new(4.0, 4.0),
         ));
         let analyzed = crate::AnalyzedSource::from_paragraph(ParagraphInput {
+            tab_reference: None,
             source,
             base_style: Style::default(),
             segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
@@ -2369,6 +2580,7 @@ mod tests {
             })
             .collect();
         let analyzed = AnalyzedSource::from_paragraph(ParagraphInput {
+            tab_reference: None,
             source: source.clone(),
             base_style: Style {
                 white_space: WhiteSpace::Collapse,

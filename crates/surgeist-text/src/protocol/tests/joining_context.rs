@@ -106,6 +106,7 @@ fn standalone_metric_policies_keep_unforced_arabic_joining() {
 fn native_input(source: Source) -> ParagraphInput {
     let length = source.text().len();
     ParagraphInput {
+        tab_reference: None,
         source: source.clone(),
         base_style: breaking_style(),
         segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
@@ -508,10 +509,12 @@ fn child_domain_hole_is_excluded_from_parent_joining_context() {
         }],
         scopes: vec![
             SourceProcessingScope::Block {
+                used_direction: crate::ParagraphBaseDirection::LeftToRight,
                 trim: WhiteSpaceTrim::default(),
                 base_style: breaking_style(),
             },
             SourceProcessingScope::OutOfFlowBlock {
+                used_direction: crate::ParagraphBaseDirection::LeftToRight,
                 trim: WhiteSpaceTrim::default(),
                 base_style: style(),
                 atomic: 0,

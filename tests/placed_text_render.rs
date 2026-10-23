@@ -68,6 +68,146 @@ fn contextual_trim_keeps_original_offsets_through_paint_and_interaction() {
     assert_retained_layout_composition(false, 0.0, true);
 }
 
+#[test]
+fn css_tab_geometry_supplies_the_same_source_carets_and_render_admission() {
+    let mut system = text::System::new(text::SystemOptions {
+        font_catalogue: text::FontCatalogueMode::RegisteredOnly,
+    })
+    .unwrap();
+    system
+        .register_fonts(
+            include_bytes!("../crates/surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf").to_vec(),
+        )
+        .unwrap();
+    let source = text::Source::new("A\tB");
+    let style = text::Style {
+        font: text::Font::new().family("Ahem"),
+        size: 20.0,
+        line_height: text::LineHeight::Absolute(20.0),
+        white_space: text::WhiteSpace::Preserve,
+        tab_size: text::TabSize::length(80.0).unwrap(),
+        ..text::Style::default()
+    };
+    let ancestor_wrap = style.wrap;
+    let analyzed = text::AnalyzedSource::from_paragraph(text::ParagraphInput {
+        tab_reference: Some(
+            text::ParagraphTabReference::new(
+                style.clone(),
+                text::ParagraphBaseDirection::LeftToRight,
+            )
+            .unwrap(),
+        ),
+        source: source.clone(),
+        base_style: style,
+        segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
+        base_direction: text::ParagraphBaseDirection::LeftToRight,
+        paragraph_strut: text::ParagraphStrut::DefaultFont,
+        origins: vec![text::ParagraphOrigin {
+            source: source.clone(),
+            local: text::Range::new(0, 3),
+            aggregate: text::Range::new(0, 3),
+            kind: text::ParagraphOriginKind::Authored,
+        }],
+        connections: vec![],
+        controls: vec![],
+        boundary_policies: vec![],
+        replacements: vec![],
+        anchor_order: vec![],
+    })
+    .unwrap();
+    let policies = analyzed
+        .wrapping_relations()
+        .filter(|relation| relation.ancestor_wrap().is_none())
+        .map(|relation| text::WrappingPolicy {
+            relation: relation.handle(),
+            ancestor_wrap,
+        })
+        .collect();
+    let analyzed = analyzed.with_wrapping_policies(policies).unwrap();
+    let prepared = system
+        .prepare(
+            &analyzed,
+            text::PreparationOptions::try_new(1.0, text::TabPreparation::CssStops).unwrap(),
+        )
+        .unwrap();
+    let origin = prepared.origin_views().next().unwrap().handle();
+    let tree = Tree {
+        inputs: [
+            layout::LayoutInput::box_input(layout::NodeInput {
+                display: layout::Display::Block,
+                size: layout::Size::new(
+                    layout::PreferredSizeOf::value(layout::LengthPercentageOf::px(100.0).unwrap()),
+                    layout::PreferredSizeOf::AUTO,
+                ),
+                ..layout::NodeInput::DEFAULT
+            }),
+            layout::LayoutInput::InlineText(layout::TextParticipation::new(origin.clone())),
+        ],
+        non_box: layout::NodeInput::non_box(),
+    };
+    let capture = layout::TextLayoutInput::try_new(
+        &tree,
+        0,
+        vec![layout::TextParagraphBinding {
+            prepared,
+            container: 0,
+            nodes: vec![1],
+            origins: vec![layout::TextOriginBinding { origin, node: 1 }],
+            atomics: vec![],
+            controls: vec![],
+            line_strut: None,
+        }],
+    )
+    .unwrap();
+    let batch = layout::compute_layout_with_text(
+        &capture,
+        0,
+        layout::LayoutRootRequest::viewport(layout::Size::new(
+            layout::Available::Definite(100.0),
+            layout::Available::MaxContent,
+        ))
+        .unwrap(),
+    )
+    .unwrap();
+    let placed = batch.placed_text()[0].layout();
+    assert_eq!(placed.lines().len(), 1);
+    assert_eq!(placed.source(), &source);
+    let glyphs = placed
+        .run_views()
+        .flat_map(|run| {
+            run.glyphs()
+                .map(|glyph| (glyph.id(), run.origin().x + glyph.pen(), glyph.advance()))
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(glyphs, [(35, 0.0, 20.0), (36, 80.0, 20.0)]);
+    for (index, x) in [(1, 20.0), (2, 80.0)] {
+        assert_eq!(
+            placed
+                .cursor(text::Cursor::new(index, text::Affinity::After))
+                .unwrap()
+                .rect()
+                .origin,
+            text::Point::new(x, 0.0)
+        );
+    }
+    drop(system);
+    let paint = render::prepare_text_layout(
+        placed,
+        render::Transform::identity(),
+        render::TextLayoutLimits::new(
+            render::GlyphRunLimits::new(32, 1024, 8 << 20, 8 << 20),
+            8,
+            32,
+            8,
+        ),
+    )
+    .unwrap();
+    assert!(std::ptr::eq(paint.layout(), placed));
+    assert!(!paint.scene().is_empty());
+    assert_eq!(paint.layout().lines(), placed.lines());
+}
+
 fn assert_retained_layout_composition(expanded: bool, indent: f32, contextual: bool) {
     let mut system = text::System::new(text::SystemOptions {
         font_catalogue: text::FontCatalogueMode::RegisteredOnly,
@@ -112,6 +252,7 @@ fn assert_retained_layout_composition(expanded: bool, indent: f32, contextual: b
                 replacements: vec![],
                 scopes: vec![
                     text::SourceProcessingScope::Block {
+                        used_direction: text::ParagraphBaseDirection::LeftToRight,
                         trim: text::WhiteSpaceTrim::default(),
                         base_style: style,
                     },
@@ -154,6 +295,7 @@ fn assert_retained_layout_composition(expanded: bool, indent: f32, contextual: b
         text::AnalyzedSource::from_processed_paragraph(paragraph)
     } else {
         text::AnalyzedSource::from_paragraph(text::ParagraphInput {
+            tab_reference: None,
             source: source.clone(),
             base_style: style,
             segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,

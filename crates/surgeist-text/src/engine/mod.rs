@@ -68,6 +68,8 @@ pub(crate) struct AnalyzedCore {
 /// Source and its projection live here once. Finalized lines retain this same
 /// allocation; neither selection nor placement reconstructs authored input.
 pub(crate) struct PreparedData {
+    pub(crate) options: PreparationOptions,
+    pub(crate) tab_metrics: Vec<Option<crate::tabs::ResolvedTab>>,
     pub(crate) analyzed: Arc<AnalyzedData>,
     pub(crate) font_catalogue: FontCatalogueIdentity,
     pub(crate) styles: Vec<resolve::ResolvedStyleRun>,
@@ -87,6 +89,7 @@ pub(crate) struct ShapingInput<'a> {
     pub(crate) boxes: &'a [InlineBox],
     pub(crate) font_catalogue: &'a FontCatalogueIdentity,
     pub(crate) paragraph: &'a ParagraphData,
+    pub(crate) css_tabs: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -267,6 +270,7 @@ pub(crate) fn prepare(
             boxes: analyzed.processed.source().boxes(),
             font_catalogue: &font_catalogue,
             paragraph: &analyzed.paragraph,
+            css_tabs: options.tabs() == crate::TabPreparation::CssStops,
         },
         scratch,
     )?;
@@ -286,6 +290,7 @@ pub(crate) fn prepare(
                 boxes: analyzed.processed.source().boxes(),
                 font_catalogue: &font_catalogue,
                 paragraph: &analyzed.paragraph,
+                css_tabs: options.tabs() == crate::TabPreparation::CssStops,
             },
             index,
             scratch,
@@ -293,10 +298,25 @@ pub(crate) fn prepare(
     }
     let tables = crate::protocol::prepared::prepare_tables(catalogue, &styles, &analyzed, &shaped)?;
     let mut alternative_shapes = crate::protocol::prepared::prepare_alternatives(
-        catalogue, &analyzed, &styles, &tables, scratch,
+        catalogue,
+        &analyzed,
+        &styles,
+        &tables,
+        scratch,
+        options.tabs() == crate::TabPreparation::CssStops,
     )?;
     let joining_domains = shape::prepare_joining_domains(&analyzed, &mut alternative_shapes)?;
+    let tab_metrics = crate::tabs::prepare(
+        catalogue,
+        &analyzed,
+        &styles,
+        &alternative_shapes,
+        options,
+        scratch,
+    )?;
     Ok(Arc::new(PreparedData {
+        options,
+        tab_metrics,
         analyzed,
         font_catalogue,
         styles,

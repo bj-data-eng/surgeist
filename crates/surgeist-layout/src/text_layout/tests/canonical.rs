@@ -49,6 +49,7 @@ pub(super) fn paragraph(bytes: Vec<u8>, pieces: &[&str]) -> TextParagraphBinding
         })
         .collect();
     let analyzed = text::AnalyzedSource::from_paragraph(text::ParagraphInput {
+        tab_reference: None,
         source,
         base_style: style,
         segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,

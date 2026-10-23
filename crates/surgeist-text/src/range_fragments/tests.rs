@@ -24,6 +24,7 @@ fn input(
     direction: ParagraphBaseDirection,
 ) -> ParagraphInput {
     ParagraphInput {
+        tab_reference: None,
         source: source.clone(),
         base_style: style,
         segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
@@ -978,10 +979,12 @@ fn contextual_holes_remain_real_pieces_of_shared_units_and_generated_origins_are
         replacements: vec![],
         scopes: vec![
             SourceProcessingScope::Block {
+                used_direction: crate::ParagraphBaseDirection::LeftToRight,
                 trim: WhiteSpaceTrim::default(),
                 base_style: style(10.0),
             },
             SourceProcessingScope::OutOfFlowBlock {
+                used_direction: crate::ParagraphBaseDirection::LeftToRight,
                 trim: WhiteSpaceTrim::default(),
                 base_style: style(20.0),
                 atomic: 0,

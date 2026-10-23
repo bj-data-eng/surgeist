@@ -236,3 +236,23 @@ pub(crate) fn arabic_pair_adjusted_ahem() -> Vec<u8> {
         ],
     )
 }
+
+/// SPACE(3) has500 units; Latin rtla substitutes SPACE→.notdef(0),1000 units.
+/// rtla also substitutes ZERO(19)→SPACE(3), so erroneous RTL ZERO measurement is observable.
+pub(crate) fn directional_space_ahem() -> Vec<u8> {
+    let mut hmtx = crate::test_fonts::table(AHEM, *b"hmtx").to_vec();
+    hmtx[12..14].copy_from_slice(&500_u16.to_be_bytes());
+    replace_tables(
+        AHEM,
+        vec![
+            (*b"hmtx", hmtx),
+            (
+                *b"GSUB",
+                layout_table(
+                    *b"latn",
+                    vec![(*b"rtla", 1, words(&[2, 10, 2, 0, 3, 1, 2, 3, 19]))],
+                ),
+            ),
+        ],
+    )
+}

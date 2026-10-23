@@ -446,6 +446,7 @@ mod tests {
         let source = Source::new(text);
         let source_end = source.text().len();
         let analyzed = AnalyzedSource::from_paragraph(ParagraphInput {
+            tab_reference: None,
             source: source.clone(),
             base_style: Style {
                 font: Font::new().family("Ahem"),
@@ -690,6 +691,7 @@ mod tests {
             .unwrap();
         let source = Source::new("abcdef");
         let analysis = AnalyzedSource::from_paragraph(ParagraphInput {
+            tab_reference: None,
             source: source.clone(),
             base_style: Style {
                 font: Font::new().family("Ahem"),
@@ -947,6 +949,7 @@ mod tests {
         let source = Source::new(text);
         let end = text.encode_utf16().count();
         let analysis = AnalyzedSource::from_paragraph(ParagraphInput {
+            tab_reference: None,
             source: source.clone(),
             base_style: Style {
                 font: Font::new().family("Ahem"),

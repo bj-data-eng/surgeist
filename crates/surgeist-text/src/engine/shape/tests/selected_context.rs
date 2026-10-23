@@ -24,6 +24,7 @@ fn selected_computed_beh(separate_instance: bool) -> Vec<(Range, u32, f32)> {
         );
     }
     let analyzed = AnalyzedSource::from_paragraph(ParagraphInput {
+        tab_reference: None,
         source: source.clone(),
         base_style: style,
         segment_breaks: DocumentSegmentBreaks::LineFeedDefault,

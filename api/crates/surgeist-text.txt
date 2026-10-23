@@ -451,10 +451,15 @@ pub surgeist_text::ProcessingCapacityError::Overflow
 pub enum surgeist_text::ProtocolContextField
 pub surgeist_text::ProtocolContextField::BaseDirection
 pub surgeist_text::ProtocolContextField::Hanging
+pub surgeist_text::ProtocolContextField::IntrinsicTabPhase
 pub surgeist_text::ProtocolContextField::LineEnd
 pub surgeist_text::ProtocolContextField::LineStart
+pub surgeist_text::ProtocolContextField::NegativeTabInterval
 pub surgeist_text::ProtocolContextField::Orientation
 pub surgeist_text::ProtocolContextField::Spacing
+pub surgeist_text::ProtocolContextField::TabMetrics
+pub surgeist_text::ProtocolContextField::TabPreparation
+pub surgeist_text::ProtocolContextField::TabReference
 pub surgeist_text::ProtocolContextField::TabStops
 pub enum surgeist_text::ProtocolError
 pub surgeist_text::ProtocolError::AmbiguousSourcePosition
@@ -651,15 +656,18 @@ pub surgeist_text::SourceProcessingScope::AtomicBlock
 pub surgeist_text::SourceProcessingScope::AtomicBlock::atomic: usize
 pub surgeist_text::SourceProcessingScope::AtomicBlock::base_style: surgeist_text::Style
 pub surgeist_text::SourceProcessingScope::AtomicBlock::trim: surgeist_text::WhiteSpaceTrim
+pub surgeist_text::SourceProcessingScope::AtomicBlock::used_direction: surgeist_text::ParagraphBaseDirection
 pub surgeist_text::SourceProcessingScope::Block
 pub surgeist_text::SourceProcessingScope::Block::base_style: surgeist_text::Style
 pub surgeist_text::SourceProcessingScope::Block::trim: surgeist_text::WhiteSpaceTrim
+pub surgeist_text::SourceProcessingScope::Block::used_direction: surgeist_text::ParagraphBaseDirection
 pub surgeist_text::SourceProcessingScope::Inline
 pub surgeist_text::SourceProcessingScope::Inline::trim: surgeist_text::WhiteSpaceTrim
 pub surgeist_text::SourceProcessingScope::OutOfFlowBlock
 pub surgeist_text::SourceProcessingScope::OutOfFlowBlock::atomic: usize
 pub surgeist_text::SourceProcessingScope::OutOfFlowBlock::base_style: surgeist_text::Style
 pub surgeist_text::SourceProcessingScope::OutOfFlowBlock::trim: surgeist_text::WhiteSpaceTrim
+pub surgeist_text::SourceProcessingScope::OutOfFlowBlock::used_direction: surgeist_text::ParagraphBaseDirection
 pub enum surgeist_text::SourceRangeFragmentError
 pub surgeist_text::SourceRangeFragmentError::AmbiguousOriginalMapping
 pub surgeist_text::SourceRangeFragmentError::AmbiguousOriginalMapping::aggregate: surgeist_text::Range
@@ -707,11 +715,13 @@ pub surgeist_text::SuppliedLineError::OrderBufferLength
 pub surgeist_text::SuppliedLineError::OrderBufferLength::actual: usize
 pub surgeist_text::SuppliedLineError::OrderBufferLength::expected: usize
 pub enum surgeist_text::TabContext
+pub surgeist_text::TabContext::CssStops
+pub surgeist_text::TabContext::CssStops::origin: core::option::Option<f64>
 pub surgeist_text::TabContext::FontAdvance
 pub surgeist_text::TabContext::NoTabs
-pub surgeist_text::TabContext::Stops
-pub surgeist_text::TabContext::Stops::origin: f64
-pub surgeist_text::TabContext::Stops::positions: alloc::vec::Vec<f64>
+pub enum surgeist_text::TabPreparation
+pub surgeist_text::TabPreparation::CssStops
+pub surgeist_text::TabPreparation::FontAdvance
 pub enum surgeist_text::TextAlignLast
 pub surgeist_text::TextAlignLast::Auto
 pub enum surgeist_text::TextNumericError
@@ -1425,6 +1435,7 @@ pub surgeist_text::ParagraphInput::paragraph_strut: surgeist_text::ParagraphStru
 pub surgeist_text::ParagraphInput::replacements: alloc::vec::Vec<surgeist_text::ParagraphReplacement>
 pub surgeist_text::ParagraphInput::segment_breaks: surgeist_text::DocumentSegmentBreaks
 pub surgeist_text::ParagraphInput::source: surgeist_text::Source
+pub surgeist_text::ParagraphInput::tab_reference: core::option::Option<surgeist_text::ParagraphTabReference>
 pub struct surgeist_text::ParagraphOrigin
 pub surgeist_text::ParagraphOrigin::aggregate: surgeist_text::Range
 pub surgeist_text::ParagraphOrigin::kind: surgeist_text::ParagraphOriginKind
@@ -1437,6 +1448,11 @@ pub const fn surgeist_text::ParagraphReplacement::insertion_anchor(&self) -> usi
 pub fn surgeist_text::ParagraphReplacement::native_alternatives(&self) -> core::option::Option<&[surgeist_text::Text]>
 pub fn surgeist_text::ParagraphReplacement::resolved_native_logical_before(definition: surgeist_text::ParagraphReplacementDefinition, insertion_anchor: usize, alternatives: alloc::vec::Vec<surgeist_text::Text>) -> surgeist_text::Result<Self>
 pub const fn surgeist_text::ParagraphReplacement::style_driven(definition: surgeist_text::ParagraphReplacementDefinition, insertion_anchor: usize) -> Self
+pub struct surgeist_text::ParagraphTabReference
+impl surgeist_text::ParagraphTabReference
+pub const fn surgeist_text::ParagraphTabReference::direction(&self) -> surgeist_text::ParagraphBaseDirection
+pub fn surgeist_text::ParagraphTabReference::new(style: surgeist_text::Style, direction: surgeist_text::ParagraphBaseDirection) -> surgeist_text::Result<Self>
+pub fn surgeist_text::ParagraphTabReference::style(&self) -> &surgeist_text::Style
 pub struct surgeist_text::PlacedPosition
 impl surgeist_text::PlacedPosition
 pub fn surgeist_text::PlacedPosition::source_cursor(&self) -> surgeist_text::Cursor
@@ -1472,7 +1488,8 @@ pub const fn surgeist_text::PositionedInlineBox::vertical_align(self) -> surgeis
 pub struct surgeist_text::PreparationOptions
 impl surgeist_text::PreparationOptions
 pub const fn surgeist_text::PreparationOptions::scale(self) -> f32
-pub fn surgeist_text::PreparationOptions::try_new(scale: f32) -> surgeist_text::Result<Self>
+pub const fn surgeist_text::PreparationOptions::tabs(self) -> surgeist_text::TabPreparation
+pub fn surgeist_text::PreparationOptions::try_new(scale: f32, tabs: surgeist_text::TabPreparation) -> surgeist_text::Result<Self>
 impl core::default::Default for surgeist_text::PreparationOptions
 pub fn surgeist_text::PreparationOptions::default() -> Self
 pub struct surgeist_text::PreparedAlternative
@@ -1639,6 +1656,8 @@ pub fn surgeist_text::PreparedText::unit_views(&self) -> impl core::iter::traits
 impl surgeist_text::PreparedText
 pub fn surgeist_text::PreparedText::analyzed_source(&self) -> surgeist_text::AnalyzedSource
 pub fn surgeist_text::PreparedText::font_catalogue_identity(&self) -> &surgeist_text::FontCatalogueIdentity
+pub fn surgeist_text::PreparedText::preparation_options(&self) -> surgeist_text::PreparationOptions
+pub fn surgeist_text::PreparedText::tab_reference(&self) -> core::option::Option<&surgeist_text::ParagraphTabReference>
 impl surgeist_text::PreparedText
 pub fn surgeist_text::PreparedText::conditional_opportunities(&self, start: &surgeist_text::PreparedBoundary, ceiling: &surgeist_text::PreparedOpportunity, purpose: surgeist_text::ConditionalPurpose, skipped_ordinary: &[surgeist_text::FinalizedLine]) -> surgeist_text::Result<alloc::vec::Vec<surgeist_text::PreparedConditionalOpportunity>>
 impl surgeist_text::PreparedText
@@ -1968,6 +1987,7 @@ pub surgeist_text::Style::native_hyphenation_convention: core::option::Option<su
 pub surgeist_text::Style::overflow_wrap: surgeist_text::OverflowWrap
 pub surgeist_text::Style::size: f32
 pub surgeist_text::Style::strikethrough: surgeist_text::Decoration
+pub surgeist_text::Style::tab_size: surgeist_text::TabSize
 pub surgeist_text::Style::text_transform: surgeist_text::TextTransform
 pub surgeist_text::Style::underline: surgeist_text::Decoration
 pub surgeist_text::Style::white_space: surgeist_text::WhiteSpace
@@ -2015,6 +2035,14 @@ impl core::default::Default for surgeist_text::System
 pub fn surgeist_text::System::default() -> Self
 pub struct surgeist_text::SystemOptions
 pub surgeist_text::SystemOptions::font_catalogue: surgeist_text::FontCatalogueMode
+pub struct surgeist_text::TabSize
+impl surgeist_text::TabSize
+pub const fn surgeist_text::TabSize::is_spaces(self) -> bool
+pub fn surgeist_text::TabSize::length(absolute: f64) -> surgeist_text::Result<Self>
+pub fn surgeist_text::TabSize::spaces(number: f64) -> surgeist_text::Result<Self>
+pub const fn surgeist_text::TabSize::value(self) -> f64
+impl core::default::Default for surgeist_text::TabSize
+pub fn surgeist_text::TabSize::default() -> Self
 pub struct surgeist_text::Text(_)
 impl surgeist_text::Text
 pub fn surgeist_text::Text::code_units(&self) -> &[u16]

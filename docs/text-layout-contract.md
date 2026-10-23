@@ -197,6 +197,16 @@ supplies the horizontal 0.5em fallback when measurement is impossible; half-ch
 then means 0.25em. Retain measured-versus-fallback provenance. Scale style lengths
 and spacing once under the existing preparation coordinate contract.
 
+The horizontal hypothetical metric operation shapes each scalar in isolation
+under its actual owning style. Both scalars use Text's existing Common-script
+Latin fallback. SPACE follows the nearest block's captured used direction;
+ZERO uses LTR, matching its isolated EN analysis even in an RTL paragraph.
+Retain direction-dependent provider features as well as explicit font settings.
+This is the selected isolated metric profile, not a requirement to borrow script
+or shaping context from neighboring text, nor a claim of arbitrary contextual or
+vertical metric support. The source clauses require influencing glyph-selection
+settings; they do not prescribe a nominal-only measurement algorithm.
+
 Authored zero suppresses advance and paint without SPACE, ZERO or TAB probes.
 A spacing-derived zero may consume SPACE to establish zero, then needs no
 threshold metric. Preserve original source, caret endpoints and selection custody

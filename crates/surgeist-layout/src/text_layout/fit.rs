@@ -6,7 +6,7 @@ use surgeist_text::{
     HangingContext, LineContext, LineEnd, LineOrientation, LineSelectionRequest, LineStart,
     ParagraphBaseDirection, PreparedAlternative, PreparedBoundary, PreparedBreakKind,
     PreparedParticipant, PreparedTermination, PreparedText, SelectedLine, SpacingAllocation,
-    SpacingAllocations, SpacingPolicy, SpacingSlotDisposition, TabContext,
+    SpacingAllocations, SpacingPolicy, SpacingSlotDisposition, TabContext, TabPreparation,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -154,6 +154,7 @@ pub(crate) struct FitInput<'a> {
     pub prepared: &'a PreparedText,
     pub available: Available,
     pub base_direction: ParagraphBaseDirection,
+    pub block_direction: ParagraphBaseDirection,
     pub alignment: TextAlign,
     pub last_alignment: TextAlignLast,
     pub justification: TextJustification,
@@ -392,6 +393,7 @@ where
             let bands = query_bands(&mut self.band, position.logical_start, placed_start, height)?;
             let band = bands.combined();
             request.context.available_inline = selection_width(input.available, band)?;
+            request.context.tabs = tab_context(input, band, request.context.available_inline)?;
             let mut allocation_bases = Vec::new();
             let (finalized, amounts) = loop {
                 let candidate = finalize_candidate(
@@ -542,6 +544,31 @@ fn selection_width(available: Available, band: Band) -> Result<Option<f64>, FitE
         }
         Available::Minimum | Available::Maximum => Ok(None),
     }
+}
+
+/// Resolve the captured block edge relative to this actual allocation's
+/// paragraph progression start. Shared starts cancel without a block width.
+/// An intrinsic opposite start depends on the candidate's still-unknown width.
+fn tab_context(
+    input: &FitInput<'_>,
+    band: Band,
+    allocation: Option<f64>,
+) -> Result<TabContext, FitError> {
+    if input.prepared.preparation_options().tabs() == TabPreparation::FontAdvance {
+        return Ok(TabContext::FontAdvance);
+    }
+    let displacement = if input.base_direction == input.block_direction {
+        Some(band.start)
+    } else {
+        allocation
+            .map(|width| super::run::add(band.start, width))
+            .transpose()?
+    };
+    let origin = displacement.map(|value| match input.block_direction {
+        ParagraphBaseDirection::LeftToRight => -value,
+        ParagraphBaseDirection::RightToLeft => value,
+    });
+    Ok(TabContext::CssStops { origin })
 }
 
 /// The three operations share one accepted encounter checkpoint.

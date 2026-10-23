@@ -518,7 +518,7 @@ impl Layout {
                 index += 1;
                 while index < line.data.clusters.len()
                     && line.data.clusters[index].provider_atoms == cluster.provider_atoms
-                    && line.data.clusters[index].run == cluster.run
+                    && line.data.clusters[index].content == cluster.content
                 {
                     index += 1;
                 }
@@ -624,12 +624,16 @@ impl Layout {
                 let mut pieces = Vec::new();
                 for metric in &geometry {
                     let cluster = &line.data.clusters[metric.clusters.start];
-                    let font = line.data.font_runs.get(cluster.run).ok_or_else(|| {
-                        failure(SourceRangeFragmentError::MissingFontMetrics {
-                            line: line_index,
-                            unit: group,
-                        })
-                    })?;
+                    let font = cluster
+                        .content
+                        .font_run()
+                        .and_then(|run| line.data.font_runs.get(run))
+                        .ok_or_else(|| {
+                            failure(SourceRangeFragmentError::MissingFontMetrics {
+                                line: line_index,
+                                unit: group,
+                            })
+                        })?;
                     let instance = EffectiveFontInstance::qualify_synthesized(
                         font.font.face(),
                         font.font_size,

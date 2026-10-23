@@ -9,6 +9,7 @@ use crate::{
 fn paragraph(source: Source) -> ParagraphInput {
     let len = source.text().len();
     ParagraphInput {
+        tab_reference: None,
         source: source.clone(),
         base_style: Style {
             font: Font::new().family("Ahem"),
@@ -89,7 +90,10 @@ fn native_atomic_preparation(
         .collect();
     let analyzed = AnalyzedSource::from_paragraph(input).unwrap();
     system()
-        .prepare(&analyzed, PreparationOptions::try_new(1.0).unwrap())
+        .prepare(
+            &analyzed,
+            PreparationOptions::try_new(1.0, crate::TabPreparation::FontAdvance).unwrap(),
+        )
         .unwrap()
 }
 
@@ -177,7 +181,10 @@ fn native_atomic_out_of_flow_control_creates_no_break_opportunity() {
     }];
     let analyzed = AnalyzedSource::from_paragraph(input).unwrap();
     let prepared = system()
-        .prepare(&analyzed, PreparationOptions::try_new(1.0).unwrap())
+        .prepare(
+            &analyzed,
+            PreparationOptions::try_new(1.0, crate::TabPreparation::FontAdvance).unwrap(),
+        )
         .unwrap();
     assert_eq!(allowed_atomic_sides(&prepared), [[false, false]]);
 }
@@ -297,7 +304,10 @@ fn native_atomic_transparent_occurrences_do_not_reintroduce_a_forbidden_break() 
             .collect();
             let analyzed = AnalyzedSource::from_paragraph(input).unwrap();
             let prepared = system()
-                .prepare(&analyzed, PreparationOptions::try_new(1.0).unwrap())
+                .prepare(
+                    &analyzed,
+                    PreparationOptions::try_new(1.0, crate::TabPreparation::FontAdvance).unwrap(),
+                )
                 .unwrap();
             prepared
                 .opportunity_views()
@@ -425,7 +435,10 @@ fn atomic_transparent_input(
 fn prepare_opportunity_inventory(input: ParagraphInput) -> Vec<(usize, PreparedBreakKind)> {
     let analyzed = AnalyzedSource::from_paragraph(input).unwrap();
     let prepared = system()
-        .prepare(&analyzed, PreparationOptions::try_new(1.0).unwrap())
+        .prepare(
+            &analyzed,
+            PreparationOptions::try_new(1.0, crate::TabPreparation::FontAdvance).unwrap(),
+        )
         .unwrap();
     prepared
         .opportunity_views()
@@ -706,7 +719,11 @@ fn native_atomic_collapse_space_permission_is_local_only_before_the_atomic() {
                 .collect();
                 let analyzed = AnalyzedSource::from_paragraph(input).unwrap();
                 let prepared = system()
-                    .prepare(&analyzed, PreparationOptions::try_new(1.0).unwrap())
+                    .prepare(
+                        &analyzed,
+                        PreparationOptions::try_new(1.0, crate::TabPreparation::FontAdvance)
+                            .unwrap(),
+                    )
                     .unwrap();
                 allowed_atomic_sides(&prepared)
             })
@@ -763,7 +780,11 @@ fn native_connection_space_owner_depends_on_actual_disappearance() {
                 }];
                 let analyzed = AnalyzedSource::from_paragraph(input).unwrap();
                 let prepared = system()
-                    .prepare(&analyzed, PreparationOptions::try_new(1.0).unwrap())
+                    .prepare(
+                        &analyzed,
+                        PreparationOptions::try_new(1.0, crate::TabPreparation::FontAdvance)
+                            .unwrap(),
+                    )
                     .unwrap();
                 prepared.opportunity_views().any(|row| {
                     row.kind() == PreparedBreakKind::Allowed
@@ -879,7 +900,10 @@ fn discarded_original_coverage_and_distinct_empty_occurrences_survive_selection(
     );
     let mut system = system();
     let prepared = system
-        .prepare(&analyzed, PreparationOptions::try_new(1.0).unwrap())
+        .prepare(
+            &analyzed,
+            PreparationOptions::try_new(1.0, crate::TabPreparation::FontAdvance).unwrap(),
+        )
         .unwrap();
     let selected = select_whole(&prepared);
     assert_eq!(selected.inner.presentation.source, Range::new(0, 6));
@@ -1001,7 +1025,10 @@ fn selected_source_replacement_is_actual_retained_text_with_zero_authored_extent
     let analyzed = AnalyzedSource::from_paragraph(input).unwrap();
     let mut system = system();
     let prepared = system
-        .prepare(&analyzed, PreparationOptions::try_new(1.0).unwrap())
+        .prepare(
+            &analyzed,
+            PreparationOptions::try_new(1.0, crate::TabPreparation::FontAdvance).unwrap(),
+        )
         .unwrap();
     let alternative = prepared.alternative_views().next().unwrap().handle();
     let termination = alternative.view().opportunity();
@@ -1095,7 +1122,10 @@ fn source_less_discretionary_control_and_empty_replacement_keep_real_owners() {
     let analyzed = AnalyzedSource::from_paragraph(input).unwrap();
     let mut system = system();
     let prepared = system
-        .prepare(&analyzed, PreparationOptions::try_new(1.0).unwrap())
+        .prepare(
+            &analyzed,
+            PreparationOptions::try_new(1.0, crate::TabPreparation::FontAdvance).unwrap(),
+        )
         .unwrap();
     let alternative = prepared.alternative_views().next().unwrap().handle();
     let termination = alternative.view().opportunity();
@@ -1164,7 +1194,10 @@ fn raw_standalone_crlf_forced_items_do_not_split_native_normalized_delimiter() {
     let source = Source::new("\r\n");
     let raw = AnalyzedSource::new(source.clone(), paragraph(source.clone()).base_style).unwrap();
     let prepared = system
-        .prepare(&raw, PreparationOptions::try_new(1.0).unwrap())
+        .prepare(
+            &raw,
+            PreparationOptions::try_new(1.0, crate::TabPreparation::FontAdvance).unwrap(),
+        )
         .unwrap();
     assert_eq!(
         prepared
@@ -1195,7 +1228,10 @@ fn raw_standalone_crlf_forced_items_do_not_split_native_normalized_delimiter() {
         [0xa]
     );
     let prepared = system
-        .prepare(&native, PreparationOptions::try_new(1.0).unwrap())
+        .prepare(
+            &native,
+            PreparationOptions::try_new(1.0, crate::TabPreparation::FontAdvance).unwrap(),
+        )
         .unwrap();
     assert_eq!(
         prepared

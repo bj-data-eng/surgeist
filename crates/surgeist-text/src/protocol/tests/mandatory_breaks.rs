@@ -4,6 +4,7 @@ fn with_forced_control(text: &str, at: usize) -> PreparedText {
     let mut system = system();
     let source = Source::new(text);
     let analysis = AnalyzedSource::from_paragraph(ParagraphInput {
+        tab_reference: None,
         source: source.clone(),
         base_style: style(),
         segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,

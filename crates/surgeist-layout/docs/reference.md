@@ -87,7 +87,25 @@ uses real selected text, boxes, controls, and any explicitly supplied Layout
 or zero-size line.
 
 The native profile supports horizontal LTR and RTL text, signed indentation,
-and font-advance tabs. `text_align` supplies normal line alignment;
+and the preparation's selected font-advance or CSS-stop tab operation.
+For `TabPreparation::CssStops`, Text retains the actual nearest-block metric
+reference; capture checks its used direction against the normalized container.
+Each candidate supplies `CssStops` with that block edge relative to its current
+unaligned paragraph start. Floats and retries change this displacement;
+indentation changes the pen without restarting the grid. Later alignment moves
+the completed line. Spacing allocations can be absorbed by shorter tab shifts,
+so fit and placement consume actual finalized advances.
+
+Matching block/paragraph starts establish intrinsic phase through their shared
+edge. Opposite starts in an unconstrained intrinsic query remain a precise
+`IntrinsicTabPhase` capability refusal when a positive tab consumes that phase;
+neither a provisional width nor the final canonical block width supplies the
+candidate's missing line allocation. Zero tabs do not need it. Negative resolved
+periods remain Text's `NegativeTabInterval` capability limit. These limits leave
+the corresponding positive CSS cases open; the [tab contract](../../../docs/text-layout-contract.md#preserved-css-tab-stops)
+records the selected operation and sources.
+
+`text_align` supplies normal line alignment;
 `text_align_last` supplies paragraph-ending and forced-line alignment. Logical
 Start/End follows the paragraph direction, while Left/Right remains physical.
 Only the Legacy alignment variants also align ordinary block children.

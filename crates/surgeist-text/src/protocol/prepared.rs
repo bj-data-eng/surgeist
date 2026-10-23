@@ -290,7 +290,12 @@ pub(crate) fn prepare_tables(
                 let value = &projection.atoms[index];
                 let cluster = cluster_for_atom[index].map(|index| &shaped.clusters[index]);
                 let metrics = cluster
-                    .map(|cluster| shaped.runs[cluster.run].metrics)
+                    .and_then(|cluster| {
+                        cluster
+                            .content
+                            .font_run()
+                            .map(|run| shaped.runs[run].metrics)
+                    })
                     .unwrap_or_default();
                 let item = item_for_atom[index];
                 let row = UnitData {
@@ -886,6 +891,7 @@ pub(crate) fn prepare_alternatives(
     styles: &[ResolvedStyleRun],
     tables: &PreparedTables,
     scratch: &mut crate::engine::shape::ShapeContext,
+    css_tabs: bool,
 ) -> crate::Result<Vec<PreparedAlternativeShape>> {
     let mut alternatives = Vec::with_capacity(tables.alternatives.len());
     for (index, row) in tables.alternatives.iter().enumerate() {
@@ -924,6 +930,7 @@ pub(crate) fn prepare_alternatives(
                 boxes: analyzed.processed.source().boxes(),
                 font_catalogue: &catalogue_identity,
                 paragraph: &analyzed.paragraph,
+                css_tabs,
             },
             scratch,
         )?;
@@ -1293,6 +1300,11 @@ pub(crate) fn select_presentation(
     };
     let mut assignments: Vec<RetainedAssignment> = Vec::new();
     for (selected_atom, original_atom) in indices.into_iter().enumerate() {
+        if prepared.options.tabs() == crate::TabPreparation::CssStops
+            && selected_projection.atoms[selected_atom].code_point == 9
+        {
+            continue;
+        }
         let run = shaped
             .runs
             .partition_point(|run| run.atoms.end <= original_atom);

@@ -350,6 +350,18 @@ fn select(
             return Err(protocol_error(ProtocolError::InvalidLineStrut));
         }
     }
+    if matches!(
+        (&request.context.tabs, prepared.inner.options.tabs()),
+        (TabContext::FontAdvance, crate::TabPreparation::CssStops)
+            | (
+                TabContext::CssStops { .. },
+                crate::TabPreparation::FontAdvance
+            )
+    ) {
+        return Err(protocol_error(ProtocolError::MismatchedContext {
+            field: ProtocolContextField::TabPreparation,
+        }));
+    }
     let presentation = super::prepared::select_presentation(&prepared.inner, &request)?;
     if request.context.tabs == TabContext::NoTabs
         && presentation
@@ -423,10 +435,11 @@ fn validate_context(context: &LineContext, base_level: u8) -> Result<()> {
             field: ProtocolContextField::Orientation,
         }));
     }
-    if matches!(context.tabs, TabContext::Stops { .. }) {
-        return Err(protocol_error(ProtocolError::UnsupportedContext {
-            field: ProtocolContextField::TabStops,
-        }));
+    if let TabContext::CssStops {
+        origin: Some(origin),
+    } = context.tabs
+    {
+        finite("tab origin", origin)?;
     }
     if context.hanging != HangingContext::None {
         return Err(protocol_error(ProtocolError::UnsupportedContext {

@@ -166,6 +166,10 @@ pub(crate) fn layout<Node: Copy + Eq, S: LayoutScalar>(
             prepared: &binding.prepared,
             available,
             base_direction: direction,
+            block_direction: match context.axes.direction() {
+                Direction::Ltr => ParagraphBaseDirection::LeftToRight,
+                Direction::Rtl => ParagraphBaseDirection::RightToLeft,
+            },
             alignment: context.alignment,
             last_alignment: context.last_alignment,
             justification: context.justification,
@@ -884,7 +888,7 @@ pub(crate) fn number<S: LayoutScalar>(value: f64) -> Result<S, FitError> {
     }
     Ok(number)
 }
-fn add(base: f64, delta: f64) -> Result<f64, FitError> {
+pub(super) fn add(base: f64, delta: f64) -> Result<f64, FitError> {
     let result = finite(base + delta)?;
     if delta != 0.0 && result == base {
         return Err(FitError::Numeric(

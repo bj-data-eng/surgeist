@@ -5,6 +5,7 @@ fn input(text: &str, overflow_wrap: OverflowWrap) -> ParagraphInput {
     let source = Source::new(text);
     let length = source.text().len();
     ParagraphInput {
+        tab_reference: None,
         source: source.clone(),
         base_style: Style {
             overflow_wrap,
@@ -1436,6 +1437,7 @@ fn contextual_conditional_cuts_keep_child_holes_and_actual_incident_endpoints() 
         }],
         scopes: vec![
             SourceProcessingScope::Block {
+                used_direction: crate::ParagraphBaseDirection::LeftToRight,
                 trim: WhiteSpaceTrim::default(),
                 base_style: Style {
                     overflow_wrap: OverflowWrap::Anywhere,
@@ -1443,6 +1445,7 @@ fn contextual_conditional_cuts_keep_child_holes_and_actual_incident_endpoints() 
                 },
             },
             SourceProcessingScope::OutOfFlowBlock {
+                used_direction: crate::ParagraphBaseDirection::LeftToRight,
                 trim: WhiteSpaceTrim::default(),
                 base_style: style(),
                 atomic: 0,

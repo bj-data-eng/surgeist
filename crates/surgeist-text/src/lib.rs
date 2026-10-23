@@ -140,3 +140,6 @@ pub use hyphenation::{
     HyphenateCharacter, HyphenationError, HyphenationPlacement, Hyphens,
     NativeHyphenationConvention,
 };
+
+mod tabs;
+pub use tabs::{ParagraphTabReference, TabPreparation, TabSize};

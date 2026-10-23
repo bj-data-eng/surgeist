@@ -380,6 +380,8 @@ fn hash_inline_box<H: Hasher>(box_: InlineBox, hasher: &mut H) {
 }
 
 fn hash_style<H: Hasher>(style: &Style, hasher: &mut H) {
+    hash_f64(style.tab_size.value(), hasher);
+    style.tab_size.is_spaces().hash(hasher);
     hash_font(&style.font, hasher);
     hash_f32(style.size, hasher);
     hash_line_height(style.line_height, hasher);

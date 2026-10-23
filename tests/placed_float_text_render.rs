@@ -64,6 +64,7 @@ fn interleaved_float_keeps_one_paragraph_for_paint_cursor_and_accessibility() {
         ..text::Style::default()
     };
     let analyzed = text::AnalyzedSource::from_paragraph(text::ParagraphInput {
+        tab_reference: None,
         source: text::Source::new("AX"),
         base_style: style.clone(),
         segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,

@@ -469,7 +469,7 @@ pub(super) fn from_point(layout: &PlacedLayout, point: Point) -> Cursor {
             let mut end = visual + 1;
             while let Some(FinalizedVisualItem::Cluster(next)) = data.visual_order.get(end) {
                 let next = &data.clusters[*next];
-                if next.run != first_cluster.run || next.level != first_cluster.level {
+                if next.content != first_cluster.content || next.level != first_cluster.level {
                     break;
                 }
                 end += 1;

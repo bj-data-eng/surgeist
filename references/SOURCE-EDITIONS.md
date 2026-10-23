@@ -1260,6 +1260,15 @@ and [ordering](css-text-4--WD-css-text-4-20260814--106c5cd086ab.md#order),
 and the [UAX #9 revision 52 metadata](uax9--18.0.0--rev52-metadata.md).
 The horizontal ch fallback is 0.5em, so its half-ch threshold is 0.25em.
 
+The selected horizontal metric profile shapes an isolated scalar using Text's
+existing Common-to-Latin script fallback. Isolated ZERO retains LTR numeric
+direction in either paragraph direction; isolated SPACE follows the block's
+captured used direction. Text's own bidi analysis and the retained Harfrust
+direction-feature selection distinguish these cases. Font features, locale and
+effective instance remain active. The normative clauses do not mandate a
+nominal-only metric algorithm; this bounded profile does not establish arbitrary
+contextual or vertical metric coverage.
+
 Source-only inspection at WebKit `73aa6c89e2cb77c46184a81aec944e4ab99d114d`
 covered `FontCascadeInlines.h`, `TabSize.h`, `WidthIterator.cpp` and `TextRun.h`.
 Their tab helper and line-relative position do not establish a clamp for a

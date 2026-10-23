@@ -101,6 +101,7 @@ pub enum TextBindingError {
     ParticipantRole,
     MissingParagraph,
     RootMismatch,
+    TabReferenceDirection,
 }
 
 /// A complete, checked Text participation capture over one borrowed tree.
@@ -129,6 +130,25 @@ impl<'tree, Tree: crate::LayoutTree> TextLayoutInput<'tree, Tree> {
         let mut occupied = Vec::new();
         for paragraph in &paragraphs {
             let error = |reason| binding_error(paragraph.container, reason);
+            if paragraph.prepared.preparation_options().tabs()
+                == surgeist_text::TabPreparation::CssStops
+                && let Some(reference) = paragraph.prepared.tab_reference()
+            {
+                let actual =
+                    tree.layout_input(paragraph.container)
+                        .as_box()
+                        .map(|input| match input.direction {
+                            crate::Direction::Ltr => {
+                                surgeist_text::ParagraphBaseDirection::LeftToRight
+                            }
+                            crate::Direction::Rtl => {
+                                surgeist_text::ParagraphBaseDirection::RightToLeft
+                            }
+                        });
+                if actual != Some(reference.direction()) {
+                    return Err(error(TextBindingError::TabReferenceDirection));
+                }
+            }
             if paragraph.nodes.is_empty() {
                 return Err(error(TextBindingError::EmptyRun));
             }

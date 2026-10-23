@@ -133,6 +133,46 @@ impl PreparedParagraph {
         paragraph_strut: surgeist_text::ParagraphStrut,
         replacements: Vec<surgeist_text::ParagraphReplacement>,
     ) -> Self {
+        Self::with_preparation(
+            parts,
+            base_style,
+            direction,
+            paragraph_strut,
+            replacements,
+            PreparationOptions::default(),
+            None,
+        )
+    }
+
+    /// Authors the fixture's real flat block reference and CSS metric demand.
+    pub(crate) fn with_css_tabs(
+        parts: Vec<ParagraphPart>,
+        base_style: Style,
+        direction: ParagraphBaseDirection,
+        block_direction: ParagraphBaseDirection,
+    ) -> Self {
+        let reference =
+            surgeist_text::ParagraphTabReference::new(base_style.clone(), block_direction).unwrap();
+        Self::with_preparation(
+            parts,
+            base_style,
+            direction,
+            surgeist_text::ParagraphStrut::DefaultFont,
+            Vec::new(),
+            PreparationOptions::try_new(1.0, surgeist_text::TabPreparation::CssStops).unwrap(),
+            Some(reference),
+        )
+    }
+
+    fn with_preparation(
+        parts: Vec<ParagraphPart>,
+        base_style: Style,
+        direction: ParagraphBaseDirection,
+        paragraph_strut: surgeist_text::ParagraphStrut,
+        replacements: Vec<surgeist_text::ParagraphReplacement>,
+        options: PreparationOptions,
+        tab_reference: Option<surgeist_text::ParagraphTabReference>,
+    ) -> Self {
         let ancestor_wrap = base_style.wrap;
         let mut aggregate = Source::new("");
         let mut origins = Vec::new();
@@ -241,6 +281,7 @@ impl PreparedParagraph {
             segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
             base_direction: direction,
             paragraph_strut,
+            tab_reference,
             origins,
             connections,
             controls,
@@ -261,9 +302,7 @@ impl PreparedParagraph {
         })
         .unwrap();
         system.register_fonts(AHEM.to_vec()).unwrap();
-        let prepared = system
-            .prepare(&analyzed, PreparationOptions::default())
-            .unwrap();
+        let prepared = system.prepare(&analyzed, options).unwrap();
         let origins = prepared
             .origin_views()
             .zip(origin_nodes)

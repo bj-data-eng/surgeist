@@ -27,10 +27,13 @@ pub use prepared::PreparedBreakKind;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PreparationOptions {
     scale: f32,
+    tabs: crate::TabPreparation,
 }
 
 impl PreparationOptions {
-    pub fn try_new(scale: f32) -> Result<Self> {
+    /// Select one tab resource operation for the complete original/alternative inventory.
+    /// CSS preparation fails atomically if a potentially selectable tab lacks required capture or metrics.
+    pub fn try_new(scale: f32, tabs: crate::TabPreparation) -> Result<Self> {
         if !scale.is_finite() || scale <= 0.0 {
             return Err(crate::error::text_numeric_error(
                 "preparation scale",
@@ -43,7 +46,11 @@ impl PreparationOptions {
                 f64::from(scale),
             ));
         }
-        Ok(Self { scale })
+        Ok(Self { scale, tabs })
+    }
+    #[must_use]
+    pub const fn tabs(self) -> crate::TabPreparation {
+        self.tabs
     }
     #[must_use]
     pub const fn scale(self) -> f32 {
@@ -52,7 +59,10 @@ impl PreparationOptions {
 }
 impl Default for PreparationOptions {
     fn default() -> Self {
-        Self { scale: 1.0 }
+        Self {
+            scale: 1.0,
+            tabs: crate::TabPreparation::FontAdvance,
+        }
     }
 }
 
@@ -78,6 +88,16 @@ impl Hash for PreparedText {
     }
 }
 impl PreparedText {
+    /// Exact preparation demand retained with this immutable allocation.
+    #[must_use]
+    pub fn preparation_options(&self) -> PreparationOptions {
+        self.inner.options
+    }
+    /// Actual captured nearest block authority, when supplied by the producer.
+    #[must_use]
+    pub fn tab_reference(&self) -> Option<&crate::ParagraphTabReference> {
+        self.inner.analyzed.paragraph.tab_reference.as_ref()
+    }
     #[must_use]
     pub fn analyzed_source(&self) -> crate::AnalyzedSource {
         crate::AnalyzedSource::from_inner(Arc::clone(&self.inner.analyzed))
@@ -166,9 +186,10 @@ pub enum TabContext {
     NoTabs,
     /// Actual retained-font shaping advance, without a tab-stop algorithm.
     FontAdvance,
-    Stops {
-        origin: f64,
-        positions: Vec<f64>,
+    /// Physical nearest-block start relative to unaligned paragraph start.
+    /// None preserves an unknown intrinsic phase; only positive tabs consume it.
+    CssStops {
+        origin: Option<f64>,
     },
 }
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -468,6 +489,11 @@ pub enum ProtocolContextField {
     LineStart,
     LineEnd,
     TabStops,
+    TabPreparation,
+    TabReference,
+    TabMetrics,
+    NegativeTabInterval,
+    IntrinsicTabPhase,
     Hanging,
     Spacing,
 }
@@ -691,7 +717,8 @@ mod option_tests {
     #[test]
     fn preparation_options_classifies_actual_input_domain_without_conversion_loss() {
         for value in [0.0_f32, -0.0, -1.0] {
-            let error = PreparationOptions::try_new(value).unwrap_err();
+            let error =
+                PreparationOptions::try_new(value, crate::TabPreparation::FontAdvance).unwrap_err();
             assert!(
                 matches!(error.detail(), Some(crate::ErrorDetail::InvalidTextNumeric {
                 category: crate::TextNumericError::OutOfRange, value: actual, ..
@@ -699,7 +726,8 @@ mod option_tests {
             );
         }
         for value in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
-            let error = PreparationOptions::try_new(value).unwrap_err();
+            let error =
+                PreparationOptions::try_new(value, crate::TabPreparation::FontAdvance).unwrap_err();
             assert!(matches!(
                 error.detail(),
                 Some(crate::ErrorDetail::InvalidTextNumeric {
@@ -708,7 +736,12 @@ mod option_tests {
                 })
             ));
         }
-        assert_eq!(PreparationOptions::try_new(0.5).unwrap().scale(), 0.5);
+        assert_eq!(
+            PreparationOptions::try_new(0.5, crate::TabPreparation::FontAdvance)
+                .unwrap()
+                .scale(),
+            0.5
+        );
     }
 }
 
