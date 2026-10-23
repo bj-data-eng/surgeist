@@ -6,6 +6,8 @@ use surgeist_text::{ParagraphBaseDirection, ParagraphControlKind, Source, Wrap};
 
 #[path = "tests/canonical.rs"]
 mod canonical;
+#[path = "tests/conditional_overflow.rs"]
+mod conditional_overflow;
 #[path = "tests/float_fit.rs"]
 mod float_fit;
 #[path = "tests/indent.rs"]
