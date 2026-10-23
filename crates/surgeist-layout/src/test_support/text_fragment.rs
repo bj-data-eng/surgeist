@@ -34,6 +34,7 @@ pub(crate) fn fragment_for(
             Ok(crate::text_layout::fit::Band {
                 start: 0.0,
                 end: 100.0,
+                intrinsic_end_occupation: None,
                 next_transition: None,
             })
         },
@@ -50,6 +51,8 @@ pub(crate) fn fragment_for(
             })
         },
         |_, _| Ok(None),
+        |_, _| Ok(Vec::new()),
+        || Ok(()),
     )
     .unwrap_or_else(|_| panic!("registered Ahem paragraph finalizes"));
     lines[0]

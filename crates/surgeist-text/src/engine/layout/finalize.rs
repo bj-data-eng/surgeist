@@ -49,8 +49,14 @@ pub(super) fn finalize(
         &mut dispositions,
         &mut prefix_receipts,
     )?;
-    let prefix =
-        crate::protocol::prefix::PrefixData::new(&selected, &shaped, &atomics, prefix_receipts);
+    let prefix = crate::protocol::prefix::PrefixData::new(
+        &selected,
+        &shaped,
+        &atomics,
+        &controls,
+        &dispositions,
+        prefix_receipts,
+    );
     for row in &mut spacing_slots {
         row.disposition = dispositions[row.cluster];
     }

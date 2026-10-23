@@ -133,10 +133,29 @@ impl<'tree, Tree: crate::LayoutTree> TextLayoutInput<'tree, Tree> {
                 return Err(error(TextBindingError::EmptyRun));
             }
             let children: Vec<_> = tree.children(paragraph.container).collect();
-            if !crate::inline::run_ranges(&children, |node| tree.layout_input(node))
+            let ordinary = crate::inline::run_ranges(&children, |node| tree.layout_input(node))
                 .iter()
-                .any(|range| children[range.clone()] == paragraph.nodes)
-            {
+                .any(|range| children[range.clone()] == paragraph.nodes);
+            let window = children
+                .windows(paragraph.nodes.len())
+                .position(|nodes| nodes == paragraph.nodes);
+            let complete_window = window.is_some_and(|start| {
+                let end = start + paragraph.nodes.len();
+                let transparent_float = |node| {
+                    tree.layout_input(node).as_box().is_some_and(|input| {
+                        !input.float.is_none()
+                            && input.position != crate::Position::Absolute
+                            && input.display != crate::Display::None
+                    })
+                };
+                paragraph.nodes.iter().all(|&node| {
+                    crate::inline::continues_run(tree.layout_input(node)) || transparent_float(node)
+                }) && (start == 0
+                    || !crate::inline::continues_run(tree.layout_input(children[start - 1])))
+                    && (end == children.len()
+                        || !crate::inline::continues_run(tree.layout_input(children[end])))
+            });
+            if !ordinary && !complete_window {
                 return Err(error(TextBindingError::RunMembership));
             }
             for (index, node) in paragraph.nodes.iter().copied().enumerate() {
@@ -383,6 +402,7 @@ impl<'tree, Tree: crate::LayoutTree> TextLayoutInput<'tree, Tree> {
                     }
                     crate::LayoutInputViewOf::Box(input)
                         if input.display.is_inline_level()
+                            && input.float.is_none()
                             && input.position != crate::Position::Absolute
                             && paragraph
                                 .atomics

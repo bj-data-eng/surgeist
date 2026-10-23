@@ -58,10 +58,34 @@ where
     invalidated_nodes: Vec<Tree::Node>,
 }
 
+#[derive(Clone)]
 struct StagedInlineFragmentGroup<Node, S: LayoutScalar> {
     node: Node,
     fragments: Option<Vec<InlineFragmentOutputOf<S>>>,
 }
+
+/// One actual child request executed off-side against the same immutable tree
+/// and canonical Text invocation. This is not a rounded/completed child batch.
+pub(crate) struct FloatChildPacket<Node, S: LayoutScalar> {
+    pub(crate) node: Node,
+    pub(crate) input: ComputeInputOf<S>,
+    pub(crate) output: ComputeOutputOf<S>,
+    frames: std::sync::Arc<[crate::text_layout::state::CanonicalFrame<Node, S>]>,
+    entries: Vec<LayoutOutputEntryOf<Node, S>>,
+    fragments: Vec<StagedInlineFragmentGroup<Node, S>>,
+    stores: Vec<LayoutCacheStoreEntryOf<Node, S>>,
+    clears: Vec<LayoutCacheClearEntry<Node>>,
+    pending: Vec<crate::text_layout::state::PendingParagraph<Node>>,
+    atomic_origins: Vec<(Node, crate::Point<f64>)>,
+    absolute_baselines: Vec<(Node, f64)>,
+}
+
+pub(crate) type FloatProbeResult<Tree, M> = LayoutResultOf<
+    <Tree as Traverse>::Node,
+    std::sync::Arc<FloatChildPacket<<Tree as Traverse>::Node, <Tree as Traverse>::Scalar>>,
+    <Tree as Traverse>::Scalar,
+    M,
+>;
 
 // The Grid owner's bounded-stage tests use the real staging owner and real
 // host adapter; only the disposable owner's typed observation can escape.
@@ -237,7 +261,7 @@ where
             .text
             .as_mut()
             .expect("Text compute entry initialized its state");
-        text.frames = frames;
+        text.frames = frames.into();
         text.reusable = text
             .pending
             .iter()
@@ -253,7 +277,8 @@ where
                         },
                     )
             })
-            .collect();
+            .collect::<Vec<_>>()
+            .into();
         text.pending.clear();
         text.atomic_origins.clear();
         text.absolute_baselines.clear();
@@ -612,6 +637,101 @@ where
             observation.text = Some(state);
         }
         probe.observe(&mut observation, node)
+    }
+
+    fn probe_float_child(
+        &mut self,
+        node: Self::Node,
+        input: ComputeInputOf<Self::Scalar>,
+    ) -> LayoutResultOf<
+        Self::Node,
+        std::sync::Arc<FloatChildPacket<Self::Node, Self::Scalar>>,
+        Self::Scalar,
+        Tree::MeasureError,
+    > {
+        // The request is the block owner's complete child request. Reuse the
+        // validated topology and the same dependency/phase-bearing input; do
+        // not enter a fresh public root computation or reset a Grid probe.
+        let mut scope = Vec::new();
+        let mut visit = vec![node];
+        while let Some(subject) = visit.pop() {
+            if !scope.contains(&subject) {
+                scope.push(subject);
+                visit.extend(self.tree.children(subject));
+            }
+        }
+        let dirty = self
+            .invalidated_nodes
+            .iter()
+            .copied()
+            .filter(|node| scope.contains(node))
+            .collect();
+        let mut probe = Self::new(self.tree, dirty);
+        let frames = if let Some(text) = &self.text {
+            let mut state = crate::text_layout::state::TextComputation::new(text.paragraphs);
+            state.frames = std::sync::Arc::clone(&text.frames);
+            state.reusable = std::sync::Arc::clone(&text.reusable);
+            let frames = std::sync::Arc::clone(&state.frames);
+            probe.text = Some(state);
+            frames
+        } else {
+            std::sync::Arc::from([])
+        };
+        let output = probe.compute_child(node, input)?;
+        let (pending, atomic_origins, absolute_baselines) = probe.text.map_or_else(
+            || (Vec::new(), Vec::new(), Vec::new()),
+            |text| (text.pending, text.atomic_origins, text.absolute_baselines),
+        );
+        Ok(std::sync::Arc::new(FloatChildPacket {
+            node,
+            input,
+            output,
+            frames,
+            entries: probe.unrounded_entries,
+            fragments: probe.unrounded_inline_fragment_groups,
+            stores: probe.cache_store_entries,
+            clears: probe.cache_clear_entries,
+            pending,
+            atomic_origins,
+            absolute_baselines,
+        }))
+    }
+
+    fn accept_float_child(
+        &mut self,
+        packet: &FloatChildPacket<Self::Node, Self::Scalar>,
+    ) -> LayoutResultOf<Self::Node, (), Self::Scalar, Tree::MeasureError> {
+        if let Some(text) = &self.text
+            && !std::sync::Arc::ptr_eq(&text.frames, &packet.frames)
+        {
+            return Err(LayoutErrorOf::new(
+                LayoutErrorSiteOf::Node(packet.node),
+                LayoutOperation::ChildLayout,
+                LayoutErrorKindOf::TextFeedbackCycle,
+            ));
+        }
+        for entry in &packet.entries {
+            self.set_unrounded(entry.node(), entry.output());
+        }
+        for group in &packet.fragments {
+            self.set_unrounded_inline_fragment_state(group.node, group.fragments.clone());
+        }
+        for entry in &packet.stores {
+            self.cache_store(entry.node(), entry.input(), entry.context(), entry.output());
+        }
+        for entry in &packet.clears {
+            self.cache_clear(entry.node());
+        }
+        if let Some(text) = &mut self.text {
+            for paragraph in &packet.pending {
+                text.record(paragraph.clone());
+            }
+            text.record_atomic_origins(packet.atomic_origins.clone());
+            for &(node, baseline) in &packet.absolute_baselines {
+                text.record_absolute_baseline(node, baseline);
+            }
+        }
+        Ok(())
     }
 
     fn float_exclusion_interval(

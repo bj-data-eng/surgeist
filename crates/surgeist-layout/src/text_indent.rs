@@ -27,6 +27,10 @@ impl IndentLineState {
         }
     }
 
+    pub fn first_formatted(self) -> bool {
+        self.first_formatted
+    }
+
     pub fn commit(&mut self, forced: bool) {
         self.first_formatted = false;
         self.block_start = false;

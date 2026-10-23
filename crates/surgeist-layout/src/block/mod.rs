@@ -34,6 +34,7 @@ use crate::sizing::resolve::{EdgesResultExt, SizeResultExt};
 use super::{LengthOf, NodeInputOf, WritingMode};
 
 mod absolute;
+mod float_text;
 mod floats;
 mod in_flow;
 mod inline_run;

@@ -1,13 +1,13 @@
 //! Canonical placement over actual registered shaping and original occurrences.
 
 #[path = "canonical_fonts.rs"]
-mod fonts;
+pub(super) mod fonts;
 
 use crate::test_support::layout_tree::PublicLayoutTreeOf;
 use crate::*;
 use surgeist_text as text;
 
-fn paragraph(bytes: Vec<u8>, pieces: &[&str]) -> TextParagraphBinding<u32> {
+pub(super) fn paragraph(bytes: Vec<u8>, pieces: &[&str]) -> TextParagraphBinding<u32> {
     let style = text::Style {
         font: text::Font::new().family("Ahem"),
         size: 12.5,

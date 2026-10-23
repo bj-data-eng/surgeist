@@ -83,15 +83,34 @@ pub(crate) struct Output<Node, S: LayoutScalar> {
     pub static_positions: Vec<(Node, Point<S>)>,
 }
 
+/// One invocation's coupled line-band and source-event transitions. Each
+/// callback borrows the same actual provisional session, never a public root.
+pub(crate) struct LineEnvironment<Band, Clear, Replay, Accept> {
+    pub band: Band,
+    pub clear: Clear,
+    pub replay: Replay,
+    pub accept: Accept,
+}
+
 pub(crate) fn layout<Node: Copy + Eq, S: LayoutScalar>(
     binding: &TextParagraphBinding<Node>,
     atomics: &[Atomic<Node, S>],
     controls: &[Control<Node>],
     context: Context<S>,
     reusable: &[fit::ReusableLine],
-    band_source: impl FnMut(f64, f64) -> Result<Band, FitError>,
-    clear_source: impl FnMut(f64, &surgeist_text::LineSelectionRequest) -> Result<Option<f64>, FitError>,
+    environment: LineEnvironment<
+        impl FnMut(f64, f64) -> Result<Band, FitError>,
+        impl FnMut(f64, &surgeist_text::LineSelectionRequest) -> Result<Option<f64>, FitError>,
+        impl FnMut(&FinalizedLine, fit::EncounterReplay) -> Result<Vec<fit::EncounterBasis>, FitError>,
+        impl FnMut() -> Result<(), FitError>,
+    >,
 ) -> Result<Output<Node, S>, FitError> {
+    let LineEnvironment {
+        band: band_source,
+        clear: clear_source,
+        replay: replay_encounters,
+        accept: accept_encounters,
+    } = environment;
     let origin = match context.frame {
         Frame::Measurement => Point::ZERO,
         Frame::Canonical { origin, .. } => origin,
@@ -191,6 +210,8 @@ pub(crate) fn layout<Node: Copy + Eq, S: LayoutScalar>(
             })
         },
         clear_source,
+        replay_encounters,
+        accept_encounters,
     )?;
     output(binding, atomics, controls, &context, origin, lines)
 }
@@ -495,6 +516,7 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
     let mut bands = Vec::new();
     let mut flows = Vec::new();
     let mut amounts = Vec::new();
+    let mut encounters = Vec::new();
     let mut line_bounds = Vec::new();
     let mut fragments = Vec::new();
     let mut atomic_origins = Vec::new();
@@ -558,7 +580,12 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
         report.inline_extent = report.inline_extent.max(number(
             line.inline_start
                 + feedback.advance
-                + line.finalized.selected_line().request().context.indent,
+                + line.finalized.selected_line().request().context.indent
+                + line
+                    .bands
+                    .combined()
+                    .intrinsic_end_occupation
+                    .unwrap_or(0.0),
         )?);
         report.line_bands.push(LogicalLineBandOf {
             inline_start: number(line.inline_start)?,
@@ -706,6 +733,7 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
         bands.push(line.bands);
         flows.push(line.flow);
         amounts.push(line.amounts);
+        encounters.push(line.encounters);
         placements.push(LinePlacement {
             line: line.finalized,
             anchor,
@@ -728,6 +756,7 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
             bands,
             flows,
             amounts,
+            encounters,
             outflows,
             indent: context.indent.widened(),
             indent_start: context.indent_state,

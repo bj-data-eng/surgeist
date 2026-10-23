@@ -2373,6 +2373,7 @@ fn finalized_prefix_keeps_real_cross_hole_associations_without_claiming_child_so
     };
     let observation = actual.prefix_at(&seam).unwrap();
     assert_eq!(observation.advance(), 10.0);
+    assert!(observation.has_retained_flow_participation());
     let unit = observation.interior_unit().unwrap();
     assert_eq!(unit.source_range(), Range::new(0, 3));
     assert_eq!(
@@ -2398,6 +2399,8 @@ fn finalized_prefix_keeps_real_cross_hole_associations_without_claiming_child_so
         TextSeam::BeforeParticipant(PreparedParticipant::Atomic(outflow.clone())),
         TextSeam::AfterParticipant(PreparedParticipant::Atomic(outflow)),
     ] {
-        assert_eq!(actual.prefix_at(&seam).unwrap().advance(), 10.0);
+        let observation = actual.prefix_at(&seam).unwrap();
+        assert_eq!(observation.advance(), 10.0);
+        assert!(observation.has_retained_flow_participation());
     }
 }

@@ -135,6 +135,10 @@ original occurrence and selected context. Text returns the original seam and
 effective whole-unit accounting contribution distinctly, preserving signed
 advance and actual spacing, trailing-collapse and hanging facts. Layout does not
 reconstruct this from glyph ink, average character widths or extraction clusters.
+Actual preceding flow participation remains separate from width charging: retained
+zero/signed text or allocated participants can precede the seam, while a later
+part of an included shared unit does not. Deleted, discarded and empty occurrences
+add no participation. This does not decide CSS line-box existence or visibility.
 
 Layout uses that observation with actual margin-box, clear, fit and source-order
 constraints. Changed bands, allocations or legal line-break reshaping require

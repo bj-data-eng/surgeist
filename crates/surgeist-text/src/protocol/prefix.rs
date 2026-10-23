@@ -30,6 +30,7 @@ pub struct FinalizedPrefixView<'a> {
     seam: TextSeam,
     cut: usize,
     interior: Option<usize>,
+    retained_flow: bool,
 }
 
 impl FinalizedPrefixView<'_> {
@@ -42,6 +43,15 @@ impl FinalizedPrefixView<'_> {
     /// Actual logical fold receipt; excludes alignment and physical translation.
     pub fn advance(&self) -> f64 {
         self.line.inner.data.prefix.receipts[self.cut]
+    }
+    /// Whether the actual original occurrence prefix contains retained flow
+    /// participation. This is independent of whole-unit width accounting: a
+    /// later part charged by an interior seam does not become preceding content.
+    /// Retained zero/signed text and allocated zero struts count; discarded text,
+    /// empty/deleted occurrences and out-of-flow or neutral roles add nothing.
+    /// This does not establish visibility, positive extent or a generated line.
+    pub fn has_retained_flow_participation(&self) -> bool {
+        self.retained_flow
     }
     /// Some only when the original seam is strictly inside the joint unit.
     pub fn interior_unit(&self) -> Option<FinalizedSharedUnitView<'_>> {
@@ -174,6 +184,8 @@ pub(crate) struct PrefixData {
     receipts: Vec<f64>,
     groups: Vec<SharedUnit>,
     unit_cuts: Vec<Indices<usize>>,
+    retained_prefix: Vec<bool>,
+    retained_sources: Vec<Vec<Range>>,
     participants: Vec<Option<Indices<usize>>>,
     origins: BTreeMap<usize, Vec<OriginSpan>>,
     participant_indices: BTreeMap<(u8, usize), usize>,
@@ -184,12 +196,16 @@ impl PrefixData {
         selected: &SelectedData,
         shaped: &ShapedData,
         atomics: &BTreeMap<usize, &super::AtomicAllocation>,
+        controls: &BTreeMap<usize, &super::ControlAllocation>,
+        dispositions: &[super::SpacingSlotDisposition],
         receipts: Vec<f64>,
     ) -> Self {
         let units = &selected.presentation.units;
         let mut result = Self {
             receipts,
             unit_cuts: vec![0..0; units.len()],
+            retained_prefix: vec![false],
+            retained_sources: vec![Vec::new(); units.len()],
             participants: vec![None; selected.request.participants.len()],
             ..Self::default()
         };
@@ -248,6 +264,37 @@ impl PrefixData {
                 }
             };
             owner = unit;
+            let retained = match *item {
+                ShapedItem::TextCluster(index) => {
+                    let retained = !matches!(
+                        dispositions[index],
+                        super::SpacingSlotDisposition::DiscardedAtLineEdge
+                    );
+                    if retained {
+                        result.retained_sources[unit].extend(
+                            selected.presentation.projection.atoms
+                                [shaped.clusters[index].atoms.clone()]
+                            .iter()
+                            .map(|atom| atom.source)
+                            .filter(|range| !range.is_empty()),
+                        );
+                    }
+                    retained
+                }
+                ShapedItem::InlineBox { occurrence, .. } => matches!(
+                    atomics[&occurrence].allocation,
+                    super::AtomicLineAllocation::InFlow { .. }
+                ),
+                ShapedItem::Anchor { .. } => match units[unit].kind {
+                    PresentationUnitKind::Control { occurrence } => {
+                        controls[&occurrence].strut.is_some()
+                    }
+                    _ => false,
+                },
+            };
+            result
+                .retained_prefix
+                .push(*result.retained_prefix.last().unwrap() || retained);
             item_units.push(unit);
             values.push(match *item {
                 ShapedItem::TextCluster(index)
@@ -386,7 +433,7 @@ impl FinalizedLine {
         let data = &self.inner.data.prefix;
         let selected = &self.inner.selected;
         let invalid = || protocol_error(ProtocolError::OutsideFinalizedLine);
-        let (cut, atom) = match seam {
+        let (cut, atom, retained_flow) = match seam {
             TextSeam::BeforeParticipant(p) | TextSeam::AfterParticipant(p) => {
                 if match p {
                     PreparedParticipant::Text(p) => p.prepared_text(),
@@ -401,14 +448,12 @@ impl FinalizedLine {
                     .get(&participant_key(p))
                     .ok_or_else(invalid)?;
                 let row = data.participants[index].as_ref().ok_or_else(invalid)?;
-                (
-                    if matches!(seam, TextSeam::BeforeParticipant(_)) {
-                        row.start
-                    } else {
-                        row.end
-                    },
-                    None,
-                )
+                let cut = if matches!(seam, TextSeam::BeforeParticipant(_)) {
+                    row.start
+                } else {
+                    row.end
+                };
+                (cut, None, data.retained_prefix[cut])
             }
             TextSeam::Origin { origin, local } => {
                 if !Arc::ptr_eq(&origin.prepared, &selected.prepared) {
@@ -430,16 +475,22 @@ impl FinalizedLine {
                 let interior = row.actual_source.start < at && at < row.actual_source.end;
                 let atom = (interior && !selected.presentation.units[row.unit].atoms.is_empty())
                     .then(|| selected.presentation.units[row.unit].atoms.start);
-                (
-                    if at == row.actual_source.start {
-                        row.cuts.start
-                    } else if interior {
-                        data.unit_cuts[row.unit].start
-                    } else {
-                        row.cuts.end
-                    },
-                    atom,
-                )
+                let cut = if at == row.actual_source.start {
+                    row.cuts.start
+                } else if interior {
+                    data.unit_cuts[row.unit].start
+                } else {
+                    row.cuts.end
+                };
+                // Preserve original occurrence order before whole-unit closure.
+                // A seam inside an undistributed item may already follow real
+                // retained original units, even though its item cut is the start.
+                let retained = data.retained_prefix[cut]
+                    || interior
+                        && data.retained_sources[row.unit]
+                            .iter()
+                            .any(|source| source.start < at);
+                (cut, atom, retained)
             }
         };
         let interior = if let Some(atom) = atom {
@@ -466,6 +517,7 @@ impl FinalizedLine {
             seam: seam.clone(),
             cut,
             interior,
+            retained_flow,
         })
     }
 }

@@ -12,7 +12,18 @@ use surgeist_text::{
 pub(crate) struct Band {
     pub start: f64,
     pub end: f64,
+    /// Only an actual captured intrinsic-Max query lends this end-side receipt.
+    pub intrinsic_end_occupation: Option<f64>,
     pub next_transition: Option<f64>,
+}
+
+/// A source-line encounter checkpoint is not the mutable text avoidance cursor.
+#[derive(Clone, Copy)]
+pub(crate) struct EncounterReplay {
+    pub source_floor: f64,
+    pub logical: f64,
+    pub placed: f64,
+    pub defer_preceding: bool,
 }
 
 /// Constraints from the two actual footprints, never their bounding union.
@@ -23,10 +34,17 @@ pub(crate) struct LineBands {
 }
 
 impl LineBands {
-    fn combined(self) -> Band {
+    pub(super) fn combined(self) -> Band {
         Band {
             start: self.allocation.start.max(self.metrics.start),
             end: self.allocation.end.min(self.metrics.end),
+            intrinsic_end_occupation: match (
+                self.allocation.intrinsic_end_occupation,
+                self.metrics.intrinsic_end_occupation,
+            ) {
+                (Some(a), Some(b)) => Some(a.max(b)),
+                (a, b) => a.or(b),
+            },
             next_transition: earliest(
                 self.allocation.next_transition,
                 self.metrics.next_transition,
@@ -60,8 +78,21 @@ pub(crate) enum Available {
     Maximum,
 }
 
+/// Actual source-event ordinal and accepted scalar geometry for cycle identity.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct EncounterBasis {
+    pub event: usize,
+    pub prefix: f64,
+    pub preceding: bool,
+    pub encounter_floor: f64,
+    pub intrinsic_inline_demand: Option<f64>,
+    pub inline: f64,
+    pub block: f64,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 struct CandidateBasis {
+    encounters: Vec<EncounterBasis>,
     request: LineSelectionRequest,
     amounts: Vec<f64>,
     logical_start: f64,
@@ -86,6 +117,7 @@ pub(crate) struct LineFlow {
 }
 
 pub(crate) struct FittedLine {
+    pub encounters: Vec<EncounterBasis>,
     pub finalized: FinalizedLine,
     pub amounts: Vec<f64>,
     pub inline_start: f64,
@@ -315,6 +347,11 @@ pub(crate) fn fit(
     mut canonical_block: impl FnMut(BlockPosition, f64) -> Result<f64, FitError>,
     mut allocate: impl FnMut(&FinalizedLine, Band, f64) -> Result<LineAllocations, FitError>,
     mut clear_source: impl FnMut(f64, &LineSelectionRequest) -> Result<Option<f64>, FitError>,
+    mut replay_encounters: impl FnMut(
+        &FinalizedLine,
+        EncounterReplay,
+    ) -> Result<Vec<EncounterBasis>, FitError>,
+    mut accept_encounters: impl FnMut() -> Result<(), FitError>,
 ) -> Result<Vec<FittedLine>, FitError> {
     let FitInput {
         prepared,
@@ -364,15 +401,23 @@ pub(crate) fn fit(
             .expect("a consumed opportunity retains its mixed boundary")
             .1
             .clone();
+        let source_floor = logical_start;
+        let mut deferred_candidate = None;
         let mut height = 0.0;
         let mut placed_start = logical_start;
         let mut rejected = Vec::new();
         loop {
             let bands = query_bands(&mut band_source, logical_start, placed_start, height)?;
             let band = bands.combined();
-            let width = finite((band.end - band.start).max(0.0))?;
+            let width = if matches!(available, Available::Maximum)
+                && band.intrinsic_end_occupation.is_some()
+            {
+                None
+            } else {
+                Some(finite((band.end - band.start).max(0.0))?)
+            };
             let selected_width = match available {
-                Available::Definite(value) => Some(width.min(value)),
+                Available::Definite(value) => width.map(|width| width.min(value)),
                 Available::Minimum | Available::Maximum => None,
             };
             let mut choice = None;
@@ -456,6 +501,20 @@ pub(crate) fn fit(
                         )?;
                         request = candidate.request;
                         let finalized = candidate.finalized;
+                        replay_encounters(
+                            &finalized,
+                            EncounterReplay {
+                                source_floor,
+                                logical: logical_start,
+                                placed: placed_start,
+                                defer_preceding: deferred_candidate.as_ref().is_some_and(
+                                    |(termination, alternative)| {
+                                        termination == &request.termination
+                                            && alternative == &request.alternative
+                                    },
+                                ),
+                            },
+                        )?;
                         let actual = allocate(&finalized, band, placed_start)?;
                         if actual.atomics == request.atomics
                             && actual.controls == request.controls
@@ -490,6 +549,19 @@ pub(crate) fn fit(
                 let Some((request, finalized, amounts, fits)) = endpoint_choice else {
                     return Err(FitError::FeedbackCycle);
                 };
+                // CSS2 phantom-line boxes are not formatted soft lines. Keep
+                // every original occurrence in the next actual selection; never
+                // publish a font-only line and discard its issued geometry.
+                // Actual retained zero/signed content counts independently of
+                // its numerical advance. Mandatory/paragraph endpoints remain.
+                if request.context.end == LineEnd::Soft
+                    && let Some(last) = request.participants.last()
+                    && !finalized
+                        .prefix_at(&surgeist_text::TextSeam::AfterParticipant(last.clone()))?
+                        .has_retained_flow_participation()
+                {
+                    continue;
+                }
                 if choice.is_none() || fits || matches!(available, Available::Maximum) {
                     choice = Some((*end, *kind, request, finalized, amounts));
                 }
@@ -507,6 +579,17 @@ pub(crate) fn fit(
                 // a valid preparation always offers a paragraph terminator.
                 return Err(FitError::FeedbackCycle);
             };
+            let replay = EncounterReplay {
+                source_floor,
+                logical: logical_start,
+                placed: placed_start,
+                defer_preceding: deferred_candidate.as_ref().is_some_and(
+                    |(termination, alternative)| {
+                        termination == &request.termination && alternative == &request.alternative
+                    },
+                ),
+            };
+            let encounters = replay_encounters(&finalized, replay)?;
             let feedback = finalized.feedback();
             let actual_height = finite(feedback.line_height)?;
             let actual_start = canonical_block(
@@ -519,6 +602,7 @@ pub(crate) fn fit(
             let actual_bands =
                 query_bands(&mut band_source, logical_start, actual_start, actual_height)?;
             let basis = CandidateBasis {
+                encounters: encounters.clone(),
                 request: request.clone(),
                 amounts: amounts.clone(),
                 logical_start,
@@ -538,7 +622,7 @@ pub(crate) fn fit(
             }
             let occupied = finite(feedback.occupied_end - feedback.occupied_start)?;
             let float_fit_width = match available {
-                Available::Minimum => Some(width),
+                Available::Minimum => width,
                 Available::Definite(_) | Available::Maximum => selected_width,
             };
             let fits = float_fit_width.is_none_or(|width| {
@@ -551,6 +635,25 @@ pub(crate) fn fit(
             // that real band only for float avoidance: Text's intrinsic request
             // stays unconstrained. Maximum retains its unwrapped side-by-side
             // contribution without imposing that minimum-width constraint.
+            if !fits && !replay.defer_preceding && encounters.iter().any(|event| event.preceding) {
+                // Test the actual preceding-line assignment before allowing this
+                // float to displace the very source line which encountered it.
+                // A different genuine endpoint/alternative replays independently.
+                let deferred = replay_encounters(
+                    &finalized,
+                    EncounterReplay {
+                        defer_preceding: true,
+                        ..replay
+                    },
+                )?;
+                if deferred != encounters {
+                    deferred_candidate =
+                        Some((request.termination.clone(), request.alternative.clone()));
+                    height = actual_height;
+                    placed_start = actual_start;
+                    continue;
+                }
+            }
             if !fits && let Some(next) = bands.next_transition(logical_start, placed_start) {
                 logical_start = logical_start.max(next);
                 minimum_block = Some(minimum_block.map_or(next, |minimum| minimum.max(next)));
@@ -567,7 +670,9 @@ pub(crate) fn fit(
                 minimum_block = Some(minimum_block.map_or(cleared, |minimum| minimum.max(cleared)));
             }
             indent_state.commit(kind == PreparedBreakKind::Forced);
+            accept_encounters()?;
             result.push(FittedLine {
+                encounters,
                 finalized,
                 amounts,
                 inline_start: band.start,
@@ -604,6 +709,9 @@ fn query_bands(
     for band in [allocation, metrics] {
         finite(band.start)?;
         finite(band.end)?;
+        if let Some(occupation) = band.intrinsic_end_occupation {
+            finite(occupation)?;
+        }
     }
     Ok(LineBands {
         allocation,

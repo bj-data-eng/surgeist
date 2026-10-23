@@ -160,7 +160,7 @@ fn cmap(mappings: &[(u32, u32)]) -> Vec<u8> {
 }
 
 /// GSUB ccmp: original Ahem A(35) A(35) -> X(58), one 1000-unit glyph.
-pub(super) fn ligature_ahem() -> Vec<u8> {
+pub(crate) fn ligature_ahem() -> Vec<u8> {
     let subtable = words(&[1, 18, 1, 8, 1, 4, 58, 2, 35, 1, 1, 35]);
     replace_tables(
         AHEM,
@@ -173,7 +173,7 @@ pub(super) fn ligature_ahem() -> Vec<u8> {
 
 /// GPOS mark-to-base: base anchor(400,600), mark anchor(100,200).
 /// At size 10/UPEM 1000, the actual mark is at logical (3,-4), advance 0.
-pub(super) fn mark_ahem() -> Vec<u8> {
+pub(crate) fn mark_ahem() -> Vec<u8> {
     let mappings = [
         (0x41, 35),
         (0x42, 36),

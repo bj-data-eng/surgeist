@@ -207,14 +207,19 @@ fn assert_intrinsic_line_box<S: LayoutScalar>() {
             indent_state: crate::text_indent::IndentLineState::default(),
         },
         &[],
-        |_, _| {
-            Ok(super::fit::Band {
-                start: 0.0,
-                end: 20.0,
-                next_transition: None,
-            })
+        super::run::LineEnvironment {
+            band: |_, _| {
+                Ok(super::fit::Band {
+                    start: 0.0,
+                    end: 20.0,
+                    intrinsic_end_occupation: None,
+                    next_transition: None,
+                })
+            },
+            clear: |_, _: &surgeist_text::LineSelectionRequest| Ok(None),
+            replay: |_: &surgeist_text::FinalizedLine, _| Ok(Vec::new()),
+            accept: || Ok(()),
         },
-        |_, _| Ok(None),
     )
     .unwrap_or_else(|_| panic!("actual intrinsic paragraph finalizes"));
     // The same owning operation with a genuinely intrinsic request has no
@@ -1772,3 +1777,6 @@ fn logical_line_allocation_keeps_actual_shape_float_sliver_f64() {
 
 #[path = "tests/float_continuation.rs"]
 mod float_continuation;
+
+#[path = "tests/float_encounters.rs"]
+mod float_encounters;

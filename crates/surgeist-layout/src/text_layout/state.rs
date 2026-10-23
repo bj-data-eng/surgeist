@@ -11,6 +11,7 @@ pub(crate) struct CanonicalFrame<Node, S: LayoutScalar> {
     pub output: NodeOutputOf<S>,
 }
 
+#[derive(Clone)]
 pub(crate) struct PendingParagraph<Node> {
     pub container: Node,
     pub nodes: Vec<Node>,
@@ -19,6 +20,7 @@ pub(crate) struct PendingParagraph<Node> {
     pub bands: Vec<super::fit::LineBands>,
     pub flows: Vec<super::fit::LineFlow>,
     pub amounts: Vec<Vec<f64>>,
+    pub encounters: Vec<Vec<super::fit::EncounterBasis>>,
     pub outflows: Vec<(usize, surgeist_text::PreparedAtomic, Node)>,
     pub indent: crate::text_indent::ResolvedTextIndent<f64>,
     pub indent_start: crate::text_indent::IndentLineState,
@@ -27,6 +29,7 @@ pub(crate) struct PendingParagraph<Node> {
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct LineBasis {
+    encounters: Vec<super::fit::EncounterBasis>,
     request: surgeist_text::LineSelectionRequest,
     amounts: Vec<f64>,
     anchor: surgeist_text::LineAnchor,
@@ -54,9 +57,9 @@ pub(crate) struct PassBasis<Node, S: LayoutScalar> {
 /// before any placed Text or completed batch can escape.
 pub(crate) struct TextComputation<'input, Node, S: LayoutScalar> {
     pub paragraphs: &'input [TextParagraphBinding<Node>],
-    pub frames: Vec<CanonicalFrame<Node, S>>,
+    pub frames: std::sync::Arc<[CanonicalFrame<Node, S>]>,
     pub pending: Vec<PendingParagraph<Node>>,
-    pub reusable: Vec<super::fit::ReusableLine>,
+    pub reusable: std::sync::Arc<[super::fit::ReusableLine]>,
     pub atomic_origins: Vec<(Node, Point<f64>)>,
     pub absolute_baselines: Vec<(Node, f64)>,
 }
@@ -65,9 +68,9 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
     pub fn new(paragraphs: &'input [TextParagraphBinding<Node>]) -> Self {
         Self {
             paragraphs,
-            frames: Vec::new(),
+            frames: std::sync::Arc::from([]),
             pending: Vec::new(),
-            reusable: Vec::new(),
+            reusable: std::sync::Arc::from([]),
             atomic_origins: Vec::new(),
             absolute_baselines: Vec::new(),
         }
@@ -81,6 +84,16 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
         self.paragraphs
             .iter()
             .find(|binding| binding.container == container && binding.nodes == nodes)
+    }
+
+    pub fn paragraph_starting(
+        &self,
+        container: Node,
+        nodes: &[Node],
+    ) -> Option<&'input TextParagraphBinding<Node>> {
+        self.paragraphs
+            .iter()
+            .find(|binding| binding.container == container && nodes.starts_with(&binding.nodes))
     }
 
     pub fn frame(&self, node: Node) -> Option<CanonicalFrame<Node, S>> {
@@ -138,15 +151,19 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
                         .zip(&paragraph.bands)
                         .zip(&paragraph.flows)
                         .zip(&paragraph.amounts)
+                        .zip(&paragraph.encounters)
                 })
-                .map(|(((placement, band), flow), amounts)| LineBasis {
-                    amounts: amounts.clone(),
-                    request: placement.line.selected_line().request().clone(),
-                    anchor: placement.anchor,
-                    atomics: placement.atomics.clone(),
-                    bands: *band,
-                    flow: *flow,
-                })
+                .map(
+                    |((((placement, band), flow), amounts), encounters)| LineBasis {
+                        encounters: encounters.clone(),
+                        amounts: amounts.clone(),
+                        request: placement.line.selected_line().request().clone(),
+                        anchor: placement.anchor,
+                        atomics: placement.atomics.clone(),
+                        bands: *band,
+                        flow: *flow,
+                    },
+                )
                 .collect(),
             absolute_baselines: self.absolute_baselines.clone(),
             indentation: self

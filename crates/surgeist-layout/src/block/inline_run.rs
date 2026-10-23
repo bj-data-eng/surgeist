@@ -13,7 +13,7 @@ type TextFragmentGroup<Node, S> = (
 );
 
 pub(super) fn inline_run_end<'input, Tree, M>(
-    tree: &Tree,
+    tree: &mut Tree,
     container: <Tree as Traverse>::Node,
     children: &[<Tree as Traverse>::Node],
     constants: &Constants<<Tree as Traverse>::Scalar>,
@@ -22,8 +22,15 @@ pub(super) fn inline_run_end<'input, Tree, M>(
 where
     Tree: Compute<'input, M>,
 {
-    while index < children.len() {
-        if !crate::inline::continues_run(tree.layout_input(children[index])) {
+    let captured_end = tree.text_computation().and_then(|state| {
+        state
+            .paragraph_starting(container, &children[index - 1..])
+            .map(|binding| index - 1 + binding.nodes.len())
+    });
+    while index < captured_end.unwrap_or(children.len()) {
+        if captured_end.is_none()
+            && !crate::inline::continues_run(tree.layout_input(children[index]))
+        {
             break;
         }
         let projection = InlineParticipantProjection::lookup::<Tree, M>(tree, children[index]);
@@ -155,6 +162,9 @@ impl VisibleInlineRunTransition {
             active_margin_can_collapse_with_parent,
             all_in_flow_children_can_collapse_through,
             float_exclusions,
+            float_intrinsics,
+            pending_floats,
+            owned_float_block_end,
             contributions,
         } = state;
         *cursor_block = *cursor_block + active_margin.resolve();
@@ -174,7 +184,23 @@ impl VisibleInlineRunTransition {
             *indent_state = Some(committed);
         }
         let placement_content_size = constants.flow_axes.logical_size(placement.content_size);
-        content_size.inline = content_size.inline.max(placement_content_size.inline);
+        // An individual float still contributes its actual margin width.
+        // Captured Max cohorts use actual Text-line and float-query receipts;
+        // the ordinary global sum would combine expired rows.
+        for plan in &placement.floats {
+            let size = constants.flow_axes.logical_size(plan.size);
+            let margin = constants.flow_axes.logical_edges(plan.margin);
+            float_intrinsics.add_captured(
+                size.inline + margin.inline_sum(),
+                plan.accepted
+                    .as_ref()
+                    .and_then(|accepted| accepted.intrinsic_inline_demand),
+            );
+        }
+        content_size.inline = content_size
+            .inline
+            .max(placement_content_size.inline)
+            .max(float_intrinsics.result());
         content_size.block = content_size.block.max(placement_content_size.block);
         let placement_scroll_content_size = constants
             .flow_axes
@@ -185,8 +211,10 @@ impl VisibleInlineRunTransition {
         scroll_content_size.block = scroll_content_size
             .block
             .max(placement_scroll_content_size.block);
+        *owned_float_block_end = (*owned_float_block_end).max(placement.owned_float_block_end);
         record_inline_run_baselines(baselines, &placement, *cursor_block, constants);
         *cursor_block = *cursor_block + placement.logical_block_extent(constants.flow_axes);
+        pending_floats.extend(placement.floats);
         static_positions.extend(placement.static_positions);
         *resolved_terminal_float_block_end = placement.resolved_float_terminal_block_end;
         *active_margin = CollapsibleMarginOf::<S>::ZERO;
@@ -208,11 +236,16 @@ pub(super) struct InlineRunTransitionState<'a, Node, S: LayoutScalar> {
     pub(super) is_collapsing_first_margin: &'a mut bool,
     pub(super) active_margin_can_collapse_with_parent: &'a mut bool,
     pub(super) all_in_flow_children_can_collapse_through: &'a mut bool,
-    pub(super) float_exclusions: &'a FloatExclusions<S, Node>,
+    pub(super) float_exclusions: &'a mut FloatExclusions<S, Node>,
+    pub(super) float_intrinsics: &'a mut super::floats::FloatIntrinsics<S>,
+    pub(super) pending_floats: &'a mut Vec<PendingFloat<Node, S>>,
+    pub(super) owned_float_block_end: &'a mut S,
     pub(super) contributions: &'a mut ScrollContributionAccumulatorOf<S>,
 }
 
 struct InlineRunPlacement<Node, S: LayoutScalar> {
+    floats: Vec<PendingFloat<Node, S>>,
+    owned_float_block_end: S,
     indent_state: Option<crate::text_indent::IndentLineState>,
     size: Size<S>,
     content_size: Size<S>,
@@ -297,7 +330,7 @@ fn layout_inline_run_children<'input, Tree, S, M>(
     container: <Tree as Traverse>::Node,
     run: &[<Tree as Traverse>::Node],
     context: InlineRunContext<'_, S>,
-    float_exclusions: &FloatExclusions<S, <Tree as Traverse>::Node>,
+    float_exclusions: &mut FloatExclusions<S, <Tree as Traverse>::Node>,
     contributions: &mut ScrollContributionAccumulatorOf<S>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, InlineRunPlacement<<Tree as Traverse>::Node, S>, S, M>
 where
@@ -344,6 +377,8 @@ where
         ));
     }
     let mut text_atomics = Vec::new();
+    let mut float_events = Vec::new();
+    let mut encounter_plans = Vec::new();
     let mut static_positions = Vec::new();
     for (offset, child) in run.iter().copied().enumerate() {
         let source_index = source_index_start + offset;
@@ -447,25 +482,81 @@ where
                 |length, basis| resolve_length_or_zero(length, basis),
             )
             .transpose_with_node(tree, child)?;
-        let output = tree.compute_child(
-            child,
-            ComputeInputOf::<S>::for_child(
+        let mut child_request = ComputeInputOf::<S>::for_child(
+            input.run_mode().for_child(),
+            SizingMode::InherentSize,
+            RequestedAxis::Both,
+            Size::NONE,
+            constants.definite_child_containing_block_size(),
+            ContainingLayoutContext::new(constants.flow_axes, ParentFormattingContext::BlockFlow),
+            constants.flow_axes.physical_size(LogicalSizeOf::new(
+                available_inline_extent,
+                AvailableOf::<S>::MAX_CONTENT,
+            )),
+        )
+        .with_containing_auto_scrollbar_pass(input.settled_auto_scrollbars());
+        let packet = if !child_style.float.is_none() && text_binding.is_some() {
+            // Use the ordinary block owner's complete float child request. The
+            // paragraph capture changes encounter scheduling, not child sizing.
+            let axes = child_style.common.flow_axes;
+            let parent = constants.child_containing_block_size(axes);
+            let logical_parent = axes.logical_size(parent);
+            let available = axes.logical_size(constants.available_content);
+            let margin = constants.flow_axes.zip_physical_edges_with_inline_extent(
+                *child_style.common.margin,
+                node_inner_size,
+                |length, basis| length.resolve_auto_with_status(basis),
+            );
+            let margin = axes
+                .logical_edges(margin)
+                .map(super::in_flow::resolved_length_auto_fallback_zero);
+            let inline = logical_parent
+                .inline
+                .or(available.inline.into_option())
+                .map(|inline| (inline - margin.inline_sum()).max(S::ZERO));
+            let known = super::in_flow::in_flow_child_known_size::<Tree, M>(
+                tree,
+                child,
+                &child_style,
+                child_padding + child_border,
+                axes,
+                logical_parent,
+                inline,
+            )?;
+            child_request = ComputeInputOf::<S>::for_child(
                 input.run_mode().for_child(),
                 SizingMode::InherentSize,
                 RequestedAxis::Both,
-                Size::NONE,
-                constants.definite_child_containing_block_size(),
+                known,
+                parent,
                 ContainingLayoutContext::new(
                     constants.flow_axes,
                     ParentFormattingContext::BlockFlow,
                 ),
-                constants.flow_axes.physical_size(LogicalSizeOf::new(
-                    available_inline_extent,
+                axes.physical_size(LogicalSizeOf::new(
+                    super::in_flow::in_flow_child_available_inline(
+                        &child_style,
+                        axes,
+                        inline,
+                        available.inline,
+                    ),
                     AvailableOf::<S>::MAX_CONTENT,
                 )),
             )
-            .with_containing_auto_scrollbar_pass(input.settled_auto_scrollbars()),
-        )?;
+            .with_containing_auto_scrollbar_pass(input.settled_auto_scrollbars())
+            .with_block_indent_context(crate::text_indent::BlockIndentContext {
+                inherited: constants.text_indent,
+                first_formatted: indent_state.first_formatted() && constants.first_formatted,
+            });
+            Some(tree.probe_float_child(child, child_request)?)
+        } else {
+            None
+        };
+        let output = if let Some(packet) = &packet {
+            packet.output
+        } else {
+            tree.compute_child(child, child_request)?
+        };
         let unresolved_margin = constants
             .flow_axes
             .zip_physical_edges_with_inline_extent(
@@ -475,6 +566,34 @@ where
             )
             .transpose_with_node(tree, child)?;
         let child_margin = resolve_atomic_inline_margin(unresolved_margin);
+        if let Some(packet) = packet {
+            let pending = PendingFloat {
+                accepted: None,
+                node: child,
+                source_index,
+                side: child_style.float,
+                clear: child_style.clear,
+                block_start: cursor_block,
+                size: output.size,
+                content_size: output.content_size,
+                border: child_border,
+                padding: child_padding,
+                margin: child_margin,
+                float_exclusion: child_style.float_exclusion,
+                child_compute_geometry: output.scroll_geometry,
+            };
+            float_events.push(
+                super::float_text::FloatEvent::new(
+                    pending,
+                    packet,
+                    text_binding.expect("actual float is in captured paragraph"),
+                    offset,
+                    child_request,
+                )
+                .map_err(|e| text_run_error(container, e))?,
+            );
+            continue;
+        }
         let item = atomic_inline_box_participant(
             source_index,
             child_style.clone(),
@@ -539,7 +658,7 @@ where
         atomic_children.push((child, source_index, projection, output));
     }
     let logical_content_box_inset = constants.logical_content_box_inset();
-    let mut provider_error = None;
+    let provider_error = std::cell::RefCell::new(None);
     let mut text_output = None;
     let report = if let Some(binding) = text_binding {
         let (frame, frames, reusable) = {
@@ -652,72 +771,116 @@ where
                 }
             })
             .collect::<Vec<_>>();
+        let intrinsic_max =
+            !float_events.is_empty() && matches!(available, AvailableOf::MaxContent);
+        let encounters = std::cell::RefCell::new(super::float_text::Encounters::new(
+            float_events,
+            exclusions.clone(),
+            cursor_block,
+            if intrinsic_max {
+                super::floats::FloatInlineSpace::IntrinsicMaximum
+            } else {
+                super::floats::FloatInlineSpace::Finite
+            },
+        ));
         let result = crate::text_layout::run::layout(
             binding,
             &text_atomics,
             &text_controls,
             context,
             &reusable,
-            |block_start, block_end| {
-                let block_start = crate::text_layout::run::number::<S>(block_start)?;
-                let block_end = crate::text_layout::run::number::<S>(block_end)?;
-                let start = cursor_block + block_start;
-                let end = cursor_block + block_end;
-                let band = if set_layout {
-                    match exclusions.query_provider_band(tree, container, start, end) {
-                        Ok(band) => band,
-                        Err(error) => {
-                            provider_error = Some(error);
-                            return Err(crate::text_layout::fit::FitError::Dependency);
+            crate::text_layout::run::LineEnvironment {
+                band: |block_start, block_end| {
+                    let block_start = crate::text_layout::run::number::<S>(block_start)?;
+                    let block_end = crate::text_layout::run::number::<S>(block_end)?;
+                    let start = cursor_block + block_start;
+                    let end = cursor_block + block_end;
+                    let band = if set_layout {
+                        match encounters
+                            .borrow()
+                            .band()
+                            .query_provider_band(tree, container, start, end)
+                        {
+                            Ok(band) => band,
+                            Err(error) => {
+                                *provider_error.borrow_mut() = Some(error);
+                                return Err(crate::text_layout::fit::FitError::Dependency);
+                            }
                         }
-                    }
-                } else {
-                    exclusions.query_rectangular_line_band(start, end)
-                };
-                let inset_inline = constants
-                    .flow_axes
-                    .logical_edges(Edges::new(inset.y, right_inset, S::ZERO, inset.x))
-                    .inline_start;
-                Ok(crate::text_layout::fit::Band {
-                    start: (band.inline_start - inset_inline).to_f64(),
-                    end: (band.inline_end - inset_inline).to_f64(),
-                    next_transition: band
-                        .next_transition
-                        .map(|next| (next - cursor_block).to_f64()),
-                })
-            },
-            |block, request| {
-                let clear = request
-                    .participants
-                    .iter()
-                    .rev()
-                    .find_map(|participant| {
-                        let surgeist_text::PreparedParticipant::Control(control) = participant
-                        else {
-                            return None;
-                        };
-                        let row = binding
-                            .controls
-                            .iter()
-                            .find(|row| &row.occurrence == control)?;
-                        tree.layout_input(row.node)
-                            .as_line_break()
-                            .map(|control| control.clear())
+                    } else {
+                        encounters
+                            .borrow()
+                            .band()
+                            .query_rectangular_line_band(start, end)
+                    };
+                    let inset_inline = constants
+                        .flow_axes
+                        .logical_edges(Edges::new(inset.y, right_inset, S::ZERO, inset.x))
+                        .inline_start;
+                    let intrinsic_end_occupation = intrinsic_max
+                        .then(|| encounters.borrow().band().end_occupation(&band).to_f64());
+                    Ok(crate::text_layout::fit::Band {
+                        start: (band.inline_start - inset_inline).to_f64(),
+                        end: (band.inline_end - inset_inline).to_f64(),
+                        intrinsic_end_occupation,
+                        next_transition: band
+                            .next_transition
+                            .map(|next| (next - cursor_block).to_f64()),
                     })
-                    .unwrap_or(crate::Clear::None);
-                let block = crate::text_layout::run::number::<S>(block)?;
-                let query = cursor_block + block;
-                let cleared = exclusions.clearance_block(query, clear);
-                // Only the actual same-scalar clearance operation can issue a
-                // minimum. Narrowing the queried position alone is not a
-                // clearance and must not replace the fitter's f64 position.
-                Ok((cleared > query).then(|| cleared.to_f64() - cursor_block.to_f64()))
+                },
+                clear: |block, request: &surgeist_text::LineSelectionRequest| {
+                    let clear = request
+                        .participants
+                        .iter()
+                        .rev()
+                        .find_map(|participant| {
+                            let surgeist_text::PreparedParticipant::Control(control) = participant
+                            else {
+                                return None;
+                            };
+                            let row = binding
+                                .controls
+                                .iter()
+                                .find(|row| &row.occurrence == control)?;
+                            tree.layout_input(row.node)
+                                .as_line_break()
+                                .map(|control| control.clear())
+                        })
+                        .unwrap_or(crate::Clear::None);
+                    let block = crate::text_layout::run::number::<S>(block)?;
+                    let query = cursor_block + block;
+                    let cleared = encounters.borrow().band().clearance_block(query, clear);
+                    // Only the actual same-scalar clearance operation can issue a
+                    // minimum. Narrowing the queried position alone is not a
+                    // clearance and must not replace the fitter's f64 position.
+                    Ok((cleared > query).then(|| cleared.to_f64() - cursor_block.to_f64()))
+                },
+                replay: |line: &surgeist_text::FinalizedLine, replay| match encounters
+                    .borrow_mut()
+                    .replay(tree, container, line, replay, set_layout)
+                {
+                    Ok(basis) => Ok(basis),
+                    Err(error) => {
+                        *provider_error.borrow_mut() = Some(error);
+                        Err(crate::text_layout::fit::FitError::Dependency)
+                    }
+                },
+                accept: || {
+                    encounters.borrow_mut().accept();
+                    Ok(())
+                },
             },
         );
-        if let Some(error) = provider_error.take() {
+        if let Some(error) = provider_error.borrow_mut().take() {
             return Err(error);
         }
         let output = result.map_err(|error| text_run_error(container, error))?;
+        let accepted = encounters.into_inner().finish();
+        for child in accepted.children {
+            tree.accept_float_child(&child.packet)?;
+            encounter_plans.push(child.pending);
+        }
+        *float_exclusions = accepted.ledger;
         let report = output.report.clone();
         text_output = Some(output);
         report
@@ -739,7 +902,7 @@ where
             |block_start, block_end| {
                 let query_block_start = cursor_block + block_start;
                 let query_block_end = cursor_block + block_end;
-                let band = if !set_layout || provider_error.is_some() {
+                let band = if !set_layout || provider_error.borrow().is_some() {
                     float_exclusions.query_rectangular_line_band(query_block_start, query_block_end)
                 } else {
                     match float_exclusions.query_provider_band(
@@ -750,7 +913,7 @@ where
                     ) {
                         Ok(band) => band,
                         Err(error) => {
-                            provider_error = Some(error);
+                            *provider_error.borrow_mut() = Some(error);
                             FloatBand {
                                 inline_start: float_exclusions.containing_inline_start,
                                 inline_end: float_exclusions.containing_inline_end,
@@ -775,7 +938,7 @@ where
             },
         )
     };
-    if let Some(error) = provider_error {
+    if let Some(error) = provider_error.into_inner() {
         return Err(error);
     }
     let resolved_float_terminal_block_end =
@@ -1026,7 +1189,20 @@ where
         report.last_baseline.map(projected_baseline),
     );
 
+    let float_end = encounter_plans
+        .iter()
+        .filter_map(|plan| {
+            plan.accepted.as_ref().map(|accepted| {
+                let margin = constants.flow_axes.logical_edges(plan.margin);
+                accepted.logical_origin.block
+                    + constants.flow_axes.logical_size(plan.size).block
+                    + margin.block_end
+            })
+        })
+        .fold(owned_float_block_end, |a, b| a.max(b));
     Ok(InlineRunPlacement {
+        floats: encounter_plans,
+        owned_float_block_end: float_end,
         indent_state: (!report.line_bands.is_empty()).then_some(report.indent_state),
         size: report_size,
         content_size,
@@ -1127,7 +1303,7 @@ fn resolve_atomic_inline_margin<S: LayoutScalar>(margin: Edges<Option<S>>) -> Ed
     margin.map(|value| value.unwrap_or(S::ZERO))
 }
 
-fn text_run_error<Node: Copy, S: LayoutScalar, M>(
+pub(super) fn text_run_error<Node: Copy, S: LayoutScalar, M>(
     node: Node,
     error: crate::text_layout::fit::FitError,
 ) -> LayoutErrorOf<Node, S, M> {

@@ -1027,6 +1027,7 @@ pub struct surgeist_text::FinalizedPrefixView<'a>
 impl surgeist_text::FinalizedPrefixView<'_>
 pub fn surgeist_text::FinalizedPrefixView<'_>::advance(&self) -> f64
 pub fn surgeist_text::FinalizedPrefixView<'_>::finalized_line(&self) -> &surgeist_text::FinalizedLine
+pub fn surgeist_text::FinalizedPrefixView<'_>::has_retained_flow_participation(&self) -> bool
 pub fn surgeist_text::FinalizedPrefixView<'_>::interior_unit(&self) -> core::option::Option<surgeist_text::FinalizedSharedUnitView<'_>>
 pub fn surgeist_text::FinalizedPrefixView<'_>::seam(&self) -> &surgeist_text::TextSeam
 pub struct surgeist_text::FinalizedRunView<'a>

@@ -2,6 +2,7 @@ pub(crate) mod contracts;
 mod root;
 mod rounding;
 mod session;
+pub(crate) use session::FloatChildPacket;
 pub(crate) mod validation;
 
 use crate::error::LayoutResultOf;

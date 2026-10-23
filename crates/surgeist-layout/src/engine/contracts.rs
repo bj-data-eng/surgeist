@@ -45,6 +45,30 @@ pub(crate) trait Compute<'input, M = core::convert::Infallible>:
         M,
     >;
 
+    /// Prepared-text floats require the actual session's disposable staging
+    /// owner. Box-only executors have no captured Text publication to merge.
+    fn probe_float_child(
+        &mut self,
+        node: Self::Node,
+        _input: ComputeInputOf<Self::Scalar>,
+    ) -> super::session::FloatProbeResult<Self, M> {
+        Err(crate::LayoutErrorOf::new(
+            crate::LayoutErrorSiteOf::Node(node),
+            crate::LayoutOperation::ChildLayout,
+            crate::LayoutErrorKindOf::MissingContext(crate::LayoutMissingContext::TextCapture),
+        ))
+    }
+    fn accept_float_child(
+        &mut self,
+        packet: &super::session::FloatChildPacket<Self::Node, Self::Scalar>,
+    ) -> LayoutResultOf<Self::Node, (), Self::Scalar, M> {
+        Err(crate::LayoutErrorOf::new(
+            crate::LayoutErrorSiteOf::Node(packet.node),
+            crate::LayoutOperation::ChildLayout,
+            crate::LayoutErrorKindOf::MissingContext(crate::LayoutMissingContext::TextCapture),
+        ))
+    }
+
     fn float_exclusion_interval(
         &self,
         _node: Self::Node,

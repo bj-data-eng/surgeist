@@ -112,10 +112,25 @@ is in-flow BlockFlow, with the generating owner captured and matching inherited
 computed indent values. Missing context and incompatible roles refuse explicitly;
 these inputs do not authenticate live computed Style.
 
-One prepared paragraph spanning an interleaved float is not yet admitted.
-Separate native paragraph bindings retain their own terminal lines; a float
-does not authorize changing Text's issued line ends. Already placed floats
-continue to constrain available spans and metric feedback.
+One prepared paragraph can span interleaved floats in its captured source order.
+Layout queries Text's finalized prefix at each encounter, places the actual float
+box, and rechecks the selected line against the resulting spans and metrics.
+An encounter inside a shared text unit follows the
+[shared-unit policy](../../../docs/text-layout-contract.md#float-encounters-inside-shared-text-units);
+it does not split that unit or create a break opportunity. Earlier float tops
+constrain later float placement, including floats preceding the capture.
+Rejected candidates discard their child output, caches and pending Text results;
+accepted candidates publish their actual float placements once.
+
+Retained source participation determines whether an encounter has preceding
+in-flow content, independently of zero or signed prefix advance. Hidden and
+absolute participants retain their own traversal and static-position effects.
+Separate paragraph bindings retain their terminal lines, including genuine
+empty terminal lines. A discarded-only soft endpoint contributes no phantom
+line. Minimum sizing includes the largest individual float contribution;
+maximum sizing combines each actual line with its applicable float occupation
+before the final finite placement pass. Clearance and expired float cohorts
+remain distinct.
 
 `TextJustification::Spaces` expands retained U+0020 slots using Text's finalized
 ownership and edge decisions. Layout distributes the remaining raw advance to

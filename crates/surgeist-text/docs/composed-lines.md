@@ -94,6 +94,12 @@ prefix queries. These observations create no caret or break opportunity and do
 not move the original seam. Layout owns float placement and replay under the
 [shared-unit policy](../../../docs/text-layout-contract.md#float-encounters-inside-shared-text-units).
 
+`has_retained_flow_participation()` reports participation before the original
+seam, independently of whole-unit advance charging. Retained zero/signed text,
+in-flow atomics and allocated control struts count; empty or discarded occurrences
+add nothing. A later part charged by an interior seam does not become preceding
+content. This observation does not establish visibility or a generated line box.
+
 `Layout::source_range_fragments(&origin, local)` observes a nonempty original-local
 `Range` of an issued `PreparedOrigin` in that placement. It validates the entire
 request before returning borrowed `SourceRangeFragments`. A valid fully removed

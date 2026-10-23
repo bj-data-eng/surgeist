@@ -489,3 +489,295 @@ fn finalized_prefix_break_reshaping_replaces_the_actual_shared_association() {
         Range::new(0, 2)
     );
 }
+
+#[test]
+fn finalized_original_prefix_membership_precedes_whole_unit_accounting() {
+    for text in ["A\u{301}", "AA"] {
+        let prepared = prepare(
+            if text == "AA" {
+                crate::shaping_test_fonts::ligature_ahem()
+            } else {
+                crate::shaping_test_fonts::mark_ahem()
+            },
+            text,
+            style(),
+        );
+        let line = whole(&prepared);
+        for (at, expected) in [(0, false), (1, true), (2, true)] {
+            let observed = line.prefix_at(&seam(&prepared, at)).unwrap();
+            assert_eq!(
+                observed.has_retained_flow_participation(),
+                expected,
+                "{text:?} at{at}"
+            );
+        }
+    }
+    let mut input = style();
+    input.white_space = WhiteSpace::Collapse;
+    let prepared = native(" \u{301}", input, vec![], vec![]);
+    let line = whole(&prepared);
+    let observed = line.prefix_at(&seam(&prepared, 1)).unwrap();
+    assert!(observed.interior_unit().is_some());
+    assert!(!observed.has_retained_flow_participation());
+    assert!(
+        line.prefix_at(&seam(&prepared, 2))
+            .unwrap()
+            .has_retained_flow_participation()
+    );
+
+    for spacing in [-12.5, -15.0] {
+        let mut input = style();
+        input.letter_spacing = spacing;
+        let prepared = prepare(crate::shaping_test_fonts::ligature_ahem(), "AX", input);
+        let line = whole(&prepared);
+        assert!(
+            line.prefix_at(&seam(&prepared, 1))
+                .unwrap()
+                .has_retained_flow_participation()
+        );
+    }
+    for mode in [WhiteSpace::Collapse, WhiteSpace::Discard] {
+        let mut input = style();
+        input.white_space = mode;
+        let prepared = native("  X", input, vec![], vec![]);
+        let line = whole(&prepared);
+        assert!(
+            !line
+                .prefix_at(&seam(&prepared, 2))
+                .unwrap()
+                .has_retained_flow_participation()
+        );
+        assert!(
+            line.prefix_at(&seam(&prepared, 3))
+                .unwrap()
+                .has_retained_flow_participation()
+        );
+    }
+    let empty = native("", style(), vec![], vec![]);
+    assert!(
+        !whole(&empty)
+            .prefix_at(&seam(&empty, 0))
+            .unwrap()
+            .has_retained_flow_participation()
+    );
+}
+
+#[test]
+fn finalized_original_prefix_membership_uses_actual_control_bundle_and_allocated_role() {
+    let prepared = native(
+        "X",
+        style(),
+        vec![
+            ParagraphControl {
+                at: 0,
+                kind: ParagraphControlKind::InlineBoundaryStart,
+            },
+            ParagraphControl {
+                at: 0,
+                kind: ParagraphControlKind::InlineBoundaryEnd,
+            },
+        ],
+        vec![],
+    );
+    let termination = prepared
+        .opportunity_views()
+        .find(|v| v.kind() == PreparedBreakKind::ParagraphEnd)
+        .unwrap()
+        .handle();
+    let selected = selected_end(&prepared, termination, None);
+    let mut request = selected.request().clone();
+    request.controls[1].strut = Some(ControlStrut {
+        baseline: 0.0,
+        line_extent: 0.0,
+        alignment: LineBoxAlignment::Baseline,
+    });
+    let line = prepared
+        .select(request)
+        .unwrap()
+        .finalize(SpacingAllocations::None)
+        .unwrap();
+    let controls: Vec<_> = prepared
+        .control_views()
+        .map(|v| PreparedParticipant::Control(v.handle()))
+        .collect();
+    assert!(
+        !line
+            .prefix_at(&TextSeam::AfterParticipant(controls[0].clone()))
+            .unwrap()
+            .has_retained_flow_participation()
+    );
+    assert!(
+        !line
+            .prefix_at(&TextSeam::BeforeParticipant(controls[1].clone()))
+            .unwrap()
+            .has_retained_flow_participation()
+    );
+    assert!(
+        line.prefix_at(&TextSeam::AfterParticipant(controls[1].clone()))
+            .unwrap()
+            .has_retained_flow_participation()
+    );
+
+    let prepared = native(
+        "X",
+        style(),
+        vec![ParagraphControl {
+            at: 0,
+            kind: ParagraphControlKind::DiscretionaryBreak { wrap: Wrap::Word },
+        }],
+        vec![ParagraphReplacement {
+            definition: ParagraphReplacementDefinition::Control {
+                control: 0,
+                origin: None,
+            },
+            insertion_anchor: 0,
+            style_anchor: 0,
+            text: Text::from("A"),
+        }],
+    );
+    let alternative = prepared.alternative_views().next().unwrap().handle();
+    let line = selected_end(
+        &prepared,
+        alternative.view().opportunity(),
+        Some(alternative),
+    )
+    .finalize(SpacingAllocations::None)
+    .unwrap();
+    let control = PreparedParticipant::Control(prepared.control_views().next().unwrap().handle());
+    assert!(
+        !line
+            .prefix_at(&TextSeam::BeforeParticipant(control.clone()))
+            .unwrap()
+            .has_retained_flow_participation()
+    );
+    assert!(
+        line.prefix_at(&TextSeam::AfterParticipant(control))
+            .unwrap()
+            .has_retained_flow_participation()
+    );
+}
+
+#[test]
+fn finalized_original_prefix_empty_occurrences_inherit_only_actual_preceding_content() {
+    let analyzed = AnalyzedSource::from_paragraph(ParagraphInput {
+        source: Source::new("A"),
+        base_style: style(),
+        segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
+        base_direction: ParagraphBaseDirection::LeftToRight,
+        paragraph_strut: ParagraphStrut::DefaultFont,
+        origins: vec![
+            ParagraphOrigin {
+                source: Source::new(""),
+                local: Range::new(0, 0),
+                aggregate: Range::new(0, 0),
+                kind: ParagraphOriginKind::Authored,
+            },
+            ParagraphOrigin {
+                source: Source::new("A"),
+                local: Range::new(0, 1),
+                aggregate: Range::new(0, 1),
+                kind: ParagraphOriginKind::Authored,
+            },
+            ParagraphOrigin {
+                source: Source::new(""),
+                local: Range::new(0, 0),
+                aggregate: Range::new(1, 1),
+                kind: ParagraphOriginKind::Authored,
+            },
+        ],
+        connections: vec![
+            ParagraphConnection {
+                at: 0,
+                kind: ParagraphConnectionKind::Disconnected,
+            },
+            ParagraphConnection {
+                at: 1,
+                kind: ParagraphConnectionKind::Disconnected,
+            },
+        ],
+        controls: vec![],
+        boundary_policies: vec![],
+        replacements: vec![],
+        anchor_order: vec![
+            ParagraphAnchor {
+                item: ParagraphAnchorItem::EmptyOrigin(0),
+                affinity: Affinity::Before,
+            },
+            ParagraphAnchor {
+                item: ParagraphAnchorItem::EmptyOrigin(2),
+                affinity: Affinity::After,
+            },
+        ],
+    })
+    .unwrap();
+    let mut system = System::new(SystemOptions {
+        font_catalogue: FontCatalogueMode::RegisteredOnly,
+    })
+    .unwrap();
+    system
+        .register_fonts(crate::shaping_test_fonts::ligature_ahem())
+        .unwrap();
+    let prepared = system
+        .prepare(&analyzed, PreparationOptions::default())
+        .unwrap();
+    let line = whole(&prepared);
+    for (index, expected) in [(0, false), (2, true)] {
+        let origin = prepared.origin_views().nth(index).unwrap().handle();
+        let local = SourcePosition::try_new(origin.view().source().text(), 0).unwrap();
+        assert_eq!(
+            line.prefix_at(&TextSeam::Origin { origin, local })
+                .unwrap()
+                .has_retained_flow_participation(),
+            expected
+        );
+    }
+}
+
+#[test]
+fn finalized_original_prefix_source_replacement_keeps_its_defining_source_bundle() {
+    let prepared = native(
+        "\u{ad}X",
+        style(),
+        vec![],
+        vec![ParagraphReplacement {
+            definition: ParagraphReplacementDefinition::Source {
+                origin: 0,
+                source: Range::new(0, 1),
+            },
+            insertion_anchor: 1,
+            style_anchor: 0,
+            text: Text::from("A"),
+        }],
+    );
+    let alternative = prepared.alternative_views().next().unwrap().handle();
+    let line = selected_end(
+        &prepared,
+        alternative.view().opportunity(),
+        Some(alternative),
+    )
+    .finalize(SpacingAllocations::None)
+    .unwrap();
+    let defining=prepared.participants().find(|p|matches!(p,PreparedParticipant::Text(unit) if unit.view().source_range()==Range::new(0,1))).unwrap();
+    assert!(
+        !line
+            .prefix_at(&TextSeam::BeforeParticipant(defining.clone()))
+            .unwrap()
+            .has_retained_flow_participation()
+    );
+    assert!(
+        line.prefix_at(&TextSeam::AfterParticipant(defining))
+            .unwrap()
+            .has_retained_flow_participation()
+    );
+    assert!(
+        !line
+            .prefix_at(&seam(&prepared, 0))
+            .unwrap()
+            .has_retained_flow_participation()
+    );
+    assert!(
+        line.prefix_at(&seam(&prepared, 1))
+            .unwrap()
+            .has_retained_flow_participation()
+    );
+}
