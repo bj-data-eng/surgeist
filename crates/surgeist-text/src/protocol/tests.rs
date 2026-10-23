@@ -4,6 +4,7 @@ mod conditional;
 mod joining_context;
 mod joining_positioning;
 mod mandatory_breaks;
+mod manual_hyphenation;
 
 use super::*;
 use crate::{
