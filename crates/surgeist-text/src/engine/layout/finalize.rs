@@ -40,7 +40,17 @@ pub(super) fn finalize(
     let mut spacing_slots = apply_spacing(&selected, &mut shaped, amounts, &dispositions)?;
     let levels = line_levels(&selected, &shaped)?;
     let base = selected.presentation.analysis.base_level;
-    let mut metrics = line_metrics(&selected, &shaped, &atomics, &controls, &mut dispositions)?;
+    let mut prefix_receipts = Vec::with_capacity(shaped.items.len() + 1);
+    let mut metrics = line_metrics(
+        &selected,
+        &shaped,
+        &atomics,
+        &controls,
+        &mut dispositions,
+        &mut prefix_receipts,
+    )?;
+    let prefix =
+        crate::protocol::prefix::PrefixData::new(&selected, &shaped, &atomics, prefix_receipts);
     for row in &mut spacing_slots {
         row.disposition = dispositions[row.cluster];
     }
@@ -89,6 +99,7 @@ pub(super) fn finalize(
         .map_err(|_| invalid("line order scratch does not match its actual participants"))?;
     let mut data = FinalizedLineData {
         spacing_slots,
+        prefix,
         clusters: shaped
             .clusters
             .iter()
@@ -929,9 +940,11 @@ fn line_metrics(
     atomics: &BTreeMap<usize, &AtomicAllocation>,
     controls: &BTreeMap<usize, &ControlAllocation>,
     dispositions: &mut [SpacingSlotDisposition],
+    prefix_receipts: &mut Vec<f64>,
 ) -> Result<LineMetrics> {
     let mut result = LineMetrics::default();
     let mut have_metrics = false;
+    prefix_receipts.push(0.0);
     for item in &shaped.items {
         match *item {
             ShapedItem::Anchor { .. } => {}
@@ -969,6 +982,7 @@ fn line_metrics(
                 )?);
             }
         }
+        prefix_receipts.push(result.advance);
     }
     result.trailing_whitespace = classify_trailing(shaped, dispositions)?;
     if selected.metric_policy == LineMetricPolicy::Native {

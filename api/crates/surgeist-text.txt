@@ -493,6 +493,8 @@ pub surgeist_text::ProtocolError::InvalidOriginRange
 pub surgeist_text::ProtocolError::InvalidOriginRange::aggregate: surgeist_text::Range
 pub surgeist_text::ProtocolError::InvalidOriginRange::local: surgeist_text::Range
 pub surgeist_text::ProtocolError::InvalidOriginRange::origin: usize
+pub surgeist_text::ProtocolError::InvalidOriginSeam
+pub surgeist_text::ProtocolError::InvalidOriginSeam::position: usize
 pub surgeist_text::ProtocolError::InvalidPlacedPosition
 pub surgeist_text::ProtocolError::InvalidPlacedPosition::position: usize
 pub surgeist_text::ProtocolError::InvalidReplacement
@@ -516,6 +518,7 @@ pub surgeist_text::ProtocolError::OriginTextMismatch
 pub surgeist_text::ProtocolError::OriginTextMismatch::aggregate: usize
 pub surgeist_text::ProtocolError::OriginTextMismatch::local: usize
 pub surgeist_text::ProtocolError::OriginTextMismatch::origin: usize
+pub surgeist_text::ProtocolError::OutsideFinalizedLine
 pub surgeist_text::ProtocolError::OutsidePlacement
 pub surgeist_text::ProtocolError::OutsidePlacement::coverage: surgeist_text::Range
 pub surgeist_text::ProtocolError::OutsidePlacement::index: usize
@@ -649,6 +652,12 @@ pub surgeist_text::TextNumericPhase::Selection
 pub surgeist_text::TextNumericPhase::Shaping
 pub enum surgeist_text::TextOverflow
 pub surgeist_text::TextOverflow::Clip
+pub enum surgeist_text::TextSeam
+pub surgeist_text::TextSeam::AfterParticipant(surgeist_text::PreparedParticipant)
+pub surgeist_text::TextSeam::BeforeParticipant(surgeist_text::PreparedParticipant)
+pub surgeist_text::TextSeam::Origin
+pub surgeist_text::TextSeam::Origin::local: surgeist_text::SourcePosition
+pub surgeist_text::TextSeam::Origin::origin: surgeist_text::PreparedOrigin
 pub enum surgeist_text::TextStyleFeature
 pub surgeist_text::TextStyleFeature::BasicFontStretch
 pub surgeist_text::TextStyleFeature::ConcreteDecorationColor
@@ -978,6 +987,8 @@ pub fn surgeist_text::FinalizedLine::mapping_views(&self) -> impl core::iter::tr
 pub fn surgeist_text::FinalizedLine::outline_ink(&self) -> surgeist_text::Result<surgeist_text::LineOutlineInk>
 pub fn surgeist_text::FinalizedLine::run_views(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::FinalizedRunView<'_>>
 impl surgeist_text::FinalizedLine
+pub fn surgeist_text::FinalizedLine::prefix_at(&self, seam: &surgeist_text::TextSeam) -> surgeist_text::Result<surgeist_text::FinalizedPrefixView<'_>>
+impl surgeist_text::FinalizedLine
 pub fn surgeist_text::FinalizedLine::prepared_text(&self) -> surgeist_text::PreparedText
 impl surgeist_text::FinalizedLine
 pub fn surgeist_text::FinalizedLine::spacing_slots(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::SpacingSlotFeedback> + '_
@@ -988,6 +999,12 @@ impl core::fmt::Debug for surgeist_text::FinalizedLine
 pub fn surgeist_text::FinalizedLine::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::hash::Hash for surgeist_text::FinalizedLine
 pub fn surgeist_text::FinalizedLine::hash<H: core::hash::Hasher>(&self, state: &mut H)
+pub struct surgeist_text::FinalizedPrefixView<'a>
+impl surgeist_text::FinalizedPrefixView<'_>
+pub fn surgeist_text::FinalizedPrefixView<'_>::advance(&self) -> f64
+pub fn surgeist_text::FinalizedPrefixView<'_>::finalized_line(&self) -> &surgeist_text::FinalizedLine
+pub fn surgeist_text::FinalizedPrefixView<'_>::interior_unit(&self) -> core::option::Option<surgeist_text::FinalizedSharedUnitView<'_>>
+pub fn surgeist_text::FinalizedPrefixView<'_>::seam(&self) -> &surgeist_text::TextSeam
 pub struct surgeist_text::FinalizedRunView<'a>
 impl surgeist_text::FinalizedRunView<'_>
 pub const fn surgeist_text::FinalizedRunView<'_>::advance(&self) -> f64
@@ -998,6 +1015,14 @@ pub const fn surgeist_text::FinalizedRunView<'_>::font_size(&self) -> f32
 pub fn surgeist_text::FinalizedRunView<'_>::glyphs(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::FinalizedGlyphView<'_>>
 pub fn surgeist_text::FinalizedRunView<'_>::origin(&self) -> surgeist_text::Point
 pub const fn surgeist_text::FinalizedRunView<'_>::range(&self) -> surgeist_text::Range
+pub struct surgeist_text::FinalizedSharedUnitView<'a>
+impl surgeist_text::FinalizedSharedUnitView<'_>
+pub fn surgeist_text::FinalizedSharedUnitView<'_>::advance(&self) -> surgeist_text::Result<f64>
+pub fn surgeist_text::FinalizedSharedUnitView<'_>::alternative(&self) -> core::option::Option<surgeist_text::PreparedAlternative>
+pub fn surgeist_text::FinalizedSharedUnitView<'_>::finalized_line(&self) -> &surgeist_text::FinalizedLine
+pub fn surgeist_text::FinalizedSharedUnitView<'_>::presentation_range(&self) -> surgeist_text::PresentationRange
+pub fn surgeist_text::FinalizedSharedUnitView<'_>::source_pieces(&self) -> impl core::iter::traits::iterator::Iterator<Item = surgeist_text::Range> + '_
+pub fn surgeist_text::FinalizedSharedUnitView<'_>::source_range(&self) -> surgeist_text::Range
 pub struct surgeist_text::Font
 pub surgeist_text::Font::family: alloc::vec::Vec<alloc::string::String>
 pub surgeist_text::Font::features: alloc::vec::Vec<alloc::string::String>

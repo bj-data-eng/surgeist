@@ -43,6 +43,13 @@ pub(crate) struct ShapeContext {
     cluster: CharCluster,
 }
 
+#[cfg(test)]
+impl ShapeContext {
+    pub(crate) fn cache_hits(&self) -> [usize; 3] {
+        [self.data.hits(), self.instances.hits(), self.plans.hits()]
+    }
+}
+
 impl Default for ShapeContext {
     fn default() -> Self {
         Self {
@@ -1002,6 +1009,7 @@ fn extract_run(
             output.clusters.push(PreparedCluster {
                 source: original.source,
                 atoms: atom..atom + 1,
+                provider_group: atom_start..atom_end,
                 glyphs: if atom == atom_start {
                     glyphs.clone()
                 } else {

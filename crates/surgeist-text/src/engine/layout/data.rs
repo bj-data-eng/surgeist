@@ -74,6 +74,8 @@ pub(crate) struct PreparedRun {
 pub(crate) struct PreparedCluster {
     pub(crate) source: Range,
     pub(crate) atoms: IndexRange<usize>,
+    /// Actual provider group before scalar component extraction.
+    pub(crate) provider_group: IndexRange<usize>,
     pub(crate) glyphs: IndexRange<usize>,
     pub(crate) run: usize,
     pub(crate) style: usize,
@@ -228,6 +230,7 @@ pub(crate) struct FinalizedLineData {
     pub(crate) anchors: Vec<FinalizedAnchor>,
     pub(crate) spacing_slots: Vec<FinalizedSpacingSlot>,
     pub(crate) metrics: LineMetrics,
+    pub(crate) prefix: crate::protocol::prefix::PrefixData,
     pub(crate) fragments: Vec<FinalizedFragmentData>,
 }
 

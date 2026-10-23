@@ -74,6 +74,26 @@ presentation never becomes authored characters. Same-instance outline readback i
 optional and can refuse independently of valid shaping; its conservative Text metric
 bounds are not Render's positioned canonical paint bounds.
 
+`FinalizedLine::prefix_at` observes the logical advance at an actual occurrence
+seam. Use `TextSeam::Origin` with its issued `PreparedOrigin` and a
+`SourcePosition` in that origin's original `Source`, or query before/after an
+issued mixed participant. Foreign preparations, positions outside the admitted
+origin and occurrences outside this selected line refuse. The returned
+`FinalizedPrefixView` borrows this exact line and retains the original seam
+independently of the descriptor's lifetime.
+
+An interior seam counts the whole smallest unit closed under both selected
+graphemes and actual provider-cluster associations. `interior_unit()` lends its
+presentation extent, actual original `source_pieces`, selected alternative and
+independently checked contribution. `source_range()` is only an enclosing extent;
+it does not claim text in contextual coverage holes. The prefix uses the actual
+logical metrics-fold receipt, including signed advances and spacing, rather than
+glyph ink or subtraction of cumulative values. A unit-local numeric failure
+refuses its interior query without invalidating ordinary finalization or unrelated
+prefix queries. These observations create no caret or break opportunity and do
+not move the original seam. Layout owns float placement and replay under the
+[shared-unit policy](../../../docs/text-layout-contract.md#float-encounters-inside-shared-text-units).
+
 `Layout::bounds` reports admitted physical placement bounds. `positions()` issues
 placement-bound `PlacedPosition` values from actual interaction occurrences.
 `position_geometry`, `move_position` and `position_selection` validate that same

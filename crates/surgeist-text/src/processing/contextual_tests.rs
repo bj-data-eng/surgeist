@@ -2339,3 +2339,65 @@ fn authentic_middle_hole_points_do_not_claim_foreign_span_scalar_boundaries() {
         );
     }
 }
+
+#[test]
+fn finalized_prefix_keeps_real_cross_hole_associations_without_claiming_child_source() {
+    let mut capture = short_hole(InlineBoxKind::OutOfFlow);
+    capture.source = Source::new("AIA");
+    capture.source.inline_box(InlineBox::new(
+        Id::from_u64(7),
+        InlineBoxKind::OutOfFlow,
+        1,
+        Size::new(5.0, 10.0),
+    ));
+    capture.origins = vec![
+        origin(&capture.source, Range::new(0, 1)),
+        origin(&capture.source, Range::new(1, 2)),
+        origin(&capture.source, Range::new(2, 3)),
+    ];
+    let owner = Arc::new(process_contextual_source(capture).unwrap());
+    let paragraphs: Vec<_> = owner.paragraphs().collect();
+    let mut fonts = System::new(SystemOptions {
+        font_catalogue: FontCatalogueMode::RegisteredOnly,
+    })
+    .unwrap();
+    fonts
+        .register_fonts(crate::shaping_test_fonts::ligature_ahem())
+        .unwrap();
+    let prepared = prepare(&mut fonts, paragraphs[0].clone());
+    let actual = line(&prepared);
+    let first = prepared.origin_views().next().unwrap().handle();
+    let seam = TextSeam::Origin {
+        local: SourcePosition::try_new(first.view().source().text(), 1).unwrap(),
+        origin: first,
+    };
+    let observation = actual.prefix_at(&seam).unwrap();
+    assert_eq!(observation.advance(), 10.0);
+    let unit = observation.interior_unit().unwrap();
+    assert_eq!(unit.source_range(), Range::new(0, 3));
+    assert_eq!(
+        unit.source_pieces().collect::<Vec<_>>(),
+        vec![Range::new(0, 1), Range::new(2, 3)]
+    );
+    let child = prepare(&mut fonts, paragraphs[1].clone());
+    let child_origin = child.origin_views().next().unwrap().handle();
+    let foreign = TextSeam::Origin {
+        local: SourcePosition::try_new(child_origin.view().source().text(), 1).unwrap(),
+        origin: child_origin,
+    };
+    assert!(matches!(
+        actual.prefix_at(&foreign).unwrap_err().detail(),
+        Some(ErrorDetail::InvalidTextProtocol {
+            reason: ProtocolError::ForeignSelectedLine
+        })
+    ));
+    let outflow = prepared.atomic_views().next().unwrap().handle();
+    // The authentic zero-flow participant is retained at the same internal
+    // seam; joint-unit accounting observes the whole actual AA glyph.
+    for seam in [
+        TextSeam::BeforeParticipant(PreparedParticipant::Atomic(outflow.clone())),
+        TextSeam::AfterParticipant(PreparedParticipant::Atomic(outflow)),
+    ] {
+        assert_eq!(actual.prefix_at(&seam).unwrap().advance(), 10.0);
+    }
+}

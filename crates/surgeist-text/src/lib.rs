@@ -71,6 +71,7 @@ pub use protocol::paragraph::{
     ParagraphOrigin, ParagraphOriginKind, ParagraphReplacement, ParagraphReplacementDefinition,
     ParagraphStrut,
 };
+pub use protocol::prefix::{FinalizedPrefixView, FinalizedSharedUnitView, TextSeam};
 pub use protocol::readback::{
     FinalizedControlView, FinalizedFragmentOwner, FinalizedFragmentView, FinalizedGlyphView,
     FinalizedRunView, LineOutlineInk, PreparedAlternativeDefinition, PreparedAlternativeView,

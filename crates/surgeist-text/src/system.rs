@@ -15,6 +15,11 @@ pub struct System {
 }
 
 impl System {
+    #[cfg(test)]
+    pub(crate) fn shape_cache_hits(&self) -> [usize; 3] {
+        self.shape_context.cache_hits()
+    }
+
     pub fn new(options: SystemOptions) -> Result<Self> {
         Ok(Self {
             catalogue: Catalogue::new(options.font_catalogue),

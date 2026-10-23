@@ -3,6 +3,8 @@
 pub(crate) struct LruCache<K, V> {
     entries: Vec<(K, V)>,
     capacity: usize,
+    #[cfg(test)]
+    hits: usize,
 }
 
 impl<K: PartialEq, V> LruCache<K, V> {
@@ -11,12 +13,23 @@ impl<K: PartialEq, V> LruCache<K, V> {
         Self {
             entries: Vec::new(),
             capacity,
+            #[cfg(test)]
+            hits: 0,
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn hits(&self) -> usize {
+        self.hits
     }
 
     pub(crate) fn entry(&mut self, key: K, make: impl FnOnce() -> V) -> &V {
         let entry = if let Some(index) = self.entries.iter().position(|(stored, _)| stored == &key)
         {
+            #[cfg(test)]
+            {
+                self.hits += 1;
+            }
             self.entries.remove(index)
         } else {
             (key, make())

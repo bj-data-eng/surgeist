@@ -13,6 +13,7 @@ use selection::SelectedData;
 pub(crate) mod finalized;
 pub(crate) mod paragraph;
 pub(crate) mod placement;
+pub(crate) mod prefix;
 pub(crate) mod prepared;
 pub(crate) mod readback;
 pub(crate) mod selection;
@@ -463,6 +464,11 @@ pub enum ProtocolContextField {
 /// Actual invalid association or incomplete input; no caller ordinal issues a capability.
 #[derive(Clone, Debug, PartialEq)]
 pub enum ProtocolError {
+    /// The occurrence-qualified original seam is not represented by this line.
+    OutsideFinalizedLine,
+    InvalidOriginSeam {
+        position: usize,
+    },
     ForeignPreparation {
         kind: ProtocolHandleKind,
         occurrence: usize,

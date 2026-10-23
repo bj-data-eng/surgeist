@@ -72,7 +72,7 @@ pub(super) fn finite(field: &'static str, phase: TextNumericPhase, value: f64) -
 
 /// Add an actually required logical contribution at its observation boundary.
 /// Signed cancellation is valid; a requested nonzero adjustment cannot vanish.
-pub(super) fn add(
+pub(crate) fn add(
     field: &'static str,
     phase: TextNumericPhase,
     base: f64,
