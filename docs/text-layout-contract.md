@@ -513,6 +513,15 @@ custody, validate scalar/grapheme boundaries, and never fuse isolated surrogate
 halves across removed pieces. Long words use checked lengths and allocation
 without an arbitrary word quota.
 
+For the temporary resource query, omit authentic U+00AD SHY and retain every
+other formatting control and combining mark unchanged. This is a bounded native
+query policy, separate from counting, shaping and Range segmentation; it adds no
+normalization, Unicode folding or isolated-surrogate replacement. Preserve exact
+correspondence through omitted SHY gaps and map resource cuts only to validated,
+unambiguous original mixed boundaries. A coincident authored SHY keeps its own
+identity and preference; do not relabel it automatic. Retained controls may limit
+resource recognition and must remain visible in the resource observation.
+
 For the native CSS operation, resolve initial character limits to total 5,
 before 2 and after 2, for manual and automatic hyphenation, including an empty
 indication. Text owns these counts and admission. Exclude nonspacing marks and
@@ -794,6 +803,25 @@ multi-unit ligature does not select the computed neighbor's share. Automatic
 hyphens without a replaced authored interval require a genuine typed relation
 to their generating selected source boundary/span before a consumer can claim
 their geometry; control anchors do not supply that missing capability.
+
+For an automatic insertion, preparation retains its immediately preceding genuine
+source-backed grapheme in the same lexical word, with all exact ordered source
+pieces, separately from the generating mixed boundary. A nonempty request selects
+the indication when it positively intersects any of those pieces under the actual
+original occurrence identity. Endpoint contact alone does not qualify. This is
+Surgeist's automatic-insertion attribution policy; the
+[Range rule](../references/cssom-view-range--editor-capture-20261022.md) supports
+partial-unit expansion but does not specify this membership predicate. The relation
+consumes no source and is not a replacement interval or a word/style/provider-cluster
+envelope. A grapheme crossing origins retains each genuine piece; selected
+intersections and attribution remain separate observations. Empty origins and
+source-less controls supply no relation. Cross transparent events only under
+authentic continuity; never search across a disconnection or skip an authored
+zero-width formatting grapheme because its advance or count is zero. Missing or
+ambiguous attribution is a precise capability failure. After eligibility, use
+the existing presentation Range-unit closure once, preserving shared indivisible
+units and separately attributable optional-ligature shares. An empty indication
+adds no units. Existing Source and Control replacement rules remain unchanged.
 
 A selected preserved authored newline contributes one zero-inline-advance
 font-metric rectangle at its actual finalized position on the line it terminates.
