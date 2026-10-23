@@ -246,3 +246,156 @@ fn bare_manual_shy_uses_primary_u2010_without_a_caller_replacement() {
 fn bare_manual_shy_falls_back_to_u002d_when_primary_u2010_is_absent() {
     bare_shy(false);
 }
+
+fn raw_glyphs(layout: &crate::Layout, bytes: &[u8]) -> Vec<(usize, Range, u32, f32)> {
+    let mut rows = Vec::new();
+    for run in layout.run_views() {
+        assert_eq!(run.face().bytes(), bytes);
+        assert_eq!(
+            run.face().catalogue_identity(),
+            layout.key().font_catalogue()
+        );
+        let instance = run.effective_instance().unwrap();
+        assert!(instance.face().is_same_face(&run.face()));
+        assert_eq!(instance.font_size(), 20.0);
+    }
+    for run in layout.glyph_runs() {
+        rows.extend(
+            run.glyphs()
+                .iter()
+                .filter(|glyph| glyph.advance() != 0.0)
+                .map(|glyph| (run.line(), glyph.range(), glyph.id(), glyph.advance())),
+        );
+    }
+    rows.sort_by_key(|(line, range, _, _)| (*line, range.start, range.end));
+    rows
+}
+fn raw_line_advances(layout: &crate::Layout) -> Vec<f64> {
+    let mut advances = vec![0.0; layout.lines().len()];
+    // These published finalized run facts include the actual used insertion.
+    // This fixture has no inline boxes or extra spacing allocations.
+    for run in layout.inline_metric_facts().runs() {
+        advances[run.line()] += run.advance();
+    }
+    advances
+}
+fn raw_bare_shy(primary_hyphen: bool) {
+    let bytes = fixture(primary_hyphen);
+    let font = skrifa::FontRef::new(&bytes).unwrap();
+    let cmap = font.charmap();
+    assert_eq!(cmap.map(0x58_u32).map(|glyph| glyph.to_u32()), Some(58));
+    assert_eq!(cmap.map(0x2d_u32).map(|glyph| glyph.to_u32()), Some(15));
+    assert_eq!(
+        cmap.map(0x2010_u32).map(|glyph| glyph.to_u32()),
+        primary_hyphen.then_some(36)
+    );
+    let hyphen = if primary_hyphen { 36 } else { 15 };
+    // Three X glyphs, no AA components: the fixture's optional ligature lookup
+    // cannot alter the independent 20px contributions or the fit threshold.
+    let source = Source::new("X\u{ad}XX");
+    let original = [88, 0xad, 88, 88];
+    let mut system = System::new(SystemOptions {
+        font_catalogue: FontCatalogueMode::RegisteredOnly,
+    })
+    .unwrap();
+    system.register_fonts(bytes.clone()).unwrap();
+    let unbroken = system
+        .layout(
+            source.clone(),
+            style(),
+            crate::Options {
+                quantize: false,
+                ..crate::Options::default()
+            },
+        )
+        .unwrap();
+    let expected_unbroken = vec![
+        (0, Range::new(0, 1), 58, 20.0),
+        (0, Range::new(2, 3), 58, 20.0),
+        (0, Range::new(3, 4), 58, 20.0),
+    ];
+    assert_eq!(unbroken.source().text().code_units(), original);
+    assert_eq!(raw_glyphs(&unbroken, &bytes), expected_unbroken);
+    assert_eq!(raw_line_advances(&unbroken), [60.0]);
+    assert_eq!(
+        unbroken
+            .lines()
+            .iter()
+            .map(|line| line.range())
+            .collect::<Vec<_>>(),
+        [Range::new(0, 4)]
+    );
+
+    let wrapped = system
+        .layout(
+            source.clone(),
+            style(),
+            crate::Options {
+                width: Some(40.0),
+                quantize: false,
+                ..crate::Options::default()
+            },
+        )
+        .unwrap();
+    drop(system);
+    // The subsequent narrow request cannot mutate the earlier font/line result.
+    assert_eq!(raw_glyphs(&unbroken, &bytes), expected_unbroken);
+    assert_eq!(unbroken.metrics().full_width(), 60.0);
+    assert_eq!(wrapped.source(), &source);
+    assert_eq!(wrapped.source().text().code_units(), original);
+    let processed = crate::process_source_whitespace(
+        wrapped.source().clone(),
+        style(),
+        crate::DocumentSegmentBreaks::LineFeedDefault,
+    )
+    .unwrap();
+    let mut plain = Vec::new();
+    for item in processed.plaintext_items(crate::Affinity::Before) {
+        match item {
+            PlaintextItem::Text(text) => plain.extend_from_slice(text.code_units()),
+            PlaintextItem::InlineBox(_) => panic!("raw fixture has no boxes"),
+        }
+    }
+    assert_eq!(plain, original);
+    let actual = (
+        wrapped
+            .lines()
+            .iter()
+            .map(|line| line.range())
+            .collect::<Vec<_>>(),
+        raw_line_advances(&wrapped),
+        raw_glyphs(&wrapped, &bytes),
+    );
+    // A taken initial manual SHY contributes its actual used indication. The
+    // first line is X20+hyphen20, and the continuation contains the other XX40.
+    // This qualifier uses only the unchanged public raw System::layout front.
+    assert_eq!(
+        actual,
+        (
+            vec![Range::new(0, 2), Range::new(2, 4)],
+            vec![40.0, 40.0],
+            vec![
+                (0, Range::new(0, 1), 58, 20.0),
+                (0, Range::new(2, 2), hyphen, 20.0),
+                (1, Range::new(2, 3), 58, 20.0),
+                (1, Range::new(3, 4), 58, 20.0)
+            ],
+        )
+    );
+    assert_eq!(wrapped.metrics().full_width(), 40.0);
+    assert!(!wrapped.metrics().overflow());
+    let selection = crate::Selection::new(
+        crate::Cursor::new(0, crate::Affinity::After),
+        crate::Cursor::new(4, crate::Affinity::Before),
+    );
+    assert_eq!(wrapped.selection(selection).unwrap().rects().len(), 2);
+    assert_eq!(wrapped.source().text().code_units(), original);
+}
+#[test]
+fn raw_manual_shy_takes_primary_u2010_in_the_real_line_budget() {
+    raw_bare_shy(true);
+}
+#[test]
+fn raw_manual_shy_takes_fallback_u002d_in_the_real_line_budget() {
+    raw_bare_shy(false);
+}
