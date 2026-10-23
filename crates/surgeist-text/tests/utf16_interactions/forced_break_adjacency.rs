@@ -17,6 +17,16 @@ fn prepare_paragraph(
     transparent_chain: bool,
     white_space: WhiteSpace,
 ) -> PreparedText {
+    prepare_paragraph_at(text, kinds, transparent_chain, white_space, 0)
+}
+
+fn prepare_paragraph_at(
+    text: &str,
+    kinds: &[ParagraphControlKind],
+    transparent_chain: bool,
+    white_space: WhiteSpace,
+    control_at: usize,
+) -> PreparedText {
     let mut source = Source::identified(text, SOURCE_ID, SOURCE_REVISION);
     source.inline_box(InlineBox::new(
         Id::from_u64(40),
@@ -67,7 +77,10 @@ fn prepare_paragraph(
         controls: kinds
             .iter()
             .cloned()
-            .map(|kind| ParagraphControl { at: 0, kind })
+            .map(|kind| ParagraphControl {
+                at: control_at,
+                kind,
+            })
             .collect(),
         boundary_policies: [
             ParagraphBoundaryDefinition::AtomicBefore(0),
@@ -90,7 +103,7 @@ fn prepare_paragraph(
                             control,
                             origin: None,
                         },
-                        0,
+                        control_at,
                         vec![Text::from("-")],
                     )
                     .unwrap(),
@@ -133,7 +146,7 @@ fn prepare_paragraph(
     let controls: Vec<_> = prepared
         .control_views()
         .map(|control| {
-            assert_eq!(control.source_position().get(), 0);
+            assert_eq!(control.source_position().get(), control_at);
             let handle = control.handle();
             assert_eq!(handle.prepared_text(), prepared);
             handle
@@ -360,7 +373,36 @@ fn optional_and_discretionary_owners_keep_permission_without_a_hard_neighbor() {
             PreparedBreakKind::Discretionary,
         ),
     ] {
-        let prepared = prepare_paragraph("X", &[kind], false, WhiteSpace::Preserve);
+        let short = prepare_paragraph(
+            "X",
+            std::slice::from_ref(&kind),
+            false,
+            WhiteSpace::Preserve,
+        );
+        if expected == PreparedBreakKind::Discretionary {
+            assert!(
+                !short
+                    .opportunity_views()
+                    .any(|v| v.kind() == PreparedBreakKind::Discretionary),
+                "no before/after lexical counts at the original beginning control"
+            );
+        }
+        if expected == PreparedBreakKind::Allowed {
+            let control = short.control_views().next().unwrap().handle();
+            let after = short
+                .participants()
+                .position(|p| p == PreparedParticipant::Control(control.clone()))
+                .unwrap()
+                + 1;
+            assert!(
+                short
+                    .opportunity_views()
+                    .any(|v| v.boundary().view().participant_offset() == after
+                        && v.kind() == PreparedBreakKind::Allowed),
+                "the original atomic-adjacent OptionalBreak at zero keeps its independent permission"
+            );
+        }
+        let prepared = prepare_paragraph_at("AXXXX", &[kind], false, WhiteSpace::Preserve, 2);
         let control = prepared.control_views().next().unwrap().handle();
         let after_control = prepared
             .participants()

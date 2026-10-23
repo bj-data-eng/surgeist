@@ -527,14 +527,14 @@ fn native_hard_separator_precedence_keeps_earlier_soft_control_owners() {
                 .unwrap(),
             );
         }
-        assert_eq!(
-            prepare_opportunity_inventory(input),
-            [
-                (1, expected),
-                (3, PreparedBreakKind::Forced),
-                (4, PreparedBreakKind::ParagraphEnd),
-            ]
-        );
+        let mut expected_inventory = vec![
+            (3, PreparedBreakKind::Forced),
+            (4, PreparedBreakKind::ParagraphEnd),
+        ];
+        if expected == PreparedBreakKind::Allowed {
+            expected_inventory.insert(0, (1, expected));
+        }
+        assert_eq!(prepare_opportunity_inventory(input), expected_inventory);
     }
 }
 
@@ -1011,14 +1011,14 @@ fn explicit_transparent_half_pair_affinity_does_not_split_but_inflow_really_does
 
 #[test]
 fn selected_source_replacement_is_actual_retained_text_with_zero_authored_extent() {
-    let mut input = paragraph(Source::new("A\u{ad}B"));
+    let mut input = paragraph(Source::new("AX\u{ad}BBB"));
     input.replacements = vec![
         ParagraphReplacement::resolved_native_logical_before(
             ParagraphReplacementDefinition::Source {
                 origin: 0,
-                source: Range::new(1, 2),
+                source: Range::new(2, 3),
             },
-            2,
+            3,
             vec![Text::from("- ")],
         )
         .unwrap(),
@@ -1054,8 +1054,8 @@ fn selected_source_replacement_is_actual_retained_text_with_zero_authored_extent
                 .collect(),
         })
         .unwrap();
-    assert_eq!(selected.inner.presentation.projection.text, "A- ");
-    assert_eq!(selected.inner.presentation.source, Range::new(0, 2));
+    assert_eq!(selected.inner.presentation.projection.text, "AX- ");
+    assert_eq!(selected.inner.presentation.source, Range::new(0, 3));
     let replacement: Vec<_> = selected
         .inner
         .presentation
@@ -1067,10 +1067,10 @@ fn selected_source_replacement_is_actual_retained_text_with_zero_authored_extent
     assert!(
         replacement
             .iter()
-            .all(|u| u.source == Range::new(2, 2) && u.participant.is_none())
+            .all(|u| u.source == Range::new(3, 3) && u.participant.is_none())
     );
     assert!(replacement[1].eligible_space);
-    assert_eq!(replacement[1].presentation, Range::new(2, 3));
+    assert_eq!(replacement[1].presentation, Range::new(3, 4));
     system.refresh_fonts().unwrap();
     drop(system);
     let (shaped, _) = crate::engine::shape::finalize(
@@ -1088,7 +1088,7 @@ fn selected_source_replacement_is_actual_retained_text_with_zero_authored_extent
         shaped
             .glyphs
             .iter()
-            .filter(|g| g.source == Range::new(2, 2))
+            .filter(|g| g.source == Range::new(3, 3))
             .count(),
         2
     );
@@ -1096,11 +1096,10 @@ fn selected_source_replacement_is_actual_retained_text_with_zero_authored_extent
 
 #[test]
 fn source_less_discretionary_control_and_empty_replacement_keep_real_owners() {
-    let mut input = paragraph(Source::new(""));
-    input.origins.clear();
+    let mut input = paragraph(Source::new("AXXXX"));
     input.anchor_order.clear();
     input.controls = vec![ParagraphControl {
-        at: 0,
+        at: 2,
         kind: ParagraphControlKind::DiscretionaryBreak {
             style: Box::new(paragraph(Source::new("")).base_style),
         },
@@ -1115,7 +1114,7 @@ fn source_less_discretionary_control_and_empty_replacement_keep_real_owners() {
                 control: 0,
                 origin: None,
             },
-            0,
+            2,
             vec![Text::from("")],
         )
         .unwrap(),
@@ -1134,7 +1133,10 @@ fn source_less_discretionary_control_and_empty_replacement_keep_real_owners() {
         .select(LineSelectionRequest {
             start: prepared.boundary_views().next().unwrap().handle(),
             end: termination.view().boundary(),
-            participants: prepared.participants().collect(),
+            participants: prepared
+                .participants()
+                .take(termination.view().boundary().view().participant_offset())
+                .collect(),
             termination: crate::PreparedTermination::Ordinary(termination),
             alternative: Some(alternative),
             context: context(LineEnd::Soft),
@@ -1150,7 +1152,11 @@ fn source_less_discretionary_control_and_empty_replacement_keep_real_owners() {
         })
         .unwrap();
     let fragments = selected_origin_intersections(&selected.inner);
-    assert_eq!(fragments.len(), 2);
+    assert_eq!(fragments.len(), 4);
+    let fragments: Vec<_> = fragments
+        .into_iter()
+        .filter(|f| !matches!(f.owner, FragmentOwner::Origin(_)))
+        .collect();
     assert!(matches!(fragments[0].owner, FragmentOwner::Alternative(0)));
     assert!(matches!(fragments[1].owner, FragmentOwner::Control(0)));
     assert!(fragments.iter().all(|f| f.source.is_none()));
@@ -1159,7 +1165,7 @@ fn source_less_discretionary_control_and_empty_replacement_keep_real_owners() {
         &mut crate::engine::shape::ShapeContext::default(),
     )
     .unwrap();
-    assert!(shaped.glyphs.is_empty());
+    assert_eq!(shaped.glyphs.len(), 2);
     assert_eq!(
         shaped
             .items

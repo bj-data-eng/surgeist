@@ -114,7 +114,10 @@ fn select(prepared: &PreparedText, alternative: Option<PreparedAlternative>) -> 
         .select(LineSelectionRequest {
             start: prepared.boundary_views().next().unwrap().handle(),
             end: termination.view().boundary(),
-            participants: prepared.participants().collect(),
+            participants: prepared
+                .participants()
+                .take(termination.view().boundary().view().participant_offset())
+                .collect(),
             termination: crate::PreparedTermination::Ordinary(termination),
             alternative,
             atomics,
@@ -396,9 +399,9 @@ fn neutral_controls_are_transparent_while_real_inflow_allocations_bound_spaces()
 
 #[test]
 fn computed_replacement_spaces_keep_actual_alternative_and_empty_source_anchors() {
-    let mut captured = input("", WhiteSpace::Collapse);
+    let mut captured = input("XXXXX", WhiteSpace::Collapse);
     captured.controls.push(ParagraphControl {
-        at: 0,
+        at: 2,
         kind: ParagraphControlKind::DiscretionaryBreak {
             style: Box::new(captured.base_style.clone()),
         },
@@ -413,7 +416,7 @@ fn computed_replacement_spaces_keep_actual_alternative_and_empty_source_anchors(
                 control: 0,
                 origin: None,
             },
-            0,
+            2,
             vec![Text::from(" X ")],
         )
         .unwrap(),
@@ -429,7 +432,7 @@ fn computed_replacement_spaces_keep_actual_alternative_and_empty_source_anchors(
             slot.owner(),
             SpacingSlotOwner::Alternative(alternative.clone())
         );
-        assert_eq!(slot.source_range(), Range::new(0, 0));
+        assert_eq!(slot.source_range(), Range::new(2, 2));
         assert!(slot.participant().is_none());
     }
     assert_eq!(
@@ -440,12 +443,15 @@ fn computed_replacement_spaces_keep_actual_alternative_and_empty_source_anchors(
                 (range.start(), range.end())
             })
             .collect::<Vec<_>>(),
-        [(0, 1), (2, 3)]
+        [(2, 3), (4, 5)]
     );
     let line = selected.finalize(SpacingAllocations::None).unwrap();
-    assert_eq!(facts(&line), [(EDGE, 0.0), (EDGE, 0.0)]);
-    assert_eq!(line.feedback().advance, 10.0);
-    assert_eq!(prepared.analyzed_source().source().text().code_units(), []);
+    assert_eq!(facts(&line), [(INNER, 10.0), (EDGE, 0.0)]);
+    assert_eq!(line.feedback().advance, 40.0);
+    assert_eq!(
+        prepared.analyzed_source().source().text().code_units(),
+        [88, 88, 88, 88, 88]
+    );
     assert_eq!(
         line.spacing_slots().map(|row| row.slot).collect::<Vec<_>>(),
         slots

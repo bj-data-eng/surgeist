@@ -899,14 +899,14 @@ fn genuinely_connected_original_pair_crosses_origin_boundary_but_not_an_internal
 
 #[test]
 fn contextual_source_defined_replacement_remains_presentation_only() {
-    let mut capture = input("A\u{ad}B", WhiteSpace::Preserve);
+    let mut capture = input("AX\u{ad}BBB", WhiteSpace::Preserve);
     capture.replacements = vec![
         ParagraphReplacement::resolved_native_logical_before(
             ParagraphReplacementDefinition::Source {
                 origin: 0,
-                source: Range::new(1, 2),
+                source: Range::new(2, 3),
             },
-            2,
+            3,
             vec![Text::from("-")],
         )
         .unwrap(),
@@ -921,7 +921,7 @@ fn contextual_source_defined_replacement_remains_presentation_only() {
             end: termination.view().boundary(),
             termination: crate::PreparedTermination::Ordinary(termination),
             alternative: Some(alternative),
-            participants: prepared.participants().take(2).collect(),
+            participants: prepared.participants().take(3).collect(),
             atomics: vec![],
             controls: vec![],
             line_strut: None,
@@ -945,11 +945,11 @@ fn contextual_source_defined_replacement_remains_presentation_only() {
             .run_views()
             .map(|run| run.glyphs().count())
             .sum::<usize>(),
-        2
+        3
     );
     assert_eq!(
         text(result.plaintext_items(Affinity::Before)),
-        [65, 0xad, 66]
+        [65, 88, 0xad, 66, 66, 66]
     );
 }
 

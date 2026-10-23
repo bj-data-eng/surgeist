@@ -568,7 +568,7 @@ fn omitted_soft_space_inside_wide_frame_has_no_physical_outward_overlap() {
 fn selected_replacement_space_and_css_tab_keep_alternative_custody_and_geometry() {
     let mut system = system();
     for replacement in [" ", "\t"] {
-        let mut native = input("X\u{ad}Y", Terminal::BlockEnd, WhiteSpace::Preserve);
+        let mut native = input("XX\u{ad}YYY", Terminal::BlockEnd, WhiteSpace::Preserve);
         native.base_style.tab_size = crate::TabSize::spaces(4.0).unwrap();
         native.tab_reference = Some(
             crate::ParagraphTabReference::new(
@@ -581,9 +581,9 @@ fn selected_replacement_space_and_css_tab_keep_alternative_custody_and_geometry(
             crate::ParagraphReplacement::resolved_native_logical_before(
                 crate::ParagraphReplacementDefinition::Source {
                     origin: 0,
-                    source: Range::new(1, 2),
+                    source: Range::new(2, 3),
                 },
-                2,
+                3,
                 vec![replacement.into()],
             )
             .unwrap(),
@@ -617,10 +617,10 @@ fn selected_replacement_space_and_css_tab_keep_alternative_custody_and_geometry(
             .unwrap()
             .finalize(SpacingAllocations::None)
             .unwrap();
-        let advance = if replacement == " " { 10.0 } else { 30.0 };
+        let advance = if replacement == " " { 10.0 } else { 20.0 };
         assert_eq!(
             (line.feedback().advance, line.measurements().fit().advance()),
-            (10.0 + advance, 10.0)
+            (20.0 + advance, 20.0)
         );
         let row = line.edge_units().last().unwrap();
         assert_eq!(
@@ -637,7 +637,7 @@ fn selected_replacement_space_and_css_tab_keep_alternative_custody_and_geometry(
             [crate::LineEdgeOwner::Alternative(alternative.clone())]
         );
         assert!(
-            matches!(alternative.view().definition(), crate::PreparedAlternativeDefinition::Source { source, .. } if source == Range::new(1, 2))
+            matches!(alternative.view().definition(), crate::PreparedAlternativeDefinition::Source { source, .. } if source == Range::new(2, 3))
         );
         let original = p.origin_views().next().unwrap().handle();
         let baseline = line.feedback().baseline;
@@ -658,9 +658,12 @@ fn selected_replacement_space_and_css_tab_keep_alternative_custody_and_geometry(
             }],
         })
         .unwrap();
-        assert_eq!(layout.source().text().code_units(), &[88, 173, 89]);
+        assert_eq!(
+            layout.source().text().code_units(),
+            &[88, 88, 173, 89, 89, 89]
+        );
         let fragments = layout
-            .source_range_fragments(&original, Range::new(1, 2))
+            .source_range_fragments(&original, Range::new(2, 3))
             .unwrap();
         let units: Vec<_> = fragments.units().collect();
         assert_eq!(units.len(), 1);
@@ -670,7 +673,7 @@ fn selected_replacement_space_and_css_tab_keep_alternative_custody_and_geometry(
                 .pieces()
                 .map(|p| p.advance_edges())
                 .collect::<Vec<_>>(),
-            [(10.0, 10.0 + advance)]
+            [(20.0, 20.0 + advance)]
         );
     }
 }

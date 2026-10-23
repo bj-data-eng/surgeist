@@ -13,12 +13,12 @@ fn arabic_system() -> System {
     })
     .unwrap();
     value
-        .register_fonts(crate::shaping_test_fonts::arabic_ahem())
+        .register_fonts(crate::shaping_test_fonts::arabic_nonjoining_ahem())
         .unwrap();
     value
 }
 fn placed_forms(layout: &crate::Layout) -> Vec<(Range, u32)> {
-    let fixture = crate::shaping_test_fonts::arabic_ahem();
+    let fixture = crate::shaping_test_fonts::arabic_nonjoining_ahem();
     for run in layout.run_views() {
         assert_eq!(run.face().bytes(), fixture);
         assert_eq!(run.font_size(), 20.0);
@@ -215,7 +215,7 @@ fn source_glyphs(line: &FinalizedLine, fixture: &[u8]) -> Vec<(Range, u32, f32)>
 fn beh_forms(line: &FinalizedLine) -> Vec<(Range, u32, f32)> {
     let prepared = line.prepared_text();
     let source = prepared.analyzed_source();
-    source_glyphs(line, &crate::shaping_test_fonts::arabic_ahem())
+    source_glyphs(line, &crate::shaping_test_fonts::arabic_nonjoining_ahem())
         .into_iter()
         .filter(|(range, _, _)| {
             source.source().text().code_units().get(range.start) == Some(&0x628)
@@ -587,11 +587,15 @@ fn child_domain_hole_is_excluded_from_parent_joining_context() {
     assert_eq!(beh_forms(&first), [(Range::new(0, 1), 100, 20.0)]);
     assert_eq!(beh_forms(&second), [(Range::new(2, 3), 82, 20.0)]);
     assert_eq!(
-        source_glyphs(&first, &crate::shaping_test_fonts::arabic_ahem()).len(),
+        source_glyphs(&first, &crate::shaping_test_fonts::arabic_nonjoining_ahem()).len(),
         1
     );
     assert_eq!(
-        source_glyphs(&second, &crate::shaping_test_fonts::arabic_ahem()).len(),
+        source_glyphs(
+            &second,
+            &crate::shaping_test_fonts::arabic_nonjoining_ahem()
+        )
+        .len(),
         1
     );
     assert_eq!(prepared.analyzed_source().source(), &source);
@@ -608,7 +612,7 @@ fn discretionary_input(
         paragraph::ParagraphReplacementDefinition::Source { source, .. } => source.end,
         paragraph::ParagraphReplacementDefinition::Control { .. } => {
             input.controls.push(paragraph::ParagraphControl {
-                at: 2,
+                at: 3,
                 kind: paragraph::ParagraphControlKind::DiscretionaryBreak {
                     style: Box::new(input.base_style.clone()),
                 },
@@ -617,7 +621,7 @@ fn discretionary_input(
                 item: paragraph::ParagraphAnchorItem::Control(0),
                 affinity: crate::Affinity::After,
             });
-            2
+            3
         }
     };
     input.replacements.push(
@@ -682,13 +686,47 @@ fn original_beh_forms(line: &FinalizedLine) -> OriginalBehForms {
         .collect()
 }
 
-fn selected_source_shy_forms(text: &str) -> (OriginalBehForms, OriginalBehForms) {
+#[test]
+fn short_discretionary_arabic_keeps_unbroken_forms_without_an_admitted_ending() {
     let source = Source::new("\u{628}\u{628}\u{ad}\u{628}");
     let input = discretionary_input(
         source.clone(),
         paragraph::ParagraphReplacementDefinition::Source {
             origin: 0,
             source: Range::new(2, 3),
+        },
+        "-",
+    );
+    let prepared = native_prepare(&mut arabic_system(), input);
+    assert!(
+        !prepared
+            .opportunity_views()
+            .any(|v| v.kind() == PreparedBreakKind::Discretionary)
+    );
+    let whole = selected_line(
+        &prepared,
+        prepared.boundary_views().next().unwrap().handle(),
+        ending(&prepared, PreparedBreakKind::ParagraphEnd, 4),
+    )
+    .unwrap();
+    assert_eq!(
+        original_beh_forms(&whole),
+        [
+            (Range::new(0, 1), 100, 20.0),
+            (Range::new(1, 2), 277, 20.0),
+            (Range::new(3, 4), 82, 20.0)
+        ]
+    );
+    assert_eq!(prepared.analyzed_source().source(), &source);
+}
+
+fn selected_source_shy_forms(text: &str) -> (OriginalBehForms, OriginalBehForms) {
+    let source = Source::new("\u{621}\u{628}\u{628}\u{ad}\u{628}\u{621}");
+    let input = discretionary_input(
+        source.clone(),
+        paragraph::ParagraphReplacementDefinition::Source {
+            origin: 0,
+            source: Range::new(3, 4),
         },
         text,
     );
@@ -698,7 +736,7 @@ fn selected_source_shy_forms(text: &str) -> (OriginalBehForms, OriginalBehForms)
     let whole = selected_line(
         &prepared,
         start.clone(),
-        ending(&prepared, PreparedBreakKind::ParagraphEnd, 4),
+        ending(&prepared, PreparedBreakKind::ParagraphEnd, 6),
     )
     .unwrap();
     // Literal fixture GSUB isol/init/medi/fina=35/100/277/82. Text4's
@@ -706,9 +744,9 @@ fn selected_source_shy_forms(text: &str) -> (OriginalBehForms, OriginalBehForms)
     assert_eq!(
         original_beh_forms(&whole),
         [
-            (Range::new(0, 1), 100, 20.0),
-            (Range::new(1, 2), 277, 20.0),
-            (Range::new(3, 4), 82, 20.0)
+            (Range::new(1, 2), 100, 20.0),
+            (Range::new(2, 3), 277, 20.0),
+            (Range::new(4, 5), 82, 20.0)
         ]
     );
     assert!(whole.selected_line().request().alternative.is_none());
@@ -717,7 +755,7 @@ fn selected_source_shy_forms(text: &str) -> (OriginalBehForms, OriginalBehForms)
     let continuation = selected_line(
         &prepared,
         first.selected_line().request().end.clone(),
-        ending(&prepared, PreparedBreakKind::ParagraphEnd, 4),
+        ending(&prepared, PreparedBreakKind::ParagraphEnd, 6),
     )
     .unwrap();
     assert_eq!(prepared.analyzed_source().source(), &source);
@@ -733,8 +771,8 @@ fn selected_source_shy_nonempty_replacement_keeps_original_joining() {
     assert_eq!(
         selected_source_shy_forms("-"),
         (
-            vec![(Range::new(0, 1), 100, 20.0), (Range::new(1, 2), 277, 20.0)],
-            vec![(Range::new(3, 4), 82, 20.0)]
+            vec![(Range::new(1, 2), 100, 20.0), (Range::new(2, 3), 277, 20.0)],
+            vec![(Range::new(4, 5), 82, 20.0)]
         )
     );
 }
@@ -744,20 +782,20 @@ fn selected_source_shy_empty_replacement_keeps_original_joining() {
     assert_eq!(
         selected_source_shy_forms(""),
         (
-            vec![(Range::new(0, 1), 100, 20.0), (Range::new(1, 2), 277, 20.0)],
-            vec![(Range::new(3, 4), 82, 20.0)]
+            vec![(Range::new(1, 2), 100, 20.0), (Range::new(2, 3), 277, 20.0)],
+            vec![(Range::new(4, 5), 82, 20.0)]
         )
     );
 }
 
 #[test]
 fn selected_source_shy_on_continuation_keeps_both_original_context_sides() {
-    let source = Source::new("\u{628}\u{628}\u{ad}\u{628}\u{ad}\u{628}");
+    let source = Source::new("\u{621}\u{628}\u{628}\u{ad}\u{628}\u{ad}\u{628}\u{621}");
     let mut input = discretionary_input(
         source,
         paragraph::ParagraphReplacementDefinition::Source {
             origin: 0,
-            source: Range::new(2, 3),
+            source: Range::new(3, 4),
         },
         "-",
     );
@@ -765,9 +803,9 @@ fn selected_source_shy_on_continuation_keeps_both_original_context_sides() {
         paragraph::ParagraphReplacement::resolved_native_logical_before(
             paragraph::ParagraphReplacementDefinition::Source {
                 origin: 0,
-                source: Range::new(4, 5),
+                source: Range::new(5, 6),
             },
-            5,
+            6,
             vec![crate::Text::from("-")],
         )
         .unwrap(),
@@ -775,15 +813,15 @@ fn selected_source_shy_on_continuation_keeps_both_original_context_sides() {
     let mut system = arabic_system();
     let prepared = native_prepare(&mut system, input);
     let start = prepared.boundary_views().next().unwrap().handle();
-    let end = ending(&prepared, PreparedBreakKind::ParagraphEnd, 6);
+    let end = ending(&prepared, PreparedBreakKind::ParagraphEnd, 8);
     let whole = selected_line(&prepared, start.clone(), end.clone()).unwrap();
     assert_eq!(
         original_beh_forms(&whole),
         [
-            (Range::new(0, 1), 100, 20.0),
-            (Range::new(1, 2), 277, 20.0),
-            (Range::new(3, 4), 277, 20.0),
-            (Range::new(5, 6), 82, 20.0)
+            (Range::new(1, 2), 100, 20.0),
+            (Range::new(2, 3), 277, 20.0),
+            (Range::new(4, 5), 277, 20.0),
+            (Range::new(6, 7), 82, 20.0)
         ]
     );
     let first = discretionary_line(&prepared, start).unwrap();
@@ -793,8 +831,8 @@ fn selected_source_shy_on_continuation_keeps_both_original_context_sides() {
     assert_eq!(
         (original_beh_forms(&middle), original_beh_forms(&last)),
         (
-            vec![(Range::new(3, 4), 277, 20.0)],
-            vec![(Range::new(5, 6), 82, 20.0)]
+            vec![(Range::new(4, 5), 277, 20.0)],
+            vec![(Range::new(6, 7), 82, 20.0)]
         )
     );
 }
@@ -803,7 +841,7 @@ fn selected_control_forms(text: &str) -> Vec<(OriginalBehForms, OriginalBehForms
     [None, Some(0)]
         .into_iter()
         .map(|origin| {
-            let source = Source::new("\u{628}\u{628}\u{628}");
+            let source = Source::new("\u{621}\u{628}\u{628}\u{628}\u{621}");
             let input = discretionary_input(
                 source.clone(),
                 paragraph::ParagraphReplacementDefinition::Control { control: 0, origin },
@@ -815,15 +853,15 @@ fn selected_control_forms(text: &str) -> Vec<(OriginalBehForms, OriginalBehForms
             let whole = selected_line(
                 &prepared,
                 start.clone(),
-                ending(&prepared, PreparedBreakKind::ParagraphEnd, 3),
+                ending(&prepared, PreparedBreakKind::ParagraphEnd, 5),
             )
             .unwrap();
             assert_eq!(
                 original_beh_forms(&whole),
                 [
-                    (Range::new(0, 1), 100, 20.0),
-                    (Range::new(1, 2), 277, 20.0),
-                    (Range::new(2, 3), 82, 20.0)
+                    (Range::new(1, 2), 100, 20.0),
+                    (Range::new(2, 3), 277, 20.0),
+                    (Range::new(3, 4), 82, 20.0)
                 ]
             );
             drop(system);
@@ -831,7 +869,7 @@ fn selected_control_forms(text: &str) -> Vec<(OriginalBehForms, OriginalBehForms
             let continuation = selected_line(
                 &prepared,
                 first.selected_line().request().end.clone(),
-                ending(&prepared, PreparedBreakKind::ParagraphEnd, 3),
+                ending(&prepared, PreparedBreakKind::ParagraphEnd, 5),
             )
             .unwrap();
             assert_eq!(prepared.analyzed_source().source(), &source);
@@ -846,8 +884,8 @@ fn selected_control_forms(text: &str) -> Vec<(OriginalBehForms, OriginalBehForms
 #[test]
 fn selected_control_nonempty_replacement_keeps_original_joining_without_invented_origin() {
     let expected = (
-        vec![(Range::new(0, 1), 100, 20.0), (Range::new(1, 2), 277, 20.0)],
-        vec![(Range::new(2, 3), 82, 20.0)],
+        vec![(Range::new(1, 2), 100, 20.0), (Range::new(2, 3), 277, 20.0)],
+        vec![(Range::new(3, 4), 82, 20.0)],
     );
     assert_eq!(selected_control_forms("-"), [expected.clone(), expected]);
 }
@@ -855,20 +893,20 @@ fn selected_control_nonempty_replacement_keeps_original_joining_without_invented
 #[test]
 fn selected_control_empty_replacement_keeps_original_joining_without_invented_origin() {
     let expected = (
-        vec![(Range::new(0, 1), 100, 20.0), (Range::new(1, 2), 277, 20.0)],
-        vec![(Range::new(2, 3), 82, 20.0)],
+        vec![(Range::new(1, 2), 100, 20.0), (Range::new(2, 3), 277, 20.0)],
+        vec![(Range::new(3, 4), 82, 20.0)],
     );
     assert_eq!(selected_control_forms(""), [expected.clone(), expected]);
 }
 
 #[test]
 fn selected_source_shy_after_forced_boundary_keeps_only_same_domain_context() {
-    let source = Source::new("\u{628}\u{628}\u{ad}\u{628}");
+    let source = Source::new("\u{628}\u{621}\u{621}\u{628}\u{ad}\u{628}\u{621}");
     let mut input = discretionary_input(
         source,
         paragraph::ParagraphReplacementDefinition::Source {
             origin: 0,
-            source: Range::new(2, 3),
+            source: Range::new(4, 5),
         },
         "-",
     );
@@ -893,7 +931,7 @@ fn selected_source_shy_after_forced_boundary_keeps_only_same_domain_context() {
     let continuation = selected_line(
         &prepared,
         first.selected_line().request().end.clone(),
-        ending(&prepared, PreparedBreakKind::ParagraphEnd, 4),
+        ending(&prepared, PreparedBreakKind::ParagraphEnd, 7),
     )
     .unwrap();
     assert_eq!(original_beh_forms(&forced), [(Range::new(0, 1), 35, 20.0)]);
@@ -903,33 +941,33 @@ fn selected_source_shy_after_forced_boundary_keeps_only_same_domain_context() {
             original_beh_forms(&continuation)
         ),
         (
-            vec![(Range::new(1, 2), 100, 20.0)],
-            vec![(Range::new(3, 4), 82, 20.0)]
+            vec![(Range::new(3, 4), 100, 20.0)],
+            vec![(Range::new(5, 6), 82, 20.0)]
         )
     );
 }
 
 #[test]
 fn selected_source_shy_context_stops_at_actual_disconnected_origin() {
-    let source = Source::new("\u{628}\u{628}\u{ad}\u{628}");
+    let source = Source::new("\u{621}\u{628}\u{628}\u{ad}\u{621}\u{621}\u{628}");
     let mut input = discretionary_input(
         source.clone(),
         paragraph::ParagraphReplacementDefinition::Source {
             origin: 0,
-            source: Range::new(2, 3),
+            source: Range::new(3, 4),
         },
         "-",
     );
-    input.origins[0].local = Range::new(0, 3);
-    input.origins[0].aggregate = Range::new(0, 3);
+    input.origins[0].local = Range::new(0, 6);
+    input.origins[0].aggregate = Range::new(0, 6);
     input.origins.push(paragraph::ParagraphOrigin {
         source,
-        local: Range::new(3, 4),
-        aggregate: Range::new(3, 4),
+        local: Range::new(6, 7),
+        aggregate: Range::new(6, 7),
         kind: paragraph::ParagraphOriginKind::Authored,
     });
     input.connections.push(paragraph::ParagraphConnection {
-        at: 3,
+        at: 6,
         kind: paragraph::ParagraphConnectionKind::Disconnected,
     });
     let mut system = arabic_system();
@@ -942,27 +980,30 @@ fn selected_source_shy_context_stops_at_actual_disconnected_origin() {
     let continuation = selected_line(
         &prepared,
         first.selected_line().request().end.clone(),
-        ending(&prepared, PreparedBreakKind::ParagraphEnd, 4),
+        ending(&prepared, PreparedBreakKind::ParagraphEnd, 7),
     )
     .unwrap();
     assert_eq!(
         original_beh_forms(&first),
-        [(Range::new(0, 1), 100, 20.0), (Range::new(1, 2), 82, 20.0)]
+        [(Range::new(1, 2), 100, 20.0), (Range::new(2, 3), 82, 20.0)]
     );
     assert_eq!(
         original_beh_forms(&continuation),
-        [(Range::new(3, 4), 35, 20.0)]
+        [(Range::new(6, 7), 35, 20.0)]
     );
 }
 
 #[test]
 fn selected_source_shy_complete_original_context_preserves_joining_and_prior_results() {
-    let source = Source::new(format!("\u{628}\u{ad}{}\u{628}", "\u{61c}".repeat(6)));
+    let source = Source::new(format!(
+        "\u{621}\u{628}\u{628}\u{ad}{}\u{628}\u{621}",
+        "\u{61c}".repeat(6)
+    ));
     let input = discretionary_input(
         source.clone(),
         paragraph::ParagraphReplacementDefinition::Source {
             origin: 0,
-            source: Range::new(1, 2),
+            source: Range::new(3, 4),
         },
         "",
     );
@@ -971,9 +1012,13 @@ fn selected_source_shy_complete_original_context_preserves_joining_and_prior_res
     let stats = system.stats();
     let catalogue = system.font_catalogue_identity().clone();
     let start = prepared.boundary_views().next().unwrap().handle();
-    let end = ending(&prepared, PreparedBreakKind::ParagraphEnd, 9);
+    let end = ending(&prepared, PreparedBreakKind::ParagraphEnd, 12);
     let whole = selected_line(&prepared, start.clone(), end.clone()).unwrap();
-    let expected = vec![(Range::new(0, 1), 100, 20.0), (Range::new(8, 9), 82, 20.0)];
+    let expected = vec![
+        (Range::new(1, 2), 100, 20.0),
+        (Range::new(2, 3), 277, 20.0),
+        (Range::new(10, 11), 82, 20.0),
+    ];
     assert_eq!(original_beh_forms(&whole), expected);
     let trial = discretionary_line(&prepared, start.clone());
     let retry = selected_line(&prepared, start, end).unwrap();
@@ -986,6 +1031,6 @@ fn selected_source_shy_complete_original_context_preserves_joining_and_prior_res
     // The old five-cell external post-context limit does not bound that body.
     assert_eq!(
         original_beh_forms(&trial.unwrap()),
-        [(Range::new(0, 1), 100, 20.0)]
+        [(Range::new(1, 2), 100, 20.0), (Range::new(2, 3), 277, 20.0)]
     );
 }

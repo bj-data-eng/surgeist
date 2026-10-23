@@ -62,6 +62,11 @@ uses the same selected-line and placement machinery.
    an empty replacement is valid, and a natural end does not imply a hyphen.
    `Style::hyphens` defaults to `Manual`; `None` suppresses both bare SHY and
    explicit hyphenation groups, while `Auto` currently adds no dictionary points.
+   Native preparation applies initial total/before/after limits of 5/2/2,
+   including empty indications; see the canonical
+   [count-unit policy](../../../docs/text-layout-contract.md#automatic-resources-word-custody-and-initial-limits).
+   Raw `System::layout` and `layout_analyzed` retain their distinct unconstrained
+   count operation.
    `ParagraphReplacement::style_driven` resolves the actual defining style;
    `resolved_native_logical_before` captures one nonempty ordered list (individual
    strings may be empty). A discretionary control owns its complete boxed Style.

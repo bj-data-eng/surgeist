@@ -16,8 +16,9 @@ use crate::{Range, projection::SourceProjection};
 use super::paragraph::{ParagraphAnchor, ParagraphAnchorItem, ParagraphControlKind};
 
 /// Immutable logical participants and their exact occurrence/boundary tables.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub(crate) struct PreparedTables {
+    pub(crate) profile: crate::engine::PreparationProfile,
     pub(crate) participants: Vec<ParticipantData>,
     pub(crate) units: Vec<UnitData>,
     pub(crate) atomics: Vec<AtomicData>,
@@ -234,6 +235,7 @@ pub(crate) fn prepare_tables(
     styles: &[ResolvedStyleRun],
     analyzed: &AnalyzedData,
     shaped: &ShapedData,
+    profile: crate::engine::PreparationProfile,
 ) -> crate::Result<PreparedTables> {
     use crate::engine::analysis::wrapping::Event;
     let projection = &analyzed.projection;
@@ -254,7 +256,18 @@ pub(crate) fn prepare_tables(
             ShapedItem::Anchor { .. } => {}
         }
     }
-    let mut tables = PreparedTables::default();
+    let mut tables = PreparedTables {
+        profile,
+        participants: Vec::new(),
+        units: Vec::new(),
+        atomics: Vec::new(),
+        controls: Vec::new(),
+        control_rows: Vec::new(),
+        boundaries: Vec::new(),
+        opportunities: Vec::new(),
+        alternatives: Vec::new(),
+        soft_preliminary_items: std::collections::BTreeSet::new(),
+    };
     let mut seen_items = vec![false; shaped.items.len()];
     let mut item_prefix = 0;
     let mut item_count = 0;
@@ -547,7 +560,13 @@ fn issue_opportunities(
             let before_hard = analyzed.paragraph.base_direction.is_some()
                 && analyzed.logical.relations[analyzed.logical.cuts[boundary.participant]]
                     .before_hard_separator;
-            let eligible = !before_hard
+            let count_admitted = tables.profile == crate::engine::PreparationProfile::Standalone
+                || analyzed
+                    .words
+                    .at(boundary.atom)
+                    .is_some_and(|counts| counts.admits_initial());
+            let eligible = count_admitted
+                && !before_hard
                 && authored.hyphens != crate::Hyphens::None
                 && authored.wrap == crate::Wrap::Word
                 && (control.is_some() || wrapping_allowed(analyzed, boundary)?);
@@ -914,7 +933,7 @@ pub(crate) fn prepare_alternatives(
             original_atoms,
             base_insertion,
         } = replacement_projection(analyzed, input)?;
-        let analysis = crate::engine::analysis::analyze(
+        let (analysis, _) = crate::engine::analysis::analyze(
             &projection,
             &analyzed.styles,
             analyzed.processed.source().boxes(),

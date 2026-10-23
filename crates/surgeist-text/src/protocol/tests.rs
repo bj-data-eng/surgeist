@@ -2,6 +2,7 @@
 
 mod automatic_opportunities;
 mod conditional;
+mod count_admission;
 mod hyphenation_policy;
 mod joining_context;
 mod joining_positioning;

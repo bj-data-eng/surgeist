@@ -198,11 +198,11 @@ fn prepared_text_fractional_rounding_preserves_issued_owner_and_selected_alterna
         };
         let style = crate::test_support::text::ahem_style(8.25, 10.0);
         // Ahem X and hyphen have one-em advance. A real SHY replacement makes
-        // the first line16.5px; the two following Xs require another line.
+        // the first line24.75px; the three following Xs require another line.
         let batch = prepared_source_batch::<S>(
-            Source::new("X\u{ad}XX"),
+            Source::new("XX\u{ad}XXX"),
             style,
-            AvailableOf::definite(S::from_f64(17.0)),
+            AvailableOf::definite(S::from_f64(25.0)),
             WritingMode::HorizontalTb,
             Direction::Ltr,
             TextAlign::Start,
@@ -210,9 +210,9 @@ fn prepared_text_fractional_rounding_preserves_issued_owner_and_selected_alterna
                 ParagraphReplacement::resolved_native_logical_before(
                     ParagraphReplacementDefinition::Source {
                         origin: 0,
-                        source: Range::new(1, 2),
+                        source: Range::new(2, 3),
                     },
-                    2,
+                    3,
                     vec![Text::from("-")],
                 )
                 .unwrap(),

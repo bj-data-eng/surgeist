@@ -398,10 +398,10 @@ fn finalized_prefix_observes_real_edge_discard_deletion_and_equal_offset_control
 #[test]
 fn finalized_prefix_replacement_is_bundled_with_its_real_defining_control() {
     let prepared = native(
-        "AX",
+        "XAXXX",
         style(),
         vec![ParagraphControl {
-            at: 1,
+            at: 2,
             kind: ParagraphControlKind::DiscretionaryBreak {
                 style: Box::new(style()),
             },
@@ -412,7 +412,7 @@ fn finalized_prefix_replacement_is_bundled_with_its_real_defining_control() {
                     control: 0,
                     origin: None,
                 },
-                1,
+                2,
                 vec![Text::from(" X ")],
             )
             .unwrap(),
@@ -428,15 +428,15 @@ fn finalized_prefix_replacement_is_bundled_with_its_real_defining_control() {
     let control = prepared.control_views().next().unwrap().handle();
     let before = TextSeam::BeforeParticipant(PreparedParticipant::Control(control.clone()));
     let after = TextSeam::AfterParticipant(PreparedParticipant::Control(control));
-    assert_eq!(line.prefix_at(&before).unwrap().advance(), 12.5);
-    assert_eq!(line.prefix_at(&after).unwrap().advance(), 50.0);
+    assert_eq!(line.prefix_at(&before).unwrap().advance(), 25.0);
+    assert_eq!(line.prefix_at(&after).unwrap().advance(), 62.5);
     let rows: Vec<_> = line
         .inner
         .data
         .prefix
         .groups
         .iter()
-        .filter(|g| g.source == Range::new(1, 1))
+        .filter(|g| g.source == Range::new(2, 2))
         .collect();
     assert_eq!(rows.len(), 3);
     for row in rows {
@@ -447,7 +447,7 @@ fn finalized_prefix_replacement_is_bundled_with_its_real_defining_control() {
     }
     // A future original unit is genuinely outside this selected candidate.
     assert!(matches!(
-        line.prefix_at(&seam(&prepared, 2)).unwrap_err().detail(),
+        line.prefix_at(&seam(&prepared, 3)).unwrap_err().detail(),
         Some(ErrorDetail::InvalidTextProtocol {
             reason: ProtocolError::OutsideFinalizedLine
         })
@@ -626,40 +626,79 @@ fn finalized_original_prefix_membership_uses_actual_control_bundle_and_allocated
     );
 
     let prepared = native(
-        "X",
+        "XXXXX",
         style(),
-        vec![ParagraphControl {
-            at: 0,
-            kind: ParagraphControlKind::DiscretionaryBreak {
-                style: Box::new(style()),
-            },
-        }],
+        vec![
+            ParagraphControl {
+                at: 2,
+                kind: ParagraphControlKind::DiscretionaryBreak {
+                    style: Box::new(style())
+                }
+            };
+            2
+        ],
         vec![
             ParagraphReplacement::resolved_native_logical_before(
                 ParagraphReplacementDefinition::Control {
                     control: 0,
                     origin: None,
                 },
-                0,
+                2,
+                vec![Text::from("")],
+            )
+            .unwrap(),
+            ParagraphReplacement::resolved_native_logical_before(
+                ParagraphReplacementDefinition::Control {
+                    control: 1,
+                    origin: None,
+                },
+                2,
                 vec![Text::from("A")],
             )
             .unwrap(),
         ],
     );
-    let alternative = prepared.alternative_views().next().unwrap().handle();
-    let line = selected_end(
+    let first_alternative = prepared.alternative_views().next().unwrap().handle();
+    let first = selected_end(
         &prepared,
-        alternative.view().opportunity(),
-        Some(alternative),
+        first_alternative.view().opportunity(),
+        Some(first_alternative.clone()),
     )
     .finalize(SpacingAllocations::None)
     .unwrap();
-    let control = PreparedParticipant::Control(prepared.control_views().next().unwrap().handle());
+    assert_eq!(first.feedback().advance, 25.0);
+    let alternative = prepared.alternative_views().nth(1).unwrap().handle();
+    let selected = selected_end(
+        &prepared,
+        alternative.view().opportunity(),
+        Some(alternative),
+    );
+    let mut r = selected.request().clone();
+    r.start = first.selected_line().request().end.clone();
+    r.context.start = LineStart::Continuation;
+    r.participants = prepared
+        .participants()
+        .skip(r.start.view().participant_offset())
+        .take(r.end.view().participant_offset() - r.start.view().participant_offset())
+        .collect();
+    r.controls.remove(0);
+    let line = prepared
+        .select(r)
+        .unwrap()
+        .finalize(SpacingAllocations::None)
+        .unwrap();
+    let control = PreparedParticipant::Control(prepared.control_views().nth(1).unwrap().handle());
     assert!(
         !line
             .prefix_at(&TextSeam::BeforeParticipant(control.clone()))
             .unwrap()
             .has_retained_flow_participation()
+    );
+    assert_eq!(
+        line.prefix_at(&TextSeam::BeforeParticipant(control.clone()))
+            .unwrap()
+            .advance(),
+        0.0
     );
     assert!(
         line.prefix_at(&TextSeam::AfterParticipant(control))
@@ -749,35 +788,70 @@ fn finalized_original_prefix_empty_occurrences_inherit_only_actual_preceding_con
 #[test]
 fn finalized_original_prefix_source_replacement_keeps_its_defining_source_bundle() {
     let prepared = native(
-        "\u{ad}X",
+        "XX\u{ad}\u{ad}XXX",
         style(),
         vec![],
         vec![
             ParagraphReplacement::resolved_native_logical_before(
                 ParagraphReplacementDefinition::Source {
                     origin: 0,
-                    source: Range::new(0, 1),
+                    source: Range::new(2, 3),
                 },
-                1,
+                3,
+                vec![Text::from("")],
+            )
+            .unwrap(),
+            ParagraphReplacement::resolved_native_logical_before(
+                ParagraphReplacementDefinition::Source {
+                    origin: 0,
+                    source: Range::new(3, 4),
+                },
+                4,
                 vec![Text::from("A")],
             )
             .unwrap(),
         ],
     );
-    let alternative = prepared.alternative_views().next().unwrap().handle();
-    let line = selected_end(
+    let first_alternative = prepared.alternative_views().next().unwrap().handle();
+    let first = selected_end(
         &prepared,
-        alternative.view().opportunity(),
-        Some(alternative),
+        first_alternative.view().opportunity(),
+        Some(first_alternative.clone()),
     )
     .finalize(SpacingAllocations::None)
     .unwrap();
-    let defining=prepared.participants().find(|p|matches!(p,PreparedParticipant::Text(unit) if unit.view().source_range()==Range::new(0,1))).unwrap();
+    assert_eq!(first.feedback().advance, 25.0);
+    let alternative = prepared.alternative_views().nth(1).unwrap().handle();
+    let selected = selected_end(
+        &prepared,
+        alternative.view().opportunity(),
+        Some(alternative),
+    );
+    let mut r = selected.request().clone();
+    r.start = first.selected_line().request().end.clone();
+    r.context.start = LineStart::Continuation;
+    r.participants = prepared
+        .participants()
+        .skip(r.start.view().participant_offset())
+        .take(r.end.view().participant_offset() - r.start.view().participant_offset())
+        .collect();
+    let line = prepared
+        .select(r)
+        .unwrap()
+        .finalize(SpacingAllocations::None)
+        .unwrap();
+    let defining=prepared.participants().find(|p|matches!(p,PreparedParticipant::Text(unit) if unit.view().source_range()==Range::new(3,4))).unwrap();
     assert!(
         !line
             .prefix_at(&TextSeam::BeforeParticipant(defining.clone()))
             .unwrap()
             .has_retained_flow_participation()
+    );
+    assert_eq!(
+        line.prefix_at(&TextSeam::BeforeParticipant(defining.clone()))
+            .unwrap()
+            .advance(),
+        0.0
     );
     assert!(
         line.prefix_at(&TextSeam::AfterParticipant(defining))
@@ -786,12 +860,12 @@ fn finalized_original_prefix_source_replacement_keeps_its_defining_source_bundle
     );
     assert!(
         !line
-            .prefix_at(&seam(&prepared, 0))
+            .prefix_at(&seam(&prepared, 3))
             .unwrap()
             .has_retained_flow_participation()
     );
     assert!(
-        line.prefix_at(&seam(&prepared, 1))
+        line.prefix_at(&seam(&prepared, 4))
             .unwrap()
             .has_retained_flow_participation()
     );

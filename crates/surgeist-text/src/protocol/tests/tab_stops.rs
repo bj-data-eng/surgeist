@@ -505,7 +505,7 @@ fn selected_replacement_tabs_are_ready_and_keep_definition_custody() {
     let p = css_capture(
         &mut system,
         captured(
-            "A\u{ad}C",
+            "AX\u{ad}CCC",
             owning.clone(),
             Some(owning),
             ParagraphBaseDirection::LeftToRight,
@@ -537,14 +537,14 @@ fn selected_replacement_tabs_are_ready_and_keep_definition_custody() {
         line.run_views()
             .flat_map(|run| run.glyphs().map(|g| g.id()).collect::<Vec<_>>())
             .collect::<Vec<_>>(),
-        [35, 36]
+        [35, 58, 36]
     );
     assert_eq!(
         p.analyzed_source().source().text().code_units(),
-        [65, 173, 67]
+        [65, 88, 173, 67, 67, 67]
     );
     let mut missing = captured(
-        "A\u{ad}C",
+        "AX\u{ad}CCC",
         Style {
             white_space: WhiteSpace::Preserve,
             hyphenate_character: crate::HyphenateCharacter::String(crate::Text::from("\t")),
@@ -582,9 +582,9 @@ fn css_tabs_survive_system_drop_and_numeric_failure_preserves_old_line() {
 #[test]
 fn source_less_zero_tab_replacement_retains_alternative_bounds() {
     let mut system = system();
-    let mut input = captured("A", style(), None, ParagraphBaseDirection::LeftToRight);
+    let mut input = captured("AXXXX", style(), None, ParagraphBaseDirection::LeftToRight);
     input.controls.push(paragraph::ParagraphControl {
-        at: 1,
+        at: 2,
         kind: paragraph::ParagraphControlKind::DiscretionaryBreak {
             style: Box::new(Style {
                 font: Font::new().family("Unavailable"),
@@ -634,14 +634,17 @@ fn source_less_zero_tab_replacement_retains_alternative_bounds() {
         .expect("actual fontless alternative has its zero extent");
     assert_eq!(
         bounds,
-        crate::Rect::new(20.0, line.feedback().baseline, 0.0, 0.0)
+        crate::Rect::new(40.0, line.feedback().baseline, 0.0, 0.0)
     );
-    assert_eq!(line.feedback().advance, 20.0);
+    assert_eq!(line.feedback().advance, 40.0);
     assert_eq!(
         line.run_views().map(|r| r.glyphs().count()).sum::<usize>(),
-        1
+        2
     );
-    assert_eq!(p.analyzed_source().source().text().code_units(), [65]);
+    assert_eq!(
+        p.analyzed_source().source().text().code_units(),
+        [65, 88, 88, 88, 88]
+    );
 }
 #[test]
 fn tab_range_and_cursor_use_the_same_resolved_allocation() {

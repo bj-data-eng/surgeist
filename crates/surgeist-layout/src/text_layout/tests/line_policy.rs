@@ -289,7 +289,7 @@ fn assert_alternative_spacing<S: LayoutScalar>() {
     let paragraph = PreparedParagraph::with_replacements(
         vec![ParagraphPart::text(
             1,
-            Source::new("X\u{ad}XXXX"),
+            Source::new("XX\u{ad}XXX"),
             style.clone(),
         )],
         style,
@@ -298,9 +298,9 @@ fn assert_alternative_spacing<S: LayoutScalar>() {
             surgeist_text::ParagraphReplacement::resolved_native_logical_before(
                 surgeist_text::ParagraphReplacementDefinition::Source {
                     origin: 0,
-                    source: surgeist_text::Range::new(1, 2),
+                    source: surgeist_text::Range::new(2, 3),
                 },
-                2,
+                3,
                 vec![" X ".into()],
             )
             .unwrap(),
@@ -318,14 +318,14 @@ fn assert_alternative_spacing<S: LayoutScalar>() {
         .unwrap();
     let batch = batch::<S>(
         &paragraph,
-        35.0,
+        45.0,
         TextAlign::Justify,
         TextAlignLast::Auto,
         TextJustification::Spaces,
         false,
     );
     let actual = lines(&batch);
-    assert_eq!(actual[0].feedback().advance, 35.0);
+    assert_eq!(actual[0].feedback().advance, 45.0);
     assert_eq!(
         actual[0].selected_line().request().alternative.as_ref(),
         Some(&alternative)
@@ -346,7 +346,7 @@ fn assert_alternative_spacing<S: LayoutScalar>() {
     );
     assert_eq!(
         batch.placed_text()[0].layout().source().text().code_units(),
-        &[88, 0xad, 88, 88, 88, 88]
+        &[88, 88, 0xad, 88, 88, 88]
     );
 }
 #[test]

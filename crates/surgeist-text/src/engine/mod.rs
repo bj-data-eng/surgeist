@@ -61,6 +61,7 @@ pub(crate) struct AnalyzedCore {
     pub(crate) styles: Vec<resolve::AnalyzedStyleRun>,
     pub(crate) analysis: analysis::Analysis,
     pub(crate) logical: analysis::wrapping::LogicalParagraph,
+    pub(crate) words: analysis::hyphenation::Words,
 }
 
 /// The immutable, resource-retaining result of actual preparation.
@@ -192,7 +193,9 @@ pub(crate) fn analyze_paragraph(
             });
         }
     }
-    let analysis = analysis::analyze(&projection, &styles, processed.source().boxes(), &paragraph)?;
+    let (analysis, words) =
+        analysis::analyze(&projection, &styles, processed.source().boxes(), &paragraph)?;
+    let words = analysis::hyphenation::Words::new(&projection, &analysis.graphemes, words);
     let logical = analysis::wrapping::LogicalParagraph::new(
         &processed,
         &paragraph,
@@ -214,6 +217,7 @@ pub(crate) fn analyze_paragraph(
             styles,
             analysis,
             logical,
+            words,
         }),
         wrapping,
     }))
@@ -221,7 +225,7 @@ pub(crate) fn analyze_paragraph(
 
 /// Actual producer front; composed preparation retains its requested paragraph
 /// strut, while the standalone convenience preserves its existing adjacent style.
-#[derive(Clone, Copy, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum PreparationProfile {
     Native,
     Standalone,
@@ -296,7 +300,8 @@ pub(crate) fn prepare(
             scratch,
         )?);
     }
-    let tables = crate::protocol::prepared::prepare_tables(catalogue, &styles, &analyzed, &shaped)?;
+    let tables =
+        crate::protocol::prepared::prepare_tables(catalogue, &styles, &analyzed, &shaped, profile)?;
     let mut alternative_shapes = crate::protocol::prepared::prepare_alternatives(
         catalogue,
         &analyzed,

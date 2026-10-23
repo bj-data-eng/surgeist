@@ -210,60 +210,77 @@ fn actual_pair_positioning_distinguishes_joint_ab_from_two_independent_runs() {
 fn latin_replacement(source_shy: bool, origin: Option<usize>) {
     let fixture = crate::shaping_test_fonts::pair_adjusted_ahem();
     let direction = ParagraphBaseDirection::LeftToRight;
-    let (source, replaced_range, anchor, following) = if source_shy {
-        (
-            Source::new("A\u{ad}X"),
-            Some(Range::new(1, 2)),
-            2,
-            Range::new(2, 3),
-        )
-    } else {
-        (Source::new("AX"), None, 1, Range::new(1, 2))
-    };
-    let value = replaced(
-        input(source.clone(), direction),
-        replaced_range,
-        anchor,
-        origin,
-        "B",
-    );
-    let prepared = prepare(value, &fixture);
-    let unchanged = whole(&prepared, direction);
-    let mut expected = vec![(Range::new(0, 1), 35, 20.0)];
-    if source_shy {
-        // Preserved SHY is default-ignorable: provider hide_default_ignorables
-        // retains its source row with this fixture's SPACE3 and zero advance.
-        expected.push((Range::new(1, 2), 3, 0.0));
+    for admitted in [false, true] {
+        let text = match (source_shy, admitted) {
+            (true, false) => "A\u{ad}X",
+            (false, false) => "AX",
+            (true, true) => "XA\u{ad}XXX",
+            (false, true) => "XAXXX",
+        };
+        let a = usize::from(admitted);
+        let anchor = a + 1 + usize::from(source_shy);
+        let source = Source::new(text);
+        let value = replaced(
+            input(source.clone(), direction),
+            source_shy.then_some(Range::new(a + 1, a + 2)),
+            anchor,
+            origin,
+            "B",
+        );
+        let prepared = prepare(value, &fixture);
+        let unchanged = whole(&prepared, direction);
+        let mut prefix = Vec::new();
+        if admitted {
+            prefix.push((Range::new(0, 1), 58, 20.0));
+        }
+        prefix.push((Range::new(a, a + 1), 35, 20.0));
+        let suffix: Vec<_> = (anchor..source.text().len())
+            .map(|i| (Range::new(i, i + 1), 58, 20.0))
+            .collect();
+        let mut expected = prefix.clone();
+        if source_shy {
+            expected.push((Range::new(a + 1, a + 2), 3, 0.0));
+        }
+        expected.extend_from_slice(&suffix);
+        assert_eq!(glyphs(&unchanged, &fixture), expected);
+        assert_eq!(
+            unchanged.feedback().advance,
+            if admitted { 100.0 } else { 40.0 }
+        );
+        if !admitted {
+            assert!(
+                prepared
+                    .opportunity_views()
+                    .all(|offer| offer.kind() != PreparedBreakKind::Discretionary)
+            );
+            continue;
+        }
+        let first = line(
+            &prepared,
+            prepared.boundary_views().next().unwrap().handle(),
+            PreparedBreakKind::Discretionary,
+            direction,
+        );
+        let second = line(
+            &prepared,
+            first.selected_line().request().end.clone(),
+            PreparedBreakKind::ParagraphEnd,
+            direction,
+        );
+        assert_eq!(glyphs(&second, &fixture), suffix);
+        // The original A and computed B remain joint: A10+B20, with the
+        // genuine preceding X20 outside that independently qualified pair.
+        prefix.last_mut().unwrap().2 = 10.0;
+        prefix.push((Range::new(anchor, anchor), 36, 20.0));
+        assert_eq!(glyphs(&first, &fixture), prefix);
+        assert_eq!(first.feedback().advance, 50.0);
+        assert_eq!(second.feedback().advance, 60.0);
+        let alternative = first.selected_line().request().alternative.clone().unwrap();
+        assert_eq!(alternative.prepared_text(), prepared);
+        let layout = placed(&prepared, first, second);
+        assert_eq!(layout.source(), &source);
+        assert_eq!(layout.lines().len(), 2);
     }
-    expected.push((following, 58, 20.0));
-    assert_eq!(glyphs(&unchanged, &fixture), expected);
-    let first = line(
-        &prepared,
-        prepared.boundary_views().next().unwrap().handle(),
-        PreparedBreakKind::Discretionary,
-        direction,
-    );
-    let second = line(
-        &prepared,
-        first.selected_line().request().end.clone(),
-        PreparedBreakKind::ParagraphEnd,
-        direction,
-    );
-    assert_eq!(glyphs(&second, &fixture), [(following, 58, 20.0)]);
-    assert_eq!(
-        glyphs(&first, &fixture),
-        [
-            (Range::new(0, 1), 35, 10.0),
-            (Range::new(anchor, anchor), 36, 20.0)
-        ]
-    );
-    assert_eq!(first.feedback().advance, 30.0);
-    assert_eq!(second.feedback().advance, 20.0);
-    let alternative = first.selected_line().request().alternative.clone().unwrap();
-    assert_eq!(alternative.prepared_text(), prepared);
-    let layout = placed(&prepared, first, second);
-    assert_eq!(layout.source(), &source);
-    assert_eq!(layout.lines().len(), 2);
 }
 #[test]
 fn selected_source_shy_keeps_pair_positioning_across_original_and_replacement() {
@@ -301,64 +318,80 @@ fn arabic_pair_fixture_uses_only_the_medial_glyph_not_the_natural_final_glyph() 
 fn arabic_replacement(source_shy: bool) {
     let fixture = crate::shaping_test_fonts::arabic_pair_adjusted_ahem();
     let direction = ParagraphBaseDirection::RightToLeft;
-    let (source, range, anchor, last) = if source_shy {
-        (
-            Source::new("\u{628}\u{628}\u{ad}\u{628}"),
-            Some(Range::new(2, 3)),
-            3,
-            Range::new(3, 4),
-        )
-    } else {
-        (
-            Source::new("\u{628}\u{628}\u{628}"),
+    for admitted in [false, true] {
+        // Real nonjoining HAMZA letters preserve the target Beh joining
+        // neighborhood, unlike extra Beh or zero-count ALM padding.
+        let text = match (source_shy, admitted) {
+            (true, false) => "\u{628}\u{628}\u{ad}\u{628}",
+            (false, false) => "\u{628}\u{628}\u{628}",
+            (true, true) => "\u{621}\u{628}\u{628}\u{ad}\u{628}\u{621}",
+            (false, true) => "\u{621}\u{628}\u{628}\u{628}\u{621}",
+        };
+        let start = usize::from(admitted);
+        let anchor = start + 2 + usize::from(source_shy);
+        let source = Source::new(text);
+        let value = replaced(
+            input(source.clone(), direction),
+            source_shy.then_some(Range::new(start + 2, start + 3)),
+            anchor,
             None,
-            2,
-            Range::new(2, 3),
-        )
-    };
-    let value = replaced(
-        input(source.clone(), direction),
-        range,
-        anchor,
-        None,
-        "\u{621}",
-    );
-    let prepared = prepare(value, &fixture);
-    let unchanged = whole(&prepared, direction);
-    let mut expected = vec![(Range::new(0, 1), 100, 20.0), (Range::new(1, 2), 277, 20.0)];
-    if source_shy {
-        expected.push((Range::new(2, 3), 3, 0.0));
+            "\u{621}",
+        );
+        let prepared = prepare(value, &fixture);
+        let unchanged = whole(&prepared, direction);
+        let mut prefix = Vec::new();
+        if admitted {
+            prefix.push((Range::new(0, 1), 36, 20.0));
+        }
+        prefix.extend([
+            (Range::new(start, start + 1), 100, 20.0),
+            (Range::new(start + 1, start + 2), 277, 20.0),
+        ]);
+        let mut suffix = vec![(Range::new(anchor, anchor + 1), 82, 20.0)];
+        if admitted {
+            suffix.push((Range::new(anchor + 1, anchor + 2), 36, 20.0));
+        }
+        let mut expected = prefix.clone();
+        if source_shy {
+            expected.push((Range::new(start + 2, start + 3), 3, 0.0));
+        }
+        expected.extend_from_slice(&suffix);
+        assert_eq!(glyphs(&unchanged, &fixture), expected);
+        assert_eq!(
+            unchanged.feedback().advance,
+            if admitted { 100.0 } else { 60.0 }
+        );
+        if !admitted {
+            assert!(
+                prepared
+                    .opportunity_views()
+                    .all(|offer| offer.kind() != PreparedBreakKind::Discretionary)
+            );
+            continue;
+        }
+        let first = line(
+            &prepared,
+            prepared.boundary_views().next().unwrap().handle(),
+            PreparedBreakKind::Discretionary,
+            direction,
+        );
+        let second = line(
+            &prepared,
+            first.selected_line().request().end.clone(),
+            PreparedBreakKind::ParagraphEnd,
+            direction,
+        );
+        assert_eq!(glyphs(&second, &fixture), suffix);
+        // Original medial277 remains medial, then joint GPOS applies its
+        // actual -500-unit pair with computed HAMZA36. Padding adds20 only.
+        prefix.last_mut().unwrap().2 = 10.0;
+        prefix.push((Range::new(anchor, anchor), 36, 20.0));
+        assert_eq!(glyphs(&first, &fixture), prefix);
+        assert_eq!(first.feedback().advance, 70.0);
+        let layout = placed(&prepared, first, second);
+        assert_eq!(layout.source(), &source);
+        assert_eq!(layout.lines().len(), 2);
     }
-    expected.push((last, 82, 20.0));
-    assert_eq!(glyphs(&unchanged, &fixture), expected);
-    assert_eq!(unchanged.feedback().advance, 60.0);
-    let first = line(
-        &prepared,
-        prepared.boundary_views().next().unwrap().handle(),
-        PreparedBreakKind::Discretionary,
-        direction,
-    );
-    let second = line(
-        &prepared,
-        first.selected_line().request().end.clone(),
-        PreparedBreakKind::ParagraphEnd,
-        direction,
-    );
-    assert_eq!(glyphs(&second, &fixture), [(last, 82, 20.0)]);
-    // Original context assigns medial277, not presentation-derived final82.
-    // Joint GPOS then subtracts500 units from that actual medial before HAMZA36.
-    assert_eq!(
-        glyphs(&first, &fixture),
-        [
-            (Range::new(0, 1), 100, 20.0),
-            (Range::new(1, 2), 277, 10.0),
-            (Range::new(anchor, anchor), 36, 20.0)
-        ]
-    );
-    assert_eq!(first.feedback().advance, 50.0);
-    let layout = placed(&prepared, first, second);
-    assert_eq!(layout.source(), &source);
-    assert_eq!(layout.lines().len(), 2);
 }
 #[test]
 fn selected_source_shy_preserves_original_medial_before_joint_pair_positioning() {

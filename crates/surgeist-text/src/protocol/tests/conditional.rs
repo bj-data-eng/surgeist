@@ -391,14 +391,14 @@ fn conditional_cut_and_continuation_keep_actual_arabic_base_context() {
 fn conditional_termination_cannot_select_failed_ordinary_replacement() {
     use paragraph::{ParagraphReplacement, ParagraphReplacementDefinition};
     let mut system = system();
-    let mut value = input("A\u{ad}AAA", OverflowWrap::Anywhere);
+    let mut value = input("AX\u{ad}XXX", OverflowWrap::Anywhere);
     value.replacements.push(
         ParagraphReplacement::resolved_native_logical_before(
             ParagraphReplacementDefinition::Source {
                 origin: 0,
-                source: Range::new(1, 2),
+                source: Range::new(2, 3),
             },
-            2,
+            3,
             vec![crate::Text::from("-")],
         )
         .unwrap(),
@@ -408,7 +408,7 @@ fn conditional_termination_cannot_select_failed_ordinary_replacement() {
     assert_eq!(first.kind(), PreparedBreakKind::Discretionary);
     let alternative = first.alternatives().next().unwrap().handle();
     let cuts = offers(&prepared, ConditionalPurpose::Overflow);
-    assert_eq!(sources(&cuts), [1]);
+    assert_eq!(sources(&cuts), [1, 2]);
     let original = prepared.analyzed_source().source().text().clone();
     let mut invalid = selection(&prepared, &cuts[0]);
     invalid.alternative = Some(alternative);
@@ -935,10 +935,10 @@ fn phantom_frontier_requires_every_real_discretionary_variant() {
         ParagraphReplacement, ParagraphReplacementDefinition,
     };
     let mut system = system();
-    let mut value = input(" XXXX", OverflowWrap::Anywhere);
+    let mut value = input(" XXXXX", OverflowWrap::Anywhere);
     value.base_style.white_space = WhiteSpace::Collapse;
     value.controls.push(ParagraphControl {
-        at: 1,
+        at: 3,
         kind: ParagraphControlKind::DiscretionaryBreak {
             style: Box::new(value.base_style.clone()),
         },
@@ -953,7 +953,7 @@ fn phantom_frontier_requires_every_real_discretionary_variant() {
                 control: 0,
                 origin: None,
             },
-            1,
+            3,
             vec![crate::Text::from(""), crate::Text::from("A")],
         )
         .unwrap(),
@@ -965,7 +965,15 @@ fn phantom_frontier_requires_every_real_discretionary_variant() {
         ProtocolError::InvalidReplacement { .. }
     ));
     let prepared = prepare(&mut system, value);
-    let start = prepared.boundary_views().next().unwrap().handle();
+    let control_position = prepared
+        .participants()
+        .position(|p| matches!(p, PreparedParticipant::Control(_)))
+        .unwrap();
+    let start = prepared
+        .boundary_views()
+        .find(|b| b.participant_offset() == control_position)
+        .unwrap()
+        .handle();
     let inventory: Vec<_> = prepared
         .opportunity_views()
         .map(|view| view.handle())
@@ -981,12 +989,9 @@ fn phantom_frontier_requires_every_real_discretionary_variant() {
             PreparedBreakKind::ParagraphEnd
         ]
     );
-    let mut receipts = vec![ordinary_receipt(
-        &prepared,
-        start.clone(),
-        inventory[0].clone(),
-        None,
-    )];
+    // The admitted word's prefix is already consumed. The control-only
+    // continuation can be phantom, independently of that real prefix.
+    let mut receipts = vec![];
     let alternatives: Vec<_> = inventory[1]
         .view()
         .alternatives()
@@ -1228,17 +1233,20 @@ fn conditional_context_uses_base_capture_after_actual_hyphen_variant_trial() {
     })
     .unwrap();
     system
-        .register_fonts(crate::shaping_test_fonts::arabic_ahem())
+        .register_fonts(crate::shaping_test_fonts::arabic_nonjoining_ahem())
         .unwrap();
-    let mut value = input("\u{628}\u{ad}\u{628}", OverflowWrap::Anywhere);
+    let mut value = input(
+        "\u{621}\u{628}\u{628}\u{ad}\u{628}\u{621}",
+        OverflowWrap::Anywhere,
+    );
     value.base_direction = ParagraphBaseDirection::RightToLeft;
     value.replacements.push(
         ParagraphReplacement::resolved_native_logical_before(
             ParagraphReplacementDefinition::Source {
                 origin: 0,
-                source: Range::new(1, 2),
+                source: Range::new(3, 4),
             },
-            2,
+            4,
             vec![crate::Text::from("-")],
         )
         .unwrap(),
@@ -1251,7 +1259,7 @@ fn conditional_context_uses_base_capture_after_actual_hyphen_variant_trial() {
         .unwrap()
         .finalize(SpacingAllocations::None)
         .unwrap();
-    assert!(glyphs(&whole).contains(&(Range::new(0, 1), 100)));
+    assert!(glyphs(&whole).contains(&(Range::new(1, 2), 100)));
     let first = prepared.opportunity_views().next().unwrap();
     let alternative = first.alternatives().next().unwrap().handle();
     let mut trial = request(&prepared);
@@ -1273,15 +1281,18 @@ fn conditional_context_uses_base_capture_after_actual_hyphen_variant_trial() {
     assert!(trial.feedback().advance > 20.0);
     assert!(trial.selected_line().request().alternative.is_some());
     let cuts = offers(&prepared, ConditionalPurpose::Overflow);
-    assert_eq!(sources(&cuts), [1]);
-    let mut selected = selection(&prepared, &cuts[0]);
+    assert_eq!(sources(&cuts), [1, 2, 3]);
+    let mut selected = selection(&prepared, &cuts[1]);
     selected.context.base_direction = ParagraphBaseDirection::RightToLeft;
     let line = prepared
         .select(selected)
         .unwrap()
         .finalize(SpacingAllocations::None)
         .unwrap();
-    assert_eq!(glyphs(&line), [(Range::new(0, 1), 100)]);
+    assert_eq!(
+        glyphs(&line),
+        [(Range::new(0, 1), 36), (Range::new(1, 2), 100)]
+    );
     assert!(line.selected_line().request().alternative.is_none());
 }
 

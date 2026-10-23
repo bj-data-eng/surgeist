@@ -813,7 +813,7 @@ fn partial_placement_rejects_outside_original_even_when_origin_covers_both_lines
 fn selected_source_and_control_alternatives_keep_authentic_source_provenance() {
     for (control, replacement) in [(false, "-"), (false, "A"), (true, "\u{301}"), (true, "A")] {
         let shared_egc = control && replacement == "\u{301}";
-        let source = Source::new(if control { "AB" } else { "A\u{ad}B" });
+        let source = Source::new(if control { "XABBB" } else { "XA\u{ad}BBB" });
         let len = source.text().len();
         let mut capture = input(
             source,
@@ -823,7 +823,7 @@ fn selected_source_and_control_alternatives_keep_authentic_source_provenance() {
         );
         let definition = if control {
             capture.controls.push(ParagraphControl {
-                at: 1,
+                at: 2,
                 kind: ParagraphControlKind::DiscretionaryBreak {
                     style: Box::new(capture.base_style.clone()),
                 },
@@ -839,13 +839,13 @@ fn selected_source_and_control_alternatives_keep_authentic_source_provenance() {
         } else {
             ParagraphReplacementDefinition::Source {
                 origin: 0,
-                source: Range::new(1, 2),
+                source: Range::new(2, 3),
             }
         };
         capture.replacements.push(
             ParagraphReplacement::resolved_native_logical_before(
                 definition,
-                if control { 1 } else { 2 },
+                if control { 2 } else { 3 },
                 vec![Text::from(replacement)],
             )
             .unwrap(),
@@ -903,13 +903,13 @@ fn selected_source_and_control_alternatives_keep_authentic_source_provenance() {
             ],
         })
         .unwrap();
-        let a = l.source_range_fragments(&o, Range::new(0, 1)).unwrap();
+        let a = l.source_range_fragments(&o, Range::new(1, 2)).unwrap();
         let unit = a.units().next().unwrap();
         assert_eq!(
             unit.expanded_intersections()
                 .map(|i| i.local_range())
                 .collect::<Vec<_>>(),
-            [Range::new(0, 1)]
+            [Range::new(1, 2)]
         );
         assert_eq!(
             unit.fragments()
@@ -918,7 +918,7 @@ fn selected_source_and_control_alternatives_keep_authentic_source_provenance() {
             shared_egc
         );
         if !control {
-            let q = l.source_range_fragments(&o, Range::new(1, 2)).unwrap();
+            let q = l.source_range_fragments(&o, Range::new(2, 3)).unwrap();
             assert_eq!(q.units().count(), 1);
             let actual = q.units().next().unwrap();
             assert_eq!(actual.alternative(), Some(alternative.clone()));
@@ -928,11 +928,11 @@ fn selected_source_and_control_alternatives_keep_authentic_source_provenance() {
                     .next()
                     .unwrap()
                     .local_range(),
-                Range::new(1, 2)
+                Range::new(2, 3)
             );
             assert_eq!(
                 actual.defining_source().unwrap().local_range(),
-                Range::new(1, 2)
+                Range::new(2, 3)
             );
             assert_eq!(actual.expanded_intersections().count(), 0);
             near(
@@ -1142,22 +1142,26 @@ fn source_definitions_select_only_the_exact_chosen_nonempty_replacement_and_keep
  {
     for replacement in ["-", "", "\u{2069}"] {
         let mut capture = input(
-            Source::new("\u{ad}\u{ad}B"),
+            Source::new("AX\u{ad}\u{ad}BBB"),
             style(10.0),
-            &[0, 1, 2, 3],
+            &[0, 2, 3, 4, 7],
             ParagraphBaseDirection::LeftToRight,
         );
-        for (origin, text) in capture.origins.iter_mut().zip(["\u{ad}", "\u{ad}", "B"]) {
+        for (origin, text) in capture
+            .origins
+            .iter_mut()
+            .zip(["AX", "\u{ad}", "\u{ad}", "BBB"])
+        {
             origin.source = Source::new(text);
-            origin.local = Range::new(0, 1);
+            origin.local = Range::new(0, origin.source.text().len());
         }
         capture.replacements.push(
             ParagraphReplacement::resolved_native_logical_before(
                 ParagraphReplacementDefinition::Source {
-                    origin: 1,
-                    source: Range::new(1, 2),
+                    origin: 2,
+                    source: Range::new(3, 4),
                 },
-                2,
+                4,
                 vec![Text::from(replacement)],
             )
             .unwrap(),
@@ -1167,19 +1171,19 @@ fn source_definitions_select_only_the_exact_chosen_nonempty_replacement_and_keep
         let offer = p
             .opportunity_views()
             .find(|v| {
-                v.boundary().view().source_before().get() == 2 && v.alternatives().next().is_some()
+                v.boundary().view().source_before().get() == 4 && v.alternatives().next().is_some()
             })
             .unwrap()
             .handle();
         let alt = offer.view().alternatives().next().unwrap().handle();
         let l = place_alternative_pair(p, offer, Some(alt.clone()));
         let first = l
-            .source_range_fragments(&origins[0], Range::new(0, 1))
+            .source_range_fragments(&origins[1], Range::new(0, 1))
             .unwrap();
         assert!(first.units().all(|u| u.alternative().is_none()));
         near(rectangles(&first).iter().map(|r| r.size.width).sum(), 0.0);
         let defining = l
-            .source_range_fragments(&origins[1], Range::new(0, 1))
+            .source_range_fragments(&origins[2], Range::new(0, 1))
             .unwrap();
         assert_eq!(
             defining.units().count(),
@@ -1189,7 +1193,7 @@ fn source_definitions_select_only_the_exact_chosen_nonempty_replacement_and_keep
             assert_eq!(unit.alternative(), Some(alt));
             assert_eq!(
                 unit.defining_source().unwrap().aggregate_range(),
-                Range::new(1, 2)
+                Range::new(3, 4)
             );
             assert_eq!(
                 unit.selected_intersections().next().unwrap().local_range(),
@@ -1205,7 +1209,7 @@ fn source_definitions_select_only_the_exact_chosen_nonempty_replacement_and_keep
         }
         assert_eq!(
             l.analyzed_source().source().text().code_units(),
-            [0xad, 0xad, 66]
+            [65, 88, 0xad, 0xad, 66, 66, 66]
         );
         let text: Vec<_> = l
             .inner
@@ -1218,7 +1222,7 @@ fn source_definitions_select_only_the_exact_chosen_nonempty_replacement_and_keep
                 PlaintextItem::InlineBox(_) => vec![],
             })
             .collect();
-        assert_eq!(text, [0xad, 0xad, 66]);
+        assert_eq!(text, [65, 88, 0xad, 0xad, 66, 66, 66]);
     }
     let mut capture = input(
         Source::new("A\u{ad}B"),
@@ -1249,13 +1253,13 @@ fn source_less_breaks_and_control_alternatives_with_incidental_origins_do_not_ac
  {
     for origin in [None, Some(0)] {
         let mut capture = input(
-            Source::new("AB"),
+            Source::new("AXBBB"),
             style(10.0),
-            &[0, 2],
+            &[0, 5],
             ParagraphBaseDirection::LeftToRight,
         );
         capture.controls.push(ParagraphControl {
-            at: 1,
+            at: 2,
             kind: ParagraphControlKind::DiscretionaryBreak {
                 style: Box::new(capture.base_style.clone()),
             },
@@ -1267,7 +1271,7 @@ fn source_less_breaks_and_control_alternatives_with_incidental_origins_do_not_ac
         capture.replacements.push(
             ParagraphReplacement::resolved_native_logical_before(
                 ParagraphReplacementDefinition::Control { control: 0, origin },
-                1,
+                2,
                 vec![Text::from("-")],
             )
             .unwrap(),
@@ -1281,13 +1285,13 @@ fn source_less_breaks_and_control_alternatives_with_incidental_origins_do_not_ac
             .handle();
         let alt = offer.view().alternatives().next().unwrap().handle();
         let l = place_alternative_pair(p, offer, Some(alt));
-        let q = l.source_range_fragments(&o, Range::new(0, 2)).unwrap();
-        assert_eq!(q.units().count(), 2);
+        let q = l.source_range_fragments(&o, Range::new(0, 5)).unwrap();
+        assert_eq!(q.units().count(), 5);
         assert!(
             q.units()
                 .all(|u| u.alternative().is_none() && u.defining_source().is_none())
         );
-        near(rectangles(&q).iter().map(|r| r.size.width).sum(), 20.0);
+        near(rectangles(&q).iter().map(|r| r.size.width).sum(), 50.0);
         let endpoint = l.source_range_fragments(&o, Range::new(0, 1)).unwrap();
         assert_eq!(endpoint.units().count(), 1);
         near(rectangles(&endpoint)[0].size.width, 10.0);

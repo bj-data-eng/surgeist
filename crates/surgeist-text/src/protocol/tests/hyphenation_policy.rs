@@ -66,7 +66,11 @@ fn bound_style() -> Style {
 }
 fn control(value: &mut ParagraphInput, own: Style) {
     value.controls.push(ParagraphControl {
-        at: value.source.text().len(),
+        at: if value.source.text().len() == 5 {
+            2
+        } else {
+            value.source.text().len()
+        },
         kind: ParagraphControlKind::DiscretionaryBreak {
             style: Box::new(own),
         },
@@ -172,7 +176,7 @@ fn exact_style_strings_including_empty_are_real_selected_endings() {
         let p = capture(
             &mut system,
             input(
-                "A\u{ad}X",
+                "AX\u{ad}XXX",
                 Style {
                     hyphenate_character: HyphenateCharacter::String(Text::from(text)),
                     ..style()
@@ -184,7 +188,7 @@ fn exact_style_strings_including_empty_are_real_selected_endings() {
         let line = finish(&p, 0);
         assert_eq!(
             line.feedback().advance,
-            if text == "XX" { 60.0 } else { 20.0 }
+            if text == "XX" { 80.0 } else { 40.0 }
         );
         assert!(line.selected_line().request().alternative.is_some());
         assert_eq!(line.selected_line().request().context.end, LineEnd::Soft);
@@ -261,7 +265,7 @@ fn convention_text_placement_and_native_group_have_distinct_authority() {
         let p = capture(
             &mut system,
             input(
-                "A\u{ad}X",
+                "AX\u{ad}XXX",
                 Style {
                     native_hyphenation_convention: Some(convention(text, Placement::LogicalBefore)),
                     ..bound_style()
@@ -277,7 +281,7 @@ fn convention_text_placement_and_native_group_have_distinct_authority() {
             ..bound_style()
         };
         assert_eq!(
-            reason(&capture(&mut system, input("A\u{ad}X", base.clone())).unwrap_err()),
+            reason(&capture(&mut system, input("AX\u{ad}XXX", base.clone())).unwrap_err()),
             HyphenationError::UnsupportedPlacement(placement)
         );
         let empty = Style {
@@ -285,17 +289,17 @@ fn convention_text_placement_and_native_group_have_distinct_authority() {
             ..base.clone()
         };
         assert_eq!(
-            texts(&capture(&mut system, input("A\u{ad}X", empty)).unwrap()),
+            texts(&capture(&mut system, input("AX\u{ad}XXX", empty)).unwrap()),
             [Vec::<u16>::new()]
         );
-        let mut native = input("A\u{ad}X", base);
+        let mut native = input("AX\u{ad}XXX", base);
         native.replacements.push(
             ParagraphReplacement::resolved_native_logical_before(
                 Definition::Source {
                     origin: 0,
-                    source: Range::new(1, 2),
+                    source: Range::new(2, 3),
                 },
-                2,
+                3,
                 vec![Text::from("XX"), Text::from(""), Text::from("X")],
             )
             .unwrap(),
@@ -308,7 +312,7 @@ fn convention_text_placement_and_native_group_have_distinct_authority() {
                 finish(&p, 1).feedback().advance,
                 finish(&p, 2).feedback().advance
             ],
-            [60.0, 20.0, 40.0]
+            [80.0, 40.0, 60.0]
         );
     }
 }
@@ -319,13 +323,13 @@ fn control_uses_own_style_and_auto_primary_is_not_borrowed_from_adjacent_run() {
         font: Font::new().family("Missing owning primary"),
         ..style()
     };
-    let mut v = input("A", style());
+    let mut v = input("AXXXX", style());
     control(&mut v, own.clone());
     assert_eq!(
         reason(&capture(&mut system, v).unwrap_err()),
         HyphenationError::MissingPrimaryFont
     );
-    let mut v = input("A", style());
+    let mut v = input("AXXXX", style());
     control(
         &mut v,
         Style {
@@ -334,8 +338,8 @@ fn control_uses_own_style_and_auto_primary_is_not_borrowed_from_adjacent_run() {
         },
     );
     let p = capture(&mut system, v).unwrap();
-    assert_eq!(finish(&p, 0).feedback().advance, 20.0);
-    let mut v = input("A", style());
+    assert_eq!(finish(&p, 0).feedback().advance, 40.0);
+    let mut v = input("AXXXX", style());
     control(
         &mut v,
         Style {
@@ -344,7 +348,7 @@ fn control_uses_own_style_and_auto_primary_is_not_borrowed_from_adjacent_run() {
         },
     );
     assert!(texts(&capture(&mut system, v).unwrap()).is_empty());
-    let mut v = input("A", style());
+    let mut v = input("AXXXX", style());
     control(
         &mut v,
         Style {
@@ -355,7 +359,7 @@ fn control_uses_own_style_and_auto_primary_is_not_borrowed_from_adjacent_run() {
     );
     let p = capture(&mut system, v).unwrap();
     let line = finish(&p, 0);
-    assert_eq!(line.feedback().advance, 30.0);
+    assert_eq!(line.feedback().advance, 50.0);
     let sizes: Vec<_> = line
         .run_views()
         .filter(|r| r.glyphs().any(|g| g.advance() != 0.0))
@@ -374,7 +378,7 @@ fn actual_primary_without_space_glyph_still_selects_its_u2010() {
     })
     .unwrap();
     system.register_fonts(bytes).unwrap();
-    let p = capture(&mut system, input("A\u{ad}X", style())).unwrap();
+    let p = capture(&mut system, input("AX\u{ad}XXX", style())).unwrap();
     assert_eq!(texts(&p), [vec![0x2010]]);
 }
 #[test]
@@ -510,13 +514,13 @@ fn source_shy_uses_own_primary_before_an_adjacent_face_with_u2010() {
     system.register_fonts(primary).unwrap();
     system.register_fonts(secondary).unwrap();
     let mut v = input(
-        "A\u{ad}X",
+        "AX\u{ad}XXX",
         Style {
             font: Font::new().family("Bhem"),
             ..style()
         },
     );
-    v.source.span(Range::new(1, 2), style());
+    v.source.span(Range::new(2, 3), style());
     v.origins[0].source = v.source.clone();
     let p = capture(&mut system, v).unwrap();
     assert_eq!(texts(&p), [vec![45]]);
@@ -524,7 +528,7 @@ fn source_shy_uses_own_primary_before_an_adjacent_face_with_u2010() {
     system.refresh_fonts().unwrap();
     assert_ne!(system.font_catalogue_identity(), &before);
     let line = finish(&p, 0);
-    assert_eq!(line.feedback().advance, 40.0);
+    assert_eq!(line.feedback().advance, 60.0);
     assert!(
         line.run_views()
             .all(|r| r.face().catalogue_identity() == &before)
@@ -540,7 +544,7 @@ fn specified_text_wins_and_suppressed_points_do_not_consume_known_placement() {
         ..bound_style()
     };
     assert_eq!(
-        texts(&capture(&mut system, input("A\u{ad}X", convention_style)).unwrap()),
+        texts(&capture(&mut system, input("AX\u{ad}XXX", convention_style)).unwrap()),
         [vec![88, 88]]
     );
     for (hyphens, wrap) in [(Hyphens::None, Wrap::Word), (Hyphens::Manual, Wrap::None)] {
@@ -550,7 +554,7 @@ fn specified_text_wins_and_suppressed_points_do_not_consume_known_placement() {
             native_hyphenation_convention: Some(convention("~", Placement::BothSides)),
             ..bound_style()
         };
-        assert!(texts(&capture(&mut system, input("A\u{ad}X", base)).unwrap()).is_empty());
+        assert!(texts(&capture(&mut system, input("AX\u{ad}XXX", base)).unwrap()).is_empty());
     }
     let base = Style {
         native_hyphenation_convention: Some(convention("~", Placement::BothSides)),
@@ -670,7 +674,7 @@ fn raw_advances(layout: &crate::Layout) -> Vec<f64> {
 fn incident_empty_origin_cannot_own_a_positive_source_shy_native_group() {
     let mut system = system();
     for leading_empty in [false, true] {
-        let mut v = input("\u{ad}X", style());
+        let mut v = input("AX\u{ad}XXX", style());
         v.paragraph_strut = ParagraphStrut::DefaultFont;
         let positive = usize::from(leading_empty);
         if leading_empty {
@@ -704,9 +708,9 @@ fn incident_empty_origin_cannot_own_a_positive_source_shy_native_group() {
             ParagraphReplacement::resolved_native_logical_before(
                 Definition::Source {
                     origin: positive,
-                    source: Range::new(0, 1),
+                    source: Range::new(2, 3),
                 },
-                1,
+                3,
                 vec![Text::from("XX"), Text::from("")],
             )
             .unwrap(),
@@ -722,16 +726,19 @@ fn incident_empty_origin_cannot_own_a_positive_source_shy_native_group() {
         assert!(p.alternative_views().all(|a| a.definition()
             == crate::PreparedAlternativeDefinition::Source {
                 origin: origin.clone(),
-                source: Range::new(0, 1)
+                source: Range::new(2, 3)
             }));
-        assert_eq!(finish(&p, 0).feedback().advance, 40.0);
-        assert_eq!(finish(&p, 1).feedback().advance, 0.0);
-        assert_eq!(p.analyzed_source().source().text().code_units(), [173, 88]);
+        assert_eq!(finish(&p, 0).feedback().advance, 80.0);
+        assert_eq!(finish(&p, 1).feedback().advance, 40.0);
+        assert_eq!(
+            p.analyzed_source().source().text().code_units(),
+            [65, 88, 173, 88, 88, 88]
+        );
     }
 }
 fn empty_after_shy_input(mode: Hyphens) -> ParagraphInput {
     let mut v = input(
-        "A\u{ad}X",
+        "AX\u{ad}XXX",
         Style {
             hyphens: mode,
             hyphenate_character: HyphenateCharacter::String(Text::from("XX")),
@@ -742,26 +749,26 @@ fn empty_after_shy_input(mode: Hyphens) -> ParagraphInput {
     v.origins = vec![
         paragraph::ParagraphOrigin {
             source: source.clone(),
-            local: Range::new(0, 2),
-            aggregate: Range::new(0, 2),
+            local: Range::new(0, 3),
+            aggregate: Range::new(0, 3),
             kind: paragraph::ParagraphOriginKind::Authored,
         },
         paragraph::ParagraphOrigin {
             source: Source::new(""),
             local: Range::new(0, 0),
-            aggregate: Range::new(2, 2),
+            aggregate: Range::new(3, 3),
             kind: paragraph::ParagraphOriginKind::Authored,
         },
         paragraph::ParagraphOrigin {
             source,
-            local: Range::new(2, 3),
-            aggregate: Range::new(2, 3),
+            local: Range::new(3, 6),
+            aggregate: Range::new(3, 6),
             kind: paragraph::ParagraphOriginKind::Authored,
         },
     ];
     v.connections = vec![
         paragraph::ParagraphConnection {
-            at: 2,
+            at: 3,
             kind: paragraph::ParagraphConnectionKind::Continuous
         };
         2
@@ -788,7 +795,7 @@ fn none_cannot_leak_shy_icu_permission_after_an_empty_origin() {
     let p = empty_after_shy(Hyphens::None);
     let offers = p
         .opportunity_views()
-        .filter(|v| v.boundary().view().source_before().get() == 2)
+        .filter(|v| v.boundary().view().source_before().get() == 3)
         .map(|v| v.kind())
         .collect::<Vec<_>>();
     assert!(offers.is_empty(), "none emitted {offers:?} at the SHY seam");
@@ -798,7 +805,7 @@ fn manual_cannot_turn_a_shy_into_an_unindicated_break_after_an_empty_origin() {
     let p = empty_after_shy(Hyphens::Manual);
     let offers = p
         .opportunity_views()
-        .filter(|v| v.boundary().view().source_before().get() == 2)
+        .filter(|v| v.boundary().view().source_before().get() == 3)
         .collect::<Vec<_>>();
     assert!(!offers.is_empty());
     for offer in offers {
@@ -822,7 +829,7 @@ fn manual_cannot_turn_a_shy_into_an_unindicated_break_after_an_empty_origin() {
             .handle(),
     );
     let first = finish(&p, 0);
-    assert_eq!(first.feedback().advance, 60.0);
+    assert_eq!(first.feedback().advance, 80.0);
     assert!(
         !first
             .selected_line()
@@ -843,7 +850,7 @@ fn manual_cannot_turn_a_shy_into_an_unindicated_break_after_an_empty_origin() {
         .unwrap()
         .finalize(SpacingAllocations::None)
         .unwrap();
-    assert_eq!(second.feedback().advance, 20.0);
+    assert_eq!(second.feedback().advance, 60.0);
     assert_eq!(
         second.selected_line().request().start,
         first.selected_line().request().end
@@ -860,7 +867,7 @@ fn independent_optional_and_forced_controls_after_a_shy_keep_their_own_ending() 
         (ParagraphControlKind::ForcedBreak, PreparedBreakKind::Forced),
     ] {
         let mut v = empty_after_shy_input(Hyphens::None);
-        v.controls.push(ParagraphControl { at: 2, kind });
+        v.controls.push(ParagraphControl { at: 3, kind });
         v.anchor_order.push(crate::ParagraphAnchor {
             item: crate::ParagraphAnchorItem::Control(0),
             affinity: crate::Affinity::After,
@@ -869,7 +876,7 @@ fn independent_optional_and_forced_controls_after_a_shy_keep_their_own_ending() 
         let control = PreparedParticipant::Control(p.control_views().next().unwrap().handle());
         let offers = p
             .opportunity_views()
-            .filter(|v| v.boundary().view().source_before().get() == 2)
+            .filter(|v| v.boundary().view().source_before().get() == 3)
             .collect::<Vec<_>>();
         assert_eq!(offers.len(), 1);
         assert_eq!(offers[0].kind(), expected);
@@ -928,7 +935,7 @@ fn native_atomic_permission_after_empty_shy_custody_stays_independent() {
         v.source.inline_box(crate::InlineBox::new(
             crate::Id::from_u64(86073),
             crate::InlineBoxKind::InFlow,
-            2,
+            3,
             crate::Size::new(10.0, 10.0),
         ));
         v.anchor_order.push(crate::ParagraphAnchor {

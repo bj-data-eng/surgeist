@@ -13,8 +13,9 @@ fn fixture(primary_hyphen: bool) -> Vec<u8> {
     crate::shaping_test_fonts::range_ligature_ahem(&[35, 35], &mappings)
 }
 
-fn prepare(bytes: &[u8]) -> PreparedText {
-    let source = Source::new("A\u{ad}X");
+fn prepare(bytes: &[u8], text: &str) -> PreparedText {
+    let source = Source::new(text);
+    let end = source.text().len();
     let value = ParagraphInput {
         terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
@@ -28,8 +29,8 @@ fn prepare(bytes: &[u8]) -> PreparedText {
         paragraph_strut: ParagraphStrut::DefaultFont,
         origins: vec![paragraph::ParagraphOrigin {
             source,
-            local: Range::new(0, 3),
-            aggregate: Range::new(0, 3),
+            local: Range::new(0, end),
+            aggregate: Range::new(0, end),
             kind: paragraph::ParagraphOriginKind::Authored,
         }],
         connections: vec![],
@@ -105,7 +106,7 @@ fn bare_shy(primary_hyphen: bool) {
     } else {
         (0x2d, 15)
     };
-    let prepared = prepare(&bytes);
+    let prepared = prepare(&bytes, "A\u{ad}X");
     let original = [65, 0xad, 88];
     assert_eq!(
         prepared.analyzed_source().source().text().code_units(),
@@ -132,6 +133,33 @@ fn bare_shy(primary_hyphen: bool) {
             .any(|piece| piece.kind() == PresentationMappingKind::Replacement)
     );
 
+    // The original short word retains all source/resource controls but misses
+    // the native5/2/2 minima. A genuinely admitted word qualifies indication use.
+    assert!(
+        prepared
+            .opportunity_views()
+            .all(|offer| offer.kind() != PreparedBreakKind::Discretionary)
+    );
+    let short_whole = whole;
+    let prepared = prepare(&bytes, "AX\u{ad}XXX");
+    let original = [65, 88, 173, 88, 88, 88];
+    assert_eq!(plaintext(&prepared), original);
+    let whole = prepared
+        .select(request(&prepared))
+        .unwrap()
+        .finalize(SpacingAllocations::None)
+        .unwrap();
+    assert_eq!(whole.feedback().advance, 100.0);
+    assert_eq!(
+        glyphs(&whole, &bytes),
+        [
+            (Range::new(0, 1), 35, 20.0),
+            (Range::new(1, 2), 58, 20.0),
+            (Range::new(3, 4), 58, 20.0),
+            (Range::new(4, 5), 58, 20.0),
+            (Range::new(5, 6), 58, 20.0)
+        ]
+    );
     // Initial hyphens:manual needs no language dictionary; bare SHY must issue
     // a real used indication rather than masquerading as a generic soft break.
     assert_eq!(
@@ -140,8 +168,8 @@ fn bare_shy(primary_hyphen: bool) {
             .map(|view| (view.boundary().view().source_before().get(), view.kind()))
             .collect::<Vec<_>>(),
         [
-            (2, PreparedBreakKind::Discretionary),
-            (3, PreparedBreakKind::ParagraphEnd)
+            (3, PreparedBreakKind::Discretionary),
+            (6, PreparedBreakKind::ParagraphEnd)
         ]
     );
     let offer = prepared
@@ -152,13 +180,13 @@ fn bare_shy(primary_hyphen: bool) {
     assert_eq!(alternatives.len(), 1);
     let alternative = &alternatives[0];
     assert_eq!(alternative.text().code_units(), [indication]);
-    assert_eq!(alternative.source_range(), Some(Range::new(1, 2)));
-    assert_eq!(alternative.insertion_anchor().get(), 2);
+    assert_eq!(alternative.source_range(), Some(Range::new(2, 3)));
+    assert_eq!(alternative.insertion_anchor().get(), 3);
     assert_eq!(
         alternative.definition(),
         PreparedAlternativeDefinition::Source {
             origin: prepared.origin_views().next().unwrap().handle(),
-            source: Range::new(1, 2)
+            source: Range::new(2, 3)
         }
     );
     assert_eq!(alternative.opportunity(), offer.handle());
@@ -176,12 +204,13 @@ fn bare_shy(primary_hyphen: bool) {
         .unwrap()
         .finalize(SpacingAllocations::None)
         .unwrap();
-    assert_eq!(first.feedback().advance, 40.0);
+    assert_eq!(first.feedback().advance, 60.0);
     assert_eq!(
         glyphs(&first, &bytes),
         [
             (Range::new(0, 1), 35, 20.0),
-            (Range::new(2, 2), glyph, 20.0)
+            (Range::new(1, 2), 58, 20.0),
+            (Range::new(3, 3), glyph, 20.0)
         ]
     );
     assert!(
@@ -202,9 +231,16 @@ fn bare_shy(primary_hyphen: bool) {
         .unwrap()
         .finalize(SpacingAllocations::None)
         .unwrap();
-    assert_eq!(second.feedback().advance, 20.0);
+    assert_eq!(second.feedback().advance, 60.0);
     assert!(second.selected_line().request().alternative.is_none());
-    assert_eq!(glyphs(&second, &bytes), [(Range::new(2, 3), 58, 20.0)]);
+    assert_eq!(
+        glyphs(&second, &bytes),
+        [
+            (Range::new(3, 4), 58, 20.0),
+            (Range::new(4, 5), 58, 20.0),
+            (Range::new(5, 6), 58, 20.0)
+        ]
+    );
     let layout = crate::Layout::from_finalized_lines(PlacementRequest {
         prepared: prepared.clone(),
         coverage: PlacementCoverage::WholeParagraph,
@@ -230,15 +266,16 @@ fn bare_shy(primary_hyphen: bool) {
             .iter()
             .map(|line| line.range())
             .collect::<Vec<_>>(),
-        [Range::new(0, 2), Range::new(2, 3)]
+        [Range::new(0, 3), Range::new(3, 6)]
     );
     let selection = crate::Selection::new(
         crate::Cursor::new(0, crate::Affinity::After),
-        crate::Cursor::new(3, crate::Affinity::Before),
+        crate::Cursor::new(6, crate::Affinity::Before),
     );
-    assert_eq!(selection.range(), Range::new(0, 3));
+    assert_eq!(selection.range(), Range::new(0, 6));
     assert_eq!(layout.selection(selection).unwrap().rects().len(), 2);
     assert_eq!(plaintext(&prepared), original);
+    assert_eq!(short_whole.feedback().advance, 40.0);
 }
 #[test]
 fn bare_manual_shy_uses_primary_u2010_without_a_caller_replacement() {

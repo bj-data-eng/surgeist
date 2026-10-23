@@ -269,8 +269,8 @@ fn native_break_word_min_content_retains_the_ordinary_forty_pixel_word() {
 fn native_hyphen_policy_and_empty_indication_preserve_intrinsic_wrap_distinctions() {
     fn check<S: LayoutScalar>() {
         for (hyphens, ordinary_minimum) in [
-            (surgeist_text::Hyphens::Manual, 20.0),
-            (surgeist_text::Hyphens::None, 40.0),
+            (surgeist_text::Hyphens::Manual, 30.0),
+            (surgeist_text::Hyphens::None, 50.0),
         ] {
             for (overflow, minimum) in [
                 (OverflowWrap::Normal, ordinary_minimum),
@@ -282,7 +282,13 @@ fn native_hyphen_policy_and_empty_indication_preserve_intrinsic_wrap_distinction
                 style.hyphenate_character =
                     surgeist_text::HyphenateCharacter::String(surgeist_text::Text::from(""));
                 style.overflow_wrap = overflow;
-                let paragraph = PreparedParagraph::plain(1, Source::new("AA\u{ad}AA"), style);
+                let short = PreparedParagraph::plain(1, Source::new("AA\u{ad}AA"), style.clone());
+                assert_eq!(
+                    short.prepared.alternative_views().count(),
+                    0,
+                    "short source remains suppressed"
+                );
+                let paragraph = PreparedParagraph::plain(1, Source::new("AX\u{ad}XXX"), style);
                 let alternatives: Vec<_> = paragraph.prepared.alternative_views().collect();
                 assert_eq!(
                     alternatives.len(),
@@ -307,12 +313,12 @@ fn native_hyphen_policy_and_empty_indication_preserve_intrinsic_wrap_distinction
                     .input(1, paragraph.text_input(1));
                 let capture =
                     TextLayoutInput::try_new(&tree, 0, vec![paragraph.binding(0)]).unwrap();
-                // Four actual Ahem glyphs are 40px unbroken; manual's empty
-                // indication splits into 20px halves. Only Anywhere admits
+                // Five actual Ahem glyphs are 50px unbroken; manual's empty
+                // indication splits into 20px and 30px pieces. Only Anywhere admits
                 // the 10px emergency pieces into min-content.
                 for (available, expected) in [
                     (AvailableOf::MIN_CONTENT, minimum),
-                    (AvailableOf::MAX_CONTENT, 40.0),
+                    (AvailableOf::MAX_CONTENT, 50.0),
                 ] {
                     let request = LayoutRootRequestOf::viewport(Size::new(
                         available,
@@ -332,7 +338,7 @@ fn native_hyphen_policy_and_empty_indication_preserve_intrinsic_wrap_distinction
                     assert_eq!(width, expected, "{hyphens:?}/{overflow:?}/{available:?}");
                     assert_eq!(
                         batch.placed_text()[0].layout().source().text().code_units(),
-                        [65, 65, 173, 65, 65]
+                        [65, 88, 173, 88, 88, 88]
                     );
                 }
             }

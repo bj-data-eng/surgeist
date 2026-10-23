@@ -13,10 +13,10 @@ fn selected_computed_beh(separate_instance: bool) -> Vec<(Range, u32, f32)> {
         size: 20.0,
         ..Style::default()
     };
-    let mut source = Source::new("\u{628}\u{628}\u{ad}\u{628}");
+    let mut source = Source::new("\u{621}\u{628}\u{628}\u{ad}\u{628}\u{621}");
     if separate_instance {
         source.span(
-            Range::new(0, 2),
+            Range::new(0, 3),
             Style {
                 size: 30.0,
                 ..style.clone()
@@ -33,8 +33,8 @@ fn selected_computed_beh(separate_instance: bool) -> Vec<(Range, u32, f32)> {
         paragraph_strut: ParagraphStrut::DefaultFont,
         origins: vec![ParagraphOrigin {
             source,
-            local: Range::new(0, 4),
-            aggregate: Range::new(0, 4),
+            local: Range::new(0, 6),
+            aggregate: Range::new(0, 6),
             kind: ParagraphOriginKind::Authored,
         }],
         connections: vec![],
@@ -44,9 +44,9 @@ fn selected_computed_beh(separate_instance: bool) -> Vec<(Range, u32, f32)> {
             ParagraphReplacement::resolved_native_logical_before(
                 ParagraphReplacementDefinition::Source {
                     origin: 0,
-                    source: Range::new(2, 3),
+                    source: Range::new(3, 4),
                 },
-                3,
+                4,
                 vec!["\u{628}".into()],
             )
             .unwrap(),
@@ -55,7 +55,7 @@ fn selected_computed_beh(separate_instance: bool) -> Vec<(Range, u32, f32)> {
     })
     .unwrap();
     let analyzed = crate::test_wrapping::bind_missing(&analyzed, Wrap::Word);
-    let fixture = crate::shaping_test_fonts::arabic_ahem();
+    let fixture = crate::shaping_test_fonts::arabic_nonjoining_ahem();
     let mut system = System::new(SystemOptions {
         font_catalogue: FontCatalogueMode::RegisteredOnly,
     })
@@ -122,6 +122,7 @@ fn selected_computed_beh(separate_instance: bool) -> Vec<(Range, u32, f32)> {
                 .map(|glyph| (glyph.range(), glyph.id(), run.font_size())),
         );
     }
+    glyphs.retain(|(range, _, _)| range.start != 0);
     glyphs.sort_by_key(|(range, _, _)| (range.start, range.end));
     // Original init/medi come from the unbroken source; the inserted final
     // comes from this selected line. The unselected following original Beh
@@ -134,9 +135,9 @@ fn computed_joining_uses_selected_line_without_unselected_following_source() {
     assert_eq!(
         selected_computed_beh(false),
         [
-            (Range::new(0, 1), 100, 20.0),
-            (Range::new(1, 2), 277, 20.0),
-            (Range::new(3, 3), 82, 20.0),
+            (Range::new(1, 2), 100, 20.0),
+            (Range::new(2, 3), 277, 20.0),
+            (Range::new(4, 4), 82, 20.0),
         ]
     );
 }
@@ -146,9 +147,9 @@ fn computed_joining_crosses_actual_selected_line_instance_edge() {
     assert_eq!(
         selected_computed_beh(true),
         [
-            (Range::new(0, 1), 100, 30.0),
-            (Range::new(1, 2), 277, 30.0),
-            (Range::new(3, 3), 82, 20.0),
+            (Range::new(1, 2), 100, 30.0),
+            (Range::new(2, 3), 277, 30.0),
+            (Range::new(4, 4), 82, 20.0),
         ]
     );
 }

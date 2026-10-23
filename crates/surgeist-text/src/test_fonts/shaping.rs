@@ -178,6 +178,24 @@ pub(crate) fn arabic_ahem() -> Vec<u8> {
     )
 }
 
+/// Original Arabic GSUB with a real nonjoining HAMZA for lexical padding.
+pub(crate) fn arabic_nonjoining_ahem() -> Vec<u8> {
+    replace_tables(
+        &arabic_ahem(),
+        vec![(
+            *b"cmap",
+            cmap(&[
+                (0x20, 3),
+                (0x621, 36),
+                (0x627, 58),
+                (0x628, 35),
+                (0x200c, 253),
+                (0x200d, 253),
+            ]),
+        )],
+    )
+}
+
 fn pair_adjustment(first: u16, second: u16) -> Vec<u8> {
     // PairPos format1, ValueFormat1=xAdvance, no second value record.
     // Coverage and PairSet each contain exactly one actual glyph.

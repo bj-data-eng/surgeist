@@ -4,6 +4,7 @@
 // separate segmentation input, usize indices, and occurrence-backed atomics.
 
 pub(crate) mod cluster;
+pub(crate) mod hyphenation;
 pub(crate) mod wrapping;
 
 use std::ops::Range;
@@ -130,7 +131,7 @@ pub(crate) fn analyze(
     styles: &[AnalyzedStyleRun],
     boxes: &[InlineBox],
     paragraph: &ParagraphData,
-) -> Result<Analysis> {
+) -> Result<(Analysis, Vec<Range<usize>>)> {
     let sources = AnalysisDataSources;
     for (policy, row) in paragraph.boundary_policies.iter().enumerate() {
         let at = row.at(paragraph, boxes);
@@ -200,11 +201,12 @@ pub(crate) fn analyze(
                 .partition_point(|atom| atom.presentation.start < *unit)
         })
         .collect();
-    let graphemes = grapheme_stops
+    let graphemes: Vec<_> = grapheme_stops
         .windows(2)
         .map(|pair| pair[0]..pair[1])
         .collect();
     let mut boundaries = vec![Boundary::None; projection.atoms.len() + 1];
+    let mut word_ranges = Vec::new();
     let mut component_stops: Vec<_> = projection
         .barriers
         .iter()
@@ -222,10 +224,18 @@ pub(crate) fn analyze(
         let component_end = component[1];
         let start_byte = offsets[component_start];
         let end_byte = offsets[component_end];
-        for byte in WordSegmenter::new_for_non_complex_scripts(WordBreakInvariantOptions::default())
-            .segment_str(&projection.segmentation[start_byte..end_byte])
+        let mut previous = component_start;
+        for (byte, kind) in
+            WordSegmenter::new_for_non_complex_scripts(WordBreakInvariantOptions::default())
+                .segment_str(&projection.segmentation[start_byte..end_byte])
+                .iter_with_word_type()
         {
-            boundaries[atom_at(byte + start_byte)] = Boundary::Word;
+            let atom = atom_at(byte + start_byte);
+            boundaries[atom] = Boundary::Word;
+            if previous < atom && kind.is_word_like() {
+                word_ranges.push(previous..atom);
+            }
+            previous = atom;
         }
         // Preserve complete neighboring atoms for a change of word-break mode,
         // but never borrow text across an actual disconnected/in-flow edge.
@@ -375,14 +385,17 @@ pub(crate) fn analyze(
             _ => {}
         }
     }
-    Ok(Analysis {
-        infos,
-        levels,
-        box_levels,
-        control_levels,
-        base_level: bidi.base_level(),
-        graphemes,
-    })
+    Ok((
+        Analysis {
+            infos,
+            levels,
+            box_levels,
+            control_levels,
+            base_level: bidi.base_level(),
+            graphemes,
+        },
+        word_ranges,
+    ))
 }
 
 fn style_at(projection: &SourceProjection, styles: &[AnalyzedStyleRun], atom: usize) -> usize {
@@ -575,7 +588,7 @@ mod tests {
             owner: crate::engine::resolve::AnalyzedStyleOwner::Source(crate::Range::new(0, 4)),
             style: crate::ValidatedStyle::try_from(crate::Style::default()).expect("default style"),
         }];
-        let analysis = analyze(
+        let (analysis, _) = analyze(
             &projection,
             &styles,
             &[],

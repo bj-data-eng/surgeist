@@ -758,7 +758,7 @@ fn discretionary_control_float_seam_lends_the_actual_selected_replacement_bundle
     let style = ahem_style(10.0, 10.0);
     let paragraph = PreparedParagraph::with_replacements(
         vec![
-            ParagraphPart::text(10, Source::new("A"), style.clone()),
+            ParagraphPart::text(10, Source::new("AX"), style.clone()),
             ParagraphPart::Control {
                 node: 20,
                 kind: ParagraphControlKind::DiscretionaryBreak {
@@ -775,7 +775,7 @@ fn discretionary_control_float_seam_lends_the_actual_selected_replacement_bundle
                     control: 0,
                     origin: None,
                 },
-                1,
+                2,
                 vec!["X".into()],
             )
             .unwrap(),
@@ -790,7 +790,7 @@ fn discretionary_control_float_seam_lends_the_actual_selected_replacement_bundle
         .handle();
     let control = binding.controls[0].occurrence.clone();
     binding.nodes = vec![10, 20, 30, 11];
-    let tree = float_tree::<f64>(&binding, 25.0, Float::Left, 1)
+    let tree = float_tree::<f64>(&binding, 35.0, Float::Left, 1)
         .children(2, binding.nodes.clone())
         .children(20, [])
         .input(
@@ -798,9 +798,9 @@ fn discretionary_control_float_seam_lends_the_actual_selected_replacement_bundle
             LayoutInputOf::text_control(TextControlParticipation::new(control.clone())),
         );
     let capture = TextLayoutInput::try_new(&tree, 2, vec![binding]).unwrap();
-    let batch = compute_layout_with_text(&capture, 2, request(25.0)).unwrap();
+    let batch = compute_layout_with_text(&capture, 2, request(35.0)).unwrap();
     let layout = batch.placed_text()[0].layout();
-    assert_eq!(layout.source().text().code_units(), [65, 88, 88, 88]);
+    assert_eq!(layout.source().text().code_units(), [65, 88, 88, 88, 88]);
     assert_eq!(layout.lines().len(), 2);
     let first = batch
         .final_inline_fragments()
@@ -815,7 +815,7 @@ fn discretionary_control_float_seam_lends_the_actual_selected_replacement_bundle
             text::PreparedParticipant::Control(control),
         ))
         .unwrap();
-    assert_eq!(observation.advance(), 20.0);
+    assert_eq!(observation.advance(), 30.0);
     assert!(observation.has_retained_flow_participation());
     assert_eq!(output(&batch, 30).location, Point::new(0.0, 10.0));
     let replacement = first
