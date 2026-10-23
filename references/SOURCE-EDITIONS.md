@@ -1234,6 +1234,20 @@ selects the corresponding horizontal translated-contour operation and owns its
 numerical and admission rules. This is an implementation-source determination,
 not a CSS edition change or native CoreText raster-equivalence claim.
 
+## Hyphenation indication conventions
+
+The [pinned WebKit indication metadata](webkit-hyphen-indication--73aa6c89e2cb-metadata.md)
+identifies the primary-font character choice and logical trailing placement at
+revision `73aa6c89e2cb77c46184a81aec944e4ab99d114d`, including its unfinished
+locale handling. No implementation excerpt is retained. The
+[Text/Layout contract](../docs/text-layout-contract.md#hyphenation-policy-and-indication-ownership)
+selects that mechanism only as an explicit unknown-convention fallback, with
+the governing style's actual primary-font authority. The pinned Text 4 hyphens,
+hyphenate-character and Appendix F writing-system rules remain normative;
+automatic opportunity resources and supported language/script conventions need
+their own evidence. This bounded determination does not establish implementation
+completion or all-language behavior.
+
 ## Nonempty formatting-unit Range geometry
 
 The [Blink Range witness](blink-formatting-unit-range--daf70f9ddee4.md) identifies

@@ -201,6 +201,68 @@ barriers and failure atomicity. A precise capability refusal leaves the affected
 implementation requirement incomplete; it does not establish a shaping boundary
 or permit weaker mixed-interaction expectations.
 
+### Hyphenation policy and indication ownership
+
+Text owns hyphenation opportunity production, indication choice and indication
+placement as distinct decisions. Under `none`, suppress explicit and automatic
+hyphenation opportunities, including an otherwise unadorned SHY; preserve ordinary
+breaks at visible hyphens. Under `manual`, authentic authored conditional markers
+need no dictionary. Automatic opportunities require both known content language
+and an appropriate actual resource; an indication fallback supplies neither.
+These rules follow the pinned [hyphens property](../references/css-text-4--WD-css-text-4-20260814--106c5cd086ab.md#hyphens-property).
+Layout retains candidate priority, fit, intrinsic sizing and committed-line limits.
+
+Resolve an indication convention with its actual basis: supported language and
+writing system, supported declared-writing-system fallback, or the explicit
+unknown-convention default below. Follow [Appendix F](../references/css-text-4--WD-css-text-4-20260814--106c5cd086ab.md#script-tagging):
+an explicit script overrides the language's usual script; absent language-specific
+knowledge, use supported conventions of the declared writing system. Unknown
+language does not prevent manual hyphenation. A known applicable convention that
+requires unsupported behavior returns a precise capability error; the unknown
+default cannot certify that convention or complete that implementation scope.
+Native captured convention facts remain distinguishable from Text-owned rules
+and do not prove web-language coverage.
+
+Preserve a specified indication string exactly, including empty. Its placement
+follows the applicable convention, defaulting to logical immediately before the
+break when no other placement convention is established, as the pinned
+[hyphenate-character property](../references/css-text-4--WD-css-text-4-20260814--106c5cd086ab.md#hyphenate-character)
+requires. A known required after-break or two-sided placement needs its actual
+capability rather than a substituted before-break insertion. An empty string
+still selects a real hyphenation ending and retains joining and source semantics;
+it needs no visible indication font or placement operation. No truncation is
+required; any adopted truncation preserves whole typographic character units.
+
+For an automatic indication with no established language or writing-system
+convention, Surgeist selects the bounded [WebKit font fallback](../references/webkit-hyphen-indication--73aa6c89e2cb-metadata.md):
+choose U+2010 when the indication-owning style's resolved primary font has a
+nonzero glyph for it, otherwise choose U+002D; use logical-before placement.
+This is an explicit unknown-convention policy, not all-language support. The
+source SHY's own style governs its indication; a source-less typed control needs
+its actual captured style authority. Resolve the primary font against the same
+captured catalogue and instance selection, independently of adjacent shaped-run
+fallback. Missing required primary-font authority is a precise failure. After
+choosing the string, use normal font selection and shaping; the character choice
+does not promise glyph coverage or permit fabricated metrics.
+
+Each authentic defining occurrence has one indication input mode: resolve from
+its governing style and convention, or consume explicitly resolved native text
+alternatives. The latter retains a nonempty ordered alternative list, including
+empty strings, and its native provenance; it does not assert language-convention
+coverage. It is not a second style-string override. Both modes use the governing
+style for font selection and hyphenation eligibility, and `none` suppresses both.
+Conflicting modes or duplicate definitions are invalid. A bare source SHY uses
+style resolution rather than silently becoming an ordinary break without an
+indication. A terminal paragraph end does not select that SHY alternative.
+
+Retain the actual resolved convention, governing style and font/resource context
+in preparation and all affected cache identities. Qualification covers none versus
+visible-hyphen breaks, manual with unknown language, exact specified strings and
+empty endings, explicit-script precedence and supported script fallback, known
+unsupported conventions, primary-font versus adjacent-fallback coverage, genuine
+source/control custody, min-content and unchanged authored/selection/search text.
+This determination supplies requirements, not an implementation-completion claim.
+
 ### Float encounters inside shared text units
 
 A float remains a Layout-owned box at its original source-order occurrence. It
