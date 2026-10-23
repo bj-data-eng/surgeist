@@ -192,6 +192,34 @@ intersections, expanded typographic-unit coverage where applicable, finalized
 line/fragment and placement identities, advance edges and associated font-metric
 extent. This is a required observation boundary, not a claim that the query is
 already implemented. Generic source slots and caret affinities are distinct.
+The selected evidence is the [current CSSOM View §9 capture](../references/cssom-view-range--editor-capture-20261022.md),
+checked with the [bounded CSSWG and browser-test audit](../references/range-geometry-csswg-tests--20261022.md).
+That audit found no adopted resolution for the remaining endpoint choices in
+the discussions inspected; participant proposals and collapsed-only tests do
+not establish nonempty deleted-source behavior.
+
+Range units use extended grapheme clusters as their basis, with operation-specific
+tailoring under [CSS Text's character-unit definition](../references/css-text-4--WD-css-text-4-20260814--106c5cd086ab.md#typographic-character-unit).
+They are distinct from float-prefix units: an optional Latin `AA` ligature can
+share one provider cluster while containing two Range units; a base and combining
+mark remain one grapheme-based unit. Partial selection expands the actual Range
+unit, not every provider cluster touching it.
+
+Preserve authentic per-unit advance positions and allocated adjustments first.
+For an admitted monotonic horizontal shaped cluster containing multiple complete
+Range units without a finer retained advance partition, allocate its otherwise
+unpartitioned shaped advance equally among those units in logical order, mapped
+through the actual run direction. A 12.5px `AA` shaped advance gives each unit
+6.25px before separately owned adjustments. Compose letter/word spacing,
+justification and boundary adjustments at their actual owners exactly once;
+do not equally redistribute the whole finalized allocation. This is an explicit
+Surgeist metric-allocation policy supported by the
+[bounded Blink mechanism](../references/blink-formatting-unit-range--daf70f9ddee4.md#range-unit-advance-allocation),
+not a CSS-mandated fraction, independently shaped letter width or glyph-ink clip.
+Keep shaping unchanged. Ambiguous or nonmonotonic correspondence, unsupported
+unit/font boundaries and unrecoverable adjustment ownership return a precise
+capability error. Routine optional Latin ligatures need no font caret metadata
+for this qualified fallback. Refusal does not complete unsupported-input work.
 
 For a nonempty range selecting an independently retained zero-advance formatting
 unit, Surgeist selects a zero-width rectangle at that unit's actual finalized
@@ -199,8 +227,11 @@ post-L1/L2 position. Its block extent uses the unit's actual retained resolved
 font ascent/descent around the same placed baseline. Missing required metric
 association returns a precise capability error; neither a neighboring glyph,
 requested family, line-height strut nor outline ink supplies a replacement.
+This forbids query-time font guessing, not valid font selection or fallback
+during preparation. Using the actual prepared unit's resolved font is Surgeist's
+association policy; CSS does not identify a unique font for every control.
 This is an explicit policy for a gap in the pinned
-[CSSOM View Range rules](../references/cssom-view-1--WD-cssom-view-1-20250916--693b1c1fe7f7.md#extensions-to-the-range-interface).
+[CSSOM View Range rules](../references/cssom-view-range--editor-capture-20261022.md).
 The [bounded Blink witness](../references/blink-formatting-unit-range--daf70f9ddee4.md)
 does not establish a universal alternative endpoint convention.
 
@@ -210,9 +241,9 @@ selected formatting unit to a neighboring visible run, matching isolate end,
 pre-L1 position or chosen caret.
 Keep genuine zero-width rectangles; bounding-rectangle aggregation is separate.
 
-For valid, fully covered nonempty selections consisting only of executed
-trim/discard/segment-break deletions or Phase-II removed edge spaces, the query
-succeeds with no geometry observations. Apply the same explicit no-observation
+For valid, fully covered nonempty selections with no eligible retained presentation
+attributable to the selected source, executed trim/discard/segment-break deletions
+and Phase-II removed edge spaces yield no geometry observations. Apply the same explicit no-observation
 policy to suppressed collapsed duplicates, while preserving their distinct
 source anchors and opportunity facts. A surviving space representative supplies
 geometry only when its own original contribution is selected. Carrying deleted
@@ -222,8 +253,25 @@ Mixed queries report eligible retained units in content order and account for
 the complete requested source coverage; absent or ambiguous mapping is an error,
 not a successful empty result. A wholly removed origin needs no synthesized font
 or endpoint rectangle. These are Surgeist query dispositions for gaps in the
-pinned Range rules, using the executed
+selected Range rules, using the executed
 [CSS Text whitespace distinctions](../references/css-text-4--WD-css-text-4-20260814--106c5cd086ab.md#white-space-processing).
+These dispositions can differ from Blink's zero-boundary candidates for some
+deleted subranges; whole-document fixture agreement does not prove their parity.
+
+A selected replacement with a validated nonempty `Source` definition is eligible
+when the requested original occurrence/range positively intersects that defining
+interval. Endpoint contact, an insertion anchor or a `Control` origin alone is
+insufficient. Admit that replacement's actual presentation Range units; an empty
+replacement adds none. Preserve the selected original intersections, defining
+source relation, alternative ownership and expanded units separately. Deleted
+source custody adds no second rectangle. This is explicit Source-replacement
+attribution policy, not a consequence mandated by source-preserving hyphenation.
+An eligible original and a computed contribution sharing one actual Range unit
+select that unit with truthful contributor provenance. Sharing only an optional
+multi-unit ligature does not select the computed neighbor's share. Automatic
+hyphens without a replaced authored interval require a genuine typed relation
+to their generating selected source boundary/span before a consumer can claim
+their geometry; control anchors do not supply that missing capability.
 
 A selected preserved authored newline contributes one zero-inline-advance
 font-metric rectangle at its actual finalized position on the line it terminates.
@@ -232,18 +280,33 @@ and consecutive-newline lines; missing required metrics or placement refuses.
 Keep this zero rectangle in a larger query. Where the admitted processing mode
 maps CRLF to one forced-break unit, selecting either original half or both yields
 that unit once, with selected intersections separate from expanded unit coverage.
-Do not introduce CRLF normalization into other modes. A terminal newline adds
+Do not introduce CRLF normalization into other modes or DOM offsets: HTML input
+normalization precedes the DOM, and a direct DOM CR is not automatically a CSS
+segment break. A terminal newline adds
 only its terminating-line rectangle; the following empty line has no additional
 selected authored unit. A source-less `br` has no Text-source rectangle. This
 explicit newline policy uses neither a chosen caret nor the editing-selection
-marker, and does not assert exact browser equivalence.
+marker, and does not assert exact browser equivalence. The inspected browser
+newline test supports relative vertical ordering; it does not prove this policy's
+width, font height, terminal-line exclusion, CRLF mapping or rectangle count.
 
 Layout supplies committed placement and node/occurrence associations. Its
 [#860 CSSOM View consumer](https://github.com/bj-data-eng/surgeist/issues/860),
 under [#850](https://github.com/bj-data-eng/surgeist/issues/850), validates actual
 DOM Range membership/endpoints, maps selected Text portions to those occurrences,
 includes required selected-element border boxes in content order, and applies
-ancestor/viewport transforms once. A fixture adapter can request the same Text
+ancestor/viewport transforms and scroll/zoom once. The complete consumer also
+handles collapsed ranges, detached ranges' empty result, and unrendered Text
+without a layout occurrence. Those valid DOM cases are distinct from missing
+mapping within an admitted placed occurrence. Attached shadow-tree Text cannot
+be rejected merely because its ordinary root is not the Document; the inspected
+shadow test's cross-root setter case does not define a composed range. Suppressing
+descendants' element boxes under the selected-element rule does not suppress
+their independently selected Text contributions. Excluding source-less `br`/controls
+from Text-source eligibility does not exclude selected-element border geometry.
+Native observations may be finer than web rectangles; the specification does
+not require one rectangle per grapheme, so consumer grouping and bounding-rectangle
+aggregation remain separate. A fixture adapter can request the same Text
 observations from explicit captured inputs without claiming the full live join.
 
 The retained RTL PDI case therefore keeps native x=24, while the authenticated

@@ -1237,12 +1237,30 @@ not a CSS edition change or native CoreText raster-equivalence claim.
 ## Nonempty formatting-unit Range geometry
 
 The [Blink Range witness](blink-formatting-unit-range--daf70f9ddee4.md) identifies
-bounded rectangle and caret operations at Chromium
+bounded rectangle, caret and grapheme-based advance-allocation operations at Chromium
 `daf70f9ddee4b45d4f8870f574fbde61c0db4ca7`, corresponding to the executed
 Chrome 149.0.7827.115 probe. It is metadata-only corroboration, without copied
-implementation text or an inferred PDI branch. The pinned CSSOM View edition
-remains unchanged. The [Text range contract](../docs/text-layout-contract.md#nonempty-text-range-fragments)
+implementation text or an inferred PDI branch. For the current Range contribution,
+the [complete §9 editor capture](cssom-view-range--editor-capture-20261022.md)
+selects the 8 October 2026 Editor's Draft section retrieved on 22 October, full
+HTML SHA-256 `71d9ce94f21ec00a5a333ee5a20d2b0f999a862d3543fbdb85cd4d1d3dcac176`.
+The historical dated CSSOM View edition remains available; this is a bounded
+operative section selection, not a complete-module refresh. The
+[resolution and test audit](range-geometry-csswg-tests--20261022.md) records the
+inspected discussions and immutable test identities. No adopted resolution was
+found there for the remaining deleted-only, LF, SHY or PDI endpoint choices;
+collapsed whitespace assertions and relative newline ordering do not decide
+their exact nonempty geometry. Participant proposals are not resolutions.
+The [Text range contract](../docs/text-layout-contract.md#nonempty-text-range-fragments)
 selects finalized-position, actual-font-metric rectangles for independently
 retained zero-advance formatting units. This resolves a policy gap while keeping
 the two authenticated RTL browser differences visible under #1450; it does not
-claim that the new query or #860's full consumer has been implemented.
+claim that the new query or #860's full consumer has been implemented. Range units
+remain operation-specific and EGC-based under CSS Text, distinct from the float
+prefix's provider-cluster closure. The same contract selects a bounded equal-share
+fallback for otherwise unpartitioned shaped advances while retaining actual
+spacing ownership. This is a Surgeist policy supported by the pinned mechanism,
+not a CSS-mandated fraction. Native fallback choices remain distinct from full
+web Range membership, shadow-tree, nested Text, selected-element and aggregation
+requirements. The surrogate test supports partial-unit expansion; the inspected
+collapsed RTL-ligature test does not establish exact nonempty advance fractions.

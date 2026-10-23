@@ -15,6 +15,15 @@ to this existing file, SHA-256
 `368cca1106be99d39ecd32a38d8305585d802a475effb66380b91ffc9bcf709b`;
 no different license text or project-license change is introduced.
 
+The same metadata-only witness identifies
+`third_party/blink/renderer/platform/fonts/shaping/shape_result.cc` at that
+revision for grapheme-based advance allocation. Its file-specific notice names
+Copyright (c) 2012 Google Inc. and Copyright (C) 2013 BlackBerry Limited, with
+three-clause BSD conditions. The [exact original header](shape-result-cc-range-license-header.txt)
+is retained separately; the project license does not replace it. Only source
+identity, bounded locators and a factual synopsis are redistributed, without
+algorithm excerpts or compiled source.
+
 ## HTML dimension-list cursor witness
 
 The [dimension-list witness](../../references/html-dimension-list-cursor--webkit-73aa6c89e2cb-blink-7984f9d11800.md)
