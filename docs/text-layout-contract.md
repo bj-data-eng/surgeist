@@ -163,7 +163,69 @@ A native empty origin retains a zero-width, zero-height source-fragment anchor a
 
 The standalone `System::layout` convenience path retains the currently supported wrapping/alignment behavior by choosing lines through the same preparation/finalization machinery. Its simple paragraph chooser is private to text; layout’s composed CSS formatter does not use it as a second formatter. Unsupported style combinations remain explicit errors until the owning standards issue implements them.
 
-The explicit native `TabContext::FontAdvance` policy uses the selected font's actual U+0009 glyph advance, preserving the standalone policy through the same finalizer. It does not approximate a tab with a space or implement CSS tab stops. `NoTabs` validates actual absence. The [CSS tab contract](#preserved-css-tab-stops) below selects the replacement for the currently unsupported arbitrary-stop request; selection does not establish implementation support. A taken discretionary opportunity requires its actual issued alternative, including an explicitly computed empty replacement; a natural paragraph end does not select a hyphen merely because the preceding source contains SHY. A source-defined replacement validates its real defining source occurrence. A control-defined replacement retains its exact control/opportunity/alternative owner and may have no text origin; incidental source-anchor provenance must be supplied and validated, never guessed from the numeric offset.
+The explicit native `TabContext::FontAdvance` policy uses the selected font's actual U+0009 glyph advance, preserving the standalone policy through the same finalizer. It does not approximate a tab with a space or implement CSS tab stops. `NoTabs` validates actual absence. The [CSS tab contract](#preserved-css-tab-stops) below defines the independently prepared CSS-stop operation and its required block capture. A taken discretionary opportunity requires its actual issued alternative, including an explicitly computed empty replacement; a natural paragraph end does not select a hyphen merely because the preceding source contains SHY. A source-defined replacement validates its real defining source occurrence. A control-defined replacement retains its exact control/opportunity/alternative owner and may have no text origin; incidental source-anchor provenance must be supplied and validated, never guessed from the numeric offset.
+
+### Native whitespace edges and hanging
+
+Text owns selected-line Phase II classification under #64/#72; Layout consumes
+its measurements for fit, intrinsic sizing, justification and placement. This
+native profile follows the pinned [Phase II](../references/css-text-4--WD-css-text-4-20260814--106c5cd086ab.md#white-space-phase-2)
+and [hanging definitions](../references/css-text-4--WD-css-text-4-20260814--106c5cd086ab.md#hanging),
+with #74's [preserve-spaces determination](../references/SOURCE-EDITIONS.md#operative-source-decisions-by-issue).
+It selects the required operation, without claiming unqualified feature support.
+
+Classify actual processed code points, governing styles and canonical line order.
+Other space separators are Unicode Zs excluding U+0020 and U+00A0. NBSP cannot
+inherit their removal or hanging rules. Collapse removes its applicable leading
+and trailing U+0020 and trailing U+1680, retaining source custody. Under Preserve
+with wrapping enabled, eligible trailing sequences hang unconditionally at a real
+Soft ending and conditionally before an actual forced break or block end.
+PreserveSpaces applies that same Phase II rule after its own Phase I conversion;
+a converted LF does not supply a forced break. No preservation-rule hanging
+applies under nowrap. BreakSpaces requires its real processing and after-each-space
+opportunities, and never hangs its preserved spaces/tabs/separators; it cannot be
+implemented as a finalizer flag. Missing modes retain their positive requirements.
+
+An issued paragraph ending proves preparation completion, not CSS block end.
+Native input retains a distinct `ParagraphTerminalEdge` capture: `Unknown`,
+`BlockEnd` or `NonBlockBoundary`. An explicit native producer supplies its genuine
+normalized fact. Contextual processing derives it from actual paragraph/domain
+custody and the owning block scope's exit, including ordered empty and out-of-flow
+occurrences; neither numeric extent nor paragraph-table order establishes it.
+Failure to prove BlockEnd means Unknown unless positive evidence establishes a
+non-block boundary. Retain this fact through analysis, preparation and reuse.
+Require missing terminal authority only when an eligible sequence's measures
+consume it; a known non-block boundary cannot manufacture a Soft or Forced break.
+Real Forced/Soft, NBSP and other independent cases do not acquire that requirement.
+
+One Text-owned receipt distinguishes raw signed flow and physical geometry from
+fit advance/occupied bounds, alignment/justification measure, actual hanging and
+MinContent/MaxContent contributions. Consumers cannot subtract generic trailing
+whitespace. Unconditional hanging excludes its contribution from those measures;
+conditional hanging excludes the full eligible contribution from fit/MinContent,
+retains it for MaxContent, and excludes only actual overflow for alignment and
+justification. Thus X10 plus SPACE10 in width15 retains raw20, fit10 and actual
+hanging5; in width40 it hangs0 and centers as a 20px sequence. Preserve signed flow
+separately from physical outward overlap, without taking absolute values or
+clamping signed contributions. A hanging glyph retains its advance, source,
+caret, Range and paint geometry.
+
+Determine conditional overflow before justification from the actual natural
+candidate, including authored spacing and tab resolution. Earlier unconditional
+groups become terminal only when every subsequent conditional glyph actually
+hangs. Apply the corresponding inclusion rules separately to each intrinsic
+purpose; an absent width is not a purpose tag. Allocated-spacing finalization
+uses the same owners and recomputes tabs and feedback. Alignment cannot decide
+the natural hanging condition again. Preserve complete allocation/replay identity
+and the existing cycle/failure rules.
+
+Actual nonzero inline border/padding hanging barriers require their own captured
+boundary facts. Neutral native controls do not prove arbitrary styled boundaries
+have zero edges. Add that concrete producer/consumer operation without waiting
+for a complete Style engine; no-barrier cases remain independently implementable.
+This profile does not silently replace raw standalone wrapping/alignment policy.
+Keep that existing operation explicit while sharing mechanics and truthful
+receipts; no compatibility alias or second whitespace formatter is selected.
 
 ### Preserved CSS tab stops
 
