@@ -10,6 +10,8 @@ use surgeist_text::{ParagraphBaseDirection, ParagraphControlKind, Source, Wrap};
 
 #[path = "tests/automatic_priority.rs"]
 mod automatic_priority;
+#[path = "tests/before_indication_bidi.rs"]
+mod before_indication_bidi;
 #[path = "tests/canonical.rs"]
 mod canonical;
 #[path = "tests/conditional_overflow.rs"]
@@ -24,6 +26,8 @@ mod line_limit_composition;
 mod line_limits;
 #[path = "tests/line_policy.rs"]
 mod line_policy;
+#[path = "tests/logical_after.rs"]
+mod logical_after;
 #[path = "tests/manual_css_minima.rs"]
 mod manual_css_minima;
 #[path = "tests/tab_stops.rs"]
