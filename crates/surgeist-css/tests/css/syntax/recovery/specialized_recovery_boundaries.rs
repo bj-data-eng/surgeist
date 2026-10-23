@@ -276,7 +276,7 @@ fn eof_string_keeps_its_content_and_reports_string_and_rule_closures() {
         panic!("one retained content declaration");
     };
     assert_eq!(
-        declaration.to_specified_css().unwrap(),
+        declaration.serialize_specified(Default::default()).unwrap(),
         "content: \"unterminated\";"
     );
     assert_implicit_closures(source, 2);

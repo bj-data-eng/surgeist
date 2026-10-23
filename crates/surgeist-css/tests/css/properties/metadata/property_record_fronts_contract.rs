@@ -293,7 +293,11 @@ fn text_report(
 #[track_caller]
 fn assert_specified(source: &CssDeclaration, expected: &str, label: &str) {
     let before = source.clone();
-    assert_eq!(source.to_specified_css().unwrap(), expected, "{label}");
+    assert_eq!(
+        source.serialize_specified(Default::default()).unwrap(),
+        expected,
+        "{label}"
+    );
     assert_eq!(source, &before, "{label}: serialization mutated the source");
     let report = parse_style_attribute(expected);
     assert!(
@@ -305,7 +309,7 @@ fn assert_specified(source: &CssDeclaration, expected: &str, label: &str) {
         panic!("{label}: re-parse {expected:?} retained one declaration")
     };
     assert_eq!(
-        reparsed.to_specified_css().unwrap(),
+        reparsed.serialize_specified(Default::default()).unwrap(),
         expected,
         "{label}: idempotent re-parse"
     );
@@ -434,7 +438,7 @@ fn implicit_origin(components: &CssComponentValues) -> CssValueOrigin {
         })
     }
     nested(components).unwrap_or_else(|| {
-        let serialized = components.serialize().unwrap();
+        let serialized = components.serialize_tokens(Default::default()).unwrap();
         (0..serialized.as_css().len())
             .find_map(|offset| match serialized.origin_at(offset) {
                 Some(CssSerializedOrigin::Token(
@@ -545,7 +549,7 @@ fn every_record_css_wide_keyword_serializes_and_expands_through_every_front_and_
                     // initial value's members.
                     let before = source.clone();
                     LimitLadder::new(&expected, 3, 3)
-                        .assert_unchanged(&source, CssDeclaration::to_specified_css_with_limits);
+                        .assert_unchanged(&source, CssDeclaration::serialize_specified);
                     assert_global_contributions(case, completed(&source), &source, keyword, None);
                     assert_eq!(source, before, "{label}: expansion mutated the source");
                 }
@@ -558,9 +562,11 @@ fn every_record_css_wide_keyword_serializes_and_expands_through_every_front_and_
 fn every_record_programmatic_css_wide_keyword_keeps_origin_through_checked_fronts() {
     each_record(|case| {
         for (text, keyword) in GLOBALS {
-            let components =
-                CssComponentValues::try_new(vec![CssComponentValue::try_ident(text).unwrap()])
-                    .unwrap();
+            let components = CssComponentValues::try_new(
+                vec![CssComponentValue::try_ident(text).unwrap()],
+                Default::default(),
+            )
+            .unwrap();
             for importance in IMPORTANCE {
                 for grammar in [false, true] {
                     let source = authored_property::checked_components(
@@ -576,7 +582,7 @@ fn every_record_programmatic_css_wide_keyword_keeps_origin_through_checked_front
                     );
                     assert_eq!(source.known().unwrap().global(), Some(keyword));
                     assert_eq!(
-                        source.to_specified_css().unwrap(),
+                        source.serialize_specified(Default::default()).unwrap(),
                         specified(case.name, text, importance)
                     );
                     assert_global_contributions(case, completed(&source), &source, keyword, None);
@@ -600,7 +606,7 @@ fn every_record_programmatic_keyword_row_keeps_origin_through_checked_fronts() {
                 continue;
             }
             let ident = CssComponentValue::try_ident(authored).unwrap();
-            let components = CssComponentValues::try_new(vec![ident]).unwrap();
+            let components = CssComponentValues::try_new(vec![ident], Default::default()).unwrap();
             let before = components.clone();
             for importance in IMPORTANCE {
                 for grammar in [false, true] {
@@ -620,7 +626,7 @@ fn every_record_programmatic_keyword_row_keeps_origin_through_checked_fronts() {
                     assert!(source.parsed_name().is_none());
                     assert!(source.parsed_value().is_none());
                     assert_eq!(
-                        source.to_specified_css().unwrap(),
+                        source.serialize_specified(Default::default()).unwrap(),
                         specified(case.name, canonical, importance)
                     );
                     let values = longhands(completed(&source));
@@ -1339,7 +1345,7 @@ fn every_record_checked_fronts_reject_an_authored_importance_annotation_at_its_t
         for (authored, _) in case.accepted_rows() {
             let text = format!("{PREFIX}{authored}!important");
             let components = parse_component_values(&text).unwrap();
-            let serialized = components.serialize().unwrap();
+            let serialized = components.serialize_tokens(Default::default()).unwrap();
             let origin = serialized
                 .origin_at(serialized.as_css().rfind('!').unwrap())
                 .unwrap();
@@ -1405,7 +1411,7 @@ fn every_record_name_is_ascii_case_insensitive_and_escapable_at_every_lookup() {
             };
             assert_eq!(source.known().unwrap().property(), case.property, "{css}");
             assert_eq!(
-                source.to_specified_css().unwrap(),
+                source.serialize_specified(Default::default()).unwrap(),
                 specified(case.name, canonical, importance),
                 "{css}"
             );

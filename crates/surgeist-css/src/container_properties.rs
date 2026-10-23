@@ -3,8 +3,8 @@ use crate::component_values::CssCanonicalBuilder;
 use crate::specified_rule_serialization::SpecifiedRuleWriter;
 use crate::{
     CssComponentValue, CssComponentValueError, CssComponentValueErrorKind, CssComponentValueLimits,
-    CssComponentValues, CssContainerName, CssSerializedValue, CssSpecifiedValueSerializationError,
-    CssSpecifiedValueSerializationLimits, CssValueOrigin,
+    CssComponentValues, CssContainerName, CssSerializationError, CssSerializedValue,
+    CssValueOrigin,
 };
 
 /// The six ordinary container-type states, without computed containment behavior.
@@ -150,28 +150,6 @@ impl Projection<'_> {
         Ok(())
     }
 
-    fn append_to_rule_writer(
-        &self,
-        writer: &mut SpecifiedRuleWriter,
-    ) -> Result<(), CssSpecifiedValueSerializationError> {
-        if matches!(self.names, Some(CssContainerNames::Names(_))) {
-            writer.source_member(0, |writer| {
-                writer.context.charge_input(1)?;
-                writer.context.charge_projection(1)
-            })?;
-        }
-        self.visit_fields(|index, piece| {
-            writer.source_member(index, |writer| match piece {
-                Piece::Ident(name) => {
-                    writer.context.charge_input(1)?;
-                    writer.context.charge_projection(1)?;
-                    writer.append_identifier(name)
-                }
-                Piece::Space => writer.append(" "),
-                Piece::Slash => writer.append("/"),
-            })
-        })
-    }
     fn components(
         &self,
         limits: CssComponentValueLimits,
@@ -207,7 +185,7 @@ impl Projection<'_> {
             });
             Ok(())
         })?;
-        CssComponentValues::try_new_with_limits(items, limits)
+        CssComponentValues::try_new(items, limits)
     }
     fn serialize(&self, max_bytes: usize) -> Result<CssSerializedValue, CssComponentValueError> {
         let limits = CssComponentValueLimits::try_new(0, usize::MAX, max_bytes)
@@ -218,62 +196,77 @@ impl Projection<'_> {
         builder.finish()
     }
 }
+impl crate::specified_rule_serialization::SpecifiedProvider for Projection<'_> {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut SpecifiedRuleWriter,
+    ) -> Result<(), CssSerializationError> {
+        if matches!(self.names, Some(CssContainerNames::Names(_))) {
+            writer.source_member(0, |writer| writer.node())?;
+        }
+        self.visit_fields(|index, piece| {
+            writer.source_member(index, |writer| match piece {
+                Piece::Ident(name) => {
+                    writer.node()?;
+                    writer.append_identifier(name)
+                }
+                Piece::Space => writer.append(" "),
+                Piece::Slash => writer.append("/"),
+            })
+        })
+    }
+}
 macro_rules! emission {
     ($($ty:ty),+ $(,)?) => { $(impl $ty {
         /// Emits canonical components with explicitly programmatic token origins.
-        pub fn to_components(&self) -> Result<CssComponentValues, CssComponentValueError> {
-            self.to_components_with_limits(CssComponentValueLimits::default())
-        }
+        ///
         /// Emits canonical components under checked token and escaped-byte limits.
-        pub fn to_components_with_limits(&self, limits: CssComponentValueLimits) -> Result<CssComponentValues, CssComponentValueError> {
+        pub fn to_components(
+            &self,
+            limits: CssComponentValueLimits,
+        ) -> Result<CssComponentValues, CssComponentValueError> {
             self.projection().components(limits)
         }
         /// Canonical semantic spelling; parsed declaration wrappers retain authored spelling.
-        pub fn serialize(&self) -> Result<CssSerializedValue, CssComponentValueError> { self.serialize_with_limit(usize::MAX) }
+        ///
         /// Bounds canonical output, including identifier escapes and separators.
-        pub fn serialize_with_limit(&self, max_bytes: usize) -> Result<CssSerializedValue, CssComponentValueError> { self.projection().serialize(max_bytes) }
+        ///
+        /// `limits.max_css_bytes()` caps the output, including inserted syntax; the other component
+        /// limits do not apply.
+        pub fn serialize_tokens(
+            &self,
+            limits: crate::CssComponentValueLimits,
+        ) -> Result<CssSerializedValue, CssComponentValueError> {
+            self.projection().serialize(limits.max_css_bytes())
+        }
 
-        /// Emits canonical specified text without changing component provenance.
-        pub fn serialize_specified(&self) -> Result<String, CssSpecifiedValueSerializationError> {
-            self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-        }
-        /// Emits atomically under cumulative input, projection, and final UTF-8 byte limits.
-        /// Each retained name or keyword consumes one input and projection node;
-        /// a nonempty name list and the shorthand each add one aggregate node.
-        /// The shorthand's omitted Normal type still consumes one keyword node.
-        /// Separators and escaping add bytes without adding semantic nodes.
-        pub fn serialize_specified_with_limits(&self, limits: CssSpecifiedValueSerializationLimits) -> Result<String, CssSpecifiedValueSerializationError> {
-            let mut writer = SpecifiedRuleWriter::new(limits);
-            self.append_to_rule_writer(&mut writer)?;
-            Ok(writer.css)
-        }
-    })+ };
+    }
+    crate::specified_rule_serialization::specified_serialization!($ty);)+ };
 }
 emission!(CssContainerType, CssContainerNames, CssContainer);
 
-impl CssContainerType {
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssContainerType {
+    fn append_to_rule_writer(
         &self,
         writer: &mut SpecifiedRuleWriter,
-    ) -> Result<(), CssSpecifiedValueSerializationError> {
+    ) -> Result<(), CssSerializationError> {
         self.projection().append_to_rule_writer(writer)
     }
 }
-impl CssContainerNames {
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssContainerNames {
+    fn append_to_rule_writer(
         &self,
         writer: &mut SpecifiedRuleWriter,
-    ) -> Result<(), CssSpecifiedValueSerializationError> {
+    ) -> Result<(), CssSerializationError> {
         self.projection().append_to_rule_writer(writer)
     }
 }
-impl CssContainer {
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssContainer {
+    fn append_to_rule_writer(
         &self,
         writer: &mut SpecifiedRuleWriter,
-    ) -> Result<(), CssSpecifiedValueSerializationError> {
-        writer.context.charge_input(1)?;
-        writer.context.charge_projection(1)?;
+    ) -> Result<(), CssSerializationError> {
+        writer.node()?;
         self.projection().append_to_rule_writer(writer)?;
         if self.container_type == CssContainerType::Normal {
             writer.source_member(1, |writer| {
@@ -288,8 +281,9 @@ impl CssContainer {
 mod specified_tests {
     use super::*;
     use crate::CssIsolation;
+    use crate::CssSerializationLimits as Limits;
     use crate::CssSpecifiedValueSerializationErrorKind as Kind;
-    use CssSpecifiedValueSerializationLimits as Limits;
+    use crate::specified_rule_serialization::SpecifiedProvider as _;
 
     fn names(values: &[&str]) -> CssContainerNames {
         CssContainerNames::Names(
@@ -303,9 +297,7 @@ mod specified_tests {
         )
     }
 
-    fn compose(
-        writer: &mut SpecifiedRuleWriter,
-    ) -> Result<(), CssSpecifiedValueSerializationError> {
+    fn compose(writer: &mut SpecifiedRuleWriter) -> Result<(), CssSerializationError> {
         writer.append("prefix ")?;
         CssIsolation::Auto.append_to_rule_writer(writer)?;
         writer.append(" ")?;
@@ -366,7 +358,7 @@ mod specified_tests {
 
     #[test]
     fn each_container_provider_suppresses_bytes_without_refunding_nodes() {
-        type Emit = fn(&mut SpecifiedRuleWriter) -> Result<(), CssSpecifiedValueSerializationError>;
+        type Emit = fn(&mut SpecifiedRuleWriter) -> Result<(), CssSerializationError>;
         let cases: [(Emit, usize); 5] = [
             (
                 |w| CssContainerType::InlineSizeScrollState.append_to_rule_writer(w),

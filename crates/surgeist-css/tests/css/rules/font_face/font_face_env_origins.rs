@@ -12,6 +12,7 @@ fn pending(kind: Kind) -> surgeist_css::CssPendingFontFaceDescriptorValue {
     let value = Authored::try_from_components(
         kind,
         parse_component_values("env(selection, fallback)").unwrap(),
+        Default::default(),
     )
     .unwrap();
     let Authored::Pending(value) = value else {
@@ -30,7 +31,10 @@ fn strict_reentry_rejects_nested_residual_functions_and_recovered_src_members() 
         r"c\61 lc(ENV(width))",
     ] {
         let error = width
-            .reparse_after_substitution(parse_component_values(replacement).unwrap())
+            .reparse_after_substitution(
+                parse_component_values(replacement).unwrap(),
+                Default::default(),
+            )
             .unwrap_err();
         assert_eq!(
             error.kind(),
@@ -51,8 +55,11 @@ fn strict_reentry_rejects_nested_residual_functions_and_recovered_src_members() 
     assert!(!raw.is_clean(), "ordinary raw parsing reports bad member");
     let replacement = parse_component_values("bogus, url(good.woff2)").unwrap();
     for error in [
-        Authored::try_from_components(Kind::Src, replacement.clone()).unwrap_err(),
-        source.reparse_after_substitution(replacement).unwrap_err(),
+        Authored::try_from_components(Kind::Src, replacement.clone(), Default::default())
+            .unwrap_err(),
+        source
+            .reparse_after_substitution(replacement, Default::default())
+            .unwrap_err(),
     ] {
         assert!(matches!(
             error.kind(),
@@ -72,12 +79,12 @@ fn mixed_width_replacement_keeps_exact_numeric_origin_and_pending_components_kee
         .items()
         .to_vec();
     items.push(CssComponentValue::try_ident("condensed").unwrap());
-    let replacement = CssComponentValues::try_new(items).unwrap();
+    let replacement = CssComponentValues::try_new(items, Default::default()).unwrap();
     let Ordinary::FontWidth(CssFontFaceWidth::Range {
         start: CssFontWidth::Percentage(start),
         end: Some(CssFontWidth::Keyword(_)),
     }) = pending(Kind::FontWidth)
-        .reparse_after_substitution(replacement)
+        .reparse_after_substitution(replacement, Default::default())
         .unwrap()
     else {
         panic!("one exact percentage and one keyword")
@@ -91,16 +98,22 @@ fn mixed_width_replacement_keeps_exact_numeric_origin_and_pending_components_kee
         CssComponentValueRef::Token(CssValueTokenRef::Percentage(number))
             if number.representation() == "62.500000000000000000001"
     ));
-    assert_eq!(start.serialize_specified().unwrap(), "62.5%");
+    assert_eq!(
+        start.serialize_specified(Default::default()).unwrap(),
+        "62.5%"
+    );
 
     let mut mixed = parse_component_values("env(selection) ")
         .unwrap()
         .items()
         .to_vec();
     mixed.push(CssComponentValue::try_ident("later").unwrap());
-    let value =
-        Authored::try_from_components(Kind::FontWidth, CssComponentValues::try_new(mixed).unwrap())
-            .unwrap();
+    let value = Authored::try_from_components(
+        Kind::FontWidth,
+        CssComponentValues::try_new(mixed, Default::default()).unwrap(),
+        Default::default(),
+    )
+    .unwrap();
     let Authored::Pending(pending_value) = value else {
         panic!("mixed pending value")
     };
@@ -113,15 +126,16 @@ fn mixed_width_replacement_keeps_exact_numeric_origin_and_pending_components_kee
         CssValueOrigin::Programmatic
     ));
 
-    let programmatic = CssComponentValues::try_new(vec![
-        CssComponentValue::try_token("62.500000000000000000001%").unwrap(),
-    ])
+    let programmatic = CssComponentValues::try_new(
+        vec![CssComponentValue::try_token("62.500000000000000000001%").unwrap()],
+        Default::default(),
+    )
     .unwrap();
     let Ordinary::FontWidth(CssFontFaceWidth::Range {
         start: CssFontWidth::Percentage(start),
         end: None,
     }) = pending(Kind::FontWidth)
-        .reparse_after_substitution(programmatic)
+        .reparse_after_substitution(programmatic, Default::default())
         .unwrap()
     else {
         panic!("programmatic percentage")
@@ -132,11 +146,18 @@ fn mixed_width_replacement_keeps_exact_numeric_origin_and_pending_components_kee
         CssComponentValueRef::Token(CssValueTokenRef::Percentage(number))
             if number.representation() == "62.500000000000000000001"
     ));
-    assert_eq!(start.serialize_specified().unwrap(), "62.5%");
+    assert_eq!(
+        start.serialize_specified(Default::default()).unwrap(),
+        "62.5%"
+    );
 
-    let invalid =
-        CssComponentValues::try_new(vec![CssComponentValue::try_ident("bad").unwrap()]).unwrap();
-    let error = Authored::try_from_components(Kind::FontWidth, invalid).unwrap_err();
+    let invalid = CssComponentValues::try_new(
+        vec![CssComponentValue::try_ident("bad").unwrap()],
+        Default::default(),
+    )
+    .unwrap();
+    let error =
+        Authored::try_from_components(Kind::FontWidth, invalid, Default::default()).unwrap_err();
     assert!(matches!(
         error.kind(),
         CssFontFaceValueErrorKind::Grammar(_)
@@ -149,12 +170,16 @@ fn mixed_width_replacement_keeps_exact_numeric_origin_and_pending_components_kee
 
 #[test]
 fn adjacent_number_and_percent_delimiter_do_not_become_a_percentage_token() {
-    let values = CssComponentValues::try_new(vec![
-        CssComponentValue::try_token("75").unwrap(),
-        CssComponentValue::try_token("%").unwrap(),
-    ])
+    let values = CssComponentValues::try_new(
+        vec![
+            CssComponentValue::try_token("75").unwrap(),
+            CssComponentValue::try_token("%").unwrap(),
+        ],
+        Default::default(),
+    )
     .unwrap();
-    let error = Authored::try_from_components(Kind::FontWidth, values).unwrap_err();
+    let error =
+        Authored::try_from_components(Kind::FontWidth, values, Default::default()).unwrap_err();
     assert!(matches!(
         error.kind(),
         CssFontFaceValueErrorKind::Grammar(_)
@@ -179,8 +204,7 @@ fn component_depth_count_and_byte_limits_fail_atomically() {
         ),
     ] {
         let error =
-            Authored::try_from_components_with_limits(Kind::FontWidth, values.clone(), limits)
-                .unwrap_err();
+            Authored::try_from_components(Kind::FontWidth, values.clone(), limits).unwrap_err();
         assert_eq!(
             error.kind(),
             &CssFontFaceValueErrorKind::Component(expected)
@@ -189,7 +213,7 @@ fn component_depth_count_and_byte_limits_fail_atomically() {
     let width = pending(Kind::FontWidth);
     let replacement = parse_component_values("75%").unwrap();
     let error = width
-        .reparse_after_substitution_with_limits(
+        .reparse_after_substitution(
             replacement,
             CssComponentValueLimits::try_new(256, usize::MAX, 1).unwrap(),
         )
@@ -209,7 +233,8 @@ fn checked_construction_rejects_implicit_eof_closures_before_serialization() {
         "env(width)/*",
     ] {
         let values = parse_component_values(text).unwrap();
-        let error = Authored::try_from_components(Kind::FontWidth, values).unwrap_err();
+        let error =
+            Authored::try_from_components(Kind::FontWidth, values, Default::default()).unwrap_err();
         assert_eq!(
             error.kind(),
             &CssFontFaceValueErrorKind::RecoveredComponent,
@@ -230,7 +255,7 @@ fn checked_construction_rejects_implicit_eof_closures_before_serialization() {
         (Kind::FontWidth, "75%/*"),
     ] {
         let error = pending(kind)
-            .reparse_after_substitution(parse_component_values(text).unwrap())
+            .reparse_after_substitution(parse_component_values(text).unwrap(), Default::default())
             .unwrap_err();
         assert_eq!(
             error.kind(),

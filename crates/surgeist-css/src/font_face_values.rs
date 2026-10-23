@@ -2,15 +2,18 @@
 
 use crate::{
     CssComponentValue, CssComponentValueError, CssComponentValueErrorKind, CssComponentValueRef,
-    CssSpecifiedNonNegativePercentage, CssSpecifiedValueSerializationError,
-    CssSpecifiedValueSerializationLimits, CssValueOrigin, CssValueTokenRef,
+    CssSerializationError, CssSpecifiedNonNegativePercentage, CssValueOrigin, CssValueTokenRef,
     specified_rule_serialization::SpecifiedRuleWriter,
 };
 
-type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
+type Result<T> = std::result::Result<T, CssSerializationError>;
 
 /// A decoded `font-named-instance` string, retaining its component and provenance.
 /// Empty and unrecognized names are valid authored strings; matching belongs downstream.
+///
+/// # Specified serialization
+///
+/// Emits CSSOM double-quoted string text without matching a font instance.
 #[derive(Clone, Debug)]
 pub struct CssFontNamedInstanceString {
     component: Box<CssComponentValue>,
@@ -61,35 +64,21 @@ impl CssFontNamedInstanceString {
         self.component.origin()
     }
 
-    /// Emits CSSOM double-quoted string text without matching a font instance.
-    pub fn serialize_specified(&self) -> Result<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Charges one input/projection node and actual escaped UTF-8 bytes atomically.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        self.append_specified(writer)?;
-        Ok(())
-    }
-
     fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
-        writer.context.charge_input(1)?;
-        writer.context.charge_projection(1)?;
+        writer.node()?;
         writer.append_string(self.as_str())
     }
 }
+impl crate::specified_rule_serialization::SpecifiedProvider for CssFontNamedInstanceString {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        self.append_specified(writer)?;
+        Ok(())
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(CssFontNamedInstanceString);
 
 impl PartialEq for CssFontNamedInstanceString {
     fn eq(&self, other: &Self) -> bool {
@@ -107,34 +96,10 @@ pub enum CssFontNamedInstance {
 }
 
 impl CssFontNamedInstance {
-    pub fn serialize_specified(&self) -> Result<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Enum dispatch adds no visit; the keyword or string charges one node of each kind.
-    /// Failures return no partial CSS and leave the authored value unchanged.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        self.append_specified(writer)?;
-        Ok(())
-    }
-
     pub(crate) fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         match self {
             Self::Auto => {
-                writer.context.charge_input(1)?;
-                writer.context.charge_projection(1)?;
+                writer.node()?;
                 writer.append("auto")?;
             }
             Self::String(value) => value.append_specified(writer)?,
@@ -142,6 +107,16 @@ impl CssFontNamedInstance {
         Ok(())
     }
 }
+impl crate::specified_rule_serialization::SpecifiedProvider for CssFontNamedInstance {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        self.append_specified(writer)?;
+        Ok(())
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(CssFontNamedInstance);
 
 /// Shared authored payload for ascent, descent and line-gap overrides.
 /// Percentage calculations remain symbolic; contextual metric clamping belongs downstream.
@@ -153,35 +128,10 @@ pub enum CssFontMetricOverride {
 }
 
 impl CssFontMetricOverride {
-    pub fn serialize_specified(&self) -> Result<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// `normal` charges one input/projection node. Percentages reuse their complete
-    /// existing projection costs, including calculation visits, without a dispatch node.
-    /// One actual-output-byte budget applies; failure returns no partial CSS.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        self.append_specified(writer)?;
-        Ok(())
-    }
-
     pub(crate) fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         match self {
             Self::Normal => {
-                writer.context.charge_input(1)?;
-                writer.context.charge_projection(1)?;
+                writer.node()?;
                 writer.append("normal")?;
             }
             Self::Percentage(value) => {
@@ -192,3 +142,13 @@ impl CssFontMetricOverride {
         Ok(())
     }
 }
+impl crate::specified_rule_serialization::SpecifiedProvider for CssFontMetricOverride {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        self.append_specified(writer)?;
+        Ok(())
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(CssFontMetricOverride);

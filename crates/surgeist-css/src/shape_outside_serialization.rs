@@ -1,43 +1,21 @@
 //! Cumulative specified serialization of authored Shapes 1 compositions.
 
 use crate::specified_rule_serialization::SpecifiedRuleWriter;
-use crate::{
-    CssShapeBox, CssShapeOutside, CssShapeOutsideShape, CssSpecifiedValueSerializationError,
-    CssSpecifiedValueSerializationLimits,
-};
+use crate::{CssSerializationError, CssShapeBox, CssShapeOutside, CssShapeOutsideShape};
 
-type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
+type Result<T> = std::result::Result<T, CssSerializationError>;
 
-macro_rules! specified_methods {
-    () => {
-        /// Serializes authored children without selecting geometry or loading images.
-        pub fn serialize_specified(&self) -> Result<String> {
-            self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-        }
-        /// Uses one cumulative input, projection and final UTF-8 byte budget.
-        /// Failure returns no partial CSS and leaves all child values unchanged.
-        pub fn serialize_specified_with_limits(
-            &self,
-            limits: CssSpecifiedValueSerializationLimits,
-        ) -> Result<String> {
-            let mut writer = SpecifiedRuleWriter::new(limits);
-            self.append_to_rule_writer(&mut writer)?;
-            Ok(writer.css)
-        }
-    };
-}
-
-impl CssShapeBox {
-    specified_methods!();
-    pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+crate::specified_rule_serialization::specified_serialization!(CssShapeBox);
+impl crate::specified_rule_serialization::SpecifiedProvider for CssShapeBox {
+    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         writer.node()?;
         writer.append(self.as_css_str())
     }
 }
 
-impl CssShapeOutside {
-    specified_methods!();
-    pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+crate::specified_rule_serialization::specified_serialization!(CssShapeOutside);
+impl crate::specified_rule_serialization::SpecifiedProvider for CssShapeOutside {
+    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         match self {
             Self::None => {
                 writer.node()?;
@@ -50,9 +28,9 @@ impl CssShapeOutside {
     }
 }
 
-impl CssShapeOutsideShape {
-    specified_methods!();
-    pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+crate::specified_rule_serialization::specified_serialization!(CssShapeOutsideShape);
+impl crate::specified_rule_serialization::SpecifiedProvider for CssShapeOutsideShape {
+    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         writer.node()?;
         self.shape().append_specified(writer)?;
         if let Some(reference_box) = self.reference_box() {
@@ -66,7 +44,9 @@ impl CssShapeOutsideShape {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::CssSerializationLimits;
     use crate::CssSpecifiedValueSerializationErrorKind as Kind;
+    use crate::specified_rule_serialization::SpecifiedProvider as _;
     use crate::{
         CssBasicShape, CssCircleRadius, CssCircleShape, CssImage, CssImageValue, CssLightDarkImage,
     };
@@ -94,11 +74,8 @@ mod tests {
         let expected = "!circle() margin-box;light-dark(none, none);border-box;none";
         // Prefix one, shape aggregate/function/box three, image function/none/none
         // three, standalone box one, none one: nine cumulative nodes.
-        let mut writer = SpecifiedRuleWriter::new(CssSpecifiedValueSerializationLimits::new(
-            9,
-            9,
-            expected.len(),
-        ));
+        let mut writer =
+            SpecifiedRuleWriter::new(CssSerializationLimits::new(9, 9, expected.len()));
         writer.node().unwrap();
         writer.append("!").unwrap();
         for (index, value) in values.iter().enumerate() {
@@ -123,8 +100,7 @@ mod tests {
     fn suppressed_outside_children_charge_work_without_final_bytes_and_restore_emission() {
         let values = values();
         let before = values.clone();
-        let mut writer =
-            SpecifiedRuleWriter::new(CssSpecifiedValueSerializationLimits::new(8, 8, 1));
+        let mut writer = SpecifiedRuleWriter::new(CssSerializationLimits::new(8, 8, 1));
         writer.append("!").unwrap();
         writer
             .without_output(|writer| {
@@ -146,12 +122,9 @@ mod tests {
         );
         assert_eq!(values, before);
         for (limits, kind) in [
+            (CssSerializationLimits::new(7, 8, 1), Kind::InputNodeLimit),
             (
-                CssSpecifiedValueSerializationLimits::new(7, 8, 1),
-                Kind::InputNodeLimit,
-            ),
-            (
-                CssSpecifiedValueSerializationLimits::new(8, 7, 1),
+                CssSerializationLimits::new(8, 7, 1),
                 Kind::ProjectionNodeLimit,
             ),
         ] {

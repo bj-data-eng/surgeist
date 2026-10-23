@@ -276,7 +276,7 @@ fn scoped_display_and_color_runs_survive_structural_chunks_without_duplication()
                 assert_eq!(
                     item.source()
                         .value_components()
-                        .serialize()
+                        .serialize_tokens(Default::default())
                         .unwrap()
                         .as_css(),
                     text

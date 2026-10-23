@@ -2,13 +2,18 @@
 
 use crate::specified_serialization::SpecifiedSerializationContext;
 use crate::{
-    CssBoxCalcSize, CssNumericConstructionError, CssSpecifiedNonNegativeLengthPercentage,
-    CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits,
+    CssBoxCalcSize, CssNumericConstructionError, CssSerializationError,
+    CssSpecifiedNonNegativeLengthPercentage,
 };
 
-type SerializationResult<T> = Result<T, CssSpecifiedValueSerializationError>;
+type SerializationResult<T> = Result<T, CssSerializationError>;
 
 /// One shared `<size-keyword> | <length-percentage> | fit-content() | calc-size()` value.
+///
+/// # Specified serialization
+///
+/// Serializes the retained specified value without resolving percentages or intrinsic sizes. Finite
+/// calculation children use the shared six-place specified number text policy.
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssBoxSize {
@@ -53,32 +58,6 @@ impl PartialEq for CssBoxSize {
 }
 
 impl CssBoxSize {
-    /// Serializes the retained specified value without resolving percentages or intrinsic sizes.
-    /// Finite calculation children use the shared six-place specified number text policy.
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes under one shared resource budget.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        let context = &mut writer.context;
-        let output = &mut writer.css;
-        self.serialize_specified_into(context, output)?;
-        Ok(())
-    }
-
     pub(crate) fn serialize_specified_into(
         &self,
         context: &mut SpecifiedSerializationContext,
@@ -89,14 +68,13 @@ impl CssBoxSize {
                 let captured = value.capture_specified(context)?;
                 context.append(output, &captured)
             }
-            Self::Stretch => append_keyword(context, output, "stretch"),
-            Self::Contain => append_keyword(context, output, "contain"),
-            Self::MinContent => append_keyword(context, output, "min-content"),
-            Self::MaxContent => append_keyword(context, output, "max-content"),
-            Self::FitContent => append_keyword(context, output, "fit-content"),
+            Self::Stretch => context.keyword(output, "stretch"),
+            Self::Contain => context.keyword(output, "contain"),
+            Self::MinContent => context.keyword(output, "min-content"),
+            Self::MaxContent => context.keyword(output, "max-content"),
+            Self::FitContent => context.keyword(output, "fit-content"),
             Self::FitContentFunction(value) => {
-                context.charge_input(1)?;
-                context.charge_projection(1)?;
+                context.charge_nodes(1)?;
                 context.append(output, "fit-content(")?;
                 let captured = value.capture_specified(context)?;
                 context.append(output, &captured)?;
@@ -106,16 +84,18 @@ impl CssBoxSize {
         }
     }
 }
-
-fn append_keyword(
-    context: &mut SpecifiedSerializationContext,
-    output: &mut String,
-    keyword: &'static str,
-) -> SerializationResult<()> {
-    context.charge_input(1)?;
-    context.charge_projection(1)?;
-    context.append(output, keyword)
+impl crate::specified_rule_serialization::SpecifiedProvider for CssBoxSize {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        let context = &mut writer.context;
+        let output = &mut writer.css;
+        self.serialize_specified_into(context, output)?;
+        Ok(())
+    }
 }
+crate::specified_rule_serialization::specified_serialization!(CssBoxSize);
 
 /// A preferred or minimum size. `auto` is distinct from every shared box size.
 #[derive(Clone, Debug, PartialEq)]
@@ -133,40 +113,29 @@ impl CssSizeValue {
         }
     }
 
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        let context = &mut writer.context;
-        let output = &mut writer.css;
-        self.serialize_specified_into(context, output)?;
-        Ok(())
-    }
-
     pub(crate) fn serialize_specified_into(
         &self,
         context: &mut SpecifiedSerializationContext,
         output: &mut String,
     ) -> SerializationResult<()> {
         match self {
-            Self::Auto => append_keyword(context, output, "auto"),
+            Self::Auto => context.keyword(output, "auto"),
             Self::BoxSize(value) => value.serialize_specified_into(context, output),
         }
     }
 }
+impl crate::specified_rule_serialization::SpecifiedProvider for CssSizeValue {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        let context = &mut writer.context;
+        let output = &mut writer.css;
+        self.serialize_specified_into(context, output)?;
+        Ok(())
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(CssSizeValue);
 
 /// A maximum size, constructed only after rejecting `auto` at every nested basis.
 #[derive(Clone, Debug, PartialEq)]
@@ -199,37 +168,26 @@ impl CssMaxSizeValue {
         matches!(self.0, CssMaxSizeKind::None)
     }
 
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        let context = &mut writer.context;
-        let output = &mut writer.css;
-        self.serialize_specified_into(context, output)?;
-        Ok(())
-    }
-
     pub(crate) fn serialize_specified_into(
         &self,
         context: &mut SpecifiedSerializationContext,
         output: &mut String,
     ) -> SerializationResult<()> {
         match &self.0 {
-            CssMaxSizeKind::None => append_keyword(context, output, "none"),
+            CssMaxSizeKind::None => context.keyword(output, "none"),
             CssMaxSizeKind::BoxSize(value) => value.serialize_specified_into(context, output),
         }
     }
 }
+impl crate::specified_rule_serialization::SpecifiedProvider for CssMaxSizeValue {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        let context = &mut writer.context;
+        let output = &mut writer.css;
+        self.serialize_specified_into(context, output)?;
+        Ok(())
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(CssMaxSizeValue);

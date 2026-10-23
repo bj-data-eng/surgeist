@@ -1,12 +1,9 @@
 //! Exact authored positioned offsets before writing-mode and layout resolution.
 
 use crate::specified_serialization::SpecifiedSerializationContext;
-use crate::{
-    CssBoxSideKind, CssSpecifiedLengthPercentage, CssSpecifiedValueSerializationError,
-    CssSpecifiedValueSerializationLimits, CssValueOrigin,
-};
+use crate::{CssBoxSideKind, CssSerializationError, CssSpecifiedLengthPercentage, CssValueOrigin};
 
-type SerializationResult<T> = Result<T, CssSpecifiedValueSerializationError>;
+type SerializationResult<T> = Result<T, CssSerializationError>;
 
 /// One physical or logical inset longhand.
 #[derive(Clone, Debug)]
@@ -33,31 +30,6 @@ impl CssInsetValue {
             .map(CssSpecifiedLengthPercentage::origin)
     }
 
-    /// Serializes the canonical specified value.
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes under an explicit resource budget.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        let context = &mut writer.context;
-        let output = &mut writer.css;
-        self.serialize_into(context, output)?;
-        Ok(())
-    }
-
     fn serialize_into(
         &self,
         context: &mut SpecifiedSerializationContext,
@@ -65,8 +37,7 @@ impl CssInsetValue {
     ) -> SerializationResult<()> {
         match self {
             Self::Auto => {
-                context.charge_input(1)?;
-                context.charge_projection(1)?;
+                context.charge_nodes(1)?;
                 context.append(output, "auto")
             }
             Self::LengthPercentage(value) => {
@@ -76,6 +47,18 @@ impl CssInsetValue {
         }
     }
 }
+impl crate::specified_rule_serialization::SpecifiedProvider for CssInsetValue {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        let context = &mut writer.context;
+        let output = &mut writer.css;
+        self.serialize_into(context, output)?;
+        Ok(())
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(CssInsetValue);
 
 impl PartialEq for CssInsetValue {
     fn eq(&self, other: &Self) -> bool {
@@ -91,6 +74,10 @@ impl PartialEq for CssInsetValue {
 impl Eq for CssInsetValue {}
 
 /// A one- or two-value logical inset-axis shorthand.
+///
+/// # Specified serialization
+///
+/// Serializes only authored components.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssInsetPair {
     start: CssInsetValue,
@@ -119,26 +106,12 @@ impl CssInsetPair {
     pub fn end(&self) -> &CssInsetValue {
         self.authored_end.as_ref().unwrap_or(&self.start)
     }
-
-    /// Serializes only authored components.
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes both authored values under one resource budget.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+}
+impl crate::specified_rule_serialization::SpecifiedProvider for CssInsetPair {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         writer.source_member(0, |writer| {
             self.start
                 .serialize_into(&mut writer.context, &mut writer.css)
@@ -152,8 +125,13 @@ impl CssInsetPair {
         Ok(())
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssInsetPair);
 
 /// A one- to four-value physical or logical inset shorthand.
+///
+/// # Specified serialization
+///
+/// Serializes only the authored switch and components.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssInsetShorthand {
     kind: CssBoxSideKind,
@@ -192,30 +170,15 @@ impl CssInsetShorthand {
             _ => unreachable!("checked shorthand cardinality"),
         }
     }
-
-    /// Serializes only the authored switch and components.
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes all authored components under one resource budget.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+}
+impl crate::specified_rule_serialization::SpecifiedProvider for CssInsetShorthand {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         if self.kind == CssBoxSideKind::Logical {
             writer.source_member(0, |writer| {
-                writer.context.charge_input(1)?;
-                writer.context.charge_projection(1)?;
+                writer.node()?;
                 writer.append("logical ")
             })?;
         }
@@ -230,27 +193,13 @@ impl CssInsetShorthand {
         Ok(())
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssInsetShorthand);
 
-impl crate::CssLayoutPosition {
-    /// Serializes the canonical authored position keyword.
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes the canonical keyword under explicit limits.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for crate::CssLayoutPosition {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         let text = match self {
             Self::Static => "static",
             Self::Relative => "relative",
@@ -261,3 +210,4 @@ impl crate::CssLayoutPosition {
         writer.keyword(text)
     }
 }
+crate::specified_rule_serialization::specified_serialization!(crate::CssLayoutPosition);

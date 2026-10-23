@@ -15,6 +15,7 @@ fn assert_opaque_classification(condition: &str, expected_opaque: bool) {
     let checked = CssSupportsCondition::try_from_components(
         parse_component_values(condition).expect("valid component syntax"),
         &CssNamespaceContext::default(),
+        Default::default(),
     )
     .expect("valid authored supports condition");
 

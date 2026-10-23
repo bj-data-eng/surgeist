@@ -94,7 +94,11 @@ fn only_three_keywords_construct_exact_typed_authored_values_and_one_terminal() 
             assert_eq!(value.value(), &expected);
             assert_eq!(value.as_css(), text);
             assert_eq!(
-                source.value_components().serialize().unwrap().as_css(),
+                source
+                    .value_components()
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
                 text
             );
             assert_eq!(source.importance(), CssImportance::Important);
@@ -279,7 +283,7 @@ fn normalization_preserves_valid_order_and_fails_atomically_at_contribution_budg
         assert_eq!(
             item.source()
                 .value_components()
-                .serialize()
+                .serialize_tokens(Default::default())
                 .unwrap()
                 .as_css(),
             keyword

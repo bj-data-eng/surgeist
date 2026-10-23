@@ -22,8 +22,11 @@ fn angle(value: f32, unit: CssAngleUnit) -> CssAngleOrZero {
 fn angle_math(text: &str) -> CssAngleOrZero {
     CssAngleOrZero::Angle(
         CssAngleValue::try_from_calculation(
-            CssAngleCalculation::try_from_components(parse_component_values(text).unwrap())
-                .unwrap(),
+            CssAngleCalculation::try_from_components(
+                parse_component_values(text).unwrap(),
+                Default::default(),
+            )
+            .unwrap(),
         )
         .unwrap(),
     )
@@ -326,7 +329,10 @@ fn shared_angle_math_retains_raw_provenance_and_semantic_aggregate_equality() {
     );
     for source in ["calc(1px)", "calc(1%)"] {
         assert_calculation_rejected(
-            CssAngleCalculation::try_from_components(parse_component_values(source).unwrap()),
+            CssAngleCalculation::try_from_components(
+                parse_component_values(source).unwrap(),
+                Default::default(),
+            ),
             Some(surgeist_css::CssNumericConstructionErrorKind::RootDomainMismatch),
         );
     }
@@ -340,12 +346,16 @@ fn gradient_serializer_omits_only_authored_literal_default_directions() {
         (0.5, CssAngleUnit::Turns),
     ] {
         assert_eq!(
-            gradient(angle(value, unit)).serialize_specified().unwrap(),
+            gradient(angle(value, unit))
+                .serialize_specified(Default::default())
+                .unwrap(),
             "linear-gradient(red, blue)"
         );
     }
     assert_eq!(
-        gradient(zero_angle()).serialize_specified().unwrap(),
+        gradient(zero_angle())
+            .serialize_specified(Default::default())
+            .unwrap(),
         "linear-gradient(0, red, blue)"
     );
     let radians = angle(std::f32::consts::PI, CssAngleUnit::Radians);
@@ -358,18 +368,20 @@ fn gradient_serializer_omits_only_authored_literal_default_directions() {
     );
     assert_eq!(value.literal().unwrap().unit(), CssAngleUnit::Radians);
     assert_eq!(
-        gradient(radians).serialize_specified().unwrap(),
+        gradient(radians)
+            .serialize_specified(Default::default())
+            .unwrap(),
         "linear-gradient(3.141593rad, red, blue)"
     );
     assert_eq!(
         gradient(angle_math("calc(180deg)"))
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "linear-gradient(calc(180deg), red, blue)"
     );
     assert_eq!(
         gradient(angle_math("calc(90deg + 5deg)"))
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "linear-gradient(calc(95deg), red, blue)"
     );
@@ -386,12 +398,8 @@ fn omitted_shared_angle_counts_with_sibling_images_under_cumulative_limits() {
     // + two (stop 1 + named color 1) + sibling none 1 = 10.
     let expected = "linear-gradient(red, blue), none";
     assert_eq!(
-        list.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-            10,
-            10,
-            expected.len()
-        ))
-        .unwrap(),
+        list.serialize_specified(CssSerializationLimits::new(10, 10, expected.len()))
+            .unwrap(),
         expected
     );
     for (input, projection, bytes, kind) in [
@@ -415,13 +423,14 @@ fn omitted_shared_angle_counts_with_sibling_images_under_cumulative_limits() {
         ),
     ] {
         assert_eq!(
-            list.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                input, projection, bytes
-            ))
-            .unwrap_err()
-            .kind(),
+            list.serialize_specified(CssSerializationLimits::new(input, projection, bytes))
+                .unwrap_err()
+                .kind(),
             kind
         );
     }
-    assert_eq!(list.serialize_specified().unwrap(), expected);
+    assert_eq!(
+        list.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
 }

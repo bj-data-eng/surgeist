@@ -413,7 +413,7 @@ mod tests {
                 implicit_end: Some(programmatic_lexeme("\"")),
             }),
         };
-        let values = CssComponentValues::try_new(vec![value]).unwrap();
+        let values = CssComponentValues::try_new(vec![value], Default::default()).unwrap();
         assert_eq!(
             retained_backing_bytes_with(&values, &mut accepted).unwrap(),
             size_of::<CssComponentValue>() + 4
@@ -454,8 +454,11 @@ mod tests {
         };
         function.closing = programmatic_lexeme(")");
         assert!(!equivalent_in_same_input_with(&a, &b, &mut accepted).unwrap());
-        let a =
-            CssComponentValues::try_new(vec![CssComponentValue::try_number("1").unwrap()]).unwrap();
+        let a = CssComponentValues::try_new(
+            vec![CssComponentValue::try_number("1").unwrap()],
+            Default::default(),
+        )
+        .unwrap();
         let mut b = a.clone();
         let ComponentData::Token(token) = &mut b.items[0].data else {
             panic!("token")

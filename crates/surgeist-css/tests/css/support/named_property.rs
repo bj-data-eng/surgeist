@@ -100,7 +100,11 @@ pub fn accepted_by_attribute_and_grammar(name: &str, value: &str) {
         );
         assert_eq!(source.importance(), CssImportance::Important);
         assert_eq!(
-            source.value_components().serialize().unwrap().as_css(),
+            source
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             value
         );
     }
@@ -154,7 +158,7 @@ pub fn assert_checked_value_rejected_at<'a>(
 ) {
     let rest = rest.into();
     let components = parse_component_values(value).unwrap();
-    let serialized = components.serialize().unwrap();
+    let serialized = components.serialize_tokens(Default::default()).unwrap();
     assert_eq!(serialized.as_css(), value, "authored component text");
     let expected = rest.map(|rest| {
         serialized
@@ -376,7 +380,10 @@ pub fn accepted_through_every_front(name: &str, input: &str, canonical: &str) {
     let expected = format!("{name}: {canonical} !important;");
     for source in named_fronts(name, input) {
         let before = source.clone();
-        assert_eq!(source.to_specified_css().unwrap(), expected);
+        assert_eq!(
+            source.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert!(source.known().unwrap().property_value().is_some());
         assert!(source.known().unwrap().global().is_none());
         assert!(source.known().unwrap().substitution_dependent().is_none());
@@ -392,7 +399,7 @@ pub fn accepted_through_every_front(name: &str, input: &str, canonical: &str) {
     }
     assert_eq!(
         super::authored_checked_declaration(name, canonical, true)
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .unwrap(),
         expected
     );

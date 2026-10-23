@@ -29,7 +29,12 @@ fn clip_path_declaration(value: &str) -> CssDeclaration {
 
 fn accept(authored: &str, expected: &str) {
     let source = clip_path_declaration(authored);
-    assert_eq!(clip(&source).serialize_specified().unwrap(), expected);
+    assert_eq!(
+        clip(&source)
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
     let components = parse_component_values(authored).unwrap();
     let checked = parse_property_value(
         CssPropertyNameRef::Known(CssKnownProperty::ClipPath),
@@ -39,7 +44,12 @@ fn accept(authored: &str, expected: &str) {
     .unwrap();
     assert_eq!(checked.value_components(), &components);
     assert_eq!(checked.importance(), CssImportance::Important);
-    assert_eq!(clip(&checked).serialize_specified().unwrap(), expected);
+    assert_eq!(
+        clip(&checked)
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
     for declaration in [&source, &checked] {
         let CssExpansion::Contributions(CssContributions::Longhands(items)) =
             expand_declaration(declaration).unwrap()
@@ -56,7 +66,10 @@ fn accept(authored: &str, expected: &str) {
         let CssLonghandValueRef::ClipPath(value) = item.ordinary_value().unwrap().view() else {
             panic!("typed path terminal")
         };
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
 }
 
@@ -332,7 +345,9 @@ fn strict_recovered(value: &str, expected: &str) {
         report.diagnostics()
     );
     assert_eq!(
-        clip(&report.syntax()[0]).serialize_specified().unwrap(),
+        clip(&report.syntax()[0])
+            .serialize_specified(Default::default())
+            .unwrap(),
         expected
     );
     let recovered = parse_component_values(value).unwrap();
@@ -484,7 +499,10 @@ fn pending_path_reentry_is_strict_reusable_and_preserves_authored_replacement_or
             let CssLonghandValueRef::ClipPath(value) = item.ordinary_value().unwrap().view() else {
                 panic!("typed clip replacement")
             };
-            assert_eq!(value.serialize_specified().unwrap(), expected);
+            assert_eq!(
+                value.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
         }
     }
     assert!(pending.source().same_occurrence(&source));
@@ -547,7 +565,7 @@ fn normalization_retains_path_family_fill_importance_and_source_order_after_reco
                 panic!("path terminal")
             };
             assert_eq!(
-                value.serialize_specified().unwrap(),
+                value.serialize_specified(Default::default()).unwrap(),
                 if order == 0 {
                     "path(\"M0 0\")"
                 } else {
@@ -560,8 +578,8 @@ fn normalization_retains_path_family_fill_importance_and_source_order_after_reco
 
 #[test]
 fn clip_serializer_charges_path_string_fill_and_box_cumulatively() {
+    use CssSerializationLimits as L;
     use CssSpecifiedValueSerializationErrorKind as K;
-    use CssSpecifiedValueSerializationLimits as L;
     for (authored, expected, nodes) in [
         ("path('M0 0')", "path(\"M0 0\")", 3),
         ("path(nonzero, 'M0 0')", "path(nonzero, \"M0 0\")", 4),
@@ -576,7 +594,7 @@ fn clip_serializer_charges_path_string_fill_and_box_cumulatively() {
         let value = clip(&source);
         assert_eq!(
             value
-                .serialize_specified_with_limits(L::new(nodes, nodes, expected.len()))
+                .serialize_specified(L::new(nodes, nodes, expected.len()))
                 .unwrap(),
             expected
         );
@@ -588,15 +606,12 @@ fn clip_serializer_charges_path_string_fill_and_box_cumulatively() {
             ),
             (L::new(nodes, nodes, expected.len() - 1), K::ByteLimit),
         ] {
-            assert_eq!(
-                value
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
-                kind
-            );
+            assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
         }
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_eq!(source, before);
     }
 }

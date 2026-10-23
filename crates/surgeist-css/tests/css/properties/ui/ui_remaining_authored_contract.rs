@@ -105,32 +105,27 @@ fn canonical(name: &str, text: &str, expected: &str) {
     for source in fronts(name, text) {
         let before = source.clone();
         let expected = format!("{name}: {expected} !important;");
-        assert_eq!(source.to_specified_css().unwrap(), expected);
-        assert_eq!(source, before);
-        let limits = CssSpecifiedValueSerializationLimits::new(65_536, 262_144, expected.len());
         assert_eq!(
-            source.to_specified_css_with_limits(limits).unwrap(),
+            source.serialize_specified(Default::default()).unwrap(),
             expected
         );
+        assert_eq!(source, before);
+        let limits = CssSerializationLimits::new(65_536, 262_144, expected.len());
+        assert_eq!(source.serialize_specified(limits).unwrap(), expected);
         for _ in 0..2 {
-            let short =
-                CssSpecifiedValueSerializationLimits::new(65_536, 262_144, expected.len() - 1);
+            let short = CssSerializationLimits::new(65_536, 262_144, expected.len() - 1);
             assert_eq!(
-                source
-                    .to_specified_css_with_limits(short)
-                    .unwrap_err()
-                    .kind(),
+                source.serialize_specified(short).unwrap_err().kind(),
                 CssSpecifiedValueSerializationErrorKind::ByteLimit
             );
             assert_eq!(source, before);
         }
-        assert_eq!(
-            source.to_specified_css_with_limits(limits).unwrap(),
-            expected
-        );
+        assert_eq!(source.serialize_specified(limits).unwrap(), expected);
     }
     assert_eq!(
-        checked(name, expected, true).to_specified_css().unwrap(),
+        checked(name, expected, true)
+            .serialize_specified(Default::default())
+            .unwrap(),
         format!("{name}: {expected} !important;")
     );
 }
@@ -322,7 +317,7 @@ fn closure(name: &str, ordinary: &str) {
     ] {
         let components = parse_component_values(&text).unwrap();
         let snapshot = components.clone();
-        let serialized = components.serialize().unwrap();
+        let serialized = components.serialize_tokens(Default::default()).unwrap();
         let origin = (0..=serialized.as_css().len())
             .find_map(|n| match serialized.origin_at(n) {
                 Some(CssSerializedOrigin::Token(v @ CssValueOrigin::ImplicitClosure { .. })) => {
@@ -451,28 +446,19 @@ fn outline_constructed_projection_and_omitted_second_auto_keep_accepted_prices()
         ),
     ] {
         let before = value.clone();
-        let exact = CssSpecifiedValueSerializationLimits::new(input, projection, expected.len());
-        assert_eq!(
-            value.serialize_specified_with_limits(exact).unwrap(),
-            expected
-        );
+        let exact = CssSerializationLimits::new(input, projection, expected.len());
+        assert_eq!(value.serialize_specified(exact).unwrap(), expected);
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(input - 1, projection, expected.len()),
+                CssSerializationLimits::new(input - 1, projection, expected.len()),
                 CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(input, projection - 1, expected.len()),
+                CssSerializationLimits::new(input, projection - 1, expected.len()),
                 CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
             ),
         ] {
-            assert_eq!(
-                value
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
-                kind
-            );
+            assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
         }
         assert_eq!(value, before);
     }
@@ -674,7 +660,7 @@ fn browser_navigation_retains_nonconforming_legacy_target_with_diagnostics_and_o
             assert_eq!(source.importance(), CssImportance::Important);
             assert_eq!(source.parsed_value().unwrap().source().as_str(), css);
             assert_eq!(
-                source.to_specified_css().unwrap(),
+                source.serialize_specified(Default::default()).unwrap(),
                 format!("{name}: {expected} !important;")
             );
             let CssExpansion::Contributions(CssContributions::Longhands(values)) = item.expansion()
@@ -698,7 +684,7 @@ fn browser_navigation_retains_nonconforming_legacy_target_with_diagnostics_and_o
                 let source = value_report.syntax().as_ref().unwrap();
                 assert_eq!(source.parsed_value().unwrap().source().as_str(), text);
                 assert_eq!(
-                    source.to_specified_css().unwrap(),
+                    source.serialize_specified(Default::default()).unwrap(),
                     format!("{name}: {expected} !important;")
                 );
             }
@@ -992,7 +978,7 @@ fn standard_webkit_appearance_name_alias_preserves_original_name_and_canonical_o
         "/*😀*/-WEBKIT-APPEARANCE:TEXTFIELD!important"
     );
     assert_eq!(
-        source.to_specified_css().unwrap(),
+        source.serialize_specified(Default::default()).unwrap(),
         "appearance: textfield !important;"
     );
     let values = contributions(source);
@@ -1206,38 +1192,26 @@ fn scalar_keyword_declarations_share_three_node_accounting() {
         let source = checked(name, word, true);
         let before = source.clone();
         let expected = format!("{name}: {word} !important;");
-        let exact = CssSpecifiedValueSerializationLimits::new(3, 3, expected.len());
-        assert_eq!(
-            source.to_specified_css_with_limits(exact).unwrap(),
-            expected
-        );
+        let exact = CssSerializationLimits::new(3, 3, expected.len());
+        assert_eq!(source.serialize_specified(exact).unwrap(), expected);
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(2, 3, expected.len()),
+                CssSerializationLimits::new(2, 3, expected.len()),
                 CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(3, 2, expected.len()),
+                CssSerializationLimits::new(3, 2, expected.len()),
                 CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(3, 3, expected.len() - 1),
+                CssSerializationLimits::new(3, 3, expected.len() - 1),
                 CssSpecifiedValueSerializationErrorKind::ByteLimit,
             ),
         ] {
-            assert_eq!(
-                source
-                    .to_specified_css_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
-                kind
-            );
+            assert_eq!(source.serialize_specified(limits).unwrap_err().kind(), kind);
             assert_eq!(source, before);
         }
-        assert_eq!(
-            source.to_specified_css_with_limits(exact).unwrap(),
-            expected
-        );
+        assert_eq!(source.serialize_specified(exact).unwrap(), expected);
     }
 }
 
@@ -1253,8 +1227,11 @@ fn programmatic_keyword_components_keep_supplied_origins_in_new_authored_roles()
         ("accent-color", "auto"),
         ("appearance", "textfield"),
     ] {
-        let values =
-            CssComponentValues::try_new(vec![CssComponentValue::try_ident(text).unwrap()]).unwrap();
+        let values = CssComponentValues::try_new(
+            vec![CssComponentValue::try_ident(text).unwrap()],
+            Default::default(),
+        )
+        .unwrap();
         let before = values.clone();
         for grammar in [false, true] {
             let source = checked_components(name, values.clone(), grammar).unwrap();
@@ -1267,7 +1244,7 @@ fn programmatic_keyword_components_keep_supplied_origins_in_new_authored_roles()
             assert!(source.parsed_name().is_none());
             assert!(source.parsed_value().is_none());
             assert_eq!(
-                source.to_specified_css().unwrap(),
+                source.serialize_specified(Default::default()).unwrap(),
                 format!("{name}: {text} !important;")
             );
             let terminals = contributions(&source);

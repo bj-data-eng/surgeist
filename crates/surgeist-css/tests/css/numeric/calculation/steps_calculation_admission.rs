@@ -9,9 +9,11 @@ use surgeist_css::{
 };
 
 fn admitted(root: &str, position: Option<CssStepPosition>) -> bool {
-    let calculation =
-        CssIntegerCalculation::try_from_components(parse_component_values(root).unwrap())
-            .expect("integer-domain calculation root");
+    let calculation = CssIntegerCalculation::try_from_components(
+        parse_component_values(root).unwrap(),
+        Default::default(),
+    )
+    .expect("integer-domain calculation root");
     CssSteps::try_new(CssPositiveIntegerValue::Calculation(calculation), position).is_some()
 }
 

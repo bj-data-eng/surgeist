@@ -39,9 +39,13 @@ fn assert_delim(component: &CssComponentValue, expected: char, source: &str, sta
     );
     assert_span(component.origin(), source, start..start + 1);
     assert_eq!(&source[start..start + 1], expected.to_string());
-    let singleton = CssComponentValues::try_new(vec![component.clone()]).unwrap();
+    let singleton =
+        CssComponentValues::try_new(vec![component.clone()], Default::default()).unwrap();
     assert_eq!(
-        singleton.serialize().unwrap().as_css(),
+        singleton
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         expected.to_string()
     );
 }
@@ -192,7 +196,9 @@ fn component_and_input_byte_limits_distinguish_second_delimiter_from_whole_input
 
 fn assert_pair_output(values: &CssComponentValues, operator: &str) {
     let before = values.clone();
-    let output = values.serialize_with_limit(2).unwrap();
+    let output = values
+        .serialize_tokens(crate::css::support::byte_limits(2))
+        .unwrap();
     assert_eq!(output.as_css(), operator);
     assert_eq!(output.segments().len(), 2);
     for (index, (segment, component)) in output.segments().iter().zip(values.items()).enumerate() {
@@ -210,23 +216,34 @@ fn assert_pair_output(values: &CssComponentValues, operator: &str) {
         panic!("EOF anchored to the second delimiter")
     };
     assert_eq!(end, values.items()[1].origin());
-    let failure = values.serialize_with_limit(1).unwrap_err();
+    let failure = values
+        .serialize_tokens(crate::css::support::byte_limits(1))
+        .unwrap_err();
     assert_eq!(failure.kind(), CssComponentValueErrorKind::ByteLimit);
     assert_eq!(failure.origin(), values.items()[1].origin());
     assert_eq!(
         values, &before,
         "rejected output cannot mutate admitted components"
     );
-    assert_eq!(values.serialize_with_limit(2).unwrap().as_css(), operator);
+    assert_eq!(
+        values
+            .serialize_tokens(crate::css::support::byte_limits(2))
+            .unwrap()
+            .as_css(),
+        operator
+    );
 }
 
 #[test]
 fn programmatic_delimiter_pairs_serialize_without_obsolete_operator_separators() {
     for (prefix, operator) in OPERATORS {
-        let values = CssComponentValues::try_new(vec![
-            CssComponentValue::try_token(&prefix.to_string()).unwrap(),
-            CssComponentValue::try_token("=").unwrap(),
-        ])
+        let values = CssComponentValues::try_new(
+            vec![
+                CssComponentValue::try_token(&prefix.to_string()).unwrap(),
+                CssComponentValue::try_token("=").unwrap(),
+            ],
+            Default::default(),
+        )
         .unwrap();
         assert_eq!(values.component_count(), 2);
         assert_pair_output(&values, operator);
@@ -261,8 +278,8 @@ fn genuine_identifier_number_and_comment_opening_hazards_insert_separators() {
             concat!("/", "/**/", "*"),
         ),
     ] {
-        let values = CssComponentValues::try_new(vec![first, second]).unwrap();
-        let output = values.serialize().unwrap();
+        let values = CssComponentValues::try_new(vec![first, second], Default::default()).unwrap();
+        let output = values.serialize_tokens(Default::default()).unwrap();
         assert_eq!(output.as_css(), expected);
         let separators: Vec<_> = output
             .segments()

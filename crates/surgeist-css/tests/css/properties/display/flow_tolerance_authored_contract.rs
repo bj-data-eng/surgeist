@@ -48,7 +48,11 @@ fn constructed(text: &str) -> CssFlowTolerance {
             let components = parse_component_values(text).unwrap();
             let scalar = if text.contains('(') {
                 CssSpecifiedLengthPercentage::try_from_calculation(
-                    CssLengthPercentageCalculation::try_from_components(components).unwrap(),
+                    CssLengthPercentageCalculation::try_from_components(
+                        components,
+                        Default::default(),
+                    )
+                    .unwrap(),
                 )
                 .unwrap()
             } else {
@@ -89,12 +93,14 @@ fn accepted(input: &str, expected: &str) {
     for source in fronts(input) {
         let before = source.clone();
         assert_eq!(
-            value(&source).serialize_specified().unwrap(),
+            value(&source)
+                .serialize_specified(Default::default())
+                .unwrap(),
             expected,
             "{input}"
         );
         assert_eq!(
-            source.to_specified_css().unwrap(),
+            source.serialize_specified(Default::default()).unwrap(),
             format!("flow-tolerance: {expected} !important;")
         );
         let values = completed(&source);
@@ -104,7 +110,12 @@ fn accepted(input: &str, expected: &str) {
         authored_property::checked(PROP, expected, false);
         authored_property::checked(PROP, expected, true);
     }
-    assert_eq!(constructed(input).serialize_specified().unwrap(), expected);
+    assert_eq!(
+        constructed(input)
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
 }
 fn invalid(input: &str) {
     let css = format!("color:red;flow-tolerance:{input};color:blue");
@@ -201,14 +212,20 @@ fn signed_literals_keywords_and_canonical_sorting_are_preserved() {
     }
     for (input, expected) in [("NoRmAl", "normal"), (r"\69 nfinite", "infinite")] {
         for source in fronts(input) {
-            assert_eq!(value(&source).serialize_specified().unwrap(), expected);
+            assert_eq!(
+                value(&source)
+                    .serialize_specified(Default::default())
+                    .unwrap(),
+                expected
+            );
         }
     }
 }
 #[test]
 fn exact_literal_payloads_and_programmatic_origins_survive_projection() {
     let component = CssComponentValue::try_dimension("-0.5", "em").unwrap();
-    let components = CssComponentValues::try_new(vec![component.clone()]).unwrap();
+    let components =
+        CssComponentValues::try_new(vec![component.clone()], Default::default()).unwrap();
     let source = parse_property_value(
         CssPropertyNameRef::Known(PROP),
         components.clone(),
@@ -244,7 +261,12 @@ fn exact_literal_payloads_and_programmatic_origins_survive_projection() {
                 }
                 _ => panic!("original exact numeric token"),
             }
-            assert_eq!(value(&source).serialize_specified().unwrap(), expected);
+            assert_eq!(
+                value(&source)
+                    .serialize_specified(Default::default())
+                    .unwrap(),
+                expected
+            );
         }
     }
 }
@@ -300,7 +322,7 @@ fn mixed_percentage_math_unbounded_clamp_and_exception_domains_are_authored() {
     ] {
         let constructed = constructed(input);
         let before = constructed.clone();
-        let output = constructed.serialize_specified().unwrap();
+        let output = constructed.serialize_specified(Default::default()).unwrap();
         // Mixed-basis admission and canonical idempotence are controls; output
         // here is not an independently asserted canonical golden. The separate
         // 21-function table and signed sorting table supply explicit goldens.
@@ -318,7 +340,7 @@ fn mixed_percentage_math_unbounded_clamp_and_exception_domains_are_authored() {
         assert_eq!(constructed, before);
         assert_eq!(
             value(&authored_property::checked(PROP, &output, true))
-                .serialize_specified()
+                .serialize_specified(Default::default())
                 .unwrap(),
             output
         );
@@ -385,7 +407,7 @@ fn invalid_grammar_math_arity_types_and_sum_separators_drop_only_the_occurrence(
 fn checked_failures_map_to_the_original_responsible_annotation_token() {
     let text = "/*😀*/1px!important";
     let components = parse_component_values(text).unwrap();
-    let serialized = components.serialize().unwrap();
+    let serialized = components.serialize_tokens(Default::default()).unwrap();
     let expected = serialized
         .origin_at(serialized.as_css().find('!').unwrap())
         .unwrap()
@@ -851,8 +873,8 @@ fn normalization_counts_every_ordinary_global_and_whole_pending_occurrence_once(
 }
 #[test]
 fn primitive_and_declaration_resources_have_exact_independent_costs_and_atomic_retry() {
+    use CssSerializationLimits as Limits;
     use CssSpecifiedValueSerializationErrorKind as Kind;
-    use CssSpecifiedValueSerializationLimits as Limits;
     for (input, expected, inputs, projections) in [
         ("normal", "normal", 1, 1),
         ("infinite", "infinite", 1, 1),
@@ -864,17 +886,13 @@ fn primitive_and_declaration_resources_have_exact_independent_costs_and_atomic_r
         let declaration = format!("flow-tolerance: {expected} !important;");
         assert_eq!(
             value(&source)
-                .serialize_specified_with_limits(Limits::new(inputs, projections, expected.len()))
+                .serialize_specified(Limits::new(inputs, projections, expected.len()))
                 .unwrap(),
             expected
         );
         assert_eq!(
             source
-                .to_specified_css_with_limits(Limits::new(
-                    inputs + 2,
-                    projections + 2,
-                    declaration.len()
-                ))
+                .serialize_specified(Limits::new(inputs + 2, projections + 2, declaration.len()))
                 .unwrap(),
             declaration
         );
@@ -898,27 +916,27 @@ fn primitive_and_declaration_resources_have_exact_independent_costs_and_atomic_r
             for _ in 0..2 {
                 assert_eq!(
                     value(&source)
-                        .serialize_specified_with_limits(primitive)
+                        .serialize_specified(primitive)
                         .unwrap_err()
                         .kind(),
                     kind
                 );
                 assert_eq!(
-                    source
-                        .to_specified_css_with_limits(aggregate)
-                        .unwrap_err()
-                        .kind(),
+                    source.serialize_specified(aggregate).unwrap_err().kind(),
                     kind
                 );
                 assert_eq!(source, before);
             }
         }
-        assert_eq!(source.to_specified_css().unwrap(), declaration);
+        assert_eq!(
+            source.serialize_specified(Default::default()).unwrap(),
+            declaration
+        );
     }
 }
 #[test]
 fn sheet_siblings_share_canonical_byte_budget_with_atomic_reusable_failure() {
-    use CssSpecifiedValueSerializationLimits as Limits;
+    use CssSerializationLimits as Limits;
     let report =
         parse_sheet(".a{flow-tolerance:normal!important}.b{flow-tolerance:calc(1px + 2em)}");
     assert!(report.is_clean());
@@ -928,25 +946,23 @@ fn sheet_siblings_share_canonical_byte_budget_with_atomic_reusable_failure() {
         ".a { flow-tolerance: normal !important; }\n.b { flow-tolerance: calc(2em + 1px); }";
     let exact = Limits::new(usize::MAX, usize::MAX, expected.len());
     let short = Limits::new(usize::MAX, usize::MAX, expected.len() - 1);
-    assert_eq!(sheet.to_specified_css_with_limits(exact).unwrap(), expected);
+    assert_eq!(sheet.serialize_specified(exact).unwrap(), expected);
     assert!(
         sheet
             .rules()
             .iter()
-            .all(|r| r.to_specified_css_with_limits(short).is_ok())
+            .all(|r| r.serialize_specified(short).is_ok())
     );
     for _ in 0..2 {
-        let error = sheet.to_specified_css_with_limits(short).unwrap_err();
+        let error = sheet.serialize_specified(short).unwrap_err();
         assert_eq!(
             error.kind(),
-            CssSpecifiedRuleSerializationErrorKind::Resource(
-                CssSpecifiedValueSerializationErrorKind::ByteLimit
-            )
+            CssSpecifiedValueSerializationErrorKind::ByteLimit
         );
         assert_eq!(error.rule_index(), Some(1));
         assert_eq!(sheet, &before);
     }
-    assert_eq!(sheet.to_specified_css_with_limits(exact).unwrap(), expected);
+    assert_eq!(sheet.serialize_specified(exact).unwrap(), expected);
 }
 #[test]
 fn supported_color_control_keeps_checked_expansion_and_provider_contract() {
@@ -962,7 +978,7 @@ fn supported_color_control_keeps_checked_expansion_and_provider_contract() {
             .unwrap(),
     ] {
         assert_eq!(
-            source.to_specified_css().unwrap(),
+            source.serialize_specified(Default::default()).unwrap(),
             "color: currentcolor !important;"
         );
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =

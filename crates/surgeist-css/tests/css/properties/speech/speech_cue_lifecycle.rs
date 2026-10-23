@@ -100,7 +100,7 @@ fn cue_expansion_groups_url_and_optional_decibel_before_then_after() {
             // Reuse the original roots; payload equality includes URL/number origins.
             let expected = expanded(&checked(
                 name,
-                CssComponentValues::try_new(group.to_vec()).unwrap(),
+                CssComponentValues::try_new(group.to_vec(), Default::default()).unwrap(),
             ));
             assert_eq!(item.property(), property(name));
             assert_eq!(item.ordinary_value(), expected.items()[0].ordinary_value());
@@ -300,19 +300,25 @@ fn cue_authored_spelling_and_exact_coefficients_survive_bounded_component_serial
         let components = source.value_components();
         assert_eq!(
             components
-                .serialize_with_limit(text.len())
+                .serialize_tokens(crate::css::support::byte_limits(text.len()))
                 .unwrap()
                 .as_css(),
             text
         );
         assert_eq!(
             components
-                .serialize_with_limit(text.len() - 1)
+                .serialize_tokens(crate::css::support::byte_limits(text.len() - 1))
                 .unwrap_err()
                 .kind(),
             CssComponentValueErrorKind::ByteLimit
         );
-        assert_eq!(components.serialize().unwrap().as_css(), text);
+        assert_eq!(
+            components
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            text
+        );
     }
 }
 

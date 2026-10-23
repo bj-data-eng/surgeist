@@ -1,9 +1,9 @@
 #![forbid(unsafe_code)]
-use surgeist_css::CssSpecifiedValueSerializationLimits;
+use surgeist_css::CssSerializationLimits;
 use surgeist_cssom::*;
 
-fn limits() -> CssSpecifiedValueSerializationLimits {
-    CssSpecifiedValueSerializationLimits::default()
+fn limits() -> CssSerializationLimits {
+    CssSerializationLimits::default()
 }
 fn fixture(source: &str) -> (CssomStore, CssomSheetId, Vec<CssomRuleId>) {
     let mut store = CssomStore::new(CssomLimits::default(), CssomContext::default()).unwrap();
@@ -120,7 +120,7 @@ fn container_readonly_plural_native_output_and_fresh_conditions() {
     let (store, _, roots) = fixture("@container alpha, (width > 1px), alpha, beta future(foo){}");
     let rule = store.css_container_rule(&roots[0]).unwrap();
     let text = "alpha, (width > 1px), alpha, beta future(foo)";
-    let exact = CssSpecifiedValueSerializationLimits::new(1000, 1000, text.len());
+    let exact = CssSerializationLimits::new(1000, 1000, text.len());
     assert_eq!(rule.condition_text(&store, exact).unwrap(), text);
     assert_eq!(
         rule.as_condition_rule()
@@ -131,7 +131,7 @@ fn container_readonly_plural_native_output_and_fresh_conditions() {
     assert!(
         rule.condition_text(
             &store,
-            CssSpecifiedValueSerializationLimits::new(1000, 1000, text.len() - 1)
+            CssSerializationLimits::new(1000, 1000, text.len() - 1)
         )
         .is_err()
     );

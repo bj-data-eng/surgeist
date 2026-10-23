@@ -33,7 +33,11 @@ fn accepted(name: &str, value: &str) {
         assert_eq!(declaration.known().unwrap().property(), property);
         assert_eq!(declaration.importance(), CssImportance::Important);
         assert_eq!(
-            declaration.value_components().serialize().unwrap().as_css(),
+            declaration
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             value
         );
     }

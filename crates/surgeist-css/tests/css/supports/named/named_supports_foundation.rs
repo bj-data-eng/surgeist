@@ -202,7 +202,7 @@ fn style_nested_definition_is_terminal_and_preserves_only_surrounding_declaratio
             declaration
                 .source()
                 .value_components()
-                .serialize()
+                .serialize_tokens(Default::default())
                 .unwrap()
                 .as_css(),
             color

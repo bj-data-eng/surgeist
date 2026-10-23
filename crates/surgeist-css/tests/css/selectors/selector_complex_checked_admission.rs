@@ -6,8 +6,8 @@ use crate::css::support::color_and_selector_fixtures::assert_specified_construct
 use crate::css::support::validated_selector as parsed;
 use surgeist_css::{
     CssComplexSelector, CssComplexSelectorPart, CssCompoundSelector, CssCompoundSelectorArgument,
-    CssSelector, CssSelectorConstructionErrorKind, CssSpecifiedValueSerializationErrorKind,
-    CssSpecifiedValueSerializationLimits,
+    CssSelector, CssSelectorConstructionErrorKind, CssSerializationLimits,
+    CssSpecifiedValueSerializationErrorKind,
 };
 
 fn complex(source: &str) -> CssComplexSelector {
@@ -35,11 +35,19 @@ fn child_part() -> CssComplexSelectorPart {
 #[test]
 fn complex_assembly_preserves_order_and_legal_terminal_pseudo_element() {
     let value = complex(".Seed > .Child + .Next ~ .Later || .Cell::before");
-    let actual = CssComplexSelector::try_new(value.first().clone(), value.rest().to_vec()).unwrap();
+    let actual = CssComplexSelector::try_new(
+        value.first().clone(),
+        value.rest().to_vec(),
+        Default::default(),
+    )
+    .unwrap();
     assert_eq!(actual, value);
     let selector = CssSelector::Complex(actual);
     let literal = ".Seed > .Child + .Next ~ .Later || .Cell::before";
-    assert_eq!(selector.to_specified_css().unwrap(), literal);
+    assert_eq!(
+        selector.serialize_specified(Default::default()).unwrap(),
+        literal
+    );
     assert_eq!(parsed(literal), selector);
 }
 
@@ -47,7 +55,7 @@ fn complex_assembly_preserves_order_and_legal_terminal_pseudo_element() {
 fn complex_assembly_rejects_empty_rest_and_nonterminal_pseudo_element() {
     let ordinary = complex(".One > .Two");
     assert_eq!(
-        CssComplexSelector::try_new(ordinary.first().clone(), Vec::new())
+        CssComplexSelector::try_new(ordinary.first().clone(), Vec::new(), Default::default())
             .unwrap_err()
             .kind(),
         &CssSelectorConstructionErrorKind::EmptyComplexRest
@@ -57,7 +65,7 @@ fn complex_assembly_rejects_empty_rest_and_nonterminal_pseudo_element() {
     let first = terminal.rest()[0].selector().clone();
     // Selectors 4 §3.6: a pseudo-element belongs only to the last compound.
     assert_eq!(
-        CssComplexSelector::try_new(first, ordinary.rest().to_vec())
+        CssComplexSelector::try_new(first, ordinary.rest().to_vec(), Default::default())
             .unwrap_err()
             .kind(),
         &CssSelectorConstructionErrorKind::NonTerminalPseudoElement { compound_index: 0 }
@@ -66,7 +74,7 @@ fn complex_assembly_rejects_empty_rest_and_nonterminal_pseudo_element() {
     let mut rest = terminal.rest().to_vec();
     rest.extend_from_slice(ordinary.rest());
     assert_eq!(
-        CssComplexSelector::try_new(ordinary.first().clone(), rest)
+        CssComplexSelector::try_new(ordinary.first().clone(), rest, Default::default())
             .unwrap_err()
             .kind(),
         &CssSelectorConstructionErrorKind::NonTerminalPseudoElement { compound_index: 1 }
@@ -82,24 +90,27 @@ fn selected_shadow_host_has_remains_valid_at_complex_assembly() {
         .compound()
         .clone();
     let terminal = complex(".Parent > .Cell::before");
-    let actual = CssComplexSelector::try_new(first, terminal.rest().to_vec()).unwrap();
+    let actual =
+        CssComplexSelector::try_new(first, terminal.rest().to_vec(), Default::default()).unwrap();
     let selector = CssSelector::Complex(actual);
     let literal = ":host(:has(> .One)) > .Cell::before";
-    assert_eq!(selector.to_specified_css().unwrap(), literal);
+    assert_eq!(
+        selector.serialize_specified(Default::default()).unwrap(),
+        literal
+    );
     assert_eq!(parsed(literal), selector);
 }
 
 #[test]
 fn complex_assembly_admits_exact_default_input_node_boundary() {
-    assert_eq!(
-        CssSpecifiedValueSerializationLimits::default().max_input_nodes(),
-        65_536
-    );
+    assert_eq!(CssSerializationLimits::default().max_input_nodes(), 65_536);
     // One complex + a compound with two classes + 32,766 compounds with one
     // class each: 1 + 3 + 32,766 * 2 = 65,536 semantic nodes.
     let value = complex(".One.Two > .Two");
     let rest = vec![child_part(); 32_766];
-    let actual = CssComplexSelector::try_new(value.first().clone(), rest.clone()).unwrap();
+    let actual =
+        CssComplexSelector::try_new(value.first().clone(), rest.clone(), Default::default())
+            .unwrap();
     assert_eq!(actual.first(), value.first());
     assert!(
         actual.rest() == rest,
@@ -107,7 +118,10 @@ fn complex_assembly_admits_exact_default_input_node_boundary() {
     );
     let literal = format!(".One.Two{}", " > .Two".repeat(32_766));
     assert!(
-        CssSelector::Complex(actual).to_specified_css().unwrap() == literal,
+        CssSelector::Complex(actual)
+            .serialize_specified(Default::default())
+            .unwrap()
+            == literal,
         "exact input-boundary graph preserves its independently authored output"
     );
 }
@@ -119,22 +133,26 @@ fn complex_assembly_rejects_one_node_above_default_cumulative_budget() {
     let value = complex(".One.Two.Three > .Two");
     assert_eq!(
         CssSelector::Compound(value.first().clone())
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .unwrap(),
         ".One.Two.Three"
     );
     let part = child_part();
     assert_eq!(
         CssSelector::Compound(part.selector().clone())
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .unwrap(),
         ".Two"
     );
-    let actual = CssComplexSelector::try_new(value.first().clone(), vec![part; 32_766]);
+    let actual = CssComplexSelector::try_new(
+        value.first().clone(),
+        vec![part; 32_766],
+        Default::default(),
+    );
     if let Ok(value) = &actual {
         assert_eq!(
             CssSelector::Complex(value.clone())
-                .to_specified_css()
+                .serialize_specified(Default::default())
                 .unwrap_err()
                 .kind(),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit
@@ -148,21 +166,22 @@ fn complex_assembly_rejects_one_node_above_default_cumulative_budget() {
 
 #[test]
 fn complex_assembly_admits_exact_default_utf8_byte_boundary() {
-    assert_eq!(
-        CssSpecifiedValueSerializationLimits::default().max_css_bytes(),
-        1_048_576
-    );
+    assert_eq!(CssSerializationLimits::default().max_css_bytes(), 1_048_576);
     // A dot + 524,284 two-byte é code points + the seven-byte child suffix.
     let name = "é".repeat(524_284);
     let literal = format!(".{name} > .Two");
     assert_eq!(literal.len(), 1_048_576);
     let first = class_compound(name);
     let rest = vec![child_part()];
-    let actual = CssComplexSelector::try_new(first.clone(), rest.clone()).unwrap();
+    let actual =
+        CssComplexSelector::try_new(first.clone(), rest.clone(), Default::default()).unwrap();
     assert!(actual.first() == &first, "decoded class remains unchanged");
     assert_eq!(actual.rest(), rest);
     assert!(
-        CssSelector::Complex(actual).to_specified_css().unwrap() == literal,
+        CssSelector::Complex(actual)
+            .serialize_specified(Default::default())
+            .unwrap()
+            == literal,
         "exact byte-boundary graph preserves its independently authored output"
     );
 }
@@ -175,18 +194,18 @@ fn complex_assembly_rejects_utf8_bytes_above_default_cumulative_budget() {
     let first = class_compound(name.clone());
     assert!(
         CssSelector::Compound(first.clone())
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .unwrap()
             == format!(".{name}"),
         "first compound is independently representable within the default byte budget"
     );
     let literal = format!(".{name} > .Two");
     assert_eq!(literal.len(), 1_048_577);
-    let actual = CssComplexSelector::try_new(first, vec![child_part()]);
+    let actual = CssComplexSelector::try_new(first, vec![child_part()], Default::default());
     if let Ok(value) = &actual {
         assert_eq!(
             CssSelector::Complex(value.clone())
-                .to_specified_css()
+                .serialize_specified(Default::default())
                 .unwrap_err()
                 .kind(),
             CssSpecifiedValueSerializationErrorKind::ByteLimit

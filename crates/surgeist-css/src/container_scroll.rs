@@ -158,10 +158,13 @@ macro_rules! operand {
             pub fn position(&self) -> Option<CssSourcePosition> {
                 crate::media::parsed_position(self.origin())
             }
-            pub fn serialize(&self) -> Result<CssSerializedValue, CssComponentValueError> {
-                self.serialize_with_limit(usize::MAX)
-            }
-            pub fn serialize_with_limit(&self, max_css_bytes: usize) -> Result<CssSerializedValue, CssComponentValueError> {
+            /// `limits.max_css_bytes()` caps the output, including inserted syntax; the other
+            /// component limits do not apply.
+            pub fn serialize_tokens(
+                &self,
+                limits: crate::CssComponentValueLimits,
+            ) -> Result<CssSerializedValue, CssComponentValueError> {
+                let max_css_bytes = limits.max_css_bytes();
                 let mut out = CssCanonicalBuilder::new(max_css_bytes);
                 out.push_components(self.components().items())?;
                 out.finish()
@@ -201,13 +204,13 @@ impl CssContainerScrollQuery {
     pub fn position(&self) -> Option<CssSourcePosition> {
         crate::media::parsed_position(self.origin())
     }
-    pub fn serialize(&self) -> Result<CssSerializedValue, CssComponentValueError> {
-        self.serialize_with_limit(usize::MAX)
-    }
-    pub fn serialize_with_limit(
+    /// `limits.max_css_bytes()` caps the output, including inserted syntax; the other component
+    /// limits do not apply.
+    pub fn serialize_tokens(
         &self,
-        max_css_bytes: usize,
+        limits: crate::CssComponentValueLimits,
     ) -> Result<CssSerializedValue, CssComponentValueError> {
+        let max_css_bytes = limits.max_css_bytes();
         let mut out = CssCanonicalBuilder::new(max_css_bytes);
         out.push_components(self.components())?;
         out.finish()

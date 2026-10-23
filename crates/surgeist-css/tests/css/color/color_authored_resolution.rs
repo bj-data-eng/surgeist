@@ -292,16 +292,23 @@ fn programmatic_and_parsed_calculated_failures_keep_their_actual_origins() {
     let facts = facts();
     let function = CssComponentValue::try_function(
         "calc",
-        CssComponentValues::try_new(vec![CssComponentValue::try_token("-1%").unwrap()]).unwrap(),
+        CssComponentValues::try_new(
+            vec![CssComponentValue::try_token("-1%").unwrap()],
+            Default::default(),
+        )
+        .unwrap(),
     )
     .unwrap();
     let programmatic = CssPercentageCalculation::try_from_components(
-        CssComponentValues::try_new(vec![function]).unwrap(),
+        CssComponentValues::try_new(vec![function], Default::default()).unwrap(),
+        Default::default(),
     )
     .unwrap();
-    let recovered =
-        CssPercentageCalculation::try_from_components(parse_component_values("calc(-1%)").unwrap())
-            .unwrap();
+    let recovered = CssPercentageCalculation::try_from_components(
+        parse_component_values("calc(-1%)").unwrap(),
+        Default::default(),
+    )
+    .unwrap();
     let CssComponentValueRef::Function(function) = recovered.components().items()[0].view() else {
         panic!("function")
     };

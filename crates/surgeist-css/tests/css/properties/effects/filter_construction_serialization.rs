@@ -7,7 +7,7 @@
 use crate::css::support::normal_declaration;
 use crate::css::support::property_admission::assert_reentry_rejected;
 use crate::css::support::serialization_limits::assert_limits_with_zero as budget;
-use surgeist_css::{CssSpecifiedValueSerializationLimits as L, *};
+use surgeist_css::{CssSerializationLimits as L, *};
 
 fn filter(property: CssKnownProperty, css: &str) -> CssFilter {
     let source = normal_declaration(property.canonical_name(), css);
@@ -43,7 +43,11 @@ fn angle(value: f32, unit: CssAngleUnit) -> CssAngleOrZero {
 fn angle_math(css: &str) -> CssAngleOrZero {
     CssAngleOrZero::Angle(
         CssAngleValue::try_from_calculation(
-            CssAngleCalculation::try_from_components(parse_component_values(css).unwrap()).unwrap(),
+            CssAngleCalculation::try_from_components(
+                parse_component_values(css).unwrap(),
+                Default::default(),
+            )
+            .unwrap(),
         )
         .unwrap(),
     )
@@ -107,7 +111,7 @@ fn hue_construction_keeps_omission_zero_units_and_origin_sensitive_math() {
         assert_eq!(hue.angle(), &angle(450.0, unit));
         assert_eq!(
             CssFilterFunction::HueRotate(hue)
-                .serialize_specified()
+                .serialize_specified(Default::default())
                 .unwrap(),
             expected
         );
@@ -126,7 +130,7 @@ fn hue_construction_keeps_omission_zero_units_and_origin_sensitive_math() {
     let origin = math.origin().clone();
     let function = CssFilterFunction::HueRotate(first.clone());
     budget("hue-rotate(calc(90deg))", 5, 4, |limits| {
-        function.serialize_specified_with_limits(limits)
+        function.serialize_specified(limits)
     });
     let CssFilterFunction::HueRotate(after) = function else {
         panic!("hue")
@@ -152,7 +156,10 @@ fn parsed_empty_and_comment_hue_keep_omission_and_authored_declaration_text() {
             };
             assert!(hue.authored_angle().is_none());
             assert_eq!(hue.angle(), &angle(0.0, CssAngleUnit::Degrees));
-            assert_eq!(list.serialize_specified().unwrap(), "hue-rotate()");
+            assert_eq!(
+                list.serialize_specified(Default::default()).unwrap(),
+                "hue-rotate()"
+            );
             let span = source.parsed_value().unwrap().span();
             assert_eq!(
                 &source.parsed_value().unwrap().source().as_str()
@@ -189,10 +196,10 @@ fn every_function_has_independent_literal_text_and_exact_budgets() {
         let value = function(css);
         let before = value.clone();
         budget(css, input, projection, |limits| {
-            value.serialize_specified_with_limits(limits)
+            value.serialize_specified(limits)
         });
         assert_eq!(value, before);
-        assert_eq!(value.serialize_specified().unwrap(), css);
+        assert_eq!(value.serialize_specified(Default::default()).unwrap(), css);
     }
     for name in [
         "brightness",
@@ -205,12 +212,10 @@ fn every_function_has_independent_literal_text_and_exact_budgets() {
     ] {
         let css = format!("{name}()");
         let value = function(&css);
-        budget(&css, 1, 1, |limits| {
-            value.serialize_specified_with_limits(limits)
-        });
+        budget(&css, 1, 1, |limits| value.serialize_specified(limits));
     }
     budget("none", 1, 1, |limits| {
-        CssFilter::None.serialize_specified_with_limits(limits)
+        CssFilter::None.serialize_specified(limits)
     });
 }
 
@@ -239,14 +244,13 @@ fn checked_all_function_construction_preserves_order_and_literal_domains() {
     let list = CssFilterFunctionList::try_new(functions.clone()).unwrap();
     assert_eq!(list.functions(), functions);
     let expected = "blur(2em) brightness(2) contrast(150%) drop-shadow(red 1px 2px 3px) grayscale(2) hue-rotate(450deg) invert(2) opacity(125%) saturate(3) sepia(200%)";
-    budget(expected, 24, 24, |limits| {
-        list.serialize_specified_with_limits(limits)
-    });
+    budget(expected, 24, 24, |limits| list.serialize_specified(limits));
     let value = CssFilter::Functions(list);
-    budget(expected, 24, 24, |limits| {
-        value.serialize_specified_with_limits(limits)
-    });
-    assert_eq!(value.serialize_specified().unwrap(), expected);
+    budget(expected, 24, 24, |limits| value.serialize_specified(limits));
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     let defaults = CssFilterFunctionList::try_new(vec![
         CssFilterFunction::Blur(CssFilterBlur::omitted()),
         CssFilterFunction::HueRotate(CssFilterHueRotate::omitted()),
@@ -263,7 +267,7 @@ fn checked_all_function_construction_preserves_order_and_literal_domains() {
         "blur() hue-rotate() brightness() contrast() grayscale() invert() opacity() saturate() sepia()",
         10,
         10,
-        |limits| defaults.serialize_specified_with_limits(limits),
+        |limits| defaults.serialize_specified(limits),
     );
 }
 
@@ -317,17 +321,22 @@ fn list_enum_and_shared_children_have_cumulative_resources() {
             let value = filter(property, css);
             let before = value.clone();
             budget(expected, input, projection, |limits| {
-                value.serialize_specified_with_limits(limits)
+                value.serialize_specified(limits)
             });
             let CssFilter::Functions(list) = &value else {
                 panic!("list")
             };
             budget(expected, input, projection, |limits| {
-                list.serialize_specified_with_limits(limits)
+                list.serialize_specified(limits)
             });
-            assert_eq!(list.serialize_specified().unwrap(), expected);
             assert_eq!(
-                filter(property, expected).serialize_specified().unwrap(),
+                list.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
+            assert_eq!(
+                filter(property, expected)
+                    .serialize_specified(Default::default())
+                    .unwrap(),
                 expected
             );
             assert_eq!(value, before);
@@ -345,7 +354,7 @@ fn exact_amount_literals_keep_branch_spelling_and_origins_without_clamping() {
     let origin = value.origin().clone();
     assert!(matches!(origin, CssValueOrigin::Parsed(_)));
     budget(&format!("brightness({huge})"), 2, 2, |limits| {
-        parsed.serialize_specified_with_limits(limits)
+        parsed.serialize_specified(limits)
     });
     assert_eq!(value.origin(), &origin);
     let constructed = CssFilterFunction::Brightness(number(huge));
@@ -360,7 +369,12 @@ fn exact_amount_literals_keep_branch_spelling_and_origins_without_clamping() {
         ("invert(-0)", "invert(0)"),
         ("opacity(calc(50% + 75%))", "opacity(calc(125%))"),
     ] {
-        assert_eq!(function(css).serialize_specified().unwrap(), expected);
+        assert_eq!(
+            function(css)
+                .serialize_specified(Default::default())
+                .unwrap(),
+            expected
+        );
     }
     assert_ne!(function("brightness()"), function("brightness(1)"));
     assert_ne!(function("brightness(1)"), function("brightness(100%)"));
@@ -377,17 +391,20 @@ fn symbolic_drop_children_share_providers_without_mutating_origins() {
     assert!(drop.color().unwrap().color_mix_value().is_some());
     assert!(drop.standard_deviation().is_none());
     let expected = "drop-shadow(color-mix(in srgb, currentcolor, blue) calc(2em + 1px) -2px)";
-    assert_eq!(value.serialize_specified().unwrap(), expected);
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     assert_eq!(drop.offset_x().origin(), &origin);
     assert_eq!(
         filter(CssKnownProperty::Filter, expected)
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         expected
     );
     let explicit = function("drop-shadow(currentcolor 0 0 0)");
     assert_eq!(
-        explicit.serialize_specified().unwrap(),
+        explicit.serialize_specified(Default::default()).unwrap(),
         "drop-shadow(currentcolor 0 0 0)"
     );
 }
@@ -397,10 +414,13 @@ fn url_escaping_modifiers_and_adjacent_tokens_compose_with_sibling_functions() {
     let modifier = CssUrlModifier::Function(
         CssUrlModifierFunction::try_new(
             CssIdent::try_new("m").unwrap(),
-            CssComponentValues::try_new(vec![
-                CssComponentValue::try_ident("a").unwrap(),
-                CssComponentValue::try_number("1").unwrap(),
-            ])
+            CssComponentValues::try_new(
+                vec![
+                    CssComponentValue::try_ident("a").unwrap(),
+                    CssComponentValue::try_number("1").unwrap(),
+                ],
+                Default::default(),
+            )
             .unwrap(),
         )
         .unwrap(),
@@ -415,14 +435,15 @@ fn url_escaping_modifiers_and_adjacent_tokens_compose_with_sibling_functions() {
     );
     let expected = "src(\"é\\\"\\\\\\a \" m(a/**/1)) hue-rotate()";
     // List1, URL1, target1, modifier1, two original argument tokens, hue1.
-    budget(expected, 7, 7, |limits| {
-        value.serialize_specified_with_limits(limits)
-    });
-    assert_eq!(value.serialize_specified().unwrap(), expected);
+    budget(expected, 7, 7, |limits| value.serialize_specified(limits));
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     assert_eq!(url.as_str(), "é\"\\\n");
     assert_eq!(
         filter(CssKnownProperty::Filter, expected)
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         expected
     );
@@ -534,7 +555,7 @@ fn repeated_pending_reentry_preserves_replacement_child_origins_after_failure() 
             let before = filter.clone();
             assert_eq!(
                 filter
-                    .serialize_specified_with_limits(L::new(100, 100, 1))
+                    .serialize_specified(L::new(100, 100, 1))
                     .unwrap_err()
                     .kind(),
                 CssSpecifiedValueSerializationErrorKind::ByteLimit

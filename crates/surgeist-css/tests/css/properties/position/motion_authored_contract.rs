@@ -8,9 +8,7 @@ use crate::css::support::{
     authored_declaration_through_front as declaration, check_property_components as checked,
     discoverable_property as property,
 };
-use surgeist_css::{
-    CssSpecifiedValueSerializationErrorKind as K, CssSpecifiedValueSerializationLimits as L, *,
-};
+use surgeist_css::{CssSerializationLimits as L, CssSpecifiedValueSerializationErrorKind as K, *};
 const LONGHANDS: [&str; 5] = [
     "offset-position",
     "offset-path",
@@ -41,7 +39,7 @@ fn accept(name: &str, cases: &[(&str, &str)]) {
             let before = source.clone();
             let output = format!("{name}: {expected} !important;");
             assert_eq!(
-                source.to_specified_css().unwrap(),
+                source.serialize_specified(Default::default()).unwrap(),
                 output,
                 "{input} front {front}"
             );
@@ -53,7 +51,10 @@ fn accept(name: &str, cases: &[(&str, &str)]) {
             };
             assert_eq!(reparsed.known().unwrap().property(), property(name));
             assert_eq!(reparsed.importance(), CssImportance::Important);
-            assert_eq!(reparsed.to_specified_css().unwrap(), output);
+            assert_eq!(
+                reparsed.serialize_specified(Default::default()).unwrap(),
+                output
+            );
         }
     }
 }
@@ -581,7 +582,7 @@ fn globals(name: &str) {
                 assert!(item.ordinary_value().is_none());
             }
             assert_eq!(
-                source.to_specified_css().unwrap(),
+                source.serialize_specified(Default::default()).unwrap(),
                 format!("{name}: {input} !important;")
             );
         }
@@ -657,7 +658,7 @@ fn pending(name: &str, valid: &str, invalid: &str) {
             }
             assert_eq!(source, original);
             assert_eq!(
-                source.to_specified_css().unwrap(),
+                source.serialize_specified(Default::default()).unwrap(),
                 format!("{name}: {authored} !important;")
             );
         }
@@ -762,7 +763,7 @@ fn omitted_shorthand_members_contribute_all_five_ordinary_terminals_in_source_or
 }
 
 fn implicit_origin(components: &CssComponentValues) -> CssValueOrigin {
-    let output = components.serialize().unwrap();
+    let output = components.serialize_tokens(Default::default()).unwrap();
     (0..output.as_css().len())
         .find_map(|offset| match output.origin_at(offset) {
             Some(CssSerializedOrigin::Token(origin @ CssValueOrigin::ImplicitClosure { .. })) => {
@@ -953,10 +954,12 @@ fn budget(name: &str, input: &str, value: &str, nodes: usize) {
     let output = format!("{name}: {value} !important;");
     for front in 0..5 {
         let source = declaration(name, input, front);
-        LimitLadder::new(&output, nodes, nodes).assert_unchanged(&source, |source, limits| {
-            source.to_specified_css_with_limits(limits)
-        });
-        assert_eq!(source.to_specified_css().unwrap(), output);
+        LimitLadder::new(&output, nodes, nodes)
+            .assert_unchanged(&source, |source, limits| source.serialize_specified(limits));
+        assert_eq!(
+            source.serialize_specified(Default::default()).unwrap(),
+            output
+        );
     }
 }
 
@@ -1028,7 +1031,7 @@ fn nested_shape_numeric_children_retain_shared_work_and_byte_failure_atomicity()
         let output = format!("{name}: {expected} !important;");
         assert_eq!(
             source
-                .to_specified_css_with_limits(L::new(128, 256, output.len()))
+                .serialize_specified(L::new(128, 256, output.len()))
                 .unwrap(),
             output
         );
@@ -1037,13 +1040,7 @@ fn nested_shape_numeric_children_retain_shared_work_and_byte_failure_atomicity()
             (L::new(128, 0, output.len()), K::ProjectionNodeLimit),
             (L::new(128, 256, output.len() - 1), K::ByteLimit),
         ] {
-            assert_eq!(
-                source
-                    .to_specified_css_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
-                kind
-            );
+            assert_eq!(source.serialize_specified(limits).unwrap_err().kind(), kind);
             assert_eq!(source, before);
         }
     }

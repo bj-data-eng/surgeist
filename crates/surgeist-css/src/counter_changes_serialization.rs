@@ -1,26 +1,20 @@
 //! Bounded authored counter-change serialization with explicit property context.
 
 use crate::{
-    CssCounterChangesValue, CssCounterProperty, CssSpecifiedValueSerializationError,
-    CssSpecifiedValueSerializationLimits,
+    CssCounterChangesValue, CssCounterProperty, CssSerializationError, CssSerializationLimits,
 };
 
-type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
+type Result<T> = std::result::Result<T, CssSerializationError>;
 
 impl CssCounterChangesValue {
-    /// Emits every counter name and effective integer for the selected longhand.
+    /// Serializes this value as canonical specified CSS for `property`.
     ///
-    /// Omitted operands remain absent in this authored model. Serialization
-    /// inserts `0` for reset/set or `1` for increment, without executing any
-    /// counter operations or resolving symbolic integer calculations.
-    pub fn serialize_specified(&self, property: CssCounterProperty) -> Result<String> {
-        self.serialize_specified_with_limits(
-            property,
-            CssSpecifiedValueSerializationLimits::default(),
-        )
-    }
-
-    /// Applies one cumulative input-node, projection-node, and CSS-byte budget.
+    /// Unlike values with a context-free `serialize_specified`, counter changes
+    /// need their longhand: omitted operands remain absent in this authored
+    /// model, and serialization inserts `0` for reset/set or `1` for increment,
+    /// without executing any counter operations or resolving symbolic integer
+    /// calculations. `limits` bounds input nodes, projection nodes and output
+    /// UTF-8 bytes cumulatively.
     ///
     /// A list charges one aggregate, each entry one aggregate, then its name and
     /// explicit numeric subtree. A synthesized integer charges one projection
@@ -28,10 +22,15 @@ impl CssCounterChangesValue {
     /// entry charges 3 input and 4 projection nodes. With `calc(2.5)`, it charges
     /// 5 input and 4 projection nodes: the existing numeric projector traverses
     /// authored function plus leaf, then projects the calc wrapper to its scalar.
-    pub fn serialize_specified_with_limits(
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CssSerializationError`] when a limit is exhausted. No partial
+    /// text is returned and the value is unchanged.
+    pub fn serialize_specified(
         &self,
         property: CssCounterProperty,
-        limits: CssSpecifiedValueSerializationLimits,
+        limits: CssSerializationLimits,
     ) -> Result<String> {
         let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
         self.append_to_rule_writer(property, &mut writer)?;
@@ -42,7 +41,7 @@ impl CssCounterChangesValue {
         &self,
         property: CssCounterProperty,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         let Some(changes) = self.changes() else {
             writer.node()?;
             writer.append("none")?;

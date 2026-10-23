@@ -1,10 +1,7 @@
 //! Authored Grid placement values.
 
 use super::{CssIdent, CssIntegerValue, CssPositiveIntegerValue};
-use crate::{
-    CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits,
-    specified_rule_serialization::SpecifiedRuleWriter,
-};
+use crate::{CssSerializationError, specified_rule_serialization::SpecifiedRuleWriter};
 
 /// A decoded Grid line name with Values 4 and Grid reserved words excluded.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -127,51 +124,28 @@ impl CssGridLine {
         }
     }
 
-    pub fn serialize_specified(&self) -> Result<String, CssSpecifiedValueSerializationError> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String, CssSpecifiedValueSerializationError> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        self.append_specified(writer)?;
-        Ok(())
-    }
-
     fn append_specified(
         &self,
         writer: &mut SpecifiedRuleWriter,
-    ) -> Result<(), CssSpecifiedValueSerializationError> {
+    ) -> Result<(), CssSerializationError> {
         match self {
             Self::Auto => {
-                writer.context.charge_input(1)?;
-                writer.context.charge_projection(1)?;
+                writer.node()?;
                 writer.append("auto")
             }
-            Self::Name(name) => append_name(name, writer),
+            Self::Name(name) => writer.identifier(name.ident().as_str()),
             Self::Indexed(index) => {
                 index
                     .value
                     .append_specified(&mut writer.context, &mut writer.css)?;
                 if let Some(name) = &index.name {
                     writer.append(" ")?;
-                    append_name(name, writer)?;
+                    writer.identifier(name.ident().as_str())?;
                 }
                 Ok(())
             }
             Self::Span(span) => {
-                writer.context.charge_input(1)?;
-                writer.context.charge_projection(1)?;
+                writer.node()?;
                 writer.append("span")?;
                 if let Some(integer) = &span.integer {
                     writer.append(" ")?;
@@ -186,22 +160,23 @@ impl CssGridLine {
                 }
                 if let Some(name) = &span.name {
                     writer.append(" ")?;
-                    append_name(name, writer)?;
+                    writer.identifier(name.ident().as_str())?;
                 }
                 Ok(())
             }
         }
     }
 }
-
-fn append_name(
-    name: &CssGridLineName,
-    writer: &mut SpecifiedRuleWriter,
-) -> Result<(), CssSpecifiedValueSerializationError> {
-    writer.context.charge_input(1)?;
-    writer.context.charge_projection(1)?;
-    writer.append_identifier(name.ident().as_str())
+impl crate::specified_rule_serialization::SpecifiedProvider for CssGridLine {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        self.append_specified(writer)?;
+        Ok(())
+    }
 }
+crate::specified_rule_serialization::specified_serialization!(CssGridLine);
 
 /// An authored row or column shorthand; an absent end remains distinguishable.
 #[derive(Clone, Debug, PartialEq)]
@@ -234,22 +209,12 @@ impl CssGridLineRange {
             .clone()
             .unwrap_or_else(|| self.start.omitted_partner())
     }
-    pub fn serialize_specified(&self) -> Result<String, CssSpecifiedValueSerializationError> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String, CssSpecifiedValueSerializationError> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+}
+impl crate::specified_rule_serialization::SpecifiedProvider for CssGridLineRange {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         writer.source_member(0, |writer| self.start.append_specified(writer))?;
         if let Some(end) = &self.end {
             writer.source_member(1, |writer| {
@@ -260,6 +225,7 @@ impl CssGridLineRange {
         Ok(())
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssGridLineRange);
 
 /// An authored area shorthand in row-start, column-start, row-end, column-end order.
 #[derive(Clone, Debug, PartialEq)]
@@ -370,22 +336,12 @@ impl CssGridArea {
             .clone()
             .unwrap_or_else(|| self.effective_column_start().omitted_partner())
     }
-    pub fn serialize_specified(&self) -> Result<String, CssSpecifiedValueSerializationError> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String, CssSpecifiedValueSerializationError> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+}
+impl crate::specified_rule_serialization::SpecifiedProvider for CssGridArea {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         writer.source_member(0, |writer| self.row_start.append_specified(writer))?;
         for (index, line) in [&self.column_start, &self.row_end, &self.column_end]
             .into_iter()
@@ -401,3 +357,4 @@ impl CssGridArea {
         Ok(())
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssGridArea);

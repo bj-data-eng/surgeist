@@ -1,11 +1,12 @@
 //! Checked media construction and canonical authored output share parsed semantics.
 use crate::css::support::authored_syntax::component_list as values;
+use crate::css::support::byte_limits;
 use surgeist_css::{
     CssBlockKind, CssComponentValue, CssComponentValueErrorKind, CssComponentValueLimits,
     CssComponentValues, CssMediaCondition, CssMediaConditionKind, CssMediaConstructionError,
-    CssMediaFeatureQuery, CssMediaQuery, CssMediaRangeRef, CssMediaSerializationError,
-    CssSerializedOrigin, CssValueOrigin, parse_component_values, parse_media_query,
-    parse_media_query_list,
+    CssMediaFeatureQuery, CssMediaQuery, CssMediaRangeRef, CssSerializedOrigin,
+    CssSpecifiedValueSerializationErrorKind, CssValueOrigin, parse_component_values,
+    parse_media_query, parse_media_query_list,
 };
 
 fn plain_width(value: CssComponentValue) -> CssComponentValues {
@@ -25,7 +26,7 @@ fn plain_width(value: CssComponentValue) -> CssComponentValues {
 #[test]
 fn programmatic_numeric_queries_have_checked_values_without_source_coordinates() {
     let components = plain_width(CssComponentValue::try_dimension("-1e999", "px").unwrap());
-    let query = CssMediaQuery::try_from_components(components).unwrap();
+    let query = CssMediaQuery::try_from_components(components, Default::default()).unwrap();
     assert_eq!(query.position(), None);
     assert!(matches!(query.origin(), CssValueOrigin::Programmatic));
     let CssMediaQuery::Condition(condition) = &query else {
@@ -50,7 +51,10 @@ fn programmatic_numeric_queries_have_checked_values_without_source_coordinates()
         literal.literal().origin(),
         CssValueOrigin::Programmatic
     ));
-    assert_eq!(query.serialize().unwrap().as_css(), "(width: -1e999px)");
+    assert_eq!(
+        query.serialize_tokens(Default::default()).unwrap().as_css(),
+        "(width: -1e999px)"
+    );
 }
 
 #[test]
@@ -59,8 +63,9 @@ fn cloned_parsed_numeric_children_keep_their_original_source_in_programmatic_que
     let operand = parsed.items().last().unwrap().clone();
     let expected = operand.origin().clone();
     let components = plain_width(operand);
-    let first = CssMediaCondition::try_from_components(components.clone()).unwrap();
-    let second = CssMediaCondition::try_from_components(components).unwrap();
+    let first =
+        CssMediaCondition::try_from_components(components.clone(), Default::default()).unwrap();
+    let second = CssMediaCondition::try_from_components(components, Default::default()).unwrap();
     assert_eq!(first, second);
     assert_eq!(first.position(), None);
     let CssMediaConditionKind::Feature(CssMediaFeatureQuery::Width(range)) = first.kind() else {
@@ -70,7 +75,7 @@ fn cloned_parsed_numeric_children_keep_their_original_source_in_programmatic_que
         panic!("plain width");
     };
     assert_eq!(value.calculation().origin(), &expected);
-    let serialized = first.serialize().unwrap();
+    let serialized = first.serialize_tokens(Default::default()).unwrap();
     assert_eq!(serialized.as_css(), "(width: -2em)");
     assert!(
         matches!(serialized.origin_at(8), Some(CssSerializedOrigin::Token(origin)) if origin == &expected)
@@ -84,28 +89,42 @@ fn opaque_programmatic_functions_preserve_original_components_and_token_boundari
         CssComponentValue::try_ident("e2").unwrap(),
     ]);
     let original = CssComponentValue::try_function("Future", args).unwrap();
-    let condition = CssMediaCondition::try_from_components(values(vec![original.clone()])).unwrap();
+    let condition =
+        CssMediaCondition::try_from_components(values(vec![original.clone()]), Default::default())
+            .unwrap();
     let CssMediaConditionKind::GeneralEnclosed(enclosed) = condition.kind() else {
         panic!("opaque function");
     };
     assert_eq!(enclosed.component(), &original);
     assert_eq!(enclosed.position(), None);
-    assert_eq!(condition.serialize().unwrap().as_css(), "Future(1/**/e2)");
+    assert_eq!(
+        condition
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        "Future(1/**/e2)"
+    );
 }
 
 #[test]
 fn checked_construction_rejects_recovery_and_query_condition_context_mismatches() {
     let recovered = parse_component_values("future(").unwrap();
     assert!(matches!(
-        CssMediaQuery::try_from_components(recovered),
+        CssMediaQuery::try_from_components(recovered, Default::default()),
         Err(CssMediaConstructionError::RecoveredInput { .. })
     ));
     assert!(matches!(
-        CssMediaCondition::try_from_components(parse_component_values("screen").unwrap()),
+        CssMediaCondition::try_from_components(
+            parse_component_values("screen").unwrap(),
+            Default::default()
+        ),
         Err(CssMediaConstructionError::InvalidConditionGrammar { .. })
     ));
     assert!(matches!(
-        CssMediaQuery::try_from_components(parse_component_values("screen, print").unwrap()),
+        CssMediaQuery::try_from_components(
+            parse_component_values("screen, print").unwrap(),
+            Default::default()
+        ),
         Err(CssMediaConstructionError::InvalidQueryGrammar { .. })
     ));
 }
@@ -115,10 +134,10 @@ fn grammar_errors_map_inserted_token_boundaries_back_to_original_input() {
     let original = parse_component_values("/* 😀 */\nprint").unwrap();
     let extra = original.items().last().unwrap().clone();
     let origin = extra.origin().clone();
-    let error = CssMediaQuery::try_from_components(values(vec![
-        CssComponentValue::try_ident("screen").unwrap(),
-        extra,
-    ]))
+    let error = CssMediaQuery::try_from_components(
+        values(vec![CssComponentValue::try_ident("screen").unwrap(), extra]),
+        Default::default(),
+    )
     .unwrap_err();
     assert!(matches!(
         error,
@@ -146,8 +165,7 @@ fn requested_component_limits_preserve_their_actual_failure_categories() {
             CssComponentValueErrorKind::ByteLimit,
         ),
     ] {
-        let error =
-            CssMediaQuery::try_from_components_with_limits(components.clone(), limits).unwrap_err();
+        let error = CssMediaQuery::try_from_components(components.clone(), limits).unwrap_err();
         let CssMediaConstructionError::Component(error) = error else {
             panic!("typed component resource failure");
         };
@@ -163,14 +181,17 @@ fn construction_byte_budget_includes_canonical_ratio_expansion() {
     let components = parse_component_values(source).unwrap();
     let tight = CssComponentValueLimits::try_new(256, usize::MAX, source.len()).unwrap();
     let CssMediaConstructionError::Component(error) =
-        CssMediaQuery::try_from_components_with_limits(components.clone(), tight).unwrap_err()
+        CssMediaQuery::try_from_components(components.clone(), tight).unwrap_err()
     else {
         panic!("canonical output exceeds selected byte limit");
     };
     assert_eq!(error.kind(), CssComponentValueErrorKind::ByteLimit);
     let exact = CssComponentValueLimits::try_new(256, usize::MAX, canonical.len()).unwrap();
-    let query = CssMediaQuery::try_from_components_with_limits(components, exact).unwrap();
-    assert_eq!(query.serialize().unwrap().as_css(), canonical);
+    let query = CssMediaQuery::try_from_components(components, exact).unwrap();
+    assert_eq!(
+        query.serialize_tokens(Default::default()).unwrap().as_css(),
+        canonical
+    );
 }
 
 #[test]
@@ -187,11 +208,21 @@ fn canonical_queries_preserve_symbolic_values_and_authored_order() {
     ] {
         let report = parse_media_query(source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-        let output = report.syntax().serialize().unwrap();
+        let output = report
+            .syntax()
+            .serialize_tokens(Default::default())
+            .unwrap();
         assert_eq!(output.as_css(), expected);
         let reparsed = parse_media_query(output.as_css());
         assert!(reparsed.is_clean());
-        assert_eq!(reparsed.syntax().serialize().unwrap().as_css(), expected);
+        assert_eq!(
+            reparsed
+                .syntax()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            expected
+        );
     }
 }
 
@@ -199,16 +230,19 @@ fn canonical_queries_preserve_symbolic_values_and_authored_order() {
 fn a_recovered_member_prevents_partial_list_serialization() {
     let report = parse_media_query_list("screen and, print");
     assert!(!report.is_clean());
-    let CssMediaSerializationError::RecoveredNever { origin } =
-        report.syntax().serialize().unwrap_err()
-    else {
-        panic!("recovered member failure");
-    };
-    assert!(matches!(origin, CssValueOrigin::Parsed(_)));
+    let error = report
+        .syntax()
+        .serialize_tokens(Default::default())
+        .unwrap_err();
+    assert!(
+        crate::css::support::is_recovered_media_failure(&error),
+        "recovered member failure: {error:?}"
+    );
+    assert!(matches!(error.origin(), Some(CssValueOrigin::Parsed(_))));
     assert_eq!(
         parse_media_query("not all")
             .syntax()
-            .serialize()
+            .serialize_tokens(Default::default())
             .unwrap()
             .as_css(),
         "not all"
@@ -216,7 +250,7 @@ fn a_recovered_member_prevents_partial_list_serialization() {
     assert_eq!(
         parse_media_query_list("")
             .syntax()
-            .serialize()
+            .serialize_tokens(Default::default())
             .unwrap()
             .as_css(),
         ""
@@ -236,7 +270,8 @@ fn unknown_features_keep_their_domain_reason_and_original_component() {
         ),
     ] {
         let original = parse_component_values(source).unwrap();
-        let condition = CssMediaCondition::try_from_components(original.clone()).unwrap();
+        let condition =
+            CssMediaCondition::try_from_components(original.clone(), Default::default()).unwrap();
         let CssMediaConditionKind::UnknownFeature(unknown) = condition.kind() else {
             panic!("unknown feature: {source}");
         };
@@ -327,10 +362,42 @@ fn repeated_identifiers_retain_the_middle_feature_names_own_origin() {
         panic!("parenthesized feature");
     };
     let expected = block.values().items()[4].origin().clone();
-    let condition = CssMediaCondition::try_from_components(components).unwrap();
-    let output = condition.serialize().unwrap();
+    let condition = CssMediaCondition::try_from_components(components, Default::default()).unwrap();
+    let output = condition.serialize_tokens(Default::default()).unwrap();
     assert_eq!(output.as_css(), source);
     assert!(
         matches!(output.origin_at(10), Some(CssSerializedOrigin::Token(origin)) if origin == &expected)
+    );
+}
+
+#[test]
+fn media_tokens_refuse_one_byte_below_their_serialized_length() {
+    let report = parse_media_query_list("screen and (min-width: 10px), print");
+    assert!(report.is_clean());
+    let list = report.syntax();
+    let unlimited = list.serialize_tokens(Default::default()).unwrap();
+    let length = unlimited.as_css().len();
+    assert_eq!(
+        list.serialize_tokens(byte_limits(length)).unwrap().as_css(),
+        unlimited.as_css()
+    );
+    let error = list.serialize_tokens(byte_limits(length - 1)).unwrap_err();
+    assert_eq!(
+        error.kind(),
+        CssSpecifiedValueSerializationErrorKind::ByteLimit
+    );
+    assert!(matches!(error.origin(), Some(CssValueOrigin::Parsed(_))));
+    let query = &list.queries()[0];
+    let query_length = query
+        .serialize_tokens(Default::default())
+        .unwrap()
+        .as_css()
+        .len();
+    assert_eq!(
+        query
+            .serialize_tokens(byte_limits(query_length - 1))
+            .unwrap_err()
+            .kind(),
+        CssSpecifiedValueSerializationErrorKind::ByteLimit
     );
 }

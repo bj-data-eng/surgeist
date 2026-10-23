@@ -18,18 +18,6 @@ impl crate::CssRelativeColorExpression {
         values: CssComponentValues,
         environment: crate::CssRelativeColorEnvironment,
         result_domain: crate::CssRelativeColorResultDomain,
-    ) -> Result<Self> {
-        Self::try_from_components_with_limits(
-            values,
-            environment,
-            result_domain,
-            CssComponentValueLimits::default(),
-        )
-    }
-    pub fn try_from_components_with_limits(
-        values: CssComponentValues,
-        environment: crate::CssRelativeColorEnvironment,
-        result_domain: crate::CssRelativeColorResultDomain,
         limits: CssComponentValueLimits,
     ) -> Result<Self> {
         construct_relative_color_expression(
@@ -318,7 +306,7 @@ impl CssProfileColorCalculation {
         &self,
         other: &Self,
         context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-    ) -> std::result::Result<bool, crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<bool, crate::CssSerializationError> {
         if self.references != other.references {
             return Ok(false);
         }
@@ -345,10 +333,7 @@ impl CssProfileColorCalculation {
         &self,
         scale: NumericProjectionScale,
         context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-    ) -> std::result::Result<
-        (String, NumericProjectionOutcome),
-        crate::CssSpecifiedValueSerializationError,
-    > {
+    ) -> std::result::Result<(String, NumericProjectionOutcome), crate::CssSerializationError> {
         capture_specified_scaled(&self.expression, scale, context)
     }
 }
@@ -357,7 +342,7 @@ impl CssProfileColorCalculation {
 mod tests {
     use crate::numeric::prepare_specified;
     use crate::{
-        CssSpecifiedValueSerializationLimits as Limits, parse_component_values,
+        CssSerializationLimits as Limits, parse_component_values,
         specified_serialization::SpecifiedSerializationContext,
     };
 

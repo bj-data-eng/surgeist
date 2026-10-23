@@ -10,7 +10,7 @@ use crate::css::support::color_and_selector_fixtures::{
 };
 use surgeist_css::*;
 
-type Limits = CssSpecifiedValueSerializationLimits;
+type Limits = CssSerializationLimits;
 type LimitKind = CssSpecifiedValueSerializationErrorKind;
 
 fn segments(value: &CssSelector) -> &[CssPseudoElementSegment] {
@@ -20,12 +20,18 @@ fn segments(value: &CssSelector) -> &[CssPseudoElementSegment] {
 fn exact(source: &str, expected: &str) -> CssSelector {
     let value = parsed(source);
     let before = value.clone();
-    assert_eq!(value.to_specified_css().unwrap(), expected);
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     assert_eq!(value, before);
     assert_eq!(parsed(expected), value);
-    let reused = CssSelectorList::try_new(vec![value.clone()]).unwrap();
+    let reused = CssSelectorList::try_new(vec![value.clone()], Default::default()).unwrap();
     assert_eq!(reused.selectors(), std::slice::from_ref(&value));
-    assert_eq!(reused.to_specified_css().unwrap(), expected);
+    assert_eq!(
+        reused.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     value
 }
 
@@ -250,11 +256,20 @@ fn current_is_a_search_text_or_element_backed_suffix_and_resets_with_the_receive
     }
     let detached = CssSelector::PseudoClass(CssPseudoClass::Current);
     assert_eq!(
-        detached.to_specified_css().unwrap_err().kind(),
+        detached
+            .serialize_specified(Default::default())
+            .unwrap_err()
+            .kind(),
         LimitKind::UnrepresentableValue
     );
-    assert_unrepresentable_construction(CssSelectorList::try_new(vec![detached.clone()]));
-    assert_unrepresentable_construction(CssPseudoSelectorList::try_new(vec![detached]));
+    assert_unrepresentable_construction(CssSelectorList::try_new(
+        vec![detached.clone()],
+        Default::default(),
+    ));
+    assert_unrepresentable_construction(CssPseudoSelectorList::try_new(
+        vec![detached],
+        Default::default(),
+    ));
 
     let source = "::search-text:is(:first-child,:current,:hover)";
     let report = parse_selector(source, &CssNamespaceContext::default());
@@ -263,7 +278,7 @@ fn current_is_a_search_text_or_element_backed_suffix_and_resets_with_the_receive
             .syntax()
             .as_ref()
             .unwrap()
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .unwrap(),
         "::search-text:is(:current, :hover)"
     );
@@ -287,12 +302,12 @@ fn new_receiver_classes_share_checked_child_and_logical_attachment_permissions()
                 CssCustomIdent::try_new("Name").unwrap()
             )),
             P(CssPseudoClass::Is(
-                CssPseudoSelectorList::try_new_forgiving(Vec::new()).unwrap()
+                CssPseudoSelectorList::try_new_forgiving(Vec::new(), Default::default()).unwrap()
             )),
         ]
     );
     assert_eq!(
-        value.to_specified_css().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         "::details-content::highlight(Name):is()"
     );
     let [diagnostic] = report.diagnostics() else {
@@ -411,7 +426,10 @@ fn retained_invalid_items_require_true_permission_set_inclusion_for_checked_reus
             item.origin().span().end().byte_offset().value(),
             source.len() - 1
         );
-        assert_eq!(value.to_specified_css().unwrap(), source);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            source
+        );
         let cloned = item.clone();
         assert!(
             cloned
@@ -421,10 +439,16 @@ fn retained_invalid_items_require_true_permission_set_inclusion_for_checked_reus
         );
         let detached = CssSelector::PseudoClass(CssPseudoClass::Is(suffix_list(value).clone()));
         assert_eq!(
-            detached.to_specified_css().unwrap_err().kind(),
+            detached
+                .serialize_specified(Default::default())
+                .unwrap_err()
+                .kind(),
             LimitKind::UnrepresentableValue
         );
-        assert_unrepresentable_construction(CssSelectorList::try_new(vec![detached]));
+        assert_unrepresentable_construction(CssSelectorList::try_new(
+            vec![detached],
+            Default::default(),
+        ));
     }
     let before = search.clone();
     assert!(attach(CssPseudoElement::SearchText, suffix_list(&search).clone()).is_some());
@@ -469,16 +493,23 @@ fn retained_invalid_items_require_true_permission_set_inclusion_for_checked_reus
     assert_eq!(item.origin().source().as_str(), nested_source);
     assert!(attach(CssPseudoElement::SearchText, list.clone()).is_none());
     assert!(attach(CssPseudoElement::Placeholder, list.clone()).is_none());
-    assert_eq!(nested.to_specified_css().unwrap(), nested_source);
+    assert_eq!(
+        nested.serialize_specified(Default::default()).unwrap(),
+        nested_source
+    );
 }
 
 #[test]
 fn strict_forgiving_scope_and_supports_consumers_apply_their_actual_pseudo_boundaries() {
     let highlight = parsed("::highlight(Name)");
-    assert_unrepresentable_construction(CssPseudoSelectorList::try_new(vec![highlight.clone()]));
-    assert_unrepresentable_construction(CssPseudoSelectorList::try_new_forgiving(vec![
-        highlight.clone(),
-    ]));
+    assert_unrepresentable_construction(CssPseudoSelectorList::try_new(
+        vec![highlight.clone()],
+        Default::default(),
+    ));
+    assert_unrepresentable_construction(CssPseudoSelectorList::try_new_forgiving(
+        vec![highlight.clone()],
+        Default::default(),
+    ));
     assert!(CssScopeSelectorList::try_new(vec![CssScopeSelector::Selector(highlight)]).is_none());
     for source in [
         ":not(.keep,::highlight(Name))",
@@ -496,7 +527,7 @@ fn strict_forgiving_scope_and_supports_consumers_apply_their_actual_pseudo_bound
                 .syntax()
                 .as_ref()
                 .unwrap()
-                .to_specified_css()
+                .serialize_specified(Default::default())
                 .unwrap(),
             format!(":{function}(.keep)")
         );
@@ -518,17 +549,22 @@ fn strict_forgiving_scope_and_supports_consumers_apply_their_actual_pseudo_bound
         let value = CssSupportsCondition::try_from_components(
             parse_component_values(source).unwrap(),
             &CssNamespaceContext::default(),
+            Default::default(),
         )
         .unwrap();
         assert!(matches!(
             value.kind(),
             CssSupportsConditionKind::Selector(_)
         ));
-        assert_eq!(value.serialize().unwrap().as_css(), source);
+        assert_eq!(
+            value.serialize_tokens(Default::default()).unwrap().as_css(),
+            source
+        );
     }
     let invalid = CssSupportsCondition::try_from_components(
         parse_component_values("selector(::highlight())").unwrap(),
         &CssNamespaceContext::default(),
+        Default::default(),
     )
     .unwrap();
     assert!(matches!(
@@ -555,7 +591,7 @@ fn namespaces_and_lexical_probe_origins_survive_checked_reuse_without_payload_or
         &CssNamespaceConstraint::Named(CssNamespacePrefix::try_new("p").unwrap())
     );
     assert_eq!(
-        value.to_specified_css().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         "p|Input::highlight(MiXeD)"
     );
     let function = condition
@@ -597,7 +633,10 @@ fn namespaces_and_lexical_probe_origins_survive_checked_reuse_without_payload_or
         offset + r"\4d iXeD".len()
     );
     assert_eq!(
-        condition.serialize().unwrap().as_css(),
+        condition
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         r" selector(p|Input::HIGHLIGHT(\4d iXeD))"
     );
     let context = CssNamespaceContext::from_bindings([(
@@ -605,8 +644,9 @@ fn namespaces_and_lexical_probe_origins_survive_checked_reuse_without_payload_or
         CssNamespaceName::new("urn:p"),
     )]);
     let reused = CssSupportsCondition::try_from_components(
-        CssComponentValues::try_new(condition.components().to_vec()).unwrap(),
+        CssComponentValues::try_new(condition.components().to_vec(), Default::default()).unwrap(),
         &context,
+        Default::default(),
     )
     .unwrap();
     assert_eq!(&reused, condition);
@@ -621,8 +661,11 @@ fn namespaces_and_lexical_probe_origins_survive_checked_reuse_without_payload_or
     let sheet = CssSheet::try_from_rules(report.syntax().rules().to_vec()).unwrap();
     assert_eq!(sheet.rules(), report.syntax().rules());
     assert_eq!(
-        sheet.to_specified_css().unwrap(),
-        report.syntax().to_specified_css().unwrap()
+        sheet.serialize_specified(Default::default()).unwrap(),
+        report
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap()
     );
 }
 
@@ -653,7 +696,7 @@ fn nested_and_scoped_bodies_preserve_parent_context_source_order_and_canonical_p
             value
                 .source()
                 .value_components()
-                .serialize()
+                .serialize_tokens(Default::default())
                 .unwrap()
                 .as_css()
                 .trim(),
@@ -677,20 +720,32 @@ fn nested_and_scoped_bodies_preserve_parent_context_source_order_and_canonical_p
     let child = declarations[2].selector_context();
     assert!(child.parent().unwrap().same_context(parent));
     assert_eq!(
-        child.selectors()[0].selector().to_specified_css().unwrap(),
+        child.selectors()[0]
+            .selector()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "& .child::search-text:current"
     );
     assert!(declarations[3].selector_context().scope_context().is_some());
     assert_eq!(
         declarations[3].selector_context().selectors()[0]
             .selector()
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .unwrap(),
         ".scoped::placeholder:hover"
     );
-    assert_eq!(report.syntax().to_specified_css().unwrap(), expected);
+    assert_eq!(
+        report
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
     let reused = CssSheet::try_from_rules(report.syntax().rules().to_vec()).unwrap();
-    assert_eq!(reused.to_specified_css().unwrap(), expected);
+    assert_eq!(
+        reused.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     assert_eq!(report, before);
     drop(report);
     assert_eq!(
@@ -699,7 +754,13 @@ fn nested_and_scoped_bodies_preserve_parent_context_source_order_and_canonical_p
     );
     let replay = parse_sheet(expected);
     assert!(replay.is_clean(), "{replay:?}");
-    assert_eq!(replay.syntax().to_specified_css().unwrap(), expected);
+    assert_eq!(
+        replay
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
 }
 
 #[test]
@@ -708,12 +769,9 @@ fn cumulative_node_and_escaped_byte_limits_fail_atomically_and_allow_retry() {
     let members = vec![parsed("::placeholder"), parsed("::target-text")];
     let literal = "::placeholder, ::target-text";
     let exact_limit = Limits::new(5, 5, literal.len());
-    let list = CssSelectorList::try_new_with_limits(members.clone(), exact_limit).unwrap();
+    let list = CssSelectorList::try_new(members.clone(), exact_limit).unwrap();
     let before = list.clone();
-    assert_eq!(
-        list.to_specified_css_with_limits(exact_limit).unwrap(),
-        literal
-    );
+    assert_eq!(list.serialize_specified(exact_limit).unwrap(), literal);
     for (limits, cause) in [
         (Limits::new(4, 5, literal.len()), LimitKind::InputNodeLimit),
         (
@@ -723,26 +781,21 @@ fn cumulative_node_and_escaped_byte_limits_fail_atomically_and_allow_retry() {
         (Limits::new(5, 5, literal.len() - 1), LimitKind::ByteLimit),
     ] {
         for member in &members {
-            assert!(member.to_specified_css_with_limits(limits).is_ok());
+            assert!(member.serialize_specified(limits).is_ok());
         }
-        let error = CssSelectorList::try_new_with_limits(members.clone(), limits).unwrap_err();
+        let error = CssSelectorList::try_new(members.clone(), limits).unwrap_err();
         let CssSelectorConstructionErrorKind::Specified(cause_error) = error.kind() else {
             panic!("shared specified resource cause")
         };
         assert_eq!(cause_error.kind(), cause);
-        assert_eq!(
-            list.to_specified_css_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            cause
-        );
+        assert_eq!(list.serialize_specified(limits).unwrap_err().kind(), cause);
         assert_eq!(list, before);
     }
+    assert_eq!(list.serialize_specified(exact_limit).unwrap(), literal);
     assert_eq!(
-        list.to_specified_css_with_limits(exact_limit).unwrap(),
-        literal
+        CssSelectorList::try_new(members, Default::default()).unwrap(),
+        list
     );
-    assert_eq!(CssSelectorList::try_new(members).unwrap(), list);
 
     let escaped = vec![
         parsed(r"::highlight(A\ B)"),
@@ -751,25 +804,22 @@ fn cumulative_node_and_escaped_byte_limits_fail_atomically_and_allow_retry() {
     let expected = r"::highlight(A\ B), ::search-text:current";
     let fit = Limits::new(usize::MAX, usize::MAX, expected.len());
     let short = Limits::new(usize::MAX, usize::MAX, expected.len() - 1);
-    let checked = CssSelectorList::try_new_with_limits(escaped.clone(), fit).unwrap();
+    let checked = CssSelectorList::try_new(escaped.clone(), fit).unwrap();
     let unchanged = checked.clone();
     for member in &escaped {
-        assert!(member.to_specified_css_with_limits(short).is_ok());
+        assert!(member.serialize_specified(short).is_ok());
     }
-    assert_eq!(checked.to_specified_css_with_limits(fit).unwrap(), expected);
+    assert_eq!(checked.serialize_specified(fit).unwrap(), expected);
     assert_specified_construction_cause(
-        &CssSelectorList::try_new_with_limits(escaped, short).unwrap_err(),
+        &CssSelectorList::try_new(escaped, short).unwrap_err(),
         LimitKind::ByteLimit,
     );
     assert_eq!(
-        checked
-            .to_specified_css_with_limits(short)
-            .unwrap_err()
-            .kind(),
+        checked.serialize_specified(short).unwrap_err().kind(),
         LimitKind::ByteLimit
     );
     assert_eq!(checked, unchanged);
-    assert_eq!(checked.to_specified_css_with_limits(fit).unwrap(), expected);
+    assert_eq!(checked.serialize_specified(fit).unwrap(), expected);
 }
 
 #[test]
@@ -798,7 +848,7 @@ fn highlight_function_and_checked_rule_composition_respect_the_structural_ceilin
     assert_eq!(
         style.selectors().selectors()[0]
             .selector()
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .unwrap(),
         ".leaf::highlight(Name)"
     );
@@ -814,7 +864,7 @@ fn highlight_function_and_checked_rule_composition_respect_the_structural_ceilin
     assert_eq!(
         style.declarations()[0]
             .value_components()
-            .serialize()
+            .serialize_tokens(Default::default())
             .unwrap()
             .as_css(),
         "red"

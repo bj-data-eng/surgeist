@@ -20,7 +20,7 @@ fn checked_transition_name_retains_original_spare_capacity_and_value_semantics()
     }
     assert_eq!(
         CssViewTransitionName::Custom(value)
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "Card"
     );

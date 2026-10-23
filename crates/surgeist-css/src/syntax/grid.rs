@@ -67,9 +67,13 @@ impl CssGridAutoFlowMode {
 /// let dense = CssGridAutoFlow::Dense;
 /// let row_dense = CssGridAutoFlow::explicit_axis(CssGridAutoFlowAxis::Row, true);
 /// assert_ne!(dense, row_dense);
-/// assert_eq!(dense.serialize_specified().unwrap(), "dense");
-/// assert_eq!(row_dense.serialize_specified().unwrap(), "row dense");
+/// assert_eq!(dense.serialize_specified(Default::default()).unwrap(), "dense");
+/// assert_eq!(row_dense.serialize_specified(Default::default()).unwrap(), "row dense");
 /// ```
+///
+/// # Specified serialization
+///
+/// Emits the canonical authored spelling without resolving the direction.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssGridAutoFlow {
@@ -84,26 +88,12 @@ impl CssGridAutoFlow {
     pub const fn explicit_axis(axis: CssGridAutoFlowAxis, dense: bool) -> Self {
         Self::ExplicitAxis(CssGridAutoFlowMode::new(axis, dense))
     }
-
-    /// Emits the canonical authored spelling without resolving the direction.
-    pub fn serialize_specified(self) -> Result<String, crate::CssSpecifiedValueSerializationError> {
-        self.serialize_specified_with_limits(crate::CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Emits canonical text under cumulative input, projection, and byte limits.
-    pub fn serialize_specified_with_limits(
-        self,
-        limits: crate::CssSpecifiedValueSerializationLimits,
-    ) -> Result<String, crate::CssSpecifiedValueSerializationError> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+}
+impl crate::specified_rule_serialization::SpecifiedProvider for CssGridAutoFlow {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         let (text, nodes) = match self {
             Self::Normal => ("normal", 1),
             Self::Dense => ("dense", 1),
@@ -115,11 +105,11 @@ impl CssGridAutoFlow {
             },
         };
         let context = &mut writer.context;
-        context.charge_input(nodes)?;
-        context.charge_projection(nodes)?;
+        context.charge_nodes(nodes)?;
         context.append(&mut writer.css, text)
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssGridAutoFlow);
 
 /// The semantic branch of an authored Grid track breadth.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -833,7 +823,7 @@ impl CssGridTemplate {
         rows: CssGridTrackList,
         columns: CssGridTrackList,
         areas: crate::CssGridTemplateAreas,
-    ) -> Result<Option<Self>, crate::CssSpecifiedValueSerializationError> {
+    ) -> Result<Option<Self>, crate::CssSerializationError> {
         let mut capacity_failure = false;
         let result = (|| {
             let crate::CssGridTemplateAreas::Rows(areas) = areas else {
@@ -908,7 +898,7 @@ impl CssGridTemplate {
             })
         })();
         if capacity_failure {
-            return Err(crate::CssSpecifiedValueSerializationError::new(
+            return Err(crate::CssSerializationError::new(
                 crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
             ));
         }
@@ -1049,7 +1039,7 @@ impl CssGrid {
     }
 }
 
-type GridSerializationResult<T> = Result<T, crate::CssSpecifiedValueSerializationError>;
+type GridSerializationResult<T> = Result<T, crate::CssSerializationError>;
 
 trait GridSpecified {
     fn write_grid(
@@ -1060,32 +1050,15 @@ trait GridSpecified {
 
 macro_rules! grid_serialization {
     ($($name:ident),+ $(,)?) => {$(
-        impl $name {
-            /// Returns canonical specified CSS for this represented Grid value.
-            pub fn serialize_specified(&self) -> GridSerializationResult<String> {
-                self.serialize_specified_with_limits(
-                    crate::CssSpecifiedValueSerializationLimits::default(),
-                )
-            }
-
-            /// Uses one cumulative input, projection and byte budget for all children.
-            /// Failure returns no partial CSS and leaves the authored value unchanged.
-            pub fn serialize_specified_with_limits(
-                &self,
-                limits: crate::CssSpecifiedValueSerializationLimits,
-            ) -> GridSerializationResult<String> {
-                let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-                self.append_to_rule_writer(&mut writer)?;
-                Ok(writer.css)
-            }
-
-            pub(crate) fn append_to_rule_writer(
+        impl crate::specified_rule_serialization::SpecifiedProvider for $name {
+            fn append_to_rule_writer(
                 &self,
                 writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
             ) -> GridSerializationResult<()> {
                 self.write_grid(writer)
             }
         }
+        crate::specified_rule_serialization::specified_serialization!($name);
     )+};
 }
 
@@ -1097,13 +1070,6 @@ grid_serialization!(
     CssGridTemplate,
     CssGrid,
 );
-
-fn grid_node(
-    writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-) -> GridSerializationResult<()> {
-    writer.context.charge_input(1)?;
-    writer.context.charge_projection(1)
-}
 
 impl GridSpecified for CssGridTrackBreadth {
     fn write_grid(
@@ -1120,7 +1086,7 @@ impl GridSpecified for CssGridTrackBreadth {
                 writer.append(&captured)
             }
             other => {
-                grid_node(writer)?;
+                writer.node()?;
                 writer.append(match other {
                     CssGridTrackBreadthRepresentation::MinContent => "min-content",
                     CssGridTrackBreadthRepresentation::MaxContent => "max-content",
@@ -1140,7 +1106,7 @@ impl GridSpecified for CssGridTrackSize {
         match &self.representation {
             CssGridTrackSizeRepresentation::Breadth(value) => value.write_grid(writer),
             CssGridTrackSizeRepresentation::MinMax { min, max } => {
-                grid_node(writer)?;
+                writer.node()?;
                 writer.append("minmax(")?;
                 min.write_grid(writer)?;
                 writer.append(", ")?;
@@ -1148,7 +1114,7 @@ impl GridSpecified for CssGridTrackSize {
                 writer.append(")")
             }
             CssGridTrackSizeRepresentation::FitContent(specified) => {
-                grid_node(writer)?;
+                writer.node()?;
                 writer.append("fit-content(")?;
                 let captured = specified.capture_specified(&mut writer.context)?;
                 writer.append(&captured)?;
@@ -1163,13 +1129,13 @@ impl GridSpecified for CssGridLineNames {
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> GridSerializationResult<()> {
-        grid_node(writer)?;
+        writer.node()?;
         writer.append("[")?;
         for (index, name) in self.names.iter().enumerate() {
             if index != 0 {
                 writer.append(" ")?;
             }
-            grid_node(writer)?;
+            writer.node()?;
             if !writer.context.output_suppressed() {
                 let escaped = crate::serialization_escaping::capture_identifier(
                     name.ident().as_str(),
@@ -1219,7 +1185,7 @@ impl GridSpecified for CssGridIntegerTrackRepeat {
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> GridSerializationResult<()> {
-        grid_node(writer)?;
+        writer.node()?;
         writer.append("repeat(")?;
         self.count
             .serialize_specified_into(&mut writer.context, &mut writer.css)?;
@@ -1234,7 +1200,7 @@ impl GridSpecified for CssGridIntegerFixedRepeat {
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> GridSerializationResult<()> {
-        grid_node(writer)?;
+        writer.node()?;
         writer.append("repeat(")?;
         self.count
             .serialize_specified_into(&mut writer.context, &mut writer.css)?;
@@ -1249,7 +1215,7 @@ impl GridSpecified for CssGridAutoRepeat {
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> GridSerializationResult<()> {
-        grid_node(writer)?;
+        writer.node()?;
         writer.append("repeat(")?;
         writer.append(match self.kind {
             CssGridAutoRepeatKind::AutoFill => "auto-fill",
@@ -1293,7 +1259,7 @@ impl GridSpecified for CssGridTrackList {
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> GridSerializationResult<()> {
-        grid_node(writer)?;
+        writer.node()?;
         match &self.representation {
             CssGridTrackListRepresentation::None => writer.append("none"),
             CssGridTrackListRepresentation::General(value) => grid_items(&value.components, writer),
@@ -1317,7 +1283,7 @@ impl GridSpecified for CssGridSubgridComponent {
         match self {
             Self::LineNames(names) => names.write_grid(writer),
             Self::Repeat(value) => {
-                grid_node(writer)?;
+                writer.node()?;
                 writer.append("repeat(")?;
                 match &value.count {
                     CssGridNameRepeatCount::Counted(count) => {
@@ -1338,7 +1304,7 @@ impl GridSpecified for CssGridTrackSizeList {
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> GridSerializationResult<()> {
-        grid_node(writer)?;
+        writer.node()?;
         grid_items(&self.sizes, writer)
     }
 }
@@ -1349,7 +1315,7 @@ impl GridSpecified for CssGridTemplate {
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> GridSerializationResult<()> {
         use crate::CssKnownProperty as Property;
-        grid_node(writer)?;
+        writer.node()?;
         match &self.representation {
             CssGridTemplateRepresentation::None => writer.append("none"),
             CssGridTemplateRepresentation::RowsColumns { rows, columns } => {
@@ -1399,7 +1365,7 @@ impl GridSpecified for CssGridTemplate {
                 if let Some(columns) = columns {
                     writer.source_property(Property::GridTemplateColumns, |writer| {
                         writer.append(" / ")?;
-                        grid_node(writer)?;
+                        writer.node()?;
                         grid_items(&columns.components, writer)
                     })?;
                 }
@@ -1423,7 +1389,7 @@ impl GridSpecified for CssGrid {
                 auto_tracks,
                 explicit_tracks,
             } => {
-                writer.source_property(Property::GridAutoFlow, grid_node)?;
+                writer.source_property(Property::GridAutoFlow, |writer| writer.node())?;
                 if flow.axis() == CssGridAutoFlowAxis::Column {
                     writer.source_property(Property::GridTemplateRows, |writer| {
                         explicit_tracks.write_grid(writer)
@@ -1432,10 +1398,10 @@ impl GridSpecified for CssGrid {
                         .source_property(Property::GridAutoFlow, |writer| writer.append(" / "))?;
                 }
                 writer.source_property(Property::GridAutoFlow, |writer| {
-                    grid_node(writer)?;
+                    writer.node()?;
                     writer.append("auto-flow")?;
                     if flow.dense() {
-                        grid_node(writer)?;
+                        writer.node()?;
                         writer.append(" dense")?;
                     }
                     Ok(())
@@ -1465,10 +1431,10 @@ impl GridSpecified for CssGrid {
 #[cfg(test)]
 mod line_name_composition_contract {
     use super::*;
+    use crate::specified_rule_serialization::SpecifiedProvider as _;
     use crate::specified_rule_serialization::SpecifiedRuleWriter;
     use crate::{
-        CssSpecifiedValueSerializationErrorKind as ErrorKind,
-        CssSpecifiedValueSerializationLimits as Limits,
+        CssSerializationLimits as Limits, CssSpecifiedValueSerializationErrorKind as ErrorKind,
     };
 
     fn names(value: &str) -> CssGridTrackList {
@@ -1537,10 +1503,13 @@ mod line_name_composition_contract {
     #[test]
     fn emitted_names_escape_identity_and_fail_atomically_at_byte_limit() {
         let value = names("a b");
-        assert_eq!(value.serialize_specified().unwrap(), "[a\\ b] auto");
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            "[a\\ b] auto"
+        );
         assert_eq!(
             value
-                .serialize_specified_with_limits(Limits::new(4, 4, 10))
+                .serialize_specified(Limits::new(4, 4, 10))
                 .unwrap_err()
                 .kind(),
             ErrorKind::ByteLimit,
@@ -1562,10 +1531,10 @@ mod line_name_composition_contract {
 #[cfg(test)]
 mod aggregate_composition_contract {
     use super::*;
+    use crate::specified_rule_serialization::SpecifiedProvider as _;
     use crate::specified_rule_serialization::SpecifiedRuleWriter;
     use crate::{
-        CssSpecifiedValueSerializationErrorKind as Kind,
-        CssSpecifiedValueSerializationLimits as Limits,
+        CssSerializationLimits as Limits, CssSpecifiedValueSerializationErrorKind as Kind,
     };
 
     fn template(text: &str) -> CssGridTemplate {
@@ -1765,7 +1734,7 @@ mod aggregate_composition_contract {
                 assert_eq!(short.css, "x");
             }
             assert_eq!(value, before);
-            assert_eq!(value.serialize_specified().unwrap(), text);
+            assert_eq!(value.serialize_specified(Default::default()).unwrap(), text);
         }
     }
 

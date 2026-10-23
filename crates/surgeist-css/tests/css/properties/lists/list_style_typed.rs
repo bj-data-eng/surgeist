@@ -37,17 +37,19 @@ fn checked_construction_keeps_all_absent_invalid_and_borrows_authored_components
     assert_eq!(value.position(), Some(CssListStylePosition::Inside));
     assert_eq!(value.image(), Some(&image));
     assert_eq!(
-        value.serialize_specified().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         "inside url(\"#marker\") CustomMarker"
     );
     assert_eq!(
         CssListStyleTypeValue::initial()
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "disc"
     );
     assert_eq!(
-        CssListStylePosition::Outside.serialize_specified().unwrap(),
+        CssListStylePosition::Outside
+            .serialize_specified(Default::default())
+            .unwrap(),
         "outside"
     );
 }
@@ -60,7 +62,13 @@ fn parsed_wrappers_keep_named_functional_and_image_domains() {
     else {
         panic!("type")
     };
-    assert_eq!(wrapper.value().serialize_specified().unwrap(), "square");
+    assert_eq!(
+        wrapper
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "square"
+    );
 
     let type_new = parsed(CssKnownProperty::ListStyleType, "symbols(cyclic \"*\")");
     let CssKnownPropertyValueRef::ListStyleType(wrapper) =
@@ -69,7 +77,10 @@ fn parsed_wrappers_keep_named_functional_and_image_domains() {
         panic!("functional type")
     };
     assert_eq!(
-        wrapper.value().serialize_specified().unwrap(),
+        wrapper
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "symbols(cyclic \"*\")"
     );
 
@@ -80,7 +91,10 @@ fn parsed_wrappers_keep_named_functional_and_image_domains() {
         panic!("image")
     };
     assert_eq!(
-        wrapper.value().serialize_specified().unwrap(),
+        wrapper
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "url(\"#star\")"
     );
 
@@ -94,7 +108,10 @@ fn parsed_wrappers_keep_named_functional_and_image_domains() {
         panic!("gradient image")
     };
     assert_eq!(
-        wrapper.value().serialize_specified().unwrap(),
+        wrapper
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "linear-gradient(red, blue)"
     );
 
@@ -147,12 +164,18 @@ fn shorthand_canonical_text_omits_only_meaning_preserving_initials() {
     ] {
         let source = parsed(CssKnownProperty::ListStyle, authored);
         assert_eq!(
-            shorthand(&source).serialize_specified().unwrap(),
+            shorthand(&source)
+                .serialize_specified(Default::default())
+                .unwrap(),
             expected,
             "{authored}"
         );
         assert_eq!(
-            source.value_components().serialize().unwrap().as_css(),
+            source
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             authored,
             "authored spelling stays distinct"
         );
@@ -169,7 +192,10 @@ fn constructed_custom_axis_keyword_gets_a_disambiguating_position() {
         )
         .unwrap();
         let expected = format!("outside {name}");
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         let reparsed = parsed(CssKnownProperty::ListStyle, &expected);
         let current = shorthand(&reparsed);
         assert_eq!(current.position(), Some(CssListStylePosition::Outside));
@@ -189,29 +215,26 @@ fn shorthand_charges_present_defaults_and_inserted_disambiguators() {
     .unwrap();
     assert_eq!(
         initial
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(4, 4, 7))
+            .serialize_specified(CssSerializationLimits::new(4, 4, 7))
             .unwrap(),
         "outside"
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(3, 4, 7),
+            CssSerializationLimits::new(3, 4, 7),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(4, 3, 7),
+            CssSerializationLimits::new(4, 3, 7),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(4, 4, 6),
+            CssSerializationLimits::new(4, 4, 6),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
         assert_eq!(
-            initial
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            initial.serialize_specified(limits).unwrap_err().kind(),
             kind
         );
     }
@@ -224,26 +247,23 @@ fn shorthand_charges_present_defaults_and_inserted_disambiguators() {
     let expected = "outside inside";
     assert_eq!(
         disambiguated
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                2,
-                3,
-                expected.len(),
-            ))
+            .serialize_specified(CssSerializationLimits::new(2, 3, expected.len(),))
             .unwrap(),
         expected
     );
     assert_eq!(
         disambiguated
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                2,
-                2,
-                expected.len(),
-            ))
+            .serialize_specified(CssSerializationLimits::new(2, 2, expected.len(),))
             .unwrap_err()
             .kind(),
         CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
     );
-    assert_eq!(disambiguated.serialize_specified().unwrap(), expected);
+    assert_eq!(
+        disambiguated
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
 }
 
 #[test]
@@ -271,39 +291,29 @@ fn nested_symbols_images_share_the_shorthand_budget_and_original_source() {
     let expected = "symbols(url(\"#a\") url(\"#b\"))";
     assert_eq!(
         value
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                6,
-                6,
-                expected.len(),
-            ))
+            .serialize_specified(CssSerializationLimits::new(6, 6, expected.len(),))
             .unwrap(),
         expected
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(0, 6, expected.len()),
+            CssSerializationLimits::new(0, 6, expected.len()),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(5, 6, expected.len()),
+            CssSerializationLimits::new(5, 6, expected.len()),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(6, 5, expected.len()),
+            CssSerializationLimits::new(6, 5, expected.len()),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(6, 6, expected.len() - 1),
+            CssSerializationLimits::new(6, 6, expected.len() - 1),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
-        assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            kind
-        );
+        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
     }
 
     let authored = "symbols(linear-gradient(red calc(1px + 2%), blue) url(\"#star\" policy(flag)))";
@@ -365,7 +375,7 @@ fn nested_symbols_images_share_the_shorthand_budget_and_original_source() {
             "flag"
         );
         assert_eq!(
-            current.serialize_specified().unwrap(),
+            current.serialize_specified(Default::default()).unwrap(),
             "symbols(linear-gradient(red calc(2% + 1px), blue) url(\"#star\" policy(flag)))"
         );
     }
@@ -374,17 +384,27 @@ fn nested_symbols_images_share_the_shorthand_budget_and_original_source() {
 #[test]
 fn string_styles_and_image_values_serialize_without_layout_or_resource_lookup() {
     let string_style = CssListStyleTypeValue::String(string("a\"b"));
-    assert_eq!(string_style.serialize_specified().unwrap(), "\"a\\\"b\"");
+    assert_eq!(
+        string_style
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "\"a\\\"b\""
+    );
     let value = CssListStyleValue::try_new(
         Some(string_style),
         None,
         Some(CssImageValue::Url(CssUrl::new(""))),
     )
     .unwrap();
-    assert_eq!(value.serialize_specified().unwrap(), "url(\"\") \"a\\\"b\"");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "url(\"\") \"a\\\"b\""
+    );
     let source = parsed(CssKnownProperty::ListStyle, "\"a\\\"b\" url(\"\")");
     assert_eq!(
-        shorthand(&source).serialize_specified().unwrap(),
-        value.serialize_specified().unwrap()
+        shorthand(&source)
+            .serialize_specified(Default::default())
+            .unwrap(),
+        value.serialize_specified(Default::default()).unwrap()
     );
 }

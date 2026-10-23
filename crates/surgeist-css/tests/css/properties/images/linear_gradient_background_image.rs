@@ -27,7 +27,7 @@ fn valid_authored_linear_gradient_is_retained_as_background_image() {
     // the meaning, so the default direction stays omitted; both stops keep
     // their named-color keywords in order.
     assert_eq!(
-        gradient.serialize_specified().unwrap(),
+        gradient.serialize_specified(Default::default()).unwrap(),
         "linear-gradient(red, blue)"
     );
 }

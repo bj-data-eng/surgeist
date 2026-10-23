@@ -162,7 +162,7 @@ fn empty_quoted_url_keeps_modifiers_and_valid_neighbors() {
 #[test]
 fn checked_component_construction_keeps_programmatic_empty_url_origin() {
     let url = CssComponentValue::try_url("").unwrap();
-    let components = CssComponentValues::try_new(vec![url]).unwrap();
+    let components = CssComponentValues::try_new(vec![url], Default::default()).unwrap();
     let declaration = parse_property_value(
         CssPropertyNameRef::Known(CssKnownProperty::BackgroundImage),
         components,

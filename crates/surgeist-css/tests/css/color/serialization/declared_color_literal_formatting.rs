@@ -7,18 +7,26 @@ use crate::css::support::{
     component_values as components, declaration_color,
 };
 use surgeist_css::*;
-type Limits = CssSpecifiedValueSerializationLimits;
+type Limits = CssSerializationLimits;
 type Kind = CssSpecifiedValueSerializationErrorKind;
 fn assert_text(source: &str, expected: &str) {
     let d = declaration(source);
     let before = d.clone();
     assert_eq!(d.value_components(), &components(source));
-    let first = declaration_color(&d).to_specified_css();
-    assert_eq!(first, declaration_color(&d).to_specified_css());
+    let first = declaration_color(&d).serialize_specified(Default::default());
+    assert_eq!(
+        first,
+        declaration_color(&d).serialize_specified(Default::default())
+    );
     assert_eq!(d, before);
     assert_eq!(first.unwrap(), expected, "{source}");
     // Reparse supplements the independent literal oracle.
-    assert_eq!(color(expected).to_specified_css().unwrap(), expected);
+    assert_eq!(
+        color(expected)
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
 }
 macro_rules! text_case {
     ($name:ident, $source:literal, $expected:literal) => {
@@ -615,7 +623,7 @@ fn assert_bytes(source: &str, expected: &str) {
     let n = expected.len();
     assert_eq!(
         value
-            .to_specified_css_with_limits(Limits::new(usize::MAX, usize::MAX, n - 1))
+            .serialize_specified(Limits::new(usize::MAX, usize::MAX, n - 1))
             .unwrap_err()
             .kind(),
         Kind::ByteLimit
@@ -623,13 +631,13 @@ fn assert_bytes(source: &str, expected: &str) {
     assert_eq!(value, before);
     assert_eq!(
         value
-            .to_specified_css_with_limits(Limits::new(usize::MAX, usize::MAX, n))
+            .serialize_specified(Limits::new(usize::MAX, usize::MAX, n))
             .unwrap(),
         expected
     );
     assert_eq!(
         value
-            .to_specified_css_with_limits(Limits::new(usize::MAX, usize::MAX, n))
+            .serialize_specified(Limits::new(usize::MAX, usize::MAX, n))
             .unwrap(),
         expected
     );
@@ -690,7 +698,7 @@ fn huge_positive_output_is_bounded_and_atomic() {
     let before = value.clone();
     assert_eq!(
         value
-            .to_specified_css_with_limits(Limits::new(10000, 10000, 128))
+            .serialize_specified(Limits::new(10000, 10000, 128))
             .unwrap_err()
             .kind(),
         Kind::ByteLimit
@@ -707,20 +715,20 @@ fn symbolic_routes_have_independent_exact_cumulative_counts() {
     let text = "rgb(from red none g b)";
     assert_eq!(
         value
-            .to_specified_css_with_limits(Limits::new(5, 5, text.len()))
+            .serialize_specified(Limits::new(5, 5, text.len()))
             .unwrap(),
         text
     );
     assert_eq!(
         value
-            .to_specified_css_with_limits(Limits::new(4, usize::MAX, usize::MAX))
+            .serialize_specified(Limits::new(4, usize::MAX, usize::MAX))
             .unwrap_err()
             .kind(),
         Kind::InputNodeLimit
     );
     assert_eq!(
         value
-            .to_specified_css_with_limits(Limits::new(usize::MAX, 4, usize::MAX))
+            .serialize_specified(Limits::new(usize::MAX, 4, usize::MAX))
             .unwrap_err()
             .kind(),
         Kind::ProjectionNodeLimit
@@ -735,20 +743,20 @@ fn nested_roots_and_references_share_cumulative_counts() {
     let text = "rgb(from rgb(from red none g b) r g b)";
     assert_eq!(
         value
-            .to_specified_css_with_limits(Limits::new(9, 9, text.len()))
+            .serialize_specified(Limits::new(9, 9, text.len()))
             .unwrap(),
         text
     );
     assert_eq!(
         value
-            .to_specified_css_with_limits(Limits::new(8, usize::MAX, usize::MAX))
+            .serialize_specified(Limits::new(8, usize::MAX, usize::MAX))
             .unwrap_err()
             .kind(),
         Kind::InputNodeLimit
     );
     assert_eq!(
         value
-            .to_specified_css_with_limits(Limits::new(usize::MAX, 8, usize::MAX))
+            .serialize_specified(Limits::new(usize::MAX, 8, usize::MAX))
             .unwrap_err()
             .kind(),
         Kind::ProjectionNodeLimit
@@ -763,14 +771,14 @@ fn literal_input_visits_are_charged_once() {
     let text = "rgb(from red 0.123457 0.123457 b)";
     assert_eq!(
         value
-            .to_specified_css_with_limits(Limits::new(4, usize::MAX, usize::MAX))
+            .serialize_specified(Limits::new(4, usize::MAX, usize::MAX))
             .unwrap_err()
             .kind(),
         Kind::InputNodeLimit
     );
     assert_eq!(
         value
-            .to_specified_css_with_limits(Limits::new(5, usize::MAX, text.len()))
+            .serialize_specified(Limits::new(5, usize::MAX, text.len()))
             .unwrap(),
         text
     );
@@ -784,10 +792,7 @@ macro_rules! zero_limit_case {
             let value = color("rgb(from red .1234567 g b)");
             let before = value.clone();
             assert_eq!(
-                value
-                    .to_specified_css_with_limits($limits)
-                    .unwrap_err()
-                    .kind(),
+                value.serialize_specified($limits).unwrap_err().kind(),
                 $kind
             );
             assert_eq!(value, before);
@@ -814,12 +819,18 @@ zero_limit_case!(
 fn checked_programmatic_graph_retains_literal_kind_spelling_and_origin() {
     use CssRelativeColorEnvironment as E;
     use CssRelativeColorResultDomain as D;
-    let raw =
-        CssComponentValues::try_new(vec![CssComponentValue::try_number("-.0078125").unwrap()])
-            .unwrap();
-    let expression =
-        CssRelativeColorExpression::try_from_components(raw.clone(), E::Rgb, D::NumberPercentage)
-            .unwrap();
+    let raw = CssComponentValues::try_new(
+        vec![CssComponentValue::try_number("-.0078125").unwrap()],
+        Default::default(),
+    )
+    .unwrap();
+    let expression = CssRelativeColorExpression::try_from_components(
+        raw.clone(),
+        E::Rgb,
+        D::NumberPercentage,
+        Default::default(),
+    )
+    .unwrap();
     assert_eq!(expression.origin(), &CssValueOrigin::Programmatic);
     let CssRelativeColorExpressionValue::Number(literal) = expression.value() else {
         panic!("number")
@@ -827,9 +838,14 @@ fn checked_programmatic_graph_retains_literal_kind_spelling_and_origin() {
     assert_eq!(literal.numeric().representation(), "-.0078125");
     let channel = |name| {
         CssRelativeColorExpression::try_from_components(
-            CssComponentValues::try_new(vec![CssComponentValue::try_ident(name).unwrap()]).unwrap(),
+            CssComponentValues::try_new(
+                vec![CssComponentValue::try_ident(name).unwrap()],
+                Default::default(),
+            )
+            .unwrap(),
             E::Rgb,
             D::NumberPercentage,
+            Default::default(),
         )
         .unwrap()
     };
@@ -845,7 +861,7 @@ fn checked_programmatic_graph_retains_literal_kind_spelling_and_origin() {
     assert_eq!(relative.channels()[0], expression);
     let value = CssColor::from_relative(relative);
     let before = value.clone();
-    let result = value.to_specified_css();
+    let result = value.serialize_specified(Default::default());
     assert_eq!(value, before);
     assert_eq!(raw.items()[0].origin(), &CssValueOrigin::Programmatic);
     assert_eq!(result.unwrap(), "rgb(from red -0.007813 g b)");
@@ -876,7 +892,7 @@ fn checked_programmatic_origin_retains_number_and_percentage_categories() {
     let source = CssColor::from_rgb(rgb);
     let value = CssColor::from_alpha(CssAlphaColor::try_new(source.clone(), None).unwrap());
     let before = value.clone();
-    let result = value.to_specified_css();
+    let result = value.serialize_specified(Default::default());
     assert_eq!(value, before);
     assert_eq!(
         source.rgb_value().unwrap().channels()[0],
@@ -904,10 +920,13 @@ fn declarations_validate_and_keep_raw_graph_importance_and_siblings() {
     let d = &report.syntax()[0];
     assert_eq!(d.importance(), CssImportance::Important);
     assert_eq!(
-        d.value_components().serialize().unwrap().as_css(),
+        d.value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         " rgb(from red .1234567 g b) "
     );
-    let result = declaration_color(d).to_specified_css();
+    let result = declaration_color(d).serialize_specified(Default::default());
     assert_eq!(report.syntax(), &before);
     assert_eq!(result.unwrap(), "rgb(from red 0.123457 g b)");
 }
@@ -946,6 +965,7 @@ fn substitutions_remain_pending_and_checked_construction_reports_origin() {
         raw,
         CssRelativeColorEnvironment::Rgb,
         CssRelativeColorResultDomain::NumberPercentage,
+        Default::default(),
     )
     .unwrap_err();
     assert_eq!(

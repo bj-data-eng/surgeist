@@ -4,6 +4,7 @@
 //! longhand types, initial values, shorthand members and reset-only members.
 //! Custom declarations retain their symbolic specified values.
 
+use crate::specified_rule_serialization::SpecifiedProvider as _;
 use std::fmt;
 use std::sync::Arc;
 
@@ -456,16 +457,23 @@ macro_rules! define_expansion_schema {
 
         impl SpecifiedInverseValue {
             pub(crate) fn append(&self, writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter)
-                -> Result<(), crate::CssSpecifiedValueSerializationError> {
+                -> Result<(), crate::CssSerializationError> {
                 match self {
                     $(Self::$shorthand(value) => append_inverse_value!($shorthand, value, writer),)*
                     $(Self::$four_property(value) => value.append_to_rule_writer(writer),)*
                 }
             }
 
-            pub(crate) fn projected(&self, count: usize) -> Result<Vec<OwnedContributionValue>, crate::CssSpecifiedValueSerializationError> {
+            pub(crate) fn projected(
+                &self,
+                count: usize,
+            ) -> Result<Vec<OwnedContributionValue>, crate::CssSerializationError> {
                 let mut result = Vec::new();
-                result.try_reserve(count).map_err(|_| crate::CssSpecifiedValueSerializationError::new(crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow))?;
+                result.try_reserve(count).map_err(|_| {
+                    crate::CssSerializationError::new(
+                        crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
+                    )
+                })?;
                 if let Self::Font(CssFontValue::System(system)) = self {
                     let CssPropertyKindRef::Shorthand(meta) = CssKnownProperty::Font.metadata().expect("font schema").kind() else {
                         unreachable!("font shorthand metadata")
@@ -1287,7 +1295,8 @@ impl CssPendingSubstitution {
     /// or an error, never another pending state. It preserves the caller's token
     /// origins and the original declaration's identity and importance.
     ///
-    /// A decoded `var()`, `env()`, or `attr()` at any component depth returns `ResidualSubstitution`
+    /// A decoded `var()`, `env()`, or `attr()` at any component depth returns
+    /// `ResidualSubstitution`
     /// before grammar checking. Other invalid values retain the same mapped
     /// error as the source's owning checked grammar, including source resource limits.
     /// Page occurrences use [`crate::parse_page_property_value`] and retain their

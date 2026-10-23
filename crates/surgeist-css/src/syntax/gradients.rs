@@ -49,7 +49,7 @@ impl CssAngularColorStopPosition {
         if matches!(component.view(), CssComponentValueRef::Token(_)) {
             return Self::try_from_component(component);
         }
-        let values = CssComponentValues::try_new(vec![component])
+        let values = CssComponentValues::try_new(vec![component], Default::default())
             .map_err(CssNumericConstructionError::component)?;
         context
             .admit(values, crate::numeric::CalculationRoot::AnglePercentage)

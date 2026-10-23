@@ -309,7 +309,7 @@ fn each_modern_missing_channel_keeps_none_distinct_from_zero_in_both_front_doors
                 );
                 let before = color.clone();
                 assert_eq!(
-                    color.to_specified_css().unwrap(),
+                    color.serialize_specified(Default::default()).unwrap(),
                     expected(name, channels, false),
                     "{source}"
                 );
@@ -337,7 +337,7 @@ fn each_modern_missing_alpha_keeps_none_distinct_from_zero_and_omission() {
             assert_ne!(alpha(&color, family), alpha(&zero, family));
             let before = color.clone();
             assert_eq!(
-                color.to_specified_css().unwrap(),
+                color.serialize_specified(Default::default()).unwrap(),
                 expected(name, ["0"; 3], true),
                 "{source}"
             );
@@ -385,7 +385,11 @@ fn hsl_and_hsla_aliases_preserve_modern_or_legacy_syntax_with_number_or_angle_hu
                         } else {
                             "rgb(0, 0, 0)".into()
                         };
-                        assert_eq!(color.to_specified_css().unwrap(), output, "{source}");
+                        assert_eq!(
+                            color.serialize_specified(Default::default()).unwrap(),
+                            output,
+                            "{source}"
+                        );
                         assert_eq!(color, before);
                     }
                 }

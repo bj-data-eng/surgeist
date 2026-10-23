@@ -75,11 +75,14 @@ fn checked_decoded_identifiers_and_modifier_function_follow_token_grammar() {
 #[test]
 fn checked_modifier_retains_child_origins_and_old_text_equality() {
     let parsed_child = parse_component_values("token").unwrap().items()[0].clone();
-    let arguments = CssComponentValues::try_new(vec![
-        CssComponentValue::try_ident("first").unwrap(),
-        CssComponentValue::try_token(" ").unwrap(),
-        parsed_child,
-    ])
+    let arguments = CssComponentValues::try_new(
+        vec![
+            CssComponentValue::try_ident("first").unwrap(),
+            CssComponentValue::try_token(" ").unwrap(),
+            parsed_child,
+        ],
+        Default::default(),
+    )
     .unwrap();
     let function =
         CssUrlModifierFunction::try_new(CssIdent::try_new("m").unwrap(), arguments).unwrap();
@@ -188,8 +191,12 @@ fn ordinary_and_checked_import_and_font_urls_keep_original_sources() {
         CssValueOrigin::Parsed(origin) => origin.source().clone(),
         other => panic!("parsed import: {other:?}"),
     };
-    let checked =
-        CssImportRule::try_from_components(components, &CssNamespaceContext::default()).unwrap();
+    let checked = CssImportRule::try_from_components(
+        components,
+        &CssNamespaceContext::default(),
+        Default::default(),
+    )
+    .unwrap();
     let CssImportTarget::Url(target) = checked.target() else {
         panic!("checked URL import");
     };
@@ -210,6 +217,7 @@ fn ordinary_and_checked_import_and_font_urls_keep_original_sources() {
     let checked = CssAuthoredFontFaceDescriptorValue::try_from_components(
         CssFontFaceDescriptorKind::Src,
         components,
+        Default::default(),
     )
     .unwrap();
     let CssAuthoredFontFaceDescriptorValue::Ordinary(CssFontFaceDescriptorValue::Src(sources)) =
@@ -256,16 +264,23 @@ fn local_url_flag_tracks_decoded_fragment_prefix_without_resolution() {
 fn programmatic_url_function() -> CssComponentValue {
     let modifier = CssComponentValue::try_function(
         "m",
-        CssComponentValues::try_new(vec![CssComponentValue::try_ident("token").unwrap()]).unwrap(),
+        CssComponentValues::try_new(
+            vec![CssComponentValue::try_ident("token").unwrap()],
+            Default::default(),
+        )
+        .unwrap(),
     )
     .unwrap();
     CssComponentValue::try_function(
         "src",
-        CssComponentValues::try_new(vec![
-            CssComponentValue::try_string("x").unwrap(),
-            CssComponentValue::try_token(" ").unwrap(),
-            modifier,
-        ])
+        CssComponentValues::try_new(
+            vec![
+                CssComponentValue::try_string("x").unwrap(),
+                CssComponentValue::try_token(" ").unwrap(),
+                modifier,
+            ],
+            Default::default(),
+        )
         .unwrap(),
     )
     .unwrap()
@@ -275,7 +290,7 @@ fn programmatic_url_function() -> CssComponentValue {
 fn checked_property_import_and_font_preserve_programmatic_modifier_children() {
     let property = parse_property_value(
         CssPropertyNameRef::Known(CssKnownProperty::BackgroundImage),
-        CssComponentValues::try_new(vec![programmatic_url_function()]).unwrap(),
+        CssComponentValues::try_new(vec![programmatic_url_function()], Default::default()).unwrap(),
         CssImportance::Normal,
     )
     .unwrap();
@@ -286,14 +301,18 @@ fn checked_property_import_and_font_preserve_programmatic_modifier_children() {
     ));
 
     let import = CssImportRule::try_from_components(
-        CssComponentValues::try_new(vec![
-            CssComponentValue::try_token("@import").unwrap(),
-            CssComponentValue::try_token(" ").unwrap(),
-            programmatic_url_function(),
-            CssComponentValue::try_token(";").unwrap(),
-        ])
+        CssComponentValues::try_new(
+            vec![
+                CssComponentValue::try_token("@import").unwrap(),
+                CssComponentValue::try_token(" ").unwrap(),
+                programmatic_url_function(),
+                CssComponentValue::try_token(";").unwrap(),
+            ],
+            Default::default(),
+        )
         .unwrap(),
         &CssNamespaceContext::default(),
+        Default::default(),
     )
     .unwrap();
     let CssImportTarget::Url(target) = import.target() else {
@@ -306,7 +325,8 @@ fn checked_property_import_and_font_preserve_programmatic_modifier_children() {
 
     let font = CssAuthoredFontFaceDescriptorValue::try_from_components(
         CssFontFaceDescriptorKind::Src,
-        CssComponentValues::try_new(vec![programmatic_url_function()]).unwrap(),
+        CssComponentValues::try_new(vec![programmatic_url_function()], Default::default()).unwrap(),
+        Default::default(),
     )
     .unwrap();
     let CssAuthoredFontFaceDescriptorValue::Ordinary(CssFontFaceDescriptorValue::Src(sources)) =

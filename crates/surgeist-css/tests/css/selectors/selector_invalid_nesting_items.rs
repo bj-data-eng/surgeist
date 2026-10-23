@@ -19,7 +19,11 @@ fn retained(source: &str, literal: &str) {
         .expect("retained forgiving outer selector");
     // This is the intended callable RED observation, before any future-model
     // assertion. It must keep raw invalid item spelling and ordered boundaries.
-    assert_eq!(selector.to_specified_css().unwrap(), literal, "{source:?}");
+    assert_eq!(
+        selector.serialize_specified(Default::default()).unwrap(),
+        literal,
+        "{source:?}"
+    );
     assert!(!report.is_clean());
     assert!(!report.diagnostics().is_empty());
     assert!(
@@ -40,7 +44,7 @@ fn retained(source: &str, literal: &str) {
             .syntax()
             .as_ref()
             .unwrap()
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .unwrap(),
         literal
     );
@@ -81,7 +85,7 @@ fn is_and_where_preserve_unknown_ampersand_items_with_exact_spelling_and_order()
         .syntax()
         .as_ref()
         .unwrap()
-        .to_specified_css()
+        .serialize_specified(Default::default())
         .unwrap();
     // Raw members carry all authored boundary trivia. Their preceding comma
     // adds no padding, while valid members keep canonical comma-space padding.
@@ -93,7 +97,7 @@ fn is_and_where_preserve_unknown_ampersand_items_with_exact_spelling_and_order()
             .syntax()
             .as_ref()
             .unwrap()
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .unwrap(),
         literal
     );
@@ -150,7 +154,13 @@ fn nested_logical_and_public_list_fronts_retain_invalid_nesting_items() {
         .iter()
         .zip([".Before", ":where(:NoPe(&))", ".After"])
     {
-        assert_eq!(member.selector().to_specified_css().unwrap(), literal);
+        assert_eq!(
+            member
+                .selector()
+                .serialize_specified(Default::default())
+                .unwrap(),
+            literal
+        );
     }
     assert_eq!(
         list.selectors()[0].selector(),
@@ -168,7 +178,7 @@ fn nested_logical_and_public_list_fronts_retain_invalid_nesting_items() {
     );
     let list = report.syntax().as_ref().unwrap();
     assert_eq!(
-        list.to_specified_css().unwrap(),
+        list.serialize_specified(Default::default()).unwrap(),
         "> .Before, + :is(:NoPe(&), .Keep)"
     );
     assert_eq!(list.selectors().len(), 2);
@@ -192,7 +202,7 @@ fn preserved_item_keeps_original_unicode_source_error_identity_and_member_span()
             .syntax()
             .as_ref()
             .unwrap()
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .unwrap(),
         ":is(:NoPe(/*Ω*/&), .Keep)"
     );
@@ -236,7 +246,7 @@ fn nested_rule_preserves_the_invalid_item_without_losing_parent_or_siblings() {
     assert_eq!(
         child.selectors().selectors()[0]
             .selector()
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .unwrap(),
         ":is(:NoPe(&), .Keep)"
     );
@@ -282,7 +292,7 @@ fn strings_comments_and_escaped_identifiers_do_not_turn_invalid_items_into_nesti
                 ))]
             );
             assert_eq!(
-                selector.to_specified_css().unwrap(),
+                selector.serialize_specified(Default::default()).unwrap(),
                 format!(":{name}(.Keep)")
             );
             let [diagnostic] = report.diagnostics() else {
@@ -310,7 +320,10 @@ fn valid_nesting_members_remain_symbolic_and_distinct_from_literal_scope() {
     assert_eq!(nesting.nesting_selectors(), 2);
     assert_eq!(nesting.scope_anchors(), 0);
     assert_eq!(nesting.classes(), ["Keep"]);
-    assert_eq!(selector.to_specified_css().unwrap(), ":is(&&.Keep, :scope)");
+    assert_eq!(
+        selector.serialize_specified(Default::default()).unwrap(),
+        ":is(&&.Keep, :scope)"
+    );
     assert_eq!(
         parse_selector(":is(&&.Keep, :scope)", &CssNamespaceContext::default())
             .into_validation_result()
@@ -330,7 +343,10 @@ fn empty_forgiving_results_strict_lists_and_enclosing_any_value_gate_keep_their_
             .as_ref()
             .expect("retained recovered empty pseudo");
         assert!(members(selector).is_empty());
-        assert_eq!(selector.to_specified_css().unwrap(), source);
+        assert_eq!(
+            selector.serialize_specified(Default::default()).unwrap(),
+            source
+        );
         let [diagnostic] = empty.diagnostics() else {
             panic!("one zero-width dropped attempted member");
         };
@@ -357,7 +373,7 @@ fn empty_forgiving_results_strict_lists_and_enclosing_any_value_gate_keep_their_
                 .syntax()
                 .as_ref()
                 .unwrap()
-                .to_specified_css()
+                .serialize_specified(Default::default())
                 .unwrap(),
             format!(":{name}()")
         );

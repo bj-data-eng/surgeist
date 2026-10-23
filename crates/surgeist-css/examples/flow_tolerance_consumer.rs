@@ -107,6 +107,7 @@ fn checked_sum_construction_preserves_signed_math() {
             CssCalculationSumOperator::Subtract,
             CssLengthPercentageCalculation::try_percentage(3.0).unwrap(),
         )],
+        Default::default(),
     )
     .unwrap();
     let nested = CssLengthPercentageCalculation::try_sum(
@@ -115,6 +116,7 @@ fn checked_sum_construction_preserves_signed_math() {
             CssCalculationSumOperator::Subtract,
             CssLengthPercentageCalculation::try_dimension(-4.0, CssLengthUnit::Em).unwrap(),
         )],
+        Default::default(),
     )
     .unwrap();
     for valid in [signed, nested] {
@@ -207,9 +209,10 @@ fn parsed_and_constructed_payloads_match_independent_signed_expectations() {
 }
 
 fn component_construction_preserves_value_importance_and_origins() {
-    let components = CssComponentValues::try_new(vec![
-        CssComponentValue::try_dimension("-0.5", "em").unwrap(),
-    ])
+    let components = CssComponentValues::try_new(
+        vec![CssComponentValue::try_dimension("-0.5", "em").unwrap()],
+        Default::default(),
+    )
     .unwrap();
     let declaration = checked(components, CssImportance::Important);
     assert!(exact_literal(
@@ -499,20 +502,27 @@ fn main() {
 
 fn canonical_specified_values_keep_context_dependent_operands_symbolic() {
     assert_eq!(
-        CssFlowTolerance::normal().serialize_specified().unwrap(),
+        CssFlowTolerance::normal()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "normal"
     );
     assert_eq!(
-        CssFlowTolerance::infinite().serialize_specified().unwrap(),
+        CssFlowTolerance::infinite()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "infinite"
     );
     let tolerance =
         CssFlowTolerance::length_percentage(signed_length_percentage("calc(-2px - 3%)"));
-    assert_eq!(tolerance.serialize_specified().unwrap(), "calc(-3% - 2px)");
+    assert_eq!(
+        tolerance.serialize_specified(Default::default()).unwrap(),
+        "calc(-3% - 2px)"
+    );
     let before = tolerance.clone();
     assert_eq!(
         tolerance
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(100, 100, 1))
+            .serialize_specified(CssSerializationLimits::new(100, 100, 1))
             .unwrap_err()
             .kind(),
         CssSpecifiedValueSerializationErrorKind::ByteLimit
@@ -525,7 +535,11 @@ fn signed_length_percentage(css: &str) -> surgeist_css::CssSpecifiedLengthPercen
     let components = surgeist_css::parse_component_values(css).unwrap();
     if css.contains('(') {
         surgeist_css::CssSpecifiedLengthPercentage::try_from_calculation(
-            surgeist_css::CssLengthPercentageCalculation::try_from_components(components).unwrap(),
+            surgeist_css::CssLengthPercentageCalculation::try_from_components(
+                components,
+                Default::default(),
+            )
+            .unwrap(),
         )
         .unwrap()
     } else {

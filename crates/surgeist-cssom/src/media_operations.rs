@@ -27,10 +27,10 @@ impl CssomSnapshot {
     pub(crate) fn media_text(
         &self,
         id: &CssomMediaListId,
-        limits: CssSpecifiedValueSerializationLimits,
+        limits: CssSerializationLimits,
     ) -> Result<String, CssomError> {
         self.media(id)?
-            .serialize_cssom_with_limits(limits)
+            .serialize_cssom(limits)
             .map(|text| text.as_css().to_owned())
             .map_err(CssomError::Media)
     }
@@ -42,14 +42,14 @@ impl CssomSnapshot {
         &self,
         id: &CssomMediaListId,
         index: usize,
-        limits: CssSpecifiedValueSerializationLimits,
+        limits: CssSerializationLimits,
     ) -> Result<Option<String>, CssomError> {
         self.media(id)?
             .queries()
             .get(index)
             .map(|query| {
                 query
-                    .serialize_cssom_with_limits(limits)
+                    .serialize_cssom(limits)
                     .map(|text| text.as_css().to_owned())
                     .map_err(CssomError::Media)
             })
@@ -76,7 +76,7 @@ impl CssomBatch {
             check_input(source, &this.limits)?;
             let (value, diagnostics) = recovered(parse_media_query_list(source))?;
             value
-                .serialize_cssom_with_limits(this.limits.css)
+                .serialize_cssom(this.limits.css)
                 .map_err(CssomError::Media)?;
             Ok(CssomMediaEdit {
                 changed: this.set_media(id, value)?,
@@ -137,7 +137,7 @@ impl CssomBatch {
             scan.push(candidate.clone());
             scan.extend_from_slice(current.queries());
             let texts = CssMediaQueryList::new(scan)
-                .serialize_cssom_members_with_limits(this.limits.css)
+                .serialize_cssom_members(this.limits.css)
                 .map_err(CssomError::Media)?;
             let candidate_text = texts[0].as_css();
             let found = texts[1..]

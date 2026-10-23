@@ -262,6 +262,7 @@ fn src_member_recovery_and_implicit_closures_commit_only_retained_components() {
     let error = surgeist_css::CssAuthoredFontFaceDescriptorValue::try_from_components(
         Kind::Src,
         surgeist_css::parse_component_values(source).unwrap(),
+        Default::default(),
     )
     .unwrap_err();
     assert!(matches!(

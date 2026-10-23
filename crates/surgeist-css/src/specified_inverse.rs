@@ -12,7 +12,7 @@ use crate::{
 
 type Result<T> = std::result::Result<T, CssDeclarationBlockError>;
 
-type EqualityResult = std::result::Result<bool, CssSpecifiedValueSerializationError>;
+type EqualityResult = std::result::Result<bool, CssSerializationError>;
 use crate::specified_serialization::SpecifiedSerializationContext;
 
 mod equality;
@@ -517,14 +517,18 @@ macro_rules! longhand_dispatch {
         longhand_dispatch!(@collect [$($rows)*]; $($rest)*);
     };
     (@collect [$(($variant:ident, $value:ident))*];) => {
-        fn ordinary_values_equal(left: CssLonghandValueRef<'_>, right: CssLonghandValueRef<'_>, context: &mut crate::specified_serialization::SpecifiedSerializationContext) -> std::result::Result<bool, CssSpecifiedValueSerializationError> {
+        fn ordinary_values_equal(
+            left: CssLonghandValueRef<'_>,
+            right: CssLonghandValueRef<'_>,
+            context: &mut crate::specified_serialization::SpecifiedSerializationContext,
+        ) -> std::result::Result<bool, CssSerializationError> {
             match (left, right) {
                 $((CssLonghandValueRef::$variant(a), CssLonghandValueRef::$variant(b)) => fallible_inverse_value_equal!($value, a, b, context),)*
                 _ => Ok(false),
             }
         }
         pub(crate) fn append_longhand(value: CssLonghandValueRef<'_>, writer: &mut SpecifiedRuleWriter)
-            -> std::result::Result<(), CssSpecifiedValueSerializationError> {
+            -> std::result::Result<(), CssSerializationError> {
             match value {
                 $(CssLonghandValueRef::$variant(value) => {
                     let _grammar = CssKnownProperty::$variant.grammar();
@@ -539,7 +543,7 @@ crate::properties::property_schema!(longhand_dispatch, inverse_input, inverse_nu
 pub(crate) fn visit_value(
     value: CssContributionValueRef<'_>,
     writer: &mut SpecifiedRuleWriter,
-) -> std::result::Result<(), CssSpecifiedValueSerializationError> {
+) -> std::result::Result<(), CssSerializationError> {
     match value {
         CssContributionValueRef::Ordinary(value) => {
             writer.visit_semantic(|writer| append_longhand(value, writer))
@@ -554,7 +558,7 @@ pub(crate) fn values_equal(
     left: CssContributionValueRef<'_>,
     right: CssContributionValueRef<'_>,
     context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-) -> std::result::Result<bool, CssSpecifiedValueSerializationError> {
+) -> std::result::Result<bool, CssSerializationError> {
     match (left, right) {
         (
             CssContributionValueRef::Ordinary(CssLonghandValueRef::TransitionDuration(a)),
@@ -706,14 +710,14 @@ fn shorter_second<T: InverseValueEquality>(
     first: &T,
     second: T,
     context: &mut SpecifiedSerializationContext,
-) -> std::result::Result<Option<T>, CssSpecifiedValueSerializationError> {
+) -> std::result::Result<Option<T>, CssSerializationError> {
     Ok((!first.inverse_equal(&second, context)?).then_some(second))
 }
 fn shortest_quad<T: InverseValueEquality>(
     mut values: Vec<T>,
     context: &mut SpecifiedSerializationContext,
     current: &mut usize,
-) -> std::result::Result<Vec<T>, CssSpecifiedValueSerializationError> {
+) -> std::result::Result<Vec<T>, CssSerializationError> {
     // A comparison failure belongs to the member that would be omitted.
     let count = crate::common_serialization::shortest_four_side_count(|left, right| {
         *current = right;
@@ -774,7 +778,7 @@ pub(crate) fn reconstruct(
                     return Ok(None);
                 };
                 $items.try_reserve(value.$getter().len()).map_err(|_| {
-                    CssSpecifiedValueSerializationError::new(
+                    CssSerializationError::new(
                         CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
                     )
                 })?;
@@ -1605,7 +1609,7 @@ pub(crate) fn reconstruct(
         return Err(error);
     }
     if allocation_failure {
-        return Err(CssSpecifiedValueSerializationError::new(
+        return Err(CssSerializationError::new(
             CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
         )
         .into());
@@ -1700,7 +1704,7 @@ fn reconstruct_colors(
             })?;
             let mut sides = Vec::new();
             sides.try_reserve(count).map_err(|_| {
-                CssSpecifiedValueSerializationError::new(
+                CssSerializationError::new(
                     CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
                 )
             })?;
@@ -1725,7 +1729,7 @@ pub(crate) fn append_reconstructed<'a>(
     values: &[&'a CssSpecifiedDeclarationEntry],
     writer: &mut SpecifiedRuleWriter,
     current: &mut Option<&'a CssSpecifiedDeclarationEntry>,
-) -> std::result::Result<(), CssSpecifiedValueSerializationError> {
+) -> std::result::Result<(), CssSerializationError> {
     if !matches!(
         value,
         Inverse::BorderBlockColor(_)
@@ -2191,8 +2195,7 @@ mod generic_math_comparison_tests {
         // Calc, Sum, the 1px leaf and the 2px leaf require four pending slots.
         // Primitive token comparisons can borrow the exact owning relation;
         // the selected bounded consumer needs no component traversal vector.
-        let mut context =
-            SpecifiedSerializationContext::new(CssSpecifiedValueSerializationLimits::new(0, 4, 0));
+        let mut context = SpecifiedSerializationContext::new(CssSerializationLimits::new(0, 4, 0));
         assert!(
             values_equal(
                 left.items()[0].value(),
@@ -2201,8 +2204,7 @@ mod generic_math_comparison_tests {
             )
             .unwrap()
         );
-        let mut context =
-            SpecifiedSerializationContext::new(CssSpecifiedValueSerializationLimits::new(0, 3, 0));
+        let mut context = SpecifiedSerializationContext::new(CssSerializationLimits::new(0, 3, 0));
         assert_eq!(
             values_equal(
                 left.items()[0].value(),
@@ -2213,8 +2215,7 @@ mod generic_math_comparison_tests {
             .kind(),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
         );
-        let mut retry =
-            SpecifiedSerializationContext::new(CssSpecifiedValueSerializationLimits::new(0, 4, 0));
+        let mut retry = SpecifiedSerializationContext::new(CssSerializationLimits::new(0, 4, 0));
         assert!(
             values_equal(
                 left.items()[0].value(),
@@ -2263,8 +2264,7 @@ mod generic_math_comparison_tests {
         ] {
             let left = margin(left);
             let right = margin(right);
-            let mut context =
-                SpecifiedSerializationContext::new(CssSpecifiedValueSerializationLimits::default());
+            let mut context = SpecifiedSerializationContext::new(CssSerializationLimits::default());
             assert_eq!(
                 values_equal(
                     left.items()[0].value(),
@@ -2382,9 +2382,8 @@ mod composite_math_comparison_tests {
                     .source()
                     .same_occurrence(right.items()[0].source())
             );
-            let mut exact = SpecifiedSerializationContext::new(
-                CssSpecifiedValueSerializationLimits::new(0, projections, 0),
-            );
+            let mut exact =
+                SpecifiedSerializationContext::new(CssSerializationLimits::new(0, projections, 0));
             if !matches!(
                 values_equal(
                     left.items()[0].value(),
@@ -2397,9 +2396,11 @@ mod composite_math_comparison_tests {
                     "{source}: exact P{projections} does not compare equal"
                 ));
             }
-            let mut short = SpecifiedSerializationContext::new(
-                CssSpecifiedValueSerializationLimits::new(0, projections - 1, 0),
-            );
+            let mut short = SpecifiedSerializationContext::new(CssSerializationLimits::new(
+                0,
+                projections - 1,
+                0,
+            ));
             match values_equal(
                 left.items()[0].value(),
                 right.items()[0].value(),
@@ -2413,9 +2414,8 @@ mod composite_math_comparison_tests {
                     projections - 1
                 )),
             }
-            let mut retry = SpecifiedSerializationContext::new(
-                CssSpecifiedValueSerializationLimits::new(0, projections, 0),
-            );
+            let mut retry =
+                SpecifiedSerializationContext::new(CssSerializationLimits::new(0, projections, 0));
             if !matches!(
                 values_equal(
                     left.items()[0].value(),
@@ -2442,8 +2442,7 @@ mod composite_math_comparison_tests {
         );
         // Root calc-size slot1, then its three-node Sum/Size/Length comparison.
         // The differing Nested/Keyword basis stops before the nested slot.
-        let mut exact =
-            SpecifiedSerializationContext::new(CssSpecifiedValueSerializationLimits::new(0, 4, 0));
+        let mut exact = SpecifiedSerializationContext::new(CssSerializationLimits::new(0, 4, 0));
         assert!(
             !values_equal(
                 left.items()[0].value(),
@@ -2452,8 +2451,7 @@ mod composite_math_comparison_tests {
             )
             .unwrap()
         );
-        let mut short =
-            SpecifiedSerializationContext::new(CssSpecifiedValueSerializationLimits::new(0, 3, 0));
+        let mut short = SpecifiedSerializationContext::new(CssSerializationLimits::new(0, 3, 0));
         assert_eq!(
             values_equal(
                 left.items()[0].value(),
@@ -2499,9 +2497,8 @@ mod composite_math_comparison_tests {
                 };
                 assert_eq!(count, 4);
             }
-            let mut context = SpecifiedSerializationContext::new(
-                CssSpecifiedValueSerializationLimits::new(0, 0, 0),
-            );
+            let mut context =
+                SpecifiedSerializationContext::new(CssSerializationLimits::new(0, 0, 0));
             assert!(
                 values_equal(
                     left.items()[0].value(),
@@ -2569,8 +2566,7 @@ mod composite_math_comparison_tests {
         ] {
             let left = terminal(left, property);
             let right = terminal(right, property);
-            let mut context =
-                SpecifiedSerializationContext::new(CssSpecifiedValueSerializationLimits::default());
+            let mut context = SpecifiedSerializationContext::new(CssSerializationLimits::default());
             assert!(
                 !values_equal(
                     left.items()[0].value(),
@@ -2649,9 +2645,8 @@ mod flex_basis_math_comparison_tests {
                 ordinary_equal(&left, &right),
                 "{source}: original structural relation"
             );
-            let mut exact = SpecifiedSerializationContext::new(
-                CssSpecifiedValueSerializationLimits::new(0, projections, 0),
-            );
+            let mut exact =
+                SpecifiedSerializationContext::new(CssSerializationLimits::new(0, projections, 0));
             assert!(
                 values_equal(
                     left.items()[0].value(),
@@ -2661,9 +2656,11 @@ mod flex_basis_math_comparison_tests {
                 .unwrap(),
                 "{source}"
             );
-            let mut under = SpecifiedSerializationContext::new(
-                CssSpecifiedValueSerializationLimits::new(0, projections - 1, 0),
-            );
+            let mut under = SpecifiedSerializationContext::new(CssSerializationLimits::new(
+                0,
+                projections - 1,
+                0,
+            ));
             match values_equal(
                 left.items()[0].value(),
                 right.items()[0].value(),
@@ -2677,9 +2674,8 @@ mod flex_basis_math_comparison_tests {
                     projections - 1
                 )),
             }
-            let mut retry = SpecifiedSerializationContext::new(
-                CssSpecifiedValueSerializationLimits::new(0, projections, 0),
-            );
+            let mut retry =
+                SpecifiedSerializationContext::new(CssSerializationLimits::new(0, projections, 0));
             assert!(
                 values_equal(
                     left.items()[0].value(),
@@ -2731,9 +2727,8 @@ mod flex_basis_math_comparison_tests {
                 expected,
                 "original owning relation"
             );
-            let mut context = SpecifiedSerializationContext::new(
-                CssSpecifiedValueSerializationLimits::new(0, 0, 0),
-            );
+            let mut context =
+                SpecifiedSerializationContext::new(CssSerializationLimits::new(0, 0, 0));
             assert_eq!(
                 values_equal(
                     left.items()[0].value(),
@@ -2784,9 +2779,8 @@ mod flex_basis_math_comparison_tests {
                 !ordinary_equal(&left, &right),
                 "{source}: original structural relation"
             );
-            let mut exact = SpecifiedSerializationContext::new(
-                CssSpecifiedValueSerializationLimits::new(0, projections, 0),
-            );
+            let mut exact =
+                SpecifiedSerializationContext::new(CssSerializationLimits::new(0, projections, 0));
             assert!(
                 !values_equal(
                     left.items()[0].value(),
@@ -2796,9 +2790,11 @@ mod flex_basis_math_comparison_tests {
                 .unwrap(),
                 "{source}"
             );
-            let mut under = SpecifiedSerializationContext::new(
-                CssSpecifiedValueSerializationLimits::new(0, projections - 1, 0),
-            );
+            let mut under = SpecifiedSerializationContext::new(CssSerializationLimits::new(
+                0,
+                projections - 1,
+                0,
+            ));
             match values_equal(
                 left.items()[0].value(),
                 right.items()[0].value(),
@@ -2812,9 +2808,8 @@ mod flex_basis_math_comparison_tests {
                     projections - 1
                 )),
             }
-            let mut retry = SpecifiedSerializationContext::new(
-                CssSpecifiedValueSerializationLimits::new(0, projections, 0),
-            );
+            let mut retry =
+                SpecifiedSerializationContext::new(CssSerializationLimits::new(0, projections, 0));
             assert!(
                 !values_equal(
                     left.items()[0].value(),
@@ -2900,9 +2895,8 @@ mod mask_position_borrowed_comparison_tests {
                 expected,
                 "{source}: unchanged ordinary relation"
             );
-            let mut context = SpecifiedSerializationContext::new(
-                CssSpecifiedValueSerializationLimits::new(0, 0, 0),
-            );
+            let mut context =
+                SpecifiedSerializationContext::new(CssSerializationLimits::new(0, 0, 0));
             assert_eq!(
                 value
                     .bounded_eq(&initial.positions()[0], &mut context)
@@ -2926,9 +2920,8 @@ mod mask_position_borrowed_comparison_tests {
                 list(&right),
                 "{source}: ordinary structural relation"
             );
-            let mut exact = SpecifiedSerializationContext::new(
-                CssSpecifiedValueSerializationLimits::new(0, 4, 0),
-            );
+            let mut exact =
+                SpecifiedSerializationContext::new(CssSerializationLimits::new(0, 4, 0));
             assert!(
                 values_equal(
                     left.items()[0].value(),
@@ -2937,9 +2930,8 @@ mod mask_position_borrowed_comparison_tests {
                 )
                 .unwrap()
             );
-            let mut under = SpecifiedSerializationContext::new(
-                CssSpecifiedValueSerializationLimits::new(0, 3, 0),
-            );
+            let mut under =
+                SpecifiedSerializationContext::new(CssSerializationLimits::new(0, 3, 0));
             assert_eq!(
                 values_equal(
                     left.items()[0].value(),
@@ -2950,9 +2942,8 @@ mod mask_position_borrowed_comparison_tests {
                 .kind(),
                 CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
             );
-            let mut retry = SpecifiedSerializationContext::new(
-                CssSpecifiedValueSerializationLimits::new(0, 4, 0),
-            );
+            let mut retry =
+                SpecifiedSerializationContext::new(CssSerializationLimits::new(0, 4, 0));
             assert!(
                 values_equal(
                     left.items()[0].value(),
@@ -2994,9 +2985,8 @@ mod column_alias_and_grid_count_comparison_tests {
         right: &CssLonghandContributions,
         projections: usize,
     ) -> EqualityResult {
-        let mut context = SpecifiedSerializationContext::new(
-            CssSpecifiedValueSerializationLimits::new(0, projections, 0),
-        );
+        let mut context =
+            SpecifiedSerializationContext::new(CssSerializationLimits::new(0, projections, 0));
         values_equal(
             left.items()[0].value(),
             right.items()[0].value(),
@@ -3353,11 +3343,7 @@ mod coordinate_free_inverse_comparison_tests {
     }
 
     fn context(projections: usize) -> SpecifiedSerializationContext {
-        SpecifiedSerializationContext::new(CssSpecifiedValueSerializationLimits::new(
-            0,
-            projections,
-            0,
-        ))
+        SpecifiedSerializationContext::new(CssSerializationLimits::new(0, projections, 0))
     }
 
     fn compare(
@@ -3868,27 +3854,21 @@ mod coordinate_free_inverse_comparison_tests {
             false,
         );
         assert_eq!(
-            stop(&values).color().to_specified_css().unwrap(),
+            stop(&values)
+                .color()
+                .serialize_specified(Default::default())
+                .unwrap(),
             "rgb(1, 2, 3)"
         );
         for (value, expected, inputs) in
             [("url(a)", "url(\"a\")", 3), ("url(a) 0dB", "url(\"a\")", 4)]
         {
             let values = terminal(CssKnownProperty::CueBefore, value, false);
-            let limits = CssSpecifiedValueSerializationLimits::new(inputs, inputs, 8);
+            let limits = CssSerializationLimits::new(inputs, inputs, 8);
+            assert_eq!(cue(&values).serialize_specified(limits).unwrap(), expected);
             assert_eq!(
                 cue(&values)
-                    .serialize_specified_with_limits(limits)
-                    .unwrap(),
-                expected
-            );
-            assert_eq!(
-                cue(&values)
-                    .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                        inputs - 1,
-                        inputs,
-                        8
-                    ))
+                    .serialize_specified(CssSerializationLimits::new(inputs - 1, inputs, 8))
                     .unwrap_err()
                     .kind(),
                 CssSpecifiedValueSerializationErrorKind::InputNodeLimit
@@ -3901,31 +3881,31 @@ mod coordinate_free_inverse_comparison_tests {
             let values = terminal(property, "calc(1px + 2px)", false);
             let serialize = |limits| match values.items()[0].value() {
                 CssContributionValueRef::Ordinary(CssLonghandValueRef::GridTemplateRows(value)) => {
-                    value.serialize_specified_with_limits(limits)
+                    value.serialize_specified(limits)
                 }
                 CssContributionValueRef::Ordinary(CssLonghandValueRef::GridAutoRows(value)) => {
-                    value.serialize_specified_with_limits(limits)
+                    value.serialize_specified(limits)
                 }
                 _ => panic!("grid provider"),
             };
             assert_eq!(
-                serialize(CssSpecifiedValueSerializationLimits::new(5, 4, 9)).unwrap(),
+                serialize(CssSerializationLimits::new(5, 4, 9)).unwrap(),
                 "calc(3px)"
             );
             assert_eq!(
-                serialize(CssSpecifiedValueSerializationLimits::new(4, 4, 9))
+                serialize(CssSerializationLimits::new(4, 4, 9))
                     .unwrap_err()
                     .kind(),
                 CssSpecifiedValueSerializationErrorKind::InputNodeLimit
             );
             assert_eq!(
-                serialize(CssSpecifiedValueSerializationLimits::new(5, 3, 9))
+                serialize(CssSerializationLimits::new(5, 3, 9))
                     .unwrap_err()
                     .kind(),
                 CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
             );
             assert_eq!(
-                serialize(CssSpecifiedValueSerializationLimits::new(5, 4, 8))
+                serialize(CssSerializationLimits::new(5, 4, 8))
                     .unwrap_err()
                     .kind(),
                 CssSpecifiedValueSerializationErrorKind::ByteLimit

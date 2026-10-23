@@ -66,7 +66,7 @@ fn programmatic_identifier_and_parsed_identifier_retain_distinct_origins() {
     assert!(matches!(token.origin(), CssValueOrigin::Programmatic));
     let constructed = parse_property_value(
         CssPropertyNameRef::Known(PROPERTY),
-        CssComponentValues::try_new(vec![token]).unwrap(),
+        CssComponentValues::try_new(vec![token], Default::default()).unwrap(),
         CssImportance::Normal,
     )
     .unwrap();
@@ -104,43 +104,39 @@ fn canonical_keywords_obey_exact_node_and_byte_limits_without_mutating_authored_
         (CssContentVisibility::Hidden, "hidden"),
         (CssContentVisibility::Auto, "auto"),
     ] {
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    1,
-                    1,
-                    expected.len(),
-                ))
+                .serialize_specified(CssSerializationLimits::new(1, 1, expected.len(),))
                 .unwrap(),
             expected
         );
         for (limits, error) in [
             (
-                CssSpecifiedValueSerializationLimits::new(0, 1, expected.len()),
+                CssSerializationLimits::new(0, 1, expected.len()),
                 CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 0, expected.len()),
+                CssSerializationLimits::new(1, 0, expected.len()),
                 CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 1, expected.len() - 1),
+                CssSerializationLimits::new(1, 1, expected.len() - 1),
                 CssSpecifiedValueSerializationErrorKind::ByteLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 1, 0),
+                CssSerializationLimits::new(1, 1, 0),
                 CssSpecifiedValueSerializationErrorKind::ByteLimit,
             ),
         ] {
+            assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), error);
             assert_eq!(
-                value
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
-                error
+                value.serialize_specified(Default::default()).unwrap(),
+                expected
             );
-            assert_eq!(value.serialize_specified().unwrap(), expected);
         }
         let authored = format!("content-visibility:{}!important", expected.to_uppercase());
         let report = parse_style_attribute(&authored);
@@ -155,11 +151,17 @@ fn canonical_keywords_obey_exact_node_and_byte_limits_without_mutating_authored_
         };
         assert_eq!(wrapper.value(), &value);
         assert_eq!(wrapper.as_css(), expected.to_uppercase());
-        assert_eq!(wrapper.value().serialize_specified().unwrap(), expected);
         assert_eq!(
             wrapper
                 .value()
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(1, 1, 0))
+                .serialize_specified(Default::default())
+                .unwrap(),
+            expected
+        );
+        assert_eq!(
+            wrapper
+                .value()
+                .serialize_specified(CssSerializationLimits::new(1, 1, 0))
                 .unwrap_err()
                 .kind(),
             CssSpecifiedValueSerializationErrorKind::ByteLimit

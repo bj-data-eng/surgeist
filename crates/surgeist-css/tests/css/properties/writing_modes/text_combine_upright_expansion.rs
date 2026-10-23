@@ -156,8 +156,11 @@ fn keyword_controls_keep_exact_views_and_programmatic_origin() {
         ("none", CssTextCombineUpright::None),
         ("all", CssTextCombineUpright::All),
     ] {
-        let components =
-            CssComponentValues::try_new(vec![CssComponentValue::try_token(text).unwrap()]).unwrap();
+        let components = CssComponentValues::try_new(
+            vec![CssComponentValue::try_token(text).unwrap()],
+            Default::default(),
+        )
+        .unwrap();
         let checked = parse_property_value(
             CssPropertyNameRef::Known(PROPERTY),
             components.clone(),

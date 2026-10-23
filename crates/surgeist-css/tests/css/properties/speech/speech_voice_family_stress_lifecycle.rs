@@ -35,7 +35,11 @@ fn assert_admitted(name: &str, value: &str) {
     assert_eq!(checked.importance(), CssImportance::Important);
     assert!(checked.position().is_none());
     assert_eq!(
-        source.value_components().serialize().unwrap().as_css(),
+        source
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         value
     );
     assert!(validate_style_attribute(&format!("{name}:{value}")).is_ok());
@@ -166,19 +170,25 @@ fn voice_properties_decode_keyword_case_escapes_and_preserve_authored_tokens() {
         let components = source.value_components();
         assert_eq!(
             components
-                .serialize_with_limit(value.len())
+                .serialize_tokens(crate::css::support::byte_limits(value.len()))
                 .unwrap()
                 .as_css(),
             value
         );
         assert_eq!(
             components
-                .serialize_with_limit(value.len() - 1)
+                .serialize_tokens(crate::css::support::byte_limits(value.len() - 1))
                 .unwrap_err()
                 .kind(),
             CssComponentValueErrorKind::ByteLimit
         );
-        assert_eq!(components.serialize().unwrap().as_css(), value);
+        assert_eq!(
+            components
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            value
+        );
         let checked = parse_property_value(
             CssPropertyNameRef::Known(property(canonical)),
             components.clone(),

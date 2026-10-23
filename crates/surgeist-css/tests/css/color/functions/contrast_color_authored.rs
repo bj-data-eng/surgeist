@@ -35,10 +35,18 @@ fn one_symbolic_color_is_retained_with_explicit_canonical_spelling() {
         ),
     ] {
         let value = color(source);
-        assert_eq!(value.to_specified_css().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_ne!(value, color("white"));
         assert_ne!(value, color("black"));
-        assert_eq!(color(expected).to_specified_css().unwrap(), expected);
+        assert_eq!(
+            color(expected)
+                .serialize_specified(Default::default())
+                .unwrap(),
+            expected
+        );
     }
     assert_ne!(color("contrast-color(red)"), color("contrast-color(blue)"));
 }
@@ -72,7 +80,9 @@ fn standalone_child_rgb_hsl_and_calculated_alpha_have_independent_outputs() {
         ),
     ] {
         assert_eq!(
-            color(source).to_specified_css().unwrap(),
+            color(source)
+                .serialize_specified(Default::default())
+                .unwrap(),
             expected,
             "{source}"
         );
@@ -112,7 +122,9 @@ fn contrast_input_uses_standalone_even_when_its_wrapper_has_origin_or_mix_role()
         ),
     ] {
         assert_eq!(
-            color(source).to_specified_css().unwrap(),
+            color(source)
+                .serialize_specified(Default::default())
+                .unwrap(),
             expected,
             "{source}"
         );
@@ -285,7 +297,7 @@ fn background_projects_contrast_as_final_color_alongside_a_light_dark_image() {
         panic!("image terminal")
     };
     assert_eq!(
-        image.serialize_specified().unwrap(),
+        image.serialize_specified(Default::default()).unwrap(),
         "light-dark(none, url(\"a.svg\"))"
     );
     let value = values
@@ -297,7 +309,10 @@ fn background_projects_contrast_as_final_color_alongside_a_light_dark_image() {
         panic!("color terminal")
     };
     assert_eq!(value, &color("contrast-color(red)"));
-    assert_eq!(value.to_specified_css().unwrap(), "contrast-color(red)");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "contrast-color(red)"
+    );
     let source = declaration("background:contrast-color(red)");
     let CssKnownPropertyValueRef::Background(value) =
         source.known().unwrap().property_value().unwrap()
@@ -309,7 +324,7 @@ fn background_projects_contrast_as_final_color_alongside_a_light_dark_image() {
         value.background().layers()[0]
             .color()
             .unwrap()
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .unwrap(),
         "contrast-color(red)"
     );
@@ -346,12 +361,17 @@ fn parsed_programmatic_and_mixed_components_keep_origins_importance_and_raw_iden
     let mixed_child = parse_component_values("red").unwrap();
     let mixed_origin = mixed_child.items()[0].origin().clone();
     for child in [
-        CssComponentValues::try_new(vec![CssComponentValue::try_ident("red").unwrap()]).unwrap(),
+        CssComponentValues::try_new(
+            vec![CssComponentValue::try_ident("red").unwrap()],
+            Default::default(),
+        )
+        .unwrap(),
         mixed_child,
     ] {
-        let graph = CssComponentValues::try_new(vec![
-            CssComponentValue::try_function("contrast-color", child.clone()).unwrap(),
-        ])
+        let graph = CssComponentValues::try_new(
+            vec![CssComponentValue::try_function("contrast-color", child.clone()).unwrap()],
+            Default::default(),
+        )
         .unwrap();
         let source = parse_property_value(
             CssPropertyNameRef::Known(CssKnownProperty::Color),
@@ -379,7 +399,10 @@ fn parsed_programmatic_and_mixed_components_keep_origins_importance_and_raw_iden
         else {
             panic!("color contribution")
         };
-        assert_eq!(value.to_specified_css().unwrap(), "contrast-color(red)");
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            "contrast-color(red)"
+        );
         assert_eq!(source, before);
         assert_eq!(source.importance(), CssImportance::Important);
     }
@@ -481,9 +504,11 @@ fn normalization_preserves_contrast_order_values_and_source_occurrences() {
         );
         let output = match items.items()[0].ordinary_value().unwrap().view() {
             CssLonghandValueRef::Color(value) | CssLonghandValueRef::BackgroundColor(value) => {
-                value.to_specified_css().unwrap()
+                value.serialize_specified(Default::default()).unwrap()
             }
-            CssLonghandValueRef::BackgroundImage(value) => value.serialize_specified().unwrap(),
+            CssLonghandValueRef::BackgroundImage(value) => {
+                value.serialize_specified(Default::default()).unwrap()
+            }
             _ => panic!("selected normalized value"),
         };
         assert_eq!(output, expected);
@@ -513,7 +538,7 @@ fn wrapper_and_child_charge_exact_cumulative_node_projection_and_byte_budgets() 
         let value = color(source);
         assert_eq!(
             value
-                .to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::new(
+                .serialize_specified(CssSerializationLimits::new(
                     input_nodes,
                     projection_nodes,
                     expected.len()
@@ -523,38 +548,20 @@ fn wrapper_and_child_charge_exact_cumulative_node_projection_and_byte_budgets() 
         );
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(
-                    input_nodes - 1,
-                    projection_nodes,
-                    expected.len(),
-                ),
+                CssSerializationLimits::new(input_nodes - 1, projection_nodes, expected.len()),
                 CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(
-                    input_nodes,
-                    projection_nodes - 1,
-                    expected.len(),
-                ),
+                CssSerializationLimits::new(input_nodes, projection_nodes - 1, expected.len()),
                 CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(
-                    input_nodes,
-                    projection_nodes,
-                    expected.len() - 1,
-                ),
+                CssSerializationLimits::new(input_nodes, projection_nodes, expected.len() - 1),
                 CssSpecifiedValueSerializationErrorKind::ByteLimit,
             ),
         ] {
             let before = value.clone();
-            assert_eq!(
-                value
-                    .to_specified_css_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
-                kind
-            );
+            assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
             assert_eq!(value, before);
         }
     }
@@ -572,21 +579,13 @@ fn utf8_url_prefix_and_nested_image_children_share_the_complete_output_budget() 
     let value = value.background();
     assert_eq!(
         value
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                100,
-                100,
-                expected.len()
-            ))
+            .serialize_specified(CssSerializationLimits::new(100, 100, expected.len()))
             .unwrap(),
         expected
     );
     assert_eq!(
         value
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                100,
-                100,
-                expected.len() - 1
-            ))
+            .serialize_specified(CssSerializationLimits::new(100, 100, expected.len() - 1))
             .unwrap_err()
             .kind(),
         CssSpecifiedValueSerializationErrorKind::ByteLimit
@@ -597,21 +596,13 @@ fn utf8_url_prefix_and_nested_image_children_share_the_complete_output_budget() 
     let expected = "light-dark(linear-gradient(contrast-color(red), blue), none), linear-gradient(contrast-color(green), blue)";
     assert_eq!(
         value
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                100,
-                100,
-                expected.len()
-            ))
+            .serialize_specified(CssSerializationLimits::new(100, 100, expected.len()))
             .unwrap(),
         expected
     );
     assert_eq!(
         value
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                100,
-                100,
-                expected.len() - 1
-            ))
+            .serialize_specified(CssSerializationLimits::new(100, 100, expected.len() - 1))
             .unwrap_err()
             .kind(),
         CssSpecifiedValueSerializationErrorKind::ByteLimit
@@ -644,7 +635,13 @@ fn parsed_and_checked_contrast_chains_obey_the_complete_256_level_ceiling() {
                 ")".repeat(255)
             )
         };
-        assert_eq!(value.value().to_specified_css().unwrap(), expected);
+        assert_eq!(
+            value
+                .value()
+                .serialize_specified(Default::default())
+                .unwrap(),
+            expected
+        );
         let report = parse_style_attribute(&format!("color:contrast-color({text})"));
         assert!(!report.is_clean());
         assert!(
@@ -664,7 +661,7 @@ fn complete_numeric_child_depth_is_counted_and_repeated_output_keeps_raw_graphs(
     let before = value.clone();
     for _ in 0..3 {
         assert_eq!(
-            value.to_specified_css().unwrap(),
+            value.serialize_specified(Default::default()).unwrap(),
             "contrast-color(rgb(127.5, 0, 0))"
         );
         assert_eq!(value, before);

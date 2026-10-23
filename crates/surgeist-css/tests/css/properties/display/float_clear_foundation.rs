@@ -25,7 +25,11 @@ fn accepted(name: &str, value: &str) {
     for source in [declaration(name, value), checked(name, value)] {
         assert_eq!(source.importance(), CssImportance::Important);
         assert_eq!(
-            source.value_components().serialize().unwrap().as_css(),
+            source
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             value
         );
         assert_eq!(authored_value(&source, name), value);

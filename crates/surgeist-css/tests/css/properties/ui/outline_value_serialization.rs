@@ -6,7 +6,7 @@ use crate::css::support::retained_checked_declaration as declaration;
 use crate::css::support::serialization_limits::assert_limits;
 use surgeist_css::*;
 
-type Limits = CssSpecifiedValueSerializationLimits;
+type Limits = CssSerializationLimits;
 type Kind = CssSpecifiedValueSerializationErrorKind;
 
 fn outline(source: &str) -> CssOutline {
@@ -53,10 +53,11 @@ fn every_semantic_outline_style_emits_one_checked_keyword() {
         (CssOutlineStyle::Inset, "inset"),
         (CssOutlineStyle::Outset, "outset"),
     ] {
-        assert_eq!(value.serialize_specified().unwrap(), expected);
-        assert_limits(expected, 1, 1, |limits| {
-            value.serialize_specified_with_limits(limits)
-        });
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
+        assert_limits(expected, 1, 1, |limits| value.serialize_specified(limits));
         let declaration = declaration(
             CssKnownProperty::OutlineStyle,
             &expected.to_ascii_uppercase(),
@@ -80,10 +81,11 @@ fn outline_width_keywords_and_literal_lengths_share_numeric_limits() {
         (width("-0em"), "0em"),
     ] {
         let before = value.clone();
-        assert_eq!(value.serialize_specified().unwrap(), expected);
-        assert_limits(expected, 1, 1, |limits| {
-            value.serialize_specified_with_limits(limits)
-        });
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
+        assert_limits(expected, 1, 1, |limits| value.serialize_specified(limits));
         assert_eq!(value, before);
     }
 }
@@ -102,10 +104,11 @@ fn outline_color_auto_is_symbolic_initial_and_shared_color_is_transparent() {
         (color("pUrPlE"), "purple"),
     ] {
         let before = value.clone();
-        assert_eq!(value.serialize_specified().unwrap(), expected);
-        assert_limits(expected, 1, 1, |limits| {
-            value.serialize_specified_with_limits(limits)
-        });
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
+        assert_limits(expected, 1, 1, |limits| value.serialize_specified(limits));
         assert_eq!(value, before);
     }
 }
@@ -161,9 +164,12 @@ fn all_optional_outline_field_subsets_keep_width_style_color_order() {
         ),
     ] {
         let before = value.clone();
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_limits(expected, nodes, nodes, |limits| {
-            value.serialize_specified_with_limits(limits)
+            value.serialize_specified(limits)
         });
         assert_eq!(value, before);
     }
@@ -193,9 +199,12 @@ fn constructed_color_only_auto_synthesizes_initial_none_style() {
     ] {
         let before = value.clone();
         assert!(value.style().is_none());
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_limits(expected, input, projection, |limits| {
-            value.serialize_specified_with_limits(limits)
+            value.serialize_specified(limits)
         });
         assert_eq!(value, before);
         let reparsed = outline(expected);
@@ -222,9 +231,12 @@ fn ambiguous_parsed_auto_populates_both_semantic_fields_without_computation() {
         let before = value.clone();
         assert_eq!(value.style(), Some(CssOutlineStyle::Auto));
         assert_eq!(value.color(), Some(&CssOutlineColor::Auto));
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_limits(expected, nodes, nodes, |limits| {
-            value.serialize_specified_with_limits(limits)
+            value.serialize_specified(limits)
         });
         assert_eq!(value, before);
     }
@@ -249,7 +261,7 @@ fn explicit_alternatives_assign_auto_to_the_available_semantic_slot() {
             Some([255, 0, 0, 255])
         );
         assert_eq!(
-            value.serialize_specified().unwrap(),
+            value.serialize_specified(Default::default()).unwrap(),
             if value.width().is_some() {
                 "2px auto red"
             } else {
@@ -271,7 +283,7 @@ fn explicit_alternatives_assign_auto_to_the_available_semantic_slot() {
         assert_eq!(value.style(), Some(CssOutlineStyle::Solid));
         assert_eq!(value.color(), Some(&CssOutlineColor::Auto));
         assert_eq!(
-            value.serialize_specified().unwrap(),
+            value.serialize_specified(Default::default()).unwrap(),
             if value.width().is_some() {
                 "2px solid auto"
             } else {
@@ -289,9 +301,12 @@ fn explicit_initial_none_with_auto_color_does_not_gain_an_auto_style() {
         Some(CssOutlineColor::Auto),
     )
     .unwrap();
-    assert_eq!(value.serialize_specified().unwrap(), "none auto");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "none auto"
+    );
     assert_limits("none auto", 3, 3, |limits| {
-        value.serialize_specified_with_limits(limits)
+        value.serialize_specified(limits)
     });
     for source in ["none auto", "auto none"] {
         let parsed = outline(source);
@@ -340,15 +355,9 @@ fn parsed_shorthand_retains_lexical_components_importance_and_both_numeric_origi
         (Limits::new(65_536, 0, 1_048_576), Kind::ProjectionNodeLimit),
         (Limits::new(65_536, 262_144, 0), Kind::ByteLimit),
     ] {
+        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
         assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            kind
-        );
-        assert_eq!(
-            value.serialize_specified().unwrap(),
+            value.serialize_specified(Default::default()).unwrap(),
             "calc(3px) solid rgb(5, 0, 0)"
         );
     }
@@ -377,7 +386,13 @@ fn parsed_auto_fields_keep_the_original_escaped_value_and_neighbors() {
     assert_eq!(wrapper.as_css(), r"2px \61 uto");
     assert_eq!(wrapper.value().style(), Some(CssOutlineStyle::Auto));
     assert_eq!(wrapper.value().color(), Some(&CssOutlineColor::Auto));
-    assert_eq!(wrapper.value().serialize_specified().unwrap(), "2px auto");
+    assert_eq!(
+        wrapper
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "2px auto"
+    );
     assert_eq!(declaration.importance(), CssImportance::Important);
     assert_eq!(declaration.parsed_name().unwrap().source().as_str(), source);
     assert_eq!(

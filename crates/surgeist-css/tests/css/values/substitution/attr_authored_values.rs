@@ -101,6 +101,7 @@ fn strict_fallback_separators_apply_to_outer_stream_not_nested_functions() {
 fn attribute_functions_keep_property_and_query_contexts_separate() {
     let valid_style = CssContainerCondition::try_from_components(
         parse_component_values("style(--x:attr(foo))").unwrap(),
+        Default::default(),
     )
     .unwrap();
     assert!(matches!(
@@ -109,6 +110,7 @@ fn attribute_functions_keep_property_and_query_contexts_separate() {
     ));
     let raw_style = CssContainerCondition::try_from_components(
         parse_component_values("style(--x:attr())").unwrap(),
+        Default::default(),
     )
     .unwrap();
     assert!(matches!(
@@ -118,6 +120,7 @@ fn attribute_functions_keep_property_and_query_contexts_separate() {
 
     let width = CssContainerCondition::try_from_components(
         parse_component_values("(width:attr(foo))").unwrap(),
+        Default::default(),
     )
     .unwrap();
     assert!(matches!(
@@ -154,16 +157,19 @@ fn nested_decoded_syntax_reports_the_original_outer_string_origin() {
         .items()[0]
         .clone();
     let outer_origin = outer_string.origin().clone();
-    let arguments = CssComponentValues::try_new(vec![
-        CssComponentValue::try_ident("foo").unwrap(),
-        CssComponentValue::try_token(" ").unwrap(),
-        outer_string,
-    ])
+    let arguments = CssComponentValues::try_new(
+        vec![
+            CssComponentValue::try_ident("foo").unwrap(),
+            CssComponentValue::try_token(" ").unwrap(),
+            outer_string,
+        ],
+        Default::default(),
+    )
     .unwrap();
     let function = CssComponentValue::try_function("attr", arguments).unwrap();
-    let value = CssComponentValues::try_new(vec![function]).unwrap();
+    let value = CssComponentValues::try_new(vec![function], Default::default()).unwrap();
     assert_eq!(
-        value.serialize().unwrap().as_css(),
+        value.serialize_tokens(Default::default()).unwrap().as_css(),
         format!("attr(foo \"{decoded}\")")
     );
     let error = parse_property_value(

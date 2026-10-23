@@ -231,8 +231,14 @@ fn memberships_and_resets() {
     else {
         panic!("typed contained intrinsic height")
     };
-    assert_eq!(width.serialize_specified().unwrap(), "auto 5px");
-    assert_eq!(height.serialize_specified().unwrap(), "none");
+    assert_eq!(
+        width.serialize_specified(Default::default()).unwrap(),
+        "auto 5px"
+    );
+    assert_eq!(
+        height.serialize_specified(Default::default()).unwrap(),
+        "none"
+    );
     let CssPropertyKindRef::UniversalReset(meta) = P::All.metadata().unwrap().kind() else {
         panic!("universal reset")
     };
@@ -290,13 +296,19 @@ fn memberships_and_resets() {
         else {
             panic!("effective rows");
         };
-        assert_eq!(rows.serialize_specified().unwrap(), "[top] auto [end]");
+        assert_eq!(
+            rows.serialize_specified(Default::default()).unwrap(),
+            "[top] auto [end]"
+        );
         let CssContributionValueRef::Ordinary(CssLonghandValueRef::GridTemplateColumns(columns)) =
             values.items()[1].value()
         else {
             panic!("effective columns");
         };
-        assert_eq!(columns.serialize_specified().unwrap(), "1px");
+        assert_eq!(
+            columns.serialize_specified(Default::default()).unwrap(),
+            "1px"
+        );
     }
     println!("terminal membership, omissions, reset-only values and all exclusions: ok");
 }
@@ -392,7 +404,7 @@ fn grammar_identity_and_reentry() {
             value
                 .replacement_components()
                 .unwrap()
-                .serialize()
+                .serialize_tokens(Default::default())
                 .unwrap()
                 .as_css(),
             "90deg"
@@ -411,10 +423,13 @@ fn grammar_identity_and_reentry() {
             .reenter(replacement)
             .is_err()
     );
-    let separate_tokens = CssComponentValues::try_new(vec![
-        CssComponentValue::try_token("90").unwrap(),
-        CssComponentValue::try_token("deg").unwrap(),
-    ])
+    let separate_tokens = CssComponentValues::try_new(
+        vec![
+            CssComponentValue::try_token("90").unwrap(),
+            CssComponentValue::try_token("deg").unwrap(),
+        ],
+        Default::default(),
+    )
     .unwrap();
     assert!(
         parse_property_value_for_grammar(legacy, separate_tokens.clone(), CssImportance::Normal)
@@ -448,9 +463,11 @@ fn construction_provenance_and_normalization() {
         assert!(value.source().same_occurrence(old));
         assert_eq!(value.source().parsed_name(), old.parsed_name());
     }
-    let components =
-        CssComponentValues::try_new(vec![CssComponentValue::try_dimension("90", "deg").unwrap()])
-            .unwrap();
+    let components = CssComponentValues::try_new(
+        vec![CssComponentValue::try_dimension("90", "deg").unwrap()],
+        Default::default(),
+    )
+    .unwrap();
     let built = parse_property_value_for_grammar(
         grammar("glyph-orientation-vertical"),
         components,

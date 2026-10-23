@@ -78,7 +78,7 @@ fn assert_case(
         assert_fields(&color, space, channels, alpha);
         let before = color.clone();
         assert_eq!(
-            color.to_specified_css().unwrap(),
+            color.serialize_specified(Default::default()).unwrap(),
             format!("color({canonical} {projected})"),
             "{text}"
         );
@@ -156,15 +156,15 @@ fn xyz_is_the_d65_alias_and_d50_remains_distinct() {
     );
     // Full authored equality includes provenance; semantic space identity does not.
     assert_eq!(
-        alias.to_specified_css().unwrap(),
+        alias.serialize_specified(Default::default()).unwrap(),
         "color(xyz-d65 0.1 0.2 0.3)"
     );
     assert_eq!(
-        d65.to_specified_css().unwrap(),
+        d65.serialize_specified(Default::default()).unwrap(),
         "color(xyz-d65 0.1 0.2 0.3)"
     );
     assert_eq!(
-        d50.to_specified_css().unwrap(),
+        d50.serialize_specified(Default::default()).unwrap(),
         "color(xyz-d50 0.1 0.2 0.3)"
     );
 }
@@ -177,7 +177,7 @@ fn function_space_and_missing_keywords_accept_ascii_case_and_escapes() {
             let color = parsed(&format!("{function}({spelling} NoNe 50% -2 / NONE)"));
             assert_fields(&color, space, ["none", "50%", "-2"], Some("none"));
             assert_eq!(
-                color.to_specified_css().unwrap(),
+                color.serialize_specified(Default::default()).unwrap(),
                 format!("color({canonical} none 0.5 -2 / none)")
             );
         }
@@ -242,7 +242,10 @@ fn malformed_predefined_forms_recover_only_the_color_declaration() {
     let custom = parsed("color(--Profile 1 2 3)");
     assert!(custom.custom_value().is_some());
     assert!(custom.predefined_value().is_none());
-    assert_eq!(custom.to_specified_css().unwrap(), "color(--Profile 1 2 3)");
+    assert_eq!(
+        custom.serialize_specified(Default::default()).unwrap(),
+        "color(--Profile 1 2 3)"
+    );
 }
 
 #[test]
@@ -263,16 +266,22 @@ fn checked_component_front_doors_exclude_dimensions_not_in_the_grammar() {
     }
     for text in ["calc(1px)", "calc(1deg)", "calc(1s)"] {
         assert_eq!(
-            CssNumberCalculation::try_from_components(parse_component_values(text).unwrap())
-                .unwrap_err()
-                .kind(),
+            CssNumberCalculation::try_from_components(
+                parse_component_values(text).unwrap(),
+                Default::default()
+            )
+            .unwrap_err()
+            .kind(),
             &CssNumericConstructionErrorKind::RootDomainMismatch,
             "{text}"
         );
         assert_eq!(
-            CssPercentageCalculation::try_from_components(parse_component_values(text).unwrap())
-                .unwrap_err()
-                .kind(),
+            CssPercentageCalculation::try_from_components(
+                parse_component_values(text).unwrap(),
+                Default::default()
+            )
+            .unwrap_err()
+            .kind(),
             &CssNumericConstructionErrorKind::RootDomainMismatch,
             "{text}"
         );

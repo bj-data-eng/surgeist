@@ -1,8 +1,8 @@
 //! Literal expectations from CSSOM's selected 2026 CSSKeyframesRule branch.
 
 use surgeist_css::{
-    CssRule, CssRuleCssomSerializationErrorKind, CssSpecifiedValueSerializationErrorKind,
-    CssSpecifiedValueSerializationLimits, parse_sheet,
+    CssRule, CssRuleCssomSerializationErrorKind, CssSerializationLimits,
+    CssSpecifiedValueSerializationErrorKind, parse_sheet,
 };
 
 fn rule(source: &str) -> CssRule {
@@ -18,11 +18,11 @@ fn rule(source: &str) -> CssRule {
 fn decoded_nonreserved_quoted_name_uses_identifier_output() {
     let value = rule("@keyframes \"fade in\" {}");
     assert_eq!(
-        value.serialize_cssom().unwrap(),
+        value.serialize_cssom(Default::default()).unwrap(),
         "@keyframes fade\\ in { \n}"
     );
     assert_eq!(
-        value.to_specified_css().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         "@keyframes \"fade in\" { }"
     );
 }
@@ -38,7 +38,11 @@ fn selected_wrapper_keeps_space_before_first_indented_child_and_terminal_lf() {
         ),
     ] {
         let value = rule(source);
-        assert_eq!(value.serialize_cssom().unwrap(), expected, "{source}");
+        assert_eq!(
+            value.serialize_cssom(Default::default()).unwrap(),
+            expected,
+            "{source}"
+        );
     }
 }
 
@@ -56,7 +60,7 @@ fn reserved_decoded_names_keep_string_output() {
     ] {
         let value = rule(&format!("@keyframes \"{name}\" {{}}"));
         assert_eq!(
-            value.serialize_cssom().unwrap(),
+            value.serialize_cssom(Default::default()).unwrap(),
             format!("@keyframes \"{name}\" {{ \n}}")
         );
     }
@@ -74,14 +78,11 @@ fn selected_output_byte_failure_is_atomic_and_retry_keeps_original_occurrences()
     let saved = declaration.clone();
     let value = &report.syntax().rules()[0];
     let expected = "@keyframes fade\\ in {   0% { opacity: 0; }\n}";
-    assert_eq!(value.serialize_cssom().unwrap(), expected);
-    let adequate = CssSpecifiedValueSerializationLimits::new(100_000, 100_000, expected.len());
-    assert_eq!(
-        value.serialize_cssom_with_limits(adequate).unwrap(),
-        expected
-    );
+    assert_eq!(value.serialize_cssom(Default::default()).unwrap(), expected);
+    let adequate = CssSerializationLimits::new(100_000, 100_000, expected.len());
+    assert_eq!(value.serialize_cssom(adequate).unwrap(), expected);
     let failure = value
-        .serialize_cssom_with_limits(CssSpecifiedValueSerializationLimits::new(
+        .serialize_cssom(CssSerializationLimits::new(
             100_000,
             100_000,
             expected.len() - 1,
@@ -95,8 +96,5 @@ fn selected_output_byte_failure_is_atomic_and_retry_keeps_original_occurrences()
     );
     assert_eq!(report, before);
     assert!(declaration.source().same_occurrence(saved.source()));
-    assert_eq!(
-        value.serialize_cssom_with_limits(adequate).unwrap(),
-        expected
-    );
+    assert_eq!(value.serialize_cssom(adequate).unwrap(), expected);
 }

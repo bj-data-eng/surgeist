@@ -33,77 +33,18 @@ impl From<CssComponentValueError> for CssMediaConstructionError {
         Self::Component(error)
     }
 }
+/// A lexical media emission failure, before its public classification.
+///
+/// Construction maps it to its own errors; public serializers map it to
+/// [`CssSerializationError`] through [`media_error`].
 #[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssMediaSerializationError {
+pub(crate) enum MediaSerializationFailure {
     Component(CssComponentValueError),
     RecoveredNever { origin: CssValueOrigin },
 }
-impl CssMediaSerializationError {
-    pub fn origin(&self) -> &CssValueOrigin {
-        match self {
-            Self::Component(error) => error.origin(),
-            Self::RecoveredNever { origin } => origin,
-        }
-    }
-}
-impl fmt::Display for CssMediaSerializationError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "media serialization failed: {self:?}")
-    }
-}
-impl std::error::Error for CssMediaSerializationError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::Component(error) => Some(error),
-            Self::RecoveredNever { .. } => None,
-        }
-    }
-}
-impl From<CssComponentValueError> for CssMediaSerializationError {
+impl From<CssComponentValueError> for MediaSerializationFailure {
     fn from(error: CssComponentValueError) -> Self {
         Self::Component(error)
-    }
-}
-
-/// A canonical CSSOM component failure or exhausted cumulative resource.
-/// Ignored grammar members have defined `not all` output and are not failures.
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssMediaCssomSerializationError {
-    Media(CssMediaSerializationError),
-    Resource {
-        error: CssSpecifiedValueSerializationError,
-        origin: CssValueOrigin,
-    },
-}
-
-impl CssMediaCssomSerializationError {
-    /// Returns original source or explicit programmatic provenance.
-    #[must_use]
-    pub fn origin(&self) -> &CssValueOrigin {
-        match self {
-            Self::Media(error) => error.origin(),
-            Self::Resource { origin, .. } => origin,
-        }
-    }
-}
-
-impl fmt::Display for CssMediaCssomSerializationError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Media(error) => error.fmt(formatter),
-            Self::Resource { error, .. } => error.fmt(formatter),
-        }
-    }
-}
-
-impl std::error::Error for CssMediaCssomSerializationError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        Some(match self {
-            Self::Media(error) => error,
-            Self::Resource { error, .. } => error,
-        })
     }
 }
 
@@ -174,13 +115,26 @@ impl CssUnknownMediaFeature {
             MediaFeatureShape::Range(range) => CssUnknownMediaFeatureRef::Range(range),
         }
     }
-    pub fn serialize(&self) -> Result<CssSerializedValue, CssMediaSerializationError> {
+    /// Serializes authored media syntax as tokens with their original origins.
+    ///
+    /// A recovered member fails the whole operation. `limits.max_css_bytes()`
+    /// caps the output; the other component limits do not apply.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CssSerializationError`] for a recovered member or an exhausted
+    /// byte limit; no partial output is returned.
+    pub fn serialize_tokens(
+        &self,
+        limits: CssComponentValueLimits,
+    ) -> Result<CssSerializedValue, CssSerializationError> {
         let origin = || self.component().origin().clone();
         with_media_stack(component_depth(self.component()) >= 64, origin, || {
-            let mut out = CssCanonicalBuilder::new(usize::MAX);
+            let mut out = CssCanonicalBuilder::new(limits.max_css_bytes());
             emit_feature(&mut out, &self.syntax, &[], None, MediaOutput::Authored)?;
             Ok(out.finish()?)
         })
+        .map_err(media_error)
     }
 }
 #[derive(Clone, Debug, PartialEq)]
@@ -207,56 +161,58 @@ pub(crate) const fn parsed_position(origin: &CssValueOrigin) -> Option<CssSource
 impl CssMediaQuery {
     pub fn try_from_components(
         values: CssComponentValues,
-    ) -> Result<Self, CssMediaConstructionError> {
-        Self::try_from_components_with_limits(values, CssComponentValueLimits::default())
-    }
-    pub fn try_from_components_with_limits(
-        values: CssComponentValues,
         limits: CssComponentValueLimits,
     ) -> Result<Self, CssMediaConstructionError> {
         crate::parser::construct_media_query(values, limits)
     }
-    pub fn serialize(&self) -> Result<CssSerializedValue, CssMediaSerializationError> {
+    /// Serializes authored media syntax as tokens with their original origins.
+    ///
+    /// A recovered member fails the whole operation. `limits.max_css_bytes()`
+    /// caps the output; the other component limits do not apply.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CssSerializationError`] for a recovered member or an exhausted
+    /// byte limit; no partial output is returned.
+    pub fn serialize_tokens(
+        &self,
+        limits: CssComponentValueLimits,
+    ) -> Result<CssSerializedValue, CssSerializationError> {
         with_media_stack(
             query_is_deep(self),
             || self.origin().clone(),
             || {
-                let mut out = CssCanonicalBuilder::new(usize::MAX);
+                let mut out = CssCanonicalBuilder::new(limits.max_css_bytes());
                 emit_query(&mut out, self)?;
                 Ok(out.finish()?)
             },
         )
+        .map_err(media_error)
     }
 
     /// Serializes canonical CSSOM text, projecting an ignored grammar member to
     /// `not all`. Authored syntax, diagnostics and origins remain unchanged.
     /// Valid unknown and opaque syntax is retained without host evaluation.
-    pub fn serialize_cssom(&self) -> Result<CssSerializedValue, CssMediaCssomSerializationError> {
-        self.serialize_cssom_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
+    ///
     /// Shares the specified-value input, projection and generated-byte policy.
     /// Queries, conditions and their backing components charge one node each;
     /// recovery additionally charges two projected keyword nodes.
-    pub fn serialize_cssom_with_limits(
+    pub fn serialize_cssom(
         &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<CssSerializedValue, CssMediaCssomSerializationError> {
+        limits: CssSerializationLimits,
+    ) -> Result<CssSerializedValue, CssSerializationError> {
         self.capture_cssom(&mut SpecifiedSerializationContext::new(limits))
     }
 
     /// Compares canonical CSSOM bytes case-sensitively, without media evaluation
     /// or treating authored model equality as CSSOM equality.
-    pub fn cssom_equals(&self, other: &Self) -> Result<bool, CssMediaCssomSerializationError> {
-        self.cssom_equals_with_limits(other, CssSpecifiedValueSerializationLimits::default())
-    }
-
+    ///
     /// Both serializations consume one cumulative budget, including their bytes.
-    pub fn cssom_equals_with_limits(
+    pub fn cssom_equals(
         &self,
         other: &Self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<bool, CssMediaCssomSerializationError> {
+        limits: CssSerializationLimits,
+    ) -> Result<bool, CssSerializationError> {
         let mut context = SpecifiedSerializationContext::new(limits);
         let first = self.capture_cssom(&mut context)?;
         let mut bytes = String::new();
@@ -272,7 +228,7 @@ impl CssMediaQuery {
     pub(crate) fn capture_cssom(
         &self,
         context: &mut SpecifiedSerializationContext,
-    ) -> Result<CssSerializedValue, CssMediaCssomSerializationError> {
+    ) -> Result<CssSerializedValue, CssSerializationError> {
         charge_query(context, self)?;
         with_media_stack(
             query_is_deep(self),
@@ -283,35 +239,55 @@ impl CssMediaQuery {
                 Ok(out.finish()?)
             },
         )
-        .map_err(bounded_error)
+        .map_err(media_error)
     }
 }
 impl CssMediaCondition {
     pub fn try_from_components(
         values: CssComponentValues,
-    ) -> Result<Self, CssMediaConstructionError> {
-        Self::try_from_components_with_limits(values, CssComponentValueLimits::default())
-    }
-    pub fn try_from_components_with_limits(
-        values: CssComponentValues,
         limits: CssComponentValueLimits,
     ) -> Result<Self, CssMediaConstructionError> {
         crate::parser::construct_media_condition(values, limits)
     }
-    pub fn serialize(&self) -> Result<CssSerializedValue, CssMediaSerializationError> {
+    /// Serializes authored media syntax as tokens with their original origins.
+    ///
+    /// A recovered member fails the whole operation. `limits.max_css_bytes()`
+    /// caps the output; the other component limits do not apply.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CssSerializationError`] for a recovered member or an exhausted
+    /// byte limit; no partial output is returned.
+    pub fn serialize_tokens(
+        &self,
+        limits: CssComponentValueLimits,
+    ) -> Result<CssSerializedValue, CssSerializationError> {
         with_media_stack(
             condition_is_deep(self),
             || self.origin().clone(),
             || {
-                let mut out = CssCanonicalBuilder::new(usize::MAX);
+                let mut out = CssCanonicalBuilder::new(limits.max_css_bytes());
                 emit_condition(&mut out, self)?;
                 Ok(out.finish()?)
             },
         )
+        .map_err(media_error)
     }
 }
 impl CssMediaQueryList {
-    pub fn serialize(&self) -> Result<CssSerializedValue, CssMediaSerializationError> {
+    /// Serializes authored media syntax as tokens with their original origins.
+    ///
+    /// A recovered member fails the whole operation. `limits.max_css_bytes()`
+    /// caps the output; the other component limits do not apply.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CssSerializationError`] for a recovered member or an exhausted
+    /// byte limit; no partial output is returned.
+    pub fn serialize_tokens(
+        &self,
+        limits: CssComponentValueLimits,
+    ) -> Result<CssSerializedValue, CssSerializationError> {
         let origin = || deep_list_origin(self);
         with_media_stack(self.queries().iter().any(query_is_deep), origin, || {
             if let Some(CssMediaQuery::Never(value)) = self
@@ -319,44 +295,37 @@ impl CssMediaQueryList {
                 .iter()
                 .find(|q| matches!(q, CssMediaQuery::Never(_)))
             {
-                return Err(CssMediaSerializationError::RecoveredNever {
+                return Err(MediaSerializationFailure::RecoveredNever {
                     origin: value.origin().clone(),
                 });
             }
-            let mut out = CssCanonicalBuilder::new(usize::MAX);
+            let mut out = CssCanonicalBuilder::new(limits.max_css_bytes());
             emit_list(&mut out, self, MediaOutput::Authored)?;
             Ok(out.finish()?)
         })
+        .map_err(media_error)
     }
 
     /// Preserves list order and projects each ignored grammar member to `not all`.
     /// The empty list emits empty text. No diagnostics or authored nodes are removed.
-    pub fn serialize_cssom(&self) -> Result<CssSerializedValue, CssMediaCssomSerializationError> {
-        self.serialize_cssom_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
+    ///
     /// Charges the list and all members to one cumulative resource policy.
-    pub fn serialize_cssom_with_limits(
+    pub fn serialize_cssom(
         &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<CssSerializedValue, CssMediaCssomSerializationError> {
+        limits: CssSerializationLimits,
+    ) -> Result<CssSerializedValue, CssSerializationError> {
         self.capture_cssom(&mut SpecifiedSerializationContext::new(limits))
     }
 
     /// Returns separate canonical member captures in list order under one budget.
     /// Duplicates and recovered members remain present; no separators are emitted.
-    pub fn serialize_cssom_members(
-        &self,
-    ) -> Result<Vec<CssSerializedValue>, CssMediaCssomSerializationError> {
-        self.serialize_cssom_members_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
+    ///
     /// Charges the collection aggregate, every query projection and all captured
     /// bytes cumulatively. Failure returns no partial collection.
-    pub fn serialize_cssom_members_with_limits(
+    pub fn serialize_cssom_members(
         &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<Vec<CssSerializedValue>, CssMediaCssomSerializationError> {
+        limits: CssSerializationLimits,
+    ) -> Result<Vec<CssSerializedValue>, CssSerializationError> {
         let mut context = SpecifiedSerializationContext::new(limits);
         charge_node(&mut context, &CssValueOrigin::Programmatic)?;
         let mut captures = Vec::new();
@@ -367,7 +336,7 @@ impl CssMediaQueryList {
                 .map_err(|error| resource(error, query.origin()))?;
             captures.try_reserve(1).map_err(|_| {
                 resource(
-                    CssSpecifiedValueSerializationError::new(
+                    CssSerializationError::new(
                         CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
                     ),
                     query.origin(),
@@ -382,7 +351,7 @@ impl CssMediaQueryList {
     pub(crate) fn charge_cssom(
         &self,
         context: &mut SpecifiedSerializationContext,
-    ) -> Result<(), CssMediaCssomSerializationError> {
+    ) -> Result<(), CssSerializationError> {
         charge_node(context, &CssValueOrigin::Programmatic)?;
         for query in self.queries() {
             charge_query(context, query)?;
@@ -394,7 +363,7 @@ impl CssMediaQueryList {
     pub(crate) fn capture_cssom(
         &self,
         context: &mut SpecifiedSerializationContext,
-    ) -> Result<CssSerializedValue, CssMediaCssomSerializationError> {
+    ) -> Result<CssSerializedValue, CssSerializationError> {
         self.capture_with_mode(context, MediaOutput::Cssom)
     }
 
@@ -403,7 +372,7 @@ impl CssMediaQueryList {
     pub(crate) fn capture_projected(
         &self,
         context: &mut SpecifiedSerializationContext,
-    ) -> Result<CssSerializedValue, CssMediaCssomSerializationError> {
+    ) -> Result<CssSerializedValue, CssSerializationError> {
         self.capture_with_mode(context, MediaOutput::Projected)
     }
 
@@ -411,12 +380,12 @@ impl CssMediaQueryList {
         &self,
         context: &mut SpecifiedSerializationContext,
         mode: MediaOutput,
-    ) -> Result<CssSerializedValue, CssMediaCssomSerializationError> {
+    ) -> Result<CssSerializedValue, CssSerializationError> {
         self.charge_cssom(context)?;
         if context.output_suppressed() {
             return CssCanonicalBuilder::new(0)
                 .finish()
-                .map_err(|error| bounded_error(error.into()));
+                .map_err(|error| media_error(error.into()));
         }
         let origin = || deep_list_origin(self);
         with_media_stack(self.queries().iter().any(query_is_deep), origin, || {
@@ -424,7 +393,7 @@ impl CssMediaQueryList {
             emit_list(&mut out, self, mode)?;
             Ok(out.finish()?)
         })
-        .map_err(bounded_error)
+        .map_err(media_error)
     }
 }
 
@@ -443,7 +412,7 @@ fn emit_list(
     out: &mut CssCanonicalBuilder,
     list: &CssMediaQueryList,
     mode: MediaOutput,
-) -> Result<(), CssMediaSerializationError> {
+) -> Result<(), MediaSerializationFailure> {
     for (index, query) in list.queries().iter().enumerate() {
         if index > 0 {
             let origin = list
@@ -466,14 +435,14 @@ fn space(
 pub(crate) fn emit_query(
     out: &mut CssCanonicalBuilder,
     query: &CssMediaQuery,
-) -> Result<(), CssMediaSerializationError> {
+) -> Result<(), MediaSerializationFailure> {
     emit_query_with_mode(out, query, MediaOutput::Authored)
 }
 
 pub(crate) fn emit_query_cssom(
     out: &mut CssCanonicalBuilder,
     query: &CssMediaQuery,
-) -> Result<(), CssMediaSerializationError> {
+) -> Result<(), MediaSerializationFailure> {
     emit_query_with_mode(out, query, MediaOutput::Cssom)
 }
 
@@ -482,7 +451,7 @@ pub(crate) fn emit_query_cssom(
 pub(crate) fn emit_query_projected(
     out: &mut CssCanonicalBuilder,
     query: &CssMediaQuery,
-) -> Result<(), CssMediaSerializationError> {
+) -> Result<(), MediaSerializationFailure> {
     emit_query_with_mode(out, query, MediaOutput::Projected)
 }
 
@@ -490,11 +459,11 @@ fn emit_query_with_mode(
     out: &mut CssCanonicalBuilder,
     query: &CssMediaQuery,
     mode: MediaOutput,
-) -> Result<(), CssMediaSerializationError> {
+) -> Result<(), MediaSerializationFailure> {
     match query {
         CssMediaQuery::Never(value) => {
             if matches!(mode, MediaOutput::Authored) {
-                return Err(CssMediaSerializationError::RecoveredNever {
+                return Err(MediaSerializationFailure::RecoveredNever {
                     origin: value.origin().clone(),
                 });
             }
@@ -567,7 +536,7 @@ fn typed_query_emits_type(
 fn emit_condition(
     out: &mut CssCanonicalBuilder,
     condition: &CssMediaCondition,
-) -> Result<(), CssMediaSerializationError> {
+) -> Result<(), MediaSerializationFailure> {
     emit_condition_with_mode(out, condition, MediaOutput::Authored)
 }
 
@@ -575,7 +544,7 @@ fn emit_condition_with_mode(
     out: &mut CssCanonicalBuilder,
     condition: &CssMediaCondition,
     mode: MediaOutput,
-) -> Result<(), CssMediaSerializationError> {
+) -> Result<(), MediaSerializationFailure> {
     match condition.kind() {
         CssMediaConditionKind::CustomMediaReference(value) => {
             out.push_component(value.component())?
@@ -835,42 +804,44 @@ fn emit_feature(
     out.push_grammar(CssCanonicalToken::CloseParen, closing)
 }
 
-fn resource(
-    error: CssSpecifiedValueSerializationError,
-    origin: &CssValueOrigin,
-) -> CssMediaCssomSerializationError {
-    CssMediaCssomSerializationError::Resource {
-        error,
-        origin: origin.clone(),
-    }
+fn resource(error: CssSerializationError, origin: &CssValueOrigin) -> CssSerializationError {
+    error.at_origin(origin)
 }
 
-pub(crate) fn bounded_error(error: CssMediaSerializationError) -> CssMediaCssomSerializationError {
-    if let CssMediaSerializationError::Component(component) = &error {
-        let kind = match component.kind() {
-            CssComponentValueErrorKind::ByteLimit => {
-                CssSpecifiedValueSerializationErrorKind::ByteLimit
-            }
-            CssComponentValueErrorKind::CapacityOverflow => {
-                CssSpecifiedValueSerializationErrorKind::CapacityOverflow
-            }
-            _ => return CssMediaCssomSerializationError::Media(error),
-        };
-        return resource(
-            CssSpecifiedValueSerializationError::new(kind),
-            component.origin(),
-        );
+/// Classifies a media emission failure. Exhausted bytes and capacity are
+/// resource failures at the component's origin; any other component failure
+/// and a recovered member are unserializable boundaries.
+pub(crate) fn media_error(error: MediaSerializationFailure) -> CssSerializationError {
+    match error {
+        MediaSerializationFailure::Component(component) => {
+            let kind = match component.kind() {
+                CssComponentValueErrorKind::ByteLimit => {
+                    CssSpecifiedValueSerializationErrorKind::ByteLimit
+                }
+                CssComponentValueErrorKind::CapacityOverflow => {
+                    CssSpecifiedValueSerializationErrorKind::CapacityOverflow
+                }
+                _ => {
+                    return CssSerializationError::component(
+                        CssSpecifiedValueSerializationErrorKind::UnserializableBoundary,
+                        component,
+                    );
+                }
+            };
+            resource(CssSerializationError::new(kind), component.origin())
+        }
+        MediaSerializationFailure::RecoveredNever { origin } => {
+            CssSerializationError::recovered_media(&origin)
+        }
     }
-    CssMediaCssomSerializationError::Media(error)
 }
 
 fn charge_node(
     context: &mut SpecifiedSerializationContext,
     origin: &CssValueOrigin,
-) -> Result<(), CssMediaCssomSerializationError> {
+) -> Result<(), CssSerializationError> {
     context
-        .charge_input(1)
-        .and_then(|()| context.charge_projection(1))
+        .charge_nodes(1)
         .map_err(|error| resource(error, origin))
 }
 
@@ -880,12 +851,10 @@ fn check_identifier_size(
     context: &SpecifiedSerializationContext,
     name: &str,
     origin: &CssValueOrigin,
-) -> Result<(), CssMediaCssomSerializationError> {
+) -> Result<(), CssSerializationError> {
     if !context.output_suppressed() && name.len() > context.remaining_bytes() {
         return Err(resource(
-            CssSpecifiedValueSerializationError::new(
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
-            ),
+            CssSerializationError::new(CssSpecifiedValueSerializationErrorKind::ByteLimit),
             origin,
         ));
     }
@@ -895,7 +864,7 @@ fn check_identifier_size(
 fn charge_query(
     context: &mut SpecifiedSerializationContext,
     query: &CssMediaQuery,
-) -> Result<(), CssMediaCssomSerializationError> {
+) -> Result<(), CssSerializationError> {
     enum Visit<'a> {
         Condition(&'a CssMediaCondition),
         Conditions(&'a [CssMediaCondition]),
@@ -1024,7 +993,7 @@ pub(crate) fn empty_media_member_error(
 pub(crate) fn check_canonical_limit(
     query: &CssMediaQuery,
     max_bytes: usize,
-) -> Result<(), CssMediaSerializationError> {
+) -> Result<(), MediaSerializationFailure> {
     let mut out = CssCanonicalBuilder::new(max_bytes);
     emit_query(&mut out, query)?;
     out.finish()?;

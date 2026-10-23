@@ -229,7 +229,7 @@ fn relative_payloads_reject_pseudo_elements_bad_identifiers_and_excess_function_
     let mut selector = CssSelector::Class("leaf".into());
     for _ in 0..256 {
         selector = CssSelector::PseudoClass(CssPseudoClass::Is(
-            CssPseudoSelectorList::try_new(vec![selector]).unwrap(),
+            CssPseudoSelectorList::try_new(vec![selector], Default::default()).unwrap(),
         ));
     }
     assert!(
@@ -241,7 +241,7 @@ fn relative_payloads_reject_pseudo_elements_bad_identifiers_and_excess_function_
         .is_ok()
     );
     selector = CssSelector::PseudoClass(CssPseudoClass::Is(
-        CssPseudoSelectorList::try_new(vec![selector]).unwrap(),
+        CssPseudoSelectorList::try_new(vec![selector], Default::default()).unwrap(),
     ));
     assert_eq!(
         new_scope(

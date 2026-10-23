@@ -5,20 +5,13 @@
 use crate::css::support::authored_property::{checked, parsed};
 use surgeist_css::*;
 
-type Limits = CssSpecifiedValueSerializationLimits;
+type Limits = CssSerializationLimits;
 type Kind = CssSpecifiedValueSerializationErrorKind;
 
-fn serialize(
-    value: &CssDeclaration,
-    limits: Limits,
-) -> Result<String, CssSpecifiedValueSerializationError> {
+fn serialize(value: &CssDeclaration, limits: Limits) -> Result<String, CssSerializationError> {
     match value.known().unwrap().property_value().unwrap() {
-        CssKnownPropertyValueRef::GridTemplate(value) => {
-            value.value().serialize_specified_with_limits(limits)
-        }
-        CssKnownPropertyValueRef::Grid(value) => {
-            value.value().serialize_specified_with_limits(limits)
-        }
+        CssKnownPropertyValueRef::GridTemplate(value) => value.value().serialize_specified(limits),
+        CssKnownPropertyValueRef::Grid(value) => value.value().serialize_specified(limits),
         _ => panic!("aggregate"),
     }
 }
@@ -43,10 +36,22 @@ fn output(property: CssKnownProperty, text: &str, expected: &str) {
         checked(property, expected, true);
         match value.known().unwrap().property_value().unwrap() {
             CssKnownPropertyValueRef::GridTemplate(value) => {
-                assert_eq!(value.value().serialize_specified().unwrap(), expected)
+                assert_eq!(
+                    value
+                        .value()
+                        .serialize_specified(Default::default())
+                        .unwrap(),
+                    expected
+                )
             }
             CssKnownPropertyValueRef::Grid(value) => {
-                assert_eq!(value.value().serialize_specified().unwrap(), expected)
+                assert_eq!(
+                    value
+                        .value()
+                        .serialize_specified(Default::default())
+                        .unwrap(),
+                    expected
+                )
             }
             _ => unreachable!(),
         }
@@ -183,12 +188,12 @@ fn output_and_atomic_error_preserve_authored_numeric_origins() {
         CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit })
         if number.representation() == "1e-50" && unit == "px"));
     assert_eq!(
-        value.serialize_specified().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         "10px / auto-flow dense 0px"
     );
     assert_eq!(
         value
-            .serialize_specified_with_limits(Limits::new(100, 100, 1))
+            .serialize_specified(Limits::new(100, 100, 1))
             .unwrap_err()
             .kind(),
         Kind::ByteLimit

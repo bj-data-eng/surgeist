@@ -79,14 +79,9 @@ impl CssWhenMediaFeature {
     /// Checks the actual function and its single feature, without opaque fallback.
     pub fn try_from_component(
         component: CssComponentValue,
-    ) -> Result<Self, CssWhenConstructionError> {
-        Self::try_from_component_with_limits(component, CssComponentValueLimits::default())
-    }
-    pub fn try_from_component_with_limits(
-        component: CssComponentValue,
         limits: CssComponentValueLimits,
     ) -> Result<Self, CssWhenConstructionError> {
-        let values = CssComponentValues::try_new_with_limits(vec![component.clone()], limits)?;
+        let values = CssComponentValues::try_new(vec![component.clone()], limits)?;
         construct(values, |values| {
             reject_recovered(&values)?;
             crate::parser::construct_when_media_feature(component, limits)
@@ -216,11 +211,6 @@ impl CssWhenCondition {
     /// Checks the complete adopted algebra and its actual lexical input.
     pub fn try_from_components(
         values: CssComponentValues,
-    ) -> Result<Self, CssWhenConstructionError> {
-        Self::try_from_components_with_limits(values, CssComponentValueLimits::default())
-    }
-    pub fn try_from_components_with_limits(
-        values: CssComponentValues,
         limits: CssComponentValueLimits,
     ) -> Result<Self, CssWhenConstructionError> {
         Self::try_in_context(values, limits, CssParserContext::default())
@@ -237,13 +227,14 @@ impl CssWhenCondition {
         })
     }
     /// Preserves original spelling, trivia and every grouping pair.
-    pub fn serialize(&self) -> Result<CssSerializedValue, CssComponentValueError> {
-        self.serialize_with_limit(usize::MAX)
-    }
-    pub fn serialize_with_limit(
+    ///
+    /// `limits.max_css_bytes()` caps the output, including inserted syntax; the other component
+    /// limits do not apply.
+    pub fn serialize_tokens(
         &self,
-        max_css_bytes: usize,
+        limits: crate::CssComponentValueLimits,
     ) -> Result<CssSerializedValue, CssComponentValueError> {
+        let max_css_bytes = limits.max_css_bytes();
         let mut out = CssCanonicalBuilder::new(max_css_bytes);
         out.push_components(self.components())?;
         out.finish()
@@ -252,9 +243,8 @@ impl CssWhenCondition {
         &self,
         context: &mut crate::specified_serialization::SpecifiedSerializationContext,
         output: &mut String,
-    ) -> Result<(), CssSpecifiedValueSerializationError> {
-        context.charge_input(1)?;
-        context.charge_projection(1)?;
+    ) -> Result<(), CssSerializationError> {
+        context.charge_nodes(1)?;
         crate::component_values::charge_specified_components(context, self.components())?;
         if context.output_suppressed() {
             return Ok(());

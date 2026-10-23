@@ -464,12 +464,10 @@ impl CssomBatch {
     ) -> Result<CssomBlockTicket, CssomError> {
         self.apply(|this| {
             check_declarations(declarations.iter(), &this.limits)?;
-            let selected = projection(
-                CssSpecifiedDeclarationBlock::try_from_declarations_with_limits(
-                    &declarations,
-                    this.limits.css,
-                ),
-            )?;
+            let selected = projection(CssSpecifiedDeclarationBlock::try_from_declarations(
+                &declarations,
+                this.limits.css,
+            ))?;
             let id = this.staged.block_record(
                 CssomBlockData::Properties {
                     domain: CssomPropertyDomain::Ordinary,
@@ -504,14 +502,12 @@ impl CssomBatch {
         context: CssomInlineDeclarationContext,
     ) -> Result<CssomBlockTicket, CssomError> {
         self.apply(|this| {
-            let declarations = CssDeclarationList::try_new_with_limits(Vec::new(), this.limits.css)
+            let declarations = CssDeclarationList::try_new(Vec::new(), this.limits.css)
                 .map_err(CssomError::Value)?;
-            let selected = projection(
-                CssSpecifiedDeclarationBlock::try_from_declarations_with_limits(
-                    &declarations,
-                    this.limits.css,
-                ),
-            )?;
+            let selected = projection(CssSpecifiedDeclarationBlock::try_from_declarations(
+                &declarations,
+                this.limits.css,
+            ))?;
             let id = this.staged.block_record(
                 CssomBlockData::Properties {
                     domain: CssomPropertyDomain::Ordinary,
@@ -675,22 +671,16 @@ impl CssomBatch {
                 .collect::<Vec<_>>();
             let value = match domain {
                 CssomPropertyDomain::Ordinary => {
-                    CssSpecifiedDeclarationBlock::try_from_entries_with_limits(
-                        &entries,
-                        this.limits.css,
-                    )
+                    CssSpecifiedDeclarationBlock::try_from_entries(&entries, this.limits.css)
                 }
                 CssomPropertyDomain::Keyframe => {
-                    CssSpecifiedDeclarationBlock::try_from_keyframe_entries_with_limits(
+                    CssSpecifiedDeclarationBlock::try_from_keyframe_entries(
                         &entries,
                         this.limits.css,
                     )
                 }
                 CssomPropertyDomain::Margin => {
-                    CssSpecifiedDeclarationBlock::try_from_margin_entries_with_limits(
-                        &entries,
-                        this.limits.css,
-                    )
+                    CssSpecifiedDeclarationBlock::try_from_margin_entries(&entries, this.limits.css)
                 }
             }
             .map_err(CssomError::Declaration)?;

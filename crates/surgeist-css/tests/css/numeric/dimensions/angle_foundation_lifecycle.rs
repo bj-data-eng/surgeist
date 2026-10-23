@@ -82,10 +82,15 @@ fn precise_filter_and_backdrop_literals_round_text_without_changing_authored_uni
                 let authored = format!("hue-rotate({number}{unit})");
                 let expected = format!("hue-rotate({expected}{unit})");
                 let source = validated_declaration(property, &authored, CssImportance::Important);
-                assert_eq!(filter(&source).serialize_specified().unwrap(), expected);
+                assert_eq!(
+                    filter(&source)
+                        .serialize_specified(Default::default())
+                        .unwrap(),
+                    expected
+                );
                 assert_eq!(
                     filter(&checked(property, &authored))
-                        .serialize_specified()
+                        .serialize_specified(Default::default())
                         .unwrap(),
                     expected
                 );
@@ -120,7 +125,9 @@ fn huge_and_tiny_literal_dimensions_are_admitted_without_machine_float_limits() 
                 CssImportance::Important,
             );
             assert_eq!(
-                filter(&filter_value).serialize_specified().unwrap(),
+                filter(&filter_value)
+                    .serialize_specified(Default::default())
+                    .unwrap(),
                 format!("hue-rotate({decimal}{unit})")
             );
         }
@@ -202,7 +209,9 @@ fn permitted_consumers_accept_exact_number_zero_with_signed_and_large_exponent_s
             CssImportance::Important,
         );
         assert_eq!(
-            filter(&source).serialize_specified().unwrap(),
+            filter(&source)
+                .serialize_specified(Default::default())
+                .unwrap(),
             "hue-rotate(0)"
         );
         let source = validated_declaration(
@@ -211,7 +220,9 @@ fn permitted_consumers_accept_exact_number_zero_with_signed_and_large_exponent_s
             CssImportance::Important,
         );
         assert_eq!(
-            gradient(&source).serialize_specified().unwrap(),
+            gradient(&source)
+                .serialize_specified(Default::default())
+                .unwrap(),
             "linear-gradient(0, red, blue)"
         );
     }
@@ -325,7 +336,9 @@ fn gradient_omits_only_exact_positive_default_directions_and_keeps_neighbors() {
                 CssImportance::Important,
             );
             assert_eq!(
-                gradient(&source).serialize_specified().unwrap(),
+                gradient(&source)
+                    .serialize_specified(Default::default())
+                    .unwrap(),
                 format!("{function}(red, blue)")
             );
         }
@@ -348,7 +361,9 @@ fn gradient_omits_only_exact_positive_default_directions_and_keeps_neighbors() {
                 CssImportance::Important,
             );
             assert_eq!(
-                gradient(&source).serialize_specified().unwrap(),
+                gradient(&source)
+                    .serialize_specified(Default::default())
+                    .unwrap(),
                 format!("{function}({expected_angle}, red, blue)")
             );
         }
@@ -384,7 +399,9 @@ fn escaped_case_varied_angle_unit_and_precise_coefficient_keep_original_token_or
         source[..start].encode_utf16().count()
     );
     assert_eq!(
-        filter(&report.syntax()[0]).serialize_specified().unwrap(),
+        filter(&report.syntax()[0])
+            .serialize_specified(Default::default())
+            .unwrap(),
         "hue-rotate(1.23deg)"
     );
 }
@@ -444,10 +461,12 @@ fn image_orientation_calculation_aggregate_equality_ignores_original_source_coor
 fn raw_angle_math_and_color_compare_original_provenance() {
     let first = CssAngleCalculation::try_from_components(
         parse_component_values("calc(25deg + 5deg)").unwrap(),
+        Default::default(),
     )
     .unwrap();
     let second = CssAngleCalculation::try_from_components(
         parse_component_values("  calc(25deg + 5deg)").unwrap(),
+        Default::default(),
     )
     .unwrap();
     assert_ne!(first, second);
@@ -472,7 +491,9 @@ fn angle_calculation_simplification_is_a_positive_control() {
         CssImportance::Important,
     );
     assert_eq!(
-        filter(&source).serialize_specified().unwrap(),
+        filter(&source)
+            .serialize_specified(Default::default())
+            .unwrap(),
         "hue-rotate(calc(30deg))"
     );
     let source = validated_declaration(
@@ -481,7 +502,9 @@ fn angle_calculation_simplification_is_a_positive_control() {
         CssImportance::Important,
     );
     assert_eq!(
-        gradient(&source).serialize_specified().unwrap(),
+        gradient(&source)
+            .serialize_specified(Default::default())
+            .unwrap(),
         "linear-gradient(calc(180deg), red, blue)"
     );
 }
@@ -570,7 +593,10 @@ fn pending_angle_reentry_retains_exact_literals_importance_and_replacement_sourc
                 }
                 _ => panic!("filter terminal"),
             };
-            assert_eq!(value.serialize_specified().unwrap(), "hue-rotate(0.1deg)");
+            assert_eq!(
+                value.serialize_specified(Default::default()).unwrap(),
+                "hue-rotate(0.1deg)"
+            );
         }
     }
 }
@@ -648,15 +674,18 @@ fn normalization_retains_exact_angle_literals_in_surviving_source_order() {
             } else {
                 "hue-rotate(0turn)".to_owned()
             };
-            assert_eq!(filter.serialize_specified().unwrap(), expected);
+            assert_eq!(
+                filter.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
         }
     }
 }
 
 #[test]
 fn exact_literal_provider_failures_are_atomic_and_do_not_mutate_source_or_refund_work() {
+    use CssSerializationLimits as L;
     use CssSpecifiedValueSerializationErrorKind as K;
-    use CssSpecifiedValueSerializationLimits as L;
     let source = validated_declaration(
         CssKnownProperty::Filter,
         "hue-rotate(0.10000000000000000001deg)",
@@ -673,7 +702,7 @@ fn exact_literal_provider_failures_are_atomic_and_do_not_mutate_source_or_refund
     // One function aggregate plus its one ordinary scalar: 2/2.
     assert_eq!(
         function
-            .serialize_specified_with_limits(L::new(2, 2, expected.len()))
+            .serialize_specified(L::new(2, 2, expected.len()))
             .unwrap(),
         expected
     );
@@ -683,14 +712,14 @@ fn exact_literal_provider_failures_are_atomic_and_do_not_mutate_source_or_refund
         (L::new(2, 2, expected.len() - 1), K::ByteLimit),
     ] {
         assert_eq!(
-            function
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            function.serialize_specified(limits).unwrap_err().kind(),
             kind
         );
     }
-    assert_eq!(function.serialize_specified().unwrap(), expected);
+    assert_eq!(
+        function.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     assert_eq!(source, before);
     let huge = validated_declaration(
         CssKnownProperty::Filter,
@@ -700,7 +729,7 @@ fn exact_literal_provider_failures_are_atomic_and_do_not_mutate_source_or_refund
     let before = huge.clone();
     assert_eq!(
         filter(&huge)
-            .serialize_specified_with_limits(L::new(3, 3, 64))
+            .serialize_specified(L::new(3, 3, 64))
             .unwrap_err()
             .kind(),
         K::ByteLimit
@@ -710,8 +739,8 @@ fn exact_literal_provider_failures_are_atomic_and_do_not_mutate_source_or_refund
 
 #[test]
 fn suppressed_exact_gradient_default_consumes_its_scalar_budget_without_output_bytes() {
+    use CssSerializationLimits as L;
     use CssSpecifiedValueSerializationErrorKind as K;
-    use CssSpecifiedValueSerializationLimits as L;
     let source = validated_declaration(
         CssKnownProperty::BackgroundImage,
         "linear-gradient(+1.80e2deg, red, blue)",
@@ -723,7 +752,7 @@ fn suppressed_exact_gradient_default_consumes_its_scalar_budget_without_output_b
     // gradient 1 + direction 1 + scalar 1 + stop list 1 + 2*(stop 1+color 1).
     assert_eq!(
         value
-            .serialize_specified_with_limits(L::new(8, 8, expected.len()))
+            .serialize_specified(L::new(8, 8, expected.len()))
             .unwrap(),
         expected
     );
@@ -732,13 +761,7 @@ fn suppressed_exact_gradient_default_consumes_its_scalar_budget_without_output_b
         (L::new(8, 7, expected.len()), K::ProjectionNodeLimit),
         (L::new(8, 8, expected.len() - 1), K::ByteLimit),
     ] {
-        assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            kind
-        );
+        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
     }
     assert_eq!(source, before);
 }
@@ -775,7 +798,9 @@ fn ordinary_gradient_outer_recovery_retains_its_complete_angle_calculation() {
             .any(|d| d.action() == CssRecoveryAction::RetainWithImplicitClosure)
     );
     assert_eq!(
-        gradient(&report.syntax()[0]).serialize_specified().unwrap(),
+        gradient(&report.syntax()[0])
+            .serialize_specified(Default::default())
+            .unwrap(),
         "linear-gradient(calc(30deg), red, blue)"
     );
 }
@@ -808,7 +833,7 @@ mod checked_construction {
     }
     fn budget(value: &CssFilterFunction, expected: &str) {
         crate::css::support::serialization_limits::LimitLadder::new(expected, 2, 2)
-            .assert_unchanged(value, CssFilterFunction::serialize_specified_with_limits);
+            .assert_unchanged(value, CssFilterFunction::serialize_specified);
     }
 
     #[test]
@@ -899,7 +924,8 @@ mod checked_construction {
     fn checked_calculation_transfer_normalizes_only_an_ordinary_dimension_root() {
         let supplied = component("+1.23000000000000000001TURN");
         let calculation = CssAngleCalculation::try_from_components(
-            CssComponentValues::try_new(vec![supplied.clone()]).unwrap(),
+            CssComponentValues::try_new(vec![supplied.clone()], Default::default()).unwrap(),
+            Default::default(),
         )
         .unwrap();
         let angle = CssAngleValue::try_from_calculation(calculation).unwrap();
@@ -918,9 +944,11 @@ mod checked_construction {
             "1e999"
         );
         for text in ["calc(180deg)", "calc(90deg + 90deg)", "min(180deg, 200deg)"] {
-            let calculation =
-                CssAngleCalculation::try_from_components(parse_component_values(text).unwrap())
-                    .unwrap();
+            let calculation = CssAngleCalculation::try_from_components(
+                parse_component_values(text).unwrap(),
+                Default::default(),
+            )
+            .unwrap();
             let angle = CssAngleValue::try_from_calculation(calculation.clone()).unwrap();
             assert!(angle.literal().is_none());
             assert_eq!(angle.calculation(), Some(&calculation));
@@ -1020,10 +1048,10 @@ mod checked_construction {
             CssFilterFunctionList::try_new(vec![hue(literal(".5turn")), hue(literal("25grad"))])
                 .unwrap();
         let expected = "hue-rotate(0.5turn) hue-rotate(25grad)";
+        use CssSerializationLimits as L;
         use CssSpecifiedValueSerializationErrorKind as K;
-        use CssSpecifiedValueSerializationLimits as L;
         assert_eq!(
-            list.serialize_specified_with_limits(L::new(5, 5, expected.len()))
+            list.serialize_specified(L::new(5, 5, expected.len()))
                 .unwrap(),
             expected
         );
@@ -1032,16 +1060,11 @@ mod checked_construction {
             (L::new(5, 4, expected.len()), K::ProjectionNodeLimit),
             (L::new(5, 5, expected.len() - 1), K::ByteLimit),
         ] {
-            assert_eq!(
-                list.serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
-                kind
-            );
+            assert_eq!(list.serialize_specified(limits).unwrap_err().kind(), kind);
         }
         let huge = hue(literal("1e999999999999999999999999999999deg"));
         assert_eq!(
-            huge.serialize_specified_with_limits(L::new(2, 2, 64))
+            huge.serialize_specified(L::new(2, 2, 64))
                 .unwrap_err()
                 .kind(),
             K::ByteLimit

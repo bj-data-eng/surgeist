@@ -32,7 +32,7 @@ fn parsed(source: &str) -> CssEasingList {
 fn number(source: &str) -> CssSpecifiedNumber {
     let components = parse_component_values(source).unwrap();
     CssSpecifiedNumber::try_from_calculation(
-        CssNumberCalculation::try_from_components(components).unwrap(),
+        CssNumberCalculation::try_from_components(components, Default::default()).unwrap(),
     )
     .unwrap()
 }
@@ -54,27 +54,27 @@ fn assert_list(source: &str, expected: &str) {
     ] {
         let value = parsed_for(property, source);
         let original = value.clone();
-        assert_eq!(value.serialize_specified().unwrap(), expected, "{source}");
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected,
+            "{source}"
+        );
         assert_eq!(
             parsed_for(property, expected)
-                .serialize_specified()
+                .serialize_specified(Default::default())
                 .unwrap(),
             expected
         );
         assert_eq!(value, original);
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    65_536,
-                    262_144,
-                    expected.len(),
-                ))
+                .serialize_specified(CssSerializationLimits::new(65_536, 262_144, expected.len(),))
                 .unwrap(),
             expected,
         );
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
+                .serialize_specified(CssSerializationLimits::new(
                     65_536,
                     262_144,
                     expected.len() - 1,
@@ -83,7 +83,10 @@ fn assert_list(source: &str, expected: &str) {
                 .kind(),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         );
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_eq!(value, original);
     }
 }
@@ -101,15 +104,14 @@ fn keywords_keep_five_identities_and_canonicalize_only_step_aliases() {
     ] {
         assert_list(source, expected);
         let value = CssEasing::Keyword(keyword);
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_eq!(value, CssEasing::Keyword(keyword));
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    1,
-                    1,
-                    expected.len(),
-                ))
+                .serialize_specified(CssSerializationLimits::new(1, 1, expected.len(),))
                 .unwrap(),
             expected,
         );
@@ -149,7 +151,10 @@ fn positions_omit_end_aliases_and_preserve_start_spelling() {
     ] {
         assert_list(input, expected);
         let value = CssSteps::try_new(count("2"), position).unwrap();
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_eq!(value.position(), position);
     }
 }
@@ -225,7 +230,7 @@ fn checked_composition_retains_original_components_and_origins() {
         .map(|value| value.origin().clone())
         .collect();
     assert_eq!(
-        value.serialize_specified().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         "cubic-bezier(0.25, sign(-2em), 1, -2.000001)"
     );
     for (index, actual) in [
@@ -249,8 +254,8 @@ fn checked_composition_retains_original_components_and_origins() {
     }
     let list = CssEasingList::try_new(vec![CssEasing::CubicBezier(value.clone())]).unwrap();
     assert_eq!(
-        list.serialize_specified().unwrap(),
-        value.serialize_specified().unwrap()
+        list.serialize_specified(Default::default()).unwrap(),
+        value.serialize_specified(Default::default()).unwrap()
     );
     assert!(CssEasingList::try_new(Vec::new()).is_none());
 }
@@ -318,25 +323,35 @@ fn checked_ranges_and_pure_roots_share_admission_with_parsing() {
     }
     let contextual = parse_component_values("calc((1px + 1%) / 1px)").unwrap();
     assert_numeric_rejected(
-        CssNumberCalculation::try_from_components(contextual.clone()),
+        CssNumberCalculation::try_from_components(contextual.clone(), Default::default()),
         CssNumericConstructionErrorKind::RootDomainMismatch,
     );
     assert_numeric_rejected(
-        CssIntegerCalculation::try_from_components(contextual),
+        CssIntegerCalculation::try_from_components(contextual, Default::default()),
         CssNumericConstructionErrorKind::RootDomainMismatch,
     );
-    let fraction =
-        CssIntegerCalculation::try_from_components(parse_component_values("calc(1.5)").unwrap())
-            .unwrap();
+    let fraction = CssIntegerCalculation::try_from_components(
+        parse_component_values("calc(1.5)").unwrap(),
+        Default::default(),
+    )
+    .unwrap();
     let value = CssSteps::try_new(CssPositiveIntegerValue::Calculation(fraction), None).unwrap();
-    assert_eq!(value.serialize_specified().unwrap(), "steps(calc(1.5))");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "steps(calc(1.5))"
+    );
 }
 
 fn assert_limits(value: &CssEasingList, expected: &str, input: usize, projection: usize) {
     LimitLadder::new(expected, input, projection).assert_unchanged_with(
         value,
-        CssEasingList::serialize_specified_with_limits,
-        |_, _, _| assert_eq!(value.serialize_specified().unwrap(), expected),
+        CssEasingList::serialize_specified,
+        |_, _, _| {
+            assert_eq!(
+                value.serialize_specified(Default::default()).unwrap(),
+                expected
+            )
+        },
     );
 }
 
@@ -371,36 +386,29 @@ fn standalone_aggregates_apply_the_same_exact_resource_contract() {
     let expected = "cubic-bezier(0, -2, 1, 3)";
     assert_eq!(
         cubic
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                5,
-                5,
-                expected.len()
-            ))
+            .serialize_specified(CssSerializationLimits::new(5, 5, expected.len()))
             .unwrap(),
         expected
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(4, 5, expected.len()),
+            CssSerializationLimits::new(4, 5, expected.len()),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(5, 4, expected.len()),
+            CssSerializationLimits::new(5, 4, expected.len()),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(5, 5, expected.len() - 1),
+            CssSerializationLimits::new(5, 5, expected.len() - 1),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
+        assert_eq!(cubic.serialize_specified(limits).unwrap_err().kind(), kind);
         assert_eq!(
-            cubic
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            kind
+            cubic.serialize_specified(Default::default()).unwrap(),
+            expected
         );
-        assert_eq!(cubic.serialize_specified().unwrap(), expected);
     }
     for (position, expected, inputs, projections) in [
         (None, "steps(2)", 2, 2),
@@ -411,7 +419,7 @@ fn standalone_aggregates_apply_the_same_exact_resource_contract() {
         let steps = CssSteps::try_new(count("2"), position).unwrap();
         assert_eq!(
             steps
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
+                .serialize_specified(CssSerializationLimits::new(
                     inputs,
                     projections,
                     expected.len()
@@ -421,27 +429,24 @@ fn standalone_aggregates_apply_the_same_exact_resource_contract() {
         );
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(inputs - 1, projections, expected.len()),
+                CssSerializationLimits::new(inputs - 1, projections, expected.len()),
                 CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(inputs, projections - 1, expected.len()),
+                CssSerializationLimits::new(inputs, projections - 1, expected.len()),
                 CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(inputs, projections, expected.len() - 1),
+                CssSerializationLimits::new(inputs, projections, expected.len() - 1),
                 CssSpecifiedValueSerializationErrorKind::ByteLimit,
             ),
         ] {
-            assert_eq!(
-                steps
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
-                kind
-            );
+            assert_eq!(steps.serialize_specified(limits).unwrap_err().kind(), kind);
             assert_eq!(steps.position(), position);
-            assert_eq!(steps.serialize_specified().unwrap(), expected);
+            assert_eq!(
+                steps.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
         }
     }
 }
@@ -489,7 +494,7 @@ fn list_order_and_shorthand_omissions_survive_canonical_output() {
         value.animations().values()[0]
             .timing_function()
             .unwrap()
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "steps(1, start)"
     );
@@ -518,7 +523,9 @@ fn both_timing_families_expand_their_typed_easing_lists() {
         panic!("typed transition easing")
     };
     assert_eq!(
-        easing.values()[0].serialize_specified().unwrap(),
+        easing.values()[0]
+            .serialize_specified(Default::default())
+            .unwrap(),
         "steps(2)"
     );
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =

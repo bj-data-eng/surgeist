@@ -459,7 +459,9 @@ fn contextual_quirks_and_svg_admission_use_the_owning_grammar() {
     assert_eq!(names(report.syntax()), ["color", "width"]);
     assert_eq!(report.syntax()[0].parser_context(), quirks);
     assert_eq!(
-        report.syntax()[0].to_specified_css().unwrap(),
+        report.syntax()[0]
+            .serialize_specified(Default::default())
+            .unwrap(),
         "color: rgb(170, 187, 204);"
     );
     let svg = quirks.with_svg_glyph_orientation_vertical();
@@ -472,7 +474,9 @@ fn contextual_quirks_and_svg_admission_use_the_owning_grammar() {
     );
     assert_eq!(report.syntax()[0].parser_context(), svg);
     assert_eq!(
-        report.syntax()[0].to_specified_css().unwrap(),
+        report.syntax()[0]
+            .serialize_specified(Default::default())
+            .unwrap(),
         "glyph-orientation-vertical: 90deg;"
     );
     // Writing Modes 3 §5.1.3 admits exact 90 as the legacy Sideways mapping.

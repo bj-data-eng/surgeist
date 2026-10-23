@@ -1,32 +1,15 @@
 //! Canonical specified values from the selected Writing Modes publications.
 
 use crate::{
-    CssDirection, CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits,
-    CssTextCombineUpright, CssTextOrientation, CssUnicodeBidi, CssWritingMode,
+    CssDirection, CssSerializationError, CssTextCombineUpright, CssTextOrientation, CssUnicodeBidi,
+    CssWritingMode,
 };
 
-impl CssDirection {
-    /// Serializes the canonical specified direction keyword without
-    /// applying inheritance or contextual text and layout behavior.
-    pub fn serialize_specified(&self) -> Result<String, CssSpecifiedValueSerializationError> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes atomically, charging one input node, one projection node,
-    /// and the exact output byte count. Authored input is never modified.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String, CssSpecifiedValueSerializationError> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssDirection {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         let text = match self {
             Self::Ltr => "ltr",
             Self::Rtl => "rtl",
@@ -34,29 +17,13 @@ impl CssDirection {
         writer.keyword(text)
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssDirection);
 
-impl CssUnicodeBidi {
-    /// Serializes the canonical specified unicode-bidi keyword without
-    /// applying inheritance or contextual text and layout behavior.
-    pub fn serialize_specified(&self) -> Result<String, CssSpecifiedValueSerializationError> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes atomically, charging one input node, one projection node,
-    /// and the exact output byte count. Authored input is never modified.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String, CssSpecifiedValueSerializationError> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssUnicodeBidi {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         let text = match self {
             Self::Normal => "normal",
             Self::Embed => "embed",
@@ -68,29 +35,13 @@ impl CssUnicodeBidi {
         writer.keyword(text)
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssUnicodeBidi);
 
-impl CssWritingMode {
-    /// Serializes the canonical specified writing-mode keyword without
-    /// applying inheritance or contextual text and layout behavior.
-    pub fn serialize_specified(&self) -> Result<String, CssSpecifiedValueSerializationError> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes atomically, charging one input node, one projection node,
-    /// and the exact output byte count. Authored input is never modified.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String, CssSpecifiedValueSerializationError> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssWritingMode {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         let text = match self {
             Self::HorizontalTb => "horizontal-tb",
             Self::VerticalRl => "vertical-rl",
@@ -101,29 +52,13 @@ impl CssWritingMode {
         writer.keyword(text)
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssWritingMode);
 
-impl CssTextOrientation {
-    /// Serializes the canonical specified text-orientation keyword without
-    /// applying inheritance or contextual text and layout behavior.
-    pub fn serialize_specified(&self) -> Result<String, CssSpecifiedValueSerializationError> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes atomically, charging one input node, one projection node,
-    /// and the exact output byte count. Authored input is never modified.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String, CssSpecifiedValueSerializationError> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssTextOrientation {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         let text = match self {
             Self::Mixed => "mixed",
             Self::Upright => "upright",
@@ -132,30 +67,13 @@ impl CssTextOrientation {
         writer.keyword(text)
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssTextOrientation);
 
-impl CssTextCombineUpright {
-    /// Serializes the specified value, preserving omitted counts and deferring
-    /// computed integer rounding and range clamping. Finite calculated counts
-    /// use the shared six-place specified number text policy.
-    pub fn serialize_specified(&self) -> Result<String, CssSpecifiedValueSerializationError> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Charges one outer input and projection node plus the explicit count's
-    /// costs, and includes the prefix in the total output byte budget.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String, CssSpecifiedValueSerializationError> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssTextCombineUpright {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> Result<(), CssSpecifiedValueSerializationError> {
+    ) -> Result<(), CssSerializationError> {
         let count = match self {
             Self::None => return writer.keyword("none"),
             Self::All => return writer.keyword("all"),
@@ -181,14 +99,16 @@ impl CssTextCombineUpright {
         }
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssTextCombineUpright);
 
 #[cfg(test)]
 mod combine_cumulative_bridge_contract {
     use super::*;
+    use crate::specified_rule_serialization::SpecifiedProvider as _;
     use crate::specified_rule_serialization::SpecifiedRuleWriter;
     use crate::{
-        CssIntegerCalculation, CssSpecifiedValueSerializationErrorKind as Kind,
-        CssSpecifiedValueSerializationLimits as Limits, CssTextCombineDigitCount, CssValueOrigin,
+        CssIntegerCalculation, CssSerializationLimits as Limits,
+        CssSpecifiedValueSerializationErrorKind as Kind, CssTextCombineDigitCount, CssValueOrigin,
     };
 
     #[test]
@@ -219,7 +139,10 @@ mod combine_cumulative_bridge_contract {
                 2,
             ),
         ] {
-            assert_eq!(value.serialize_specified().unwrap(), expected);
+            assert_eq!(
+                value.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
             let mut writer = SpecifiedRuleWriter::new(Limits::new(
                 2 * nodes + 1,
                 2 * nodes + 1,
@@ -266,7 +189,10 @@ mod combine_cumulative_bridge_contract {
         writer.append("!").unwrap();
         value.append_to_rule_writer(&mut writer).unwrap();
         assert_eq!(writer.css, "!digits calc(1)");
-        assert_eq!(value.serialize_specified().unwrap(), "digits calc(1)");
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            "digits calc(1)"
+        );
         let CssTextCombineUpright::Digits(Some(count)) = value else {
             panic!("explicit count");
         };
@@ -300,7 +226,7 @@ mod combine_cumulative_bridge_contract {
         assert_eq!(writer.css, "x");
         assert!(!writer.context.output_suppressed());
         assert_eq!(*value, before);
-        assert_eq!(value.serialize_specified().unwrap(), text);
+        assert_eq!(value.serialize_specified(Default::default()).unwrap(), text);
         let CssTextCombineUpright::Digits(Some(count)) = value else {
             panic!("explicit count");
         };
@@ -335,7 +261,7 @@ mod combine_cumulative_bridge_contract {
         assert_eq!(writer.css, "x");
         assert_eq!(
             value
-                .serialize_specified_with_limits(Limits::new(1, 1, 6))
+                .serialize_specified(Limits::new(1, 1, 6))
                 .unwrap_err()
                 .kind(),
             Kind::ByteLimit

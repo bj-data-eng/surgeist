@@ -40,8 +40,13 @@ fn pair(source: &CssDeclaration) -> &CssSpeechBreakPair {
 fn speech_break_models_keep_none_strength_and_explicit_zero_time_distinct() {
     let zero = time("-0", CssTimeUnit::Milliseconds);
     assert_ne!(zero, CssSpeechBreak::None);
-    assert_eq!(zero.serialize_specified().unwrap(), "0s");
-    assert_eq!(CssSpeechBreak::None.serialize_specified().unwrap(), "none");
+    assert_eq!(zero.serialize_specified(Default::default()).unwrap(), "0s");
+    assert_eq!(
+        CssSpeechBreak::None
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "none"
+    );
     for (strength, css) in [
         (CssSpeechBreakStrength::XWeak, "x-weak"),
         (CssSpeechBreakStrength::Weak, "weak"),
@@ -50,13 +55,16 @@ fn speech_break_models_keep_none_strength_and_explicit_zero_time_distinct() {
         (CssSpeechBreakStrength::XStrong, "x-strong"),
     ] {
         let model = CssSpeechBreak::Strength(strength);
-        assert_eq!(model.serialize_specified().unwrap(), css);
+        assert_eq!(model.serialize_specified(Default::default()).unwrap(), css);
         for name in ["pause-before", "pause-after", "rest-before", "rest-after"] {
             assert_eq!(break_value(&parsed(name, css)), &model);
         }
     }
     let zero_none = composed(CssSpeechBreak::None, Some(zero));
-    assert_eq!(zero_none.serialize_specified().unwrap(), "none");
+    assert_eq!(
+        zero_none.serialize_specified(Default::default()).unwrap(),
+        "none"
+    );
 }
 
 #[test]
@@ -79,40 +87,33 @@ fn speech_pairs_omit_none_and_exact_zero_equivalents_without_losing_authored_chi
             assert_ne!(before, after);
             let model = composed(before, Some(after));
             let retained = model.clone();
-            assert_eq!(model.serialize_specified().unwrap(), expected);
+            assert_eq!(
+                model.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
             assert!(model.authored_after().is_some());
             assert_eq!(model, retained);
             assert_eq!(
                 model
-                    .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                        3,
-                        3,
-                        expected.len()
-                    ))
+                    .serialize_specified(CssSerializationLimits::new(3, 3, expected.len()))
                     .unwrap(),
                 expected
             );
             for (limits, error) in [
                 (
-                    CssSpecifiedValueSerializationLimits::new(2, 3, expected.len()),
+                    CssSerializationLimits::new(2, 3, expected.len()),
                     CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
                 ),
                 (
-                    CssSpecifiedValueSerializationLimits::new(3, 2, expected.len()),
+                    CssSerializationLimits::new(3, 2, expected.len()),
                     CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
                 ),
                 (
-                    CssSpecifiedValueSerializationLimits::new(3, 3, expected.len() - 1),
+                    CssSerializationLimits::new(3, 3, expected.len() - 1),
                     CssSpecifiedValueSerializationErrorKind::ByteLimit,
                 ),
             ] {
-                assert_eq!(
-                    model
-                        .serialize_specified_with_limits(limits)
-                        .unwrap_err()
-                        .kind(),
-                    error
-                );
+                assert_eq!(model.serialize_specified(limits).unwrap_err().kind(), error);
                 assert_eq!(model, retained);
             }
         }
@@ -124,7 +125,9 @@ fn speech_pairs_omit_none_and_exact_zero_equivalents_without_losing_authored_chi
         (tiny, CssSpeechBreak::None, "0s none"),
     ] {
         assert_eq!(
-            composed(before, Some(after)).serialize_specified().unwrap(),
+            composed(before, Some(after))
+                .serialize_specified(Default::default())
+                .unwrap(),
             expected
         );
     }
@@ -133,7 +136,10 @@ fn speech_pairs_omit_none_and_exact_zero_equivalents_without_losing_authored_chi
             let declaration = parsed(name, value);
             let authored = pair(&declaration);
             assert!(authored.authored_after().is_some());
-            assert_eq!(authored.serialize_specified().unwrap(), expected);
+            assert_eq!(
+                authored.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
         }
     }
 }
@@ -160,7 +166,10 @@ fn checked_speech_time_composition_uses_the_owned_exact_duration_invariant() {
         ),
     ] {
         let value = time(number, unit);
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         let CssSpeechBreak::Time(duration) = &value else {
             panic!("time")
         };
@@ -168,7 +177,10 @@ fn checked_speech_time_composition_uses_the_owned_exact_duration_invariant() {
         assert_eq!(literal.numeric().representation(), number);
         assert_eq!(literal.unit(), unit);
         assert!(matches!(literal.origin(), CssValueOrigin::Programmatic));
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
 }
 
@@ -212,20 +224,38 @@ fn speech_pairs_retain_authored_second_presence_while_canonically_omitting_equal
     assert!(omitted.authored_after().is_none());
     assert_eq!(omitted.before(), omitted.after());
     assert_eq!(explicit.authored_after(), Some(&weak));
-    assert_eq!(omitted.serialize_specified().unwrap(), "weak");
-    assert_eq!(explicit.serialize_specified().unwrap(), "weak");
+    assert_eq!(
+        omitted.serialize_specified(Default::default()).unwrap(),
+        "weak"
+    );
+    assert_eq!(
+        explicit.serialize_specified(Default::default()).unwrap(),
+        "weak"
+    );
     for name in ["pause", "rest"] {
         let source = parsed(name, "WEAK/**/w\\65 ak");
         assert_eq!(pair(&source).before(), &weak);
         assert_eq!(pair(&source).authored_after(), Some(&weak));
-        assert_eq!(pair(&source).serialize_specified().unwrap(), "weak");
         assert_eq!(
-            source.value_components().serialize().unwrap().as_css(),
+            pair(&source)
+                .serialize_specified(Default::default())
+                .unwrap(),
+            "weak"
+        );
+        assert_eq!(
+            source
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             "WEAK/**/w\\65 ak"
         );
     }
     let unequal = composed(weak, Some(time("250", CssTimeUnit::Milliseconds)));
-    assert_eq!(unequal.serialize_specified().unwrap(), "weak 0.25s");
+    assert_eq!(
+        unequal.serialize_specified(Default::default()).unwrap(),
+        "weak 0.25s"
+    );
 }
 
 #[test]
@@ -269,7 +299,10 @@ fn speech_pair_time_omission_uses_exact_duration_equivalence_before_rounding() {
         ),
     ] {
         let model = composed(before, Some(after));
-        assert_eq!(model.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            model.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert!(model.authored_after().is_some());
     }
 }
@@ -286,37 +319,27 @@ fn speech_break_specified_serialization_counts_leaves_and_actual_canonical_bytes
     ] {
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    1,
-                    1,
-                    css.len()
-                ))
+                .serialize_specified(CssSerializationLimits::new(1, 1, css.len()))
                 .unwrap(),
             css
         );
         for (limits, error) in [
             (
-                CssSpecifiedValueSerializationLimits::new(0, 1, css.len()),
+                CssSerializationLimits::new(0, 1, css.len()),
                 CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 0, css.len()),
+                CssSerializationLimits::new(1, 0, css.len()),
                 CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 1, css.len() - 1),
+                CssSerializationLimits::new(1, 1, css.len() - 1),
                 CssSpecifiedValueSerializationErrorKind::ByteLimit,
             ),
         ] {
-            assert_eq!(
-                value
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
-                error
-            );
+            assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), error);
         }
-        assert_eq!(value.serialize_specified().unwrap(), css);
+        assert_eq!(value.serialize_specified(Default::default()).unwrap(), css);
     }
 }
 
@@ -348,37 +371,27 @@ fn speech_pairs_share_one_budget_and_charge_suppressed_authored_after_children()
     ] {
         assert_eq!(
             model
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    nodes,
-                    nodes,
-                    css.len()
-                ))
+                .serialize_specified(CssSerializationLimits::new(nodes, nodes, css.len()))
                 .unwrap(),
             css
         );
         for (limits, error) in [
             (
-                CssSpecifiedValueSerializationLimits::new(nodes - 1, nodes, css.len()),
+                CssSerializationLimits::new(nodes - 1, nodes, css.len()),
                 CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(nodes, nodes - 1, css.len()),
+                CssSerializationLimits::new(nodes, nodes - 1, css.len()),
                 CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(nodes, nodes, css.len() - 1),
+                CssSerializationLimits::new(nodes, nodes, css.len() - 1),
                 CssSpecifiedValueSerializationErrorKind::ByteLimit,
             ),
         ] {
-            assert_eq!(
-                model
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
-                error
-            );
+            assert_eq!(model.serialize_specified(limits).unwrap_err().kind(), error);
         }
-        assert_eq!(model.serialize_specified().unwrap(), css);
+        assert_eq!(model.serialize_specified(Default::default()).unwrap(), css);
         assert_eq!(model.authored_after().is_some(), nodes == 3);
     }
 }
@@ -393,23 +406,31 @@ fn speech_time_calculations_keep_math_phase_and_use_the_shared_time_projection_b
         };
         assert!(duration.time().literal().is_none());
         assert!(duration.time().calculation().is_some());
-        assert_eq!(model.serialize_specified().unwrap(), "calc(-1s)");
+        assert_eq!(
+            model.serialize_specified(Default::default()).unwrap(),
+            "calc(-1s)"
+        );
         // Input traversal includes both retained calculation children even
         // though only one is emitted; default failure leaves the tree intact.
         assert_eq!(
             model
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    2, 100, 100
-                ))
+                .serialize_specified(CssSerializationLimits::new(2, 100, 100))
                 .unwrap_err()
                 .kind(),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit
         );
         assert_eq!(
-            source.value_components().serialize().unwrap().as_css(),
+            source
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             "calc(-1s) calc(-1s)"
         );
-        assert_eq!(model.serialize_specified().unwrap(), "calc(-1s)");
+        assert_eq!(
+            model.serialize_specified(Default::default()).unwrap(),
+            "calc(-1s)"
+        );
     }
 }
 
@@ -433,7 +454,10 @@ fn speech_expanded_typed_payloads_serialize_in_before_after_order_with_original_
                 | CssLonghandValueRef::RestAfter(value) => value,
                 _ => panic!("coupled speech terminal"),
             };
-            assert_eq!(value.serialize_specified().unwrap(), expected);
+            assert_eq!(
+                value.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
             assert!(item.source().same_occurrence(&source));
             assert_eq!(item.source().importance(), CssImportance::Important);
         }

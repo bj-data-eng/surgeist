@@ -4,35 +4,17 @@ use crate::{
     CssBackground, CssBackgroundAttachment, CssBackgroundBox, CssBackgroundLayer,
     CssBackgroundLayerBoxes, CssBackgroundRepeat, CssBackgroundRepeatStyle, CssBackgroundSize,
     CssBackgroundSizeComponent, CssComponentValueRef, CssHorizontalPosition, CssImageValue,
-    CssSpecifiedLengthPercentage, CssSpecifiedValueSerializationError,
-    CssSpecifiedValueSerializationLimits, CssValueTokenRef, CssVerticalPosition,
+    CssSerializationError, CssSpecifiedLengthPercentage, CssValueTokenRef, CssVerticalPosition,
     specified_rule_serialization::SpecifiedRuleWriter,
 };
 
-type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
+type Result<T> = std::result::Result<T, CssSerializationError>;
 
-impl CssBackground {
-    /// Serializes canonical specified layers without resolving contextual values.
-    /// Simple literal initials may be omitted; authored omissions remain unchanged.
-    pub fn serialize_specified(&self) -> Result<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Shares one input, projection and final byte budget across all authored children.
-    /// Omitted children still count as visits. Failure returns no partial text.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssBackground {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         writer.source_member(0, SpecifiedRuleWriter::node)?;
         for (index, layer) in self.layers().iter().enumerate() {
             if index != 0 {
@@ -44,6 +26,7 @@ impl CssBackground {
         Ok(())
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssBackground);
 
 // Prove only ordinary exact zero offsets. Keywords and calculations remain authored.
 fn is_zero(value: &CssSpecifiedLengthPercentage) -> bool {

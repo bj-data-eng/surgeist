@@ -1,9 +1,6 @@
 //! Canonical imports preserve the authored clause/media interpretation.
 use crate::css::support::rules::ExpectedRejection;
-use surgeist_css::{
-    CssErrorCode, CssImportSerializationError, CssMediaSerializationError, CssRule,
-    CssSerializedOrigin, CssValueOrigin, parse_sheet,
-};
+use surgeist_css::{CssErrorCode, CssRule, CssSerializedOrigin, CssValueOrigin, parse_sheet};
 
 #[test]
 fn canonical_imports_preserve_targets_clauses_and_symbolic_media() {
@@ -27,7 +24,13 @@ fn canonical_imports_preserve_targets_clauses_and_symbolic_media() {
         let [CssRule::Import(import)] = report.syntax().rules() else {
             panic!("one import");
         };
-        assert_eq!(import.serialize().unwrap().as_css(), expected);
+        assert_eq!(
+            import
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            expected
+        );
     }
 }
 
@@ -48,7 +51,7 @@ fn clause_shaped_media_keeps_its_interpretation_after_serialization() {
         };
         assert!(import.layer().is_none());
         assert!(import.supports().is_none());
-        let output = import.serialize().unwrap();
+        let output = import.serialize_tokens(Default::default()).unwrap();
         assert_eq!(output.as_css(), source);
         let reparsed = parse_sheet(output.as_css());
         assert!(reparsed.is_clean());
@@ -69,12 +72,9 @@ fn recovered_media_prevents_partial_import_output() {
         panic!("retained import");
     };
     assert!(matches!(
-        import.serialize(),
-        Err(CssImportSerializationError::Media(
-            CssMediaSerializationError::RecoveredNever {
-                origin: CssValueOrigin::Parsed(_)
-            }
-        ))
+        import.serialize_tokens(Default::default()),
+        Err(ref error) if crate::css::support::is_recovered_media_failure(error)
+            && matches!(error.origin(), Some(CssValueOrigin::Parsed(_)))
     ));
 }
 
@@ -85,7 +85,7 @@ fn emitted_target_and_terminator_keep_original_source_coordinates() {
     let [CssRule::Import(import)] = report.syntax().rules() else {
         panic!("one import");
     };
-    let output = import.serialize().unwrap();
+    let output = import.serialize_tokens(Default::default()).unwrap();
     assert_eq!(output.as_css(), "@import 'x';");
     for (offset, original) in [(0, 13), (8, 21), (11, 24)] {
         let Some(CssSerializedOrigin::Token(CssValueOrigin::Parsed(origin))) =
@@ -105,7 +105,7 @@ fn eof_recovery_closes_output_without_inventing_source_coordinates() {
     let [CssRule::Import(import)] = report.syntax().rules() else {
         panic!("retained import");
     };
-    let output = import.serialize().unwrap();
+    let output = import.serialize_tokens(Default::default()).unwrap();
     assert_eq!(output.as_css(), "@import \"x\" layer();");
     assert!(matches!(
         output.origin_at(output.as_css().len() - 1),
@@ -126,5 +126,11 @@ fn deeply_nested_import_media_serializes_without_losing_components() {
     let [CssRule::Import(import)] = report.syntax().rules() else {
         panic!("one import");
     };
-    assert_eq!(import.serialize().unwrap().as_css(), source);
+    assert_eq!(
+        import
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        source
+    );
 }

@@ -60,8 +60,11 @@ fn component_construction_rejects_non_string_and_recovered_string_with_original_
     for component in [
         CssComponentValue::try_ident("M0").unwrap(),
         CssComponentValue::try_token("1").unwrap(),
-        CssComponentValue::try_function("path", CssComponentValues::try_new(vec![]).unwrap())
-            .unwrap(),
+        CssComponentValue::try_function(
+            "path",
+            CssComponentValues::try_new(vec![], Default::default()).unwrap(),
+        )
+        .unwrap(),
     ] {
         let origin = component.origin().clone();
         let error = CssPathData::try_from_component(component).unwrap_err();
@@ -127,23 +130,19 @@ fn path_composition_and_css_escaping_obey_one_atomic_cumulative_budget() {
         if fill.is_some() {
             assert_ne!(shape, omitted);
         }
-        budget(&expected, nodes, |limits| {
-            shape.serialize_specified_with_limits(limits)
-        });
+        budget(&expected, nodes, |limits| shape.serialize_specified(limits));
         let basic = CssBasicShape::Path(shape.clone());
-        budget(&expected, nodes, |limits| {
-            basic.serialize_specified_with_limits(limits)
-        });
+        budget(&expected, nodes, |limits| basic.serialize_specified(limits));
         let clip = CssClipPathShape::new(basic.clone(), None);
         budget(&expected, nodes + 1, |limits| {
-            clip.serialize_specified_with_limits(limits)
+            clip.serialize_specified(limits)
         });
         let clip = CssClipPath::BasicShape(CssClipPathShape::new(
             basic,
             Some(CssBoxEdgeKeyword::BorderBox),
         ));
         budget(&format!("{expected} border-box"), nodes + 2, |limits| {
-            clip.serialize_specified_with_limits(limits)
+            clip.serialize_specified(limits)
         });
         assert_eq!(shape.data().origin(), &origin);
         assert_eq!(shape.data().as_str(), " M0\t0\rL1\n2 ");

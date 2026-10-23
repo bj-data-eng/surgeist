@@ -72,13 +72,19 @@ fn exact_media_leaf_preserves_boolean_plain_and_directional_range_shapes() {
         }
         assert_eq!(leaf.position().unwrap().byte_offset().value(), 0);
         assert_eq!(parsed(leaf.origin()).source().as_str(), source);
-        assert_eq!(condition.serialize().unwrap().as_css(), source);
+        assert_eq!(
+            condition
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            source
+        );
         let components = parse_component_values(source).unwrap();
         let [component] = components.items() else {
             panic!("one function component");
         };
         assert_eq!(
-            CssWhenMediaFeature::try_from_component(component.clone()).unwrap(),
+            CssWhenMediaFeature::try_from_component(component.clone(), Default::default()).unwrap(),
             *leaf
         );
     }
@@ -100,8 +106,20 @@ fn unknown_boolean_features_keep_the_actual_media_enclosure_without_custom_refer
         assert_eq!(unknown.component(), leaf.component());
         // The existing unknown payload's own public serializer must accept its
         // genuine media() enclosure, rather than assuming synthetic parentheses.
-        assert_eq!(unknown.serialize().unwrap().as_css(), source);
-        assert_eq!(condition.serialize().unwrap().as_css(), source);
+        assert_eq!(
+            unknown
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            source
+        );
+        assert_eq!(
+            condition
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            source
+        );
     }
 }
 
@@ -142,7 +160,13 @@ fn unknown_feature_values_preserve_plain_and_range_syntax_without_opaque_convers
             )),
         }
         assert_eq!(unknown.authored(), Some(source));
-        assert_eq!(condition.serialize().unwrap().as_css(), source);
+        assert_eq!(
+            condition
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            source
+        );
     }
 }
 
@@ -162,11 +186,20 @@ fn broader_known_function_inputs_are_opaque_and_reject_on_leaf_only_admission() 
             panic!("opaque fallback for {source}");
         };
         assert_eq!(opaque.authored(), Some(source));
-        assert_eq!(condition.serialize().unwrap().as_css(), source);
+        assert_eq!(
+            condition
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            source
+        );
         if source.starts_with("media") {
             let values = parse_component_values(source).unwrap();
             assert!(matches!(
-                CssWhenMediaFeature::try_from_component(values.items()[0].clone()),
+                CssWhenMediaFeature::try_from_component(
+                    values.items()[0].clone(),
+                    Default::default()
+                ),
                 Err(CssWhenConstructionError::InvalidMediaFeatureGrammar { .. })
             ));
         }
@@ -190,7 +223,13 @@ fn supports_leaf_retains_one_declaration_and_the_selected_document_mode() {
             "supports(".len()
         );
         assert_eq!(parsed(declaration.origin()).source().as_str(), source);
-        assert_eq!(condition.serialize().unwrap().as_css(), source);
+        assert_eq!(
+            condition
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            source
+        );
     }
     let source = "supports(color:123)";
     let standard = parse_when_condition(source).unwrap();
@@ -229,14 +268,29 @@ fn homogeneous_operators_and_redundant_grouping_remain_ordered_and_symbolic() {
     let [width, height] = or.conditions() else {
         panic!("ordered feature terms");
     };
-    assert_eq!(width.serialize().unwrap().as_css(), "media(width)");
-    assert_eq!(height.serialize().unwrap().as_css(), "media(height)");
+    assert_eq!(
+        width.serialize_tokens(Default::default()).unwrap().as_css(),
+        "media(width)"
+    );
+    assert_eq!(
+        height
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        "media(height)"
+    );
     // No separating space before '(' makes not(...) a function token.
     assert!(matches!(
         second.kind(),
         CssWhenConditionKind::GeneralEnclosed(_)
     ));
-    assert_eq!(condition.serialize().unwrap().as_css(), source);
+    assert_eq!(
+        condition
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        source
+    );
     let unary = parse_when_condition("not (supports(display:grid))").unwrap();
     let CssWhenConditionKind::Not(term) = unary.kind() else {
         panic!("one unary Not");
@@ -264,7 +318,13 @@ fn empty_and_failed_group_probes_are_opaque_while_outer_algebra_rejects() {
             matches!(condition.kind(), CssWhenConditionKind::GeneralEnclosed(_)),
             "{source}"
         );
-        assert_eq!(condition.serialize().unwrap().as_css(), source);
+        assert_eq!(
+            condition
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            source
+        );
     }
     for source in [
         "",
@@ -324,13 +384,13 @@ fn lexical_failures_are_terminal_component_errors_with_original_origins() {
 fn checked_recovered_input_rejects_while_parsed_rule_retains_owned_eof_closures() {
     let values = parse_component_values("media(width").unwrap();
     assert!(matches!(
-        CssWhenCondition::try_from_components(values.clone()),
+        CssWhenCondition::try_from_components(values.clone(), Default::default()),
         Err(CssWhenConstructionError::RecoveredInput {
             origin: CssValueOrigin::ImplicitClosure { .. }
         })
     ));
     assert!(matches!(
-        CssWhenMediaFeature::try_from_component(values.items()[0].clone()),
+        CssWhenMediaFeature::try_from_component(values.items()[0].clone(), Default::default()),
         Err(CssWhenConstructionError::RecoveredInput { .. })
     ));
     let report = parse_sheet("@when media(width){.A{color:red");
@@ -344,7 +404,10 @@ fn checked_recovered_input_rejects_while_parsed_rule_retains_owned_eof_closures(
     // Lexical condition output retains the actual prelude's root trivia;
     // compact specified rule emission owns trimming that edge whitespace.
     assert_eq!(
-        rule.condition().serialize().unwrap().as_css(),
+        rule.condition()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         " media(width)"
     );
     assert!(
@@ -375,7 +438,7 @@ fn lexical_spelling_comments_coordinates_and_serialized_origins_survive_clone() 
             .encode_utf16()
             .count() as u32
     );
-    let output = condition.serialize().unwrap();
+    let output = condition.serialize_tokens(Default::default()).unwrap();
     assert_eq!(output.as_css(), source);
     let Some(CssSerializedOrigin::Token(CssValueOrigin::Parsed(origin))) =
         output.origin_at(source.find("MEDIA").unwrap())
@@ -390,7 +453,9 @@ fn lexical_spelling_comments_coordinates_and_serialized_origins_survive_clone() 
     assert_eq!(condition, before);
     assert_eq!(
         CssWhenCondition::try_from_components(
-            CssComponentValues::try_new(condition.components().to_vec()).unwrap()
+            CssComponentValues::try_new(condition.components().to_vec(), Default::default())
+                .unwrap(),
+            Default::default()
         )
         .unwrap(),
         condition
@@ -403,7 +468,8 @@ fn programmatic_enclosure_keeps_parsed_feature_children_without_invented_positio
     let child = children.items()[0].clone();
     let component = CssComponentValue::try_function("media", children).unwrap();
     let condition = CssWhenCondition::try_from_components(
-        CssComponentValues::try_new(vec![component]).unwrap(),
+        CssComponentValues::try_new(vec![component], Default::default()).unwrap(),
+        Default::default(),
     )
     .unwrap();
     assert_eq!(condition.origin(), &CssValueOrigin::Programmatic);
@@ -419,7 +485,13 @@ fn programmatic_enclosure_keeps_parsed_feature_children_without_invented_positio
             .as_str(),
         "width"
     );
-    assert_eq!(condition.serialize().unwrap().as_css(), "media(width)");
+    assert_eq!(
+        condition
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        "media(width)"
+    );
 }
 
 #[test]
@@ -447,25 +519,31 @@ fn independent_component_depth_count_and_byte_limits_fail_atomically() {
             matches!(parse_when_condition_with_limits(source, limits), Err(CssWhenConstructionError::Component(ref error)) if error.kind() == kind)
         );
         assert!(
-            matches!(CssWhenCondition::try_from_components_with_limits(parse_component_values(source).unwrap(), limits), Err(CssWhenConstructionError::Component(ref error)) if error.kind() == kind)
+            matches!(CssWhenCondition::try_from_components(parse_component_values(source).unwrap(), limits), Err(CssWhenConstructionError::Component(ref error)) if error.kind() == kind)
         );
     }
     assert_eq!(
         condition
-            .serialize_with_limit(source.len())
+            .serialize_tokens(crate::css::support::byte_limits(source.len()))
             .unwrap()
             .as_css(),
         source
     );
     assert_eq!(
         condition
-            .serialize_with_limit(source.len() - 1)
+            .serialize_tokens(crate::css::support::byte_limits(source.len() - 1))
             .unwrap_err()
             .kind(),
         CssComponentValueErrorKind::ByteLimit
     );
     assert_eq!(condition, before);
-    assert_eq!(condition.serialize().unwrap().as_css(), source);
+    assert_eq!(
+        condition
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        source
+    );
 }
 
 #[test]
@@ -496,7 +574,13 @@ fn supported_and_opaque_condition_depth_256_retain_identity_and_257_is_terminal(
             ));
         }
         assert_eq!(condition.clone(), condition);
-        assert_eq!(condition.serialize().unwrap().as_css(), source);
+        assert_eq!(
+            condition
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            source
+        );
         let too_deep = if opaque {
             format!("future({}x{})", "f(".repeat(256), ")".repeat(256))
         } else {

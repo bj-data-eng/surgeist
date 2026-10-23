@@ -7,10 +7,9 @@ use crate::css::support::value_assertions::assert_first_diagnostic;
 use crate::css::support::value_assertions::clean_rule as rule;
 use std::error::Error;
 use surgeist_css::{
-    CssImportSerializationError, CssImportTarget, CssMediaCssomSerializationError,
-    CssMediaSerializationError, CssRule, CssRuleCssomSerializationErrorKind, CssSerializedOrigin,
-    CssSpecifiedValueSerializationErrorKind as Resource,
-    CssSpecifiedValueSerializationLimits as Limits, CssValueOrigin, parse_sheet,
+    CssImportTarget, CssRule, CssRuleCssomSerializationErrorKind, CssSerializationError,
+    CssSerializationLimits as Limits, CssSerializedOrigin,
+    CssSpecifiedValueSerializationErrorKind as Resource, CssValueOrigin, parse_sheet,
 };
 
 fn exact_location(target: &str, decoded: &str, expected: &str) {
@@ -25,12 +24,28 @@ fn exact_location(target: &str, decoded: &str, expected: &str) {
         CssImportTarget::Url(value) => assert_eq!(value.as_str(), decoded),
         other => panic!("unexpected target: {other:?}"),
     }
-    assert_eq!(import.serialize().unwrap().as_css(), source);
-    assert_eq!(value.to_specified_css().unwrap(), source);
-    assert_eq!(value.serialize_cssom().unwrap(), expected, "{source}");
+    assert_eq!(
+        import
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        source
+    );
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        source
+    );
+    assert_eq!(
+        value.serialize_cssom(Default::default()).unwrap(),
+        expected,
+        "{source}"
+    );
     let report = parse_sheet(&source);
     assert!(report.is_clean(), "{source}: {report:?}");
-    assert_eq!(report.syntax().serialize_cssom().unwrap(), expected);
+    assert_eq!(
+        report.syntax().serialize_cssom(Default::default()).unwrap(),
+        expected
+    );
     assert_eq!(
         value, before,
         "literal output preserves target and provenance"
@@ -134,11 +149,23 @@ fn optional_media_list_follows_the_cssom_url_before_the_semicolon() {
         let CssRule::Import(import) = &value else {
             panic!("import")
         };
-        assert_eq!(import.serialize().unwrap().as_css(), compact);
-        assert_eq!(value.to_specified_css().unwrap(), compact);
-        assert_eq!(value.serialize_cssom().unwrap(), expected);
         assert_eq!(
-            parse_sheet(source).syntax().serialize_cssom().unwrap(),
+            import
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            compact
+        );
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            compact
+        );
+        assert_eq!(value.serialize_cssom(Default::default()).unwrap(), expected);
+        assert_eq!(
+            parse_sheet(source)
+                .syntax()
+                .serialize_cssom(Default::default())
+                .unwrap(),
             expected
         );
         assert_eq!(value, before);
@@ -152,7 +179,7 @@ fn compact_tokens_keep_original_coordinates_and_modern_clause_structure() {
     let [CssRule::Import(import)] = report.syntax().rules() else {
         panic!("import")
     };
-    let output = import.serialize().unwrap();
+    let output = import.serialize_tokens(Default::default()).unwrap();
     assert_eq!(output.as_css(), "@import 'x';");
     for (offset, original) in [(0, 13), (8, 21), (11, 24)] {
         let Some(CssSerializedOrigin::Token(CssValueOrigin::Parsed(origin))) =
@@ -182,10 +209,16 @@ fn compact_tokens_keep_original_coordinates_and_modern_clause_structure() {
     ] {
         let value = rule(source);
         let before = value.clone();
-        assert_eq!(value.to_specified_css().unwrap(), source);
-        assert_eq!(value.serialize_cssom().unwrap(), expected);
         assert_eq!(
-            parse_sheet(source).syntax().serialize_cssom().unwrap(),
+            value.serialize_specified(Default::default()).unwrap(),
+            source
+        );
+        assert_eq!(value.serialize_cssom(Default::default()).unwrap(), expected);
+        assert_eq!(
+            parse_sheet(source)
+                .syntax()
+                .serialize_cssom(Default::default())
+                .unwrap(),
             expected
         );
         assert_eq!(value, before);
@@ -210,8 +243,15 @@ fn src_and_modified_urls_serialize_the_location_as_a_cssom_url() {
     ] {
         let value = rule(source);
         let before = value.clone();
-        assert_eq!(value.to_specified_css().unwrap(), source);
-        assert_eq!(value.serialize_cssom().unwrap(), expected, "{source}");
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            source
+        );
+        assert_eq!(
+            value.serialize_cssom(Default::default()).unwrap(),
+            expected,
+            "{source}"
+        );
         assert_eq!(value, before);
     }
 }
@@ -230,7 +270,7 @@ fn literal_url_bytes_and_retained_nodes_share_rule_budgets_atomically() {
         ),
         (Limits::new(2, 2, expected.len() - 1), Resource::ByteLimit),
     ] {
-        let error = value.serialize_cssom_with_limits(limits).unwrap_err();
+        let error = value.serialize_cssom(limits).unwrap_err();
         assert_eq!(
             error.kind(),
             CssRuleCssomSerializationErrorKind::Resource(kind)
@@ -240,7 +280,7 @@ fn literal_url_bytes_and_retained_nodes_share_rule_budgets_atomically() {
     }
     assert_eq!(
         value
-            .serialize_cssom_with_limits(Limits::new(2, 2, expected.len()))
+            .serialize_cssom(Limits::new(2, 2, expected.len()))
             .unwrap(),
         expected
     );
@@ -260,10 +300,7 @@ fn literal_import_sheet_charges_cumulative_nodes_separator_and_url_bytes() {
         ),
         (Limits::new(5, 5, expected.len() - 1), Resource::ByteLimit),
     ] {
-        let error = report
-            .syntax()
-            .serialize_cssom_with_limits(limits)
-            .unwrap_err();
+        let error = report.syntax().serialize_cssom(limits).unwrap_err();
         assert_eq!(
             error.kind(),
             CssRuleCssomSerializationErrorKind::Resource(kind)
@@ -274,7 +311,7 @@ fn literal_import_sheet_charges_cumulative_nodes_separator_and_url_bytes() {
     assert_eq!(
         report
             .syntax()
-            .serialize_cssom_with_limits(Limits::new(5, 5, expected.len()))
+            .serialize_cssom(Limits::new(5, 5, expected.len()))
             .unwrap(),
         expected
     );
@@ -294,17 +331,13 @@ fn recovered_media_keeps_provider_failure_origin_and_retry_without_mutation() {
         panic!("import")
     };
     assert!(matches!(
-        import.serialize(),
-        Err(CssImportSerializationError::Media(
-            CssMediaSerializationError::RecoveredNever { .. }
-        ))
+        import.serialize_tokens(Default::default()),
+        Err(ref error) if crate::css::support::is_recovered_media_failure(error)
     ));
     let origin = import.media().unwrap().queries()[1].origin();
     // Rule1 + target1 + list1 + typed query1 + type token1 + Never1;
     // the recovered query's `not all` adds two projection nodes.
-    let error = value
-        .serialize_cssom_with_limits(Limits::new(6, 7, 128))
-        .unwrap_err();
+    let error = value.serialize_cssom(Limits::new(6, 7, 128)).unwrap_err();
     assert_eq!(
         error.kind(),
         CssRuleCssomSerializationErrorKind::Resource(Resource::ProjectionNodeLimit)
@@ -313,14 +346,12 @@ fn recovered_media_keeps_provider_failure_origin_and_retry_without_mutation() {
     let provider = error
         .source()
         .unwrap()
-        .downcast_ref::<CssMediaCssomSerializationError>()
+        .downcast_ref::<CssSerializationError>()
         .expect("media provider error");
-    assert_eq!(provider.origin(), origin);
+    assert_eq!(provider.origin(), Some(origin));
     assert_eq!(report, before);
     assert_eq!(
-        value
-            .serialize_cssom_with_limits(Limits::new(6, 8, 128))
-            .unwrap(),
+        value.serialize_cssom(Limits::new(6, 8, 128)).unwrap(),
         "@import url(\"x\") screen, not all;"
     );
     assert_eq!(report, before);

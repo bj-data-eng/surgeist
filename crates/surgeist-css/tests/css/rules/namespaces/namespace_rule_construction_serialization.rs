@@ -3,8 +3,7 @@
 
 use surgeist_css::{
     CssNamespaceName, CssNamespacePrefix, CssNamespaceRule, CssNormalizedItem, CssRule,
-    CssRuleContextKindRef, CssSpecifiedRuleSerializationErrorKind,
-    CssSpecifiedValueSerializationErrorKind, CssSpecifiedValueSerializationLimits,
+    CssRuleContextKindRef, CssSerializationLimits, CssSpecifiedValueSerializationErrorKind,
     normalize_report, parse_sheet,
 };
 
@@ -36,9 +35,14 @@ fn constructed_namespace_rules_emit_canonical_prefixes_and_literal_url_strings()
             CssNamespaceName::new(name),
         );
         let original = rule.clone();
-        assert_eq!(rule.to_specified_css().unwrap(), expected);
         assert_eq!(
-            CssRule::Namespace(rule.clone()).to_specified_css().unwrap(),
+            rule.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
+        assert_eq!(
+            CssRule::Namespace(rule.clone())
+                .serialize_specified(Default::default())
+                .unwrap(),
             expected
         );
         assert_eq!(rule, original);
@@ -51,7 +55,10 @@ fn constructed_namespace_rules_emit_canonical_prefixes_and_literal_url_strings()
         assert_eq!(parsed.prefix().map(CssNamespacePrefix::as_str), prefix);
         assert_eq!(parsed.name().as_str(), name);
         assert!(parsed.position().is_some());
-        assert_eq!(parsed.to_specified_css().unwrap(), expected);
+        assert_eq!(
+            parsed.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
 }
 
@@ -69,39 +76,31 @@ fn standalone_namespace_limits_charge_the_rule_optional_prefix_and_literal_name(
             r#"@namespace url("a\"b\\c😀");"#
         };
         let nodes = if prefix.is_some() { 3 } else { 2 };
-        let exact = CssSpecifiedValueSerializationLimits::new(nodes, nodes, expected.len());
-        assert_eq!(rule.to_specified_css_with_limits(exact).unwrap(), expected);
+        let exact = CssSerializationLimits::new(nodes, nodes, expected.len());
+        assert_eq!(rule.serialize_specified(exact).unwrap(), expected);
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(nodes - 1, nodes, expected.len()),
+                CssSerializationLimits::new(nodes - 1, nodes, expected.len()),
                 CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(nodes, nodes - 1, expected.len()),
+                CssSerializationLimits::new(nodes, nodes - 1, expected.len()),
                 CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(nodes, nodes, expected.len() - 1),
+                CssSerializationLimits::new(nodes, nodes, expected.len() - 1),
                 CssSpecifiedValueSerializationErrorKind::ByteLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(nodes, nodes, 0),
+                CssSerializationLimits::new(nodes, nodes, 0),
                 CssSpecifiedValueSerializationErrorKind::ByteLimit,
             ),
         ] {
-            assert_eq!(
-                rule.to_specified_css_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
-                kind
-            );
+            assert_eq!(rule.serialize_specified(limits).unwrap_err().kind(), kind);
             let error = CssRule::Namespace(rule.clone())
-                .to_specified_css_with_limits(limits)
+                .serialize_specified(limits)
                 .unwrap_err();
-            assert_eq!(
-                error.kind(),
-                CssSpecifiedRuleSerializationErrorKind::Resource(kind)
-            );
+            assert_eq!(error.kind(), kind);
             assert_eq!(error.rule_index(), None);
             assert_eq!(rule, original);
         }
@@ -128,7 +127,10 @@ fn normalized_namespace_payloads_share_output_without_changing_redeclaration_pro
             panic!("namespace payload")
         };
         let original = namespace.clone();
-        assert_eq!(namespace.to_specified_css().unwrap(), expected[index]);
+        assert_eq!(
+            namespace.serialize_specified(Default::default()).unwrap(),
+            expected[index]
+        );
         assert_eq!(namespace, &original);
         let position = namespace.position().unwrap();
         let offset = if index == 0 {
@@ -143,7 +145,10 @@ fn normalized_namespace_payloads_share_output_without_changing_redeclaration_pro
     assert_eq!(report.diagnostics(), original_diagnostics.as_slice());
     assert_eq!(normalized.diagnostics(), original_diagnostics.as_slice());
     assert_eq!(
-        report.syntax().to_specified_css().unwrap(),
+        report
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
         expected.join("\n")
     );
 }
@@ -152,7 +157,7 @@ fn normalized_namespace_payloads_share_output_without_changing_redeclaration_pro
 fn cssom_replaces_programmatic_nul_in_output_without_changing_the_stored_literal_name() {
     let rule = CssNamespaceRule::new(None, CssNamespaceName::new("before\0after"));
     assert_eq!(
-        rule.to_specified_css().unwrap(),
+        rule.serialize_specified(Default::default()).unwrap(),
         "@namespace url(\"before�after\");"
     );
     assert_eq!(rule.name().as_str(), "before\0after");
@@ -165,7 +170,13 @@ fn namespaces_compose_with_other_supported_rules_under_one_shared_budget() {
         parse_sheet("@namespace svg 'urn:svg';@supports-condition --feature { future:a; }");
     assert!(report.is_clean(), "{report:?}");
     let expected = "@namespace svg url(\"urn:svg\");\n@supports-condition --feature { future: a; }";
-    assert_eq!(report.syntax().to_specified_css().unwrap(), expected);
+    assert_eq!(
+        report
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
     for (input, kind) in [
         (
             true,
@@ -177,7 +188,7 @@ fn namespaces_compose_with_other_supported_rules_under_one_shared_budget() {
         ),
     ] {
         let limits = |nodes| {
-            CssSpecifiedValueSerializationLimits::new(
+            CssSerializationLimits::new(
                 if input { nodes } else { usize::MAX },
                 if input { usize::MAX } else { nodes },
                 usize::MAX,
@@ -189,20 +200,17 @@ fn namespaces_compose_with_other_supported_rules_under_one_shared_budget() {
                     .syntax()
                     .rules()
                     .iter()
-                    .all(|rule| rule.to_specified_css_with_limits(limits(*nodes)).is_ok())
+                    .all(|rule| rule.serialize_specified(limits(*nodes)).is_ok())
                     && report
                         .syntax()
-                        .to_specified_css_with_limits(limits(*nodes))
-                        .is_err_and(|error| {
-                            error.kind() == CssSpecifiedRuleSerializationErrorKind::Resource(kind)
-                                && error.rule_index() == Some(1)
-                        })
+                        .serialize_specified(limits(*nodes))
+                        .is_err_and(|error| error.kind() == kind && error.rule_index() == Some(1))
             })
             .expect("shared budget exhausts at supported sibling");
         assert_eq!(
             report
                 .syntax()
-                .to_specified_css_with_limits(limits(nodes))
+                .serialize_specified(limits(nodes))
                 .unwrap_err()
                 .rule_index(),
             Some(1)

@@ -6,9 +6,8 @@
 
 use surgeist_css::{
     CssComponentValueRef, CssFlowTolerance, CssFlowToleranceRef, CssKnownPropertyValueRef,
-    CssLengthPercentageCalculation, CssSpecifiedLengthPercentage,
-    CssSpecifiedValueSerializationErrorKind as ErrorKind,
-    CssSpecifiedValueSerializationLimits as Limits, CssValueTokenRef, parse_component_values,
+    CssLengthPercentageCalculation, CssSerializationLimits as Limits, CssSpecifiedLengthPercentage,
+    CssSpecifiedValueSerializationErrorKind as ErrorKind, CssValueTokenRef, parse_component_values,
     parse_style_attribute,
 };
 
@@ -20,7 +19,11 @@ fn constructed(text: &str) -> CssFlowTolerance {
             let components = parse_component_values(text).unwrap();
             let scalar = if text.contains('(') {
                 CssSpecifiedLengthPercentage::try_from_calculation(
-                    CssLengthPercentageCalculation::try_from_components(components).unwrap(),
+                    CssLengthPercentageCalculation::try_from_components(
+                        components,
+                        Default::default(),
+                    )
+                    .unwrap(),
                 )
                 .unwrap()
             } else {
@@ -69,9 +72,14 @@ fn parsed_and_constructed_tolerance_emit_independent_canonical_values() {
     ] {
         for value in [parsed(input), constructed(input)] {
             let before = value.clone();
-            let css = value.serialize_specified().unwrap();
+            let css = value.serialize_specified(Default::default()).unwrap();
             assert_eq!(css, expected, "{input}");
-            assert_eq!(parsed(&css).serialize_specified().unwrap(), expected);
+            assert_eq!(
+                parsed(&css)
+                    .serialize_specified(Default::default())
+                    .unwrap(),
+                expected
+            );
             assert_eq!(value, before);
         }
     }
@@ -81,10 +89,17 @@ fn parsed_and_constructed_tolerance_emit_independent_canonical_values() {
         } else {
             "infinite"
         };
-        assert_eq!(parsed(input).serialize_specified().unwrap(), expected);
+        assert_eq!(
+            parsed(input)
+                .serialize_specified(Default::default())
+                .unwrap(),
+            expected
+        );
     }
     assert_eq!(
-        CssFlowTolerance::default().serialize_specified().unwrap(),
+        CssFlowTolerance::default()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "normal"
     );
 }
@@ -111,17 +126,20 @@ fn extreme_signed_literals_preserve_exact_magnitudes_and_output_limits() {
                         if number.representation() == expected_coefficient
                 )
             );
-            assert_eq!(value.serialize_specified().unwrap(), expected);
+            assert_eq!(
+                value.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
             assert_eq!(
                 value
-                    .serialize_specified_with_limits(Limits::new(1, 1, expected.len()))
+                    .serialize_specified(Limits::new(1, 1, expected.len()))
                     .unwrap(),
                 expected
             );
             let before = value.clone();
             assert_eq!(
                 value
-                    .serialize_specified_with_limits(Limits::new(1, 1, expected.len() - 1))
+                    .serialize_specified(Limits::new(1, 1, expected.len() - 1))
                     .unwrap_err()
                     .kind(),
                 ErrorKind::ByteLimit
@@ -145,11 +163,7 @@ fn keywords_literals_and_calculations_obey_each_exact_resource_boundary() {
         let before = value.clone();
         assert_eq!(
             value
-                .serialize_specified_with_limits(Limits::new(
-                    input_nodes,
-                    projection_nodes,
-                    expected.len()
-                ))
+                .serialize_specified(Limits::new(input_nodes, projection_nodes, expected.len()))
                 .unwrap(),
             expected
         );
@@ -168,15 +182,15 @@ fn keywords_literals_and_calculations_obey_each_exact_resource_boundary() {
             ),
         ] {
             assert_eq!(
-                value
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                value.serialize_specified(limits).unwrap_err().kind(),
                 kind,
                 "{input}"
             );
             assert_eq!(value, before);
         }
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
 }

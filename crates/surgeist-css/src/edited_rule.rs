@@ -1,10 +1,9 @@
 //! Immutable borrowed payload views for CSSOM-owned edits. No live identity is stored.
 use crate::{
-    CssContainerPrelude, CssLayerName, CssMediaQueryList, CssRule, CssRuleCssomSerializationError,
-    CssScopedRule, CssScopedStyleSelectorList, CssSpecifiedDeclarationBlock,
-    CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationErrorKind,
-    CssSpecifiedValueSerializationLimits, CssStyleSelectorList, CssSupportsCondition,
-    specified_rule_serialization::SpecifiedRuleWriter,
+    CssContainerPrelude, CssLayerName, CssMediaQueryList, CssRule, CssRuleSerializationError,
+    CssScopedRule, CssScopedStyleSelectorList, CssSerializationError, CssSerializationLimits,
+    CssSpecifiedDeclarationBlock, CssSpecifiedValueSerializationErrorKind, CssStyleSelectorList,
+    CssSupportsCondition, specified_rule_serialization::SpecifiedRuleWriter,
 };
 
 /// A CSS-owned, already checked group prelude. Evaluation stays with its consumer.
@@ -188,45 +187,32 @@ impl<'a> CssRuleGraphInput<'a> {
             kind: EditedRuleKind::SupportsTestChild(child),
         }
     }
+    /// Serializes the literal CSSOM text of this graph in one native traversal.
+    ///
+    /// Supply actual namespace bindings and external Style ancestry; grouping
+    /// descendants inherit that ancestry and siblings restore it. One writer
+    /// owns all input, projection and output work under `limits.values`.
+    ///
     /// Root depth is zero; ordinary/test children add one, body/run containers
     /// are transparent; named-test component enclosures add depth beneath their
-    /// leaf. Other semantic-value writers retain their selected value quotas.
-    /// A root-one consumer must admit its root then subtract one (or its actual
-    /// selected subtree depth) before passing the remaining native allowance.
-    /// One writer owns all graph/payload work and output; failure is atomic.
-    pub fn serialize_cssom_with_graph_limits(
-        self,
-        namespaces: &crate::CssNamespaceContext,
-        ancestor: crate::CssStyleAncestor,
-        limits: CssRuleGraphSerializationLimits,
-    ) -> Result<String, CssRuleCssomSerializationError> {
-        let mut writer = SpecifiedRuleWriter::new(limits.values);
-        writer.max_graph_depth = Some(limits.max_depth);
-        writer.append_rule_graph_input(self, namespaces, ancestor)?;
-        Ok(writer.css)
-    }
+    /// leaf, and `limits.max_depth` bounds that structural depth. Other
+    /// semantic-value writers retain their selected value quotas. A root-one
+    /// consumer must admit its root then subtract one (or its actual selected
+    /// subtree depth) before passing the remaining native allowance.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CssRuleSerializationError`] when a limit is exhausted or a rule
+    /// has no literal CSSOM format. Failure returns no partial text, mutates no
+    /// input and allows a fresh retry.
     pub fn serialize_cssom(
         self,
         namespaces: &crate::CssNamespaceContext,
         ancestor: crate::CssStyleAncestor,
-    ) -> Result<String, CssRuleCssomSerializationError> {
-        self.serialize_cssom_with_limits(
-            namespaces,
-            ancestor,
-            CssSpecifiedValueSerializationLimits::default(),
-        )
-    }
-    /// One native graph traversal owns input/projection/output work for the full
-    /// request. Supply actual namespace bindings and external Style ancestry;
-    /// grouping descendants inherit that ancestry and siblings restore it.
-    /// Failure returns no partial text, mutates no input and allows fresh retry.
-    pub fn serialize_cssom_with_limits(
-        self,
-        namespaces: &crate::CssNamespaceContext,
-        ancestor: crate::CssStyleAncestor,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String, CssRuleCssomSerializationError> {
-        let mut writer = SpecifiedRuleWriter::new(limits);
+        limits: CssRuleSerializationLimits,
+    ) -> Result<String, CssRuleSerializationError> {
+        let mut writer = SpecifiedRuleWriter::new(limits.values);
+        writer.max_graph_depth = Some(limits.max_depth);
         writer.append_rule_graph_input(self, namespaces, ancestor)?;
         Ok(writer.css)
     }
@@ -257,25 +243,13 @@ impl<'a> CssEditedRuleView<'a> {
             kind: EditedRuleKind::ParsedScoped(rule),
         }
     }
+    /// Checks cumulative provider work and complete specified output without reparsing.
     pub fn try_style(
         selectors: &'a CssStyleSelectorList,
         declarations: &'a CssSpecifiedDeclarationBlock,
         children: &'a [Self],
-    ) -> Result<Self, CssRuleCssomSerializationError> {
-        Self::try_style_with_limits(
-            selectors,
-            declarations,
-            children,
-            CssSpecifiedValueSerializationLimits::default(),
-        )
-    }
-    /// Checks cumulative provider work and complete specified output without reparsing.
-    pub fn try_style_with_limits(
-        selectors: &'a CssStyleSelectorList,
-        declarations: &'a CssSpecifiedDeclarationBlock,
-        children: &'a [Self],
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<Self, CssRuleCssomSerializationError> {
+        limits: CssSerializationLimits,
+    ) -> Result<Self, CssRuleSerializationError> {
         Self::ordinary(declarations)?;
         Self {
             kind: EditedRuleKind::Style(
@@ -292,20 +266,8 @@ impl<'a> CssEditedRuleView<'a> {
         selectors: &'a CssScopedStyleSelectorList,
         declarations: &'a CssSpecifiedDeclarationBlock,
         children: &'a [Self],
-    ) -> Result<Self, CssRuleCssomSerializationError> {
-        Self::try_scoped_style_with_limits(
-            selectors,
-            declarations,
-            children,
-            CssSpecifiedValueSerializationLimits::default(),
-        )
-    }
-    pub fn try_scoped_style_with_limits(
-        selectors: &'a CssScopedStyleSelectorList,
-        declarations: &'a CssSpecifiedDeclarationBlock,
-        children: &'a [Self],
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<Self, CssRuleCssomSerializationError> {
+        limits: CssSerializationLimits,
+    ) -> Result<Self, CssRuleSerializationError> {
         Self::ordinary(declarations)?;
         Self {
             kind: EditedRuleKind::Style(
@@ -316,40 +278,25 @@ impl<'a> CssEditedRuleView<'a> {
         }
         .checked(limits)
     }
+    /// Checks the shared specified providers. Literal CSSOM availability is checked
+    /// separately by serialization, retaining the existing typed unavailable result.
     pub fn try_group(
         prelude: CssEditedGroupPreludeRef<'a>,
         children: &'a [Self],
-    ) -> Result<Self, CssRuleCssomSerializationError> {
-        Self::try_group_with_limits(
-            prelude,
-            children,
-            CssSpecifiedValueSerializationLimits::default(),
-        )
-    }
-    /// Checks the shared specified providers. Literal CSSOM availability is checked
-    /// separately by serialization, retaining the existing typed unavailable result.
-    pub fn try_group_with_limits(
-        prelude: CssEditedGroupPreludeRef<'a>,
-        children: &'a [Self],
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<Self, CssRuleCssomSerializationError> {
+        limits: CssSerializationLimits,
+    ) -> Result<Self, CssRuleSerializationError> {
         let view = Self {
             kind: EditedRuleKind::Group(prelude, EditedRuleChildrenRef::Views(children)),
         };
-        view.to_specified_css_with_limits(limits)?;
+        view.serialize_specified(limits)?;
         Ok(view)
     }
     /// Embeds current selected Page state and its ordered, domain-checked margin children.
     /// This checks formatting, while contextual placement remains with the consumer.
     pub fn try_page(
         page: crate::CssPageRuleView<'a>,
-    ) -> Result<Self, CssRuleCssomSerializationError> {
-        Self::try_page_with_limits(page, CssSpecifiedValueSerializationLimits::default())
-    }
-    pub fn try_page_with_limits(
-        page: crate::CssPageRuleView<'a>,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<Self, CssRuleCssomSerializationError> {
+        limits: CssSerializationLimits,
+    ) -> Result<Self, CssRuleSerializationError> {
         Self {
             kind: EditedRuleKind::Page(page),
         }
@@ -358,13 +305,8 @@ impl<'a> CssEditedRuleView<'a> {
     /// Embeds a checked current whole-keyframes payload without reconstructing authored rules.
     pub fn try_keyframes(
         keyframes: crate::CssKeyframesRuleView<'a>,
-    ) -> Result<Self, CssRuleCssomSerializationError> {
-        Self::try_keyframes_with_limits(keyframes, CssSpecifiedValueSerializationLimits::default())
-    }
-    pub fn try_keyframes_with_limits(
-        keyframes: crate::CssKeyframesRuleView<'a>,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<Self, CssRuleCssomSerializationError> {
+        limits: CssSerializationLimits,
+    ) -> Result<Self, CssRuleSerializationError> {
         Self {
             kind: EditedRuleKind::Keyframes(keyframes),
         }
@@ -374,13 +316,8 @@ impl<'a> CssEditedRuleView<'a> {
     /// provenance. Placement remains the consumer's responsibility.
     pub fn try_import(
         import: crate::CssImportRuleView<'a>,
-    ) -> Result<Self, CssRuleCssomSerializationError> {
-        Self::try_import_with_limits(import, CssSpecifiedValueSerializationLimits::default())
-    }
-    pub fn try_import_with_limits(
-        import: crate::CssImportRuleView<'a>,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<Self, CssRuleCssomSerializationError> {
+        limits: CssSerializationLimits,
+    ) -> Result<Self, CssRuleSerializationError> {
         Self {
             kind: EditedRuleKind::Import(import),
         }
@@ -388,30 +325,20 @@ impl<'a> CssEditedRuleView<'a> {
     }
     pub fn try_nested_declarations(
         declarations: &'a CssSpecifiedDeclarationBlock,
-    ) -> Result<Self, CssRuleCssomSerializationError> {
-        Self::try_nested_declarations_with_limits(
-            declarations,
-            CssSpecifiedValueSerializationLimits::default(),
-        )
-    }
-    pub fn try_nested_declarations_with_limits(
-        declarations: &'a CssSpecifiedDeclarationBlock,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<Self, CssRuleCssomSerializationError> {
+        limits: CssSerializationLimits,
+    ) -> Result<Self, CssRuleSerializationError> {
         Self::ordinary(declarations)?;
         Self {
             kind: EditedRuleKind::NestedDeclarations(declarations),
         }
         .checked(limits)
     }
-    fn ordinary(
-        block: &CssSpecifiedDeclarationBlock,
-    ) -> Result<(), CssRuleCssomSerializationError> {
+    fn ordinary(block: &CssSpecifiedDeclarationBlock) -> Result<(), CssRuleSerializationError> {
         if block.is_ordinary() {
             return Ok(());
         }
-        Err(CssRuleCssomSerializationError::new(
-            CssSpecifiedValueSerializationError::new(
+        Err(CssRuleSerializationError::new(
+            CssSerializationError::new(
                 CssSpecifiedValueSerializationErrorKind::UnserializableBoundary,
             )
             .into(),
@@ -419,11 +346,8 @@ impl<'a> CssEditedRuleView<'a> {
             None,
         ))
     }
-    fn checked(
-        self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<Self, CssRuleCssomSerializationError> {
-        self.to_specified_css_with_limits(limits)?;
+    fn checked(self, limits: CssSerializationLimits) -> Result<Self, CssRuleSerializationError> {
+        self.serialize_specified(limits)?;
         Ok(self)
     }
     /// The original parsed rule, when this view borrows one; edited wrappers return None.
@@ -442,29 +366,39 @@ impl<'a> CssEditedRuleView<'a> {
             _ => None,
         }
     }
-    pub fn serialize_cssom(self) -> Result<String, CssRuleCssomSerializationError> {
-        self.serialize_cssom_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-    pub fn serialize_cssom_with_limits(
+    /// Serializes the literal CSSOM text of this view and its children.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CssRuleSerializationError`] when a limit is exhausted or a rule
+    /// has no literal CSSOM format; no partial text is returned.
+    pub fn serialize_cssom(
         self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String, CssRuleCssomSerializationError> {
+        limits: CssSerializationLimits,
+    ) -> Result<String, CssRuleSerializationError> {
         self.serialize(limits, true)
     }
-    pub fn to_specified_css(self) -> Result<String, CssRuleCssomSerializationError> {
-        self.to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-    pub fn to_specified_css_with_limits(
+    /// Serializes this view and its children as canonical specified CSS.
+    ///
+    /// `limits` bounds input nodes, projection nodes and output UTF-8 bytes
+    /// cumulatively across the whole graph.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CssRuleSerializationError`], with its rule path, when a limit
+    /// is exhausted or a value cannot be represented; no partial text is
+    /// returned.
+    pub fn serialize_specified(
         self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String, CssRuleCssomSerializationError> {
+        limits: CssSerializationLimits,
+    ) -> Result<String, CssRuleSerializationError> {
         self.serialize(limits, false)
     }
     fn serialize(
         self,
-        limits: CssSpecifiedValueSerializationLimits,
+        limits: CssSerializationLimits,
         cssom: bool,
-    ) -> Result<String, CssRuleCssomSerializationError> {
+    ) -> Result<String, CssRuleSerializationError> {
         let mut writer = SpecifiedRuleWriter::new(limits);
         writer.append_edited_rule_graph(self, cssom)?;
         Ok(writer.css)
@@ -476,14 +410,14 @@ impl<'a> CssEditedRuleView<'a> {
 /// blocks; named-support candidate/component nesting also contributes depth.
 /// Existing value-only serialization limits remain independent domain requests.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct CssRuleGraphSerializationLimits {
-    pub values: CssSpecifiedValueSerializationLimits,
+pub struct CssRuleSerializationLimits {
+    pub values: CssSerializationLimits,
     pub max_depth: usize,
 }
-impl Default for CssRuleGraphSerializationLimits {
+impl Default for CssRuleSerializationLimits {
     fn default() -> Self {
         Self {
-            values: CssSpecifiedValueSerializationLimits::default(),
+            values: CssSerializationLimits::default(),
             max_depth: 256,
         }
     }

@@ -45,10 +45,14 @@ fn checked_pair_construction_accepts_zero_absolute_relative_and_symbolic_math() 
         let pair = CssBorderSpacing::new(horizontal.clone(), vertical.clone());
         assert_eq!(pair.horizontal(), &horizontal);
         assert_eq!(pair.vertical(), &vertical);
-        assert_eq!(pair.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            pair.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
     let calculation = CssLengthCalculation::try_from_components(
         parse_component_values("calc(1px + 2em)").unwrap(),
+        Default::default(),
     )
     .unwrap();
     let symbolic = CssSpecifiedNonNegativeLength::try_from_calculation(calculation).unwrap();
@@ -56,18 +60,24 @@ fn checked_pair_construction_accepts_zero_absolute_relative_and_symbolic_math() 
     assert_eq!(pair.horizontal(), &symbolic);
     assert!(pair.horizontal().calculation().is_some());
     // CSS Values 4 §10.13 sorts dimension terms by unit when serializing calc().
-    assert_eq!(pair.serialize_specified().unwrap(), "calc(2em + 1px) 3px");
+    assert_eq!(
+        pair.serialize_specified(Default::default()).unwrap(),
+        "calc(2em + 1px) 3px"
+    );
     let negative_math = nonnegative_length("calc(1px - 2px)");
     let pair = CssBorderSpacing::new(negative_math.clone(), nonnegative_length("0"));
     assert_eq!(pair.horizontal(), &negative_math);
-    assert_eq!(pair.serialize_specified().unwrap(), "calc(-1px) 0");
+    assert_eq!(
+        pair.serialize_specified(Default::default()).unwrap(),
+        "calc(-1px) 0"
+    );
 }
 
 #[test]
 fn checked_single_length_rejects_bare_negative_percent_and_keyword_values() {
     for css in ["0", "2px", "3em"] {
         let value = nonnegative_length(css);
-        assert_eq!(value.serialize_specified().unwrap(), css);
+        assert_eq!(value.serialize_specified(Default::default()).unwrap(), css);
     }
     for (css, kind) in [
         ("-1px", CssNumericConstructionErrorKind::OutOfRange),
@@ -96,9 +106,15 @@ fn checked_calculations_remain_symbolic_even_when_their_math_is_negative() {
     let pair = CssBorderSpacing::new(negative.clone(), relative.clone());
     assert_eq!(pair.horizontal(), &negative);
     assert_eq!(pair.vertical(), &relative);
-    assert_eq!(pair.serialize_specified().unwrap(), "calc(-2px) calc(3em)");
     assert_eq!(
-        negative.clone().serialize_specified().unwrap(),
+        pair.serialize_specified(Default::default()).unwrap(),
+        "calc(-2px) calc(3em)"
+    );
+    assert_eq!(
+        negative
+            .clone()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "calc(-2px)"
     );
 }
@@ -116,7 +132,12 @@ fn initial_and_authored_contributions_expose_exact_numeric_axes() {
     };
     assert_eq!(typed(initial).horizontal(), &nonnegative_length("0"));
     assert_eq!(typed(initial).vertical(), &nonnegative_length("0"));
-    assert_eq!(typed(initial).serialize_specified().unwrap(), "0 0");
+    assert_eq!(
+        typed(initial)
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "0 0"
+    );
 
     for (source, horizontal, vertical) in [
         ("border-spacing:2px", "2px", "2px"),
@@ -131,12 +152,21 @@ fn initial_and_authored_contributions_expose_exact_numeric_axes() {
         let expanded = contribution(&declaration);
         let typed = typed(expanded.ordinary_value().unwrap());
         assert_eq!(
-            typed.horizontal().serialize_specified().unwrap(),
+            typed
+                .horizontal()
+                .serialize_specified(Default::default())
+                .unwrap(),
             horizontal
         );
-        assert_eq!(typed.vertical().serialize_specified().unwrap(), vertical);
         assert_eq!(
-            typed.serialize_specified().unwrap(),
+            typed
+                .vertical()
+                .serialize_specified(Default::default())
+                .unwrap(),
+            vertical
+        );
+        assert_eq!(
+            typed.serialize_specified(Default::default()).unwrap(),
             format!("{horizontal} {vertical}")
         );
     }
@@ -156,8 +186,20 @@ fn pending_reentry_exposes_effective_axes_with_original_source() {
         panic!("one border-spacing contribution")
     };
     let value = typed(item.ordinary_value().unwrap());
-    assert_eq!(value.horizontal().serialize_specified().unwrap(), "2px");
-    assert_eq!(value.vertical().serialize_specified().unwrap(), "3em");
+    assert_eq!(
+        value
+            .horizontal()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "2px"
+    );
+    assert_eq!(
+        value
+            .vertical()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "3em"
+    );
     assert!(item.source().same_occurrence(&source));
     assert_eq!(item.source().importance(), CssImportance::Important);
     assert_eq!(item.replacement_components(), Some(&replacement));
@@ -168,59 +210,48 @@ fn single_and_pair_serializers_enforce_exact_shared_resource_budgets() {
     let single = nonnegative_length("2px");
     assert_eq!(
         single
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(1, 1, 3))
+            .serialize_specified(CssSerializationLimits::new(1, 1, 3))
             .unwrap(),
         "2px"
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(0, 1, 3),
+            CssSerializationLimits::new(0, 1, 3),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(1, 0, 3),
+            CssSerializationLimits::new(1, 0, 3),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(1, 1, 2),
+            CssSerializationLimits::new(1, 1, 2),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
-        assert_eq!(
-            single
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            kind
-        );
+        assert_eq!(single.serialize_specified(limits).unwrap_err().kind(), kind);
     }
 
     let pair = CssBorderSpacing::new(nonnegative_length("2px"), nonnegative_length("3em"));
     assert_eq!(
-        pair.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(3, 3, 7))
+        pair.serialize_specified(CssSerializationLimits::new(3, 3, 7))
             .unwrap(),
         "2px 3em"
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(2, 3, 7),
+            CssSerializationLimits::new(2, 3, 7),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(3, 2, 7),
+            CssSerializationLimits::new(3, 2, 7),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(3, 3, 6),
+            CssSerializationLimits::new(3, 3, 6),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
-        assert_eq!(
-            pair.serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            kind
-        );
+        assert_eq!(pair.serialize_specified(limits).unwrap_err().kind(), kind);
     }
 }
 
@@ -231,42 +262,32 @@ fn two_typed_calculation_axes_share_one_streaming_serialization_budget() {
     for axis in [&first, &second] {
         let axis = axis.clone();
         assert!(
-            axis.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                1_000, 1_000, 15
-            ))
-            .is_ok()
+            axis.serialize_specified(CssSerializationLimits::new(1_000, 1_000, 15))
+                .is_ok()
         );
         assert_eq!(
-            axis.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                0, 1_000, 1_000
-            ))
-            .unwrap_err()
-            .kind(),
+            axis.serialize_specified(CssSerializationLimits::new(0, 1_000, 1_000))
+                .unwrap_err()
+                .kind(),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit
         );
         assert_eq!(
-            axis.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                1_000, 0, 1_000
-            ))
-            .unwrap_err()
-            .kind(),
+            axis.serialize_specified(CssSerializationLimits::new(1_000, 0, 1_000))
+                .unwrap_err()
+                .kind(),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
         );
     }
     let pair = CssBorderSpacing::new(first, second);
     assert_eq!(
-        pair.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-            1_000, 1_000, 31
-        ))
-        .unwrap(),
+        pair.serialize_specified(CssSerializationLimits::new(1_000, 1_000, 31))
+            .unwrap(),
         "calc(2em + 1px) calc(4em + 3px)"
     );
     assert_eq!(
-        pair.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-            1_000, 1_000, 15
-        ))
-        .unwrap_err()
-        .kind(),
+        pair.serialize_specified(CssSerializationLimits::new(1_000, 1_000, 15))
+            .unwrap_err()
+            .kind(),
         CssSpecifiedValueSerializationErrorKind::ByteLimit
     );
 }
@@ -275,7 +296,8 @@ fn nonnegative_length(css: &str) -> surgeist_css::CssSpecifiedNonNegativeLength 
     let components = surgeist_css::parse_component_values(css).unwrap();
     if css.contains('(') {
         surgeist_css::CssSpecifiedNonNegativeLength::try_from_calculation(
-            surgeist_css::CssLengthCalculation::try_from_components(components).unwrap(),
+            surgeist_css::CssLengthCalculation::try_from_components(components, Default::default())
+                .unwrap(),
         )
         .unwrap()
     } else {

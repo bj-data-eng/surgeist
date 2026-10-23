@@ -78,7 +78,11 @@ fn checked_components_reject_empty_and_orphan_shrink_but_admit_basis_only() {
     assert!(components.grow().is_none());
     assert!(components.shrink().is_none());
     assert_eq!(
-        components.basis().unwrap().serialize_specified().unwrap(),
+        components
+            .basis()
+            .unwrap()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "10px"
     );
 }
@@ -91,7 +95,10 @@ fn checked_factors_preserve_exact_lexical_numbers_and_symbolic_math() {
         ("1e-100", "0".to_owned()),
     ] {
         let value = factor(text);
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         let Some(component) = value.literal_component() else {
             panic!("exact lexical literal: {text}")
         };
@@ -108,12 +115,17 @@ fn checked_factors_preserve_exact_lexical_numbers_and_symbolic_math() {
         .unwrap_err();
         assert_eq!(error.kind(), &CssNumericConstructionErrorKind::OutOfRange);
     }
-    let math =
-        CssNumberCalculation::try_from_components(parse_component_values("calc(1 + 2)").unwrap())
-            .unwrap();
+    let math = CssNumberCalculation::try_from_components(
+        parse_component_values("calc(1 + 2)").unwrap(),
+        Default::default(),
+    )
+    .unwrap();
     let value = CssSpecifiedNonNegativeNumber::try_from_calculation(math).unwrap();
     assert!(value.calculation().is_some());
-    assert_eq!(value.serialize_specified().unwrap(), "calc(3)");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "calc(3)"
+    );
 }
 
 #[test]
@@ -123,7 +135,9 @@ fn flex_basis_borrows_content_size_and_calc_size_without_erasing_structure() {
         CssFlexBasisRef::Content
     ));
     assert_eq!(
-        CssFlexBasisValue::content().serialize_specified().unwrap(),
+        CssFlexBasisValue::content()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "content"
     );
 
@@ -135,13 +149,24 @@ fn flex_basis_borrows_content_size_and_calc_size_without_erasing_structure() {
     ));
     let from_size = CssFlexBasisValue::from(size);
     assert!(matches!(from_size.view(), CssFlexBasisRef::Size(_)));
-    assert_eq!(from_size.serialize_specified().unwrap(), "10px");
+    assert_eq!(
+        from_size.serialize_specified(Default::default()).unwrap(),
+        "10px"
+    );
 
-    let calc = CssCalcSize::try_from_component(one_component("calc-size(content, size)")).unwrap();
+    let calc = CssCalcSize::try_from_component(
+        one_component("calc-size(content, size)"),
+        Default::default(),
+    )
+    .unwrap();
     let direct = CssFlexBasisValue::from(calc.clone());
     let through_box_size = CssFlexBasisValue::from(CssSizeValue::BoxSize(CssBoxSize::CalcSize(
         CssBoxCalcSize::try_from(
-            CssCalcSize::try_from_component(one_component("calc-size(min-content, size)")).unwrap(),
+            CssCalcSize::try_from_component(
+                one_component("calc-size(min-content, size)"),
+                Default::default(),
+            )
+            .unwrap(),
         )
         .unwrap(),
     )));
@@ -160,7 +185,8 @@ fn content_calc_size_is_flex_valid_and_box_invalid_at_the_offending_basis() {
         "calc-size(content, size)",
         "calc-size(calc-size(content, size), size + 1px)",
     ] {
-        let calc = CssCalcSize::try_from_component(one_component(text)).unwrap();
+        let calc =
+            CssCalcSize::try_from_component(one_component(text), Default::default()).unwrap();
         assert!(matches!(
             CssFlexBasisValue::from(calc.clone()).view(),
             CssFlexBasisRef::CalcSize(_)
@@ -183,7 +209,7 @@ fn content_calc_size_is_flex_valid_and_box_invalid_at_the_offending_basis() {
         parse_component_values("content, size").unwrap(),
     )
     .unwrap();
-    let calc = CssCalcSize::try_from_component(constructed).unwrap();
+    let calc = CssCalcSize::try_from_component(constructed, Default::default()).unwrap();
     let error = CssBoxCalcSize::try_from(calc.clone()).unwrap_err();
     assert_eq!(
         error.kind(),
@@ -192,9 +218,11 @@ fn content_calc_size_is_flex_valid_and_box_invalid_at_the_offending_basis() {
     assert_eq!(error.origin(), Some(calc.basis_origin()));
     assert!(matches!(error.origin(), Some(CssValueOrigin::Parsed(_))));
 
-    let nested_auto =
-        CssCalcSize::try_from_component(one_component("calc-size(calc-size(auto, size), size)"))
-            .unwrap();
+    let nested_auto = CssCalcSize::try_from_component(
+        one_component("calc-size(calc-size(auto, size), size)"),
+        Default::default(),
+    )
+    .unwrap();
     let box_value = CssBoxCalcSize::try_from(nested_auto).unwrap();
     assert_eq!(
         CssMaxSizeValue::try_box_size(CssBoxSize::CalcSize(box_value))
@@ -213,37 +241,68 @@ fn typed_flex_serialization_materializes_the_specified_default_triple() {
         ("2 3 10px", "2 3 10px"),
     ] {
         assert_eq!(
-            flex(source).serialize_specified().unwrap(),
+            flex(source)
+                .serialize_specified(Default::default())
+                .unwrap(),
             expected,
             "{source}"
         );
     }
-    assert_eq!(CssFlexValue::None.serialize_specified().unwrap(), "none");
-    assert_eq!(CssFlexValue::Auto.serialize_specified().unwrap(), "auto");
+    assert_eq!(
+        CssFlexValue::None
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "none"
+    );
+    assert_eq!(
+        CssFlexValue::Auto
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "auto"
+    );
 
     let constructed = CssFlexValue::Components(
         CssFlexComponents::try_new(Some(factor("2")), None, None).unwrap(),
     );
-    assert_eq!(constructed.serialize_specified().unwrap(), "2 1 0");
+    assert_eq!(
+        constructed.serialize_specified(Default::default()).unwrap(),
+        "2 1 0"
+    );
     let CssFlexValue::Components(components) = &constructed else {
         panic!("directly constructed flex components")
     };
     assert_eq!(
-        components.grow().unwrap().serialize_specified().unwrap(),
+        components
+            .grow()
+            .unwrap()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "2"
     );
     assert!(components.shrink().is_none());
     assert!(components.basis().is_none());
     let basis_only_zero =
         CssFlexValue::Components(CssFlexComponents::try_new(None, None, Some(basis("0"))).unwrap());
-    assert_eq!(basis_only_zero.serialize_specified().unwrap(), "1 1 0");
+    assert_eq!(
+        basis_only_zero
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "1 1 0"
+    );
 }
 
 #[test]
 fn serialized_flex_reparses_with_the_same_effective_terminals() {
     for source in ["0", "0%", "2", "10px", "2 3 10px", "none", "auto"] {
-        let serialized = flex(source).serialize_specified().unwrap();
-        assert_eq!(flex(&serialized).serialize_specified().unwrap(), serialized);
+        let serialized = flex(source)
+            .serialize_specified(Default::default())
+            .unwrap();
+        assert_eq!(
+            flex(&serialized)
+                .serialize_specified(Default::default())
+                .unwrap(),
+            serialized
+        );
         let original = contributions(source);
         let reparsed = contributions(&serialized);
         for (left, right) in original.iter().zip(reparsed.iter()) {
@@ -254,14 +313,14 @@ fn serialized_flex_reparses_with_the_same_effective_terminals() {
                 (CssLonghandValueRef::FlexGrow(a), CssLonghandValueRef::FlexGrow(b))
                 | (CssLonghandValueRef::FlexShrink(a), CssLonghandValueRef::FlexShrink(b)) => {
                     assert_eq!(
-                        a.serialize_specified().unwrap(),
-                        b.serialize_specified().unwrap()
+                        a.serialize_specified(Default::default()).unwrap(),
+                        b.serialize_specified(Default::default()).unwrap()
                     );
                 }
                 (CssLonghandValueRef::FlexBasis(a), CssLonghandValueRef::FlexBasis(b)) => {
                     assert_eq!(
-                        a.serialize_specified().unwrap(),
-                        b.serialize_specified().unwrap()
+                        a.serialize_specified(Default::default()).unwrap(),
+                        b.serialize_specified(Default::default()).unwrap()
                     );
                 }
                 _ => panic!("mismatched effective flex terminal: {source}"),
@@ -292,9 +351,9 @@ fn intrinsic_flex_initials_are_zero_one_auto() {
         let serialized = match value.view() {
             CssLonghandValueRef::FlexGrow(v) | CssLonghandValueRef::FlexShrink(v) => {
                 assert_eq!(v.origin(), &CssValueOrigin::Programmatic);
-                v.serialize_specified().unwrap()
+                v.serialize_specified(Default::default()).unwrap()
             }
-            CssLonghandValueRef::FlexBasis(v) => v.serialize_specified().unwrap(),
+            CssLonghandValueRef::FlexBasis(v) => v.serialize_specified(Default::default()).unwrap(),
             _ => panic!("typed initial: {name}"),
         };
         assert_eq!(serialized, expected);
@@ -313,9 +372,11 @@ fn expanded_flex_keywords_and_omissions_have_distinct_effective_values() {
             .iter()
             .map(|item| match item.ordinary_value().unwrap().view() {
                 CssLonghandValueRef::FlexGrow(v) | CssLonghandValueRef::FlexShrink(v) => {
-                    v.serialize_specified().unwrap()
+                    v.serialize_specified(Default::default()).unwrap()
                 }
-                CssLonghandValueRef::FlexBasis(v) => v.serialize_specified().unwrap(),
+                CssLonghandValueRef::FlexBasis(v) => {
+                    v.serialize_specified(Default::default()).unwrap()
+                }
                 _ => panic!("unexpected flex terminal"),
             })
             .collect::<Vec<_>>();
@@ -346,29 +407,23 @@ fn flex_serialization_uses_one_shared_resource_budget() {
     let value = flex("calc(1 + 2) 3 calc-size(content, size)");
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(1, 100, 1000),
+            CssSerializationLimits::new(1, 100, 1000),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(100, 1, 1000),
+            CssSerializationLimits::new(100, 1, 1000),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(100, 100, 8),
+            CssSerializationLimits::new(100, 100, 8),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
-        assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            kind
-        );
+        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
     }
     assert!(
         value
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap()
             .contains("calc-size(content, size)")
     );

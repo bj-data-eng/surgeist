@@ -114,7 +114,10 @@ fn import_and_font_sources_expose_shared_payload_and_preserve_import_spelling() 
         matches!(target.url().modifiers(), [CssUrlModifier::Ident(ident)] if ident.as_str() == "cors")
     );
     assert_eq!(
-        import.serialize().unwrap().as_css(),
+        import
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         "@import SRC(\"theme.css\" cors) layer(theme);"
     );
 

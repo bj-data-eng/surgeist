@@ -613,7 +613,7 @@ fn actual_creation_receipt(
             .unwrap();
         let ticket = setup
             .create_declarations(
-                surgeist_css::CssDeclarationList::try_new(Vec::new()).unwrap(),
+                surgeist_css::CssDeclarationList::try_new(Vec::new(), Default::default()).unwrap(),
                 false,
                 false,
                 Some(CssomInputVersion {

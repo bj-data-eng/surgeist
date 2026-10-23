@@ -88,7 +88,10 @@ fn parses_spacing_inset_and_z_index_values() {
     );
     let top = top.length_percentage().unwrap().calculation().unwrap();
     assert_eq!(top.result_type(), CssCalculationType::LengthPercentage);
-    assert_eq!(top.serialize().unwrap().as_css(), "calc(10px + 5%)");
+    assert_eq!(
+        top.serialize_tokens(Default::default()).unwrap().as_css(),
+        "calc(10px + 5%)"
+    );
     let CssZIndexValue::Integer(value) = property_payload!(
         declaration(".panel { z-index: -2; }", CssKnownProperty::ZIndex),
         ZIndex,
@@ -132,7 +135,7 @@ fn parses_spacing_longhands_with_existing_component_rules() {
             PaddingTop,
             value
         )
-        .serialize_specified()
+        .serialize_specified(Default::default())
         .unwrap(),
         "12px"
     );
@@ -194,12 +197,16 @@ fn parses_border_style_and_border_shorthand_values() {
     );
     assert_eq!(border.style(), Some(CssBorderStyle::Solid));
     assert_eq!(
-        border.width().unwrap().serialize_specified().unwrap(),
+        border
+            .width()
+            .unwrap()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "2px"
     );
     assert_eq!(border.color().unwrap().hex_value().unwrap().digits(), "fff");
     assert_eq!(
-        border.serialize_specified().unwrap(),
+        border.serialize_specified(Default::default()).unwrap(),
         "2px solid rgb(255, 255, 255)"
     );
 
@@ -357,7 +364,11 @@ fn checked_border_width_rejects_negative_and_percentage_values() {
     )
     .unwrap();
     assert_eq!(
-        border.width().unwrap().serialize_specified().unwrap(),
+        border
+            .width()
+            .unwrap()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "1px"
     );
 }
@@ -384,6 +395,7 @@ fn checked_corner_radius_constructor_rejects_parser_invalid_values() {
     for css in ["-1px", "-1%"] {
         let calculation = CssLengthPercentageCalculation::try_from_components(
             parse_component_values(css).unwrap(),
+            Default::default(),
         )
         .unwrap();
         assert!(

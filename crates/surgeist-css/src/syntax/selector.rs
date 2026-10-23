@@ -171,6 +171,9 @@ impl CssRetainedSources for CssPseudoClass {
     }
 }
 
+/// # Specified serialization
+///
+/// Emits an authored selector, without resolving its symbolic ancestry.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssSelector {
@@ -223,22 +226,12 @@ pub struct CssComplexSelector {
 
 impl CssComplexSelector {
     /// Checks complete ordinary assembly with the default cumulative output limits.
+    ///
+    /// Checks placement and the complete graph within one shared budget.
     pub fn try_new(
         first: CssCompoundSelector,
         rest: Vec<CssComplexSelectorPart>,
-    ) -> Result<Self, CssSelectorConstructionError> {
-        Self::try_new_with_limits(
-            first,
-            rest,
-            crate::CssSpecifiedValueSerializationLimits::default(),
-        )
-    }
-
-    /// Checks placement and the complete graph within one shared budget.
-    pub fn try_new_with_limits(
-        first: CssCompoundSelector,
-        rest: Vec<CssComplexSelectorPart>,
-        limits: crate::CssSpecifiedValueSerializationLimits,
+        limits: crate::CssSerializationLimits,
     ) -> Result<Self, CssSelectorConstructionError> {
         if rest.is_empty() {
             return Err(CssSelectorConstructionError::new(
@@ -316,22 +309,12 @@ pub struct CssComplexSelectorPart {
 impl CssComplexSelectorPart {
     /// Checks an ordinary compound and its relationship with default output limits.
     /// Admission here does not prove that a pseudo-element is terminal in a complex.
+    ///
+    /// Charges the compound and canonical relationship bytes cumulatively.
     pub fn try_new(
         combinator: CssSelectorCombinator,
         selector: CssCompoundSelector,
-    ) -> Result<Self, CssSelectorConstructionError> {
-        Self::try_new_with_limits(
-            combinator,
-            selector,
-            crate::CssSpecifiedValueSerializationLimits::default(),
-        )
-    }
-
-    /// Charges the compound and canonical relationship bytes cumulatively.
-    pub fn try_new_with_limits(
-        combinator: CssSelectorCombinator,
-        selector: CssCompoundSelector,
-        limits: crate::CssSpecifiedValueSerializationLimits,
+        limits: crate::CssSerializationLimits,
     ) -> Result<Self, CssSelectorConstructionError> {
         let value = Self::new(combinator, selector);
         let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
@@ -395,7 +378,7 @@ pub enum CssSelectorConstructionErrorKind {
     /// The decoded name is not a genuine identifier beginning with `-webkit-`.
     InvalidUnknownWebkitPseudoElementName,
     /// Intrinsic grammar or cumulative specified-output admission failed.
-    Specified(crate::CssSpecifiedValueSerializationError),
+    Specified(crate::CssSerializationError),
 }
 
 /// Atomic construction failure, with no invented parsed-source coordinates.
@@ -414,7 +397,7 @@ impl CssSelectorConstructionError {
         }
     }
 
-    fn specified(error: crate::CssSpecifiedValueSerializationError) -> Self {
+    fn specified(error: crate::CssSerializationError) -> Self {
         Self {
             kind: CssSelectorConstructionErrorKind::Specified(error),
         }
@@ -483,6 +466,10 @@ impl std::error::Error for CssSelectorConstructionError {
 }
 
 /// A nonempty ordered list admitted under ordinary authored selector grammar.
+///
+/// # Specified serialization
+///
+/// Emits the complete ordinary list without resolving symbolic ancestry.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssSelectorList {
     selectors: Vec<CssSelector>,
@@ -490,25 +477,19 @@ pub struct CssSelectorList {
 
 impl CssSelectorList {
     /// Checks every ordinary member with the default cumulative output limits.
-    pub fn try_new(selectors: Vec<CssSelector>) -> Result<Self, CssSelectorConstructionError> {
-        Self::try_new_with_limits(
-            selectors,
-            crate::CssSpecifiedValueSerializationLimits::default(),
-        )
-    }
-
+    ///
     /// Checks the complete graph and canonical output within one shared budget.
     /// No invalid member is dropped and no partially admitted list escapes.
-    pub fn try_new_with_limits(
+    pub fn try_new(
         selectors: Vec<CssSelector>,
-        limits: crate::CssSpecifiedValueSerializationLimits,
+        limits: crate::CssSerializationLimits,
     ) -> Result<Self, CssSelectorConstructionError> {
         if selectors.is_empty() {
             return Err(CssSelectorConstructionError::empty_list());
         }
         let value = Self::new(selectors);
         value
-            .to_specified_css_with_limits(limits)
+            .serialize_specified(limits)
             .map_err(CssSelectorConstructionError::specified)?;
         Ok(value)
     }
@@ -599,40 +580,26 @@ impl PartialEq for CssInvalidNestingSelectorItem {
 
 impl CssPseudoSelectorList {
     /// Checks a nonempty complex-real list with the default cumulative limits.
-    pub fn try_new(selectors: Vec<CssSelector>) -> Result<Self, CssSelectorConstructionError> {
-        Self::try_new_with_limits(
-            selectors,
-            crate::CssSpecifiedValueSerializationLimits::default(),
-        )
-    }
-
+    ///
     /// Rejects an empty list or any invalid supplied member without filtering.
-    pub fn try_new_with_limits(
+    pub fn try_new(
         selectors: Vec<CssSelector>,
-        limits: crate::CssSpecifiedValueSerializationLimits,
+        limits: crate::CssSerializationLimits,
     ) -> Result<Self, CssSelectorConstructionError> {
         if selectors.is_empty() {
             return Err(CssSelectorConstructionError::empty_list());
         }
-        Self::try_new_forgiving_with_limits(selectors, limits)
+        Self::try_new_forgiving(selectors, limits)
     }
 
     /// Admits empty complex-real arguments for Is/Where. Invalid typed members
     /// fail construction; parsed member forgiveness is a separate operation.
-    pub fn try_new_forgiving(
-        selectors: Vec<CssSelector>,
-    ) -> Result<Self, CssSelectorConstructionError> {
-        Self::try_new_forgiving_with_limits(
-            selectors,
-            crate::CssSpecifiedValueSerializationLimits::default(),
-        )
-    }
-
+    ///
     /// Checks every supplied member with one aggregate and cumulative budget,
     /// including the aggregate node of a valid empty forgiving list.
-    pub fn try_new_forgiving_with_limits(
+    pub fn try_new_forgiving(
         selectors: Vec<CssSelector>,
-        limits: crate::CssSpecifiedValueSerializationLimits,
+        limits: crate::CssSerializationLimits,
     ) -> Result<Self, CssSelectorConstructionError> {
         let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
         writer
@@ -640,11 +607,9 @@ impl CssPseudoSelectorList {
             .map_err(CssSelectorConstructionError::specified)?;
         let mut items = Vec::new();
         items.try_reserve(selectors.len()).map_err(|_| {
-            CssSelectorConstructionError::specified(
-                crate::CssSpecifiedValueSerializationError::new(
-                    crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
-                ),
-            )
+            CssSelectorConstructionError::specified(crate::CssSerializationError::new(
+                crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
+            ))
         })?;
         items.extend(
             selectors
@@ -712,6 +677,10 @@ impl CssRelativeSelector {
 
 /// A nonempty general relative list. Has attachment applies its additional
 /// no-pseudo-element and no-nested-Has restrictions at the consuming boundary.
+///
+/// # Specified serialization
+///
+/// Emits general relatives with their explicit or implicit leading relation.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssRelativeSelectorList {
     selectors: Vec<CssRelativeSelector>,
@@ -719,28 +688,20 @@ pub struct CssRelativeSelectorList {
 
 impl CssRelativeSelectorList {
     /// Checks every general relative member with default cumulative limits.
-    pub fn try_new(
-        selectors: Vec<CssRelativeSelector>,
-    ) -> Result<Self, CssSelectorConstructionError> {
-        Self::try_new_with_limits(
-            selectors,
-            crate::CssSpecifiedValueSerializationLimits::default(),
-        )
-    }
-
+    ///
     /// Checks all leading carriers and their complete ordinary child graphs.
     /// A valid terminal pseudo-element or Has child is admitted here; attaching
     /// this list as Has arguments independently enforces the narrower context.
-    pub fn try_new_with_limits(
+    pub fn try_new(
         selectors: Vec<CssRelativeSelector>,
-        limits: crate::CssSpecifiedValueSerializationLimits,
+        limits: crate::CssSerializationLimits,
     ) -> Result<Self, CssSelectorConstructionError> {
         if selectors.is_empty() {
             return Err(CssSelectorConstructionError::empty_list());
         }
         let value = Self::new(selectors);
         value
-            .to_specified_css_with_limits(limits)
+            .serialize_specified(limits)
             .map_err(CssSelectorConstructionError::specified)?;
         Ok(value)
     }
@@ -1893,16 +1854,18 @@ impl CssQualifiedSelectorName {
         self.local_name.is_none()
     }
 
-    /// Serializes this name with a bound on generated UTF-8 bytes.
+    /// Serializes this name as tokens, bounding the generated UTF-8 bytes by
+    /// `limits.max_css_bytes()`; the other component limits do not apply.
     ///
     /// Escaping preserves decoded identity and authored prefix form. Generated
     /// tokens have programmatic origins; enclosing parsed rule origins remain
     /// available separately. This does not serialize a complete selector or rule.
-    pub fn serialize_with_limit(
+    pub fn serialize_tokens(
         &self,
-        max_css_bytes: usize,
+        limits: crate::CssComponentValueLimits,
     ) -> Result<crate::CssSerializedValue, crate::CssComponentValueError> {
-        self.prefix.serialize_name(self.local_name(), max_css_bytes)
+        self.prefix
+            .serialize_name(self.local_name(), limits.max_css_bytes())
     }
 }
 
@@ -1954,14 +1917,16 @@ impl CssQualifiedAttributeName {
         &self.local_name
     }
 
-    /// Serializes this qualified name with bounded bytes and programmatic origins.
-    /// This name grammar is for attribute selectors, not `attr()` host admission.
-    pub fn serialize_with_limit(
+    /// Serializes this qualified name as tokens with programmatic origins,
+    /// bounding the bytes by `limits.max_css_bytes()`; the other component
+    /// limits do not apply. This name grammar is for attribute selectors, not
+    /// `attr()` host admission.
+    pub fn serialize_tokens(
         &self,
-        max_css_bytes: usize,
+        limits: crate::CssComponentValueLimits,
     ) -> Result<crate::CssSerializedValue, crate::CssComponentValueError> {
         self.prefix
-            .serialize_name(Some(self.local_name.as_str()), max_css_bytes)
+            .serialize_name(Some(self.local_name.as_str()), limits.max_css_bytes())
     }
 }
 
@@ -2110,28 +2075,25 @@ impl CssCompoundSelector {
     /// ```
     /// use surgeist_css::{CssComplexSelector, CssComplexSelectorPart, CssCompoundSelector,
     ///     CssIdent, CssSelector, CssSelectorCombinator, CssSimpleSelector};
+    /// let limits = Default::default();
     /// let first = CssCompoundSelector::try_new(vec![
     ///     CssSimpleSelector::Class(CssIdent::try_new("Parent").unwrap()),
-    /// ]).unwrap();
+    /// ], limits).unwrap();
     /// let child = CssCompoundSelector::try_new(vec![
     ///     CssSimpleSelector::Class(CssIdent::try_new("Child").unwrap()),
-    /// ]).unwrap();
-    /// let part = CssComplexSelectorPart::try_new(CssSelectorCombinator::Child, child).unwrap();
-    /// let selector = CssSelector::Complex(CssComplexSelector::try_new(first, vec![part]).unwrap());
-    /// assert_eq!(selector.to_specified_css().unwrap(), ".Parent > .Child");
+    /// ], limits).unwrap();
+    /// let part =
+    ///     CssComplexSelectorPart::try_new(CssSelectorCombinator::Child, child, limits).unwrap();
+    /// let selector =
+    ///     CssSelector::Complex(CssComplexSelector::try_new(first, vec![part], limits).unwrap());
+    /// assert_eq!(selector.serialize_specified(Default::default()).unwrap(), ".Parent > .Child");
     /// ```
-    pub fn try_new(members: Vec<CssSimpleSelector>) -> Result<Self, CssSelectorConstructionError> {
-        Self::try_new_with_limits(
-            members,
-            crate::CssSpecifiedValueSerializationLimits::default(),
-        )
-    }
-
+    ///
     /// Checks member order, then admits the complete ordinary graph and output
     /// with one cumulative budget. No partially assembled compound escapes.
-    pub fn try_new_with_limits(
+    pub fn try_new(
         members: Vec<CssSimpleSelector>,
-        limits: crate::CssSpecifiedValueSerializationLimits,
+        limits: crate::CssSerializationLimits,
     ) -> Result<Self, CssSelectorConstructionError> {
         if members.is_empty() {
             return Err(CssSelectorConstructionError::new(
@@ -2292,7 +2254,8 @@ impl CssCompoundSelector {
         self.type_selector.as_deref()
     }
 
-    /// Whether the authored unqualified form has Any namespace; a simple tag also needs a local name.
+    /// Whether the authored unqualified form has Any namespace; a simple tag also needs a local
+    /// name.
     #[must_use]
     pub(crate) fn has_unqualified_any_namespace(&self) -> bool {
         self.type_selector.as_deref().is_some_and(|name| {
@@ -2344,26 +2307,14 @@ impl CssAttributeSelector {
     /// Checks the coupled qualified name, decoded operand and optional modifier.
     /// Empty or whitespace-containing values retain their syntax identity; matching
     /// behavior belongs to consumers. Exists admits only DocumentDefault.
+    ///
+    /// Checks intrinsic operand identity and charges canonical attribute output
+    /// within the supplied semantic-node and UTF-8 byte limits.
     pub fn try_new(
         name: CssQualifiedAttributeName,
         matcher: CssAttributeMatcher,
         case_sensitivity: CssAttributeCaseSensitivity,
-    ) -> Result<Self, CssSelectorConstructionError> {
-        Self::try_new_with_limits(
-            name,
-            matcher,
-            case_sensitivity,
-            crate::CssSpecifiedValueSerializationLimits::default(),
-        )
-    }
-
-    /// Checks intrinsic operand identity and charges canonical attribute output
-    /// within the supplied semantic-node and UTF-8 byte limits.
-    pub fn try_new_with_limits(
-        name: CssQualifiedAttributeName,
-        matcher: CssAttributeMatcher,
-        case_sensitivity: CssAttributeCaseSensitivity,
-        limits: crate::CssSpecifiedValueSerializationLimits,
+        limits: crate::CssSerializationLimits,
     ) -> Result<Self, CssSelectorConstructionError> {
         match &matcher {
             CssAttributeMatcher::Exists

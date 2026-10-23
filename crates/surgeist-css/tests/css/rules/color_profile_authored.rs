@@ -6,20 +6,24 @@
 
 use surgeist_css::{
     CssNamespaceContext, CssNormalizedItem, CssRecoveryAction, CssRule, CssRuleContextKindRef,
-    CssSpecifiedRuleSerializationErrorKind as RuleError,
-    CssSpecifiedValueSerializationErrorKind as ValueError,
-    CssSpecifiedValueSerializationLimits as Limits, normalize_report, parse_rule, parse_sheet,
-    validate_sheet,
+    CssSerializationLimits as Limits, CssSpecifiedValueSerializationErrorKind as ValueError,
+    normalize_report, parse_rule, parse_sheet, validate_sheet,
 };
 
 fn canonical(source: &str, expected: &str) {
     let report = parse_sheet(source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    assert_eq!(report.syntax().to_specified_css().unwrap(), expected);
+    assert_eq!(
+        report
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
     assert_eq!(
         validate_sheet(expected)
             .unwrap()
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .unwrap(),
         expected
     );
@@ -70,7 +74,7 @@ fn isolated_rule_admission_agrees_with_clean_sheet_admission() {
             .syntax()
             .as_ref()
             .unwrap()
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .unwrap(),
         "@color-profile --One { rendering-intent: perceptual; }"
     );
@@ -120,7 +124,10 @@ fn environment_functions_defer_the_entire_descriptor_grammar_including_var_token
         let report = parse_sheet(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         assert_eq!(report.syntax().rules().len(), 1);
-        let emitted = report.syntax().to_specified_css().unwrap();
+        let emitted = report
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap();
         assert!(validate_sheet(&emitted).is_ok());
     }
 }
@@ -270,7 +277,9 @@ fn descriptor_recovery_retains_valid_siblings_profile_and_following_rule() {
             CssRecoveryAction::DropDescriptor
         );
         assert_eq!(
-            report.syntax().rules()[0].to_specified_css().unwrap(),
+            report.syntax().rules()[0]
+                .serialize_specified(Default::default())
+                .unwrap(),
             "@color-profile --x { src: url(\"good\"); components: a, b; }"
         );
         let normalized = normalize_report(&report).unwrap();
@@ -286,7 +295,9 @@ fn malformed_child_rule_is_recovered_inside_the_profile() {
     assert!(validate_sheet(source).is_err());
     assert_eq!(report.syntax().rules().len(), 2);
     assert_eq!(
-        report.syntax().rules()[0].to_specified_css().unwrap(),
+        report.syntax().rules()[0]
+            .serialize_specified(Default::default())
+            .unwrap(),
         "@color-profile --x { src: url(\"good\"); components: a; }"
     );
     assert_eq!(report.diagnostics().len(), 1);
@@ -315,12 +326,18 @@ fn profiles_compose_with_style_and_group_siblings_under_atomic_limits() {
         assert!(report.is_clean(), "{:?}", report.diagnostics());
         let before = report.clone();
         let expected = format!("@color-profile --x {{ }}\n{suffix}");
-        assert_eq!(report.syntax().to_specified_css().unwrap(), expected);
+        assert_eq!(
+            report
+                .syntax()
+                .serialize_specified(Default::default())
+                .unwrap(),
+            expected
+        );
         let error = report
             .syntax()
-            .to_specified_css_with_limits(Limits::new(usize::MAX, usize::MAX, expected.len() - 1))
+            .serialize_specified(Limits::new(usize::MAX, usize::MAX, expected.len() - 1))
             .unwrap_err();
-        assert_eq!(error.kind(), RuleError::Resource(ValueError::ByteLimit));
+        assert_eq!(error.kind(), ValueError::ByteLimit);
         assert_eq!(error.rule_index(), Some(1));
         assert_eq!(report, before);
     }
@@ -346,17 +363,23 @@ fn cumulative_sheet_limits_include_supported_prefix_and_profile_punctuation() {
         parse_sheet("@supports-condition --f {} @color-profile --日本 { components: red, green; }");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let expected = "@supports-condition --f { }\n@color-profile --日本 { components: red, green; }";
-    assert_eq!(report.syntax().to_specified_css().unwrap(), expected);
+    assert_eq!(
+        report
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
     let error = report
         .syntax()
-        .to_specified_css_with_limits(Limits::new(usize::MAX, usize::MAX, expected.len() - 1))
+        .serialize_specified(Limits::new(usize::MAX, usize::MAX, expected.len() - 1))
         .unwrap_err();
-    assert_eq!(error.kind(), RuleError::Resource(ValueError::ByteLimit));
+    assert_eq!(error.kind(), ValueError::ByteLimit);
     assert_eq!(error.rule_index(), Some(1));
     assert_eq!(
         report
             .syntax()
-            .to_specified_css_with_limits(Limits::new(usize::MAX, usize::MAX, expected.len()))
+            .serialize_specified(Limits::new(usize::MAX, usize::MAX, expected.len()))
             .unwrap(),
         expected
     );
@@ -366,8 +389,8 @@ fn cumulative_sheet_limits_include_supported_prefix_and_profile_punctuation() {
     ] {
         let found = (1..200).any(|limit| {
             let limits = Limits::new(if input { limit } else { usize::MAX }, if input { usize::MAX } else { limit }, usize::MAX);
-            report.syntax().rules().iter().all(|rule| rule.to_specified_css_with_limits(limits).is_ok())
-                && matches!(report.syntax().to_specified_css_with_limits(limits), Err(ref error) if error.kind() == RuleError::Resource(kind) && error.rule_index() == Some(1))
+            report.syntax().rules().iter().all(|rule| rule.serialize_specified(limits).is_ok())
+                && matches!(report.syntax().serialize_specified(limits), Err(ref error) if error.kind() == kind && error.rule_index() == Some(1))
         });
         assert!(
             found,

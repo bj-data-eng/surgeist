@@ -55,7 +55,10 @@ fn six_logical_wrappers_expose_the_shared_checked_triple_and_preserve_omission()
                 .unwrap();
             let current = logical_current(name, value);
             assert_eq!(current, model, "{name}:{authored}");
-            assert_eq!(current.serialize_specified().unwrap(), canonical);
+            assert_eq!(
+                current.serialize_specified(Default::default()).unwrap(),
+                canonical
+            );
         }
         let report = parse_style_attribute(&format!("{name}:oklch(50% 0.2 30deg) solid 1e100px"));
         assert!(report.is_clean(), "{name}: {:?}", report.diagnostics());
@@ -66,7 +69,7 @@ fn six_logical_wrappers_expose_the_shared_checked_triple_and_preserve_omission()
             .unwrap();
         let current = logical_current(name, value);
         assert_eq!(
-            current.serialize_specified().unwrap(),
+            current.serialize_specified(Default::default()).unwrap(),
             format!("1{}px solid oklch(0.5 0.2 30)", "0".repeat(100))
         );
     }

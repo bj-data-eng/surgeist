@@ -34,9 +34,16 @@ fn assert_projection(authored: &str, expected: &str) {
         .iter()
         .map(|v| v.origin().clone())
         .collect();
-    assert_eq!(clip(&source).serialize_specified().unwrap(), expected);
     assert_eq!(
-        basic(clip(&source)).serialize_specified().unwrap(),
+        clip(&source)
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
+    assert_eq!(
+        basic(clip(&source))
+            .serialize_specified(Default::default())
+            .unwrap(),
         expected
     );
     let checked = parse_property_value(
@@ -45,7 +52,12 @@ fn assert_projection(authored: &str, expected: &str) {
         CssImportance::Important,
     )
     .unwrap();
-    assert_eq!(clip(&checked).serialize_specified().unwrap(), expected);
+    assert_eq!(
+        clip(&checked)
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
     assert_eq!(source, before);
     assert_eq!(source.value_components(), &components);
     for (component, origin) in source.value_components().items().iter().zip(origins) {
@@ -191,11 +203,11 @@ fn sibling_numeric_functions_and_position_literals_keep_one_atomic_composed_budg
     // Ellipse and radii pair: two; abs and hypot: two plus three;
     // position aggregate and axes: three; two exact literal offsets: two.
     budget(expected, 12, 12, |limits| {
-        basic(clip(&source)).serialize_specified_with_limits(limits)
+        basic(clip(&source)).serialize_specified(limits)
     });
     // Composition and explicit reference box each add one cumulative node.
     budget(&format!("{expected} border-box"), 14, 14, |limits| {
-        clip(&source).serialize_specified_with_limits(limits)
+        clip(&source).serialize_specified(limits)
     });
     assert_eq!(source, before);
     assert_eq!(source.value_components(), before.value_components());
@@ -213,10 +225,10 @@ fn finite_angle_projection_spends_only_existing_command_and_math_nodes() {
     // endpoint, pair, two leaves, radii marker/leaf and rotation marker: eight.
     // Calc/Product/Cos/two leaves: five inputs, four projected nodes.
     budget(expected, 21, 20, |limits| {
-        basic(clip(&source)).serialize_specified_with_limits(limits)
+        basic(clip(&source)).serialize_specified(limits)
     });
     budget(expected, 22, 21, |limits| {
-        clip(&source).serialize_specified_with_limits(limits)
+        clip(&source).serialize_specified(limits)
     });
     assert_eq!(source, before);
     let CssBasicShape::Shape(shape) = basic(clip(&source)) else {
@@ -232,7 +244,7 @@ fn finite_angle_projection_spends_only_existing_command_and_math_nodes() {
             .calculation()
             .unwrap()
             .components()
-            .serialize()
+            .serialize_tokens(Default::default())
             .unwrap()
             .as_css(),
         "calc(cos(1e400deg) * 1deg)"
@@ -241,28 +253,35 @@ fn finite_angle_projection_spends_only_existing_command_and_math_nodes() {
 
 #[test]
 fn programmatic_shape_construction_preserves_exact_math_graph_and_origin() {
-    let components = CssComponentValues::try_new(vec![
-        CssComponentValue::try_function(
-            "HYPOT",
-            CssComponentValues::try_new(vec![
-                CssComponentValue::try_dimension("+03.00", "EM").unwrap(),
-                CssComponentValue::try_token(",").unwrap(),
-                CssComponentValue::try_dimension("04.000", "em").unwrap(),
-            ])
+    let components = CssComponentValues::try_new(
+        vec![
+            CssComponentValue::try_function(
+                "HYPOT",
+                CssComponentValues::try_new(
+                    vec![
+                        CssComponentValue::try_dimension("+03.00", "EM").unwrap(),
+                        CssComponentValue::try_token(",").unwrap(),
+                        CssComponentValue::try_dimension("04.000", "em").unwrap(),
+                    ],
+                    Default::default(),
+                )
+                .unwrap(),
+            )
             .unwrap(),
-        )
-        .unwrap(),
-    ])
+        ],
+        Default::default(),
+    )
     .unwrap();
     let calculation =
-        CssLengthPercentageCalculation::try_from_components(components.clone()).unwrap();
+        CssLengthPercentageCalculation::try_from_components(components.clone(), Default::default())
+            .unwrap();
     let ty = calculation.numeric_type();
     let radius =
         CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(calculation).unwrap();
     let shape = CssCircleShape::new(CssCircleRadius::LengthPercentage(radius.clone()), None);
     let before = shape.clone();
     budget("circle(calc(5em))", 4, 4, |limits| {
-        shape.serialize_specified_with_limits(limits)
+        shape.serialize_specified(limits)
     });
     assert_eq!(shape, before);
     assert_eq!(radius.origin(), &CssValueOrigin::Programmatic);

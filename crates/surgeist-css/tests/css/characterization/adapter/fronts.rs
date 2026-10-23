@@ -223,7 +223,7 @@ pub fn observe(front: &str, argument: &str, input: &str) -> Observation {
             &parse_selector(input, &namespaces(argument)),
             |observation, selector| {
                 serialization(observation, "specified", Limited::Values, |limits| {
-                    selector.to_specified_css_with_limits(limits)
+                    selector.serialize_specified(limits)
                 });
             },
         ),
@@ -234,7 +234,7 @@ pub fn observe(front: &str, argument: &str, input: &str) -> Observation {
                 |observation, selectors| {
                     observation.add_fact(format!("selectors={}", selectors.selectors().len()));
                     serialization(observation, "cssom", Limited::Values, |limits| {
-                        selectors.serialize_cssom_with_limits(
+                        selectors.serialize_cssom(
                             &namespaces,
                             CssStyleSelectorContext::Ordinary,
                             limits,
@@ -249,7 +249,7 @@ pub fn observe(front: &str, argument: &str, input: &str) -> Observation {
             let render = |report: &CssParseReport<Option<CssParsedStyleSelectors>>| {
                 optional(report, |observation, selectors| {
                     serialization(observation, "cssom", Limited::Values, |limits| {
-                        selectors.serialize_cssom_with_limits(&namespaces, limits)
+                        selectors.serialize_cssom(&namespaces, limits)
                     });
                 })
             };
@@ -271,10 +271,10 @@ pub fn observe(front: &str, argument: &str, input: &str) -> Observation {
                 &parse_relative_selector_list(input, &namespaces),
                 |observation, selectors| {
                     serialization(observation, "specified", Limited::Values, |limits| {
-                        selectors.to_specified_css_with_limits(limits)
+                        selectors.serialize_specified(limits)
                     });
                     serialization(observation, "cssom", Limited::Values, |limits| {
-                        selectors.serialize_cssom_with_limits(&namespaces, limits)
+                        selectors.serialize_cssom(&namespaces, limits)
                     });
                 },
             )
@@ -330,7 +330,7 @@ pub fn observe(front: &str, argument: &str, input: &str) -> Observation {
             |observation, declaration| {
                 serialization(observation, "specified", Limited::Bytes, |limits| {
                     declaration
-                        .serialize_with_limit(limits.max_css_bytes())
+                        .serialize_tokens(crate::css::support::byte_limits(limits.max_css_bytes()))
                         .map(|value| value.as_css().to_owned())
                 });
             },
@@ -370,7 +370,7 @@ pub fn observe(front: &str, argument: &str, input: &str) -> Observation {
             &parse_keyframe_selector_list(input),
             |observation, selectors| {
                 serialization(observation, "specified", Limited::Values, |limits| {
-                    selectors.selectors().serialize_key_text_with_limits(limits)
+                    selectors.selectors().serialize_key_text(limits)
                 });
             },
         ),
@@ -378,7 +378,7 @@ pub fn observe(front: &str, argument: &str, input: &str) -> Observation {
             &parse_page_selector_list(input),
             |observation, selectors| {
                 serialization(observation, "cssom", Limited::Values, |limits| {
-                    selectors.serialize_cssom_with_limits(limits)
+                    selectors.serialize_cssom(limits)
                 });
             },
         ),
@@ -410,7 +410,7 @@ pub fn observe(front: &str, argument: &str, input: &str) -> Observation {
             &parse_font_feature_value(input, font_feature_kind(argument)),
             |observation, value| {
                 serialization(observation, "specified", Limited::Values, |limits| {
-                    value.to_specified_css_with_limits(limits)
+                    value.serialize_specified(limits)
                 });
             },
         ),
@@ -418,7 +418,7 @@ pub fn observe(front: &str, argument: &str, input: &str) -> Observation {
             &parse_font_feature_display_value(input),
             |observation, value| {
                 serialization(observation, "specified", Limited::Values, |limits| {
-                    value.to_specified_css_with_limits(limits)
+                    value.serialize_specified(limits)
                 });
             },
         ),
@@ -426,7 +426,7 @@ pub fn observe(front: &str, argument: &str, input: &str) -> Observation {
             &parse_color_profile_descriptor_value(input, color_profile_descriptor(argument)),
             |observation, value| {
                 serialization(observation, "specified", Limited::Values, |limits| {
-                    value.to_specified_css_with_limits(limits)
+                    value.serialize_specified(limits)
                 });
             },
         ),
@@ -434,7 +434,7 @@ pub fn observe(front: &str, argument: &str, input: &str) -> Observation {
             &parse_counter_style_descriptor_value(input, counter_style_descriptor(argument)),
             |observation, value| {
                 serialization(observation, "specified", Limited::Values, |limits| {
-                    value.to_specified_css_with_limits(limits)
+                    value.serialize_specified(limits)
                 });
             },
         ),
@@ -442,7 +442,7 @@ pub fn observe(front: &str, argument: &str, input: &str) -> Observation {
             &parse_font_face_descriptor_value(input, font_face_descriptor(argument)),
             |observation, value| {
                 serialization(observation, "specified", Limited::Values, |limits| {
-                    value.serialize_specified_with_limits(limits)
+                    value.serialize_specified(limits)
                 });
             },
         ),
@@ -450,7 +450,7 @@ pub fn observe(front: &str, argument: &str, input: &str) -> Observation {
             &parse_font_palette_descriptor_value(input, font_palette_descriptor(argument)),
             |observation, value| {
                 serialization(observation, "specified", Limited::Values, |limits| {
-                    value.to_specified_css_with_limits(limits)
+                    value.serialize_specified(limits)
                 });
             },
         ),
@@ -458,7 +458,7 @@ pub fn observe(front: &str, argument: &str, input: &str) -> Observation {
             &parse_page_descriptor_value(input, page_descriptor(argument)),
             |observation, value| {
                 serialization(observation, "specified", Limited::Values, |limits| {
-                    value.serialize_specified_with_limits(limits)
+                    value.serialize_specified(limits)
                 });
             },
         ),
@@ -468,7 +468,7 @@ pub fn observe(front: &str, argument: &str, input: &str) -> Observation {
                 observation.add_fact(format!("descriptors={}", descriptors.len()));
                 serialization(observation, "specified", Limited::Values, |limits| {
                     joined(descriptors, |descriptor| {
-                        descriptor.to_specified_css_with_limits(limits)
+                        descriptor.serialize_specified(limits)
                     })
                 });
             })
@@ -500,7 +500,7 @@ pub fn observe(front: &str, argument: &str, input: &str) -> Observation {
                 observation.add_fact(format!("descriptors={}", descriptors.len()));
                 serialization(observation, "specified", Limited::Values, |limits| {
                     joined(descriptors, |descriptor| {
-                        descriptor.value().to_specified_css_with_limits(limits)
+                        descriptor.value().serialize_specified(limits)
                     })
                 });
             },
@@ -519,7 +519,7 @@ pub fn observe(front: &str, argument: &str, input: &str) -> Observation {
             &via!(context, parse_keyframe_declaration_block(input)),
             |observation, block| {
                 serialization(observation, "cssom", Limited::Values, |limits| {
-                    block.body().serialize_cssom_with_limits(limits)
+                    block.body().serialize_cssom(limits)
                 });
             },
         ),
@@ -529,12 +529,12 @@ pub fn observe(front: &str, argument: &str, input: &str) -> Observation {
                 observation.add_fact(format!("blocks={}", block.body().len()));
                 serialization(observation, "specified", Limited::Values, |limits| {
                     joined(block.body(), |keyframe| {
-                        keyframe.selectors().serialize_key_text_with_limits(limits)
+                        keyframe.selectors().serialize_key_text(limits)
                     })
                 });
                 serialization(observation, "cssom", Limited::Values, |limits| {
                     joined(block.body(), |keyframe| {
-                        keyframe.declarations().serialize_cssom_with_limits(limits)
+                        keyframe.declarations().serialize_cssom(limits)
                     })
                 });
             },
@@ -543,7 +543,7 @@ pub fn observe(front: &str, argument: &str, input: &str) -> Observation {
             &via!(context, parse_margin_block(input)),
             |observation, block| {
                 serialization(observation, "cssom", Limited::Values, |limits| {
-                    block.body().serialize_cssom_with_limits(limits)
+                    block.body().serialize_cssom(limits)
                 });
             },
         ),
@@ -622,39 +622,15 @@ pub fn observe(front: &str, argument: &str, input: &str) -> Observation {
             },
         ),
         "color-scheme.utf16" => color_scheme_utf16(utf16_context, input),
-        "serialize.identifier" => lexical(|limits| {
-            if limits == CssSpecifiedValueSerializationLimits::default() {
-                serialize_css_identifier(input)
-            } else {
-                serialize_css_identifier_with_limits(input, limits)
-            }
-        }),
-        "serialize.string" => lexical(|limits| {
-            if limits == CssSpecifiedValueSerializationLimits::default() {
-                serialize_css_string(input)
-            } else {
-                serialize_css_string_with_limits(input, limits)
-            }
-        }),
+        "serialize.identifier" => lexical(|limits| serialize_css_identifier(input, limits)),
+        "serialize.string" => lexical(|limits| serialize_css_string(input, limits)),
         "serialize.comma-list" => {
             let items = input.split('|').collect::<Vec<_>>();
-            lexical(|limits| {
-                if limits == CssSpecifiedValueSerializationLimits::default() {
-                    serialize_css_comma_separated_list(&items)
-                } else {
-                    serialize_css_comma_separated_list_with_limits(&items, limits)
-                }
-            })
+            lexical(|limits| serialize_css_comma_separated_list(&items, limits))
         }
         "serialize.whitespace-list" => {
             let items = input.split('|').collect::<Vec<_>>();
-            lexical(|limits| {
-                if limits == CssSpecifiedValueSerializationLimits::default() {
-                    serialize_css_whitespace_separated_list(&items)
-                } else {
-                    serialize_css_whitespace_separated_list_with_limits(&items, limits)
-                }
-            })
+            lexical(|limits| serialize_css_whitespace_separated_list(&items, limits))
         }
         "serialize.font-face-family-list" => {
             let families = input
@@ -663,13 +639,9 @@ pub fn observe(front: &str, argument: &str, input: &str) -> Observation {
                 .collect::<Option<Vec<_>>>();
             match families {
                 None => Observation::shaped("family:none"),
-                Some(families) => lexical(|limits| {
-                    if limits == CssSpecifiedValueSerializationLimits::default() {
-                        serialize_font_face_family_list(&families)
-                    } else {
-                        serialize_font_face_family_list_with_limits(&families, limits)
-                    }
-                }),
+                Some(families) => {
+                    lexical(|limits| serialize_font_face_family_list(&families, limits))
+                }
             }
         }
         "conformance.feature-catalog" => {
@@ -824,10 +796,10 @@ fn sheet(report: &CssParseReport<CssSheet>) -> Observation {
 
 fn sheet_serializations(observation: &mut Observation, sheet: &CssSheet) {
     serialization(observation, "specified", Limited::Values, |limits| {
-        sheet.to_specified_css_with_limits(limits)
+        sheet.serialize_specified(limits)
     });
     serialization(observation, "cssom", Limited::Values, |limits| {
-        sheet.serialize_cssom_with_limits(limits)
+        sheet.serialize_cssom(limits)
     });
 }
 
@@ -844,10 +816,10 @@ fn retained_scoped(observation: &mut Observation, rules: &[CssScopedRule]) {
 
 fn rule_serializations(observation: &mut Observation, rules: &[CssRule]) {
     serialization(observation, "specified", Limited::Values, |limits| {
-        joined(rules, |rule| rule.to_specified_css_with_limits(limits))
+        joined(rules, |rule| rule.serialize_specified(limits))
     });
     serialization(observation, "cssom", Limited::Values, |limits| {
-        joined(rules, |rule| rule.serialize_cssom_with_limits(limits))
+        joined(rules, |rule| rule.serialize_cssom(limits))
     });
 }
 
@@ -979,16 +951,16 @@ fn declaration_list(report: &CssParseReport<CssDeclarationList>) -> Observation 
 
 fn list_serializations(observation: &mut Observation, list: &CssDeclarationList) {
     serialization(observation, "specified", Limited::Values, |limits| {
-        list.to_specified_css_with_limits(limits)
+        list.serialize_specified(limits)
     });
     serialization(observation, "cssom", Limited::Values, |limits| {
-        list.serialize_cssom_with_limits(limits)
+        list.serialize_cssom(limits)
     });
 }
 
 fn page_declarations(observation: &mut Observation, block: &CssPageDeclarationBlock) {
     serialization(observation, "cssom", Limited::Values, |limits| {
-        block.serialize_cssom_with_limits(limits)
+        block.serialize_cssom(limits)
     });
 }
 
@@ -1134,7 +1106,7 @@ fn declaration(observation: &mut Observation, declaration: &CssDeclaration) {
         property_id(declaration.property_name())
     ));
     serialization(observation, "specified", Limited::Values, |limits| {
-        declaration.to_specified_css_with_limits(limits)
+        declaration.serialize_specified(limits)
     });
 }
 
@@ -1147,21 +1119,26 @@ fn rule_syntax(observation: &mut Observation, syntax: &CssRuleSyntax) {
 }
 
 fn media_query(observation: &mut Observation, query: &CssMediaQuery) {
-    observation.specified =
-        super::serialized(query.serialize().map(|value| value.as_css().to_owned()));
+    observation.specified = super::serialized(
+        query
+            .serialize_tokens(Default::default())
+            .map(|value| value.as_css().to_owned()),
+    );
     serialization(observation, "cssom", Limited::Values, |limits| {
         query
-            .serialize_cssom_with_limits(limits)
+            .serialize_cssom(limits)
             .map(|value| value.as_css().to_owned())
     });
     observation.add_fact(format!("guaranteed-false={}", query.is_guaranteed_false()));
 }
 
 fn media_query_list(observation: &mut Observation, list: &CssMediaQueryList) {
-    observation.specified =
-        super::serialized(list.serialize().map(|value| value.as_css().to_owned()));
+    observation.specified = super::serialized(
+        list.serialize_tokens(Default::default())
+            .map(|value| value.as_css().to_owned()),
+    );
     serialization(observation, "cssom", Limited::Values, |limits| {
-        list.serialize_cssom_with_limits(limits)
+        list.serialize_cssom(limits)
             .map(|value| value.as_css().to_owned())
     });
     observation.add_fact(format!("queries={}", list.queries().len()));
@@ -1170,7 +1147,7 @@ fn media_query_list(observation: &mut Observation, list: &CssMediaQueryList) {
 fn supports_condition(observation: &mut Observation, condition: &CssSupportsCondition) {
     serialization(observation, "specified", Limited::Bytes, |limits| {
         condition
-            .serialize_with_limit(limits.max_css_bytes())
+            .serialize_tokens(crate::css::support::byte_limits(limits.max_css_bytes()))
             .map(|value| value.as_css().to_owned())
     });
 }
@@ -1178,55 +1155,50 @@ fn supports_condition(observation: &mut Observation, condition: &CssSupportsCond
 fn when_condition(observation: &mut Observation, condition: &CssWhenCondition) {
     serialization(observation, "specified", Limited::Bytes, |limits| {
         condition
-            .serialize_with_limit(limits.max_css_bytes())
+            .serialize_tokens(crate::css::support::byte_limits(limits.max_css_bytes()))
             .map(|value| value.as_css().to_owned())
     });
 }
 
 fn supports_test_child(observation: &mut Observation, child: &CssSupportsTestChild) {
     serialization(observation, "specified", Limited::Values, |limits| {
-        child
-            .as_ref()
-            .to_specified_css_with_graph_limits(CssRuleGraphSerializationLimits {
-                values: limits,
-                ..CssRuleGraphSerializationLimits::default()
-            })
+        child.as_ref().serialize_specified(limits)
     });
 }
 
 fn supports_test_body(observation: &mut Observation, body: &CssSupportsTestBody) {
     serialization(observation, "specified", Limited::Values, |limits| {
-        body.to_specified_css_with_limits(limits)
+        body.serialize_specified(limits)
     });
     serialization(observation, "cssom", Limited::Bytes, |limits| {
-        body.serialize_with_limit(limits.max_css_bytes())
+        body.serialize_tokens(crate::css::support::byte_limits(limits.max_css_bytes()))
             .map(|value| value.as_css().to_owned())
     });
 }
 
 fn keyframe_block(observation: &mut Observation, block: &CssKeyframeBlock) {
     serialization(observation, "specified", Limited::Values, |limits| {
-        block.selectors().serialize_key_text_with_limits(limits)
+        block.selectors().serialize_key_text(limits)
     });
     serialization(observation, "cssom", Limited::Values, |limits| {
-        block.declarations().serialize_cssom_with_limits(limits)
+        block.declarations().serialize_cssom(limits)
     });
 }
 
 fn margin_rule(observation: &mut Observation, rule: &CssMarginRule) {
     serialization(observation, "cssom", Limited::Values, |limits| {
-        rule.serialize_cssom_with_limits(limits)
+        rule.serialize_cssom(limits)
     });
 }
 
 fn family_list(observation: &mut Observation, families: &CssFontFeatureValuesFamilyList) {
     serialization(observation, "specified", Limited::Values, |limits| {
-        families.serialize_specified_with_limits(limits)
+        families.serialize_specified(limits)
     });
 }
 
 fn component_value(observation: &mut Observation, value: &CssComponentValue) {
-    match CssComponentValues::try_new(vec![value.clone()]) {
+    match CssComponentValues::try_new(vec![value.clone()], Default::default()) {
         Ok(values) => component_values(observation, &values),
         Err(error) => observation.add_fact(format!("wrap:{}", super::error_text(&error))),
     }
@@ -1240,7 +1212,7 @@ fn component_values(observation: &mut Observation, values: &CssComponentValues) 
     ));
     serialization(observation, "specified", Limited::Bytes, |limits| {
         values
-            .serialize_with_limit(limits.max_css_bytes())
+            .serialize_tokens(crate::css::support::byte_limits(limits.max_css_bytes()))
             .map(|value| value.as_css().to_owned())
     });
 }
@@ -1256,7 +1228,7 @@ fn comma_values(report: &CssParseReport<Vec<Option<CssComponentValues>>>) -> Obs
                 .iter()
                 .map(|item| match item {
                     Some(values) => values
-                        .serialize_with_limit(limits.max_css_bytes())
+                        .serialize_tokens(crate::css::support::byte_limits(limits.max_css_bytes()))
                         .map(|value| format!("[{}]", value.as_css())),
                     None => Ok("[-]".to_owned()),
                 })
@@ -1365,9 +1337,7 @@ fn page_descriptor(argument: &str) -> CssPageDescriptorKind {
 
 /// A lexical serializer: its text and charged work.
 fn lexical(
-    serialize: impl Fn(
-        CssSpecifiedValueSerializationLimits,
-    ) -> Result<String, CssSpecifiedValueSerializationError>,
+    serialize: impl Fn(CssSerializationLimits) -> Result<String, CssSerializationError>,
 ) -> Observation {
     let mut observation = Observation::shaped("serialization");
     serialization(&mut observation, "specified", Limited::Values, serialize);
@@ -1556,11 +1526,13 @@ fn expansion_facts(expansion: &CssExpansion) -> String {
         }
         _ => "future".to_owned(),
     };
-    let block =
-        match CssSpecifiedDeclarationBlock::try_from_expansions(std::slice::from_ref(expansion)) {
-            Ok(block) => super::serialized(block.serialize_cssom()),
-            Err(error) => format!("err:{}", super::error_text(&error)),
-        };
+    let block = match CssSpecifiedDeclarationBlock::try_from_expansions(
+        std::slice::from_ref(expansion),
+        Default::default(),
+    ) {
+        Ok(block) => super::serialized(block.serialize_cssom(Default::default())),
+        Err(error) => format!("err:{}", super::error_text(&error)),
+    };
     format!("{shape}=>{block}")
 }
 
@@ -1575,6 +1547,16 @@ fn global_keyword(keyword: CssGlobalKeyword) -> &'static str {
     }
 }
 
+/// Graph limits with `values` and no structural depth bound, the contract of
+/// the value-limited graph serializers this front observed before they took
+/// graph limits.
+fn unbounded_depth(values: CssSerializationLimits) -> CssRuleSerializationLimits {
+    CssRuleSerializationLimits {
+        values,
+        max_depth: usize::MAX,
+    }
+}
+
 /// The rule graph of each parsed rule, and of the first style rule rebuilt
 /// from its selectors and specified declarations.
 fn rule_graph(input: &str) -> Observation {
@@ -1585,38 +1567,47 @@ fn rule_graph(input: &str) -> Observation {
     let rules = report.syntax().rules();
     serialization(&mut observation, "cssom", Limited::Values, |limits| {
         joined(rules, |rule| {
-            CssRuleGraphInput::from_rule(rule).serialize_cssom_with_limits(
+            CssRuleGraphInput::from_rule(rule).serialize_cssom(
                 &namespaces,
                 CssStyleAncestor::Absent,
-                limits,
+                unbounded_depth(limits),
             )
         })
     });
     observation.add_fact(format!(
         "graph-limits={}",
         super::serialized(joined(rules, |rule| {
-            CssRuleGraphInput::from_rule(rule).serialize_cssom_with_graph_limits(
+            CssRuleGraphInput::from_rule(rule).serialize_cssom(
                 &namespaces,
                 CssStyleAncestor::Present,
-                CssRuleGraphSerializationLimits::default(),
+                CssRuleSerializationLimits::default(),
             )
         }))
     ));
     if let Some(CssRule::Style(style)) = rules.first() {
-        match CssSpecifiedDeclarationBlock::try_from_declarations(style.declarations()) {
+        match CssSpecifiedDeclarationBlock::try_from_declarations(
+            style.declarations(),
+            Default::default(),
+        ) {
             Ok(block) => {
                 observation.add_fact(format!(
                     "style-input={}",
                     super::serialized(
-                        CssRuleGraphInput::style(style.selectors(), &block, &[])
-                            .serialize_cssom(&namespaces, CssStyleAncestor::Absent)
+                        CssRuleGraphInput::style(style.selectors(), &block, &[]).serialize_cssom(
+                            &namespaces,
+                            CssStyleAncestor::Absent,
+                            unbounded_depth(Default::default()),
+                        )
                     )
                 ));
                 observation.add_fact(format!(
                     "nested-declarations-input={}",
                     super::serialized(
-                        CssRuleGraphInput::nested_declarations(&block)
-                            .serialize_cssom(&namespaces, CssStyleAncestor::Present)
+                        CssRuleGraphInput::nested_declarations(&block).serialize_cssom(
+                            &namespaces,
+                            CssStyleAncestor::Present,
+                            unbounded_depth(Default::default()),
+                        )
                     )
                 ));
             }
@@ -1635,28 +1626,36 @@ fn edited_rule(input: &str) -> Observation {
     let rules = report.syntax().rules();
     serialization(&mut observation, "specified", Limited::Values, |limits| {
         joined(rules, |rule| {
-            CssEditedRuleView::from_rule(rule).to_specified_css_with_limits(limits)
+            CssEditedRuleView::from_rule(rule).serialize_specified(limits)
         })
     });
     serialization(&mut observation, "cssom", Limited::Values, |limits| {
         joined(rules, |rule| {
-            CssEditedRuleView::from_rule(rule).serialize_cssom_with_limits(limits)
+            CssEditedRuleView::from_rule(rule).serialize_cssom(limits)
         })
     });
     if let Some(CssRule::Style(style)) = rules.first() {
-        match CssSpecifiedDeclarationBlock::try_from_declarations(style.declarations()) {
+        match CssSpecifiedDeclarationBlock::try_from_declarations(
+            style.declarations(),
+            Default::default(),
+        ) {
             Ok(block) => {
                 observation.add_fact(format!(
                     "edited-style={}",
-                    match CssEditedRuleView::try_style(style.selectors(), &block, &[]) {
-                        Ok(view) => super::serialized(view.to_specified_css()),
+                    match CssEditedRuleView::try_style(
+                        style.selectors(),
+                        &block,
+                        &[],
+                        Default::default()
+                    ) {
+                        Ok(view) => super::serialized(view.serialize_specified(Default::default())),
                         Err(error) => format!("err:{}", super::error_text(&error)),
                     }
                 ));
                 observation.add_fact(format!(
                     "edited-nested-declarations={}",
-                    match CssEditedRuleView::try_nested_declarations(&block) {
-                        Ok(view) => super::serialized(view.serialize_cssom()),
+                    match CssEditedRuleView::try_nested_declarations(&block, Default::default()) {
+                        Ok(view) => super::serialized(view.serialize_cssom(Default::default())),
                         Err(error) => format!("err:{}", super::error_text(&error)),
                     }
                 ));

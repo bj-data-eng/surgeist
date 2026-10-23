@@ -12,8 +12,8 @@ use surgeist_css::{
     CssExpansion, CssExpansionErrorKind, CssGlobalKeyword, CssImportance, CssInitialValueRef,
     CssKnownProperty, CssKnownPropertyValueRef, CssLonghandValueRef, CssNormalizedItem,
     CssNumberCalculation, CssPropertyKindRef, CssPropertyNameRef, CssRatioOperand,
-    CssRecoveryAction, CssSpecifiedRatio, CssSpecifiedValueSerializationErrorKind,
-    CssSpecifiedValueSerializationLimits, CssValueOrigin, expand_declaration, normalize_sheet,
+    CssRecoveryAction, CssSerializationLimits, CssSpecifiedRatio,
+    CssSpecifiedValueSerializationErrorKind, CssValueOrigin, expand_declaration, normalize_sheet,
     parse_component_values, parse_property_value, parse_sheet, parse_style_attribute,
 };
 
@@ -249,7 +249,10 @@ fn specified_serialization_keeps_both_components_and_canonical_auto_order() {
             panic!("aspect-ratio: {authored}")
         };
         assert_eq!(
-            value.ratio().serialize_specified().unwrap(),
+            value
+                .ratio()
+                .serialize_specified(Default::default())
+                .unwrap(),
             expected,
             "{authored}"
         );
@@ -273,23 +276,27 @@ fn checked_operands_cannot_hide_invalid_literals_in_typed_calculations() {
     assert!(matches!(exact.origin(), CssValueOrigin::Programmatic));
     assert!(exact.literal_component().is_some());
     assert!(exact.calculation().is_none());
-    let bare_negative =
-        CssNumberCalculation::try_from_components(parse_component_values("-1e-999").unwrap())
-            .unwrap();
+    let bare_negative = CssNumberCalculation::try_from_components(
+        parse_component_values("-1e-999").unwrap(),
+        Default::default(),
+    )
+    .unwrap();
     assert_numeric_rejected(
         CssRatioOperand::try_from_calculation(bare_negative),
         CssNumericConstructionErrorKind::OutOfRange,
     );
-    let math =
-        CssNumberCalculation::try_from_components(parse_component_values("calc(-1)").unwrap())
-            .unwrap();
+    let math = CssNumberCalculation::try_from_components(
+        parse_component_values("calc(-1)").unwrap(),
+        Default::default(),
+    )
+    .unwrap();
     let deferred = CssRatioOperand::try_from_calculation(math).unwrap();
     assert!(deferred.calculation().is_some());
     let ratio = CssSpecifiedRatio::new(exact, Some(deferred));
     assert!(ratio.numerator().literal_component().is_some());
     assert!(ratio.denominator().unwrap().calculation().is_some());
     assert_eq!(
-        ratio.serialize_specified().unwrap(),
+        ratio.serialize_specified(Default::default()).unwrap(),
         format!("1{} / calc(-1)", "0".repeat(999))
     );
     let source = parsed("16/9");
@@ -321,22 +328,22 @@ fn ratio_serialization_charges_one_budget_across_auto_and_both_operands() {
     };
     for (limits, expected) in [
         (
-            CssSpecifiedValueSerializationLimits::new(2, 3, 11),
+            CssSerializationLimits::new(2, 3, 11),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(3, 2, 11),
+            CssSerializationLimits::new(3, 2, 11),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(3, 3, 10),
+            CssSerializationLimits::new(3, 3, 10),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
         assert_eq!(
             value
                 .ratio()
-                .serialize_specified_with_limits(limits)
+                .serialize_specified(limits)
                 .unwrap_err()
                 .kind(),
             expected
@@ -345,7 +352,7 @@ fn ratio_serialization_charges_one_budget_across_auto_and_both_operands() {
     assert_eq!(
         value
             .ratio()
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(3, 3, 11))
+            .serialize_specified(CssSerializationLimits::new(3, 3, 11))
             .unwrap(),
         "auto 16 / 9"
     );
@@ -355,15 +362,14 @@ fn ratio_serialization_charges_one_budget_across_auto_and_both_operands() {
     else {
         panic!("math ratio")
     };
-    let full = math.ratio().serialize_specified().unwrap();
+    let full = math
+        .ratio()
+        .serialize_specified(Default::default())
+        .unwrap();
     assert_eq!(full, "calc(16) / 9");
     assert_eq!(
         math.ratio()
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                100,
-                100,
-                full.len() - 1
-            ))
+            .serialize_specified(CssSerializationLimits::new(100, 100, full.len() - 1))
             .unwrap_err()
             .kind(),
         CssSpecifiedValueSerializationErrorKind::ByteLimit
@@ -412,7 +418,10 @@ fn ratio_expansion_retains_typed_payload_importance_and_source_occurrence() {
     else {
         panic!("typed auto pair")
     };
-    assert_eq!(ratio.serialize_specified().unwrap(), "16 / 9");
+    assert_eq!(
+        ratio.serialize_specified(Default::default()).unwrap(),
+        "16 / 9"
+    );
     for (keyword, expected) in [
         ("initial", CssGlobalKeyword::Initial),
         ("inherit", CssGlobalKeyword::Inherit),
@@ -474,7 +483,10 @@ fn pending_ratio_reentry_checks_full_grammar_and_retains_source() {
     else {
         panic!("typed reentered ratio")
     };
-    assert_eq!(ratio.serialize_specified().unwrap(), "16 / 9");
+    assert_eq!(
+        ratio.serialize_specified(Default::default()).unwrap(),
+        "16 / 9"
+    );
     let CssContributions::Longhands(globals) = handle
         .reenter(parse_component_values("inherit").unwrap())
         .unwrap()
@@ -527,6 +539,9 @@ fn normalization_orders_surviving_ratio_occurrences_after_recovery() {
         let CssLonghandValueRef::AspectRatio(ratio) = value.ordinary_value().unwrap().view() else {
             panic!("normalized typed ratio")
         };
-        assert_eq!(ratio.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            ratio.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
 }

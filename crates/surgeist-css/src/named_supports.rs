@@ -317,6 +317,12 @@ pub enum CssSupportsTestItem {
 }
 
 /// An authored, non-rendering feature-test body.
+///
+/// # Specified serialization
+///
+/// Serializes test candidates without selecting feature truth values. A standalone body has direct
+/// children at depth zero; containers/runs are transparent. Use a named graph input to include the
+/// outer wrapper depth.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssSupportsTestBody {
     pub(crate) items: Vec<CssSupportsTestItem>,
@@ -327,12 +333,6 @@ pub struct CssSupportsTestBody {
 impl CssSupportsTestBody {
     pub fn try_from_components(
         values: CssComponentValues,
-    ) -> Result<Self, CssNamedSupportsConstructionError> {
-        Self::try_from_components_with_limits(values, CssComponentValueLimits::default())
-    }
-
-    pub fn try_from_components_with_limits(
-        values: CssComponentValues,
         limits: CssComponentValueLimits,
     ) -> Result<Self, CssNamedSupportsConstructionError> {
         values.validate_with_limits(limits)?;
@@ -342,7 +342,7 @@ impl CssSupportsTestBody {
             });
         }
         let body = crate::parser::named_supports::construct_test_body(values, limits)?;
-        let output = body.serialize_with_limit(limits.max_css_bytes())?;
+        let output = body.serialize_tokens(limits)?;
         validate_emitted_budget(&output, limits, &CssValueOrigin::Programmatic)?;
         Ok(body)
     }
@@ -388,16 +388,11 @@ impl CssSupportsTestBody {
 
     /// Rebuilds runs from checked occurrences. Only this receiver's body-local
     /// recovery persists; the descendant union follows the supplied child order.
-    pub fn recompose_children(
-        &self,
-        children: &[CssSupportsTestChildRef<'_>],
-    ) -> Result<Self, CssNamedSupportsConstructionError> {
-        self.recompose_children_with_limits(children, CssComponentValueLimits::default())
-    }
+    ///
     /// One native component/depth context and counting token sink admit the joint
     /// borrowed payload before cloning. Counting retains no output/map and never
     /// reparses or supplies semantics for reconstruction. Failure is atomic.
-    pub fn recompose_children_with_limits(
+    pub fn recompose_children(
         &self,
         children: &[CssSupportsTestChildRef<'_>],
         limits: CssComponentValueLimits,
@@ -444,14 +439,13 @@ impl CssSupportsTestBody {
         Ok(Self::from_parts(items, self.local_recovery.clone()))
     }
 
-    pub fn serialize(&self) -> Result<CssSerializedValue, CssComponentValueError> {
-        self.serialize_with_limit(usize::MAX)
-    }
-
-    pub fn serialize_with_limit(
+    /// `limits.max_css_bytes()` caps the output, including inserted syntax; the other component
+    /// limits do not apply.
+    pub fn serialize_tokens(
         &self,
-        max_css_bytes: usize,
+        limits: crate::CssComponentValueLimits,
     ) -> Result<CssSerializedValue, CssComponentValueError> {
+        let max_css_bytes = limits.max_css_bytes();
         let mut out = CssCanonicalBuilder::new(max_css_bytes);
         self.write_to(&mut out)?;
         out.finish()
@@ -506,6 +500,10 @@ impl CssSupportsTestBody {
 }
 
 /// A checked named supports definition with its non-rendering test body.
+///
+/// # Specified serialization
+///
+/// Canonical specified definition text, including an explicit block closure.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssSupportsConditionRule {
     data: Box<SupportsConditionRuleData>,
@@ -524,13 +522,6 @@ impl CssSupportsConditionRule {
     pub fn try_new(
         name: CssSupportsConditionName,
         body: CssSupportsTestBody,
-    ) -> Result<Self, CssNamedSupportsConstructionError> {
-        Self::try_new_with_limits(name, body, CssComponentValueLimits::default())
-    }
-
-    pub fn try_new_with_limits(
-        name: CssSupportsConditionName,
-        body: CssSupportsTestBody,
         limits: CssComponentValueLimits,
     ) -> Result<Self, CssNamedSupportsConstructionError> {
         if let Some(origin) = body.recovery_origin() {
@@ -545,7 +536,7 @@ impl CssSupportsConditionRule {
             CssValueOrigin::Programmatic,
             CssValueOrigin::Programmatic,
         );
-        let output = value.serialize_with_limit(limits.max_css_bytes())?;
+        let output = value.serialize_tokens(limits)?;
         validate_emitted_budget(&output, limits, value.origin())?;
         Ok(value)
     }
@@ -584,14 +575,13 @@ impl CssSupportsConditionRule {
         crate::media::parsed_position(self.origin())
     }
 
-    pub fn serialize(&self) -> Result<CssSerializedValue, CssComponentValueError> {
-        self.serialize_with_limit(usize::MAX)
-    }
-
-    pub fn serialize_with_limit(
+    /// `limits.max_css_bytes()` caps the output, including inserted syntax; the other component
+    /// limits do not apply.
+    pub fn serialize_tokens(
         &self,
-        max_css_bytes: usize,
+        limits: crate::CssComponentValueLimits,
     ) -> Result<CssSerializedValue, CssComponentValueError> {
+        let max_css_bytes = limits.max_css_bytes();
         let mut out = CssCanonicalBuilder::new(max_css_bytes);
         out.push_grammar(
             CssCanonicalToken::AtKeyword("supports-condition"),
@@ -679,6 +669,11 @@ pub enum CssSupportsTestChild {
 }
 
 /// Borrowed direct-child projection, transparent to native serialization costs.
+///
+/// # Specified serialization
+///
+/// Standalone child root is depth zero. Nested payload/components and the complete output share the
+/// same native writer allowances.
 #[derive(Clone, Copy, Debug)]
 pub enum CssSupportsTestChildRef<'a> {
     Declaration(&'a CssSupportsTestDeclaration),

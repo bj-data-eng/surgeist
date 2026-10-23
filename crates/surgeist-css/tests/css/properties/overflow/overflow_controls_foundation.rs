@@ -354,7 +354,7 @@ fn normalization_preserves_authored_control_order_after_invalid_recovery() {
         assert_eq!(
             item.source()
                 .value_components()
-                .serialize()
+                .serialize_tokens(Default::default())
                 .unwrap()
                 .as_css(),
             authored

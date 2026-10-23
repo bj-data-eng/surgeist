@@ -49,16 +49,30 @@ fn assert_context(values: &CssLonghandContributions, source: &CssDeclaration) {
 
 fn text(value: CssLonghandValueRef<'_>) -> String {
     match value {
-        CssLonghandValueRef::BackgroundImage(v) => v.serialize_specified().unwrap(),
-        CssLonghandValueRef::BackgroundPosition(v) => v.serialize_specified().unwrap(),
-        CssLonghandValueRef::BackgroundSize(v) => v.serialize_specified().unwrap(),
-        CssLonghandValueRef::BackgroundRepeat(v) => v.serialize_specified().unwrap(),
-        CssLonghandValueRef::BackgroundAttachment(v) => v.serialize_specified().unwrap(),
-        CssLonghandValueRef::BackgroundOrigin(v) | CssLonghandValueRef::BackgroundClip(v) => {
-            v.serialize_specified().unwrap()
+        CssLonghandValueRef::BackgroundImage(v) => {
+            v.serialize_specified(Default::default()).unwrap()
         }
-        CssLonghandValueRef::BackgroundColor(v) => v.to_specified_css().unwrap(),
-        CssLonghandValueRef::BackgroundBlendMode(v) => v.serialize_specified().unwrap(),
+        CssLonghandValueRef::BackgroundPosition(v) => {
+            v.serialize_specified(Default::default()).unwrap()
+        }
+        CssLonghandValueRef::BackgroundSize(v) => {
+            v.serialize_specified(Default::default()).unwrap()
+        }
+        CssLonghandValueRef::BackgroundRepeat(v) => {
+            v.serialize_specified(Default::default()).unwrap()
+        }
+        CssLonghandValueRef::BackgroundAttachment(v) => {
+            v.serialize_specified(Default::default()).unwrap()
+        }
+        CssLonghandValueRef::BackgroundOrigin(v) | CssLonghandValueRef::BackgroundClip(v) => {
+            v.serialize_specified(Default::default()).unwrap()
+        }
+        CssLonghandValueRef::BackgroundColor(v) => {
+            v.serialize_specified(Default::default()).unwrap()
+        }
+        CssLonghandValueRef::BackgroundBlendMode(v) => {
+            v.serialize_specified(Default::default()).unwrap()
+        }
         _ => panic!("background terminal"),
     }
 }
@@ -154,7 +168,14 @@ fn color_only_background_supplies_each_schema_initial_list_and_one_color() {
     };
     assert!(layer.image().is_none() && layer.position().is_none() && layer.size().is_none());
     assert!(layer.repeat().is_none() && layer.attachment().is_none() && layer.boxes().is_none());
-    assert_eq!(layer.color().unwrap().to_specified_css().unwrap(), "red");
+    assert_eq!(
+        layer
+            .color()
+            .unwrap()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "red"
+    );
 }
 
 #[test]
@@ -222,16 +243,20 @@ fn explicit_layers_preserve_all_components_and_single_final_color() {
 fn pending_background_reentry_is_strict_reusable_and_preserves_both_origins() {
     let programmatic_source = parse_property_value(
         CssPropertyNameRef::Known(CssKnownProperty::Background),
-        CssComponentValues::try_new(vec![
-            CssComponentValue::try_function(
-                "var",
-                CssComponentValues::try_new(vec![
-                    CssComponentValue::try_ident("--layers").unwrap(),
-                ])
+        CssComponentValues::try_new(
+            vec![
+                CssComponentValue::try_function(
+                    "var",
+                    CssComponentValues::try_new(
+                        vec![CssComponentValue::try_ident("--layers").unwrap()],
+                        Default::default(),
+                    )
+                    .unwrap(),
+                )
                 .unwrap(),
-            )
-            .unwrap(),
-        ])
+            ],
+            Default::default(),
+        )
         .unwrap(),
         CssImportance::Important,
     )
@@ -270,9 +295,11 @@ fn pending_background_reentry_is_strict_reusable_and_preserves_both_origins() {
             );
         }
         let parsed = parse_component_values("none, red").unwrap();
-        let programmatic =
-            CssComponentValues::try_new(vec![CssComponentValue::try_ident("red").unwrap()])
-                .unwrap();
+        let programmatic = CssComponentValues::try_new(
+            vec![CssComponentValue::try_ident("red").unwrap()],
+            Default::default(),
+        )
+        .unwrap();
         assert!(matches!(
             parsed.items()[0].origin(),
             CssValueOrigin::Parsed(_)

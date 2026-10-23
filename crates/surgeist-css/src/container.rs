@@ -32,14 +32,10 @@ fn construct<T: Send>(
 impl CssContainerCondition {
     /// Admits complete component syntax with the same grammar as parsed conditions.
     /// Explicit tokens, operators and grouping retain their supplied origins.
-    pub fn try_from_components(
-        values: CssComponentValues,
-    ) -> Result<Self, CssContainerConstructionError> {
-        Self::try_from_components_with_limits(values, CssComponentValueLimits::default())
-    }
+    ///
     /// Checks nesting, component count and serialized bytes before classification.
     /// Trusted parser-produced EOF closures retain their original provenance.
-    pub fn try_from_components_with_limits(
+    pub fn try_from_components(
         values: CssComponentValues,
         limits: CssComponentValueLimits,
     ) -> Result<Self, CssContainerConstructionError> {
@@ -59,13 +55,14 @@ impl CssContainerCondition {
     }
     /// Serializes authored lexical spelling, operators, trivia and every grouping
     /// pair. Delimiters implied by parser recovery are emitted explicitly.
-    pub fn serialize(&self) -> Result<CssSerializedValue, CssComponentValueError> {
-        self.serialize_with_limit(usize::MAX)
-    }
-    pub fn serialize_with_limit(
+    ///
+    /// `limits.max_css_bytes()` caps the output, including inserted syntax; the other component
+    /// limits do not apply.
+    pub fn serialize_tokens(
         &self,
-        max_css_bytes: usize,
+        limits: crate::CssComponentValueLimits,
     ) -> Result<CssSerializedValue, CssComponentValueError> {
+        let max_css_bytes = limits.max_css_bytes();
         let mut out = CssCanonicalBuilder::new(max_css_bytes);
         out.push_components(self.components())?;
         out.finish()
@@ -74,13 +71,9 @@ impl CssContainerCondition {
 
 impl CssContainerPrelude {
     /// Admits a complete, nonempty comma list with the stylesheet grammar.
-    pub fn try_from_components(
-        values: CssComponentValues,
-    ) -> Result<Self, CssContainerConstructionError> {
-        Self::try_from_components_with_limits(values, CssComponentValueLimits::default())
-    }
+    ///
     /// Bounds the complete input before entry admission, retaining supplied origins.
-    pub fn try_from_components_with_limits(
+    pub fn try_from_components(
         values: CssComponentValues,
         limits: CssComponentValueLimits,
     ) -> Result<Self, CssContainerConstructionError> {
@@ -92,10 +85,9 @@ impl CssContainerPrelude {
         &self,
         context: &mut crate::specified_serialization::SpecifiedSerializationContext,
         output: &mut String,
-    ) -> Result<(), CssSpecifiedValueSerializationError> {
+    ) -> Result<(), CssSerializationError> {
         // Entries and conditions are views of this single lexical region.
-        context.charge_input(1)?;
-        context.charge_projection(1)?;
+        context.charge_nodes(1)?;
         crate::component_values::charge_specified_components(context, self.components())?;
         if context.output_suppressed() {
             return Ok(());
@@ -111,13 +103,14 @@ impl CssContainerPrelude {
         context.append(output, value.as_css())
     }
     /// Emits the complete authored prelude, including separators and grouping.
-    pub fn serialize(&self) -> Result<CssSerializedValue, CssComponentValueError> {
-        self.serialize_with_limit(usize::MAX)
-    }
-    pub fn serialize_with_limit(
+    ///
+    /// `limits.max_css_bytes()` caps the output, including inserted syntax; the other component
+    /// limits do not apply.
+    pub fn serialize_tokens(
         &self,
-        max_css_bytes: usize,
+        limits: crate::CssComponentValueLimits,
     ) -> Result<CssSerializedValue, CssComponentValueError> {
+        let max_css_bytes = limits.max_css_bytes();
         let mut out = CssCanonicalBuilder::new(max_css_bytes);
         out.push_components(self.components())?;
         out.finish()
@@ -126,13 +119,14 @@ impl CssContainerPrelude {
 
 impl CssContainerQueryEntry {
     /// Emits only this entry, preserving its name, query and supplied origins.
-    pub fn serialize(&self) -> Result<CssSerializedValue, CssComponentValueError> {
-        self.serialize_with_limit(usize::MAX)
-    }
-    pub fn serialize_with_limit(
+    ///
+    /// `limits.max_css_bytes()` caps the output, including inserted syntax; the other component
+    /// limits do not apply.
+    pub fn serialize_tokens(
         &self,
-        max_css_bytes: usize,
+        limits: crate::CssComponentValueLimits,
     ) -> Result<CssSerializedValue, CssComponentValueError> {
+        let max_css_bytes = limits.max_css_bytes();
         let mut out = CssCanonicalBuilder::new(max_css_bytes);
         out.push_components(self.components())?;
         out.finish()

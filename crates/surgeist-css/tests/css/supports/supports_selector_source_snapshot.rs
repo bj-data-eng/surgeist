@@ -7,16 +7,25 @@ use surgeist_css::{
 fn condition(source: &str) -> CssSupportsCondition {
     let components = parse_component_values(source).unwrap();
     let original = components.items()[0].origin().clone();
-    let condition =
-        CssSupportsCondition::try_from_components(components, &CssNamespaceContext::default())
-            .expect("clean selector() grammar must be constructible");
+    let condition = CssSupportsCondition::try_from_components(
+        components,
+        &CssNamespaceContext::default(),
+        Default::default(),
+    )
+    .expect("clean selector() grammar must be constructible");
     assert_eq!(condition.origin(), &original);
     let CssValueOrigin::Parsed(origin) = condition.origin() else {
         panic!("original parsed origin")
     };
     assert_eq!(origin.source().as_str(), source);
     assert_eq!(origin.span().start().byte_offset().value(), 0);
-    assert_eq!(condition.serialize().unwrap().as_css(), source);
+    assert_eq!(
+        condition
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        source
+    );
     condition
 }
 

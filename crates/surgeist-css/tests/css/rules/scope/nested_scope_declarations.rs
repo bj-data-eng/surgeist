@@ -38,7 +38,7 @@ fn color(declaration: &CssNormalizedDeclaration, source: &str, value: &str, orde
         declaration
             .source()
             .value_components()
-            .serialize()
+            .serialize_tokens(Default::default())
             .unwrap()
             .as_css(),
         value
@@ -91,7 +91,11 @@ fn fragment_child_value(scope: &CssScopeRule) {
         "color"
     );
     assert_eq!(
-        declaration.value_components().serialize().unwrap().as_css(),
+        declaration
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         "blue"
     );
 }

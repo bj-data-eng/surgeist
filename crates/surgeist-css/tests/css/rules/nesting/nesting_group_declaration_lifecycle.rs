@@ -39,7 +39,7 @@ fn assert_values<'a>(
         assert_eq!(
             declaration
                 .value_components()
-                .serialize()
+                .serialize_tokens(Default::default())
                 .unwrap()
                 .as_css()
                 .trim(),
@@ -435,7 +435,13 @@ fn mixed_groups_scope_anchors_and_local_style_rebinding_survive_complete_specifi
                 .same_context(owner)
         );
     }
-    assert_eq!(report.syntax().to_specified_css().unwrap(), expected);
+    assert_eq!(
+        report
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
     let reparsed = parse_sheet(expected);
     assert!(reparsed.is_clean(), "{:?}", reparsed.diagnostics());
     assert_values(
@@ -445,7 +451,10 @@ fn mixed_groups_scope_anchors_and_local_style_rebinding_survive_complete_specifi
     );
     let reused = CssSheet::try_from_rules(report.syntax().rules().to_vec()).unwrap();
     assert!(reused.location().is_none());
-    assert_eq!(reused.to_specified_css().unwrap(), expected);
+    assert_eq!(
+        reused.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     assert_values(source, &normalize_sheet(&reused).unwrap(), &expected_values);
     assert_eq!(report, before);
 }
@@ -761,7 +770,9 @@ fn checked_reuse_requires_actual_style_ancestry_and_run_output_coalesces_only_on
     let expected =
         "@when media(width) { width: 1px; height: 2px; color: green !important; opacity: 0.3; }";
     assert_eq!(
-        CssRule::When(fragment.clone()).to_specified_css().unwrap(),
+        CssRule::When(fragment.clone())
+            .serialize_specified(Default::default())
+            .unwrap(),
         expected
     );
     let detached_fragment = CssSheet::try_from_rules(vec![CssRule::When(fragment)]).unwrap_err();

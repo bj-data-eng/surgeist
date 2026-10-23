@@ -4,18 +4,19 @@
 //! value providers. Occurrence lists retain every duplicate and importance flag;
 //! they do not perform CSSOM declaration-block selection or shorthand coalescing.
 
+use crate::specified_rule_serialization::SpecifiedProvider as _;
 use crate::{
     CssBreakBetween, CssComponentValueRef, CssComponentValues, CssDeclaration, CssDeclarationBody,
     CssDeclarationList, CssGlobalKeyword, CssImportance, CssKnownDeclaredValueRef,
-    CssKnownPropertyValueRef, CssPropertyGrammar, CssSpecifiedValueSerializationError,
-    CssSpecifiedValueSerializationLimits, CssTextOrientation, CssValueTokenRef,
+    CssKnownPropertyValueRef, CssPropertyGrammar, CssSerializationError, CssTextOrientation,
+    CssValueTokenRef,
     component_values::CssCanonicalBuilder,
     pending_serialization::append_pending_specified,
     properties::{CssLegacyPropertyAlias, CssResolvedPropertyName, property_schema},
     specified_rule_serialization::SpecifiedRuleWriter,
 };
 
-type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
+type Result<T> = std::result::Result<T, CssSerializationError>;
 
 // Only the owners requiring declaration context differ from the common bridge.
 // The schema supplies every ordinary arm, type and accessor exactly once.
@@ -29,15 +30,6 @@ macro_rules! append_ordinary {
     (CounterSet, $ty:ident, $value:expr, $grammar:ident, $writer:ident) => {
         $value.append_to_rule_writer(crate::CssCounterProperty::Set, $writer)
     };
-    ($variant:ident, CssColor, $value:expr, $grammar:ident, $writer:ident) => {
-        $value.append_specified(&mut $writer.context, &mut $writer.css)
-    };
-    ($variant:ident, CssBorderWidth, $value:expr, $grammar:ident, $writer:ident) => {
-        $value.append_specified(&mut $writer.context, &mut $writer.css)
-    };
-    ($variant:ident, CssLineWidth, $value:expr, $grammar:ident, $writer:ident) => {
-        $value.append_specified(&mut $writer.context, &mut $writer.css)
-    };
     ($variant:ident, CssBreakBetween, $value:expr, $grammar:ident, $writer:ident) => {
         append_break_between($value, $grammar, $writer)
     };
@@ -45,7 +37,9 @@ macro_rules! append_ordinary {
         append_text_orientation($value, $grammar, $writer)
     };
     ($variant:ident, $ty:ident, $value:expr, $grammar:ident, $writer:ident) => {
-        $value.append_to_rule_writer($writer)
+        crate::specified_rule_serialization::SpecifiedProvider::append_to_rule_writer(
+            $value, $writer,
+        )
     };
 }
 
@@ -181,38 +175,8 @@ pub(crate) fn append_retained_value(
     writer.append(serialized.as_css())
 }
 
-impl CssDeclaration {
-    /// Serializes one authored declaration using its semantic value provider.
-    ///
-    /// Emits a canonical grammar name, `: `, the specified value, an optional
-    /// ` !important`, and `;`. Custom names retain case and are escaped as
-    /// identifiers. Custom and substitution-dependent token text remains
-    /// symbolic, preserving its retained spelling, comments and internal
-    /// whitespace. Only top-level edge whitespace is omitted, as in CSS Syntax
-    /// declaration consumption; the complete original component region remains
-    /// unchanged and participates in work accounting.
-    /// This does not select declarations, substitute variables or apply cascade.
-    pub fn to_specified_css(&self) -> Result<String> {
-        self.to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes atomically under cumulative input, projection and byte limits.
-    ///
-    /// The declaration and its name each cost one input and projection node;
-    /// semantic children retain their owning costs. Punctuation and importance
-    /// cost bytes only. Legacy glyph numeric representatives additionally cost
-    /// one generated projection node. The stored occurrence and origins do not
-    /// change, including on failure.
-    pub fn to_specified_css_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String> {
-        let mut writer = SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+impl crate::specified_rule_serialization::SpecifiedProvider for CssDeclaration {
+    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         append_authored_declaration(
             self.body(),
             self.value_components(),
@@ -221,6 +185,7 @@ impl CssDeclaration {
         )
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssDeclaration);
 
 /// Shared authored body/value/punctuation owner for ordinary and keyframe
 /// occurrences. Keyframe grammar supplies normal importance; its private model
@@ -271,41 +236,15 @@ pub(crate) fn append_authored_declaration(
     writer.append(";")
 }
 
-impl CssDeclarationList {
-    /// Emits every authored occurrence as canonical specified attribute text.
-    ///
-    /// Uses the existing default limits. Empty lists emit an empty string. Each
-    /// declaration has its canonical grammar name, `: `, owning specified value,
-    /// optional ` !important` and `;`; adjacent occurrences have one space.
-    /// Duplicates, repeated handles and priority remain in authored order.
-    /// Custom names retain case and symbolic token values keep their retained
-    /// spelling, comments and internal trivia under the existing value writer.
-    /// No braces, enclosing rule, cascade selection or substitution is emitted.
-    /// For terminal winner output, use [`Self::serialize_cssom`] instead.
-    pub fn to_specified_css(&self) -> Result<String> {
-        self.to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Emits the complete ordered list atomically under one fresh cumulative budget.
-    ///
-    /// The aggregate costs one input and projection node; declarations, names
-    /// and semantic providers retain their existing costs. Repeated occurrences
-    /// are visited again, and punctuation, separators and importance cost bytes.
-    /// Output and retained-value boundary failures use the actual provider writer.
-    ///
-    /// Failure returns no partial text. This borrowed operation leaves the list,
-    /// every immutable occurrence, components, origins and individual context
-    /// unchanged on success or failure. A retry uses its newly supplied limits;
-    /// construction limits are not persistent list policy or a text cache.
-    pub fn to_specified_css_with_limits(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssDeclarationList {
+    fn append_to_rule_writer(
         &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String> {
-        let mut writer = SpecifiedRuleWriter::new(limits);
-        writer.append_authored_declaration_list(self)?;
-        Ok(writer.css)
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        writer.append_authored_declaration_list(self)
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssDeclarationList);
 
 impl SpecifiedRuleWriter {
     /// Composes retained authored occurrences in order, including duplicates.
@@ -328,8 +267,8 @@ impl SpecifiedRuleWriter {
 #[cfg(test)]
 mod occurrence_composition_tests {
     use super::*;
+    use crate::CssSerializationLimits as Limits;
     use crate::CssSpecifiedValueSerializationErrorKind as Kind;
-    use CssSpecifiedValueSerializationLimits as Limits;
 
     fn declarations() -> CssDeclarationList {
         let report = crate::parse_style_attribute("color:PURPLE!important;color:transparent");

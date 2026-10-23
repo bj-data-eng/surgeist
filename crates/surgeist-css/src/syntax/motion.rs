@@ -30,6 +30,10 @@ impl fmt::Display for CssMotionConstructionError {
 impl Error for CssMotionConstructionError {}
 
 /// The six Box 3 coordinate boxes imported by Motion; margin-box is excluded.
+///
+/// # Specified serialization
+///
+/// Serializes authored constituents without resolving paths, bearings or resources.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[non_exhaustive]
 pub enum CssCoordBox {
@@ -79,6 +83,10 @@ impl TryFrom<CssBoxEdgeKeyword> for CssCoordBox {
 }
 
 /// An explicitly authored ray size; omission separately denotes closest-side.
+///
+/// # Specified serialization
+///
+/// Serializes authored constituents without resolving paths, bearings or resources.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssRaySize {
@@ -114,6 +122,10 @@ impl CssRaySize {
 
 /// An authored bearing, where zero points up and positive angles run clockwise.
 /// The checked angle is retained without modulo, tangent or geometric evaluation.
+///
+/// # Specified serialization
+///
+/// Serializes authored constituents without resolving paths, bearings or resources.
 #[derive(Clone, Debug)]
 pub struct CssRay {
     angle: CssAngleValue,
@@ -157,6 +169,10 @@ impl CssRay {
 }
 
 /// Exactly one authored path production, distinct from the whole property grammar.
+///
+/// # Specified serialization
+///
+/// Serializes authored constituents without resolving paths, bearings or resources.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssOffsetPathKind {
@@ -166,6 +182,10 @@ pub enum CssOffsetPathKind {
 }
 
 /// A checked path with an optional explicitly authored coordinate box.
+///
+/// # Specified serialization
+///
+/// Serializes authored constituents without resolving paths, bearings or resources.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssOffsetPathValue {
     path: CssOffsetPathKind,
@@ -201,6 +221,10 @@ pub enum CssOffsetPathRef<'a> {
     Path(&'a CssOffsetPathValue),
 }
 /// The whole authored offset-path property, including none and box-only branches.
+///
+/// # Specified serialization
+///
+/// Serializes authored constituents without resolving paths, bearings or resources.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssOffsetPath {
     value: OffsetPath,
@@ -235,6 +259,10 @@ impl CssOffsetPath {
 }
 
 /// The authored offset-position, before containing-block or own-box resolution.
+///
+/// # Specified serialization
+///
+/// Serializes authored constituents without resolving paths, bearings or resources.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssOffsetPosition {
@@ -243,6 +271,10 @@ pub enum CssOffsetPosition {
     Position(CssPosition),
 }
 /// The authored offset-anchor, before transform-origin or reference-box resolution.
+///
+/// # Specified serialization
+///
+/// Serializes authored constituents without resolving paths, bearings or resources.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssOffsetAnchor {
@@ -250,6 +282,10 @@ pub enum CssOffsetAnchor {
     Position(CssPosition),
 }
 /// An explicit authored tangent-rotation modifier; absence stays distinct from auto.
+///
+/// # Specified serialization
+///
+/// Serializes authored constituents without resolving paths, bearings or resources.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssOffsetRotateModifier {
@@ -257,6 +293,10 @@ pub enum CssOffsetRotateModifier {
     Reverse,
 }
 /// A nonempty authored modifier/angle combination, without tangent evaluation.
+///
+/// # Specified serialization
+///
+/// Serializes authored constituents without resolving paths, bearings or resources.
 #[derive(Clone, Debug)]
 pub struct CssOffsetRotate {
     modifier: Option<CssOffsetRotateModifier>,
@@ -292,6 +332,10 @@ impl CssOffsetRotate {
 }
 
 /// Authored shorthand constituents, before its five intrinsic reset contributions.
+///
+/// # Specified serialization
+///
+/// Serializes authored constituents without resolving paths, bearings or resources.
 #[derive(Clone, Debug)]
 pub struct CssOffset {
     position: Option<CssOffsetPosition>,

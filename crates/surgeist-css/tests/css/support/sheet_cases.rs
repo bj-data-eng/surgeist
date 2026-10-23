@@ -224,7 +224,7 @@ pub fn signed_length(css: &str) -> CssSpecifiedLength {
     let components = parse_component_values(css).unwrap();
     if css.contains('(') {
         CssSpecifiedLength::try_from_calculation(
-            CssLengthCalculation::try_from_components(components).unwrap(),
+            CssLengthCalculation::try_from_components(components, Default::default()).unwrap(),
         )
         .unwrap()
     } else {
@@ -236,7 +236,7 @@ pub fn nonnegative_length(css: &str) -> CssSpecifiedNonNegativeLength {
     let components = parse_component_values(css).unwrap();
     if css.contains('(') {
         CssSpecifiedNonNegativeLength::try_from_calculation(
-            CssLengthCalculation::try_from_components(components).unwrap(),
+            CssLengthCalculation::try_from_components(components, Default::default()).unwrap(),
         )
         .unwrap()
     } else {
@@ -251,7 +251,8 @@ pub fn signed_length_percentage(css: &str) -> CssSpecifiedLengthPercentage {
     let components = parse_component_values(css).unwrap();
     if css.contains('(') {
         CssSpecifiedLengthPercentage::try_from_calculation(
-            CssLengthPercentageCalculation::try_from_components(components).unwrap(),
+            CssLengthPercentageCalculation::try_from_components(components, Default::default())
+                .unwrap(),
         )
         .unwrap()
     } else {
@@ -264,7 +265,8 @@ pub fn nonnegative_length_percentage(css: &str) -> CssSpecifiedNonNegativeLength
     let components = parse_component_values(css).unwrap();
     if css.contains('(') {
         CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(
-            CssLengthPercentageCalculation::try_from_components(components).unwrap(),
+            CssLengthPercentageCalculation::try_from_components(components, Default::default())
+                .unwrap(),
         )
         .unwrap()
     } else {

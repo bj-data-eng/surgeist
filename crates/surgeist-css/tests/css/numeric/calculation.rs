@@ -3,6 +3,7 @@
 mod absolute_length_unit_ratios;
 mod calc_size;
 mod calc_size_composed_contract;
+mod calculation_token_byte_limit;
 mod checked_symbolic_calculation_owners;
 mod exact_numeric_construction;
 mod exact_numeric_function_domains;

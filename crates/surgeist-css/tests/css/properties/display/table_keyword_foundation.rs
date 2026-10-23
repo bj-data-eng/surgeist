@@ -37,15 +37,12 @@ impl TableKeyword {
         }
     }
 
-    fn serialize(
-        self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String, CssSpecifiedValueSerializationError> {
+    fn serialize(self, limits: CssSerializationLimits) -> Result<String, CssSerializationError> {
         match self {
-            Self::BorderCollapse(value) => value.serialize_specified_with_limits(limits),
-            Self::CaptionSide(value) => value.serialize_specified_with_limits(limits),
-            Self::EmptyCells(value) => value.serialize_specified_with_limits(limits),
-            Self::TableLayout(value) => value.serialize_specified_with_limits(limits),
+            Self::BorderCollapse(value) => value.serialize_specified(limits),
+            Self::CaptionSide(value) => value.serialize_specified(limits),
+            Self::EmptyCells(value) => value.serialize_specified(limits),
+            Self::TableLayout(value) => value.serialize_specified(limits),
         }
     }
 }
@@ -112,28 +109,26 @@ fn table_keywords_serialize_all_eight_values_with_atomic_resource_limits() {
         (TableKeyword::TableLayout(CssTableLayout::Fixed), "fixed"),
     ] {
         assert_eq!(
-            value
-                .serialize(CssSpecifiedValueSerializationLimits::default())
-                .unwrap(),
+            value.serialize(CssSerializationLimits::default()).unwrap(),
             text
         );
         assert_eq!(
             value
-                .serialize(CssSpecifiedValueSerializationLimits::new(1, 1, text.len()))
+                .serialize(CssSerializationLimits::new(1, 1, text.len()))
                 .unwrap(),
             text
         );
         for (limits, expected) in [
             (
-                CssSpecifiedValueSerializationLimits::new(0, 1, text.len()),
+                CssSerializationLimits::new(0, 1, text.len()),
                 CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 0, text.len()),
+                CssSerializationLimits::new(1, 0, text.len()),
                 CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 1, text.len() - 1),
+                CssSerializationLimits::new(1, 1, text.len() - 1),
                 CssSpecifiedValueSerializationErrorKind::ByteLimit,
             ),
         ] {
@@ -297,9 +292,10 @@ fn table_keywords_from_parsed_and_checked_construction_contribute_once() {
         assert!(parsed_items.items()[0].replacement_components().is_none());
         expected.assert_payload(parsed_items.items()[0].ordinary_value().unwrap().view());
 
-        let components = CssComponentValues::try_new(vec![
-            CssComponentValue::try_token(keyword).expect("one identifier token"),
-        ])
+        let components = CssComponentValues::try_new(
+            vec![CssComponentValue::try_token(keyword).expect("one identifier token")],
+            Default::default(),
+        )
         .unwrap();
         assert!(matches!(
             components.items()[0].origin(),

@@ -480,8 +480,10 @@ mod media_helpers_tests {
     fn subtree_ranges_distinguish_repeated_original_components_and_keep_trivia() {
         let parsed = parse_component_values("future(a/**/b)").unwrap();
         let component = parsed.items()[0].clone();
-        let values = CssComponentValues::try_new(vec![component.clone(), component]).unwrap();
-        let serialized = values.serialize().unwrap();
+        let values =
+            CssComponentValues::try_new(vec![component.clone(), component], Default::default())
+                .unwrap();
+        let serialized = values.serialize_tokens(Default::default()).unwrap();
         assert_eq!(serialized.as_css(), "future(a/**/b)future(a/**/b)");
         assert_eq!(
             serialized.component_paths_in_range(0..14).unwrap(),

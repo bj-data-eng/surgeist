@@ -46,7 +46,11 @@ fn assert_styles(source: &str, rules: &[CssRule], expected: &[ExpectedStyle<'_>]
             value_span.1
         );
         assert_eq!(
-            declaration.value_components().serialize().unwrap().as_css(),
+            declaration
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             &source[value_span.0..value_span.1]
         );
         if let Some(first) = first_origin {

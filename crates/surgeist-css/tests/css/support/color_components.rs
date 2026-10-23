@@ -45,12 +45,26 @@ pub fn assert_component(value: &CssColorComponent, expected: &str) {
         }
         CssColorComponent::NumberCalculation(value) => {
             assert!(!expected.contains('%'));
-            assert_eq!(value.components().serialize().unwrap().as_css(), expected);
+            assert_eq!(
+                value
+                    .components()
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
+                expected
+            );
             assert_origin(value.origin(), expected);
         }
         CssColorComponent::PercentageCalculation(value) => {
             assert!(expected.contains('%'));
-            assert_eq!(value.components().serialize().unwrap().as_css(), expected);
+            assert_eq!(
+                value
+                    .components()
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
+                expected
+            );
             assert_origin(value.origin(), expected);
         }
         other => panic!("unexpected scalar {other:?}"),
@@ -76,11 +90,11 @@ pub fn component(text: &str) -> CssColorComponent {
         let values = parse_component_values(text).unwrap();
         if text.contains('%') {
             CssColorComponent::PercentageCalculation(
-                CssPercentageCalculation::try_from_components(values).unwrap(),
+                CssPercentageCalculation::try_from_components(values, Default::default()).unwrap(),
             )
         } else {
             CssColorComponent::NumberCalculation(
-                CssNumberCalculation::try_from_components(values).unwrap(),
+                CssNumberCalculation::try_from_components(values, Default::default()).unwrap(),
             )
         }
     } else if text.ends_with('%') {

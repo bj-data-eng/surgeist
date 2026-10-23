@@ -253,7 +253,7 @@ fn index_and_touched_payload_costs_are_distinct_from_unrelated_payloads() {
         let mut setup = batch(&store);
         let ticket = setup
             .create_declarations(
-                CssDeclarationList::try_new(Vec::new()).unwrap(),
+                CssDeclarationList::try_new(Vec::new(), Default::default()).unwrap(),
                 false,
                 false,
                 Some(CssomInputVersion {

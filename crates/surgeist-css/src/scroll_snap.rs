@@ -1,13 +1,11 @@
 //! Authored Scroll Snap values, before writing-mode mapping and snap selection.
 
 use crate::numeric::{CapturedNumericComponent, length_components_equal};
+use crate::specified_rule_serialization::SpecifiedProvider as _;
 use crate::specified_serialization::SpecifiedSerializationContext;
-use crate::{
-    CssSpecifiedLength, CssSpecifiedNonNegativeLengthPercentage,
-    CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits,
-};
+use crate::{CssSerializationError, CssSpecifiedLength, CssSpecifiedNonNegativeLengthPercentage};
 
-type SerializationResult<T> = Result<T, CssSpecifiedValueSerializationError>;
+type SerializationResult<T> = Result<T, CssSerializationError>;
 
 /// The selected scroll-snap axis spelling.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -41,6 +39,10 @@ pub enum CssScrollSnapStrictness {
 }
 
 /// The authored scroll-snap-type value.
+///
+/// # Specified serialization
+///
+/// Serializes canonical specified keywords without resolving the scroll axis.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssScrollSnapType {
@@ -60,41 +62,24 @@ impl CssScrollSnapType {
     ) -> Self {
         Self::Axis { axis, strictness }
     }
-
-    /// Serializes canonical specified keywords without resolving the scroll axis.
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes atomically under independent input, projection, and byte limits.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+}
+impl crate::specified_rule_serialization::SpecifiedProvider for CssScrollSnapType {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         let context = &mut writer.context;
         let output = &mut writer.css;
         match self {
             Self::None => {
-                context.charge_input(1)?;
-                context.charge_projection(1)?;
+                context.charge_nodes(1)?;
                 context.append(output, "none")?;
             }
             Self::Axis { axis, strictness } => {
-                context.charge_input(1)?;
-                context.charge_projection(1)?;
+                context.charge_nodes(1)?;
                 context.append(output, axis.as_css())?;
                 if let Some(strictness) = strictness {
-                    context.charge_input(1)?;
-                    context.charge_projection(1)?;
+                    context.charge_nodes(1)?;
                     if *strictness == CssScrollSnapStrictness::Mandatory {
                         context.append(output, " mandatory")?;
                     }
@@ -104,6 +89,7 @@ impl CssScrollSnapType {
         Ok(())
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssScrollSnapType);
 
 /// One alignment keyword, interpreted separately for block and inline axes.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -161,30 +147,16 @@ impl CssScrollSnapAlign {
             None => self.block,
         }
     }
-
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+}
+impl crate::specified_rule_serialization::SpecifiedProvider for CssScrollSnapAlign {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         let context = &mut writer.context;
-        context.charge_input(1)?;
-        context.charge_projection(1)?;
+        context.charge_nodes(1)?;
         if self.inline.is_some() {
-            context.charge_input(1)?;
-            context.charge_projection(1)?;
+            context.charge_nodes(1)?;
         }
         let output = &mut writer.css;
         context.append(output, self.block.as_css())?;
@@ -195,6 +167,7 @@ impl CssScrollSnapAlign {
         Ok(())
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssScrollSnapAlign);
 
 /// The authored scroll-snap-stop keyword.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -204,30 +177,18 @@ pub enum CssScrollSnapStop {
     Always,
 }
 
-impl CssScrollSnapStop {
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssScrollSnapStop {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         writer.keyword(match self {
             Self::Normal => "normal",
             Self::Always => "always",
         })
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssScrollSnapStop);
 
 /// One nonnegative scroll-padding side or its UA-dependent `auto` value.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -238,44 +199,32 @@ pub enum CssScrollPaddingValue {
 }
 
 impl CssScrollPaddingValue {
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        let context = &mut writer.context;
-        let captured = self.capture_specified(context)?;
-        let output = &mut writer.css;
-        context.append(output, &captured)?;
-        Ok(())
-    }
-
     fn capture_specified(
         &self,
         context: &mut SpecifiedSerializationContext,
     ) -> SerializationResult<String> {
         match self {
             Self::Auto => {
-                context.charge_input(1)?;
-                context.charge_projection(1)?;
+                context.charge_nodes(1)?;
                 Ok("auto".to_owned())
             }
             Self::LengthPercentage(value) => value.capture_specified(context),
         }
     }
 }
+impl crate::specified_rule_serialization::SpecifiedProvider for CssScrollPaddingValue {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        let context = &mut writer.context;
+        let captured = self.capture_specified(context)?;
+        let output = &mut writer.css;
+        context.append(output, &captured)?;
+        Ok(())
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(CssScrollPaddingValue);
 
 /// Whether four authored shorthand sides use physical or flow-relative roles.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -336,21 +285,9 @@ impl CssScrollPaddingPair {
     pub const fn end(&self) -> &CssScrollPaddingValue {
         self.0.end()
     }
-
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+}
+impl crate::specified_rule_serialization::SpecifiedProvider for CssScrollPaddingPair {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> SerializationResult<()> {
@@ -364,6 +301,7 @@ impl CssScrollPaddingPair {
         )
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssScrollPaddingPair);
 
 /// One or two authored scroll-margin lengths for a logical axis.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -389,21 +327,9 @@ impl CssScrollMarginPair {
     pub const fn end(&self) -> &CssSpecifiedLength {
         self.0.end()
     }
-
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+}
+impl crate::specified_rule_serialization::SpecifiedProvider for CssScrollMarginPair {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> SerializationResult<()> {
@@ -417,6 +343,7 @@ impl CssScrollMarginPair {
         )
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssScrollMarginPair);
 
 fn capture_padding_for_comparison(
     value: &CssScrollPaddingValue,
@@ -563,26 +490,15 @@ impl CssScrollPaddingShorthand {
         &self.0.authored
     }
 
-    /// Borrows one of four roles in top/right/bottom/left or block-start/inline-start/block-end/inline-end order.
+    /// Borrows one of four roles in top/right/bottom/left or
+    /// block-start/inline-start/block-end/inline-end order.
     #[must_use]
     pub fn role(&self, index: usize) -> Option<&CssScrollPaddingValue> {
         (index < 4).then(|| self.0.role(index))
     }
-
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+}
+impl crate::specified_rule_serialization::SpecifiedProvider for CssScrollPaddingShorthand {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> SerializationResult<()> {
@@ -595,6 +511,7 @@ impl CssScrollPaddingShorthand {
         )
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssScrollPaddingShorthand);
 
 /// The authored one-to-four lengths and physical/logical role marker for `scroll-margin`.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -616,26 +533,15 @@ impl CssScrollMarginShorthand {
         &self.0.authored
     }
 
-    /// Borrows one of four roles in top/right/bottom/left or block-start/inline-start/block-end/inline-end order.
+    /// Borrows one of four roles in top/right/bottom/left or
+    /// block-start/inline-start/block-end/inline-end order.
     #[must_use]
     pub fn role(&self, index: usize) -> Option<&CssSpecifiedLength> {
         (index < 4).then(|| self.0.role(index))
     }
-
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+}
+impl crate::specified_rule_serialization::SpecifiedProvider for CssScrollMarginShorthand {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> SerializationResult<()> {
@@ -648,6 +554,7 @@ impl CssScrollMarginShorthand {
         )
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssScrollMarginShorthand);
 
 fn append_four<T>(
     values: &ScrollFour<T>,
@@ -663,10 +570,7 @@ fn append_four<T>(
     ) -> SerializationResult<()>,
 ) -> SerializationResult<()> {
     if values.kind == CssScrollSideKind::Logical {
-        writer.source_member(0, |writer| {
-            writer.context.charge_input(1)?;
-            writer.context.charge_projection(1)
-        })?;
+        writer.source_member(0, |writer| writer.node())?;
     }
     if writer.context.output_suppressed() {
         for (index, value) in values.authored.iter().enumerate() {
@@ -732,8 +636,8 @@ mod cumulative_bridge_contract {
     use super::*;
     use crate::specified_rule_serialization::SpecifiedRuleWriter;
     use crate::{
-        CssComponentValue, CssLengthCalculation, CssSpecifiedValueSerializationErrorKind as Kind,
-        CssSpecifiedValueSerializationLimits as Limits, CssValueOrigin,
+        CssComponentValue, CssLengthCalculation, CssSerializationLimits as Limits,
+        CssSpecifiedValueSerializationErrorKind as Kind, CssValueOrigin,
     };
 
     fn length(text: &str) -> CssSpecifiedLength {
@@ -793,10 +697,16 @@ mod cumulative_bridge_contract {
     #[test]
     fn pairs_share_prefix_siblings_and_authored_child_costs() {
         let margin = CssScrollMarginPair::new(length("1"), Some(length("1.0")));
-        assert_eq!(margin.serialize_specified().unwrap(), "1px");
+        assert_eq!(
+            margin.serialize_specified(Default::default()).unwrap(),
+            "1px"
+        );
         composition("1px", 2, |writer| margin.append_to_rule_writer(writer));
         let padding = CssScrollPaddingPair::new(CssScrollPaddingValue::Auto, None);
-        assert_eq!(padding.serialize_specified().unwrap(), "auto");
+        assert_eq!(
+            padding.serialize_specified(Default::default()).unwrap(),
+            "auto"
+        );
         composition("auto", 1, |writer| padding.append_to_rule_writer(writer));
     }
 
@@ -807,14 +717,20 @@ mod cumulative_bridge_contract {
             vec![length("1"), length("2"), length("1"), length("2")],
         )
         .unwrap();
-        assert_eq!(margin.serialize_specified().unwrap(), "1px 2px");
+        assert_eq!(
+            margin.serialize_specified(Default::default()).unwrap(),
+            "1px 2px"
+        );
         composition("1px 2px", 4, |writer| margin.append_to_rule_writer(writer));
         let padding = CssScrollPaddingShorthand::try_new(
             CssScrollSideKind::Logical,
             vec![padding("1"), padding("1.0"), padding("1")],
         )
         .unwrap();
-        assert_eq!(padding.serialize_specified().unwrap(), "logical 1px");
+        assert_eq!(
+            padding.serialize_specified(Default::default()).unwrap(),
+            "logical 1px"
+        );
         composition("logical 1px", 4, |writer| {
             padding.append_to_rule_writer(writer)
         });
@@ -835,7 +751,8 @@ mod cumulative_bridge_contract {
     fn suppressed_symbolic_math_and_large_literals_need_no_remaining_bytes() {
         let components = crate::parse_component_values("calc(10px + 1em)").unwrap();
         let math = CssSpecifiedLength::try_from_calculation(
-            CssLengthCalculation::try_from_components(components.clone()).unwrap(),
+            CssLengthCalculation::try_from_components(components.clone(), Default::default())
+                .unwrap(),
         )
         .unwrap();
         let value = CssScrollMarginPair::new(math, Some(length("1e50")));

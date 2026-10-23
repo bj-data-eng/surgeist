@@ -54,7 +54,7 @@ fn checked_page_front_admits_symbolic_values_with_both_modes_and_preserved_origi
                 "var(--m, 1em)",
             ] {
                 let declaration = checked(property, value, context);
-                let text = declaration.to_specified_css().unwrap();
+                let text = declaration.serialize_specified(Default::default()).unwrap();
                 assert!(context.parse_page_block(&format!("{{{text}}}")).is_clean());
                 if mode == CssParserMode::Standards {
                     let free = parse_page_property_value(
@@ -156,8 +156,11 @@ fn checked_page_pending_context_survives_priority_clones_list_assembly_and_retri
     assert_ne!(source, ordinary);
     let changed = source.with_importance(CssImportance::Normal);
     assert!(!source.same_occurrence(&changed));
-    let list = CssDeclarationList::try_new(vec![source.clone(), changed.clone(), changed.clone()])
-        .unwrap();
+    let list = CssDeclarationList::try_new(
+        vec![source.clone(), changed.clone(), changed.clone()],
+        Default::default(),
+    )
+    .unwrap();
     for (index, declaration) in list.iter().enumerate() {
         let CssExpansion::Pending(handle) = expand_declaration(declaration).unwrap() else {
             panic!("checked Page pending")

@@ -245,7 +245,7 @@ fn constructor_media_list_copies_serialized_recovery_to_an_independent_identity(
         original
             .media(&original_id)
             .unwrap()
-            .serialize_cssom()
+            .serialize_cssom(Default::default())
             .unwrap()
             .as_css(),
         "not all, print"
@@ -278,7 +278,10 @@ fn constructor_media_list_copies_serialized_recovery_to_an_independent_identity(
         .unwrap();
     assert_ne!(copied_id, original_id);
     let copied = capture.media(&copied_id).unwrap();
-    assert_eq!(copied.serialize_cssom().unwrap().as_css(), "not all, print");
+    assert_eq!(
+        copied.serialize_cssom(Default::default()).unwrap().as_css(),
+        "not all, print"
+    );
     assert!(!copied.queries()[0].is_guaranteed_false());
     assert!(
         matches!(copied.queries()[0].origin(), CssValueOrigin::Parsed(origin) if origin.source().as_str() == "not all, print")
@@ -290,7 +293,7 @@ fn constructor_media_list_copies_serialized_recovery_to_an_independent_identity(
         capture
             .media(&copied_id)
             .unwrap()
-            .serialize_cssom()
+            .serialize_cssom(Default::default())
             .unwrap()
             .as_css(),
         "not all, print"
@@ -1039,7 +1042,7 @@ fn shared_insertion_retains_the_actual_occurrence_and_recovered_declaration_neig
     let block = after.rule(&rule).unwrap().data().block().unwrap();
     assert_eq!(
         after
-            .specified_property_css_text(block, CssSpecifiedValueSerializationLimits::default())
+            .specified_property_css_text(block, CssSerializationLimits::default())
             .unwrap(),
         "color: red; width: 2px;"
     );
@@ -1094,7 +1097,7 @@ fn legacy_add_rule_defaults_end_index_exact_input_and_minus_one_result() {
     let texts = ids
         .iter()
         .map(|id| match after.rule(id).unwrap().authored() {
-            CssomAuthoredRule::Ordinary(rule) => rule.serialize_cssom().unwrap(),
+            CssomAuthoredRule::Ordinary(rule) => rule.serialize_cssom(Default::default()).unwrap(),
             _ => panic!("ordinary source rule"),
         })
         .collect::<Vec<_>>();

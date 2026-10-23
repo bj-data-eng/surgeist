@@ -31,9 +31,9 @@ fn parsed_origin(component: &CssComponentValue) -> &CssParsedOrigin {
 }
 
 fn component_css(component: &CssComponentValue) -> String {
-    CssComponentValues::try_new(vec![component.clone()])
+    CssComponentValues::try_new(vec![component.clone()], Default::default())
         .unwrap()
-        .serialize()
+        .serialize_tokens(Default::default())
         .unwrap()
         .as_css()
         .to_owned()
@@ -74,10 +74,12 @@ fn check_mapped_collection() {
     let children = parse_component_values(CHILDREN).unwrap();
     let root = CssComponentValue::try_function("rgb", children).unwrap();
     let expected_leaf_origin = parsed_origin(first_number(&root)).clone();
-    let values =
-        CssComponentValues::try_new(vec![root, CssComponentValue::try_ident("blue").unwrap()])
-            .unwrap();
-    let serialized = values.serialize().unwrap();
+    let values = CssComponentValues::try_new(
+        vec![root, CssComponentValue::try_ident("blue").unwrap()],
+        Default::default(),
+    )
+    .unwrap();
+    let serialized = values.serialize_tokens(Default::default()).unwrap();
     let context = NumericInputContext::Components(&values, &serialized);
     let mut input = cssparser::ParserInput::new(serialized.as_css());
     let mut cursor = cssparser::Parser::new(&mut input);
@@ -201,8 +203,9 @@ fn read_only_component_check_preserves_context_closure_policy() {
             &crate::CssNumericConstructionErrorKind::RecoveredComponent
         );
     }
-    let values = CssComponentValues::try_new(vec![component.into_owned()]).unwrap();
-    let serialized = values.serialize().unwrap();
+    let values =
+        CssComponentValues::try_new(vec![component.into_owned()], Default::default()).unwrap();
+    let serialized = values.serialize_tokens(Default::default()).unwrap();
     let error = NumericInputContext::Components(&values, &serialized)
         .check_component(&values.items()[0], super::CalculationRoot::Integer)
         .unwrap_err();
@@ -229,7 +232,7 @@ fn numerical_attempt_moves_owned_input_and_returns_it_for_failed_retry() {
     );
     assert_eq!(
         crate::CssFlexCalculation::from_expression(expression)
-            .serialize()
+            .serialize_tokens(Default::default())
             .unwrap()
             .as_css(),
         "calc(1fr + 2fr)"
@@ -261,7 +264,7 @@ fn numerical_attempt_moves_owned_input_and_returns_it_for_failed_retry() {
     );
     assert_eq!(
         crate::CssLengthPercentageCalculation::from_expression(expression)
-            .serialize()
+            .serialize_tokens(Default::default())
             .unwrap()
             .as_css(),
         "calc(1px + 2px)"
@@ -302,7 +305,7 @@ fn numerical_attempt_keeps_borrowed_failure_identity_and_owns_completed_output()
     drop(values);
     assert_eq!(
         crate::CssLengthPercentageCalculation::from_expression(expression)
-            .serialize()
+            .serialize_tokens(Default::default())
             .unwrap()
             .as_css(),
         "calc(1px + 2px)"

@@ -8,8 +8,8 @@ use crate::css::support::authored_property;
 use crate::css::support::known_property as property;
 use crate::css::support::named_property::sole_completed_contributions as completed;
 use crate::css::support::serialization_limits::LimitLadder;
+use CssSerializationLimits as L;
 use CssSpecifiedValueSerializationErrorKind as K;
-use CssSpecifiedValueSerializationLimits as L;
 use authored_property::{ParserFront, assert_source, checked, checked_components, invalid};
 use surgeist_css::*;
 
@@ -336,7 +336,7 @@ fn all_pending_forms_reenter_strictly_and_reuse_original_identity_and_replacemen
     }
 }
 fn implicit_origin(values: &CssComponentValues) -> CssValueOrigin {
-    let serialized = values.serialize().unwrap();
+    let serialized = values.serialize_tokens(Default::default()).unwrap();
     (0..serialized.as_css().len())
         .find_map(|offset| match serialized.origin_at(offset) {
             Some(CssSerializedOrigin::Token(v @ CssValueOrigin::ImplicitClosure { .. })) => {
@@ -498,7 +498,7 @@ fn budgets(source: &CssDeclaration, output: &str, input: usize, projection: usiz
         source.known().unwrap().property().canonical_name()
     );
     LimitLadder::new(&expected, input, projection)
-        .assert_unchanged(source, CssDeclaration::to_specified_css_with_limits);
+        .assert_unchanged(source, CssDeclaration::serialize_specified);
 }
 #[test]
 fn retained_provider_controls_charge_suppressed_defaults_and_specified_math_cumulatively() {
@@ -551,23 +551,20 @@ fn composed_sheets_share_bytes_and_retry_after_late_failure_without_mutation() {
     let expected = ".a { transform: scale(0.5, 1.5); perspective: 0.25px !important; }\n.b { rotate: x 30deg; transform-origin: left top 2px; }";
     let exact = L::new(usize::MAX, usize::MAX, expected.len());
     let short = L::new(usize::MAX, usize::MAX, expected.len() - 1);
-    assert_eq!(sheet.to_specified_css_with_limits(exact).unwrap(), expected);
+    assert_eq!(sheet.serialize_specified(exact).unwrap(), expected);
     assert!(
         sheet
             .rules()
             .iter()
-            .all(|rule| rule.to_specified_css_with_limits(short).is_ok())
+            .all(|rule| rule.serialize_specified(short).is_ok())
     );
     for _ in 0..2 {
-        let error = sheet.to_specified_css_with_limits(short).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            CssSpecifiedRuleSerializationErrorKind::Resource(K::ByteLimit)
-        );
+        let error = sheet.serialize_specified(short).unwrap_err();
+        assert_eq!(error.kind(), K::ByteLimit);
         assert_eq!(error.rule_index(), Some(1));
         assert_eq!(sheet, &before);
     }
-    assert_eq!(sheet.to_specified_css_with_limits(exact).unwrap(), expected);
+    assert_eq!(sheet.serialize_specified(exact).unwrap(), expected);
 }
 #[test]
 fn checked_nested_transform_values_clone_compare_serialize_and_drop_on_joined_ordinary_stack() {
@@ -593,7 +590,7 @@ fn checked_nested_transform_values_clone_compare_serialize_and_drop_on_joined_or
                 let b = a.clone();
                 assert_eq!(a, b);
                 assert_eq!(
-                    a.to_specified_css().unwrap(),
+                    a.serialize_specified(Default::default()).unwrap(),
                     "transform: translateX(calc(1px));"
                 );
                 drop(b);
@@ -608,9 +605,11 @@ fn checked_nested_transform_values_clone_compare_serialize_and_drop_on_joined_or
 }
 #[test]
 fn checked_programmatic_tokens_and_parsed_numeric_children_keep_exact_original_provenance() {
-    let components =
-        CssComponentValues::try_new(vec![CssComponentValue::try_dimension("25", "px").unwrap()])
-            .unwrap();
+    let components = CssComponentValues::try_new(
+        vec![CssComponentValue::try_dimension("25", "px").unwrap()],
+        Default::default(),
+    )
+    .unwrap();
     for grammar in [false, true] {
         let source = checked_components(
             CssKnownProperty::Translate,
@@ -628,7 +627,7 @@ fn checked_programmatic_tokens_and_parsed_numeric_children_keep_exact_original_p
             CssValueOrigin::Programmatic
         ));
         assert_eq!(
-            source.to_specified_css().unwrap(),
+            source.serialize_specified(Default::default()).unwrap(),
             "translate: 25px !important;"
         );
     }
@@ -662,12 +661,12 @@ fn checked_programmatic_tokens_and_parsed_numeric_children_keep_exact_original_p
         text.find("1e-999").unwrap()
     );
     assert_eq!(
-        source.to_specified_css().unwrap(),
+        source.serialize_specified(Default::default()).unwrap(),
         "translate: 25% 0px !important;"
     );
     assert_eq!(
         source
-            .to_specified_css_with_limits(L::new(6, 6, 1))
+            .serialize_specified(L::new(6, 6, 1))
             .unwrap_err()
             .kind(),
         K::ByteLimit

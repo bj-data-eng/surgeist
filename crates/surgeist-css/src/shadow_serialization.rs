@@ -1,45 +1,30 @@
 //! Bounded authored shadow serialization; no computed defaults or paint values.
 
 use crate::{
-    CssBoxShadow, CssBoxShadowList, CssDropShadow, CssShadow, CssSpecifiedValueSerializationError,
-    CssSpecifiedValueSerializationLimits, specified_rule_serialization::SpecifiedRuleWriter,
+    CssBoxShadow, CssBoxShadowList, CssDropShadow, CssSerializationError, CssShadow,
+    specified_rule_serialization::SpecifiedRuleWriter,
 };
 
-type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
+type Result<T> = std::result::Result<T, CssSerializationError>;
 
 macro_rules! specified_shadow_methods {
-    () => {
-        /// Serializes the authored shadow, retaining omitted components and symbolic values.
-        pub fn serialize_specified(&self) -> Result<String> {
-            self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
+    ($ty:ty) => {
+        impl crate::specified_rule_serialization::SpecifiedProvider for $ty {
+            fn append_to_rule_writer(
+                &self,
+                writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+            ) -> std::result::Result<(), crate::CssSerializationError> {
+                self.append_specified(writer)?;
+                Ok(())
+            }
         }
-
-        /// Uses one cumulative input, projection, and byte budget for all children.
-        /// Failure returns no partial CSS and leaves the authored value unchanged.
-        pub fn serialize_specified_with_limits(
-            &self,
-            limits: CssSpecifiedValueSerializationLimits,
-        ) -> Result<String> {
-            let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-            self.append_to_rule_writer(&mut writer)?;
-            Ok(writer.css)
-        }
-
-        pub(crate) fn append_to_rule_writer(
-            &self,
-            writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-        ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-            self.append_specified(writer)?;
-            Ok(())
-        }
+        crate::specified_rule_serialization::specified_serialization!($ty);
     };
 }
 
 impl CssShadow {
-    specified_shadow_methods!();
-
     fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
-        charge_aggregate(writer)?;
+        writer.node()?;
         if let Some(color) = self.color() {
             color.append_specified(&mut writer.context, &mut writer.css)?;
             writer.append(" ")?;
@@ -58,44 +43,41 @@ impl CssShadow {
             spread.append_specified(&mut writer.context, &mut writer.css)?;
         }
         if self.inset() {
-            charge_aggregate(writer)?;
+            writer.node()?;
             writer.append(" inset")?;
         }
         Ok(())
     }
 }
+specified_shadow_methods!(CssShadow);
 
 impl CssBoxShadowList {
-    specified_shadow_methods!();
-
     fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
-        charge_aggregate(writer)?;
+        writer.node()?;
         writer.comma_separated(self.shadows(), |writer, shadow| {
             shadow.append_specified(writer)
         })?;
         Ok(())
     }
 }
+specified_shadow_methods!(CssBoxShadowList);
 
 impl CssBoxShadow {
-    specified_shadow_methods!();
-
     fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         match self {
             Self::None => {
-                charge_aggregate(writer)?;
+                writer.node()?;
                 writer.append("none")
             }
             Self::Shadows(shadows) => shadows.append_specified(writer),
         }
     }
 }
+specified_shadow_methods!(CssBoxShadow);
 
 impl CssDropShadow {
-    specified_shadow_methods!();
-
     pub(crate) fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
-        charge_aggregate(writer)?;
+        writer.node()?;
         writer.append("drop-shadow(")?;
         if let Some(color) = self.color() {
             color.append_specified(&mut writer.context, &mut writer.css)?;
@@ -113,8 +95,4 @@ impl CssDropShadow {
         writer.append(")")
     }
 }
-
-fn charge_aggregate(writer: &mut SpecifiedRuleWriter) -> Result<()> {
-    writer.context.charge_input(1)?;
-    writer.context.charge_projection(1)
-}
+specified_shadow_methods!(CssDropShadow);

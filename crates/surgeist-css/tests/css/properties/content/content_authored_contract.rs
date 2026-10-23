@@ -12,9 +12,7 @@ use crate::css::support::{
     authored_declaration_through_front as declaration, check_property_components as checked,
     discoverable_property as property,
 };
-use surgeist_css::{
-    CssSpecifiedValueSerializationErrorKind as K, CssSpecifiedValueSerializationLimits as L, *,
-};
+use surgeist_css::{CssSerializationLimits as L, CssSpecifiedValueSerializationErrorKind as K, *};
 const NAMES: [&str; 6] = [
     "content",
     "quotes",
@@ -38,7 +36,7 @@ fn accept(name: &str, cases: &[(&str, &str)]) {
             let before = source.clone();
             let output = format!("{name}: {expected} !important;");
             assert_eq!(
-                source.to_specified_css().unwrap(),
+                source.serialize_specified(Default::default()).unwrap(),
                 output,
                 "{input} front {front}"
             );
@@ -50,7 +48,10 @@ fn accept(name: &str, cases: &[(&str, &str)]) {
             };
             assert_eq!(reparsed.known().unwrap().property(), property(name));
             assert_eq!(reparsed.importance(), CssImportance::Important);
-            assert_eq!(reparsed.to_specified_css().unwrap(), output);
+            assert_eq!(
+                reparsed.serialize_specified(Default::default()).unwrap(),
+                output
+            );
         }
     }
 }
@@ -188,12 +189,16 @@ fn bookmark_level_keeps_exact_unbounded_positive_integer_literals_and_real_math(
     );
     let source = declaration("bookmark-level", "+0001", 0);
     assert_eq!(
-        source.value_components().serialize().unwrap().as_css(),
+        source
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         "+0001"
     );
     let before = source.clone();
     assert_eq!(
-        source.to_specified_css().unwrap(),
+        source.serialize_specified(Default::default()).unwrap(),
         "bookmark-level: 1 !important;"
     );
     assert_eq!(source, before);
@@ -410,7 +415,7 @@ fn globals(name: &str) {
             );
             assert!(items.items()[0].ordinary_value().is_none());
             assert_eq!(
-                source.to_specified_css().unwrap(),
+                source.serialize_specified(Default::default()).unwrap(),
                 format!("{name}: {input} !important;")
             );
         }
@@ -482,7 +487,7 @@ fn pending(name: &str, valid: &str, invalid: &str) {
             }
             assert_eq!(source, original);
             assert_eq!(
-                source.to_specified_css().unwrap(),
+                source.serialize_specified(Default::default()).unwrap(),
                 format!("{name}: {authored} !important;")
             );
         }
@@ -758,10 +763,12 @@ fn budget(name: &str, input: &str, value: &str, count: usize) {
     let output = format!("{name}: {value} !important;");
     for front in 0..5 {
         let source = declaration(name, input, front);
-        LimitLadder::new(&output, count, count).assert_unchanged(&source, |source, limits| {
-            source.to_specified_css_with_limits(limits)
-        });
-        assert_eq!(source.to_specified_css().unwrap(), output);
+        LimitLadder::new(&output, count, count)
+            .assert_unchanged(&source, |source, limits| source.serialize_specified(limits));
+        assert_eq!(
+            source.serialize_specified(Default::default()).unwrap(),
+            output
+        );
     }
 }
 
@@ -816,7 +823,7 @@ fn nested_counter_image_and_numeric_children_in_labels_share_atomic_byte_and_wor
         let output = format!("{name}: {value} !important;");
         assert_eq!(
             source
-                .to_specified_css_with_limits(L::new(128, 256, output.len()))
+                .serialize_specified(L::new(128, 256, output.len()))
                 .unwrap(),
             output
         );
@@ -825,13 +832,7 @@ fn nested_counter_image_and_numeric_children_in_labels_share_atomic_byte_and_wor
             (L::new(0, 256, output.len()), K::InputNodeLimit),
             (L::new(128, 0, output.len()), K::ProjectionNodeLimit),
         ] {
-            assert_eq!(
-                source
-                    .to_specified_css_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
-                kind
-            );
+            assert_eq!(source.serialize_specified(limits).unwrap_err().kind(), kind);
             assert_eq!(source, original);
         }
     }

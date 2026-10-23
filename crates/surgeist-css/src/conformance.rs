@@ -5416,7 +5416,8 @@ pub fn feature_metadata(id: &str) -> Option<&'static CssFeatureMetadata> {
 /// Returns support metadata for a canonical property or name-equivalent alias.
 ///
 /// Matching is ASCII-case-insensitive. Distinct legacy shorthand grammars, custom
-/// properties, independent SVG definitions, and unknown spellings return `None`. For legacy grammars, use
+/// properties, independent SVG definitions, and unknown spellings return `None`. For legacy
+/// grammars, use
 /// [`crate::CssPropertyGrammar::from_name`], then [`feature_metadata`] with the
 /// grammar's feature ID or its intrinsic metadata accessor. This lookup does not
 /// parse a declaration or classify its diagnostics.

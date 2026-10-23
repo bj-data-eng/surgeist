@@ -11,13 +11,21 @@ fn shallow_clones_preserve_exact_leaves_function_strategy_and_absent_bounds() {
         "round(up, 1.2500, .25)",
         "clamp(none, 2, none)",
     ] {
-        let original =
-            CssNumberCalculation::try_from_components(parse_component_values(text).unwrap())
-                .unwrap();
+        let original = CssNumberCalculation::try_from_components(
+            parse_component_values(text).unwrap(),
+            Default::default(),
+        )
+        .unwrap();
         let cloned = original.clone();
         assert_eq!(cloned, original);
         drop(original);
-        assert_eq!(cloned.serialize().unwrap().as_css(), text);
+        assert_eq!(
+            cloned
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            text
+        );
     }
 }
 
@@ -28,10 +36,12 @@ fn mixed_origin_clone_keeps_owned_structure_and_provenance_after_original_drop()
         panic!("parsed group");
     };
     let original = CssLengthCalculation::try_from_components(
-        CssComponentValues::try_new(vec![
-            CssComponentValue::try_function("CALC", children).unwrap(),
-        ])
+        CssComponentValues::try_new(
+            vec![CssComponentValue::try_function("CALC", children).unwrap()],
+            Default::default(),
+        )
         .unwrap(),
+        Default::default(),
     )
     .unwrap();
     let numeric_type = original.numeric_type();
@@ -81,13 +91,16 @@ fn mixed_origin_clone_keeps_owned_structure_and_provenance_after_original_drop()
     assert!(actual.source().same_snapshot(parsed.source()));
     assert_eq!(actual.span().start().byte_offset().value(), 1);
     assert_eq!(
-        cloned.serialize().unwrap().as_css(),
+        cloned
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         "calc((1px + 2px) * 3 / 4 - min(5px, 6px))",
     );
     assert_eq!(
         CssSpecifiedLength::try_from_calculation(cloned)
             .unwrap()
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "calc(-2.75px)",
     );

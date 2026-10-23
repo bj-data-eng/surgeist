@@ -12,7 +12,7 @@ fn query_text(source: &str) -> String {
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     report
         .syntax()
-        .serialize()
+        .serialize_tokens(Default::default())
         .expect("a clean query can be serialized")
         .as_css()
         .to_owned()
@@ -23,7 +23,7 @@ fn list_text(source: &str) -> String {
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     report
         .syntax()
-        .serialize()
+        .serialize_tokens(Default::default())
         .expect("a clean list can be serialized")
         .as_css()
         .to_owned()

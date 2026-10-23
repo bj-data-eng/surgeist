@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::{CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits};
+use crate::CssSerializationError;
 
 /// A semantic failure in a decoded template-area name or row matrix.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -101,6 +101,10 @@ impl CssGridTemplateAreaRows {
 }
 
 /// An authored `grid-template-areas` value.
+///
+/// # Specified serialization
+///
+/// Emits one quoted row per string, with one dot per null cell and one space between cells.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssGridTemplateAreas {
@@ -112,29 +116,14 @@ impl CssGridTemplateAreas {
     pub fn try_rows(rows: Vec<CssGridTemplateAreaRow>) -> Result<Self, CssGridTemplateAreaError> {
         CssGridTemplateAreaRows::try_new(rows).map(Self::Rows)
     }
-
-    pub fn serialize_specified(&self) -> Result<String, CssSpecifiedValueSerializationError> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Emits one quoted row per string, with one dot per null cell and one space
-    /// between cells. The value, each row and each cell charge both node budgets.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String, CssSpecifiedValueSerializationError> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+}
+impl crate::specified_rule_serialization::SpecifiedProvider for CssGridTemplateAreas {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         let context = &mut writer.context;
-        context.charge_input(1)?;
-        context.charge_projection(1)?;
+        context.charge_nodes(1)?;
         let output = &mut writer.css;
         match self {
             Self::None => context.append(output, "none")?,
@@ -147,6 +136,7 @@ impl CssGridTemplateAreas {
         Ok(())
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssGridTemplateAreas);
 
 // Shared with authored area-template rows; no fresh budget or aggregate charge.
 pub(crate) fn write_area_row(
@@ -154,9 +144,8 @@ pub(crate) fn write_area_row(
     context: &mut crate::specified_serialization::SpecifiedSerializationContext,
     output: &mut String,
     leading_space: bool,
-) -> Result<(), CssSpecifiedValueSerializationError> {
-    context.charge_input(1)?;
-    context.charge_projection(1)?;
+) -> Result<(), CssSerializationError> {
+    context.charge_nodes(1)?;
     // Matrix row charges precede its separator, preserving failure precedence
     // when both a node budget and the next separator byte are exhausted.
     if leading_space {
@@ -164,8 +153,7 @@ pub(crate) fn write_area_row(
     }
     context.append(output, "\"")?;
     for (cell_index, cell) in row.cells().iter().enumerate() {
-        context.charge_input(1)?;
-        context.charge_projection(1)?;
+        context.charge_nodes(1)?;
         if cell_index > 0 {
             context.append(output, " ")?;
         }

@@ -11,8 +11,8 @@ use surgeist_css::*;
 macro_rules! cases {
     ($property:literal, $view:ident, $accessor:ident, [$(($value:expr, $expected:literal)),+ $(,)?]) => {
         for (value, expected) in [$(($value, $expected)),+] {
-            assert_eq!(value.serialize_specified().unwrap(), expected);
-            assert_node_limits(expected, 1, |limits| value.serialize_specified_with_limits(limits));
+            assert_eq!(value.serialize_specified(Default::default()).unwrap(), expected);
+            assert_node_limits(expected, 1, |limits| value.serialize_specified(limits));
             let authored = expected.to_ascii_uppercase();
             let report = parse_declaration(&format!("{}:{}!important", $property, authored));
             assert!(report.is_clean(), "{}:{}: {:?}", $property, authored, report.diagnostics());
@@ -20,7 +20,7 @@ macro_rules! cases {
             let CssKnownPropertyValueRef::$view(wrapper) = declaration.known().unwrap().property_value().unwrap()
             else { panic!("expected typed {}", $property); };
             assert_eq!(wrapper.$accessor(), &value);
-            assert_eq!(wrapper.$accessor().serialize_specified().unwrap(), expected);
+            assert_eq!(wrapper.$accessor().serialize_specified(Default::default()).unwrap(), expected);
             assert_eq!(wrapper.as_css(), authored);
             assert_eq!(declaration.importance(), CssImportance::Important);
         }
@@ -326,7 +326,13 @@ fn escaped_keyword_identity_canonicalizes_without_changing_authored_text() {
     else {
         panic!("object-fit");
     };
-    assert_eq!(wrapper.fit().serialize_specified().unwrap(), "scale-down");
+    assert_eq!(
+        wrapper
+            .fit()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "scale-down"
+    );
     assert_eq!(wrapper.as_css(), r"s\63 ale-down");
     assert_eq!(declaration.importance(), CssImportance::Important);
 }

@@ -4,9 +4,9 @@ use crate::specified_rule_serialization::SpecifiedRuleWriter;
 use crate::{
     CssDeclarationBlockError, CssImportance, CssMarginBox, CssPageDeclaration,
     CssPageDeclarationBlock, CssPageDescriptor, CssPageDescriptorKind, CssPageSelectorList,
-    CssRuleCssomSerializationError, CssSpecifiedDeclarationBlock, CssSpecifiedDeclarationEntry,
-    CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationErrorKind,
-    CssSpecifiedValueSerializationLimits as Limits,
+    CssRuleSerializationError, CssSerializationError, CssSerializationLimits as Limits,
+    CssSpecifiedDeclarationBlock, CssSpecifiedDeclarationEntry,
+    CssSpecifiedValueSerializationErrorKind,
 };
 
 /// One selected Page declaration. Property terminals retain their actual source
@@ -28,7 +28,7 @@ pub struct CssSpecifiedPageDeclarationBlock {
 pub enum CssPageProjectionError {
     Properties(CssDeclarationBlockError),
     DuplicateDescriptor { kind: CssPageDescriptorKind },
-    Resource(CssSpecifiedValueSerializationError),
+    Resource(CssSerializationError),
 }
 impl std::fmt::Display for CssPageProjectionError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -55,25 +55,18 @@ impl From<CssDeclarationBlockError> for CssPageProjectionError {
         Self::Properties(v)
     }
 }
-impl From<CssSpecifiedValueSerializationError> for CssPageProjectionError {
-    fn from(v: CssSpecifiedValueSerializationError) -> Self {
+impl From<CssSerializationError> for CssPageProjectionError {
+    fn from(v: CssSerializationError) -> Self {
         Self::Resource(v)
     }
 }
-fn reserve<T>(items: &mut Vec<T>, count: usize) -> Result<(), CssSpecifiedValueSerializationError> {
+fn reserve<T>(items: &mut Vec<T>, count: usize) -> Result<(), CssSerializationError> {
     items.try_reserve(count).map_err(|_| {
-        CssSpecifiedValueSerializationError::new(
-            CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
-        )
+        CssSerializationError::new(CssSpecifiedValueSerializationErrorKind::CapacityOverflow)
     })
 }
 impl CssSpecifiedPageDeclarationBlock {
     pub fn try_from_entries(
-        entries: &[CssSpecifiedPageDeclarationEntry],
-    ) -> Result<Self, CssPageProjectionError> {
-        Self::try_from_entries_with_limits(entries, Limits::default())
-    }
-    pub fn try_from_entries_with_limits(
         entries: &[CssSpecifiedPageDeclarationEntry],
         limits: Limits,
     ) -> Result<Self, CssPageProjectionError> {
@@ -117,27 +110,16 @@ impl CssSpecifiedPageDeclarationBlock {
     pub fn entries(&self) -> &[CssSpecifiedPageDeclarationEntry] {
         &self.entries
     }
-    pub fn serialize_cssom(&self) -> Result<String, CssRuleCssomSerializationError> {
-        self.serialize_cssom_with_limits(Limits::default())
-    }
-    pub fn serialize_cssom_with_limits(
-        &self,
-        limits: Limits,
-    ) -> Result<String, CssRuleCssomSerializationError> {
+    pub fn serialize_cssom(&self, limits: Limits) -> Result<String, CssRuleSerializationError> {
         let mut writer = SpecifiedRuleWriter::new(limits);
         writer
             .append_selected_page_block(self)
-            .map_err(|v| CssRuleCssomSerializationError::new(v, Vec::new(), None))?;
+            .map_err(|v| CssRuleSerializationError::new(v, Vec::new(), None))?;
         Ok(writer.css)
     }
 }
 impl CssPageDeclarationBlock {
     pub fn try_specified(
-        &self,
-    ) -> Result<CssSpecifiedPageDeclarationBlock, CssPageProjectionError> {
-        self.try_specified_with_limits(Limits::default())
-    }
-    pub fn try_specified_with_limits(
         &self,
         limits: Limits,
     ) -> Result<CssSpecifiedPageDeclarationBlock, CssPageProjectionError> {
@@ -210,17 +192,11 @@ impl<'a> CssMarginRuleView<'a> {
     pub const fn declarations(self) -> &'a CssSpecifiedDeclarationBlock {
         self.declarations
     }
-    pub fn serialize_cssom(self) -> Result<String, CssRuleCssomSerializationError> {
-        self.serialize_cssom_with_limits(Limits::default())
-    }
-    pub fn serialize_cssom_with_limits(
-        self,
-        limits: Limits,
-    ) -> Result<String, CssRuleCssomSerializationError> {
+    pub fn serialize_cssom(self, limits: Limits) -> Result<String, CssRuleSerializationError> {
         let mut writer = SpecifiedRuleWriter::new(limits);
         writer
             .append_selected_margin(self)
-            .map_err(|v| CssRuleCssomSerializationError::new(v, Vec::new(), None))?;
+            .map_err(|v| CssRuleSerializationError::new(v, Vec::new(), None))?;
         Ok(writer.css)
     }
 }
@@ -256,22 +232,14 @@ impl<'a> CssPageRuleView<'a> {
     pub const fn margin_rules(self) -> &'a [CssMarginRuleView<'a>] {
         self.margins
     }
-    pub fn serialize_cssom(self) -> Result<String, CssRuleCssomSerializationError> {
-        self.serialize_cssom_with_limits(Limits::default())
-    }
-    pub fn serialize_cssom_with_limits(
-        self,
-        limits: Limits,
-    ) -> Result<String, CssRuleCssomSerializationError> {
+    pub fn serialize_cssom(self, limits: Limits) -> Result<String, CssRuleSerializationError> {
         let mut writer = SpecifiedRuleWriter::new(limits);
         let mut child = None;
         let result = writer
             .node()
             .map_err(RuleCssomSource::from)
             .and_then(|()| writer.append_selected_page(self, &mut child));
-        result.map_err(|v| {
-            CssRuleCssomSerializationError::new(v, child.into_iter().collect(), None)
-        })?;
+        result.map_err(|v| CssRuleSerializationError::new(v, child.into_iter().collect(), None))?;
         Ok(writer.css)
     }
 }

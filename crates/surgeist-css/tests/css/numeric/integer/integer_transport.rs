@@ -55,7 +55,11 @@ fn assert_authored_integer(declaration: &CssDeclaration, text: &str) {
     };
     assert_eq!(raw, text);
     assert_eq!(
-        declaration.value_components().serialize().unwrap().as_css(),
+        declaration
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         text
     );
     let [component] = declaration.value_components().items() else {
@@ -92,9 +96,11 @@ fn assert_parsed_outside_i32(property: CssKnownProperty) {
 
 fn assert_checked_outside_i32(property: CssKnownProperty) {
     for &text in OUTSIDE_I32 {
-        let programmatic =
-            CssComponentValues::try_new(vec![CssComponentValue::try_number(text).unwrap()])
-                .unwrap();
+        let programmatic = CssComponentValues::try_new(
+            vec![CssComponentValue::try_number(text).unwrap()],
+            Default::default(),
+        )
+        .unwrap();
         assert!(matches!(
             programmatic.items()[0].origin(),
             CssValueOrigin::Programmatic
@@ -171,13 +177,15 @@ fn exact_i32_boundaries_signs_and_leading_zeros_retain_tokens() {
             );
             assert_eq!(
                 CssIntegerValue::Literal(retained_integer(&declaration).clone())
-                    .serialize_specified()
+                    .serialize_specified(Default::default())
                     .unwrap(),
                 expected.to_string()
             );
-            let components =
-                CssComponentValues::try_new(vec![CssComponentValue::try_number(text).unwrap()])
-                    .unwrap();
+            let components = CssComponentValues::try_new(
+                vec![CssComponentValue::try_number(text).unwrap()],
+                Default::default(),
+            )
+            .unwrap();
             let checked = parse_property_value(
                 CssPropertyNameRef::Known(property),
                 components.clone(),
@@ -195,8 +203,11 @@ fn exact_i32_boundaries_signs_and_leading_zeros_retain_tokens() {
 fn z_index_auto_and_integer_math_keep_their_typed_boundaries() {
     for text in ["auto", "AUTO", r"a\75 to"] {
         let parsed = parsed(CssKnownProperty::ZIndex, text);
-        let components =
-            CssComponentValues::try_new(vec![CssComponentValue::try_token(text).unwrap()]).unwrap();
+        let components = CssComponentValues::try_new(
+            vec![CssComponentValue::try_token(text).unwrap()],
+            Default::default(),
+        )
+        .unwrap();
         let checked = parse_property_value(
             CssPropertyNameRef::Known(CssKnownProperty::ZIndex),
             components.clone(),

@@ -147,7 +147,7 @@ pub(crate) fn construct_supports_condition_with_context(
         recovery.activate_namespace(Some(prefix.clone()), name.clone());
     }
     let value = condition(SupportsLexical::root(values), &recovery, false, limits)?;
-    value.serialize_with_limit(limits.max_css_bytes())?;
+    value.serialize_tokens(limits)?;
     Ok(value)
 }
 pub(crate) fn construct_supports_declaration(
@@ -163,7 +163,7 @@ pub(crate) fn construct_supports_declaration_with_context(
 ) -> Result<CssSupportsDeclaration, CssSupportsConstructionError> {
     validate(&values, limits)?;
     let value = declaration(SupportsLexical::root(values), false, limits, context)?;
-    value.serialize_with_limit(limits.max_css_bytes())?;
+    value.serialize_tokens(limits)?;
     Ok(value)
 }
 fn invalid_condition(origin: &CssValueOrigin) -> CssSupportsConstructionError {

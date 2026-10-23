@@ -37,10 +37,10 @@ fn native_literal_names_decode_escapes_and_serialize_in_order() {
         ["serif", "A B", "A B", "1Face", "日本語", "a\"b", ""]
     );
     assert_eq!(
-        value.serialize_specified().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         r#""serif", A B, A B, "1Face", 日本語, "a\"b", """#
     );
-    let reparsed = list(&value.serialize_specified().unwrap());
+    let reparsed = list(&value.serialize_specified(Default::default()).unwrap());
     assert_eq!(reparsed.families(), value.families());
 }
 
@@ -116,7 +116,10 @@ fn original_member_occurrences_survive_input_drop_and_programmatic_lists_claim_n
     let constructed = CssFontFeatureValuesFamilyList::try_new(value.families().to_vec()).unwrap();
     assert_eq!(constructed.origin(), &CssValueOrigin::Programmatic);
     assert!(constructed.family_origin(0).is_none());
-    assert_eq!(constructed.serialize_specified().unwrap(), "A, 日本語");
+    assert_eq!(
+        constructed.serialize_specified(Default::default()).unwrap(),
+        "A, 日本語"
+    );
     assert_eq!(
         CssFontFeatureValuesFamilyList::try_new(vec![])
             .unwrap_err()
@@ -149,7 +152,10 @@ fn valid_eof_recovery_retains_literal_names_and_original_source() {
             panic!("parsed")
         };
         assert_eq!(origin.source().as_str(), source);
-        assert_eq!(value.serialize_specified().unwrap(), "Demo");
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            "Demo"
+        );
     }
     // Syntax 3 §4.3.5: the newline makes a <bad-string-token>, which no
     // <family-name> admits.
@@ -210,7 +216,7 @@ fn complete_input_limits_include_later_members_and_retry_has_no_partial_state() 
             .syntax()
             .as_ref()
             .unwrap()
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "A, 日"
     );
@@ -225,31 +231,31 @@ fn literal_slice_writer_charges_all_members_and_separators_atomically() {
     ];
     let before = families.clone();
     let expected = "A, \"serif\", 日";
-    let exact = CssSpecifiedValueSerializationLimits::new(3, 3, expected.len());
+    let exact = CssSerializationLimits::new(3, 3, expected.len());
     assert_eq!(
-        serialize_font_face_family_list_with_limits(&families, exact).unwrap(),
+        serialize_font_face_family_list(&families, exact).unwrap(),
         expected
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(2, 3, expected.len()),
+            CssSerializationLimits::new(2, 3, expected.len()),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(3, 2, expected.len()),
+            CssSerializationLimits::new(3, 2, expected.len()),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(3, 3, expected.len() - 1),
+            CssSerializationLimits::new(3, 3, expected.len() - 1),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(3, 3, 2),
+            CssSerializationLimits::new(3, 3, 2),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
         assert_eq!(
-            serialize_font_face_family_list_with_limits(&families, limits)
+            serialize_font_face_family_list(&families, limits)
                 .unwrap_err()
                 .kind(),
             kind
@@ -257,20 +263,13 @@ fn literal_slice_writer_charges_all_members_and_separators_atomically() {
         assert_eq!(families, before);
     }
     assert_eq!(
-        serialize_font_face_family_list_with_limits(&families, exact).unwrap(),
+        serialize_font_face_family_list(&families, exact).unwrap(),
         expected
     );
     let checked = CssFontFeatureValuesFamilyList::try_new(families).unwrap();
+    assert_eq!(checked.serialize_specified(exact).unwrap(), expected);
     assert_eq!(
-        checked.serialize_specified_with_limits(exact).unwrap(),
-        expected
-    );
-    assert_eq!(
-        serialize_font_face_family_list_with_limits(
-            &[],
-            CssSpecifiedValueSerializationLimits::new(0, 0, 0)
-        )
-        .unwrap(),
+        serialize_font_face_family_list(&[], CssSerializationLimits::new(0, 0, 0)).unwrap(),
         ""
     );
 }

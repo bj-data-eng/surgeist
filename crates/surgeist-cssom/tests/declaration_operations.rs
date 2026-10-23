@@ -464,7 +464,7 @@ fn replacement_candidate_resource_failure_aborts_staged_changes_and_fresh_retry_
             &id,
             text,
             CssomDeclarationRequestLimits {
-                provider: CssSpecifiedValueSerializationLimits::new(540, 10_000, 10_000),
+                provider: CssSerializationLimits::new(540, 10_000, 10_000),
                 ..Default::default()
             },
         )
@@ -2153,7 +2153,7 @@ fn descriptor_support_is_supplied_not_inferred_and_resource_failures_abort_whole
             "B",
             "",
             CssomDeclarationRequestLimits {
-                provider: CssSpecifiedValueSerializationLimits::new(1000, 1000, 0),
+                provider: CssSerializationLimits::new(1000, 1000, 0),
                 ..Default::default()
             },
         )

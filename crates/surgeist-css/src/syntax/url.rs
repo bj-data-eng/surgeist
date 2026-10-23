@@ -10,6 +10,10 @@ pub enum CssUrlFunction {
     Src,
 }
 
+/// # Specified serialization
+///
+/// Serializes the authored URL function without resolving its target or modifiers. The decoded
+/// target uses CSS string serialization, which replaces U+0000 with U+FFFD.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssUrl {
     function: CssUrlFunction,
@@ -106,7 +110,9 @@ impl CssUrlModifierFunction {
         crate::CssComponentValue::try_function(name.as_str(), arguments.clone())?;
         let request_modifier = validate_request_url_modifier(name.as_str(), &arguments)?;
         let css = arguments
-            .serialize_with_limit(crate::CssComponentValueLimits::default().max_css_bytes())?
+            .serialize_tokens(crate::CssComponentValueLimits::with_max_css_bytes(
+                crate::CssComponentValueLimits::default().max_css_bytes(),
+            ))?
             .as_css()
             .to_owned();
         Ok(Self {

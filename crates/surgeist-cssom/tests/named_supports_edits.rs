@@ -683,7 +683,7 @@ fn read_work_output_and_live_node_budgets_fail_without_partial_output_or_state_c
             ..Default::default()
         },
         CssomRuleFormatLimits {
-            css: CssSpecifiedValueSerializationLimits::new(1000, 1000, 3),
+            css: CssSerializationLimits::new(1000, 1000, 3),
             ..Default::default()
         },
     ] {

@@ -130,7 +130,7 @@ fn ordinary(p: P, input: &str, canonical: &str) {
         );
         assert!(item.replacement_components().is_none());
         assert_eq!(
-            source.to_specified_css().unwrap(),
+            source.serialize_specified(Default::default()).unwrap(),
             format!("{}: {canonical} !important;", p.canonical_name())
         );
         assert_eq!(source, before);
@@ -178,7 +178,7 @@ fn globals(p: P) {
             );
             assert!(values.items()[0].replacement_components().is_none());
             assert_eq!(
-                source.to_specified_css().unwrap(),
+                source.serialize_specified(Default::default()).unwrap(),
                 format!("{}: {text} !important;", p.canonical_name())
             );
         }
@@ -204,7 +204,7 @@ fn pending(p: P, replacement_text: &str) {
             };
             assert!(handle.source().same_occurrence(&source));
             assert_eq!(
-                source.to_specified_css().unwrap(),
+                source.serialize_specified(Default::default()).unwrap(),
                 format!("{}: {text} !important;", p.canonical_name())
             );
             let replacement = parse_component_values(replacement_text).unwrap();
@@ -366,7 +366,7 @@ fn implicit_origin(components: &CssComponentValues) -> CssValueOrigin {
             return origin.clone();
         }
     }
-    let serialized = components.serialize().unwrap();
+    let serialized = components.serialize_tokens(Default::default()).unwrap();
     (0..serialized.as_css().len())
         .find_map(|offset| match serialized.origin_at(offset) {
             Some(CssSerializedOrigin::Token(origin @ CssValueOrigin::ImplicitClosure { .. })) => {
@@ -603,7 +603,12 @@ fn normalization_preserves_duplicate_order_importance_pending_context_and_limits
                 CssImportance::Normal
             }
         );
-        assert_eq!(item.source().to_specified_css().unwrap(), expected[index]);
+        assert_eq!(
+            item.source()
+                .serialize_specified(Default::default())
+                .unwrap(),
+            expected[index]
+        );
         assert_eq!(item.source().parsed_name().unwrap().source().as_str(), css);
         assert!(
             item.selector_context()
@@ -686,7 +691,9 @@ fn accepted_indent_permutations_signed_flags_and_tiny_origins_remain_controls() 
             assert!(indent(&source).hanging());
             assert!(indent(&source).each_line());
             assert_eq!(
-                indent(&source).serialize_specified().unwrap(),
+                indent(&source)
+                    .serialize_specified(Default::default())
+                    .unwrap(),
                 "-1px hanging each-line"
             );
         }
@@ -708,7 +715,9 @@ fn accepted_indent_permutations_signed_flags_and_tiny_origins_remain_controls() 
                 .contains("each-line -1e-999% hanging")
         );
         assert_eq!(
-            indent(&source).serialize_specified().unwrap(),
+            indent(&source)
+                .serialize_specified(Default::default())
+                .unwrap(),
             "0% hanging each-line"
         );
         assert_eq!(number.representation(), "-1e-999");
@@ -732,7 +741,12 @@ fn accepted_css2_keywords_signed_numeric_and_authored_zero_forms_remain_controls
         "0cm",
     ] {
         for source in fronts(P::VerticalAlign, input) {
-            assert_eq!(align(&source).serialize_specified().unwrap(), input);
+            assert_eq!(
+                align(&source)
+                    .serialize_specified(Default::default())
+                    .unwrap(),
+                input
+            );
         }
     }
 }
@@ -741,7 +755,8 @@ fn accepted_css2_keywords_signed_numeric_and_authored_zero_forms_remain_controls
 fn numeric_checked_components_retain_programmatic_origin_and_original_token() {
     for p in [P::TextIndent, P::VerticalAlign] {
         let component = CssComponentValue::try_dimension("-0.50", "em").unwrap();
-        let components = CssComponentValues::try_new(vec![component.clone()]).unwrap();
+        let components =
+            CssComponentValues::try_new(vec![component.clone()], Default::default()).unwrap();
         for result in [
             parse_property_value(
                 CssPropertyNameRef::Known(p),
@@ -759,7 +774,7 @@ fn numeric_checked_components_retain_programmatic_origin_and_original_token() {
             assert_eq!(scalar(&source).origin(), &CssValueOrigin::Programmatic);
             assert_eq!(source.value_components(), &components);
             assert_eq!(
-                source.to_specified_css().unwrap(),
+                source.serialize_specified(Default::default()).unwrap(),
                 format!("{}: -0.5em !important;", p.canonical_name())
             );
             assert_eq!(scalar(&source).literal_component(), Some(&component));
@@ -833,8 +848,8 @@ fn grammar_failure_preserves_unrelated_siblings_and_checked_inputs() {
 
 #[test]
 fn declaration_resource_costs_accumulate_without_changing_the_owning_payload() {
+    use CssSerializationLimits as L;
     use CssSpecifiedValueSerializationErrorKind as K;
-    use CssSpecifiedValueSerializationLimits as L;
     for (p, input, canonical, inputs, projections) in [
         (P::TextIndent, "0", "0", 2, 2),
         (P::TextIndent, "hanging -2px", "-2px hanging", 3, 3),
@@ -860,10 +875,7 @@ fn declaration_resource_costs_accumulate_without_changing_the_owning_payload() {
         let before = source.clone();
         let expected = format!("{}: {canonical} !important;", p.canonical_name());
         let exact = L::new(inputs + 2, projections + 2, expected.len());
-        assert_eq!(
-            source.to_specified_css_with_limits(exact).unwrap(),
-            expected
-        );
+        assert_eq!(source.serialize_specified(exact).unwrap(), expected);
         for (limits, kind) in [
             (
                 L::new(inputs + 1, projections + 2, expected.len()),
@@ -879,26 +891,17 @@ fn declaration_resource_costs_accumulate_without_changing_the_owning_payload() {
             ),
         ] {
             for _ in 0..2 {
-                assert_eq!(
-                    source
-                        .to_specified_css_with_limits(limits)
-                        .unwrap_err()
-                        .kind(),
-                    kind
-                );
+                assert_eq!(source.serialize_specified(limits).unwrap_err().kind(), kind);
                 assert_eq!(source, before);
             }
         }
-        assert_eq!(
-            source.to_specified_css_with_limits(exact).unwrap(),
-            expected
-        );
+        assert_eq!(source.serialize_specified(exact).unwrap(), expected);
     }
 }
 
 #[test]
 fn sheet_declarations_share_one_byte_budget_and_failure_is_atomic_and_retryable() {
-    use CssSpecifiedValueSerializationLimits as L;
+    use CssSerializationLimits as L;
     let report = parse_sheet(
         ".a{text-indent:each-line -2px hanging!important}.b{vertical-align:calc(1px + 2px)}",
     );
@@ -909,23 +912,21 @@ fn sheet_declarations_share_one_byte_budget_and_failure_is_atomic_and_retryable(
         ".a { text-indent: -2px hanging each-line !important; }\n.b { vertical-align: calc(3px); }";
     let exact = L::new(usize::MAX, usize::MAX, expected.len());
     let short = L::new(usize::MAX, usize::MAX, expected.len() - 1);
-    assert_eq!(sheet.to_specified_css_with_limits(exact).unwrap(), expected);
+    assert_eq!(sheet.serialize_specified(exact).unwrap(), expected);
     assert!(
         sheet
             .rules()
             .iter()
-            .all(|rule| rule.to_specified_css_with_limits(short).is_ok())
+            .all(|rule| rule.serialize_specified(short).is_ok())
     );
     for _ in 0..2 {
-        let error = sheet.to_specified_css_with_limits(short).unwrap_err();
+        let error = sheet.serialize_specified(short).unwrap_err();
         assert_eq!(
             error.kind(),
-            CssSpecifiedRuleSerializationErrorKind::Resource(
-                CssSpecifiedValueSerializationErrorKind::ByteLimit
-            )
+            CssSpecifiedValueSerializationErrorKind::ByteLimit
         );
         assert_eq!(error.rule_index(), Some(1));
         assert_eq!(sheet, &before);
     }
-    assert_eq!(sheet.to_specified_css_with_limits(exact).unwrap(), expected);
+    assert_eq!(sheet.serialize_specified(exact).unwrap(), expected);
 }

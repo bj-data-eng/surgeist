@@ -202,7 +202,7 @@ fn authored_property_cases_exercise_public_parser_behavior() {
         // §6.7.2 serializes the declaration as `name: value;`, with the value
         // in the specified serialization each record states.
         let expected = format!("{}: {};", case.name, serialization.unwrap_or(positive));
-        let actual = declaration.to_specified_css().unwrap();
+        let actual = declaration.serialize_specified(Default::default()).unwrap();
         if let Some((_, current)) = KNOWN_SERIALIZATION_DEFECTS
             .iter()
             .find(|(id, _)| id == feature_id)

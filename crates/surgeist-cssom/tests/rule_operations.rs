@@ -201,7 +201,7 @@ fn nested_raw_fallback_keeps_occurrences_block_identity_and_flags() {
     assert_eq!(snapshot.block(block).unwrap().owner(), None);
     assert_eq!(
         snapshot
-            .specified_property_css_text(block, CssSpecifiedValueSerializationLimits::default())
+            .specified_property_css_text(block, CssSerializationLimits::default())
             .unwrap(),
         "color: blue !important;"
     );
@@ -259,7 +259,7 @@ fn selector_success_keeps_block_and_children_and_records_new_occurrence_even_sam
             .unwrap()
             .capture(&first)
             .unwrap()
-            .selector_text(CssSpecifiedValueSerializationLimits::default())
+            .selector_text(CssSerializationLimits::default())
             .unwrap(),
         ".changed"
     );
@@ -356,7 +356,7 @@ fn partial_getters_remain_independent_of_unavailable_wrappers_and_host_links() {
         snapshot
             .media(media.handle().id())
             .unwrap()
-            .serialize_cssom()
+            .serialize_cssom(Default::default())
             .unwrap()
             .as_css(),
         "screen"
@@ -386,7 +386,7 @@ fn partial_getters_remain_independent_of_unavailable_wrappers_and_host_links() {
             .unwrap(),
         ""
     );
-    let limits = CssSpecifiedValueSerializationLimits::default();
+    let limits = CssSerializationLimits::default();
     assert_eq!(
         owner
             .css_scope_rule(&roots[2])
@@ -561,7 +561,7 @@ fn keyframe_append_invalid_key_edit_and_raw_name_have_atomic_publication() {
         owner
             .css_keyframe_rule(&first)
             .and_then(|handle| handle.capture(&unchanged))
-            .and_then(|capture| capture.key_text(CssSpecifiedValueSerializationLimits::default()))
+            .and_then(|capture| capture.key_text(CssSerializationLimits::default()))
             .unwrap(),
         "0%"
     );
@@ -583,7 +583,7 @@ fn keyframe_append_invalid_key_edit_and_raw_name_have_atomic_publication() {
         owner
             .css_keyframe_rule(&first)
             .and_then(|handle| handle.capture(&after))
-            .and_then(|capture| capture.key_text(CssSpecifiedValueSerializationLimits::default()))
+            .and_then(|capture| capture.key_text(CssSerializationLimits::default()))
             .unwrap(),
         "0%, 10%, 100%"
     );
@@ -658,9 +658,7 @@ fn nested_and_scoped_selector_contexts_follow_real_ancestry_without_synthetic_so
         owner
             .css_style_rule(&nested)
             .and_then(|handle| handle.capture(&after))
-            .and_then(
-                |capture| capture.selector_text(CssSpecifiedValueSerializationLimits::default())
-            )
+            .and_then(|capture| capture.selector_text(CssSerializationLimits::default()))
             .unwrap(),
         "& > .changed"
     );
@@ -727,9 +725,7 @@ fn page_selector_success_and_syntax_noop_preserve_current_descriptor_and_margin_
         owner
             .css_page_rule(&page)
             .and_then(|handle| handle.capture(&after))
-            .and_then(
-                |capture| capture.selector_text(CssSpecifiedValueSerializationLimits::default())
-            )
+            .and_then(|capture| capture.selector_text(CssSerializationLimits::default()))
             .unwrap(),
         "chapter:recto, appendix:verso"
     );
@@ -757,7 +753,7 @@ fn page_selector_success_and_syntax_noop_preserve_current_descriptor_and_margin_
         owner
             .css_page_rule(&page)
             .unwrap()
-            .selector_text(&owner, CssSpecifiedValueSerializationLimits::default())
+            .selector_text(&owner, CssSerializationLimits::default())
             .unwrap(),
         ""
     );
@@ -804,7 +800,7 @@ fn input_and_live_name_limits_abort_without_identity_or_revision_changes_and_ret
         owner
             .css_style_rule(&roots[1])
             .unwrap()
-            .selector_text(&owner, CssSpecifiedValueSerializationLimits::default())
+            .selector_text(&owner, CssSerializationLimits::default())
             .unwrap(),
         ".ok"
     );
@@ -844,7 +840,7 @@ fn raw_nested_fallback_uses_actual_quirks_mode_and_retains_recovered_occurrences
                     .rule(&id)
                     .and_then(|record| record.data().block().ok_or(CssomError::WrongKind))
                     .unwrap(),
-                CssSpecifiedValueSerializationLimits::default()
+                CssSerializationLimits::default()
             )
             .unwrap(),
         "width: 12px; color: blue;"
@@ -993,9 +989,7 @@ fn component_syntax_uses_source_noop_or_syntax_without_poisoning_successful_noop
         owner
             .css_page_rule(&roots[0])
             .and_then(|handle| handle.capture(&after))
-            .and_then(
-                |capture| capture.selector_text(CssSpecifiedValueSerializationLimits::default())
-            )
+            .and_then(|capture| capture.selector_text(CssSerializationLimits::default()))
             .unwrap(),
         "old"
     );

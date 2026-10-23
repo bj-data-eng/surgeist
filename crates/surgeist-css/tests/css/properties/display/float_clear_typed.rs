@@ -24,38 +24,28 @@ fn every_float_keyword_serializes_with_exact_single_keyword_budgets() {
         (CssFloat::InlineStart, "inline-start"),
         (CssFloat::InlineEnd, "inline-end"),
     ] {
-        assert_eq!(value.serialize_specified().unwrap(), text);
+        assert_eq!(value.serialize_specified(Default::default()).unwrap(), text);
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    1,
-                    1,
-                    text.len(),
-                ))
+                .serialize_specified(CssSerializationLimits::new(1, 1, text.len(),))
                 .unwrap(),
             text
         );
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(0, 1, text.len()),
+                CssSerializationLimits::new(0, 1, text.len()),
                 CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 0, text.len()),
+                CssSerializationLimits::new(1, 0, text.len()),
                 CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 1, text.len() - 1),
+                CssSerializationLimits::new(1, 1, text.len() - 1),
                 CssSpecifiedValueSerializationErrorKind::ByteLimit,
             ),
         ] {
-            assert_eq!(
-                value
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
-                kind
-            );
+            assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
         }
     }
 }
@@ -70,24 +60,16 @@ fn every_clear_keyword_serializes_and_both_expands_as_its_own_value() {
         (CssClear::InlineStart, "inline-start"),
         (CssClear::InlineEnd, "inline-end"),
     ] {
-        assert_eq!(value.serialize_specified().unwrap(), text);
+        assert_eq!(value.serialize_specified(Default::default()).unwrap(), text);
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    1,
-                    1,
-                    text.len(),
-                ))
+                .serialize_specified(CssSerializationLimits::new(1, 1, text.len(),))
                 .unwrap(),
             text
         );
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    1,
-                    1,
-                    text.len() - 1,
-                ))
+                .serialize_specified(CssSerializationLimits::new(1, 1, text.len() - 1,))
                 .unwrap_err()
                 .kind(),
             CssSpecifiedValueSerializationErrorKind::ByteLimit

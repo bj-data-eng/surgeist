@@ -3,9 +3,7 @@
 use std::fmt;
 
 use crate::specified_serialization::SpecifiedSerializationContext;
-use crate::{
-    CssSpecifiedValueSerializationError as Error, CssSpecifiedValueSerializationErrorKind,
-};
+use crate::{CssSerializationError as Error, CssSpecifiedValueSerializationErrorKind};
 
 type Result<T> = std::result::Result<T, Error>;
 
@@ -108,8 +106,7 @@ impl fmt::Write for StreamingWriter<'_> {
 mod tests {
     use super::*;
     use crate::{
-        CssSpecifiedValueSerializationErrorKind as Kind,
-        CssSpecifiedValueSerializationLimits as Limits,
+        CssSerializationLimits as Limits, CssSpecifiedValueSerializationErrorKind as Kind,
     };
 
     #[test]

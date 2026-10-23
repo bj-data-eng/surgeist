@@ -1,32 +1,18 @@
 //! Canonical authored Masking values sharing one cumulative writer.
 use super::*;
-use crate::{
-    CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits,
-    specified_rule_serialization::SpecifiedRuleWriter,
-};
-type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
+use crate::{CssSerializationError, specified_rule_serialization::SpecifiedRuleWriter};
+type Result<T> = std::result::Result<T, CssSerializationError>;
 
 macro_rules! provider {
     ($ty:ty, $value:ident, $writer:ident => $body:block) => {
-        impl $ty {
-            /// Emits canonical specified syntax without contextual resolution.
-            pub fn serialize_specified(&self) -> Result<String> {
-                self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-            }
-            /// Uses cumulative input, projection and UTF-8 byte limits atomically.
-            /// Scalars cost one node; lists and authored groups add one node,
-            /// visiting all retained children. Shared edge/image costs are unchanged.
-            pub fn serialize_specified_with_limits(&self, limits: CssSpecifiedValueSerializationLimits) -> Result<String> {
-                let mut writer = SpecifiedRuleWriter::new(limits);
-                self.append_to_rule_writer(&mut writer)?;
-                Ok(writer.css)
-            }
-            pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+        impl crate::specified_rule_serialization::SpecifiedProvider for $ty {
+            fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
                 let $value = self;
                 let $writer = writer;
                 $body
             }
         }
+        crate::specified_rule_serialization::specified_serialization!($ty);
     };
 }
 provider!(CssMaskBox, value, writer => { writer.keyword(value.keyword()) });
@@ -123,7 +109,9 @@ provider!(CssMaskBorder, value, writer => {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::CssSerializationLimits;
     use crate::CssSpecifiedValueSerializationErrorKind as Kind;
+    use crate::specified_rule_serialization::SpecifiedProvider as _;
     #[test]
     fn lists_and_groups_share_prefix_sibling_and_suppressed_work() {
         let list =
@@ -134,11 +122,8 @@ mod tests {
         };
         let expected = "!alpha, luminance;padding-box no-clip";
         // Prefix 1, list+two scalars 3, boxes+two scalars 3.
-        let mut writer = SpecifiedRuleWriter::new(CssSpecifiedValueSerializationLimits::new(
-            7,
-            7,
-            expected.len(),
-        ));
+        let mut writer =
+            SpecifiedRuleWriter::new(CssSerializationLimits::new(7, 7, expected.len()));
         writer.node().unwrap();
         writer.append("!").unwrap();
         list.append_to_rule_writer(&mut writer).unwrap();
@@ -154,8 +139,7 @@ mod tests {
             Kind::ProjectionNodeLimit
         );
         assert_eq!(writer.append("x").unwrap_err().kind(), Kind::ByteLimit);
-        let mut writer =
-            SpecifiedRuleWriter::new(CssSpecifiedValueSerializationLimits::new(6, 6, 1));
+        let mut writer = SpecifiedRuleWriter::new(CssSerializationLimits::new(6, 6, 1));
         writer.append("!").unwrap();
         writer
             .without_output(|writer| {
@@ -187,11 +171,8 @@ mod tests {
         .unwrap();
         // Prefix1 + border aggregate/source/mode3 + scalar sibling1.
         let expected = "!none alpha;evenodd";
-        let mut writer = SpecifiedRuleWriter::new(CssSpecifiedValueSerializationLimits::new(
-            5,
-            5,
-            expected.len(),
-        ));
+        let mut writer =
+            SpecifiedRuleWriter::new(CssSerializationLimits::new(5, 5, expected.len()));
         writer.node().unwrap();
         writer.append("!").unwrap();
         border.append_to_rule_writer(&mut writer).unwrap();
@@ -208,8 +189,7 @@ mod tests {
             writer.context.charge_projection(1).unwrap_err().kind(),
             Kind::ProjectionNodeLimit
         );
-        let mut writer =
-            SpecifiedRuleWriter::new(CssSpecifiedValueSerializationLimits::new(6, 6, 0));
+        let mut writer = SpecifiedRuleWriter::new(CssSerializationLimits::new(6, 6, 0));
         writer
             .without_output(|writer| {
                 border.append_to_rule_writer(writer)?;
@@ -234,8 +214,7 @@ mod tests {
             clip: CssMaskClip::NoClip,
         };
         let before = boxes;
-        let mut writer =
-            SpecifiedRuleWriter::new(CssSpecifiedValueSerializationLimits::new(2, 3, 1));
+        let mut writer = SpecifiedRuleWriter::new(CssSerializationLimits::new(2, 3, 1));
         let error = writer
             .without_output(|writer| boxes.append_to_rule_writer(writer))
             .unwrap_err();
@@ -244,6 +223,9 @@ mod tests {
         assert_eq!(boxes, before);
         writer.append("!").unwrap();
         assert_eq!(writer.css, "!");
-        assert_eq!(boxes.serialize_specified().unwrap(), "border-box no-clip");
+        assert_eq!(
+            boxes.serialize_specified(Default::default()).unwrap(),
+            "border-box no-clip"
+        );
     }
 }

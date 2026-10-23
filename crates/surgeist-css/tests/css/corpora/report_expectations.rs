@@ -284,7 +284,12 @@ fn observe_rule<'a>(
                 .selectors()
                 .selectors()
                 .iter()
-                .map(|selector| selector.selector().to_specified_css().unwrap())
+                .map(|selector| {
+                    selector
+                        .selector()
+                        .serialize_specified(Default::default())
+                        .unwrap()
+                })
                 .collect::<Vec<_>>();
             retained.push(Retained::Style(selectors.join(", ")));
             for declaration in rule.declarations().iter() {
@@ -299,7 +304,10 @@ fn observe_rule<'a>(
             retained.push(Retained::Keyframes);
             for block in rule.blocks() {
                 retained.push(Retained::Keyframe(
-                    block.selectors().serialize_key_text().unwrap(),
+                    block
+                        .selectors()
+                        .serialize_key_text(Default::default())
+                        .unwrap(),
                 ));
                 for declaration in block.declarations().iter() {
                     let declaration = declaration.source();
@@ -873,7 +881,10 @@ fn column_selector_structure(observed: &Observed<'_>) {
         panic!("typed color value")
     };
     assert_eq!(value.value().named().expect("named color").name(), "red");
-    assert_eq!(declaration.to_specified_css().unwrap(), "color: red;");
+    assert_eq!(
+        declaration.serialize_specified(Default::default()).unwrap(),
+        "color: red;"
+    );
     let name = declaration.parsed_name().expect("original name token");
     let value = declaration.parsed_value().expect("original value region");
     assert_column_position(name.span().start(), 22);
@@ -1023,14 +1034,26 @@ fn auto_timing_name(observed: &Observed<'_>) {
                 value.names().names(),
                 [surgeist_css::CssAnimationName::Custom(name)] if name.as_str() == "auto"
             ));
-            assert_eq!(value.names().serialize_specified().unwrap(), "auto");
+            assert_eq!(
+                value
+                    .names()
+                    .serialize_specified(Default::default())
+                    .unwrap(),
+                "auto"
+            );
         }
         CssKnownPropertyValueRef::TransitionProperty(value) => {
             assert!(matches!(
                 value.properties().properties(),
                 [surgeist_css::CssTransitionProperty::Custom(name)] if name.as_str() == "auto"
             ));
-            assert_eq!(value.properties().serialize_specified().unwrap(), "auto");
+            assert_eq!(
+                value
+                    .properties()
+                    .serialize_specified(Default::default())
+                    .unwrap(),
+                "auto"
+            );
         }
         other => panic!("unexpected timing name value: {other:?}"),
     }
@@ -1051,12 +1074,20 @@ fn auto_timing_name(observed: &Observed<'_>) {
     );
     assert_eq!(token.span().end().byte_offset().value(), end);
     let canonical = format!("{};", observed.input);
-    assert_eq!(declaration.to_specified_css().unwrap(), canonical);
+    assert_eq!(
+        declaration.serialize_specified(Default::default()).unwrap(),
+        canonical
+    );
     assert!(declaration.same_occurrence(&declaration.clone()));
     let reparsed = parse_style_attribute(&canonical);
     assert!(reparsed.is_clean());
     assert_eq!(reparsed.syntax()[0].body(), declaration.body());
-    assert_eq!(reparsed.syntax()[0].to_specified_css().unwrap(), canonical);
+    assert_eq!(
+        reparsed.syntax()[0]
+            .serialize_specified(Default::default())
+            .unwrap(),
+        canonical
+    );
 }
 
 fn content_contents(observed: &Observed<'_>) {
@@ -1076,7 +1107,13 @@ fn content_contents(observed: &Observed<'_>) {
             surgeist_css::CssContentValueItem::Contents
         ])
     ));
-    assert_eq!(value.value().serialize_specified().unwrap(), "contents");
+    assert_eq!(
+        value
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "contents"
+    );
     assert!(matches!(
         observed.declarations[0].value_components().items()[0].origin(),
         surgeist_css::CssValueOrigin::Parsed(_)
@@ -1200,7 +1237,7 @@ fn auto_fit_grid(observed: &Observed<'_>) {
             .unwrap()
             .length_percentage()
             .unwrap()
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "12px"
     );
@@ -1218,7 +1255,11 @@ fn auto_fit_grid(observed: &Observed<'_>) {
     let breadth = size.breadth().unwrap();
     assert_eq!(breadth.kind(), CssGridTrackBreadthKind::Fraction);
     assert_eq!(
-        breadth.flex().unwrap().serialize_specified().unwrap(),
+        breadth
+            .flex()
+            .unwrap()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "1fr"
     );
 }
@@ -1372,14 +1413,23 @@ fn container_query(observed: &Observed<'_>) {
                 operand.view(),
                 CssContainerStuckValueRef::Keyword(CssContainerStuckKeyword::Top)
             ));
-            assert_eq!(operand.serialize().unwrap().as_css(), "top");
+            assert_eq!(
+                operand
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
+                "top"
+            );
         }
         _ => assert!(matches!(
             value.kind(),
             CssContainerConditionKind::GeneralEnclosed(_)
         )),
     }
-    assert_eq!(value.serialize().unwrap().as_css(), format!("{query} "));
+    assert_eq!(
+        value.serialize_tokens(Default::default()).unwrap().as_css(),
+        format!("{query} ")
+    );
     let surgeist_css::CssValueOrigin::Parsed(origin) = value.origin() else {
         panic!("original query source")
     };
@@ -1507,7 +1557,13 @@ fn removed_track_declarations_preserve_adjacent_current_alignment_and_custom_sem
         value.value().value(),
         surgeist_css::CssAlignmentValue::Baseline(surgeist_css::CssBaselinePosition::First)
     );
-    assert_eq!(value.value().serialize_specified().unwrap(), "baseline");
+    assert_eq!(
+        value
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "baseline"
+    );
     let custom = custom.custom().unwrap();
     assert_eq!(custom.name().as_str(), "--align-tracks");
     assert_eq!(custom.value().value().unwrap().as_css(), "center");

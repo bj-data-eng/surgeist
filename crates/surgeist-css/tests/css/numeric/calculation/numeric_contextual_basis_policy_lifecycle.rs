@@ -12,13 +12,14 @@
 use crate::css::support::value_assertions::calculated_length as length;
 use surgeist_css::*;
 
-type Limits = CssSpecifiedValueSerializationLimits;
+type Limits = CssSerializationLimits;
 type Kind = CssSpecifiedValueSerializationErrorKind;
 
 fn length_percentage(source: &str) -> CssSpecifiedLengthPercentage {
     CssSpecifiedLengthPercentage::try_from_calculation(
         CssLengthPercentageCalculation::try_from_components(
             parse_component_values(source).unwrap(),
+            Default::default(),
         )
         .unwrap(),
     )
@@ -31,8 +32,14 @@ fn assert_length(source: &str, expected: &str) {
     let calculation = value.calculation().unwrap();
     let components = calculation.components().clone();
     let ty = calculation.numeric_type();
-    assert_eq!(components.serialize().unwrap().as_css(), source);
-    let result = value.serialize_specified();
+    assert_eq!(
+        components
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        source
+    );
+    let result = value.serialize_specified(Default::default());
     assert_eq!(value, before);
     assert_eq!(value.origin(), before.origin());
     assert_eq!(value.calculation().unwrap().components(), &components);
@@ -96,12 +103,15 @@ fn flex_fraction_basis_keeps_magnitude_functions_symbolic() {
         ("hypot(3fr,4fr)", "hypot(3fr, 4fr)"),
     ] {
         let value = CssSpecifiedNonNegativeFlex::try_from_calculation(
-            CssFlexCalculation::try_from_components(parse_component_values(source).unwrap())
-                .unwrap(),
+            CssFlexCalculation::try_from_components(
+                parse_component_values(source).unwrap(),
+                Default::default(),
+            )
+            .unwrap(),
         )
         .unwrap();
         let before = value.clone();
-        let result = value.serialize_specified();
+        let result = value.serialize_specified(Default::default());
         assert_eq!(value, before);
         assert_eq!(value.origin(), before.origin());
         assert_eq!(
@@ -128,7 +138,7 @@ fn different_size_bases_and_hinted_percentages_remain_symbolic() {
             value.calculation().unwrap().numeric_type().percent_hint(),
             Some(CssNumericDimension::Length)
         );
-        let result = value.serialize_specified();
+        let result = value.serialize_specified(Default::default());
         assert_eq!(value, before);
         assert_eq!(value.origin(), before.origin());
         assert_eq!(
@@ -158,7 +168,7 @@ fn folded_siblings_share_one_cumulative_enclosing_budget() {
         (Limits::new(7, 6, expected.len()), Kind::ProjectionNodeLimit),
         (Limits::new(7, 7, expected.len() - 1), Kind::ByteLimit),
     ] {
-        let error = shape.serialize_specified_with_limits(limits).unwrap_err();
+        let error = shape.serialize_specified(limits).unwrap_err();
         assert_eq!(error.kind(), kind, "{limits:?}");
         assert_eq!(shape, before);
         for (value, original) in shape
@@ -174,7 +184,7 @@ fn folded_siblings_share_one_cumulative_enclosing_budget() {
             );
         }
     }
-    let result = shape.serialize_specified_with_limits(Limits::new(7, 7, expected.len()));
+    let result = shape.serialize_specified(Limits::new(7, 7, expected.len()));
     assert_eq!(shape, before);
     assert_eq!(result.unwrap(), expected);
 }

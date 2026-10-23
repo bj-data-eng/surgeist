@@ -147,7 +147,12 @@ fn background_image_is_one_noninherited_longhand_initially_none() {
         panic!("typed background-image initial")
     };
     assert!(matches!(initial_images.images(), [CssImageValue::None]));
-    assert_eq!(initial_images.serialize_specified().unwrap(), "none");
+    assert_eq!(
+        initial_images
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "none"
+    );
     let source = declaration("background-image:none");
     assert!(matches!(authored(&source).images(), [CssImageValue::None]));
     let [contribution] = expanded(&source)
@@ -184,7 +189,12 @@ fn mask_image_is_one_noninherited_longhand_initially_none() {
         panic!("typed mask-image initial")
     };
     assert!(matches!(initial_images.images(), [CssImageValue::None]));
-    assert_eq!(initial_images.serialize_specified().unwrap(), "none");
+    assert_eq!(
+        initial_images
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "none"
+    );
     let source = declaration("mask-image:none");
     assert!(matches!(authored(&source).images(), [CssImageValue::None]));
     let [contribution] = expanded(&source)
@@ -231,7 +241,7 @@ fn ordered_images_expand_once_with_source_and_importance() {
     let contributed = expanded_images(item.ordinary_value().unwrap());
     assert_eq!(contributed, current);
     assert_eq!(
-        contributed.serialize_specified().unwrap(),
+        contributed.serialize_specified(Default::default()).unwrap(),
         concat!(
             "none, src(\"hero.svg\"), linear-gradient(red, blue), ",
             "radial-gradient(circle, red, blue), ",
@@ -269,7 +279,7 @@ fn ordered_mask_sources_and_gradients_expand_once_with_source_and_importance() {
     let contributed = expanded_images(item.ordinary_value().unwrap());
     assert_eq!(contributed, current);
     assert_eq!(
-        contributed.serialize_specified().unwrap(),
+        contributed.serialize_specified(Default::default()).unwrap(),
         "url(\"#clip\"), src(\"#mask\"), none, linear-gradient(red, blue)"
     );
     assert!(item.source().same_occurrence(&source));
@@ -412,7 +422,7 @@ fn image_components_keep_parsed_and_checked_programmatic_origins() {
         CssValueOrigin::Parsed(_)
     ));
     let component = CssComponentValue::try_url("hero.svg").unwrap();
-    let components = CssComponentValues::try_new(vec![component]).unwrap();
+    let components = CssComponentValues::try_new(vec![component], Default::default()).unwrap();
     let checked = parse_property_value(
         CssPropertyNameRef::Known(CssKnownProperty::BackgroundImage),
         components,
@@ -433,7 +443,11 @@ fn image_components_keep_parsed_and_checked_programmatic_origins() {
     ));
     let checked_mask = parse_property_value(
         CssPropertyNameRef::Known(CssKnownProperty::MaskImage),
-        CssComponentValues::try_new(vec![CssComponentValue::try_url("#mask").unwrap()]).unwrap(),
+        CssComponentValues::try_new(
+            vec![CssComponentValue::try_url("#mask").unwrap()],
+            Default::default(),
+        )
+        .unwrap(),
         CssImportance::Normal,
     )
     .unwrap();
@@ -463,34 +477,33 @@ fn both_initial_image_lists_use_one_cumulative_serialization_budget() {
         // A checked list aggregate and its one `none` leaf each charge one
         // input and projection node; the complete specified text is four bytes.
         assert_eq!(
-            list.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                2, 2, 4
-            ))
-            .unwrap(),
+            list.serialize_specified(CssSerializationLimits::new(2, 2, 4))
+                .unwrap(),
             "none"
         );
         for (limits, expected) in [
             (
-                CssSpecifiedValueSerializationLimits::new(1, 2, 4),
+                CssSerializationLimits::new(1, 2, 4),
                 CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(2, 1, 4),
+                CssSerializationLimits::new(2, 1, 4),
                 CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(2, 2, 3),
+                CssSerializationLimits::new(2, 2, 3),
                 CssSpecifiedValueSerializationErrorKind::ByteLimit,
             ),
         ] {
             assert_eq!(
-                list.serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                list.serialize_specified(limits).unwrap_err().kind(),
                 expected
             );
         }
-        assert_eq!(list.serialize_specified().unwrap(), "none");
+        assert_eq!(
+            list.serialize_specified(Default::default()).unwrap(),
+            "none"
+        );
     }
 }
 

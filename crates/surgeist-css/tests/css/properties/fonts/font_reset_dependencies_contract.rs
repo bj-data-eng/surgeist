@@ -68,10 +68,10 @@ fn descriptor(kind: CssFontFaceDescriptorKind, value: &str) -> CssFontFaceDescri
 fn descriptor_payload_css(value: &CssFontFaceDescriptorValue) -> String {
     match value {
         CssFontFaceDescriptorValue::FontFeatureSettings(settings) => {
-            settings.serialize_specified().unwrap()
+            settings.serialize_specified(Default::default()).unwrap()
         }
         CssFontFaceDescriptorValue::FontVariationSettings(settings) => {
-            settings.serialize_specified().unwrap()
+            settings.serialize_specified(Default::default()).unwrap()
         }
         _ => panic!("font settings descriptor payload"),
     }
@@ -97,14 +97,17 @@ fn feature_index_keeps_exact_integer_token_beyond_i32_and_rejects_wrong_roots() 
             "+0002147483648" => "2147483648",
             _ => text,
         };
-        assert_eq!(index.serialize_specified().unwrap(), canonical);
+        assert_eq!(
+            index.serialize_specified(Default::default()).unwrap(),
+            canonical
+        );
         assert_eq!(index.i32_value(), if text == "-0" { Some(0) } else { None });
         assert!(matches!(index.origin(), CssValueOrigin::Parsed(_)));
     }
     let small = CssFontFeatureIndex::try_new(7).unwrap();
     assert_eq!(small.i32_value(), Some(7));
     assert_eq!(small.origin(), &CssValueOrigin::Programmatic);
-    assert_eq!(small.serialize_specified().unwrap(), "7");
+    assert_eq!(small.serialize_specified(Default::default()).unwrap(), "7");
     assert!(CssFontFeatureIndex::try_new(-1).is_none());
     // Fonts 4 §6.12: <integer [0,inf]>; `-1` is out of range and the other
     // tokens are not integers.
@@ -123,9 +126,11 @@ fn feature_index_keeps_exact_integer_token_beyond_i32_and_rejects_wrong_roots() 
         assert_eq!(error.kind(), &kind, "{text}");
         assert_eq!(error.origin(), Some(component.origin()), "{text}");
     }
-    let math =
-        CssIntegerCalculation::try_from_components(parse_component_values("calc(2 + 3)").unwrap())
-            .unwrap();
+    let math = CssIntegerCalculation::try_from_components(
+        parse_component_values("calc(2 + 3)").unwrap(),
+        Default::default(),
+    )
+    .unwrap();
     let symbolic = CssFontFeatureIndex::try_from_calculation(math).unwrap();
     assert!(symbolic.literal_component().is_none());
     assert!(symbolic.calculation().is_some());
@@ -135,15 +140,20 @@ fn feature_index_keeps_exact_integer_token_beyond_i32_and_rejects_wrong_roots() 
             .calculation()
             .unwrap()
             .components()
-            .serialize()
+            .serialize_tokens(Default::default())
             .unwrap()
             .as_css(),
         "calc(2 + 3)"
     );
-    assert_eq!(symbolic.serialize_specified().unwrap(), "calc(5)");
-    let bare =
-        CssIntegerCalculation::try_from_components(parse_component_values("2147483648").unwrap())
-            .unwrap();
+    assert_eq!(
+        symbolic.serialize_specified(Default::default()).unwrap(),
+        "calc(5)"
+    );
+    let bare = CssIntegerCalculation::try_from_components(
+        parse_component_values("2147483648").unwrap(),
+        Default::default(),
+    )
+    .unwrap();
     let exact_bare = CssFontFeatureIndex::try_from_calculation(bare).unwrap();
     assert_eq!(
         number_representation(exact_bare.literal_component().unwrap()),
@@ -151,8 +161,10 @@ fn feature_index_keeps_exact_integer_token_beyond_i32_and_rejects_wrong_roots() 
     );
     assert!(exact_bare.calculation().is_none());
     for text in ["-1", "2.5", "1e2"] {
-        let calculation =
-            CssIntegerCalculation::try_from_components(parse_component_values(text).unwrap());
+        let calculation = CssIntegerCalculation::try_from_components(
+            parse_component_values(text).unwrap(),
+            Default::default(),
+        );
         assert!(
             calculation.map_or(true, |calculation| {
                 CssFontFeatureIndex::try_from_calculation(calculation).is_err()
@@ -195,7 +207,7 @@ fn feature_list_distinguishes_omitted_on_off_and_exact_index_without_deduplicati
     );
     assert_eq!(index.i32_value(), None);
     assert_eq!(
-        authored.serialize_specified().unwrap(),
+        authored.serialize_specified(Default::default()).unwrap(),
         "\"cv01\", \"cv01\" on, \"cv01\" off, \"cv01\" 2147483648, \"CV01\" 0"
     );
     assert!(CssAuthoredFontFeatureList::try_new(vec![]).is_none());
@@ -240,7 +252,10 @@ fn scalar_number_and_size_adjust_keep_exact_sign_digits_origin_and_symbolic_math
             number_representation(number.literal_component().unwrap()),
             text
         );
-        assert_eq!(number.serialize_specified().unwrap(), canonical);
+        assert_eq!(
+            number.serialize_specified(Default::default()).unwrap(),
+            canonical
+        );
         assert!(matches!(number.origin(), CssValueOrigin::Parsed(_)));
     }
     let parsed = CssSpecifiedNumber::try_from_component(
@@ -253,8 +268,11 @@ fn scalar_number_and_size_adjust_keep_exact_sign_digits_origin_and_symbolic_math
     assert_ne!(parsed, programmatic);
     assert_eq!(programmatic.origin(), &CssValueOrigin::Programmatic);
     let math = CssSpecifiedNumber::try_from_calculation(
-        CssNumberCalculation::try_from_components(parse_component_values("calc(1 - 2)").unwrap())
-            .unwrap(),
+        CssNumberCalculation::try_from_components(
+            parse_component_values("calc(1 - 2)").unwrap(),
+            Default::default(),
+        )
+        .unwrap(),
     )
     .unwrap();
     assert!(math.literal_component().is_none());
@@ -263,15 +281,20 @@ fn scalar_number_and_size_adjust_keep_exact_sign_digits_origin_and_symbolic_math
         math.calculation()
             .unwrap()
             .components()
-            .serialize()
+            .serialize_tokens(Default::default())
             .unwrap()
             .as_css(),
         "calc(1 - 2)"
     );
-    assert_eq!(math.serialize_specified().unwrap(), "calc(-1)");
-    let bare =
-        CssNumberCalculation::try_from_components(parse_component_values("-1e-999").unwrap())
-            .unwrap();
+    assert_eq!(
+        math.serialize_specified(Default::default()).unwrap(),
+        "calc(-1)"
+    );
+    let bare = CssNumberCalculation::try_from_components(
+        parse_component_values("-1e-999").unwrap(),
+        Default::default(),
+    )
+    .unwrap();
     let exact_bare = CssSpecifiedNumber::try_from_calculation(bare).unwrap();
     assert_eq!(
         number_representation(exact_bare.literal_component().unwrap()),
@@ -284,7 +307,7 @@ fn scalar_number_and_size_adjust_keep_exact_sign_digits_origin_and_symbolic_math
         )
         .unwrap(),
     );
-    assert_eq!(adjust.serialize_specified().unwrap(), "0");
+    assert_eq!(adjust.serialize_specified(Default::default()).unwrap(), "0");
     let CssFontSizeAdjust::Number(number) = &adjust else {
         panic!("numeric size adjust")
     };
@@ -317,7 +340,10 @@ fn scalar_number_and_size_adjust_keep_exact_sign_digits_origin_and_symbolic_math
         "1e999"
     );
     assert_eq!(
-        wrapper.size_adjust().serialize_specified().unwrap(),
+        wrapper
+            .size_adjust()
+            .serialize_specified(Default::default())
+            .unwrap(),
         format!("1{}", "0".repeat(999))
     );
 }
@@ -343,7 +369,7 @@ fn variation_list_keeps_signed_values_order_duplicates_and_case() {
         ["-1.25", "+0.5", "-2", "1e3"]
     );
     assert_eq!(
-        authored.serialize_specified().unwrap(),
+        authored.serialize_specified(Default::default()).unwrap(),
         "\"wght\" -1.25, \"wdth\" 0.5, \"wdth\" -2, \"WDTH\" 1000"
     );
     assert!(CssFontVariationList::try_new(vec![]).is_none());
@@ -398,13 +424,13 @@ fn language_override_preserves_general_decoded_string_and_rejects_nul_constructi
     );
     assert_eq!(
         CssFontLanguageOverride::Normal
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "normal"
     );
     assert_eq!(
         CssFontLanguageOverride::String(CssFontLanguageString::try_new("SRB é Long").unwrap())
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "\"SRB é Long\""
     );
@@ -581,6 +607,7 @@ fn descriptor_pending_reentry_is_strict_and_keeps_new_variation_kind() {
         let pending = CssAuthoredFontFaceDescriptorValue::try_from_components(
             kind,
             parse_component_values("env(axis)").unwrap(),
+            Default::default(),
         )
         .unwrap();
         let CssAuthoredFontFaceDescriptorValue::Pending(pending) = pending else {
@@ -588,19 +615,28 @@ fn descriptor_pending_reentry_is_strict_and_keeps_new_variation_kind() {
         };
         assert_eq!(pending.kind(), kind);
         let replacement = parse_component_values(text).unwrap();
-        let ordinary = pending.reparse_after_substitution(replacement).unwrap();
+        let ordinary = pending
+            .reparse_after_substitution(replacement, Default::default())
+            .unwrap();
         assert_eq!(ordinary.kind(), kind);
         assert_eq!(descriptor_payload_css(&ordinary), text);
         for invalid in ["env(axis)", "var(--axis)", "inherit"] {
             assert!(
                 pending
-                    .reparse_after_substitution(parse_component_values(invalid).unwrap())
+                    .reparse_after_substitution(
+                        parse_component_values(invalid).unwrap(),
+                        Default::default()
+                    )
                     .is_err(),
                 "{invalid}"
             );
         }
         let recovered = parse_component_values("calc(1").unwrap();
-        assert!(pending.reparse_after_substitution(recovered).is_err());
+        assert!(
+            pending
+                .reparse_after_substitution(recovered, Default::default())
+                .is_err()
+        );
     }
 }
 
@@ -694,9 +730,12 @@ fn otherwise_valid_implicitly_closed_math_recovers_only_in_ordinary_parsing() {
         let CssValueOrigin::Parsed(function_origin) = function_origin else {
             panic!("authored calc opening")
         };
-        let checked_error =
-            CssAuthoredFontFaceDescriptorValue::try_from_components(kind, recovered.clone())
-                .unwrap_err();
+        let checked_error = CssAuthoredFontFaceDescriptorValue::try_from_components(
+            kind,
+            recovered.clone(),
+            Default::default(),
+        )
+        .unwrap_err();
         assert_eq!(
             checked_error.kind(),
             &CssFontFaceValueErrorKind::RecoveredComponent
@@ -723,6 +762,7 @@ fn otherwise_valid_implicitly_closed_math_recovers_only_in_ordinary_parsing() {
             CssAuthoredFontFaceDescriptorValue::try_from_components(
                 kind,
                 parse_component_values("env(axis)").unwrap(),
+                Default::default(),
             )
             .unwrap()
         else {
@@ -730,7 +770,7 @@ fn otherwise_valid_implicitly_closed_math_recovers_only_in_ordinary_parsing() {
         };
         assert_eq!(
             pending
-                .reparse_after_substitution(recovered)
+                .reparse_after_substitution(recovered, Default::default())
                 .unwrap_err()
                 .kind(),
             &CssFontFaceValueErrorKind::RecoveredComponent
@@ -743,69 +783,65 @@ fn otherwise_valid_implicitly_closed_math_recovers_only_in_ordinary_parsing() {
 fn list_serialization_obeys_shared_atomic_input_projection_and_byte_limits() {
     let value = feature("\"cv01\" 2147483648, \"cv02\" off");
     let expected = "\"cv01\" 2147483648, \"cv02\" off";
-    assert_eq!(value.serialize_specified().unwrap(), expected);
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     assert_eq!(
         feature("\"cv01\" 2147483648")
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(2, 2, 100))
+            .serialize_specified(CssSerializationLimits::new(2, 2, 100))
             .unwrap(),
         "\"cv01\" 2147483648"
     );
     assert_eq!(
         value
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(2, 2, 100))
+            .serialize_specified(CssSerializationLimits::new(2, 2, 100))
             .unwrap_err()
             .kind(),
         CssSpecifiedValueSerializationErrorKind::InputNodeLimit
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(0, 1000, 1000),
+            CssSerializationLimits::new(0, 1000, 1000),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(1000, 0, 1000),
+            CssSerializationLimits::new(1000, 0, 1000),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(1000, 1000, expected.len() - 1),
+            CssSerializationLimits::new(1000, 1000, expected.len() - 1),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
-        assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            kind
-        );
+        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
     }
-    assert_eq!(value.serialize_specified().unwrap(), expected);
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     let axes = variation("\"wght\" -1.25, \"wdth\" 2");
     let exact = "\"wght\" -1.25, \"wdth\" 2";
-    assert_eq!(axes.serialize_specified().unwrap(), exact);
+    assert_eq!(axes.serialize_specified(Default::default()).unwrap(), exact);
     assert_eq!(
         variation("\"wght\" -1.25")
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(2, 2, 100))
+            .serialize_specified(CssSerializationLimits::new(2, 2, 100))
             .unwrap(),
         "\"wght\" -1.25"
     );
     assert_eq!(
-        axes.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(2, 2, 100))
+        axes.serialize_specified(CssSerializationLimits::new(2, 2, 100))
             .unwrap_err()
             .kind(),
         CssSpecifiedValueSerializationErrorKind::InputNodeLimit
     );
     assert_eq!(
-        axes.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-            1000,
-            1000,
-            exact.len() - 1
-        ))
-        .unwrap_err()
-        .kind(),
+        axes.serialize_specified(CssSerializationLimits::new(1000, 1000, exact.len() - 1))
+            .unwrap_err()
+            .kind(),
         CssSpecifiedValueSerializationErrorKind::ByteLimit
     );
-    assert_eq!(axes.serialize_specified().unwrap(), exact);
+    assert_eq!(axes.serialize_specified(Default::default()).unwrap(), exact);
 }
 
 #[test]

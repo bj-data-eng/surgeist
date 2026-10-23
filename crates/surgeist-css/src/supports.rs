@@ -232,12 +232,6 @@ impl CssSupportsCondition {
     pub fn try_from_components(
         values: CssComponentValues,
         context: &CssNamespaceContext,
-    ) -> Result<Self, CssSupportsConstructionError> {
-        Self::try_from_components_with_limits(values, context, CssComponentValueLimits::default())
-    }
-    pub fn try_from_components_with_limits(
-        values: CssComponentValues,
-        context: &CssNamespaceContext,
         limits: CssComponentValueLimits,
     ) -> Result<Self, CssSupportsConstructionError> {
         construct(values, |values| {
@@ -246,13 +240,14 @@ impl CssSupportsCondition {
     }
     /// Serializes original lexical spelling, trivia and grouping. Bare import
     /// declarations acquire programmatic parentheses to form a standalone condition.
-    pub fn serialize(&self) -> Result<CssSerializedValue, CssComponentValueError> {
-        self.serialize_with_limit(usize::MAX)
-    }
-    pub fn serialize_with_limit(
+    ///
+    /// `limits.max_css_bytes()` caps the output, including inserted syntax; the other component
+    /// limits do not apply.
+    pub fn serialize_tokens(
         &self,
-        max_css_bytes: usize,
+        limits: crate::CssComponentValueLimits,
     ) -> Result<CssSerializedValue, CssComponentValueError> {
+        let max_css_bytes = limits.max_css_bytes();
         let mut out = CssCanonicalBuilder::new(max_css_bytes);
         self.emit_lexical(&mut out, self.components())?;
         out.finish()
@@ -261,12 +256,11 @@ impl CssSupportsCondition {
         &self,
         context: &mut crate::specified_serialization::SpecifiedSerializationContext,
         output: &mut String,
-    ) -> Result<(), CssSpecifiedValueSerializationError> {
+    ) -> Result<(), CssSerializationError> {
         // The lexical region owns one aggregate; typed views do not add nodes.
         // Standalone parentheses for bare import forms are owner punctuation:
         // they consume bytes, without inventing retained/projection graph nodes.
-        context.charge_input(1)?;
-        context.charge_projection(1)?;
+        context.charge_nodes(1)?;
         crate::component_values::charge_specified_components(context, self.components())?;
         if context.output_suppressed() {
             return Ok(());
@@ -321,11 +315,6 @@ impl CssSupportsDeclaration {
     /// Accepts a bare declaration, excluding its surrounding parentheses.
     pub fn try_from_components(
         values: CssComponentValues,
-    ) -> Result<Self, CssSupportsConstructionError> {
-        Self::try_from_components_with_limits(values, CssComponentValueLimits::default())
-    }
-    pub fn try_from_components_with_limits(
-        values: CssComponentValues,
         limits: CssComponentValueLimits,
     ) -> Result<Self, CssSupportsConstructionError> {
         construct(values, |values| {
@@ -334,13 +323,14 @@ impl CssSupportsDeclaration {
     }
     /// Preserves original lexical spelling and trivia, including terminal importance.
     /// Parsed implicit closures serialize explicitly; checked construction rejects them.
-    pub fn serialize(&self) -> Result<CssSerializedValue, CssComponentValueError> {
-        self.serialize_with_limit(usize::MAX)
-    }
-    pub fn serialize_with_limit(
+    ///
+    /// `limits.max_css_bytes()` caps the output, including inserted syntax; the other component
+    /// limits do not apply.
+    pub fn serialize_tokens(
         &self,
-        max_css_bytes: usize,
+        limits: crate::CssComponentValueLimits,
     ) -> Result<CssSerializedValue, CssComponentValueError> {
+        let max_css_bytes = limits.max_css_bytes();
         let mut out = CssCanonicalBuilder::new(max_css_bytes);
         out.push_components(self.components())?;
         out.finish()

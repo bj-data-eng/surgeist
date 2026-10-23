@@ -3,26 +3,33 @@
 use CssEditedGroupPreludeRef as Prelude;
 use CssRuleCssomSerializationErrorKind as Error;
 use CssRuleGraphInput as Input;
+use CssSerializationLimits as Limits;
 use CssSpecifiedDeclarationBlock as Block;
 use CssSpecifiedValueSerializationErrorKind as Resource;
-use CssSpecifiedValueSerializationLimits as Limits;
 use surgeist_css::*;
 
 fn ordinary(source: &str) -> Block {
     let report = parse_declaration_list_text(source);
     assert!(report.is_clean());
-    Block::try_from_declarations(report.syntax()).unwrap()
+    Block::try_from_declarations(report.syntax(), Default::default()).unwrap()
 }
 fn text(input: Input<'_>) -> String {
     input
-        .serialize_cssom(&CssNamespaceContext::default(), CssStyleAncestor::Absent)
+        .serialize_cssom(
+            &CssNamespaceContext::default(),
+            CssStyleAncestor::Absent,
+            Default::default(),
+        )
         .unwrap()
 }
-fn format(input: Input<'_>, limits: Limits) -> Result<String, CssRuleCssomSerializationError> {
-    input.serialize_cssom_with_limits(
+fn format(input: Input<'_>, limits: Limits) -> Result<String, CssRuleSerializationError> {
+    input.serialize_cssom(
         &CssNamespaceContext::default(),
         CssStyleAncestor::Absent,
-        limits,
+        CssRuleSerializationLimits {
+            values: limits,
+            max_depth: usize::MAX,
+        },
     )
 }
 
@@ -74,9 +81,8 @@ fn three_level_composition_spends_exact_native_budget_once_and_later_sibling_ret
     assert_eq!(format(root, exact).unwrap(), expected);
     // Existing eager constructors keep their independent validation contracts.
     for result in [
-        CssImportRuleView::try_new_with_limits(original, &empty_media, Limits::new(0, 0, 0))
-            .map(drop),
-        CssKeyframesRuleView::try_new_with_limits(&name, &[], Limits::new(0, 0, 0)).map(drop),
+        CssImportRuleView::try_new(original, &empty_media, Limits::new(0, 0, 0)).map(drop),
+        CssKeyframesRuleView::try_new(&name, &[], Limits::new(0, 0, 0)).map(drop),
     ] {
         assert!(
             matches!(result, Err(ref error) if matches!(error.kind(), Error::Resource(_))),
@@ -93,7 +99,7 @@ fn domain_mismatch_is_admitted_at_the_actual_child_path_and_empty_children_keep_
         .0
         .unwrap();
     let valid = ordinary("");
-    let wrong = Block::try_from_keyframe_entries(&[]).unwrap();
+    let wrong = Block::try_from_keyframe_entries(&[], Default::default()).unwrap();
     for child in [
         Input::style(&selectors, &wrong, &[]),
         Input::nested_declarations(&wrong),
@@ -136,12 +142,16 @@ fn current_page_margin_and_keyframe_survivors_keep_order_domains_and_real_origin
     let CssRule::Page(page) = &report.syntax().rules()[0] else {
         panic!()
     };
-    let old_page = page.declarations().try_specified().unwrap();
+    let old_page = page
+        .declarations()
+        .try_specified(Default::default())
+        .unwrap();
     let right = old_page.entries().iter().find(|e| matches!(e,CssSpecifiedPageDeclarationEntry::Property(p) if p.property_name()==CssPropertyNameRef::Known(CssKnownProperty::MarginRight))).unwrap().clone();
-    let current_page = CssSpecifiedPageDeclarationBlock::try_from_entries(&[right]).unwrap();
+    let current_page =
+        CssSpecifiedPageDeclarationBlock::try_from_entries(&[right], Default::default()).unwrap();
     let old_margin = page.margin_rules()[0]
         .declarations()
-        .try_specified_properties()
+        .try_specified_properties(Default::default())
         .unwrap();
     let selected = old_margin
         .entries()
@@ -149,8 +159,8 @@ fn current_page_margin_and_keyframe_survivors_keep_order_domains_and_real_origin
         .filter(|e| e.property_name() == CssPropertyNameRef::Known(CssKnownProperty::MarginLeft))
         .cloned()
         .collect::<Vec<_>>();
-    let margin = Block::try_from_margin_entries(&selected).unwrap();
-    let empty_margin = Block::try_from_margin_entries(&[]).unwrap();
+    let margin = Block::try_from_margin_entries(&selected, Default::default()).unwrap();
+    let empty_margin = Block::try_from_margin_entries(&[], Default::default()).unwrap();
     let margins = [
         CssMarginRuleView::try_new(CssMarginBox::BottomRight, &empty_margin).unwrap(),
         CssMarginRuleView::try_new(CssMarginBox::TopCenter, &margin).unwrap(),
@@ -182,14 +192,18 @@ fn current_page_margin_and_keyframe_survivors_keep_order_domains_and_real_origin
         .into_parts()
         .0
         .unwrap();
-    let original = Block::try_from_keyframe_declarations(key.block().declarations()).unwrap();
+    let original =
+        Block::try_from_keyframe_declarations(key.block().declarations(), Default::default())
+            .unwrap();
     let survivor = original
         .entries()
         .iter()
         .find(|e| e.property_name() == CssPropertyNameRef::Known(CssKnownProperty::MarginRight))
         .unwrap();
-    let current = Block::try_from_keyframe_entries(std::slice::from_ref(survivor)).unwrap();
-    let empty = Block::try_from_keyframe_entries(&[]).unwrap();
+    let current =
+        Block::try_from_keyframe_entries(std::slice::from_ref(survivor), Default::default())
+            .unwrap();
+    let empty = Block::try_from_keyframe_entries(&[], Default::default()).unwrap();
     let offsets = parse_keyframe_selector_list("50%, from, 50%")
         .into_parts()
         .0
@@ -227,10 +241,10 @@ fn current_selected_font_face_uses_one_shared_block_writer_with_order_pending_em
         .occurrences()
         .cloned()
         .collect::<Vec<_>>();
-    let current = CssSpecifiedFontFaceDeclarationBlock::try_from_entries(&[
-        occurrences[3].clone(),
-        occurrences[2].clone(),
-    ])
+    let current = CssSpecifiedFontFaceDeclarationBlock::try_from_entries(
+        &[occurrences[3].clone(), occurrences[2].clone()],
+        Default::default(),
+    )
     .unwrap();
     let input = Input::font_face(&current);
     let expected = "@font-face { font-weight: env(weight); font-display: swap; }";
@@ -238,7 +252,7 @@ fn current_selected_font_face_uses_one_shared_block_writer_with_order_pending_em
     let exact = Limits::new(8, 8, expected.len());
     assert_eq!(format(input, exact).unwrap(), expected);
     assert_eq!(
-        current.serialize_cssom().unwrap(),
+        current.serialize_cssom(Default::default()).unwrap(),
         "font-weight: env(weight); font-display: swap;"
     );
     for (limits, kind) in [
@@ -263,7 +277,8 @@ fn current_selected_font_face_uses_one_shared_block_writer_with_order_pending_em
         panic!()
     };
     assert_eq!(origin.source().as_str(), source);
-    let empty = CssSpecifiedFontFaceDeclarationBlock::try_from_entries(&[]).unwrap();
+    let empty =
+        CssSpecifiedFontFaceDeclarationBlock::try_from_entries(&[], Default::default()).unwrap();
     assert_eq!(
         format(Input::font_face(&empty), Limits::new(2, 2, 14)).unwrap(),
         "@font-face { }"
@@ -306,12 +321,16 @@ fn namespace_and_external_style_ancestry_propagate_through_groups_and_restore_fo
     let grouped = Input::group(Prelude::Media(&query), &children);
     assert_eq!(
         grouped
-            .serialize_cssom(&namespaces, CssStyleAncestor::Present)
+            .serialize_cssom(&namespaces, CssStyleAncestor::Present, Default::default())
             .unwrap(),
         "@media print {\n  & leaf { }\n}"
     );
     let failure = grouped
-        .serialize_cssom(&CssNamespaceContext::default(), CssStyleAncestor::Present)
+        .serialize_cssom(
+            &CssNamespaceContext::default(),
+            CssStyleAncestor::Present,
+            Default::default(),
+        )
         .unwrap_err();
     assert_eq!(failure.rule_path(), &[0]);
     assert_eq!(
@@ -328,7 +347,7 @@ fn namespace_and_external_style_ancestry_propagate_through_groups_and_restore_fo
     ];
     let root = Input::group(Prelude::Media(&query), &root_children);
     assert_eq!(
-        root.serialize_cssom(&namespaces, CssStyleAncestor::Absent)
+        root.serialize_cssom(&namespaces, CssStyleAncestor::Absent, Default::default())
             .unwrap(),
         "@media print {\n  .outer {\n  & leaf { }\n}\n  .outer { }\n}"
     );
@@ -354,7 +373,7 @@ fn scoped_selectors_and_parsed_descendants_remain_in_their_actual_domains() {
     let input = Input::scoped_style(list, &empty, &[]);
     assert_eq!(
         input
-            .serialize_cssom(&namespaces, CssStyleAncestor::Present)
+            .serialize_cssom(&namespaces, CssStyleAncestor::Present, Default::default())
             .unwrap(),
         "& .child, & > .next { }"
     );
@@ -366,7 +385,7 @@ fn scoped_selectors_and_parsed_descendants_remain_in_their_actual_domains() {
     let borrowed = Input::from_scoped_rule(&scope.rules().rules()[0]);
     assert_eq!(
         borrowed
-            .serialize_cssom(&namespaces, CssStyleAncestor::Absent)
+            .serialize_cssom(&namespaces, CssStyleAncestor::Absent, Default::default())
             .unwrap(),
         ".kept { color: red; }"
     );
@@ -400,7 +419,8 @@ fn unavailable_wrappers_are_lazy_typed_descendants_and_do_not_hide_independent_p
         scope
             .serialize_cssom_start(
                 &CssNamespaceContext::default(),
-                CssScopeNestingContext::None
+                CssScopeNestingContext::None,
+                Default::default(),
             )
             .unwrap(),
         Some(".a".into())
@@ -421,10 +441,7 @@ fn named_import_layer_partial_output_uses_the_native_component_meter_and_escapin
     assert_eq!(name.components(), &["theme", "foo"]);
     let expected = "theme.foo";
     let exact = Limits::new(3, 3, expected.len());
-    assert_eq!(
-        name.serialize_specified_with_limits(exact).unwrap(),
-        expected
-    );
+    assert_eq!(name.serialize_specified(exact).unwrap(), expected);
     for (limits, kind) in [
         (Limits::new(2, 3, expected.len()), Resource::InputNodeLimit),
         (
@@ -433,18 +450,13 @@ fn named_import_layer_partial_output_uses_the_native_component_meter_and_escapin
         ),
         (Limits::new(3, 3, expected.len() - 1), Resource::ByteLimit),
     ] {
-        assert_eq!(
-            name.serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            kind
-        );
-        assert_eq!(
-            name.serialize_specified_with_limits(exact).unwrap(),
-            expected
-        );
+        assert_eq!(name.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(name.serialize_specified(exact).unwrap(), expected);
     }
-    assert_eq!(name.serialize_specified().unwrap(), expected);
+    assert_eq!(
+        name.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     assert!(CssLayerName::try_new(Vec::<String>::new()).is_none());
     assert!(CssLayerName::try_new(["initial"]).is_none());
 }
@@ -532,12 +544,16 @@ fn published_supports_input_continuations_keep_namespace_ancestry_and_lazy_child
     let query = parse_media_query_list("print").into_parts().0;
     let root = Input::group(Prelude::Media(&query), &inner);
     assert_eq!(
-        root.serialize_cssom(&namespaces, CssStyleAncestor::Present)
+        root.serialize_cssom(&namespaces, CssStyleAncestor::Present, Default::default())
             .unwrap(),
         "@media print {\n  @supports (display:grid) {\n  & leaf { }\n}\n}"
     );
     let error = root
-        .serialize_cssom(&CssNamespaceContext::default(), CssStyleAncestor::Present)
+        .serialize_cssom(
+            &CssNamespaceContext::default(),
+            CssStyleAncestor::Present,
+            Default::default(),
+        )
         .unwrap_err();
     assert_eq!(
         error.kind(),
@@ -553,4 +569,70 @@ fn published_supports_input_continuations_keep_namespace_ancestry_and_lazy_child
     );
     assert_eq!(error.rule_path(), &[1]);
     assert_eq!(selected.origin().source().as_str(), "n|leaf");
+}
+
+/// A chain of `groups` nested `@media screen` groups; the innermost group is
+/// at graph depth `groups - 1`. Each level is leaked so it can borrow the next.
+fn nested_groups(groups: usize) -> Input<'static> {
+    let queries: &'static CssMediaQueryList =
+        Box::leak(Box::new(parse_media_query_list("screen").into_parts().0));
+    let mut input = Input::group(Prelude::Media(queries), &[]);
+    for _ in 1..groups {
+        let children: &'static [Input<'static>] = Box::leak(Box::new([input]));
+        input = Input::group(Prelude::Media(queries), children);
+    }
+    input
+}
+
+fn graph_text(
+    input: Input<'_>,
+    limits: CssRuleSerializationLimits,
+) -> Result<String, CssRuleSerializationError> {
+    input.serialize_cssom(
+        &CssNamespaceContext::default(),
+        CssStyleAncestor::Absent,
+        limits,
+    )
+}
+
+#[test]
+fn default_graph_limits_bound_depth_at_256_and_an_explicit_bound_lifts_it() {
+    assert_eq!(CssRuleSerializationLimits::default().max_depth, 256);
+    assert!(graph_text(nested_groups(257), CssRuleSerializationLimits::default()).is_ok());
+    let beyond = nested_groups(258);
+    let error = graph_text(beyond, CssRuleSerializationLimits::default()).unwrap_err();
+    assert_eq!(error.kind(), Error::Resource(Resource::DepthLimit));
+    let unbounded = CssRuleSerializationLimits {
+        max_depth: usize::MAX,
+        ..CssRuleSerializationLimits::default()
+    };
+    let text = graph_text(beyond, unbounded).unwrap();
+    assert_eq!(text.matches("@media screen {").count(), 258);
+}
+
+#[test]
+fn parsed_rule_nesting_stays_within_the_default_graph_depth_bound() {
+    // The parser refuses a block opened at structural nesting 256, so no
+    // parsed sheet retains a rule beyond the default graph depth bound.
+    for groups in [255, 256, 257] {
+        let source = format!("{}{}", "@media screen{".repeat(groups), "}".repeat(groups));
+        let report = parse_sheet(&source);
+        let mut retained = 0;
+        let mut rules = report.syntax().rules();
+        while let [CssRule::Media(media)] = rules {
+            retained += 1;
+            rules = media.rules();
+        }
+        assert!(
+            retained <= 256,
+            "{groups} groups retained {retained} levels"
+        );
+        for rule in report.syntax().rules() {
+            let graph = Input::from_rule(rule);
+            assert!(
+                graph_text(graph, CssRuleSerializationLimits::default()).is_ok(),
+                "{groups} groups"
+            );
+        }
+    }
 }

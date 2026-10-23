@@ -61,7 +61,11 @@ fn accepted(name: &str, value: &str) {
         );
         assert_eq!(source.importance(), CssImportance::Important);
         assert_eq!(
-            source.value_components().serialize().unwrap().as_css(),
+            source
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             value
         );
     }

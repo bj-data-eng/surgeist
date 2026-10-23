@@ -39,14 +39,26 @@ fn coupled_adjacent_properties_expose_distinct_typed_values() {
         surgeist_css::CssValueTokenRef::Dimension { number, unit }
     ) if number.representation() == "12" && unit.eq_ignore_ascii_case("px"))
     );
-    assert_eq!(value.value().serialize_specified().unwrap(), "12px");
+    assert_eq!(
+        value
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "12px"
+    );
 
     let Some(CssKnownPropertyValueRef::Opacity(value)) =
         opacity.known().and_then(|known| known.property_value())
     else {
         panic!("expected typed opacity declaration");
     };
-    assert_eq!(value.value().serialize_specified().unwrap(), "0.5");
+    assert_eq!(
+        value
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "0.5"
+    );
 }
 
 #[test]

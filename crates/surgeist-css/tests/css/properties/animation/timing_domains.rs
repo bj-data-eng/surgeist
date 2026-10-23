@@ -174,7 +174,10 @@ fn iteration_values_check_literals_and_keep_infinite_and_calculation_branches() 
         surgeist_css::CssComponentValue::try_number("2.5").unwrap(),
     )
     .unwrap();
-    assert_eq!(number.serialize_specified().unwrap(), "2.5");
+    assert_eq!(
+        number.serialize_specified(Default::default()).unwrap(),
+        "2.5"
+    );
     assert!(CssAnimationIterationCountList::try_new(Vec::new()).is_none());
     let values = CssAnimationIterationCountList::try_new(vec![
         CssAnimationIterationCount::Infinite,
@@ -268,7 +271,7 @@ fn timing_longhands_expose_exact_typed_values() {
     assert!(matches!(values[0], CssAnimationIterationCount::Infinite));
     assert!(matches!(
         &values[1],
-        CssAnimationIterationCount::Number(number) if number.serialize_specified().unwrap() == "2.5"
+        CssAnimationIterationCount::Number(number) if number.serialize_specified(Default::default()).unwrap() == "2.5"
     ));
     assert!(matches!(
         &values[2],
@@ -325,7 +328,7 @@ fn ordinary_timing_inputs_retain_each_typed_component() {
     };
     assert!(matches!(counts.iteration_counts().values(), [
         CssAnimationIterationCount::Infinite, CssAnimationIterationCount::Number(value)
-    ] if value.serialize_specified().unwrap() == "2"));
+    ] if value.serialize_specified(Default::default()).unwrap() == "2"));
     let CssKnownPropertyValueRef::Transition(transition) = values[5] else {
         panic!("transition");
     };
@@ -365,7 +368,7 @@ fn ordinary_timing_inputs_retain_each_typed_component() {
         Some(CssEasing::Keyword(CssEasingKeyword::Linear))
     ));
     assert!(
-        matches!(animation.iteration_count(), Some(CssAnimationIterationCount::Number(value)) if value.serialize_specified().unwrap() == "2")
+        matches!(animation.iteration_count(), Some(CssAnimationIterationCount::Number(value)) if value.serialize_specified(Default::default()).unwrap() == "2")
     );
     assert_eq!(animation.direction(), Some(CssAnimationDirection::Reverse));
     assert_eq!(animation.fill_mode(), Some(CssAnimationFillMode::Both));
@@ -614,7 +617,7 @@ fn every_animation_component_order_preserves_all_eight_typed_domains() {
             "{source}",
         );
         assert!(
-            matches!(animation.iteration_count(), Some(CssAnimationIterationCount::Number(number)) if number.serialize_specified().unwrap() == "2"),
+            matches!(animation.iteration_count(), Some(CssAnimationIterationCount::Number(number)) if number.serialize_specified(Default::default()).unwrap() == "2"),
             "{source}",
         );
         assert_eq!(

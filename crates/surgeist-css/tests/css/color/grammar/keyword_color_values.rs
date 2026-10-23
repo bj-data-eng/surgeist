@@ -174,7 +174,7 @@ fn assert_named(color: &CssColor, name: &str, [red, green, blue]: [u8; 3]) {
     assert!(!color.is_transparent(), "{name}");
     assert!(color.rgb_value().is_none(), "{name}");
     assert!(color.system().is_none(), "{name}");
-    assert_eq!(color.to_specified_css().unwrap(), name);
+    assert_eq!(color.serialize_specified(Default::default()).unwrap(), name);
 }
 
 fn mixed_case(name: &str) -> String {
@@ -215,7 +215,7 @@ fn every_named_keyword_case_and_escape_has_clean_validation_and_exact_numeric_me
             let color = parsed_color(&spelling);
             assert_named(&color, name, expected);
             // Reparse only after independently observing the initial projection.
-            let canonical = color.to_specified_css().unwrap();
+            let canonical = color.serialize_specified(Default::default()).unwrap();
             assert_eq!(parsed_color(&canonical), color);
         }
     }
@@ -262,8 +262,14 @@ fn transparent_is_distinct_transparent_black_before_serialization_in_every_spell
         assert!(color.rgb_value().is_none());
         assert_eq!(color, direct);
         assert_ne!(color, opaque_black);
-        assert_eq!(color.to_specified_css().unwrap(), "transparent");
-        assert_eq!(parsed_color(&color.to_specified_css().unwrap()), direct);
+        assert_eq!(
+            color.serialize_specified(Default::default()).unwrap(),
+            "transparent"
+        );
+        assert_eq!(
+            parsed_color(&color.serialize_specified(Default::default()).unwrap()),
+            direct
+        );
     }
     assert_eq!(opaque_black.keyword_srgba8(), Some([0, 0, 0, 255]));
     assert!(CssNamedColor::try_new("transparent").is_none());

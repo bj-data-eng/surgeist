@@ -102,12 +102,14 @@ fn auto_initials_are_ordinary_longhands_and_only_line_break_inherits() {
         let CssInitialValueRef::Value(initial) = initial.view() else {
             panic!("ordinary auto initial")
         };
-        let components =
-            CssComponentValues::try_new(vec![CssComponentValue::try_ident("auto").unwrap()])
-                .unwrap();
+        let components = CssComponentValues::try_new(
+            vec![CssComponentValue::try_ident("auto").unwrap()],
+            Default::default(),
+        )
+        .unwrap();
         let auto = checked_components(name, components, false).unwrap();
         assert_eq!(
-            auto.to_specified_css().unwrap(),
+            auto.serialize_specified(Default::default()).unwrap(),
             format!("{name}: auto !important;")
         );
         let values = completed(&auto);
@@ -229,45 +231,33 @@ fn normalization_preserves_order_contexts_importance_and_exact_cumulative_termin
 }
 #[test]
 fn canonical_keyword_declarations_have_exact_node_byte_budgets_and_atomic_reusable_failures() {
+    use CssSerializationLimits as Limits;
     use CssSpecifiedValueSerializationErrorKind as Kind;
-    use CssSpecifiedValueSerializationLimits as Limits;
     for name in FAMILY {
         for &text in keywords(name) {
             for source in [parsed(name, text), checked(name, text, true)] {
                 let before = source.clone();
                 let expected = format!("{name}: {text} !important;");
                 let exact = Limits::new(3, 3, expected.len());
-                assert_eq!(
-                    source.to_specified_css_with_limits(exact).unwrap(),
-                    expected
-                );
+                assert_eq!(source.serialize_specified(exact).unwrap(), expected);
                 for (limits, kind) in [
                     (Limits::new(2, 3, expected.len()), Kind::InputNodeLimit),
                     (Limits::new(3, 2, expected.len()), Kind::ProjectionNodeLimit),
                     (Limits::new(3, 3, expected.len() - 1), Kind::ByteLimit),
                 ] {
                     for _ in 0..2 {
-                        assert_eq!(
-                            source
-                                .to_specified_css_with_limits(limits)
-                                .unwrap_err()
-                                .kind(),
-                            kind
-                        );
+                        assert_eq!(source.serialize_specified(limits).unwrap_err().kind(), kind);
                         assert_eq!(source, before);
                     }
                 }
-                assert_eq!(
-                    source.to_specified_css_with_limits(exact).unwrap(),
-                    expected
-                );
+                assert_eq!(source.serialize_specified(exact).unwrap(), expected);
             }
         }
     }
 }
 #[test]
 fn sheet_siblings_share_exact_final_bytes_and_failed_output_leaves_the_input_reusable() {
-    use CssSpecifiedValueSerializationLimits as Limits;
+    use CssSerializationLimits as Limits;
     let report = parse_sheet(
         ".a{wrap-inside:avoid!important}.b{wrap-before:line}.c{wrap-after:flex}.d{line-break:anywhere}",
     );
@@ -277,25 +267,23 @@ fn sheet_siblings_share_exact_final_bytes_and_failed_output_leaves_the_input_reu
     let expected = ".a { wrap-inside: avoid !important; }\n.b { wrap-before: line; }\n.c { wrap-after: flex; }\n.d { line-break: anywhere; }";
     let exact = Limits::new(usize::MAX, usize::MAX, expected.len());
     let short = Limits::new(usize::MAX, usize::MAX, expected.len() - 1);
-    assert_eq!(sheet.to_specified_css_with_limits(exact).unwrap(), expected);
+    assert_eq!(sheet.serialize_specified(exact).unwrap(), expected);
     assert!(
         sheet
             .rules()
             .iter()
-            .all(|rule| rule.to_specified_css_with_limits(short).is_ok())
+            .all(|rule| rule.serialize_specified(short).is_ok())
     );
     for _ in 0..2 {
-        let error = sheet.to_specified_css_with_limits(short).unwrap_err();
+        let error = sheet.serialize_specified(short).unwrap_err();
         assert_eq!(
             error.kind(),
-            CssSpecifiedRuleSerializationErrorKind::Resource(
-                CssSpecifiedValueSerializationErrorKind::ByteLimit
-            )
+            CssSpecifiedValueSerializationErrorKind::ByteLimit
         );
         assert_eq!(error.rule_index(), Some(3));
         assert_eq!(sheet, &before);
     }
-    assert_eq!(sheet.to_specified_css_with_limits(exact).unwrap(), expected);
+    assert_eq!(sheet.serialize_specified(exact).unwrap(), expected);
 }
 #[test]
 fn flow_flex_grid_item_and_color_controls_execute_independently_of_wrap_lookup() {
@@ -319,7 +307,10 @@ fn flow_flex_grid_item_and_color_controls_execute_independently_of_wrap_lookup()
         let report = parse_style_attribute(&format!("{name}:{input}"));
         assert!(report.is_clean());
         for source in report.syntax().iter() {
-            assert_eq!(source.to_specified_css().unwrap(), expected);
+            assert_eq!(
+                source.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
             let CssExpansion::Contributions(CssContributions::Longhands(values)) =
                 expand_declaration(source).unwrap()
             else {

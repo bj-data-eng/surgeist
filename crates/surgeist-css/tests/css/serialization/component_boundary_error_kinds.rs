@@ -17,12 +17,9 @@ fn named_supports_body_reports_an_unserializable_trailing_reverse_solidus() {
     let body = body.expect("inert body");
     assert_eq!(body.children().count(), 1);
     assert_eq!(
-        body.to_specified_css_with_graph_limits(CssRuleGraphSerializationLimits {
-            values: CssSpecifiedValueSerializationLimits::default(),
-            max_depth: 8,
-        })
-        .unwrap_err()
-        .kind(),
+        body.serialize_specified(CssSerializationLimits::default())
+            .unwrap_err()
+            .kind(),
         CssSpecifiedValueSerializationErrorKind::UnserializableBoundary
     );
 }

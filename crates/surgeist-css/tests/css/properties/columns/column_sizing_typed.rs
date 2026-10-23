@@ -29,13 +29,13 @@ fn positive_integer_constructor_rejects_zero_and_negative_without_narrowing() {
     }
     assert_eq!(
         CssPositiveIntegerValue::Literal(exact_positive("+0002147483648"))
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "2147483648"
     );
     assert_eq!(
         CssPositiveIntegerValue::Literal(exact_positive("9999999999999999999999"))
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "9999999999999999999999"
     );
@@ -48,43 +48,51 @@ fn positive_integer_constructor_rejects_zero_and_negative_without_narrowing() {
 #[test]
 fn exact_count_and_columns_emit_all_effective_values_under_one_budget() {
     let large = CssPositiveIntegerValue::Literal(exact_positive("2147483648"));
-    assert_eq!(large.serialize_specified().unwrap(), "2147483648");
+    assert_eq!(
+        large.serialize_specified(Default::default()).unwrap(),
+        "2147483648"
+    );
     let count = CssColumnCount::Count(large);
-    assert_eq!(count.serialize_specified().unwrap(), "2147483648");
+    assert_eq!(
+        count.serialize_specified(Default::default()).unwrap(),
+        "2147483648"
+    );
     let columns = CssColumns::new(CssColumnWidth::Auto, count);
     assert_eq!(columns.width(), &CssColumnWidth::Auto);
-    assert_eq!(columns.count().serialize_specified().unwrap(), "2147483648");
-    let expected = "auto 2147483648";
-    assert_eq!(columns.serialize_specified().unwrap(), expected);
     assert_eq!(
         columns
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                3,
-                3,
-                expected.len(),
-            ))
+            .count()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "2147483648"
+    );
+    let expected = "auto 2147483648";
+    assert_eq!(
+        columns.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
+    assert_eq!(
+        columns
+            .serialize_specified(CssSerializationLimits::new(3, 3, expected.len(),))
             .unwrap(),
         expected
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(2, 3, expected.len()),
+            CssSerializationLimits::new(2, 3, expected.len()),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(3, 2, expected.len()),
+            CssSerializationLimits::new(3, 2, expected.len()),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(3, 3, expected.len() - 1),
+            CssSerializationLimits::new(3, 3, expected.len() - 1),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
         assert_eq!(
-            columns
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            columns.serialize_specified(limits).unwrap_err().kind(),
             kind
         );
     }
@@ -135,14 +143,25 @@ fn box_size_and_integer_math_remain_symbolic_at_the_column_boundary() {
         .unwrap(),
     ));
     let columns = CssColumns::new(width, CssColumnCount::Auto);
-    assert_eq!(columns.serialize_specified().unwrap(), "2.5% auto");
-    let expression =
-        CssIntegerCalculation::try_from_components(parse_component_values("calc(1 + 2)").unwrap())
-            .unwrap();
+    assert_eq!(
+        columns.serialize_specified(Default::default()).unwrap(),
+        "2.5% auto"
+    );
+    let expression = CssIntegerCalculation::try_from_components(
+        parse_component_values("calc(1 + 2)").unwrap(),
+        Default::default(),
+    )
+    .unwrap();
     let count = CssPositiveIntegerValue::Calculation(expression);
-    assert_eq!(count.serialize_specified().unwrap(), "calc(3)");
+    assert_eq!(
+        count.serialize_specified(Default::default()).unwrap(),
+        "calc(3)"
+    );
     let columns = CssColumns::new(CssColumnWidth::Auto, CssColumnCount::Count(count));
-    assert_eq!(columns.serialize_specified().unwrap(), "auto calc(3)");
+    assert_eq!(
+        columns.serialize_specified(Default::default()).unwrap(),
+        "auto calc(3)"
+    );
     let report = parse_style_attribute("columns:calc(1 + 2)");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::Columns(parsed) = report.syntax()[0]
@@ -162,49 +181,49 @@ fn two_symbolic_children_share_projection_and_output_limits() {
         CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(
             CssLengthPercentageCalculation::try_from_components(
                 parse_component_values("calc(1px + 2%)").unwrap(),
+                Default::default(),
             )
             .unwrap(),
         )
         .unwrap(),
     ));
     let count = CssColumnCount::Count(CssPositiveIntegerValue::Calculation(
-        CssIntegerCalculation::try_from_components(parse_component_values("calc(1 + 2)").unwrap())
-            .unwrap(),
+        CssIntegerCalculation::try_from_components(
+            parse_component_values("calc(1 + 2)").unwrap(),
+            Default::default(),
+        )
+        .unwrap(),
     ));
     let columns = CssColumns::new(width, count);
     let expected = "calc(2% + 1px) calc(3)";
-    assert_eq!(columns.serialize_specified().unwrap(), expected);
+    assert_eq!(
+        columns.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     // Input: pair + two four-node calc() expressions. Projection: pair + five nodes
     // for the mixed-unit width + three for the folded integer count.
     assert_eq!(
         columns
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                9,
-                9,
-                expected.len(),
-            ))
+            .serialize_specified(CssSerializationLimits::new(9, 9, expected.len(),))
             .unwrap(),
         expected
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(8, 9, expected.len()),
+            CssSerializationLimits::new(8, 9, expected.len()),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(9, 8, expected.len()),
+            CssSerializationLimits::new(9, 8, expected.len()),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(9, 9, expected.len() - 1),
+            CssSerializationLimits::new(9, 9, expected.len() - 1),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
         assert_eq!(
-            columns
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            columns.serialize_specified(limits).unwrap_err().kind(),
             kind
         );
     }

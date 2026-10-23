@@ -35,7 +35,7 @@ fn direct_construction_covers_six_distinct_states_with_canonical_text() {
         ),
     ];
     for (index, (value, css)) in cases.into_iter().enumerate() {
-        assert_eq!(value.serialize_specified().unwrap(), css);
+        assert_eq!(value.serialize_specified(Default::default()).unwrap(), css);
         for (other_index, (other, _)) in cases.into_iter().enumerate() {
             if index != other_index {
                 assert_ne!(value, other, "distinct authored states");
@@ -72,7 +72,13 @@ fn parsed_keyword_orders_canonicalize_without_losing_authored_slice() {
         };
         assert_eq!(wrapper.as_css(), authored);
         assert_eq!(*wrapper.value(), state);
-        assert_eq!(wrapper.value().serialize_specified().unwrap(), expected);
+        assert_eq!(
+            wrapper
+                .value()
+                .serialize_specified(Default::default())
+                .unwrap(),
+            expected
+        );
     }
 }
 
@@ -125,33 +131,30 @@ fn canonical_serializer_charges_each_keyword_and_exact_output_bytes() {
     let value = CssGridAutoFlow::explicit_axis(CssGridAutoFlowAxis::Column, true);
     for (limits, error) in [
         (
-            CssSpecifiedValueSerializationLimits::new(1, 2, 12),
+            CssSerializationLimits::new(1, 2, 12),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(2, 1, 12),
+            CssSerializationLimits::new(2, 1, 12),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(2, 2, 11),
+            CssSerializationLimits::new(2, 2, 11),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
-        assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            error
-        );
+        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), error);
     }
     assert_eq!(
         value
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(2, 2, 12))
+            .serialize_specified(CssSerializationLimits::new(2, 2, 12))
             .unwrap(),
         "column dense"
     );
-    assert_eq!(value.serialize_specified().unwrap(), "column dense");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "column dense"
+    );
 }
 
 #[test]

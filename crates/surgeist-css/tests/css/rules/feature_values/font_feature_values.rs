@@ -242,10 +242,12 @@ fn checked_construction_normalizes_decimal_syntax_without_inventing_source() {
     assert!(block.position().is_none());
     let display = CssFontFeatureDisplayOccurrence::new(
         surgeist_css::CssFontFeatureDisplayValue::try_from_components(
-            surgeist_css::CssComponentValues::try_new(vec![
-                surgeist_css::CssComponentValue::try_ident("swap").unwrap(),
-            ])
+            surgeist_css::CssComponentValues::try_new(
+                vec![surgeist_css::CssComponentValue::try_ident("swap").unwrap()],
+                Default::default(),
+            )
             .unwrap(),
+            Default::default(),
         )
         .unwrap(),
     );
@@ -674,7 +676,7 @@ fn inherited_scope_keeps_scoped_declaration_and_selector_semantics_across_chunks
                 declaration
                     .source()
                     .value_components()
-                    .serialize()
+                    .serialize_tokens(Default::default())
                     .unwrap()
                     .as_css(),
                 format!(" {name}")

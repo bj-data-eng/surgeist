@@ -290,12 +290,16 @@ fn raw_nonnegative_scalar_and_calculation_equality_keep_provenance_policy() {
         p == built,
         "Direct shared nonnegative Percentage equality ignores parsed versus programmatic provenance for 25%"
     );
-    let a =
-        CssNumberCalculation::try_from_components(parse_component_values("calc(1 + 2)").unwrap())
-            .unwrap();
-    let b =
-        CssNumberCalculation::try_from_components(parse_component_values("  calc(1 + 2)").unwrap())
-            .unwrap();
+    let a = CssNumberCalculation::try_from_components(
+        parse_component_values("calc(1 + 2)").unwrap(),
+        Default::default(),
+    )
+    .unwrap();
+    let b = CssNumberCalculation::try_from_components(
+        parse_component_values("  calc(1 + 2)").unwrap(),
+        Default::default(),
+    )
+    .unwrap();
     assert!(
         a != b,
         "Raw Number calculation equality retains source origins for calc(1 + 2) versus its leading-whitespace source"

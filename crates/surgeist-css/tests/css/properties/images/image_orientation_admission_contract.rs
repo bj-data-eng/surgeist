@@ -219,10 +219,13 @@ fn checked_grammar_admits_none_without_fabricated_declaration_provenance() {
 
 #[test]
 fn programmatic_flip_before_angle_retains_programmatic_scalar_origin() {
-    let components = CssComponentValues::try_new(vec![
-        CssComponentValue::try_token("flip").unwrap(),
-        CssComponentValue::try_token("3.000e1deg").unwrap(),
-    ])
+    let components = CssComponentValues::try_new(
+        vec![
+            CssComponentValue::try_token("flip").unwrap(),
+            CssComponentValue::try_token("3.000e1deg").unwrap(),
+        ],
+        Default::default(),
+    )
     .unwrap();
     for declaration in [
         parse_property_value(

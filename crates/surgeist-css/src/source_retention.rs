@@ -965,7 +965,12 @@ numeric!(
 );
 via!(CssSpecifiedFontFaceDeclarationBlock, self, self.entries());
 via!(CssSpecifiedPageDeclarationBlock, self, self.entries());
-via!(CssSpecifiedValueSerializationError, self, &self.origin());
+via!(
+    CssSerializationError,
+    self,
+    &self.origin(),
+    &self.component_error()
+);
 via!(CssFontFeatureValuesFamilyList, self, self.origin());
 impl CssRetainedSources for CssSpecifiedPageDeclarationEntry {
     fn visit_retained_sources(

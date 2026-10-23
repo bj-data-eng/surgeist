@@ -102,12 +102,19 @@ fn checked_mixed_origin_graph_keeps_the_actual_scalar_sources() {
             .iter()
             .cloned(),
     );
-    let children = CssComponentValues::try_new(children).unwrap();
-    let values = CssComponentValues::try_new(vec![
-        CssComponentValue::try_function("rgb", children).unwrap(),
-    ])
+    let children = CssComponentValues::try_new(children, Default::default()).unwrap();
+    let values = CssComponentValues::try_new(
+        vec![CssComponentValue::try_function("rgb", children).unwrap()],
+        Default::default(),
+    )
     .unwrap();
-    assert_eq!(values.serialize().unwrap().as_css(), "rgb(0.1/**/1e100 0)");
+    assert_eq!(
+        values
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        "rgb(0.1/**/1e100 0)"
+    );
     let declaration = parse_property_value(
         CssPropertyNameRef::Known(CssKnownProperty::Color),
         values.clone(),

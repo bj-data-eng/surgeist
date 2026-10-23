@@ -52,40 +52,36 @@ fn interpolation_typed_choices_keep_auto_distinct_and_emit_lowercase_keywords() 
         ),
     ] {
         let before = value;
-        assert_eq!(value.serialize_specified().unwrap(), canonical);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            canonical
+        );
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    1,
-                    1,
-                    canonical.len()
-                ))
+                .serialize_specified(CssSerializationLimits::new(1, 1, canonical.len()))
                 .unwrap(),
             canonical
         );
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(0, 1, canonical.len()),
+                CssSerializationLimits::new(0, 1, canonical.len()),
                 CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 0, canonical.len()),
+                CssSerializationLimits::new(1, 0, canonical.len()),
                 CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 1, canonical.len() - 1),
+                CssSerializationLimits::new(1, 1, canonical.len() - 1),
                 CssSpecifiedValueSerializationErrorKind::ByteLimit,
             ),
         ] {
-            assert_eq!(
-                value
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
-                kind
-            );
+            assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
             assert_eq!(value, before);
-            assert_eq!(value.serialize_specified().unwrap(), canonical);
+            assert_eq!(
+                value.serialize_specified(Default::default()).unwrap(),
+                canonical
+            );
         }
         for text in [authored, canonical] {
             let source = declaration(CssKnownProperty::ColorInterpolationFilters, text);
@@ -199,7 +195,10 @@ fn flood_and_lighting_wrappers_contribute_the_same_unresolved_color_payload() {
                     _ => panic!("property-coupled color contribution"),
                 };
             assert_eq!(contributed, value);
-            assert_eq!(contributed.to_specified_css().unwrap(), specified);
+            assert_eq!(
+                contributed.serialize_specified(Default::default()).unwrap(),
+                specified
+            );
         }
     }
 }
@@ -230,7 +229,12 @@ fn flood_scalar_payload_preserves_exact_original_kind_token_and_origin() {
             source.value_components().items()[0].origin()
         );
         assert!(matches!(value.origin(), CssValueOrigin::Parsed(_)));
-        assert_eq!(opacity(&source).serialize_specified().unwrap(), specified);
+        assert_eq!(
+            opacity(&source)
+                .serialize_specified(Default::default())
+                .unwrap(),
+            specified
+        );
         let values = contributions(&source);
         let CssContributionValueRef::Ordinary(CssLonghandValueRef::FloodOpacity(contributed)) =
             values.items()[0].value()
@@ -274,7 +278,10 @@ fn flood_math_payloads_retain_checked_roots_and_unresolved_percentage_hint() {
             }
             _ => panic!("matching exact numeric root"),
         }
-        assert_eq!(value.serialize_specified().unwrap(), specified);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            specified
+        );
         let values = contributions(&source);
         let CssContributionValueRef::Ordinary(CssLonghandValueRef::FloodOpacity(contributed)) =
             values.items()[0].value()

@@ -5,12 +5,11 @@ use crate::specified_serialization::SpecifiedSerializationContext;
 use crate::{
     CssComponentValue, CssComponentValueRef, CssIntegerCalculation, CssIntegerLiteral,
     CssNumericConstructionError, CssNumericConstructionErrorKind, CssNumericTokenKind,
-    CssSpecifiedNumber, CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits,
-    CssValueOrigin, CssValueTokenRef,
+    CssSerializationError, CssSpecifiedNumber, CssValueOrigin, CssValueTokenRef,
 };
 
 type ConstructionResult<T> = Result<T, CssNumericConstructionError>;
-type SerializationResult<T> = Result<T, CssSpecifiedValueSerializationError>;
+type SerializationResult<T> = Result<T, CssSerializationError>;
 
 /// A case-sensitive, four-character printable ASCII OpenType tag.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -143,29 +142,6 @@ impl CssFontFeatureIndex {
         })
     }
 
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        let context = &mut writer.context;
-        let output = &mut writer.css;
-        self.append_specified(context, output)?;
-        Ok(())
-    }
-
     pub(crate) fn append_specified(
         &self,
         context: &mut SpecifiedSerializationContext,
@@ -179,6 +155,18 @@ impl CssFontFeatureIndex {
         }
     }
 }
+impl crate::specified_rule_serialization::SpecifiedProvider for CssFontFeatureIndex {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        let context = &mut writer.context;
+        let output = &mut writer.css;
+        self.append_specified(context, output)?;
+        Ok(())
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(CssFontFeatureIndex);
 
 /// The authored value following an OpenType feature tag.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -291,56 +279,29 @@ pub enum CssFontVariationSettings {
     Variations(CssFontVariationList),
 }
 
-fn keyword(writer: &mut SpecifiedRuleWriter, value: &str) -> SerializationResult<()> {
-    writer.context.charge_input(1)?;
-    writer.context.charge_projection(1)?;
-    writer.append(value)
-}
-
 impl CssAuthoredFontFeatureSettings {
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        self.append_specified(writer)?;
-        Ok(())
-    }
-
     pub(crate) fn append_specified(
         &self,
         writer: &mut SpecifiedRuleWriter,
     ) -> SerializationResult<()> {
         match self {
-            Self::Normal => keyword(writer, "normal")?,
+            Self::Normal => writer.keyword("normal")?,
             Self::Features(list) => {
                 for (index, feature) in list.features().iter().enumerate() {
                     if index != 0 {
                         writer.append(", ")?;
                     }
-                    writer.context.charge_input(1)?;
-                    writer.context.charge_projection(1)?;
+                    writer.node()?;
                     writer.append_string(feature.tag().as_str())?;
                     match feature.value() {
                         CssAuthoredFontFeatureValue::Omitted => {}
                         CssAuthoredFontFeatureValue::On => {
                             writer.append(" ")?;
-                            keyword(writer, "on")?;
+                            writer.keyword("on")?;
                         }
                         CssAuthoredFontFeatureValue::Off => {
                             writer.append(" ")?;
-                            keyword(writer, "off")?;
+                            writer.keyword("off")?;
                         }
                         CssAuthoredFontFeatureValue::Index(value) => {
                             writer.append(" ")?;
@@ -353,41 +314,30 @@ impl CssAuthoredFontFeatureSettings {
         Ok(())
     }
 }
-
-impl CssFontVariationSettings {
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssAuthoredFontFeatureSettings {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         self.append_specified(writer)?;
         Ok(())
     }
+}
+crate::specified_rule_serialization::specified_serialization!(CssAuthoredFontFeatureSettings);
 
+impl CssFontVariationSettings {
     pub(crate) fn append_specified(
         &self,
         writer: &mut SpecifiedRuleWriter,
     ) -> SerializationResult<()> {
         match self {
-            Self::Normal => keyword(writer, "normal")?,
+            Self::Normal => writer.keyword("normal")?,
             Self::Variations(list) => {
                 for (index, variation) in list.variations().iter().enumerate() {
                     if index != 0 {
                         writer.append(", ")?;
                     }
-                    writer.context.charge_input(1)?;
-                    writer.context.charge_projection(1)?;
+                    writer.node()?;
                     writer.append_string(variation.tag().as_str())?;
                     writer.append(" ")?;
                     let captured = variation.value().capture_specified(&mut writer.context)?;
@@ -398,3 +348,13 @@ impl CssFontVariationSettings {
         Ok(())
     }
 }
+impl crate::specified_rule_serialization::SpecifiedProvider for CssFontVariationSettings {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        self.append_specified(writer)?;
+        Ok(())
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(CssFontVariationSettings);

@@ -1,41 +1,23 @@
 //! Cumulative specified serialization of authored Motion values.
 use crate::specified_rule_serialization::SpecifiedRuleWriter;
 use crate::*;
-type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
+type Result<T> = std::result::Result<T, CssSerializationError>;
 
-macro_rules! specified_methods {
-    () => {
-        /// Serializes authored constituents without resolving paths, bearings or resources.
-        pub fn serialize_specified(&self) -> Result<String> {
-            self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-        }
-        /// Uses cumulative input, projection and final UTF-8 byte budgets.
-        /// Failure returns no partial CSS and preserves every authored child and origin.
-        pub fn serialize_specified_with_limits(
-            &self,
-            limits: CssSpecifiedValueSerializationLimits,
-        ) -> Result<String> {
-            let mut writer = SpecifiedRuleWriter::new(limits);
-            self.append_to_rule_writer(&mut writer)?;
-            Ok(writer.css)
-        }
-    };
-}
-impl CssCoordBox {
-    specified_methods!();
-    pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+crate::specified_rule_serialization::specified_serialization!(CssCoordBox);
+impl crate::specified_rule_serialization::SpecifiedProvider for CssCoordBox {
+    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         writer.keyword(self.as_css_str())
     }
 }
-impl CssRaySize {
-    specified_methods!();
-    pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+crate::specified_rule_serialization::specified_serialization!(CssRaySize);
+impl crate::specified_rule_serialization::SpecifiedProvider for CssRaySize {
+    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         writer.keyword(self.as_css_str())
     }
 }
-impl CssRay {
-    specified_methods!();
-    pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+crate::specified_rule_serialization::specified_serialization!(CssRay);
+impl crate::specified_rule_serialization::SpecifiedProvider for CssRay {
+    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         writer.node()?;
         writer.append("ray(")?;
         self.angle()
@@ -59,9 +41,9 @@ impl CssRay {
         writer.append(")")
     }
 }
-impl CssOffsetPathKind {
-    specified_methods!();
-    pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+crate::specified_rule_serialization::specified_serialization!(CssOffsetPathKind);
+impl crate::specified_rule_serialization::SpecifiedProvider for CssOffsetPathKind {
+    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         match self {
             Self::Ray(value) => value.append_to_rule_writer(writer),
             Self::Url(value) => value.append_to_rule_writer(writer),
@@ -69,9 +51,9 @@ impl CssOffsetPathKind {
         }
     }
 }
-impl CssOffsetPathValue {
-    specified_methods!();
-    pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+crate::specified_rule_serialization::specified_serialization!(CssOffsetPathValue);
+impl crate::specified_rule_serialization::SpecifiedProvider for CssOffsetPathValue {
+    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         writer.node()?;
         self.path().append_to_rule_writer(writer)?;
         if let Some(coord_box) = self.coord_box() {
@@ -81,9 +63,9 @@ impl CssOffsetPathValue {
         Ok(())
     }
 }
-impl CssOffsetPath {
-    specified_methods!();
-    pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+crate::specified_rule_serialization::specified_serialization!(CssOffsetPath);
+impl crate::specified_rule_serialization::SpecifiedProvider for CssOffsetPath {
+    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         match self.view() {
             CssOffsetPathRef::None => writer.keyword("none"),
             CssOffsetPathRef::CoordBox(value) => value.append_to_rule_writer(writer),
@@ -91,9 +73,9 @@ impl CssOffsetPath {
         }
     }
 }
-impl CssOffsetPosition {
-    specified_methods!();
-    pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+crate::specified_rule_serialization::specified_serialization!(CssOffsetPosition);
+impl crate::specified_rule_serialization::SpecifiedProvider for CssOffsetPosition {
+    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         match self {
             Self::Normal => writer.keyword("normal"),
             Self::Auto => writer.keyword("auto"),
@@ -101,27 +83,27 @@ impl CssOffsetPosition {
         }
     }
 }
-impl CssOffsetAnchor {
-    specified_methods!();
-    pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+crate::specified_rule_serialization::specified_serialization!(CssOffsetAnchor);
+impl crate::specified_rule_serialization::SpecifiedProvider for CssOffsetAnchor {
+    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         match self {
             Self::Auto => writer.keyword("auto"),
             Self::Position(value) => value.append_to_rule_writer(writer),
         }
     }
 }
-impl CssOffsetRotateModifier {
-    specified_methods!();
-    pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+crate::specified_rule_serialization::specified_serialization!(CssOffsetRotateModifier);
+impl crate::specified_rule_serialization::SpecifiedProvider for CssOffsetRotateModifier {
+    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         writer.keyword(match self {
             Self::Auto => "auto",
             Self::Reverse => "reverse",
         })
     }
 }
-impl CssOffsetRotate {
-    specified_methods!();
-    pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+crate::specified_rule_serialization::specified_serialization!(CssOffsetRotate);
+impl crate::specified_rule_serialization::SpecifiedProvider for CssOffsetRotate {
+    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         writer.node()?;
         if let Some(modifier) = self.modifier() {
             modifier.append_to_rule_writer(writer)?;
@@ -135,9 +117,9 @@ impl CssOffsetRotate {
         Ok(())
     }
 }
-impl CssOffset {
-    specified_methods!();
-    pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+crate::specified_rule_serialization::specified_serialization!(CssOffset);
+impl crate::specified_rule_serialization::SpecifiedProvider for CssOffset {
+    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         writer.node()?;
         if let Some(position) = self.position() {
             writer.source_member(0, |writer| position.append_to_rule_writer(writer))?;
@@ -175,8 +157,9 @@ impl CssOffset {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::specified_rule_serialization::SpecifiedProvider as _;
+    use CssSerializationLimits as L;
     use CssSpecifiedValueSerializationErrorKind as K;
-    use CssSpecifiedValueSerializationLimits as L;
 
     fn values() -> (CssOffsetPath, CssOffsetRotate) {
         let angle = |number| {

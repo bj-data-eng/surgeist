@@ -3,38 +3,13 @@
 use crate::{
     CssBackgroundPosition, CssBackgroundPositionList, CssBlockPosition, CssHorizontalPosition,
     CssInlinePosition, CssPhysicalPosition, CssPhysicalPositionList, CssPosition, CssPositionRef,
-    CssRelativeAxisPosition, CssSpecifiedValueSerializationError,
-    CssSpecifiedValueSerializationLimits, CssVerticalPosition,
+    CssRelativeAxisPosition, CssSerializationError, CssVerticalPosition,
     specified_rule_serialization::SpecifiedRuleWriter,
 };
 
-type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
+type Result<T> = std::result::Result<T, CssSerializationError>;
 
 impl CssPosition {
-    /// Serializes Cartesian axes in horizontal/vertical order and flow axes in block/inline order.
-    /// Percentages and calculations retain their symbolic specified meaning.
-    pub fn serialize_specified(&self) -> Result<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes the position with one cumulative input, projection, and byte budget.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        self.append_specified(writer)?;
-        Ok(())
-    }
-
     /// Appends to an owning image or property writer without resetting its budget.
     pub(crate) fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         match self.view() {
@@ -42,13 +17,13 @@ impl CssPosition {
                 append_axes(value.horizontal(), value.vertical(), writer)
             }
             CssPositionRef::NamedFlow(value) => {
-                charge_position(writer)?;
+                writer.node()?;
                 append_block(value.block(), writer)?;
                 writer.append(" ")?;
                 append_inline(value.inline(), writer)
             }
             CssPositionRef::RelativeFlow(value) => {
-                charge_position(writer)?;
+                writer.node()?;
                 append_relative(value.block(), writer)?;
                 writer.append(" ")?;
                 append_relative(value.inline(), writer)
@@ -56,135 +31,84 @@ impl CssPosition {
         }
     }
 }
-
-impl CssPhysicalPosition {
-    /// Serializes the checked physical position in horizontal-then-vertical order.
-    /// Percentages and calculations retain their symbolic specified meaning.
-    pub fn serialize_specified(&self) -> Result<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes the position with one cumulative input, projection, and byte budget.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssPosition {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         self.append_specified(writer)?;
         Ok(())
     }
+}
+crate::specified_rule_serialization::specified_serialization!(CssPosition);
 
+impl CssPhysicalPosition {
     /// Appends to an owning image or property writer without resetting its budget.
     pub(crate) fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         append_axes(self.horizontal(), self.vertical(), writer)
     }
 }
-
-impl CssBackgroundPosition {
-    /// Serializes the checked background position in horizontal-then-vertical order.
-    /// In a three-component position, the absent edge offset remains omitted.
-    /// Percentages and calculations retain their symbolic specified meaning.
-    pub fn serialize_specified(&self) -> Result<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes both axes with one cumulative input, projection, and byte budget.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssPhysicalPosition {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         self.append_specified(writer)?;
         Ok(())
     }
+}
+crate::specified_rule_serialization::specified_serialization!(CssPhysicalPosition);
 
+impl CssBackgroundPosition {
     pub(crate) fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         append_axes(self.horizontal(), self.vertical(), writer)
     }
 }
-
-impl CssPhysicalPositionList {
-    /// Serializes the nonempty authored layers in comma order.
-    pub fn serialize_specified(&self) -> Result<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes every layer and numeric child with one cumulative resource budget.
-    /// Failure returns no partial CSS and leaves the authored list unchanged.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssBackgroundPosition {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        writer.context.charge_input(1)?;
-        writer.context.charge_projection(1)?;
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        self.append_specified(writer)?;
+        Ok(())
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(CssBackgroundPosition);
+
+impl crate::specified_rule_serialization::SpecifiedProvider for CssPhysicalPositionList {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        writer.node()?;
         writer.comma_separated(self.positions(), |writer, position| {
             position.append_specified(writer)
         })?;
         Ok(())
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssPhysicalPositionList);
 
-impl CssBackgroundPositionList {
-    /// Serializes the nonempty authored layers in comma order.
-    pub fn serialize_specified(&self) -> Result<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes every layer and numeric child with one cumulative resource budget.
-    /// Failure returns no partial CSS and leaves the authored list unchanged.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssBackgroundPositionList {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        writer.context.charge_input(1)?;
-        writer.context.charge_projection(1)?;
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        writer.node()?;
         writer.comma_separated(self.positions(), |writer, position| {
             position.append_specified(writer)
         })?;
         Ok(())
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssBackgroundPositionList);
 
 fn append_axes(
     horizontal: &CssHorizontalPosition,
     vertical: &CssVerticalPosition,
     writer: &mut SpecifiedRuleWriter,
 ) -> Result<()> {
-    charge_position(writer)?;
+    writer.node()?;
     append_horizontal(horizontal, writer)?;
     writer.append(" ")?;
     append_vertical(vertical, writer)
@@ -194,8 +118,7 @@ fn append_horizontal(
     value: &CssHorizontalPosition,
     writer: &mut SpecifiedRuleWriter,
 ) -> Result<()> {
-    writer.context.charge_input(1)?;
-    writer.context.charge_projection(1)?;
+    writer.node()?;
     match value {
         CssHorizontalPosition::Left => writer.append("left"),
         CssHorizontalPosition::Center => writer.append("center"),
@@ -223,8 +146,7 @@ fn append_horizontal(
 }
 
 fn append_vertical(value: &CssVerticalPosition, writer: &mut SpecifiedRuleWriter) -> Result<()> {
-    writer.context.charge_input(1)?;
-    writer.context.charge_projection(1)?;
+    writer.node()?;
     match value {
         CssVerticalPosition::Top => writer.append("top"),
         CssVerticalPosition::Center => writer.append("center"),
@@ -258,14 +180,8 @@ fn append_offset(
     offset.append_specified(&mut writer.context, &mut writer.css)
 }
 
-fn charge_position(writer: &mut SpecifiedRuleWriter) -> Result<()> {
-    writer.context.charge_input(1)?;
-    writer.context.charge_projection(1)
-}
-
 fn append_block(value: &CssBlockPosition, writer: &mut SpecifiedRuleWriter) -> Result<()> {
-    writer.context.charge_input(1)?;
-    writer.context.charge_projection(1)?;
+    writer.node()?;
     match value {
         CssBlockPosition::Center => writer.append("center"),
         CssBlockPosition::Start => writer.append("block-start"),
@@ -282,8 +198,7 @@ fn append_block(value: &CssBlockPosition, writer: &mut SpecifiedRuleWriter) -> R
 }
 
 fn append_inline(value: &CssInlinePosition, writer: &mut SpecifiedRuleWriter) -> Result<()> {
-    writer.context.charge_input(1)?;
-    writer.context.charge_projection(1)?;
+    writer.node()?;
     match value {
         CssInlinePosition::Center => writer.append("center"),
         CssInlinePosition::Start => writer.append("inline-start"),
@@ -303,8 +218,7 @@ fn append_relative(
     value: &CssRelativeAxisPosition,
     writer: &mut SpecifiedRuleWriter,
 ) -> Result<()> {
-    writer.context.charge_input(1)?;
-    writer.context.charge_projection(1)?;
+    writer.node()?;
     match value {
         CssRelativeAxisPosition::Center => writer.append("center"),
         CssRelativeAxisPosition::Start => writer.append("start"),

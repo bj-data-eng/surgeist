@@ -171,7 +171,7 @@ fn invalid_nested_rules_do_not_hide_valid_declarations_or_later_children() {
         assert_eq!(
             declaration
                 .value_components()
-                .serialize()
+                .serialize_tokens(Default::default())
                 .unwrap()
                 .as_css()
                 .trim(),

@@ -6,9 +6,7 @@
 //! on the same finite-bit kernel; retained color calculation roles stay separate.
 
 use crate::exact_decimal::LexicalDecimal;
-use crate::{
-    CssSpecifiedValueSerializationError as Error, CssSpecifiedValueSerializationErrorKind,
-};
+use crate::{CssSerializationError as Error, CssSpecifiedValueSerializationErrorKind};
 use surgeist_color::Finite;
 use surgeist_color::format::{self, FormatError, RoundingMode};
 

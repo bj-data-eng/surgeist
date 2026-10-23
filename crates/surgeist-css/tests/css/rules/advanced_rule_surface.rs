@@ -166,7 +166,14 @@ fn advanced_css_rule_surface_is_structurally_accessible() {
     let CssContainerLengthRef::Numeric(value) = value.view() else {
         panic!("typed length")
     };
-    assert_eq!(value.components().serialize().unwrap().as_css(), "30rem");
+    assert_eq!(
+        value
+            .components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        "30rem"
+    );
     let [container_nested] = container.rules() else {
         panic!("expected one nested container rule");
     };

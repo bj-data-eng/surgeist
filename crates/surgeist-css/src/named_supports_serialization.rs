@@ -1,14 +1,13 @@
 //! Canonical specified serialization of authored named support tests.
 
 use crate::{
-    CssComponentValue, CssComponentValueRef, CssImportance, CssSpecifiedValueSerializationError,
-    CssSpecifiedValueSerializationErrorKind, CssSpecifiedValueSerializationLimits,
-    CssSupportsConditionRule, CssSupportsTestBody, CssSupportsTestDeclaration, CssSupportsTestItem,
-    CssValueTokenRef, component_values::CssCanonicalBuilder,
-    specified_rule_serialization::SpecifiedRuleWriter,
+    CssComponentValue, CssComponentValueRef, CssImportance, CssSerializationError,
+    CssSpecifiedValueSerializationErrorKind, CssSupportsConditionRule, CssSupportsTestBody,
+    CssSupportsTestDeclaration, CssSupportsTestItem, CssValueTokenRef,
+    component_values::CssCanonicalBuilder, specified_rule_serialization::SpecifiedRuleWriter,
 };
 
-type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
+type Result<T> = std::result::Result<T, CssSerializationError>;
 
 enum Event<'a> {
     Body(&'a CssSupportsTestBody, usize, usize),
@@ -18,38 +17,15 @@ enum Event<'a> {
     Text(&'static str),
 }
 
-impl CssSupportsTestBody {
-    /// Serializes test candidates without selecting feature truth values.
-    pub fn to_specified_css(&self) -> Result<String> {
-        self.to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Shares one input, projection, and output budget across the complete body.
-    pub fn to_specified_css_with_limits(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssSupportsConditionRule {
+    fn append_to_rule_writer(
         &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String> {
-        let mut writer = SpecifiedRuleWriter::new(limits);
-        writer.named_supports_body(self)?;
-        Ok(writer.css)
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        writer.named_supports_rule(self)
     }
 }
-
-impl CssSupportsConditionRule {
-    /// Canonical specified definition text, including an explicit block closure.
-    pub fn to_specified_css(&self) -> Result<String> {
-        self.to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    pub fn to_specified_css_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String> {
-        let mut writer = SpecifiedRuleWriter::new(limits);
-        writer.named_supports_rule(self)?;
-        Ok(writer.css)
-    }
-}
+crate::specified_rule_serialization::specified_serialization!(CssSupportsConditionRule);
 
 impl SpecifiedRuleWriter {
     pub(crate) fn named_supports_rule(&mut self, rule: &CssSupportsConditionRule) -> Result<()> {
@@ -63,19 +39,16 @@ impl SpecifiedRuleWriter {
     ) -> Result<()> {
         self.check_graph_depth(self.graph_depth)
             .map_err(|e| e.at_origin(name.origin()))?;
-        self.context.charge_input(1)?;
-        self.context.charge_projection(1)?;
+        self.node()?;
         self.append("@supports-condition ")?;
-        self.context.charge_input(1)?;
-        self.context.charge_projection(1)?;
+        self.node()?;
         self.append_identifier(name.as_str())?;
         self.append(" {")?;
         if !body.items().is_empty() {
             self.append(" ")?;
             self.write_named_tests(Event::Body(body, 0, self.child_depth(self.graph_depth)?))?;
         } else {
-            self.context.charge_input(1)?;
-            self.context.charge_projection(1)?;
+            self.node()?;
         }
         self.append(" }")
     }
@@ -97,8 +70,7 @@ impl SpecifiedRuleWriter {
             match event {
                 Event::Body(body, index, depth) => {
                     if index == 0 {
-                        self.context.charge_input(1)?;
-                        self.context.charge_projection(1)?;
+                        self.node()?;
                     }
                     if let Some(item) = body.items().get(index) {
                         push(&mut pending, Event::Body(body, index + 1, depth))?;
@@ -125,8 +97,7 @@ impl SpecifiedRuleWriter {
                 }
                 Event::Item(item, depth) => match item {
                     CssSupportsTestItem::Declarations(run) => {
-                        self.context.charge_input(1)?;
-                        self.context.charge_projection(1)?;
+                        self.node()?;
                         push(
                             &mut pending,
                             Event::Declarations(run.declarations(), 0, depth),
@@ -149,8 +120,7 @@ impl SpecifiedRuleWriter {
                         self.named_supports_declaration(v)?;
                         continue;
                     }
-                    self.context.charge_input(1)?;
-                    self.context.charge_projection(1)?;
+                    self.node()?;
                     let body = match child {
                         crate::CssSupportsTestChildRef::QualifiedRule(rule) => {
                             self.append_components(rule.prelude().items())?;
@@ -180,8 +150,7 @@ impl SpecifiedRuleWriter {
                     };
                     if let Some(body) = body {
                         if body.items().is_empty() {
-                            self.context.charge_input(1)?;
-                            self.context.charge_projection(1)?;
+                            self.node()?;
                             self.append(" }")?;
                         } else {
                             self.append(" ")?;
@@ -198,7 +167,7 @@ impl SpecifiedRuleWriter {
 
     pub(crate) fn check_graph_depth(&self, depth: usize) -> Result<()> {
         if self.max_graph_depth.is_some_and(|limit| depth > limit) {
-            return Err(CssSpecifiedValueSerializationError::new(
+            return Err(CssSerializationError::new(
                 CssSpecifiedValueSerializationErrorKind::DepthLimit,
             ));
         }
@@ -237,8 +206,7 @@ impl SpecifiedRuleWriter {
         &mut self,
         declaration: &CssSupportsTestDeclaration,
     ) -> Result<()> {
-        self.context.charge_input(1)?;
-        self.context.charge_projection(1)?;
+        self.node()?;
         let full = component_count(declaration.components())?;
         let value = component_count(declaration.value_components())?;
         self.context
@@ -255,8 +223,7 @@ impl SpecifiedRuleWriter {
 
     fn append_components(&mut self, components: &[CssComponentValue]) -> Result<()> {
         let count = component_count(components)?;
-        self.context.charge_input(count)?;
-        self.context.charge_projection(count)?;
+        self.nodes(count)?;
         self.check_named_component_depth(components)?;
         let components = trim_whitespace(components);
         if components.is_empty() {
@@ -310,38 +277,24 @@ fn is_whitespace(component: &CssComponentValue) -> bool {
     )
 }
 
-fn capacity_error() -> CssSpecifiedValueSerializationError {
-    CssSpecifiedValueSerializationError::new(
-        CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
-    )
+fn capacity_error() -> CssSerializationError {
+    CssSerializationError::new(CssSpecifiedValueSerializationErrorKind::CapacityOverflow)
 }
 
-impl crate::CssSupportsTestChildRef<'_> {
-    /// Standalone child root is depth zero. Nested payload/components and the
-    /// complete output share the same native writer allowances.
-    pub fn to_specified_css_with_graph_limits(
-        self,
-        limits: crate::CssRuleGraphSerializationLimits,
-    ) -> Result<String> {
-        let mut writer = SpecifiedRuleWriter::new(limits.values);
-        writer.max_graph_depth = Some(limits.max_depth);
-        writer.named_supports_child(self)?;
-        Ok(writer.css)
-    }
-    pub fn to_specified_css(self) -> Result<String> {
-        self.to_specified_css_with_graph_limits(crate::CssRuleGraphSerializationLimits::default())
+impl crate::specified_rule_serialization::SpecifiedProvider for crate::CssSupportsTestChildRef<'_> {
+    /// Emits a standalone test child; its root is depth zero, and nested
+    /// payloads and components share the same writer allowances.
+    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+        writer.named_supports_child(*self)
     }
 }
-impl CssSupportsTestBody {
-    /// A standalone body has direct children at depth zero; containers/runs are
-    /// transparent. Use a named graph input to include the outer wrapper depth.
-    pub fn to_specified_css_with_graph_limits(
-        &self,
-        limits: crate::CssRuleGraphSerializationLimits,
-    ) -> Result<String> {
-        let mut writer = SpecifiedRuleWriter::new(limits.values);
-        writer.max_graph_depth = Some(limits.max_depth);
-        writer.named_supports_body(self)?;
-        Ok(writer.css)
+crate::specified_rule_serialization::specified_serialization!(crate::CssSupportsTestChildRef<'_>);
+impl crate::specified_rule_serialization::SpecifiedProvider for CssSupportsTestBody {
+    /// Emits a standalone test body; direct children are at depth zero and
+    /// containers and runs are transparent. A named graph input includes the
+    /// outer wrapper depth.
+    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+        writer.named_supports_body(self)
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssSupportsTestBody);

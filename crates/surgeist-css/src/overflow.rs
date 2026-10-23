@@ -1,34 +1,8 @@
 //! Checked authored overflow values before writing-mode or computed-value resolution.
 
-use crate::{
-    CssOverflow, CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits,
-};
-
-type SerializationResult<T> = Result<T, CssSpecifiedValueSerializationError>;
+use crate::CssOverflow;
 
 impl CssOverflow {
-    /// Serializes the canonical authored overflow keyword.
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes one keyword under exact resource limits.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        writer.keyword(self.as_css())
-    }
-
     pub(crate) const fn as_css(self) -> &'static str {
         match self {
             Self::Visible => "visible",
@@ -39,8 +13,21 @@ impl CssOverflow {
         }
     }
 }
+impl crate::specified_rule_serialization::SpecifiedProvider for CssOverflow {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        writer.keyword(self.as_css())
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(CssOverflow);
 
 /// One or two authored physical overflow axes, without computed-value coupling.
+///
+/// # Specified serialization
+///
+/// Serializes the authored one- or two-axis specified value.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CssOverflowValue {
     x: CssOverflow,
@@ -74,34 +61,18 @@ impl CssOverflowValue {
             None => self.x,
         }
     }
-
-    /// Serializes the authored one- or two-axis specified value.
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes both authored axes under one shared resource budget.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+}
+impl crate::specified_rule_serialization::SpecifiedProvider for CssOverflowValue {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         let context = &mut writer.context;
-        context.charge_input(1)?;
-        context.charge_projection(1)?;
+        context.charge_nodes(1)?;
         writer.source_member(0, |writer| writer.keyword(self.x.as_css()))?;
         if let Some(y) = self.authored_y {
             writer.source_member(1, |writer| {
-                writer.context.charge_input(1)?;
-                writer.context.charge_projection(1)?;
+                writer.node()?;
                 writer.append(" ")?;
                 writer.append(y.as_css())
             })?;
@@ -109,3 +80,4 @@ impl CssOverflowValue {
         Ok(())
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssOverflowValue);

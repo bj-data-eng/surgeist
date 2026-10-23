@@ -200,7 +200,7 @@ fn case_escapes_comments_and_programmatic_origins_preserve_meaning_and_pair_role
             }
             items.push(CssComponentValue::try_ident(*word).unwrap());
         }
-        let components = CssComponentValues::try_new(items).unwrap();
+        let components = CssComponentValues::try_new(items, Default::default()).unwrap();
         for grammar in [false, true] {
             let declaration =
                 checked_components(p, components.clone(), grammar, CssImportance::Important)
@@ -214,7 +214,7 @@ fn case_escapes_comments_and_programmatic_origins_preserve_meaning_and_pair_role
                     .all(|v| v.origin() == &CssValueOrigin::Programmatic)
             );
             assert_eq!(
-                declaration.to_specified_css().unwrap(),
+                declaration.serialize_specified(Default::default()).unwrap(),
                 format!("{name}: {canonical} !important;")
             );
             contributions(&declaration);
@@ -224,7 +224,9 @@ fn case_escapes_comments_and_programmatic_origins_preserve_meaning_and_pair_role
     let report = parse_style_attribute(css);
     assert!(report.is_clean());
     assert_eq!(
-        report.syntax()[0].to_specified_css().unwrap(),
+        report.syntax()[0]
+            .serialize_specified(Default::default())
+            .unwrap(),
         "text-box: trim-start cap alphabetic !important;"
     );
     assert_eq!(
@@ -480,7 +482,7 @@ fn invalid_replacements_residual_functions_and_annotations_fail_atomically_then_
 }
 
 fn implicit_origin(components: &CssComponentValues) -> CssValueOrigin {
-    let serialized = components.serialize().unwrap();
+    let serialized = components.serialize_tokens(Default::default()).unwrap();
     (0..serialized.as_css().len())
         .find_map(|offset| match serialized.origin_at(offset) {
             Some(CssSerializedOrigin::Token(origin @ CssValueOrigin::ImplicitClosure { .. })) => {
@@ -570,7 +572,7 @@ fn annotation_errors_reference_original_bang_and_authored_importance_stays_separ
         };
         let text = format!("/*😀*/{ordinary}!important");
         let components = parse_component_values(&text).unwrap();
-        let serialized = components.serialize().unwrap();
+        let serialized = components.serialize_tokens(Default::default()).unwrap();
         let origin = serialized
             .origin_at(serialized.as_css().find('!').unwrap())
             .unwrap();
@@ -759,8 +761,8 @@ fn browser_eof_recovery_keeps_original_declaration_and_diagnostics_during_normal
 
 #[test]
 fn semantic_keyword_budgets_and_canonical_bytes_fail_atomically_then_retry() {
+    use CssSerializationLimits as Limits;
     use CssSpecifiedValueSerializationErrorKind as Kind;
-    use CssSpecifiedValueSerializationLimits as Limits;
     for name in FAMILY {
         let p = property(name);
         let mut cases = ordinary_cases(name);
@@ -774,10 +776,7 @@ fn semantic_keyword_budgets_and_canonical_bytes_fail_atomically_then_retry() {
                 // emitted keyword, plus declaration/name; no guessed work.
                 let nodes = text.split_whitespace().count() + 2;
                 let exact = Limits::new(nodes, nodes, expected.len());
-                assert_eq!(
-                    declaration.to_specified_css_with_limits(exact).unwrap(),
-                    expected
-                );
+                assert_eq!(declaration.serialize_specified(exact).unwrap(), expected);
                 for (limits, kind) in [
                     (
                         Limits::new(nodes - 1, nodes, expected.len()),
@@ -794,19 +793,13 @@ fn semantic_keyword_budgets_and_canonical_bytes_fail_atomically_then_retry() {
                 ] {
                     for _ in 0..2 {
                         assert_eq!(
-                            declaration
-                                .to_specified_css_with_limits(limits)
-                                .unwrap_err()
-                                .kind(),
+                            declaration.serialize_specified(limits).unwrap_err().kind(),
                             kind
                         );
                         assert_eq!(declaration, before);
                     }
                 }
-                assert_eq!(
-                    declaration.to_specified_css_with_limits(exact).unwrap(),
-                    expected
-                );
+                assert_eq!(declaration.serialize_specified(exact).unwrap(), expected);
             }
         }
     }
@@ -814,7 +807,7 @@ fn semantic_keyword_budgets_and_canonical_bytes_fail_atomically_then_retry() {
 
 #[test]
 fn sheet_siblings_share_final_byte_limit_and_failed_output_keeps_input_reusable() {
-    use CssSpecifiedValueSerializationLimits as Limits;
+    use CssSerializationLimits as Limits;
     let report = parse_sheet(
         ".a{text-box-trim:trim-start!important}.b{text-box-edge:cap alphabetic}.c{text-box:ex text trim-end}",
     );
@@ -824,25 +817,23 @@ fn sheet_siblings_share_final_byte_limit_and_failed_output_keeps_input_reusable(
     let expected = ".a { text-box-trim: trim-start !important; }\n.b { text-box-edge: cap alphabetic; }\n.c { text-box: trim-end ex text; }";
     let exact = Limits::new(usize::MAX, usize::MAX, expected.len());
     let short = Limits::new(usize::MAX, usize::MAX, expected.len() - 1);
-    assert_eq!(sheet.to_specified_css_with_limits(exact).unwrap(), expected);
+    assert_eq!(sheet.serialize_specified(exact).unwrap(), expected);
     assert!(
         sheet
             .rules()
             .iter()
-            .all(|rule| rule.to_specified_css_with_limits(short).is_ok())
+            .all(|rule| rule.serialize_specified(short).is_ok())
     );
     for _ in 0..2 {
-        let error = sheet.to_specified_css_with_limits(short).unwrap_err();
+        let error = sheet.serialize_specified(short).unwrap_err();
         assert_eq!(
             error.kind(),
-            CssSpecifiedRuleSerializationErrorKind::Resource(
-                CssSpecifiedValueSerializationErrorKind::ByteLimit
-            )
+            CssSpecifiedValueSerializationErrorKind::ByteLimit
         );
         assert_eq!(error.rule_index(), Some(2));
         assert_eq!(sheet, &before);
     }
-    assert_eq!(sheet.to_specified_css_with_limits(exact).unwrap(), expected);
+    assert_eq!(sheet.serialize_specified(exact).unwrap(), expected);
 }
 
 #[test]

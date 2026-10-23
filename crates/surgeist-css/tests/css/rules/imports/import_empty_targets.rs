@@ -82,7 +82,7 @@ fn canonical_empty_target_imports_preserve_spelling_and_are_idempotent() {
         let [CssRule::Import(import)] = report.syntax().rules() else {
             panic!("one authored import: {source}");
         };
-        let output = import.serialize().unwrap();
+        let output = import.serialize_tokens(Default::default()).unwrap();
         assert_eq!(output.as_css(), format!("@import {target};"));
         let reparsed = parse_rule(output.as_css(), &CssNamespaceContext::default());
         assert!(reparsed.is_clean(), "{:?}", reparsed.diagnostics());
@@ -90,7 +90,13 @@ fn canonical_empty_target_imports_preserve_spelling_and_are_idempotent() {
             panic!("one reparsed import");
         };
         assert_target(import, url, decoded);
-        assert_eq!(import.serialize().unwrap().as_css(), output.as_css());
+        assert_eq!(
+            import
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            output.as_css()
+        );
     }
 }
 
@@ -118,7 +124,13 @@ fn empty_targets_preserve_layer_supports_and_symbolic_media_clauses() {
             import.media().unwrap().queries(),
             [CssMediaQuery::Typed(query)] if query.media_type() == CssMediaType::Print
         ));
-        assert_eq!(import.serialize().unwrap().as_css(), source);
+        assert_eq!(
+            import
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            source
+        );
     }
 }
 
@@ -206,7 +218,7 @@ fn an_empty_string_import_at_eof_gets_a_programmatic_semicolon_with_statement_re
         panic!("one import statement ending at EOF");
     };
     assert_target(import, false, "");
-    let output = import.serialize().unwrap();
+    let output = import.serialize_tokens(Default::default()).unwrap();
     assert_eq!(output.as_css(), "@import '';");
     assert!(matches!(
         output.origin_at(output.as_css().len() - 1),
@@ -269,7 +281,7 @@ fn eof_unclosed_empty_urls_retain_targets_with_implicit_closure_diagnostics() {
             validate_sheet(source),
             report.clone().into_validation_result()
         );
-        let output = import.serialize().unwrap();
+        let output = import.serialize_tokens(Default::default()).unwrap();
         assert_eq!(output.as_css(), expected);
         assert!(matches!(
             output.origin_at(output.as_css().len() - 1),

@@ -11,7 +11,7 @@ use crate::css::support::{checked_color as color, component_values as components
 use surgeist_color::{ColorSpace, HueInterpolation};
 use surgeist_css::*;
 
-type Limits = CssSpecifiedValueSerializationLimits;
+type Limits = CssSerializationLimits;
 type Kind = CssSpecifiedValueSerializationErrorKind;
 
 macro_rules! text_case {
@@ -178,8 +178,8 @@ text_case!(
 
 fn assert_color_result(value: &CssColor, limits: Limits, expected: Result<&str, Kind>) {
     let before = value.clone();
-    let result = value.to_specified_css_with_limits(limits);
-    assert_eq!(result, value.to_specified_css_with_limits(limits));
+    let result = value.serialize_specified(limits);
+    assert_eq!(result, value.serialize_specified(limits));
     assert_eq!(value, &before);
     match expected {
         Ok(text) => assert_eq!(result.unwrap(), text),
@@ -189,8 +189,8 @@ fn assert_color_result(value: &CssColor, limits: Limits, expected: Result<&str, 
 
 fn assert_pair_result(value: &CssBorderColorPair, limits: Limits, expected: Result<&str, Kind>) {
     let before = value.clone();
-    let result = value.serialize_specified_with_limits(limits);
-    assert_eq!(result, value.serialize_specified_with_limits(limits));
+    let result = value.serialize_specified(limits);
+    assert_eq!(result, value.serialize_specified(limits));
     assert_eq!(value, &before);
     match expected {
         Ok(text) => assert_eq!(result.unwrap(), text),
@@ -644,7 +644,8 @@ fn checked_family_mix(
         CssColorMixPercentage::try_from_component(components("30%").items()[0].clone()).unwrap(),
     );
     let second_weight = CssColorMixWeight::try_calculation(
-        CssPercentageCalculation::try_from_components(components("calc(70%)")).unwrap(),
+        CssPercentageCalculation::try_from_components(components("calc(70%)"), Default::default())
+            .unwrap(),
     )
     .unwrap();
     let interpolation = CssColorInterpolation::from_predefined(
@@ -662,8 +663,8 @@ fn checked_family_mix(
     .unwrap();
     let value = CssColor::from_color_mix(mix);
     let before = value.clone();
-    let result = value.to_specified_css();
-    assert_eq!(result, value.to_specified_css());
+    let result = value.serialize_specified(Default::default());
+    assert_eq!(result, value.serialize_specified(Default::default()));
     assert_eq!(value, before);
     let retained_mix = value.color_mix_value().unwrap();
     assert_eq!(retained_mix.interpolation(), Some(&interpolation));
@@ -705,7 +706,12 @@ fn checked_family_mix(
     }
     let expected = format!("color-mix(in lch longer hue, {expected_child} 30%, blue calc(70%))");
     assert_eq!(result.unwrap(), expected);
-    assert_eq!(color(&expected).to_specified_css().unwrap(), expected);
+    assert_eq!(
+        color(&expected)
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
 }
 
 macro_rules! checked_cases {
@@ -785,8 +791,8 @@ fn checked_nested_mix_preserves_the_shared_depth_ceiling() {
     )
     .unwrap_err();
     assert_eq!(error, CssColorMixConstructionError::NestingLimit);
-    let result = value.to_specified_css();
-    assert_eq!(result, value.to_specified_css());
+    let result = value.serialize_specified(Default::default());
+    assert_eq!(result, value.serialize_specified(Default::default()));
     assert_eq!(value, before);
     assert_eq!(result.unwrap(), expected);
 }

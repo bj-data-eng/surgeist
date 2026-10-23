@@ -91,10 +91,10 @@ fn validate_body(
     // One native request checks all opaque candidate/component nesting and work;
     // a list of live leaf IDs cannot establish these bounds.
     CssRuleGraphInput::named_supports(name, body)
-        .serialize_cssom_with_graph_limits(
+        .serialize_cssom(
             &CssNamespaceContext::default(),
             CssStyleAncestor::Absent,
-            CssRuleGraphSerializationLimits {
+            CssRuleSerializationLimits {
                 values: limits.css,
                 max_depth: remaining,
             },
@@ -219,7 +219,7 @@ impl CssomBatch {
             payloads.push(child.as_ref());
         }
         let current = body
-            .recompose_children_with_limits(&payloads, component_limits(&self.limits))
+            .recompose_children(&payloads, component_limits(&self.limits))
             .map_err(CssomError::NamedSupports)?;
         validate_body(name, &current, depth, &self.limits)?;
         let CssomRuleData::NamedSupports { body, .. } = self

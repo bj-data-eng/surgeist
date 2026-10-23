@@ -43,7 +43,7 @@ fn checked_keyframes_names_keep_decoded_case_and_punctuation() {
         CssAnimationName::Custom(upper),
     ])
     .unwrap();
-    let css = names.serialize_specified().unwrap();
+    let css = names.serialize_specified(Default::default()).unwrap();
     assert_eq!(css, r"A\ B, a\ b, A\ B");
     let report = parse_style_attribute(&format!("animation-name:{css}"));
     assert!(report.is_clean());
@@ -70,7 +70,10 @@ fn checked_identifier_has_the_same_identity_in_definitions_and_references() {
     };
     assert_eq!(rule.name(), &definition);
     let names = CssAnimationNameList::try_new(vec![reference.clone()]).unwrap();
-    assert_eq!(names.serialize_specified().unwrap(), "Fade");
+    assert_eq!(
+        names.serialize_specified(Default::default()).unwrap(),
+        "Fade"
+    );
     let report = parse_style_attribute("animation-name:Fade");
     assert!(report.is_clean());
     let CssKnownPropertyValueRef::AnimationName(parsed) = report.syntax()[0]
@@ -105,7 +108,7 @@ fn checked_transition_names_keep_unknown_names_case_and_duplicate_indices() {
     ])
     .unwrap();
     assert_eq!(
-        properties.serialize_specified().unwrap(),
+        properties.serialize_specified(Default::default()).unwrap(),
         "Auto, auto, span, Auto"
     );
     assert_eq!(properties.properties().len(), 4);
@@ -122,8 +125,8 @@ fn checked_consumer_names_keep_literal_backslashes_as_decoded_content() {
     )])
     .unwrap();
     for css in [
-        animation.serialize_specified().unwrap(),
-        transition.serialize_specified().unwrap(),
+        animation.serialize_specified(Default::default()).unwrap(),
+        transition.serialize_specified(Default::default()).unwrap(),
     ] {
         assert_eq!(css, r"\\61uto");
         let components = parse_component_values(&css).unwrap();
@@ -148,7 +151,10 @@ fn checked_grid_groups_accept_only_checked_line_names_and_preserve_duplicates() 
         ])
         .unwrap(),
     );
-    assert_eq!(tracks.serialize_specified().unwrap(), "[none none] auto");
+    assert_eq!(
+        tracks.serialize_specified(Default::default()).unwrap(),
+        "[none none] auto"
+    );
 }
 
 #[test]
@@ -171,29 +177,26 @@ fn checked_name_projection_keeps_exact_budgets_and_atomic_failures() {
     let before = names.clone();
     assert_eq!(
         names
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(2, 2, 4))
+            .serialize_specified(CssSerializationLimits::new(2, 2, 4))
             .unwrap(),
         "Auto"
     );
     for (limits, expected) in [
         (
-            CssSpecifiedValueSerializationLimits::new(1, 2, 4),
+            CssSerializationLimits::new(1, 2, 4),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(2, 1, 4),
+            CssSerializationLimits::new(2, 1, 4),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(2, 2, 3),
+            CssSerializationLimits::new(2, 2, 3),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
         assert_eq!(
-            names
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            names.serialize_specified(limits).unwrap_err().kind(),
             expected
         );
         assert_eq!(names, before);

@@ -83,33 +83,56 @@ fn signed_resolution_roots_retain_exact_coefficients_and_math_structure() {
         ("-0e999dppx", "-0e999", "dppx"),
         ("1.0000000000000001x", "1.0000000000000001", "x"),
     ] {
-        let calculation =
-            CssResolutionCalculation::try_from_components(parse_component_values(source).unwrap())
-                .unwrap();
+        let calculation = CssResolutionCalculation::try_from_components(
+            parse_component_values(source).unwrap(),
+            Default::default(),
+        )
+        .unwrap();
         assert_eq!(calculation.result_type(), CssCalculationType::Resolution);
         let CssCalculationExpressionRef::Value(value) = calculation.expression() else {
             panic!("ordinary signed resolution leaf");
         };
         assert_eq!(value.literal().representation(), number);
         assert_eq!(value.literal().unit(), Some(unit));
-        assert_eq!(calculation.serialize().unwrap().as_css(), source);
+        assert_eq!(
+            calculation
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            source
+        );
     }
     for source in ["calc(-1dppx)", "calc(-1dppx / 0)"] {
-        let calculation =
-            CssResolutionCalculation::try_from_components(parse_component_values(source).unwrap())
-                .unwrap();
+        let calculation = CssResolutionCalculation::try_from_components(
+            parse_component_values(source).unwrap(),
+            Default::default(),
+        )
+        .unwrap();
         assert!(matches!(
             calculation.expression(),
             CssCalculationExpressionRef::NestedCalc(_)
         ));
-        assert_eq!(calculation.serialize().unwrap().as_css(), source);
+        assert_eq!(
+            calculation
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            source
+        );
     }
 }
 
 fn resolution_feature(source: &str) -> CssMediaFeatureQuery {
     let report = parse_media_query(source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    assert_eq!(report.syntax().serialize().unwrap().as_css(), source);
+    assert_eq!(
+        report
+            .syntax()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        source
+    );
     let CssMediaQuery::Condition(condition) = report.syntax() else {
         panic!("condition query");
     };
@@ -216,8 +239,8 @@ fn media_resolution_keeps_infinite_and_chained_source_order() {
 mod construction {
     use super::*;
     use CssNumericConstructionErrorKind as N;
+    use CssSerializationLimits as L;
     use CssSpecifiedValueSerializationErrorKind as S;
-    use CssSpecifiedValueSerializationLimits as L;
     use std::error::Error;
 
     fn token(source: &str) -> CssComponentValue {
@@ -230,15 +253,21 @@ mod construction {
     }
     fn frequency(source: &str) -> CssFrequencyValue {
         CssFrequencyValue::try_from_calculation(
-            CssFrequencyCalculation::try_from_components(parse_component_values(source).unwrap())
-                .unwrap(),
+            CssFrequencyCalculation::try_from_components(
+                parse_component_values(source).unwrap(),
+                Default::default(),
+            )
+            .unwrap(),
         )
         .unwrap()
     }
     fn resolution(source: &str) -> CssResolutionValue {
         CssResolutionValue::try_from_calculation(
-            CssResolutionCalculation::try_from_components(parse_component_values(source).unwrap())
-                .unwrap(),
+            CssResolutionCalculation::try_from_components(
+                parse_component_values(source).unwrap(),
+                Default::default(),
+            )
+            .unwrap(),
         )
         .unwrap()
     }
@@ -407,7 +436,8 @@ mod construction {
     fn ordinary_calculation_normalization_preserves_exact_origin_and_rechecks_resolution_range() {
         let input = token("/* 😀 */\n1.0000000000000001KHZ");
         let calculation = CssFrequencyCalculation::try_from_components(
-            CssComponentValues::try_new(vec![input.clone()]).unwrap(),
+            CssComponentValues::try_new(vec![input.clone()], Default::default()).unwrap(),
+            Default::default(),
         )
         .unwrap();
         let value = CssFrequencyValue::try_from_calculation(calculation).unwrap();
@@ -416,7 +446,8 @@ mod construction {
         assert!(value.calculation().is_none());
         let input = token("/* distinct snapshot */\n-0e999x");
         let calculation = CssResolutionCalculation::try_from_components(
-            CssComponentValues::try_new(vec![input.clone()]).unwrap(),
+            CssComponentValues::try_new(vec![input.clone()], Default::default()).unwrap(),
+            Default::default(),
         )
         .unwrap();
         let value = CssResolutionValue::try_from_calculation(calculation).unwrap();
@@ -424,7 +455,8 @@ mod construction {
         assert_eq!(value.literal().unwrap().unit(), CssResolutionUnit::Dppx);
         let input = token("/* original later token */\n-1e-999dpi");
         let calculation = CssResolutionCalculation::try_from_components(
-            CssComponentValues::try_new(vec![input.clone()]).unwrap(),
+            CssComponentValues::try_new(vec![input.clone()], Default::default()).unwrap(),
+            Default::default(),
         )
         .unwrap();
         let original = calculation.clone();
@@ -448,7 +480,13 @@ mod construction {
             let value = frequency(source);
             assert!(value.literal().is_none());
             let calculation = value.calculation().unwrap();
-            assert_eq!(calculation.serialize().unwrap().as_css(), source);
+            assert_eq!(
+                calculation
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
+                source
+            );
             assert_eq!(value.origin(), calculation.origin());
         }
         for source in [
@@ -461,12 +499,19 @@ mod construction {
             let value = resolution(source);
             assert!(value.literal().is_none());
             let calculation = value.calculation().unwrap();
-            assert_eq!(calculation.serialize().unwrap().as_css(), source);
+            assert_eq!(
+                calculation
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
+                source
+            );
             assert_eq!(value.origin(), calculation.origin());
         }
         for source in ["0", "1s", "(1hz)"] {
             let error = CssFrequencyCalculation::try_from_components(
                 parse_component_values(source).unwrap(),
+                Default::default(),
             )
             .unwrap_err();
             assert_eq!(error.kind(), &N::RootDomainMismatch);
@@ -476,6 +521,7 @@ mod construction {
         for source in ["0", "1hz", "(1dpi)"] {
             let error = CssResolutionCalculation::try_from_components(
                 parse_component_values(source).unwrap(),
+                Default::default(),
             )
             .unwrap_err();
             assert_eq!(error.kind(), &N::RootDomainMismatch);
@@ -514,11 +560,9 @@ mod construction {
         ] {
             let limits = CssComponentValueLimits::try_new(1, 1, 0).unwrap();
             let error = if decoded_unit(&components.items()[0]) == "hz" {
-                CssFrequencyCalculation::try_from_components_with_limits(components, limits)
-                    .unwrap_err()
+                CssFrequencyCalculation::try_from_components(components, limits).unwrap_err()
             } else {
-                CssResolutionCalculation::try_from_components_with_limits(components, limits)
-                    .unwrap_err()
+                CssResolutionCalculation::try_from_components(components, limits).unwrap_err()
             };
             assert_eq!(error.kind(), &N::ResourceLimit);
             let source = error
@@ -535,6 +579,7 @@ mod construction {
         for source in ["calc(1hz", "calc(min(-1hz, 2hz"] {
             let error = CssFrequencyCalculation::try_from_components(
                 parse_component_values(source).unwrap(),
+                Default::default(),
             )
             .unwrap_err();
             assert_eq!(error.kind(), &N::RecoveredComponent);
@@ -543,6 +588,7 @@ mod construction {
         for source in ["calc(-1dppx", "calc(min(-1dppx, 2dppx"] {
             let error = CssResolutionCalculation::try_from_components(
                 parse_component_values(source).unwrap(),
+                Default::default(),
             )
             .unwrap_err();
             assert_eq!(error.kind(), &N::RecoveredComponent);
@@ -550,7 +596,8 @@ mod construction {
         }
         assert_eq!(
             CssFrequencyCalculation::try_from_components(
-                parse_component_values("1hz 2hz").unwrap()
+                parse_component_values("1hz 2hz").unwrap(),
+                Default::default()
             )
             .unwrap_err()
             .kind(),
@@ -558,7 +605,8 @@ mod construction {
         );
         assert_eq!(
             CssResolutionCalculation::try_from_components(
-                parse_component_values("1dpi 2dpi").unwrap()
+                parse_component_values("1dpi 2dpi").unwrap(),
+                Default::default()
             )
             .unwrap_err()
             .kind(),
@@ -663,10 +711,13 @@ mod construction {
         assert_eq!(x.unit(), dppx.unit());
         assert_ne!(x, dppx);
         let literal = CssFrequencyLiteral::try_new("1", CssFrequencyUnit::Hertz).unwrap();
-        let args = CssComponentValues::try_new(vec![literal.component().clone()]).unwrap();
+        let args =
+            CssComponentValues::try_new(vec![literal.component().clone()], Default::default())
+                .unwrap();
         let root = CssComponentValue::try_function("calc", args).unwrap();
         let calculation = CssFrequencyCalculation::try_from_components(
-            CssComponentValues::try_new(vec![root]).unwrap(),
+            CssComponentValues::try_new(vec![root], Default::default()).unwrap(),
+            Default::default(),
         )
         .unwrap();
         let ordinary = CssFrequencyValue::from_literal(literal);
@@ -723,10 +774,13 @@ mod construction {
         ] {
             let literal = CssFrequencyLiteral::try_from_component(token(source)).unwrap();
             let original = literal.clone();
-            assert_eq!(literal.serialize_specified().unwrap(), expected);
+            assert_eq!(
+                literal.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
             assert_eq!(
                 CssFrequencyValue::from_literal(literal.clone())
-                    .serialize_specified()
+                    .serialize_specified(Default::default())
                     .unwrap(),
                 expected
             );
@@ -734,7 +788,7 @@ mod construction {
         }
         let literal = CssFrequencyLiteral::try_new("1e40", CssFrequencyUnit::Kilohertz).unwrap();
         assert_eq!(
-            literal.serialize_specified().unwrap(),
+            literal.serialize_specified(Default::default()).unwrap(),
             format!("1{}khz", "0".repeat(40))
         );
     }
@@ -756,29 +810,17 @@ mod construction {
             let original_literal = literal.clone();
             let original_value = value.clone();
             let boundary = L::new(1, 1, expected.len());
-            assert_eq!(
-                literal.serialize_specified_with_limits(boundary).unwrap(),
-                expected
-            );
-            assert_eq!(
-                value.serialize_specified_with_limits(boundary).unwrap(),
-                expected
-            );
+            assert_eq!(literal.serialize_specified(boundary).unwrap(), expected);
+            assert_eq!(value.serialize_specified(boundary).unwrap(), expected);
             for (limit, kind) in [
                 (L::new(0, 1, expected.len()), S::InputNodeLimit),
                 (L::new(1, 0, expected.len()), S::ProjectionNodeLimit),
                 (L::new(1, 1, expected.len() - 1), S::ByteLimit),
             ] {
-                let error = literal.serialize_specified_with_limits(limit).unwrap_err();
+                let error = literal.serialize_specified(limit).unwrap_err();
                 assert_eq!(error.kind(), kind);
                 assert!(error.source().is_none());
-                assert_eq!(
-                    value
-                        .serialize_specified_with_limits(limit)
-                        .unwrap_err()
-                        .kind(),
-                    kind
-                );
+                assert_eq!(value.serialize_specified(limit).unwrap_err().kind(), kind);
                 assert_eq!(literal, original_literal);
                 assert_eq!(value, original_value);
             }
@@ -787,7 +829,7 @@ mod construction {
         let original = literal.clone();
         assert_eq!(
             literal
-                .serialize_specified_with_limits(L::new(1, 1, 16))
+                .serialize_specified(L::new(1, 1, 16))
                 .unwrap_err()
                 .kind(),
             S::ByteLimit
@@ -801,13 +843,16 @@ mod construction {
         let value = frequency("calc(1hz + 2hz)");
         let original = value.clone();
         assert_eq!(
-            value.calculation().unwrap().serialize().unwrap().as_css(),
+            value
+                .calculation()
+                .unwrap()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             "calc(1hz + 2hz)"
         );
         assert_eq!(
-            value
-                .serialize_specified_with_limits(L::new(4, 3, 9))
-                .unwrap(),
+            value.serialize_specified(L::new(4, 3, 9)).unwrap(),
             "calc(3hz)"
         );
         for (limit, kind) in [
@@ -815,13 +860,7 @@ mod construction {
             (L::new(4, 2, 9), S::ProjectionNodeLimit),
             (L::new(4, 3, 8), S::ByteLimit),
         ] {
-            assert_eq!(
-                value
-                    .serialize_specified_with_limits(limit)
-                    .unwrap_err()
-                    .kind(),
-                kind
-            );
+            assert_eq!(value.serialize_specified(limit).unwrap_err().kind(), kind);
             assert_eq!(value, original);
         }
         for (source, expected) in [
@@ -834,9 +873,17 @@ mod construction {
             ("calc((1hz))", "calc(1hz)".to_owned()),
         ] {
             let value = frequency(source);
-            assert_eq!(value.serialize_specified().unwrap(), expected);
             assert_eq!(
-                value.calculation().unwrap().serialize().unwrap().as_css(),
+                value.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
+            assert_eq!(
+                value
+                    .calculation()
+                    .unwrap()
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
                 source
             );
         }
@@ -846,17 +893,21 @@ mod construction {
     fn mixed_numeric_children_keep_independent_snapshots_through_value_construction() {
         let left = token("/* first 😀 */\n1hz");
         let right = token("/* second */\n2hz");
-        let values = CssComponentValues::try_new(vec![
-            left.clone(),
-            CssComponentValue::try_token(" ").unwrap(),
-            CssComponentValue::try_token("+").unwrap(),
-            CssComponentValue::try_token(" ").unwrap(),
-            right.clone(),
-        ])
+        let values = CssComponentValues::try_new(
+            vec![
+                left.clone(),
+                CssComponentValue::try_token(" ").unwrap(),
+                CssComponentValue::try_token("+").unwrap(),
+                CssComponentValue::try_token(" ").unwrap(),
+                right.clone(),
+            ],
+            Default::default(),
+        )
         .unwrap();
         let function = CssComponentValue::try_function("calc", values).unwrap();
         let calculation = CssFrequencyCalculation::try_from_components(
-            CssComponentValues::try_new(vec![function]).unwrap(),
+            CssComponentValues::try_new(vec![function], Default::default()).unwrap(),
+            Default::default(),
         )
         .unwrap();
         let value = CssFrequencyValue::try_from_calculation(calculation).unwrap();
@@ -870,7 +921,10 @@ mod construction {
         };
         assert_eq!(sum.term(0).unwrap().expression().origin(), left.origin());
         assert_eq!(sum.term(1).unwrap().expression().origin(), right.origin());
-        assert_eq!(value.serialize_specified().unwrap(), "calc(3hz)");
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            "calc(3hz)"
+        );
         assert!(matches!(value.origin(), CssValueOrigin::Programmatic));
     }
 }

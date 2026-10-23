@@ -271,7 +271,7 @@ impl CssomBatch {
                 CssomInitialMedia::List { snapshot, id } => {
                     let text = snapshot
                         .media(id)?
-                        .serialize_cssom_with_limits(this.limits.css)
+                        .serialize_cssom(this.limits.css)
                         .map_err(CssomError::Media)?;
                     parse_media(
                         text.as_css(),

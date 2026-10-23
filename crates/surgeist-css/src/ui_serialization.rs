@@ -1,26 +1,18 @@
 //! Canonical authored UI4 projection with retained optional fields and cumulative providers.
+use crate::specified_rule_serialization::SpecifiedProvider as _;
 use crate::specified_rule_serialization::SpecifiedRuleWriter;
 use crate::specified_serialization::SpecifiedSerializationContext;
 use crate::ui::*;
-use crate::{
-    CssCaretColor, CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits,
-};
-type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
-macro_rules! provider {
-    ($ty:ty) => { impl $ty {
-        pub fn serialize_specified(&self) -> Result<String> { self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default()) }
-        /// Shares cumulative input/projection work, charging only emitted bytes. Failure is atomic.
-        pub fn serialize_specified_with_limits(&self, limits: CssSpecifiedValueSerializationLimits) -> Result<String> {
-            let mut writer = SpecifiedRuleWriter::new(limits); self.append_to_rule_writer(&mut writer)?; Ok(writer.css)
-        }
-    } };
-}
+use crate::{CssCaretColor, CssSerializationError};
+type Result<T> = std::result::Result<T, CssSerializationError>;
 macro_rules! keywords {
     ($ty:ty, {$($variant:ident => $text:literal),+}) => {
-        provider!($ty);
-        impl $ty { pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
-            writer.keyword(match self { $(Self::$variant => $text),+ })
-        } }
+        impl crate::specified_rule_serialization::SpecifiedProvider for $ty {
+            fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+                writer.keyword(match self { $(Self::$variant => $text),+ })
+            }
+        }
+        crate::specified_rule_serialization::specified_serialization!($ty);
     };
 }
 keywords!(CssCaretAnimation, { Auto => "auto", Manual => "manual" });
@@ -29,21 +21,21 @@ keywords!(CssInteractivity, { Auto => "auto", Inert => "inert" });
 keywords!(CssAppearance, { None => "none", Auto => "auto", Base => "base", BaseSelect => "base-select", Searchfield => "searchfield",
     Textarea => "textarea", Checkbox => "checkbox", Radio => "radio", Menulist => "menulist", Listbox => "listbox", Meter => "meter",
     ProgressBar => "progress-bar", Button => "button", Textfield => "textfield", MenulistButton => "menulist-button" });
-provider!(CssAccentColor);
-provider!(CssCaret);
-provider!(CssInterestDelayValue);
-provider!(CssInterestDelay);
-provider!(CssNavigation);
-impl CssAccentColor {
-    pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+crate::specified_rule_serialization::specified_serialization!(CssAccentColor);
+crate::specified_rule_serialization::specified_serialization!(CssCaret);
+crate::specified_rule_serialization::specified_serialization!(CssInterestDelayValue);
+crate::specified_rule_serialization::specified_serialization!(CssInterestDelay);
+crate::specified_rule_serialization::specified_serialization!(CssNavigation);
+impl crate::specified_rule_serialization::SpecifiedProvider for CssAccentColor {
+    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         match self {
             Self::Auto => writer.keyword("auto"),
             Self::Color(value) => value.append_specified(&mut writer.context, &mut writer.css),
         }
     }
 }
-impl CssCaret {
-    pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+impl crate::specified_rule_serialization::SpecifiedProvider for CssCaret {
+    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         writer.node()?;
         let mut started = false;
         let noninitial = self
@@ -88,8 +80,8 @@ impl CssCaret {
         Ok(())
     }
 }
-impl CssInterestDelayValue {
-    pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+impl crate::specified_rule_serialization::SpecifiedProvider for CssInterestDelayValue {
+    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         match self {
             Self::Normal => writer.keyword("normal"),
             Self::Time(time) => time.append_to_rule_writer(writer),
@@ -97,14 +89,6 @@ impl CssInterestDelayValue {
     }
 }
 impl CssInterestDelay {
-    pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
-        self.append_to_rule_writer_with_comparison(
-            writer,
-            &mut |start, end, _| Ok(start.specified_value_eq(end)),
-            &mut |_| {},
-        )
-    }
-
     pub(crate) fn append_to_rule_writer_with_comparison(
         &self,
         writer: &mut SpecifiedRuleWriter,
@@ -130,8 +114,17 @@ impl CssInterestDelay {
         Ok(())
     }
 }
-impl CssNavigation {
-    pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+impl crate::specified_rule_serialization::SpecifiedProvider for CssInterestDelay {
+    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+        self.append_to_rule_writer_with_comparison(
+            writer,
+            &mut |start, end, _| Ok(start.specified_value_eq(end)),
+            &mut |_| {},
+        )
+    }
+}
+impl crate::specified_rule_serialization::SpecifiedProvider for CssNavigation {
+    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         match self {
             Self::Auto => writer.keyword("auto"),
             Self::Id(value) => {
@@ -164,8 +157,8 @@ impl CssNavigation {
 pub(crate) mod provider_tests {
     use super::*;
     use crate::{
-        CssKnownPropertyValueRef, CssSpecifiedValueSerializationErrorKind as K,
-        CssSpecifiedValueSerializationLimits as L,
+        CssKnownPropertyValueRef, CssSerializationLimits as L,
+        CssSpecifiedValueSerializationErrorKind as K,
     };
 
     pub(crate) fn shared(

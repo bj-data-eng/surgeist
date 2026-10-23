@@ -205,7 +205,7 @@ pub fn assert_first_property_diagnostic(
 /// resource budget.
 #[track_caller]
 pub fn assert_rule_resource<T: Debug>(
-    result: Result<T, CssRuleCssomSerializationError>,
+    result: Result<T, CssRuleSerializationError>,
     kind: CssSpecifiedValueSerializationErrorKind,
 ) {
     let error = result.expect_err("rule projection must exceed its budget");
@@ -261,7 +261,11 @@ pub fn first_token(text: &str) -> CssComponentValue {
 #[track_caller]
 pub fn calculated_number(source: &str) -> CssSpecifiedNumber {
     CssSpecifiedNumber::try_from_calculation(
-        CssNumberCalculation::try_from_components(parse_component_values(source).unwrap()).unwrap(),
+        CssNumberCalculation::try_from_components(
+            parse_component_values(source).unwrap(),
+            Default::default(),
+        )
+        .unwrap(),
     )
     .unwrap()
 }
@@ -270,7 +274,11 @@ pub fn calculated_number(source: &str) -> CssSpecifiedNumber {
 #[track_caller]
 pub fn calculated_length(source: &str) -> CssSpecifiedLength {
     CssSpecifiedLength::try_from_calculation(
-        CssLengthCalculation::try_from_components(parse_component_values(source).unwrap()).unwrap(),
+        CssLengthCalculation::try_from_components(
+            parse_component_values(source).unwrap(),
+            Default::default(),
+        )
+        .unwrap(),
     )
     .unwrap()
 }
@@ -284,8 +292,14 @@ pub fn assert_calculated_number(source: &str, expected: &str) {
     let calculation = value.calculation().unwrap();
     let components = calculation.components().clone();
     let ty = calculation.numeric_type();
-    assert_eq!(components.serialize().unwrap().as_css(), source);
-    let result = value.serialize_specified();
+    assert_eq!(
+        components
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        source
+    );
+    let result = value.serialize_specified(Default::default());
     assert_eq!(value, before);
     assert_eq!(value.origin(), before.origin());
     assert_eq!(value.calculation().unwrap().components(), &components);
@@ -342,7 +356,7 @@ pub fn specified_property_value(
     property: CssKnownProperty,
 ) -> Option<String> {
     block
-        .property_value(CssPropertyNameRef::Known(property))
+        .property_value(CssPropertyNameRef::Known(property), Default::default())
         .unwrap()
 }
 
@@ -365,12 +379,22 @@ pub fn clean_media_query(source: &str) -> CssMediaQuery {
 /// The resource-limit kind of a media CSSOM serialization failure.
 #[track_caller]
 pub fn media_resource_kind(
-    error: &CssMediaCssomSerializationError,
+    error: &CssSerializationError,
 ) -> CssSpecifiedValueSerializationErrorKind {
-    let CssMediaCssomSerializationError::Resource { error, .. } = error else {
-        panic!("expected resource failure: {error:?}");
-    };
-    error.kind()
+    use CssSpecifiedValueSerializationErrorKind as Kind;
+    let kind = error.kind();
+    assert!(
+        matches!(
+            kind,
+            Kind::InputNodeLimit
+                | Kind::ProjectionNodeLimit
+                | Kind::ByteLimit
+                | Kind::DepthLimit
+                | Kind::CapacityOverflow
+        ),
+        "expected resource failure: {error:?}"
+    );
+    kind
 }
 
 /// The sole declaration of the clean style attribute `css`, which the

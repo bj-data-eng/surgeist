@@ -25,8 +25,10 @@ fn decoded_names_escape_without_changing_extension_identity() {
     for name in ["--", "--Case", "--é", "--two words"] {
         let name = CssCustomMediaName::try_new(name).unwrap();
         assert_eq!(name.position(), None);
-        let rule = CssCustomMediaRule::try_new(name.clone(), CssCustomMediaBody::True).unwrap();
-        let css = rule.serialize().unwrap();
+        let rule =
+            CssCustomMediaRule::try_new(name.clone(), CssCustomMediaBody::True, Default::default())
+                .unwrap();
+        let css = rule.serialize_tokens(Default::default()).unwrap();
         let parsed = definition(css.as_css());
         assert_eq!(parsed.name().as_str(), name.as_str());
         assert_eq!(rule.position(), None);
@@ -60,12 +62,12 @@ fn component_prelude_preserves_name_and_boolean_origins_without_inventing_at_key
     let input = components(r"--\6d ode TRUE");
     let name_origin = input.items()[0].origin().clone();
     let body_origin = input.items().last().unwrap().origin().clone();
-    let rule = CssCustomMediaRule::try_from_components(input).unwrap();
+    let rule = CssCustomMediaRule::try_from_components(input, Default::default()).unwrap();
     assert_eq!(rule.name().as_str(), "--mode");
     assert!(matches!(rule.body(), CssCustomMediaBody::True));
     assert_eq!(rule.position(), None);
     assert_eq!(rule.name().origin(), &name_origin);
-    let output = rule.serialize().unwrap();
+    let output = rule.serialize_tokens(Default::default()).unwrap();
     assert_eq!(output.as_css(), r"@custom-media --\6d ode true;");
     assert!(matches!(
         output.origin_at(0),
@@ -85,7 +87,7 @@ fn standalone_boolean_media_bodies_are_rejected_with_the_exact_type_origin() {
         let media = list(source);
         let expected = media.queries()[0].origin().clone();
         assert!(
-            matches!(CssCustomMediaRule::try_new(programmatic_name(),CssCustomMediaBody::Media(media)),Err(CssCustomMediaConstructionError::AmbiguousMediaBody{origin})if origin==expected),
+            matches!(CssCustomMediaRule::try_new(programmatic_name(), CssCustomMediaBody::Media(media), Default::default()),Err(CssCustomMediaConstructionError::AmbiguousMediaBody{origin})if origin==expected),
             "{source}"
         );
     }
@@ -99,11 +101,12 @@ fn standalone_boolean_media_bodies_are_rejected_with_the_exact_type_origin() {
         let rule = CssCustomMediaRule::try_new(
             programmatic_name(),
             CssCustomMediaBody::Media(list(source)),
+            Default::default(),
         )
         .unwrap();
         assert!(
             matches!(
-                definition(rule.serialize().unwrap().as_css()).body(),
+                definition(rule.serialize_tokens(Default::default()).unwrap().as_css()).body(),
                 CssCustomMediaBody::Media(_)
             ),
             "{source}"
@@ -121,17 +124,21 @@ fn component_boolean_selection_and_empty_media_body_remain_distinct() {
         // Syntax 3 (2026-10-01) §5.4.10: a final comma adds no member.
         ("--x screen,", "@custom-media --x screen;"),
     ] {
-        let rule = CssCustomMediaRule::try_from_components(components(input)).unwrap();
-        assert_eq!(rule.serialize().unwrap().as_css(), expected);
+        let rule =
+            CssCustomMediaRule::try_from_components(components(input), Default::default()).unwrap();
+        assert_eq!(
+            rule.serialize_tokens(Default::default()).unwrap().as_css(),
+            expected
+        );
     }
     assert!(matches!(
-        CssCustomMediaRule::try_from_components(components("")),
+        CssCustomMediaRule::try_from_components(components(""), Default::default()),
         Err(CssCustomMediaConstructionError::InvalidPrelude { .. })
     ));
     for input in ["--x ,screen", "--x screen, ", "--x (--x: 1)"] {
         assert!(
             matches!(
-                CssCustomMediaRule::try_from_components(components(input)),
+                CssCustomMediaRule::try_from_components(components(input), Default::default()),
                 Err(CssCustomMediaConstructionError::Media(_))
             ),
             "{input}"
@@ -146,11 +153,12 @@ fn reference_inspection_agrees_across_parsed_and_mixed_origin_checked_admission(
     let expected = name.origin().clone();
     let block = CssComponentValue::try_block(
         CssBlockKind::Parenthesis,
-        CssComponentValues::try_new(vec![name.clone()]).unwrap(),
+        CssComponentValues::try_new(vec![name.clone()], Default::default()).unwrap(),
     )
     .unwrap();
     let condition = CssMediaCondition::try_from_components(
-        CssComponentValues::try_new(vec![block.clone()]).unwrap(),
+        CssComponentValues::try_new(vec![block.clone()], Default::default()).unwrap(),
+        Default::default(),
     )
     .unwrap();
     let CssMediaConditionKind::CustomMediaReference(reference) = condition.kind() else {
@@ -160,7 +168,7 @@ fn reference_inspection_agrees_across_parsed_and_mixed_origin_checked_admission(
     assert_eq!(reference.name().origin(), &expected);
     assert_eq!(reference.position(), None);
     assert_eq!(reference.component(), &block);
-    let output = condition.serialize().unwrap();
+    let output = condition.serialize_tokens(Default::default()).unwrap();
     assert_eq!(output.as_css(), r"(--\78)");
     let again = parse_media_query(output.as_css());
     assert!(again.is_clean());
@@ -179,11 +187,11 @@ fn reference_inspection_agrees_across_parsed_and_mixed_origin_checked_admission(
         ("(1 < --x)", Some(5)),
     ] {
         let Err(CssMediaConstructionError::InvalidConditionGrammar { origin }) =
-            CssMediaCondition::try_from_components(components(source))
+            CssMediaCondition::try_from_components(components(source), Default::default())
         else {
             panic!(
                 "{source}: {:?}",
-                CssMediaCondition::try_from_components(components(source))
+                CssMediaCondition::try_from_components(components(source), Default::default())
             )
         };
         let CssValueOrigin::Parsed(origin) = origin else {
@@ -203,7 +211,7 @@ fn reference_inspection_agrees_across_parsed_and_mixed_origin_checked_admission(
 #[test]
 fn parsed_rule_grammar_tokens_and_eof_terminators_keep_honest_origins() {
     let rule = definition("/* 😀 */ @CUSTOM-MEDIA --x FALSE;");
-    let out = rule.serialize().unwrap();
+    let out = rule.serialize_tokens(Default::default()).unwrap();
     assert_eq!(out.as_css(), "@custom-media --x false;");
     assert_eq!(rule.position().unwrap().byte_offset().value(), 11);
     assert!(
@@ -245,7 +253,7 @@ fn parsed_rule_grammar_tokens_and_eof_terminators_keep_honest_origins() {
     };
     assert_eq!(origin.source().as_str(), source);
     assert_eq!(origin.span().start().byte_offset().value(), 0);
-    let eof = eof_rule.serialize().unwrap();
+    let eof = eof_rule.serialize_tokens(Default::default()).unwrap();
     assert!(matches!(
         eof.origin_at(0), Some(CssSerializedOrigin::Token(origin)) if origin == eof_rule.origin()
     ));
@@ -255,12 +263,25 @@ fn parsed_rule_grammar_tokens_and_eof_terminators_keep_honest_origins() {
     ));
     // Statement recovery does not invent a recovered body component. Checked
     // reconstruction owns a new semicolon; canonical terminated input is clean.
-    let checked =
-        CssCustomMediaRule::try_new(eof_rule.name().clone(), eof_rule.body().clone()).unwrap();
+    let checked = CssCustomMediaRule::try_new(
+        eof_rule.name().clone(),
+        eof_rule.body().clone(),
+        Default::default(),
+    )
+    .unwrap();
     assert_eq!(checked.name().origin(), eof_rule.name().origin());
-    assert_eq!(checked.serialize().unwrap().as_css(), eof.as_css());
     assert_eq!(
-        definition(eof.as_css()).serialize().unwrap().as_css(),
+        checked
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        eof.as_css()
+    );
+    assert_eq!(
+        definition(eof.as_css())
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         eof.as_css()
     );
     assert_eq!(
@@ -272,34 +293,43 @@ fn parsed_rule_grammar_tokens_and_eof_terminators_keep_honest_origins() {
 #[test]
 fn canonical_rule_output_preserves_exact_values_and_opaque_token_boundaries() {
     let rule = definition("@CUSTOM-MEDIA --Case (WIDTH>=+001.5PX), (ASPECT-RATIO:2);");
-    let output = rule.serialize().unwrap();
+    let output = rule.serialize_tokens(Default::default()).unwrap();
     assert_eq!(
         output.as_css(),
         "@custom-media --Case (width >= +001.5PX), (aspect-ratio: 2 / 1);"
     );
     assert_eq!(
-        definition(output.as_css()).serialize().unwrap().as_css(),
+        definition(output.as_css())
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         output.as_css()
     );
     let opaque = CssComponentValue::try_function(
         "Future",
-        CssComponentValues::try_new(vec![
-            CssComponentValue::try_number("1").unwrap(),
-            CssComponentValue::try_ident("e2").unwrap(),
-        ])
+        CssComponentValues::try_new(
+            vec![
+                CssComponentValue::try_number("1").unwrap(),
+                CssComponentValue::try_ident("e2").unwrap(),
+            ],
+            Default::default(),
+        )
         .unwrap(),
     )
     .unwrap();
-    let query =
-        CssMediaQuery::try_from_components(CssComponentValues::try_new(vec![opaque]).unwrap())
-            .unwrap();
+    let query = CssMediaQuery::try_from_components(
+        CssComponentValues::try_new(vec![opaque], Default::default()).unwrap(),
+        Default::default(),
+    )
+    .unwrap();
     let rule = CssCustomMediaRule::try_new(
         programmatic_name(),
         CssCustomMediaBody::Media(CssMediaQueryList::new(vec![query])),
+        Default::default(),
     )
     .unwrap();
     assert_eq!(
-        rule.serialize().unwrap().as_css(),
+        rule.serialize_tokens(Default::default()).unwrap().as_css(),
         "@custom-media --mode Future(1/**/e2);"
     );
 }
@@ -318,12 +348,12 @@ fn recovered_members_and_implicit_components_are_rejected_by_checked_constructio
     );
     let never = report.syntax().queries()[1].origin().clone();
     assert!(
-        matches!(CssCustomMediaRule::try_new(programmatic_name(),CssCustomMediaBody::Media(report.syntax().clone())),Err(CssCustomMediaConstructionError::RecoveredInput{origin})if origin==never)
+        matches!(CssCustomMediaRule::try_new(programmatic_name(), CssCustomMediaBody::Media(report.syntax().clone()), Default::default()),Err(CssCustomMediaConstructionError::RecoveredInput{origin})if origin==never)
     );
     for source in ["--x (color", "--x true/*"] {
         assert!(
             matches!(
-                CssCustomMediaRule::try_from_components(components(source)),
+                CssCustomMediaRule::try_from_components(components(source), Default::default()),
                 Err(CssCustomMediaConstructionError::RecoveredInput { .. })
             ),
             "{source}"
@@ -333,7 +363,8 @@ fn recovered_members_and_implicit_components_are_rejected_by_checked_constructio
     assert!(matches!(
         CssCustomMediaRule::try_new(
             programmatic_name(),
-            CssCustomMediaBody::Media(recovered.syntax().clone())
+            CssCustomMediaBody::Media(recovered.syntax().clone()),
+            Default::default(),
         ),
         Err(CssCustomMediaConstructionError::RecoveredInput { .. })
     ));
@@ -346,10 +377,8 @@ fn parsed_recovery_prevents_partial_output_but_discarded_blocks_do_not_leak_memb
         panic!("retained definition")
     };
     assert!(matches!(
-        rule.serialize(),
-        Err(CssCustomMediaSerializationError::Media(
-            CssMediaSerializationError::RecoveredNever { .. }
-        ))
+        rule.serialize_tokens(Default::default()),
+        Err(ref error) if crate::css::support::is_recovered_media_failure(error)
     ));
     for source in [
         "@custom-media --x ??? {} .after{}",
@@ -397,7 +426,7 @@ fn selected_component_limits_apply_to_input_and_canonical_output_with_original_c
     ] {
         let values = components(input);
         let Err(CssCustomMediaConstructionError::Component(error)) =
-            CssCustomMediaRule::try_from_components_with_limits(values, limits)
+            CssCustomMediaRule::try_from_components(values, limits)
         else {
             panic!("typed {kind:?}")
         };
@@ -408,7 +437,7 @@ fn selected_component_limits_apply_to_input_and_canonical_output_with_original_c
     let expected = input.items()[2].origin().clone();
     let limits = CssComponentValueLimits::try_new(256, usize::MAX, 19).unwrap();
     let Err(CssCustomMediaConstructionError::Component(error)) =
-        CssCustomMediaRule::try_from_components_with_limits(input, limits)
+        CssCustomMediaRule::try_from_components(input, limits)
     else {
         panic!("canonical expansion exceeds 19 bytes")
     };
@@ -416,7 +445,7 @@ fn selected_component_limits_apply_to_input_and_canonical_output_with_original_c
     assert_eq!(error.origin(), &expected);
     let limits = CssComponentValueLimits::try_new(0, usize::MAX, usize::MAX).unwrap();
     assert!(
-        matches!(CssCustomMediaRule::try_new_with_limits(programmatic_name(),CssCustomMediaBody::Media(list("(color)")),limits),Err(CssCustomMediaConstructionError::Component(error))if error.kind()==CssComponentValueErrorKind::NestingLimit)
+        matches!(CssCustomMediaRule::try_new(programmatic_name(),CssCustomMediaBody::Media(list("(color)")),limits),Err(CssCustomMediaConstructionError::Component(error))if error.kind()==CssComponentValueErrorKind::NestingLimit)
     );
 }
 
@@ -429,9 +458,10 @@ fn deep_checked_definition_admission_and_serialization_fit_an_ordinary_stack() {
         for terminal in ["color", "--external"] {
             let query = format!("{}{terminal}{}", "(".repeat(256), ")".repeat(256));
             let components = components(&format!("--deep {query}"));
-            let rule = CssCustomMediaRule::try_from_components(components).unwrap();
+            let rule =
+                CssCustomMediaRule::try_from_components(components, Default::default()).unwrap();
             assert_eq!(
-                rule.serialize().unwrap().as_css(),
+                rule.serialize_tokens(Default::default()).unwrap().as_css(),
                 format!("@custom-media --deep {query};")
             );
         }
@@ -486,12 +516,14 @@ fn atomic_metadata_distinguishes_definition_rules_from_boolean_references() {
             Some("https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/")
         );
     }
-    let rule = CssCustomMediaRule::try_from_components(components("--x (--other)")).unwrap();
+    let rule =
+        CssCustomMediaRule::try_from_components(components("--x (--other)"), Default::default())
+            .unwrap();
     assert!(
         matches!(rule.body(),CssCustomMediaBody::Media(list) if matches!(&list.queries()[0],CssMediaQuery::Condition(c) if matches!(c.kind(),CssMediaConditionKind::CustomMediaReference(_))))
     );
     assert!(matches!(
-        definition(rule.serialize().unwrap().as_css()).body(),
+        definition(rule.serialize_tokens(Default::default()).unwrap().as_css()).body(),
         CssCustomMediaBody::Media(_)
     ));
 }

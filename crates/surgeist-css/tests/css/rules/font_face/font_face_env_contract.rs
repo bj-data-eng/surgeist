@@ -11,7 +11,12 @@ use surgeist_css::{
 };
 
 fn checked(kind: Kind, text: &str) -> Authored {
-    Authored::try_from_components(kind, parse_component_values(text).unwrap()).unwrap()
+    Authored::try_from_components(
+        kind,
+        parse_component_values(text).unwrap(),
+        Default::default(),
+    )
+    .unwrap()
 }
 
 #[test]
@@ -34,7 +39,10 @@ fn every_known_descriptor_defers_env_and_reenters_its_ordinary_grammar() {
         assert_eq!(pending.kind(), kind);
         assert_eq!(pending.components().items().len(), 1);
         let ordinary = pending
-            .reparse_after_substitution(parse_component_values(replacement).unwrap())
+            .reparse_after_substitution(
+                parse_component_values(replacement).unwrap(),
+                Default::default(),
+            )
             .unwrap();
         assert_eq!(ordinary.kind(), kind);
         match ordinary {

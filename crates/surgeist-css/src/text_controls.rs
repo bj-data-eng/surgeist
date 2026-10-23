@@ -5,11 +5,11 @@
 
 use crate::{
     CssComponentValue, CssComponentValueError, CssComponentValueRef, CssIntegerLiteral,
-    CssIntegerValue, CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits,
-    CssValueOrigin, CssValueTokenRef, specified_rule_serialization::SpecifiedRuleWriter,
+    CssIntegerValue, CssSerializationError, CssValueOrigin, CssValueTokenRef,
+    specified_rule_serialization::SpecifiedRuleWriter,
 };
 
-type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
+type Result<T> = std::result::Result<T, CssSerializationError>;
 
 /// Authored automatic, manual or disabled hyphenation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -436,23 +436,13 @@ pub enum CssHangingPunctuation {
 
 macro_rules! provider {
     ($ty:ty, $value:ident, $writer:ident => $body:expr) => {
-        impl $ty {
-            /// Emits canonical specified syntax without contextual computation.
-            pub fn serialize_specified(&self) -> Result<String> {
-                self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-            }
-            /// Emits atomically under shared work and UTF-8 byte budgets.
-            /// Finite/string leaves cost one visit each; carriers are transparent.
-            pub fn serialize_specified_with_limits(&self, limits: CssSpecifiedValueSerializationLimits) -> Result<String> {
-                let mut writer = SpecifiedRuleWriter::new(limits);
-                self.append_to_rule_writer(&mut writer)?;
-                Ok(writer.css)
-            }
-            pub(crate) fn append_to_rule_writer(&self, $writer: &mut SpecifiedRuleWriter) -> Result<()> {
+        impl crate::specified_rule_serialization::SpecifiedProvider for $ty {
+            fn append_to_rule_writer(&self, $writer: &mut SpecifiedRuleWriter) -> Result<()> {
                 let $value = self;
                 $body
             }
         }
+        crate::specified_rule_serialization::specified_serialization!($ty);
     };
 }
 macro_rules! keywords {
@@ -514,8 +504,9 @@ provider!(CssHangingPunctuation, value, writer => match value { Self::None => wr
 #[cfg(test)]
 mod provider_tests {
     use super::*;
+    use crate::CssSerializationLimits as Limits;
     use crate::CssSpecifiedValueSerializationErrorKind as Kind;
-    use crate::CssSpecifiedValueSerializationLimits as Limits;
+    use crate::specified_rule_serialization::SpecifiedProvider as _;
     use crate::{CssKnownPropertyValueRef, parse_style_attribute};
 
     fn emit(value: CssKnownPropertyValueRef<'_>, writer: &mut SpecifiedRuleWriter) -> Result<()> {

@@ -30,15 +30,18 @@ fn portable_failures_name_original_children_and_closing_boundaries() {
 
 #[test]
 fn mixed_origin_failure_path_reaches_the_original_programmatic_leaf() {
-    let children = crate::CssComponentValues::try_new(vec![
-        parse_component_values("1").unwrap().items()[0].clone(),
-        crate::CssComponentValue::try_ident("x").unwrap(),
-        crate::CssComponentValue::try_number("3").unwrap(),
-    ])
+    let children = crate::CssComponentValues::try_new(
+        vec![
+            parse_component_values("1").unwrap().items()[0].clone(),
+            crate::CssComponentValue::try_ident("x").unwrap(),
+            crate::CssComponentValue::try_number("3").unwrap(),
+        ],
+        Default::default(),
+    )
     .unwrap();
     let root = crate::CssComponentValue::try_function("rgb", children).unwrap();
-    let values = crate::CssComponentValues::try_new(vec![root]).unwrap();
-    let serialized = values.serialize().unwrap();
+    let values = crate::CssComponentValues::try_new(vec![root], Default::default()).unwrap();
+    let serialized = values.serialize_tokens(Default::default()).unwrap();
     let failure = construct_component(
         &values.items()[0],
         &NumericInputContext::Components(&values, &serialized),
@@ -64,7 +67,7 @@ fn mixed_origin_failure_path_reaches_the_original_programmatic_leaf() {
 #[test]
 fn borrowed_calculation_admission_preserves_exact_and_one_short_limits() {
     let values = parse_component_values("calc(1 + max(2,3))").unwrap();
-    let serialized = values.serialize().unwrap();
+    let serialized = values.serialize_tokens(Default::default()).unwrap();
     let context = NumericInputContext::Components(&values, &serialized);
     let root = &values.items()[0];
     let expression = context
@@ -104,7 +107,7 @@ fn borrowed_calculation_admission_preserves_exact_and_one_short_limits() {
 #[test]
 fn relative_numeric_failure_excludes_only_the_synthetic_numeric_root() {
     let values = parse_component_values("rgb(from red calc(r + 1px) g b)").unwrap();
-    let serialized = values.serialize().unwrap();
+    let serialized = values.serialize_tokens(Default::default()).unwrap();
     let failure = construct_component(
         &values.items()[0],
         &NumericInputContext::Components(&values, &serialized),

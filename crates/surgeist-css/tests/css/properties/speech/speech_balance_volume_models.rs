@@ -43,7 +43,7 @@ fn balance_keywords_remain_authored_separately_from_numeric_equivalents() {
         let value = CssVoiceBalance::from_keyword(keyword);
         assert_eq!(value.keyword(), Some(keyword));
         assert!(value.number().is_none());
-        assert_eq!(value.serialize_specified().unwrap(), text);
+        assert_eq!(value.serialize_specified(Default::default()).unwrap(), text);
         assert_eq!(balance(&declaration("voice-balance", text)), &value);
         if let Some(numeric) = numeric {
             assert_ne!(value, CssVoiceBalance::try_number(number(numeric)).unwrap());
@@ -74,22 +74,26 @@ fn balance_numbers_preserve_exact_unrestricted_coefficients_and_original_compone
         assert_eq!(value.number().unwrap().origin(), literal.origin());
         let retained = value.clone();
         assert_eq!(
-            value.serialize_specified().unwrap(),
-            value.number().unwrap().serialize_specified().unwrap()
+            value.serialize_specified(Default::default()).unwrap(),
+            value
+                .number()
+                .unwrap()
+                .serialize_specified(Default::default())
+                .unwrap()
         );
         assert_eq!(value, &retained);
     }
     assert_eq!(
         CssVoiceBalance::try_number(number("101"))
             .unwrap()
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "101"
     );
     assert_eq!(
         CssVoiceBalance::try_number(number("-101"))
             .unwrap()
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "-101"
     );
@@ -110,18 +114,28 @@ fn balance_math_uses_only_pure_number_typing_and_keeps_its_authored_tree() {
         let numeric = value.number().unwrap();
         assert!(numeric.literal_component().is_none());
         let calculation = numeric.calculation().unwrap();
-        assert_eq!(calculation.components().serialize().unwrap().as_css(), text);
         assert_eq!(
-            value.serialize_specified().unwrap(),
-            numeric.serialize_specified().unwrap()
+            calculation
+                .components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            text
+        );
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            numeric.serialize_specified(Default::default()).unwrap()
         );
         let checked = CssVoiceBalance::try_number(numeric.clone()).unwrap();
         assert_eq!(&checked, value);
     }
     for text in ["calc(1%)", "calc(1 + 1%)", "calc(1px)", "calc(1db)"] {
         assert!(
-            CssNumberCalculation::try_from_components(parse_component_values(text).unwrap())
-                .is_err(),
+            CssNumberCalculation::try_from_components(
+                parse_component_values(text).unwrap(),
+                Default::default()
+            )
+            .is_err(),
             "{text}"
         );
         let report = parse_style_attribute(&format!("voice-balance:{text}"));
@@ -193,7 +207,7 @@ fn volume_models_encode_silent_level_and_standalone_offset_without_inserting_def
     ] {
         let plain = level(keyword, None);
         assert_eq!(volume(&declaration("voice-volume", text)), &plain);
-        assert_eq!(plain.serialize_specified().unwrap(), text);
+        assert_eq!(plain.serialize_specified(Default::default()).unwrap(), text);
         for authored in [format!("{text} -6dB"), format!("-6dB {text}")] {
             let source = declaration("voice-volume", &authored);
             let CssVoiceVolume::Level { level, decibel } = volume(&source) else {
@@ -209,7 +223,9 @@ fn volume_models_encode_silent_level_and_standalone_offset_without_inserting_def
                     .contains(offset.component())
             );
             assert_eq!(
-                volume(&source).serialize_specified().unwrap(),
+                volume(&source)
+                    .serialize_specified(Default::default())
+                    .unwrap(),
                 format!("{text} -6db")
             );
         }
@@ -217,7 +233,12 @@ fn volume_models_encode_silent_level_and_standalone_offset_without_inserting_def
     let bare = declaration("voice-volume", "0db");
     assert!(matches!(volume(&bare), CssVoiceVolume::Offset(_)));
     assert_ne!(volume(&bare), &level(CssVoiceVolumeLevel::Medium, None));
-    assert_eq!(volume(&bare).serialize_specified().unwrap(), "0db");
+    assert_eq!(
+        volume(&bare)
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "0db"
+    );
 }
 
 #[test]
@@ -242,20 +263,28 @@ fn volume_offsets_reuse_exact_decibel_storage_and_shared_specified_precision() {
                 .contains(offset.component())
         );
         assert_eq!(
-            volume(&source).serialize_specified().unwrap(),
-            offset.serialize_specified().unwrap()
+            volume(&source)
+                .serialize_specified(Default::default())
+                .unwrap(),
+            offset.serialize_specified(Default::default()).unwrap()
         );
         assert_eq!(offset.component().origin(), offset.origin());
     }
     let tiny = CssDecibelLiteral::try_new("-1e-400").unwrap();
     let value = CssVoiceVolume::Offset(tiny.clone());
-    assert_eq!(value.serialize_specified().unwrap(), "0db");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "0db"
+    );
     assert_eq!(tiny.numeric().representation(), "-1e-400");
     let with_level = CssVoiceVolume::Level {
         level: CssVoiceVolumeLevel::Soft,
         decibel: Some(tiny),
     };
-    assert_eq!(with_level.serialize_specified().unwrap(), "soft 0db");
+    assert_eq!(
+        with_level.serialize_specified(Default::default()).unwrap(),
+        "soft 0db"
+    );
 }
 
 #[test]
@@ -263,7 +292,10 @@ fn volume_omits_only_exact_zero_companions_without_losing_authored_fields() {
     for text in ["0", "-0", "+0.00e9999999999999999999999999999999999999"] {
         let value = level(CssVoiceVolumeLevel::Loud, Some(text));
         let retained = value.clone();
-        assert_eq!(value.serialize_specified().unwrap(), "loud");
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            "loud"
+        );
         let CssVoiceVolume::Level { decibel, .. } = &value else {
             panic!("level")
         };
@@ -272,7 +304,7 @@ fn volume_omits_only_exact_zero_companions_without_losing_authored_fields() {
         assert_eq!(value, retained);
         assert_eq!(
             CssVoiceVolume::Offset(decibel.clone().unwrap())
-                .serialize_specified()
+                .serialize_specified(Default::default())
                 .unwrap(),
             "0db"
         );
@@ -284,44 +316,42 @@ fn mixing_specified_limits_charge_omitted_children_and_fail_atomically() {
     let zero = level(CssVoiceVolumeLevel::Medium, Some("-0"));
     let retained = zero.clone();
     assert_eq!(
-        zero.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(3, 3, 6))
+        zero.serialize_specified(CssSerializationLimits::new(3, 3, 6))
             .unwrap(),
         "medium"
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(2, 3, 6),
+            CssSerializationLimits::new(2, 3, 6),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(3, 2, 6),
+            CssSerializationLimits::new(3, 2, 6),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(3, 3, 5),
+            CssSerializationLimits::new(3, 3, 5),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
-        assert_eq!(
-            zero.serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            kind
-        );
+        assert_eq!(zero.serialize_specified(limits).unwrap_err().kind(), kind);
         assert_eq!(zero, retained);
-        assert_eq!(zero.serialize_specified().unwrap(), "medium");
+        assert_eq!(
+            zero.serialize_specified(Default::default()).unwrap(),
+            "medium"
+        );
     }
     let plain = level(CssVoiceVolumeLevel::Medium, None);
     assert_eq!(
         plain
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(2, 2, 6))
+            .serialize_specified(CssSerializationLimits::new(2, 2, 6))
             .unwrap(),
         "medium"
     );
     let offset = CssVoiceVolume::Offset(CssDecibelLiteral::try_new("-6").unwrap());
     assert_eq!(
         offset
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(1, 1, 4))
+            .serialize_specified(CssSerializationLimits::new(1, 1, 4))
             .unwrap(),
         "-6db"
     );
@@ -330,38 +360,28 @@ fn mixing_specified_limits_charge_omitted_children_and_fail_atomically() {
         CssVoiceBalance::try_number(number("101")).unwrap(),
     ] {
         let retained = value.clone();
-        let expected = value.serialize_specified().unwrap();
+        let expected = value.serialize_specified(Default::default()).unwrap();
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    1,
-                    1,
-                    expected.len()
-                ))
+                .serialize_specified(CssSerializationLimits::new(1, 1, expected.len()))
                 .unwrap(),
             expected
         );
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(0, 1, expected.len()),
+                CssSerializationLimits::new(0, 1, expected.len()),
                 CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 0, expected.len()),
+                CssSerializationLimits::new(1, 0, expected.len()),
                 CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 1, expected.len() - 1),
+                CssSerializationLimits::new(1, 1, expected.len() - 1),
                 CssSpecifiedValueSerializationErrorKind::ByteLimit,
             ),
         ] {
-            assert_eq!(
-                value
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
-                kind
-            );
+            assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
             assert_eq!(value, retained);
         }
     }
@@ -374,25 +394,19 @@ fn balance_math_resource_limits_use_the_number_owner_and_preserve_authored_graph
     let retained = value.clone();
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(0, 100, 100),
+            CssSerializationLimits::new(0, 100, 100),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(100, 0, 100),
+            CssSerializationLimits::new(100, 0, 100),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(100, 100, 0),
+            CssSerializationLimits::new(100, 100, 0),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
-        assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            kind
-        );
+        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
         assert_eq!(value, &retained);
     }
     assert_eq!(
@@ -402,7 +416,7 @@ fn balance_math_resource_limits_use_the_number_owner_and_preserve_authored_graph
             .calculation()
             .unwrap()
             .components()
-            .serialize()
+            .serialize_tokens(Default::default())
             .unwrap()
             .as_css(),
         "calc(101 + 20)"

@@ -1,14 +1,15 @@
 //! Exact authored gap values before layout and percentage resolution.
 
 use crate::specified_serialization::SpecifiedSerializationContext;
-use crate::{
-    CssSpecifiedNonNegativeLengthPercentage, CssSpecifiedValueSerializationError,
-    CssSpecifiedValueSerializationLimits,
-};
+use crate::{CssSerializationError, CssSpecifiedNonNegativeLengthPercentage};
 
-type SerializationResult<T> = Result<T, CssSpecifiedValueSerializationError>;
+type SerializationResult<T> = Result<T, CssSerializationError>;
 
 /// One `row-gap` or `column-gap` value, retaining symbolic normal or exact numeric syntax.
+///
+/// # Specified serialization
+///
+/// Serializes this specified value without resolving layout context.
 #[non_exhaustive]
 #[derive(Clone, Debug)]
 pub enum CssGapValue {
@@ -17,31 +18,6 @@ pub enum CssGapValue {
 }
 
 impl CssGapValue {
-    /// Serializes this specified value without resolving layout context.
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes under explicit input, projection, and byte limits.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        let context = &mut writer.context;
-        let output = &mut writer.css;
-        self.serialize_specified_into(context, output)?;
-        Ok(())
-    }
-
     pub(crate) fn serialize_specified_into(
         &self,
         context: &mut SpecifiedSerializationContext,
@@ -49,8 +25,7 @@ impl CssGapValue {
     ) -> SerializationResult<()> {
         match self {
             Self::Normal => {
-                context.charge_input(1)?;
-                context.charge_projection(1)?;
+                context.charge_nodes(1)?;
                 context.append(output, "normal")
             }
             Self::LengthPercentage(value) => {
@@ -60,6 +35,18 @@ impl CssGapValue {
         }
     }
 }
+impl crate::specified_rule_serialization::SpecifiedProvider for CssGapValue {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        let context = &mut writer.context;
+        let output = &mut writer.css;
+        self.serialize_specified_into(context, output)?;
+        Ok(())
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(CssGapValue);
 
 impl PartialEq for CssGapValue {
     fn eq(&self, other: &Self) -> bool {
@@ -78,6 +65,10 @@ impl Eq for CssGapValue {}
 /// An authored `gap` shorthand with one row value and an optional column value.
 ///
 /// A missing column repeats the row without manufacturing a second numeric origin.
+///
+/// # Specified serialization
+///
+/// Serializes exactly the authored one or two specified components.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssGapShorthand {
     row: CssGapValue,
@@ -111,29 +102,14 @@ impl CssGapShorthand {
     pub fn column(&self) -> &CssGapValue {
         self.authored_column.as_ref().unwrap_or(&self.row)
     }
-
-    /// Serializes exactly the authored one or two specified components.
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes under one cumulative input, projection, and byte budget.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+}
+impl crate::specified_rule_serialization::SpecifiedProvider for CssGapShorthand {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         let context = &mut writer.context;
-        context.charge_input(1)?;
-        context.charge_projection(1)?;
+        context.charge_nodes(1)?;
         writer.source_member(0, |writer| {
             self.row
                 .serialize_specified_into(&mut writer.context, &mut writer.css)
@@ -147,3 +123,4 @@ impl CssGapShorthand {
         Ok(())
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssGapShorthand);

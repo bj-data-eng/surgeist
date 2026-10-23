@@ -34,7 +34,7 @@ fn contributions(source: &CssDeclaration) -> CssLonghandContributions {
 }
 fn canonical(source: &CssDeclaration, name: &str, text: &str) {
     assert_eq!(
-        source.to_specified_css().unwrap(),
+        source.serialize_specified(Default::default()).unwrap(),
         format!("{name}: {text} !important;")
     );
 }
@@ -91,7 +91,7 @@ fn programmatic_components_preserve_origin_identity_and_importance_at_both_check
         } else {
             CssComponentValue::try_ident(text).unwrap()
         };
-        let components = CssComponentValues::try_new(vec![value]).unwrap();
+        let components = CssComponentValues::try_new(vec![value], Default::default()).unwrap();
         for grammar in [false, true] {
             let source = checked_components(name, components.clone(), grammar).unwrap();
             assert_eq!(source.value_components(), &components);
@@ -240,7 +240,7 @@ fn declaration_limits(name: &str, text: &str, nodes: usize) {
     for source in [parsed(name, text), checked(name, text, true)] {
         let expected = format!("{name}: {text} !important;");
         LimitLadder::new(&expected, nodes + 2, nodes + 2)
-            .assert_unchanged(&source, CssDeclaration::to_specified_css_with_limits);
+            .assert_unchanged(&source, CssDeclaration::serialize_specified);
     }
 }
 #[test]

@@ -34,11 +34,11 @@ fn calculation(depth: usize, percent: bool) -> CssColorComponent {
     assert_eq!(raw.nesting_depth() as usize, depth);
     if percent {
         CssColorComponent::PercentageCalculation(
-            CssPercentageCalculation::try_from_components(raw).unwrap(),
+            CssPercentageCalculation::try_from_components(raw, Default::default()).unwrap(),
         )
     } else {
         CssColorComponent::NumberCalculation(
-            CssNumberCalculation::try_from_components(raw).unwrap(),
+            CssNumberCalculation::try_from_components(raw, Default::default()).unwrap(),
         )
     }
 }
@@ -90,7 +90,7 @@ fn private_payload_accessors_retain_order_syntax_alpha_and_every_scalar_origin()
         let before = value.clone();
         for _ in 0..3 {
             assert_eq!(
-                value.to_specified_css().unwrap(),
+                value.serialize_specified(Default::default()).unwrap(),
                 "device-cmyk(-0.2 1.4 none 1.000000000000000000001)"
             );
             assert_eq!(value, before);
@@ -128,7 +128,7 @@ fn legacy_number_and_number_calculation_payloads_are_checked_without_clamping() 
     assert_eq!(payload.alpha(), None);
     assert_eq!(
         CssColor::from_device_cmyk(payload)
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .unwrap(),
         "device-cmyk(-2 calc(0.5) 4 5)"
     );
@@ -198,13 +198,13 @@ fn modern_calculation_domains_and_omission_missing_alpha_are_distinct() {
     ));
     assert_eq!(
         CssColor::from_device_cmyk(omitted)
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .unwrap(),
         "device-cmyk(calc(0.5) calc(0.5) 0.5 none)"
     );
     assert_eq!(
         CssColor::from_device_cmyk(missing)
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .unwrap(),
         "device-cmyk(calc(0.5) calc(0.5) 0.5 none / none)"
     );
@@ -246,6 +246,7 @@ fn each_numeric_channel_and_alpha_obeys_255_child_plus_one_function_depth() {
                 parse_component_values(channel).unwrap(),
                 CssRelativeColorEnvironment::Rgb,
                 CssRelativeColorResultDomain::NumberPercentage,
+                Default::default(),
             )
             .unwrap()
         });

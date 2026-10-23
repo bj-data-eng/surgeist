@@ -400,17 +400,32 @@ fn component_allowance_covers_all_members_descendants_and_root_trivia_once() {
 fn admitted_carriers_feed_checked_edited_views_without_constructing_authored_rules() {
     let declarations = CssSpecifiedDeclarationBlock::try_from_declarations(
         parse_declaration_block_contents("").syntax(),
+        Default::default(),
     )
     .unwrap();
     let parsed = clean(".Consumer > .leaf", CssStyleSelectorContext::Ordinary);
-    let view = CssEditedRuleView::try_style(ordinary(&parsed), &declarations, &[]).unwrap();
-    assert_eq!(view.serialize_cssom().unwrap(), ".Consumer > .leaf { }");
+    let view =
+        CssEditedRuleView::try_style(ordinary(&parsed), &declarations, &[], Default::default())
+            .unwrap();
+    assert_eq!(
+        view.serialize_cssom(Default::default()).unwrap(),
+        ".Consumer > .leaf { }"
+    );
     assert!(view.parsed_rule().is_none());
     let parsed = clean(
         "&.scoped",
         CssStyleSelectorContext::Scoped(CssStyleAncestor::Present),
     );
-    let view = CssEditedRuleView::try_scoped_style(scoped(&parsed), &declarations, &[]).unwrap();
-    assert_eq!(view.to_specified_css().unwrap(), "&.scoped { }");
+    let view = CssEditedRuleView::try_scoped_style(
+        scoped(&parsed),
+        &declarations,
+        &[],
+        Default::default(),
+    )
+    .unwrap();
+    assert_eq!(
+        view.serialize_specified(Default::default()).unwrap(),
+        "&.scoped { }"
+    );
     assert!(view.parsed_rule().is_none());
 }

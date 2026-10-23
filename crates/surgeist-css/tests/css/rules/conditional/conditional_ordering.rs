@@ -146,7 +146,7 @@ fn import_supports_accepts_bare_declarations_and_full_conditions() {
         panic!("original at-keyword");
     };
     assert_eq!(origin.source().as_str(), source);
-    let output = import.serialize().unwrap();
+    let output = import.serialize_tokens(Default::default()).unwrap();
     assert!(matches!(
         output.origin_at(output.as_css().len() - 1),
         Some(CssSerializedOrigin::Token(CssValueOrigin::Programmatic))

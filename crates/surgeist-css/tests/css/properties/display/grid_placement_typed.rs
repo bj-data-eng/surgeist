@@ -35,7 +35,9 @@ fn parsed_exact_and_math_lines_keep_current_values_and_canonical_output() {
         ("span calc(-1) main", "span calc(-1) main"),
     ] {
         assert_eq!(
-            parsed_line(input).serialize_specified().unwrap(),
+            parsed_line(input)
+                .serialize_specified(Default::default())
+                .unwrap(),
             output,
             "{input}"
         );
@@ -51,7 +53,9 @@ fn parsed_exact_and_math_lines_keep_current_values_and_canonical_output() {
     assert!(matches!(parsed_line("calc(0)"), CssGridLine::Indexed(_)));
     assert!(matches!(parsed_line("span calc(-1)"), CssGridLine::Span(_)));
     assert_eq!(
-        parsed_line("calc(2.5)").serialize_specified().unwrap(),
+        parsed_line("calc(2.5)")
+            .serialize_specified(Default::default())
+            .unwrap(),
         "calc(2.5)"
     );
     assert!(!parse_style_attribute("grid-row-start: calc(1px)").is_clean());
@@ -90,7 +94,7 @@ fn checked_construction_excludes_invalid_states_and_keeps_authored_variants() {
 
     let small =
         CssGridLine::try_indexed(CssIntegerValue::Literal(exact_integer("+002")), None).unwrap();
-    assert_eq!(small.serialize_specified().unwrap(), "2");
+    assert_eq!(small.serialize_specified(Default::default()).unwrap(), "2");
     assert_ne!(
         small,
         CssGridLine::try_indexed(
@@ -103,7 +107,10 @@ fn checked_construction_excludes_invalid_states_and_keeps_authored_variants() {
     let large =
         CssGridLine::try_indexed(CssIntegerValue::Literal(exact_integer("2147483648")), None)
             .unwrap();
-    assert_eq!(large.serialize_specified().unwrap(), "2147483648");
+    assert_eq!(
+        large.serialize_specified(Default::default()).unwrap(),
+        "2147483648"
+    );
     let CssGridLine::Indexed(index) = &large else {
         panic!("constructed index")
     };
@@ -117,7 +124,10 @@ fn checked_construction_excludes_invalid_states_and_keeps_authored_variants() {
         Some(line_name("main")),
     )
     .unwrap();
-    assert_eq!(named.serialize_specified().unwrap(), "2 main");
+    assert_eq!(
+        named.serialize_specified(Default::default()).unwrap(),
+        "2 main"
+    );
     let span = CssGridLine::try_span(
         Some(CssPositiveIntegerValue::Literal(
             CssPositiveIntegerLiteral::try_new(exact_integer("+002")).unwrap(),
@@ -125,16 +135,25 @@ fn checked_construction_excludes_invalid_states_and_keeps_authored_variants() {
         Some(line_name("main")),
     )
     .unwrap();
-    assert_eq!(span.serialize_specified().unwrap(), "span 2 main");
+    assert_eq!(
+        span.serialize_specified(Default::default()).unwrap(),
+        "span 2 main"
+    );
     let math = CssGridLine::try_indexed(
         CssIntegerValue::Calculation(
-            CssIntegerCalculation::try_from_components(parse_component_values("calc(0)").unwrap())
-                .unwrap(),
+            CssIntegerCalculation::try_from_components(
+                parse_component_values("calc(0)").unwrap(),
+                Default::default(),
+            )
+            .unwrap(),
         ),
         None,
     )
     .unwrap();
-    assert_eq!(math.serialize_specified().unwrap(), "calc(0)");
+    assert_eq!(
+        math.serialize_specified(Default::default()).unwrap(),
+        "calc(0)"
+    );
     assert_eq!(math, parsed_line("calc(0)"));
 }
 
@@ -144,11 +163,19 @@ fn authored_omissions_and_effective_members_remain_distinct() {
     let range = CssGridLineRange::new(named.clone(), None);
     assert!(range.authored_end().is_none());
     assert_eq!(range.effective_end(), named);
-    assert_eq!(range.serialize_specified().unwrap(), "Hero");
+    assert_eq!(
+        range.serialize_specified(Default::default()).unwrap(),
+        "Hero"
+    );
     let explicit_auto = CssGridLineRange::new(named.clone(), Some(CssGridLine::Auto));
     assert_eq!(explicit_auto.authored_end(), Some(&CssGridLine::Auto));
     assert_eq!(explicit_auto.effective_end(), CssGridLine::Auto);
-    assert_eq!(explicit_auto.serialize_specified().unwrap(), "Hero / auto");
+    assert_eq!(
+        explicit_auto
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "Hero / auto"
+    );
 
     let indexed = CssGridLine::try_indexed(
         CssIntegerValue::Literal(surgeist_css::CssIntegerLiteral::from_i32(2)),
@@ -157,7 +184,10 @@ fn authored_omissions_and_effective_members_remain_distinct() {
     .unwrap();
     let range = CssGridLineRange::new(indexed.clone(), None);
     assert_eq!(range.effective_end(), CssGridLine::Auto);
-    assert_eq!(range.serialize_specified().unwrap(), "2 Hero");
+    assert_eq!(
+        range.serialize_specified(Default::default()).unwrap(),
+        "2 Hero"
+    );
 
     let area = CssGridArea::try_new(
         indexed,
@@ -173,7 +203,10 @@ fn authored_omissions_and_effective_members_remain_distinct() {
         area.effective_column_end(),
         CssGridLine::Name(line_name("Nav"))
     );
-    assert_eq!(area.serialize_specified().unwrap(), "2 Hero / Nav");
+    assert_eq!(
+        area.serialize_specified(Default::default()).unwrap(),
+        "2 Hero / Nav"
+    );
 
     assert!(CssGridArea::try_new(CssGridLine::Auto, None, Some(CssGridLine::Auto), None).is_none());
     assert!(CssGridArea::try_new(CssGridLine::Auto, None, None, Some(CssGridLine::Auto)).is_none());
@@ -191,15 +224,15 @@ fn authored_omissions_and_effective_members_remain_distinct() {
 #[test]
 fn decoded_names_serialize_as_identifiers_and_reenter() {
     let line = CssGridLine::Name(line_name("A:B"));
-    let css = line.serialize_specified().unwrap();
+    let css = line.serialize_specified(Default::default()).unwrap();
     assert_eq!(css, "A\\:B");
     assert_eq!(
-        line.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(1, 1, 4))
+        line.serialize_specified(CssSerializationLimits::new(1, 1, 4))
             .unwrap(),
         "A\\:B"
     );
     assert_eq!(
-        line.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(1, 1, 3))
+        line.serialize_specified(CssSerializationLimits::new(1, 1, 3))
             .unwrap_err()
             .kind(),
         CssSpecifiedValueSerializationErrorKind::ByteLimit
@@ -207,7 +240,7 @@ fn decoded_names_serialize_as_identifiers_and_reenter() {
     assert_eq!(parsed_line(&css), line);
     assert_eq!(
         CssGridLine::Name(line_name("MiXeD"))
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "MiXeD"
     );
@@ -223,35 +256,29 @@ fn shorthand_serialization_charges_one_cumulative_budget() {
     )
     .unwrap();
     let expected = "a / b / c / d";
-    assert_eq!(area.serialize_specified().unwrap(), expected);
     assert_eq!(
-        area.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-            4,
-            4,
-            expected.len()
-        ))
-        .unwrap(),
+        area.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
+    assert_eq!(
+        area.serialize_specified(CssSerializationLimits::new(4, 4, expected.len()))
+            .unwrap(),
         expected
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(3, 4, expected.len()),
+            CssSerializationLimits::new(3, 4, expected.len()),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(4, 3, expected.len()),
+            CssSerializationLimits::new(4, 3, expected.len()),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(4, 4, expected.len() - 1),
+            CssSerializationLimits::new(4, 4, expected.len() - 1),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
-        assert_eq!(
-            area.serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            kind
-        );
+        assert_eq!(area.serialize_specified(limits).unwrap_err().kind(), kind);
     }
 }

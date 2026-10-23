@@ -29,7 +29,7 @@ fn image_css(function: &str, method: &str, colors: &str) -> String {
     let [image] = images.images().images() else {
         panic!("one gradient")
     };
-    image.serialize_specified().unwrap()
+    image.serialize_specified(Default::default()).unwrap()
 }
 
 #[test]
@@ -59,18 +59,26 @@ fn explicit_oklab_with_legacy_colors_survives_image_and_declaration_serializatio
             let [image] = images.images().images() else {
                 panic!("one gradient")
             };
-            let specified = image.serialize_specified().unwrap();
+            let specified = image.serialize_specified(Default::default()).unwrap();
             assert!(
                 specified.starts_with(&format!("{function}(in oklab, ")),
                 "{specified}"
             );
             let checked = CssImage::try_new(image.clone()).unwrap();
-            assert_eq!(checked.serialize_specified().unwrap(), specified);
-            let output = declaration.to_specified_css().unwrap();
+            assert_eq!(
+                checked.serialize_specified(Default::default()).unwrap(),
+                specified
+            );
+            let output = declaration.serialize_specified(Default::default()).unwrap();
             assert!(output.contains("in oklab"), "{output}");
             let report = parse_style_attribute(&output);
             assert!(report.is_clean(), "{:?}", report.diagnostics());
-            assert_eq!(report.syntax()[0].to_specified_css().unwrap(), output);
+            assert_eq!(
+                report.syntax()[0]
+                    .serialize_specified(Default::default())
+                    .unwrap(),
+                output
+            );
             assert_eq!(declaration, before);
         }
     }

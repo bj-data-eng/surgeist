@@ -10,7 +10,8 @@ fn scalar(text: &str) -> CssGapValue {
     let components = parse_component_values(text).unwrap();
     let numeric = if text.starts_with("calc(") {
         CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(
-            CssLengthPercentageCalculation::try_from_components(components).unwrap(),
+            CssLengthPercentageCalculation::try_from_components(components, Default::default())
+                .unwrap(),
         )
         .unwrap()
     } else {
@@ -42,7 +43,10 @@ fn constructed_gap_preserves_authored_arity_and_numeric_origins() {
     let one = CssGapShorthand::new(row.clone(), None);
     assert!(one.authored_column().is_none());
     assert_eq!(one.row(), one.column());
-    assert_eq!(one.serialize_specified().unwrap(), "1.25px");
+    assert_eq!(
+        one.serialize_specified(Default::default()).unwrap(),
+        "1.25px"
+    );
     assert_eq!(one, parsed_gap("1.25px"));
     let CssGapValue::LengthPercentage(row_numeric) = one.row() else {
         panic!("numeric row")
@@ -55,7 +59,10 @@ fn constructed_gap_preserves_authored_arity_and_numeric_origins() {
         panic!("parsed numeric row")
     };
     assert!(matches!(parsed_row.origin(), CssValueOrigin::Parsed(_)));
-    assert_eq!(parsed.serialize_specified().unwrap(), "1.25px 2%");
+    assert_eq!(
+        parsed.serialize_specified(Default::default()).unwrap(),
+        "1.25px 2%"
+    );
     assert_ne!(
         one,
         CssGapShorthand::new(scalar("1.25px"), Some(scalar("1.25px")))
@@ -65,7 +72,10 @@ fn constructed_gap_preserves_authored_arity_and_numeric_origins() {
 #[test]
 fn normal_and_symbolic_numeric_values_remain_distinct() {
     let normal = CssGapValue::Normal;
-    assert_eq!(normal.serialize_specified().unwrap(), "normal");
+    assert_eq!(
+        normal.serialize_specified(Default::default()).unwrap(),
+        "normal"
+    );
     assert_eq!(
         parsed_gap("normal 2px"),
         CssGapShorthand::new(normal.clone(), Some(scalar("2px")))
@@ -77,10 +87,13 @@ fn normal_and_symbolic_numeric_values_remain_distinct() {
         panic!("checked symbolic numeric")
     };
     assert!(value.calculation().is_some());
-    assert_eq!(symbolic.serialize_specified().unwrap(), "calc(2% + 1px)");
+    assert_eq!(
+        symbolic.serialize_specified(Default::default()).unwrap(),
+        "calc(2% + 1px)"
+    );
     assert_eq!(
         CssGapShorthand::new(symbolic, Some(scalar("3px")))
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "calc(2% + 1px) 3px"
     );
@@ -108,23 +121,30 @@ fn parsed_and_checked_wrappers_expose_exact_current_models() {
         .unwrap();
         let expected = match name {
             "gap" => CssGapShorthand::new(scalar("1px"), Some(scalar("2%")))
-                .serialize_specified()
+                .serialize_specified(Default::default())
                 .unwrap(),
-            "row-gap" => CssGapValue::Normal.serialize_specified().unwrap(),
-            _ => scalar("calc(1px + 2%)").serialize_specified().unwrap(),
+            "row-gap" => CssGapValue::Normal
+                .serialize_specified(Default::default())
+                .unwrap(),
+            _ => scalar("calc(1px + 2%)")
+                .serialize_specified(Default::default())
+                .unwrap(),
         };
         for source in [parsed, checked] {
             let model = source.known().unwrap().property_value().unwrap();
             let rendered = match model {
-                CssKnownPropertyValueRef::Gap(value) => {
-                    value.value().serialize_specified().unwrap()
-                }
-                CssKnownPropertyValueRef::RowGap(value) => {
-                    value.value().serialize_specified().unwrap()
-                }
-                CssKnownPropertyValueRef::ColumnGap(value) => {
-                    value.value().serialize_specified().unwrap()
-                }
+                CssKnownPropertyValueRef::Gap(value) => value
+                    .value()
+                    .serialize_specified(Default::default())
+                    .unwrap(),
+                CssKnownPropertyValueRef::RowGap(value) => value
+                    .value()
+                    .serialize_specified(Default::default())
+                    .unwrap(),
+                CssKnownPropertyValueRef::ColumnGap(value) => value
+                    .value()
+                    .serialize_specified(Default::default())
+                    .unwrap(),
                 _ => panic!("gap-family wrapper"),
             };
             assert_eq!(rendered, expected, "{name}:{value}");

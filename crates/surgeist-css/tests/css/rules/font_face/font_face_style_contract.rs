@@ -6,9 +6,9 @@ use surgeist_css::{
     CssAuthoredFontFaceDescriptorValue as Authored, CssComponentValue, CssComponentValues,
     CssFontFaceDescriptorKind as Kind, CssFontFaceDescriptorValue as Ordinary,
     CssFontFaceObliqueRange, CssFontFaceStyle, CssFontFaceValueErrorKind, CssFontObliqueAngle,
-    CssFontStyleKeyword, CssRecoveryAction, CssRule, CssSerializedOrigin,
-    CssSpecifiedValueSerializationErrorKind, CssSpecifiedValueSerializationLimits, CssValueOrigin,
-    parse_component_values, parse_font_face_descriptor_value, parse_sheet,
+    CssFontStyleKeyword, CssRecoveryAction, CssRule, CssSerializationLimits, CssSerializedOrigin,
+    CssSpecifiedValueSerializationErrorKind, CssValueOrigin, parse_component_values,
+    parse_font_face_descriptor_value, parse_sheet,
 };
 
 fn angle(text: &str) -> CssFontObliqueAngle {
@@ -33,7 +33,7 @@ fn auto_keywords_and_oblique_ranges_preserve_omission_arity_and_order() {
     ] {
         let value = ordinary(text);
         assert_eq!(value, CssFontFaceStyle::Keyword(keyword));
-        assert_eq!(value.serialize_specified().unwrap(), text);
+        assert_eq!(value.serialize_specified(Default::default()).unwrap(), text);
     }
     assert_eq!(
         ordinary("oblique"),
@@ -71,20 +71,23 @@ fn auto_keywords_and_oblique_ranges_preserve_omission_arity_and_order() {
             panic!("range: {text}")
         };
         assert_eq!(
-            range.start().serialize_specified().unwrap(),
+            range
+                .start()
+                .serialize_specified(Default::default())
+                .unwrap(),
             start,
             "{text}"
         );
         assert_eq!(
             range
                 .end()
-                .map(|end| end.serialize_specified().unwrap())
+                .map(|end| end.serialize_specified(Default::default()).unwrap())
                 .as_deref(),
             end,
             "{text}"
         );
         assert_eq!(
-            range.serialize_specified().unwrap(),
+            range.serialize_specified(Default::default()).unwrap(),
             expected_range,
             "{text}"
         );
@@ -98,16 +101,22 @@ fn checked_range_owns_checked_endpoints_without_ordering_or_degree_projection() 
     let range = CssFontFaceObliqueRange::new(start.clone(), Some(end.clone()));
     assert_eq!(range.start(), &start);
     assert_eq!(range.end(), Some(&end));
-    assert_eq!(range.serialize_specified().unwrap(), "90deg -0.25turn");
+    assert_eq!(
+        range.serialize_specified(Default::default()).unwrap(),
+        "90deg -0.25turn"
+    );
     assert_eq!(
         CssFontFaceStyle::Oblique { range: Some(range) }
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "oblique 90deg -0.25turn"
     );
     let single = CssFontFaceObliqueRange::new(angle("0rad"), None);
     assert!(single.end().is_none());
-    assert_eq!(single.serialize_specified().unwrap(), "0rad");
+    assert_eq!(
+        single.serialize_specified(Default::default()).unwrap(),
+        "0rad"
+    );
 }
 
 #[test]
@@ -171,6 +180,7 @@ fn duplicate_pending_and_mixed_origin_reentry_select_last_admitted_style() {
     let checked = Authored::try_from_components(
         Kind::FontStyle,
         parse_component_values("env(style, oblique)").unwrap(),
+        Default::default(),
     )
     .unwrap();
     let Authored::Pending(pending) = checked else {
@@ -181,7 +191,10 @@ fn duplicate_pending_and_mixed_origin_reentry_select_last_admitted_style() {
         .items()
         .to_vec();
     let replacement = pending
-        .reparse_after_substitution(CssComponentValues::try_new(components.clone()).unwrap())
+        .reparse_after_substitution(
+            CssComponentValues::try_new(components.clone(), Default::default()).unwrap(),
+            Default::default(),
+        )
         .unwrap();
     let Ordinary::FontStyle(CssFontFaceStyle::Oblique { range: Some(range) }) = replacement else {
         panic!("reentered range")
@@ -195,21 +208,37 @@ fn duplicate_pending_and_mixed_origin_reentry_select_last_admitted_style() {
 
     components.push(CssComponentValue::try_token("-20grad").unwrap());
     let replacement = pending
-        .reparse_after_substitution(CssComponentValues::try_new(components).unwrap())
+        .reparse_after_substitution(
+            CssComponentValues::try_new(components, Default::default()).unwrap(),
+            Default::default(),
+        )
         .unwrap();
     let Ordinary::FontStyle(CssFontFaceStyle::Oblique { range: Some(range) }) = replacement else {
         panic!("mixed range")
     };
-    assert_eq!(range.start().serialize_specified().unwrap(), "10deg");
+    assert_eq!(
+        range
+            .start()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "10deg"
+    );
     assert_eq!(range.end().unwrap().origin(), &CssValueOrigin::Programmatic);
     assert_eq!(
-        range.end().unwrap().serialize_specified().unwrap(),
+        range
+            .end()
+            .unwrap()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "-20grad"
     );
     for text in ["env(style)", "var(--style)"] {
         assert_eq!(
             pending
-                .reparse_after_substitution(parse_component_values(text).unwrap())
+                .reparse_after_substitution(
+                    parse_component_values(text).unwrap(),
+                    Default::default()
+                )
                 .unwrap_err()
                 .kind(),
             &CssFontFaceValueErrorKind::ResidualSubstitution,
@@ -218,7 +247,10 @@ fn duplicate_pending_and_mixed_origin_reentry_select_last_admitted_style() {
     }
     // Fonts 4 §4.2: an oblique angle lies in [-90deg, 90deg].
     let error = pending
-        .reparse_after_substitution(parse_component_values("oblique 91deg").unwrap())
+        .reparse_after_substitution(
+            parse_component_values("oblique 91deg").unwrap(),
+            Default::default(),
+        )
         .unwrap_err();
     let CssFontFaceValueErrorKind::Grammar(detail) = error.kind() else {
         panic!("grammar failure: {error:?}")
@@ -230,12 +262,16 @@ fn duplicate_pending_and_mixed_origin_reentry_select_last_admitted_style() {
 
 #[test]
 fn strict_checked_construction_rejects_invalid_and_adjacent_tokens_with_real_origin() {
-    let invalid = CssComponentValues::try_new(vec![
-        CssComponentValue::try_ident("oblique").unwrap(),
-        CssComponentValue::try_token("91deg").unwrap(),
-    ])
+    let invalid = CssComponentValues::try_new(
+        vec![
+            CssComponentValue::try_ident("oblique").unwrap(),
+            CssComponentValue::try_token("91deg").unwrap(),
+        ],
+        Default::default(),
+    )
     .unwrap();
-    let error = Authored::try_from_components(Kind::FontStyle, invalid).unwrap_err();
+    let error =
+        Authored::try_from_components(Kind::FontStyle, invalid, Default::default()).unwrap_err();
     assert!(matches!(
         error.kind(),
         CssFontFaceValueErrorKind::Grammar(_)
@@ -245,14 +281,18 @@ fn strict_checked_construction_rejects_invalid_and_adjacent_tokens_with_real_ori
         &CssSerializedOrigin::Token(CssValueOrigin::Programmatic)
     );
 
-    let adjacent = CssComponentValues::try_new(vec![
-        CssComponentValue::try_ident("oblique").unwrap(),
-        CssComponentValue::try_number("1").unwrap(),
-        CssComponentValue::try_token("0deg").unwrap(),
-    ])
+    let adjacent = CssComponentValues::try_new(
+        vec![
+            CssComponentValue::try_ident("oblique").unwrap(),
+            CssComponentValue::try_number("1").unwrap(),
+            CssComponentValue::try_token("0deg").unwrap(),
+        ],
+        Default::default(),
+    )
     .unwrap();
     // Fonts 4 §4.2: oblique takes <angle>{0,2}; `1` is a <number>.
-    let error = Authored::try_from_components(Kind::FontStyle, adjacent).unwrap_err();
+    let error =
+        Authored::try_from_components(Kind::FontStyle, adjacent, Default::default()).unwrap_err();
     let CssFontFaceValueErrorKind::Grammar(detail) = error.kind() else {
         panic!("grammar failure: {error:?}")
     };
@@ -264,67 +304,70 @@ fn strict_checked_construction_rejects_invalid_and_adjacent_tokens_with_real_ori
 #[test]
 fn descriptor_and_range_serialization_enforce_aggregate_budgets_atomically() {
     let range = CssFontFaceObliqueRange::new(angle("10deg"), Some(angle("20deg")));
-    assert_eq!(range.serialize_specified().unwrap(), "10deg 20deg");
+    assert_eq!(
+        range.serialize_specified(Default::default()).unwrap(),
+        "10deg 20deg"
+    );
     assert_eq!(
         range
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(2, 2, 11))
+            .serialize_specified(CssSerializationLimits::new(2, 2, 11))
             .unwrap(),
         "10deg 20deg"
     );
     for (limits, expected) in [
         (
-            CssSpecifiedValueSerializationLimits::new(1, 2, 11),
+            CssSerializationLimits::new(1, 2, 11),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(2, 1, 11),
+            CssSerializationLimits::new(2, 1, 11),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(2, 2, 10),
+            CssSerializationLimits::new(2, 2, 10),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
         assert_eq!(
-            range
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            range.serialize_specified(limits).unwrap_err().kind(),
             expected
         );
     }
     let value = CssFontFaceStyle::Oblique { range: Some(range) };
-    assert_eq!(value.serialize_specified().unwrap(), "oblique 10deg 20deg");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "oblique 10deg 20deg"
+    );
     assert_eq!(
         value
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(3, 3, 19))
+            .serialize_specified(CssSerializationLimits::new(3, 3, 19))
             .unwrap(),
         "oblique 10deg 20deg"
     );
     for (limits, expected) in [
         (
-            CssSpecifiedValueSerializationLimits::new(2, 3, 19),
+            CssSerializationLimits::new(2, 3, 19),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(3, 2, 19),
+            CssSerializationLimits::new(3, 2, 19),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
     ] {
         assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            value.serialize_specified(limits).unwrap_err().kind(),
             expected
         );
     }
     assert_eq!(
         value
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(8, 8, 10))
+            .serialize_specified(CssSerializationLimits::new(8, 8, 10))
             .unwrap_err()
             .kind(),
         CssSpecifiedValueSerializationErrorKind::ByteLimit
     );
-    assert_eq!(value.serialize_specified().unwrap(), "oblique 10deg 20deg");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "oblique 10deg 20deg"
+    );
 }

@@ -50,6 +50,7 @@ fn container_rule_accessors_expose_authored_structure() {
     let name = CssContainerName::try_new("sidebar").unwrap();
     let prelude = CssContainerPrelude::try_from_components(
         crate::parse_component_values("sidebar (inline-size > 30rem)").unwrap(),
+        Default::default(),
     )
     .unwrap();
     let condition = prelude.entries()[0].query().unwrap().clone();
@@ -306,7 +307,9 @@ fn scope_selector_list_constructor_rejects_pseudo_elements() {
             Some(CssPseudoElementSequence::try_new(vec![CssPseudoElement::Before]).unwrap()),
         ),
     );
-    let selector = CssSelector::Complex(CssComplexSelector::try_new(first, vec![part]).unwrap());
+    let selector = CssSelector::Complex(
+        CssComplexSelector::try_new(first, vec![part], Default::default()).unwrap(),
+    );
 
     assert_eq!(
         CssScopeSelectorList::try_new(vec![CssScopeSelector::Selector(selector)]),
@@ -341,6 +344,7 @@ fn scoped_group_rule_models_keep_scoped_children() {
 
     let prelude = CssContainerPrelude::try_from_components(
         crate::parse_component_values("sidebar (inline-size > 30rem)").unwrap(),
+        Default::default(),
     )
     .unwrap();
     let condition = prelude.entries()[0].query().unwrap().clone();
@@ -445,7 +449,7 @@ fn font_face_rule_accessors_expose_authored_structure() {
 fn checked_part_and_complex_reject_invalid_private_compound_graphs() {
     // The owning private harness can express corrupt provider internals that
     // public checked compound construction correctly prevents from escaping.
-    let empty = CssPseudoSelectorList::try_new_forgiving(Vec::new()).unwrap();
+    let empty = CssPseudoSelectorList::try_new_forgiving(Vec::new(), Default::default()).unwrap();
     let invalids = [
         CssCompoundSelector::new(None, None, vec![String::new()], Vec::new(), Vec::new()),
         CssCompoundSelector::new(None, None, vec!["a\0b".into()], Vec::new(), Vec::new()),
@@ -459,15 +463,19 @@ fn checked_part_and_complex_reject_invalid_private_compound_graphs() {
     ];
     let valid = CssCompoundSelector::new(None, None, vec!["One".into()], Vec::new(), Vec::new());
     for invalid in invalids {
-        let part_error =
-            CssComplexSelectorPart::try_new(CssSelectorCombinator::Child, invalid.clone())
-                .unwrap_err();
+        let part_error = CssComplexSelectorPart::try_new(
+            CssSelectorCombinator::Child,
+            invalid.clone(),
+            Default::default(),
+        )
+        .unwrap_err();
         let first_error = CssComplexSelector::try_new(
             invalid.clone(),
             vec![CssComplexSelectorPart::new(
                 CssSelectorCombinator::Child,
                 valid.clone(),
             )],
+            Default::default(),
         )
         .unwrap_err();
         let rest_error = CssComplexSelector::try_new(
@@ -476,6 +484,7 @@ fn checked_part_and_complex_reject_invalid_private_compound_graphs() {
                 CssSelectorCombinator::Child,
                 invalid,
             )],
+            Default::default(),
         )
         .unwrap_err();
         for error in [part_error, first_error, rest_error] {
@@ -488,11 +497,17 @@ fn checked_part_and_complex_reject_invalid_private_compound_graphs() {
             );
         }
     }
-    let part =
-        CssComplexSelectorPart::try_new(CssSelectorCombinator::Child, valid.clone()).unwrap();
-    let value = CssComplexSelector::try_new(valid, vec![part]).unwrap();
+    let part = CssComplexSelectorPart::try_new(
+        CssSelectorCombinator::Child,
+        valid.clone(),
+        Default::default(),
+    )
+    .unwrap();
+    let value = CssComplexSelector::try_new(valid, vec![part], Default::default()).unwrap();
     assert_eq!(
-        CssSelector::Complex(value).to_specified_css().unwrap(),
+        CssSelector::Complex(value)
+            .serialize_specified(Default::default())
+            .unwrap(),
         ".One > .One"
     );
 }
@@ -514,12 +529,12 @@ fn complex_selector_constructor_rejects_parts_after_pseudo_elements() {
         CssCompoundSelector::new(None, None, vec!["icon".to_owned()], Vec::new(), Vec::new()),
     );
 
-    assert!(CssComplexSelector::try_new(first, vec![part]).is_err());
+    assert!(CssComplexSelector::try_new(first, vec![part], Default::default()).is_err());
 }
 
 #[test]
 fn pseudo_selector_list_constructor_accepts_complex_selectors() {
-    assert!(CssPseudoSelectorList::try_new(Vec::new()).is_err());
+    assert!(CssPseudoSelectorList::try_new(Vec::new(), Default::default()).is_err());
 
     let first =
         CssCompoundSelector::new(None, None, vec!["field".to_owned()], Vec::new(), Vec::new());
@@ -527,9 +542,11 @@ fn pseudo_selector_list_constructor_accepts_complex_selectors() {
         CssSelectorCombinator::Descendant,
         CssCompoundSelector::new(None, None, vec!["icon".to_owned()], Vec::new(), Vec::new()),
     );
-    let complex = CssSelector::Complex(CssComplexSelector::try_new(first, vec![part]).unwrap());
+    let complex = CssSelector::Complex(
+        CssComplexSelector::try_new(first, vec![part], Default::default()).unwrap(),
+    );
 
-    let list = CssPseudoSelectorList::try_new(vec![complex.clone()]).unwrap();
+    let list = CssPseudoSelectorList::try_new(vec![complex.clone()], Default::default()).unwrap();
     assert_eq!(
         list.items(),
         &[CssPseudoSelectorListItem::Selector(complex)]
@@ -585,9 +602,17 @@ mod selector_list_admission_defenses {
     fn exact(source: &str, expected: &str) {
         let selector = parsed(source);
         let before = selector.clone();
-        assert_eq!(selector.to_specified_css().unwrap(), expected);
+        assert_eq!(
+            selector.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_eq!(selector, before);
-        assert_eq!(parsed(expected).to_specified_css().unwrap(), expected);
+        assert_eq!(
+            parsed(expected)
+                .serialize_specified(Default::default())
+                .unwrap(),
+            expected
+        );
     }
 
     fn pseudo_element_list() -> CssPseudoSelectorList {
@@ -596,7 +621,7 @@ mod selector_list_admission_defenses {
 
     fn invalid_graph(selector: CssSelector) {
         let before = selector.clone();
-        let result = selector.to_specified_css();
+        let result = selector.serialize_specified(Default::default());
         assert!(
             result.is_err(),
             "invalid retained graph emitted: {result:?}"

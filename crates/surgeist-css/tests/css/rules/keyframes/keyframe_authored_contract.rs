@@ -12,10 +12,19 @@ fn assert_canonical(source: &str, expected: &str) {
     let report = parse_sheet(source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let before = report.clone();
-    assert_eq!(report.syntax().to_specified_css().unwrap(), expected);
+    assert_eq!(
+        report
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
     assert_eq!(report, before);
     assert_eq!(
-        validate_sheet(source).unwrap().to_specified_css().unwrap(),
+        validate_sheet(source)
+            .unwrap()
+            .serialize_specified(Default::default())
+            .unwrap(),
         expected
     );
     let reparsed = parse_sheet(expected);
@@ -24,7 +33,13 @@ fn assert_canonical(source: &str, expected: &str) {
         "{expected}: {:?}",
         reparsed.diagnostics()
     );
-    assert_eq!(reparsed.syntax().to_specified_css().unwrap(), expected);
+    assert_eq!(
+        reparsed
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
     let normalized = normalize_sheet(report.syntax()).unwrap();
     let [CssNormalizedItem::Rule(context)] = normalized.items() else {
         panic!("one intact normalized keyframes rule");
@@ -73,14 +88,20 @@ fn assert_quoted_animation(authored: &str, decoded: &str, canonical: &str, short
             assert!(
                 matches!(wrapper.names().names(), [CssAnimationName::String(name)] if name.as_str() == decoded)
             );
-            wrapper.names().serialize_specified().unwrap()
+            wrapper
+                .names()
+                .serialize_specified(Default::default())
+                .unwrap()
         }
         CssKnownPropertyValueRef::Animation(wrapper) if shorthand => {
             assert_eq!(wrapper.as_css(), value);
             assert!(
                 matches!(wrapper.animations().values()[0].name(), Some(CssAnimationName::String(name)) if name.as_str() == decoded)
             );
-            wrapper.animations().serialize_specified().unwrap()
+            wrapper
+                .animations()
+                .serialize_specified(Default::default())
+                .unwrap()
         }
         _ => panic!("requested animation property"),
     };
@@ -103,14 +124,23 @@ fn assert_quoted_animation(authored: &str, decoded: &str, canonical: &str, short
             assert!(
                 matches!(wrapper.names().names(), [CssAnimationName::String(name)] if name.as_str() == decoded)
             );
-            assert_eq!(wrapper.names().serialize_specified().unwrap(), expected);
+            assert_eq!(
+                wrapper
+                    .names()
+                    .serialize_specified(Default::default())
+                    .unwrap(),
+                expected
+            );
         }
         CssKnownPropertyValueRef::Animation(wrapper) if shorthand => {
             assert!(
                 matches!(wrapper.animations().values()[0].name(), Some(CssAnimationName::String(name)) if name.as_str() == decoded)
             );
             assert_eq!(
-                wrapper.animations().serialize_specified().unwrap(),
+                wrapper
+                    .animations()
+                    .serialize_specified(Default::default())
+                    .unwrap(),
                 expected
             );
         }
@@ -264,11 +294,20 @@ fn assert_forbidden_keyframe_property(
     assert!(validate_sheet(&source).is_err());
     let before = report.clone();
     let expected = "@keyframes k { 0% { color: red; --phase: A/**/B; opacity: 0.5; animation-timing-function: linear; color: blue; } 100% { opacity: 1; } }\n.after { color: red; }";
-    assert_eq!(report.syntax().to_specified_css().unwrap(), expected);
+    assert_eq!(
+        report
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
     assert_eq!(report, before);
     assert!(validate_sheet(expected).is_ok());
     assert_eq!(
-        parse_sheet(expected).syntax().to_specified_css().unwrap(),
+        parse_sheet(expected)
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
         expected
     );
     let normalized = normalize_report(&report).unwrap();
@@ -488,7 +527,10 @@ fn assert_important_keyframe_declaration_is_dropped(
     }
     assert!(validate_sheet(&source).is_err());
     assert_eq!(
-        report.syntax().to_specified_css().unwrap(),
+        report
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "@keyframes k { 0% { color: red; opacity: 1; } 100% { } }"
     );
 }
@@ -546,11 +588,17 @@ fn assert_out_of_range_selector_is_dropped(selector: &str) {
     );
     assert!(validate_sheet(&source).is_err());
     let expected = "@keyframes k { 25% { opacity: 1; } }\n.after { color: red; }";
-    assert_eq!(report.syntax().to_specified_css().unwrap(), expected);
+    assert_eq!(
+        report
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
     assert_eq!(
         validate_sheet(expected)
             .unwrap()
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .unwrap(),
         expected
     );

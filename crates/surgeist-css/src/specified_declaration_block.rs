@@ -1,15 +1,15 @@
 //! Immutable CSSOM specified-order projection of authored declaration occurrences.
 
+use crate::specified_rule_serialization::SpecifiedProvider as _;
 use std::{collections::HashMap, fmt, sync::OnceLock};
 
 use crate::{
     CssComponentValueRef, CssComponentValues, CssContributionValueRef, CssContributions,
     CssCustomDeclaration, CssDeclaration, CssDeclarationList, CssExpansion, CssExpansionError,
     CssImportance, CssKeyframeDeclarationList, CssKnownProperty, CssLonghandContribution,
-    CssLonghandProperty, CssPropertyKindRef, CssPropertyNameRef,
-    CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationErrorKind,
-    CssSpecifiedValueSerializationLimits, CssSvgGlyphOrientationVerticalContribution,
-    CssUniversalReset,
+    CssLonghandProperty, CssPropertyKindRef, CssPropertyNameRef, CssSerializationError,
+    CssSerializationLimits, CssSpecifiedValueSerializationErrorKind,
+    CssSvgGlyphOrientationVerticalContribution, CssUniversalReset,
     declaration_serialization::{append_global, append_retained_value},
     expansion::{MappingLogic, SPECIFIED_TERMINALS},
     specified_rule_serialization::SpecifiedRuleWriter,
@@ -30,7 +30,7 @@ pub enum CssInvalidKeyframeSourceReason {
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssDeclarationBlockErrorKind {
-    Serialization(CssSpecifiedValueSerializationError),
+    Serialization(CssSerializationError),
     Expansion(CssExpansionError),
     /// A selected state must contain each terminal identity at most once.
     DuplicateTerminal,
@@ -94,8 +94,8 @@ impl CssDeclarationBlockError {
         self
     }
 }
-impl From<CssSpecifiedValueSerializationError> for CssDeclarationBlockError {
-    fn from(error: CssSpecifiedValueSerializationError) -> Self {
+impl From<CssSerializationError> for CssDeclarationBlockError {
+    fn from(error: CssSerializationError) -> Self {
         Self::new(CssDeclarationBlockErrorKind::Serialization(error))
     }
 }
@@ -539,10 +539,7 @@ fn footprint(source: &CssDeclaration) -> Result<Footprint> {
 }
 
 fn capacity() -> CssDeclarationBlockError {
-    CssSpecifiedValueSerializationError::new(
-        CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
-    )
-    .into()
+    CssSerializationError::new(CssSpecifiedValueSerializationErrorKind::CapacityOverflow).into()
 }
 fn reserve<T>(values: &mut Vec<T>, count: usize) -> Result<()> {
     values.try_reserve(count).map_err(|_| capacity())
@@ -600,32 +597,18 @@ fn group_count(expansion: &CssExpansion) -> Result<usize> {
 }
 
 impl CssSpecifiedDeclarationBlock {
-    pub fn try_from_declarations(declarations: &CssDeclarationList) -> Result<Self> {
-        Self::try_from_declarations_with_limits(
-            declarations,
-            CssSpecifiedValueSerializationLimits::default(),
-        )
-    }
     /// Builds without emitting CSS bytes; its byte budget is unspent.
-    pub fn try_from_declarations_with_limits(
+    pub fn try_from_declarations(
         declarations: &CssDeclarationList,
-        limits: CssSpecifiedValueSerializationLimits,
+        limits: CssSerializationLimits,
     ) -> Result<Self> {
         let mut writer = SpecifiedRuleWriter::new(limits);
         Self::from_sources(declarations.iter(), Domain::Ordinary, &mut writer)
     }
+    /// Builds the closed keyframe-domain snapshot from genuine parser-retained sources.
     pub fn try_from_keyframe_declarations(
         declarations: &CssKeyframeDeclarationList,
-    ) -> Result<Self> {
-        Self::try_from_keyframe_declarations_with_limits(
-            declarations,
-            CssSpecifiedValueSerializationLimits::default(),
-        )
-    }
-    /// Builds the closed keyframe-domain snapshot from genuine parser-retained sources.
-    pub fn try_from_keyframe_declarations_with_limits(
-        declarations: &CssKeyframeDeclarationList,
-        limits: CssSpecifiedValueSerializationLimits,
+        limits: CssSerializationLimits,
     ) -> Result<Self> {
         let mut writer = SpecifiedRuleWriter::new(limits);
         Self::from_sources(
@@ -634,29 +617,17 @@ impl CssSpecifiedDeclarationBlock {
             &mut writer,
         )
     }
-    pub fn try_from_expansions(expansions: &[CssExpansion]) -> Result<Self> {
-        Self::try_from_expansions_with_limits(
-            expansions,
-            CssSpecifiedValueSerializationLimits::default(),
-        )
-    }
-    pub fn try_from_expansions_with_limits(
+    pub fn try_from_expansions(
         expansions: &[CssExpansion],
-        limits: CssSpecifiedValueSerializationLimits,
+        limits: CssSerializationLimits,
     ) -> Result<Self> {
         let mut writer = SpecifiedRuleWriter::new(limits);
         Self::from_expansions(expansions, Domain::Ordinary, &mut writer)
     }
-    pub fn try_from_keyframe_expansions(expansions: &[CssExpansion]) -> Result<Self> {
-        Self::try_from_keyframe_expansions_with_limits(
-            expansions,
-            CssSpecifiedValueSerializationLimits::default(),
-        )
-    }
     /// Checks Normal importance and source admission before projecting completed replacements.
-    pub fn try_from_keyframe_expansions_with_limits(
+    pub fn try_from_keyframe_expansions(
         expansions: &[CssExpansion],
-        limits: CssSpecifiedValueSerializationLimits,
+        limits: CssSerializationLimits,
     ) -> Result<Self> {
         let mut writer = SpecifiedRuleWriter::new(limits);
         Self::from_expansions(expansions, Domain::Keyframe, &mut writer)
@@ -665,14 +636,12 @@ impl CssSpecifiedDeclarationBlock {
     /// original shorthand sources. Duplicate identities are rejected atomically.
     /// Empty selection is valid; pending occurrence identity and source attribution
     /// remain the originals, independently of selected priority and order.
-    pub fn try_from_entries(entries: &[CssSpecifiedDeclarationEntry]) -> Result<Self> {
-        Self::try_from_entries_with_limits(entries, CssSpecifiedValueSerializationLimits::default())
-    }
+    ///
     /// Validates all selected input and projection work under one cumulative
     /// budget. No CSS bytes are emitted or values serialized and reparsed.
-    pub fn try_from_entries_with_limits(
+    pub fn try_from_entries(
         entries: &[CssSpecifiedDeclarationEntry],
-        limits: CssSpecifiedValueSerializationLimits,
+        limits: CssSerializationLimits,
     ) -> Result<Self> {
         Self::from_selected_entries(entries, &mut SpecifiedRuleWriter::new(limits))
     }
@@ -689,9 +658,9 @@ impl CssSpecifiedDeclarationBlock {
     /// These are structural quotas, not limits on custom-name character work or
     /// process memory. Temporary indexing is fallibly allocated only after all
     /// candidates have been admitted under the cumulative node allowances.
-    pub fn try_select_winning_entries_with_limits(
+    pub fn try_select_winning_entries(
         entries: Vec<CssSpecifiedDeclarationEntry>,
-        limits: CssSpecifiedValueSerializationLimits,
+        limits: CssSerializationLimits,
     ) -> Result<Vec<CssSpecifiedDeclarationEntry>> {
         let mut writer = SpecifiedRuleWriter::new(limits);
         writer.node()?;
@@ -703,16 +672,10 @@ impl CssSpecifiedDeclarationBlock {
         }
         Self::select_winning_entries(entries, &mut writer)
     }
-    pub fn try_from_keyframe_entries(entries: &[CssSpecifiedDeclarationEntry]) -> Result<Self> {
-        Self::try_from_keyframe_entries_with_limits(
-            entries,
-            CssSpecifiedValueSerializationLimits::default(),
-        )
-    }
     /// Rejects terminal identities or selected priorities outside keyframe grammar.
-    pub fn try_from_keyframe_entries_with_limits(
+    pub fn try_from_keyframe_entries(
         entries: &[CssSpecifiedDeclarationEntry],
-        limits: CssSpecifiedValueSerializationLimits,
+        limits: CssSerializationLimits,
     ) -> Result<Self> {
         Self::from_entries(
             entries,
@@ -809,15 +772,9 @@ impl CssSpecifiedDeclarationBlock {
             domain,
         })
     }
-    pub fn try_from_page_entries(entries: &[CssSpecifiedDeclarationEntry]) -> Result<Self> {
-        Self::try_from_page_entries_with_limits(
-            entries,
-            CssSpecifiedValueSerializationLimits::default(),
-        )
-    }
-    pub fn try_from_page_entries_with_limits(
+    pub fn try_from_page_entries(
         entries: &[CssSpecifiedDeclarationEntry],
-        limits: CssSpecifiedValueSerializationLimits,
+        limits: CssSerializationLimits,
     ) -> Result<Self> {
         Self::from_page_entries(entries, &mut SpecifiedRuleWriter::new(limits))
     }
@@ -827,15 +784,9 @@ impl CssSpecifiedDeclarationBlock {
     ) -> Result<Self> {
         Self::from_entries(entries, Domain::Page, writer)
     }
-    pub fn try_from_margin_entries(entries: &[CssSpecifiedDeclarationEntry]) -> Result<Self> {
-        Self::try_from_margin_entries_with_limits(
-            entries,
-            CssSpecifiedValueSerializationLimits::default(),
-        )
-    }
-    pub fn try_from_margin_entries_with_limits(
+    pub fn try_from_margin_entries(
         entries: &[CssSpecifiedDeclarationEntry],
-        limits: CssSpecifiedValueSerializationLimits,
+        limits: CssSerializationLimits,
     ) -> Result<Self> {
         Self::from_margin_entries(entries, &mut SpecifiedRuleWriter::new(limits))
     }

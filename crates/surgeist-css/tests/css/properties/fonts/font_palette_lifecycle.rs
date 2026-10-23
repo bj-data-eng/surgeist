@@ -51,7 +51,11 @@ fn assert_admitted(value: &str) {
     assert_eq!(constructed.value_components(), &supplied);
     assert_eq!(constructed.importance(), CssImportance::Important);
     assert_eq!(
-        parsed.value_components().serialize().unwrap().as_css(),
+        parsed
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         value
     );
     assert!(longhands(&parsed).items()[0].ordinary_value().is_some());
@@ -381,7 +385,11 @@ fn whole_pending_values_reenter_strictly_without_changing_source_or_replacement_
                 symbolic
             );
             assert_eq!(
-                source.value_components().serialize().unwrap().as_css(),
+                source
+                    .value_components()
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
                 symbolic
             );
             let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
@@ -572,7 +580,10 @@ fn historical_palette_rule_and_font_parsing_remain_controls() {
     assert_eq!(palette.name().as_str(), "--Theme");
     assert_eq!(palette.descriptors().len(), 3);
     assert_eq!(
-        palette.descriptors()[1].value().to_specified_css().unwrap(),
+        palette.descriptors()[1]
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "light"
     );
     for font in ["italic 16px Demo", "menu", "initial", "var(--font)"] {
@@ -592,7 +603,10 @@ fn shared_component_limits_preserve_exact_mix_source_and_fail_at_each_boundary()
     let text = "palette-mix(dark)";
     let exact = CssComponentValueLimits::try_new(1, 2, 17).unwrap();
     let value = parse_component_values_with_limits(text, exact).unwrap();
-    assert_eq!(value.serialize().unwrap().as_css(), text);
+    assert_eq!(
+        value.serialize_tokens(Default::default()).unwrap().as_css(),
+        text
+    );
     for (limits, kind) in [
         (
             CssComponentValueLimits::try_new(0, 2, 17).unwrap(),
@@ -614,5 +628,8 @@ fn shared_component_limits_preserve_exact_mix_source_and_fail_at_each_boundary()
             kind
         );
     }
-    assert_eq!(value.serialize().unwrap().as_css(), text);
+    assert_eq!(
+        value.serialize_tokens(Default::default()).unwrap().as_css(),
+        text
+    );
 }

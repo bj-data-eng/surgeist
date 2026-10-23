@@ -92,7 +92,7 @@ fn assert_context(sheet: &CssSheet, expected: &CssContainerPrelude) {
         declaration
             .source()
             .value_components()
-            .serialize()
+            .serialize_tokens(Default::default())
             .unwrap()
             .as_css()
             .trim(),
@@ -168,13 +168,15 @@ fn container_reuse_and_normalization_keep_tree_relative_unit_and_pending_inputs(
     };
     assert_eq!(value.domain(), CssContainerValueDomain::Length);
     assert_eq!(
-        value.serialize().unwrap().as_css(),
+        value.serialize_tokens(Default::default()).unwrap().as_css(),
         "calc(sibling-index() * var(--Unit, 1cqw))"
     );
     assert_context(report.syntax(), rule.prelude());
 
     let checked_prelude = CssContainerPrelude::try_from_components(
-        CssComponentValues::try_new(rule.prelude().components().to_vec()).unwrap(),
+        CssComponentValues::try_new(rule.prelude().components().to_vec(), Default::default())
+            .unwrap(),
+        Default::default(),
     )
     .unwrap();
     assert_eq!(&checked_prelude, rule.prelude());
@@ -188,8 +190,17 @@ fn container_reuse_and_normalization_keep_tree_relative_unit_and_pending_inputs(
     assert_eq!(checked.rules(), rule.rules());
     let reused = CssSheet::try_from_rules(vec![CssRule::Container(checked)]).unwrap();
     assert_context(&reused, rule.prelude());
-    assert_eq!(report.syntax().to_specified_css().unwrap(), expected);
-    assert_eq!(reused.to_specified_css().unwrap(), expected);
+    assert_eq!(
+        report
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
+    assert_eq!(
+        reused.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     assert_eq!(report, before);
     drop(report);
     assert_origin(
@@ -199,7 +210,13 @@ fn container_reuse_and_normalization_keep_tree_relative_unit_and_pending_inputs(
     );
     let emitted = parse_sheet(expected);
     assert!(emitted.is_clean(), "{:?}", emitted.diagnostics());
-    assert_eq!(emitted.syntax().to_specified_css().unwrap(), expected);
+    assert_eq!(
+        emitted
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
     assert_context(emitted.syntax(), container(emitted.syntax()).prelude());
     assert_eq!(
         tree(ratio_numerator(query(container(emitted.syntax()), 1)).expression()).function(),
@@ -222,21 +239,33 @@ fn escaped_tree_function_identity_keeps_authored_trivia_and_original_opening_ori
     assert_origin(count.origin(), source, r"SIBLING-\63 OUNT(");
     // Numeric projection canonicalizes the name; the container lexical provider
     // preserves the authored spelling and trivia needed for specified replay.
-    let numeric = numerator.serialize().unwrap();
+    let numeric = numerator.serialize_tokens(Default::default()).unwrap();
     assert_eq!(numeric.as_css(), "sibling-count()");
     assert_eq!(
         numeric.origin_at(0),
         Some(&CssSerializedOrigin::Token(count.origin().clone()))
     );
     assert_context(report.syntax(), rule.prelude());
-    assert_eq!(report.syntax().to_specified_css().unwrap(), expected);
+    assert_eq!(
+        report
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
     let emitted = parse_sheet(expected);
     assert!(emitted.is_clean(), "{:?}", emitted.diagnostics());
     assert_eq!(
         tree(ratio_numerator(query(container(emitted.syntax()), 0)).expression()).function(),
         CssTreeCountingFunction::SiblingCount
     );
-    assert_eq!(emitted.syntax().to_specified_css().unwrap(), expected);
+    assert_eq!(
+        emitted
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
 }
 
 #[test]
@@ -259,12 +288,20 @@ fn unsupported_tree_arguments_and_wrong_domains_keep_opaque_query_and_body_on_re
             CssContainerConditionKind::GeneralEnclosed(_)
         ));
         let checked = CssContainerPrelude::try_from_components(
-            CssComponentValues::try_new(rule.prelude().components().to_vec()).unwrap(),
+            CssComponentValues::try_new(rule.prelude().components().to_vec(), Default::default())
+                .unwrap(),
+            Default::default(),
         )
         .unwrap();
         assert_eq!(&checked, rule.prelude());
         assert_context(report.syntax(), &checked);
-        assert_eq!(report.syntax().to_specified_css().unwrap(), expected);
+        assert_eq!(
+            report
+                .syntax()
+                .serialize_specified(Default::default())
+                .unwrap(),
+            expected
+        );
         let emitted = parse_sheet(&expected);
         assert!(emitted.is_clean(), "{:?}", emitted.diagnostics());
         assert!(matches!(
@@ -272,7 +309,13 @@ fn unsupported_tree_arguments_and_wrong_domains_keep_opaque_query_and_body_on_re
             CssContainerConditionKind::GeneralEnclosed(_)
         ));
         assert_context(emitted.syntax(), container(emitted.syntax()).prelude());
-        assert_eq!(emitted.syntax().to_specified_css().unwrap(), expected);
+        assert_eq!(
+            emitted
+                .syntax()
+                .serialize_specified(Default::default())
+                .unwrap(),
+            expected
+        );
     }
 }
 
@@ -283,34 +326,34 @@ fn tree_query_output_byte_limit_is_cumulative_across_rules_and_atomic_on_failure
     let report = parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let before = report.clone();
-    let exact = CssSpecifiedValueSerializationLimits::new(usize::MAX, usize::MAX, expected.len());
+    let exact = CssSerializationLimits::new(usize::MAX, usize::MAX, expected.len());
     assert_eq!(
-        report.syntax().to_specified_css_with_limits(exact).unwrap(),
+        report.syntax().serialize_specified(exact).unwrap(),
         expected
     );
-    let short =
-        CssSpecifiedValueSerializationLimits::new(usize::MAX, usize::MAX, expected.len() - 1);
+    let short = CssSerializationLimits::new(usize::MAX, usize::MAX, expected.len() - 1);
     // Both individual rules fit; the second rule exhausts the shared byte budget.
     for (rule, text) in report.syntax().rules().iter().zip(expected.split('\n')) {
-        assert_eq!(rule.to_specified_css_with_limits(short).unwrap(), text);
+        assert_eq!(rule.serialize_specified(short).unwrap(), text);
     }
-    let error = report
-        .syntax()
-        .to_specified_css_with_limits(short)
-        .unwrap_err();
+    let error = report.syntax().serialize_specified(short).unwrap_err();
     assert_eq!(
         error.kind(),
-        CssSpecifiedRuleSerializationErrorKind::Resource(
-            CssSpecifiedValueSerializationErrorKind::ByteLimit
-        )
+        CssSpecifiedValueSerializationErrorKind::ByteLimit
     );
     assert_eq!(error.rule_index(), Some(1));
     assert_eq!(report, before);
     assert_eq!(
-        report.syntax().to_specified_css_with_limits(exact).unwrap(),
+        report.syntax().serialize_specified(exact).unwrap(),
         expected
     );
     let emitted = parse_sheet(expected);
     assert!(emitted.is_clean(), "{:?}", emitted.diagnostics());
-    assert_eq!(emitted.syntax().to_specified_css().unwrap(), expected);
+    assert_eq!(
+        emitted
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
 }

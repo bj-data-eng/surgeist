@@ -53,7 +53,14 @@ fn parsed(property: CssKnownProperty, text: &str) -> CssDeclaration {
     assert_eq!(value.importance(), CssImportance::Important);
     // Admission retains the entire expression and its unresolved percentage;
     // no scalar value or image/font/geometry basis is supplied by this test.
-    assert_eq!(value.value_components().serialize().unwrap().as_css(), text);
+    assert_eq!(
+        value
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        text
+    );
     let CssValueOrigin::Parsed(origin) = value.value_components().items()[0].origin() else {
         panic!("parsed target provenance")
     };

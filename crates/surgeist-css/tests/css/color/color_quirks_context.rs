@@ -137,9 +137,11 @@ fn seven_properties_convert_quirky_tokens_across_all_declaration_fronts() {
                 report.syntax()
             );
             let raw = parse_component_values(text).unwrap();
-            let generated =
-                CssComponentValues::try_new(vec![CssComponentValue::try_token(text).unwrap()])
-                    .unwrap();
+            let generated = CssComponentValues::try_new(
+                vec![CssComponentValue::try_token(text).unwrap()],
+                Default::default(),
+            )
+            .unwrap();
             let p = property(name);
             let single = QUIRKS.parse_declaration(&css);
             assert!(single.is_clean());
@@ -182,22 +184,31 @@ fn seven_properties_convert_quirky_tokens_across_all_declaration_fronts() {
                     &CssColor::from_hex(CssHexColor::try_new(hex).unwrap())
                 );
                 assert_eq!(
-                    source.to_specified_css().unwrap(),
+                    source.serialize_specified(Default::default()).unwrap(),
                     format!("{name}: {canonical} !important;")
                 );
                 assert_eq!(
-                    source.value_components().serialize().unwrap().as_css(),
+                    source
+                        .value_components()
+                        .serialize_tokens(Default::default())
+                        .unwrap()
+                        .as_css(),
                     text
                 );
-                let emitted = source.to_specified_css().unwrap();
+                let emitted = source.serialize_specified(Default::default()).unwrap();
                 let reparse = parse_style_attribute(&emitted);
                 assert!(reparse.is_clean());
                 assert_eq!(
-                    color(&reparse.syntax()[0]).to_specified_css().unwrap(),
+                    color(&reparse.syntax()[0])
+                        .serialize_specified(Default::default())
+                        .unwrap(),
                     canonical
                 );
             }
-            assert_eq!(raw.serialize().unwrap().as_css(), text);
+            assert_eq!(
+                raw.serialize_tokens(Default::default()).unwrap().as_css(),
+                text
+            );
             assert_eq!(generated.items()[0].origin(), &CssValueOrigin::Programmatic);
         }
     }
@@ -208,8 +219,11 @@ fn raw_quirky_escapes_fail_while_ordinary_escaped_named_colors_win() {
         for text in [r"\61 bc", r"12\61 bc", r"\61\62\63", r"12a\62 c"] {
             for values in [
                 parse_component_values(text).unwrap(),
-                CssComponentValues::try_new(vec![CssComponentValue::try_token(text).unwrap()])
-                    .unwrap(),
+                CssComponentValues::try_new(
+                    vec![CssComponentValue::try_token(text).unwrap()],
+                    Default::default(),
+                )
+                .unwrap(),
             ] {
                 let before = values.clone();
                 assert_color_value_rejected(
@@ -229,9 +243,11 @@ fn raw_quirky_escapes_fail_while_ordinary_escaped_named_colors_win() {
             color(&checked(QUIRKS, name, r"\72 ed")),
             &CssColor::from_named(CssNamedColor::try_new("red").unwrap())
         );
-        let values =
-            CssComponentValues::try_new(vec![CssComponentValue::try_ident("abc").unwrap()])
-                .unwrap();
+        let values = CssComponentValues::try_new(
+            vec![CssComponentValue::try_ident("abc").unwrap()],
+            Default::default(),
+        )
+        .unwrap();
         let source = QUIRKS
             .parse_property_value_for_grammar(
                 property(name).grammar(),
@@ -241,7 +257,9 @@ fn raw_quirky_escapes_fail_while_ordinary_escaped_named_colors_win() {
             .unwrap();
         assert_eq!(source.value_components(), &values);
         assert_eq!(
-            color(&source).to_specified_css().unwrap(),
+            color(&source)
+                .serialize_specified(Default::default())
+                .unwrap(),
             "rgb(170, 187, 204)"
         );
     }
@@ -312,7 +330,7 @@ fn rust_authored_number_and_dimension_flags_stay_faithful() {
             Err(r"12\61 bc"),
         ),
     ] {
-        let values = CssComponentValues::try_new(vec![token]).unwrap();
+        let values = CssComponentValues::try_new(vec![token], Default::default()).unwrap();
         let before = values.clone();
         let result = QUIRKS.parse_property_value(
             CssPropertyNameRef::Known(CssKnownProperty::Color),
@@ -323,7 +341,12 @@ fn rust_authored_number_and_dimension_flags_stay_faithful() {
         match expected {
             Ok(text) => {
                 let source = result.unwrap();
-                assert_eq!(color(&source).to_specified_css().unwrap(), text);
+                assert_eq!(
+                    color(&source)
+                        .serialize_specified(Default::default())
+                        .unwrap(),
+                    text
+                );
                 assert_eq!(source.value_components(), &values);
                 assert!(source.position().is_none());
             }
@@ -454,7 +477,7 @@ fn physical_border_color_assigns_one_through_four_colors_without_extra_resets() 
                 | CssLonghandValueRef::BorderLeftColor(v) => v,
                 _ => panic!("physical color"),
             };
-            assert_eq!(color.to_specified_css().unwrap(), text);
+            assert_eq!(color.serialize_specified(Default::default()).unwrap(), text);
         }
     }
     assert!(
@@ -516,7 +539,9 @@ fn mode_survives_bounded_deep_sheet_recovery() {
     assert_eq!(declarations.len(), 1);
     assert_eq!(declarations[0].source().parser_context(), QUIRKS);
     assert_eq!(
-        color(declarations[0].source()).to_specified_css().unwrap(),
+        color(declarations[0].source())
+            .serialize_specified(Default::default())
+            .unwrap(),
         "rgb(0, 1, 35)"
     );
 }
@@ -539,7 +564,7 @@ fn parsed_and_mixed_rust_authored_origins_are_preserved() {
     let mut items = parsed.items().to_vec();
     items.push(CssComponentValue::try_token(" ").unwrap());
     items.push(CssComponentValue::try_number("123").unwrap());
-    let values = CssComponentValues::try_new(items).unwrap();
+    let values = CssComponentValues::try_new(items, Default::default()).unwrap();
     let before = values.clone();
     let source = QUIRKS
         .parse_property_value_for_grammar(
@@ -591,8 +616,11 @@ fn pending_handles_keep_mode_importance_and_origins_across_failed_successful_ret
             );
             for replacement in [
                 parse_component_values("ABC").unwrap(),
-                CssComponentValues::try_new(vec![CssComponentValue::try_number("123").unwrap()])
-                    .unwrap(),
+                CssComponentValues::try_new(
+                    vec![CssComponentValue::try_number("123").unwrap()],
+                    Default::default(),
+                )
+                .unwrap(),
                 parse_component_values("unset").unwrap(),
             ] {
                 for _ in 0..2 {
@@ -666,7 +694,7 @@ fn contextual_checked_and_reentry_failures_report_original_implicit_eof() {
         &QUIRKS
             .parse_property_value_for_grammar(
                 CssKnownProperty::Color.grammar(),
-                CssComponentValues::try_new(items).unwrap(),
+                CssComponentValues::try_new(items, Default::default()).unwrap(),
                 CssImportance::Normal,
             )
             .unwrap_err(),
@@ -680,10 +708,19 @@ fn supports_rules_retain_document_mode_while_both_method_overloads_force_standar
         let text = format!("({name}:123)");
         let rule = QUIRKS.parse_supports_condition(&text, &namespaces).unwrap();
         assert!(test_declaration(&rule).known().is_some());
-        assert_eq!(rule.serialize().unwrap().as_css(), text);
+        assert_eq!(
+            rule.serialize_tokens(Default::default()).unwrap().as_css(),
+            text
+        );
         let method = parse_css_supports_condition(&text).unwrap();
         assert!(test_declaration(&method).known().is_none());
-        assert_eq!(method.serialize().unwrap().as_css(), text);
+        assert_eq!(
+            method
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            text
+        );
         let method = parse_css_supports_declaration(name, "123").unwrap();
         assert!(method.known().is_none());
         let CssValueOrigin::Parsed(origin) = method.value_components()[0].origin() else {
@@ -805,15 +842,15 @@ fn ordinary_color_providers_and_css_wide_branches_are_unchanged() {
         let quirky = checked(QUIRKS, "color", text);
         assert_eq!(color(&quirky), color(&standard));
         assert_eq!(
-            quirky.to_specified_css().unwrap(),
-            standard.to_specified_css().unwrap()
+            quirky.serialize_specified(Default::default()).unwrap(),
+            standard.serialize_specified(Default::default()).unwrap()
         );
     }
     for text in ["initial", "inherit", "unset", "revert", "revert-layer"] {
         for name in NAMES {
             let source = checked(QUIRKS, name, text);
             assert_eq!(
-                source.to_specified_css().unwrap(),
+                source.serialize_specified(Default::default()).unwrap(),
                 format!("{name}: {text} !important;")
             );
             assert_eq!(source.parser_context(), QUIRKS);
@@ -856,29 +893,23 @@ fn conversion_shares_cumulative_normalization_and_sheet_byte_budgets() {
             .same_occurrence(declarations[1].source())
     );
     let expected = ".a { color: rgb(170, 187, 204); }\n.b { background-color: rgb(0, 1, 35); }";
-    let exact = CssSpecifiedValueSerializationLimits::new(usize::MAX, usize::MAX, expected.len());
+    let exact = CssSerializationLimits::new(usize::MAX, usize::MAX, expected.len());
     assert_eq!(
-        report.syntax().to_specified_css_with_limits(exact).unwrap(),
+        report.syntax().serialize_specified(exact).unwrap(),
         expected
     );
-    let short =
-        CssSpecifiedValueSerializationLimits::new(usize::MAX, usize::MAX, expected.len() - 1);
+    let short = CssSerializationLimits::new(usize::MAX, usize::MAX, expected.len() - 1);
     for _ in 0..2 {
-        let error = report
-            .syntax()
-            .to_specified_css_with_limits(short)
-            .unwrap_err();
+        let error = report.syntax().serialize_specified(short).unwrap_err();
         assert_eq!(
             error.kind(),
-            CssSpecifiedRuleSerializationErrorKind::Resource(
-                CssSpecifiedValueSerializationErrorKind::ByteLimit
-            )
+            CssSpecifiedValueSerializationErrorKind::ByteLimit
         );
         assert_eq!(error.rule_index(), Some(1));
         assert_eq!(report, before);
     }
     assert_eq!(
-        report.syntax().to_specified_css_with_limits(exact).unwrap(),
+        report.syntax().serialize_specified(exact).unwrap(),
         expected
     );
 }
@@ -889,47 +920,44 @@ fn converted_hex_keeps_leaf_node_tariffs_and_atomic_writer_retry() {
     let expected = "color: rgb(170, 187, 204) !important;";
     // Declaration + semantic property name + Hex Color leaf: 3 input/3 projection.
     // Hex's legacy RGB text adds bytes, not newly authored channel graph nodes.
-    let exact = CssSpecifiedValueSerializationLimits::new(3, 3, expected.len());
-    assert_eq!(
-        source.to_specified_css_with_limits(exact).unwrap(),
-        expected
-    );
+    let exact = CssSerializationLimits::new(3, 3, expected.len());
+    assert_eq!(source.serialize_specified(exact).unwrap(), expected);
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(2, 3, expected.len()),
+            CssSerializationLimits::new(2, 3, expected.len()),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(3, 2, expected.len()),
+            CssSerializationLimits::new(3, 2, expected.len()),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(3, 3, expected.len() - 1),
+            CssSerializationLimits::new(3, 3, expected.len() - 1),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
-        assert_eq!(
-            source
-                .to_specified_css_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            kind
-        );
+        assert_eq!(source.serialize_specified(limits).unwrap_err().kind(), kind);
         assert_eq!(source, before);
     }
-    assert_eq!(
-        source.to_specified_css_with_limits(exact).unwrap(),
-        expected
-    );
+    assert_eq!(source.serialize_specified(exact).unwrap(), expected);
 }
 
 #[test]
 fn long_zero_prefixed_integer_is_exact_and_nonrepresentable_magnitudes_and_units_reject() {
     let zeros = format!("{}123", "0".repeat(20000));
     let source = checked(QUIRKS, "color", &zeros);
-    assert_eq!(color(&source).to_specified_css().unwrap(), "rgb(0, 1, 35)");
     assert_eq!(
-        source.value_components().serialize().unwrap().as_css(),
+        color(&source)
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "rgb(0, 1, 35)"
+    );
+    assert_eq!(
+        source
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         zeros
     );
     for text in [

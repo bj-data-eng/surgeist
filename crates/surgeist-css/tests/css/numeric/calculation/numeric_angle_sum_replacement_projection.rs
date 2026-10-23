@@ -13,7 +13,7 @@ use crate::css::support::value_assertions::assert_calculated_number as assert_nu
 use crate::css::support::value_assertions::calculated_number as number;
 use surgeist_css::*;
 
-type Limits = CssSpecifiedValueSerializationLimits;
+type Limits = CssSerializationLimits;
 type Kind = CssSpecifiedValueSerializationErrorKind;
 
 #[test]
@@ -86,14 +86,14 @@ fn programmatic_angle_sum_keeps_exact_coefficients_and_origin() {
     let arguments =
         parse_component_values("(+01e308DEG + +01e308DEG - +01e308DEG) / +01e308DEG").unwrap();
     let root = CssComponentValue::try_function("CALC", arguments).unwrap();
-    let components = CssComponentValues::try_new(vec![root]).unwrap();
+    let components = CssComponentValues::try_new(vec![root], Default::default()).unwrap();
     let value = CssSpecifiedNumber::try_from_calculation(
-        CssNumberCalculation::try_from_components(components.clone()).unwrap(),
+        CssNumberCalculation::try_from_components(components.clone(), Default::default()).unwrap(),
     )
     .unwrap();
     let before = value.clone();
     assert!(matches!(value.origin(), CssValueOrigin::Programmatic));
-    let result = value.serialize_specified();
+    let result = value.serialize_specified(Default::default());
     assert_eq!(value, before);
     assert_eq!(value.origin(), before.origin());
     assert_eq!(value.calculation().unwrap().components(), &components);
@@ -121,7 +121,7 @@ fn merged_angle_replacement_obeys_exact_limits_and_atomic_failures() {
             (Limits::new(8, 7, expected.len()), Kind::ProjectionNodeLimit),
             (Limits::new(8, 8, expected.len() - 1), Kind::ByteLimit),
         ] {
-            let error = value.serialize_specified_with_limits(limits).unwrap_err();
+            let error = value.serialize_specified(limits).unwrap_err();
             assert_eq!(error.kind(), kind, "{source}: {limits:?}");
             assert_eq!(value, before);
             assert_eq!(value.origin(), before.origin());
@@ -130,7 +130,7 @@ fn merged_angle_replacement_obeys_exact_limits_and_atomic_failures() {
                 before.calculation().unwrap().components()
             );
         }
-        let result = value.serialize_specified_with_limits(Limits::new(8, 8, expected.len()));
+        let result = value.serialize_specified(Limits::new(8, 8, expected.len()));
         assert_eq!(value, before);
         assert_eq!(result.unwrap(), expected);
     }
@@ -153,7 +153,7 @@ fn sibling_angle_replacements_share_one_cumulative_budget() {
         ),
         (Limits::new(18, 17, expected.len() - 1), Kind::ByteLimit),
     ] {
-        let error = value.serialize_specified_with_limits(limits).unwrap_err();
+        let error = value.serialize_specified(limits).unwrap_err();
         assert_eq!(error.kind(), kind, "{limits:?}");
         assert_eq!(value, before);
         assert_eq!(value.origin(), before.origin());
@@ -162,7 +162,7 @@ fn sibling_angle_replacements_share_one_cumulative_budget() {
             before.calculation().unwrap().components()
         );
     }
-    let result = value.serialize_specified_with_limits(Limits::new(18, 17, expected.len()));
+    let result = value.serialize_specified(Limits::new(18, 17, expected.len()));
     assert_eq!(value, before);
     assert_eq!(result.unwrap(), expected);
 }

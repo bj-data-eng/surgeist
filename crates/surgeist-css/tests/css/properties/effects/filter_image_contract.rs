@@ -10,8 +10,8 @@ use crate::css::support::property_admission::assert_checked_matches_diagnostic;
 use crate::css::support::property_admission::implicit_closure_origin as implicit_origin;
 use crate::css::support::serialization_limits::LimitLadder;
 use surgeist_css::{
-    CssKnownProperty as P, CssSpecifiedValueSerializationErrorKind as K,
-    CssSpecifiedValueSerializationLimits as L, *,
+    CssKnownProperty as P, CssSerializationLimits as L,
+    CssSpecifiedValueSerializationErrorKind as K, *,
 };
 
 const GLOBALS: [(&str, CssGlobalKeyword); 5] = [
@@ -68,7 +68,11 @@ fn fronts(p: P, text: &str) -> Vec<CssDeclaration> {
         assert_eq!(source.known().unwrap().grammar(), p.grammar());
         assert_eq!(source.importance(), CssImportance::Important);
         assert_eq!(
-            source.value_components().serialize().unwrap().as_css(),
+            source
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             text
         );
     }
@@ -82,7 +86,7 @@ fn canonical(p: P, text: &str, value: &str) {
         for _ in 0..2 {
             assert_eq!(
                 source
-                    .to_specified_css_with_limits(L::new(65_536, 262_144, expected.len() - 1))
+                    .serialize_specified(L::new(65_536, 262_144, expected.len() - 1))
                     .unwrap_err()
                     .kind(),
                 K::ByteLimit
@@ -90,14 +94,19 @@ fn canonical(p: P, text: &str, value: &str) {
             assert_eq!(source, before);
             assert_eq!(
                 source
-                    .to_specified_css_with_limits(L::new(65_536, 262_144, expected.len()))
+                    .serialize_specified(L::new(65_536, 262_144, expected.len()))
                     .unwrap(),
                 expected
             );
         }
         let report = parse_style_attribute(&expected);
         assert!(report.is_clean(), "{:?}", report.diagnostics());
-        assert_eq!(report.syntax()[0].to_specified_css().unwrap(), expected);
+        assert_eq!(
+            report.syntax()[0]
+                .serialize_specified(Default::default())
+                .unwrap(),
+            expected
+        );
     }
 }
 
@@ -303,7 +312,8 @@ fn importing_shorthands_preserve_their_existing_expansion_footprints() {
                 assert!(item.source().same_occurrence(&source));
                 assert_eq!(item.source().importance(), source.importance());
             }
-            let report = parse_style_attribute(&source.to_specified_css().unwrap());
+            let report =
+                parse_style_attribute(&source.serialize_specified(Default::default()).unwrap());
             assert!(report.is_clean());
         }
     }
@@ -354,8 +364,12 @@ fn counter_style_and_symbols_image_slots_admit_filter_images() {
         let [CssRule::CounterStyle(rule)] = report.syntax().rules() else {
             panic!("counter definition")
         };
-        assert_eq!(rule.descriptor_specified_css(descriptor).unwrap(), expected);
-        assert!(parse_sheet(&rule.to_specified_css().unwrap()).is_clean());
+        assert_eq!(
+            rule.descriptor_specified_css(descriptor, Default::default())
+                .unwrap(),
+            expected
+        );
+        assert!(parse_sheet(&rule.serialize_specified(Default::default()).unwrap()).is_clean());
     }
 }
 
@@ -622,9 +636,7 @@ fn budget(text: &str, expected_value: &str, input: usize, projection: usize) {
     for source in fronts(P::BackgroundImage, text) {
         LimitLadder::new(&expected, input, projection)
             .zero_limits()
-            .assert_unchanged(&source, |source, limits| {
-                source.to_specified_css_with_limits(limits)
-            });
+            .assert_unchanged(&source, |source, limits| source.serialize_specified(limits));
     }
 }
 

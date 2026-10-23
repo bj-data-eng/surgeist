@@ -18,8 +18,7 @@ use std::error::Error as StdError;
 use std::fmt;
 
 use surgeist_css::{
-    CssComponentValueLimits, CssParseReport, CssSpecifiedValueSerializationLimits,
-    CssUtf16InputLimits,
+    CssComponentValueLimits, CssParseReport, CssSerializationLimits, CssUtf16InputLimits,
 };
 
 use super::cases::Case;
@@ -168,9 +167,9 @@ fn serialization<E: StdError + 'static>(
     observation: &mut Observation,
     column: &str,
     limited: Limited,
-    serialize: impl Fn(CssSpecifiedValueSerializationLimits) -> Result<String, E>,
+    serialize: impl Fn(CssSerializationLimits) -> Result<String, E>,
 ) {
-    let defaults = CssSpecifiedValueSerializationLimits::default();
+    let defaults = CssSerializationLimits::default();
     let text = serialized(serialize(defaults));
     match column {
         "specified" => observation.specified = text,
@@ -183,7 +182,7 @@ fn serialization<E: StdError + 'static>(
     let charge = match limited {
         Limited::Bytes => {
             let bytes = smallest(defaults.max_css_bytes(), |bytes| {
-                serialize(CssSpecifiedValueSerializationLimits::new(
+                serialize(CssSerializationLimits::new(
                     defaults.max_input_nodes(),
                     defaults.max_projection_nodes(),
                     bytes,
@@ -194,7 +193,7 @@ fn serialization<E: StdError + 'static>(
         }
         Limited::Values => {
             let input = smallest(defaults.max_input_nodes(), |value| {
-                serialize(CssSpecifiedValueSerializationLimits::new(
+                serialize(CssSerializationLimits::new(
                     value,
                     defaults.max_projection_nodes(),
                     defaults.max_css_bytes(),
@@ -202,7 +201,7 @@ fn serialization<E: StdError + 'static>(
                 .is_ok()
             });
             let projection = smallest(defaults.max_projection_nodes(), |value| {
-                serialize(CssSpecifiedValueSerializationLimits::new(
+                serialize(CssSerializationLimits::new(
                     defaults.max_input_nodes(),
                     value,
                     defaults.max_css_bytes(),
@@ -210,7 +209,7 @@ fn serialization<E: StdError + 'static>(
                 .is_ok()
             });
             let bytes = smallest(defaults.max_css_bytes(), |value| {
-                serialize(CssSpecifiedValueSerializationLimits::new(
+                serialize(CssSerializationLimits::new(
                     defaults.max_input_nodes(),
                     defaults.max_projection_nodes(),
                     value,

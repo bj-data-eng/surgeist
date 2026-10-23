@@ -2,10 +2,9 @@
 use surgeist_css::{
     CssAdmittedStyleSelectors, CssNamespaceContext, CssNamespaceName, CssNamespacePrefix,
     CssRecoveryAction, CssRule, CssScopeNestingContext, CssScopeSelectorCssomContext,
-    CssSpecifiedValueSerializationErrorKind as Kind,
-    CssSpecifiedValueSerializationLimits as Limits, CssStyleAncestor, CssStyleSelectorContext,
-    parse_relative_selector_list, parse_rule, parse_selector_list, parse_sheet,
-    parse_style_selector_list,
+    CssSerializationLimits as Limits, CssSpecifiedValueSerializationErrorKind as Kind,
+    CssStyleAncestor, CssStyleSelectorContext, parse_relative_selector_list, parse_rule,
+    parse_selector_list, parse_sheet, parse_style_selector_list,
 };
 
 fn namespaces(default: Option<&str>, named: &[(&str, &str)]) -> CssNamespaceContext {
@@ -37,14 +36,21 @@ fn actual_uri_identity_controls_type_prefixes_and_null_attributes() {
         let list = report.syntax().as_ref().unwrap();
         let before = list.clone();
         assert_eq!(
-            list.serialize_cssom(&context, CssStyleSelectorContext::Ordinary)
-                .unwrap(),
+            list.serialize_cssom(
+                &context,
+                CssStyleSelectorContext::Ordinary,
+                Default::default()
+            )
+            .unwrap(),
             expected
         );
         let surgeist_css::CssStyleSelector::Selector(member) = &list.selectors()[0] else {
             panic!("ordinary selector")
         };
-        assert_eq!(member.to_specified_css().unwrap(), authored);
+        assert_eq!(
+            member.serialize_specified(Default::default()).unwrap(),
+            authored
+        );
         assert_eq!(list, &before);
     }
     for default in [None, Some(""), Some("urn:x")] {
@@ -55,7 +61,11 @@ fn actual_uri_identity_controls_type_prefixes_and_null_attributes() {
                 .syntax()
                 .as_ref()
                 .unwrap()
-                .serialize_cssom(&context, CssStyleSelectorContext::Ordinary)
+                .serialize_cssom(
+                    &context,
+                    CssStyleSelectorContext::Ordinary,
+                    Default::default()
+                )
                 .unwrap(),
             "|leaf[a][b][c]"
         );
@@ -67,7 +77,11 @@ fn actual_uri_identity_controls_type_prefixes_and_null_attributes() {
             .syntax()
             .as_ref()
             .unwrap()
-            .serialize_cssom(&empty, CssStyleSelectorContext::Ordinary)
+            .serialize_cssom(
+                &empty,
+                CssStyleSelectorContext::Ordinary,
+                Default::default()
+            )
             .unwrap(),
         "|leaf, |*"
     );
@@ -94,7 +108,11 @@ fn aliases_last_binding_and_named_escape_are_distinct_from_any_wildcard() {
             .syntax()
             .as_ref()
             .unwrap()
-            .serialize_cssom(&context, CssStyleSelectorContext::Ordinary)
+            .serialize_cssom(
+                &context,
+                CssStyleSelectorContext::Ordinary,
+                Default::default()
+            )
             .unwrap(),
         r"leaf, leaf, \31 n|leaf[\31 n|a], *|leaf[*|a]"
     );
@@ -126,7 +144,11 @@ fn any_and_protected_universal_omission_remain_the_accepted_policy() {
                 .syntax()
                 .as_ref()
                 .unwrap()
-                .serialize_cssom(&context, CssStyleSelectorContext::Ordinary)
+                .serialize_cssom(
+                    &context,
+                    CssStyleSelectorContext::Ordinary,
+                    Default::default()
+                )
                 .unwrap(),
             format!("*|*.c[*|a], *|*::before, *|*:hover, *|*:is(*|*), .c, {protected}, {named}")
         );
@@ -142,20 +164,30 @@ fn missing_actual_bindings_are_distinct_and_detached_rules_preserve_symbolic_nam
         assert_eq!(
             list.serialize_cssom(
                 &CssNamespaceContext::default(),
-                CssStyleSelectorContext::Ordinary
+                CssStyleSelectorContext::Ordinary,
+                Default::default(),
             )
             .unwrap_err()
             .kind(),
             Kind::NamespaceBindingUnavailable
         );
         assert!(
-            list.serialize_cssom(&context, CssStyleSelectorContext::Ordinary)
-                .is_ok()
+            list.serialize_cssom(
+                &context,
+                CssStyleSelectorContext::Ordinary,
+                Default::default()
+            )
+            .is_ok()
         );
     }
     let report = parse_rule("n|leaf[n|a]{}", &context);
     assert_eq!(
-        report.syntax().as_ref().unwrap().serialize_cssom().unwrap(),
+        report
+            .syntax()
+            .as_ref()
+            .unwrap()
+            .serialize_cssom(Default::default())
+            .unwrap(),
         "n|leaf[n|a] { }"
     );
     let absent = CssNamespaceContext::default();
@@ -165,7 +197,11 @@ fn missing_actual_bindings_are_distinct_and_detached_rules_preserve_symbolic_nam
             any.syntax()
                 .as_ref()
                 .unwrap()
-                .serialize_cssom(&incompatible, CssStyleSelectorContext::Ordinary)
+                .serialize_cssom(
+                    &incompatible,
+                    CssStyleSelectorContext::Ordinary,
+                    Default::default()
+                )
                 .unwrap_err()
                 .kind(),
             Kind::UnrepresentableValue
@@ -179,20 +215,20 @@ fn actual_sheet_bindings_apply_through_groups_and_do_not_leak_between_sheets() {
         parse_sheet("@namespace 'urn:x'; @namespace n 'urn:x'; @media all { n|leaf[n|a]{} }");
     assert!(same.is_clean());
     assert_eq!(
-        same.syntax().serialize_cssom().unwrap(),
+        same.syntax().serialize_cssom(Default::default()).unwrap(),
         "@namespace url(\"urn:x\");\n@namespace n url(\"urn:x\");\n@media all {\n  leaf[n|a] { }\n}"
     );
     let other = parse_sheet("@namespace 'urn:y'; @namespace n 'urn:x'; n|leaf{}");
     assert!(
         other
             .syntax()
-            .serialize_cssom()
+            .serialize_cssom(Default::default())
             .unwrap()
             .ends_with("n|leaf { }")
     );
     assert!(
         same.syntax()
-            .serialize_cssom()
+            .serialize_cssom(Default::default())
             .unwrap()
             .ends_with("leaf[n|a] { }\n}")
     );
@@ -206,7 +242,9 @@ fn supplied_role_not_selector_content_controls_implicit_descendants() {
     let parsed = report.syntax().as_ref().unwrap();
     let before = parsed.clone();
     assert_eq!(
-        parsed.serialize_cssom(&context).unwrap(),
+        parsed
+            .serialize_cssom(&context, Default::default())
+            .unwrap(),
         "& .child, & > .next, &:is(.x,&:unknown())"
     );
     assert_eq!(parsed.origin().source().as_str(), raw);
@@ -215,15 +253,20 @@ fn supplied_role_not_selector_content_controls_implicit_descendants() {
         panic!("ordinary domain")
     };
     assert_eq!(
-        list.serialize_cssom(&context, CssStyleSelectorContext::Ordinary)
-            .unwrap_err()
-            .kind(),
+        list.serialize_cssom(
+            &context,
+            CssStyleSelectorContext::Ordinary,
+            Default::default()
+        )
+        .unwrap_err()
+        .kind(),
         Kind::UnrepresentableValue
     );
     assert_eq!(
         list.serialize_cssom(
             &context,
-            CssStyleSelectorContext::Scoped(CssStyleAncestor::Present)
+            CssStyleSelectorContext::Scoped(CssStyleAncestor::Present),
+            Default::default(),
         )
         .unwrap_err()
         .kind(),
@@ -248,7 +291,12 @@ fn supplied_role_not_selector_content_controls_implicit_descendants() {
         } else {
             ".same"
         };
-        assert_eq!(parsed.serialize_cssom(&context).unwrap(), expected);
+        assert_eq!(
+            parsed
+                .serialize_cssom(&context, Default::default())
+                .unwrap(),
+            expected
+        );
     }
 }
 
@@ -269,7 +317,9 @@ fn scoped_retained_invalid_members_and_strict_rejection_preserve_real_origins() 
         );
         let parsed = report.syntax().as_ref().unwrap();
         assert_eq!(
-            parsed.serialize_cssom(&context).unwrap(),
+            parsed
+                .serialize_cssom(&context, Default::default())
+                .unwrap(),
             ":is(.ok,:unknown(&))"
         );
         assert_eq!(parsed.origin().source().as_str(), source);
@@ -280,9 +330,13 @@ fn scoped_retained_invalid_members_and_strict_rejection_preserve_real_origins() 
         );
         if let CssAdmittedStyleSelectors::Scoped(list) = parsed.selectors() {
             assert_eq!(
-                list.serialize_cssom(&context, CssStyleSelectorContext::Nested)
-                    .unwrap_err()
-                    .kind(),
+                list.serialize_cssom(
+                    &context,
+                    CssStyleSelectorContext::Nested,
+                    Default::default()
+                )
+                .unwrap_err()
+                .kind(),
                 Kind::UnrepresentableValue
             );
         }
@@ -298,7 +352,7 @@ fn logical_relative_arguments_and_general_relative_lists_keep_their_relationship
             .syntax()
             .as_ref()
             .unwrap()
-            .serialize_cssom(&context)
+            .serialize_cssom(&context, Default::default())
             .unwrap(),
         ".a, > .b, + .c, ~ .d, || .e"
     );
@@ -312,7 +366,7 @@ fn logical_relative_arguments_and_general_relative_lists_keep_their_relationship
             .syntax()
             .as_ref()
             .unwrap()
-            .serialize_cssom(&context)
+            .serialize_cssom(&context, Default::default())
             .unwrap(),
         "& :has(> [a], + *.c)"
     );
@@ -327,17 +381,18 @@ fn scope_bounds_format_independently_and_preserve_nullable_identity() {
         panic!("scope")
     };
     assert_eq!(
-        rule.serialize_cssom_start(&context, CssScopeNestingContext::None)
+        rule.serialize_cssom_start(&context, CssScopeNestingContext::None, Default::default())
             .unwrap(),
         Some(".root".into())
     );
     assert_eq!(
-        rule.serialize_cssom_start(&context, CssScopeNestingContext::Style)
+        rule.serialize_cssom_start(&context, CssScopeNestingContext::Style, Default::default())
             .unwrap(),
         Some("& .root".into())
     );
     assert_eq!(
-        rule.serialize_cssom_end(&context).unwrap(),
+        rule.serialize_cssom_end(&context, Default::default())
+            .unwrap(),
         Some("& > [a]".into())
     );
     assert_eq!(
@@ -345,7 +400,8 @@ fn scope_bounds_format_independently_and_preserve_nullable_identity() {
             .unwrap()
             .serialize_cssom(
                 &context,
-                CssScopeSelectorCssomContext::Start(CssScopeNestingContext::None)
+                CssScopeSelectorCssomContext::Start(CssScopeNestingContext::None),
+                Default::default(),
             )
             .unwrap_err()
             .kind(),
@@ -356,17 +412,13 @@ fn scope_bounds_format_independently_and_preserve_nullable_identity() {
     };
     assert_eq!(
         omitted
-            .serialize_cssom_start_with_limits(
-                &context,
-                CssScopeNestingContext::None,
-                Limits::new(0, 0, 0)
-            )
+            .serialize_cssom_start(&context, CssScopeNestingContext::None, Limits::new(0, 0, 0))
             .unwrap(),
         None
     );
     assert_eq!(
         omitted
-            .serialize_cssom_end_with_limits(&context, Limits::new(0, 0, 0))
+            .serialize_cssom_end(&context, Limits::new(0, 0, 0))
             .unwrap(),
         None
     );
@@ -381,32 +433,37 @@ fn cumulative_limits_include_implied_nodes_utf8_and_all_list_members_with_retry(
     let expected = "& .é, & > .b";
     assert_eq!(
         parsed
-            .serialize_cssom_with_limits(&context, Limits::new(100, 100, expected.len()))
+            .serialize_cssom(&context, Limits::new(100, 100, expected.len()))
             .unwrap(),
         expected
     );
     assert_eq!(
         parsed
-            .serialize_cssom_with_limits(&context, Limits::new(100, 100, expected.len() - 1))
+            .serialize_cssom(&context, Limits::new(100, 100, expected.len() - 1))
             .unwrap_err()
             .kind(),
         Kind::ByteLimit
     );
     assert_eq!(
         parsed
-            .serialize_cssom_with_limits(&context, Limits::new(1, 100, 100))
+            .serialize_cssom(&context, Limits::new(1, 100, 100))
             .unwrap_err()
             .kind(),
         Kind::InputNodeLimit
     );
     assert_eq!(
         parsed
-            .serialize_cssom_with_limits(&context, Limits::new(100, 1, 100))
+            .serialize_cssom(&context, Limits::new(100, 1, 100))
             .unwrap_err()
             .kind(),
         Kind::ProjectionNodeLimit
     );
-    assert_eq!(parsed.serialize_cssom(&context).unwrap(), expected);
+    assert_eq!(
+        parsed
+            .serialize_cssom(&context, Default::default())
+            .unwrap(),
+        expected
+    );
     assert_eq!(parsed, &before);
     let general = parse_relative_selector_list(".a, > .b", &context)
         .syntax()
@@ -414,7 +471,7 @@ fn cumulative_limits_include_implied_nodes_utf8_and_all_list_members_with_retry(
         .unwrap();
     assert_eq!(
         general
-            .serialize_cssom_with_limits(&context, Limits::new(100, 100, 1))
+            .serialize_cssom(&context, Limits::new(100, 100, 1))
             .unwrap_err()
             .kind(),
         Kind::ByteLimit
@@ -425,7 +482,7 @@ fn cumulative_limits_include_implied_nodes_utf8_and_all_list_members_with_retry(
         .unwrap();
     assert_eq!(
         ordinary
-            .serialize_cssom_with_limits(
+            .serialize_cssom(
                 &context,
                 CssStyleSelectorContext::Ordinary,
                 Limits::new(100, 100, 7)
@@ -436,7 +493,11 @@ fn cumulative_limits_include_implied_nodes_utf8_and_all_list_members_with_retry(
     );
     assert_eq!(
         ordinary
-            .serialize_cssom(&context, CssStyleSelectorContext::Ordinary)
+            .serialize_cssom(
+                &context,
+                CssStyleSelectorContext::Ordinary,
+                Default::default()
+            )
             .unwrap(),
         "[a], [b]"
     );
@@ -449,7 +510,7 @@ fn grouping_inherits_real_style_ancestry_and_siblings_restore_ordinary_role() {
     );
     assert!(report.is_clean(), "{report:?}");
     assert_eq!(
-        report.syntax().serialize_cssom().unwrap(),
+        report.syntax().serialize_cssom(Default::default()).unwrap(),
         ".parent {\n  @media all {\n  & .child { }\n}\n  & .sibling { }\n}\n.outside { }\n@media all {\n  .group { }\n}"
     );
 }
@@ -471,22 +532,28 @@ fn ordinary_checked_lists_and_scope_bounds_share_atomic_limits() {
             selector.clone()
         })
         .collect();
-    let list = surgeist_css::CssSelectorList::try_new(members).unwrap();
+    let list = surgeist_css::CssSelectorList::try_new(members, Default::default()).unwrap();
     let before = list.clone();
-    assert_eq!(list.serialize_cssom(&context).unwrap(), "leaf, [a]");
     assert_eq!(
-        list.serialize_cssom_with_limits(&context, Limits::new(100, 100, 8))
+        list.serialize_cssom(&context, Default::default()).unwrap(),
+        "leaf, [a]"
+    );
+    assert_eq!(
+        list.serialize_cssom(&context, Limits::new(100, 100, 8))
             .unwrap_err()
             .kind(),
         Kind::ByteLimit
     );
     assert_eq!(
-        list.serialize_cssom_with_limits(&context, Limits::new(100, 1, 100))
+        list.serialize_cssom(&context, Limits::new(100, 1, 100))
             .unwrap_err()
             .kind(),
         Kind::ProjectionNodeLimit
     );
-    assert_eq!(list.serialize_cssom(&context).unwrap(), "leaf, [a]");
+    assert_eq!(
+        list.serialize_cssom(&context, Default::default()).unwrap(),
+        "leaf, [a]"
+    );
     assert_eq!(list, before);
 
     let report = parse_sheet("@scope to (> [|a]) {}");
@@ -497,27 +564,27 @@ fn ordinary_checked_lists_and_scope_bounds_share_atomic_limits() {
     let before = scope.clone();
     assert_eq!(
         scope
-            .serialize_cssom_end_with_limits(&empty, Limits::new(100, 100, 7))
+            .serialize_cssom_end(&empty, Limits::new(100, 100, 7))
             .unwrap(),
         Some("& > [a]".into())
     );
     assert_eq!(
         scope
-            .serialize_cssom_end_with_limits(&empty, Limits::new(100, 100, 6))
+            .serialize_cssom_end(&empty, Limits::new(100, 100, 6))
             .unwrap_err()
             .kind(),
         Kind::ByteLimit
     );
     assert_eq!(
         scope
-            .serialize_cssom_end_with_limits(&empty, Limits::new(1, 100, 100))
+            .serialize_cssom_end(&empty, Limits::new(1, 100, 100))
             .unwrap_err()
             .kind(),
         Kind::InputNodeLimit
     );
     assert_eq!(
         scope
-            .serialize_cssom_end_with_limits(&empty, Limits::new(100, 1, 100))
+            .serialize_cssom_end(&empty, Limits::new(100, 1, 100))
             .unwrap_err()
             .kind(),
         Kind::ProjectionNodeLimit
@@ -535,13 +602,16 @@ fn contextual_sheet_failure_retains_the_actual_child_path_and_atomic_retry() {
     let expected = format!("{prefix}b {{ }}\n}}");
     let error = report
         .syntax()
-        .serialize_cssom_with_limits(Limits::new(100, 100, prefix.len()))
+        .serialize_cssom(Limits::new(100, 100, prefix.len()))
         .unwrap_err();
     assert_eq!(error.rule_path(), &[2, 1]);
     assert_eq!(
         error.kind(),
         surgeist_css::CssRuleCssomSerializationErrorKind::Resource(Kind::ByteLimit)
     );
-    assert_eq!(report.syntax().serialize_cssom().unwrap(), expected);
+    assert_eq!(
+        report.syntax().serialize_cssom(Default::default()).unwrap(),
+        expected
+    );
     assert_eq!(report, before);
 }

@@ -13,15 +13,17 @@ fn cssom(value: &str) -> String {
     let source = format!("color: {value}");
     let report = parse_style_attribute(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    CssSpecifiedDeclarationBlock::try_from_declarations(report.syntax())
+    CssSpecifiedDeclarationBlock::try_from_declarations(report.syntax(), Default::default())
         .unwrap()
-        .serialize_cssom()
+        .serialize_cssom(Default::default())
         .unwrap()
 }
 
 fn assert_hue_text(source: &str, expected: &str) {
     assert_eq!(
-        parsed_color(source).to_specified_css().unwrap(),
+        parsed_color(source)
+            .serialize_specified(Default::default())
+            .unwrap(),
         expected,
         "{source}"
     );
@@ -85,7 +87,7 @@ fn rounded_hue_budgets_are_exact_at_the_limit_and_one_short() {
     // Characterizes the cumulative budget of the six-decimal hue: four input
     // nodes, the projection work of the exact conversion and its rounding,
     // and exactly the emitted UTF-8 bytes.
-    type Limits = CssSpecifiedValueSerializationLimits;
+    type Limits = CssSerializationLimits;
     type Kind = CssSpecifiedValueSerializationErrorKind;
     for (source, expected, input, projection) in [
         ("hsl(1rad none 50%)", "hsl(57.29578 none 50%)", 4, 19),
@@ -94,7 +96,7 @@ fn rounded_hue_budgets_are_exact_at_the_limit_and_one_short() {
         let value = parsed_color(source);
         let bytes = expected.len();
         let serialize = |input, projection, bytes| {
-            value.to_specified_css_with_limits(Limits::new(input, projection, bytes))
+            value.serialize_specified(Limits::new(input, projection, bytes))
         };
         assert_eq!(
             serialize(input, projection, bytes).unwrap(),

@@ -1,12 +1,9 @@
 //! Exact authored Fonts 4 widths before font matching or computed range ordering.
 
 use crate::specified_serialization::SpecifiedSerializationContext;
-use crate::{
-    CssComponentValue, CssSpecifiedNonNegativePercentage, CssSpecifiedValueSerializationError,
-    CssSpecifiedValueSerializationLimits,
-};
+use crate::{CssComponentValue, CssSerializationError, CssSpecifiedNonNegativePercentage};
 
-type SerializationResult<T> = Result<T, CssSpecifiedValueSerializationError>;
+type SerializationResult<T> = Result<T, CssSerializationError>;
 
 /// The nine CSS Fonts 3 width keywords, also used by the Fonts 4 width property.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -24,6 +21,10 @@ pub enum CssFontWidthKeyword {
 }
 
 /// An exact authored CSS Fonts 4 `font-width` property value.
+///
+/// # Specified serialization
+///
+/// Serializes the authored keyword or percentage without font selection.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontWidth {
@@ -32,6 +33,10 @@ pub enum CssFontWidth {
 }
 
 /// An authored `@font-face` width descriptor, before computed endpoint ordering.
+///
+/// # Specified serialization
+///
+/// Serializes `auto` or the exact authored one/two-value range.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontFaceWidth {
@@ -111,31 +116,6 @@ impl CssFontWidthKeyword {
 }
 
 impl CssFontWidth {
-    /// Serializes the authored keyword or percentage without font selection.
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes atomically under cumulative resource limits.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        let context = &mut writer.context;
-        let output = &mut writer.css;
-        self.append_specified(context, output)?;
-        Ok(())
-    }
-
     fn append_specified(
         &self,
         context: &mut SpecifiedSerializationContext,
@@ -143,8 +123,7 @@ impl CssFontWidth {
     ) -> SerializationResult<()> {
         match self {
             Self::Keyword(keyword) => {
-                context.charge_input(1)?;
-                context.charge_projection(1)?;
+                context.charge_nodes(1)?;
                 context.append(output, keyword.as_css())
             }
             Self::Percentage(value) => {
@@ -154,40 +133,26 @@ impl CssFontWidth {
         }
     }
 }
-
-impl CssFontFaceWidth {
-    /// Serializes `auto` or the exact authored one/two-value range.
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Charges one descriptor node plus every explicitly authored width.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssFontWidth {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         let context = &mut writer.context;
         let output = &mut writer.css;
         self.append_specified(context, output)?;
         Ok(())
     }
+}
+crate::specified_rule_serialization::specified_serialization!(CssFontWidth);
 
+impl CssFontFaceWidth {
     pub(crate) fn append_specified(
         &self,
         context: &mut SpecifiedSerializationContext,
         output: &mut String,
     ) -> SerializationResult<()> {
-        context.charge_input(1)?;
-        context.charge_projection(1)?;
+        context.charge_nodes(1)?;
         match self {
             Self::Auto => context.append(output, "auto")?,
             Self::Range { start, end } => {
@@ -208,6 +173,18 @@ impl CssFontFaceWidth {
         Ok(())
     }
 }
+impl crate::specified_rule_serialization::SpecifiedProvider for CssFontFaceWidth {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        let context = &mut writer.context;
+        let output = &mut writer.css;
+        self.append_specified(context, output)?;
+        Ok(())
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(CssFontFaceWidth);
 
 impl CssFontWidth {
     fn specified_semantically_eq(

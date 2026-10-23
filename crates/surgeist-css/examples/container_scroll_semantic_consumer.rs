@@ -6,6 +6,7 @@ fn main() {
     let condition = CssContainerCondition::try_from_components(
         parse_component_values("scroll-state((stuck: top) and (snapped: var(--axis, both)))")
             .unwrap(),
+        Default::default(),
     )
     .unwrap();
     let CssContainerConditionKind::ScrollState(query) = condition.kind() else {

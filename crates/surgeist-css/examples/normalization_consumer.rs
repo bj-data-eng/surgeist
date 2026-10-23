@@ -87,7 +87,7 @@ fn margin_lengths(values: &CssLonghandContributions) -> Vec<String> {
             CssContributionValueRef::Ordinary(CssLonghandValueRef::MarginBlockStart(value))
             | CssContributionValueRef::Ordinary(CssLonghandValueRef::MarginBlockEnd(value))
             | CssContributionValueRef::Ordinary(CssLonghandValueRef::MarginLeft(value)) => {
-                value.serialize_specified().unwrap()
+                value.serialize_specified(Default::default()).unwrap()
             }
             other => panic!("expected an ordinary margin-block: {other:?}"),
         })
@@ -238,7 +238,7 @@ fn pending_shorthand_and_reentry() {
         pending
             .source()
             .value_components()
-            .serialize()
+            .serialize_tokens(Default::default())
             .unwrap()
             .as_css(),
         "var(--m)"
@@ -255,7 +255,7 @@ fn pending_shorthand_and_reentry() {
             value
                 .replacement_components()
                 .unwrap()
-                .serialize()
+                .serialize_tokens(Default::default())
                 .unwrap()
                 .as_css(),
             "4px 5px"
@@ -333,11 +333,14 @@ fn custom_values_and_construction() {
     );
     let left = parse_component_values("2px").unwrap();
     let right = parse_component_values("3px").unwrap();
-    let mixed = CssComponentValues::try_new(vec![
-        left.items()[0].clone(),
-        CssComponentValue::try_token(" ").unwrap(),
-        right.items()[0].clone(),
-    ])
+    let mixed = CssComponentValues::try_new(
+        vec![
+            left.items()[0].clone(),
+            CssComponentValue::try_token(" ").unwrap(),
+            right.items()[0].clone(),
+        ],
+        Default::default(),
+    )
     .unwrap();
     let constructed_margin = parse_property_value(
         CssPropertyNameRef::Known(Property::MarginBlock),

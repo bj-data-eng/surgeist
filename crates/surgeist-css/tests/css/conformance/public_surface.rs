@@ -1062,7 +1062,7 @@ fn public_surface_font_face_descriptor_current_models_are_checked() {
             start: CssAbsoluteFontWeight::Normal,
             end: None
         }
-        .serialize_specified()
+        .serialize_specified(Default::default())
         .unwrap(),
         "normal"
     );
@@ -1071,7 +1071,7 @@ fn public_surface_font_face_descriptor_current_models_are_checked() {
             start: CssAbsoluteFontWeight::Bold,
             end: Some(CssAbsoluteFontWeight::Normal),
         }
-        .serialize_specified()
+        .serialize_specified(Default::default())
         .unwrap(),
         "bold normal"
     );
@@ -1080,7 +1080,7 @@ fn public_surface_font_face_descriptor_current_models_are_checked() {
         end: Some(CssFontWidth::Keyword(CssFontWidthKeyword::Condensed)),
     };
     assert_eq!(
-        descending.serialize_specified().unwrap(),
+        descending.serialize_specified(Default::default()).unwrap(),
         "ultra-expanded condensed"
     );
 }

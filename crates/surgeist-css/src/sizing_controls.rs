@@ -1,12 +1,9 @@
 //! Sizing 4 authored shorthands and finite intrinsic-size controls.
 
 use crate::specified_serialization::SpecifiedSerializationContext;
-use crate::{
-    CssMaxSizeValue, CssSizeValue, CssSpecifiedValueSerializationError,
-    CssSpecifiedValueSerializationLimits,
-};
+use crate::{CssMaxSizeValue, CssSerializationError, CssSizeValue};
 
-type SerializationResult<T> = Result<T, CssSpecifiedValueSerializationError>;
+type SerializationResult<T> = Result<T, CssSerializationError>;
 
 trait PairValue {
     fn serialize_into(
@@ -47,7 +44,7 @@ impl<T> Pair<T> {
     }
 }
 
-impl<T: PairValue> Pair<T> {
+impl<T: PairValue> crate::specified_rule_serialization::SpecifiedProvider for Pair<T> {
     fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
@@ -67,6 +64,10 @@ impl<T: PairValue> Pair<T> {
 }
 
 /// One- or two-value `size` or `min-size` shorthand, in width–height order.
+///
+/// # Specified serialization
+///
+/// Serializes the authored component count.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssSizePair(Pair<CssSizeValue>);
 
@@ -91,29 +92,22 @@ impl CssSizePair {
     pub fn height(&self) -> &CssSizeValue {
         self.0.height()
     }
-    /// Serializes the authored component count.
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-    /// Serializes both components under one shared resource budget.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+}
+impl crate::specified_rule_serialization::SpecifiedProvider for CssSizePair {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         self.0.append_to_rule_writer(writer)
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssSizePair);
 
 /// One- or two-value `max-size` shorthand, in width–height order.
+///
+/// # Specified serialization
+///
+/// Serializes the authored component count.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssMaxSizePair(Pair<CssMaxSizeValue>);
 
@@ -138,27 +132,16 @@ impl CssMaxSizePair {
     pub fn height(&self) -> &CssMaxSizeValue {
         self.0.height()
     }
-    /// Serializes the authored component count.
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-    /// Serializes both components under one shared resource budget.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+}
+impl crate::specified_rule_serialization::SpecifiedProvider for CssMaxSizePair {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         self.0.append_to_rule_writer(writer)
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssMaxSizePair);
 
 /// How a replaced element may expose its internal content size.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -171,25 +154,11 @@ pub enum CssFrameSizing {
     ContentInlineSize,
 }
 
-impl CssFrameSizing {
-    /// Serializes the canonical specified keyword.
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-    /// Serializes under explicit limits.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssFrameSizing {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         let text = match self {
             Self::Auto => "auto",
             Self::ContentWidth => "content-width",
@@ -200,8 +169,13 @@ impl CssFrameSizing {
         writer.keyword(text)
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssFrameSizing);
 
 /// Authored min-content contribution compression choice.
+///
+/// # Specified serialization
+///
+/// Serializes the canonical specified keyword sequence.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssMinIntrinsicSizing {
@@ -211,25 +185,11 @@ pub enum CssMinIntrinsicSizing {
     ZeroIfScrollAndExtrinsic,
 }
 
-impl CssMinIntrinsicSizing {
-    /// Serializes the canonical specified keyword sequence.
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-    /// Serializes under explicit limits, with scroll before extrinsic.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssMinIntrinsicSizing {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         match self {
             Self::Legacy => writer.keyword("legacy"),
             Self::ZeroIfScroll => writer.keyword("zero-if-scroll"),
@@ -237,15 +197,14 @@ impl CssMinIntrinsicSizing {
             Self::ZeroIfScrollAndExtrinsic => {
                 let context = &mut writer.context;
                 let output = &mut writer.css;
-                context.charge_input(1)?;
-                context.charge_projection(1)?;
+                context.charge_nodes(1)?;
                 context.append(output, "zero-if-scroll")?;
                 context.append(output, " ")?;
-                context.charge_input(1)?;
-                context.charge_projection(1)?;
+                context.charge_nodes(1)?;
                 context.append(output, "zero-if-extrinsic")?;
                 Ok(())
             }
         }
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssMinIntrinsicSizing);

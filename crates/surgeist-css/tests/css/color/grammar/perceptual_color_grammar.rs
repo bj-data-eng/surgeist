@@ -24,10 +24,12 @@ fn hue(text: &str) -> CssColorHue {
             .iter()
             .any(|unit| text.contains(unit))
         {
-            CssColorHue::AngleCalculation(CssAngleCalculation::try_from_components(values).unwrap())
+            CssColorHue::AngleCalculation(
+                CssAngleCalculation::try_from_components(values, Default::default()).unwrap(),
+            )
         } else {
             CssColorHue::NumberCalculation(
-                CssNumberCalculation::try_from_components(values).unwrap(),
+                CssNumberCalculation::try_from_components(values, Default::default()).unwrap(),
             )
         }
     } else if ["deg", "grad", "rad", "turn"]
@@ -97,11 +99,25 @@ fn assert_hue(value: &CssColorHue, expected: &str) {
             assert_origin(value.origin(), expected);
         }
         CssColorHue::NumberCalculation(value) => {
-            assert_eq!(value.components().serialize().unwrap().as_css(), expected);
+            assert_eq!(
+                value
+                    .components()
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
+                expected
+            );
             assert_origin(value.origin(), expected);
         }
         CssColorHue::AngleCalculation(value) => {
-            assert_eq!(value.components().serialize().unwrap().as_css(), expected);
+            assert_eq!(
+                value
+                    .components()
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
+                expected
+            );
             assert_origin(value.origin(), expected);
         }
         other => panic!("unexpected hue {other:?}"),
@@ -155,7 +171,11 @@ fn assert_case(family: &str, channels: [&str; 3], alpha: Option<&str>, expected:
     for color in [parsed(&source), constructed(family, channels, alpha)] {
         assert_fields(&color, family, channels, alpha);
         let before = color.clone();
-        assert_eq!(color.to_specified_css().unwrap(), expected, "{source}");
+        assert_eq!(
+            color.serialize_specified(Default::default()).unwrap(),
+            expected,
+            "{source}"
+        );
         assert_eq!(color, before);
         assert_fields(&color, family, channels, alpha);
     }
@@ -209,7 +229,7 @@ fn function_case_escapes_and_none_case_preserve_the_same_family() {
             let color = parsed(&format!("{spelling}(NoNe NONE nOnE / NoNe)"));
             assert_fields(&color, family, ["none", "none", "none"], Some("none"));
             assert_eq!(
-                color.to_specified_css().unwrap(),
+                color.serialize_specified(Default::default()).unwrap(),
                 format!("{family}(none none none / none)")
             );
         }
@@ -328,7 +348,12 @@ fn calculations_keep_wrappers_and_outlier_values_while_percentage_scales_apply()
         ] {
             assert_fields(&color, family, channels, None);
             let before = color.clone();
-            assert!(color.to_specified_css().unwrap().contains("calc("));
+            assert!(
+                color
+                    .serialize_specified(Default::default())
+                    .unwrap()
+                    .contains("calc(")
+            );
             assert_eq!(color, before);
         }
     }
@@ -401,25 +426,34 @@ fn checked_scalar_front_doors_reject_dimensions_that_cannot_enter_the_models() {
     }
     for text in ["calc(1px)", "calc(1deg)", "calc(1s)"] {
         assert_eq!(
-            CssNumberCalculation::try_from_components(parse_component_values(text).unwrap())
-                .unwrap_err()
-                .kind(),
+            CssNumberCalculation::try_from_components(
+                parse_component_values(text).unwrap(),
+                Default::default()
+            )
+            .unwrap_err()
+            .kind(),
             &CssNumericConstructionErrorKind::RootDomainMismatch,
             "{text}"
         );
         assert_eq!(
-            CssPercentageCalculation::try_from_components(parse_component_values(text).unwrap())
-                .unwrap_err()
-                .kind(),
+            CssPercentageCalculation::try_from_components(
+                parse_component_values(text).unwrap(),
+                Default::default()
+            )
+            .unwrap_err()
+            .kind(),
             &CssNumericConstructionErrorKind::RootDomainMismatch,
             "{text}"
         );
     }
     for text in ["calc(1px)", "calc(1%)", "calc(1s)"] {
         assert_eq!(
-            CssAngleCalculation::try_from_components(parse_component_values(text).unwrap())
-                .unwrap_err()
-                .kind(),
+            CssAngleCalculation::try_from_components(
+                parse_component_values(text).unwrap(),
+                Default::default()
+            )
+            .unwrap_err()
+            .kind(),
             &CssNumericConstructionErrorKind::RootDomainMismatch,
             "{text}"
         );

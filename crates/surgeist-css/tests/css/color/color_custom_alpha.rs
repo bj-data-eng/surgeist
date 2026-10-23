@@ -297,7 +297,11 @@ fn aggregate_border_color_transports_custom_and_alpha_colors() {
         for declaration in [report.syntax()[0].clone(), checked] {
             assert_eq!(declaration.importance(), CssImportance::Important);
             assert_eq!(
-                declaration.value_components().serialize().unwrap().as_css(),
+                declaration
+                    .value_components()
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
                 text
             );
             let CssKnownPropertyValueRef::BorderColor(value) =
@@ -451,18 +455,25 @@ fn profile_channel_names_do_not_leak_into_ordinary_or_predefined_numeric_roots()
         rejects(text, responsible);
     }
     assert!(
-        CssNumberCalculation::try_from_components(parse_component_values("calc(cyan)").unwrap())
-            .is_err()
-    );
-    assert!(
-        CssPercentageCalculation::try_from_components(
-            parse_component_values("calc(cyan)").unwrap()
+        CssNumberCalculation::try_from_components(
+            parse_component_values("calc(cyan)").unwrap(),
+            Default::default()
         )
         .is_err()
     );
     assert!(
-        CssNumberCalculation::try_from_components(parse_component_values("calc(pi)").unwrap())
-            .is_ok()
+        CssPercentageCalculation::try_from_components(
+            parse_component_values("calc(cyan)").unwrap(),
+            Default::default()
+        )
+        .is_err()
+    );
+    assert!(
+        CssNumberCalculation::try_from_components(
+            parse_component_values("calc(pi)").unwrap(),
+            Default::default()
+        )
+        .is_ok()
     );
 }
 
@@ -604,7 +615,11 @@ fn parsed_border_color_transports_relative_alpha_math() {
     };
     assert_eq!(declaration.importance(), CssImportance::Important);
     assert_eq!(
-        declaration.value_components().serialize().unwrap().as_css(),
+        declaration
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         text
     );
     let CssKnownPropertyValueRef::BorderColor(value) =

@@ -73,7 +73,10 @@ fn rgb_and_rgba_aliases_accept_both_signatures_and_ordinary_alpha_domains() {
                     } else {
                         format!("rgb({numeric})")
                     };
-                    assert_eq!(color.to_specified_css().unwrap(), expected);
+                    assert_eq!(
+                        color.serialize_specified(Default::default()).unwrap(),
+                        expected
+                    );
                 }
             }
         }
@@ -99,7 +102,10 @@ fn checked_rgb_construction_retains_homogeneous_domains_and_alpha_before_output(
                 } else {
                     format!("rgb({numeric})")
                 };
-                assert_eq!(color.to_specified_css().unwrap(), expected);
+                assert_eq!(
+                    color.serialize_specified(Default::default()).unwrap(),
+                    expected
+                );
                 assert_eq!(color, before);
             }
         }
@@ -118,7 +124,7 @@ fn modern_alias_case_and_escapes_accept_mixed_domains_and_missing_components() {
             Some("25%"),
         );
         assert_eq!(
-            mixed.to_specified_css().unwrap(),
+            mixed.serialize_specified(Default::default()).unwrap(),
             "rgba(12.5, 51, 30, 0.25)"
         );
         let missing = parsed_color(&format!("{function}(none 20% 30 / none)"));
@@ -131,7 +137,10 @@ fn modern_alias_case_and_escapes_accept_mixed_domains_and_missing_components() {
     }
     let color = parsed_color("rgb(12.5 20% 30)");
     assert_rgb(&color, CssColorSyntax::Modern, ["12.5", "20%", "30"], None);
-    assert_eq!(color.to_specified_css().unwrap(), "rgb(12.5, 51, 30)");
+    assert_eq!(
+        color.serialize_specified(Default::default()).unwrap(),
+        "rgb(12.5, 51, 30)"
+    );
     let constructed = CssColor::from_rgb(
         CssRgbColor::try_new(
             CssColorSyntax::Modern,
@@ -179,7 +188,10 @@ fn ordinary_endpoint_projection_clamps_output_without_changing_literal_ranges() 
         for color in [parsed_color(text), constructed] {
             assert_rgb(&color, syntax, channels, Some(alpha));
             let before = color.clone();
-            assert_eq!(color.to_specified_css().unwrap(), expected);
+            assert_eq!(
+                color.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
             assert_eq!(color, before);
             assert_rgb(&color, syntax, channels, Some(alpha));
         }
@@ -263,7 +275,10 @@ fn all_hex_lengths_decode_mixed_case_channels_and_nonopaque_alpha() {
         for color in [parsed_color(&format!("#{digits}")), constructed] {
             assert_eq!(color.hex_value().unwrap().digits(), digits);
             let before = color.clone();
-            assert_eq!(color.to_specified_css().unwrap(), expected);
+            assert_eq!(
+                color.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
             assert_eq!(color, before);
         }
     }

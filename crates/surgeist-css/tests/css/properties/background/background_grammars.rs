@@ -216,7 +216,7 @@ fn mask_size_and_repeat_expose_ordered_symbolic_lists() {
         panic!("ordered cover and symbolic explicit mask sizes");
     };
     assert!(matches!(width, CssBackgroundSizeComponent::Length(length)
-        if length.calculation().is_some_and(|calc| calc.components().serialize().unwrap().as_css() == "calc(10% + 2px)")));
+        if length.calculation().is_some_and(|calc| calc.components().serialize_tokens(Default::default()).unwrap().as_css() == "calc(10% + 2px)")));
     assert!(matches!(height, Some(CssBackgroundSizeComponent::Auto)));
 
     let CssKnownDeclaredValueRef::Property(CssKnownPropertyValueRef::MaskRepeat(repeats)) =

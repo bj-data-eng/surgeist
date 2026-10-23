@@ -9,9 +9,9 @@ use surgeist_css::{
     CssExpansionErrorKind, CssFontValue, CssGlobalKeyword, CssImportance, CssInitialValueRef,
     CssKnownProperty, CssKnownPropertyValueRef, CssLengthPercentageCalculation, CssLineHeight,
     CssLonghandValueRef, CssNumberCalculation, CssNumericConstructionErrorKind, CssPropertyKindRef,
-    CssPropertyValueErrorKind, CssSerializedOrigin, CssSpecifiedNonNegativeLengthPercentage,
-    CssSpecifiedNonNegativeNumber, CssSpecifiedValueSerializationErrorKind,
-    CssSpecifiedValueSerializationLimits, CssValueOrigin, expand_declaration,
+    CssPropertyValueErrorKind, CssSerializationLimits, CssSerializedOrigin,
+    CssSpecifiedNonNegativeLengthPercentage, CssSpecifiedNonNegativeNumber,
+    CssSpecifiedValueSerializationErrorKind, CssValueOrigin, expand_declaration,
     parse_component_values, parse_style_attribute,
 };
 
@@ -41,7 +41,10 @@ fn authored_branches_keep_number_zero_distinct_and_math_symbolic() {
             panic!("number {text}")
         };
         assert!(value.literal_component().is_some());
-        assert_eq!(value.serialize_specified().unwrap(), canonical);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            canonical
+        );
     }
     for text in ["0px", "0%", "120%", "1em"] {
         let CssLineHeight::LengthPercentage(value) = property(text) else {
@@ -64,11 +67,19 @@ fn authored_branches_keep_number_zero_distinct_and_math_symbolic() {
         panic!("number math")
     };
     assert!(negative_math.calculation().is_some());
-    assert_eq!(negative_math.serialize_specified().unwrap(), "calc(-1)");
+    assert_eq!(
+        negative_math
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "calc(-1)"
+    );
     let CssLineHeight::LengthPercentage(mixed) = property("calc(2px + 3%)") else {
         panic!("mixed")
     };
-    assert_eq!(mixed.serialize_specified().unwrap(), "calc(3% + 2px)");
+    assert_eq!(
+        mixed.serialize_specified(Default::default()).unwrap(),
+        "calc(3% + 2px)"
+    );
     for invalid in ["calc(1 + 2%)", "-1e-999", "-1e-999px", "-1e-999%"] {
         let report = parse_style_attribute(&format!("color:red;line-height:{invalid};color:blue"));
         assert_eq!(report.syntax().len(), 2, "{invalid}");
@@ -95,8 +106,10 @@ fn parsed_and_programmatic_values_have_distinct_origins_but_semantic_equality() 
     assert_eq!(parsed, CssLineHeight::Number(programmatic_scalar));
     assert_ne!(parsed, property("1.25"));
     assert_eq!(
-        parsed.serialize_specified().unwrap(),
-        property("1.25").serialize_specified().unwrap()
+        parsed.serialize_specified(Default::default()).unwrap(),
+        property("1.25")
+            .serialize_specified(Default::default())
+            .unwrap()
     );
 
     let length = property("1.250px");
@@ -119,8 +132,11 @@ fn parsed_and_programmatic_values_have_distinct_origins_but_semantic_equality() 
     assert_eq!(value.line_height(), &parsed);
     let invalid = normal_grammar_components(
         "line-height",
-        CssComponentValues::try_new(vec![CssComponentValue::try_number("-1e-999").unwrap()])
-            .unwrap(),
+        CssComponentValues::try_new(
+            vec![CssComponentValue::try_number("-1e-999").unwrap()],
+            Default::default(),
+        )
+        .unwrap(),
     )
     .unwrap_err();
     assert!(matches!(
@@ -228,8 +244,11 @@ fn pending_reentry_and_shorthand_share_strict_authored_grammar() {
     };
     assert_eq!(origin.source().as_str(), "1.250 ");
     assert_eq!(origin.span().start().byte_offset().value(), 0);
-    let programmatic =
-        CssComponentValues::try_new(vec![CssComponentValue::try_number("2.50").unwrap()]).unwrap();
+    let programmatic = CssComponentValues::try_new(
+        vec![CssComponentValue::try_number("2.50").unwrap()],
+        Default::default(),
+    )
+    .unwrap();
     let CssContributions::Longhands(values) = handle.reenter(programmatic).unwrap() else {
         panic!("programmatic replacement")
     };
@@ -239,10 +258,15 @@ fn pending_reentry_and_shorthand_share_strict_authored_grammar() {
         panic!("programmatic number")
     };
     assert_eq!(value.origin(), &CssValueOrigin::Programmatic);
-    assert_eq!(value.serialize_specified().unwrap(), "2.5");
-    let invalid =
-        CssComponentValues::try_new(vec![CssComponentValue::try_number("-1e-999").unwrap()])
-            .unwrap();
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "2.5"
+    );
+    let invalid = CssComponentValues::try_new(
+        vec![CssComponentValue::try_number("-1e-999").unwrap()],
+        Default::default(),
+    )
+    .unwrap();
     let error = handle.reenter(invalid).unwrap_err();
     let CssExpansionErrorKind::InvalidReplacement(mapped) = error.kind() else {
         panic!("mapped invalid")
@@ -256,10 +280,13 @@ fn pending_reentry_and_shorthand_share_strict_authored_grammar() {
         &CssSerializedOrigin::Token(CssValueOrigin::Programmatic)
     );
     for tokens in [("1", "0px"), ("1", ".2")] {
-        let adjacent = CssComponentValues::try_new(vec![
-            CssComponentValue::try_token(tokens.0).unwrap(),
-            CssComponentValue::try_token(tokens.1).unwrap(),
-        ])
+        let adjacent = CssComponentValues::try_new(
+            vec![
+                CssComponentValue::try_token(tokens.0).unwrap(),
+                CssComponentValue::try_token(tokens.1).unwrap(),
+            ],
+            Default::default(),
+        )
         .unwrap();
         // The second programmatic token cannot follow a complete line-height.
         let error = handle.reenter(adjacent).unwrap_err();
@@ -365,9 +392,12 @@ fn recovered_math_is_retained_by_raw_parse_but_rejected_by_strict_construction_a
             CssLineHeight::Number(admitted) if number => {
                 let calculation = admitted.calculation().expect("number math");
                 assert_eq!(
-                    CssNumberCalculation::try_from_components(calculation.components().clone())
-                        .unwrap_err()
-                        .kind(),
+                    CssNumberCalculation::try_from_components(
+                        calculation.components().clone(),
+                        Default::default()
+                    )
+                    .unwrap_err()
+                    .kind(),
                     &CssNumericConstructionErrorKind::RecoveredComponent
                 );
                 assert_eq!(
@@ -376,13 +406,17 @@ fn recovered_math_is_retained_by_raw_parse_but_rejected_by_strict_construction_a
                         .kind(),
                     &CssNumericConstructionErrorKind::RecoveredComponent
                 );
-                assert_eq!(admitted.serialize_specified().unwrap(), "calc(1)");
+                assert_eq!(
+                    admitted.serialize_specified(Default::default()).unwrap(),
+                    "calc(1)"
+                );
             }
             CssLineHeight::LengthPercentage(admitted) if !number => {
                 let calculation = admitted.calculation().expect("length math");
                 assert_eq!(
                     CssLengthPercentageCalculation::try_from_components(
-                        calculation.components().clone()
+                        calculation.components().clone(),
+                        Default::default()
                     )
                     .unwrap_err()
                     .kind(),
@@ -396,7 +430,10 @@ fn recovered_math_is_retained_by_raw_parse_but_rejected_by_strict_construction_a
                     .kind(),
                     &CssNumericConstructionErrorKind::RecoveredComponent
                 );
-                assert_eq!(admitted.serialize_specified().unwrap(), "calc(1px)");
+                assert_eq!(
+                    admitted.serialize_specified(Default::default()).unwrap(),
+                    "calc(1px)"
+                );
             }
             _ => panic!("retained math domain {text}"),
         }
@@ -422,29 +459,32 @@ fn bounded_serialization_fails_atomically_for_both_branches() {
     for value in [&number, &length] {
         for (limits, expected) in [
             (
-                CssSpecifiedValueSerializationLimits::new(0, 10, 20),
+                CssSerializationLimits::new(0, 10, 20),
                 CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(10, 0, 20),
+                CssSerializationLimits::new(10, 0, 20),
                 CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(10, 10, 3),
+                CssSerializationLimits::new(10, 10, 3),
                 CssSpecifiedValueSerializationErrorKind::ByteLimit,
             ),
         ] {
             assert_eq!(
-                value
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                value.serialize_specified(limits).unwrap_err().kind(),
                 expected
             );
         }
     }
-    assert_eq!(number.serialize_specified().unwrap(), "12.5");
-    assert_eq!(length.serialize_specified().unwrap(), "12.5px");
+    assert_eq!(
+        number.serialize_specified(Default::default()).unwrap(),
+        "12.5"
+    );
+    assert_eq!(
+        length.serialize_specified(Default::default()).unwrap(),
+        "12.5px"
+    );
     let error = CssSpecifiedNonNegativeNumber::try_from_component(
         CssComponentValue::try_number("-1e-999").unwrap(),
     )

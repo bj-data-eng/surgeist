@@ -41,8 +41,14 @@ fn assert_color_style(condition: &Condition) {
         panic!("plain property feature")
     };
     assert_eq!(*grammar, CssPropertyGrammar::from_name("color").unwrap());
-    assert_eq!(query.serialize().unwrap().as_css(), "color:red");
-    assert_eq!(value.serialize().unwrap().as_css(), "red");
+    assert_eq!(
+        query.serialize_tokens(Default::default()).unwrap().as_css(),
+        "color:red"
+    );
+    assert_eq!(
+        value.serialize_tokens(Default::default()).unwrap().as_css(),
+        "red"
+    );
     let CssValueOrigin::Parsed(origin) = value.origin() else {
         panic!("original value token")
     };
@@ -84,7 +90,10 @@ fn nested_negated_unknown_operands_keep_boolean_structure_and_the_original_snaps
     let b = opaque(b);
     for (value, authored) in [(a, "(a)"), (b, "(b)")] {
         assert_eq!(value.authored(), Some(authored));
-        assert_eq!(value.serialize().unwrap().as_css(), authored);
+        assert_eq!(
+            value.serialize_tokens(Default::default()).unwrap().as_css(),
+            authored
+        );
         let CssValueOrigin::Parsed(origin) = value.origin() else {
             panic!("original opener")
         };
@@ -152,7 +161,10 @@ fn empty_comments_escaped_functions_and_nested_components_remain_lexical_operand
         let condition = condition(query);
         let value = opaque(&condition);
         assert_eq!(value.authored(), Some(query));
-        assert_eq!(value.serialize().unwrap().as_css(), query);
+        assert_eq!(
+            value.serialize_tokens(Default::default()).unwrap().as_css(),
+            query
+        );
     }
 }
 
@@ -163,8 +175,11 @@ fn programmatic_opaque_wrapper_preserves_parsed_children_and_required_token_boun
     let original = child.origin().clone();
     let wrapper = CssGeneralEnclosed::try_function(
         "Future",
-        CssComponentValues::try_new(vec![child, CssComponentValue::try_ident("e2").unwrap()])
-            .unwrap(),
+        CssComponentValues::try_new(
+            vec![child, CssComponentValue::try_ident("e2").unwrap()],
+            Default::default(),
+        )
+        .unwrap(),
     )
     .unwrap();
     let condition = Condition::try_from_enclosed(wrapper).unwrap();
@@ -172,7 +187,7 @@ fn programmatic_opaque_wrapper_preserves_parsed_children_and_required_token_boun
     assert_eq!(value.position(), None);
     assert_eq!(value.origin(), &CssValueOrigin::Programmatic);
     assert_eq!(value.authored(), None);
-    let output = value.serialize().unwrap();
+    let output = value.serialize_tokens(Default::default()).unwrap();
     assert_eq!(output.as_css(), "Future(1/**/e2)");
     let Some(CssSerializedOrigin::Token(CssValueOrigin::Parsed(actual))) = output.origin_at(7)
     else {
@@ -187,7 +202,10 @@ fn programmatic_opaque_wrapper_preserves_parsed_children_and_required_token_boun
     assert_eq!(cloned, condition);
     drop(condition);
     assert_eq!(
-        opaque(&cloned).serialize().unwrap().as_css(),
+        opaque(&cloned)
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         "Future(1/**/e2)"
     );
 }
@@ -201,7 +219,7 @@ fn a_recovered_lexical_operand_retains_its_eof_closure_origin() {
     let condition = Condition::try_from_enclosed(value).unwrap();
     let value = opaque(&condition);
     assert_eq!(value.authored(), Some("Future("));
-    let output = value.serialize().unwrap();
+    let output = value.serialize_tokens(Default::default()).unwrap();
     assert_eq!(output.as_css(), "Future()");
     let Some(CssSerializedOrigin::Token(CssValueOrigin::ImplicitClosure { opening, at })) =
         output.origin_at(7)
@@ -361,7 +379,10 @@ fn checked_unknown_and_failed_recognized_enclosures_retain_the_supplied_lexical_
         assert_eq!(opaque(&checked).origin(), &CssValueOrigin::Programmatic);
         let parsed = condition(&format!("{name}({contents})"));
         assert_eq!(
-            opaque(&parsed).serialize().unwrap().as_css(),
+            opaque(&parsed)
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             format!("{name}({contents})")
         );
     }
@@ -411,11 +432,14 @@ fn fully_programmatic_known_enclosures_expose_expected_feature_and_custom_proper
     use surgeist_css::{
         CssContainerFeatureQuery, CssContainerLengthRef, CssMediaRangeRef, CssQueryComparison,
     };
-    let values = CssComponentValues::try_new(vec![
-        CssComponentValue::try_ident("width").unwrap(),
-        CssComponentValue::try_token(">").unwrap(),
-        CssComponentValue::try_dimension("1", "px").unwrap(),
-    ])
+    let values = CssComponentValues::try_new(
+        vec![
+            CssComponentValue::try_ident("width").unwrap(),
+            CssComponentValue::try_token(">").unwrap(),
+            CssComponentValue::try_dimension("1", "px").unwrap(),
+        ],
+        Default::default(),
+    )
     .unwrap();
     let feature =
         Condition::try_from_enclosed(CssGeneralEnclosed::try_parenthesized(values).unwrap())
@@ -430,10 +454,19 @@ fn fully_programmatic_known_enclosures_expose_expected_feature_and_custom_proper
     let CssContainerLengthRef::Numeric(value) = value.view() else {
         panic!("length")
     };
-    assert_eq!(value.components().serialize().unwrap().as_css(), "1px");
-    let values =
-        CssComponentValues::try_new(vec![CssComponentValue::try_ident("--Theme").unwrap()])
-            .unwrap();
+    assert_eq!(
+        value
+            .components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        "1px"
+    );
+    let values = CssComponentValues::try_new(
+        vec![CssComponentValue::try_ident("--Theme").unwrap()],
+        Default::default(),
+    )
+    .unwrap();
     let style =
         Condition::try_from_enclosed(CssGeneralEnclosed::try_function("style", values).unwrap())
             .unwrap();
@@ -479,7 +512,10 @@ fn style_variable_grammar_preserves_valid_references_and_falls_back_for_invalid_
                 panic!("valid variable remains a style value: {source}")
             };
             assert_eq!(name.as_str(), "--theme");
-            assert_eq!(value.serialize().unwrap().as_css(), source);
+            assert_eq!(
+                value.serialize_tokens(Default::default()).unwrap().as_css(),
+                source
+            );
         }
     }
     for source in ["var()", "var(tone)", "var(--a --b)"] {
@@ -491,8 +527,20 @@ fn style_variable_grammar_preserves_valid_references_and_falls_back_for_invalid_
         )
         .unwrap();
         let checked = Condition::try_from_enclosed(enclosure).unwrap();
-        assert_eq!(opaque(&parsed).serialize().unwrap().as_css(), query);
-        assert_eq!(opaque(&checked).serialize().unwrap().as_css(), query);
+        assert_eq!(
+            opaque(&parsed)
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            query
+        );
+        assert_eq!(
+            opaque(&checked)
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            query
+        );
     }
 }
 
@@ -510,12 +558,15 @@ fn constructed_style_value_serialization_keeps_adjacent_number_and_identifier_se
             .unwrap()
             .clone(),
     ] {
-        let values = CssComponentValues::try_new(vec![
-            CssComponentValue::try_ident("--theme").unwrap(),
-            CssComponentValue::try_token(":").unwrap(),
-            first,
-            CssComponentValue::try_ident("e2").unwrap(),
-        ])
+        let values = CssComponentValues::try_new(
+            vec![
+                CssComponentValue::try_ident("--theme").unwrap(),
+                CssComponentValue::try_token(":").unwrap(),
+                first,
+                CssComponentValue::try_ident("e2").unwrap(),
+            ],
+            Default::default(),
+        )
         .unwrap();
         let condition = Condition::try_from_enclosed(
             CssGeneralEnclosed::try_function("style", values).unwrap(),
@@ -532,7 +583,10 @@ fn constructed_style_value_serialization_keeps_adjacent_number_and_identifier_se
             panic!("authored custom property value")
         };
         assert_eq!(name.as_str(), "--theme");
-        assert_eq!(value.serialize().unwrap().as_css(), "1/**/e2");
+        assert_eq!(
+            value.serialize_tokens(Default::default()).unwrap().as_css(),
+            "1/**/e2"
+        );
     }
 }
 
@@ -548,11 +602,14 @@ fn exact_query_lengths_preserve_underflow_spelling_and_signed_zero() {
     use surgeist_css::{CssContainerFeatureQuery, CssContainerLengthRef, CssMediaRangeRef};
     for literal in ["-1e-999px", "1e-999px", "-0px", "+0px", "-0"] {
         let programmatic = CssGeneralEnclosed::try_parenthesized(
-            CssComponentValues::try_new(vec![
-                CssComponentValue::try_ident("width").unwrap(),
-                CssComponentValue::try_token(":").unwrap(),
-                CssComponentValue::try_token(literal).unwrap(),
-            ])
+            CssComponentValues::try_new(
+                vec![
+                    CssComponentValue::try_ident("width").unwrap(),
+                    CssComponentValue::try_token(":").unwrap(),
+                    CssComponentValue::try_token(literal).unwrap(),
+                ],
+                Default::default(),
+            )
             .unwrap(),
         )
         .unwrap();
@@ -571,14 +628,24 @@ fn exact_query_lengths_preserve_underflow_spelling_and_signed_zero() {
             let CssContainerLengthRef::Numeric(value) = value.view() else {
                 panic!("numeric")
             };
-            assert_eq!(value.components().serialize().unwrap().as_css(), literal);
+            assert_eq!(
+                value
+                    .components()
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
+                literal
+            );
         }
     }
     // Neither tiny nonzero unitless number becomes zero through f32 underflow.
     for body in ["width:-1e-999", "width:1e-999"] {
         for condition in parsed_and_checked_feature(body) {
             assert_eq!(
-                opaque(&condition).serialize().unwrap().as_css(),
+                opaque(&condition)
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
                 format!("({body})")
             );
         }
@@ -601,7 +668,10 @@ fn exact_query_numbers_do_not_overflow_through_tokenizer_floats() {
             // direct enclosure construction has no surrounding trivia.
             let trailing = if route == 0 { " " } else { "" };
             assert_eq!(
-                condition.serialize().unwrap().as_css(),
+                condition
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
                 format!("({body}){trailing}")
             );
         }
@@ -633,7 +703,7 @@ fn exact_ratios_admit_degenerate_zero_and_reject_negative_nonzero_literals() {
                 value
                     .numerator()
                     .components()
-                    .serialize()
+                    .serialize_tokens(Default::default())
                     .unwrap()
                     .as_css()
                     .trim(),
@@ -643,7 +713,7 @@ fn exact_ratios_admit_degenerate_zero_and_reject_negative_nonzero_literals() {
                 value
                     .denominator()
                     .components()
-                    .serialize()
+                    .serialize_tokens(Default::default())
                     .unwrap()
                     .as_css()
                     .trim(),
@@ -658,7 +728,10 @@ fn exact_ratios_admit_degenerate_zero_and_reject_negative_nonzero_literals() {
     ] {
         for condition in parsed_and_checked_feature(body) {
             assert_eq!(
-                opaque(&condition).serialize().unwrap().as_css(),
+                opaque(&condition)
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
                 format!("({body})")
             );
         }

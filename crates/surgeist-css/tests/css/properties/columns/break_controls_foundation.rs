@@ -39,7 +39,11 @@ fn accepted(name: &str, value: &str) {
         assert_eq!(source.known().unwrap().grammar(), grammar(name));
         assert_eq!(source.importance(), CssImportance::Important);
         assert_eq!(
-            source.value_components().serialize().unwrap().as_css(),
+            source
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             value
         );
     }
@@ -245,7 +249,11 @@ fn legacy_shorthands_map_one_terminal_with_auto_initials_and_no_reset_members() 
                 assert_eq!(item.source().importance(), CssImportance::Important);
                 assert!(item.replacement_components().is_none());
                 assert_eq!(
-                    source.value_components().serialize().unwrap().as_css(),
+                    source
+                        .value_components()
+                        .serialize_tokens(Default::default())
+                        .unwrap()
+                        .as_css(),
                     *authored
                 );
             }
@@ -392,7 +400,7 @@ fn normalization_retains_order_and_original_legacy_occurrences_after_recovery() 
         assert_eq!(
             item.source()
                 .value_components()
-                .serialize()
+                .serialize_tokens(Default::default())
                 .unwrap()
                 .as_css(),
             keyword

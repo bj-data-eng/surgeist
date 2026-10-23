@@ -1197,14 +1197,17 @@ mod tests {
     #[test]
     fn genuine_programmatic_components_keep_exact_tokens_without_reparse() {
         let supplied = CssComponentValue::try_number("+000000001.250e-01").unwrap();
-        let arguments = CssComponentValues::try_new(vec![
-            supplied.clone(),
-            CssComponentValue::try_number("2").unwrap(),
-            CssComponentValue::try_number("3").unwrap(),
-        ])
+        let arguments = CssComponentValues::try_new(
+            vec![
+                supplied.clone(),
+                CssComponentValue::try_number("2").unwrap(),
+                CssComponentValue::try_number("3").unwrap(),
+            ],
+            Default::default(),
+        )
         .unwrap();
         let root = CssComponentValue::try_function("RGB", arguments).unwrap();
-        let values = CssComponentValues::try_new(vec![root]).unwrap();
+        let values = CssComponentValues::try_new(vec![root], Default::default()).unwrap();
         let value = color_of(&checked(values).unwrap());
         let CssColorComponent::Number(number) = &value.rgb_value().unwrap().channels()[0] else {
             panic!("number");

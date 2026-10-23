@@ -115,12 +115,22 @@ pub enum CssCustomMediaConstructionError {
     Component(CssComponentValueError),
     Media(CssMediaConstructionError),
 }
-/// An atomic custom-media serialization failure.
+/// A lexical custom-media emission failure, before its public classification.
 #[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssCustomMediaSerializationError {
+pub(crate) enum CustomMediaSerializationFailure {
     Component(CssComponentValueError),
-    Media(CssMediaSerializationError),
+    Media(crate::media::MediaSerializationFailure),
+}
+/// Classifies a custom-media emission failure: a component failure by its
+/// kind and a media failure as media serialization classifies it.
+pub(crate) fn custom_media_error(error: CustomMediaSerializationFailure) -> CssSerializationError {
+    match error {
+        CustomMediaSerializationFailure::Component(error) => CssSerializationError::component(
+            crate::component_values::specified_component_kind(&error),
+            error,
+        ),
+        CustomMediaSerializationFailure::Media(error) => crate::media::media_error(error),
+    }
 }
 impl CssCustomMediaConstructionError {
     pub fn origin(&self) -> &CssValueOrigin {
@@ -134,22 +144,9 @@ impl CssCustomMediaConstructionError {
         }
     }
 }
-impl CssCustomMediaSerializationError {
-    pub fn origin(&self) -> &CssValueOrigin {
-        match self {
-            Self::Component(e) => e.origin(),
-            Self::Media(e) => e.origin(),
-        }
-    }
-}
 impl fmt::Display for CssCustomMediaConstructionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "custom-media construction failed: {self:?}")
-    }
-}
-impl fmt::Display for CssCustomMediaSerializationError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "custom-media serialization failed: {self:?}")
     }
 }
 impl std::error::Error for CssCustomMediaConstructionError {
@@ -158,14 +155,6 @@ impl std::error::Error for CssCustomMediaConstructionError {
             Self::Component(e) => Some(e),
             Self::Media(e) => Some(e),
             _ => None,
-        }
-    }
-}
-impl std::error::Error for CssCustomMediaSerializationError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::Component(e) => Some(e),
-            Self::Media(e) => Some(e),
         }
     }
 }
@@ -179,13 +168,13 @@ impl From<CssMediaConstructionError> for CssCustomMediaConstructionError {
         Self::Media(e)
     }
 }
-impl From<CssComponentValueError> for CssCustomMediaSerializationError {
+impl From<CssComponentValueError> for CustomMediaSerializationFailure {
     fn from(e: CssComponentValueError) -> Self {
         Self::Component(e)
     }
 }
-impl From<CssMediaSerializationError> for CssCustomMediaSerializationError {
-    fn from(e: CssMediaSerializationError) -> Self {
+impl From<crate::media::MediaSerializationFailure> for CustomMediaSerializationFailure {
+    fn from(e: crate::media::MediaSerializationFailure) -> Self {
         Self::Media(e)
     }
 }
@@ -234,15 +223,10 @@ pub(crate) fn boolean_body(
 impl CssCustomMediaRule {
     /// Checks a typed body without resolving references. Recovered members and a
     /// singleton unmodified true/false media type cannot construct this rule.
-    pub fn try_new(
-        name: CssCustomMediaName,
-        body: CssCustomMediaBody,
-    ) -> Result<Self, CssCustomMediaConstructionError> {
-        Self::try_new_with_limits(name, body, CssComponentValueLimits::default())
-    }
+    ///
     /// Checks the complete canonical statement against component and byte limits.
     /// Generated at-keyword and semicolon origins are programmatic.
-    pub fn try_new_with_limits(
+    pub fn try_new(
         name: CssCustomMediaName,
         body: CssCustomMediaBody,
         limits: CssComponentValueLimits,
@@ -269,14 +253,10 @@ impl CssCustomMediaRule {
         )
     }
     /// Admits a prelude (name followed by body), preserving original component origins.
-    pub fn try_from_components(
-        values: CssComponentValues,
-    ) -> Result<Self, CssCustomMediaConstructionError> {
-        Self::try_from_components_with_limits(values, CssComponentValueLimits::default())
-    }
+    ///
     /// Checks both supplied prelude components and canonical statement output.
     /// The absent at-keyword has no parsed position; supplied tokens keep theirs.
-    pub fn try_from_components_with_limits(
+    pub fn try_from_components(
         values: CssComponentValues,
         limits: CssComponentValueLimits,
     ) -> Result<Self, CssCustomMediaConstructionError> {
@@ -333,8 +313,11 @@ impl CssCustomMediaRule {
                                 {
                                     return Err(error.into());
                                 }
-                                queries.push(CssMediaQuery::try_from_components_with_limits(
-                                    CssComponentValues::try_new(tail[start..end].to_vec())?,
+                                queries.push(CssMediaQuery::try_from_components(
+                                    CssComponentValues::try_new(
+                                        tail[start..end].to_vec(),
+                                        Default::default(),
+                                    )?,
                                     limits,
                                 )?);
                                 if end < tail.len() {
@@ -403,25 +386,36 @@ impl CssCustomMediaRule {
     }
     /// Emits canonical authored syntax with original token origins. Any recovered
     /// media member fails the entire operation before an output is returned.
-    pub fn serialize(&self) -> Result<CssSerializedValue, CssCustomMediaSerializationError> {
+    ///
+    /// `limits.max_css_bytes()` caps the output; the other component limits do
+    /// not apply.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CssSerializationError`] for a recovered media member or an
+    /// exhausted byte limit.
+    pub fn serialize_tokens(
+        &self,
+        limits: CssComponentValueLimits,
+    ) -> Result<CssSerializedValue, CssSerializationError> {
         let deep = matches!(&self.data.body,CssCustomMediaBody::Media(list) if list.queries().iter().any(crate::media::query_is_deep));
         let origin = || self.media_origin();
-        crate::media::with_media_stack(deep, origin, || self.emit(usize::MAX))
+        crate::media::with_media_stack(deep, origin, || self.emit(limits.max_css_bytes()))
+            .map_err(custom_media_error)
     }
     /// Generic graph projection leaves the logical rule charge to its caller.
     pub(crate) fn append_specified(
         &self,
         context: &mut crate::specified_serialization::SpecifiedSerializationContext,
         output: &mut String,
-    ) -> Result<(), crate::query_rule_serialization::QueryRuleSerializationError> {
+    ) -> Result<(), crate::specified_rule_serialization::SpecifiedRuleSerializationSource> {
         crate::component_values::charge_specified_components(
             context,
             std::slice::from_ref(self.data.name.component()),
         )?;
         match &self.data.body {
             CssCustomMediaBody::True | CssCustomMediaBody::False => {
-                context.charge_input(1)?;
-                context.charge_projection(1)?;
+                context.charge_nodes(1)?;
             }
             CssCustomMediaBody::Media(list) => list.charge_cssom(context)?,
         }
@@ -433,7 +427,7 @@ impl CssCustomMediaRule {
         let value = crate::media::with_media_stack(deep, origin, || {
             let mut out = CssCanonicalBuilder::new(context.remaining_bytes());
             self.emit_into(&mut out, crate::media::emit_query_projected)?;
-            Ok::<_, CssCustomMediaSerializationError>(out.finish()?)
+            Ok::<_, CustomMediaSerializationFailure>(out.finish()?)
         })?;
         context.append(output, value.as_css())?;
         Ok(())
@@ -441,7 +435,7 @@ impl CssCustomMediaRule {
     fn emit(
         &self,
         max_bytes: usize,
-    ) -> Result<CssSerializedValue, CssCustomMediaSerializationError> {
+    ) -> Result<CssSerializedValue, CustomMediaSerializationFailure> {
         let mut out = CssCanonicalBuilder::new(max_bytes);
         self.emit_into(&mut out, crate::media::emit_query)?;
         Ok(out.finish()?)
@@ -452,8 +446,8 @@ impl CssCustomMediaRule {
         emit_query: fn(
             &mut CssCanonicalBuilder,
             &CssMediaQuery,
-        ) -> Result<(), CssMediaSerializationError>,
-    ) -> Result<(), CssCustomMediaSerializationError> {
+        ) -> Result<(), crate::media::MediaSerializationFailure>,
+    ) -> Result<(), CustomMediaSerializationFailure> {
         out.push_grammar(
             CssCanonicalToken::AtKeyword("custom-media"),
             &self.data.origin,
@@ -522,14 +516,14 @@ impl CssCustomMediaRule {
         }
 
         let output = self.emit(limits.max_css_bytes()).map_err(|e| match e {
-            CssCustomMediaSerializationError::Component(e) => {
+            CustomMediaSerializationFailure::Component(e) => {
                 CssCustomMediaConstructionError::Component(e)
             }
-            CssCustomMediaSerializationError::Media(CssMediaSerializationError::Component(e)) => {
-                CssCustomMediaConstructionError::Component(e)
-            }
-            CssCustomMediaSerializationError::Media(
-                CssMediaSerializationError::RecoveredNever { origin },
+            CustomMediaSerializationFailure::Media(
+                crate::media::MediaSerializationFailure::Component(e),
+            ) => CssCustomMediaConstructionError::Component(e),
+            CustomMediaSerializationFailure::Media(
+                crate::media::MediaSerializationFailure::RecoveredNever { origin },
             ) => CssCustomMediaConstructionError::RecoveredInput { origin },
         })?;
         for segment in output.segments() {

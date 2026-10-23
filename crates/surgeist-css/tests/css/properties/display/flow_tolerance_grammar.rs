@@ -148,7 +148,11 @@ fn property_and_keyword_escapes_keep_canonical_identity_and_authored_spelling() 
             source
         );
         assert_eq!(
-            declaration.value_components().serialize().unwrap().as_css(),
+            declaration
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             format!("  {value} ")
         );
         validate_style_attribute(&source).unwrap();
@@ -171,7 +175,11 @@ fn property_components_preserve_authored_boundary_whitespace() {
     );
     assert_eq!(declaration.importance(), CssImportance::Important);
     assert_eq!(
-        declaration.value_components().serialize().unwrap().as_css(),
+        declaration
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         "  AuTo "
     );
 }

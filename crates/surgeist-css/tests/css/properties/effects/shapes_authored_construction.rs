@@ -57,16 +57,14 @@ fn four_box_constructor_excludes_svg_boxes_and_emits_one_bounded_node() {
             Some(value)
         );
         assert_eq!(value.as_css_str(), keyword);
-        budget(keyword, 1, 1, |limits| {
-            value.serialize_specified_with_limits(limits)
-        });
+        budget(keyword, 1, 1, |limits| value.serialize_specified(limits));
         let owner = CssShapeOutside::ShapeBox(value);
-        budget(keyword, 1, 1, |limits| {
-            owner.serialize_specified_with_limits(limits)
-        });
-        let input =
-            CssComponentValues::try_new(vec![CssComponentValue::try_ident(keyword).unwrap()])
-                .unwrap();
+        budget(keyword, 1, 1, |limits| owner.serialize_specified(limits));
+        let input = CssComponentValues::try_new(
+            vec![CssComponentValue::try_ident(keyword).unwrap()],
+            Default::default(),
+        )
+        .unwrap();
         assert_eq!(
             outside(&checked(CssKnownProperty::ShapeOutside, input)),
             &owner
@@ -85,7 +83,7 @@ fn four_box_constructor_excludes_svg_boxes_and_emits_one_bounded_node() {
         assert_eq!(CssShapeBox::from_keyword(keyword), None, "{keyword}");
     }
     budget("none", 1, 1, |limits| {
-        CssShapeOutside::None.serialize_specified_with_limits(limits)
+        CssShapeOutside::None.serialize_specified(limits)
     });
 }
 
@@ -96,7 +94,7 @@ fn checked_shape_composition_retains_omission_and_each_explicit_box() {
     assert_eq!(omitted.shape(), &shape);
     assert_eq!(omitted.reference_box(), None);
     budget("circle()", 2, 2, |limits| {
-        omitted.serialize_specified_with_limits(limits)
+        omitted.serialize_specified(limits)
     });
     assert_eq!(
         outside(&parsed(CssKnownProperty::ShapeOutside, "circle()")),
@@ -114,12 +112,10 @@ fn checked_shape_composition_retains_omission_and_each_explicit_box() {
         assert_ne!(composed, omitted);
         let expected = format!("circle() {keyword}");
         budget(&expected, 3, 3, |limits| {
-            composed.serialize_specified_with_limits(limits)
+            composed.serialize_specified(limits)
         });
         let owner = CssShapeOutside::BasicShape(composed);
-        budget(&expected, 3, 3, |limits| {
-            owner.serialize_specified_with_limits(limits)
-        });
+        budget(&expected, 3, 3, |limits| owner.serialize_specified(limits));
         for text in [format!("{keyword} circle()"), expected] {
             for source in [
                 parsed(CssKnownProperty::ShapeOutside, &text),
@@ -130,7 +126,7 @@ fn checked_shape_composition_retains_omission_and_each_explicit_box() {
             ] {
                 assert_eq!(outside(&source), &owner);
                 assert_eq!(
-                    source.to_specified_css().unwrap(),
+                    source.serialize_specified(Default::default()).unwrap(),
                     format!("shape-outside: circle() {keyword} !important;")
                 );
             }
@@ -149,7 +145,7 @@ fn image_only_composition_rejects_bare_none_but_keeps_two_none_children() {
     let owner = CssShapeOutside::Image(image.clone());
     let before = owner.clone();
     budget("light-dark(none, none)", 3, 3, |limits| {
-        owner.serialize_specified_with_limits(limits)
+        owner.serialize_specified(limits)
     });
     assert_eq!(owner, before);
     let CssImageValue::LightDark(branches) = image.value() else {
@@ -172,7 +168,10 @@ fn image_only_composition_rejects_bare_none_but_keeps_two_none_children() {
         panic!("image variant")
     };
     assert!(matches!(image.value(), CssImageValue::Url(_)));
-    assert_eq!(image.serialize_specified().unwrap(), "url(\"asset.png\")");
+    assert_eq!(
+        image.serialize_specified(Default::default()).unwrap(),
+        "url(\"asset.png\")"
+    );
 }
 
 #[test]
@@ -297,7 +296,12 @@ fn margin_wrappers_keep_exact_checked_literals_and_deferred_negative_math() {
     assert!(margin(&source).literal_component().is_none());
     assert_eq!(margin(&source).calculation().unwrap().components(), &input);
     assert_eq!(margin(&source).origin(), input.items()[0].origin());
-    assert_eq!(margin(&source).serialize_specified().unwrap(), "calc(-1px)");
+    assert_eq!(
+        margin(&source)
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "calc(-1px)"
+    );
     for text in ["-1e-999px", "-1e-999%"] {
         let components = parse_component_values(text).unwrap();
         let numeric_error = CssSpecifiedNonNegativeLengthPercentage::try_from_component(
@@ -331,7 +335,7 @@ fn checked_numeric_construction_retains_programmatic_zero_and_rechecks_bare_nega
         let component = CssComponentValue::try_token(text).unwrap();
         let source = checked(
             property,
-            CssComponentValues::try_new(vec![component.clone()]).unwrap(),
+            CssComponentValues::try_new(vec![component.clone()], Default::default()).unwrap(),
         );
         if property == CssKnownProperty::ShapeImageThreshold {
             let CssOpacityValue::Scalar(value) = threshold(&source) else {
@@ -339,7 +343,12 @@ fn checked_numeric_construction_retains_programmatic_zero_and_rechecks_bare_nega
             };
             assert_eq!(value.component(), &component);
             assert_eq!(value.origin(), &CssValueOrigin::Programmatic);
-            assert_eq!(threshold(&source).serialize_specified().unwrap(), "1.5");
+            assert_eq!(
+                threshold(&source)
+                    .serialize_specified(Default::default())
+                    .unwrap(),
+                "1.5"
+            );
         } else {
             assert_eq!(margin(&source).literal_component(), Some(&component));
             assert_eq!(margin(&source).origin(), &CssValueOrigin::Programmatic);
@@ -348,7 +357,8 @@ fn checked_numeric_construction_retains_programmatic_zero_and_rechecks_bare_nega
     for text in ["-1e-999px", "-1e-999%"] {
         let input = parse_component_values(text).unwrap();
         let calculation =
-            CssLengthPercentageCalculation::try_from_components(input.clone()).unwrap();
+            CssLengthPercentageCalculation::try_from_components(input.clone(), Default::default())
+                .unwrap();
         let error =
             CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(calculation).unwrap_err();
         assert_eq!(error.kind(), &CssNumericConstructionErrorKind::OutOfRange);

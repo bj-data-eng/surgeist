@@ -189,7 +189,10 @@ fn parsed_repeat_count_keeps_original_snapshot_and_precise_token_span() {
             .same_snapshot(declaration.parsed_value().unwrap().source())
     );
     assert_eq!(
-        value.value().serialize_specified().unwrap(),
+        value
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "repeat(7, 1fr)"
     );
 }
@@ -204,35 +207,36 @@ fn repeat_counts_share_cumulative_input_projection_and_canonical_byte_budgets() 
         .unwrap(),
     );
     let expected = "repeat(7, auto) repeat(2147483648, auto)";
-    assert_eq!(list.serialize_specified().unwrap(), expected);
-    // One list plus two repetitions, each with a count and keyword track: seven nodes.
-    let exact = CssSpecifiedValueSerializationLimits::new(7, 7, expected.len());
     assert_eq!(
-        list.serialize_specified_with_limits(exact).unwrap(),
+        list.serialize_specified(Default::default()).unwrap(),
         expected
     );
+    // One list plus two repetitions, each with a count and keyword track: seven nodes.
+    let exact = CssSerializationLimits::new(7, 7, expected.len());
+    assert_eq!(list.serialize_specified(exact).unwrap(), expected);
     for (limits, expected_kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(6, 7, expected.len()),
+            CssSerializationLimits::new(6, 7, expected.len()),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(7, 6, expected.len()),
+            CssSerializationLimits::new(7, 6, expected.len()),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(7, 7, expected.len() - 1),
+            CssSerializationLimits::new(7, 7, expected.len() - 1),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
         assert_eq!(
-            list.serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            list.serialize_specified(limits).unwrap_err().kind(),
             expected_kind
         );
     }
-    assert_eq!(list.serialize_specified().unwrap(), expected);
+    assert_eq!(
+        list.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
 }
 
 #[test]
@@ -499,7 +503,8 @@ fn steps_share_positive_literals_and_defer_calculation_range_with_authored_omiss
         );
     }
     let components = parse_component_values("calc(1)").unwrap();
-    let calculation = CssIntegerCalculation::try_from_components(components.clone()).unwrap();
+    let calculation =
+        CssIntegerCalculation::try_from_components(components.clone(), Default::default()).unwrap();
     let steps = CssSteps::try_new(
         CssPositiveIntegerValue::Calculation(calculation),
         Some(CssStepPosition::JumpNone),
@@ -537,7 +542,7 @@ fn steps_classify_bare_calculation_tokens_without_losing_authored_components_or_
         .clone();
     let steps = CssSteps::try_new(
         CssPositiveIntegerValue::Calculation(
-            CssIntegerCalculation::try_from_components(components).unwrap(),
+            CssIntegerCalculation::try_from_components(components, Default::default()).unwrap(),
         ),
         Some(CssStepPosition::JumpNone),
     )
@@ -565,7 +570,8 @@ fn steps_classify_bare_calculation_tokens_without_losing_authored_components_or_
         let components = parse_component_values(source).unwrap();
         let steps = CssSteps::try_new(
             CssPositiveIntegerValue::Calculation(
-                CssIntegerCalculation::try_from_components(components.clone()).unwrap(),
+                CssIntegerCalculation::try_from_components(components.clone(), Default::default())
+                    .unwrap(),
             ),
             Some(CssStepPosition::JumpNone),
         )
@@ -609,7 +615,11 @@ fn parsed_steps_keep_count_origins_symbolic_math_and_position_omission() {
     };
     parsed_origin(calculation.expression().origin(), source, "calc(");
     assert_eq!(
-        calculation.components().serialize().unwrap().as_css(),
+        calculation
+            .components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         "calc(1)"
     );
     assert_eq!(steps[1].position(), Some(CssStepPosition::JumpNone));

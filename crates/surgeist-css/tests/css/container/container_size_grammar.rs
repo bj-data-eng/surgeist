@@ -20,7 +20,8 @@ fn assert_classification(query: &str, recognized: bool) {
     };
     let parsed = rule.prelude().entries()[0].query().unwrap();
     let components = parse_component_values(query).unwrap();
-    let checked = CssContainerCondition::try_from_components(components.clone()).unwrap();
+    let checked =
+        CssContainerCondition::try_from_components(components.clone(), Default::default()).unwrap();
     let enclosed = CssContainerCondition::try_from_enclosed(
         CssGeneralEnclosed::try_from_component(components.items()[0].clone()).unwrap(),
     )
@@ -37,7 +38,14 @@ fn assert_classification(query: &str, recognized: bool) {
             other => panic!("unexpected {route} leaf for {query}: {other:?}"),
         };
         assert_eq!(actual, recognized, "{route} recognition for {query}");
-        assert_eq!(condition.serialize().unwrap().as_css().trim(), query);
+        assert_eq!(
+            condition
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css()
+                .trim(),
+            query
+        );
         let CssValueOrigin::Parsed(origin) = condition.origin() else {
             panic!("retained parsed origin for {route}: {query}")
         };
@@ -267,6 +275,7 @@ fn programmatic_signed_length_keeps_programmatic_origins_and_exact_spelling() {
             .into_iter()
             .map(|token| CssComponentValue::try_token(token).unwrap())
             .collect(),
+        Default::default(),
     )
     .unwrap();
     let condition = CssContainerCondition::try_from_enclosed(
@@ -280,7 +289,10 @@ fn programmatic_signed_length_keeps_programmatic_origins_and_exact_spelling() {
     assert_eq!(condition.origin(), &CssValueOrigin::Programmatic);
     assert_eq!(condition.position(), None);
     assert_eq!(
-        condition.serialize().unwrap().as_css(),
+        condition
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         "(width:-12345678901234567890.123456789px)"
     );
 }

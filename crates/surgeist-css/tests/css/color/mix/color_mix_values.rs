@@ -115,6 +115,7 @@ fn bare_percentage_roots_cannot_masquerade_as_calculated_mix_weights() {
             CssPercentageCalculation::try_literal(coefficient).unwrap(),
             CssPercentageCalculation::try_from_components(
                 parse_component_values(&format!("{coefficient}%")).unwrap(),
+                Default::default(),
             )
             .unwrap(),
         ] {
@@ -150,19 +151,25 @@ fn genuine_calculations_preserve_the_graph_origins_and_specified_range() {
     for coefficient in ["-5", "120", "25"] {
         let source = format!("calc({coefficient}%)");
         let parsed_graph = parse_component_values(&source).unwrap();
-        let programmatic_graph = CssComponentValues::try_new(vec![
-            CssComponentValue::try_function(
-                "calc",
-                CssComponentValues::try_new(vec![
-                    CssComponentValue::try_token(&format!("{coefficient}%")).unwrap(),
-                ])
+        let programmatic_graph = CssComponentValues::try_new(
+            vec![
+                CssComponentValue::try_function(
+                    "calc",
+                    CssComponentValues::try_new(
+                        vec![CssComponentValue::try_token(&format!("{coefficient}%")).unwrap()],
+                        Default::default(),
+                    )
+                    .unwrap(),
+                )
                 .unwrap(),
-            )
-            .unwrap(),
-        ])
+            ],
+            Default::default(),
+        )
         .unwrap();
         for graph in [parsed_graph, programmatic_graph] {
-            let root = CssPercentageCalculation::try_from_components(graph.clone()).unwrap();
+            let root =
+                CssPercentageCalculation::try_from_components(graph.clone(), Default::default())
+                    .unwrap();
             let origin = root.origin().clone();
             let weight = CssColorMixWeight::try_calculation(root.clone()).unwrap();
             assert!(weight.literal_value().is_none());
@@ -182,7 +189,11 @@ fn genuine_calculations_preserve_the_graph_origins_and_specified_range() {
                 assert!(weight.literal_value().is_none());
                 let calculation = weight.calculation().unwrap();
                 assert_eq!(
-                    calculation.components().serialize().unwrap().as_css(),
+                    calculation
+                        .components()
+                        .serialize_tokens(Default::default())
+                        .unwrap()
+                        .as_css(),
                     source
                 );
                 let CssValueOrigin::Parsed(origin) = calculation.origin() else {
@@ -244,17 +255,18 @@ fn checked_mixed_origin_weights_keep_the_actual_leaf_source() {
     let leaf = component("-5%");
     let calculation = CssComponentValue::try_function(
         "calc",
-        CssComponentValues::try_new(vec![leaf.clone()]).unwrap(),
+        CssComponentValues::try_new(vec![leaf.clone()], Default::default()).unwrap(),
     )
     .unwrap();
-    let children = CssComponentValues::try_new(vec![
-        CssComponentValue::try_ident("red").unwrap(),
-        calculation,
-    ])
+    let children = CssComponentValues::try_new(
+        vec![CssComponentValue::try_ident("red").unwrap(), calculation],
+        Default::default(),
+    )
     .unwrap();
-    let values = CssComponentValues::try_new(vec![
-        CssComponentValue::try_function("color-mix", children).unwrap(),
-    ])
+    let values = CssComponentValues::try_new(
+        vec![CssComponentValue::try_function("color-mix", children).unwrap()],
+        Default::default(),
+    )
     .unwrap();
     let declaration = checked_components(values);
     let mix = wrapper(&declaration).value().color_mix_value().unwrap();
@@ -279,9 +291,11 @@ fn checked_mixed_origin_weights_keep_the_actual_leaf_source() {
 fn enclosing_mix_counts_calculation_depth_in_its_composed_graph() {
     for (depth, succeeds) in [(255, true), (256, false)] {
         let source = format!("{}25%{}", "calc(".repeat(depth), ")".repeat(depth));
-        let calculation =
-            CssPercentageCalculation::try_from_components(parse_component_values(&source).unwrap())
-                .unwrap();
+        let calculation = CssPercentageCalculation::try_from_components(
+            parse_component_values(&source).unwrap(),
+            Default::default(),
+        )
+        .unwrap();
         let weight = CssColorMixWeight::try_calculation(calculation).unwrap();
         let result = CssColorMix::try_new(
             None,
@@ -437,7 +451,7 @@ fn moderately_wide_lists_charge_component_and_byte_budgets_cumulatively() {
             expected
         );
         assert_eq!(
-            CssComponentValues::try_new_with_limits(graph.items().to_vec(), limits)
+            CssComponentValues::try_new(graph.items().to_vec(), limits)
                 .unwrap_err()
                 .kind(),
             expected

@@ -29,27 +29,31 @@ fn component(text: &str, programmatic: bool) -> CssColorComponent {
                 .unwrap()
                 .strip_suffix(')')
                 .unwrap();
-            CssComponentValues::try_new(vec![
-                CssComponentValue::try_function(
-                    "calc",
-                    CssComponentValues::try_new(vec![
-                        CssComponentValue::try_token(argument).unwrap(),
-                    ])
+            CssComponentValues::try_new(
+                vec![
+                    CssComponentValue::try_function(
+                        "calc",
+                        CssComponentValues::try_new(
+                            vec![CssComponentValue::try_token(argument).unwrap()],
+                            Default::default(),
+                        )
+                        .unwrap(),
+                    )
                     .unwrap(),
-                )
-                .unwrap(),
-            ])
+                ],
+                Default::default(),
+            )
             .unwrap()
         } else {
             parse_component_values(text).unwrap()
         };
         return if text.contains('%') {
             CssColorComponent::PercentageCalculation(
-                CssPercentageCalculation::try_from_components(values).unwrap(),
+                CssPercentageCalculation::try_from_components(values, Default::default()).unwrap(),
             )
         } else {
             CssColorComponent::NumberCalculation(
-                CssNumberCalculation::try_from_components(values).unwrap(),
+                CssNumberCalculation::try_from_components(values, Default::default()).unwrap(),
             )
         };
     }
@@ -371,7 +375,13 @@ fn omitted_missing_and_calculated_alphas_keep_distinct_unresolved_branches() {
                         Some(text),
                     ) => {
                         assert!(std::ptr::eq(view, raw));
-                        assert_eq!(view.components().serialize().unwrap().as_css(), text);
+                        assert_eq!(
+                            view.components()
+                                .serialize_tokens(Default::default())
+                                .unwrap()
+                                .as_css(),
+                            text
+                        );
                         assert_eq!(view.result_type(), CssCalculationType::Number);
                         assert_eq!(
                             matches!(view.origin(), CssValueOrigin::Programmatic),
@@ -384,7 +394,13 @@ fn omitted_missing_and_calculated_alphas_keep_distinct_unresolved_branches() {
                         Some(text),
                     ) => {
                         assert!(std::ptr::eq(view, raw));
-                        assert_eq!(view.components().serialize().unwrap().as_css(), text);
+                        assert_eq!(
+                            view.components()
+                                .serialize_tokens(Default::default())
+                                .unwrap()
+                                .as_css(),
+                            text
+                        );
                         assert_eq!(view.result_type(), CssCalculationType::Percentage);
                         assert_eq!(
                             matches!(view.origin(), CssValueOrigin::Programmatic),
@@ -512,10 +528,13 @@ fn reading_parsed_alpha_keeps_specified_text_and_raw_graph_unchanged() {
     ] {
         let owner = color_of(&declaration(family, Some(text))).clone();
         let before = owner.clone();
-        let output = owner.to_specified_css().unwrap();
+        let output = owner.serialize_specified(Default::default()).unwrap();
         assert_eq!(output, expected);
         let _ = view(&owner, family);
-        assert_eq!(owner.to_specified_css().unwrap(), output);
+        assert_eq!(
+            owner.serialize_specified(Default::default()).unwrap(),
+            output
+        );
         assert_eq!(owner, before);
     }
 }

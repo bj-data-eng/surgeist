@@ -343,38 +343,6 @@ fn link_facts(error: &(dyn StdError + 'static)) -> Vec<String> {
             error.origin(),
         );
     }
-    if let Some(error) = error.downcast_ref::<CssMediaSerializationError>() {
-        return construction(
-            variant!(
-                error,
-                CssMediaSerializationError,
-                [Component, RecoveredNever]
-            ),
-            error.origin(),
-        );
-    }
-    if let Some(error) = error.downcast_ref::<CssImportSerializationError>() {
-        return construction(
-            variant!(
-                error,
-                CssImportSerializationError,
-                [Component, InterpretationChanged, Media]
-            ),
-            error.origin(),
-        );
-    }
-    if let Some(error) = error.downcast_ref::<CssCustomMediaSerializationError>() {
-        return construction(
-            variant!(error, CssCustomMediaSerializationError, [Component, Media]),
-            error.origin(),
-        );
-    }
-    if let Some(error) = error.downcast_ref::<CssMediaCssomSerializationError>() {
-        return construction(
-            variant!(error, CssMediaCssomSerializationError, [Media, Resource]),
-            error.origin(),
-        );
-    }
     if let Some(error) = error.downcast_ref::<CssImage1DConstructionError>() {
         let mut facts = vec![format!(
             "variant={}",
@@ -494,7 +462,7 @@ fn link_facts(error: &(dyn StdError + 'static)) -> Vec<String> {
             )
         )];
     }
-    if let Some(error) = error.downcast_ref::<CssSpecifiedValueSerializationError>() {
+    if let Some(error) = error.downcast_ref::<CssSerializationError>() {
         return vec![
             format!("kind={}", serialization_kind(error.kind())),
             format!(
@@ -503,21 +471,7 @@ fn link_facts(error: &(dyn StdError + 'static)) -> Vec<String> {
             ),
         ];
     }
-    if let Some(error) = error.downcast_ref::<CssSpecifiedRuleSerializationError>() {
-        return vec![format!(
-            "kind={}",
-            match error.kind() {
-                CssSpecifiedRuleSerializationErrorKind::Resource(kind) => {
-                    format!("resource:{}", serialization_kind(kind))
-                }
-                CssSpecifiedRuleSerializationErrorKind::Value(kind) => {
-                    format!("value:{}", serialization_kind(kind))
-                }
-                _ => "Future".to_owned(),
-            }
-        )];
-    }
-    if let Some(error) = error.downcast_ref::<CssRuleCssomSerializationError>() {
+    if let Some(error) = error.downcast_ref::<CssRuleSerializationError>() {
         return vec![format!(
             "kind={}",
             match error.kind() {

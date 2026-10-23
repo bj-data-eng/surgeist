@@ -190,7 +190,10 @@ fn eight_insets_accept_exact_signed_length_percentages_or_auto() {
             CssKnownPropertyValueRef::Left(value) => value.value(),
             _ => panic!("existing physical inset wrapper"),
         };
-        assert_eq!(inset.serialize_specified().unwrap(), "1px");
+        assert_eq!(
+            inset.serialize_specified(Default::default()).unwrap(),
+            "1px"
+        );
     }
 }
 

@@ -43,7 +43,7 @@ fn parsed_property_forms_round_trip_without_joining_identifier_tokens() {
     assert_eq!(origin.span().start().byte_offset().value(), 12);
     assert_eq!(origin.span().end().byte_offset().value(), 16);
     let value = families(&source);
-    let css = value.serialize_specified().unwrap();
+    let css = value.serialize_specified(Default::default()).unwrap();
     assert_eq!(css, r#"A\ B, A B, "serif", serif, generic(kai), menu"#);
     assert_eq!(families(&important_declaration("font-family", &css)), value);
     assert_eq!(value.families()[0].identifier_tokens().unwrap(), &["A B"]);
@@ -79,7 +79,7 @@ fn checked_names_use_the_shared_cssom_escaping_and_preserve_authored_kind() {
             "\"default\"",
         ),
     ] {
-        assert_eq!(name.serialize_specified().unwrap(), css);
+        assert_eq!(name.serialize_specified(Default::default()).unwrap(), css);
         assert_eq!(
             families(&important_declaration("font-family", css)).families(),
             &[name]
@@ -103,34 +103,31 @@ fn list_limits_are_cumulative_exact_and_atomic() {
     let value = families(&important_declaration("font-family", "A, serif")).clone();
     let before = value.clone();
     // A: name + identifier; serif: one generic. Container is not a node.
-    let exact = CssSpecifiedValueSerializationLimits::new(3, 3, 8);
-    assert_eq!(
-        value.serialize_specified_with_limits(exact).unwrap(),
-        "A, serif"
-    );
+    let exact = CssSerializationLimits::new(3, 3, 8);
+    assert_eq!(value.serialize_specified(exact).unwrap(), "A, serif");
     for (limits, expected) in [
         (
-            CssSpecifiedValueSerializationLimits::new(2, 3, 8),
+            CssSerializationLimits::new(2, 3, 8),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(3, 2, 8),
+            CssSerializationLimits::new(3, 2, 8),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(3, 3, 7),
+            CssSerializationLimits::new(3, 3, 7),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
         assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            value.serialize_specified(limits).unwrap_err().kind(),
             expected
         );
         assert_eq!(value, before);
-        assert_eq!(value.serialize_specified().unwrap(), "A, serif");
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            "A, serif"
+        );
     }
 }
 
@@ -139,27 +136,27 @@ fn standalone_name_limits_charge_tokens_and_emitted_utf8_bytes() {
     let value = CssFontFamilyName::try_ident_sequence(vec!["A".into(), "日本".into()]).unwrap();
     assert_eq!(
         value
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(3, 3, 8))
+            .serialize_specified(CssSerializationLimits::new(3, 3, 8))
             .unwrap(),
         "A 日本"
     );
     assert_eq!(
         value
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(2, 3, 8))
+            .serialize_specified(CssSerializationLimits::new(2, 3, 8))
             .unwrap_err()
             .kind(),
         CssSpecifiedValueSerializationErrorKind::InputNodeLimit
     );
     assert_eq!(
         value
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(3, 2, 8))
+            .serialize_specified(CssSerializationLimits::new(3, 2, 8))
             .unwrap_err()
             .kind(),
         CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
     );
     assert_eq!(
         value
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(3, 3, 7))
+            .serialize_specified(CssSerializationLimits::new(3, 3, 7))
             .unwrap_err()
             .kind(),
         CssSpecifiedValueSerializationErrorKind::ByteLimit
@@ -167,13 +164,13 @@ fn standalone_name_limits_charge_tokens_and_emitted_utf8_bytes() {
     let quoted = CssFontFamilyName::try_quoted("a\"b").unwrap();
     assert_eq!(
         quoted
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(1, 1, 6))
+            .serialize_specified(CssSerializationLimits::new(1, 1, 6))
             .unwrap(),
         r#""a\"b""#
     );
     assert_eq!(
         quoted
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(1, 1, 5))
+            .serialize_specified(CssSerializationLimits::new(1, 1, 5))
             .unwrap_err()
             .kind(),
         CssSpecifiedValueSerializationErrorKind::ByteLimit
@@ -192,7 +189,9 @@ fn checked_property_admission_retains_components_and_rejects_annotations() {
     .unwrap();
     assert_eq!(value.value_components(), &before);
     assert_eq!(
-        families(&value).serialize_specified().unwrap(),
+        families(&value)
+            .serialize_specified(Default::default())
+            .unwrap(),
         r#"A\ B, "serif""#
     );
     assert_eq!(value.value_components(), &before);
@@ -266,7 +265,7 @@ fn metadata_globals_and_pending_reentry_keep_symbolic_lifecycle() {
             panic!("family")
         };
         assert_eq!(
-            value.serialize_specified().unwrap(),
+            value.serialize_specified(Default::default()).unwrap(),
             r#"A\ B, "serif", serif"#
         );
         // Fonts 4 §2.1: a trailing comma needs another family; input ends
@@ -320,28 +319,26 @@ fn embedded_shorthand_shares_output_and_cumulative_node_contract() {
         CssExplicitFont::try_new(None, None, None, None, CssFontSize::Medium, None, list).unwrap();
     // Size adds one node; the family list remains three nodes as above.
     assert_eq!(
-        font.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(4, 4, 15))
+        font.serialize_specified(CssSerializationLimits::new(4, 4, 15))
             .unwrap(),
         "medium A, serif"
     );
     for (limits, expected) in [
         (
-            CssSpecifiedValueSerializationLimits::new(3, 4, 15),
+            CssSerializationLimits::new(3, 4, 15),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(4, 3, 15),
+            CssSerializationLimits::new(4, 3, 15),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(4, 4, 14),
+            CssSerializationLimits::new(4, 4, 14),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
         assert_eq!(
-            font.serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            font.serialize_specified(limits).unwrap_err().kind(),
             expected
         );
     }
@@ -363,7 +360,10 @@ fn decoded_descriptor_families_round_trip_as_literals_in_face_and_feature_consum
         ("a\"b\\c", r#""a\"b\\c""#),
     ] {
         let family = CssFontFaceFamily::try_new(name).unwrap();
-        assert_eq!(family.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            family.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_eq!(literal(expected), family);
         let face_sheet = parse_sheet(&format!(
             "@font-face {{font-family:{expected};src:url(font)}}"
@@ -401,29 +401,26 @@ fn literal_and_palette_routes_share_output_without_inventing_identifier_nodes() 
     let family = literal("'Demo Font'");
     assert_eq!(
         family
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(1, 1, 9))
+            .serialize_specified(CssSerializationLimits::new(1, 1, 9))
             .unwrap(),
         "Demo Font"
     );
     for (limits, expected) in [
         (
-            CssSpecifiedValueSerializationLimits::new(0, 1, 9),
+            CssSerializationLimits::new(0, 1, 9),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(1, 0, 9),
+            CssSerializationLimits::new(1, 0, 9),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(1, 1, 8),
+            CssSerializationLimits::new(1, 1, 8),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
         assert_eq!(
-            family
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            family.serialize_specified(limits).unwrap_err().kind(),
             expected
         );
     }
@@ -436,32 +433,20 @@ fn literal_and_palette_routes_share_output_without_inventing_identifier_nodes() 
     let css = "Demo Font, \"serif\"";
     assert_eq!(
         value
-            .to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::new(
-                2,
-                2,
-                css.len()
-            ))
+            .serialize_specified(CssSerializationLimits::new(2, 2, css.len()))
             .unwrap(),
         css
     );
     assert_eq!(
         value
-            .to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::new(
-                1,
-                2,
-                css.len()
-            ))
+            .serialize_specified(CssSerializationLimits::new(1, 2, css.len()))
             .unwrap_err()
             .kind(),
         CssSpecifiedValueSerializationErrorKind::InputNodeLimit
     );
     assert_eq!(
         value
-            .to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::new(
-                2,
-                1,
-                css.len()
-            ))
+            .serialize_specified(CssSerializationLimits::new(2, 1, css.len()))
             .unwrap_err()
             .kind(),
         CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
@@ -472,7 +457,7 @@ fn literal_and_palette_routes_share_output_without_inventing_identifier_nodes() 
     assert_eq!(
         names
             .iter()
-            .map(|name| name.serialize_specified().unwrap())
+            .map(|name| name.serialize_specified(Default::default()).unwrap())
             .collect::<Vec<_>>()
             .join(", "),
         css
@@ -505,18 +490,14 @@ fn all_generic_branches_emit_canonical_keywords_and_functions() {
         assert_eq!(value.kind(), CssFontFamilyNameKind::Generic);
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    1,
-                    1,
-                    css.len()
-                ))
+                .serialize_specified(CssSerializationLimits::new(1, 1, css.len()))
                 .unwrap(),
             css
         );
         assert_eq!(
             families(&important_declaration(
                 "font-family",
-                &value.serialize_specified().unwrap()
+                &value.serialize_specified(Default::default()).unwrap()
             ))
             .families(),
             std::slice::from_ref(value)

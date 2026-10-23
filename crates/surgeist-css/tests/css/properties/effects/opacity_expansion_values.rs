@@ -174,9 +174,11 @@ fn parsed_and_programmatic_opacity_transport_preserves_exact_numeric_branches() 
                 .same_snapshot(source.parsed_value().unwrap().source())
         );
 
-        let components =
-            CssComponentValues::try_new(vec![CssComponentValue::try_token(spelling).unwrap()])
-                .unwrap();
+        let components = CssComponentValues::try_new(
+            vec![CssComponentValue::try_token(spelling).unwrap()],
+            Default::default(),
+        )
+        .unwrap();
         let constructed = parse_property_value(
             CssPropertyNameRef::Known(CssKnownProperty::Opacity),
             components.clone(),
@@ -211,11 +213,13 @@ fn parsed_and_programmatic_opacity_calculations_preserve_operations_and_origins(
                 .into_iter()
                 .map(|token| CssComponentValue::try_token(token).unwrap())
                 .collect(),
+            Default::default(),
         )
         .unwrap();
-        let components = CssComponentValues::try_new(vec![
-            CssComponentValue::try_function("calc", arguments).unwrap(),
-        ])
+        let components = CssComponentValues::try_new(
+            vec![CssComponentValue::try_function("calc", arguments).unwrap()],
+            Default::default(),
+        )
         .unwrap();
         let constructed = parse_property_value(
             CssPropertyNameRef::Known(CssKnownProperty::Opacity),

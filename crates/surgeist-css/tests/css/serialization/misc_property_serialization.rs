@@ -4,7 +4,7 @@
 use crate::css::support::serialization_limits::assert_node_limits;
 use surgeist_css::*;
 
-type Limits = CssSpecifiedValueSerializationLimits;
+type Limits = CssSerializationLimits;
 type Kind = CssSpecifiedValueSerializationErrorKind;
 
 fn parsed_caret(source: &str) -> CssCaretColor {
@@ -33,10 +33,11 @@ fn caret_keyword_and_color_are_transparent_owners_with_exact_limits() {
         (parsed_caret("pUrPlE"), "purple"),
     ] {
         let before = value.clone();
-        assert_eq!(value.serialize_specified().unwrap(), expected);
-        assert_node_limits(expected, 1, |limits| {
-            value.serialize_specified_with_limits(limits)
-        });
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
+        assert_node_limits(expected, 1, |limits| value.serialize_specified(limits));
         assert_eq!(value, before);
     }
 }
@@ -54,20 +55,20 @@ fn caret_math_and_authored_numeric_origins_survive_failure_and_retry() {
     };
     let origin = first.origin().clone();
     assert!(matches!(&origin, CssValueOrigin::Parsed(_)));
-    assert_eq!(value.serialize_specified().unwrap(), "rgb(255, 127, 0)");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "rgb(255, 127, 0)"
+    );
     for (limits, kind) in [
         (Limits::new(0, 262_144, 1_048_576), Kind::InputNodeLimit),
         (Limits::new(65_536, 0, 1_048_576), Kind::ProjectionNodeLimit),
         (Limits::new(65_536, 262_144, 0), Kind::ByteLimit),
     ] {
+        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
         assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            kind
+            value.serialize_specified(Default::default()).unwrap(),
+            "rgb(255, 127, 0)"
         );
-        assert_eq!(value.serialize_specified().unwrap(), "rgb(255, 127, 0)");
     }
     assert_eq!(value, before);
     assert_eq!(first.origin(), &origin);
@@ -80,10 +81,11 @@ fn containment_keywords_preserve_their_authored_branch_and_exact_limits() {
         (CssContain::Strict, "strict"),
         (CssContain::Content, "content"),
     ] {
-        assert_eq!(value.serialize_specified().unwrap(), expected);
-        assert_node_limits(expected, 1, |limits| {
-            value.serialize_specified_with_limits(limits)
-        });
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
+        assert_node_limits(expected, 1, |limits| value.serialize_specified(limits));
     }
 }
 
@@ -110,9 +112,12 @@ fn every_containment_subset_and_order_emits_grammar_order_without_mutation() {
         let value =
             CssContain::Components(CssContainComponentList::try_new(components.clone()).unwrap());
         let before = value.clone();
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_node_limits(expected, 1 + components.len(), |limits| {
-            value.serialize_specified_with_limits(limits)
+            value.serialize_specified(limits)
         });
         assert_eq!(value, before);
         let CssContain::Components(retained) = value else {
@@ -144,7 +149,10 @@ fn containment_checked_construction_and_parsed_order_remain_intact() {
     };
     let before = value.containment().clone();
     assert_eq!(
-        value.containment().serialize_specified().unwrap(),
+        value
+            .containment()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "size layout paint"
     );
     assert_eq!(value.containment(), &before);
@@ -171,10 +179,11 @@ fn every_blend_primitive_is_available_in_an_ordered_list_with_exact_limits() {
         (CssBlendMode::Luminosity, "luminosity"),
     ] {
         let value = CssBlendModeList::try_new(vec![mode]).unwrap();
-        assert_eq!(value.serialize_specified().unwrap(), expected);
-        assert_node_limits(expected, 2, |limits| {
-            value.serialize_specified_with_limits(limits)
-        });
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
+        assert_node_limits(expected, 2, |limits| value.serialize_specified(limits));
         assert_eq!(value.modes(), &[mode]);
     }
 }
@@ -190,11 +199,11 @@ fn blend_lists_preserve_order_duplicates_and_comma_byte_cost() {
     .unwrap();
     let before = value.clone();
     assert_eq!(
-        value.serialize_specified().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         "screen, normal, screen"
     );
     assert_node_limits("screen, normal, screen", 4, |limits| {
-        value.serialize_specified_with_limits(limits)
+        value.serialize_specified(limits)
     });
     assert_eq!(value, before);
     let report = parse_style_attribute("background-blend-mode:SCREEN,normal,SCREEN");
@@ -209,7 +218,10 @@ fn blend_lists_preserve_order_duplicates_and_comma_byte_cost() {
     };
     assert_eq!(parsed.modes(), &value);
     assert_eq!(
-        parsed.modes().serialize_specified().unwrap(),
+        parsed
+            .modes()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "screen, normal, screen"
     );
 }

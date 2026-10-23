@@ -185,7 +185,7 @@ property_records! {
             let [CssAnimationIterationCount::Number(value)] = v.values() else {
                 panic!("one ordinary initial count")
             };
-            assert_eq!(value.serialize_specified().unwrap(), "1");
+            assert_eq!(value.serialize_specified(Default::default()).unwrap(), "1");
             assert_eq!(value.origin(), &CssValueOrigin::Programmatic);
         }),
         catalog: grammar_catalog!("baseline.property.animation-iteration-count", "2, infinite", rejected("-1")),
@@ -1354,7 +1354,7 @@ property_records! {
     }
     FlexGrow, "flex-grow" {
         metadata: longhand(false, |v| {
-            assert_eq!(v.serialize_specified().unwrap(), "0")
+            assert_eq!(v.serialize_specified(Default::default()).unwrap(), "0")
         }),
         catalog: grammar_catalog!("baseline.property.flex-grow", "2", rejected("solid")),
         source: "O-FLEXBOX1",
@@ -1364,7 +1364,7 @@ property_records! {
     }
     FlexShrink, "flex-shrink" {
         metadata: longhand(false, |v| {
-            assert_eq!(v.serialize_specified().unwrap(), "1")
+            assert_eq!(v.serialize_specified(Default::default()).unwrap(), "1")
         }),
         catalog: grammar_catalog!("baseline.property.flex-shrink", "0", rejected("solid")),
         source: "O-FLEXBOX1",
@@ -1993,7 +1993,7 @@ property_records! {
     }
     ListStyleType, "list-style-type" {
         metadata: longhand(true, |v| {
-            assert_eq!(v.serialize_specified().unwrap(), "disc")
+            assert_eq!(v.serialize_specified(Default::default()).unwrap(), "disc")
         }),
         catalog: grammar_catalog!("baseline.property.list-style-type", "square", rejected("symbols(numeric \"*\")")),
         dispatch: "square",
@@ -2306,7 +2306,7 @@ property_records! {
         wrapper: yes,
     }
     Order, "order" {
-        metadata: longhand(false, |v| assert_eq!(v.serialize_specified().unwrap(), "0")),
+        metadata: longhand(false, |v| assert_eq!(v.serialize_specified(Default::default()).unwrap(), "0")),
         catalog: grammar_catalog!("baseline.property.order", "-2", rejected("1.5")),
         source: "S-DISPLAY3",
         aliases: ["-webkit-order"],
@@ -2335,7 +2335,7 @@ property_records! {
         wrapper: yes,
     }
     OutlineOffset, "outline-offset" {
-        metadata: longhand(false, |v| assert_eq!(v.serialize_specified().unwrap(), "0")),
+        metadata: longhand(false, |v| assert_eq!(v.serialize_specified(Default::default()).unwrap(), "0")),
         catalog: grammar_catalog!("official.property.outline-offset", "-2px", rejected("auto")),
         source: "X-UI4",
     }
@@ -2385,7 +2385,7 @@ property_records! {
             assert_eq!(v.authored_box_edge(), None);
             assert_eq!(v.box_edge(), CssBoxEdgeKeyword::PaddingBox);
             assert_eq!(
-                v.authored_offset().unwrap().serialize_specified().unwrap(),
+                v.authored_offset().unwrap().serialize_specified(Default::default()).unwrap(),
                 "0px"
             );
         }),

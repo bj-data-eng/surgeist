@@ -548,6 +548,7 @@ fn programmatic_url_hotspot_numbers_keep_programmatic_origins() {
             .into_iter()
             .map(|token| CssComponentValue::try_token(token).unwrap())
             .collect(),
+        Default::default(),
     )
     .unwrap();
     for declaration in [

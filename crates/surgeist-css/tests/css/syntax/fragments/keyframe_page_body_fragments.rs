@@ -258,10 +258,10 @@ fn page_body_retains_five_physical_margin_properties_priority_and_duplicates() {
         panic!("physical margin shorthand")
     };
     let [top, right, bottom, left] = value.value().assigned_values();
-    assert_eq!(top.serialize_specified().unwrap(), "-1px");
-    assert_eq!(right.serialize_specified().unwrap(), "2%");
+    assert_eq!(top.serialize_specified(Default::default()).unwrap(), "-1px");
+    assert_eq!(right.serialize_specified(Default::default()).unwrap(), "2%");
     assert!(matches!(bottom, CssMarginValue::Auto));
-    assert_eq!(left.serialize_specified().unwrap(), "3cm");
+    assert_eq!(left.serialize_specified(Default::default()).unwrap(), "3cm");
 }
 
 #[test]
@@ -629,7 +629,10 @@ fn mode_methods_admit_quirky_keyframe_lengths_and_preserve_the_original_number()
     };
     let value = value.value().length_percentage().unwrap();
     assert!(value.is_quirky_length());
-    assert_eq!(value.serialize_specified().unwrap(), "7px");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "7px"
+    );
     let [component] = declaration.value_components().items() else {
         panic!("one original number")
     };

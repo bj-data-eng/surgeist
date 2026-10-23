@@ -10,7 +10,7 @@ use crate::css::support::authored_property::{checked, parsed};
 use surgeist_css::CssKnownProperty as P;
 use surgeist_css::*;
 
-type Limits = CssSpecifiedValueSerializationLimits;
+type Limits = CssSerializationLimits;
 type Kind = CssSpecifiedValueSerializationErrorKind;
 const TRACKS: [P; 4] = [
     P::GridTemplateRows,
@@ -55,40 +55,29 @@ fn first_size(source: &CssDeclaration) -> &CssGridTrackSize {
         _ => panic!("track property"),
     }
 }
-fn typed_output(
-    source: &CssDeclaration,
-    limits: Limits,
-) -> Result<String, CssSpecifiedValueSerializationError> {
+fn typed_output(source: &CssDeclaration, limits: Limits) -> Result<String, CssSerializationError> {
     match source.known().unwrap().property_value().unwrap() {
-        CssKnownPropertyValueRef::GridTemplateRows(v) => {
-            v.value().serialize_specified_with_limits(limits)
-        }
-        CssKnownPropertyValueRef::GridTemplateColumns(v) => {
-            v.value().serialize_specified_with_limits(limits)
-        }
-        CssKnownPropertyValueRef::GridAutoRows(v) => {
-            v.value().serialize_specified_with_limits(limits)
-        }
-        CssKnownPropertyValueRef::GridAutoColumns(v) => {
-            v.value().serialize_specified_with_limits(limits)
-        }
-        CssKnownPropertyValueRef::GridTemplate(v) => {
-            v.value().serialize_specified_with_limits(limits)
-        }
-        CssKnownPropertyValueRef::Grid(v) => v.value().serialize_specified_with_limits(limits),
+        CssKnownPropertyValueRef::GridTemplateRows(v) => v.value().serialize_specified(limits),
+        CssKnownPropertyValueRef::GridTemplateColumns(v) => v.value().serialize_specified(limits),
+        CssKnownPropertyValueRef::GridAutoRows(v) => v.value().serialize_specified(limits),
+        CssKnownPropertyValueRef::GridAutoColumns(v) => v.value().serialize_specified(limits),
+        CssKnownPropertyValueRef::GridTemplate(v) => v.value().serialize_specified(limits),
+        CssKnownPropertyValueRef::Grid(v) => v.value().serialize_specified(limits),
         _ => panic!("Grid typed writer"),
     }
 }
 fn output(value: CssLonghandValueRef<'_>) -> String {
     match value {
         CssLonghandValueRef::GridTemplateRows(v) | CssLonghandValueRef::GridTemplateColumns(v) => {
-            v.serialize_specified().unwrap()
+            v.serialize_specified(Default::default()).unwrap()
         }
         CssLonghandValueRef::GridAutoRows(v) | CssLonghandValueRef::GridAutoColumns(v) => {
-            v.serialize_specified().unwrap()
+            v.serialize_specified(Default::default()).unwrap()
         }
-        CssLonghandValueRef::GridTemplateAreas(v) => v.serialize_specified().unwrap(),
-        CssLonghandValueRef::GridAutoFlow(v) => v.serialize_specified().unwrap(),
+        CssLonghandValueRef::GridTemplateAreas(v) => {
+            v.serialize_specified(Default::default()).unwrap()
+        }
+        CssLonghandValueRef::GridAutoFlow(v) => v.serialize_specified(Default::default()).unwrap(),
         _ => panic!("Grid terminal"),
     }
 }
@@ -206,7 +195,7 @@ fn representative_type_preserving_functions_reach_real_explicit_and_implicit_fle
                 assert_eq!(root.origin(), calc.origin());
                 assert_eq!(typed_output(&source, Limits::default()).unwrap(), expected);
                 assert_eq!(
-                    source.to_specified_css().unwrap(),
+                    source.serialize_specified(Default::default()).unwrap(),
                     format!("{}: {expected} !important;", property.canonical_name())
                 );
                 let values = complete(&source);
@@ -338,12 +327,17 @@ fn length_percentage_fallback_preserves_hints_and_real_inflexible_contexts() {
 
 #[test]
 fn mathematical_negative_flex_stays_authored_while_bare_negative_literals_fail() {
-    let negative =
-        CssFlexCalculation::try_from_components(parse_component_values("rem(-5fr, 3fr)").unwrap())
-            .unwrap();
+    let negative = CssFlexCalculation::try_from_components(
+        parse_component_values("rem(-5fr, 3fr)").unwrap(),
+        Default::default(),
+    )
+    .unwrap();
     let before = negative.clone();
     let scalar = CssSpecifiedNonNegativeFlex::try_from_calculation(negative.clone()).unwrap();
-    assert_eq!(scalar.serialize_specified().unwrap(), "rem(-5fr, 3fr)");
+    assert_eq!(
+        scalar.serialize_specified(Default::default()).unwrap(),
+        "rem(-5fr, 3fr)"
+    );
     assert_eq!(negative, before);
     let breadth = CssGridTrackBreadth::from_flex(scalar);
     assert!(CssGridTrackSize::try_minmax(breadth.clone(), CssGridTrackBreadth::auto()).is_none());
@@ -357,13 +351,20 @@ fn mathematical_negative_flex_stays_authored_while_bare_negative_literals_fail()
     );
     // This negative scalar is independently known without resolving a Flex basis.
     // The remainder graph above retains its contextual operands and step.
-    let direct_negative =
-        CssFlexCalculation::try_from_components(parse_component_values("calc(-2fr)").unwrap())
-            .unwrap();
+    let direct_negative = CssFlexCalculation::try_from_components(
+        parse_component_values("calc(-2fr)").unwrap(),
+        Default::default(),
+    )
+    .unwrap();
     let direct_before = direct_negative.clone();
     let direct_scalar =
         CssSpecifiedNonNegativeFlex::try_from_calculation(direct_negative.clone()).unwrap();
-    assert_eq!(direct_scalar.serialize_specified().unwrap(), "calc(-2fr)");
+    assert_eq!(
+        direct_scalar
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "calc(-2fr)"
+    );
     assert_eq!(direct_scalar.calculation(), Some(&direct_negative));
     assert_eq!(direct_negative, direct_before);
     for property in TRACKS {
@@ -414,7 +415,8 @@ fn invalid_math_has_typed_numeric_errors_original_origins_and_atomic_property_re
         let values = parse_component_values(text).unwrap();
         let before = values.clone();
         for _ in 0..2 {
-            let error = CssFlexCalculation::try_from_components(values.clone()).unwrap_err();
+            let error = CssFlexCalculation::try_from_components(values.clone(), Default::default())
+                .unwrap_err();
             assert_eq!(error.kind(), &kind, "{text}");
             let Some(CssValueOrigin::Parsed(origin)) = error.origin() else {
                 panic!("original failure origin")
@@ -433,7 +435,7 @@ fn invalid_math_has_typed_numeric_errors_original_origins_and_atomic_property_re
     // a UTF-8 comment prefix; this is not a recreated canonical-input origin.
     let text = "/*😀*/calc(1fr + 10px)";
     let values = parse_component_values(text).unwrap();
-    let serialized = values.serialize().unwrap();
+    let serialized = values.serialize_tokens(Default::default()).unwrap();
     let expected = serialized
         .origin_at(serialized.as_css().find("10px").unwrap())
         .unwrap()
@@ -630,14 +632,14 @@ fn math_graph_and_sibling_serialization_limits_remain_cumulative_atomic_and_reus
     let short = CssComponentValueLimits::try_new(256, 1, 100).unwrap();
     for _ in 0..2 {
         assert_eq!(
-            CssFlexCalculation::try_from_components_with_limits(values.clone(), short)
+            CssFlexCalculation::try_from_components(values.clone(), short)
                 .unwrap_err()
                 .kind(),
             &CssNumericConstructionErrorKind::ResourceLimit
         );
         assert_eq!(values, before);
     }
-    assert!(CssFlexCalculation::try_from_components(values).is_ok());
+    assert!(CssFlexCalculation::try_from_components(values, Default::default()).is_ok());
     let source = checked(P::GridAutoRows, "hypot(3fr, 4fr) abs(-2fr)", true);
     let before = source.clone();
     let expected = "hypot(3fr, 4fr) abs(-2fr)";
@@ -653,7 +655,7 @@ fn math_graph_and_sibling_serialization_limits_remain_cumulative_atomic_and_reus
         list.value()
             .sizes()
             .iter()
-            .all(|size| size.serialize_specified_with_limits(limits).is_ok())
+            .all(|size| size.serialize_specified(limits).is_ok())
     );
     for _ in 0..2 {
         assert_eq!(
@@ -746,21 +748,27 @@ fn math_normalization_counts_three_and_six_terminals_without_changing_order_or_i
 fn mixed_parsed_and_programmatic_math_children_keep_distinct_origins_through_grid_construction() {
     let parsed_child = parse_component_values("3fr").unwrap().items()[0].clone();
     let programmatic_child = CssComponentValue::try_dimension("4", "fr").unwrap();
-    let values = CssComponentValues::try_new(vec![
-        CssComponentValue::try_function(
-            "hypot",
-            CssComponentValues::try_new(vec![
-                parsed_child.clone(),
-                CssComponentValue::try_token(",").unwrap(),
-                programmatic_child.clone(),
-            ])
+    let values = CssComponentValues::try_new(
+        vec![
+            CssComponentValue::try_function(
+                "hypot",
+                CssComponentValues::try_new(
+                    vec![
+                        parsed_child.clone(),
+                        CssComponentValue::try_token(",").unwrap(),
+                        programmatic_child.clone(),
+                    ],
+                    Default::default(),
+                )
+                .unwrap(),
+            )
             .unwrap(),
-        )
-        .unwrap(),
-    ])
+        ],
+        Default::default(),
+    )
     .unwrap();
     let before = values.clone();
-    let calc = CssFlexCalculation::try_from_components(values.clone()).unwrap();
+    let calc = CssFlexCalculation::try_from_components(values.clone(), Default::default()).unwrap();
     assert_eq!(calc.origin(), &CssValueOrigin::Programmatic);
     let CssCalculationExpressionRef::Function(root) = calc.expression() else {
         panic!("hypot graph")

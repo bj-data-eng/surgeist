@@ -1,10 +1,8 @@
 //! Independently derived standard object results from the retained CSSOM edition.
-use surgeist_css::{
-    CssParserContext, CssParserMode, CssSpecifiedValueSerializationLimits, CssValueOrigin,
-};
+use surgeist_css::{CssParserContext, CssParserMode, CssSerializationLimits, CssValueOrigin};
 use surgeist_cssom::*;
-fn limits() -> CssSpecifiedValueSerializationLimits {
-    CssSpecifiedValueSerializationLimits::default()
+fn limits() -> CssSerializationLimits {
+    CssSerializationLimits::default()
 }
 fn store() -> CssomStore {
     CssomStore::new(CssomLimits::default(), CssomContext::default()).unwrap()
@@ -392,11 +390,7 @@ fn media_operations_return_unit_recovery_and_canonical_membership() {
     );
     assert_eq!(
         media
-            .item(
-                &owner,
-                usize::MAX,
-                CssSpecifiedValueSerializationLimits::new(0, 0, 0)
-            )
+            .item(&owner, usize::MAX, CssSerializationLimits::new(0, 0, 0))
             .unwrap(),
         None
     );
@@ -460,7 +454,7 @@ fn failed_output_constructor_and_media_mutation_preserve_publication() {
     ));
     assert_eq!(owner.snapshot().revision(), before.revision());
     assert!(matches!(
-        media.media_text(&owner, CssSpecifiedValueSerializationLimits::new(9, 9, 5)),
+        media.media_text(&owner, CssSerializationLimits::new(9, 9, 5)),
         Err(CssomError::Media(_))
     ));
     assert_eq!(media.media_text(&owner, limits()).unwrap(), "screen");

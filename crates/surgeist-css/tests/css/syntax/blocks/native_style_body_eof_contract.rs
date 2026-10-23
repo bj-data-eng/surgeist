@@ -41,7 +41,11 @@ fn assert_declaration(
     };
     assert_eq!(declaration.property_name(), CssPropertyNameRef::Known(name));
     assert_eq!(
-        declaration.value_components().serialize().unwrap().as_css(),
+        declaration
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         value
     );
     assert_eq!(declaration.position().unwrap().byte_offset().value(), at);

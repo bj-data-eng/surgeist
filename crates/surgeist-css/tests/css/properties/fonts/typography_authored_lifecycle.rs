@@ -123,9 +123,7 @@ fn transform_constructor_rejects_empty_and_all_nonempty_sets_retain_authored_get
         assert_eq!(set.full_width(), width);
         assert_eq!(set.full_size_kana(), kana);
         let value = CssTextTransform::Transforms(set);
-        primitive(css, work, work, |l| {
-            value.serialize_specified_with_limits(l)
-        });
+        primitive(css, work, work, |l| value.serialize_specified(l));
         for source in fronts(P::TextTransform, css) {
             let CssLonghandValueRef::TextTransform(actual) = declared(&source) else {
                 panic!("transform")
@@ -141,7 +139,7 @@ fn transform_exclusive_branches_are_distinct_single_keyword_values() {
         (CssTextTransform::None, "none"),
         (CssTextTransform::MathAuto, "math-auto"),
     ] {
-        primitive(css, 1, 1, |l| value.serialize_specified_with_limits(l));
+        primitive(css, 1, 1, |l| value.serialize_specified(l));
         for source in fronts(P::TextTransform, css) {
             let CssLonghandValueRef::TextTransform(actual) = declared(&source) else {
                 panic!("exclusive typed transform")
@@ -161,7 +159,7 @@ fn every_finite_wrap_inside_state_has_typed_wrapper_projection_and_primitive_cos
         (CssWrapInside::Auto, "auto"),
         (CssWrapInside::Avoid, "avoid"),
     ] {
-        primitive(css, 1, 1, |l| value.serialize_specified_with_limits(l));
+        primitive(css, 1, 1, |l| value.serialize_specified(l));
         for source in fronts(P::WrapInside, css) {
             let CssLonghandValueRef::WrapInside(actual) = declared(&source) else {
                 panic!("inside")
@@ -181,7 +179,7 @@ fn shared_boundary_states_preserve_distinct_before_and_after_property_wrappers()
         (CssWrapBoundary::Line, "line"),
         (CssWrapBoundary::Flex, "flex"),
     ] {
-        primitive(css, 1, 1, |l| value.serialize_specified_with_limits(l));
+        primitive(css, 1, 1, |l| value.serialize_specified(l));
         for p in [P::WrapBefore, P::WrapAfter] {
             for source in fronts(p, css) {
                 let actual = match declared(&source) {
@@ -204,7 +202,7 @@ fn every_line_break_state_has_typed_projection_and_exact_keyword_provider() {
         (CssLineBreak::Strict, "strict"),
         (CssLineBreak::Anywhere, "anywhere"),
     ] {
-        primitive(css, 1, 1, |l| value.serialize_specified_with_limits(l));
+        primitive(css, 1, 1, |l| value.serialize_specified(l));
         for source in fronts(P::LineBreak, css) {
             let CssLonghandValueRef::LineBreak(actual) = declared(&source) else {
                 panic!("line break")
@@ -239,9 +237,7 @@ fn five_word_space_states_are_constructible_without_empty_or_flag_only_payloads(
             2,
         ),
     ] {
-        primitive(css, work, work, |l| {
-            value.serialize_specified_with_limits(l)
-        });
+        primitive(css, work, work, |l| value.serialize_specified(l));
         for source in fronts(P::WordSpaceTransform, css) {
             let CssLonghandValueRef::WordSpaceTransform(actual) = declared(&source) else {
                 panic!("word space")
@@ -291,14 +287,17 @@ fn all_nine_metadata_initials_have_source_defined_typed_branches_and_inheritance
                 assert_eq!(*v, CssWordSpaceTransform::None)
             }
             (P::TabSize, CssLonghandValueRef::TabSize(CssTabSize::Number(v))) => {
-                assert_eq!(v.serialize_specified().unwrap(), "8");
+                assert_eq!(v.serialize_specified(Default::default()).unwrap(), "8");
                 assert!(v.calculation().is_none());
                 assert_eq!(v.origin(), &CssValueOrigin::Programmatic);
             }
             (P::TextIndent, CssLonghandValueRef::TextIndent(v)) => {
                 assert!(!v.hanging());
                 assert!(!v.each_line());
-                assert_eq!(v.length().serialize_specified().unwrap(), "0");
+                assert_eq!(
+                    v.length().serialize_specified(Default::default()).unwrap(),
+                    "0"
+                );
                 assert!(v.length().calculation().is_none());
                 assert_eq!(v.length().origin(), &CssValueOrigin::Programmatic);
             }
@@ -346,7 +345,7 @@ fn tab_literal_zero_prefers_number_and_explicit_dimensions_retain_length_and_ori
                 }
                 _ => panic!("authored number/length distinction"),
             }
-            primitive(css, 1, 1, |l| tab.serialize_specified_with_limits(l));
+            primitive(css, 1, 1, |l| tab.serialize_specified(l));
             contributions(&source);
         }
     }
@@ -363,8 +362,11 @@ fn tab_literal_zero_prefers_number_and_explicit_dimensions_retain_length_and_ori
         .unwrap(),
     );
     assert_ne!(number, length);
-    assert_eq!(number.serialize_specified().unwrap(), "0");
-    assert_eq!(length.serialize_specified().unwrap(), "0px");
+    assert_eq!(number.serialize_specified(Default::default()).unwrap(), "0");
+    assert_eq!(
+        length.serialize_specified(Default::default()).unwrap(),
+        "0px"
+    );
 }
 #[test]
 fn tab_math_retains_pure_root_graph_origins_and_deferred_negative_ranges() {
@@ -393,14 +395,20 @@ fn tab_math_retains_pure_root_graph_origins_and_deferred_negative_ranges() {
                 _ => panic!("pure root typed branch"),
             };
             assert_eq!(components, source.value_components());
-            assert_eq!(tab.serialize_specified().unwrap(), expected);
+            assert_eq!(
+                tab.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
             contributions(&source);
         }
     }
     let number = CssTabSize::Number(
         CssSpecifiedNonNegativeNumber::try_from_calculation(
-            CssNumberCalculation::try_from_components(parse_component_values("calc(-1)").unwrap())
-                .unwrap(),
+            CssNumberCalculation::try_from_components(
+                parse_component_values("calc(-1)").unwrap(),
+                Default::default(),
+            )
+            .unwrap(),
         )
         .unwrap(),
     );
@@ -408,25 +416,31 @@ fn tab_math_retains_pure_root_graph_origins_and_deferred_negative_ranges() {
         CssSpecifiedNonNegativeLength::try_from_calculation(
             CssLengthCalculation::try_from_components(
                 parse_component_values("calc(-1px)").unwrap(),
+                Default::default(),
             )
             .unwrap(),
         )
         .unwrap(),
     );
-    assert_eq!(number.serialize_specified().unwrap(), "calc(-1)");
-    assert_eq!(length.serialize_specified().unwrap(), "calc(-1px)");
+    assert_eq!(
+        number.serialize_specified(Default::default()).unwrap(),
+        "calc(-1)"
+    );
+    assert_eq!(
+        length.serialize_specified(Default::default()).unwrap(),
+        "calc(-1px)"
+    );
     let math = CssTabSize::Length(
         CssSpecifiedNonNegativeLength::try_from_calculation(
             CssLengthCalculation::try_from_components(
                 parse_component_values("calc(1px + 2em)").unwrap(),
+                Default::default(),
             )
             .unwrap(),
         )
         .unwrap(),
     );
-    primitive("calc(2em + 1px)", 4, 5, |l| {
-        math.serialize_specified_with_limits(l)
-    });
+    primitive("calc(2em + 1px)", 4, 5, |l| math.serialize_specified(l));
     for text in ["-1", "-1e-999", "-1px", "-1e-999px", "calc(1%)"] {
         // Text 3 tab-size = <number [0,inf]> | <length [0,inf]>: each whole
         // value is out of range or of another type.
@@ -493,7 +507,10 @@ fn indent_flags_and_vertical_signed_numeric_models_have_typed_projections() {
         };
         assert!(v.hanging());
         assert!(v.each_line());
-        assert_eq!(v.length().serialize_specified().unwrap(), "0%");
+        assert_eq!(
+            v.length().serialize_specified(Default::default()).unwrap(),
+            "0%"
+        );
         contributions(&source);
     }
     for source in fronts(P::VerticalAlign, "-1px") {
@@ -501,7 +518,7 @@ fn indent_flags_and_vertical_signed_numeric_models_have_typed_projections() {
         else {
             panic!("vertical signed length")
         };
-        assert_eq!(v.serialize_specified().unwrap(), "-1px");
+        assert_eq!(v.serialize_specified(Default::default()).unwrap(), "-1px");
         assert_eq!(v.origin(), source.value_components().items()[0].origin());
         contributions(&source);
     }

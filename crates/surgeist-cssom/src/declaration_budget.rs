@@ -5,7 +5,7 @@ use surgeist_css::*;
 /// Work reserved for one composed source request. Each provider receives a disjoint allowance.
 #[derive(Clone, Copy, Debug)]
 pub struct CssomDeclarationRequestLimits {
-    pub provider: CssSpecifiedValueSerializationLimits,
+    pub provider: CssSerializationLimits,
     pub max_entries: usize,
     pub max_input_bytes: usize,
     pub max_input_components: usize,
@@ -14,7 +14,7 @@ pub struct CssomDeclarationRequestLimits {
 impl Default for CssomDeclarationRequestLimits {
     fn default() -> Self {
         Self {
-            provider: CssSpecifiedValueSerializationLimits::default(),
+            provider: CssSerializationLimits::default(),
             max_entries: 1_000_000,
             max_input_bytes: 16 * 1024 * 1024,
             max_input_components: 1_000_000,
@@ -46,7 +46,7 @@ impl DeclarationBudget {
     }
     /// Reserve provider maxima up front because CSS intentionally exposes no mutable work meter.
     /// Actual work cannot exceed the disjoint reservations; unused reservations are not refunded.
-    pub fn provider(&mut self) -> Result<CssSpecifiedValueSerializationLimits, CssomError> {
+    pub fn provider(&mut self) -> Result<CssSerializationLimits, CssomError> {
         if self.remaining_calls == 0 {
             return Err(CssomError::Limit {
                 resource: "declaration provider phases",
@@ -61,7 +61,7 @@ impl DeclarationBudget {
         self.projection -= b;
         self.bytes -= c;
         self.remaining_calls -= 1;
-        Ok(CssSpecifiedValueSerializationLimits::new(a, b, c))
+        Ok(CssSerializationLimits::new(a, b, c))
     }
     pub fn phases(&mut self, n: usize) {
         self.remaining_calls = n;

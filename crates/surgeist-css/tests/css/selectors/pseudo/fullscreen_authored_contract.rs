@@ -25,7 +25,10 @@ fn fullscreen_spelling_case_and_escapes_retain_one_symbolic_identity() {
             selector,
             &CssSelector::PseudoClass(CssPseudoClass::Fullscreen)
         );
-        assert_eq!(selector.to_specified_css().unwrap(), ":fullscreen");
+        assert_eq!(
+            selector.serialize_specified(Default::default()).unwrap(),
+            ":fullscreen"
+        );
         assert!(!selector.has_pseudo_elements());
         assert!(report.into_validation_result().is_ok());
     }
@@ -34,11 +37,14 @@ fn fullscreen_spelling_case_and_escapes_retain_one_symbolic_identity() {
 #[test]
 fn checked_fullscreen_selector_preserves_its_symbolic_public_value() {
     let selector = CssSelector::PseudoClass(CssPseudoClass::Fullscreen);
-    let list = CssSelectorList::try_new(vec![selector.clone()]).unwrap();
+    let list = CssSelectorList::try_new(vec![selector.clone()], Default::default()).unwrap();
     assert_eq!(list.selectors(), &[selector]);
-    assert_eq!(list.to_specified_css().unwrap(), ":fullscreen");
+    assert_eq!(
+        list.serialize_specified(Default::default()).unwrap(),
+        ":fullscreen"
+    );
     let reparsed = parse_selector(
-        &list.to_specified_css().unwrap(),
+        &list.serialize_specified(Default::default()).unwrap(),
         &CssNamespaceContext::default(),
     );
     assert!(reparsed.is_clean());
@@ -63,7 +69,13 @@ fn fullscreen_compounds_and_lists_have_canonical_authored_output() {
         let [CssRule::Style(_)] = report.syntax().rules() else {
             panic!("one authored style rule: {source}");
         };
-        assert_eq!(report.syntax().to_specified_css().unwrap(), expected);
+        assert_eq!(
+            report
+                .syntax()
+                .serialize_specified(Default::default())
+                .unwrap(),
+            expected
+        );
     }
 }
 
@@ -112,7 +124,7 @@ fn fullscreen_exact_front_rejects_a_second_selector_and_forgiving_recovery_stays
             .syntax()
             .as_ref()
             .unwrap()
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .unwrap(),
         ":is(:fullscreen)"
     );

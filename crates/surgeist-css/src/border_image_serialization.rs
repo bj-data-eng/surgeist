@@ -4,50 +4,28 @@ use crate::{
     CssBorderImage, CssBorderImageOutset, CssBorderImageOutsetComponent, CssBorderImageRepeat,
     CssBorderImageRepeatKeyword, CssBorderImageSlice, CssBorderImageSliceComponent,
     CssBorderImageWidth, CssBorderImageWidthComponent, CssComponentValue, CssComponentValueRef,
-    CssImageValue, CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits,
-    CssValueTokenRef,
+    CssImageValue, CssSerializationError, CssValueTokenRef,
     exact_decimal::LexicalDecimal,
     numeric::{CapturedNumericComponent, length_components_equal, numeric_components_equal},
     specified_rule_serialization::SpecifiedRuleWriter,
 };
 
-type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
-
-fn charge(writer: &mut SpecifiedRuleWriter, count: usize) -> Result<()> {
-    writer.context.charge_input(count)?;
-    writer.context.charge_projection(count)
-}
+type Result<T> = std::result::Result<T, CssSerializationError>;
 
 macro_rules! serialization {
     ($($owner:ty),* $(,)?) => {$(
-        impl $owner {
-            /// Serializes canonical specified CSS without resolving contextual values.
-            pub fn serialize_specified(&self) -> Result<String> {
-                self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-            }
-
-            /// Shares cumulative input, projection and final byte limits across all children.
-            /// Every stored edge is visited, even when compressed or omitted. Failure returns
-            /// no partial text and leaves the authored input unchanged.
-            pub fn serialize_specified_with_limits(
-                &self,
-                limits: CssSpecifiedValueSerializationLimits,
-            ) -> Result<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+        impl crate::specified_rule_serialization::SpecifiedProvider for $owner {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
 
                 self.append_specified(writer)?;
                 Ok(())
 
     }
         }
+        crate::specified_rule_serialization::specified_serialization!($owner);
     )*};
 }
 
@@ -213,7 +191,7 @@ fn capture_slice(
     value: &CssBorderImageSliceComponent,
     writer: &mut SpecifiedRuleWriter,
 ) -> Result<CapturedNumericComponent> {
-    charge(writer, 1)?;
+    writer.node()?;
     match value {
         CssBorderImageSliceComponent::HintedNumberCalculation(value) => {
             CapturedNumericComponent::capture_calculation(&value.expression, &mut writer.context)
@@ -233,7 +211,7 @@ fn capture_width(
     value: &CssBorderImageWidthComponent,
     writer: &mut SpecifiedRuleWriter,
 ) -> Result<CapturedNumericComponent> {
-    charge(writer, 1)?;
+    writer.node()?;
     match value {
         CssBorderImageWidthComponent::HintedNumberCalculation(value) => {
             CapturedNumericComponent::capture_calculation(&value.expression, &mut writer.context)
@@ -267,7 +245,7 @@ fn capture_outset(
     value: &CssBorderImageOutsetComponent,
     writer: &mut SpecifiedRuleWriter,
 ) -> Result<CapturedNumericComponent> {
-    charge(writer, 1)?;
+    writer.node()?;
     match value {
         CssBorderImageOutsetComponent::Number(value) => capture_numeric!(value, writer),
         CssBorderImageOutsetComponent::Length(value) => {
@@ -287,10 +265,10 @@ fn capture_outset(
 
 impl CssBorderImageSlice {
     fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
-        charge(writer, 1)?;
+        writer.node()?;
         append_sides(self.values(), writer, capture_slice, slice_equal)?;
         if self.fill() {
-            charge(writer, 1)?;
+            writer.node()?;
             writer.append(" fill")?;
         }
         Ok(())
@@ -299,14 +277,14 @@ impl CssBorderImageSlice {
 
 impl CssBorderImageWidth {
     fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
-        charge(writer, 1)?;
+        writer.node()?;
         append_sides(self.values(), writer, capture_width, width_equal)
     }
 }
 
 impl CssBorderImageOutset {
     fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
-        charge(writer, 1)?;
+        writer.node()?;
         append_sides(self.values(), writer, capture_outset, outset_equal)
     }
 }
@@ -322,7 +300,7 @@ fn repeat_keyword(value: CssBorderImageRepeatKeyword) -> &'static str {
 
 impl CssBorderImageRepeat {
     fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
-        charge(writer, 3)?;
+        writer.nodes(3)?;
         writer.append(repeat_keyword(self.horizontal()))?;
         if self.horizontal() != self.vertical() {
             writer.append(" ")?;
@@ -378,7 +356,7 @@ fn initial_outset(value: &CssBorderImageOutset) -> bool {
 
 impl CssBorderImage {
     fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
-        charge(writer, 1)?;
+        writer.node()?;
         let mut emitted = false;
         if let Some(source) = self.source() {
             writer.source_member(0, |writer| {

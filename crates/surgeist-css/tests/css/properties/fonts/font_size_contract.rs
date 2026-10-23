@@ -8,10 +8,10 @@ use surgeist_css::{
     CssGlobalKeyword, CssImportance, CssInitialValueRef, CssKnownProperty,
     CssKnownPropertyValueRef, CssLengthPercentageCalculation, CssLonghandValueRef,
     CssNumericConstructionErrorKind, CssPropertyKindRef, CssPropertyValueErrorKind,
-    CssRecoveryAction, CssSerializedOrigin,
+    CssRecoveryAction, CssSerializationLimits, CssSerializedOrigin,
     CssSpecifiedNonNegativeLengthPercentage as SizeLengthPercentage,
-    CssSpecifiedValueSerializationErrorKind, CssSpecifiedValueSerializationLimits, CssValueOrigin,
-    CssValueTokenRef, expand_declaration, parse_component_values, parse_style_attribute,
+    CssSpecifiedValueSerializationErrorKind, CssValueOrigin, CssValueTokenRef, expand_declaration,
+    parse_component_values, parse_style_attribute,
 };
 
 fn scalar(text: &str) -> SizeLengthPercentage {
@@ -48,7 +48,11 @@ fn absolute_relative_and_math_keywords_keep_distinct_typed_values() {
         ("math", CssFontSize::Math),
     ] {
         assert_eq!(property(text), expected, "{text}");
-        assert_eq!(expected.serialize_specified().unwrap(), text, "{text}");
+        assert_eq!(
+            expected.serialize_specified(Default::default()).unwrap(),
+            text,
+            "{text}"
+        );
     }
     assert_ne!(CssFontSize::Math, property("calc(1px)"));
 }
@@ -76,7 +80,11 @@ fn shared_checked_payload_accepts_all_length_categories_and_exact_nonnegative_va
         assert!(value.literal_component().is_some(), "{authored}");
         assert!(value.calculation().is_none(), "{authored}");
         assert_eq!(value.origin(), &CssValueOrigin::Programmatic, "{authored}");
-        assert_eq!(value.serialize_specified().unwrap(), expected, "{authored}");
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected,
+            "{authored}"
+        );
         assert_eq!(
             property(authored),
             CssFontSize::LengthPercentage(value),
@@ -85,10 +93,23 @@ fn shared_checked_payload_accepts_all_length_categories_and_exact_nonnegative_va
     }
     let huge = scalar("1e999px");
     let expected = format!("1{}px", "0".repeat(999));
-    assert_eq!(huge.serialize_specified().unwrap(), expected);
+    assert_eq!(
+        huge.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     assert_eq!(property("1e999px"), CssFontSize::LengthPercentage(huge));
-    assert_eq!(scalar("1e-999px").serialize_specified().unwrap(), "0px");
-    assert_eq!(scalar("1e-999%").serialize_specified().unwrap(), "0%");
+    assert_eq!(
+        scalar("1e-999px")
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "0px"
+    );
+    assert_eq!(
+        scalar("1e-999%")
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "0%"
+    );
     let component = scalar("1e-999px");
     let CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }) =
         component.literal_component().unwrap().view()
@@ -156,25 +177,32 @@ fn bare_calculation_roots_reenter_literal_admission_while_functions_stay_symboli
     for (text, expected) in [("0px", "0px"), ("0", "0")] {
         let calculation = CssLengthPercentageCalculation::try_from_components(
             parse_component_values(text).unwrap(),
+            Default::default(),
         )
         .unwrap();
         let value = SizeLengthPercentage::try_from_calculation(calculation).unwrap();
         assert!(value.literal_component().is_some(), "{text}");
         assert!(value.calculation().is_none(), "{text}");
-        assert_eq!(value.serialize_specified().unwrap(), expected, "{text}");
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected,
+            "{text}"
+        );
     }
     let calculation = CssLengthPercentageCalculation::try_from_components(
         parse_component_values("1e999%").unwrap(),
+        Default::default(),
     )
     .unwrap();
     let value = SizeLengthPercentage::try_from_calculation(calculation).unwrap();
     assert!(value.literal_component().is_some());
     assert_eq!(
-        value.serialize_specified().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         format!("1{}%", "0".repeat(999))
     );
     let calculation = CssLengthPercentageCalculation::try_from_components(
         parse_component_values("-1e-999px").unwrap(),
+        Default::default(),
     )
     .unwrap();
     assert_eq!(
@@ -189,12 +217,17 @@ fn bare_calculation_roots_reenter_literal_admission_while_functions_stay_symboli
     ] {
         let calculation = CssLengthPercentageCalculation::try_from_components(
             parse_component_values(text).unwrap(),
+            Default::default(),
         )
         .unwrap();
         let value = SizeLengthPercentage::try_from_calculation(calculation).unwrap();
         assert!(value.literal_component().is_none(), "{text}");
         assert!(value.calculation().is_some(), "{text}");
-        assert_eq!(value.serialize_specified().unwrap(), canonical, "{text}");
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            canonical,
+            "{text}"
+        );
         assert_eq!(
             property(text),
             CssFontSize::LengthPercentage(value),
@@ -274,12 +307,15 @@ fn checked_and_pending_reentry_preserve_original_and_programmatic_origins() {
     assert_eq!(origin.source().as_str(), "1.250px ");
     assert_eq!(origin.span().start().byte_offset().value(), 0);
     assert_eq!(origin.span().end().byte_offset().value(), 7);
-    assert_eq!(number.serialize_specified().unwrap(), "1.25px");
+    assert_eq!(
+        number.serialize_specified(Default::default()).unwrap(),
+        "1.25px"
+    );
 
     let programmatic = CssComponentValue::try_dimension("1.25", "PX").unwrap();
     let checked_value = normal_grammar_components(
         "font-size",
-        CssComponentValues::try_new(vec![programmatic]).unwrap(),
+        CssComponentValues::try_new(vec![programmatic], Default::default()).unwrap(),
     )
     .unwrap();
     let CssKnownPropertyValueRef::FontSize(value) =
@@ -291,11 +327,17 @@ fn checked_and_pending_reentry_preserve_original_and_programmatic_origins() {
         panic!("number")
     };
     assert_eq!(number.origin(), &CssValueOrigin::Programmatic);
-    assert_eq!(number.serialize_specified().unwrap(), "1.25px");
+    assert_eq!(
+        number.serialize_specified(Default::default()).unwrap(),
+        "1.25px"
+    );
     let invalid = normal_grammar_components(
         "font-size",
-        CssComponentValues::try_new(vec![CssComponentValue::try_token("-1e-999px").unwrap()])
-            .unwrap(),
+        CssComponentValues::try_new(
+            vec![CssComponentValue::try_token("-1e-999px").unwrap()],
+            Default::default(),
+        )
+        .unwrap(),
     )
     .unwrap_err();
     assert!(matches!(
@@ -306,10 +348,13 @@ fn checked_and_pending_reentry_preserve_original_and_programmatic_origins() {
         invalid.origin(),
         &CssSerializedOrigin::Token(CssValueOrigin::Programmatic)
     );
-    let adjacent = CssComponentValues::try_new(vec![
-        CssComponentValue::try_number("1").unwrap(),
-        CssComponentValue::try_token("0px").unwrap(),
-    ])
+    let adjacent = CssComponentValues::try_new(
+        vec![
+            CssComponentValue::try_number("1").unwrap(),
+            CssComponentValue::try_token("0px").unwrap(),
+        ],
+        Default::default(),
+    )
     .unwrap();
     assert_programmatic_rejection(
         normal_grammar_components("font-size", adjacent),
@@ -342,8 +387,11 @@ fn checked_and_pending_reentry_preserve_original_and_programmatic_origins() {
     assert_eq!(origin.source().as_str(), "1.250px ");
     assert_eq!(origin.span().start().byte_offset().value(), 0);
     assert_eq!(origin.span().end().byte_offset().value(), 7);
-    let replacement =
-        CssComponentValues::try_new(vec![CssComponentValue::try_token("2em").unwrap()]).unwrap();
+    let replacement = CssComponentValues::try_new(
+        vec![CssComponentValue::try_token("2em").unwrap()],
+        Default::default(),
+    )
+    .unwrap();
     let CssContributions::Longhands(values) = handle.reenter(replacement).unwrap() else {
         panic!("programmatic reentry")
     };
@@ -355,8 +403,11 @@ fn checked_and_pending_reentry_preserve_original_and_programmatic_origins() {
     assert_eq!(number.origin(), &CssValueOrigin::Programmatic);
     let error = handle
         .reenter(
-            CssComponentValues::try_new(vec![CssComponentValue::try_token("-1e-999px").unwrap()])
-                .unwrap(),
+            CssComponentValues::try_new(
+                vec![CssComponentValue::try_token("-1e-999px").unwrap()],
+                Default::default(),
+            )
+            .unwrap(),
         )
         .unwrap_err();
     let CssExpansionErrorKind::InvalidReplacement(mapped) = error.kind() else {
@@ -396,9 +447,11 @@ fn recovered_math_requires_parser_admission_before_typed_transfer() {
         panic!("retained calculation")
     };
     let calculation = admitted.calculation().expect("typed recovered math");
-    let error =
-        CssLengthPercentageCalculation::try_from_components(calculation.components().clone())
-            .unwrap_err();
+    let error = CssLengthPercentageCalculation::try_from_components(
+        calculation.components().clone(),
+        Default::default(),
+    )
+    .unwrap_err();
     assert_eq!(
         error.kind(),
         &CssNumericConstructionErrorKind::RecoveredComponent
@@ -409,7 +462,10 @@ fn recovered_math_requires_parser_admission_before_typed_transfer() {
             .kind(),
         &CssNumericConstructionErrorKind::RecoveredComponent
     );
-    assert_eq!(admitted.serialize_specified().unwrap(), "calc(1px)");
+    assert_eq!(
+        admitted.serialize_specified(Default::default()).unwrap(),
+        "calc(1px)"
+    );
 }
 
 #[test]
@@ -434,6 +490,7 @@ fn shorthand_preserves_size_math_line_height_and_family_boundaries() {
                 SizeLengthPercentage::try_from_calculation(
                     CssLengthPercentageCalculation::try_from_components(
                         parse_component_values("calc(16px + 2px)").unwrap(),
+                        Default::default(),
                     )
                     .unwrap(),
                 )
@@ -478,43 +535,44 @@ fn specified_serialization_uses_one_bounded_budget_and_remains_atomic() {
     let expected = format!("1{}px", "0".repeat(999));
     assert_eq!(
         value
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                1,
-                1,
-                expected.len()
-            ))
+            .serialize_specified(CssSerializationLimits::new(1, 1, expected.len()))
             .unwrap(),
         expected
     );
     for (limits, expected_kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(0, 1, expected.len()),
+            CssSerializationLimits::new(0, 1, expected.len()),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(1, 0, expected.len()),
+            CssSerializationLimits::new(1, 0, expected.len()),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(1, 1, expected.len() - 1),
+            CssSerializationLimits::new(1, 1, expected.len() - 1),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
         assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            value.serialize_specified(limits).unwrap_err().kind(),
             expected_kind
         );
     }
-    assert_eq!(value.serialize_specified().unwrap(), expected);
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     assert_eq!(
         CssFontSize::Math
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(1, 1, 3))
+            .serialize_specified(CssSerializationLimits::new(1, 1, 3))
             .unwrap_err()
             .kind(),
         CssSpecifiedValueSerializationErrorKind::ByteLimit
     );
-    assert_eq!(CssFontSize::Math.serialize_specified().unwrap(), "math");
+    assert_eq!(
+        CssFontSize::Math
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "math"
+    );
 }

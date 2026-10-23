@@ -3,46 +3,23 @@
 use crate::{
     CssBackgroundAttachment, CssBackgroundAttachmentList, CssBackgroundBox, CssBackgroundBoxList,
     CssBackgroundRepeat, CssBackgroundRepeatList, CssBackgroundRepeatStyle, CssBackgroundSize,
-    CssBackgroundSizeComponent, CssBackgroundSizeList, CssSpecifiedValueSerializationError,
-    CssSpecifiedValueSerializationLimits, specified_rule_serialization::SpecifiedRuleWriter,
+    CssBackgroundSizeComponent, CssBackgroundSizeList, CssSerializationError,
+    specified_rule_serialization::SpecifiedRuleWriter,
 };
 
-type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
-
-fn charge(writer: &mut SpecifiedRuleWriter, nodes: usize) -> Result<()> {
-    writer.context.charge_input(nodes)?;
-    writer.context.charge_projection(nodes)
-}
+type Result<T> = std::result::Result<T, CssSerializationError>;
 
 macro_rules! scalar_serialization {
     ($($owner:ty),* $(,)?) => {$(
-        impl $owner {
-            /// Serializes one layer to canonical specified CSS without resolving context.
-            pub fn serialize_specified(&self) -> Result<String> {
-                self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-            }
-
-            /// Uses one cumulative input, projection and byte budget, returning no partial text.
-            pub fn serialize_specified_with_limits(
+        impl crate::specified_rule_serialization::SpecifiedProvider for $owner {
+            fn append_to_rule_writer(
                 &self,
-                limits: CssSpecifiedValueSerializationLimits,
-            ) -> Result<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-
-
-                self.append_specified(writer)?;
-                Ok(())
-
-    }
+                writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+            ) -> std::result::Result<(), crate::CssSerializationError> {
+                self.append_specified(writer)
+            }
         }
+        crate::specified_rule_serialization::specified_serialization!($owner);
     )*};
 }
 
@@ -55,38 +32,20 @@ scalar_serialization!(
 
 macro_rules! list_serialization {
     ($($owner:ty => $accessor:ident),* $(,)?) => {$(
-        impl $owner {
-            /// Serializes the nonempty authored layers in comma order.
-            pub fn serialize_specified(&self) -> Result<String> {
-                self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-            }
-
-            /// Shares one input, projection and byte budget across every layer and numeric child.
-            /// Failure returns no partial text and leaves the authored list unchanged.
-            pub fn serialize_specified_with_limits(
+        impl crate::specified_rule_serialization::SpecifiedProvider for $owner {
+            fn append_to_rule_writer(
                 &self,
-                limits: CssSpecifiedValueSerializationLimits,
-            ) -> Result<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-
-
-                charge(writer, 1)?;
+                writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+            ) -> std::result::Result<(), crate::CssSerializationError> {
+                writer.node()?;
                 for (index, value) in self.$accessor().iter().enumerate() {
                     if index != 0 { writer.append(", ")?; }
                     value.append_specified(writer)?;
                 }
                 Ok(())
-
-    }
+            }
         }
+        crate::specified_rule_serialization::specified_serialization!($owner);
     )*};
 }
 
@@ -99,7 +58,7 @@ list_serialization!(
 
 impl CssBackgroundSize {
     pub(crate) fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
-        charge(writer, 1)?;
+        writer.node()?;
         match self {
             Self::Cover => writer.append("cover"),
             Self::Contain => writer.append("contain"),
@@ -110,7 +69,7 @@ impl CssBackgroundSize {
                         if matches!(width, CssBackgroundSizeComponent::Auto) =>
                     {
                         // Only auto/auto collapses; the authored height still counts.
-                        charge(writer, 1)?;
+                        writer.node()?;
                     }
                     Some(height) => {
                         writer.append(" ")?;
@@ -133,7 +92,7 @@ fn append_size_component(
     value: &CssBackgroundSizeComponent,
     writer: &mut SpecifiedRuleWriter,
 ) -> Result<()> {
-    charge(writer, 1)?;
+    writer.node()?;
     match value {
         CssBackgroundSizeComponent::Auto => writer.append("auto"),
         CssBackgroundSizeComponent::Length(value) => {
@@ -144,12 +103,12 @@ fn append_size_component(
 
 impl CssBackgroundRepeat {
     pub(crate) fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
-        charge(writer, 1)?;
+        writer.node()?;
         match self {
             Self::RepeatX => writer.append("repeat-x"),
             Self::RepeatY => writer.append("repeat-y"),
             Self::Axes { x, y } => {
-                charge(writer, 2)?;
+                writer.nodes(2)?;
                 if x == y {
                     writer.append(repeat_style(*x))
                 } else if *x == CssBackgroundRepeatStyle::Repeat
@@ -181,7 +140,7 @@ fn repeat_style(style: CssBackgroundRepeatStyle) -> &'static str {
 
 impl CssBackgroundBox {
     pub(crate) fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
-        charge(writer, 1)?;
+        writer.node()?;
         writer.append(match self {
             Self::BorderBox => "border-box",
             Self::PaddingBox => "padding-box",
@@ -192,7 +151,7 @@ impl CssBackgroundBox {
 
 impl CssBackgroundAttachment {
     pub(crate) fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
-        charge(writer, 1)?;
+        writer.node()?;
         writer.append(match self {
             Self::Scroll => "scroll",
             Self::Fixed => "fixed",

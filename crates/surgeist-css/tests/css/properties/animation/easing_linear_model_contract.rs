@@ -12,15 +12,22 @@ use surgeist_css::*;
 
 fn number(source: &str) -> CssSpecifiedNumber {
     CssSpecifiedNumber::try_from_calculation(
-        CssNumberCalculation::try_from_components(parse_component_values(source).unwrap()).unwrap(),
+        CssNumberCalculation::try_from_components(
+            parse_component_values(source).unwrap(),
+            Default::default(),
+        )
+        .unwrap(),
     )
     .unwrap()
 }
 
 fn percentage(source: &str) -> CssSpecifiedPercentage {
     CssSpecifiedPercentage::try_from_calculation(
-        CssPercentageCalculation::try_from_components(parse_component_values(source).unwrap())
-            .unwrap(),
+        CssPercentageCalculation::try_from_components(
+            parse_component_values(source).unwrap(),
+            Default::default(),
+        )
+        .unwrap(),
     )
     .unwrap()
 }
@@ -64,7 +71,7 @@ fn checked_cardinality_preserves_omitted_single_and_paired_authored_inputs() {
     let value = CssLinearEasing::try_new(vec![omitted, single, pair]).unwrap();
     assert_eq!(value.stops().len(), 3);
     assert_eq!(
-        value.serialize_specified().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         "linear(-2, 3 -20%, 0.5 150% 20%)"
     );
     assert_eq!(value, parsed("linear(-2, -20% 3, 150% 20% 0.5)"));
@@ -80,7 +87,10 @@ fn checked_numeric_domains_and_original_recovered_math_are_rejected_before_compo
         ("calc(1", RecoveredComponent),
     ] {
         assert_numeric_rejected(
-            CssNumberCalculation::try_from_components(parse_component_values(source).unwrap()),
+            CssNumberCalculation::try_from_components(
+                parse_component_values(source).unwrap(),
+                Default::default(),
+            ),
             kind,
         );
     }
@@ -91,7 +101,10 @@ fn checked_numeric_domains_and_original_recovered_math_are_rejected_before_compo
         ("calc(1%", RecoveredComponent),
     ] {
         assert_numeric_rejected(
-            CssPercentageCalculation::try_from_components(parse_component_values(source).unwrap()),
+            CssPercentageCalculation::try_from_components(
+                parse_component_values(source).unwrap(),
+                Default::default(),
+            ),
             kind,
         );
     }
@@ -133,7 +146,7 @@ fn browser_retains_recovered_numeric_math_but_public_linear_constructors_reject_
             CssImportance::Normal,
         ));
         assert_eq!(value.stops().len(), 2);
-        assert!(value.serialize_specified().is_ok());
+        assert!(value.serialize_specified(Default::default()).is_ok());
     }
 }
 
@@ -161,7 +174,7 @@ fn checked_composition_keeps_exact_original_tokens_math_and_origins() {
         second.calculation().unwrap().components()
     );
     assert_eq!(
-        value.serialize_specified().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         "linear(-9007199254740993 150% calc(30%), sign(-2em))"
     );
     assert_eq!(value.stops()[0], stop);
@@ -178,8 +191,8 @@ fn equality_ignores_origins_but_retains_stop_order_omissions_pairs_and_math_stru
     let precise = parsed("linear(0.0000001 20%, 1)");
     let zero = parsed("linear(0 20%, 1)");
     assert_eq!(
-        precise.serialize_specified().unwrap(),
-        zero.serialize_specified().unwrap()
+        precise.serialize_specified(Default::default()).unwrap(),
+        zero.serialize_specified(Default::default()).unwrap()
     );
     assert_ne!(precise, zero);
     let value = parsed("linear(calc(1 + 2) calc(10% + 20%), 1)");
@@ -198,8 +211,13 @@ fn equality_ignores_origins_but_retains_stop_order_omissions_pairs_and_math_stru
 fn assert_limits(value: &CssLinearEasing, expected: &str, input: usize, projection: usize) {
     LimitLadder::new(expected, input, projection).assert_unchanged_with(
         value,
-        CssLinearEasing::serialize_specified_with_limits,
-        |_, _, _| assert_eq!(value.serialize_specified().unwrap(), expected),
+        CssLinearEasing::serialize_specified,
+        |_, _, _| {
+            assert_eq!(
+                value.serialize_specified(Default::default()).unwrap(),
+                expected
+            )
+        },
     );
 }
 
@@ -228,49 +246,40 @@ fn function_stops_and_numeric_children_share_exact_cumulative_budgets() {
     ])
     .unwrap();
     assert_eq!(
-        list.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-            13,
-            13,
-            expected.len()
-        ))
-        .unwrap(),
+        list.serialize_specified(CssSerializationLimits::new(13, 13, expected.len()))
+            .unwrap(),
         expected
     );
     assert_eq!(
-        list.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-            12,
-            13,
-            expected.len()
-        ))
-        .unwrap_err()
-        .kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
-    );
-    assert_eq!(
-        list.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-            13,
-            12,
-            expected.len()
-        ))
-        .unwrap_err()
-        .kind(),
-        CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
-    );
-    assert_eq!(list.serialize_specified().unwrap(), expected);
-    let stop = CssLinearStop::try_new(number("-2"), vec![percentage("150%")]).unwrap();
-    assert_eq!(
-        stop.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(3, 3, 7))
-            .unwrap(),
-        "-2 150%"
-    );
-    assert_eq!(
-        stop.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(2, 3, 7))
+        list.serialize_specified(CssSerializationLimits::new(12, 13, expected.len()))
             .unwrap_err()
             .kind(),
         CssSpecifiedValueSerializationErrorKind::InputNodeLimit
     );
     assert_eq!(
-        stop.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(3, 2, 7))
+        list.serialize_specified(CssSerializationLimits::new(13, 12, expected.len()))
+            .unwrap_err()
+            .kind(),
+        CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
+    );
+    assert_eq!(
+        list.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
+    let stop = CssLinearStop::try_new(number("-2"), vec![percentage("150%")]).unwrap();
+    assert_eq!(
+        stop.serialize_specified(CssSerializationLimits::new(3, 3, 7))
+            .unwrap(),
+        "-2 150%"
+    );
+    assert_eq!(
+        stop.serialize_specified(CssSerializationLimits::new(2, 3, 7))
+            .unwrap_err()
+            .kind(),
+        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+    );
+    assert_eq!(
+        stop.serialize_specified(CssSerializationLimits::new(3, 2, 7))
             .unwrap_err()
             .kind(),
         CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
@@ -293,10 +302,14 @@ fn shorthand_inverse_reconstructs_both_timing_consumers_without_fixup() {
     ] {
         let report = parse_style_attribute(source);
         assert!(report.is_clean());
-        let block = CssSpecifiedDeclarationBlock::try_from_declarations(report.syntax()).unwrap();
+        let block = CssSpecifiedDeclarationBlock::try_from_declarations(
+            report.syntax(),
+            Default::default(),
+        )
+        .unwrap();
         assert_eq!(
             block
-                .property_value(CssPropertyNameRef::Known(property))
+                .property_value(CssPropertyNameRef::Known(property), Default::default())
                 .unwrap()
                 .as_deref(),
             Some(expected)

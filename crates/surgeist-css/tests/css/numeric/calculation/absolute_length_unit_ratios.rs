@@ -27,21 +27,27 @@ const EQUAL_LENGTHS: [(&str, &str); 12] = [
 
 fn number(source: &str) -> String {
     CssSpecifiedNumber::try_from_calculation(
-        CssNumberCalculation::try_from_components(parse_component_values(source).unwrap())
-            .unwrap_or_else(|error| panic!("{source}: {error:?}")),
+        CssNumberCalculation::try_from_components(
+            parse_component_values(source).unwrap(),
+            Default::default(),
+        )
+        .unwrap_or_else(|error| panic!("{source}: {error:?}")),
     )
     .unwrap()
-    .serialize_specified()
+    .serialize_specified(Default::default())
     .unwrap()
 }
 
 fn length(source: &str) -> String {
     CssSpecifiedLength::try_from_calculation(
-        CssLengthCalculation::try_from_components(parse_component_values(source).unwrap())
-            .unwrap_or_else(|error| panic!("{source}: {error:?}")),
+        CssLengthCalculation::try_from_components(
+            parse_component_values(source).unwrap(),
+            Default::default(),
+        )
+        .unwrap_or_else(|error| panic!("{source}: {error:?}")),
     )
     .unwrap()
-    .serialize_specified()
+    .serialize_specified(Default::default())
     .unwrap()
 }
 

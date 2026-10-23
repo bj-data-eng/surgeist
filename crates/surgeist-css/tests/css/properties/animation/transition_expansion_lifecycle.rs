@@ -382,7 +382,7 @@ fn checked_mixed_origin_children_survive_projection_and_reentry() {
         })
         .unwrap();
     items[duration_index] = programmatic.clone();
-    let components = CssComponentValues::try_new(items).unwrap();
+    let components = CssComponentValues::try_new(items, Default::default()).unwrap();
     let source = parse_property_value_for_grammar(
         P::Transition.grammar(),
         components.clone(),
@@ -607,23 +607,17 @@ fn projected_time_lists_keep_cumulative_specified_limits_and_atomic_failure() {
     let (properties, durations, _, delays) = lists(&values);
     // Each list contributes one node, each ordinary time/name one node.
     // Punctuation adds bytes only. Exact time conversion does not change counts.
-    let limits = CssSpecifiedValueSerializationLimits::new;
+    let limits = CssSerializationLimits::new;
     assert_eq!(
-        properties
-            .serialize_specified_with_limits(limits(3, 3, 18))
-            .unwrap(),
+        properties.serialize_specified(limits(3, 3, 18)).unwrap(),
         "opacity, transform"
     );
     assert_eq!(
-        durations
-            .serialize_specified_with_limits(limits(3, 3, 14))
-            .unwrap(),
+        durations.serialize_specified(limits(3, 3, 14)).unwrap(),
         "0.001s, 0.002s"
     );
     assert_eq!(
-        delays
-            .serialize_specified_with_limits(limits(3, 3, 16))
-            .unwrap(),
+        delays.serialize_specified(limits(3, 3, 16)).unwrap(),
         "-0.001s, -0.002s"
     );
     for (input, projection, byte_deficit, kind) in [
@@ -643,28 +637,34 @@ fn projected_time_lists_keep_cumulative_specified_limits_and_atomic_failure() {
     ] {
         assert_eq!(
             properties
-                .serialize_specified_with_limits(limits(input, projection, 18 - byte_deficit))
+                .serialize_specified(limits(input, projection, 18 - byte_deficit))
                 .unwrap_err()
                 .kind(),
             kind
         );
         assert_eq!(
             durations
-                .serialize_specified_with_limits(limits(input, projection, 14 - byte_deficit))
+                .serialize_specified(limits(input, projection, 14 - byte_deficit))
                 .unwrap_err()
                 .kind(),
             kind
         );
         assert_eq!(
             delays
-                .serialize_specified_with_limits(limits(input, projection, 16 - byte_deficit))
+                .serialize_specified(limits(input, projection, 16 - byte_deficit))
                 .unwrap_err()
                 .kind(),
             kind
         );
     }
-    assert_eq!(durations.serialize_specified().unwrap(), "0.001s, 0.002s");
-    assert_eq!(delays.serialize_specified().unwrap(), "-0.001s, -0.002s");
+    assert_eq!(
+        durations.serialize_specified(Default::default()).unwrap(),
+        "0.001s, 0.002s"
+    );
+    assert_eq!(
+        delays.serialize_specified(Default::default()).unwrap(),
+        "-0.001s, -0.002s"
+    );
     let CssKnownPropertyValueRef::Transition(original) =
         source.known().unwrap().property_value().unwrap()
     else {
@@ -692,17 +692,13 @@ fn projected_math_retains_raw_graph_and_uses_numeric_provider_budgets() {
         .clone();
     // Duration list + Calc + Sum + two leaves: five inputs, four projections.
     // The delay list + its ordinary dimension: two inputs and two projections.
-    let limits = CssSpecifiedValueSerializationLimits::new;
+    let limits = CssSerializationLimits::new;
     assert_eq!(
-        durations
-            .serialize_specified_with_limits(limits(5, 4, 8))
-            .unwrap(),
+        durations.serialize_specified(limits(5, 4, 8)).unwrap(),
         "calc(3s)"
     );
     assert_eq!(
-        delays
-            .serialize_specified_with_limits(limits(2, 2, 6))
-            .unwrap(),
+        delays.serialize_specified(limits(2, 2, 6)).unwrap(),
         "-0.25s"
     );
     for (budget, kind) in [
@@ -720,10 +716,7 @@ fn projected_math_retains_raw_graph_and_uses_numeric_provider_budgets() {
         ),
     ] {
         assert_eq!(
-            durations
-                .serialize_specified_with_limits(budget)
-                .unwrap_err()
-                .kind(),
+            durations.serialize_specified(budget).unwrap_err().kind(),
             kind
         );
         assert_eq!(
@@ -735,7 +728,10 @@ fn projected_math_retains_raw_graph_and_uses_numeric_provider_budgets() {
             &raw
         );
     }
-    assert_eq!(durations.serialize_specified().unwrap(), "calc(3s)");
+    assert_eq!(
+        durations.serialize_specified(Default::default()).unwrap(),
+        "calc(3s)"
+    );
     let CssKnownPropertyValueRef::Transition(original) =
         source.known().unwrap().property_value().unwrap()
     else {

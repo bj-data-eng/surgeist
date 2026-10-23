@@ -515,7 +515,8 @@ fn real_rules_select_later_pending_occurrences_and_keep_specified_output_symboli
     };
     assert_eq!(rule.descriptors().occurrences().count(), 2);
     assert_eq!(
-        rule.descriptor_specified_css(Counter::Prefix).unwrap(),
+        rule.descriptor_specified_css(Counter::Prefix, Default::default())
+            .unwrap(),
         "env(choice)"
     );
     let report = parse_sheet(
@@ -535,7 +536,7 @@ fn real_rules_select_later_pending_occurrences_and_keep_specified_output_symboli
     };
     assert_eq!(block.definitions().len(), 2);
     assert_eq!(
-        rule.to_specified_css().unwrap(),
+        rule.serialize_specified(Default::default()).unwrap(),
         "@font-feature-values Demo { font-display: env(display); @styleset { Pick: env(index); } }"
     );
     assert!(report.into_validation_result().is_ok());

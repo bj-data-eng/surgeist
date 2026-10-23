@@ -45,7 +45,7 @@ fn eof_function_serialization_retains_the_implicit_closing_origin() {
     };
     assert_eq!(opening.span().start().byte_offset().value(), 0);
     assert_eq!(at.span().start().byte_offset().value(), source.len());
-    let serialized = values.serialize().unwrap();
+    let serialized = values.serialize_tokens(Default::default()).unwrap();
     assert_eq!(serialized.as_css(), format!("{source})"));
     assert_eq!(
         serialized.origin_at(source.len()),
@@ -68,8 +68,8 @@ fn programmatic_function_preserves_parsed_child_and_delimiter_origins() {
     };
     assert_eq!(function.values().items()[0].origin(), &child_origin);
     assert_eq!(function.closing_origin(), &CssValueOrigin::Programmatic);
-    let values = CssComponentValues::try_new(vec![component]).unwrap();
-    let serialized = values.serialize().unwrap();
+    let values = CssComponentValues::try_new(vec![component], Default::default()).unwrap();
+    let serialized = values.serialize_tokens(Default::default()).unwrap();
     assert_eq!(serialized.as_css(), "future(+001.2300e+02)");
     assert_eq!(
         serialized.origin_at(7),
@@ -104,14 +104,20 @@ fn cloned_parsed_components_retain_the_complete_authored_slice_and_closure() {
         assert_eq!(value, rebuilt);
         assert_eq!(value.origin(), rebuilt.origin());
         assert_eq!(value.position().unwrap().byte_offset().value(), 0);
-        let serialized = value.serialize().unwrap();
+        let serialized = value.serialize_tokens(Default::default()).unwrap();
         assert_eq!(
-            enclosed(serialized.as_css()).serialize().unwrap().as_css(),
+            enclosed(serialized.as_css())
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             serialized.as_css(),
         );
     }
     let value = enclosed("future(nested([x");
-    assert_eq!(value.serialize().unwrap().as_css(), "future(nested([x]))");
+    assert_eq!(
+        value.serialize_tokens(Default::default()).unwrap().as_css(),
+        "future(nested([x]))"
+    );
     let CssComponentValueRef::Function(function) = value.component().view() else {
         panic!("expected a function");
     };
@@ -132,7 +138,7 @@ fn supplied_enclosures_have_no_fabricated_authored_span_even_with_parsed_childre
         assert_eq!(value.authored(), None);
         assert_eq!(value.position(), None);
         assert_eq!(value.origin(), &CssValueOrigin::Programmatic);
-        let serialized = value.serialize().unwrap();
+        let serialized = value.serialize_tokens(Default::default()).unwrap();
         let offset = serialized.as_css().find("1e+003").unwrap();
         assert_eq!(
             serialized.origin_at(offset),
@@ -143,11 +149,11 @@ fn supplied_enclosures_have_no_fabricated_authored_span_even_with_parsed_childre
             Some(&CssSerializedOrigin::Token(CssValueOrigin::Programmatic))
         );
     }
-    let empty = CssComponentValues::try_new(vec![]).unwrap();
+    let empty = CssComponentValues::try_new(vec![], Default::default()).unwrap();
     assert_eq!(
         surgeist_css::CssGeneralEnclosed::try_function("future", empty.clone())
             .unwrap()
-            .serialize()
+            .serialize_tokens(Default::default())
             .unwrap()
             .as_css(),
         "future()"
@@ -155,7 +161,7 @@ fn supplied_enclosures_have_no_fabricated_authored_span_even_with_parsed_childre
     assert_eq!(
         surgeist_css::CssGeneralEnclosed::try_parenthesized(empty)
             .unwrap()
-            .serialize()
+            .serialize_tokens(Default::default())
             .unwrap()
             .as_css(),
         "()"
@@ -184,7 +190,7 @@ fn wrong_outer_components_report_the_supplied_origin() {
 
 #[test]
 fn constructor_errors_preserve_component_syntax_and_depth_failures() {
-    let empty = CssComponentValues::try_new(vec![]).unwrap();
+    let empty = CssComponentValues::try_new(vec![], Default::default()).unwrap();
     let error = surgeist_css::CssGeneralEnclosed::try_function("url", empty).unwrap_err();
     let surgeist_css::CssGeneralEnclosedError::Component(component) = error else {
         panic!("expected a component construction error");
@@ -194,12 +200,15 @@ fn constructor_errors_preserve_component_syntax_and_depth_failures() {
         surgeist_css::CssComponentValueErrorKind::InvalidFunction
     );
     assert_eq!(component.origin(), &CssValueOrigin::Programmatic);
-    let mut children =
-        CssComponentValues::try_new(vec![CssComponentValue::try_ident("x").unwrap()]).unwrap();
+    let mut children = CssComponentValues::try_new(
+        vec![CssComponentValue::try_ident("x").unwrap()],
+        Default::default(),
+    )
+    .unwrap();
     for _ in 0..256 {
         let block = CssComponentValue::try_block(surgeist_css::CssBlockKind::Parenthesis, children)
             .unwrap();
-        children = CssComponentValues::try_new(vec![block]).unwrap();
+        children = CssComponentValues::try_new(vec![block], Default::default()).unwrap();
     }
     let error = surgeist_css::CssGeneralEnclosed::try_parenthesized(children).unwrap_err();
     let surgeist_css::CssGeneralEnclosedError::Component(component) = error else {
@@ -227,15 +236,19 @@ fn equality_compares_spelling_and_source_text_but_not_snapshot_identity() {
     assert_ne!(enclosed("future(1)"), enclosed("future(1"));
     let supplied = surgeist_css::CssGeneralEnclosed::try_function(
         "future",
-        CssComponentValues::try_new(vec![
-            CssComponentValue::try_token("01.00000000000000000000000001").unwrap(),
-        ])
+        CssComponentValues::try_new(
+            vec![CssComponentValue::try_token("01.00000000000000000000000001").unwrap()],
+            Default::default(),
+        )
         .unwrap(),
     )
     .unwrap();
     assert_eq!(
-        first.serialize().unwrap().as_css(),
-        supplied.serialize().unwrap().as_css()
+        first.serialize_tokens(Default::default()).unwrap().as_css(),
+        supplied
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css()
     );
     assert_ne!(first, supplied);
     // Parsed numeric components and supplied tokens differ even though both
@@ -268,7 +281,10 @@ fn supports_fallback_collects_only_its_own_enclosure_and_shares_the_sheet_snapsh
             panic!("expected an opaque operand");
         };
         assert_eq!(value.authored(), Some(expected));
-        assert_eq!(value.serialize().unwrap().as_css(), expected);
+        assert_eq!(
+            value.serialize_tokens(Default::default()).unwrap().as_css(),
+            expected
+        );
         let CssValueOrigin::Parsed(origin) = value.origin() else {
             panic!("expected original parsed provenance");
         };

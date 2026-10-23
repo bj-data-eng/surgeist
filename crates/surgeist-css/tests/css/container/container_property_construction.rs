@@ -39,7 +39,7 @@ fn six_type_states_have_exact_canonical_tokens_and_checked_declaration_values() 
             &["inline-size", "scroll-state"][..],
         ),
     ] {
-        let components = value.to_components().unwrap();
+        let components = value.to_components(Default::default()).unwrap();
         assert_programmatic(&components);
         let actual: Vec<_> = components
             .items()
@@ -50,7 +50,10 @@ fn six_type_states_have_exact_canonical_tokens_and_checked_declaration_values() 
             })
             .collect();
         assert_eq!(actual, keywords);
-        assert_eq!(value.serialize().unwrap().as_css(), text);
+        assert_eq!(
+            value.serialize_tokens(Default::default()).unwrap().as_css(),
+            text
+        );
         let declaration = declaration(CssKnownProperty::ContainerType, components);
         let CssKnownPropertyValueRef::ContainerType(wrapper) =
             declaration.known().unwrap().property_value().unwrap()
@@ -105,9 +108,15 @@ fn decoded_names_keep_their_spelling_and_reject_reserved_values() {
             .collect::<Vec<_>>(),
         ["Pane", "Pane", "pane"]
     );
-    assert_eq!(value.serialize().unwrap().as_css(), "Pane Pane pane");
     assert_eq!(
-        CssContainerNames::None.serialize().unwrap().as_css(),
+        value.serialize_tokens(Default::default()).unwrap().as_css(),
+        "Pane Pane pane"
+    );
+    assert_eq!(
+        CssContainerNames::None
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         "none"
     );
 }
@@ -123,8 +132,11 @@ fn shorthand_semantic_pair_omits_normal_and_expands_in_adopted_member_order() {
         } else {
             "Pane Pane / size scroll-state"
         };
-        assert_eq!(value.serialize().unwrap().as_css(), expected);
-        let components = value.to_components().unwrap();
+        assert_eq!(
+            value.serialize_tokens(Default::default()).unwrap().as_css(),
+            expected
+        );
+        let components = value.to_components(Default::default()).unwrap();
         assert_programmatic(&components);
         let declaration = declaration(CssKnownProperty::Container, components.clone());
         assert_eq!(declaration.value_components(), &components);
@@ -157,10 +169,16 @@ fn shorthand_semantic_pair_omits_normal_and_expands_in_adopted_member_order() {
 #[test]
 fn canonical_escaping_and_byte_limits_are_checked_after_escape_expansion() {
     let hex_terminated = names(&["1", "pane"]);
-    assert_eq!(hex_terminated.serialize().unwrap().as_css(), r"\31  pane");
+    assert_eq!(
+        hex_terminated
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        r"\31  pane"
+    );
     let constructed = declaration(
         CssKnownProperty::ContainerName,
-        hex_terminated.to_components().unwrap(),
+        hex_terminated.to_components(Default::default()).unwrap(),
     );
     let CssKnownPropertyValueRef::ContainerName(wrapper) =
         constructed.known().unwrap().property_value().unwrap()
@@ -171,29 +189,34 @@ fn canonical_escaping_and_byte_limits_are_checked_after_escape_expansion() {
 
     let value = names(&["1pane", "a b", "a,b"]);
     let text = r"\31 pane a\ b a\,b";
-    assert_eq!(value.serialize().unwrap().as_css(), text);
-    let output = value.serialize_with_limit(text.len()).unwrap();
+    assert_eq!(
+        value.serialize_tokens(Default::default()).unwrap().as_css(),
+        text
+    );
+    let output = value
+        .serialize_tokens(crate::css::support::byte_limits(text.len()))
+        .unwrap();
     assert_eq!(output.as_css(), text);
-    let error = value.serialize_with_limit(text.len() - 1).unwrap_err();
+    let error = value
+        .serialize_tokens(crate::css::support::byte_limits(text.len() - 1))
+        .unwrap_err();
     assert_eq!(error.kind(), CssComponentValueErrorKind::ByteLimit);
     assert_eq!(error.origin(), &CssValueOrigin::Programmatic);
     let components = value
-        .to_components_with_limits(CssComponentValueLimits::try_new(0, 5, text.len()).unwrap())
+        .to_components(CssComponentValueLimits::try_new(0, 5, text.len()).unwrap())
         .unwrap();
     assert_programmatic(&components);
     assert_eq!(components.items().len(), 5);
     assert_eq!(
         value
-            .to_components_with_limits(CssComponentValueLimits::try_new(0, 4, text.len()).unwrap())
+            .to_components(CssComponentValueLimits::try_new(0, 4, text.len()).unwrap())
             .unwrap_err()
             .kind(),
         CssComponentValueErrorKind::ComponentLimit
     );
     assert_eq!(
         value
-            .to_components_with_limits(
-                CssComponentValueLimits::try_new(0, 5, text.len() - 1).unwrap()
-            )
+            .to_components(CssComponentValueLimits::try_new(0, 5, text.len() - 1).unwrap())
             .unwrap_err()
             .kind(),
         CssComponentValueErrorKind::ByteLimit
@@ -201,14 +224,14 @@ fn canonical_escaping_and_byte_limits_are_checked_after_escape_expansion() {
     // The lower bound catches obviously oversized names before canonical escaping.
     assert_eq!(
         names(&["oversized"])
-            .serialize_with_limit(1)
+            .serialize_tokens(crate::css::support::byte_limits(1))
             .unwrap_err()
             .kind(),
         CssComponentValueErrorKind::ByteLimit
     );
     assert_eq!(
         CssContainerType::Normal
-            .serialize_with_limit(0)
+            .serialize_tokens(crate::css::support::byte_limits(0))
             .unwrap_err()
             .kind(),
         CssComponentValueErrorKind::ByteLimit
@@ -247,10 +270,17 @@ fn parsed_wrappers_keep_authored_text_components_and_origins_when_semantics_cano
         wrapper.container().container_type(),
         CssContainerType::SizeScrollState
     );
-    let canonical = wrapper.container().to_components().unwrap();
+    let canonical = wrapper
+        .container()
+        .to_components(Default::default())
+        .unwrap();
     assert_programmatic(&canonical);
     assert_eq!(
-        wrapper.container().serialize().unwrap().as_css(),
+        wrapper
+            .container()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         "Pane Pane / size scroll-state"
     );
     assert_eq!(declaration.value_components(), &original);
@@ -276,7 +306,14 @@ fn parsed_none_and_omitted_type_have_checked_initial_semantics() {
             value.container(),
             &CssContainer::new(CssContainerNames::None, CssContainerType::Normal)
         );
-        assert_eq!(value.container().serialize().unwrap().as_css(), "none");
+        assert_eq!(
+            value
+                .container()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            "none"
+        );
     }
 }
 
@@ -288,7 +325,7 @@ fn semantic_pending_replacement_keeps_programmatic_origins_and_original_occurren
         panic!("pending")
     };
     let semantic = CssContainer::new(names(&["1pane"]), CssContainerType::InlineSizeScrollState);
-    let replacement = semantic.to_components().unwrap();
+    let replacement = semantic.to_components(Default::default()).unwrap();
     let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap() else {
         panic!("members")
     };
@@ -308,7 +345,7 @@ fn semantic_pending_replacement_keeps_programmatic_origins_and_original_occurren
         assert_eq!(item.replacement_components(), Some(&replacement));
         assert_programmatic(item.replacement_components().unwrap());
     }
-    let serialized = semantic.serialize().unwrap();
+    let serialized = semantic.serialize_tokens(Default::default()).unwrap();
     for segment in serialized.segments() {
         assert!(matches!(
             segment.origin(),

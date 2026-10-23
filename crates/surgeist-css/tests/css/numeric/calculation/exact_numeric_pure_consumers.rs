@@ -9,7 +9,8 @@ use surgeist_css::*;
 fn mixed_calculation(source: &str) -> (CssLengthPercentageCalculation, CssComponentValues) {
     let components = parse_component_values(source).unwrap();
     let calculation =
-        CssLengthPercentageCalculation::try_from_components(components.clone()).unwrap();
+        CssLengthPercentageCalculation::try_from_components(components.clone(), Default::default())
+            .unwrap();
     (calculation, components)
 }
 fn pure(
@@ -17,6 +18,7 @@ fn pure(
 ) -> Result<CssSpecifiedLength, CssNumericConstructionError> {
     CssSpecifiedLength::try_from_calculation(CssLengthCalculation::try_from_components(
         calculation.components().clone(),
+        Default::default(),
     )?)
 }
 fn assert_pure_tree_preserves_components(
@@ -55,13 +57,16 @@ fn pure_constructor_readmits_percentage_cancellation_and_preserves_original_comp
 #[test]
 fn pure_constructor_readmits_typed_children_inside_a_public_sum() {
     let (child, components) = mixed_calculation("calc(10% / 10% * 1px)");
-    let sum = CssLengthPercentageCalculation::try_sum(child, []).unwrap();
+    let sum = CssLengthPercentageCalculation::try_sum(child, [], Default::default()).unwrap();
     let value = pure(sum).expect("checked sum retains pure cancellation");
     let calculation = value.calculation().unwrap();
     assert_eq!(calculation.origin(), &CssValueOrigin::Programmatic);
     assert_eq!(calculation.position(), None);
     assert_eq!(
-        calculation.serialize().unwrap().as_css(),
+        calculation
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         "calc(calc(10% / 10% * 1px))"
     );
     let CssComponentValueRef::Function(outer) = calculation.components().items()[0].view() else {
@@ -90,10 +95,13 @@ fn pure_consumers_reject_uncancelled_percentage_context_even_inside_a_sum() {
         let (value, _) = mixed_calculation(source);
         assert!(pure(value.clone()).is_err(), "{source}");
         assert_calculation_rejected(
-            CssLengthCalculation::try_from_components(value.components().clone()),
+            CssLengthCalculation::try_from_components(
+                value.components().clone(),
+                Default::default(),
+            ),
             Some(surgeist_css::CssNumericConstructionErrorKind::RootDomainMismatch),
         );
-        let sum = CssLengthPercentageCalculation::try_sum(value, []).unwrap();
+        let sum = CssLengthPercentageCalculation::try_sum(value, [], Default::default()).unwrap();
         assert!(pure(sum).is_err(), "{source}");
     }
 }

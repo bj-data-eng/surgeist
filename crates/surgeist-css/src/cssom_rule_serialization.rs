@@ -2,9 +2,8 @@
 use std::fmt;
 
 use crate::{
-    CssDeclarationBlockError, CssDeclarationBlockErrorKind, CssMediaCssomSerializationError,
-    CssRule, CssSheet, CssSpecifiedValueSerializationError,
-    CssSpecifiedValueSerializationErrorKind, CssSpecifiedValueSerializationLimits,
+    CssDeclarationBlockError, CssDeclarationBlockErrorKind, CssRule, CssSerializationError,
+    CssSerializationLimits, CssSheet, CssSpecifiedValueSerializationErrorKind,
     specified_rule_serialization::{SpecifiedRuleSerializationSource, SpecifiedRuleWriter},
 };
 
@@ -47,24 +46,19 @@ pub enum CssRuleCssomSerializationErrorKind {
 
 #[derive(Clone, Debug)]
 pub(crate) enum RuleCssomSource {
-    Provider(SpecifiedRuleSerializationSource),
+    Provider(CssSerializationError),
     DeclarationBlock(CssDeclarationBlockError),
     SourceUndefined(CssRuleCssomKind),
     FormatUnavailable(CssRuleCssomFormat),
 }
-impl From<CssSpecifiedValueSerializationError> for RuleCssomSource {
-    fn from(value: CssSpecifiedValueSerializationError) -> Self {
-        Self::Provider(value.into())
+impl From<CssSerializationError> for RuleCssomSource {
+    fn from(value: CssSerializationError) -> Self {
+        Self::Provider(value)
     }
 }
-impl From<CssMediaCssomSerializationError> for RuleCssomSource {
-    fn from(value: CssMediaCssomSerializationError) -> Self {
-        Self::Provider(value.into())
-    }
-}
-impl From<crate::query_rule_serialization::QueryRuleSerializationError> for RuleCssomSource {
-    fn from(value: crate::query_rule_serialization::QueryRuleSerializationError) -> Self {
-        Self::Provider(value.into())
+impl From<SpecifiedRuleSerializationSource> for RuleCssomSource {
+    fn from(value: SpecifiedRuleSerializationSource) -> Self {
+        Self::Provider(value.0)
     }
 }
 impl From<CssDeclarationBlockError> for RuleCssomSource {
@@ -72,21 +66,16 @@ impl From<CssDeclarationBlockError> for RuleCssomSource {
         Self::DeclarationBlock(value)
     }
 }
-impl From<SpecifiedRuleSerializationSource> for RuleCssomSource {
-    fn from(value: SpecifiedRuleSerializationSource) -> Self {
-        Self::Provider(value)
-    }
-}
 
 /// Atomic literal serialization failure, retaining its actual graph and provider provenance.
 #[derive(Clone, Debug)]
-pub struct CssRuleCssomSerializationError {
+pub struct CssRuleSerializationError {
     kind: CssRuleCssomSerializationErrorKind,
     rule_path: Vec<usize>,
     keyframe_block_index: Option<usize>,
     source: RuleCssomSource,
 }
-impl CssRuleCssomSerializationError {
+impl CssRuleSerializationError {
     #[must_use]
     pub const fn kind(&self) -> CssRuleCssomSerializationErrorKind {
         self.kind
@@ -106,17 +95,7 @@ impl CssRuleCssomSerializationError {
         keyframe_block_index: Option<usize>,
     ) -> Self {
         let value = match &source {
-            RuleCssomSource::Provider(SpecifiedRuleSerializationSource::Value(value)) => {
-                Some(value.kind())
-            }
-            RuleCssomSource::Provider(SpecifiedRuleSerializationSource::Media(value)) => {
-                match value.as_ref() {
-                    CssMediaCssomSerializationError::Resource { error, .. } => Some(error.kind()),
-                    CssMediaCssomSerializationError::Media(_) => {
-                        Some(CssSpecifiedValueSerializationErrorKind::UnserializableBoundary)
-                    }
-                }
-            }
+            RuleCssomSource::Provider(value) => Some(value.kind()),
             RuleCssomSource::DeclarationBlock(error) => match error.kind() {
                 CssDeclarationBlockErrorKind::Serialization(value) => Some(value.kind()),
                 _ => None,
@@ -150,7 +129,7 @@ impl CssRuleCssomSerializationError {
         }
     }
 }
-impl fmt::Display for CssRuleCssomSerializationError {
+impl fmt::Display for CssRuleSerializationError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.kind {
             CssRuleCssomSerializationErrorKind::Resource(_) => {
@@ -173,15 +152,10 @@ impl fmt::Display for CssRuleCssomSerializationError {
         }
     }
 }
-impl std::error::Error for CssRuleCssomSerializationError {
+impl std::error::Error for CssRuleSerializationError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match &self.source {
-            RuleCssomSource::Provider(SpecifiedRuleSerializationSource::Value(value)) => {
-                Some(value)
-            }
-            RuleCssomSource::Provider(SpecifiedRuleSerializationSource::Media(value)) => {
-                Some(value.as_ref())
-            }
+            RuleCssomSource::Provider(value) => Some(value),
             RuleCssomSource::DeclarationBlock(value) => Some(value),
             RuleCssomSource::SourceUndefined(_) | RuleCssomSource::FormatUnavailable(_) => None,
         }
@@ -189,14 +163,12 @@ impl std::error::Error for CssRuleCssomSerializationError {
 }
 impl CssRule {
     /// Serializes the selected literal CSSOM format with independently normalized declaration runs.
-    pub fn serialize_cssom(&self) -> Result<String, CssRuleCssomSerializationError> {
-        self.serialize_cssom_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
+    ///
     /// Shares monotonic work and UTF-8 byte budgets across all providers and descendants.
-    pub fn serialize_cssom_with_limits(
+    pub fn serialize_cssom(
         &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String, CssRuleCssomSerializationError> {
+        limits: CssSerializationLimits,
+    ) -> Result<String, CssRuleSerializationError> {
         let mut writer = SpecifiedRuleWriter::new(limits);
         writer.append_cssom_rule_graph(self, Vec::new(), None)?;
         Ok(writer.css)
@@ -205,24 +177,22 @@ impl CssRule {
 impl CssSheet {
     /// Authored aggregate contract: rule strings in order, one LF separator and no final LF.
     /// This is an owned rule-text operation, independent of a live CSSOM stylesheet.
-    pub fn serialize_cssom(&self) -> Result<String, CssRuleCssomSerializationError> {
-        self.serialize_cssom_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
+    ///
     /// Returns no partial text on any rule, source, projection, or byte failure.
-    pub fn serialize_cssom_with_limits(
+    pub fn serialize_cssom(
         &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String, CssRuleCssomSerializationError> {
+        limits: CssSerializationLimits,
+    ) -> Result<String, CssRuleSerializationError> {
         let mut writer = SpecifiedRuleWriter::new(limits);
         writer
             .node()
-            .map_err(|value| CssRuleCssomSerializationError::new(value.into(), Vec::new(), None))?;
+            .map_err(|value| CssRuleSerializationError::new(value.into(), Vec::new(), None))?;
         let namespaces = crate::CssNamespaceContext::from_sheet(self);
         for (index, rule) in self.rules().iter().enumerate() {
             let mut path = Vec::new();
             path.try_reserve(1).map_err(|_| {
-                CssRuleCssomSerializationError::new(
-                    CssSpecifiedValueSerializationError::new(
+                CssRuleSerializationError::new(
+                    CssSerializationError::new(
                         CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
                     )
                     .into(),
@@ -234,11 +204,7 @@ impl CssSheet {
             if index != 0
                 && let Err(value) = writer.append("\n")
             {
-                return Err(CssRuleCssomSerializationError::new(
-                    value.into(),
-                    path,
-                    None,
-                ));
+                return Err(CssRuleSerializationError::new(value.into(), path, None));
             }
             writer.append_cssom_rule_graph(rule, path, Some(&namespaces))?;
         }

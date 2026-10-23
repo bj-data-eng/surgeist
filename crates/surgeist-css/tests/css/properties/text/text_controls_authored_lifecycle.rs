@@ -3,8 +3,8 @@
 //! exercise checked constructors, preserved origins, omission views, exact typed
 //! terminals and providers that did not exist at that checkpoint.
 
+use CssSerializationLimits as Limits;
 use CssSpecifiedValueSerializationErrorKind as Kind;
-use CssSpecifiedValueSerializationLimits as Limits;
 use surgeist_css::*;
 
 use crate::css::support::authored_parsed_declaration as declaration;
@@ -65,10 +65,7 @@ macro_rules! limits {
         let input_nodes = $input_nodes;
         let projection_nodes = $projection_nodes;
         let exact = Limits::new(input_nodes, projection_nodes, expected.len());
-        assert_eq!(
-            value.serialize_specified_with_limits(exact).unwrap(),
-            expected
-        );
+        assert_eq!(value.serialize_specified(exact).unwrap(), expected);
         for (limits, kind) in [
             (
                 Limits::new(input_nodes - 1, projection_nodes, expected.len()),
@@ -84,20 +81,11 @@ macro_rules! limits {
             ),
         ] {
             for _ in 0..2 {
-                assert_eq!(
-                    value
-                        .serialize_specified_with_limits(limits)
-                        .unwrap_err()
-                        .kind(),
-                    kind
-                );
+                assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
                 assert_eq!(value, before);
             }
         }
-        assert_eq!(
-            value.serialize_specified_with_limits(exact).unwrap(),
-            expected
-        );
+        assert_eq!(value.serialize_specified(exact).unwrap(), expected);
     }};
 }
 #[test]
@@ -142,7 +130,12 @@ fn checked_hyphenation_strings_keep_decoded_content_component_and_original_origi
         limits!(value.clone(), expected, 1);
         let programmatic = CssHyphenateString::try_new(decoded).unwrap();
         assert_eq!(programmatic.origin(), &CssValueOrigin::Programmatic);
-        assert_eq!(programmatic.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            programmatic
+                .serialize_specified(Default::default())
+                .unwrap(),
+            expected
+        );
     }
     assert!(CssHyphenateString::try_new("a\0b").is_err());
     assert!(
@@ -171,7 +164,9 @@ fn nonnegative_integer_constructor_rechecks_bare_roots_without_clamping_function
         assert_eq!(integer.origin(), &origin);
         assert!(matches!(integer.value(), CssIntegerValue::Literal(_)));
         limits!(integer, expected, 1);
-        let bare = CssIntegerCalculation::try_from_components(components(input)).unwrap();
+        let bare =
+            CssIntegerCalculation::try_from_components(components(input), Default::default())
+                .unwrap();
         let bare_origin = bare.origin().clone();
         let checked =
             CssHyphenateLimitInteger::try_new(CssIntegerValue::Calculation(bare)).unwrap();
@@ -181,7 +176,10 @@ fn nonnegative_integer_constructor_rechecks_bare_roots_without_clamping_function
             panic!("bare root crosses literal admission")
         };
         assert_eq!(literal.numeric().representation(), input);
-        assert_eq!(checked.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            checked.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
     for input in ["-1", "-9999999999999999999999999999999999999999"] {
         let literal =
@@ -192,7 +190,8 @@ fn nonnegative_integer_constructor_rechecks_bare_roots_without_clamping_function
         // this exact ordinary token through its own nonnegative range boundary.
         let raw = components(input);
         let component = &raw.items()[0];
-        let bare = CssIntegerCalculation::try_from_components(raw.clone()).unwrap();
+        let bare =
+            CssIntegerCalculation::try_from_components(raw.clone(), Default::default()).unwrap();
         assert_eq!(bare.components(), &raw);
         assert_eq!(bare.origin(), component.origin());
         assert!(
@@ -207,7 +206,9 @@ fn nonnegative_integer_constructor_rechecks_bare_roots_without_clamping_function
         );
         // Noninteger bare tokens are rejected before a checked Integer root
         // exists; deferred fractional function math remains a separate branch.
-        let error = CssIntegerCalculation::try_from_components(components(input)).unwrap_err();
+        let error =
+            CssIntegerCalculation::try_from_components(components(input), Default::default())
+                .unwrap_err();
         assert_eq!(
             error.kind(),
             &CssNumericConstructionErrorKind::RootDomainMismatch
@@ -219,13 +220,18 @@ fn nonnegative_integer_constructor_rechecks_bare_roots_without_clamping_function
         ("calc(infinity)", "calc(infinity)"),
         ("calc(NaN)", "calc(NaN)"),
     ] {
-        let calculation = CssIntegerCalculation::try_from_components(components(input)).unwrap();
+        let calculation =
+            CssIntegerCalculation::try_from_components(components(input), Default::default())
+                .unwrap();
         let origin = calculation.origin().clone();
         let checked =
             CssHyphenateLimitInteger::try_new(CssIntegerValue::Calculation(calculation)).unwrap();
         assert!(matches!(checked.value(), CssIntegerValue::Calculation(_)));
         assert_eq!(checked.origin(), &origin);
-        assert_eq!(checked.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            checked.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
 }
 #[test]
@@ -247,7 +253,10 @@ fn chars_constructor_preserves_authored_arity_and_effective_defaults_without_new
         assert_eq!(value.before().is_some(), arity > 1);
         assert_eq!(value.after().is_some(), arity > 2);
         for (slot, expected) in value.effective_components().iter().zip(effective) {
-            assert_eq!(slot.serialize_specified().unwrap(), expected);
+            assert_eq!(
+                slot.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
         }
         limits!(value, expected, arity);
     }
@@ -972,17 +981,26 @@ fn numeric_children_keep_signed_domains_exact_origins_and_math_work_prices() {
     // Numeric's existing contract charges four input and three projection
     // nodes for a calc group containing a sum of two ordinary scalar leaves.
     let zone = CssSpecifiedLengthPercentage::try_from_calculation(
-        CssLengthPercentageCalculation::try_from_components(components("calc(1px + 2px)")).unwrap(),
+        CssLengthPercentageCalculation::try_from_components(
+            components("calc(1px + 2px)"),
+            Default::default(),
+        )
+        .unwrap(),
     )
     .unwrap();
     let padding = CssSpecifiedLength::try_from_calculation(
-        CssLengthCalculation::try_from_components(components("calc(-2px + -3px)")).unwrap(),
+        CssLengthCalculation::try_from_components(
+            components("calc(-2px + -3px)"),
+            Default::default(),
+        )
+        .unwrap(),
     )
     .unwrap();
     limits!(zone, "calc(3px)", 4, 3);
     limits!(padding, "calc(-5px)", 4, 3);
     let integer = CssHyphenateLimitInteger::try_new(CssIntegerValue::Calculation(
-        CssIntegerCalculation::try_from_components(components("calc(-3 / 2)")).unwrap(),
+        CssIntegerCalculation::try_from_components(components("calc(-3 / 2)"), Default::default())
+            .unwrap(),
     ))
     .unwrap();
     // Division also creates an inverse projection node under that contract.

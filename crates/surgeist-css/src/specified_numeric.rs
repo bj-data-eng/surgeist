@@ -4,15 +4,20 @@ use crate::{
     CssComponentValue, CssComponentValueRef, CssFlexCalculation, CssLengthCalculation,
     CssLengthPercentageCalculation, CssLengthUnit, CssNumberCalculation,
     CssNumericConstructionError, CssNumericConstructionErrorKind, CssPercentageCalculation,
-    CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationErrorKind,
-    CssSpecifiedValueSerializationLimits, CssValueOrigin, CssValueTokenRef,
-    numeric_formatting::format_css_number, specified_serialization::SpecifiedSerializationContext,
+    CssSerializationError, CssSpecifiedValueSerializationErrorKind, CssValueOrigin,
+    CssValueTokenRef, numeric_formatting::format_css_number,
+    specified_serialization::SpecifiedSerializationContext,
 };
 
 type ConstructionResult<T> = Result<T, CssNumericConstructionError>;
-type SerializationResult<T> = Result<T, CssSpecifiedValueSerializationError>;
+type SerializationResult<T> = Result<T, CssSerializationError>;
 
 /// An unrestricted authored flex dimension retaining an exact `fr` token or checked Flex math.
+///
+/// # Specified serialization
+///
+/// Emits ordinary and finite calculated numbers with at most six fractional places, nearest with
+/// ties away from zero.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssSpecifiedFlex {
     value: SpecifiedNumericValue<CssFlexCalculation>,
@@ -99,44 +104,13 @@ impl CssSpecifiedFlex {
         }
     }
 
-    /// Emits ordinary and finite calculated numbers with at most six fractional
-    /// places, nearest with ties away from zero. Authored values remain unchanged;
-    /// calculation arithmetic, precision, range and symbolic behavior retain
-    /// their existing contracts.
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Shares cumulative visits and budgets actual rounded text.
-    /// Failure leaves authored values unchanged; arithmetic and traversal costs are retained.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        let context = &mut writer.context;
-        let captured = self.capture_specified(context)?;
-        let output = &mut writer.css;
-        context.append(output, &captured)?;
-        Ok(())
-    }
-
     pub(crate) fn capture_specified(
         &self,
         context: &mut SpecifiedSerializationContext,
     ) -> SerializationResult<String> {
         match &self.value {
             SpecifiedNumericValue::Literal(value) => {
-                context.charge_input(1)?;
-                context.charge_projection(1)?;
+                context.charge_nodes(1)?;
                 if context.output_suppressed() {
                     return Ok(String::new());
                 }
@@ -146,9 +120,7 @@ impl CssSpecifiedFlex {
                     unreachable!("checked fr token")
                 };
                 let limit = context.remaining_bytes().checked_sub(2).ok_or_else(|| {
-                    CssSpecifiedValueSerializationError::new(
-                        CssSpecifiedValueSerializationErrorKind::ByteLimit,
-                    )
+                    CssSerializationError::new(CssSpecifiedValueSerializationErrorKind::ByteLimit)
                 })?;
                 let mut output = format_css_number(number.representation(), 0, limit)?;
                 context.append_temporary(&mut output, "fr")?;
@@ -160,8 +132,26 @@ impl CssSpecifiedFlex {
         }
     }
 }
+impl crate::specified_rule_serialization::SpecifiedProvider for CssSpecifiedFlex {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        let context = &mut writer.context;
+        let captured = self.capture_specified(context)?;
+        let output = &mut writer.css;
+        context.append(output, &captured)?;
+        Ok(())
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(CssSpecifiedFlex);
 
 /// A nonnegative Grid flex breadth retaining an exact `fr` token or checked flex math.
+///
+/// # Specified serialization
+///
+/// Emits ordinary and finite calculated numbers with at most six fractional places, nearest with
+/// ties away from zero.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssSpecifiedNonNegativeFlex {
     value: SpecifiedNumericValue<CssFlexCalculation>,
@@ -241,44 +231,13 @@ impl CssSpecifiedNonNegativeFlex {
         }
     }
 
-    /// Emits ordinary and finite calculated numbers with at most six fractional
-    /// places, nearest with ties away from zero. Authored values remain unchanged;
-    /// calculation arithmetic, precision, range and symbolic behavior retain
-    /// their existing contracts.
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Shares cumulative visits and budgets actual rounded text.
-    /// Failure leaves authored values unchanged; arithmetic and traversal costs are retained.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        let context = &mut writer.context;
-        let captured = self.capture_specified(context)?;
-        let output = &mut writer.css;
-        context.append(output, &captured)?;
-        Ok(())
-    }
-
     pub(crate) fn capture_specified(
         &self,
         context: &mut SpecifiedSerializationContext,
     ) -> SerializationResult<String> {
         match &self.value {
             SpecifiedNumericValue::Literal(value) => {
-                context.charge_input(1)?;
-                context.charge_projection(1)?;
+                context.charge_nodes(1)?;
                 if context.output_suppressed() {
                     return Ok(String::new());
                 }
@@ -288,9 +247,7 @@ impl CssSpecifiedNonNegativeFlex {
                     unreachable!("checked fr token")
                 };
                 let limit = context.remaining_bytes().checked_sub(2).ok_or_else(|| {
-                    CssSpecifiedValueSerializationError::new(
-                        CssSpecifiedValueSerializationErrorKind::ByteLimit,
-                    )
+                    CssSerializationError::new(CssSpecifiedValueSerializationErrorKind::ByteLimit)
                 })?;
                 let mut output = format_css_number(number.representation(), 0, limit)?;
                 context.append_temporary(&mut output, "fr")?;
@@ -302,6 +259,19 @@ impl CssSpecifiedNonNegativeFlex {
         }
     }
 }
+impl crate::specified_rule_serialization::SpecifiedProvider for CssSpecifiedNonNegativeFlex {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        let context = &mut writer.context;
+        let captured = self.capture_specified(context)?;
+        let output = &mut writer.css;
+        context.append(output, &captured)?;
+        Ok(())
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(CssSpecifiedNonNegativeFlex);
 
 /// How a specified numeric domain admits a calculation.
 #[derive(Clone, Copy)]
@@ -476,8 +446,7 @@ fn visit_literal<'a>(
     component: &'a CssComponentValue,
     context: &mut SpecifiedSerializationContext,
 ) -> SerializationResult<(crate::CssNumericTokenRef<'a>, &'static str)> {
-    context.charge_input(1)?;
-    context.charge_projection(1)?;
+    context.charge_nodes(1)?;
     let parts = match component.view() {
         CssComponentValueRef::Token(CssValueTokenRef::Number(number)) => (number, ""),
         CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }) => (
@@ -504,9 +473,7 @@ pub(crate) fn capture_literal(
         .remaining_bytes()
         .checked_sub(suffix.len())
         .ok_or_else(|| {
-            CssSpecifiedValueSerializationError::new(
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
-            )
+            CssSerializationError::new(CssSpecifiedValueSerializationErrorKind::ByteLimit)
         })?;
     let mut output = format_css_number(number.representation(), 0, coefficient_limit)?;
     context.append_temporary(&mut output, suffix)?;
@@ -521,6 +488,11 @@ enum SpecifiedNumericValue<C> {
 
 /// A signed CSS `<number>` retaining its exact token or symbolic math.
 /// Equality includes source provenance; semantic owners compare structure.
+///
+/// # Specified serialization
+///
+/// Emits ordinary and finite calculated numbers with at most six fractional places, nearest with
+/// ties away from zero.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssSpecifiedNumber {
     value: SpecifiedNumericValue<CssNumberCalculation>,
@@ -594,36 +566,6 @@ impl CssSpecifiedNumber {
         }
     }
 
-    /// Emits ordinary and finite calculated numbers with at most six fractional
-    /// places, nearest with ties away from zero. Authored values remain unchanged;
-    /// calculation arithmetic, precision, range and symbolic behavior retain
-    /// their existing contracts.
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Shares cumulative visits and budgets actual rounded text.
-    /// Failure leaves authored values unchanged; arithmetic and traversal costs are retained.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        let context = &mut writer.context;
-        let captured = self.capture_specified(context)?;
-        let output = &mut writer.css;
-        context.append(output, &captured)?;
-        Ok(())
-    }
-
     pub(crate) fn capture_specified(
         &self,
         context: &mut SpecifiedSerializationContext,
@@ -649,9 +591,27 @@ impl CssSpecifiedNumber {
         }
     }
 }
+impl crate::specified_rule_serialization::SpecifiedProvider for CssSpecifiedNumber {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        let context = &mut writer.context;
+        let captured = self.capture_specified(context)?;
+        let output = &mut writer.css;
+        context.append(output, &captured)?;
+        Ok(())
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(CssSpecifiedNumber);
 
 /// A signed CSS `<percentage>` retaining its exact token or symbolic math.
 /// Equality includes source provenance; semantic owners compare structure.
+///
+/// # Specified serialization
+///
+/// Emits ordinary and finite calculated numbers with at most six fractional places, nearest with
+/// ties away from zero.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssSpecifiedPercentage {
     value: SpecifiedNumericValue<CssPercentageCalculation>,
@@ -720,38 +680,6 @@ impl CssSpecifiedPercentage {
         }
     }
 
-    /// Serializes the specified percentage with default resource limits.
-    /// Emits ordinary and finite calculated numbers with at most six fractional
-    /// places, nearest with ties away from zero. Authored values remain unchanged;
-    /// calculation arithmetic, precision, range and symbolic behavior retain
-    /// their existing contracts.
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes atomically under the shared input, projection, and byte limits.
-    /// Shares cumulative visits and budgets actual rounded text.
-    /// Failure leaves authored values unchanged; arithmetic and traversal costs are retained.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        let context = &mut writer.context;
-        let captured = self.capture_specified(context)?;
-        let output = &mut writer.css;
-        context.append(output, &captured)?;
-        Ok(())
-    }
-
     pub(crate) fn capture_specified(
         &self,
         context: &mut SpecifiedSerializationContext,
@@ -777,9 +705,27 @@ impl CssSpecifiedPercentage {
         }
     }
 }
+impl crate::specified_rule_serialization::SpecifiedProvider for CssSpecifiedPercentage {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        let context = &mut writer.context;
+        let captured = self.capture_specified(context)?;
+        let output = &mut writer.css;
+        context.append(output, &captured)?;
+        Ok(())
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(CssSpecifiedPercentage);
 
 /// A nonnegative CSS `<number>` retaining its exact token or symbolic math.
 /// Equality includes source provenance; semantic owners can compare structure separately.
+///
+/// # Specified serialization
+///
+/// Emits ordinary and finite calculated numbers with at most six fractional places, nearest with
+/// ties away from zero.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssSpecifiedNonNegativeNumber {
     value: SpecifiedNumericValue<CssNumberCalculation>,
@@ -856,38 +802,6 @@ impl CssSpecifiedNonNegativeNumber {
         }
     }
 
-    /// Serializes the specified number with default resource limits.
-    /// Emits ordinary and finite calculated numbers with at most six fractional
-    /// places, nearest with ties away from zero. Authored values remain unchanged;
-    /// calculation arithmetic, precision, range and symbolic behavior retain
-    /// their existing contracts.
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes the specified number atomically under explicit resource limits.
-    /// Shares cumulative visits and budgets actual rounded text.
-    /// Failure leaves authored values unchanged; arithmetic and traversal costs are retained.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        let context = &mut writer.context;
-        let captured = self.capture_specified(context)?;
-        let output = &mut writer.css;
-        context.append(output, &captured)?;
-        Ok(())
-    }
-
     pub(crate) fn capture_specified(
         &self,
         context: &mut SpecifiedSerializationContext,
@@ -913,6 +827,19 @@ impl CssSpecifiedNonNegativeNumber {
         }
     }
 }
+impl crate::specified_rule_serialization::SpecifiedProvider for CssSpecifiedNonNegativeNumber {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        let context = &mut writer.context;
+        let captured = self.capture_specified(context)?;
+        let output = &mut writer.css;
+        context.append(output, &captured)?;
+        Ok(())
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(CssSpecifiedNonNegativeNumber);
 
 // Length domains additionally own the contextual Number-as-px interpretation.
 // It cannot be constructed by the ordinary unscoped public constructors.
@@ -966,7 +893,7 @@ fn capture_quirky_length(
         return Ok(String::new());
     }
     let coefficient_limit = context.remaining_bytes().checked_sub(2).ok_or_else(|| {
-        CssSpecifiedValueSerializationError::new(CssSpecifiedValueSerializationErrorKind::ByteLimit)
+        CssSerializationError::new(CssSpecifiedValueSerializationErrorKind::ByteLimit)
     })?;
     let mut output = format_css_number(number.representation(), 0, coefficient_limit)?;
     context.append_temporary(&mut output, "px")?;
@@ -974,6 +901,11 @@ fn capture_quirky_length(
 }
 
 /// A signed CSS `<length>` that retains exact ordinary spelling or deferred math.
+///
+/// # Specified serialization
+///
+/// Emits ordinary and finite calculated numbers with at most six fractional places, nearest with
+/// ties away from zero.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssSpecifiedLength {
     value: SpecifiedLengthValue<CssLengthCalculation>,
@@ -1126,38 +1058,6 @@ impl CssSpecifiedLength {
         }
     }
 
-    /// Serializes the canonical specified length with default resource limits.
-    /// Emits ordinary and finite calculated numbers with at most six fractional
-    /// places, nearest with ties away from zero. Authored values remain unchanged;
-    /// calculation arithmetic, precision, range and symbolic behavior retain
-    /// their existing contracts.
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes the canonical specified length under explicit resource limits.
-    /// Shares cumulative visits and budgets actual rounded text.
-    /// Failure leaves authored values unchanged; arithmetic and traversal costs are retained.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        let context = &mut writer.context;
-        let captured = self.capture_specified(context)?;
-        let output = &mut writer.css;
-        context.append(output, &captured)?;
-        Ok(())
-    }
-
     pub(crate) fn capture_specified(
         &self,
         context: &mut SpecifiedSerializationContext,
@@ -1174,8 +1074,26 @@ impl CssSpecifiedLength {
         }
     }
 }
+impl crate::specified_rule_serialization::SpecifiedProvider for CssSpecifiedLength {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        let context = &mut writer.context;
+        let captured = self.capture_specified(context)?;
+        let output = &mut writer.css;
+        context.append(output, &captured)?;
+        Ok(())
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(CssSpecifiedLength);
 
 /// A nonnegative CSS `<length>` retaining exact ordinary spelling or deferred math.
+///
+/// # Specified serialization
+///
+/// Emits ordinary and finite calculated numbers with at most six fractional places, nearest with
+/// ties away from zero.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssSpecifiedNonNegativeLength {
     value: SpecifiedLengthValue<CssLengthCalculation>,
@@ -1298,38 +1216,6 @@ impl CssSpecifiedNonNegativeLength {
         }
     }
 
-    /// Serializes the canonical specified length with default resource limits.
-    /// Emits ordinary and finite calculated numbers with at most six fractional
-    /// places, nearest with ties away from zero. Authored values remain unchanged;
-    /// calculation arithmetic, precision, range and symbolic behavior retain
-    /// their existing contracts.
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes the canonical specified length under explicit resource limits.
-    /// Shares cumulative visits and budgets actual rounded text.
-    /// Failure leaves authored values unchanged; arithmetic and traversal costs are retained.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        let context = &mut writer.context;
-        let captured = self.capture_specified(context)?;
-        let output = &mut writer.css;
-        context.append(output, &captured)?;
-        Ok(())
-    }
-
     pub(crate) fn capture_specified(
         &self,
         context: &mut SpecifiedSerializationContext,
@@ -1360,8 +1246,26 @@ impl CssSpecifiedNonNegativeLength {
         }
     }
 }
+impl crate::specified_rule_serialization::SpecifiedProvider for CssSpecifiedNonNegativeLength {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        let context = &mut writer.context;
+        let captured = self.capture_specified(context)?;
+        let output = &mut writer.css;
+        context.append(output, &captured)?;
+        Ok(())
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(CssSpecifiedNonNegativeLength);
 
 /// A signed CSS `<length-percentage>` retaining exact ordinary spelling or deferred math.
+///
+/// # Specified serialization
+///
+/// Emits ordinary and finite calculated numbers with at most six fractional places, nearest with
+/// ties away from zero.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssSpecifiedLengthPercentage {
     value: SpecifiedLengthValue<CssLengthPercentageCalculation>,
@@ -1399,7 +1303,8 @@ impl CssSpecifiedLengthPercentage {
         })
     }
 
-    /// Checks a literal length, percentage, or exact unitless zero without floating-point conversion.
+    /// Checks a literal length, percentage, or exact unitless zero without floating-point
+    /// conversion.
     pub fn try_from_component(component: CssComponentValue) -> ConstructionResult<Self> {
         checked_literal(&component, true, false, false)?;
         Ok(Self {
@@ -1474,38 +1379,6 @@ impl CssSpecifiedLengthPercentage {
         }
     }
 
-    /// Serializes the canonical specified value with default resource limits.
-    /// Emits ordinary and finite calculated numbers with at most six fractional
-    /// places, nearest with ties away from zero. Authored values remain unchanged;
-    /// calculation arithmetic, precision, range and symbolic behavior retain
-    /// their existing contracts.
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes the canonical specified value under explicit resource limits.
-    /// Shares cumulative visits and budgets actual rounded text.
-    /// Failure leaves authored values unchanged; arithmetic and traversal costs are retained.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        let context = &mut writer.context;
-        let captured = self.capture_specified(context)?;
-        let output = &mut writer.css;
-        context.append(output, &captured)?;
-        Ok(())
-    }
-
     pub(crate) fn capture_specified(
         &self,
         context: &mut SpecifiedSerializationContext,
@@ -1536,8 +1409,26 @@ impl CssSpecifiedLengthPercentage {
         }
     }
 }
+impl crate::specified_rule_serialization::SpecifiedProvider for CssSpecifiedLengthPercentage {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        let context = &mut writer.context;
+        let captured = self.capture_specified(context)?;
+        let output = &mut writer.css;
+        context.append(output, &captured)?;
+        Ok(())
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(CssSpecifiedLengthPercentage);
 
 /// A nonnegative ordinary `<length-percentage>` or deferred checked math.
+///
+/// # Specified serialization
+///
+/// Emits ordinary and finite calculated numbers with at most six fractional places, nearest with
+/// ties away from zero.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssSpecifiedNonNegativeLengthPercentage {
     value: SpecifiedLengthValue<CssLengthPercentageCalculation>,
@@ -1656,38 +1547,6 @@ impl CssSpecifiedNonNegativeLengthPercentage {
         }
     }
 
-    /// Serializes the canonical specified value with default resource limits.
-    /// Emits ordinary and finite calculated numbers with at most six fractional
-    /// places, nearest with ties away from zero. Authored values remain unchanged;
-    /// calculation arithmetic, precision, range and symbolic behavior retain
-    /// their existing contracts.
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes the canonical specified value under explicit resource limits.
-    /// Shares cumulative visits and budgets actual rounded text.
-    /// Failure leaves authored values unchanged; arithmetic and traversal costs are retained.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        let context = &mut writer.context;
-        let captured = self.capture_specified(context)?;
-        let output = &mut writer.css;
-        context.append(output, &captured)?;
-        Ok(())
-    }
-
     pub(crate) fn capture_specified(
         &self,
         context: &mut SpecifiedSerializationContext,
@@ -1718,8 +1577,30 @@ impl CssSpecifiedNonNegativeLengthPercentage {
         }
     }
 }
+impl crate::specified_rule_serialization::SpecifiedProvider
+    for CssSpecifiedNonNegativeLengthPercentage
+{
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        let context = &mut writer.context;
+        let captured = self.capture_specified(context)?;
+        let output = &mut writer.css;
+        context.append(output, &captured)?;
+        Ok(())
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(
+    CssSpecifiedNonNegativeLengthPercentage
+);
 
 /// A nonnegative CSS `<percentage>` retaining exact literal spelling or checked math.
+///
+/// # Specified serialization
+///
+/// Emits ordinary and finite calculated numbers with at most six fractional places, nearest with
+/// ties away from zero.
 #[derive(Clone, Debug)]
 pub struct CssSpecifiedNonNegativePercentage {
     value: SpecifiedNumericValue<CssPercentageCalculation>,
@@ -1802,38 +1683,6 @@ impl CssSpecifiedNonNegativePercentage {
         }
     }
 
-    /// Serializes the canonical specified percentage with default limits.
-    /// Emits ordinary and finite calculated numbers with at most six fractional
-    /// places, nearest with ties away from zero. Authored values remain unchanged;
-    /// calculation arithmetic, precision, range and symbolic behavior retain
-    /// their existing contracts.
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes atomically under shared input, projection, and byte budgets.
-    /// Shares cumulative visits and budgets actual rounded text.
-    /// Failure leaves authored values unchanged; arithmetic and traversal costs are retained.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        let context = &mut writer.context;
-        let captured = self.capture_specified(context)?;
-        let output = &mut writer.css;
-        context.append(output, &captured)?;
-        Ok(())
-    }
-
     pub(crate) fn capture_specified(
         &self,
         context: &mut SpecifiedSerializationContext,
@@ -1847,6 +1696,19 @@ impl CssSpecifiedNonNegativePercentage {
         }
     }
 }
+impl crate::specified_rule_serialization::SpecifiedProvider for CssSpecifiedNonNegativePercentage {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        let context = &mut writer.context;
+        let captured = self.capture_specified(context)?;
+        let output = &mut writer.css;
+        context.append(output, &captured)?;
+        Ok(())
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(CssSpecifiedNonNegativePercentage);
 
 // Enclosing syntax owners use the same cumulative projection and output budget.
 macro_rules! append_checked_numeric {

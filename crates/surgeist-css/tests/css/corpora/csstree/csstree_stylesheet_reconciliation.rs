@@ -32,7 +32,13 @@ fn declarations(actual: &CssDeclarationList) -> Value {
                         json!(["color", "red"])
                     }
                     Some(CssKnownPropertyValueRef::Width(value)) => {
-                        assert_eq!(value.value().serialize_specified().unwrap(), "10px");
+                        assert_eq!(
+                            value
+                                .value()
+                                .serialize_specified(Default::default())
+                                .unwrap(),
+                            "10px"
+                        );
                         json!(["width", "10px"])
                     }
                     other => panic!("unexpected retained declaration: {other:?}"),
@@ -75,7 +81,7 @@ fn rules(actual: &[CssRule]) -> Value {
         CssRule::Media(media) => {
             // Whitespace is immaterial for the two simple query forms in this
             // fixture; serialization still exposes feature names and values.
-            let condition = media.query().serialize().unwrap().as_css().replace(' ', "");
+            let condition = media.query().serialize_tokens(Default::default()).unwrap().as_css().replace(' ', "");
             json!({"kind": "media", "condition": condition, "rules": rules(media.rules())})
         }
         CssRule::Page(page) => {

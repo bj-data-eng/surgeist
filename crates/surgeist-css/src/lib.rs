@@ -169,25 +169,30 @@
 //! Calculations remain symbolic, and every child shares the enclosing depth and
 //! serialization limits. The numerical owner, [`surgeist_color`], supplies the
 //! independent concrete-sample helpers
-//! [`surgeist_color::naively_convert_cmyk_to_srgba`] and [`surgeist_color::naively_convert_srgba_to_cmyk`] implement
+//! [`surgeist_color::naively_convert_cmyk_to_srgba`] and
+//! [`surgeist_color::naively_convert_srgba_to_cmyk`] implement
 //! the uncalibrated Color 5 numerical fallback with [`surgeist_color::Finite`] coordinates.
 //! They preserve alpha bits and do not resolve authored colors or device profiles.
 //! Source resolution consults explicit [`CssDeviceColorFact`] values; those
 //! contextual choices remain CSS-owned.
-//! [`surgeist_color::convert_lab_to_lch`] and [`surgeist_color::convert_oklab_to_oklch`] provide pure numerical
+//! [`surgeist_color::convert_lab_to_lch`] and [`surgeist_color::convert_oklab_to_oklch`] provide
+//! pure numerical
 //! rectangular-to-polar coordinates from Color 4, with space-specific missing-hue
 //! thresholds. [`surgeist_color::PolarCoordinates`] holds finite lightness/chroma and
-//! normalizes optional hue; [`surgeist_color::convert_lch_to_lab`] and [`surgeist_color::convert_oklch_to_oklab`]
+//! normalizes optional hue; [`surgeist_color::convert_lch_to_lab`] and
+//! [`surgeist_color::convert_oklch_to_oklab`]
 //! invert those coordinates, setting both axes to zero when hue is missing.
 //! These helpers use concrete number units independently of authored colors.
 //! [`surgeist_color::HslCoordinates`] and [`surgeist_color::HwbCoordinates`] describe concrete
 //! HSL and HWB coordinates with optional degree hue and percentage reference
 //! units. [`surgeist_color::convert_hsl_to_srgb`], [`surgeist_color::convert_srgb_to_hsl`],
-//! [`surgeist_color::convert_hwb_to_srgb`] and [`surgeist_color::convert_srgb_to_hwb`] convert encoded sRGB
+//! [`surgeist_color::convert_hwb_to_srgb`] and [`surgeist_color::convert_srgb_to_hwb`] convert
+//! encoded sRGB
 //! samples without gamut clipping. Inverse conversion marks powerless hue
 //! missing while retaining the other coordinates; forward missing hue uses zero.
 //! [`surgeist_color::RectangularCoordinates`] holds finite RGB, XYZ, Lab and Oklab
-//! channels with explicit missingness. Its [`convert_to`](surgeist_color::RectangularCoordinates::convert_to)
+//! channels with explicit missingness. Its
+//! [`convert_to`](surgeist_color::RectangularCoordinates::convert_to)
 //! method converts among [`surgeist_color::RectangularSpace`] values without gamut
 //! clipping, preserving intermediate range with binary64 significand precision.
 //! Same-space conversion retains all bits; cross-space missing channels become
@@ -229,7 +234,8 @@
 //! # Property-specific authored positions
 //!
 //! Generic CSS positions retain both axes and distinguish free offsets from offsets authored
-//! against a named edge. [`CssSpecifiedLengthPercentage`] accepts only the symbolic length-percentage domain;
+//! against a named edge. [`CssSpecifiedLengthPercentage`] accepts only the symbolic
+//! length-percentage domain;
 //! it does not resolve percentages, calculations, writing modes, or positioning boxes.
 //!
 //! ```
@@ -291,7 +297,10 @@
 //!         if matches!(offset.literal_component().unwrap().view(), surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Dimension { number, unit }) if number.representation() == "10" && unit == "px")
 //! ));
 //!
-//! assert_eq!(background.positions().serialize_specified().unwrap(), "left 10px top");
+//! assert_eq!(
+//!     background.positions().serialize_specified(Default::default()).unwrap(),
+//!     "left 10px top",
+//! );
 //!
 //! let CssKnownPropertyValueRef::MaskPosition(mask) = report.syntax()[1]
 //!     .known().expect("known mask position")
@@ -383,7 +392,8 @@
 //! and a nonempty ordered [`CssShapeCommandList`]. Curves and smooth commands couple
 //! absolute or relative endpoints with correspondingly typed controls; arcs retain
 //! signed radii and optional sweep, size and strict angles. Specified output retains
-//! authored omissions and emits the required first comma. Reference-box/default resolution, clipping and
+//! authored omissions and emits the required first comma. Reference-box/default resolution,
+//! clipping and
 //! painting belong to downstream owners.
 //!
 //! [`CssShadow`] requires blur before spread, and [`CssBoxShadowList`] is nonempty.
@@ -394,7 +404,7 @@
 //! optional nonnegative `standard_deviation()`, with optional color on either side.
 //! Its third length is a standard deviation; box-shadow retains `blur_radius()`.
 //!
-//! `serialize_specified()` and `serialize_specified_with_limits()` on all four
+//! `serialize_specified()` and `serialize_specified()` on all four
 //! shadow models retain authored omissions and explicit zero/currentcolor. Box
 //! shadows emit color, offsets, blur, spread, then inset; lists use comma-space;
 //! drop shadows emit the full `drop-shadow()` function. Numeric and color children
@@ -453,11 +463,13 @@
 //! math. All scale percentage branches use `CssSpecifiedPercentage`.
 //! Ordinary cubic-bezier X coordinates are checked exactly against inclusive [0, 1];
 //! genuine calculations remain unresolved. The independent `scale` property retains
-//! one to three typed number/percentage factors, including symbolic calculations. Transform, filter, gradient, and
+//! one to three typed number/percentage factors, including symbolic calculations. Transform,
+//! filter, gradient, and
 //! image-orientation angles share exact `CssAngleLiteral` values and symbolic
 //! Angle-root calculations through the strict `CssAngleValue`. Transforms, filters,
 //! and gradient directions admit bare zero through `CssAngleOrZero`; image orientation
-//! and shape rotation require an angle dimension or calculation. Raw scalars retain provenance while
+//! and shape rotation require an angle dimension or calculation. Raw scalars retain provenance
+//! while
 //! semantic aggregates compare structure independently of scalar origins.
 //! Easing values distinguish keywords,
 //! `cubic-bezier()`, `steps()`, and authored `linear()` stops. Box shadows and filter
@@ -517,7 +529,10 @@
 //! let functions = CssFilterFunctionList::try_new(vec![
 //!     CssFilterFunction::HueRotate(CssFilterHueRotate::omitted()),
 //! ]).unwrap();
-//! assert_eq!(CssFilter::Functions(functions).serialize_specified().unwrap(), "hue-rotate()");
+//! assert_eq!(
+//!     CssFilter::Functions(functions).serialize_specified(Default::default()).unwrap(),
+//!     "hue-rotate()",
+//! );
 //! ```
 //!
 //! # Authored colors
@@ -564,7 +579,8 @@
 //! must be positive, while function math retains its graph and deferred range.
 //! Integer
 //! and automatic repetition are non-recursive. Under the
-//! [selected Grid 3 grammar](https://www.w3.org/TR/2026/WD-css-grid-3-20260121/#intrinsic-auto-repeat),
+//! [selected Grid 3
+//! grammar](https://www.w3.org/TR/2026/WD-css-grid-3-20260121/#intrinsic-auto-repeat),
 //! automatic bodies admit general track sizes, including intrinsic and flexible
 //! sizes, while surrounding tracks and integer repeats retain fixed sizes.
 //! `grid-auto-rows` and `grid-auto-columns` expose
@@ -575,7 +591,8 @@
 //! Track breadths retain exact ordinary `fr`, length, and percentage quantities
 //! in checked specified scalars. Flex-result math follows the pinned WebKit
 //! behavior where [Grid 2's `fr` rule](https://www.w3.org/TR/2025/CRD-css-grid-2-20250326/#fr-unit)
-//! and [Values 4 math typing](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-type-checking)
+//! and [Values 4 math
+//! typing](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-type-checking)
 //! conflict. A flex calculation remains symbolic and cannot enter an inflexible
 //! `minmax()` minimum or `fit-content()`. Grid track models provide checked
 //! constructors and bounded canonical `serialize_specified()` separately from
@@ -631,11 +648,11 @@
 //!     .known().unwrap().property_value().unwrap()
 //! else { panic!("item-flow value") };
 //! assert_eq!(
-//!     flow.value().serialize_specified().unwrap(),
+//!     flow.value().serialize_specified(Default::default()).unwrap(),
 //!     "row reverse dense balance -2px",
 //! );
 //! let order_only = CssItemWrap::Order(CssItemWrapOrder::Reverse);
-//! assert_eq!(order_only.serialize_specified().unwrap(), "reverse");
+//! assert_eq!(order_only.serialize_specified(Default::default()).unwrap(), "reverse");
 //! ```
 //!
 //! # Authored wrapping and whitespace
@@ -656,7 +673,7 @@
 //! let wrapping = CssTextWrap::try_new(
 //!     Some(CssTextWrapMode::NoWrap), Some(CssTextWrapStyle::Balance),
 //! ).unwrap();
-//! assert_eq!(wrapping.serialize_specified().unwrap(), "nowrap balance");
+//! assert_eq!(wrapping.serialize_specified(Default::default()).unwrap(), "nowrap balance");
 //! assert!(CssTextWrap::try_new(None, None).is_none());
 //! let report = parse_style_attribute("white-space: pre-wrap");
 //! assert!(report.is_clean());
@@ -664,7 +681,7 @@
 //!     .known().unwrap().property_value().unwrap()
 //! else { panic!("white-space") };
 //! assert_eq!(value.value().keyword(), Some(CssWhiteSpaceKeyword::PreWrap));
-//! assert_eq!(value.value().serialize_specified().unwrap(), "pre-wrap");
+//! assert_eq!(value.value().serialize_specified(Default::default()).unwrap(), "pre-wrap");
 //! ```
 //!
 //! # Authored text transformations, break preferences and tabs
@@ -698,7 +715,7 @@
 //! assert!(!set.full_size_kana());
 //! assert!(CssTextTransformSet::try_new(None, false, false).is_none());
 //! let transform = CssTextTransform::Transforms(set);
-//! assert_eq!(transform.serialize_specified().unwrap(), "uppercase full-width");
+//! assert_eq!(transform.serialize_specified(Default::default()).unwrap(), "uppercase full-width");
 //!
 //! let report = parse_style_attribute("text-transform:full-width uppercase;tab-size:0px");
 //! assert!(report.is_clean());
@@ -710,7 +727,7 @@
 //!     .known().unwrap().property_value().unwrap()
 //! else { panic!("tab-size") };
 //! assert!(matches!(tab.value(), CssTabSize::Length(_)));
-//! assert_eq!(tab.value().serialize_specified().unwrap(), "0px");
+//! assert_eq!(tab.value().serialize_specified(Default::default()).unwrap(), "0px");
 //! ```
 //!
 //! # Authored hyphenation, justification and spacing
@@ -742,11 +759,11 @@
 //!      text-spacing:replace punctuation trim-both",
 //! );
 //! assert!(report.is_clean());
-//! assert_eq!(report.syntax()[0].to_specified_css().unwrap(),
+//! assert_eq!(report.syntax()[0].serialize_specified(Default::default()).unwrap(),
 //!     "hyphenate-limit-chars: auto 2;");
-//! assert_eq!(report.syntax()[1].to_specified_css().unwrap(),
+//! assert_eq!(report.syntax()[1].serialize_specified(Default::default()).unwrap(),
 //!     "text-justify: distribute no-compress;");
-//! assert_eq!(report.syntax()[2].to_specified_css().unwrap(),
+//! assert_eq!(report.syntax()[2].serialize_specified(Default::default()).unwrap(),
 //!     "text-spacing: trim-both punctuation replace;");
 //! let CssExpansion::Contributions(CssContributions::Longhands(values)) =
 //!     expand_declaration(&report.syntax()[2]).unwrap()
@@ -766,14 +783,14 @@
 //! assert!(CssTextJustify::try_new(None, false).is_none());
 //! let justify = CssTextJustify::try_new(Some(CssTextJustifyBase::Distribute), true)
 //!     .unwrap();
-//! assert_eq!(justify.serialize_specified().unwrap(), "distribute no-compress");
+//! assert_eq!(justify.serialize_specified(Default::default()).unwrap(), "distribute no-compress");
 //! let flags = CssAutospaceValues::try_new(true, false, true, None).unwrap();
 //! assert_eq!(flags.mode(), None);
 //! assert_eq!(flags.effective_mode(), CssAutospaceMode::Insert);
 //! let fields = CssTextSpacingValues::try_new(
 //!     Some(CssSpacingTrim::TrimBoth), Some(CssAutospace::Spacing(flags)),
 //! ).unwrap();
-//! assert_eq!(CssTextSpacing::Components(fields).serialize_specified().unwrap(),
+//! assert_eq!(CssTextSpacing::Components(fields).serialize_specified(Default::default()).unwrap(),
 //!     "trim-both ideograph-alpha punctuation");
 //! ```
 //!
@@ -860,7 +877,7 @@
 //! let value = CssFontSynthesis::Values(
 //!     CssFontSynthesisValues::try_new(true, false, false, true).unwrap(),
 //! );
-//! assert_eq!(value.serialize_specified().unwrap(), "weight position");
+//! assert_eq!(value.serialize_specified(Default::default()).unwrap(), "weight position");
 //! ```
 //!
 //! # Authored font palettes
@@ -879,7 +896,7 @@
 //!     CssFontPaletteMixComponent::new(CssFontPalette::Light, None),
 //!     CssFontPaletteMixComponent::new(CssFontPalette::Dark, None),
 //! ]).unwrap()));
-//! assert_eq!(value.serialize_specified().unwrap(), "palette-mix(light, dark)");
+//! assert_eq!(value.serialize_specified(Default::default()).unwrap(), "palette-mix(light, dark)");
 //! ```
 //!
 //! # Ordinary canonical number text
@@ -971,7 +988,7 @@
 //! let literal = delay.delays().values()[0].literal().unwrap();
 //! assert_eq!(literal.numeric().representation(), "-250");
 //! assert_eq!(literal.unit(), CssTimeUnit::Milliseconds);
-//! assert_eq!(literal.serialize_specified().unwrap(), "-0.25s");
+//! assert_eq!(literal.serialize_specified(Default::default()).unwrap(), "-0.25s");
 //! ```
 //!
 //! This crate owns authored timing syntax only; timeline evaluation and
@@ -1432,7 +1449,7 @@
 //! else { panic!("expected border-image") };
 //! assert!(border.border_image().slice().expect("slice").fill());
 //! assert_eq!(
-//!     border.border_image().serialize_specified().unwrap(),
+//!     border.border_image().serialize_specified(Default::default()).unwrap(),
 //!     "url(\"frame.png\") 10 fill / 2 / 1 round",
 //! );
 //!
@@ -1619,12 +1636,12 @@
 //!     CssTextEmphasisPosition, CssTextEmphasisVertical, CssTextSide};
 //! let mark = CssTextEmphasisMark::try_new(Some(CssTextEmphasisFill::Filled),
 //!     Some(CssTextEmphasisShape::Dot)).unwrap();
-//! assert_eq!(mark.serialize_specified().unwrap(), "dot");
+//! assert_eq!(mark.serialize_specified(Default::default()).unwrap(), "dot");
 //! assert_eq!(mark.fill(), Some(CssTextEmphasisFill::Filled));
 //! let position = CssTextEmphasisPosition::new(CssTextEmphasisVertical::Over, None);
 //! assert_eq!(position.side(), None);
 //! assert_eq!(position.effective_side(), CssTextSide::Right);
-//! assert_eq!(position.serialize_specified().unwrap(), "over");
+//! assert_eq!(position.serialize_specified(Default::default()).unwrap(), "over");
 //! ```
 //!
 //! # Boundary
@@ -1735,7 +1752,7 @@ pub use supports::{CssSupportsAtRule, CssSupportsConstructionError};
 mod cssom_rule_serialization;
 mod edited_rule;
 pub use edited_rule::{
-    CssEditedGroupPreludeRef, CssEditedRuleView, CssRuleGraphInput, CssRuleGraphSerializationLimits,
+    CssEditedGroupPreludeRef, CssEditedRuleView, CssRuleGraphInput, CssRuleSerializationLimits,
 };
 mod keyframe_matching;
 mod keyframe_serialization;
@@ -1964,8 +1981,7 @@ pub use specified_numeric::{
     CssSpecifiedNonNegativePercentage, CssSpecifiedNumber, CssSpecifiedPercentage,
 };
 pub use specified_serialization::{
-    CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationErrorKind,
-    CssSpecifiedValueSerializationLimits,
+    CssSerializationError, CssSerializationLimits, CssSpecifiedValueSerializationErrorKind,
 };
 mod parser;
 mod parser_context;
@@ -2010,10 +2026,8 @@ mod validation;
 
 pub use color_profile::*;
 pub use common_serialization::{
-    serialize_css_comma_separated_list, serialize_css_comma_separated_list_with_limits,
-    serialize_css_identifier, serialize_css_identifier_with_limits, serialize_css_string,
-    serialize_css_string_with_limits, serialize_css_whitespace_separated_list,
-    serialize_css_whitespace_separated_list_with_limits,
+    serialize_css_comma_separated_list, serialize_css_identifier, serialize_css_string,
+    serialize_css_whitespace_separated_list,
 };
 pub use component_values::{
     CssBlockKind, CssComponentValue, CssComponentValueError, CssComponentValueErrorKind,
@@ -2028,8 +2042,8 @@ pub use conformance::*;
 pub use content_values::*;
 pub use counter_changes::{CssCounterChangeValue, CssCounterChangesValue, CssCounterProperty};
 pub use cssom_rule_serialization::{
-    CssRuleCssomFormat, CssRuleCssomKind, CssRuleCssomSerializationError,
-    CssRuleCssomSerializationErrorKind,
+    CssRuleCssomFormat, CssRuleCssomKind, CssRuleCssomSerializationErrorKind,
+    CssRuleSerializationError,
 };
 pub use cursor_values::*;
 pub use error::*;
@@ -2045,9 +2059,7 @@ pub use expansion::{
 pub use font_face_values::{
     CssFontMetricOverride, CssFontNamedInstance, CssFontNamedInstanceString,
 };
-pub use font_family_serialization::{
-    serialize_font_face_family_list, serialize_font_face_family_list_with_limits,
-};
+pub use font_family_serialization::serialize_font_face_family_list;
 pub use font_feature_values::*;
 pub use font_palette::*;
 pub use font_palette_values::*;
@@ -2096,9 +2108,6 @@ pub use source::*;
 pub use specified_declaration_block::{
     CssDeclarationBlockError, CssDeclarationBlockErrorKind, CssInvalidKeyframeSourceReason,
     CssSpecifiedDeclarationBlock, CssSpecifiedDeclarationEntry, CssSpecifiedDeclarationValueRef,
-};
-pub use specified_rule_serialization::{
-    CssSpecifiedRuleSerializationError, CssSpecifiedRuleSerializationErrorKind,
 };
 pub use stylesheet_input::*;
 pub use syntax::*;

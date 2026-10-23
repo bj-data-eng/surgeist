@@ -42,8 +42,12 @@ fn ordinary_grammar(name: &str, valid: &[&str], invalid: &[&str]) {
             panic!("{name}: {value} must have an ordinary typed value")
         };
         assert_eq!(ordinary.kind(), kind);
-        let checked =
-            Authored::try_from_components(kind, parse_component_values(value).unwrap()).unwrap();
+        let checked = Authored::try_from_components(
+            kind,
+            parse_component_values(value).unwrap(),
+            Default::default(),
+        )
+        .unwrap();
         assert!(matches!(checked, Authored::Ordinary(_)));
         assert_eq!(checked.kind(), kind);
         let record = CssFontFaceDescriptor::new(checked);
@@ -59,8 +63,12 @@ fn ordinary_grammar(name: &str, valid: &[&str], invalid: &[&str]) {
                 .iter()
                 .any(|diagnostic| { diagnostic.action() == CssRecoveryAction::RejectInput })
         );
-        let error = Authored::try_from_components(kind, parse_component_values(value).unwrap())
-            .unwrap_err();
+        let error = Authored::try_from_components(
+            kind,
+            parse_component_values(value).unwrap(),
+            Default::default(),
+        )
+        .unwrap_err();
         let CssFontFaceValueErrorKind::Grammar(detail) = error.kind() else {
             panic!("{name}: {value}: grammar failure: {error:?}")
         };
@@ -131,12 +139,12 @@ fn pending_recovery_and_provenance(name: &str, first: &str, last: &str, invalid:
     );
 
     let ordinary = pending
-        .reparse_after_substitution(parse_component_values(last).unwrap())
+        .reparse_after_substitution(parse_component_values(last).unwrap(), Default::default())
         .unwrap();
     assert_eq!(ordinary.kind(), kind);
     let invalid_components = parse_component_values(invalid).unwrap();
     let error = pending
-        .reparse_after_substitution(invalid_components)
+        .reparse_after_substitution(invalid_components, Default::default())
         .unwrap_err();
     assert!(matches!(
         error.kind(),
@@ -149,7 +157,10 @@ fn pending_recovery_and_provenance(name: &str, first: &str, last: &str, invalid:
     for residual in ["env(selection)", "var(--selection)"] {
         assert_eq!(
             pending
-                .reparse_after_substitution(parse_component_values(residual).unwrap())
+                .reparse_after_substitution(
+                    parse_component_values(residual).unwrap(),
+                    Default::default()
+                )
                 .unwrap_err()
                 .kind(),
             &CssFontFaceValueErrorKind::ResidualSubstitution
@@ -163,7 +174,8 @@ fn pending_recovery_and_provenance(name: &str, first: &str, last: &str, invalid:
         assert!(raw.is_clean(), "{name}: {text}: {raw:?}");
         assert!(matches!(raw.syntax(), Some(Authored::Pending(_))));
         let components = parse_component_values(text).unwrap();
-        let checked = Authored::try_from_components(kind, components.clone()).unwrap();
+        let checked =
+            Authored::try_from_components(kind, components.clone(), Default::default()).unwrap();
         let Authored::Pending(value) = checked else {
             panic!("checked env() defers the whole grammar")
         };
@@ -180,8 +192,12 @@ fn pending_recovery_and_provenance(name: &str, first: &str, last: &str, invalid:
         let raw = parse_font_face_descriptor_value(text, kind);
         assert!(raw.syntax().is_none(), "{name}: {text}: {raw:?}");
         expected.assert_first(&raw);
-        let error =
-            Authored::try_from_components(kind, parse_component_values(text).unwrap()).unwrap_err();
+        let error = Authored::try_from_components(
+            kind,
+            parse_component_values(text).unwrap(),
+            Default::default(),
+        )
+        .unwrap_err();
         let CssFontFaceValueErrorKind::Grammar(detail) = error.kind() else {
             panic!("{name}: {text}: grammar failure: {error:?}")
         };
@@ -189,7 +205,7 @@ fn pending_recovery_and_provenance(name: &str, first: &str, last: &str, invalid:
     }
     let components = parse_component_values("env(selection)").unwrap();
     let original = components.clone();
-    let error = Authored::try_from_components_with_limits(
+    let error = Authored::try_from_components(
         kind,
         components.clone(),
         CssComponentValueLimits::try_new(256, 0, usize::MAX).unwrap(),

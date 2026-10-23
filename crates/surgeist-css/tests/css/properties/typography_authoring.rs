@@ -172,7 +172,7 @@ fn parses_typography_and_text_length_families() {
     assert!(matches!(
         spacing.value(),
         CssTextSpacingAdjustment::LengthPercentage(value)
-            if value.serialize_specified().unwrap() == "0.1em"
+            if value.serialize_specified(Default::default()).unwrap() == "0.1em"
     ));
     let CssTextSpacingAdjustment::LengthPercentage(length) = spacing.value() else {
         panic!("exact letter spacing")

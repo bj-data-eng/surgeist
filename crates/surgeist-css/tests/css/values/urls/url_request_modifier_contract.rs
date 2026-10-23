@@ -115,7 +115,7 @@ fn all_published_arguments_are_admitted_in_both_quoted_url_forms() {
                     CssUrlFunction::Src
                 }
             );
-            assert_eq!(url.serialize_specified().unwrap(), text);
+            assert_eq!(url.serialize_specified(Default::default()).unwrap(), text);
             let checked = checked(CssKnownProperty::BackgroundImage, &text).unwrap();
             assert_eq!(background_url(&checked), &url);
         }
@@ -284,7 +284,8 @@ fn imports_reject_invalid_known_modifiers_atomically_and_keep_following_rules() 
         assert!(matches!(
             CssImportRule::try_from_components(
                 parse_component_values(&source[..source.find(".after").unwrap()]).unwrap(),
-                &CssNamespaceContext::default()
+                &CssNamespaceContext::default(),
+                Default::default(),
             ),
             Err(CssImportConstructionError::InvalidRuleGrammar { .. })
         ));
@@ -313,6 +314,7 @@ fn font_sources_reject_invalid_known_modifiers_at_the_source_item_boundary() {
         let error = CssAuthoredFontFaceDescriptorValue::try_from_components(
             CssFontFaceDescriptorKind::Src,
             parse_component_values(&value).unwrap(),
+            Default::default(),
         )
         .unwrap_err();
         assert!(
@@ -372,12 +374,15 @@ fn unknown_extensions_bare_identifiers_and_repetition_remain_ordered_authored_sy
     let text = r##"src("asset" crossorigin integrity referrerpolicy future() future([x] f(1,"s")) crossorigin(anonymous) crossorigin(use-credentials) integrity("one") integrity("two"))"##;
     let url = parsed_url(text);
     assert_eq!(url.modifiers().len(), 9);
-    assert_eq!(url.serialize_specified().unwrap(), text);
+    assert_eq!(url.serialize_specified(Default::default()).unwrap(), text);
     assert_eq!(
         one_function(&parsed_url(r##"url("asset" integrity-extra(hash))"##)).name(),
         "integrity-extra"
     );
-    assert_eq!(parsed_url(&url.serialize_specified().unwrap()), url);
+    assert_eq!(
+        parsed_url(&url.serialize_specified(Default::default()).unwrap()),
+        url
+    );
 }
 
 #[test]
@@ -429,8 +434,11 @@ fn modifier_arguments_keep_decoded_values_order_and_original_token_spans() {
 
 #[test]
 fn checked_known_arguments_preserve_programmatic_origins() {
-    let arguments =
-        CssComponentValues::try_new(vec![CssComponentValue::try_string("hash").unwrap()]).unwrap();
+    let arguments = CssComponentValues::try_new(
+        vec![CssComponentValue::try_string("hash").unwrap()],
+        Default::default(),
+    )
+    .unwrap();
     let modifier =
         CssUrlModifierFunction::try_new(CssIdent::try_new("integrity").unwrap(), arguments)
             .unwrap();
@@ -444,7 +452,7 @@ fn checked_known_arguments_preserve_programmatic_origins() {
         vec![CssUrlModifier::Function(modifier)],
     );
     assert_eq!(
-        url.serialize_specified().unwrap(),
+        url.serialize_specified(Default::default()).unwrap(),
         "src(\"#asset\" integrity(\"hash\"))"
     );
 }
@@ -502,7 +510,7 @@ fn known_argument_comments_and_whitespace_preserve_the_single_significant_token(
         let text = format!("url(\"asset\" {modifier})");
         let url = parsed_url(&text);
         assert!(checked(CssKnownProperty::BackgroundImage, &text).is_ok());
-        assert_eq!(url.serialize_specified().unwrap(), text);
+        assert_eq!(url.serialize_specified(Default::default()).unwrap(), text);
     }
     for modifier in [
         "crossorigin(anony/**/mous)",
@@ -527,37 +535,28 @@ fn known_modifiers_share_cumulative_specified_output_budgets_atomically() {
     let before = url.clone();
     // One URL, one target, and three pairs of modifier/function-argument nodes.
     assert_eq!(
-        url.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-            8,
-            8,
-            text.len()
-        ))
-        .unwrap(),
+        url.serialize_specified(CssSerializationLimits::new(8, 8, text.len()))
+            .unwrap(),
         text
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(7, 8, text.len()),
+            CssSerializationLimits::new(7, 8, text.len()),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(8, 7, text.len()),
+            CssSerializationLimits::new(8, 7, text.len()),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(8, 8, text.len() - 1),
+            CssSerializationLimits::new(8, 8, text.len() - 1),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
-        assert_eq!(
-            url.serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            kind
-        );
+        assert_eq!(url.serialize_specified(limits).unwrap_err().kind(), kind);
         assert_eq!(url, before);
     }
-    assert_eq!(url.serialize_specified().unwrap(), text);
+    assert_eq!(url.serialize_specified(Default::default()).unwrap(), text);
     assert_eq!(parsed_url(text), url);
 }
 
@@ -586,7 +585,7 @@ fn normalization_preserves_request_modifiers_and_has_atomic_cumulative_limits() 
     assert!(second.source().same_occurrence(&style.declarations()[1]));
     assert_eq!(
         background_url(first.source())
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "src(\"#asset\" integrity(\"hash\"))"
     );
@@ -665,23 +664,28 @@ fn checked_programmatic_url_components_reject_invalid_known_function_arguments()
         ("integrity", "hash"),
         ("referrerpolicy", "default"),
     ] {
-        let arguments =
-            CssComponentValues::try_new(vec![CssComponentValue::try_ident(argument).unwrap()])
-                .unwrap();
+        let arguments = CssComponentValues::try_new(
+            vec![CssComponentValue::try_ident(argument).unwrap()],
+            Default::default(),
+        )
+        .unwrap();
         let modifier = CssComponentValue::try_function(name, arguments).unwrap();
         let url = CssComponentValue::try_function(
             "src",
-            CssComponentValues::try_new(vec![
-                CssComponentValue::try_string("asset").unwrap(),
-                CssComponentValue::try_token(" ").unwrap(),
-                modifier,
-            ])
+            CssComponentValues::try_new(
+                vec![
+                    CssComponentValue::try_string("asset").unwrap(),
+                    CssComponentValue::try_token(" ").unwrap(),
+                    modifier,
+                ],
+                Default::default(),
+            )
             .unwrap(),
         )
         .unwrap();
         let error = parse_property_value(
             CssPropertyNameRef::Known(CssKnownProperty::BackgroundImage),
-            CssComponentValues::try_new(vec![url]).unwrap(),
+            CssComponentValues::try_new(vec![url], Default::default()).unwrap(),
             CssImportance::Normal,
         )
         .unwrap_err();
@@ -718,6 +722,7 @@ fn valid_import_font_and_profile_fronts_preserve_the_ordered_shared_url() {
         let checked_import = CssImportRule::try_from_components(
             parse_component_values(&source).unwrap(),
             &CssNamespaceContext::default(),
+            Default::default(),
         )
         .unwrap();
         let CssImportTarget::Url(target) = checked_import.target() else {
@@ -727,6 +732,7 @@ fn valid_import_font_and_profile_fronts_preserve_the_ordered_shared_url() {
         let font = CssAuthoredFontFaceDescriptorValue::try_from_components(
             CssFontFaceDescriptorKind::Src,
             parse_component_values(&format!("{text} format(\"woff2\") tech(variations)")).unwrap(),
+            Default::default(),
         )
         .unwrap();
         let CssAuthoredFontFaceDescriptorValue::Ordinary(CssFontFaceDescriptorValue::Src(sources)) =
@@ -742,6 +748,7 @@ fn valid_import_font_and_profile_fronts_preserve_the_ordered_shared_url() {
         let profile = CssColorProfileDescriptorValue::try_new(
             CssColorProfileDescriptorKind::Src,
             parse_component_values(&text).unwrap(),
+            Default::default(),
         )
         .unwrap();
         let CssColorProfileDescriptorValueRef::Src(url) = profile.view() else {
@@ -766,12 +773,14 @@ fn profile_pending_reentry_rejects_invalid_known_modifiers_and_allows_retry() {
     let pending = CssColorProfileDescriptorValue::try_new(
         CssColorProfileDescriptorKind::Src,
         parse_component_values("env(profile)").unwrap(),
+        Default::default(),
     )
     .unwrap();
     for modifier in INVALID_MODIFIERS {
         let error = pending
             .reparse_after_substitution(
                 parse_component_values(&format!("url(\"profile\" {modifier})")).unwrap(),
+                Default::default(),
             )
             .unwrap_err();
         assert!(
@@ -786,7 +795,8 @@ fn profile_pending_reentry_rejects_invalid_known_modifiers_and_allows_retry() {
     assert!(
         pending
             .reparse_after_substitution(
-                parse_component_values("url(\"profile\" integrity(\"hash\"))").unwrap()
+                parse_component_values("url(\"profile\" integrity(\"hash\"))").unwrap(),
+                Default::default()
             )
             .is_ok()
     );
@@ -811,7 +821,8 @@ fn counter_symbol_descriptor_consumers_use_shared_known_argument_validation() {
         assert!(
             CssCounterStyleDescriptorValue::try_from_components(
                 kind,
-                parse_component_values(&valid).unwrap()
+                parse_component_values(&valid).unwrap(),
+                Default::default(),
             )
             .is_ok()
         );
@@ -822,6 +833,7 @@ fn counter_symbol_descriptor_consumers_use_shared_known_argument_validation() {
         let error = CssCounterStyleDescriptorValue::try_from_components(
             kind,
             parse_component_values(&invalid).unwrap(),
+            Default::default(),
         )
         .unwrap_err();
         assert!(

@@ -11,7 +11,7 @@ use crate::css::support::property_admission::{
 use surgeist_css::CssKnownProperty as P;
 use surgeist_css::*;
 
-type Limits = CssSpecifiedValueSerializationLimits;
+type Limits = CssSerializationLimits;
 type Kind = CssSpecifiedValueSerializationErrorKind;
 
 const EXPLICIT: [P; 3] = [
@@ -80,19 +80,16 @@ fn context(
     assert_eq!(item.replacement_components(), replacement);
 }
 
-fn output(
-    value: CssLonghandValueRef<'_>,
-    limits: Limits,
-) -> Result<String, CssSpecifiedValueSerializationError> {
+fn output(value: CssLonghandValueRef<'_>, limits: Limits) -> Result<String, CssSerializationError> {
     match value {
         CssLonghandValueRef::GridTemplateRows(v) | CssLonghandValueRef::GridTemplateColumns(v) => {
-            v.serialize_specified_with_limits(limits)
+            v.serialize_specified(limits)
         }
-        CssLonghandValueRef::GridTemplateAreas(v) => v.serialize_specified_with_limits(limits),
+        CssLonghandValueRef::GridTemplateAreas(v) => v.serialize_specified(limits),
         CssLonghandValueRef::GridAutoRows(v) | CssLonghandValueRef::GridAutoColumns(v) => {
-            v.serialize_specified_with_limits(limits)
+            v.serialize_specified(limits)
         }
-        CssLonghandValueRef::GridAutoFlow(v) => v.serialize_specified_with_limits(limits),
+        CssLonghandValueRef::GridAutoFlow(v) => v.serialize_specified(limits),
         _ => panic!("Grid terminal"),
     }
 }
@@ -152,7 +149,11 @@ fn fixed_content() -> CssGridFixedRepeatContent {
 }
 fn calculation(text: &str) -> CssPositiveIntegerValue {
     CssPositiveIntegerValue::Calculation(
-        CssIntegerCalculation::try_from_components(parse_component_values(text).unwrap()).unwrap(),
+        CssIntegerCalculation::try_from_components(
+            parse_component_values(text).unwrap(),
+            Default::default(),
+        )
+        .unwrap(),
     )
 }
 fn row(cells: &[&str]) -> CssGridTemplateAreaRow {
@@ -224,7 +225,10 @@ fn axis_initials_and_shorthand_members_expose_complete_typed_contracts() {
     assert!(none.general_list().is_none());
     assert!(none.auto_list().is_none());
     assert!(none.subgrid_components().is_none());
-    assert_eq!(none.serialize_specified().unwrap(), "none");
+    assert_eq!(
+        none.serialize_specified(Default::default()).unwrap(),
+        "none"
+    );
     for property in [P::GridTemplateRows, P::GridTemplateColumns] {
         let CssPropertyKindRef::Longhand(metadata) = property.metadata().unwrap().kind() else {
             panic!("longhand");
@@ -271,7 +275,9 @@ fn axis_initials_and_shorthand_members_expose_complete_typed_contracts() {
     assert!(template.area_rows().is_none());
     assert!(template.area_columns().is_none());
     assert_eq!(
-        CssGrid::template(template).serialize_specified().unwrap(),
+        CssGrid::template(template)
+            .serialize_specified(Default::default())
+            .unwrap(),
         "none / none"
     );
 }
@@ -329,7 +335,7 @@ fn counted_repeat_constructors_normalize_bare_roots_without_evaluating_functions
                 .unwrap()
                 .clone(),
         ] {
-            assert_eq!(value.serialize_specified().unwrap(), text);
+            assert_eq!(value.serialize_specified(Default::default()).unwrap(), text);
             let CssPositiveIntegerValue::Calculation(retained) = value else {
                 panic!("function graph remains symbolic");
             };
@@ -350,7 +356,10 @@ fn counted_repeat_constructors_normalize_bare_roots_without_evaluating_functions
         ("1 2", CssNumericConstructionErrorKind::MultipleValues),
     ] {
         assert_numeric_rejected(
-            CssIntegerCalculation::try_from_components(parse_component_values(text).unwrap()),
+            CssIntegerCalculation::try_from_components(
+                parse_component_values(text).unwrap(),
+                Default::default(),
+            ),
             kind,
         );
     }
@@ -418,7 +427,7 @@ fn every_repeat_role_retains_parsed_function_children_and_exact_count_origins() 
                         }
                     };
                     original_math(count, source.value_components());
-                    assert_eq!(value.serialize_specified().unwrap(), css);
+                    assert_eq!(value.serialize_specified(Default::default()).unwrap(), css);
                     let projected = complete(&source);
                     assert_eq!(projected_axis(&projected, 0), value);
                     let projected_count = match mode {
@@ -501,7 +510,12 @@ fn subgrid_views_keep_long_ordered_lists_empty_groups_and_one_automatic_repeat()
     spelling.insert(8, r"repeat(auto-fill, [] [a\ b])".to_owned());
     let expected = format!("subgrid {}", spelling.join(" "));
     let programmatic = CssGridTrackList::try_subgrid(components.clone()).unwrap();
-    assert_eq!(programmatic.serialize_specified().unwrap(), expected);
+    assert_eq!(
+        programmatic
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
     for property in [P::GridTemplateRows, P::GridTemplateColumns] {
         for source in fronts(property, &expected) {
             let value = axis(&source);
@@ -574,7 +588,7 @@ fn area_constructors_validate_the_matrix_and_preserve_authored_optional_fields()
     // Two cell columns with one authored explicit track are valid: matrix
     // validity does not impose a used track-count equality.
     assert_eq!(
-        value.serialize_specified().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         r#"[] "a a" [end end] [start] "b b" auto / 1px"#
     );
     assert_eq!(
@@ -670,7 +684,7 @@ fn area_branch_views_and_effective_boundaries_keep_defaults_order_and_numeric_ch
             // Values 4 specified math sorts percentages before dimensions;
             // the graph above still retains the authored operand order.
             assert_eq!(
-                value.serialize_specified().unwrap(),
+                value.serialize_specified(Default::default()).unwrap(),
                 r#"[top] "a a" [end end] [start] "b b" calc(2% + 1px) [bottom] / 10px"#
             );
         }
@@ -683,7 +697,9 @@ fn area_branch_views_and_effective_boundaries_keep_defaults_order_and_numeric_ch
                 assert!(value.area_rows().unwrap()[1].before().is_none());
                 let values = complete(&source);
                 assert_eq!(
-                    projected_axis(&values, 0).serialize_specified().unwrap(),
+                    projected_axis(&values, 0)
+                        .serialize_specified(Default::default())
+                        .unwrap(),
                     expected
                 );
                 assert!(projected_axis(&values, 1).is_none());
@@ -768,7 +784,7 @@ fn every_grid_alternative_projects_source_defined_axes_and_implicit_defaults() {
     assert_eq!(value.auto_tracks(), Some(&implicit));
     assert_eq!(value.explicit_tracks(), Some(&explicit));
     assert_eq!(
-        value.serialize_specified().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         "subgrid [] / auto-flow dense 3px auto"
     );
 }
@@ -819,7 +835,7 @@ fn recovered_numeric_children_remain_recovered_through_projection_and_typed_comp
         original
     );
     assert_eq!(
-        source.to_specified_css().unwrap(),
+        source.serialize_specified(Default::default()).unwrap(),
         r#"grid: "a" "b" calc(2px);"#
     );
     assert_checked_closure_rejected(parse_property_value_for_grammar(
@@ -854,7 +870,7 @@ fn recovered_numeric_children_remain_recovered_through_projection_and_typed_comp
             .unwrap(),
     );
     assert_eq!(
-        repeated.serialize_specified().unwrap(),
+        repeated.serialize_specified(Default::default()).unwrap(),
         "repeat(calc(2), auto)"
     );
     let name = CssGridNameRepeat::try_new(count.clone(), vec![names(&[])]).unwrap();
@@ -864,7 +880,10 @@ fn recovered_numeric_children_remain_recovered_through_projection_and_typed_comp
     let CssPositiveIntegerValue::Calculation(count) = count else {
         panic!("calculation");
     };
-    assert!(CssIntegerCalculation::try_from_components(count.components().clone()).is_err());
+    assert!(
+        CssIntegerCalculation::try_from_components(count.components().clone(), Default::default())
+            .is_err()
+    );
 }
 
 #[test]
@@ -990,17 +1009,13 @@ fn new_branch_provider_limits_are_exact_atomic_and_cumulative_at_declaration_bou
             let before = source.clone();
             let serialize = |limits| match source.known().unwrap().property_value().unwrap() {
                 CssKnownPropertyValueRef::GridTemplateRows(v) => {
-                    v.value().serialize_specified_with_limits(limits)
+                    v.value().serialize_specified(limits)
                 }
                 CssKnownPropertyValueRef::GridTemplateColumns(v) => {
-                    v.value().serialize_specified_with_limits(limits)
+                    v.value().serialize_specified(limits)
                 }
-                CssKnownPropertyValueRef::GridTemplate(v) => {
-                    v.value().serialize_specified_with_limits(limits)
-                }
-                CssKnownPropertyValueRef::Grid(v) => {
-                    v.value().serialize_specified_with_limits(limits)
-                }
+                CssKnownPropertyValueRef::GridTemplate(v) => v.value().serialize_specified(limits),
+                CssKnownPropertyValueRef::Grid(v) => v.value().serialize_specified(limits),
                 _ => unreachable!(),
             };
             assert_eq!(
@@ -1010,11 +1025,7 @@ fn new_branch_provider_limits_are_exact_atomic_and_cumulative_at_declaration_bou
             let declaration = format!("{}: {text} !important;", property.canonical_name());
             assert_eq!(
                 source
-                    .to_specified_css_with_limits(Limits::new(
-                        nodes + 2,
-                        nodes + 2,
-                        declaration.len()
-                    ))
+                    .serialize_specified(Limits::new(nodes + 2, nodes + 2, declaration.len()))
                     .unwrap(),
                 declaration
             );
@@ -1039,7 +1050,7 @@ fn new_branch_provider_limits_are_exact_atomic_and_cumulative_at_declaration_bou
                     assert_eq!(serialize(limits).unwrap_err().kind(), kind);
                     assert_eq!(
                         source
-                            .to_specified_css_with_limits(declaration_limits)
+                            .serialize_specified(declaration_limits)
                             .unwrap_err()
                             .kind(),
                         kind
@@ -1047,7 +1058,10 @@ fn new_branch_provider_limits_are_exact_atomic_and_cumulative_at_declaration_bou
                     assert_eq!(source, before);
                 }
             }
-            assert_eq!(source.to_specified_css().unwrap(), declaration);
+            assert_eq!(
+                source.serialize_specified(Default::default()).unwrap(),
+                declaration
+            );
         }
     }
 }
@@ -1061,18 +1075,15 @@ fn area_and_subgrid_siblings_share_sheet_byte_budget_and_normalization_terminals
     let expected = ".a { grid: \"a\" !important; grid-template: subgrid [] / none; grid-template-columns: none; grid: var(--g); }\n.b { grid: \"b\" / 1px; }";
     let exact = Limits::new(usize::MAX, usize::MAX, expected.len());
     assert_eq!(
-        report.syntax().to_specified_css_with_limits(exact).unwrap(),
+        report.syntax().serialize_specified(exact).unwrap(),
         expected
     );
     for _ in 0..2 {
         let error = report
             .syntax()
-            .to_specified_css_with_limits(Limits::new(usize::MAX, usize::MAX, expected.len() - 1))
+            .serialize_specified(Limits::new(usize::MAX, usize::MAX, expected.len() - 1))
             .unwrap_err();
-        assert_eq!(
-            error.kind(),
-            CssSpecifiedRuleSerializationErrorKind::Resource(Kind::ByteLimit)
-        );
+        assert_eq!(error.kind(), Kind::ByteLimit);
         assert_eq!(error.rule_index(), Some(1));
     }
     // 6+3+1+one whole pending+6 = 17 terminal work units, five declarations.
@@ -1141,7 +1152,7 @@ fn area_and_subgrid_siblings_share_sheet_byte_budget_and_normalization_terminals
     assert_eq!(report, before);
     assert!(normalize_sheet_with_limits(report.syntax(), limits).is_ok());
     assert_eq!(
-        report.syntax().to_specified_css_with_limits(exact).unwrap(),
+        report.syntax().serialize_specified(exact).unwrap(),
         expected
     );
 }

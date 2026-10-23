@@ -7,7 +7,8 @@ use crate::{
 
 /// A borrowed ordinary color alpha at the intrinsic parsed-value phase.
 ///
-/// Direct scalars follow [Color 4 §4.2](https://www.w3.org/TR/2026/CRD-css-color-4-20260908/#alpha-syntax):
+/// Direct scalars follow [Color 4
+/// §4.2](https://www.w3.org/TR/2026/CRD-css-color-4-20260908/#alpha-syntax):
 /// percentages scale by 1/100 and out-of-range values clamp to [0, 1]. Omission
 /// defaults to opaque while remaining distinguishable from explicit unity.
 /// Missing alpha remains distinct from zero. Calculations retain their authored

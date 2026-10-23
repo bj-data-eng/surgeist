@@ -28,12 +28,17 @@ fn whole_rotation_and_distance_can_swap_without_splitting_rotation() {
                 report.syntax()[0].known().unwrap().property(),
                 known_property("offset")
             );
-            assert_eq!(report.syntax()[0].to_specified_css().unwrap(), expected);
+            assert_eq!(
+                report.syntax()[0]
+                    .serialize_specified(Default::default())
+                    .unwrap(),
+                expected
+            );
             for grammar in [false, true] {
                 assert_eq!(
                     checked(&value, grammar)
                         .unwrap()
-                        .to_specified_css()
+                        .serialize_specified(Default::default())
                         .unwrap(),
                     expected
                 );

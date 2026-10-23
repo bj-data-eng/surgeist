@@ -70,7 +70,7 @@ pub fn validated_known_declaration(
 /// `components`, which must retain one.
 #[track_caller]
 pub fn implicit_closure_origin(components: &CssComponentValues) -> CssValueOrigin {
-    let serialized = components.serialize().unwrap();
+    let serialized = components.serialize_tokens(Default::default()).unwrap();
     (0..serialized.as_css().len())
         .find_map(|offset| match serialized.origin_at(offset) {
             Some(CssSerializedOrigin::Token(origin @ CssValueOrigin::ImplicitClosure { .. })) => {

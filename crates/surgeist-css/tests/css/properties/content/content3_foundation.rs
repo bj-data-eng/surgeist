@@ -90,7 +90,10 @@ fn normal_none_strings_counters_and_attr_pending_are_admitted() {
     let attr = parsed("\"caption\" attr(data-label)");
     assert!(attr.known().unwrap().substitution_dependent().is_some());
     assert_eq!(
-        attr.value_components().serialize().unwrap().as_css(),
+        attr.value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         "\"caption\" attr(data-label)"
     );
 }
@@ -114,7 +117,11 @@ fn generated_content_replacement_lists_and_alternatives_are_admitted() {
         assert_eq!(known.property(), CssKnownProperty::Content);
         assert!(known.property_value().is_some(), "{value}");
         assert_eq!(
-            source.value_components().serialize().unwrap().as_css(),
+            source
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             value,
             "retained authored form: {value}"
         );

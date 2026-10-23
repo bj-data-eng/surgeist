@@ -113,7 +113,10 @@ fn rule_name_origin_excludes_trivia_and_preserves_escaped_decoded_identity() {
         source.find(r"\31 Name").unwrap()
     );
     assert_coordinates(origin, source);
-    assert_eq!(rule.name_specified_css().unwrap(), r"\31 Name");
+    assert_eq!(
+        rule.name_specified_css(Default::default()).unwrap(),
+        r"\31 Name"
+    );
     assert_eq!(text(rule.parsed_name().unwrap()), r"\31 Name");
 }
 
@@ -273,7 +276,11 @@ fn complete_nested_image_components_and_closings_keep_the_original_snapshot() {
     };
     assert_eq!(text(closing), ")");
     let retained = rule.clone();
-    assert!(rule.to_specified_css().unwrap().contains("calc(5% + 1px)"));
+    assert!(
+        rule.serialize_specified(Default::default())
+            .unwrap()
+            .contains("calc(5% + 1px)")
+    );
     assert_eq!(rule, retained);
     assert_original_components(components, rule.parsed_name().unwrap().source());
 }
@@ -301,7 +308,7 @@ fn suppressed_valid_duplicates_retain_origins_while_invalid_occurrences_are_drop
     assert_descriptor(prefixes[0], rule, source, "prefix", "'first'");
     assert_descriptor(prefixes[1], rule, source, "prefix", r"\4c ast");
     assert_eq!(
-        rule.descriptor_specified_css(CssCounterStyleDescriptorKind::Prefix)
+        rule.descriptor_specified_css(CssCounterStyleDescriptorKind::Prefix, Default::default())
             .unwrap(),
         "Last"
     );
@@ -351,7 +358,7 @@ fn eof_image_closure_is_implicit_provenance_and_never_an_authored_delimiter() {
         "linear-gradient(red, blue"
     );
     assert_eq!(
-        rule.descriptor_specified_css(CssCounterStyleDescriptorKind::Symbols)
+        rule.descriptor_specified_css(CssCounterStyleDescriptorKind::Symbols, Default::default())
             .unwrap(),
         "linear-gradient(red, blue)"
     );
@@ -434,7 +441,7 @@ fn direct_image_symbol_construction_excludes_none_and_keeps_url_identity() {
     assert_eq!(url.as_str(), "#symbol");
     assert!(url.is_local_url());
     assert_eq!(
-        image.serialize_specified().unwrap(),
+        image.serialize_specified(Default::default()).unwrap(),
         "src(\"#symbol\" Hint)"
     );
 }

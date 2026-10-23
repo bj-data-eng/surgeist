@@ -27,10 +27,22 @@ fn supported_import_construction_and_child_lifetimes_fit_an_ordinary_caller_stac
                     let import = construct(&source);
                     let copy = import.clone();
                     assert_eq!(import, copy);
-                    assert_eq!(import.serialize().unwrap().as_css(), source);
-                    assert_eq!(copy.serialize().unwrap().as_css(), source);
+                    assert_eq!(
+                        import
+                            .serialize_tokens(Default::default())
+                            .unwrap()
+                            .as_css(),
+                        source
+                    );
+                    assert_eq!(
+                        copy.serialize_tokens(Default::default()).unwrap().as_css(),
+                        source
+                    );
                     drop(import);
-                    assert_eq!(copy.serialize().unwrap().as_css(), source);
+                    assert_eq!(
+                        copy.serialize_tokens(Default::default()).unwrap().as_css(),
+                        source
+                    );
                     drop(copy);
                 }
                 let expression = format!("{}1{}", "calc(".repeat(255), ")".repeat(255));
@@ -42,10 +54,16 @@ fn supported_import_construction_and_child_lifetimes_fit_an_ordinary_caller_stac
                 let copy = supports.clone();
                 assert_eq!(copy, supports);
                 assert_eq!(
-                    supports.serialize().unwrap().as_css(),
+                    supports
+                        .serialize_tokens(Default::default())
+                        .unwrap()
+                        .as_css(),
                     format!("(opacity:{expression})")
                 );
-                assert_eq!(media.serialize().unwrap().as_css(), "print");
+                assert_eq!(
+                    media.serialize_tokens(Default::default()).unwrap().as_css(),
+                    "print"
+                );
                 drop(copy);
                 drop(supports);
                 drop(media);

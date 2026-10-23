@@ -26,8 +26,8 @@ use super::{
     corpus_namespace_context, load_neutral_csstree_inventory, resolve_case_registry,
 };
 use surgeist_css::{
-    CssImportance, CssMediaSerializationError, CssPropertyNameRef, CssStyleSelector,
-    parse_declaration, parse_font_face_descriptor_value, parse_media_query, parse_media_query_list,
+    CssImportance, CssPropertyNameRef, CssStyleSelector, parse_declaration,
+    parse_font_face_descriptor_value, parse_media_query, parse_media_query_list,
     parse_property_value_text, parse_rule, parse_selector, parse_selector_list, parse_sheet,
     parse_style_attribute, parse_style_block,
 };
@@ -310,13 +310,13 @@ fn project(case: &ValidatedCase) -> Result<Projection, String> {
         EntryPoint::Sheet => Some(
             parse_sheet(input)
                 .syntax()
-                .to_specified_css()
+                .serialize_specified(Default::default())
                 .map_err(|error| format!("sheet: {error:?}"))?,
         ),
         EntryPoint::Rule => parse_rule(input, &namespaces)
             .syntax()
             .as_ref()
-            .map(|rule| rule.to_specified_css())
+            .map(|rule| rule.serialize_specified(Default::default()))
             .transpose()
             .map_err(|error| format!("rule: {error:?}"))?,
         EntryPoint::StyleBlock => match parse_style_block(input, &namespaces).syntax() {
@@ -326,13 +326,13 @@ fn project(case: &ValidatedCase) -> Result<Projection, String> {
                 text.push_str(
                     &block
                         .declarations()
-                        .to_specified_css()
+                        .serialize_specified(Default::default())
                         .map_err(|error| format!("block declarations: {error:?}"))?,
                 );
                 for rule in block.rules() {
                     text.push_str(
                         &rule
-                            .to_specified_css()
+                            .serialize_specified(Default::default())
                             .map_err(|error| format!("block rule: {error:?}"))?,
                     );
                 }
@@ -343,13 +343,13 @@ fn project(case: &ValidatedCase) -> Result<Projection, String> {
         EntryPoint::StyleAttribute => Some(
             parse_style_attribute(input)
                 .syntax()
-                .to_specified_css()
+                .serialize_specified(Default::default())
                 .map_err(|error| format!("declaration list: {error:?}"))?,
         ),
         EntryPoint::Declaration => parse_declaration(input)
             .syntax()
             .as_ref()
-            .map(|declaration| declaration.to_specified_css())
+            .map(|declaration| declaration.serialize_specified(Default::default()))
             .transpose()
             .map_err(|error| format!("declaration: {error:?}"))?,
         EntryPoint::PropertyValueText => {
@@ -367,7 +367,7 @@ fn project(case: &ValidatedCase) -> Result<Projection, String> {
             )
             .syntax()
             .as_ref()
-            .map(|declaration| declaration.to_specified_css())
+            .map(|declaration| declaration.serialize_specified(Default::default()))
             .transpose()
             .map_err(|error| format!("property value: {error:?}"))?
         }
@@ -380,14 +380,14 @@ fn project(case: &ValidatedCase) -> Result<Projection, String> {
             parse_font_face_descriptor_value(input, kind.css_kind())
                 .syntax()
                 .as_ref()
-                .map(|value| value.serialize_specified())
+                .map(|value| value.serialize_specified(Default::default()))
                 .transpose()
                 .map_err(|error| format!("descriptor value: {error:?}"))?
         }
         EntryPoint::Selector => parse_selector(input, &namespaces)
             .syntax()
             .as_ref()
-            .map(|selector| selector.to_specified_css())
+            .map(|selector| selector.serialize_specified(Default::default()))
             .transpose()
             .map_err(|error| format!("selector: {error:?}"))?,
         EntryPoint::SelectorList => match parse_selector_list(input, &namespaces).syntax() {
@@ -400,7 +400,7 @@ fn project(case: &ValidatedCase) -> Result<Projection, String> {
                     };
                     members.push(
                         selector
-                            .to_specified_css()
+                            .serialize_specified(Default::default())
                             .map_err(|error| format!("selector list: {error:?}"))?,
                     );
                 }
@@ -412,20 +412,19 @@ fn project(case: &ValidatedCase) -> Result<Projection, String> {
             let query = report.syntax();
             // Authored serialization refuses a query recovered to `never`;
             // CSSOM text projects it to `not all` (Media Queries 4 §3.2).
-            let serialized =
-                match query.serialize() {
-                    Ok(serialized) => serialized,
-                    Err(CssMediaSerializationError::RecoveredNever { .. }) => query
-                        .serialize_cssom()
-                        .map_err(|error| format!("media query: {error:?}"))?,
-                    Err(error) => return Err(format!("media query: {error:?}")),
-                };
+            let serialized = match query.serialize_tokens(Default::default()) {
+                Ok(serialized) => serialized,
+                Err(ref error) if crate::css::support::is_recovered_media_failure(error) => query
+                    .serialize_cssom(Default::default())
+                    .map_err(|error| format!("media query: {error:?}"))?,
+                Err(error) => return Err(format!("media query: {error:?}")),
+            };
             Some(serialized.as_css().to_owned())
         }
         EntryPoint::MediaQueryList => Some(
             parse_media_query_list(input)
                 .syntax()
-                .serialize()
+                .serialize_tokens(Default::default())
                 .map_err(|error| format!("media query list: {error:?}"))?
                 .as_css()
                 .to_owned(),

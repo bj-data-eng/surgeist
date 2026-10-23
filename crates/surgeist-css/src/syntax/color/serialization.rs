@@ -4,8 +4,7 @@ use super::*;
 use crate::CssAngleUnit;
 use crate::color::{channels, keywords::ColorFunction};
 use crate::{
-    CssSpecifiedValueSerializationError as Error, CssSpecifiedValueSerializationLimits as Limits,
-    specified_serialization::SpecifiedSerializationContext,
+    CssSerializationError as Error, specified_serialization::SpecifiedSerializationContext,
 };
 use surgeist_color::{ColorSpace, HueInterpolation, PredefinedColorSpace};
 
@@ -23,13 +22,6 @@ enum Work<'a> {
     Color(&'a CssColor, Mode),
     Text(&'static str),
     Owned(String),
-}
-
-pub(super) fn serialize(value: &CssColor, limits: Limits) -> Result<String> {
-    let mut context = SpecifiedSerializationContext::new(limits);
-    let mut output = String::new();
-    value.append_specified(&mut context, &mut output)?;
-    Ok(output)
 }
 
 /// The specified format family's intrinsic gradient default. This is not a
@@ -110,8 +102,7 @@ impl CssColor {
                 Work::Text(text) => context.append(output, text)?,
                 Work::Owned(text) => context.append(output, &text)?,
                 Work::Color(color, mode) => {
-                    context.charge_input(1)?;
-                    context.charge_projection(1)?;
+                    context.charge_nodes(1)?;
                     schedule_authored(color, mode, context, &mut work)?;
                 }
             }
@@ -307,8 +298,7 @@ fn schedule_mix<'a>(
         }
     }
     if let Some(interpolation) = value.interpolation() {
-        context.charge_input(1)?;
-        context.charge_projection(1)?;
+        context.charge_nodes(1)?;
         if !is_default_mix(interpolation) {
             work.push(Work::Text(", "));
             work.push(Work::Owned(serialize_interpolation(
@@ -789,8 +779,7 @@ fn component_projection_with_text(
     use CssColorComponent as C;
     match value {
         C::None => {
-            context.charge_input(1)?;
-            context.charge_projection(1)?;
+            context.charge_nodes(1)?;
             Ok(ProjectedScalar {
                 scalar_value: None,
                 text: output_text("none", context),
@@ -934,8 +923,7 @@ fn serialize_alpha(
         return Ok(Some(suffix_text(projected.text, suffix, context)?));
     }
     if matches!(value, CssColorComponent::None) {
-        context.charge_input(1)?;
-        context.charge_projection(1)?;
+        context.charge_nodes(1)?;
         return Ok(Some(output_text("none", context)));
     }
     match value {
@@ -1753,8 +1741,7 @@ fn hue_projection(
 
     let (text, scalar_value, exact, contextual, missing, calculation) = match value {
         H::None => {
-            context.charge_input(1)?;
-            context.charge_projection(1)?;
+            context.charge_nodes(1)?;
             (output_text("none", context), None, None, false, true, false)
         }
         H::Number(value) if literal_hue_overflows(value.numeric(), None, context)? => {
@@ -2135,13 +2122,11 @@ fn serialize_relative_expression(
     use CssRelativeColorExpressionValue as V;
     match value.value() {
         V::None => {
-            context.charge_input(1)?;
-            context.charge_projection(1)?;
+            context.charge_nodes(1)?;
             Ok(output_text("none", context))
         }
         V::Channel(channel) => {
-            context.charge_input(1)?;
-            context.charge_projection(1)?;
+            context.charge_nodes(1)?;
             Ok(output_text(relative_channel(*channel), context))
         }
         V::Number(value) => {
@@ -2233,8 +2218,7 @@ fn serialize_profile_expression(
             }
         }
         crate::CssProfileColorExpressionRef::Reference(value) => {
-            context.charge_input(1)?;
-            context.charge_projection(1)?;
+            context.charge_nodes(1)?;
             escaped_identifier(value.as_str(), context)
         }
         crate::CssProfileColorExpressionRef::Calculation(value) => {
@@ -2466,7 +2450,8 @@ fn literal_weight(
 
 #[cfg(test)]
 mod suppressed_color_output_tests {
-    use super::*;
+    use crate::CssSerializationLimits as Limits;
+
     use crate::specified_rule_serialization::SpecifiedRuleWriter;
     use crate::{CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef};
 
@@ -2534,6 +2519,7 @@ mod suppressed_color_output_tests {
 #[cfg(test)]
 mod suppressed_color_semantics_tests {
     use super::*;
+    use crate::CssSerializationLimits as Limits;
     use crate::CssSpecifiedValueSerializationErrorKind as K;
     use crate::specified_rule_serialization::SpecifiedRuleWriter;
     use crate::{CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef};
@@ -2793,6 +2779,7 @@ mod suppressed_color_semantics_tests {
 #[cfg(test)]
 mod declared_literal_tests {
     use super::*;
+    use crate::CssSerializationLimits as Limits;
     use crate::{CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef};
 
     fn checked_color(source: &str) -> CssColor {
@@ -2814,16 +2801,16 @@ mod declared_literal_tests {
         let value = checked_color(source);
         let original = value.clone();
         assert_eq!(
-            serialize(&value, Limits::new(usize::MAX, usize::MAX, expected.len())).unwrap(),
+            value
+                .serialize_specified(Limits::new(usize::MAX, usize::MAX, expected.len()))
+                .unwrap(),
             expected
         );
         assert_eq!(
-            serialize(
-                &value,
-                Limits::new(usize::MAX, usize::MAX, expected.len() - 1)
-            )
-            .unwrap_err()
-            .kind(),
+            value
+                .serialize_specified(Limits::new(usize::MAX, usize::MAX, expected.len() - 1))
+                .unwrap_err()
+                .kind(),
             crate::CssSpecifiedValueSerializationErrorKind::ByteLimit
         );
         assert_eq!(value, original);
@@ -2906,17 +2893,21 @@ mod declared_literal_tests {
             let value = checked_color(source);
             let original = value.clone();
             assert_eq!(
-                serialize(&value, Limits::new(5, projections, expected.len())).unwrap(),
+                value
+                    .serialize_specified(Limits::new(5, projections, expected.len()))
+                    .unwrap(),
                 expected
             );
             assert_eq!(
-                serialize(&value, Limits::new(5, projections - 1, expected.len()))
+                value
+                    .serialize_specified(Limits::new(5, projections - 1, expected.len()))
                     .unwrap_err()
                     .kind(),
                 crate::CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
             );
             assert_eq!(
-                serialize(&value, Limits::new(4, projections, expected.len()))
+                value
+                    .serialize_specified(Limits::new(4, projections, expected.len()))
                     .unwrap_err()
                     .kind(),
                 crate::CssSpecifiedValueSerializationErrorKind::InputNodeLimit

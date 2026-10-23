@@ -8,7 +8,13 @@ use surgeist_css::*;
 fn both(source: &str, inspect: impl Fn(&CssSupportsCondition)) {
     let condition = checked(source);
     inspect(&condition);
-    assert_eq!(condition.serialize().unwrap().as_css(), source);
+    assert_eq!(
+        condition
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        source
+    );
     let clone = condition.clone();
     assert_eq!(condition, clone);
     let sheet = format!("@supports {source} {{}}");
@@ -19,18 +25,33 @@ fn both(source: &str, inspect: impl Fn(&CssSupportsCondition)) {
     };
     inspect(rule.condition());
     assert_eq!(
-        rule.condition().serialize().unwrap().as_css(),
+        rule.condition()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         format!(" {source} ")
     );
     let expected = format!("@supports {source} {{ }}");
-    assert_eq!(report.syntax().to_specified_css().unwrap(), expected);
+    assert_eq!(
+        report
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
     let replay = parse_sheet(&expected);
     assert!(replay.is_clean(), "{:?}", replay.diagnostics());
     let [CssRule::Supports(rule)] = replay.syntax().rules() else {
         panic!("replayed group")
     };
     inspect(rule.condition());
-    assert_eq!(replay.syntax().to_specified_css().unwrap(), expected);
+    assert_eq!(
+        replay
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
 }
 
 fn assert_token_origin(origin: &CssValueOrigin, source: &str, token: &str) {
@@ -142,7 +163,7 @@ fn arbitrary_at_keywords_keep_original_tokens_decoded_names_and_function_delimit
                 matches!(value.component().view(), CssComponentValueRef::Token(CssValueTokenRef::AtKeyword(name)) if name == decoded)
             );
             assert_eq!(value.origin(), value.component().origin());
-            let serialized = condition.serialize().unwrap();
+            let serialized = condition.serialize_tokens(Default::default()).unwrap();
             let lexical = serialized.as_css();
             let CssValueOrigin::Parsed(origin) = value.origin() else {
                 panic!("argument origin")
@@ -203,12 +224,13 @@ fn programmatic_function_wrapper_keeps_the_independently_parsed_at_keyword_origi
     let origin = argument.origin().clone();
     let function = CssComponentValue::try_function(
         "at-rule",
-        CssComponentValues::try_new(vec![argument.clone()]).unwrap(),
+        CssComponentValues::try_new(vec![argument.clone()], Default::default()).unwrap(),
     )
     .unwrap();
     let condition = CssSupportsCondition::try_from_components(
-        CssComponentValues::try_new(vec![function]).unwrap(),
+        CssComponentValues::try_new(vec![function], Default::default()).unwrap(),
         &CssNamespaceContext::default(),
+        Default::default(),
     )
     .unwrap();
     assert_eq!(condition.origin(), &CssValueOrigin::Programmatic);
@@ -221,7 +243,7 @@ fn programmatic_function_wrapper_keeps_the_independently_parsed_at_keyword_origi
     assert_eq!(value.origin(), &origin);
     assert_eq!(value.position().unwrap().line().value(), 1);
     assert_eq!(value.position().unwrap().column().value(), 0);
-    let output = condition.serialize().unwrap();
+    let output = condition.serialize_tokens(Default::default()).unwrap();
     assert_eq!(output.as_css(), "at-rule(@--Mixed)");
     assert_eq!(
         output.origin_at(0),
@@ -267,7 +289,14 @@ fn inspect_composed(condition: &CssSupportsCondition) {
     assert!(
         matches!(declaration.kind(), CssSupportsConditionKind::Declaration(value) if value.property() == "display")
     );
-    assert_eq!(condition.serialize().unwrap().as_css().trim(), COMPOSED);
+    assert_eq!(
+        condition
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css()
+            .trim(),
+        COMPOSED
+    );
 }
 
 #[test]
@@ -343,7 +372,7 @@ fn predicates_compose_with_booleans_names_and_selectors_across_group_consumers()
             value
                 .source()
                 .value_components()
-                .serialize()
+                .serialize_tokens(Default::default())
                 .unwrap()
                 .as_css()
                 .trim(),
@@ -351,12 +380,27 @@ fn predicates_compose_with_booleans_names_and_selectors_across_group_consumers()
         );
         let reused = CssSheet::try_from_rules(report.syntax().rules().to_vec()).unwrap();
         assert_eq!(reused.rules(), report.syntax().rules());
-        assert_eq!(reused.to_specified_css().unwrap(), expected);
-        assert_eq!(report.syntax().to_specified_css().unwrap(), expected);
+        assert_eq!(
+            reused.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
+        assert_eq!(
+            report
+                .syntax()
+                .serialize_specified(Default::default())
+                .unwrap(),
+            expected
+        );
         assert_eq!(report, before);
         let replay = parse_sheet(&expected);
         assert!(replay.is_clean(), "{:?}", replay.diagnostics());
-        assert_eq!(replay.syntax().to_specified_css().unwrap(), expected);
+        assert_eq!(
+            replay
+                .syntax()
+                .serialize_specified(Default::default())
+                .unwrap(),
+            expected
+        );
     }
 }
 
@@ -371,14 +415,24 @@ fn import_supports_uses_the_same_typed_predicates_and_checked_lexical_owner() {
     let constructed = CssImportRule::try_from_components(
         parse_component_values(&source).unwrap(),
         &CssNamespaceContext::default(),
+        Default::default(),
     )
     .unwrap();
     for rule in [parsed, &constructed] {
         assert!(rule.media().is_none());
         inspect_composed(rule.supports().unwrap().condition());
-        assert_eq!(rule.serialize().unwrap().as_css(), source);
+        assert_eq!(
+            rule.serialize_tokens(Default::default()).unwrap().as_css(),
+            source
+        );
     }
-    assert_eq!(report.syntax().to_specified_css().unwrap(), source);
+    assert_eq!(
+        report
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        source
+    );
     let replay = parse_sheet(&source);
     let [CssRule::Import(rule)] = replay.syntax().rules() else {
         panic!("replayed import")
@@ -424,6 +478,7 @@ fn balanced_invalid_predicate_arguments_remain_opaque_but_invalid_outer_algebra_
         let error = CssSupportsCondition::try_from_components(
             parse_component_values(source).unwrap(),
             &CssNamespaceContext::default(),
+            Default::default(),
         )
         .unwrap_err();
         assert!(matches!(
@@ -503,7 +558,7 @@ fn complete_predicate_graph_limits_are_cumulative_and_retries_preserve_origins()
     // Two functions and their arguments, two spaces and one operator: seven
     // components at depth one. Closing delimiters affect bytes, not node count.
     let exact = CssComponentValueLimits::try_new(1, 7, source.len()).unwrap();
-    let condition = CssSupportsCondition::try_from_components_with_limits(
+    let condition = CssSupportsCondition::try_from_components(
         components.clone(),
         &CssNamespaceContext::default(),
         exact,
@@ -511,7 +566,7 @@ fn complete_predicate_graph_limits_are_cumulative_and_retries_preserve_origins()
     .unwrap();
     assert_eq!(
         condition
-            .serialize_with_limit(source.len())
+            .serialize_tokens(crate::css::support::byte_limits(source.len()))
             .unwrap()
             .as_css(),
         source
@@ -534,7 +589,7 @@ fn complete_predicate_graph_limits_are_cumulative_and_retries_preserve_origins()
             source.len() - 1,
         ),
     ] {
-        let error = CssSupportsCondition::try_from_components_with_limits(
+        let error = CssSupportsCondition::try_from_components(
             components.clone(),
             &CssNamespaceContext::default(),
             limits,
@@ -552,7 +607,7 @@ fn complete_predicate_graph_limits_are_cumulative_and_retries_preserve_origins()
     }
     assert_eq!(
         condition
-            .serialize_with_limit(source.len() - 1)
+            .serialize_tokens(crate::css::support::byte_limits(source.len() - 1))
             .unwrap_err()
             .kind(),
         CssComponentValueErrorKind::ByteLimit
@@ -560,13 +615,13 @@ fn complete_predicate_graph_limits_are_cumulative_and_retries_preserve_origins()
     assert_eq!(condition, before);
     assert_eq!(
         condition
-            .serialize_with_limit(source.len())
+            .serialize_tokens(crate::css::support::byte_limits(source.len()))
             .unwrap()
             .as_css(),
         source
     );
     assert_eq!(
-        CssSupportsCondition::try_from_components_with_limits(
+        CssSupportsCondition::try_from_components(
             components,
             &CssNamespaceContext::default(),
             exact
@@ -584,9 +639,12 @@ fn recovered_predicate_delimiters_keep_parsed_import_payloads_but_fail_strict_re
         "at-rule(@media",
     ] {
         let components = parse_component_values(predicate).unwrap();
-        let error =
-            CssSupportsCondition::try_from_components(components, &CssNamespaceContext::default())
-                .unwrap_err();
+        let error = CssSupportsCondition::try_from_components(
+            components,
+            &CssNamespaceContext::default(),
+            Default::default(),
+        )
+        .unwrap_err();
         assert!(matches!(
             error,
             CssSupportsConstructionError::RecoveredInput { .. }
@@ -626,17 +684,26 @@ fn recovered_predicate_delimiters_keep_parsed_import_payloads_but_fail_strict_re
             ),
         }
         let expected = format!("@import 'x' supports({predicate}));");
-        assert_eq!(rule.serialize().unwrap().as_css(), expected);
-        let serialized = condition.serialize().unwrap();
+        assert_eq!(
+            rule.serialize_tokens(Default::default()).unwrap().as_css(),
+            expected
+        );
+        let serialized = condition.serialize_tokens(Default::default()).unwrap();
         assert!(matches!(
             serialized.origin_at(serialized.as_css().len() - 1),
             Some(CssSerializedOrigin::Token(
                 CssValueOrigin::ImplicitClosure { .. }
             ))
         ));
-        let recovered = CssComponentValues::try_new(condition.components().to_vec()).unwrap();
+        let recovered =
+            CssComponentValues::try_new(condition.components().to_vec(), Default::default())
+                .unwrap();
         assert!(matches!(
-            CssSupportsCondition::try_from_components(recovered, &CssNamespaceContext::default()),
+            CssSupportsCondition::try_from_components(
+                recovered,
+                &CssNamespaceContext::default(),
+                Default::default()
+            ),
             Err(CssSupportsConstructionError::RecoveredInput { .. })
         ));
         assert!(parse_sheet(&expected).is_clean());

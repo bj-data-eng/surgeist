@@ -78,13 +78,17 @@ pub fn component_token(source: &str) -> CssComponentValue {
 /// Supplied components as one checked sequence.
 #[track_caller]
 pub fn component_list(items: Vec<CssComponentValue>) -> CssComponentValues {
-    CssComponentValues::try_new(items).unwrap()
+    CssComponentValues::try_new(items, Default::default()).unwrap()
 }
 
 /// A container condition checked from the components of `source`.
 #[track_caller]
 pub fn checked_container_condition(source: &str) -> CssContainerCondition {
-    CssContainerCondition::try_from_components(parse_component_values(source).unwrap()).unwrap()
+    CssContainerCondition::try_from_components(
+        parse_component_values(source).unwrap(),
+        Default::default(),
+    )
+    .unwrap()
 }
 
 /// A supports condition checked from the components of `source` with the
@@ -94,6 +98,7 @@ pub fn checked_supports_condition(source: &str) -> CssSupportsCondition {
     CssSupportsCondition::try_from_components(
         parse_component_values(source).unwrap(),
         &CssNamespaceContext::default(),
+        Default::default(),
     )
     .unwrap()
 }
@@ -101,7 +106,11 @@ pub fn checked_supports_condition(source: &str) -> CssSupportsCondition {
 /// A supports declaration checked from the components of `source`.
 #[track_caller]
 pub fn checked_supports_declaration(source: &str) -> CssSupportsDeclaration {
-    CssSupportsDeclaration::try_from_components(parse_component_values(source).unwrap()).unwrap()
+    CssSupportsDeclaration::try_from_components(
+        parse_component_values(source).unwrap(),
+        Default::default(),
+    )
+    .unwrap()
 }
 
 /// An import rule checked from the components of `source` with the default
@@ -111,6 +120,7 @@ pub fn checked_import_rule(source: &str) -> CssImportRule {
     CssImportRule::try_from_components(
         parse_component_values(source).unwrap(),
         &CssNamespaceContext::default(),
+        Default::default(),
     )
     .unwrap()
 }

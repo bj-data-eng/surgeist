@@ -373,7 +373,13 @@ fn original_separators_and_condition_origins_survive_every_structural_boundary()
             let CssRuleContextKindRef::When(condition) = when.kind() else {
                 panic!("symbolic when context");
             };
-            assert_eq!(condition.serialize().unwrap().as_css(), " media(width)");
+            assert_eq!(
+                condition
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
+                " media(width)"
+            );
             let CssValueOrigin::Parsed(origin) = condition.origin() else {
                 panic!("original condition source");
             };
@@ -651,7 +657,7 @@ fn required_optional_and_scoped_checked_carriers_preserve_conditions_without_pos
     ])
     .unwrap();
     assert_eq!(
-        sheet.to_specified_css().unwrap(),
+        sheet.serialize_specified(Default::default()).unwrap(),
         "@when media(width) { }\n@else { }\n@else media(width) { }"
     );
     let scoped_when = CssScopedWhenRule::try_new(condition.clone(), Vec::new(), &context).unwrap();
@@ -670,7 +676,9 @@ fn required_optional_and_scoped_checked_carriers_preserve_conditions_without_pos
     )
     .unwrap();
     assert_eq!(
-        CssRule::Scope(scope).to_specified_css().unwrap(),
+        CssRule::Scope(scope)
+            .serialize_specified(Default::default())
+            .unwrap(),
         "@scope { @when media(width) { } @else { } }"
     );
 }
@@ -711,7 +719,13 @@ fn lexical_condition_and_compact_group_bytes_preserve_omission_and_grouping() {
     let report = parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let before = report.clone();
-    assert_eq!(report.syntax().to_specified_css().unwrap(), expected);
+    assert_eq!(
+        report
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
     let reparsed = parse_sheet(expected);
     assert!(reparsed.is_clean());
     let [
@@ -754,30 +768,27 @@ fn complete_specified_graph_shares_declared_provider_work_and_fails_atomically()
     let before = sheet.clone();
     let expected = "@when media(width) { }\n@else { }";
     // Sheet1 + When1 + condition aggregate1 + function1 + ident1 + Else1.
-    let exact = CssSpecifiedValueSerializationLimits::new(6, 6, expected.len());
-    assert_eq!(sheet.to_specified_css_with_limits(exact).unwrap(), expected);
+    let exact = CssSerializationLimits::new(6, 6, expected.len());
+    assert_eq!(sheet.serialize_specified(exact).unwrap(), expected);
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(5, 6, expected.len()),
+            CssSerializationLimits::new(5, 6, expected.len()),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(6, 5, expected.len()),
+            CssSerializationLimits::new(6, 5, expected.len()),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(6, 6, expected.len() - 1),
+            CssSerializationLimits::new(6, 6, expected.len() - 1),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
-        let error = sheet.to_specified_css_with_limits(limits).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            CssSpecifiedRuleSerializationErrorKind::Resource(kind)
-        );
+        let error = sheet.serialize_specified(limits).unwrap_err();
+        assert_eq!(error.kind(), kind);
         assert_eq!(error.rule_index(), Some(1));
         assert_eq!(sheet, before);
-        assert_eq!(sheet.to_specified_css_with_limits(exact).unwrap(), expected);
+        assert_eq!(sheet.serialize_specified(exact).unwrap(), expected);
     }
 }
 
@@ -805,14 +816,22 @@ fn literal_when_else_cssom_is_source_undefined_at_real_ordinary_paths() {
         let report = parse_sheet(source);
         assert!(report.is_clean(), "{:?}", report.diagnostics());
         let before = report.clone();
-        let error = report.syntax().serialize_cssom().unwrap_err();
+        let error = report
+            .syntax()
+            .serialize_cssom(Default::default())
+            .unwrap_err();
         assert_eq!(
             error.kind(),
             CssRuleCssomSerializationErrorKind::SourceUndefined(kind)
         );
         assert_eq!(error.rule_path(), path);
         assert!(std::error::Error::source(&error).is_none());
-        assert!(report.syntax().to_specified_css().is_ok());
+        assert!(
+            report
+                .syntax()
+                .serialize_specified(Default::default())
+                .is_ok()
+        );
         assert_eq!(report, before);
     }
 }
@@ -829,13 +848,21 @@ fn scoped_literal_cssom_reports_the_unavailable_scope_format_before_descendants(
         let report = parse_sheet(source);
         assert!(report.is_clean(), "{:?}", report.diagnostics());
         let before = report.clone();
-        let error = report.syntax().serialize_cssom().unwrap_err();
+        let error = report
+            .syntax()
+            .serialize_cssom(Default::default())
+            .unwrap_err();
         assert_eq!(
             error.kind(),
             CssRuleCssomSerializationErrorKind::FormatUnavailable(CssRuleCssomFormat::Scope)
         );
         assert_eq!(error.rule_path(), path);
-        assert!(report.syntax().to_specified_css().is_ok());
+        assert!(
+            report
+                .syntax()
+                .serialize_specified(Default::default())
+                .is_ok()
+        );
         assert_eq!(report, before);
     }
 }

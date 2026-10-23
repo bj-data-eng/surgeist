@@ -1,12 +1,12 @@
 //! Bounded specified text for represented Counter Styles 3 rules.
 
+use crate::specified_rule_serialization::SpecifiedProvider as _;
 use crate::{
     CssCounterStyleDescriptorKind, CssCounterStyleDescriptorRef as Descriptor,
     CssCounterStyleDescriptorValue, CssCounterStyleDescriptorValueRef as Value,
     CssCounterStyleRange, CssCounterStyleRangeBound, CssCounterStyleRule, CssCounterStyleSpeakAs,
-    CssCounterStyleSystem, CssCounterSymbol, CssSpecifiedValueSerializationError as Error,
-    CssSpecifiedValueSerializationLimits as Limits,
-    specified_rule_serialization::SpecifiedRuleWriter,
+    CssCounterStyleSystem, CssCounterSymbol, CssSerializationError as Error,
+    CssSerializationLimits as Limits, specified_rule_serialization::SpecifiedRuleWriter,
 };
 
 type Result<T> = std::result::Result<T, Error>;
@@ -28,18 +28,13 @@ impl CssCounterStyleDescriptorKind {
     }
 }
 
-fn name(writer: &mut SpecifiedRuleWriter, value: &str) -> Result<()> {
-    writer.node()?;
-    writer.append_identifier(value)
-}
-
 fn symbol(writer: &mut SpecifiedRuleWriter, value: &CssCounterSymbol) -> Result<()> {
     match value {
         CssCounterSymbol::String(value) => {
             writer.node()?;
             writer.append_string(value.as_str())
         }
-        CssCounterSymbol::Ident(value) => name(writer, value.as_str()),
+        CssCounterSymbol::Ident(value) => writer.identifier(value.as_str()),
         CssCounterSymbol::Image(value) => value.append_specified(writer),
     }
 }
@@ -74,8 +69,8 @@ fn slot(value: Descriptor<'_>) -> (usize, &'static str) {
     }
 }
 
-impl CssCounterStyleDescriptorValue {
-    pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+impl crate::specified_rule_serialization::SpecifiedProvider for CssCounterStyleDescriptorValue {
+    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         match self.view() {
             Value::System(value) => match value {
                 CssCounterStyleSystem::Cyclic => writer.keyword("cyclic"),
@@ -104,7 +99,7 @@ impl CssCounterStyleDescriptorValue {
                 CssCounterStyleSystem::Extends(value) => {
                     writer.keyword("extends")?;
                     writer.append(" ")?;
-                    name(writer, value.as_str())
+                    writer.identifier(value.as_str())
                 }
             },
             Value::Negative(value) => {
@@ -149,7 +144,7 @@ impl CssCounterStyleDescriptorValue {
                 writer.append(" ")?;
                 symbol(writer, value.symbol())
             }
-            Value::Fallback(value) => name(writer, value.as_str()),
+            Value::Fallback(value) => writer.identifier(value.as_str()),
             Value::Symbols(value) => {
                 writer.node()?;
                 writer.space_separated(value.symbols(), symbol)?;
@@ -177,7 +172,7 @@ impl CssCounterStyleDescriptorValue {
                 CssCounterStyleSpeakAs::Numbers => writer.keyword("numbers"),
                 CssCounterStyleSpeakAs::Words => writer.keyword("words"),
                 CssCounterStyleSpeakAs::SpellOut => writer.keyword("spell-out"),
-                CssCounterStyleSpeakAs::CounterStyle(value) => name(writer, value.as_str()),
+                CssCounterStyleSpeakAs::CounterStyle(value) => writer.identifier(value.as_str()),
             },
             Value::Pending(_) => crate::pending_serialization::append_pending_specified(
                 self.components(),
@@ -186,16 +181,8 @@ impl CssCounterStyleDescriptorValue {
             ),
         }
     }
-    /// Serializes the value alone with the same provider and cumulative budget as a rule.
-    pub fn to_specified_css(&self) -> Result<String> {
-        self.to_specified_css_with_limits(Limits::default())
-    }
-    pub fn to_specified_css_with_limits(&self, limits: Limits) -> Result<String> {
-        let mut writer = SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
 }
+crate::specified_rule_serialization::specified_serialization!(CssCounterStyleDescriptorValue);
 fn descriptor(writer: &mut SpecifiedRuleWriter, value: Descriptor<'_>) -> Result<()> {
     match value {
         Descriptor::System(value) => value.value().append_to_rule_writer(writer),
@@ -213,14 +200,11 @@ fn descriptor(writer: &mut SpecifiedRuleWriter, value: Descriptor<'_>) -> Result
 
 impl CssCounterStyleRule {
     /// Serializes the literal rule name as a CSS identifier without resolving it.
-    pub fn name_specified_css(&self) -> Result<String> {
-        self.name_specified_css_with_limits(Limits::default())
-    }
-
+    ///
     /// Serializes the name as one input and projection leaf under the byte limit.
-    pub fn name_specified_css_with_limits(&self, limits: Limits) -> Result<String> {
+    pub fn name_specified_css(&self, limits: Limits) -> Result<String> {
         let mut writer = SpecifiedRuleWriter::new(limits);
-        name(&mut writer, self.name().as_str())?;
+        writer.identifier(self.name().as_str())?;
         Ok(writer.css)
     }
 
@@ -228,16 +212,13 @@ impl CssCounterStyleRule {
     ///
     /// Omitted fields never synthesize their implicit initial values. Descriptor
     /// references remain symbolic; the rule's authored occurrences remain intact.
-    pub fn descriptor_specified_css(&self, kind: CssCounterStyleDescriptorKind) -> Result<String> {
-        self.descriptor_specified_css_with_limits(kind, Limits::default())
-    }
-
+    ///
     /// Applies one cumulative budget to the requested descriptor's occurrences.
     ///
     /// Every retained occurrence of this kind and its value consume nodes,
     /// including suppressed earlier values. Other fields are outside this
     /// projection. An omitted field returns an empty string with zero node cost.
-    pub fn descriptor_specified_css_with_limits(
+    pub fn descriptor_specified_css(
         &self,
         kind: CssCounterStyleDescriptorKind,
         limits: Limits,
@@ -258,29 +239,9 @@ impl CssCounterStyleRule {
         }
         Ok(writer.css)
     }
-
-    /// Serializes present effective descriptors without resolving or executing the style.
-    ///
-    /// Output follows the selected Counter Styles descriptor section order.
-    /// Authored occurrences, omitted defaults, and source origins remain unchanged.
-    pub fn to_specified_css(&self) -> Result<String> {
-        self.to_specified_css_with_limits(Limits::default())
-    }
-
-    /// Applies one cumulative input, projection, and final CSS byte budget.
-    ///
-    /// The rule, name, every descriptor occurrence, typed aggregate, and leaf
-    /// each charge one input and projection node. Range intervals and additive
-    /// tuples are aggregates; image children use their owner's node accounting.
-    /// Suppressed duplicates and optional components retain their full node cost
-    /// while consuming no final bytes. Failure returns no partial CSS.
-    pub fn to_specified_css_with_limits(&self, limits: Limits) -> Result<String> {
-        let mut writer = SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+}
+impl crate::specified_rule_serialization::SpecifiedProvider for CssCounterStyleRule {
+    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         writer.node()?;
         let mut effective = [None; 10];
         for (index, value) in self.descriptors().occurrences().enumerate() {
@@ -293,7 +254,7 @@ impl CssCounterStyleRule {
             }
         }
         writer.append("@counter-style ")?;
-        name(writer, self.name().as_str())?;
+        writer.identifier(self.name().as_str())?;
         writer.append(" {")?;
         for (_, value) in effective.into_iter().flatten() {
             writer.append(" ")?;
@@ -305,6 +266,7 @@ impl CssCounterStyleRule {
         writer.append(" }")
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssCounterStyleRule);
 
 #[cfg(test)]
 mod tests {
@@ -406,12 +368,16 @@ mod tests {
                 CssCounterStyleDescriptor::System(crate::CssDescriptorOccurrence::new(
                     CssCounterStyleDescriptorValue::try_from_components(
                         CssCounterStyleDescriptorKind::System,
-                        crate::CssComponentValues::try_new(vec![
-                            crate::CssComponentValue::try_ident("extends").unwrap(),
-                            crate::CssComponentValue::try_token(" ").unwrap(),
-                            crate::CssComponentValue::try_ident("Unknown").unwrap(),
-                        ])
+                        crate::CssComponentValues::try_new(
+                            vec![
+                                crate::CssComponentValue::try_ident("extends").unwrap(),
+                                crate::CssComponentValue::try_token(" ").unwrap(),
+                                crate::CssComponentValue::try_ident("Unknown").unwrap(),
+                            ],
+                            Default::default(),
+                        )
                         .unwrap(),
+                        Default::default(),
                     )
                     .unwrap(),
                     position,
@@ -419,12 +385,16 @@ mod tests {
                 CssCounterStyleDescriptor::Pad(crate::CssDescriptorOccurrence::new(
                     CssCounterStyleDescriptorValue::try_from_components(
                         CssCounterStyleDescriptorKind::Pad,
-                        crate::CssComponentValues::try_new(vec![
-                            crate::CssComponentValue::try_number("3").unwrap(),
-                            crate::CssComponentValue::try_token(" ").unwrap(),
-                            crate::CssComponentValue::try_token("\"_\"").unwrap(),
-                        ])
+                        crate::CssComponentValues::try_new(
+                            vec![
+                                crate::CssComponentValue::try_number("3").unwrap(),
+                                crate::CssComponentValue::try_token(" ").unwrap(),
+                                crate::CssComponentValue::try_token("\"_\"").unwrap(),
+                            ],
+                            Default::default(),
+                        )
                         .unwrap(),
+                        Default::default(),
                     )
                     .unwrap(),
                     position,
@@ -439,7 +409,7 @@ mod tests {
         assert!(system.parsed_value().is_none());
         assert!(system.value_components().is_none());
         assert_eq!(
-            rule.to_specified_css().unwrap(),
+            rule.serialize_specified(Default::default()).unwrap(),
             "@counter-style Constructed { system: extends Unknown; pad: 3 \"_\"; }"
         );
         assert_eq!(rule, before);

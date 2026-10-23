@@ -3,9 +3,9 @@
 use std::fmt;
 
 use crate::{
-    CssDeclarationBlockError, CssKeyframePercent, CssKeyframeSelectorList,
-    CssSpecifiedDeclarationBlock, CssSpecifiedValueSerializationError,
-    CssSpecifiedValueSerializationLimits, specified_rule_serialization::SpecifiedRuleWriter,
+    CssDeclarationBlockError, CssKeyframePercent, CssKeyframeSelectorList, CssSerializationError,
+    CssSerializationLimits, CssSpecifiedDeclarationBlock,
+    specified_rule_serialization::SpecifiedRuleWriter,
 };
 
 impl CssKeyframeSelectorList {
@@ -24,19 +24,16 @@ impl CssKeyframeSelectorList {
     ///
     /// Shared percentage formatting rounds only output; authored offsets remain
     /// unchanged. Symbolic percentages use the existing percentage writer.
-    pub fn serialize_key_text(&self) -> Result<String, CssSpecifiedValueSerializationError> {
-        self.serialize_key_text_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
+    ///
     /// Formats one complete keyText under explicit aggregate resource limits.
     ///
     /// The selector-list aggregate and each selector cost one input and one
     /// projection node. Symbolic percentage providers share this budget. Errors
     /// return no partial text and neither modify selectors nor affect retry.
-    pub fn serialize_key_text_with_limits(
+    pub fn serialize_key_text(
         &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String, CssSpecifiedValueSerializationError> {
+        limits: CssSerializationLimits,
+    ) -> Result<String, CssSerializationError> {
         let mut writer = SpecifiedRuleWriter::new(limits);
         writer.keyframe_selectors(self)?;
         Ok(writer.css)
@@ -47,7 +44,7 @@ impl SpecifiedRuleWriter {
     pub(crate) fn keyframe_selectors(
         &mut self,
         selectors: &CssKeyframeSelectorList,
-    ) -> Result<(), CssSpecifiedValueSerializationError> {
+    ) -> Result<(), CssSerializationError> {
         self.node()?;
         for (index, selector) in selectors.selectors().iter().enumerate() {
             if index != 0 {
@@ -78,7 +75,7 @@ pub enum CssKeyframeRuleViewError {
     /// Declarations from another domain carry no proof of keyframe admission.
     NonKeyframeDeclarations,
     /// Selector or punctuation serialization exhausted its resource budget.
-    Serialization(CssSpecifiedValueSerializationError),
+    Serialization(CssSerializationError),
     /// The owning declaration formatter rejected the complete block.
     Declaration(CssDeclarationBlockError),
 }
@@ -133,18 +130,15 @@ impl<'a> CssKeyframeRuleView<'a> {
     }
 
     /// Formats a complete detached CSSOM keyframe with the normal declaration owner.
-    pub fn serialize_cssom(&self) -> Result<String, CssKeyframeRuleViewError> {
-        self.serialize_cssom_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
+    ///
     /// Formats selector, braces and declarations under one cumulative budget.
     ///
     /// The rule costs one node, followed by the keyText and declaration providers'
     /// published work. Errors return no partial output, preserve original source
     /// observations, and permit unchanged retry. No semantic reparse is performed.
-    pub fn serialize_cssom_with_limits(
+    pub fn serialize_cssom(
         &self,
-        limits: CssSpecifiedValueSerializationLimits,
+        limits: CssSerializationLimits,
     ) -> Result<String, CssKeyframeRuleViewError> {
         let mut writer = SpecifiedRuleWriter::new(limits);
         writer
@@ -153,11 +147,9 @@ impl<'a> CssKeyframeRuleView<'a> {
                 crate::cssom_rule_serialization::RuleCssomSource::DeclarationBlock(error) => {
                     CssKeyframeRuleViewError::Declaration(error)
                 }
-                crate::cssom_rule_serialization::RuleCssomSource::Provider(
-                    crate::specified_rule_serialization::SpecifiedRuleSerializationSource::Value(
-                        error,
-                    ),
-                ) => CssKeyframeRuleViewError::Serialization(error),
+                crate::cssom_rule_serialization::RuleCssomSource::Provider(error) => {
+                    CssKeyframeRuleViewError::Serialization(error)
+                }
                 _ => unreachable!("selected keyframe has only value and declaration providers"),
             })?;
         Ok(writer.css)
@@ -181,20 +173,14 @@ impl<'a> CssKeyframesRuleView<'a> {
     ) -> Self {
         Self { name, rules }
     }
+    /// Checks the complete current payload with one cumulative formatting budget.
     pub fn try_new(
         name: &'a crate::CssKeyframesName,
         rules: &'a [CssKeyframeRuleView<'a>],
-    ) -> Result<Self, crate::CssRuleCssomSerializationError> {
-        Self::try_new_with_limits(name, rules, CssSpecifiedValueSerializationLimits::default())
-    }
-    /// Checks the complete current payload with one cumulative formatting budget.
-    pub fn try_new_with_limits(
-        name: &'a crate::CssKeyframesName,
-        rules: &'a [CssKeyframeRuleView<'a>],
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<Self, crate::CssRuleCssomSerializationError> {
+        limits: CssSerializationLimits,
+    ) -> Result<Self, crate::CssRuleSerializationError> {
         let view = Self { name, rules };
-        view.serialize_cssom_with_limits(limits)?;
+        view.serialize_cssom(limits)?;
         Ok(view)
     }
     #[must_use]
@@ -205,23 +191,18 @@ impl<'a> CssKeyframesRuleView<'a> {
     pub const fn rules(self) -> &'a [CssKeyframeRuleView<'a>] {
         self.rules
     }
-    pub fn serialize_cssom(self) -> Result<String, crate::CssRuleCssomSerializationError> {
-        self.serialize_cssom_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
     /// Failure publishes no partial text; borrowed payloads and retry are unchanged.
-    pub fn serialize_cssom_with_limits(
+    pub fn serialize_cssom(
         self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String, crate::CssRuleCssomSerializationError> {
+        limits: CssSerializationLimits,
+    ) -> Result<String, crate::CssRuleSerializationError> {
         let mut writer = SpecifiedRuleWriter::new(limits);
         let mut index = None;
         writer
             .node()
             .map_err(crate::cssom_rule_serialization::RuleCssomSource::from)
             .and_then(|()| writer.append_selected_keyframes(self, &mut index))
-            .map_err(|error| {
-                crate::CssRuleCssomSerializationError::new(error, Vec::new(), index)
-            })?;
+            .map_err(|error| crate::CssRuleSerializationError::new(error, Vec::new(), index))?;
         Ok(writer.css)
     }
 }

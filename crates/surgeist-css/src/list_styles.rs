@@ -7,6 +7,10 @@ use crate::{
 /// Symbolic marker-side selection for a list item.
 ///
 /// Selecting the element's or parent's directionality and placing a marker occur downstream.
+///
+/// # Specified serialization
+///
+/// Serializes the specified keyword without resolving directionality.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssMarkerSide {
@@ -15,6 +19,10 @@ pub enum CssMarkerSide {
 }
 
 /// A checked authored `list-style-type` value.
+///
+/// # Specified serialization
+///
+/// Serializes an authored counter style, string, or `none` without resolution.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssListStyleTypeValue {
@@ -35,6 +43,12 @@ impl CssListStyleTypeValue {
 }
 
 /// Checked authored shorthand components. Missing members reset to their initials.
+///
+/// # Specified serialization
+///
+/// Serializes effective marker values in position, image, type order. Initial values are omitted
+/// only where parsing still preserves the same meaning. An `outside` position is inserted when a
+/// named `inside` or `outside` counter style would otherwise be parsed as the position.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssListStyleValue {
     style_type: Option<CssListStyleTypeValue>,

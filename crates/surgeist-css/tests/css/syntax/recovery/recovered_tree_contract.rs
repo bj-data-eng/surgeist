@@ -135,7 +135,7 @@ fn an_implicitly_closed_valid_style_tree_is_retained_while_clean_validation_repo
     assert_eq!(
         rule.declarations()[0]
             .value_components()
-            .serialize()
+            .serialize_tokens(Default::default())
             .unwrap()
             .as_css(),
         "red"
@@ -154,11 +154,17 @@ fn an_implicitly_closed_valid_style_tree_is_retained_while_clean_validation_repo
     let complete = parse_sheet(".x{color:red}");
     assert!(complete.is_clean());
     assert_eq!(
-        complete.syntax().to_specified_css().unwrap(),
+        complete
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
         ".x { color: red; }"
     );
     assert_eq!(
-        report.syntax().to_specified_css().unwrap(),
+        report
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
         ".x { color: red; }"
     );
 }
@@ -298,7 +304,7 @@ fn retained_comments_are_grammar_trivia_but_do_not_merge_two_identifier_tokens()
         assert_eq!(
             declarations
                 .iter()
-                .map(|d| d.to_specified_css().unwrap())
+                .map(|d| d.serialize_specified(Default::default()).unwrap())
                 .collect::<Vec<_>>(),
             ["color: red;", "height: 2px;"]
         );
@@ -324,7 +330,10 @@ fn specified_sheet_serialization_reparses_to_the_same_selector_and_authored_decl
     assert!(report.is_clean(), "{report:?}");
     let before = report.clone();
     let expected = ".x { --Case: A/**/B; --case: f([x,y]{z;!}); height: 2px; }";
-    let emitted = report.syntax().to_specified_css().unwrap();
+    let emitted = report
+        .syntax()
+        .serialize_specified(Default::default())
+        .unwrap();
     assert_eq!(emitted, expected);
     assert_eq!(
         report, before,
@@ -362,17 +371,26 @@ fn specified_sheet_serialization_reparses_to_the_same_selector_and_authored_decl
         );
         assert_eq!(before.importance(), after.importance());
     }
-    assert_eq!(reparsed.syntax().to_specified_css().unwrap(), expected);
+    assert_eq!(
+        reparsed
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
 }
 
 #[test]
 fn constructed_adjacent_identifiers_reparse_as_two_idents_without_requiring_the_informative_separator_algorithm()
  {
     let name = CssCustomPropertyName::try_new("--Tokens").unwrap();
-    let components = CssComponentValues::try_new(vec![
-        CssComponentValue::try_ident("A").unwrap(),
-        CssComponentValue::try_ident("B").unwrap(),
-    ])
+    let components = CssComponentValues::try_new(
+        vec![
+            CssComponentValue::try_ident("A").unwrap(),
+            CssComponentValue::try_ident("B").unwrap(),
+        ],
+        Default::default(),
+    )
     .unwrap();
     let declaration = parse_property_value(
         CssPropertyNameRef::Custom(&name),
@@ -381,7 +399,7 @@ fn constructed_adjacent_identifiers_reparse_as_two_idents_without_requiring_the_
     )
     .unwrap();
     let original = declaration.clone();
-    let emitted = declaration.to_specified_css().unwrap();
+    let emitted = declaration.serialize_specified(Default::default()).unwrap();
     assert_eq!(declaration, original);
     // The singular front rejects the serializer's root list separator.
     let singular = parse_declaration(&emitted);
@@ -431,6 +449,9 @@ fn constructed_adjacent_identifiers_reparse_as_two_idents_without_requiring_the_
         }
     }
     assert_eq!(values, ["A", "B"]);
-    assert_eq!(reparsed.to_specified_css().unwrap(), emitted);
+    assert_eq!(
+        reparsed.serialize_specified(Default::default()).unwrap(),
+        emitted
+    );
     assert_eq!(declaration, original);
 }

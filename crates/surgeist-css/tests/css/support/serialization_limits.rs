@@ -14,7 +14,7 @@ use std::fmt::Debug;
 
 use surgeist_css::*;
 
-pub type Limits = CssSpecifiedValueSerializationLimits;
+pub type Limits = CssSerializationLimits;
 pub type LimitKind = CssSpecifiedValueSerializationErrorKind;
 
 /// A serialization failure that may report one exhausted limit.
@@ -24,34 +24,16 @@ pub trait LimitFailure: Debug {
     fn limit_kind(&self) -> Option<LimitKind>;
 }
 
-impl LimitFailure for CssSpecifiedValueSerializationError {
+impl LimitFailure for CssSerializationError {
     fn limit_kind(&self) -> Option<LimitKind> {
         Some(self.kind())
     }
 }
 
-impl LimitFailure for CssSpecifiedRuleSerializationError {
-    fn limit_kind(&self) -> Option<LimitKind> {
-        match self.kind() {
-            CssSpecifiedRuleSerializationErrorKind::Resource(kind) => Some(kind),
-            _ => None,
-        }
-    }
-}
-
-impl LimitFailure for CssRuleCssomSerializationError {
+impl LimitFailure for CssRuleSerializationError {
     fn limit_kind(&self) -> Option<LimitKind> {
         match self.kind() {
             CssRuleCssomSerializationErrorKind::Resource(kind) => Some(kind),
-            _ => None,
-        }
-    }
-}
-
-impl LimitFailure for CssMediaCssomSerializationError {
-    fn limit_kind(&self) -> Option<LimitKind> {
-        match self {
-            CssMediaCssomSerializationError::Resource { error, .. } => Some(error.kind()),
             _ => None,
         }
     }
@@ -204,20 +186,16 @@ impl<'a> LimitLadder<'a> {
     /// cumulative: every rule serializes separately within each failing
     /// limit, and the sheet failure names rule `rule_index`.
     pub fn assert_cumulative_sheet(&self, sheet: &CssSheet, rule_index: usize) {
-        self.assert_unchanged_with(
-            sheet,
-            CssSheet::to_specified_css_with_limits,
-            |limits, _, error| {
-                assert!(
-                    sheet
-                        .rules()
-                        .iter()
-                        .all(|rule| rule.to_specified_css_with_limits(limits).is_ok()),
-                    "each rule fits {limits:?} separately"
-                );
-                assert_eq!(error.rule_index(), Some(rule_index), "{limits:?}");
-            },
-        );
+        self.assert_unchanged_with(sheet, CssSheet::serialize_specified, |limits, _, error| {
+            assert!(
+                sheet
+                    .rules()
+                    .iter()
+                    .all(|rule| rule.serialize_specified(limits).is_ok()),
+                "each rule fits {limits:?} separately"
+            );
+            assert_eq!(error.rule_index(), Some(rule_index), "{limits:?}");
+        });
     }
 }
 

@@ -23,7 +23,11 @@ fn color(declaration: &CssDeclaration, source: &str, expected: &str) {
         CssKnownProperty::Color
     );
     assert_eq!(
-        declaration.value_components().serialize().unwrap().as_css(),
+        declaration
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         expected
     );
     original(

@@ -111,11 +111,19 @@ fn shorthand_global_and_pending_parse_admission_remains_a_control() {
         ));
         let constructed = checked("font-synthesis", text);
         assert_eq!(
-            source.value_components().serialize().unwrap().as_css(),
+            source
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             text
         );
         assert_eq!(
-            constructed.value_components().serialize().unwrap().as_css(),
+            constructed
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             text
         );
     }

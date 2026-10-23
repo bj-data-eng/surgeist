@@ -32,7 +32,12 @@ fn clip_path_declaration(value: &str) -> CssDeclaration {
 
 fn accept(authored: &str, expected: &str) {
     let source = clip_path_declaration(authored);
-    assert_eq!(clip(&source).serialize_specified().unwrap(), expected);
+    assert_eq!(
+        clip(&source)
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
     let components = parse_component_values(authored).unwrap();
     let checked = parse_property_value(
         CssPropertyNameRef::Known(CssKnownProperty::ClipPath),
@@ -42,7 +47,12 @@ fn accept(authored: &str, expected: &str) {
     .unwrap_or_else(|error| panic!("{authored}: {error:?}"));
     assert_eq!(checked.value_components(), &components);
     assert_eq!(checked.importance(), CssImportance::Important);
-    assert_eq!(clip(&checked).serialize_specified().unwrap(), expected);
+    assert_eq!(
+        clip(&checked)
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
     for declaration in [&source, &checked] {
         let CssExpansion::Contributions(CssContributions::Longhands(items)) =
             expand_declaration(declaration).unwrap()
@@ -59,7 +69,10 @@ fn accept(authored: &str, expected: &str) {
         let CssLonghandValueRef::ClipPath(value) = item.ordinary_value().unwrap().view() else {
             panic!("typed rectangle terminal")
         };
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
 }
 
@@ -447,7 +460,10 @@ fn rectangle_pending_reentry_checks_full_grammar_and_preserves_replacement_origi
             let CssLonghandValueRef::ClipPath(value) = item.ordinary_value().unwrap().view() else {
                 panic!("clip-path replacement")
             };
-            assert_eq!(value.serialize_specified().unwrap(), expected);
+            assert_eq!(
+                value.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
         }
     }
     let replacement = parse_component_values("inherit").unwrap();
@@ -530,7 +546,7 @@ fn normalization_preserves_rectangle_family_importance_and_surviving_order() {
                     panic!("rectangle")
                 };
                 assert_eq!(
-                    value.serialize_specified().unwrap(),
+                    value.serialize_specified(Default::default()).unwrap(),
                     if order == 0 {
                         "rect(auto -2px 3% 4px)"
                     } else {

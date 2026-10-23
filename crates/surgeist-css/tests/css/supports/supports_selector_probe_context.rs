@@ -4,10 +4,18 @@ use surgeist_css::*;
 fn checked(source: &str, namespaces: &CssNamespaceContext) -> CssSupportsCondition {
     let components = parse_component_values(source).unwrap();
     let original = components.clone();
-    let condition = CssSupportsCondition::try_from_components(components, namespaces).unwrap();
+    let condition =
+        CssSupportsCondition::try_from_components(components, namespaces, Default::default())
+            .unwrap();
     assert_eq!(condition.components(), original.items());
     assert_eq!(condition.origin(), original.items()[0].origin());
-    assert_eq!(condition.serialize().unwrap().as_css(), source);
+    assert_eq!(
+        condition
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        source
+    );
     condition
 }
 
@@ -34,7 +42,10 @@ fn constructed_logical_selectors_have_decoded_typed_members_and_original_spellin
     ] {
         let condition = checked(source, &CssNamespaceContext::default());
         let selector = selector(&condition);
-        assert_eq!(selector.to_specified_css().unwrap(), specified);
+        assert_eq!(
+            selector.serialize_specified(Default::default()).unwrap(),
+            specified
+        );
         let expected: Vec<_> = names
             .into_iter()
             .map(|name| CssPseudoSelectorListItem::Selector(CssSelector::Class(name.into())))
@@ -66,7 +77,7 @@ fn parsed_unicode_crlf_rule_keeps_original_opener_and_serialized_token_origins()
     assert_eq!(origin.span().end().byte_offset().value(), 29);
     assert_eq!(origin.span().start().line().value(), 1);
     assert_eq!(origin.span().start().column().value(), 10);
-    let serialized = condition.serialize().unwrap();
+    let serialized = condition.serialize_tokens(Default::default()).unwrap();
     assert_eq!(serialized.as_css(), " selector(:is(.A)) ");
     assert_eq!(
         serialized.origin_at(1),
@@ -235,20 +246,27 @@ fn nested_style_context_and_outer_eof_closures_stay_with_the_original_owner() {
 
 #[test]
 fn programmatic_components_and_output_retry_do_not_invent_original_coordinates() {
-    let class = CssComponentValues::try_new(vec![
-        CssComponentValue::try_token(".").unwrap(),
-        CssComponentValue::try_ident("A").unwrap(),
-    ])
+    let class = CssComponentValues::try_new(
+        vec![
+            CssComponentValue::try_token(".").unwrap(),
+            CssComponentValue::try_ident("A").unwrap(),
+        ],
+        Default::default(),
+    )
     .unwrap();
     let is = CssComponentValue::try_function("is", class).unwrap();
-    let arguments =
-        CssComponentValues::try_new(vec![CssComponentValue::try_token(":").unwrap(), is]).unwrap();
+    let arguments = CssComponentValues::try_new(
+        vec![CssComponentValue::try_token(":").unwrap(), is],
+        Default::default(),
+    )
+    .unwrap();
     for arguments in [arguments, parse_component_values(":is(.A)").unwrap()] {
         let original = arguments.clone();
         let outer = CssComponentValue::try_function("selector", arguments).unwrap();
         let condition = CssSupportsCondition::try_from_components(
-            CssComponentValues::try_new(vec![outer]).unwrap(),
+            CssComponentValues::try_new(vec![outer], Default::default()).unwrap(),
             &CssNamespaceContext::default(),
+            Default::default(),
         )
         .unwrap();
         let CssComponentValueRef::Function(function) = condition.components()[0].view() else {
@@ -266,12 +284,17 @@ fn programmatic_components_and_output_retry_do_not_invent_original_coordinates()
         let before = condition.clone();
         // The seventeenth byte is the closing parenthesis of the programmatic
         // outer function.
-        let error = condition.serialize_with_limit(16).unwrap_err();
+        let error = condition
+            .serialize_tokens(crate::css::support::byte_limits(16))
+            .unwrap_err();
         assert_eq!(error.kind(), CssComponentValueErrorKind::ByteLimit);
         assert_eq!(error.origin(), &CssValueOrigin::Programmatic);
         assert_eq!(condition, before);
         assert_eq!(
-            condition.serialize_with_limit(17).unwrap().as_css(),
+            condition
+                .serialize_tokens(crate::css::support::byte_limits(17))
+                .unwrap()
+                .as_css(),
             "selector(:is(.A))"
         );
     }
@@ -358,5 +381,11 @@ fn scoped_and_import_supports_share_the_same_source_owning_operand() {
             "A".into()
         ))]
     );
-    assert_eq!(condition.serialize().unwrap().as_css(), "selector(:is(.A))");
+    assert_eq!(
+        condition
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        "selector(:is(.A))"
+    );
 }

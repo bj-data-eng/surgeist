@@ -245,6 +245,10 @@ pub(crate) enum CssFontPaletteDescriptorData {
 }
 
 /// One checked whole descriptor value with original component provenance.
+///
+/// # Specified serialization
+///
+/// Canonical specified descriptor text; pending values retain their token stream.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssFontPaletteDescriptorValue {
     kind: CssFontPaletteDescriptorKind,
@@ -254,15 +258,9 @@ pub struct CssFontPaletteDescriptorValue {
 
 impl CssFontPaletteDescriptorValue {
     /// Checks the selected grammar while retaining mixed or programmatic origins.
-    pub fn try_new(
-        kind: CssFontPaletteDescriptorKind,
-        components: CssComponentValues,
-    ) -> Result<Self, CssFontPaletteValueError> {
-        Self::try_new_with_limits(kind, components, CssComponentValueLimits::default())
-    }
-
+    ///
     /// Uses the same component and output-byte limits as shared component serialization.
-    pub fn try_new_with_limits(
+    pub fn try_new(
         kind: CssFontPaletteDescriptorKind,
         components: CssComponentValues,
         limits: CssComponentValueLimits,
@@ -271,7 +269,7 @@ impl CssFontPaletteDescriptorValue {
             .validate_with_limits(limits)
             .map_err(CssFontPaletteValueError::from_component)?;
         let serialized = components
-            .serialize_with_limit(limits.max_css_bytes())
+            .serialize_tokens(limits)
             .map_err(CssFontPaletteValueError::from_component)?;
         let data = crate::parser::font_palette_values::construct_descriptor_value(
             kind,
@@ -291,13 +289,6 @@ impl CssFontPaletteDescriptorValue {
     pub fn reparse_after_substitution(
         &self,
         replacement: CssComponentValues,
-    ) -> Result<Self, CssFontPaletteValueError> {
-        self.reparse_after_substitution_with_limits(replacement, CssComponentValueLimits::default())
-    }
-
-    pub fn reparse_after_substitution_with_limits(
-        &self,
-        replacement: CssComponentValues,
         limits: CssComponentValueLimits,
     ) -> Result<Self, CssFontPaletteValueError> {
         if !matches!(self.data, CssFontPaletteDescriptorData::Pending(_)) {
@@ -309,7 +300,7 @@ impl CssFontPaletteDescriptorValue {
         if let Some(origin) = crate::parser::first_substitution_origin(&replacement) {
             return Err(CssFontPaletteValueError::residual(origin));
         }
-        Self::try_new_with_limits(self.kind, replacement, limits)
+        Self::try_new(self.kind, replacement, limits)
     }
 
     pub(crate) fn from_parts(
@@ -399,6 +390,10 @@ impl CssFontPaletteDescriptor {
 }
 
 /// An authored palette definition retaining every valid descriptor occurrence in order.
+///
+/// # Specified serialization
+///
+/// Canonical specified rule text. Descriptor duplicates retain authored order.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssFontPaletteValuesRule {
     name: CssFontPaletteName,

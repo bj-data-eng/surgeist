@@ -63,19 +63,13 @@ fn fronts(property: P, value: &str) -> [CssDeclaration; 3] {
 }
 fn typed_output(
     source: &CssDeclaration,
-    limits: CssSpecifiedValueSerializationLimits,
-) -> Result<String, CssSpecifiedValueSerializationError> {
+    limits: CssSerializationLimits,
+) -> Result<String, CssSerializationError> {
     match source.known().unwrap().property_value().unwrap() {
-        CssKnownPropertyValueRef::GridTemplateRows(v) => {
-            v.value().serialize_specified_with_limits(limits)
-        }
-        CssKnownPropertyValueRef::GridTemplateColumns(v) => {
-            v.value().serialize_specified_with_limits(limits)
-        }
-        CssKnownPropertyValueRef::GridTemplate(v) => {
-            v.value().serialize_specified_with_limits(limits)
-        }
-        CssKnownPropertyValueRef::Grid(v) => v.value().serialize_specified_with_limits(limits),
+        CssKnownPropertyValueRef::GridTemplateRows(v) => v.value().serialize_specified(limits),
+        CssKnownPropertyValueRef::GridTemplateColumns(v) => v.value().serialize_specified(limits),
+        CssKnownPropertyValueRef::GridTemplate(v) => v.value().serialize_specified(limits),
+        CssKnownPropertyValueRef::Grid(v) => v.value().serialize_specified(limits),
         _ => panic!("owning typed Grid wrapper"),
     }
 }
@@ -85,11 +79,11 @@ fn accepted(property: P, value: &str, expected: &str) {
         assert!(source.known().unwrap().substitution_dependent().is_none());
         let before = source.clone();
         assert_eq!(
-            typed_output(&source, CssSpecifiedValueSerializationLimits::default()).unwrap(),
+            typed_output(&source, CssSerializationLimits::default()).unwrap(),
             expected
         );
         assert_eq!(
-            source.to_specified_css().unwrap(),
+            source.serialize_specified(Default::default()).unwrap(),
             format!("{}: {expected} !important;", property.canonical_name())
         );
         assert_eq!(source, before);
@@ -199,10 +193,14 @@ fn terminal_output(values: &CssLonghandContributions, property: P) -> String {
         .find(|v| v.property() == property)
         .unwrap();
     match item.ordinary_value().unwrap().view() {
-        CssLonghandValueRef::GridTemplateAreas(v) => v.serialize_specified().unwrap(),
-        CssLonghandValueRef::GridAutoRows(v) => v.serialize_specified().unwrap(),
-        CssLonghandValueRef::GridAutoColumns(v) => v.serialize_specified().unwrap(),
-        CssLonghandValueRef::GridAutoFlow(v) => v.serialize_specified().unwrap(),
+        CssLonghandValueRef::GridTemplateAreas(v) => {
+            v.serialize_specified(Default::default()).unwrap()
+        }
+        CssLonghandValueRef::GridAutoRows(v) => v.serialize_specified(Default::default()).unwrap(),
+        CssLonghandValueRef::GridAutoColumns(v) => {
+            v.serialize_specified(Default::default()).unwrap()
+        }
+        CssLonghandValueRef::GridAutoFlow(v) => v.serialize_specified(Default::default()).unwrap(),
         _ => panic!("currently callable borrowed dependency"),
     }
 }
@@ -377,7 +375,7 @@ fn track_auto_flow_precision_and_empty_group_policies_are_controls() {
     ] {
         let source = checked(P::GridAutoFlow, value, true);
         assert_eq!(
-            source.to_specified_css().unwrap(),
+            source.serialize_specified(Default::default()).unwrap(),
             format!("grid-auto-flow: {expected} !important;")
         );
     }
@@ -620,7 +618,7 @@ fn all_four_checked_roles_reject_original_implicit_comments_functions_and_blocks
 fn checked_invalid_repeat_count_maps_to_the_original_responsible_token() {
     for property in [P::GridTemplateRows, P::GridTemplateColumns] {
         let components = parse_component_values("/*😀*/repeat(0, 10px)").unwrap();
-        let serialized = components.serialize().unwrap();
+        let serialized = components.serialize_tokens(Default::default()).unwrap();
         let expected = serialized
             .origin_at(serialized.as_css().find("0,").unwrap())
             .unwrap()
@@ -783,8 +781,8 @@ fn recoverable_browser_comments_retain_diagnostics_and_source_in_normalized_repo
 
 #[test]
 fn every_new_typed_branch_obeys_atomic_byte_limits_and_reusable_output() {
+    use CssSerializationLimits as Limits;
     use CssSpecifiedValueSerializationErrorKind as Kind;
-    use CssSpecifiedValueSerializationLimits as Limits;
     for (property, value) in [
         (P::GridTemplateRows, "none"),
         (P::GridTemplateColumns, "subgrid [] repeat(calc(2), [a])"),
@@ -812,9 +810,8 @@ fn every_new_typed_branch_obeys_atomic_byte_limits_and_reusable_output() {
 }
 #[test]
 fn aggregate_work_costs_and_sheet_sibling_byte_limits_remain_atomic() {
-    use CssSpecifiedRuleSerializationErrorKind as RuleKind;
+    use CssSerializationLimits as Limits;
     use CssSpecifiedValueSerializationErrorKind as Kind;
-    use CssSpecifiedValueSerializationLimits as Limits;
     // Accepted grid_aggregate_serialization.rs:124-158 independently fixes five
     // semantic visits for the represented aggregate. The public declaration
     // contract (declaration_serialization.rs:205-210) adds declaration + name.
@@ -829,7 +826,7 @@ fn aggregate_work_costs_and_sheet_sibling_byte_limits_remain_atomic() {
     );
     assert_eq!(
         declaration
-            .to_specified_css_with_limits(Limits::new(7, 7, declaration_text.len()))
+            .serialize_specified(Limits::new(7, 7, declaration_text.len()))
             .unwrap(),
         declaration_text
     );
@@ -852,7 +849,7 @@ fn aggregate_work_costs_and_sheet_sibling_byte_limits_remain_atomic() {
             );
             assert_eq!(
                 declaration
-                    .to_specified_css_with_limits(declaration_limits)
+                    .serialize_specified(declaration_limits)
                     .unwrap_err()
                     .kind(),
                 kind
@@ -860,7 +857,10 @@ fn aggregate_work_costs_and_sheet_sibling_byte_limits_remain_atomic() {
             assert_eq!(declaration, declaration_before);
         }
     }
-    assert_eq!(declaration.to_specified_css().unwrap(), declaration_text);
+    assert_eq!(
+        declaration.serialize_specified(Default::default()).unwrap(),
+        declaration_text
+    );
 
     // Public CssSheet composition supplies one shared final byte budget and a
     // newline between top-level rules (specified_rule_serialization.rs:296-299).
@@ -874,26 +874,25 @@ fn aggregate_work_costs_and_sheet_sibling_byte_limits_remain_atomic() {
     let expected = ".a { grid: 10px / 20px; }\n.b { grid: 10px / 20px; }";
     let exact = Limits::new(usize::MAX, usize::MAX, expected.len());
     let short = Limits::new(usize::MAX, usize::MAX, expected.len() - 1);
-    assert_eq!(sheet.to_specified_css_with_limits(exact).unwrap(), expected);
+    assert_eq!(sheet.serialize_specified(exact).unwrap(), expected);
     assert!(
         sheet
             .rules()
             .iter()
-            .all(|rule| rule.to_specified_css_with_limits(short).is_ok())
+            .all(|rule| rule.serialize_specified(short).is_ok())
     );
     for _ in 0..2 {
-        let error = sheet.to_specified_css_with_limits(short).unwrap_err();
-        assert_eq!(error.kind(), RuleKind::Resource(Kind::ByteLimit));
+        let error = sheet.serialize_specified(short).unwrap_err();
+        assert_eq!(error.kind(), Kind::ByteLimit);
         assert_eq!(error.rule_index(), Some(1));
         assert_eq!(sheet, &before);
     }
-    assert_eq!(sheet.to_specified_css_with_limits(exact).unwrap(), expected);
+    assert_eq!(sheet.serialize_specified(exact).unwrap(), expected);
 }
 #[test]
 fn new_subgrid_and_area_siblings_share_final_sheet_output_budget_without_mutation() {
-    use CssSpecifiedRuleSerializationErrorKind as RuleKind;
+    use CssSerializationLimits as Limits;
     use CssSpecifiedValueSerializationErrorKind as Kind;
-    use CssSpecifiedValueSerializationLimits as Limits;
     let report = parse_sheet(
         r#".a{grid-template-rows:subgrid repeat(calc(2), [a])!important}.b{grid-template:"a a" / 10px 20px}"#,
     );
@@ -902,23 +901,26 @@ fn new_subgrid_and_area_siblings_share_final_sheet_output_budget_without_mutatio
     let before = sheet.clone();
     let expected = r#".a { grid-template-rows: subgrid repeat(calc(2), [a]) !important; }
 .b { grid-template: "a a" / 10px 20px; }"#;
-    assert_eq!(sheet.to_specified_css().unwrap(), expected);
+    assert_eq!(
+        sheet.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     let short = Limits::new(usize::MAX, usize::MAX, expected.len() - 1);
     assert!(
         sheet
             .rules()
             .iter()
-            .all(|r| r.to_specified_css_with_limits(short).is_ok())
+            .all(|r| r.serialize_specified(short).is_ok())
     );
     for _ in 0..2 {
-        let error = sheet.to_specified_css_with_limits(short).unwrap_err();
-        assert_eq!(error.kind(), RuleKind::Resource(Kind::ByteLimit));
+        let error = sheet.serialize_specified(short).unwrap_err();
+        assert_eq!(error.kind(), Kind::ByteLimit);
         assert_eq!(error.rule_index(), Some(1));
         assert_eq!(sheet, &before);
     }
     assert_eq!(
         sheet
-            .to_specified_css_with_limits(Limits::new(usize::MAX, usize::MAX, expected.len()))
+            .serialize_specified(Limits::new(usize::MAX, usize::MAX, expected.len()))
             .unwrap(),
         expected
     );
@@ -933,7 +935,7 @@ fn independent_supported_color_and_implicit_grid_controls_keep_intrinsic_contrac
     ] {
         let source = checked(property, value, true);
         assert_eq!(
-            source.to_specified_css().unwrap(),
+            source.serialize_specified(Default::default()).unwrap(),
             format!("{}: {expected} !important;", property.canonical_name())
         );
         let values = completed(&source);

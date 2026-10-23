@@ -51,7 +51,10 @@ fn published_layer_name_constructor_accepts_decoded_identifier_values() {
         let name = CssLayerName::try_new([component])
             .expect("decoded identifier is not authored spelling");
         assert_eq!(name.components(), &[component]);
-        assert_eq!(name.serialize_specified().unwrap(), spelling);
+        assert_eq!(
+            name.serialize_specified(Default::default()).unwrap(),
+            spelling
+        );
         let source = format!("@layer {spelling};");
         let report = parse_rule(&source, &CssNamespaceContext::default());
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
@@ -77,9 +80,15 @@ fn escaped_import_layer_is_named_and_keeps_original_input_after_input_drop() {
     };
     assert_eq!(name.components(), &["theme", "1x"]);
     assert!(import.media().is_none());
-    assert_eq!(name.serialize_specified().unwrap(), r"theme.\31 x");
     assert_eq!(
-        import.serialize().unwrap().as_css(),
+        name.serialize_specified(Default::default()).unwrap(),
+        r"theme.\31 x"
+    );
+    assert_eq!(
+        import
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         r"@import 'x.css' layer(theme.\31 x);"
     );
     let CssValueOrigin::Parsed(origin) = import.origin() else {
@@ -111,7 +120,10 @@ fn decoded_admission_retains_reserved_keywords_and_actual_authored_grammar() {
     assert!(CssLayerName::try_new(Vec::<String>::new()).is_none());
     // <ident>, rather than <custom-ident>: default is not a reserved layer name.
     let name = CssLayerName::try_new(["default", "Case"]).unwrap();
-    assert_eq!(name.serialize_specified().unwrap(), "default.Case");
+    assert_eq!(
+        name.serialize_specified(Default::default()).unwrap(),
+        "default.Case"
+    );
     let report = parse_rule("@layer default.Case;", &CssNamespaceContext::default());
     assert!(report.is_clean());
     // Cascade 5 §6.4.2: <layer-name> = <ident> [ '.' <ident> ]* without

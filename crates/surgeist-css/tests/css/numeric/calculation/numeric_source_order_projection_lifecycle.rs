@@ -26,8 +26,14 @@ fn numeric_cancellation_uses_source_order_for_all_three_term_permutations() {
         let calculation = value.calculation().unwrap();
         let components = calculation.components().clone();
         let ty = calculation.numeric_type();
-        assert_eq!(components.serialize().unwrap().as_css(), source);
-        let result = value.serialize_specified();
+        assert_eq!(
+            components
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            source
+        );
+        let result = value.serialize_specified(Default::default());
         assert_eq!(value, before);
         assert_eq!(value.origin(), before.origin());
         assert_eq!(value.calculation().unwrap().components(), &components);
@@ -51,7 +57,7 @@ fn absolute_and_contextual_same_unit_coefficients_use_the_same_order() {
         let value = length(source);
         let before = value.clone();
         let ty = value.calculation().unwrap().numeric_type();
-        let result = value.serialize_specified();
+        let result = value.serialize_specified(Default::default());
         assert_eq!(value, before);
         assert_eq!(value.origin(), before.origin());
         assert_eq!(
@@ -70,15 +76,17 @@ fn programmatic_sum_keeps_exact_authored_tokens_and_origin() {
             .into_iter()
             .map(|token| CssComponentValue::try_token(token).unwrap())
             .collect(),
+        Default::default(),
     )
     .unwrap();
     let root = CssComponentValue::try_function("CALC", arguments).unwrap();
-    let components = CssComponentValues::try_new(vec![root]).unwrap();
-    let calculation = CssNumberCalculation::try_from_components(components.clone()).unwrap();
+    let components = CssComponentValues::try_new(vec![root], Default::default()).unwrap();
+    let calculation =
+        CssNumberCalculation::try_from_components(components.clone(), Default::default()).unwrap();
     let value = CssSpecifiedNumber::try_from_calculation(calculation).unwrap();
     let before = value.clone();
     assert!(matches!(value.origin(), CssValueOrigin::Programmatic));
-    let result = value.serialize_specified();
+    let result = value.serialize_specified(Default::default());
     assert_eq!(value, before);
     assert_eq!(value.origin(), before.origin());
     assert_eq!(value.calculation().unwrap().components(), &components);
@@ -94,28 +102,24 @@ fn ordered_sum_replacement_has_exact_resource_limits_and_atomic_failures() {
     // replacement for subtraction, and one combined scalar replacement.
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(4, 5, expected.len()),
+            CssSerializationLimits::new(4, 5, expected.len()),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(5, 4, expected.len()),
+            CssSerializationLimits::new(5, 4, expected.len()),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(5, 5, expected.len() - 1),
+            CssSerializationLimits::new(5, 5, expected.len() - 1),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
-        let error = value.serialize_specified_with_limits(limits).unwrap_err();
+        let error = value.serialize_specified(limits).unwrap_err();
         assert_eq!(error.kind(), kind);
         assert_eq!(value, before);
         assert_eq!(value.origin(), before.origin());
     }
-    let result = value.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-        5,
-        5,
-        expected.len(),
-    ));
+    let result = value.serialize_specified(CssSerializationLimits::new(5, 5, expected.len()));
     assert_eq!(value, before);
     assert_eq!(
         value.calculation().unwrap().components(),

@@ -432,16 +432,16 @@ fn checked_programmatic_owners_preserve_origins_and_composite_resource_limits() 
     assert_eq!(spacing.horizontal().origin(), &CssValueOrigin::Programmatic);
     assert_eq!(
         spacing
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(3, 3, 1008))
+            .serialize_specified(CssSerializationLimits::new(3, 3, 1008))
             .unwrap(),
         format!("1{}px 2px", "0".repeat(999))
     );
     for limits in [
-        CssSpecifiedValueSerializationLimits::new(2, 3, 1008),
-        CssSpecifiedValueSerializationLimits::new(3, 2, 1008),
-        CssSpecifiedValueSerializationLimits::new(3, 3, 1005),
+        CssSerializationLimits::new(2, 3, 1008),
+        CssSerializationLimits::new(3, 2, 1008),
+        CssSerializationLimits::new(3, 3, 1005),
     ] {
-        assert!(spacing.serialize_specified_with_limits(limits).is_err());
+        assert!(spacing.serialize_specified(limits).is_err());
     }
     literal(
         spacing.horizontal().literal_component().unwrap(),
@@ -454,12 +454,12 @@ fn checked_programmatic_owners_preserve_origins_and_composite_resource_limits() 
     )
     .unwrap();
     let projected = position
-        .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(5, 5, 1020))
+        .serialize_specified(CssSerializationLimits::new(5, 5, 1020))
         .unwrap();
     assert!(projected.ends_with("px 25%"));
     assert!(
         position
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(4, 5, 1020))
+            .serialize_specified(CssSerializationLimits::new(4, 5, 1020))
             .is_err()
     );
 }
@@ -897,11 +897,15 @@ fn gradient_serialization_omits_only_exact_zero_hundred_and_center_values() {
         images
     );
     assert_eq!(
-        images.images()[0].serialize_specified().unwrap(),
+        images.images()[0]
+            .serialize_specified(Default::default())
+            .unwrap(),
         "linear-gradient(red 0px, blue 100.000001%)"
     );
     assert_eq!(
-        images.images()[1].serialize_specified().unwrap(),
+        images.images()[1]
+            .serialize_specified(Default::default())
+            .unwrap(),
         "radial-gradient(at 50.000001% 50%, red, blue)"
     );
     let CssImageValue::Gradient(CssGradient::Linear(linear)) = &images.images()[0] else {
@@ -921,11 +925,15 @@ fn gradient_serialization_omits_only_exact_zero_hundred_and_center_values() {
         images
     );
     assert_eq!(
-        defaults.images()[0].serialize_specified().unwrap(),
+        defaults.images()[0]
+            .serialize_specified(Default::default())
+            .unwrap(),
         "linear-gradient(red, blue)"
     );
     assert_eq!(
-        defaults.images()[1].serialize_specified().unwrap(),
+        defaults.images()[1]
+            .serialize_specified(Default::default())
+            .unwrap(),
         "radial-gradient(red, blue)"
     );
 }

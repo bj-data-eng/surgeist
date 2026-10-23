@@ -4483,7 +4483,7 @@ mod tests {
         );
         assert_eq!(
             body_snapshot.sheet(&sheet).unwrap().authored().rules()[0]
-                .serialize_cssom()
+                .serialize_cssom(Default::default())
                 .unwrap(),
             ".a { }"
         );
@@ -5062,7 +5062,9 @@ mod tests {
         assert_eq!(current.sheets().len(), 1);
         let sheet = current.sheet(&current.sheets()[0]).unwrap();
         assert_eq!(
-            sheet.authored().rules()[0].serialize_cssom().unwrap(),
+            sheet.authored().rules()[0]
+                .serialize_cssom(Default::default())
+                .unwrap(),
             expected_rule,
             "stylesheet value must use the actual source-time document mode"
         );

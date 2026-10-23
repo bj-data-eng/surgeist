@@ -15,10 +15,9 @@ use descriptor_phases::*;
 use surgeist_css::{
     CssCounterStyleDescriptorKind as Descriptor, CssCounterStyleRule, CssCounterStyleSpeakAs,
     CssCounterStyleSystem, CssCounterSymbol, CssErrorCode, CssNormalizedItem, CssRecoveryAction,
-    CssRule, CssRuleContextKindRef, CssScopedRule,
-    CssSpecifiedValueSerializationErrorKind as SerializationError,
-    CssSpecifiedValueSerializationLimits as Limits, normalize_report, normalize_sheet, parse_sheet,
-    validate_sheet,
+    CssRule, CssRuleContextKindRef, CssScopedRule, CssSerializationLimits as Limits,
+    CssSpecifiedValueSerializationErrorKind as SerializationError, normalize_report,
+    normalize_sheet, parse_sheet, validate_sheet,
 };
 
 fn clean_rule(body: &str) -> CssCounterStyleRule {
@@ -28,23 +27,27 @@ fn clean_rule(body: &str) -> CssCounterStyleRule {
 fn assert_output(rule: &CssCounterStyleRule, descriptor: Descriptor, value: &str, body: &str) {
     let retained = rule.clone();
     let expected = format!("@counter-style ImageCase {{ {body} }}");
-    assert_eq!(rule.descriptor_specified_css(descriptor).unwrap(), value);
-    assert_eq!(rule.to_specified_css().unwrap(), expected);
     assert_eq!(
-        rule.descriptor_specified_css_with_limits(
-            descriptor,
-            Limits::new(10_000, 10_000, value.len())
-        )
-        .unwrap(),
+        rule.descriptor_specified_css(descriptor, Default::default())
+            .unwrap(),
+        value
+    );
+    assert_eq!(
+        rule.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
+    assert_eq!(
+        rule.descriptor_specified_css(descriptor, Limits::new(10_000, 10_000, value.len()))
+            .unwrap(),
         value,
     );
     assert_eq!(
-        rule.to_specified_css_with_limits(Limits::new(10_000, 10_000, expected.len()))
+        rule.serialize_specified(Limits::new(10_000, 10_000, expected.len()))
             .unwrap(),
         expected,
     );
     assert_eq!(
-        rule.to_specified_css_with_limits(Limits::new(10_000, 10_000, expected.len() - 1))
+        rule.serialize_specified(Limits::new(10_000, 10_000, expected.len() - 1))
             .unwrap_err()
             .kind(),
         SerializationError::ByteLimit,
@@ -58,7 +61,10 @@ fn assert_output(rule: &CssCounterStyleRule, descriptor: Descriptor, value: &str
     let [CssRule::CounterStyle(reparsed)] = reparsed.syntax().rules() else {
         panic!("canonical text must remain a counter definition");
     };
-    assert_eq!(reparsed.to_specified_css().unwrap(), expected);
+    assert_eq!(
+        reparsed.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
 }
 
 // Every macro invocation below becomes a separate executable test. Expected
@@ -521,7 +527,7 @@ fn suppressed_gradient_children_share_the_complete_rule_node_budget() {
     // symbol lists 2; gradient/stops/two stop-color pairs 6; identifier 1.
     // Suppression changes final bytes, not input or projection node costs.
     assert_eq!(
-        rule.to_specified_css_with_limits(Limits::new(13, 13, expected.len()))
+        rule.serialize_specified(Limits::new(13, 13, expected.len()))
             .unwrap(),
         expected
     );
@@ -539,15 +545,10 @@ fn suppressed_gradient_children_share_the_complete_rule_node_budget() {
             SerializationError::ByteLimit,
         ),
     ] {
-        assert_eq!(
-            rule.to_specified_css_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            kind
-        );
+        assert_eq!(rule.serialize_specified(limits).unwrap_err().kind(), kind);
     }
     assert_eq!(
-        rule.to_specified_css_with_limits(Limits::new(13, 13, expected.len()))
+        rule.serialize_specified(Limits::new(13, 13, expected.len()))
             .unwrap(),
         expected
     );
@@ -784,7 +785,11 @@ fn omitted_descriptors_do_not_materialize_defaults_on_extended_styles() {
         Descriptor::AdditiveSymbols,
         Descriptor::SpeakAs,
     ] {
-        assert_eq!(rule.descriptor_specified_css(descriptor).unwrap(), "");
+        assert_eq!(
+            rule.descriptor_specified_css(descriptor, Default::default())
+                .unwrap(),
+            ""
+        );
     }
     assert_output(
         &rule,

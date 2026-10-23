@@ -26,7 +26,11 @@ fn color(declaration: &CssDeclaration, source: &str, expected: &str) {
     let offset = source.find(&format!("color:{expected}")).unwrap();
     original(declaration.position().unwrap(), source, offset);
     assert_eq!(
-        declaration.value_components().serialize().unwrap().as_css(),
+        declaration
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         expected
     );
     let name = declaration.parsed_name().unwrap();
@@ -312,7 +316,7 @@ fn unstyled_scoped_media_discards_block_semicolon_before_supports() {
             assert_eq!(
                 hidden_color
                     .value_components()
-                    .serialize()
+                    .serialize_tokens(Default::default())
                     .unwrap()
                     .as_css(),
                 "red"

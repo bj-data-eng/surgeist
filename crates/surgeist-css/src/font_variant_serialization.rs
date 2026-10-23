@@ -1,26 +1,17 @@
 //! Bounded canonical specified serialization of the authored variant family.
 
+use crate::CssSerializationError as Error;
 use crate::font_variant::*;
 use crate::specified_rule_serialization::SpecifiedRuleWriter;
-use crate::{
-    CssSpecifiedValueSerializationError as Error, CssSpecifiedValueSerializationLimits as Limits,
-};
 
 type Result<T> = std::result::Result<T, Error>;
 
 fn word(writer: &mut SpecifiedRuleWriter, start: usize, value: &str) -> Result<()> {
-    writer.context.charge_input(1)?;
-    writer.context.charge_projection(1)?;
+    writer.node()?;
     if writer.css.len() != start && !writer.css.ends_with('(') {
         writer.append(" ")?;
     }
     writer.append(value)
-}
-
-fn name(writer: &mut SpecifiedRuleWriter, value: &crate::CssFontFeatureValueName) -> Result<()> {
-    writer.context.charge_input(1)?;
-    writer.context.charge_projection(1)?;
-    writer.append_identifier(value.as_str())
 }
 
 fn named_function(
@@ -29,14 +20,13 @@ fn named_function(
     function: &str,
     names: &[crate::CssFontFeatureValueName],
 ) -> Result<()> {
-    writer.context.charge_input(1)?;
-    writer.context.charge_projection(1)?;
+    writer.node()?;
     if writer.css.len() != start {
         writer.append(" ")?;
     }
     writer.append(function)?;
     writer.append("(")?;
-    writer.comma_separated(names, name)?;
+    writer.comma_separated(names, |writer, name| writer.identifier(name.as_str()))?;
     writer.append(")")
 }
 
@@ -304,28 +294,17 @@ impl CssFontVariantValue {
 
 macro_rules! public_serializer {
     ($value:ty) => {
-        impl $value {
-            /// Canonical specified CSS for this checked authored value.
-            pub fn serialize_specified(&self) -> Result<String> {
-                self.serialize_specified_with_limits(Limits::default())
-            }
-            /// Serializes under a shared input, projection, and output budget.
-            pub fn serialize_specified_with_limits(&self, limits: Limits) -> Result<String> {
-                let mut writer =
-                    crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-                self.append_to_rule_writer(&mut writer)?;
-                Ok(writer.css)
-            }
-
-            pub(crate) fn append_to_rule_writer(
+        impl crate::specified_rule_serialization::SpecifiedProvider for $value {
+            fn append_to_rule_writer(
                 &self,
                 writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-            ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+            ) -> std::result::Result<(), crate::CssSerializationError> {
                 let start = writer.css.len();
                 self.write(writer, start)?;
                 Ok(())
             }
         }
+        crate::specified_rule_serialization::specified_serialization!($value);
     };
 }
 

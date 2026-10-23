@@ -7,33 +7,14 @@
 //! costs its function plus string node. Punctuation costs only output bytes.
 
 use crate::cursor_values::*;
+use crate::specified_rule_serialization::SpecifiedProvider as _;
 use crate::specified_rule_serialization::SpecifiedRuleWriter;
-use crate::{
-    CssCursorKeyword, CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits,
-};
+use crate::{CssCursorKeyword, CssSerializationError};
 
-type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
+type Result<T> = std::result::Result<T, CssSerializationError>;
 
-impl CssCursor {
-    /// Emits canonical authored cursor syntax without loading resources or clamping hotspots.
-    /// Candidate order and omission survive; set descriptors emit resolution before type.
-    /// The standard prefixed image-set alias emits `image-set()`.
-    pub fn serialize_specified(&self) -> Result<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Shares cumulative child visits, numeric projection work and final UTF-8 bytes.
-    /// Failure returns no partial text and leaves authored values and origins unchanged.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String> {
-        let mut writer = SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+impl crate::specified_rule_serialization::SpecifiedProvider for CssCursor {
+    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         match self {
             Self::Keyword(value) => keyword(*value, writer),
             Self::Images(value) => {
@@ -54,6 +35,7 @@ impl CssCursor {
         }
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssCursor);
 
 fn source(source: &CssCursorImageSource, writer: &mut SpecifiedRuleWriter) -> Result<()> {
     match source {
@@ -143,8 +125,8 @@ fn keyword(value: CssCursorKeyword, writer: &mut SpecifiedRuleWriter) -> Result<
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::CssSerializationLimits as Limits;
     use crate::CssSpecifiedValueSerializationErrorKind as Kind;
-    use crate::CssSpecifiedValueSerializationLimits as Limits;
     use crate::{
         CssContentString, CssNumberCalculation, CssSpecifiedNumber, CssUrl, parse_component_values,
     };
@@ -278,6 +260,7 @@ mod tests {
         let resolution = crate::CssResolutionValue::try_from_calculation(
             crate::CssResolutionCalculation::try_from_components(
                 parse_component_values("calc(-1x)").unwrap(),
+                Default::default(),
             )
             .unwrap(),
         )
@@ -347,7 +330,7 @@ mod tests {
     fn suppressed_number_math_enforces_the_child_projection_limit_and_preserves_original_origin() {
         let components = parse_component_values("calc(1 + 2)").unwrap();
         let number = CssSpecifiedNumber::try_from_calculation(
-            CssNumberCalculation::try_from_components(components).unwrap(),
+            CssNumberCalculation::try_from_components(components, Default::default()).unwrap(),
         )
         .unwrap();
         let value = value(number);

@@ -44,7 +44,7 @@ fn assert_edges(actual: &CssMarginShorthand, expected: [f32; 4]) {
         };
         assert!(length.literal_component().is_some());
         assert_eq!(
-            length.serialize_specified().unwrap(),
+            length.serialize_specified(Default::default()).unwrap(),
             format!("{expected}px")
         );
     }
@@ -83,13 +83,16 @@ fn assert_source_span(origin: &CssParsedOrigin, source: &str, expected: &str) {
 }
 
 fn checked_construction() {
-    let components = CssComponentValues::try_new(vec![
-        CssComponentValue::try_dimension("1", "px").unwrap(),
-        CssComponentValue::try_token(" ").unwrap(),
-        CssComponentValue::try_dimension("2", "px").unwrap(),
-        CssComponentValue::try_token(" ").unwrap(),
-        CssComponentValue::try_dimension("3", "px").unwrap(),
-    ])
+    let components = CssComponentValues::try_new(
+        vec![
+            CssComponentValue::try_dimension("1", "px").unwrap(),
+            CssComponentValue::try_token(" ").unwrap(),
+            CssComponentValue::try_dimension("2", "px").unwrap(),
+            CssComponentValue::try_token(" ").unwrap(),
+            CssComponentValue::try_dimension("3", "px").unwrap(),
+        ],
+        Default::default(),
+    )
     .unwrap();
     let declaration = parse_property_value(
         CssPropertyNameRef::Known(CssKnownProperty::Margin),
@@ -117,9 +120,11 @@ fn checked_construction() {
         CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit })
         if number.representation() == "1" && unit == "px"));
 
-    let negative =
-        CssComponentValues::try_new(vec![CssComponentValue::try_dimension("-1", "px").unwrap()])
-            .unwrap();
+    let negative = CssComponentValues::try_new(
+        vec![CssComponentValue::try_dimension("-1", "px").unwrap()],
+        Default::default(),
+    )
+    .unwrap();
     let error = parse_property_value(
         CssPropertyNameRef::Known(CssKnownProperty::Padding),
         negative,
@@ -187,7 +192,7 @@ fn declared_value_branches() {
     );
     let empty = parse_property_value(
         CssPropertyNameRef::Custom(&name),
-        CssComponentValues::try_new(Vec::new()).unwrap(),
+        CssComponentValues::try_new(Vec::new(), Default::default()).unwrap(),
         CssImportance::Normal,
     )
     .unwrap();
@@ -224,11 +229,14 @@ fn value_boundaries_and_error_origins() {
     let right = parse_component_values("2px").unwrap();
     let left_source = parsed(left.items()[0].origin()).source().clone();
     let right_source = parsed(right.items()[0].origin()).source().clone();
-    let mixed = CssComponentValues::try_new(vec![
-        left.items()[0].clone(),
-        CssComponentValue::try_token(" ").unwrap(),
-        right.items()[0].clone(),
-    ])
+    let mixed = CssComponentValues::try_new(
+        vec![
+            left.items()[0].clone(),
+            CssComponentValue::try_token(" ").unwrap(),
+            right.items()[0].clone(),
+        ],
+        Default::default(),
+    )
     .unwrap();
     let declaration = parse_property_value(
         CssPropertyNameRef::Known(CssKnownProperty::Margin),
@@ -287,13 +295,13 @@ fn parsed_declaration_coordinates() {
     else {
         panic!("typed padding")
     };
-    assert!(
-        padding_value
-            .value()
-            .assigned_values()
-            .iter()
-            .all(|value| { value.length_percentage().serialize_specified().unwrap() == "0" })
-    );
+    assert!(padding_value.value().assigned_values().iter().all(|value| {
+        value
+            .length_percentage()
+            .serialize_specified(Default::default())
+            .unwrap()
+            == "0"
+    }));
     assert_eq!(empty.custom().unwrap().name().as_str(), "--Empty");
     assert!(empty.custom().unwrap().value().value().unwrap().is_empty());
     assert!(empty.value_components().items().is_empty());

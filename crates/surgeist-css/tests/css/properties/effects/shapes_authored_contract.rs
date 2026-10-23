@@ -11,9 +11,7 @@ use crate::css::support::{
     authored_declaration_through_front as declaration, check_property_components as checked,
     discoverable_property as property,
 };
-use surgeist_css::{
-    CssSpecifiedValueSerializationErrorKind as K, CssSpecifiedValueSerializationLimits as L, *,
-};
+use surgeist_css::{CssSerializationLimits as L, CssSpecifiedValueSerializationErrorKind as K, *};
 
 const NAMES: [&str; 3] = ["shape-outside", "shape-image-threshold", "shape-margin"];
 const GLOBALS: [(&str, CssGlobalKeyword); 5] = [
@@ -31,7 +29,7 @@ fn accept(name: &str, cases: &[(&str, &str)]) {
             let before = source.clone();
             let output = format!("{name}: {expected} !important;");
             assert_eq!(
-                source.to_specified_css().unwrap(),
+                source.serialize_specified(Default::default()).unwrap(),
                 output,
                 "{input} front {front}"
             );
@@ -43,7 +41,10 @@ fn accept(name: &str, cases: &[(&str, &str)]) {
             };
             assert_eq!(reparsed.known().unwrap().property(), property(name));
             assert_eq!(reparsed.importance(), CssImportance::Important);
-            assert_eq!(reparsed.to_specified_css().unwrap(), output);
+            assert_eq!(
+                reparsed.serialize_specified(Default::default()).unwrap(),
+                output
+            );
         }
     }
 }
@@ -260,10 +261,13 @@ fn threshold_preserves_unclamped_numbers_percentages_and_exact_authored_componen
     );
     for input in ["-1e-47", "1e100", "-1e-47%", "150%"] {
         let source = declaration("shape-image-threshold", input, 0);
-        let serialized = source.value_components().serialize().unwrap();
+        let serialized = source
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap();
         assert_eq!(serialized.as_css(), input);
         let before = source.clone();
-        let _ = source.to_specified_css().unwrap();
+        let _ = source.serialize_specified(Default::default()).unwrap();
         assert_eq!(source, before);
     }
 }
@@ -394,7 +398,7 @@ fn globals(name: &str) {
             );
             assert!(items.items()[0].ordinary_value().is_none());
             assert_eq!(
-                source.to_specified_css().unwrap(),
+                source.serialize_specified(Default::default()).unwrap(),
                 format!("{name}: {input} !important;")
             );
         }
@@ -466,7 +470,7 @@ fn pending(name: &str, valid: &str, invalid: &str) {
             }
             assert_eq!(source, original);
             assert_eq!(
-                source.to_specified_css().unwrap(),
+                source.serialize_specified(Default::default()).unwrap(),
                 format!("{name}: {authored} !important;")
             );
         }
@@ -687,7 +691,7 @@ fn specified_scalar_and_keyword_limits_fail_atomically_and_retry_with_full_budge
         // One scalar/keyword plus the independently defined two declaration nodes.
         assert_eq!(
             source
-                .to_specified_css_with_limits(L::new(3, 3, expected.len()))
+                .serialize_specified(L::new(3, 3, expected.len()))
                 .unwrap(),
             expected
         );
@@ -697,17 +701,14 @@ fn specified_scalar_and_keyword_limits_fail_atomically_and_retry_with_full_budge
             (L::new(3, 3, expected.len() - 1), K::ByteLimit),
         ] {
             for _ in 0..2 {
-                assert_eq!(
-                    source
-                        .to_specified_css_with_limits(limits)
-                        .unwrap_err()
-                        .kind(),
-                    kind
-                );
+                assert_eq!(source.serialize_specified(limits).unwrap_err().kind(), kind);
                 assert_eq!(source, original);
             }
         }
-        assert_eq!(source.to_specified_css().unwrap(), expected);
+        assert_eq!(
+            source.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
 }
 
@@ -731,33 +732,36 @@ fn composed_shape_numeric_children_and_pending_output_share_bounded_atomic_write
         let output = format!("{name}: {expected} !important;");
         assert_eq!(
             source
-                .to_specified_css_with_limits(L::new(65_536, 262_144, output.len()))
+                .serialize_specified(L::new(65_536, 262_144, output.len()))
                 .unwrap(),
             output
         );
         assert_eq!(
             source
-                .to_specified_css_with_limits(L::new(65_536, 262_144, output.len() - 1))
+                .serialize_specified(L::new(65_536, 262_144, output.len() - 1))
                 .unwrap_err()
                 .kind(),
             K::ByteLimit
         );
         assert_eq!(
             source
-                .to_specified_css_with_limits(L::new(0, 262_144, output.len()))
+                .serialize_specified(L::new(0, 262_144, output.len()))
                 .unwrap_err()
                 .kind(),
             K::InputNodeLimit
         );
         assert_eq!(
             source
-                .to_specified_css_with_limits(L::new(65_536, 0, output.len()))
+                .serialize_specified(L::new(65_536, 0, output.len()))
                 .unwrap_err()
                 .kind(),
             K::ProjectionNodeLimit
         );
         assert_eq!(source, original);
-        assert_eq!(source.to_specified_css().unwrap(), output);
+        assert_eq!(
+            source.serialize_specified(Default::default()).unwrap(),
+            output
+        );
     }
 }
 
@@ -823,7 +827,7 @@ fn outside_shape_box_and_numeric_siblings_have_one_cumulative_visit_budget() {
         let original = source.clone();
         assert_eq!(
             source
-                .to_specified_css_with_limits(L::new(16, 16, output.len()))
+                .serialize_specified(L::new(16, 16, output.len()))
                 .unwrap(),
             output
         );
@@ -832,15 +836,12 @@ fn outside_shape_box_and_numeric_siblings_have_one_cumulative_visit_budget() {
             (L::new(16, 15, output.len()), K::ProjectionNodeLimit),
             (L::new(16, 16, output.len() - 1), K::ByteLimit),
         ] {
-            assert_eq!(
-                source
-                    .to_specified_css_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
-                kind
-            );
+            assert_eq!(source.serialize_specified(limits).unwrap_err().kind(), kind);
             assert_eq!(source, original);
         }
-        assert_eq!(source.to_specified_css().unwrap(), output);
+        assert_eq!(
+            source.serialize_specified(Default::default()).unwrap(),
+            output
+        );
     }
 }

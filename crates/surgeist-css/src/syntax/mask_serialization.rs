@@ -1,34 +1,13 @@
 //! Specified serialization of authored Masking 1 layers.
 
 use super::{CssMaskLayer, CssMaskList};
-use crate::{
-    CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits,
-    specified_rule_serialization::SpecifiedRuleWriter,
-};
+use crate::specified_rule_serialization::SpecifiedProvider as _;
+use crate::{CssSerializationError, specified_rule_serialization::SpecifiedRuleWriter};
 
-type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
+type Result<T> = std::result::Result<T, CssSerializationError>;
 
-impl CssMaskList {
-    /// Serializes all eight authored fields in canonical layer order.
-    /// Authored omissions, symbolic values and source origins remain unchanged.
-    pub fn serialize_specified(&self) -> Result<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Uses cumulative input, projection and output-byte limits, returning no partial CSS.
-    /// The list and each layer cost one input and projection node. Children retain
-    /// their providers' costs. A size without position generates two projection-only
-    /// `0%` tokens before the slash; it does not add authored input or mutate the layer.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String> {
-        let mut writer = SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+impl crate::specified_rule_serialization::SpecifiedProvider for CssMaskList {
+    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         writer.source_member(0, |writer| writer.node())?;
         for (index, layer) in self.layers.iter().enumerate() {
             if index != 0 {
@@ -40,6 +19,7 @@ impl CssMaskList {
         Ok(())
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssMaskList);
 
 fn append_layer(layer: &CssMaskLayer, writer: &mut SpecifiedRuleWriter) -> Result<()> {
     writer.source_property(crate::CssKnownProperty::MaskImage, |writer| writer.node())?;
@@ -104,6 +84,7 @@ fn append_layer(layer: &CssMaskLayer, writer: &mut SpecifiedRuleWriter) -> Resul
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::CssSerializationLimits;
     use crate::{
         CssBackgroundRepeat, CssBackgroundRepeatStyle, CssBackgroundSize,
         CssBackgroundSizeComponent, CssImageValue, CssSpecifiedValueSerializationErrorKind as Kind,
@@ -129,11 +110,8 @@ mod tests {
     fn synthesized_position_shares_prefix_siblings_and_exact_projection_costs() {
         let value = sized();
         let expected = "!0% 0% / contain;0% 0% / contain";
-        let mut writer = SpecifiedRuleWriter::new(CssSpecifiedValueSerializationLimits::new(
-            7,
-            11,
-            expected.len(),
-        ));
+        let mut writer =
+            SpecifiedRuleWriter::new(CssSerializationLimits::new(7, 11, expected.len()));
         writer.node().unwrap();
         writer.append("!").unwrap();
         value.append_to_rule_writer(&mut writer).unwrap();
@@ -175,8 +153,7 @@ mod tests {
         .unwrap();
         // list + layer + none + size/width/height + repeat/x/y = 9;
         // generated position adds two projection nodes even with no output.
-        let mut writer =
-            SpecifiedRuleWriter::new(CssSpecifiedValueSerializationLimits::new(9, 11, 1));
+        let mut writer = SpecifiedRuleWriter::new(CssSerializationLimits::new(9, 11, 1));
         writer.append("x").unwrap();
         writer
             .without_output(|writer| value.append_to_rule_writer(writer))
@@ -192,7 +169,7 @@ mod tests {
             Kind::ProjectionNodeLimit
         );
         assert_eq!(
-            value.serialize_specified().unwrap(),
+            value.serialize_specified(Default::default()).unwrap(),
             "none 0% 0% / auto repeat"
         );
     }
@@ -200,8 +177,7 @@ mod tests {
     #[test]
     fn nested_suppressed_failure_restores_enclosing_mode() {
         let value = sized();
-        let mut writer =
-            SpecifiedRuleWriter::new(CssSpecifiedValueSerializationLimits::new(2, 100, 1));
+        let mut writer = SpecifiedRuleWriter::new(CssSerializationLimits::new(2, 100, 1));
         let error = writer
             .without_output(|writer| {
                 let error = writer
@@ -221,11 +197,8 @@ mod tests {
     fn cumulative_counter_overflow_is_typed_and_leaves_source_unchanged() {
         let value = sized();
         let before = value.clone();
-        let mut writer = SpecifiedRuleWriter::new(CssSpecifiedValueSerializationLimits::new(
-            usize::MAX,
-            usize::MAX,
-            0,
-        ));
+        let mut writer =
+            SpecifiedRuleWriter::new(CssSerializationLimits::new(usize::MAX, usize::MAX, 0));
         writer.context.charge_input(usize::MAX).unwrap();
         let error = writer
             .without_output(|writer| value.append_to_rule_writer(writer))
@@ -233,7 +206,10 @@ mod tests {
         assert_eq!(error.kind(), Kind::CapacityOverflow);
         assert_eq!(value, before);
         assert!(!writer.context.output_suppressed());
-        assert_eq!(value.serialize_specified().unwrap(), "0% 0% / contain");
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            "0% 0% / contain"
+        );
     }
 
     #[test]
@@ -252,8 +228,7 @@ mod tests {
         };
         let value = wrapper.value();
         let before = value.clone();
-        let mut writer =
-            SpecifiedRuleWriter::new(CssSpecifiedValueSerializationLimits::new(100, 100, 1));
+        let mut writer = SpecifiedRuleWriter::new(CssSerializationLimits::new(100, 100, 1));
         writer.append("x").unwrap();
         writer
             .without_output(|writer| value.append_to_rule_writer(writer))

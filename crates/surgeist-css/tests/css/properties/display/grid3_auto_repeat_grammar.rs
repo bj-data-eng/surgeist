@@ -261,8 +261,11 @@ fn assert_checked(property: Property, authored: &str) {
     assert!(checked.position().is_none());
     assert!(checked.parsed_name().is_none());
     assert!(checked.parsed_value().is_none());
-    let original_tokens = components.serialize().unwrap();
-    let retained_tokens = checked.value_components().serialize().unwrap();
+    let original_tokens = components.serialize_tokens(Default::default()).unwrap();
+    let retained_tokens = checked
+        .value_components()
+        .serialize_tokens(Default::default())
+        .unwrap();
     assert_eq!(retained_tokens.as_css(), original_tokens.as_css());
     assert_eq!(retained_tokens.segments(), original_tokens.segments());
     assert_eq!(

@@ -155,7 +155,7 @@ impl CssStripe {
         color: CssComponentValue,
         thickness: Option<CssStripeThickness>,
     ) -> Result<Self, CssImage1DConstructionError> {
-        let values = crate::CssComponentValues::try_new(vec![color.clone()])
+        let values = crate::CssComponentValues::try_new(vec![color.clone()], Default::default())
             .map_err(CssImage1DConstructionError::Component)?;
         if let Some(origin) = values.first_implicit_origin() {
             return Err(CssImage1DConstructionError::RecoveredComponent(
@@ -190,8 +190,11 @@ impl CssStripe {
         }
     }
     fn check_depth(&self) -> Result<(), CssImage1DConstructionError> {
-        let color = crate::CssComponentValues::try_new(vec![self.color_component.clone()])
-            .map_err(CssImage1DConstructionError::Component)?;
+        let color = crate::CssComponentValues::try_new(
+            vec![self.color_component.clone()],
+            Default::default(),
+        )
+        .map_err(CssImage1DConstructionError::Component)?;
         Self::check_component_depth(&color, self.thickness.as_ref())
     }
     fn check_component_depth(
@@ -237,8 +240,11 @@ impl CssStripes {
         }
         for stripe in &stripes {
             stripe.check_depth()?;
-            let values = crate::CssComponentValues::try_new(vec![stripe.color_component.clone()])
-                .map_err(CssImage1DConstructionError::Component)?;
+            let values = crate::CssComponentValues::try_new(
+                vec![stripe.color_component.clone()],
+                Default::default(),
+            )
+            .map_err(CssImage1DConstructionError::Component)?;
             if let Some(origin) = values.first_implicit_origin() {
                 return Err(CssImage1DConstructionError::RecoveredComponent(
                     origin.clone(),
@@ -303,51 +309,36 @@ impl CssImage1D {
     }
 }
 
-type Output<T> = Result<T, crate::CssSpecifiedValueSerializationError>;
+type Output<T> = Result<T, crate::CssSerializationError>;
 macro_rules! provider {
     ($ty:ty) => {
-        impl $ty {
-            pub fn serialize_specified(&self) -> Output<String> {
-                self.serialize_specified_with_limits(
-                    crate::CssSpecifiedValueSerializationLimits::default(),
-                )
-            }
-            /// Visits the complete retained graph under cumulative budgets; failure is atomic.
-            pub fn serialize_specified_with_limits(
-                &self,
-                limits: crate::CssSpecifiedValueSerializationLimits,
-            ) -> Output<String> {
-                let mut writer = SpecifiedRuleWriter::new(limits);
-                self.append_to_rule_writer(&mut writer)?;
-                Ok(writer.css)
-            }
-        }
+        crate::specified_rule_serialization::specified_serialization!($ty);
     };
 }
 provider!(CssImage1D);
 provider!(CssStripes);
 provider!(CssStripeThickness);
 provider!(CssStripeLengthPercentage);
-impl CssStripeLengthPercentage {
-    pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Output<()> {
+impl crate::specified_rule_serialization::SpecifiedProvider for CssStripeLengthPercentage {
+    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Output<()> {
         self.value.append_to_rule_writer(writer)
     }
 }
-impl CssStripeThickness {
-    pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Output<()> {
+impl crate::specified_rule_serialization::SpecifiedProvider for CssStripeThickness {
+    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Output<()> {
         match self {
             Self::LengthPercentage(value) => value.append_to_rule_writer(writer),
             Self::Flex(value) => value.append_to_rule_writer(writer),
         }
     }
 }
-impl CssImage1D {
-    pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Output<()> {
+impl crate::specified_rule_serialization::SpecifiedProvider for CssImage1D {
+    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Output<()> {
         self.stripes().append_to_rule_writer(writer)
     }
 }
-impl CssStripes {
-    pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Output<()> {
+impl crate::specified_rule_serialization::SpecifiedProvider for CssStripes {
+    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Output<()> {
         writer.node()?;
         writer.append("stripes(")?;
         for (index, stripe) in self.stripes.iter().enumerate() {
@@ -374,6 +365,7 @@ impl CssStripes {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::specified_rule_serialization::SpecifiedProvider as _;
     #[test]
     fn stripes_share_cumulative_work_for_default_and_math_thicknesses() {
         for (text, expected, input, projection) in [

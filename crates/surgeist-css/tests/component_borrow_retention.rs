@@ -30,9 +30,10 @@ fn constructed_result_retains_mixed_originals_after_inputs_and_another_result_dr
             panic!("exact nested root");
         };
         let expected = calc.values().items()[0].origin().clone();
-        let values = CssComponentValues::try_new(vec![
-            CssComponentValue::try_function("rgb", children).unwrap(),
-        ])
+        let values = CssComponentValues::try_new(
+            vec![CssComponentValue::try_function("rgb", children).unwrap()],
+            Default::default(),
+        )
         .unwrap();
         (checked(values.clone()), checked(values), expected)
     };
@@ -56,10 +57,19 @@ fn constructed_result_retains_mixed_originals_after_inputs_and_another_result_dr
     assert_eq!(actual.span(), expected.span());
     assert_eq!(actual.span().start().byte_offset().value(), 5);
     assert_eq!(
-        value.components().serialize().unwrap().as_css(),
+        value
+            .components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         "calc(1 + max(2, min(3,4)))"
     );
-    assert_eq!(color(&second).to_specified_css().unwrap(), "rgb(4, 5, 6)");
+    assert_eq!(
+        color(&second)
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "rgb(4, 5, 6)"
+    );
 }
 
 #[test]
@@ -82,7 +92,11 @@ fn profile_result_exposes_one_retained_calculation_graph_after_source_drop() {
     );
     assert!(std::ptr::eq(result.components(), calculation.components()));
     assert_eq!(
-        result.components().serialize().unwrap().as_css(),
+        result
+            .components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         "calc(Cyan + max(Magenta, 1))"
     );
 }
@@ -102,7 +116,10 @@ fn recovered_source_closures_are_retained_and_checked_property_admission_stays_s
         root.closing_origin(),
         CssValueOrigin::ImplicitClosure { .. }
     ));
-    assert_eq!(value.to_specified_css().unwrap(), "rgb(3, 3, 4)");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "rgb(3, 3, 4)"
+    );
     let values = parse_component_values("rgb(calc(1 + 2) 3 4").unwrap();
     assert!(
         parse_property_value(
@@ -121,7 +138,12 @@ fn completed_public_color_construction_resolves_nested_calculations_to_legacy_rg
     // in the legacy comma form.
     let values = parse_component_values("rgb(calc(1 + max(2, min(3,4))) 5 6)").unwrap();
     let result = checked(values);
-    assert_eq!(color(&result).to_specified_css().unwrap(), "rgb(4, 5, 6)");
+    assert_eq!(
+        color(&result)
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "rgb(4, 5, 6)"
+    );
 }
 
 #[test]
@@ -132,6 +154,7 @@ fn relative_calculation_retains_required_authored_text_and_references_after_inpu
             parse_component_values(&text).unwrap(),
             CssRelativeColorEnvironment::Rgb,
             CssRelativeColorResultDomain::NumberPercentage,
+            Default::default(),
         )
         .unwrap()
     };

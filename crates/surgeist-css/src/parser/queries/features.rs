@@ -88,8 +88,8 @@ pub(super) fn construct_when_media_feature(
     {
         return Err(invalid());
     }
-    let values = CssComponentValues::try_new_with_limits(vec![component.clone()], limits)?;
-    let serialized = values.serialize_with_limit(limits.max_css_bytes())?;
+    let values = CssComponentValues::try_new(vec![component.clone()], limits)?;
+    let serialized = values.serialize_tokens(limits)?;
     let numeric = NumericInputContext::components(&values, &serialized);
     let numeric = MediaInput {
         numeric: &numeric,
@@ -528,10 +528,12 @@ fn parse_media_ratio<'i, 't>(
     let denominator_is_omitted = input.try_parse(|p| p.expect_delim('/')).is_err();
     let denominator = if denominator_is_omitted {
         CssNumberCalculation::try_from_components(
-            crate::CssComponentValues::try_new(vec![
-                crate::CssComponentValue::try_number("1").expect("default denominator"),
-            ])
+            crate::CssComponentValues::try_new(
+                vec![crate::CssComponentValue::try_number("1").expect("default denominator")],
+                Default::default(),
+            )
             .expect("single default denominator"),
+            Default::default(),
         )
         .expect("number default denominator")
     } else {

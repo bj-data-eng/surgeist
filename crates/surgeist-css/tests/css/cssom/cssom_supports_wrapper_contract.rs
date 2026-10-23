@@ -18,16 +18,22 @@ fn empty_parsed_supports_has_exactly_one_closing_line_feed() {
         panic!("Supports rule");
     };
     assert_eq!(
-        rule.condition().serialize().unwrap().as_css(),
+        rule.condition()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         " (display: grid) "
     );
     assert!(rule.rules().is_empty());
     assert_eq!(
-        report.syntax().to_specified_css().unwrap(),
+        report
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "@supports (display: grid) { }"
     );
     assert_eq!(
-        report.syntax().serialize_cssom().unwrap(),
+        report.syntax().serialize_cssom(Default::default()).unwrap(),
         "@supports (display: grid) {\n}"
     );
     assert_eq!(report, before);
@@ -42,19 +48,25 @@ fn multiline_children_receive_a_prefix_only_on_their_first_line() {
         panic!("Supports rule");
     };
     assert_eq!(
-        rule.condition().serialize().unwrap().as_css(),
+        rule.condition()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         " (display:grid) "
     );
     assert_eq!(
-        rule.rules()[0].serialize_cssom().unwrap(),
+        rule.rules()[0].serialize_cssom(Default::default()).unwrap(),
         "@media screen {\n  .child { color: red; }\n}"
     );
     assert_eq!(
-        report.syntax().to_specified_css().unwrap(),
+        report
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "@supports (display:grid) { @media screen { .child { color: red; } } .last { } }"
     );
     assert_eq!(
-        report.syntax().serialize_cssom().unwrap(),
+        report.syntax().serialize_cssom(Default::default()).unwrap(),
         "@supports (display:grid) {\n  @media screen {\n  .child { color: red; }\n}\n  .last { }\n}"
     );
 }
@@ -65,11 +77,14 @@ fn supports_inside_a_style_preserves_actual_nested_selector_ancestry() {
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let before = report.clone();
     assert_eq!(
-        report.syntax().to_specified_css().unwrap(),
+        report
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
         ".host { @supports (display:grid) { .child { } } }"
     );
     assert_eq!(
-        report.syntax().serialize_cssom().unwrap(),
+        report.syntax().serialize_cssom(Default::default()).unwrap(),
         ".host {\n  @supports (display:grid) {\n  & .child { }\n}\n}"
     );
     assert_eq!(report, before);
@@ -88,11 +103,11 @@ fn borrowed_scoped_supports_formats_without_adopting_a_scope_wrapper() {
     let view = View::from_scoped_rule(scoped);
     assert!(std::ptr::eq(view.parsed_scoped_rule().unwrap(), scoped));
     assert_eq!(
-        view.to_specified_css().unwrap(),
+        view.serialize_specified(Default::default()).unwrap(),
         "@supports (display:grid) { & .child { } }"
     );
     assert_eq!(
-        view.serialize_cssom().unwrap(),
+        view.serialize_cssom(Default::default()).unwrap(),
         "@supports (display:grid) {\n  & .child { }\n}"
     );
 }
@@ -104,34 +119,39 @@ fn edited_supports_preserves_selected_survivors_and_filters_empty_child_text() {
     let [CssRule::Supports(supports), CssRule::Style(style)] = report.syntax().rules() else {
         panic!("Supports and style");
     };
-    let original = Block::try_from_declarations(style.declarations()).unwrap();
+    let original = Block::try_from_declarations(style.declarations(), Default::default()).unwrap();
     let selected = [original.entries()[3].clone(), original.entries()[1].clone()];
-    let current = Block::try_from_entries(&selected).unwrap();
+    let current = Block::try_from_entries(&selected, Default::default()).unwrap();
     for (retained, authored) in current.entries().iter().zip(&selected) {
         assert!(retained.source().same_occurrence(authored.source()));
     }
     assert_eq!(
-        current.serialize_cssom().unwrap(),
+        current.serialize_cssom(Default::default()).unwrap(),
         "margin-left: 4px; margin-right: 2px;"
     );
-    let child = View::try_style(style.selectors(), &current, &[]).unwrap();
-    let empty = Block::try_from_entries(&[]).unwrap();
-    let empty_child = View::try_nested_declarations(&empty).unwrap();
-    assert_eq!(empty_child.serialize_cssom().unwrap(), "");
+    let child = View::try_style(style.selectors(), &current, &[], Default::default()).unwrap();
+    let empty = Block::try_from_entries(&[], Default::default()).unwrap();
+    let empty_child = View::try_nested_declarations(&empty, Default::default()).unwrap();
+    assert_eq!(empty_child.serialize_cssom(Default::default()).unwrap(), "");
     let children = [empty_child, child, empty_child, child, empty_child];
-    let group = View::try_group(Prelude::Supports(supports.condition()), &children).unwrap();
+    let group = View::try_group(
+        Prelude::Supports(supports.condition()),
+        &children,
+        Default::default(),
+    )
+    .unwrap();
     assert!(group.parsed_rule().is_none());
     assert_eq!(
-        group.to_specified_css().unwrap(),
+        group.serialize_specified(Default::default()).unwrap(),
         "@supports (display:grid) { .child { margin-left: 4px; margin-right: 2px; } .child { margin-left: 4px; margin-right: 2px; } }"
     );
     assert_eq!(
-        group.serialize_cssom().unwrap(),
+        group.serialize_cssom(Default::default()).unwrap(),
         "@supports (display:grid) {\n  .child { margin-left: 4px; margin-right: 2px; }\n  .child { margin-left: 4px; margin-right: 2px; }\n}"
     );
-    assert_eq!(children[0].serialize_cssom().unwrap(), "");
+    assert_eq!(children[0].serialize_cssom(Default::default()).unwrap(), "");
     assert_eq!(
-        original.serialize_cssom().unwrap(),
+        original.serialize_cssom(Default::default()).unwrap(),
         "margin: 1px 2px 3px 4px;"
     );
 }
@@ -142,26 +162,32 @@ fn assert_empty_edited_frame(retain_empty_children: bool) {
     let [CssRule::Supports(supports)] = report.syntax().rules() else {
         panic!("Supports");
     };
-    let empty = Block::try_from_entries(&[]).unwrap();
-    let empty_child = View::try_nested_declarations(&empty).unwrap();
+    let empty = Block::try_from_entries(&[], Default::default()).unwrap();
+    let empty_child = View::try_nested_declarations(&empty, Default::default()).unwrap();
     let retained = [empty_child, empty_child, empty_child];
     let children = if retain_empty_children {
         &retained[..]
     } else {
         &[][..]
     };
-    let group = View::try_group(Prelude::Supports(supports.condition()), children).unwrap();
+    let group = View::try_group(
+        Prelude::Supports(supports.condition()),
+        children,
+        Default::default(),
+    )
+    .unwrap();
     assert_eq!(
-        group.to_specified_css().unwrap(),
+        group.serialize_specified(Default::default()).unwrap(),
         "@supports (display:grid) { }"
     );
-    assert!(
-        children
-            .iter()
-            .all(|child| child.serialize_cssom().unwrap().is_empty())
-    );
+    assert!(children.iter().all(|child| {
+        child
+            .serialize_cssom(Default::default())
+            .unwrap()
+            .is_empty()
+    }));
     assert_eq!(
-        group.serialize_cssom().unwrap(),
+        group.serialize_cssom(Default::default()).unwrap(),
         "@supports (display:grid) {\n}"
     );
 }
@@ -189,11 +215,18 @@ fn specified_condition_retains_logical_grouping_and_future_tokens() {
     // rule serializer may safely trim its boundary whitespace.
     let condition = " ((display:grid) or (display:flex)) and (future-token(foo)) ";
     assert_eq!(
-        supports.condition().serialize().unwrap().as_css(),
+        supports
+            .condition()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         condition
     );
     assert_eq!(
-        report.syntax().to_specified_css().unwrap(),
+        report
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "@supports ((display:grid) or (display:flex)) and (future-token(foo)) { }"
     );
     assert_eq!(report, before);
@@ -207,13 +240,19 @@ fn media_empty_frame_and_unselected_container_are_independent_controls() {
     else {
         panic!("media and container");
     };
-    assert_eq!(media.serialize_cssom().unwrap(), "@media screen {\n\n}");
+    assert_eq!(
+        media.serialize_cssom(Default::default()).unwrap(),
+        "@media screen {\n\n}"
+    );
     assert!(matches!(
-        container.serialize_cssom().unwrap_err().kind(),
+        container
+            .serialize_cssom(Default::default())
+            .unwrap_err()
+            .kind(),
         ErrorKind::FormatUnavailable(CssRuleCssomFormat::Container)
     ));
     assert_eq!(
-        container.to_specified_css().unwrap(),
+        container.serialize_specified(Default::default()).unwrap(),
         "@container (width>1px) { }"
     );
 }

@@ -45,7 +45,10 @@ fn initial_and_ordinary_longhand_payloads_expose_exact_z_index_values() {
         panic!("z-index initial")
     };
     assert_eq!(initial, &CssZIndexValue::Auto);
-    assert_eq!(initial.serialize_specified().unwrap(), "auto");
+    assert_eq!(
+        initial.serialize_specified(Default::default()).unwrap(),
+        "auto"
+    );
     for text in ["AUTO", "+0002147483648", "-2147483649", "calc(1.5)"] {
         let source = important_declaration("z-index", text);
         assert_eq!(&expanded(&source), value(&source));
@@ -88,26 +91,26 @@ fn canonical_auto_exact_integers_and_unrounded_math_round_trip_without_mutation(
         let source = important_declaration("z-index", input);
         let before = source.clone();
         let value = value(&source);
-        assert_eq!(value.serialize_specified().unwrap(), expected, "{input}");
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected,
+            "{input}"
+        );
         assert_eq!(
             self::value(&important_declaration("z-index", expected))
-                .serialize_specified()
+                .serialize_specified(Default::default())
                 .unwrap(),
             expected
         );
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    65_536,
-                    262_144,
-                    expected.len()
-                ))
+                .serialize_specified(CssSerializationLimits::new(65_536, 262_144, expected.len()))
                 .unwrap(),
             expected
         );
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
+                .serialize_specified(CssSerializationLimits::new(
                     65_536,
                     262_144,
                     expected.len() - 1
@@ -130,29 +133,26 @@ fn each_z_index_branch_obeys_atomic_input_projection_and_byte_limits() {
         let before = value.clone();
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(0, 262_144, 1_048_576),
+                CssSerializationLimits::new(0, 262_144, 1_048_576),
                 CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(65_536, 0, 1_048_576),
+                CssSerializationLimits::new(65_536, 0, 1_048_576),
                 CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(65_536, 262_144, 0),
+                CssSerializationLimits::new(65_536, 262_144, 0),
                 CssSpecifiedValueSerializationErrorKind::ByteLimit,
             ),
         ] {
             assert_eq!(
-                value
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                value.serialize_specified(limits).unwrap_err().kind(),
                 kind,
                 "{text}"
             );
             assert_eq!(value, &before);
         }
-        assert!(value.serialize_specified().is_ok());
+        assert!(value.serialize_specified(Default::default()).is_ok());
     }
     for (value, expected) in [
         (CssZIndexValue::Auto, "auto"),
@@ -163,11 +163,7 @@ fn each_z_index_branch_obeys_atomic_input_projection_and_byte_limits() {
     ] {
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    1,
-                    1,
-                    expected.len()
-                ))
+                .serialize_specified(CssSerializationLimits::new(1, 1, expected.len()))
                 .unwrap(),
             expected
         );
@@ -182,9 +178,10 @@ fn reentered_z_index_longhand_retains_parsed_and_programmatic_integer_origins() 
     };
     for replacement in [
         parse_component_values("+0002147483648").unwrap(),
-        CssComponentValues::try_new(vec![
-            CssComponentValue::try_number("+0002147483648").unwrap(),
-        ])
+        CssComponentValues::try_new(
+            vec![CssComponentValue::try_number("+0002147483648").unwrap()],
+            Default::default(),
+        )
         .unwrap(),
     ] {
         let before = replacement.clone();
@@ -208,22 +205,22 @@ fn reentered_z_index_longhand_retains_parsed_and_programmatic_integer_origins() 
         let CssLonghandValueRef::ZIndex(value) = item.ordinary_value().unwrap().view() else {
             unreachable!()
         };
-        assert_eq!(value.serialize_specified().unwrap(), "2147483648");
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            "2147483648"
+        );
         for (limits, failure) in [
             (
-                CssSpecifiedValueSerializationLimits::new(1, 0, 10),
+                CssSerializationLimits::new(1, 0, 10),
                 CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 1, 9),
+                CssSerializationLimits::new(1, 1, 9),
                 CssSpecifiedValueSerializationErrorKind::ByteLimit,
             ),
         ] {
             assert_eq!(
-                value
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                value.serialize_specified(limits).unwrap_err().kind(),
                 failure
             );
             assert_eq!(literal.component(), &before.items()[0]);
@@ -263,26 +260,23 @@ fn parsed_symbolic_math_keeps_origins_after_late_projection_and_byte_failure() {
     let original = math.components().clone();
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(65_536, 1, 1_048_576),
+            CssSerializationLimits::new(65_536, 1, 1_048_576),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(65_536, 262_144, "sign(1em - 1px)".len() - 1),
+            CssSerializationLimits::new(65_536, 262_144, "sign(1em - 1px)".len() - 1),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
-        assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            kind
-        );
+        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
         assert_eq!(value, &before);
         assert_eq!(math.components(), &original);
         for (component, retained) in original.items().iter().zip(math.components().items()) {
             assert_eq!(component.origin(), retained.origin());
         }
     }
-    assert_eq!(value.serialize_specified().unwrap(), "sign(1em - 1px)");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "sign(1em - 1px)"
+    );
 }

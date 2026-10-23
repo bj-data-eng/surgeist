@@ -22,8 +22,11 @@ fn identifier(value: &CssComponentValue) -> &str {
 fn token_boundaries() {
     let number = CssComponentValue::try_number("10").expect("number token");
     let unit = CssComponentValue::try_ident("px").expect("identifier token");
-    let values = CssComponentValues::try_new(vec![number, unit]).expect("two separate tokens");
-    let serialized = values.serialize().expect("serializable tokens");
+    let values = CssComponentValues::try_new(vec![number, unit], Default::default())
+        .expect("two separate tokens");
+    let serialized = values
+        .serialize_tokens(Default::default())
+        .expect("serializable tokens");
     assert_eq!(serialized.as_css(), "10/**/px");
     assert!(matches!(
         serialized.origin_at(2),
@@ -56,9 +59,9 @@ fn token_boundaries() {
                 .expect("right component")
                 .items(),
         );
-        let result = CssComponentValues::try_new(items)
+        let result = CssComponentValues::try_new(items, Default::default())
             .expect("valid joined components")
-            .serialize()
+            .serialize_tokens(Default::default())
             .expect("separated serialization");
         assert_eq!(result.as_css(), expected);
     }
@@ -75,9 +78,9 @@ fn token_boundaries() {
             .items(),
     );
     assert_eq!(
-        CssComponentValues::try_new(items)
+        CssComponentValues::try_new(items, Default::default())
             .expect("joined stream")
-            .serialize()
+            .serialize_tokens(Default::default())
             .expect("serialization")
             .as_css(),
         "a/**/b"
@@ -89,7 +92,10 @@ fn checked_construction() {
     let escaped = parse_component_values(r"\31 a").expect("escaped identifier");
     assert_eq!(identifier(&escaped.items()[0]), "1a");
     assert_eq!(
-        escaped.serialize().expect("preserved spelling").as_css(),
+        escaped
+            .serialize_tokens(Default::default())
+            .expect("preserved spelling")
+            .as_css(),
         r"\31 a"
     );
     let constructed = CssComponentValue::try_ident("1a").expect("escaped construction");
@@ -137,9 +143,9 @@ fn checked_construction() {
             other => panic!("number constructor returned {other:?}"),
         }
         assert_eq!(
-            CssComponentValues::try_new(vec![value])
+            CssComponentValues::try_new(vec![value], Default::default())
                 .expect("number stream")
-                .serialize()
+                .serialize_tokens(Default::default())
                 .expect("numeric spelling preserved")
                 .as_css(),
             spelling
@@ -147,9 +153,9 @@ fn checked_construction() {
     }
 
     let dimension = CssComponentValue::try_dimension("100", "E1m").expect("escaped unit");
-    let css = CssComponentValues::try_new(vec![dimension])
+    let css = CssComponentValues::try_new(vec![dimension], Default::default())
         .expect("dimension stream")
-        .serialize()
+        .serialize_tokens(Default::default())
         .expect("unambiguous dimension");
     let roundtrip = parse_component_values(css.as_css()).expect("dimension reparse");
     assert!(matches!(roundtrip.items()[0].view(),
@@ -168,9 +174,10 @@ fn checked_construction() {
     );
     let quoted_url = CssComponentValue::try_function(
         "url",
-        CssComponentValues::try_new(vec![
-            CssComponentValue::try_string("x").expect("URL string"),
-        ])
+        CssComponentValues::try_new(
+            vec![CssComponentValue::try_string("x").expect("URL string")],
+            Default::default(),
+        )
         .expect("URL arguments"),
     )
     .expect("quoted URL function");
@@ -215,14 +222,16 @@ fn whitespace_and_closures() {
         assert_eq!(
             parse_component_values(css)
                 .expect("component syntax")
-                .serialize()
+                .serialize_tokens(Default::default())
                 .expect("representation-preserving serialization")
                 .as_css(),
             css
         );
     }
     let values = parse_component_values("calc(1 + 2").expect("EOF closes the function");
-    let serialized = values.serialize().expect("explicit closing serialization");
+    let serialized = values
+        .serialize_tokens(Default::default())
+        .expect("explicit closing serialization");
     assert_eq!(serialized.as_css(), "calc(1 + 2)");
     assert!(matches!(serialized.origin_at(10),
         Some(CssSerializedOrigin::Token(CssValueOrigin::ImplicitClosure { at, .. }))
@@ -237,12 +246,14 @@ fn whitespace_and_closures() {
 fn origins_and_limits() {
     let source_a = parse_component_values("10").expect("replacement source");
     let source_b = parse_component_values("px").expect("use-site source");
-    let joined = CssComponentValues::try_new(vec![
-        source_a.items()[0].clone(),
-        source_b.items()[0].clone(),
-    ])
+    let joined = CssComponentValues::try_new(
+        vec![source_a.items()[0].clone(), source_b.items()[0].clone()],
+        Default::default(),
+    )
     .expect("independent source tokens");
-    let serialized = joined.serialize().expect("mapped serialization");
+    let serialized = joined
+        .serialize_tokens(Default::default())
+        .expect("mapped serialization");
     for (offset, expected_source, expected_end) in [(0, "10", 2), (6, "px", 2)] {
         match serialized.origin_at(offset).expect("mapped token") {
             CssSerializedOrigin::Token(CssValueOrigin::Parsed(origin)) => {
@@ -281,7 +292,9 @@ fn origins_and_limits() {
     );
     assert_eq!(
         joined
-            .serialize_with_limit(7)
+            .serialize_tokens(
+                CssComponentValueLimits::try_new(256, usize::MAX, 7).expect("valid limits")
+            )
             .expect_err("separator counts toward bytes")
             .kind(),
         CssComponentValueErrorKind::ByteLimit
@@ -304,10 +317,13 @@ fn origins_and_limits() {
     );
     let mut constructed = parse_component_values("x").expect("leaf");
     for _ in 0..256 {
-        constructed = CssComponentValues::try_new(vec![
-            CssComponentValue::try_block(CssBlockKind::Parenthesis, constructed)
-                .expect("checked block"),
-        ])
+        constructed = CssComponentValues::try_new(
+            vec![
+                CssComponentValue::try_block(CssBlockKind::Parenthesis, constructed)
+                    .expect("checked block"),
+            ],
+            Default::default(),
+        )
         .expect("checked stream");
     }
     assert_eq!(

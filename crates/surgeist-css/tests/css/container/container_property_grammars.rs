@@ -488,8 +488,8 @@ fn checked_name_construction_preserves_hex_escape_and_separate_identifier_bounda
     let value = grammar("container-name");
     let mut tokens = parse_component_values(r"\31").unwrap().items().to_vec();
     tokens.extend_from_slice(parse_component_values(" pane").unwrap().items());
-    let components = CssComponentValues::try_new(tokens).unwrap();
-    let serialized = components.serialize().unwrap();
+    let components = CssComponentValues::try_new(tokens, Default::default()).unwrap();
+    let serialized = components.serialize_tokens(Default::default()).unwrap();
     let reparsed = parse_component_values(serialized.as_css()).unwrap();
     let names = reparsed
         .items()
@@ -520,10 +520,13 @@ fn checked_name_construction_preserves_hex_escape_and_separate_identifier_bounda
 #[test]
 fn checked_type_construction_does_not_merge_adjacent_identifier_tokens() {
     let value = grammar("container-type");
-    let components = CssComponentValues::try_new(vec![
-        CssComponentValue::try_ident("size").unwrap(),
-        CssComponentValue::try_ident("scroll-state").unwrap(),
-    ])
+    let components = CssComponentValues::try_new(
+        vec![
+            CssComponentValue::try_ident("size").unwrap(),
+            CssComponentValue::try_ident("scroll-state").unwrap(),
+        ],
+        Default::default(),
+    )
     .unwrap();
     let constructed =
         parse_property_value_for_grammar(value, components, CssImportance::Important).unwrap();
@@ -539,9 +542,11 @@ fn assert_style_identity(name: &str, authored_name: &str, valid_value: &str) {
     // the property name must not start evaluating or applying its value grammar.
     for value in [valid_value, "banana"] {
         let source = format!("style({authored_name}: {value})");
-        let condition =
-            CssContainerCondition::try_from_components(parse_component_values(&source).unwrap())
-                .unwrap();
+        let condition = CssContainerCondition::try_from_components(
+            parse_component_values(&source).unwrap(),
+            Default::default(),
+        )
+        .unwrap();
         let CssContainerConditionKind::Style(query) = condition.kind() else {
             panic!("style query")
         };
@@ -557,7 +562,10 @@ fn assert_style_identity(name: &str, authored_name: &str, valid_value: &str) {
         };
         assert_eq!(*actual, grammar(name));
         assert_eq!(
-            feature_value.serialize().unwrap().as_css(),
+            feature_value
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             format!(" {value}")
         );
     }

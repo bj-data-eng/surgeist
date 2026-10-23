@@ -11,9 +11,7 @@
 
 use crate::css::support::property_admission::assert_checked_matches_diagnostic;
 use crate::css::support::property_admission::validated_sole_declaration;
-use surgeist_css::{
-    CssSpecifiedValueSerializationErrorKind as K, CssSpecifiedValueSerializationLimits as L, *,
-};
+use surgeist_css::{CssSerializationLimits as L, CssSpecifiedValueSerializationErrorKind as K, *};
 
 fn clip(source: &CssDeclaration) -> &CssClipPath {
     let CssKnownPropertyValueRef::ClipPath(value) =
@@ -41,7 +39,12 @@ fn clip_path_declaration(value: &str) -> CssDeclaration {
 
 fn accept(authored: &str, expected: &str) {
     let source = clip_path_declaration(authored);
-    assert_eq!(clip(&source).serialize_specified().unwrap(), expected);
+    assert_eq!(
+        clip(&source)
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
     let components = parse_component_values(authored).unwrap();
     let checked = parse_property_value(
         CssPropertyNameRef::Known(CssKnownProperty::ClipPath),
@@ -51,7 +54,12 @@ fn accept(authored: &str, expected: &str) {
     .unwrap_or_else(|error| panic!("{authored}: {error:?}"));
     assert_eq!(checked.value_components(), &components);
     assert_eq!(checked.importance(), CssImportance::Important);
-    assert_eq!(clip(&checked).serialize_specified().unwrap(), expected);
+    assert_eq!(
+        clip(&checked)
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
     for declaration in [&source, &checked] {
         let CssExpansion::Contributions(CssContributions::Longhands(items)) =
             expand_declaration(declaration).unwrap()
@@ -68,7 +76,10 @@ fn accept(authored: &str, expected: &str) {
         let CssLonghandValueRef::ClipPath(value) = item.ordinary_value().unwrap().view() else {
             panic!("typed shape terminal")
         };
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
 }
 
@@ -605,7 +616,9 @@ fn diagnosed_implicit_closure_is_retained_but_original_components_remain_strict(
         report.diagnostics()
     );
     assert_eq!(
-        clip(&report.syntax()[0]).serialize_specified().unwrap(),
+        clip(&report.syntax()[0])
+            .serialize_specified(Default::default())
+            .unwrap(),
         "shape(from 0px 0px, close)"
     );
     let components = parse_component_values(value).unwrap();
@@ -643,10 +656,12 @@ fn checked_property_construction_accepts_programmatic_original_component_graphs(
     .into_iter()
     .map(|token| CssComponentValue::try_token(token).unwrap())
     .collect();
-    let function =
-        CssComponentValue::try_function("shape", CssComponentValues::try_new(tokens).unwrap())
-            .unwrap();
-    let components = CssComponentValues::try_new(vec![function]).unwrap();
+    let function = CssComponentValue::try_function(
+        "shape",
+        CssComponentValues::try_new(tokens, Default::default()).unwrap(),
+    )
+    .unwrap();
+    let components = CssComponentValues::try_new(vec![function], Default::default()).unwrap();
     let declaration = parse_property_value(
         CssPropertyNameRef::Known(CssKnownProperty::ClipPath),
         components.clone(),
@@ -659,7 +674,9 @@ fn checked_property_construction_accepts_programmatic_original_component_graphs(
         &CssValueOrigin::Programmatic
     );
     assert_eq!(
-        clip(&declaration).serialize_specified().unwrap(),
+        clip(&declaration)
+            .serialize_specified(Default::default())
+            .unwrap(),
         "shape(from 0px 0px, line by -1px 2%, close)"
     );
 }
@@ -712,7 +729,10 @@ fn pending_reentry_is_reusable_and_returns_only_validated_terminal_replacements(
             let CssLonghandValueRef::ClipPath(value) = item.ordinary_value().unwrap().view() else {
                 panic!("shape terminal")
             };
-            assert_eq!(value.serialize_specified().unwrap(), expected);
+            assert_eq!(
+                value.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
         }
     }
     assert!(pending.source().same_occurrence(&source));
@@ -782,7 +802,7 @@ fn normalization_preserves_surviving_occurrences_importance_and_pending_state() 
                     panic!("typed occurrence")
                 };
                 assert_eq!(
-                    value.serialize_specified().unwrap(),
+                    value.serialize_specified(Default::default()).unwrap(),
                     if order == 0 {
                         "shape(from 0px 0px, close)"
                     } else {
@@ -807,20 +827,16 @@ fn close_fixture_obeys_atomic_cumulative_limits_without_mutating_values_or_origi
     let expected = "shape(from 0px 0px, close)";
     assert_eq!(expected.len(), 26);
     assert_eq!(
-        basic
-            .serialize_specified_with_limits(L::new(9, 9, 26))
-            .unwrap(),
+        basic.serialize_specified(L::new(9, 9, 26)).unwrap(),
         expected
     );
     assert_eq!(
-        composition
-            .serialize_specified_with_limits(L::new(10, 10, 26))
-            .unwrap(),
+        composition.serialize_specified(L::new(10, 10, 26)).unwrap(),
         expected
     );
     assert_eq!(
         clip(&source)
-            .serialize_specified_with_limits(L::new(10, 10, 26))
+            .serialize_specified(L::new(10, 10, 26))
             .unwrap(),
         expected
     );
@@ -829,13 +845,7 @@ fn close_fixture_obeys_atomic_cumulative_limits_without_mutating_values_or_origi
         (L::new(9, 8, 26), K::ProjectionNodeLimit),
         (L::new(9, 9, 25), K::ByteLimit),
     ] {
-        assert_eq!(
-            basic
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            kind
-        );
+        assert_eq!(basic.serialize_specified(limits).unwrap_err().kind(), kind);
     }
     for (limits, kind) in [
         (L::new(9, 10, 26), K::InputNodeLimit),
@@ -844,7 +854,7 @@ fn close_fixture_obeys_atomic_cumulative_limits_without_mutating_values_or_origi
     ] {
         assert_eq!(
             clip(&source)
-                .serialize_specified_with_limits(limits)
+                .serialize_specified(limits)
                 .unwrap_err()
                 .kind(),
             kind
@@ -854,11 +864,14 @@ fn close_fixture_obeys_atomic_cumulative_limits_without_mutating_values_or_origi
     let expected_boxed = "shape(from 0px 0px, close) border-box";
     assert_eq!(
         boxed
-            .serialize_specified_with_limits(L::new(11, 11, expected_boxed.len()))
+            .serialize_specified(L::new(11, 11, expected_boxed.len()))
             .unwrap(),
         expected_boxed
     );
-    assert_eq!(basic.serialize_specified().unwrap(), expected);
+    assert_eq!(
+        basic.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     assert_eq!(source, before);
 }
 
@@ -944,7 +957,7 @@ mod construction {
         assert_eq!(value.fill_rule(), None);
         assert_eq!(value.start(), &position());
         assert_eq!(
-            value.serialize_specified().unwrap(),
+            value.serialize_specified(Default::default()).unwrap(),
             "shape(from 0px 0px, move to 0px 0px, line by 1px 2%, hline to x-start, vline by -3px, curve to 0px 0px with 1px 2%, smooth by 1px 2%, arc by 1px 2% of -4px, close)"
         );
     }
@@ -1170,7 +1183,7 @@ mod construction {
     }
     fn budget(value: &CssShapeFunction, expected: &str, nodes: usize) {
         crate::css::support::serialization_limits::LimitLadder::new(expected, nodes, nodes)
-            .assert_unchanged(value, CssShapeFunction::serialize_specified_with_limits);
+            .assert_unchanged(value, CssShapeFunction::serialize_specified);
     }
     #[test]
     fn literal_commands_controls_radii_and_options_accumulate_independent_counts() {
@@ -1238,12 +1251,11 @@ mod construction {
             Some(CssBoxEdgeKeyword::BorderBox),
         ));
         assert_eq!(
-            clip.serialize_specified_with_limits(L::new(11, 11, 37))
-                .unwrap(),
+            clip.serialize_specified(L::new(11, 11, 37)).unwrap(),
             "shape(from 0px 0px, close) border-box"
         );
         assert_eq!(
-            clip.serialize_specified_with_limits(L::new(10, 11, 37))
+            clip.serialize_specified(L::new(10, 11, 37))
                 .unwrap_err()
                 .kind(),
             K::InputNodeLimit
@@ -1263,7 +1275,7 @@ mod construction {
             assert!(matches!(&command,CssShapeHorizontalLine::ToKeyword(v) if *v==keyword));
             assert_eq!(
                 shape(vec![CssShapeCommand::HorizontalLine(command)])
-                    .serialize_specified()
+                    .serialize_specified(Default::default())
                     .unwrap(),
                 format!("shape(from 0px 0px, hline to {text})")
             );
@@ -1279,7 +1291,7 @@ mod construction {
             assert!(matches!(&command,CssShapeVerticalLine::ToKeyword(v) if *v==keyword));
             assert_eq!(
                 shape(vec![CssShapeCommand::VerticalLine(command)])
-                    .serialize_specified()
+                    .serialize_specified(Default::default())
                     .unwrap(),
                 format!("shape(from 0px 0px, vline to {text})")
             );
@@ -1308,7 +1320,11 @@ mod construction {
     fn sibling_command_math_arenas_share_budgets_and_keep_original_graphs() {
         let components = parse_component_values("calc(1px + 2%)").unwrap();
         let scalar = CssSpecifiedLengthPercentage::try_from_calculation(
-            CssLengthPercentageCalculation::try_from_components(components.clone()).unwrap(),
+            CssLengthPercentageCalculation::try_from_components(
+                components.clone(),
+                Default::default(),
+            )
+            .unwrap(),
         )
         .unwrap();
         let offsets = CssShapeCoordinatePair::new(scalar.clone(), scalar.clone());
@@ -1321,7 +1337,7 @@ mod construction {
         // Four independent mixed LP arenas add 4 input / 5 projection nodes each.
         assert_eq!(
             value
-                .serialize_specified_with_limits(L::new(30, 34, expected.len()))
+                .serialize_specified(L::new(30, 34, expected.len()))
                 .unwrap(),
             expected
         );
@@ -1330,13 +1346,7 @@ mod construction {
             (L::new(30, 33, expected.len()), K::ProjectionNodeLimit),
             (L::new(30, 34, expected.len() - 1), K::ByteLimit),
         ] {
-            assert_eq!(
-                value
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
-                kind
-            );
+            assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
             let CssShapeCommand::Line(CssShapeEndpoint::By(pair)) = &value.commands().commands()[0]
             else {
                 panic!("relative line")

@@ -725,7 +725,7 @@ fn strict_closure(p: P, ordinary: &str) {
     ] {
         let components = parse_component_values(&text).unwrap();
         let before = components.clone();
-        let serialized = components.serialize().unwrap();
+        let serialized = components.serialize_tokens(Default::default()).unwrap();
         let origin = (0..serialized.as_css().len())
             .find_map(|offset| match serialized.origin_at(offset) {
                 Some(CssSerializedOrigin::Token(
@@ -970,18 +970,12 @@ fn browser_recovery_normalization_retains_diagnostics_and_source_without_forging
 
 fn typed_output(
     source: &CssDeclaration,
-    limits: CssSpecifiedValueSerializationLimits,
-) -> Result<String, CssSpecifiedValueSerializationError> {
+    limits: CssSerializationLimits,
+) -> Result<String, CssSerializationError> {
     match source.known().unwrap().property_value().unwrap() {
-        CssKnownPropertyValueRef::TextWrap(value) => {
-            value.value().serialize_specified_with_limits(limits)
-        }
-        CssKnownPropertyValueRef::WhiteSpace(value) => {
-            value.value().serialize_specified_with_limits(limits)
-        }
-        CssKnownPropertyValueRef::WordBreak(value) => {
-            value.value().serialize_specified_with_limits(limits)
-        }
+        CssKnownPropertyValueRef::TextWrap(value) => value.value().serialize_specified(limits),
+        CssKnownPropertyValueRef::WhiteSpace(value) => value.value().serialize_specified(limits),
+        CssKnownPropertyValueRef::WordBreak(value) => value.value().serialize_specified(limits),
         _ => panic!("existing typed provider"),
     }
 }
@@ -991,8 +985,11 @@ fn provider_limits(p: P, css: &str, expected: &str, work: usize) {
         LimitLadder::new(expected, work, work).assert_unchanged(&source, typed_output);
         // The declaration adds one input and one projection node to its value.
         LimitLadder::new(&declaration_css, work + 2, work + 2)
-            .assert_unchanged(&source, CssDeclaration::to_specified_css_with_limits);
-        assert_eq!(source.to_specified_css().unwrap(), declaration_css);
+            .assert_unchanged(&source, CssDeclaration::serialize_specified);
+        assert_eq!(
+            source.serialize_specified(Default::default()).unwrap(),
+            declaration_css
+        );
     }
 }
 #[test]
@@ -1023,9 +1020,8 @@ fn new_word_break_keywords_keep_single_keyword_work_and_exact_bytes() {
 }
 #[test]
 fn sibling_text_rules_share_final_sheet_bytes_and_atomic_reusable_output() {
-    use CssSpecifiedRuleSerializationErrorKind as RuleKind;
+    use CssSerializationLimits as Limits;
     use CssSpecifiedValueSerializationErrorKind as Kind;
-    use CssSpecifiedValueSerializationLimits as Limits;
     let report =
         parse_sheet(".a{text-wrap:balance nowrap!important}.b{white-space:discard-after preserve}");
     assert!(report.is_clean());
@@ -1035,20 +1031,20 @@ fn sibling_text_rules_share_final_sheet_bytes_and_atomic_reusable_output() {
         ".a { text-wrap: nowrap balance !important; }\n.b { white-space: preserve discard-after; }";
     let exact = Limits::new(usize::MAX, usize::MAX, expected.len());
     let short = Limits::new(usize::MAX, usize::MAX, expected.len() - 1);
-    assert_eq!(sheet.to_specified_css_with_limits(exact).unwrap(), expected);
+    assert_eq!(sheet.serialize_specified(exact).unwrap(), expected);
     assert!(
         sheet
             .rules()
             .iter()
-            .all(|rule| rule.to_specified_css_with_limits(short).is_ok())
+            .all(|rule| rule.serialize_specified(short).is_ok())
     );
     for _ in 0..2 {
-        let error = sheet.to_specified_css_with_limits(short).unwrap_err();
-        assert_eq!(error.kind(), RuleKind::Resource(Kind::ByteLimit));
+        let error = sheet.serialize_specified(short).unwrap_err();
+        assert_eq!(error.kind(), Kind::ByteLimit);
         assert_eq!(error.rule_index(), Some(1));
         assert_eq!(sheet, &before);
     }
-    assert_eq!(sheet.to_specified_css_with_limits(exact).unwrap(), expected);
+    assert_eq!(sheet.serialize_specified(exact).unwrap(), expected);
 }
 #[test]
 fn independent_color_and_overflow_wrap_controls_keep_metadata_and_lifecycle() {
@@ -1071,7 +1067,7 @@ fn independent_color_and_overflow_wrap_controls_keep_metadata_and_lifecycle() {
             assert_eq!(names(&values), [p.canonical_name()]);
             assert_ordinary(&values, &source);
             assert_eq!(
-                source.to_specified_css().unwrap(),
+                source.serialize_specified(Default::default()).unwrap(),
                 format!("{}: {css} !important;", p.canonical_name())
             );
         }

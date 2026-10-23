@@ -3,8 +3,8 @@
 
 use surgeist_css::{
     CssErrorCode, CssNamespacePrefix, CssNormalizedItem, CssRule, CssRuleContextKindRef,
-    CssSpecifiedRuleSerializationErrorKind, CssSpecifiedValueSerializationErrorKind,
-    CssSpecifiedValueSerializationLimits, normalize_report, parse_sheet, validate_sheet,
+    CssSerializationLimits, CssSpecifiedValueSerializationErrorKind, normalize_report, parse_sheet,
+    validate_sheet,
 };
 
 #[test]
@@ -46,7 +46,7 @@ fn namespace_rule_output_preserves_literal_names_and_escaped_prefixes() {
         };
         let original_position = original_namespace.position();
         let output = original
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .expect("supported namespace rule");
         assert_eq!(output, expected);
         let reparsed = parse_sheet(&output);
@@ -81,7 +81,7 @@ fn namespace_sheet_and_normalized_output_retain_duplicate_order_diagnostics_and_
     assert_eq!(
         report
             .syntax()
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .expect("namespace-only sheet"),
         expected
     );
@@ -106,7 +106,7 @@ fn namespace_sheet_and_normalized_output_retain_duplicate_order_diagnostics_and_
         assert_eq!(namespace.position().unwrap().column().value(), 0);
         emitted.push(
             CssRule::Namespace(namespace.clone())
-                .to_specified_css()
+                .serialize_specified(Default::default())
                 .expect("normalized namespace payload"),
         );
     }
@@ -120,25 +120,22 @@ fn namespace_output_uses_shared_cumulative_resource_budgets() {
     assert!(report.is_clean(), "{report:?}");
     let expected = "@namespace svg url(\"first\");\n@namespace other url(\"second\");";
     assert_eq!(
-        report.syntax().to_specified_css().expect("namespace sheet"),
+        report
+            .syntax()
+            .serialize_specified(Default::default())
+            .expect("namespace sheet"),
         expected
     );
-    let exact = CssSpecifiedValueSerializationLimits::new(usize::MAX, usize::MAX, expected.len());
+    let exact = CssSerializationLimits::new(usize::MAX, usize::MAX, expected.len());
     assert_eq!(
-        report.syntax().to_specified_css_with_limits(exact).unwrap(),
+        report.syntax().serialize_specified(exact).unwrap(),
         expected
     );
-    let short =
-        CssSpecifiedValueSerializationLimits::new(usize::MAX, usize::MAX, expected.len() - 1);
-    let error = report
-        .syntax()
-        .to_specified_css_with_limits(short)
-        .unwrap_err();
+    let short = CssSerializationLimits::new(usize::MAX, usize::MAX, expected.len() - 1);
+    let error = report.syntax().serialize_specified(short).unwrap_err();
     assert_eq!(
         error.kind(),
-        CssSpecifiedRuleSerializationErrorKind::Resource(
-            CssSpecifiedValueSerializationErrorKind::ByteLimit
-        )
+        CssSpecifiedValueSerializationErrorKind::ByteLimit
     );
     assert_eq!(error.rule_index(), Some(1));
     for (input, kind) in [
@@ -152,7 +149,7 @@ fn namespace_output_uses_shared_cumulative_resource_budgets() {
         ),
     ] {
         let limits = |nodes| {
-            CssSpecifiedValueSerializationLimits::new(
+            CssSerializationLimits::new(
                 if input { nodes } else { usize::MAX },
                 if input { usize::MAX } else { nodes },
                 usize::MAX,
@@ -166,24 +163,18 @@ fn namespace_output_uses_shared_cumulative_resource_budgets() {
                     .syntax()
                     .rules()
                     .iter()
-                    .all(|rule| rule.to_specified_css_with_limits(limits(*nodes)).is_ok())
+                    .all(|rule| rule.serialize_specified(limits(*nodes)).is_ok())
                     && report
                         .syntax()
-                        .to_specified_css_with_limits(limits(*nodes))
-                        .is_err_and(|error| {
-                            error.kind() == CssSpecifiedRuleSerializationErrorKind::Resource(kind)
-                                && error.rule_index() == Some(1)
-                        })
+                        .serialize_specified(limits(*nodes))
+                        .is_err_and(|error| error.kind() == kind && error.rule_index() == Some(1))
             })
             .expect("shared node budget exhausts on the second rule");
         let error = report
             .syntax()
-            .to_specified_css_with_limits(limits(nodes))
+            .serialize_specified(limits(nodes))
             .unwrap_err();
-        assert_eq!(
-            error.kind(),
-            CssSpecifiedRuleSerializationErrorKind::Resource(kind)
-        );
+        assert_eq!(error.kind(), kind);
         assert_eq!(error.rule_index(), Some(1));
     }
     assert_eq!(report.syntax().rules().len(), 2);
@@ -195,7 +186,10 @@ fn namespace_and_qualified_style_sibling_share_canonical_output() {
     assert!(report.is_clean(), "{report:?}");
     let before = report.clone();
     assert_eq!(
-        report.syntax().to_specified_css().unwrap(),
+        report
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "@namespace svg url(\"urn:svg\");\nsvg|leaf { }"
     );
     assert_eq!(report, before);

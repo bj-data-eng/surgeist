@@ -78,7 +78,7 @@ fn page_margin_composition_keeps_exact_literals_and_math_but_rejects_logical_sid
         panic!("signed length")
     };
     assert_eq!(left.literal_component().unwrap().origin(), left.origin());
-    let specified = left.serialize_specified().unwrap();
+    let specified = left.serialize_specified(Default::default()).unwrap();
     assert_eq!(specified.len(), 1003);
     assert!(specified.starts_with("-1") && specified.ends_with("px"));
 
@@ -138,10 +138,10 @@ fn page_margin_declarations_preserve_css2_physical_literal_semantics() {
         panic!("expected typed margin")
     };
     let [top, right, bottom, left] = margin.value().assigned_values();
-    assert_eq!(top.serialize_specified().unwrap(), "-1px");
-    assert_eq!(right.serialize_specified().unwrap(), "2%");
+    assert_eq!(top.serialize_specified(Default::default()).unwrap(), "-1px");
+    assert_eq!(right.serialize_specified(Default::default()).unwrap(), "2%");
     assert!(matches!(bottom, CssMarginValue::Auto));
-    assert_eq!(left.serialize_specified().unwrap(), "3cm");
+    assert_eq!(left.serialize_specified(Default::default()).unwrap(), "3cm");
 }
 
 #[test]

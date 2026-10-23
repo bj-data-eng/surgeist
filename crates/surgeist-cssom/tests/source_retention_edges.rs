@@ -213,27 +213,31 @@ fn hidden_lexical_roots_and_terminators_cannot_bypass_atomic_typed_admission() {
     let parsed = parse_component_values("/* terminator-only source */;").unwrap();
     let mut components = tokens("x : y");
     components.push(parsed.items().last().unwrap().clone());
-    let body =
-        CssSupportsTestBody::try_from_components(CssComponentValues::try_new(components).unwrap())
-            .unwrap();
+    let body = CssSupportsTestBody::try_from_components(
+        CssComponentValues::try_new(components, Default::default()).unwrap(),
+        Default::default(),
+    )
+    .unwrap();
     let named = surgeist_css::CssSupportsConditionRule::try_new(
         CssSupportsConditionName::try_new("--test").unwrap(),
         body,
+        Default::default(),
     )
     .unwrap();
 
     let parsed = parse_component_values("/* hidden supports sibling */(x:y)").unwrap();
     let first = CssComponentValue::try_block(
         CssBlockKind::Parenthesis,
-        CssComponentValues::try_new(tokens("x : y")).unwrap(),
+        CssComponentValues::try_new(tokens("x : y"), Default::default()).unwrap(),
     )
     .unwrap();
     let mut components = vec![first];
     components.extend(tokens("and"));
     components.push(parsed.items().last().unwrap().clone());
     let parent = CssSupportsCondition::try_from_components(
-        CssComponentValues::try_new(components).unwrap(),
+        CssComponentValues::try_new(components, Default::default()).unwrap(),
         &CssNamespaceContext::default(),
+        Default::default(),
     )
     .unwrap();
     let CssSupportsConditionKind::And(list) = parent.kind() else {
@@ -249,15 +253,17 @@ fn hidden_lexical_roots_and_terminators_cannot_bypass_atomic_typed_admission() {
     let parsed = parse_component_values("/* hidden when sibling */media(height)").unwrap();
     let first = CssComponentValue::try_function(
         "media",
-        CssComponentValues::try_new(tokens("width")).unwrap(),
+        CssComponentValues::try_new(tokens("width"), Default::default()).unwrap(),
     )
     .unwrap();
     let mut components = vec![first];
     components.extend(tokens("and"));
     components.push(parsed.items().last().unwrap().clone());
-    let parent =
-        CssWhenCondition::try_from_components(CssComponentValues::try_new(components).unwrap())
-            .unwrap();
+    let parent = CssWhenCondition::try_from_components(
+        CssComponentValues::try_new(components, Default::default()).unwrap(),
+        Default::default(),
+    )
+    .unwrap();
     let CssWhenConditionKind::And(list) = parent.kind() else {
         panic!("and");
     };

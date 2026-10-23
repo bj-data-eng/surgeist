@@ -81,7 +81,7 @@ pub(super) fn authored_operand(
         return Ok(None);
     };
     Ok(Some((
-        CssComponentValues::try_new(items.to_vec())?,
+        CssComponentValues::try_new(items.to_vec(), Default::default())?,
         pending,
     )))
 }

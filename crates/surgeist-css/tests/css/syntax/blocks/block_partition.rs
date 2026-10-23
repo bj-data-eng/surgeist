@@ -20,7 +20,7 @@ fn assert_declaration(value: &CssDeclaration, property: CssKnownProperty, css: &
     assert_eq!(
         value
             .value_components()
-            .serialize()
+            .serialize_tokens(Default::default())
             .unwrap()
             .as_css()
             .trim(),

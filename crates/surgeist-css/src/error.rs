@@ -824,7 +824,8 @@ impl CssDeclarationAnnotationError {
 
 /// Diagnostic detail for an authored descriptor name unknown to its at-rule grammar.
 ///
-/// The owning rule and descriptor names preserve authored identity; this value does not reinterpret,
+/// The owning rule and descriptor names preserve authored identity; this value does not
+/// reinterpret,
 /// apply, or recover the descriptor.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssUnknownDescriptorError {

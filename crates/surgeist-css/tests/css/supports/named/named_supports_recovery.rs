@@ -45,7 +45,7 @@ fn assert_recovered_definition(source: &str) {
     let failure = validate_sheet(source).expect_err("recovered input is not clean validation");
     assert_eq!(failure.diagnostics(), report.diagnostics());
     assert!(matches!(
-        CssSupportsConditionRule::try_new(definition.name().clone(), definition.body().clone()),
+        CssSupportsConditionRule::try_new(definition.name().clone(), definition.body().clone(), Default::default()),
         Err(CssNamedSupportsConstructionError::RecoveredInput { origin: error_origin })
             if error_origin == origin
     ));

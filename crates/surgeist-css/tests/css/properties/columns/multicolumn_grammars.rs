@@ -79,7 +79,7 @@ fn multicolumn_properties_retain_typed_structure() {
     assert!(matches!(
         width.width(),
         CssColumnWidth::BoxSize(CssBoxSize::LengthPercentage(value))
-            if value.serialize_specified().unwrap() == "12em"
+            if value.serialize_specified(Default::default()).unwrap() == "12em"
     ));
 
     let CssKnownPropertyValueRef::Columns(columns) = ordinary(&report.syntax()[8]) else {
@@ -92,7 +92,7 @@ fn multicolumn_properties_retain_typed_structure() {
     assert!(matches!(
         columns.columns().width(),
         CssColumnWidth::BoxSize(CssBoxSize::LengthPercentage(value))
-            if value.serialize_specified().unwrap() == "10rem"
+            if value.serialize_specified(Default::default()).unwrap() == "10rem"
     ));
 }
 

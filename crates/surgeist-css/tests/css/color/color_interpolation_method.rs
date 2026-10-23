@@ -146,7 +146,11 @@ fn admitted(source: &str) -> [CssDeclaration; 2] {
     .unwrap();
     assert_eq!(checked.value_components(), &components);
     assert_eq!(
-        parsed.value_components().serialize().unwrap().as_css(),
+        parsed
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         source
     );
     [parsed.clone(), checked]
@@ -285,7 +289,10 @@ fn polar_methods_preserve_omitted_and_all_explicit_hue_strategies() {
                         .predefined(),
                     Some(method)
                 );
-                assert_eq!(value.to_specified_css().unwrap(), expected);
+                assert_eq!(
+                    value.serialize_specified(Default::default()).unwrap(),
+                    expected
+                );
                 // Omitting the default shorter spelling does not erase authored identity.
                 assert_eq!(
                     value
@@ -330,9 +337,17 @@ fn every_predefined_keyword_case_and_escape_preserves_space_and_canonical_output
                     .unwrap();
                 assert_eq!(method.space(), space);
                 assert_eq!(method.hue(), None);
-                assert_eq!(value.to_specified_css().unwrap(), expected);
+                assert_eq!(
+                    value.serialize_specified(Default::default()).unwrap(),
+                    expected
+                );
                 for round_trip in admitted(&expected) {
-                    assert_eq!(color(&round_trip).to_specified_css().unwrap(), expected);
+                    assert_eq!(
+                        color(&round_trip)
+                            .serialize_specified(Default::default())
+                            .unwrap(),
+                        expected
+                    );
                 }
             }
         }
@@ -357,7 +372,7 @@ fn custom_interpolation_profiles_preserve_decoded_case_sensitive_identity() {
             let interpolation = value.color_mix_value().unwrap().interpolation().unwrap();
             assert_eq!(interpolation, &constructed);
             assert_eq!(
-                value.to_specified_css().unwrap(),
+                value.serialize_specified(Default::default()).unwrap(),
                 format!("color-mix(in {canonical}, red, blue)")
             );
         }

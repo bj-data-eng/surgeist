@@ -10,6 +10,16 @@ pub(crate) const fn suffix(unit: CssTimeUnit) -> &'static str {
 
 crate::dimension::dimension_literal_owner!(
     /// An exact ordinary time dimension, retaining spelling, unit and provenance.
+    ///
+    /// # Specified serialization
+    ///
+    /// Emits canonical seconds with at most six fractional places. Conversion precedes rounding,
+    /// nearest with ties away from zero. Original coefficients, units and origins remain exact.
+    /// This literal operation does no calculation projection. Ordinary output rounds to six places
+    /// without an exponential fallback, and the byte limit covers the rounded text including the
+    /// seconds suffix. Calculation values share the six-place text policy while retaining their
+    /// arithmetic precision and range limitations. This operation does not certify recovered
+    /// syntax as a clean report.
     CssTimeLiteral,
     CssTimeUnit,
     suffix
@@ -33,6 +43,15 @@ crate::dimension::dimension_value_owner!(
     /// An authored time dimension or Time-root calculation; never a bare number.
     ///
     /// Checked construction requires closure; parsing can retain recovered syntax with diagnostics.
+    ///
+    /// # Specified serialization
+    ///
+    /// Emits canonical seconds with at most six fractional places. Conversion precedes rounding,
+    /// nearest with ties away from zero. Original coefficients, units and origins remain exact.
+    /// Finite calculation text rounds the projected binary64 value with the same policy; arithmetic
+    /// precision and range remain unfinished. Literals perform no math projection. Ordinary output
+    /// rounds to six places without an exponential fallback. This operation does not certify
+    /// recovered syntax as a clean report.
     CssTimeValue,
     CssTimeLiteral,
     CssTimeCalculation
@@ -76,7 +95,7 @@ impl CssTimeValue {
         &self,
         other: &Self,
         context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-    ) -> Result<bool, crate::CssSpecifiedValueSerializationError> {
+    ) -> Result<bool, crate::CssSerializationError> {
         match (&self.value, &other.value) {
             (
                 crate::dimension::DimensionValue::Literal(left),
@@ -97,12 +116,22 @@ impl CssTimeValue {
 }
 
 /// An authored duration with a nonnegative ordinary literal or a retained time calculation.
+///
+/// # Specified serialization
+///
+/// Emits canonical seconds with at most six fractional places. Conversion precedes rounding,
+/// nearest with ties away from zero. Original coefficients, units and origins remain exact. Finite
+/// calculation text rounds the projected binary64 value with the same policy; arithmetic precision
+/// and range remain unfinished. Literals perform no math projection. Ordinary output rounds to six
+/// places without an exponential fallback. This operation does not certify recovered syntax as a
+/// clean report.
 #[derive(Clone, Debug)]
 pub struct CssDuration {
     time: CssTimeValue,
 }
 impl CssDuration {
-    /// Rejects recovered input and genuinely negative ordinary literals; calculations retain their authored range.
+    /// Rejects recovered input and genuinely negative ordinary literals; calculations retain their
+    /// authored range.
     pub fn try_new(time: CssTimeValue) -> Result<Self, CssNumericConstructionError> {
         time.ensure_closed()?;
         Self::from_parser_value(time)
@@ -136,7 +165,7 @@ impl CssDuration {
         &self,
         other: &Self,
         context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-    ) -> Result<bool, crate::CssSpecifiedValueSerializationError> {
+    ) -> Result<bool, crate::CssSerializationError> {
         if self.time.calculation().is_none() && other.time.calculation().is_none() {
             Ok(self.specified_value_eq(other))
         } else {

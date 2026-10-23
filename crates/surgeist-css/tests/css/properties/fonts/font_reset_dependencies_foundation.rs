@@ -396,17 +396,26 @@ fn feature_and_variation_descriptors_defer_env_and_reenter_strictly() {
         };
         assert!(
             pending
-                .reparse_after_substitution(parse_component_values("env(axis)").unwrap())
+                .reparse_after_substitution(
+                    parse_component_values("env(axis)").unwrap(),
+                    Default::default()
+                )
                 .is_err()
         );
         assert!(
             pending
-                .reparse_after_substitution(parse_component_values("inherit").unwrap())
+                .reparse_after_substitution(
+                    parse_component_values("inherit").unwrap(),
+                    Default::default()
+                )
                 .is_err()
         );
         assert!(
             pending
-                .reparse_after_substitution(parse_component_values(ordinary).unwrap())
+                .reparse_after_substitution(
+                    parse_component_values(ordinary).unwrap(),
+                    Default::default()
+                )
                 .is_ok()
         );
     }

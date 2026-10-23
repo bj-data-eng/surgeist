@@ -6,8 +6,8 @@ use crate::syntax::color::serialization::{
 use crate::{
     CssFontPalette, CssFontPaletteBase, CssFontPaletteDescriptorValue,
     CssFontPaletteDescriptorValueRef, CssFontPaletteMix, CssFontPaletteMixComponent,
-    CssFontPaletteValuesRule, CssSpecifiedValueSerializationError,
-    CssSpecifiedValueSerializationLimits, specified_rule_serialization::SpecifiedRuleWriter,
+    CssFontPaletteValuesRule, CssSerializationError,
+    specified_rule_serialization::SpecifiedRuleWriter,
 };
 
 enum PaletteWork<'a> {
@@ -16,28 +16,13 @@ enum PaletteWork<'a> {
     Owned(String),
 }
 
-impl CssFontPalette {
-    /// Canonical authored output; named palettes and calculations stay symbolic.
-    pub fn serialize_specified(&self) -> Result<String, CssSpecifiedValueSerializationError> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Emits the entire graph atomically under cumulative node and byte limits.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String, CssSpecifiedValueSerializationError> {
-        let mut writer = SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
+impl crate::specified_rule_serialization::SpecifiedProvider for CssFontPalette {
     /// Visits the complete authored graph with the enclosing operation's
     /// cumulative work, byte budget and emission mode.
-    pub(crate) fn append_to_rule_writer(
+    fn append_to_rule_writer(
         &self,
         writer: &mut SpecifiedRuleWriter,
-    ) -> Result<(), CssSpecifiedValueSerializationError> {
+    ) -> Result<(), CssSerializationError> {
         let mut work = Vec::new();
         reserve_palette_work(&mut work, 1)?;
         work.push(PaletteWork::Palette(self));
@@ -46,8 +31,7 @@ impl CssFontPalette {
                 PaletteWork::Text(text) => writer.append(text)?,
                 PaletteWork::Owned(text) => writer.append(&text)?,
                 PaletteWork::Palette(value) => {
-                    writer.context.charge_input(1)?;
-                    writer.context.charge_projection(1)?;
+                    writer.node()?;
                     match value {
                         Self::Normal => writer.append("normal")?,
                         Self::Light => writer.append("light")?,
@@ -61,15 +45,14 @@ impl CssFontPalette {
         Ok(())
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssFontPalette);
 
 fn reserve_palette_work(
     work: &mut Vec<PaletteWork<'_>>,
     additional: usize,
-) -> Result<(), CssSpecifiedValueSerializationError> {
+) -> Result<(), CssSerializationError> {
     work.try_reserve(additional).map_err(|_| {
-        CssSpecifiedValueSerializationError::new(
-            crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
-        )
+        CssSerializationError::new(crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow)
     })
 }
 
@@ -77,14 +60,14 @@ fn schedule_palette_mix<'a>(
     value: &'a CssFontPaletteMix,
     work: &mut Vec<PaletteWork<'a>>,
     writer: &mut SpecifiedRuleWriter,
-) -> Result<(), CssSpecifiedValueSerializationError> {
+) -> Result<(), CssSerializationError> {
     let slots = value
         .components()
         .len()
         .checked_mul(4)
         .and_then(|value| value.checked_add(5))
         .ok_or_else(|| {
-            CssSpecifiedValueSerializationError::new(
+            CssSerializationError::new(
                 crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
             )
         })?;
@@ -108,8 +91,7 @@ fn schedule_palette_mix<'a>(
         }
     }
     if let Some(interpolation) = value.interpolation() {
-        writer.context.charge_input(1)?;
-        writer.context.charge_projection(1)?;
+        writer.node()?;
         if !is_default_mix(interpolation) {
             work.push(PaletteWork::Text(", "));
             work.push(PaletteWork::Owned(serialize_interpolation(
@@ -127,15 +109,13 @@ impl SpecifiedRuleWriter {
     pub(crate) fn palette(
         &mut self,
         rule: &CssFontPaletteValuesRule,
-    ) -> Result<(), CssSpecifiedValueSerializationError> {
-        self.context.charge_input(1)?;
-        self.context.charge_projection(1)?;
+    ) -> Result<(), CssSerializationError> {
+        self.node()?;
         self.append("@font-palette-values ")?;
         self.append_identifier(rule.name().as_str())?;
         self.append(" {")?;
         for descriptor in rule.descriptors() {
-            self.context.charge_input(1)?;
-            self.context.charge_projection(1)?;
+            self.node()?;
             self.append(" ")?;
             self.append(descriptor.value().kind().css_name())?;
             self.append(": ")?;
@@ -148,7 +128,7 @@ impl SpecifiedRuleWriter {
     fn descriptor_value(
         &mut self,
         value: &CssFontPaletteDescriptorValue,
-    ) -> Result<(), CssSpecifiedValueSerializationError> {
+    ) -> Result<(), CssSerializationError> {
         match value.view() {
             CssFontPaletteDescriptorValueRef::FontFamily(families) => {
                 for (index, family) in families.iter().enumerate() {
@@ -160,8 +140,8 @@ impl SpecifiedRuleWriter {
                 Ok(())
             }
             CssFontPaletteDescriptorValueRef::BasePalette(base) => match base {
-                CssFontPaletteBase::Light => self.append_keyword("light"),
-                CssFontPaletteBase::Dark => self.append_keyword("dark"),
+                CssFontPaletteBase::Light => self.keyword("light"),
+                CssFontPaletteBase::Dark => self.keyword("dark"),
                 CssFontPaletteBase::Index(index) => index
                     .value()
                     .append_specified(&mut self.context, &mut self.css),
@@ -171,8 +151,7 @@ impl SpecifiedRuleWriter {
                     if index != 0 {
                         self.append(", ")?;
                     }
-                    self.context.charge_input(1)?;
-                    self.context.charge_projection(1)?;
+                    self.node()?;
                     pair.index()
                         .value()
                         .append_specified(&mut self.context, &mut self.css)?;
@@ -191,50 +170,34 @@ impl SpecifiedRuleWriter {
             }
         }
     }
-
-    fn append_keyword(&mut self, keyword: &str) -> Result<(), CssSpecifiedValueSerializationError> {
-        self.context.charge_input(1)?;
-        self.context.charge_projection(1)?;
-        self.append(keyword)
-    }
 }
 
-impl CssFontPaletteDescriptorValue {
-    /// Canonical specified descriptor text; pending values retain their token stream.
-    pub fn to_specified_css(&self) -> Result<String, CssSpecifiedValueSerializationError> {
-        self.to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    pub fn to_specified_css_with_limits(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssFontPaletteDescriptorValue {
+    fn append_to_rule_writer(
         &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String, CssSpecifiedValueSerializationError> {
-        let mut writer = SpecifiedRuleWriter::new(limits);
-        writer.descriptor_value(self)?;
-        Ok(writer.css)
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        writer.descriptor_value(self)
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssFontPaletteDescriptorValue);
 
-impl CssFontPaletteValuesRule {
-    /// Canonical specified rule text. Descriptor duplicates retain authored order.
-    pub fn to_specified_css(&self) -> Result<String, CssSpecifiedValueSerializationError> {
-        self.to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    pub fn to_specified_css_with_limits(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssFontPaletteValuesRule {
+    fn append_to_rule_writer(
         &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String, CssSpecifiedValueSerializationError> {
-        let mut writer = SpecifiedRuleWriter::new(limits);
-        writer.palette(self)?;
-        Ok(writer.css)
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        writer.palette(self)
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssFontPaletteValuesRule);
 
 #[cfg(test)]
 mod composition_tests {
     use super::*;
+    use crate::CssSerializationLimits;
     use crate::CssSpecifiedValueSerializationErrorKind as Kind;
+    use crate::specified_rule_serialization::SpecifiedProvider as _;
     use crate::{CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef};
 
     fn palette(source: &str) -> CssFontPalette {
@@ -256,7 +219,7 @@ mod composition_tests {
     fn bridge_composes_with_the_callers_buffer_and_byte_limit() {
         let value = palette("palette-mix(light 20%, dark 80%)");
         let expected = "xpalette-mix(light 20%, dark 80%)y";
-        let mut writer = SpecifiedRuleWriter::new(CssSpecifiedValueSerializationLimits::new(
+        let mut writer = SpecifiedRuleWriter::new(CssSerializationLimits::new(
             100_000,
             100_000,
             expected.len(),
@@ -283,9 +246,8 @@ mod composition_tests {
         ] {
             let value = palette(source);
             let original = value.clone();
-            let mut writer = SpecifiedRuleWriter::new(CssSpecifiedValueSerializationLimits::new(
-                100_000, 100_000, 1,
-            ));
+            let mut writer =
+                SpecifiedRuleWriter::new(CssSerializationLimits::new(100_000, 100_000, 1));
             writer.append("x").unwrap();
             writer
                 .without_output(|writer| value.append_to_rule_writer(writer))
@@ -298,8 +260,7 @@ mod composition_tests {
 
     #[test]
     fn suppressed_palette_and_emitted_sibling_share_exact_semantic_budget() {
-        let mut writer =
-            SpecifiedRuleWriter::new(CssSpecifiedValueSerializationLimits::new(2, 2, 4));
+        let mut writer = SpecifiedRuleWriter::new(CssSerializationLimits::new(2, 2, 4));
         writer
             .without_output(|writer| CssFontPalette::Normal.append_to_rule_writer(writer))
             .unwrap();
@@ -337,8 +298,7 @@ mod composition_tests {
             .unwrap_err(),
             crate::CssFontPaletteMixConstructionError::NestingLimit,
         );
-        let mut writer =
-            SpecifiedRuleWriter::new(CssSpecifiedValueSerializationLimits::new(257, 100_000, 0));
+        let mut writer = SpecifiedRuleWriter::new(CssSerializationLimits::new(257, 100_000, 0));
         writer
             .without_output(|writer| value.append_to_rule_writer(writer))
             .unwrap();
@@ -357,9 +317,8 @@ mod composition_tests {
             (1, 100, Kind::InputNodeLimit),
             (100, 1, Kind::ProjectionNodeLimit),
         ] {
-            let mut writer = SpecifiedRuleWriter::new(CssSpecifiedValueSerializationLimits::new(
-                input, projection, 2,
-            ));
+            let mut writer =
+                SpecifiedRuleWriter::new(CssSerializationLimits::new(input, projection, 2));
             writer.append("x").unwrap();
             let error = writer
                 .without_output(|writer| {

@@ -366,7 +366,10 @@ fn fonts3_descriptor_values_and_selected_fonts4_ranges_are_typed() {
         };
         let weight = ordinary_face!(rule.descriptors(), FontWeight).unwrap();
         assert!(matches!(weight, CssFontFaceWeight::Range { end: None, .. }));
-        assert_eq!(weight.serialize_specified().unwrap(), authored);
+        assert_eq!(
+            weight.serialize_specified(Default::default()).unwrap(),
+            authored
+        );
         assert_strict_parity(&source);
     }
 

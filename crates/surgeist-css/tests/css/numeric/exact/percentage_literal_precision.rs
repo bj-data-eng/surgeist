@@ -95,8 +95,11 @@ fn checked_parsed_components_keep_authored_thirty_percent() {
 
 #[test]
 fn checked_programmatic_components_keep_authored_thirty_percent() {
-    let components =
-        CssComponentValues::try_new(vec![CssComponentValue::try_token("30%").unwrap()]).unwrap();
+    let components = CssComponentValues::try_new(
+        vec![CssComponentValue::try_token("30%").unwrap()],
+        Default::default(),
+    )
+    .unwrap();
     assert_eq!(checked_object_position_percent(components), "30");
 }
 
@@ -123,7 +126,7 @@ fn grid_track_keeps_authored_thirty_percent() {
             .unwrap()
             .length_percentage()
             .unwrap()
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "30%"
     );

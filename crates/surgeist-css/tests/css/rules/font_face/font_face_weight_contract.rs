@@ -6,9 +6,9 @@ use surgeist_css::{
     CssAbsoluteFontWeight as Absolute, CssAuthoredFontFaceDescriptorValue as Authored,
     CssComponentValue, CssComponentValues, CssFontFaceDescriptorKind as Kind,
     CssFontFaceDescriptorValue as Ordinary, CssFontFaceValueErrorKind, CssFontFaceWeight,
-    CssFontWeightNumber, CssRecoveryAction, CssRule, CssSerializedOrigin,
-    CssSpecifiedValueSerializationErrorKind, CssSpecifiedValueSerializationLimits, CssValueOrigin,
-    parse_component_values, parse_font_face_descriptor_value, parse_sheet,
+    CssFontWeightNumber, CssRecoveryAction, CssRule, CssSerializationLimits, CssSerializedOrigin,
+    CssSpecifiedValueSerializationErrorKind, CssValueOrigin, parse_component_values,
+    parse_font_face_descriptor_value, parse_sheet,
 };
 
 fn ordinary(text: &str) -> CssFontFaceWeight {
@@ -28,7 +28,12 @@ fn numeric(text: &str) -> Absolute {
 #[test]
 fn auto_single_and_two_endpoint_weights_keep_authored_arity_and_order() {
     assert_eq!(ordinary("auto"), CssFontFaceWeight::Auto);
-    assert_eq!(ordinary("auto").serialize_specified().unwrap(), "auto");
+    assert_eq!(
+        ordinary("auto")
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "auto"
+    );
     for (text, expected) in [
         (
             "normal",
@@ -88,7 +93,11 @@ fn auto_single_and_two_endpoint_weights_keep_authored_arity_and_order() {
         ),
     ] {
         assert_eq!(ordinary(text), expected, "{text}");
-        assert_eq!(expected.serialize_specified().unwrap(), text, "{text}");
+        assert_eq!(
+            expected.serialize_specified(Default::default()).unwrap(),
+            text,
+            "{text}"
+        );
     }
     assert_ne!(ordinary("bold"), ordinary("bold bold"));
     assert_ne!(ordinary("auto"), ordinary("normal"));
@@ -105,9 +114,12 @@ fn fractional_math_and_invalid_descriptor_values_keep_neighbors() {
         panic!("symbolic start and literal end")
     };
     assert!(start.calculation().is_some());
-    assert_eq!(start.serialize_specified().unwrap(), "calc(0)");
+    assert_eq!(
+        start.serialize_specified(Default::default()).unwrap(),
+        "calc(0)"
+    );
     assert!(end.literal_component().is_some());
-    assert_eq!(end.serialize_specified().unwrap(), "1000");
+    assert_eq!(end.serialize_specified(Default::default()).unwrap(), "1000");
     for invalid in [
         "bolder",
         "lighter",
@@ -175,7 +187,7 @@ fn duplicate_and_pending_weight_occurrences_select_last_admitted_value() {
     else {
         panic!("mixed last value")
     };
-    assert_eq!(end.serialize_specified().unwrap(), "300");
+    assert_eq!(end.serialize_specified(Default::default()).unwrap(), "300");
 
     let report = parse_sheet("@font-face{font-weight:700;font-weight:env(weight);font-weight:bad}");
     let [CssRule::FontFace(face)] = report.syntax().rules() else {
@@ -195,6 +207,7 @@ fn pending_env_reentry_returns_exact_ordinary_weight_without_reordering() {
     let checked = Authored::try_from_components(
         Kind::FontWeight,
         parse_component_values("env(weight, 700)").unwrap(),
+        Default::default(),
     )
     .unwrap();
     let Authored::Pending(pending) = checked else {
@@ -202,8 +215,10 @@ fn pending_env_reentry_returns_exact_ordinary_weight_without_reordering() {
     };
     let mut components = parse_component_values("700 ").unwrap().items().to_vec();
     components.push(CssComponentValue::try_number("300.25").unwrap());
-    let replacement = CssComponentValues::try_new(components).unwrap();
-    let value = pending.reparse_after_substitution(replacement).unwrap();
+    let replacement = CssComponentValues::try_new(components, Default::default()).unwrap();
+    let value = pending
+        .reparse_after_substitution(replacement, Default::default())
+        .unwrap();
     let Ordinary::FontWeight(CssFontFaceWeight::Range {
         start: Absolute::Number(start),
         end: Some(Absolute::Number(end)),
@@ -218,22 +233,34 @@ fn pending_env_reentry_returns_exact_ordinary_weight_without_reordering() {
     assert_eq!(origin.span().start().byte_offset().value(), 0);
     assert_eq!(origin.span().end().byte_offset().value(), 3);
     assert_eq!(end.origin(), &CssValueOrigin::Programmatic);
-    assert_eq!(start.serialize_specified().unwrap(), "700");
-    assert_eq!(end.serialize_specified().unwrap(), "300.25");
+    assert_eq!(
+        start.serialize_specified(Default::default()).unwrap(),
+        "700"
+    );
+    assert_eq!(
+        end.serialize_specified(Default::default()).unwrap(),
+        "300.25"
+    );
 }
 
 #[test]
 fn descriptor_serialization_is_canonical_and_budgeted() {
     let value = ordinary("bold 300.25");
-    assert_eq!(value.serialize_specified().unwrap(), "bold 300.25");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "bold 300.25"
+    );
     let error = value
-        .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(8, 8, 3))
+        .serialize_specified(CssSerializationLimits::new(8, 8, 3))
         .unwrap_err();
     assert_eq!(
         error.kind(),
         CssSpecifiedValueSerializationErrorKind::ByteLimit
     );
-    assert_eq!(value.serialize_specified().unwrap(), "bold 300.25");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "bold 300.25"
+    );
 
     let two_keywords = CssFontFaceWeight::Range {
         start: Absolute::Normal,
@@ -241,36 +268,42 @@ fn descriptor_serialization_is_canonical_and_budgeted() {
     };
     assert_eq!(
         two_keywords
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(3, 3, 11))
+            .serialize_specified(CssSerializationLimits::new(3, 3, 11))
             .unwrap(),
         "normal bold"
     );
     for (limits, expected) in [
         (
-            CssSpecifiedValueSerializationLimits::new(2, 3, 11),
+            CssSerializationLimits::new(2, 3, 11),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(3, 2, 11),
+            CssSerializationLimits::new(3, 2, 11),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
     ] {
         assert_eq!(
-            two_keywords
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            two_keywords.serialize_specified(limits).unwrap_err().kind(),
             expected
         );
     }
-    assert_eq!(two_keywords.serialize_specified().unwrap(), "normal bold");
+    assert_eq!(
+        two_keywords
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "normal bold"
+    );
 }
 
 #[test]
 fn checked_descriptor_rejects_programmatic_invalid_and_adjacent_number_tokens() {
-    let invalid =
-        CssComponentValues::try_new(vec![CssComponentValue::try_number("1001").unwrap()]).unwrap();
-    let error = Authored::try_from_components(Kind::FontWeight, invalid).unwrap_err();
+    let invalid = CssComponentValues::try_new(
+        vec![CssComponentValue::try_number("1001").unwrap()],
+        Default::default(),
+    )
+    .unwrap();
+    let error =
+        Authored::try_from_components(Kind::FontWeight, invalid, Default::default()).unwrap_err();
     assert!(matches!(
         error.kind(),
         CssFontFaceValueErrorKind::Grammar(_)
@@ -280,12 +313,16 @@ fn checked_descriptor_rejects_programmatic_invalid_and_adjacent_number_tokens() 
         &CssSerializedOrigin::Token(CssValueOrigin::Programmatic)
     );
 
-    let adjacent = CssComponentValues::try_new(vec![
-        CssComponentValue::try_number("1").unwrap(),
-        CssComponentValue::try_number("00").unwrap(),
-    ])
+    let adjacent = CssComponentValues::try_new(
+        vec![
+            CssComponentValue::try_number("1").unwrap(),
+            CssComponentValue::try_number("00").unwrap(),
+        ],
+        Default::default(),
+    )
     .unwrap();
-    let error = Authored::try_from_components(Kind::FontWeight, adjacent).unwrap_err();
+    let error =
+        Authored::try_from_components(Kind::FontWeight, adjacent, Default::default()).unwrap_err();
     assert!(matches!(
         error.kind(),
         CssFontFaceValueErrorKind::Grammar(_)
@@ -293,19 +330,25 @@ fn checked_descriptor_rejects_programmatic_invalid_and_adjacent_number_tokens() 
     let checked = Authored::try_from_components(
         Kind::FontWeight,
         parse_component_values("env(weight)").unwrap(),
+        Default::default(),
     )
     .unwrap();
     let Authored::Pending(pending) = checked else {
         panic!("pending weight")
     };
-    let adjacent = CssComponentValues::try_new(vec![
-        CssComponentValue::try_number("1").unwrap(),
-        CssComponentValue::try_number("00").unwrap(),
-    ])
+    let adjacent = CssComponentValues::try_new(
+        vec![
+            CssComponentValue::try_number("1").unwrap(),
+            CssComponentValue::try_number("00").unwrap(),
+        ],
+        Default::default(),
+    )
     .unwrap();
     // Separate numbers serialize apart, and Fonts 4 §4.4 bounds each
     // <font-weight-absolute> number to [1, 1000].
-    let error = pending.reparse_after_substitution(adjacent).unwrap_err();
+    let error = pending
+        .reparse_after_substitution(adjacent, Default::default())
+        .unwrap_err();
     let CssFontFaceValueErrorKind::Grammar(detail) = error.kind() else {
         panic!("grammar failure: {error:?}")
     };

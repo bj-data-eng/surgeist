@@ -241,12 +241,12 @@ fn intrinsic(name: &str) {
     };
     let source = checked_components(
         name,
-        CssComponentValues::try_new(vec![component]).unwrap(),
+        CssComponentValues::try_new(vec![component], Default::default()).unwrap(),
         false,
     )
     .unwrap();
     assert_eq!(
-        source.to_specified_css().unwrap(),
+        source.serialize_specified(Default::default()).unwrap(),
         format!("{name}: {} !important;", initial(name))
     );
     assert_eq!(completed(&source).items()[0].ordinary_value(), Some(value));
@@ -271,7 +271,7 @@ fn globals(name: &str) {
             assert_eq!(source.known().unwrap().global(), Some(keyword));
             assert!(source.known().unwrap().property_value().is_none());
             assert_eq!(
-                source.to_specified_css().unwrap(),
+                source.serialize_specified(Default::default()).unwrap(),
                 format!("{name}: {text} !important;")
             );
             let values = completed(&source);
@@ -308,7 +308,7 @@ fn pending(name: &str) {
             };
             assert!(handle.source().same_occurrence(&source));
             assert_eq!(
-                source.to_specified_css().unwrap(),
+                source.serialize_specified(Default::default()).unwrap(),
                 format!("{name}: {input} !important;")
             );
             for text in [
@@ -382,7 +382,7 @@ fn pending(name: &str) {
                 }
                 let ordinary = checked_components(name, replacement.clone(), true).unwrap();
                 assert_eq!(
-                    ordinary.to_specified_css().unwrap(),
+                    ordinary.serialize_specified(Default::default()).unwrap(),
                     format!("{name}: {canonical} !important;")
                 );
                 // Equal references here derive from exactly the same supplied
@@ -393,11 +393,7 @@ fn pending(name: &str) {
                 );
                 assert_eq!(
                     ordinary
-                        .to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::new(
-                            0,
-                            usize::MAX,
-                            usize::MAX
-                        ))
+                        .serialize_specified(CssSerializationLimits::new(0, usize::MAX, usize::MAX))
                         .unwrap_err()
                         .kind(),
                     CssSpecifiedValueSerializationErrorKind::InputNodeLimit
@@ -438,7 +434,7 @@ fn implicit_origin(components: &CssComponentValues) -> CssValueOrigin {
             return origin.clone();
         }
     }
-    let serialized = components.serialize().unwrap();
+    let serialized = components.serialize_tokens(Default::default()).unwrap();
     (0..serialized.as_css().len())
         .find_map(|offset| match serialized.origin_at(offset) {
             Some(CssSerializedOrigin::Token(origin @ CssValueOrigin::ImplicitClosure { .. })) => {
@@ -643,7 +639,7 @@ fn retained_string_components_preserve_decoded_payload_utf8_offsets_and_source_s
             }
             let before = source.clone();
             assert_eq!(
-                source.to_specified_css().unwrap(),
+                source.serialize_specified(Default::default()).unwrap(),
                 format!("hyphenate-character: {canonical} !important;")
             );
             let values = completed(&source);
@@ -691,7 +687,7 @@ fn programmatic_components_admit_six_roles_without_forging_parsed_origins() {
         ),
     ];
     for (name, items, canonical) in fixtures {
-        let components = CssComponentValues::try_new(items).unwrap();
+        let components = CssComponentValues::try_new(items, Default::default()).unwrap();
         let before = components.clone();
         for grammar in [false, true] {
             let source = checked_components(name, components.clone(), grammar).unwrap();
@@ -704,7 +700,7 @@ fn programmatic_components_admit_six_roles_without_forging_parsed_origins() {
             );
             assert_eq!(source.value_components(), &components);
             assert_eq!(
-                source.to_specified_css().unwrap(),
+                source.serialize_specified(Default::default()).unwrap(),
                 format!("{name}: {canonical} !important;")
             );
             assert!(source.position().is_none());
@@ -940,8 +936,8 @@ fn normalization_preserves_all_six_order_importance_context_pending_and_exact_li
 }
 #[test]
 fn canonical_declarations_have_exact_leaf_math_and_byte_limits_with_atomic_retry() {
+    use CssSerializationLimits as L;
     use CssSpecifiedValueSerializationErrorKind as K;
-    use CssSpecifiedValueSerializationLimits as L;
     for (name, text, canonical, input, projection) in [
         ("hyphens", "manual", "manual", 1, 1),
         ("hyphenate-character", r#""😀""#, r#""😀""#, 1, 1),
@@ -959,10 +955,7 @@ fn canonical_declarations_have_exact_leaf_math_and_byte_limits_with_atomic_retry
         let before = source.clone();
         let expected = format!("{name}: {canonical} !important;");
         let exact = L::new(input + 2, projection + 2, expected.len());
-        assert_eq!(
-            source.to_specified_css_with_limits(exact).unwrap(),
-            expected
-        );
+        assert_eq!(source.serialize_specified(exact).unwrap(), expected);
         for (limits, kind) in [
             (
                 L::new(input + 1, projection + 2, expected.len()),
@@ -978,43 +971,37 @@ fn canonical_declarations_have_exact_leaf_math_and_byte_limits_with_atomic_retry
             ),
         ] {
             for _ in 0..2 {
-                assert_eq!(
-                    source
-                        .to_specified_css_with_limits(limits)
-                        .unwrap_err()
-                        .kind(),
-                    kind
-                );
+                assert_eq!(source.serialize_specified(limits).unwrap_err().kind(), kind);
                 assert_eq!(source, before);
             }
         }
-        assert_eq!(
-            source.to_specified_css_with_limits(exact).unwrap(),
-            expected
-        );
+        assert_eq!(source.serialize_specified(exact).unwrap(), expected);
     }
     let huge = format!("1{}", "0".repeat(999));
     let source = checked("hyphenate-limit-lines", &huge, true);
     let expected = format!("hyphenate-limit-lines: {huge} !important;");
     assert_eq!(
         source
-            .to_specified_css_with_limits(L::new(3, 3, expected.len()))
+            .serialize_specified(L::new(3, 3, expected.len()))
             .unwrap(),
         expected
     );
     assert_eq!(
         source
-            .to_specified_css_with_limits(L::new(3, 3, expected.len() - 1))
+            .serialize_specified(L::new(3, 3, expected.len() - 1))
             .unwrap_err()
             .kind(),
         K::ByteLimit
     );
-    assert_eq!(source.to_specified_css().unwrap(), expected);
+    assert_eq!(
+        source.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
 }
 #[test]
 fn sibling_sheet_output_shares_exact_work_and_utf8_bytes_without_partial_results() {
+    use CssSerializationLimits as L;
     use CssSpecifiedValueSerializationErrorKind as K;
-    use CssSpecifiedValueSerializationLimits as L;
     let report = parse_sheet(".a{hyphens:manual!important}.b{hyphenate-limit-chars:8 auto 3}");
     assert!(report.is_clean());
     let sheet = report.syntax();
@@ -1023,7 +1010,7 @@ fn sibling_sheet_output_shares_exact_work_and_utf8_bytes_without_partial_results
     // Sheet1 + each style rule1, selector list1, simple class1, declaration
     // list1; declarations cost3 and5 (two carriers plus one/three leaves).
     let exact = L::new(17, 17, expected.len());
-    assert_eq!(sheet.to_specified_css_with_limits(exact).unwrap(), expected);
+    assert_eq!(sheet.serialize_specified(exact).unwrap(), expected);
     for (limits, kind) in [
         (L::new(16, 17, expected.len()), K::InputNodeLimit),
         (L::new(17, 16, expected.len()), K::ProjectionNodeLimit),
@@ -1033,19 +1020,16 @@ fn sibling_sheet_output_shares_exact_work_and_utf8_bytes_without_partial_results
             sheet
                 .rules()
                 .iter()
-                .all(|rule| rule.to_specified_css_with_limits(limits).is_ok())
+                .all(|rule| rule.serialize_specified(limits).is_ok())
         );
         for _ in 0..2 {
-            let error = sheet.to_specified_css_with_limits(limits).unwrap_err();
-            assert_eq!(
-                error.kind(),
-                CssSpecifiedRuleSerializationErrorKind::Resource(kind)
-            );
+            let error = sheet.serialize_specified(limits).unwrap_err();
+            assert_eq!(error.kind(), kind);
             assert_eq!(error.rule_index(), Some(1));
             assert_eq!(sheet, &before);
         }
     }
-    assert_eq!(sheet.to_specified_css_with_limits(exact).unwrap(), expected);
+    assert_eq!(sheet.serialize_specified(exact).unwrap(), expected);
 }
 #[test]
 fn color_and_overflow_wrap_controls_exercise_the_same_public_lifecycle() {
@@ -1078,7 +1062,7 @@ fn exact_integer_and_signed_length_owners_are_controls_for_hyphenation_admission
             .unwrap();
     assert_eq!(
         CssIntegerValue::Literal(integer)
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         huge
     );
@@ -1092,12 +1076,14 @@ fn exact_integer_and_signed_length_owners_are_controls_for_hyphenation_admission
                 .is_err()
         );
     }
-    let calculation =
-        CssIntegerCalculation::try_from_components(parse_component_values("calc(3 / 2)").unwrap())
-            .unwrap();
+    let calculation = CssIntegerCalculation::try_from_components(
+        parse_component_values("calc(3 / 2)").unwrap(),
+        Default::default(),
+    )
+    .unwrap();
     assert_eq!(
         CssIntegerValue::Calculation(calculation)
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "calc(1.5)"
     );
@@ -1105,7 +1091,10 @@ fn exact_integer_and_signed_length_owners_are_controls_for_hyphenation_admission
         CssComponentValue::try_token("-25%").unwrap(),
     )
     .unwrap();
-    assert_eq!(length.serialize_specified().unwrap(), "-25%");
+    assert_eq!(
+        length.serialize_specified(Default::default()).unwrap(),
+        "-25%"
+    );
 }
 #[test]
 fn closure_origin_and_color_provider_prices_are_independent_controls() {
@@ -1124,21 +1113,13 @@ fn closure_origin_and_color_provider_prices_are_independent_controls() {
     let expected = "color: red !important;";
     assert_eq!(
         source
-            .to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::new(
-                3,
-                3,
-                expected.len()
-            ))
+            .serialize_specified(CssSerializationLimits::new(3, 3, expected.len()))
             .unwrap(),
         expected
     );
     assert_eq!(
         source
-            .to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::new(
-                3,
-                3,
-                expected.len() - 1
-            ))
+            .serialize_specified(CssSerializationLimits::new(3, 3, expected.len() - 1))
             .unwrap_err()
             .kind(),
         CssSpecifiedValueSerializationErrorKind::ByteLimit

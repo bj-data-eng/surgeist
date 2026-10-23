@@ -50,7 +50,7 @@ fn checked_names_enforce_only_the_will_change_exclusions() {
         let value = CssWillChange::Features(
             CssWillChangeFeatures::try_new(vec![CssWillChangeFeature::Property(name)]).unwrap(),
         );
-        let css = value.serialize_specified().unwrap();
+        let css = value.serialize_specified(Default::default()).unwrap();
         assert_eq!(will_change(&declaration("will-change", &css)), &value);
     }
     assert!(CssWillChangeFeatures::try_new(vec![]).is_none());
@@ -78,7 +78,10 @@ fn keyword_alternatives_and_repeated_decoded_property_names_keep_order_and_case(
     );
     assert_eq!(will_change(&source), &expected);
     let canonical = "scroll-position, contents, future, FutureProperty, --custom, span, future";
-    assert_eq!(expected.serialize_specified().unwrap(), canonical);
+    assert_eq!(
+        expected.serialize_specified(Default::default()).unwrap(),
+        canonical
+    );
     let checked = parse_property_value(
         CssPropertyNameRef::Known(CssKnownProperty::WillChange),
         source.value_components().clone(),
@@ -141,67 +144,53 @@ fn identifier_escaping_and_repeated_entries_share_exact_resource_budgets() {
     );
     let expected = r"x\ y, contents, x\ y";
     let snapshot = value.clone();
-    let exact = CssSpecifiedValueSerializationLimits::new(4, 4, expected.len());
-    assert_eq!(
-        value.serialize_specified_with_limits(exact).unwrap(),
-        expected
-    );
+    let exact = CssSerializationLimits::new(4, 4, expected.len());
+    assert_eq!(value.serialize_specified(exact).unwrap(), expected);
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(3, 4, expected.len()),
+            CssSerializationLimits::new(3, 4, expected.len()),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(4, 3, expected.len()),
+            CssSerializationLimits::new(4, 3, expected.len()),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(4, 4, expected.len() - 1),
+            CssSerializationLimits::new(4, 4, expected.len() - 1),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
-        assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            kind
-        );
+        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
         assert_eq!(value, snapshot);
-        assert_eq!(
-            value.serialize_specified_with_limits(exact).unwrap(),
-            expected
-        );
+        assert_eq!(value.serialize_specified(exact).unwrap(), expected);
     }
     assert_eq!(will_change(&declaration("will-change", expected)), &value);
 }
 
 #[test]
 fn auto_writer_has_one_node_and_four_bytes() {
-    let exact = CssSpecifiedValueSerializationLimits::new(1, 1, 4);
+    let exact = CssSerializationLimits::new(1, 1, 4);
     assert_eq!(
-        CssWillChange::Auto
-            .serialize_specified_with_limits(exact)
-            .unwrap(),
+        CssWillChange::Auto.serialize_specified(exact).unwrap(),
         "auto"
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(0, 1, 4),
+            CssSerializationLimits::new(0, 1, 4),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(1, 0, 4),
+            CssSerializationLimits::new(1, 0, 4),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(1, 1, 3),
+            CssSerializationLimits::new(1, 1, 3),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
         assert_eq!(
             CssWillChange::Auto
-                .serialize_specified_with_limits(limits)
+                .serialize_specified(limits)
                 .unwrap_err()
                 .kind(),
             kind
@@ -222,7 +211,7 @@ fn overflow_anchor_and_decoration_keywords_expose_typed_payloads_and_canonical_o
             panic!("typed anchor")
         };
         assert_eq!(*value.value(), expected);
-        let canonical = expected.serialize_specified().unwrap();
+        let canonical = expected.serialize_specified(Default::default()).unwrap();
         assert_eq!(canonical, text.to_ascii_lowercase());
         let reparsed = declaration("overflow-anchor", &canonical);
         let CssKnownPropertyValueRef::OverflowAnchor(value) =
@@ -244,7 +233,7 @@ fn overflow_anchor_and_decoration_keywords_expose_typed_payloads_and_canonical_o
         };
         assert_eq!(*value.value(), expected);
         assert_eq!(
-            expected.serialize_specified().unwrap(),
+            expected.serialize_specified(Default::default()).unwrap(),
             text.to_ascii_lowercase()
         );
     }
@@ -259,32 +248,39 @@ fn keyword_writers_enforce_exact_limits_atomically() {
         let source = declaration(name, css);
         let emit = |limits| match source.known().unwrap().property_value().unwrap() {
             CssKnownPropertyValueRef::OverflowAnchor(value) => {
-                value.value().serialize_specified_with_limits(limits)
+                value.value().serialize_specified(limits)
             }
             CssKnownPropertyValueRef::BoxDecorationBreak(value) => {
-                value.value().serialize_specified_with_limits(limits)
+                value.value().serialize_specified(limits)
             }
             _ => panic!("selected keyword"),
         };
-        let exact = CssSpecifiedValueSerializationLimits::new(1, 1, css.len());
+        let exact = CssSerializationLimits::new(1, 1, css.len());
         assert_eq!(emit(exact).unwrap(), css);
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(0, 1, css.len()),
+                CssSerializationLimits::new(0, 1, css.len()),
                 CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 0, css.len()),
+                CssSerializationLimits::new(1, 0, css.len()),
                 CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 1, css.len() - 1),
+                CssSerializationLimits::new(1, 1, css.len() - 1),
                 CssSpecifiedValueSerializationErrorKind::ByteLimit,
             ),
         ] {
             assert_eq!(emit(limits).unwrap_err().kind(), kind);
             assert_eq!(emit(exact).unwrap(), css);
-            assert_eq!(source.value_components().serialize().unwrap().as_css(), css);
+            assert_eq!(
+                source
+                    .value_components()
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
+                css
+            );
         }
     }
 }

@@ -45,15 +45,20 @@ fn checked_widths_preserve_exact_literals_and_origin_blind_structure() {
         (CssBorderWidth::Medium, "medium"),
         (CssBorderWidth::Thick, "thick"),
     ] {
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
     assert_eq!(
-        length("1e100", "px").serialize_specified().unwrap(),
+        length("1e100", "px")
+            .serialize_specified(Default::default())
+            .unwrap(),
         format!("1{}px", "0".repeat(100))
     );
     let tiny = length("1e-100", "px");
     let before = tiny.clone();
-    assert_eq!(tiny.serialize_specified().unwrap(), "0px");
+    assert_eq!(tiny.serialize_specified(Default::default()).unwrap(), "0px");
     assert!(matches!(
         tiny.length().unwrap().literal_component().unwrap().view(),
         CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit })
@@ -65,7 +70,12 @@ fn checked_widths_preserve_exact_literals_and_origin_blind_structure() {
         CssComponentValue::try_dimension("-1e-100", "px").unwrap(),
         CssNumericConstructionErrorKind::OutOfRange,
     );
-    assert_eq!(length("-0", "px").serialize_specified().unwrap(), "0px");
+    assert_eq!(
+        length("-0", "px")
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "0px"
+    );
     let programmatic = length("1", "px");
     let parsed = parsed_width("1px");
     assert_eq!(programmatic, parsed);
@@ -85,32 +95,30 @@ fn pair_and_four_side_keep_arity_roles_and_cumulative_budgets() {
     assert_eq!(pair.start(), &CssBorderWidth::Thin);
     assert_eq!(pair.authored_end(), Some(&CssBorderWidth::Thick));
     assert_eq!(pair.end(), &CssBorderWidth::Thick);
-    assert_eq!(pair.serialize_specified().unwrap(), "thin thick");
     assert_eq!(
-        pair.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(3, 3, 10))
+        pair.serialize_specified(Default::default()).unwrap(),
+        "thin thick"
+    );
+    assert_eq!(
+        pair.serialize_specified(CssSerializationLimits::new(3, 3, 10))
             .unwrap(),
         "thin thick"
     );
     for (limit, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(2, 3, 10),
+            CssSerializationLimits::new(2, 3, 10),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(3, 2, 10),
+            CssSerializationLimits::new(3, 2, 10),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(3, 3, 9),
+            CssSerializationLimits::new(3, 3, 9),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
-        assert_eq!(
-            pair.serialize_specified_with_limits(limit)
-                .unwrap_err()
-                .kind(),
-            kind
-        );
+        assert_eq!(pair.serialize_specified(limit).unwrap_err().kind(), kind);
     }
     let one = CssBorderWidthPair::new(CssBorderWidth::Thin, None);
     assert_eq!(one.authored_end(), None);
@@ -155,7 +163,7 @@ fn pair_and_four_side_keep_arity_roles_and_cumulative_budgets() {
             assert_eq!(
                 value
                     .assigned_values()
-                    .map(|part| part.serialize_specified().unwrap()),
+                    .map(|part| part.serialize_specified(Default::default()).unwrap()),
                 expected
             );
         }
@@ -171,34 +179,31 @@ fn pair_and_four_side_keep_arity_roles_and_cumulative_budgets() {
     )
     .unwrap();
     assert_eq!(
-        shorthand.serialize_specified().unwrap(),
+        shorthand.serialize_specified(Default::default()).unwrap(),
         "logical thin medium thick 0"
     );
     assert_eq!(
         shorthand
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(5, 5, 27))
+            .serialize_specified(CssSerializationLimits::new(5, 5, 27))
             .unwrap(),
         "logical thin medium thick 0"
     );
     for (limit, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(4, 5, 27),
+            CssSerializationLimits::new(4, 5, 27),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(5, 4, 27),
+            CssSerializationLimits::new(5, 4, 27),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(5, 5, 26),
+            CssSerializationLimits::new(5, 5, 26),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
         assert_eq!(
-            shorthand
-                .serialize_specified_with_limits(limit)
-                .unwrap_err()
-                .kind(),
+            shorthand.serialize_specified(limit).unwrap_err().kind(),
             kind
         );
     }
@@ -223,35 +228,39 @@ fn border_triple_retains_omissions_and_exact_shared_budget() {
     .unwrap();
     assert_eq!(value.width(), Some(&CssBorderWidth::Thin));
     assert_eq!(value.style(), Some(CssBorderStyle::Solid));
-    assert_eq!(value.color().unwrap().to_specified_css().unwrap(), "red");
-    assert_eq!(value.serialize_specified().unwrap(), "thin solid red");
     assert_eq!(
         value
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(4, 4, 14))
+            .color()
+            .unwrap()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "red"
+    );
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "thin solid red"
+    );
+    assert_eq!(
+        value
+            .serialize_specified(CssSerializationLimits::new(4, 4, 14))
             .unwrap(),
         "thin solid red"
     );
     for (limit, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(3, 4, 14),
+            CssSerializationLimits::new(3, 4, 14),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(4, 3, 14),
+            CssSerializationLimits::new(4, 3, 14),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(4, 4, 13),
+            CssSerializationLimits::new(4, 4, 13),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
-        assert_eq!(
-            value
-                .serialize_specified_with_limits(limit)
-                .unwrap_err()
-                .kind(),
-            kind
-        );
+        assert_eq!(value.serialize_specified(limit).unwrap_err().kind(), kind);
     }
     let reordered = parse_style_attribute("border:red solid thin");
     assert!(reordered.is_clean());
@@ -355,35 +364,29 @@ fn symbolic_border_triple_shares_one_numeric_and_color_budget() {
     )
     .unwrap();
     assert_eq!(
-        value.serialize_specified().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         "calc(2em + 1px) solid red"
     );
     assert_eq!(
         value
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(7, 8, 25))
+            .serialize_specified(CssSerializationLimits::new(7, 8, 25))
             .unwrap(),
         "calc(2em + 1px) solid red"
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(6, 8, 25),
+            CssSerializationLimits::new(6, 8, 25),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(7, 7, 25),
+            CssSerializationLimits::new(7, 7, 25),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(7, 8, 24),
+            CssSerializationLimits::new(7, 8, 24),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
-        assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            kind
-        );
+        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
     }
 }

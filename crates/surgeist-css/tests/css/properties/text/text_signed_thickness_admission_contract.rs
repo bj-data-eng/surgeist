@@ -75,6 +75,7 @@ fn programmatic(tokens: &[&str]) -> CssComponentValues {
             .iter()
             .map(|token| CssComponentValue::try_token(token).unwrap())
             .collect(),
+        Default::default(),
     )
     .unwrap()
 }

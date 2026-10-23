@@ -1,9 +1,10 @@
 //! Checked authored values for the nine Box Alignment 3 properties.
 
+use crate::CssSerializationError;
+use crate::specified_rule_serialization::SpecifiedProvider as _;
 use crate::specified_serialization::SpecifiedSerializationContext;
-use crate::{CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits};
 
-type SerializationResult<T> = Result<T, CssSpecifiedValueSerializationError>;
+type SerializationResult<T> = Result<T, CssSerializationError>;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
@@ -106,6 +107,11 @@ macro_rules! checked_alignment {
     ($name:ident, $domain:ident) => {
         /// A property-admitted authored alignment value. Invalid members of the
         /// shared union cannot be stored in this private-field wrapper.
+        ///
+        /// # Specified serialization
+        ///
+        /// An explicit `first baseline` component serializes as `baseline` per
+        /// Box Alignment 3.
         #[derive(Clone, Copy, Debug, Eq, PartialEq)]
         pub struct $name(CssAlignmentValue);
 
@@ -124,34 +130,19 @@ macro_rules! checked_alignment {
             pub const fn value(&self) -> CssAlignmentValue {
                 self.0
             }
-
-            /// Serializes the canonical specified value. An explicit `first
-            /// baseline` component serializes as `baseline` per Box Alignment 3.
-            pub fn serialize_specified(&self) -> SerializationResult<String> {
-                self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-            }
-
-            pub fn serialize_specified_with_limits(
+        }
+        impl crate::specified_rule_serialization::SpecifiedProvider for $name {
+            fn append_to_rule_writer(
                 &self,
-                limits: CssSpecifiedValueSerializationLimits,
-            ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-
+                writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+            ) -> std::result::Result<(), crate::CssSerializationError> {
                 let context = &mut writer.context;
                 let output = &mut writer.css;
                 serialize_value_into(self.0, context, output)?;
                 Ok(())
-
-    }
+            }
         }
+        crate::specified_rule_serialization::specified_serialization!($name);
     };
 }
 
@@ -165,6 +156,10 @@ checked_alignment!(CssJustifySelfValue, JustifySelf);
 macro_rules! checked_pair {
     ($name:ident, $align:ident, $justify:ident, $default:expr) => {
         /// Two independently admitted axis values of a place shorthand.
+        ///
+        /// # Specified serialization
+        ///
+        /// Serializes both effective components in align-then-justify order.
         #[derive(Clone, Copy, Debug, Eq, PartialEq)]
         pub struct $name {
             align: $align,
@@ -198,8 +193,10 @@ macro_rules! checked_pair {
                 self.justify
             }
 
-            pub(crate) fn append_cssom_inverse_to_rule_writer(&self, writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter)
-                -> SerializationResult<()> {
+            pub(crate) fn append_cssom_inverse_to_rule_writer(
+                &self,
+                writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+            ) -> SerializationResult<()> {
                 writer.source_member(0, |writer| self.align.append_to_rule_writer(writer))?;
                 writer.source_member(1, |writer| {
                     if self.justify == Self::from_align(self.align).justify {
@@ -210,35 +207,21 @@ macro_rules! checked_pair {
                     }
                 })
             }
-
-            /// Serializes both effective components in align-then-justify order.
-            pub fn serialize_specified(&self) -> SerializationResult<String> {
-                self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-            }
-
-            pub fn serialize_specified_with_limits(
+        }
+        impl crate::specified_rule_serialization::SpecifiedProvider for $name {
+            fn append_to_rule_writer(
                 &self,
-                limits: CssSpecifiedValueSerializationLimits,
-            ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-
+                writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+            ) -> std::result::Result<(), crate::CssSerializationError> {
                 let context = &mut writer.context;
                 let output = &mut writer.css;
                 serialize_value_into(self.align.value(), context, output)?;
                 context.append(output, " ")?;
                 serialize_value_into(self.justify.value(), context, output)?;
                 Ok(())
-
-    }
+            }
         }
+        crate::specified_rule_serialization::specified_serialization!($name);
     };
 }
 
@@ -276,24 +259,13 @@ checked_pair!(
     copied
 );
 
-fn keyword(
-    context: &mut SpecifiedSerializationContext,
-    output: &mut String,
-    text: &'static str,
-) -> SerializationResult<()> {
-    context.charge_input(1)?;
-    context.charge_projection(1)?;
-    context.append(output, text)
-}
-
 fn prefix(
     context: &mut SpecifiedSerializationContext,
     output: &mut String,
     overflow: Option<CssOverflowPosition>,
 ) -> SerializationResult<()> {
     if let Some(overflow) = overflow {
-        keyword(
-            context,
+        context.keyword(
             output,
             match overflow {
                 CssOverflowPosition::Safe => "safe",
@@ -314,22 +286,21 @@ fn serialize_value_into(
     match value {
         V::Normal { overflow } => {
             prefix(context, output, overflow)?;
-            keyword(context, output, "normal")
+            context.keyword(output, "normal")
         }
-        V::Auto => keyword(context, output, "auto"),
-        V::Stretch => keyword(context, output, "stretch"),
+        V::Auto => context.keyword(output, "auto"),
+        V::Stretch => context.keyword(output, "stretch"),
         V::Baseline(CssBaselinePosition::Baseline | CssBaselinePosition::First) => {
-            keyword(context, output, "baseline")
+            context.keyword(output, "baseline")
         }
         V::Baseline(CssBaselinePosition::Last) => {
-            keyword(context, output, "last")?;
+            context.keyword(output, "last")?;
             context.append(output, " ")?;
-            keyword(context, output, "baseline")
+            context.keyword(output, "baseline")
         }
         V::Position { overflow, position } => {
             prefix(context, output, overflow)?;
-            keyword(
-                context,
+            context.keyword(
                 output,
                 match position {
                     CssAlignmentPosition::Center => "center",
@@ -344,15 +315,14 @@ fn serialize_value_into(
                 },
             )
         }
-        V::SpaceBetween => keyword(context, output, "space-between"),
-        V::SpaceAround => keyword(context, output, "space-around"),
-        V::SpaceEvenly => keyword(context, output, "space-evenly"),
+        V::SpaceBetween => context.keyword(output, "space-between"),
+        V::SpaceAround => context.keyword(output, "space-around"),
+        V::SpaceEvenly => context.keyword(output, "space-evenly"),
         V::Legacy(direction) => {
-            keyword(context, output, "legacy")?;
+            context.keyword(output, "legacy")?;
             if let Some(direction) = direction {
                 context.append(output, " ")?;
-                keyword(
-                    context,
+                context.keyword(
                     output,
                     match direction {
                         CssLegacyAlignment::Left => "left",

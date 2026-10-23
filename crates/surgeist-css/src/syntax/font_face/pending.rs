@@ -104,16 +104,10 @@ impl CssAuthoredFontFaceDescriptorValue {
     ///
     /// A well-formed `env()` reference defers the whole descriptor; otherwise
     /// the supplied components must satisfy its ordinary grammar.
-    pub fn try_from_components(
-        kind: CssFontFaceDescriptorKind,
-        values: CssComponentValues,
-    ) -> Result<Self, CssFontFaceValueError> {
-        Self::try_from_components_with_limits(kind, values, CssComponentValueLimits::default())
-    }
-
+    ///
     /// Checks one descriptor with explicit component and serialized-size limits.
     /// Recovered or implicitly closed components are rejected.
-    pub fn try_from_components_with_limits(
+    pub fn try_from_components(
         kind: CssFontFaceDescriptorKind,
         values: CssComponentValues,
         limits: CssComponentValueLimits,
@@ -125,7 +119,7 @@ impl CssAuthoredFontFaceDescriptorValue {
             return Err(CssFontFaceValueError::implicit(origin.clone()));
         }
         let serialized = values
-            .serialize_with_limit(limits.max_css_bytes())
+            .serialize_tokens(limits)
             .map_err(CssFontFaceValueError::component)?;
         let (value, recovered) = crate::parser::font_face::construct_font_face_descriptor_value(
             kind,
@@ -145,16 +139,10 @@ impl CssPendingFontFaceDescriptorValue {
     ///
     /// Callers perform substitution before this step. Residual `var()` or `env()`
     /// references, recovery, and implicit closures are errors.
-    pub fn reparse_after_substitution(
-        &self,
-        replacement: CssComponentValues,
-    ) -> Result<CssFontFaceDescriptorValue, CssFontFaceValueError> {
-        self.reparse_after_substitution_with_limits(replacement, CssComponentValueLimits::default())
-    }
-
+    ///
     /// Reparses substituted components with explicit resource limits.
     /// The same strict grammar and residual-substitution rules apply.
-    pub fn reparse_after_substitution_with_limits(
+    pub fn reparse_after_substitution(
         &self,
         replacement: CssComponentValues,
         limits: CssComponentValueLimits,
@@ -168,7 +156,7 @@ impl CssPendingFontFaceDescriptorValue {
         if let Some(origin) = crate::parser::first_substitution_origin(&replacement) {
             return Err(CssFontFaceValueError::residual(origin));
         }
-        match CssAuthoredFontFaceDescriptorValue::try_from_components_with_limits(
+        match CssAuthoredFontFaceDescriptorValue::try_from_components(
             self.kind,
             replacement,
             limits,

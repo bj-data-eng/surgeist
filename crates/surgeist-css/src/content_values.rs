@@ -179,6 +179,10 @@ impl CssCounterStyleReference {
 }
 
 /// A checked named or functional counter-style reference.
+///
+/// # Specified serialization
+///
+/// Serializes one checked named or `symbols()` counter style without resolving counters.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssCounterStyleValue {
@@ -506,6 +510,10 @@ impl CssGeneratedContent {
 }
 
 /// Current authored `content` grammar. It does not resolve generated boxes.
+///
+/// # Specified serialization
+///
+/// Serializes current authored content without resolving counters, targets, or generated boxes.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssContentValue {
@@ -516,6 +524,10 @@ pub enum CssContentValue {
 
 /// A nonempty ordered `<content-list>`, without property keywords or alternative text.
 /// A sole image remains a list item; only `content` classifies it as replacement.
+///
+/// # Specified serialization
+///
+/// Serializes an ordered content list without resolving its context.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssContentList {
     items: Vec<CssContentValueItem>,
@@ -559,6 +571,10 @@ impl CssStringSetEntry {
 
 /// `none` or nonempty string-set assignments under the selected property-table grammar.
 /// The conflicting enclosing Content 3 prose remains an unresolved source question.
+///
+/// # Specified serialization
+///
+/// Serializes separate named string assignments without concatenation.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssStringSet {
     entries: Option<Vec<CssStringSetEntry>>,
@@ -584,6 +600,10 @@ impl CssStringSet {
 }
 
 /// `none` or an exact positive ordinary integer / deferred integer calculation.
+///
+/// # Specified serialization
+///
+/// Serializes the exact level or its symbolic integer calculation.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssBookmarkLevel {
     level: Option<crate::CssPositiveIntegerValue>,
@@ -610,6 +630,10 @@ impl CssBookmarkLevel {
 }
 
 /// Authored bookmark subtree state; interaction and visibility are downstream.
+///
+/// # Specified serialization
+///
+/// Serializes the authored bookmark state without toggling a subtree.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssBookmarkState {

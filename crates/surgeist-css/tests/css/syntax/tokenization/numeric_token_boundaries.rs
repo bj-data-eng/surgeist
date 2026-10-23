@@ -311,7 +311,7 @@ fn validated_numeric_conversion_uses_sign_fraction_and_signed_decimal_exponent()
             let value = CssSpecifiedNumber::try_from_component(component.clone()).unwrap();
             let before = value.clone();
             assert_eq!(
-                value.serialize_specified().unwrap(),
+                value.serialize_specified(Default::default()).unwrap(),
                 expected_value,
                 "{source}"
             );
@@ -320,9 +320,9 @@ fn validated_numeric_conversion_uses_sign_fraction_and_signed_decimal_exponent()
             assert_eq!(value.origin(), component.origin());
             // Mathematical conversion does not erase the authored spelling.
             assert_eq!(
-                CssComponentValues::try_new(vec![component])
+                CssComponentValues::try_new(vec![component], Default::default())
                     .unwrap()
-                    .serialize()
+                    .serialize_tokens(Default::default())
                     .unwrap()
                     .as_css(),
                 source
@@ -352,7 +352,7 @@ fn whole_number_construction_rejects_invalid_spelling_and_admits_a_valid_retry()
         assert_eq!(
             CssSpecifiedNumber::try_from_component(retry)
                 .unwrap()
-                .serialize_specified()
+                .serialize_specified(Default::default())
                 .unwrap(),
             "-50"
         );
@@ -373,9 +373,9 @@ fn dimension_construction_validates_number_text_before_an_exponent_like_unit() {
         let retry = CssComponentValue::try_dimension("1", "e2").unwrap();
         assert_token(&retry, &Expected::Dimension("1", "e2", Integer, false));
         assert_eq!(retry.origin(), &CssValueOrigin::Programmatic);
-        let css = CssComponentValues::try_new(vec![retry])
+        let css = CssComponentValues::try_new(vec![retry], Default::default())
             .unwrap()
-            .serialize()
+            .serialize_tokens(Default::default())
             .unwrap();
         let reparsed = parse_component_values(css.as_css()).unwrap();
         let [component] = reparsed.items() else {

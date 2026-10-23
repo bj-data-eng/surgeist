@@ -75,7 +75,13 @@ fn whole_width_production_matches_complete_input_and_rejects_a_valid_prefix_with
         else {
             panic!("defined typed width match")
         };
-        assert_eq!(value.value().serialize_specified().unwrap(), "12px");
+        assert_eq!(
+            value
+                .value()
+                .serialize_specified(Default::default())
+                .unwrap(),
+            "12px"
+        );
         let origin = declaration.parsed_value().unwrap();
         assert_eq!(origin.source().as_str(), source);
         assert_eq!(origin.span().start().byte_offset().value(), 0);
@@ -191,7 +197,10 @@ fn media_nested_commas_stay_in_one_member_and_a_failed_middle_member_preserves_t
     };
     let value = opaque(first);
     assert_eq!(value.authored(), Some(enclosure));
-    assert_eq!(value.serialize().unwrap().as_css(), enclosure);
+    assert_eq!(
+        value.serialize_tokens(Default::default()).unwrap().as_css(),
+        enclosure
+    );
     let CssValueOrigin::Parsed(origin) = value.origin() else {
         panic!("original enclosure occurrence")
     };
@@ -282,7 +291,13 @@ fn actual_literal_grammars_match_decoded_ascii_case_variants_but_require_their_t
         else {
             panic!("width auto keyword")
         };
-        assert_eq!(value.value().serialize_specified().unwrap(), "auto");
+        assert_eq!(
+            value
+                .value()
+                .serialize_specified(Default::default())
+                .unwrap(),
+            "auto"
+        );
     }
     // A function or at-keyword is not the `auto` identifier.
     for source in ["auto()", "@auto"] {
@@ -613,6 +628,12 @@ fn checked_groups_retain_all_opening_kinds_and_matching_explicit_closers_without
         assert_eq!(open.span().start().byte_offset().value(), 0);
         assert_eq!(close.span().start().byte_offset().value(), 4);
         assert_eq!(close.span().end().byte_offset().value(), 5);
-        assert_eq!(values.serialize().unwrap().as_css(), source);
+        assert_eq!(
+            values
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            source
+        );
     }
 }

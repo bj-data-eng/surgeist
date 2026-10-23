@@ -213,6 +213,7 @@ fn permissive_custom_and_style_values_retain_env_mismatches_as_raw_tokens() {
         }
         let condition = CssContainerCondition::try_from_components(
             parse_component_values(&format!("style(--x:{text})")).unwrap(),
+            Default::default(),
         )
         .unwrap();
         let CssContainerConditionKind::Style(query) = condition.kind() else {
@@ -223,7 +224,10 @@ fn permissive_custom_and_style_values_retain_env_mismatches_as_raw_tokens() {
         else {
             panic!("plain style value")
         };
-        assert_eq!(value.serialize().unwrap().as_css(), text);
+        assert_eq!(
+            value.serialize_tokens(Default::default()).unwrap().as_css(),
+            text
+        );
     }
 }
 
@@ -246,9 +250,11 @@ fn permissive_contexts_keep_the_malformed_var_restriction() {
         );
         // Conditional5 query-in-parens retains a failed style grammar as general-enclosed.
         let source = format!("style(--x:{text})");
-        let condition =
-            CssContainerCondition::try_from_components(parse_component_values(&source).unwrap())
-                .unwrap();
+        let condition = CssContainerCondition::try_from_components(
+            parse_component_values(&source).unwrap(),
+            Default::default(),
+        )
+        .unwrap();
         let CssContainerConditionKind::GeneralEnclosed(opaque) = condition.kind() else {
             panic!("malformed var must not become a typed Style: {text}")
         };
@@ -322,7 +328,9 @@ fn shorthand_env_pending_reenters_with_one_original_occurrence() {
         };
         let actual = match value.ordinary_value().unwrap().view() {
             CssLonghandValueRef::MarginBlockStart(value)
-            | CssLonghandValueRef::MarginBlockEnd(value) => value.serialize_specified().unwrap(),
+            | CssLonghandValueRef::MarginBlockEnd(value) => {
+                value.serialize_specified(Default::default()).unwrap()
+            }
             other => panic!("typed margin-block replacement: {other:?}"),
         };
         assert_eq!(actual, expected);

@@ -6,8 +6,8 @@
 use crate::{
     CssCalculationExpressionRef, CssComponentValue, CssComponentValueLimits, CssComponentValueRef,
     CssComponentValues, CssNumericConstructionError, CssNumericConstructionErrorKind,
-    CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationErrorKind,
-    CssSpecifiedValueSerializationLimits, CssValueOrigin, CssValueTokenRef,
+    CssSerializationError, CssSpecifiedValueSerializationErrorKind, CssValueOrigin,
+    CssValueTokenRef,
     numeric::{
         CssCalculationExpression, parse_calc_size_sum, project_calc_size_sum_into,
         validate_calc_size_graph,
@@ -16,7 +16,7 @@ use crate::{
 };
 
 type Result<T> = std::result::Result<T, CssNumericConstructionError>;
-type SerializationResult<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
+type SerializationResult<T> = std::result::Result<T, CssSerializationError>;
 
 /// A keyword permitted as a calc-size basis. `none` is never a basis.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -176,9 +176,7 @@ impl CssCalcSize {
         context.charge_generated_projection(1)?;
         let mut pending = Vec::new();
         pending.try_reserve(1).map_err(|_| {
-            CssSpecifiedValueSerializationError::new(
-                CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
-            )
+            CssSerializationError::new(CssSpecifiedValueSerializationErrorKind::CapacityOverflow)
         })?;
         pending.push((self, other));
         while let Some((left, right)) = pending.pop() {
@@ -195,7 +193,7 @@ impl CssCalcSize {
                 (Basis::Nested(a), Basis::Nested(b)) => {
                     context.charge_generated_projection(1)?;
                     pending.try_reserve(1).map_err(|_| {
-                        CssSpecifiedValueSerializationError::new(
+                        CssSerializationError::new(
                             CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
                         )
                     })?;
@@ -212,11 +210,7 @@ impl CssCalcSize {
         Ok(true)
     }
 
-    pub fn try_from_component(component: CssComponentValue) -> Result<Self> {
-        Self::try_from_component_with_limits(component, CssComponentValueLimits::default())
-    }
-
-    pub fn try_from_component_with_limits(
+    pub fn try_from_component(
         component: CssComponentValue,
         limits: CssComponentValueLimits,
     ) -> Result<Self> {
@@ -228,7 +222,7 @@ impl CssCalcSize {
         limits: CssComponentValueLimits,
         recovered: bool,
     ) -> Result<Self> {
-        let values = CssComponentValues::try_new_with_limits(vec![component], limits)
+        let values = CssComponentValues::try_new(vec![component], limits)
             .map_err(CssNumericConstructionError::component)?;
         validate_calc_size_graph(&values, limits, recovered)?;
         let root = &values.items()[0];
@@ -369,27 +363,6 @@ impl CssCalcSize {
         }
     }
 
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        let context = &mut writer.context;
-        let output = &mut writer.css;
-        self.serialize_specified_into(context, output)?;
-        Ok(())
-    }
     pub(crate) fn serialize_specified_into(
         &self,
         context: &mut SpecifiedSerializationContext,
@@ -402,13 +375,11 @@ impl CssCalcSize {
             context.append(output, "calc-size(")?;
             match &current.data.basis {
                 Basis::Keyword(keyword) => {
-                    context.charge_input(1)?;
-                    context.charge_projection(1)?;
+                    context.charge_nodes(1)?;
                     context.append(output, keyword.as_css())?;
                 }
                 Basis::Any => {
-                    context.charge_input(1)?;
-                    context.charge_projection(1)?;
+                    context.charge_nodes(1)?;
                     context.append(output, "any")?;
                 }
                 Basis::Sum(expression) => {
@@ -432,6 +403,18 @@ impl CssCalcSize {
         }
     }
 }
+impl crate::specified_rule_serialization::SpecifiedProvider for CssCalcSize {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        let context = &mut writer.context;
+        let output = &mut writer.css;
+        self.serialize_specified_into(context, output)?;
+        Ok(())
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(CssCalcSize);
 
 /// A checked `calc-size()` whose complete basis chain is valid for box sizing.
 ///
@@ -465,26 +448,6 @@ impl CssBoxCalcSize {
         self.0
     }
 
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.0.serialize_specified()
-    }
-
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        self.0.append_to_rule_writer(writer)
-    }
-
     pub(crate) fn serialize_specified_into(
         &self,
         context: &mut SpecifiedSerializationContext,
@@ -497,6 +460,15 @@ impl CssBoxCalcSize {
         self.0.validate_maximum_context()
     }
 }
+impl crate::specified_rule_serialization::SpecifiedProvider for CssBoxCalcSize {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        self.0.append_to_rule_writer(writer)
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(CssBoxCalcSize);
 
 #[cfg(test)]
 mod tests {
@@ -505,8 +477,9 @@ mod tests {
     fn maximum_context_reports_first_nested_auto_origin() {
         let values =
             crate::parse_component_values("calc-size(calc-size(auto, size), 1px)").unwrap();
-        let serialized = values.serialize().unwrap();
-        let value = CssCalcSize::try_from_component(values.items()[0].clone()).unwrap();
+        let serialized = values.serialize_tokens(Default::default()).unwrap();
+        let value =
+            CssCalcSize::try_from_component(values.items()[0].clone(), Default::default()).unwrap();
         let CssCalcSizeBasisRef::Nested(child) = value.basis() else {
             panic!("nested")
         };
@@ -534,18 +507,21 @@ mod tests {
         let comma = CssComponentValue::try_token(",").unwrap();
         let nested = CssComponentValue::try_function(
             "calc-size",
-            CssComponentValues::try_new(vec![content.clone(), comma.clone(), size.clone()])
-                .unwrap(),
+            CssComponentValues::try_new(
+                vec![content.clone(), comma.clone(), size.clone()],
+                Default::default(),
+            )
+            .unwrap(),
         )
         .unwrap();
         let outer = CssComponentValue::try_function(
             "calc-size",
-            CssComponentValues::try_new(vec![nested, comma, size]).unwrap(),
+            CssComponentValues::try_new(vec![nested, comma, size], Default::default()).unwrap(),
         )
         .unwrap();
-        let graph = CssComponentValues::try_new(vec![outer.clone()]).unwrap();
-        let serialized = graph.serialize().unwrap();
-        let value = CssCalcSize::try_from_component(outer).unwrap();
+        let graph = CssComponentValues::try_new(vec![outer.clone()], Default::default()).unwrap();
+        let serialized = graph.serialize_tokens(Default::default()).unwrap();
+        let value = CssCalcSize::try_from_component(outer, Default::default()).unwrap();
         let CssCalcSizeBasisRef::Nested(child) = value.basis() else {
             panic!("nested basis")
         };
@@ -573,7 +549,7 @@ mod tests {
         let values = crate::parse_component_values("calc-size(min-content, size").unwrap();
         let component = values.items()[0].clone();
         assert_eq!(
-            CssCalcSize::try_from_component(component.clone())
+            CssCalcSize::try_from_component(component.clone(), Default::default())
                 .unwrap_err()
                 .kind(),
             &CssNumericConstructionErrorKind::RecoveredComponent
@@ -596,22 +572,26 @@ mod tests {
         let plus = CssComponentValue::try_token("+").unwrap();
         let function = CssComponentValue::try_function(
             "calc-size",
-            CssComponentValues::try_new(vec![
-                CssComponentValue::try_ident("min-content").unwrap(),
-                comma,
-                space.clone(),
-                CssComponentValue::try_ident("size").unwrap(),
-                space.clone(),
-                plus,
-                space,
-                CssComponentValue::try_dimension("1", "fr").unwrap(),
-            ])
+            CssComponentValues::try_new(
+                vec![
+                    CssComponentValue::try_ident("min-content").unwrap(),
+                    comma,
+                    space.clone(),
+                    CssComponentValue::try_ident("size").unwrap(),
+                    space.clone(),
+                    plus,
+                    space,
+                    CssComponentValue::try_dimension("1", "fr").unwrap(),
+                ],
+                Default::default(),
+            )
             .unwrap(),
         )
         .unwrap();
-        let graph = CssComponentValues::try_new(vec![function.clone()]).unwrap();
-        let serialized = graph.serialize().unwrap();
-        let error = CssCalcSize::try_from_component(function).unwrap_err();
+        let graph =
+            CssComponentValues::try_new(vec![function.clone()], Default::default()).unwrap();
+        let serialized = graph.serialize_tokens(Default::default()).unwrap();
+        let error = CssCalcSize::try_from_component(function, Default::default()).unwrap_err();
         assert_eq!(
             error.kind(),
             &CssNumericConstructionErrorKind::IncompatibleTypes

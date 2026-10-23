@@ -300,7 +300,8 @@ pub enum CssPageDescriptorValueRef<'a> {
     Global(CssGlobalKeyword),
     Pending(&'a crate::CssSubstitutionDependentValue),
 }
-/// Checked domain-specific value. Every constructor is parser-owned; raw edits retain value-only origins.
+/// Checked domain-specific value. Every constructor is parser-owned; raw edits retain value-only
+/// origins.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssPageDescriptorValue {
     kind: CssPageDescriptorKind,
@@ -416,7 +417,8 @@ pub enum CssPageDeclaration {
     Property(CssDeclaration),
     Descriptor(CssPageDescriptor),
 }
-/// Checked Page declarations; ordered authored inventory and ordinary property projection stay distinct.
+/// Checked Page declarations; ordered authored inventory and ordinary property projection stay
+/// distinct.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssPageDeclarationBlock {
     occurrences: Vec<CssPageDeclaration>,
@@ -689,7 +691,7 @@ impl CssPageRule {
 pub enum CssPageBlockErrorKind {
     PropertyNotApplicable,
     InvalidPropertyValue,
-    Resource(crate::CssSpecifiedValueSerializationError),
+    Resource(crate::CssSerializationError),
 }
 #[derive(Clone, Debug)]
 pub struct CssPageBlockError {
@@ -728,8 +730,8 @@ impl std::error::Error for CssPageBlockError {
         }
     }
 }
-impl From<crate::CssSpecifiedValueSerializationError> for CssPageBlockError {
-    fn from(error: crate::CssSpecifiedValueSerializationError) -> Self {
+impl From<crate::CssSerializationError> for CssPageBlockError {
+    fn from(error: crate::CssSerializationError) -> Self {
         Self {
             kind: CssPageBlockErrorKind::Resource(error),
             ordinal: None,
@@ -764,22 +766,16 @@ fn check_property(
     Ok(value.into_page_context())
 }
 impl CssPageDeclarationBlock {
-    pub fn try_new(occurrences: Vec<CssPageDeclaration>) -> Result<Self, CssPageBlockError> {
-        Self::try_new_with_limits(
-            occurrences,
-            crate::CssSpecifiedValueSerializationLimits::default(),
-        )
-    }
-    pub fn try_new_with_limits(
+    pub fn try_new(
         occurrences: Vec<CssPageDeclaration>,
-        limits: crate::CssSpecifiedValueSerializationLimits,
+        limits: crate::CssSerializationLimits,
     ) -> Result<Self, CssPageBlockError> {
         let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
         writer.node()?;
         let mut admitted = Vec::new();
         for (ordinal, value) in occurrences.into_iter().enumerate() {
             admitted.try_reserve(1).map_err(|_| {
-                crate::CssSpecifiedValueSerializationError::new(
+                crate::CssSerializationError::new(
                     crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
                 )
             })?;
@@ -806,15 +802,9 @@ impl CssPageDeclarationBlock {
     }
 }
 impl CssMarginDeclarationBlock {
-    pub fn try_new(properties: Vec<CssDeclaration>) -> Result<Self, CssPageBlockError> {
-        Self::try_new_with_limits(
-            properties,
-            crate::CssSpecifiedValueSerializationLimits::default(),
-        )
-    }
-    pub fn try_new_with_limits(
+    pub fn try_new(
         properties: Vec<CssDeclaration>,
-        limits: crate::CssSpecifiedValueSerializationLimits,
+        limits: crate::CssSerializationLimits,
     ) -> Result<Self, CssPageBlockError> {
         let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
         writer.node()?;
@@ -828,7 +818,7 @@ impl CssMarginDeclarationBlock {
                 &mut writer,
             )?;
             admitted.try_reserve(1).map_err(|_| {
-                crate::CssSpecifiedValueSerializationError::new(
+                crate::CssSerializationError::new(
                     crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
                 )
             })?;
@@ -840,14 +830,7 @@ impl CssMarginDeclarationBlock {
     }
     pub fn try_specified_properties(
         &self,
-    ) -> Result<crate::CssSpecifiedDeclarationBlock, crate::CssDeclarationBlockError> {
-        self.try_specified_properties_with_limits(
-            crate::CssSpecifiedValueSerializationLimits::default(),
-        )
-    }
-    pub fn try_specified_properties_with_limits(
-        &self,
-        limits: crate::CssSpecifiedValueSerializationLimits,
+        limits: crate::CssSerializationLimits,
     ) -> Result<crate::CssSpecifiedDeclarationBlock, crate::CssDeclarationBlockError> {
         let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
         crate::CssSpecifiedDeclarationBlock::from_margin_sources(
@@ -855,12 +838,9 @@ impl CssMarginDeclarationBlock {
             &mut writer,
         )
     }
-    pub fn serialize_cssom(&self) -> Result<String, crate::CssDeclarationBlockError> {
-        self.serialize_cssom_with_limits(crate::CssSpecifiedValueSerializationLimits::default())
-    }
-    pub fn serialize_cssom_with_limits(
+    pub fn serialize_cssom(
         &self,
-        limits: crate::CssSpecifiedValueSerializationLimits,
+        limits: crate::CssSerializationLimits,
     ) -> Result<String, crate::CssDeclarationBlockError> {
         let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
         let block = crate::CssSpecifiedDeclarationBlock::from_margin_sources(

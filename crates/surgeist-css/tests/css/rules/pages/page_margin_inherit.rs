@@ -24,7 +24,10 @@ fn inherit(
     ));
     assert_eq!(known.global(), Some(CssGlobalKeyword::Inherit));
     assert_eq!(declaration.importance(), importance);
-    assert_eq!(declaration.to_specified_css().unwrap(), specified);
+    assert_eq!(
+        declaration.serialize_specified(Default::default()).unwrap(),
+        specified
+    );
 }
 
 fn five_margins(list: &CssDeclarationList) {
@@ -338,7 +341,9 @@ fn inherit_admission_does_not_lift_scope_body_or_style_ancestor_page_placement_r
             panic!("excluded page leaves the actual style sibling")
         };
         assert_eq!(
-            style.declarations()[0].to_specified_css().unwrap(),
+            style.declarations()[0]
+                .serialize_specified(Default::default())
+                .unwrap(),
             "color: red;"
         );
         assert!(
@@ -376,7 +381,10 @@ fn page_local_recovery_retains_inherit_and_literal_siblings_around_invalid_units
         bottom.known().unwrap().property(),
         CssKnownProperty::MarginBottom
     );
-    assert_eq!(bottom.to_specified_css().unwrap(), "margin-bottom: -2px;");
+    assert_eq!(
+        bottom.serialize_specified(Default::default()).unwrap(),
+        "margin-bottom: -2px;"
+    );
     inherit(
         left,
         CssKnownProperty::MarginLeft,
@@ -421,7 +429,10 @@ fn page_local_recovery_retains_inherit_and_literal_siblings_around_invalid_units
             CssImportance::Normal,
             "margin: inherit;",
         );
-        assert_eq!(top.to_specified_css().unwrap(), "margin-top: 0;");
+        assert_eq!(
+            top.serialize_specified(Default::default()).unwrap(),
+            "margin-top: 0;"
+        );
         assert!(
             report
                 .diagnostics()
@@ -461,7 +472,10 @@ fn inherit_is_a_complete_global_alternative_not_a_mixed_margin_component() {
             CssImportance::Normal,
             "margin-left: inherit;",
         );
-        assert_eq!(bottom.to_specified_css().unwrap(), "margin-bottom: 2px;");
+        assert_eq!(
+            bottom.serialize_specified(Default::default()).unwrap(),
+            "margin-bottom: 2px;"
+        );
         assert_eq!(report.diagnostics().len(), 1);
         assert!(
             matches!(report.diagnostics()[0].error().kind(), ErrorKind::InvalidPropertyValue(detail)

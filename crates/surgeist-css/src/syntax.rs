@@ -74,6 +74,11 @@ macro_rules! numeric_fields_eq {
 /// The private fields guarantee that every retained rule is valid authored CSS
 /// syntax. Discarded source remains in the parse report diagnostics; the sheet
 /// does not apply cascade, substitution, selector matching, or resource loading.
+///
+/// # Specified serialization
+///
+/// Serializes retained authored rules; discarded source and its diagnostics remain on the original
+/// parse report. Top-level rules are separated by one newline.
 #[derive(Clone, Debug, Default)]
 pub struct CssSheet {
     location: Option<crate::CssStylesheetLocation>,
@@ -138,6 +143,10 @@ impl CssSheet {
 /// discarded source units are represented by report diagnostics instead. A rule
 /// does not perform cascade, substitution, selector matching, query evaluation,
 /// resource loading, or contextual resolution.
+///
+/// # Specified serialization
+///
+/// Serializes the authored rule graph, preserving declaration and child order.
 #[non_exhaustive]
 #[derive(Clone, Debug, PartialEq)]
 pub enum CssRule {
@@ -184,6 +193,11 @@ pub use counter_style::{
 /// and optional parser-produced source position. Placement and redeclaration
 /// conformance belong to the declaring stylesheet. It does not resolve namespace
 /// names, load resources, or perform selector matching.
+///
+/// # Specified serialization
+///
+/// Serializes the declaration using CSSOM's escaped prefix and quoted URL form. CSSOM string
+/// serialization replaces programmatic U+0000 with U+FFFD.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssNamespaceRule {
     prefix: Option<CssNamespacePrefix>,
@@ -776,6 +790,11 @@ impl<T> std::ops::Deref for CssDescriptorOccurrence<T> {
     }
 }
 
+/// # Specified serialization
+///
+/// Formats this checked name through its native aggregate/component writer. Each identifier is
+/// escaped independently; dots are grammar punctuation. One name aggregate and each component share
+/// input/projection/output allowances.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct CssLayerName {
     components: Vec<String>,
@@ -1347,8 +1366,19 @@ impl CssGeneralEnclosed {
     }
 
     /// Serializes tokens and explicit or EOF-implied delimiters with their origins.
-    pub fn serialize(&self) -> Result<crate::CssSerializedValue, crate::CssComponentValueError> {
-        CssComponentValues::try_new(vec![self.component().clone()])?.serialize()
+    ///
+    /// `limits` bound the single-component list and its output, including
+    /// inserted syntax.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::CssComponentValueError`] when a limit is exhausted.
+    pub fn serialize_tokens(
+        &self,
+        limits: crate::CssComponentValueLimits,
+    ) -> Result<crate::CssSerializedValue, crate::CssComponentValueError> {
+        CssComponentValues::try_new(vec![self.component().clone()], limits)?
+            .serialize_tokens(limits)
     }
 }
 
@@ -2492,8 +2522,18 @@ impl CssContainerGeneralEnclosed {
         )
     }
     /// Serializes the original enclosure, including EOF-implied delimiters.
-    pub fn serialize(&self) -> Result<crate::CssSerializedValue, crate::CssComponentValueError> {
-        let mut out = crate::component_values::CssCanonicalBuilder::new(usize::MAX);
+    ///
+    /// `limits.max_css_bytes()` caps the output, including inserted syntax; the
+    /// other component limits do not apply.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::CssComponentValueError`] when the byte limit is exhausted.
+    pub fn serialize_tokens(
+        &self,
+        limits: crate::CssComponentValueLimits,
+    ) -> Result<crate::CssSerializedValue, crate::CssComponentValueError> {
+        let mut out = crate::component_values::CssCanonicalBuilder::new(limits.max_css_bytes());
         out.push_components(std::slice::from_ref(self.component()))?;
         out.finish()
     }
@@ -3010,6 +3050,16 @@ impl CssNestedDeclarationsRule {
 /// use surgeist_css::CssDeclarationList;
 /// let _ = CssDeclarationList { declarations: Vec::new() };
 /// ```
+///
+/// # Specified serialization
+///
+/// Emits every authored occurrence as canonical specified attribute text. Empty lists emit an empty
+/// string. Each declaration has its canonical grammar name, `: `, owning specified value, optional
+/// ` !important` and `;`; adjacent occurrences have one space. Duplicates, repeated handles and
+/// priority remain in authored order. Custom names retain case and symbolic token values keep their
+/// retained spelling, comments and internal trivia under the existing value writer. No braces,
+/// enclosing rule, cascade selection or substitution is emitted. For terminal winner output, use
+/// [`Self::serialize_cssom`] instead.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssDeclarationList {
     declarations: Vec<CssDeclaration>,
@@ -3027,15 +3077,7 @@ impl CssDeclarationList {
     /// The supplied vector is consumed on success or failure. Retain independent
     /// declaration clones before calling if a failed construction must be retried.
     /// No grammar is reparsed and no aggregate source or parser context is invented.
-    pub fn try_new(
-        declarations: Vec<CssDeclaration>,
-    ) -> Result<Self, crate::CssSpecifiedValueSerializationError> {
-        Self::try_new_with_limits(
-            declarations,
-            crate::CssSpecifiedValueSerializationLimits::default(),
-        )
-    }
-
+    ///
     /// Admits the complete list through its actual occurrence writer under limits.
     ///
     /// One fresh cumulative input, projection and UTF-8 byte budget covers the
@@ -3047,12 +3089,12 @@ impl CssDeclarationList {
     /// Failure returns the existing provider/resource error and no partial list.
     /// The moved vector is consumed even on failure; independently retained clones
     /// remain usable with the same occurrences, components, origins and contexts.
-    pub fn try_new_with_limits(
+    pub fn try_new(
         declarations: Vec<CssDeclaration>,
-        limits: crate::CssSpecifiedValueSerializationLimits,
-    ) -> Result<Self, crate::CssSpecifiedValueSerializationError> {
+        limits: crate::CssSerializationLimits,
+    ) -> Result<Self, crate::CssSerializationError> {
         let list = Self::new(declarations);
-        list.to_specified_css_with_limits(limits)?;
+        list.serialize_specified(limits)?;
         Ok(list)
     }
 
@@ -3081,14 +3123,11 @@ impl CssDeclarationList {
 
     /// Normalizes terminal winners and emits their CSSOM specified declaration block.
     /// Authored occurrences and the compact occurrence writer remain independent.
-    pub fn serialize_cssom(&self) -> Result<String, crate::CssDeclarationBlockError> {
-        self.serialize_cssom_with_limits(crate::CssSpecifiedValueSerializationLimits::default())
-    }
-
+    ///
     /// Builds and emits atomically under one cumulative input, projection and byte budget.
-    pub fn serialize_cssom_with_limits(
+    pub fn serialize_cssom(
         &self,
-        limits: crate::CssSpecifiedValueSerializationLimits,
+        limits: crate::CssSerializationLimits,
     ) -> Result<String, crate::CssDeclarationBlockError> {
         let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
         writer.append_cssom_declaration_list(self)?;
@@ -3148,14 +3187,11 @@ impl CssKeyframeDeclarationList {
     }
 
     /// Emits the CSSOM declaration block under the same closed keyframe grammar.
-    pub fn serialize_cssom(&self) -> Result<String, crate::CssDeclarationBlockError> {
-        self.serialize_cssom_with_limits(crate::CssSpecifiedValueSerializationLimits::default())
-    }
-
+    ///
     /// Preserves genuine parser sources while construction and output share one budget.
-    pub fn serialize_cssom_with_limits(
+    pub fn serialize_cssom(
         &self,
-        limits: crate::CssSpecifiedValueSerializationLimits,
+        limits: crate::CssSerializationLimits,
     ) -> Result<String, crate::CssDeclarationBlockError> {
         let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
         writer.append_cssom_keyframe_declaration_list(self)?;
@@ -3319,6 +3355,16 @@ pub enum CssImportance {
 /// importance, semantic declaration context, and optional name position;
 /// it does not compare token provenance or occurrence
 /// identity. Use [`Self::same_occurrence`] when that identity matters.
+///
+/// # Specified serialization
+///
+/// Serializes one authored declaration using its semantic value provider. Emits a canonical grammar
+/// name, `: `, the specified value, an optional ` !important`, and `;`. Custom names retain case
+/// and are escaped as identifiers. Custom and substitution-dependent token text remains symbolic,
+/// preserving its retained spelling, comments and internal whitespace. Only top-level edge
+/// whitespace is omitted, as in CSS Syntax declaration consumption; the complete original component
+/// region remains retained. This does not select declarations, substitute variables or apply
+/// cascade.
 #[derive(Clone, Debug)]
 pub struct CssDeclaration {
     occurrence: Arc<DeclarationOccurrence>,
@@ -3674,7 +3720,8 @@ pub enum CssPropertyNameRef<'a> {
 /// The shared intrinsic definition of the open custom-property family.
 ///
 /// Every validated [`CssCustomPropertyName`] returns the same record. Its facts follow
-/// [CSS Variables 1 §2](https://www.w3.org/TR/2022/CR-css-variables-1-20220616/#defining-variables).
+/// [CSS Variables 1
+/// §2](https://www.w3.org/TR/2022/CR-css-variables-1-20220616/#defining-variables).
 /// This metadata describes the family without performing substitution, inheritance,
 /// selector or media matching, or animation sampling.
 #[derive(Debug)]
@@ -3717,7 +3764,8 @@ impl CssCustomPropertyMetadata {
     }
 
     /// Returns the typed intrinsic initial marker defined by
-    /// [CSS Variables 1 §2.2](https://www.w3.org/TR/2022/CR-css-variables-1-20220616/#guaranteed-invalid).
+    /// [CSS Variables 1
+    /// §2.2](https://www.w3.org/TR/2022/CR-css-variables-1-20220616/#guaranteed-invalid).
     #[must_use]
     pub const fn initial_value(&self) -> CssGuaranteedInvalidInitial {
         CssGuaranteedInvalidInitial { _private: () }
@@ -3773,7 +3821,8 @@ impl CssCustomPropertyMetadata {
 /// A case-sensitive semantic custom-property name.
 ///
 /// [`Self::try_new`] accepts one complete authored CSS identifier token whose decoded name begins
-/// with `--`, including non-ASCII characters and escapes. [`Self::as_str`] returns its decoded semantic
+/// with `--`, including non-ASCII characters and escapes. [`Self::as_str`] returns its decoded
+/// semantic
 /// identity, matching names produced by the stylesheet parser; it does not retain the name's
 /// source escape spelling.
 /// [`Self::try_from_decoded`] instead preserves an already semantic string exactly,
@@ -4139,6 +4188,14 @@ impl CssFiniteNumber {
 }
 
 /// An exact ordinary scalar or a domain-checked symbolic opacity calculation.
+///
+/// # Specified serialization
+///
+/// Produces canonical specified opacity, without computed-value clamping. Ordinary input remains
+/// exact; emitted scalar text rounds to six fractional places, nearest with ties away from zero,
+/// after percentage conversion. Finite calculation text rounds the actual binary64 result with the
+/// same six-place policy. Arithmetic uses the implementation-defined binary64 precision and range
+/// policy described in the crate's numeric reference.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssOpacityValue {
@@ -4161,6 +4218,10 @@ pub enum CssAspectRatioValue {
 /// CSS Scrollbars 1 applies this keyword to scroll containers; its computed
 /// value is the specified keyword and animation is by computed value. Actual
 /// scrollbar thickness and root-to-viewport application belong downstream.
+///
+/// # Specified serialization
+///
+/// Writes the specified keyword without resolving scrollbar geometry.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssScrollbarWidth {
@@ -4169,6 +4230,9 @@ pub enum CssScrollbarWidth {
     None,
 }
 
+/// # Specified serialization
+///
+/// Serializes the intrinsic specified keyword without resolving a box size.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssBoxSizing {
@@ -4176,6 +4240,9 @@ pub enum CssBoxSizing {
     BorderBox,
 }
 
+/// # Specified serialization
+///
+/// Serializes the canonical authored position keyword.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssLayoutPosition {
@@ -4186,6 +4253,10 @@ pub enum CssLayoutPosition {
     Sticky,
 }
 
+/// # Specified serialization
+///
+/// Serializes the canonical specified direction keyword without applying inheritance or contextual
+/// text and layout behavior.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssDirection {
@@ -4193,6 +4264,9 @@ pub enum CssDirection {
     Rtl,
 }
 
+/// # Specified serialization
+///
+/// Serializes the canonical authored overflow keyword.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssOverflow {
@@ -4204,6 +4278,10 @@ pub enum CssOverflow {
 }
 
 /// A checked positive literal or a calculation whose range remains authored and symbolic.
+///
+/// # Specified serialization
+///
+/// Serializes a positive count without resolving deferred integer math.
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssPositiveIntegerValue {
@@ -4278,6 +4356,10 @@ impl PartialEq for CssPositiveIntegerValue {
 }
 
 /// The authored `column-count` value.
+///
+/// # Specified serialization
+///
+/// Serializes the specified count or `auto`.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssColumnCount {
@@ -4286,6 +4368,10 @@ pub enum CssColumnCount {
 }
 
 /// The authored `column-fill` keyword.
+///
+/// # Specified serialization
+///
+/// Serializes the authored fill keyword.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssColumnFill {
@@ -4303,6 +4389,10 @@ pub type CssLineWidth = crate::CssBorderWidth;
 pub use crate::column_rule::CssColumnRule;
 
 /// The authored `column-span` keyword.
+///
+/// # Specified serialization
+///
+/// Serializes the authored span keyword.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssColumnSpan {
@@ -4317,6 +4407,10 @@ pub type CssColumnWidth = crate::CssSizeValue;
 ///
 /// Omitted components are represented by their specified `auto` initial value. This syntax value
 /// does not calculate used column sizes or perform multi-column layout.
+///
+/// # Specified serialization
+///
+/// Serializes both effective values in width-then-count order, including omitted `auto`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssColumns {
     width: CssColumnWidth,
@@ -4340,6 +4434,9 @@ impl CssColumns {
     }
 }
 
+/// # Specified serialization
+///
+/// Serializes the specified float keyword without resolving the containing block's writing mode.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssFloat {
@@ -4350,6 +4447,9 @@ pub enum CssFloat {
     InlineEnd,
 }
 
+/// # Specified serialization
+///
+/// Serializes the specified clear keyword without resolving the containing block's writing mode.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssClear {
@@ -4361,6 +4461,10 @@ pub enum CssClear {
     InlineEnd,
 }
 
+/// # Specified serialization
+///
+/// Serializes the specified visibility keyword without applying inheritance or changing box
+/// rendering and layout.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssVisibility {
@@ -4369,6 +4473,10 @@ pub enum CssVisibility {
     Collapse,
 }
 
+/// # Specified serialization
+///
+/// Serializes the specified content-visibility keyword without deciding whether contents are
+/// skipped or which containment applies at use time.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssContentVisibility {
@@ -4405,6 +4513,9 @@ pub(crate) fn is_css_wide_keyword(value: &str) -> bool {
         .any(|keyword| value.eq_ignore_ascii_case(keyword))
 }
 
+/// # Specified serialization
+///
+/// Serializes a checked marker position without placing a marker.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssListStylePosition {
@@ -4416,6 +4527,17 @@ pub enum CssListStylePosition {
 ///
 /// Grid3 permits `normal`, `infinite`, or a signed length-percentage. `normal`
 /// remains symbolic because its used value depends on the downstream layout mode.
+///
+/// # Specified serialization
+///
+/// Serializes canonical specified tolerance without resolving `normal`, relative lengths, or the
+/// percentage basis. Exact ordinary magnitudes and supported symbolic math use the shared length-
+/// percentage serializer.
+///
+/// # Specified serialization
+///
+/// Exact ordinary magnitudes and supported symbolic math use the shared length-percentage
+/// serializer.
 #[derive(Clone, Debug)]
 pub struct CssFlowTolerance {
     value: FlowToleranceValue,
@@ -4572,6 +4694,13 @@ pub use grid::*;
 mod grid_placement;
 pub use grid_placement::*;
 
+/// # Specified serialization
+///
+/// Produces canonical specified text without computed integer rounding. Ordinary literal magnitudes
+/// are exact. Calculation projection, including an explicitly constructed literal-only calculation
+/// root, uses the shared binary64 math policy while retaining its exact authored expression. Finite
+/// results emit at most six fractional places, nearest with ties away from zero, and preserve all
+/// exact integer digits of the binary64 result.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssIntegerValue {
@@ -4583,6 +4712,12 @@ pub enum CssIntegerValue {
 ///
 /// CSS2 §9.9.1 defines `auto` or a signed integer. Integer literals preserve
 /// their exact component origins; calculations retain unresolved numeric input.
+///
+/// # Specified serialization
+///
+/// Produces canonical specified `auto` or integer text, retaining authored identity. Integer
+/// literals retain exact magnitude. Math uses the shared specified projection without computed
+/// integer rounding or contextual stacking policy.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssZIndexValue {
@@ -4590,6 +4725,9 @@ pub enum CssZIndexValue {
     Integer(CssIntegerValue),
 }
 
+/// # Specified serialization
+///
+/// Emits the canonical authored fragmentation-decoration keyword.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssBoxDecorationBreak {
@@ -4649,6 +4787,10 @@ impl CssBoxEdgeKeyword {
 ///
 /// This value preserves color syntax only; it does not choose a rendered caret
 /// color or apply contrast adjustments.
+///
+/// # Specified serialization
+///
+/// Emits `auto` or the child color's specified CSS without resolving the caret color.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssCaretColor {
@@ -4709,6 +4851,11 @@ impl CssContainComponentList {
 /// The authored Containment 2 `contain` value.
 ///
 /// This is syntax only and does not apply size, layout, style, or paint containment.
+///
+/// # Specified serialization
+///
+/// Emits Containment 2 syntax in size/layout/style/paint grammar order, preserving `strict` and
+/// `content`.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssContain {
@@ -4818,6 +4965,10 @@ impl CssBlendMode {
 }
 
 /// A nonempty ordered authored comma-separated blend-mode list.
+///
+/// # Specified serialization
+///
+/// Emits every represented blend mode in its authored comma-list order, including duplicates.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssBlendModeList {
     modes: Vec<CssBlendMode>,
@@ -4844,6 +4995,10 @@ pub enum CssIsolation {
 }
 
 /// The authored `border-collapse` keyword.
+///
+/// # Specified serialization
+///
+/// Serializes the specified table border model keyword.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssBorderCollapse {
@@ -4852,6 +5007,10 @@ pub enum CssBorderCollapse {
 }
 
 /// The checked horizontal and vertical authored `border-spacing` lengths.
+///
+/// # Specified serialization
+///
+/// Serializes the effective horizontal and vertical lengths, including a repeated axis.
 #[derive(Clone, Debug)]
 pub struct CssBorderSpacing {
     horizontal: CssSpecifiedNonNegativeLength,
@@ -4885,6 +5044,10 @@ impl CssBorderSpacing {
 }
 
 /// The authored `caption-side` keyword.
+///
+/// # Specified serialization
+///
+/// Serializes the specified table caption side keyword.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssCaptionSide {
@@ -4893,6 +5056,10 @@ pub enum CssCaptionSide {
 }
 
 /// One authored edge of a deprecated Masking 1 `clip: rect(...)` value.
+///
+/// # Specified serialization
+///
+/// Serializes one `auto` or signed-length rectangle edge.
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssClipEdge {
@@ -4911,6 +5078,10 @@ impl PartialEq for CssClipEdge {
 }
 
 /// The four authored edges of a deprecated Masking 1 clipping rectangle.
+///
+/// # Specified serialization
+///
+/// Serializes four effective edges in top, right, bottom, left order.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssClipRect {
     top: CssClipEdge,
@@ -4957,6 +5128,10 @@ impl CssClipRect {
 }
 
 /// The authored deprecated Masking 1 `clip` value.
+///
+/// # Specified serialization
+///
+/// Serializes `auto` or a checked rectangle without applying clipping.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssClip {
@@ -4965,6 +5140,10 @@ pub enum CssClip {
 }
 
 /// The authored `empty-cells` keyword.
+///
+/// # Specified serialization
+///
+/// Serializes the specified empty-cell visibility keyword.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssEmptyCells {
@@ -4973,6 +5152,10 @@ pub enum CssEmptyCells {
 }
 
 /// The authored `break-before` or `break-after` keyword.
+///
+/// # Specified serialization
+///
+/// Serializes one canonical specified break keyword.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssBreakBetween {
@@ -4991,6 +5174,10 @@ pub enum CssBreakBetween {
 }
 
 /// The authored `break-inside` keyword.
+///
+/// # Specified serialization
+///
+/// Serializes one canonical specified break-inside keyword.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssBreakInside {
@@ -5002,6 +5189,10 @@ pub enum CssBreakInside {
 }
 
 /// One authored opening/closing pair in a `quotes` value.
+///
+/// # Specified serialization
+///
+/// Serializes one checked opening/closing pair with canonical string escapes.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssQuotePair {
     open: CssContentString,
@@ -5026,6 +5217,10 @@ impl CssQuotePair {
 }
 
 /// A nonempty authored list of quotation-mark pairs.
+///
+/// # Specified serialization
+///
+/// Serializes the nonempty list in authored pair order.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssQuotePairList {
     pairs: Vec<CssQuotePair>,
@@ -5045,6 +5240,10 @@ impl CssQuotePairList {
 
 /// The authored CSS Generated Content 3 `quotes` value. Language-dependent
 /// quotation marks remain unresolved until the element's context is known.
+///
+/// # Specified serialization
+///
+/// Serializes the symbolic keyword or checked pair list without resolving language.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssQuotes {
@@ -5055,6 +5254,10 @@ pub enum CssQuotes {
 }
 
 /// The authored `table-layout` keyword.
+///
+/// # Specified serialization
+///
+/// Serializes the specified table layout algorithm keyword.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssTableLayout {
@@ -5062,6 +5265,10 @@ pub enum CssTableLayout {
     Fixed,
 }
 
+/// # Specified serialization
+///
+/// Serializes the canonical specified writing-mode keyword without applying inheritance or
+/// contextual text and layout behavior.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssWritingMode {
@@ -5073,6 +5280,12 @@ pub enum CssWritingMode {
 }
 
 /// The authored `text-combine-upright` value, preserving an omitted digit count.
+///
+/// # Specified serialization
+///
+/// Serializes the specified value, preserving omitted counts and deferring computed integer
+/// rounding and range clamping. Finite calculated counts use the shared six-place specified number
+/// text policy.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssTextCombineUpright {
@@ -5132,6 +5345,11 @@ impl CssTextCombineDigitCount {
 }
 
 /// The authored `text-orientation` keyword.
+///
+/// # Specified serialization
+///
+/// Serializes the canonical specified text-orientation keyword without applying inheritance or
+/// contextual text and layout behavior.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssTextOrientation {
@@ -5141,6 +5359,11 @@ pub enum CssTextOrientation {
 }
 
 /// The authored `unicode-bidi` keyword.
+///
+/// # Specified serialization
+///
+/// Serializes the canonical specified unicode-bidi keyword without applying inheritance or
+/// contextual text and layout behavior.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssUnicodeBidi {
@@ -5164,6 +5387,11 @@ pub enum CssTextAlign {
     MatchParent,
 }
 
+/// # Specified serialization
+///
+/// Emits canonical specified syntax from retained semantic fields. Optional values remain omitted;
+/// explicit initials remain explicit. This does not resolve percentages or floor actual decoration
+/// thickness.
 #[derive(Clone, Debug)]
 pub struct CssTextIndent {
     length: CssSpecifiedLengthPercentage,
@@ -5199,6 +5427,11 @@ impl CssTextIndent {
     }
 }
 
+/// # Specified serialization
+///
+/// Emits canonical specified syntax from retained semantic fields. Optional values remain omitted;
+/// explicit initials remain explicit. This does not resolve percentages or floor actual decoration
+/// thickness.
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssVerticalAlign {
@@ -5323,6 +5556,10 @@ enum CssFontFamilyNameRepresentation {
 /// Identifier boundaries participate in authored equality. A single identifier
 /// containing an escaped space can have the same joined name as two identifiers
 /// while retaining a different authored representation.
+///
+/// # Specified serialization
+///
+/// Emits the retained quoted, identifier-sequence, or generic form.
 #[derive(Clone, Eq, PartialEq)]
 pub struct CssFontFamilyName {
     representation: CssFontFamilyNameRepresentation,
@@ -5435,6 +5672,9 @@ impl CssFontFamilyName {
     }
 }
 
+/// # Specified serialization
+///
+/// Emits the nonempty family list in retained order and authored forms.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssFontFamilyList {
     families: Vec<CssFontFamilyName>,
@@ -5472,6 +5712,10 @@ pub enum CssSystemFont {
     StatusBar,
 }
 
+/// # Specified serialization
+///
+/// Serializes the authored components in Fonts 4 grammar order. Optional `normal` components are
+/// omitted because they have the same shorthand expansion as an omitted component.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssExplicitFont {
     style: Option<CssFontStyle>,
@@ -5541,6 +5785,9 @@ impl CssExplicitFont {
     }
 }
 
+/// # Specified serialization
+///
+/// Serializes a complete authored shorthand without resolving system fonts.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontValue {
@@ -5751,6 +5998,9 @@ pub enum CssWordBreak {
     BreakWord,
 }
 
+/// # Specified serialization
+///
+/// Serializes the specified overflow wrapping keyword before layout resolution.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssOverflowWrap {
@@ -5759,6 +6009,9 @@ pub enum CssOverflowWrap {
     Anywhere,
 }
 
+/// # Specified serialization
+///
+/// Serializes the canonical Overflow 3 ellipsis keyword.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssTextOverflow {
@@ -5766,6 +6019,11 @@ pub enum CssTextOverflow {
     Ellipsis,
 }
 
+/// # Specified serialization
+///
+/// Emits canonical specified syntax from retained semantic fields. Optional values remain omitted;
+/// explicit initials remain explicit. This does not resolve percentages or floor actual decoration
+/// thickness.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssTextDecoration {
     line: Option<CssTextDecorationLine>,
@@ -5829,6 +6087,11 @@ impl CssTextDecoration {
     }
 }
 
+/// # Specified serialization
+///
+/// Emits canonical specified syntax from retained semantic fields. Optional values remain omitted;
+/// explicit initials remain explicit. This does not resolve percentages or floor actual decoration
+/// thickness.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssTextDecorationLine {
     components: Vec<CssTextDecorationLineComponent>,
@@ -5930,6 +6193,11 @@ pub enum CssTextDecorationStyle {
     Wavy,
 }
 
+/// # Specified serialization
+///
+/// Emits canonical specified syntax from retained semantic fields. Optional values remain omitted;
+/// explicit initials remain explicit. This does not resolve percentages or floor actual decoration
+/// thickness.
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssTextDecorationThickness {
@@ -6044,6 +6312,12 @@ pub enum CssWordSpaceTransform {
 
 /// An authored tab interval: a space-advance multiplier or an exact length.
 /// Literal ranges are checked by the child; calculation ranges remain deferred.
+///
+/// # Specified serialization
+///
+/// Emits canonical specified syntax from retained semantic fields. Optional values remain omitted;
+/// explicit initials remain explicit. This does not resolve percentages or floor actual decoration
+/// thickness.
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssTabSize {
@@ -6144,6 +6418,9 @@ pub enum CssBorderStyle {
     Outset,
 }
 
+/// # Specified serialization
+///
+/// Serializes the authored shadow, retaining omitted components and symbolic values.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssBoxShadow {
@@ -6152,6 +6429,10 @@ pub enum CssBoxShadow {
 }
 
 /// A nonempty ordered list of authored box shadows.
+///
+/// # Specified serialization
+///
+/// Serializes the authored shadow, retaining omitted components and symbolic values.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssBoxShadowList {
     shadows: Vec<CssShadow>,
@@ -6174,6 +6455,10 @@ impl CssBoxShadowList {
 }
 
 /// An authored box shadow with optional blur, spread, color, and inset.
+///
+/// # Specified serialization
+///
+/// Serializes the authored shadow, retaining omitted components and symbolic values.
 #[derive(Clone, Debug)]
 pub struct CssShadow {
     inset: bool,
@@ -6326,6 +6611,10 @@ impl CssAuthoredFunctionArguments {
 }
 
 /// An authored image value accepted by the shared Image consumers.
+///
+/// # Specified serialization
+///
+/// Serializes an authored image value, including the property-level `none` branch.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssImageValue {
@@ -6362,6 +6651,11 @@ impl PartialEq for CssBorderImageSliceComponent {
 }
 
 /// The expanded four-edge authored `border-image-slice` value.
+///
+/// # Specified serialization
+///
+/// Serializes canonical specified CSS without resolving contextual values. Every stored edge is
+/// visited, even when compressed or omitted.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssBorderImageSlice {
     values: [CssBorderImageSliceComponent; 4],
@@ -6413,6 +6707,11 @@ impl PartialEq for CssBorderImageWidthComponent {
 }
 
 /// The expanded four-edge authored `border-image-width` value.
+///
+/// # Specified serialization
+///
+/// Serializes canonical specified CSS without resolving contextual values. Every stored edge is
+/// visited, even when compressed or omitted.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssBorderImageWidth {
     values: [CssBorderImageWidthComponent; 4],
@@ -6449,6 +6748,11 @@ impl PartialEq for CssBorderImageOutsetComponent {
 }
 
 /// The expanded four-edge authored `border-image-outset` value.
+///
+/// # Specified serialization
+///
+/// Serializes canonical specified CSS without resolving contextual values. Every stored edge is
+/// visited, even when compressed or omitted.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssBorderImageOutset {
     values: [CssBorderImageOutsetComponent; 4],
@@ -6499,6 +6803,11 @@ pub enum CssBorderImageRepeatKeyword {
 }
 
 /// The authored horizontal and vertical border-image repetition modes.
+///
+/// # Specified serialization
+///
+/// Serializes canonical specified CSS without resolving contextual values. Every stored edge is
+/// visited, even when compressed or omitted.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CssBorderImageRepeat {
     horizontal: CssBorderImageRepeatKeyword,
@@ -6529,6 +6838,11 @@ impl CssBorderImageRepeat {
 }
 
 /// An authored `border-image` shorthand preserving only explicitly supplied components.
+///
+/// # Specified serialization
+///
+/// Serializes canonical specified CSS without resolving contextual values. Every stored edge is
+/// visited, even when compressed or omitted.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssBorderImage {
     source: Option<CssImageValue>,
@@ -6588,6 +6902,12 @@ impl CssBorderImage {
 }
 
 /// The authored Images 3 `image-orientation` syntax.
+///
+/// # Specified serialization
+///
+/// Emits canonical specified syntax, with an authored angle before `flip`. Omitted angles stay
+/// omitted; explicit keywords and zero angles remain explicit. This does not perform computed-value
+/// rotation normalization.
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssImageOrientation {
@@ -6640,6 +6960,10 @@ pub enum CssObjectFit {
 }
 
 /// A nonempty authored comma-separated image list.
+///
+/// # Specified serialization
+///
+/// Serializes every image in its authored order.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssImageValueList {
     images: Vec<CssImageValue>,
@@ -6658,6 +6982,10 @@ impl CssImageValueList {
 }
 
 /// One of the selected authored Images 3/4 gradient functions.
+///
+/// # Specified serialization
+///
+/// Serializes the checked gradient with its authored function identity.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssGradient {
@@ -6952,6 +7280,10 @@ impl std::fmt::Display for CssGradientStopConstructionError {
 impl std::error::Error for CssGradientStopConstructionError {}
 
 /// An authored conic stop/hint position, with an unresolved angular percentage basis.
+///
+/// # Specified serialization
+///
+/// Serializes a checked angular position without resolving its percentage basis.
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssAngularColorStopPosition {
@@ -7247,6 +7579,11 @@ impl std::fmt::Display for CssBackgroundConstructionError {
 impl std::error::Error for CssBackgroundConstructionError {}
 
 /// A nonempty authored comma list of `background` shorthand layers.
+///
+/// # Specified serialization
+///
+/// Serializes canonical specified layers without resolving contextual values. Simple literal
+/// initials may be omitted; authored omissions remain omitted.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssBackground {
     layers: Vec<CssBackgroundLayer>,
@@ -7303,6 +7640,9 @@ pub enum CssBackgroundSize {
     },
 }
 
+/// # Specified serialization
+///
+/// Serializes the nonempty authored layers in comma order.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssBackgroundSizeList {
     sizes: Vec<CssBackgroundSize>,
@@ -7349,6 +7689,9 @@ pub enum CssBackgroundRepeat {
     },
 }
 
+/// # Specified serialization
+///
+/// Serializes the nonempty authored layers in comma order.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssBackgroundRepeatList {
     repeats: Vec<CssBackgroundRepeat>,
@@ -7384,6 +7727,10 @@ pub enum CssBackgroundBox {
 }
 
 /// A nonempty authored comma list of background box longhand values.
+///
+/// # Specified serialization
+///
+/// Serializes the nonempty authored layers in comma order.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssBackgroundBoxList {
     boxes: Vec<CssBackgroundBox>,
@@ -7411,6 +7758,9 @@ pub enum CssBackgroundAttachment {
     Local,
 }
 
+/// # Specified serialization
+///
+/// Serializes the nonempty authored layers in comma order.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssBackgroundAttachmentList {
     attachments: Vec<CssBackgroundAttachment>,
@@ -8013,6 +8363,13 @@ impl CssTransformFunctionList {
 }
 
 /// The authored value of the `transform` property.
+///
+/// # Specified serialization
+///
+/// Emits canonical specified syntax from retained typed operands. Percentages and calculations
+/// retain their owning specified policy without resolving reference boxes or matrices. Numeric
+/// output retains six-place formatting. General rotate3d axes share the Rotate owner's
+/// approximation and representability policy.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssTransform {
@@ -8020,6 +8377,12 @@ pub enum CssTransform {
     Functions(CssTransformFunctionList),
 }
 
+/// # Specified serialization
+///
+/// Emits canonical specified syntax from retained typed operands. Percentages and calculations
+/// retain their owning specified policy without resolving reference boxes or matrices. Numeric
+/// output retains six-place formatting. General rotate3d axes share the Rotate owner's
+/// approximation and representability policy.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssTranslate {
@@ -8058,6 +8421,12 @@ impl CssTranslateValues {
     }
 }
 
+/// # Specified serialization
+///
+/// Emits canonical specified syntax from retained typed operands. Percentages and calculations
+/// retain their owning specified policy without resolving reference boxes or matrices. Numeric
+/// output retains six-place formatting. General rotate3d axes share the Rotate owner's
+/// approximation and representability policy.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssScale {
@@ -8088,6 +8457,13 @@ impl CssScaleValues {
 }
 
 /// Authored perspective; zero is valid and the rendering floor is not applied here.
+///
+/// # Specified serialization
+///
+/// Emits canonical specified syntax from retained typed operands. Percentages and calculations
+/// retain their owning specified policy without resolving reference boxes or matrices. Numeric
+/// output retains six-place formatting. General rotate3d axes share the Rotate owner's
+/// approximation and representability policy.
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssPerspective {
@@ -8249,6 +8625,10 @@ impl CssFilterHueRotate {
 
 /// An authored filter `drop-shadow()` with optional nonnegative standard deviation.
 /// Unlike a box shadow, it has no inset or spread component.
+///
+/// # Specified serialization
+///
+/// Serializes the authored shadow, retaining omitted components and symbolic values.
 #[derive(Clone, Debug)]
 pub struct CssDropShadow {
     offset_x: CssSpecifiedLength,
@@ -8294,6 +8674,11 @@ impl CssDropShadow {
 }
 
 /// A parser-produced authored filter function with an exact typed payload.
+///
+/// # Specified serialization
+///
+/// Serializes specified filters in authored order, preserving omitted arguments. Child providers
+/// retain exact ordinary magnitudes and symbolic values.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssFilterFunction {
@@ -8311,6 +8696,11 @@ pub enum CssFilterFunction {
 }
 
 /// A non-empty ordered list of authored filter functions.
+///
+/// # Specified serialization
+///
+/// Serializes specified filters in authored order, preserving omitted arguments. Child providers
+/// retain exact ordinary magnitudes and symbolic values.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssFilterFunctionList {
     functions: Vec<CssFilterFunction>,
@@ -8329,6 +8719,11 @@ impl CssFilterFunctionList {
 }
 
 /// The authored value of `filter` or `backdrop-filter`.
+///
+/// # Specified serialization
+///
+/// Serializes specified filters in authored order, preserving omitted arguments. Child providers
+/// retain exact ordinary magnitudes and symbolic values.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssFilter {
@@ -8434,6 +8829,11 @@ impl CssMaskLayer {
     }
 }
 
+/// # Specified serialization
+///
+/// Serializes all eight authored fields in canonical layer order. Children retain their providers'
+/// costs. A size without position generates two projection-only `0%` tokens before the slash; it
+/// does not add authored input or mutate the layer.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssMaskList {
     layers: Vec<CssMaskLayer>,
@@ -8468,6 +8868,11 @@ pub enum CssTimeUnit {
 }
 
 /// A non-empty authored duration list.
+///
+/// # Specified serialization
+///
+/// Emits canonical authored values in retained list order. This performs no timing evaluation or
+/// contextual list expansion. Numeric children retain their shared domain serialization policy.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssDurationList {
     values: Vec<CssDuration>,
@@ -8499,6 +8904,11 @@ impl CssDurationList {
 }
 
 /// A non-empty authored delay list.
+///
+/// # Specified serialization
+///
+/// Emits canonical authored values in retained list order. This performs no timing evaluation or
+/// contextual list expansion. Numeric children retain their shared domain serialization policy.
 #[derive(Clone, Debug)]
 pub struct CssDelayList {
     values: Vec<CssTimeValue>,
@@ -8574,6 +8984,12 @@ impl CssCubicBezierX {
 }
 
 /// A checked authored `cubic-bezier()` value.
+///
+/// # Specified serialization
+///
+/// Serializes the authored easing value using canonical specified syntax. Calculations retain
+/// specified-value semantics without timing evaluation or clamping. Aggregates and their numeric
+/// children share one serialization context.
 #[derive(Clone, Debug)]
 pub struct CssCubicBezier {
     x1: CssCubicBezierX,
@@ -8623,6 +9039,12 @@ impl CssCubicBezier {
 
 /// One authored `linear()` stop, before contextual input-position fixup.
 /// Output is a Number and the contiguous input group contains zero to two Percentages.
+///
+/// # Specified serialization
+///
+/// Serializes the authored easing value using canonical specified syntax. Calculations retain
+/// specified-value semantics without timing evaluation or clamping. Aggregates and their numeric
+/// children share one serialization context.
 #[derive(Clone, Debug)]
 pub struct CssLinearStop {
     output: CssSpecifiedNumber,
@@ -8697,6 +9119,12 @@ impl CssLinearStop {
 /// An ordered authored `linear()` function with at least two stops.
 /// Omissions, percentage pairs, and symbolic calculations remain unresolved;
 /// numeric resolution and input-position fixup belong to later phases.
+///
+/// # Specified serialization
+///
+/// Serializes the authored easing value using canonical specified syntax. Calculations retain
+/// specified-value semantics without timing evaluation or clamping. Aggregates and their numeric
+/// children share one serialization context.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssLinearEasing {
     stops: Vec<CssLinearStop>,
@@ -8738,6 +9166,12 @@ pub enum CssStepPosition {
 }
 
 /// A checked authored `steps()` value.
+///
+/// # Specified serialization
+///
+/// Serializes the authored easing value using canonical specified syntax. Calculations retain
+/// specified-value semantics without timing evaluation or clamping. Aggregates and their numeric
+/// children share one serialization context.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssSteps {
     count: CssPositiveIntegerValue,
@@ -8776,6 +9210,12 @@ impl CssSteps {
 }
 
 /// An authored easing function.
+///
+/// # Specified serialization
+///
+/// Serializes the authored easing value using canonical specified syntax. Calculations retain
+/// specified-value semantics without timing evaluation or clamping. Aggregates and their numeric
+/// children share one serialization context.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssEasing {
@@ -8786,6 +9226,12 @@ pub enum CssEasing {
 }
 
 /// A non-empty comma-separated list of authored easing functions.
+///
+/// # Specified serialization
+///
+/// Serializes the authored easing value using canonical specified syntax. Calculations retain
+/// specified-value semantics without timing evaluation or clamping. Aggregates and their numeric
+/// children share one serialization context.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssEasingList {
     values: Vec<CssEasing>,
@@ -8811,6 +9257,10 @@ pub enum CssTransitionProperty {
     Custom(CssTransitionPropertyName),
 }
 
+/// # Specified serialization
+///
+/// Emits canonical authored values in retained list order. This performs no timing evaluation or
+/// contextual list expansion. Numeric children retain their shared domain serialization policy.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssTransitionPropertyList {
     properties: Vec<CssTransitionProperty>,
@@ -8846,6 +9296,10 @@ pub enum CssAnimationName {
     String(CssKeyframesString),
 }
 
+/// # Specified serialization
+///
+/// Emits canonical authored values in retained list order. This performs no timing evaluation or
+/// contextual list expansion. Numeric children retain their shared domain serialization policy.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssAnimationNameList {
     names: Vec<CssAnimationName>,
@@ -8891,6 +9345,11 @@ impl PartialEq for CssAnimationIterationCount {
 }
 
 /// A non-empty list of authored animation iteration counts.
+///
+/// # Specified serialization
+///
+/// Emits canonical authored values in retained list order. This performs no timing evaluation or
+/// contextual list expansion. Numeric children retain their shared domain serialization policy.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssAnimationIterationCountList {
     values: Vec<CssAnimationIterationCount>,
@@ -8921,6 +9380,10 @@ pub enum CssAnimationDirection {
     AlternateReverse,
 }
 
+/// # Specified serialization
+///
+/// Emits canonical authored values in retained list order. This performs no timing evaluation or
+/// contextual list expansion. Numeric children retain their shared domain serialization policy.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssAnimationDirectionList {
     directions: Vec<CssAnimationDirection>,
@@ -8956,6 +9419,10 @@ pub enum CssAnimationFillMode {
     Both,
 }
 
+/// # Specified serialization
+///
+/// Emits canonical authored values in retained list order. This performs no timing evaluation or
+/// contextual list expansion. Numeric children retain their shared domain serialization policy.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssAnimationFillModeList {
     modes: Vec<CssAnimationFillMode>,
@@ -8989,6 +9456,10 @@ pub enum CssAnimationPlayState {
     Paused,
 }
 
+/// # Specified serialization
+///
+/// Emits canonical authored values in retained list order. This performs no timing evaluation or
+/// contextual list expansion. Numeric children retain their shared domain serialization policy.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssAnimationPlayStateList {
     states: Vec<CssAnimationPlayState>,
@@ -9085,6 +9556,11 @@ impl CssTransition {
 }
 
 /// A non-empty authored transition list.
+///
+/// # Specified serialization
+///
+/// Emits canonical authored values in retained list order. This performs no timing evaluation or
+/// contextual list expansion. Numeric children retain their shared domain serialization policy.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssTransitionList {
     values: Vec<CssTransition>,
@@ -9227,6 +9703,11 @@ impl CssAnimation {
 }
 
 /// A non-empty authored animation list.
+///
+/// # Specified serialization
+///
+/// Emits canonical authored values in retained list order. This performs no timing evaluation or
+/// contextual list expansion. Numeric children retain their shared domain serialization policy.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssAnimationList {
     values: Vec<CssAnimation>,
@@ -9355,8 +9836,10 @@ impl CssSheet {
 }
 
 impl CssMediaRule {
-    /// Assembles an ordinary group with explicit namespace bindings and absent enclosing provenance.
-    /// Parsed descendants retain their own positions; nested placement is rechecked by enclosing assembly.
+    /// Assembles an ordinary group with explicit namespace bindings and absent enclosing
+    /// provenance.
+    /// Parsed descendants retain their own positions; nested placement is rechecked by enclosing
+    /// assembly.
     pub fn try_new(
         query: CssMediaQueryList,
         rules: Vec<CssRule>,
@@ -9372,8 +9855,10 @@ impl CssMediaRule {
 }
 
 impl CssSupportsRule {
-    /// Assembles an ordinary group with explicit namespace bindings and absent enclosing provenance.
-    /// Parsed descendants retain their own positions; nested placement is rechecked by enclosing assembly.
+    /// Assembles an ordinary group with explicit namespace bindings and absent enclosing
+    /// provenance.
+    /// Parsed descendants retain their own positions; nested placement is rechecked by enclosing
+    /// assembly.
     pub fn try_new(
         condition: CssSupportsCondition,
         rules: Vec<CssRule>,
@@ -9390,8 +9875,10 @@ impl CssSupportsRule {
 }
 
 impl CssContainerRule {
-    /// Assembles an ordinary group with explicit namespace bindings and absent enclosing provenance.
-    /// Parsed descendants retain their own positions; nested placement is rechecked by enclosing assembly.
+    /// Assembles an ordinary group with explicit namespace bindings and absent enclosing
+    /// provenance.
+    /// Parsed descendants retain their own positions; nested placement is rechecked by enclosing
+    /// assembly.
     pub fn try_new(
         prelude: CssContainerPrelude,
         rules: Vec<CssRule>,
@@ -9407,8 +9894,10 @@ impl CssContainerRule {
 }
 
 impl CssLayerBlockRule {
-    /// Assembles an ordinary group with explicit namespace bindings and absent enclosing provenance.
-    /// Parsed descendants retain their own positions; nested placement is rechecked by enclosing assembly.
+    /// Assembles an ordinary group with explicit namespace bindings and absent enclosing
+    /// provenance.
+    /// Parsed descendants retain their own positions; nested placement is rechecked by enclosing
+    /// assembly.
     pub fn try_new(
         name: Option<CssLayerName>,
         rules: Vec<CssRule>,
@@ -9424,8 +9913,10 @@ impl CssLayerBlockRule {
 }
 
 impl CssScopedMediaRule {
-    /// Assembles an ordinary group with explicit namespace bindings and absent enclosing provenance.
-    /// Parsed descendants retain their own positions; nested placement is rechecked by enclosing assembly.
+    /// Assembles an ordinary group with explicit namespace bindings and absent enclosing
+    /// provenance.
+    /// Parsed descendants retain their own positions; nested placement is rechecked by enclosing
+    /// assembly.
     pub fn try_new(
         query: CssMediaQueryList,
         rules: Vec<CssScopedRule>,
@@ -9441,8 +9932,10 @@ impl CssScopedMediaRule {
 }
 
 impl CssScopedSupportsRule {
-    /// Assembles an ordinary group with explicit namespace bindings and absent enclosing provenance.
-    /// Parsed descendants retain their own positions; nested placement is rechecked by enclosing assembly.
+    /// Assembles an ordinary group with explicit namespace bindings and absent enclosing
+    /// provenance.
+    /// Parsed descendants retain their own positions; nested placement is rechecked by enclosing
+    /// assembly.
     pub fn try_new(
         condition: CssSupportsCondition,
         rules: Vec<CssScopedRule>,
@@ -9459,8 +9952,10 @@ impl CssScopedSupportsRule {
 }
 
 impl CssScopedContainerRule {
-    /// Assembles an ordinary group with explicit namespace bindings and absent enclosing provenance.
-    /// Parsed descendants retain their own positions; nested placement is rechecked by enclosing assembly.
+    /// Assembles an ordinary group with explicit namespace bindings and absent enclosing
+    /// provenance.
+    /// Parsed descendants retain their own positions; nested placement is rechecked by enclosing
+    /// assembly.
     pub fn try_new(
         prelude: CssContainerPrelude,
         rules: Vec<CssScopedRule>,
@@ -9476,8 +9971,10 @@ impl CssScopedContainerRule {
 }
 
 impl CssScopedLayerBlockRule {
-    /// Assembles an ordinary group with explicit namespace bindings and absent enclosing provenance.
-    /// Parsed descendants retain their own positions; nested placement is rechecked by enclosing assembly.
+    /// Assembles an ordinary group with explicit namespace bindings and absent enclosing
+    /// provenance.
+    /// Parsed descendants retain their own positions; nested placement is rechecked by enclosing
+    /// assembly.
     pub fn try_new(
         name: Option<CssLayerName>,
         rules: Vec<CssScopedRule>,

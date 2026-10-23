@@ -24,7 +24,11 @@ fn assert_style(rule: &CssRule, source: &str, class: &str, value: &str) {
         panic!("one retained color declaration")
     };
     assert_eq!(
-        declaration.value_components().serialize().unwrap().as_css(),
+        declaration
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         value
     );
     let origin = declaration.parsed_value().unwrap();

@@ -1,39 +1,11 @@
 //! Bounded specified serialization for the deprecated CSS Masking `clip` value.
 
 use crate::specified_serialization::SpecifiedSerializationContext;
-use crate::{
-    CssClip, CssClipEdge, CssClipRect, CssSpecifiedValueSerializationError,
-    CssSpecifiedValueSerializationLimits,
-};
+use crate::{CssClip, CssClipEdge, CssClipRect, CssSerializationError};
 
-type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
+type Result<T> = std::result::Result<T, CssSerializationError>;
 
 impl CssClipEdge {
-    /// Serializes one `auto` or signed-length rectangle edge.
-    pub fn serialize_specified(&self) -> Result<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes one edge under input, projection, and byte limits.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        let context = &mut writer.context;
-        let output = &mut writer.css;
-        self.serialize_specified_into(context, output)?;
-        Ok(())
-    }
-
     fn serialize_specified_into(
         &self,
         context: &mut SpecifiedSerializationContext,
@@ -41,48 +13,33 @@ impl CssClipEdge {
     ) -> Result<()> {
         match self {
             Self::Auto => {
-                context.charge_input(1)?;
-                context.charge_projection(1)?;
+                context.charge_nodes(1)?;
                 context.append(output, "auto")
             }
             Self::Length(length) => length.append_specified(context, output),
         }
     }
 }
-
-impl CssClipRect {
-    /// Serializes four effective edges in top, right, bottom, left order.
-    pub fn serialize_specified(&self) -> Result<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes the complete rectangle with one cumulative resource budget.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssClipEdge {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         let context = &mut writer.context;
         let output = &mut writer.css;
         self.serialize_specified_into(context, output)?;
         Ok(())
     }
+}
+crate::specified_rule_serialization::specified_serialization!(CssClipEdge);
 
+impl CssClipRect {
     fn serialize_specified_into(
         &self,
         context: &mut SpecifiedSerializationContext,
         output: &mut String,
     ) -> Result<()> {
-        context.charge_input(1)?;
-        context.charge_projection(1)?;
+        context.charge_nodes(1)?;
         context.append(output, "rect(")?;
         for (index, edge) in [self.top(), self.right(), self.bottom(), self.left()]
             .into_iter()
@@ -96,30 +53,28 @@ impl CssClipRect {
         context.append(output, ")")
     }
 }
-
-impl CssClip {
-    /// Serializes `auto` or a checked rectangle without applying clipping.
-    pub fn serialize_specified(&self) -> Result<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes one clip value under cumulative input, projection, and byte limits.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssClipRect {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        let context = &mut writer.context;
+        let output = &mut writer.css;
+        self.serialize_specified_into(context, output)?;
+        Ok(())
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(CssClipRect);
+
+impl crate::specified_rule_serialization::SpecifiedProvider for CssClip {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         match self {
             Self::Auto => writer.keyword("auto"),
             Self::Rect(rect) => rect.append_to_rule_writer(writer),
         }
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssClip);

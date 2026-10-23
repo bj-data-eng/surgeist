@@ -3,6 +3,17 @@
 use crate::{CssAngleValue, CssSpecifiedNumber, CssValueOrigin};
 
 /// The authored individual rotation; `none` is distinct from an identity rotation.
+///
+/// # Specified serialization
+///
+/// Serializes the individual rotation in canonical axis-before-angle order. `none` remains distinct
+/// from every rotation; full turns, zero angles and an unnormalizable zero axis keep their authored
+/// form, since the computed value is an angle with an axis rather than a normalized orientation.
+/// Directed parallel axes reduce to keywords (or an omitted z axis), with angle sign inversion for
+/// negative vectors. Ordinary axis classification is exact; calculation classification uses the
+/// existing numeric projection arithmetic before formatting. Surviving numbers retain six-place
+/// rounding and can approximate the direction. A general vector's proved nonzero component rounding
+/// to zero returns `UnrepresentableValue`, an owning capability policy rather than invalid CSS.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssRotate {
@@ -103,49 +114,18 @@ impl CssRotateValues {
 }
 
 use crate::{
-    CssAngleLiteral, CssAngleUnit, CssComponentValueRef, CssSpecifiedValueSerializationError,
-    CssSpecifiedValueSerializationErrorKind, CssSpecifiedValueSerializationLimits,
-    CssValueTokenRef, exact_decimal::LexicalDecimal, numeric::DeferredNumericProjection,
-    specified_rule_serialization::SpecifiedRuleWriter,
+    CssAngleLiteral, CssAngleUnit, CssComponentValueRef, CssSerializationError,
+    CssSpecifiedValueSerializationErrorKind, CssValueTokenRef, exact_decimal::LexicalDecimal,
+    numeric::DeferredNumericProjection, specified_rule_serialization::SpecifiedRuleWriter,
     specified_serialization::SpecifiedSerializationContext,
 };
 
-type SerializationResult<T> = Result<T, CssSpecifiedValueSerializationError>;
+type SerializationResult<T> = Result<T, CssSerializationError>;
 
-impl CssRotate {
-    /// Serializes the individual rotation in canonical axis-before-angle order.
-    /// `none` remains distinct from every rotation; full turns, zero angles and an
-    /// unnormalizable zero axis keep their authored form, since the computed
-    /// value is an angle with an axis rather than a normalized orientation.
-    /// Directed parallel axes reduce to keywords (or an omitted z axis), with
-    /// angle sign inversion for negative vectors. Authored operands are unchanged.
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Uses one cumulative input, projection, and byte context for every child.
-    /// Ordinary axis classification is exact; calculation classification uses
-    /// the existing numeric projection arithmetic before formatting. Surviving
-    /// numbers retain six-place rounding and can approximate the direction.
-    /// A general vector's proved nonzero component rounding to zero returns
-    /// `UnrepresentableValue`, an owning capability policy rather than invalid CSS.
-    /// Failure returns no partial CSS and preserves operands and provenance.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut SpecifiedRuleWriter,
-    ) -> SerializationResult<()> {
+impl crate::specified_rule_serialization::SpecifiedProvider for CssRotate {
+    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> SerializationResult<()> {
         // One rotation aggregate; an explicit axis is a separate authored child.
-        writer.context.charge_input(1)?;
-        writer.context.charge_projection(1)?;
+        writer.node()?;
         let values = match self {
             Self::None => return writer.append("none"),
             Self::Value(values) => values,
@@ -156,8 +136,7 @@ impl CssRotate {
                 negate: false,
             },
             Some(axis) => {
-                writer.context.charge_input(1)?;
-                writer.context.charge_projection(1)?;
+                writer.node()?;
                 match axis {
                     CssRotateAxis::X => PreparedAxis::Parallel {
                         keyword: Some("x"),
@@ -200,6 +179,7 @@ impl CssRotate {
         }
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssRotate);
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum NumberClass {
@@ -248,8 +228,7 @@ impl<'a> PreparedNumber<'a> {
         context: &mut SpecifiedSerializationContext,
     ) -> SerializationResult<Self> {
         if let Some(component) = number.literal_component() {
-            context.charge_input(1)?;
-            context.charge_projection(1)?;
+            context.charge_nodes(1)?;
             let CssComponentValueRef::Token(CssValueTokenRef::Number(token)) = component.view()
             else {
                 unreachable!("checked number literal");
@@ -326,10 +305,8 @@ impl<'a> PreparedNumber<'a> {
     }
 }
 
-fn unrepresentable() -> CssSpecifiedValueSerializationError {
-    CssSpecifiedValueSerializationError::new(
-        CssSpecifiedValueSerializationErrorKind::UnrepresentableValue,
-    )
+fn unrepresentable() -> CssSerializationError {
+    CssSerializationError::new(CssSpecifiedValueSerializationErrorKind::UnrepresentableValue)
 }
 
 enum PreparedAxis<'a> {
@@ -380,8 +357,7 @@ impl<'a> PreparedAngle<'a> {
         match angle {
             crate::CssAngleOrZero::Angle(value) => Self::new(value, context),
             crate::CssAngleOrZero::Zero(_) => {
-                context.charge_input(1)?;
-                context.charge_projection(1)?;
+                context.charge_nodes(1)?;
                 Ok(Self::Zero)
             }
         }
@@ -392,8 +368,7 @@ impl<'a> PreparedAngle<'a> {
         context: &mut SpecifiedSerializationContext,
     ) -> SerializationResult<Self> {
         if let Some(literal) = angle.literal() {
-            context.charge_input(1)?;
-            context.charge_projection(1)?;
+            context.charge_nodes(1)?;
             Ok(Self::Literal(literal))
         } else {
             crate::numeric::prepare_calculation_specified(
@@ -439,7 +414,7 @@ impl<'a> PreparedAngle<'a> {
                     .remaining_bytes()
                     .checked_sub(suffix.len())
                     .ok_or_else(|| {
-                        CssSpecifiedValueSerializationError::new(
+                        CssSerializationError::new(
                             CssSpecifiedValueSerializationErrorKind::ByteLimit,
                         )
                     })?;
@@ -503,8 +478,9 @@ impl crate::CssTransformRotate3d {
 #[cfg(test)]
 mod serialization_tests {
     use super::*;
+    use crate::specified_rule_serialization::SpecifiedProvider as _;
     use crate::{CssComponentValue, CssComponentValues};
-    type Limits = CssSpecifiedValueSerializationLimits;
+    type Limits = crate::CssSerializationLimits;
     type Kind = CssSpecifiedValueSerializationErrorKind;
 
     fn number(text: &str) -> CssSpecifiedNumber {
@@ -524,7 +500,8 @@ mod serialization_tests {
         let components: CssComponentValues =
             crate::parse_component_values("calc(15deg + 15deg)").unwrap();
         CssAngleValue::try_from_calculation(
-            crate::CssAngleCalculation::try_from_components(components).unwrap(),
+            crate::CssAngleCalculation::try_from_components(components, Default::default())
+                .unwrap(),
         )
         .unwrap()
     }
@@ -661,7 +638,7 @@ mod serialization_tests {
         );
         assert_eq!(
             value
-                .serialize_specified_with_limits(Limits::new(9, 8, 14))
+                .serialize_specified(Limits::new(9, 8, 14))
                 .unwrap_err()
                 .kind(),
             Kind::ProjectionNodeLimit

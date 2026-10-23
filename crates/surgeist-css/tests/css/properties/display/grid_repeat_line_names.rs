@@ -126,9 +126,15 @@ fn assert_repeat(authored: &str, mode: RepeatMode, case: ContentCase) {
     let length = breadth.length_percentage().expect("a length-valued track");
     match case {
         ContentCase::LiteralTrailing => {
-            assert_eq!(length.serialize_specified().unwrap(), "2px");
             assert_eq!(
-                value.value().serialize_specified().unwrap(),
+                length.serialize_specified(Default::default()).unwrap(),
+                "2px"
+            );
+            assert_eq!(
+                value
+                    .value()
+                    .serialize_specified(Default::default())
+                    .unwrap(),
                 "repeat(2, 2px [end])".replace(
                     "2,",
                     match mode {

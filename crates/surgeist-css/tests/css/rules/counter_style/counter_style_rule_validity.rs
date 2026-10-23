@@ -27,7 +27,7 @@ fn assert_retained(body: &str, canonical: &str) -> CssCounterStyleRule {
         source.find('@').unwrap()
     );
     assert_eq!(
-        rule.to_specified_css().unwrap(),
+        rule.serialize_specified(Default::default()).unwrap(),
         if canonical.is_empty() {
             String::from("@counter-style Incomplete { }")
         } else {
@@ -123,7 +123,7 @@ fn omitted_system_stays_omitted_in_an_empty_authored_rule() {
     let rule = assert_retained("", "");
     assert!(rule.descriptors().system().is_none());
     assert_eq!(
-        rule.descriptor_specified_css(CssCounterStyleDescriptorKind::System)
+        rule.descriptor_specified_css(CssCounterStyleDescriptorKind::System, Default::default())
             .unwrap(),
         ""
     );
@@ -148,7 +148,7 @@ fn invalid_symbol_descriptor_drops_only_that_descriptor_on_incomplete_rule() {
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDescriptor);
     assert!(rule.descriptors().symbols().is_none());
     assert_eq!(
-        rule.to_specified_css().unwrap(),
+        rule.serialize_specified(Default::default()).unwrap(),
         "@counter-style Incomplete { system: numeric; suffix: \".\"; }"
     );
     assert_eq!(
@@ -209,7 +209,7 @@ fn eof_closed_empty_rule_is_retained_with_its_implicit_closure_diagnostic() {
         panic!("implicit EOF closure");
     };
     assert_eq!(
-        rule.to_specified_css().unwrap(),
+        rule.serialize_specified(Default::default()).unwrap(),
         "@counter-style Incomplete { }"
     );
 }

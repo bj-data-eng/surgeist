@@ -6,7 +6,7 @@
 //! tests accompany functional implementation; absent symbols/stubs are not RED.
 use crate::css::support::serialization_limits::LimitLadder;
 use surgeist_css::*;
-type Limits = CssSpecifiedValueSerializationLimits;
+type Limits = CssSerializationLimits;
 type Kind = CssSpecifiedValueSerializationErrorKind;
 
 // These are specialized ordered shorthand expansion behavior oracles, not a
@@ -166,16 +166,16 @@ fn canonical(name: &str, authored: &str, expected_value: &str) {
     for source in fronts(name, authored) {
         let snapshot = source.clone();
         let components = source.value_components().clone();
-        assert_eq!(source.to_specified_css().unwrap(), expected);
-        let exact = Limits::new(65_536, 262_144, expected.len());
         assert_eq!(
-            source.to_specified_css_with_limits(exact).unwrap(),
+            source.serialize_specified(Default::default()).unwrap(),
             expected
         );
+        let exact = Limits::new(65_536, 262_144, expected.len());
+        assert_eq!(source.serialize_specified(exact).unwrap(), expected);
         for _ in 0..2 {
             assert_eq!(
                 source
-                    .to_specified_css_with_limits(Limits::new(65_536, 262_144, expected.len() - 1))
+                    .serialize_specified(Limits::new(65_536, 262_144, expected.len() - 1))
                     .unwrap_err()
                     .kind(),
                 Kind::ByteLimit
@@ -183,13 +183,12 @@ fn canonical(name: &str, authored: &str, expected_value: &str) {
             assert_eq!(source, snapshot);
             assert_eq!(source.value_components(), &components);
         }
-        assert_eq!(
-            source.to_specified_css_with_limits(exact).unwrap(),
-            expected
-        );
+        assert_eq!(source.serialize_specified(exact).unwrap(), expected);
     }
     assert_eq!(
-        admitted(name, expected_value).to_specified_css().unwrap(),
+        admitted(name, expected_value)
+            .serialize_specified(Default::default())
+            .unwrap(),
         expected
     );
 }
@@ -539,7 +538,10 @@ fn clip_rule_mask_type_and_layer_border_modes_keep_distinct_domains() {
         panic!("clip-path")
     };
     assert_eq!(
-        value.value().serialize_specified().unwrap(),
+        value
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "polygon(nonzero, 0 0)"
     );
 }
@@ -682,9 +684,11 @@ fn programmatic_keyword_replacements_keep_their_origin_and_original_occurrence()
         let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
             panic!("pending")
         };
-        let replacement =
-            CssComponentValues::try_new(vec![CssComponentValue::try_ident(keyword).unwrap()])
-                .unwrap();
+        let replacement = CssComponentValues::try_new(
+            vec![CssComponentValue::try_ident(keyword).unwrap()],
+            Default::default(),
+        )
+        .unwrap();
         assert_eq!(
             replacement.items()[0].origin(),
             &CssValueOrigin::Programmatic
@@ -730,7 +734,7 @@ fn original_repaired_closures_fail_checked_and_reentry_but_closed_retry_succeeds
         for input in [format!("{ordinary}/*"), "var(--mask".to_owned()] {
             let components = parse_component_values(&input).unwrap();
             let snapshot = components.clone();
-            let serialized = components.serialize().unwrap();
+            let serialized = components.serialize_tokens(Default::default()).unwrap();
             let origin = (0..=serialized.as_css().len())
                 .find_map(|offset| match serialized.origin_at(offset) {
                     Some(CssSerializedOrigin::Token(
@@ -800,7 +804,7 @@ fn original_repaired_closures_fail_checked_and_reentry_but_closed_retry_succeeds
 
 fn exact_budget(source: &CssDeclaration, expected: &str, input: usize, projection: usize) {
     LimitLadder::new(expected, input, projection)
-        .assert_unchanged(source, CssDeclaration::to_specified_css_with_limits);
+        .assert_unchanged(source, CssDeclaration::serialize_specified);
 }
 
 #[test]
@@ -851,7 +855,7 @@ fn source_graph_tariffs_are_cumulative_exact_and_atomic_at_declaration_boundary(
     ] {
         assert_eq!(
             source
-                .to_specified_css_with_limits(Limits::new(7, 7, bytes))
+                .serialize_specified(Limits::new(7, 7, bytes))
                 .unwrap_err()
                 .kind(),
             Kind::ByteLimit
@@ -868,9 +872,12 @@ fn checked_component_source_budget_counts_comma_and_both_layers_cumulatively() {
     let snapshot = components.clone();
     let exact = CssComponentValueLimits::try_new(0, 3, 9).unwrap();
     let admitted_components =
-        CssComponentValues::try_new_with_limits(components.items().to_vec(), exact).unwrap();
+        CssComponentValues::try_new(components.items().to_vec(), exact).unwrap();
     assert_eq!(
-        admitted_components.serialize().unwrap().as_css(),
+        admitted_components
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         "none,none"
     );
     assert_eq!(admitted_components, components);
@@ -885,7 +892,7 @@ fn checked_component_source_budget_counts_comma_and_both_layers_cumulatively() {
         ),
     ] {
         assert_eq!(
-            CssComponentValues::try_new_with_limits(components.items().to_vec(), limits)
+            CssComponentValues::try_new(components.items().to_vec(), limits)
                 .unwrap_err()
                 .kind(),
             kind

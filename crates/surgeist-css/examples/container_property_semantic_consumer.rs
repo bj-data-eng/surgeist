@@ -12,7 +12,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let limits = CssComponentValueLimits::try_new(0, 16, 128).expect("leaf limits");
     let declaration = parse_property_value(
         CssPropertyNameRef::Known(CssKnownProperty::Container),
-        value.to_components_with_limits(limits)?,
+        value.to_components(limits)?,
         CssImportance::Normal,
     )?;
     assert!(declaration.position().is_none());
@@ -21,7 +21,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     else {
         panic!("ordinary shorthand")
     };
-    println!("container: {}", value.serialize_with_limit(128)?.as_css());
+    println!("container: {}", value.serialize_tokens(limits)?.as_css());
     for member in members.items() {
         println!(
             "{}: {:?}",

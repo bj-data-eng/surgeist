@@ -34,7 +34,7 @@ fn parsed_page_classifications_retain_their_symbolic_identity_in_each_mode() {
                     .syntax()
                     .as_ref()
                     .unwrap()
-                    .to_specified_css()
+                    .serialize_specified(Default::default())
                     .unwrap(),
                 canonical
             );
@@ -169,7 +169,10 @@ fn normalization_preserves_typed_page_classification_and_specificity_inside_grou
             .all(|item| !matches!(item, CssNormalizedItem::Declaration(_)))
     );
     assert_eq!(
-        report.syntax().to_specified_css().unwrap(),
+        report
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "@scope (.root) { @media print { @page :recto { margin-top: 1px; } @page :verso { margin-top: 2px !important; } @page :first { margin-top: 3px; } @page { margin-top: 4px; } } }"
     );
 }

@@ -162,7 +162,7 @@ fn character_fallback_omission_is_authored_and_expansion_resets_last_to_auto() {
             CssValueOrigin::Parsed(_)
         ));
         assert_eq!(
-            parsed.serialize_specified().unwrap(),
+            parsed.serialize_specified(Default::default()).unwrap(),
             if let Some(fallback) = fallback {
                 format!(
                     "\".\" {}",
@@ -188,7 +188,9 @@ fn character_fallback_omission_is_authored_and_expansion_resets_last_to_auto() {
         assert_eq!(last, CssTextAlignLastValue::Auto);
     }
     assert_eq!(
-        all("\".\" right").serialize_specified().unwrap(),
+        all("\".\" right")
+            .serialize_specified(Default::default())
+            .unwrap(),
         "\".\" right"
     );
 }
@@ -207,7 +209,7 @@ fn decoded_unicode_clusters_and_source_graphs_share_checked_construction() {
             panic!("one decoded cluster")
         };
         assert_eq!(parsed.decoded(), text);
-        assert_eq!(parsed.serialize_specified().unwrap(), css);
+        assert_eq!(parsed.serialize_specified(Default::default()).unwrap(), css);
         assert!(matches!(
             parsed.component().origin(),
             CssValueOrigin::Parsed(_)
@@ -226,7 +228,10 @@ fn decoded_unicode_clusters_and_source_graphs_share_checked_construction() {
         panic!("escaped source character")
     };
     assert_eq!(parsed.decoded(), "é");
-    assert_eq!(parsed.serialize_specified().unwrap(), "\"é\"");
+    assert_eq!(
+        parsed.serialize_specified(Default::default()).unwrap(),
+        "\"é\""
+    );
 }
 
 #[test]
@@ -324,7 +329,7 @@ fn specified_serialization_is_canonical_and_atomically_bounded() {
         assert_eq!(
             CssCharacterAlignment::try_new(decoded, None)
                 .unwrap()
-                .serialize_specified()
+                .serialize_specified(Default::default())
                 .unwrap(),
             expected
         );
@@ -335,45 +340,45 @@ fn specified_serialization_is_canonical_and_atomically_bounded() {
         (shorthand("\".\""), "\".\"", 1),
         (shorthand("left \".\""), "\".\" left", 2),
     ] {
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    nodes,
-                    nodes,
-                    expected.len()
-                ))
+                .serialize_specified(CssSerializationLimits::new(nodes, nodes, expected.len()))
                 .unwrap(),
             expected
         );
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(nodes - 1, nodes, expected.len()),
+                CssSerializationLimits::new(nodes - 1, nodes, expected.len()),
                 CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(nodes, nodes - 1, expected.len()),
+                CssSerializationLimits::new(nodes, nodes - 1, expected.len()),
                 CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(nodes, nodes, expected.len() - 1),
+                CssSerializationLimits::new(nodes, nodes, expected.len() - 1),
                 CssSpecifiedValueSerializationErrorKind::ByteLimit,
             ),
         ] {
-            assert_eq!(
-                value
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
-                kind
-            );
+            assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
         }
     }
     assert_eq!(
-        last("MATCH-PARENT").serialize_specified().unwrap(),
+        last("MATCH-PARENT")
+            .serialize_specified(Default::default())
+            .unwrap(),
         "match-parent"
     );
-    assert_eq!(all("CENTER").serialize_specified().unwrap(), "center");
+    assert_eq!(
+        all("CENTER")
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "center"
+    );
 
     let one_long_cluster = format!("e{}", "\u{301}".repeat(4096));
     let parsed = parse_component_values(&format!("\"{one_long_cluster}\"")).unwrap();
@@ -381,13 +386,13 @@ fn specified_serialization_is_canonical_and_atomically_bounded() {
     assert_eq!(value.decoded(), one_long_cluster);
     assert_eq!(
         value
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(1, 1, 8))
+            .serialize_specified(CssSerializationLimits::new(1, 1, 8))
             .unwrap_err()
             .kind(),
         CssSpecifiedValueSerializationErrorKind::ByteLimit
     );
     assert_eq!(
-        value.serialize_specified().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         format!("\"{one_long_cluster}\"")
     );
 }

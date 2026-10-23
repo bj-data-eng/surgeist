@@ -1,9 +1,10 @@
 //! Immutable prospective counter descriptors and intrinsic definition admission.
+use crate::specified_rule_serialization::SpecifiedProvider as _;
 use crate::{
     CssCounterStyleDescriptorKind as Kind, CssCounterStyleDescriptorRef,
     CssCounterStyleDescriptorValue, CssCounterStyleDescriptorValueRef as Value,
     CssCounterStyleDescriptors, CssCounterStyleSystem, CssDescriptorOccurrence, CssIntegerValue,
-    CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits,
+    CssSerializationError, CssSerializationLimits,
     specified_rule_serialization::SpecifiedRuleWriter,
 };
 
@@ -110,16 +111,11 @@ pub struct CssCounterStyleDescriptorCollection<'a> {
     entries: Vec<CssCounterStyleDescriptorEntry<'a>>,
 }
 impl<'a> CssCounterStyleDescriptorCollection<'a> {
+    /// One cumulative budget traverses all values before publishing the collection.
     pub fn try_new(
         entries: Vec<CssCounterStyleDescriptorEntry<'a>>,
-    ) -> Result<Self, CssSpecifiedValueSerializationError> {
-        Self::try_new_with_limits(entries, CssSpecifiedValueSerializationLimits::default())
-    }
-    /// One cumulative budget traverses all values before publishing the collection.
-    pub fn try_new_with_limits(
-        entries: Vec<CssCounterStyleDescriptorEntry<'a>>,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<Self, CssSpecifiedValueSerializationError> {
+        limits: CssSerializationLimits,
+    ) -> Result<Self, CssSerializationError> {
         let mut writer = SpecifiedRuleWriter::new(limits);
         writer.node()?;
         for entry in &entries {
@@ -211,7 +207,7 @@ impl CssCounterStyleDescriptors {
     }
     pub fn prospective(
         &self,
-    ) -> Result<CssCounterStyleDescriptorCollection<'_>, CssSpecifiedValueSerializationError> {
-        CssCounterStyleDescriptorCollection::try_new(self.entries().collect())
+    ) -> Result<CssCounterStyleDescriptorCollection<'_>, CssSerializationError> {
+        CssCounterStyleDescriptorCollection::try_new(self.entries().collect(), Default::default())
     }
 }

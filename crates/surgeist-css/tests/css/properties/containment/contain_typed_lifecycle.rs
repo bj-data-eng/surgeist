@@ -76,7 +76,7 @@ fn completed(source: &CssDeclaration) -> CssLonghandContributions {
 
 fn primitive_limits(value: &CssContain, expected: &str, nodes: usize) {
     LimitLadder::new(expected, nodes, nodes)
-        .assert_unchanged(value, CssContain::serialize_specified_with_limits);
+        .assert_unchanged(value, CssContain::serialize_specified);
 }
 
 #[test]
@@ -219,8 +219,11 @@ fn mixed_token_origins_survive_checked_contain_and_pending_replacement_without_r
     let style = parse_component_values(r"\73 tyle").unwrap().items()[0].clone();
     let size = parse_component_values("SIZE").unwrap().items()[0].clone();
     let paint = CssComponentValue::try_ident("paint").unwrap();
-    let input =
-        CssComponentValues::try_new(vec![style.clone(), paint.clone(), size.clone()]).unwrap();
+    let input = CssComponentValues::try_new(
+        vec![style.clone(), paint.clone(), size.clone()],
+        Default::default(),
+    )
+    .unwrap();
     let expected =
         CssContain::Components(CssContainComponentList::try_new(vec![Style, Paint, Size]).unwrap());
     for grammar in [false, true] {
@@ -322,7 +325,10 @@ fn recovered_style_keeps_its_typed_borrowed_payload_and_original_diagnostics() {
         value,
         &CssContain::Components(CssContainComponentList::try_new(vec![Style]).unwrap())
     );
-    assert_eq!(value.serialize_specified().unwrap(), "style");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "style"
+    );
     assert_eq!(report, before);
 }
 
@@ -377,11 +383,11 @@ fn authored_contain_and_content_visibility_keep_independent_typed_longhand_value
         };
         assert_eq!(value, &visibility_value);
         assert_eq!(
-            contain.to_specified_css().unwrap(),
+            contain.serialize_specified(Default::default()).unwrap(),
             format!("contain: {contain_text};")
         );
         assert_eq!(
-            visibility.to_specified_css().unwrap(),
+            visibility.serialize_specified(Default::default()).unwrap(),
             format!("content-visibility: {visibility_text};")
         );
     }
@@ -594,15 +600,15 @@ fn mixed_containment_normalization_and_pending_retry_preserve_each_independent_o
         }
     }
     assert!(normalize_report_with_limits(&report, exact).is_ok());
-    let exact = CssSpecifiedValueSerializationLimits::new(usize::MAX, usize::MAX, expected.len());
+    let exact = CssSerializationLimits::new(usize::MAX, usize::MAX, expected.len());
     assert_eq!(
-        report.syntax().to_specified_css_with_limits(exact).unwrap(),
+        report.syntax().serialize_specified(exact).unwrap(),
         expected
     );
     for _ in 0..2 {
         let error = report
             .syntax()
-            .to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::new(
+            .serialize_specified(CssSerializationLimits::new(
                 usize::MAX,
                 usize::MAX,
                 expected.len() - 1,
@@ -610,14 +616,12 @@ fn mixed_containment_normalization_and_pending_retry_preserve_each_independent_o
             .unwrap_err();
         assert_eq!(
             error.kind(),
-            CssSpecifiedRuleSerializationErrorKind::Resource(
-                CssSpecifiedValueSerializationErrorKind::ByteLimit
-            )
+            CssSpecifiedValueSerializationErrorKind::ByteLimit
         );
         assert_eq!(report, before);
     }
     assert_eq!(
-        report.syntax().to_specified_css_with_limits(exact).unwrap(),
+        report.syntax().serialize_specified(exact).unwrap(),
         expected
     );
 }

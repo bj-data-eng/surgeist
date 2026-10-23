@@ -17,15 +17,22 @@ fn percentage(text: &str) -> CssSpecifiedPercentage {
 
 fn number_math(text: &str) -> CssSpecifiedNumber {
     CssSpecifiedNumber::try_from_calculation(
-        CssNumberCalculation::try_from_components(parse_component_values(text).unwrap()).unwrap(),
+        CssNumberCalculation::try_from_components(
+            parse_component_values(text).unwrap(),
+            Default::default(),
+        )
+        .unwrap(),
     )
     .unwrap()
 }
 
 fn percentage_math(text: &str) -> CssSpecifiedPercentage {
     CssSpecifiedPercentage::try_from_calculation(
-        CssPercentageCalculation::try_from_components(parse_component_values(text).unwrap())
-            .unwrap(),
+        CssPercentageCalculation::try_from_components(
+            parse_component_values(text).unwrap(),
+            Default::default(),
+        )
+        .unwrap(),
     )
     .unwrap()
 }
@@ -514,13 +521,13 @@ fn signed_scalar_projection_has_exact_independent_budgets_and_atomic_errors() {
     let percentage = percentage("-12.50%");
     assert_eq!(
         number
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(1, 1, 5))
+            .serialize_specified(CssSerializationLimits::new(1, 1, 5))
             .unwrap(),
         "-12.5"
     );
     assert_eq!(
         percentage
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(1, 1, 6))
+            .serialize_specified(CssSerializationLimits::new(1, 1, 6))
             .unwrap(),
         "-12.5%"
     );
@@ -541,18 +548,14 @@ fn signed_scalar_projection_has_exact_independent_budgets_and_atomic_errors() {
     ] {
         assert_eq!(
             number
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    input, projection, bytes
-                ))
+                .serialize_specified(CssSerializationLimits::new(input, projection, bytes))
                 .unwrap_err()
                 .kind(),
             kind
         );
         assert_eq!(
             percentage
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    input, projection, bytes
-                ))
+                .serialize_specified(CssSerializationLimits::new(input, projection, bytes))
                 .unwrap_err()
                 .kind(),
             kind
@@ -560,15 +563,21 @@ fn signed_scalar_projection_has_exact_independent_budgets_and_atomic_errors() {
     }
     assert_eq!(
         percentage
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(1, 1, 5))
+            .serialize_specified(CssSerializationLimits::new(1, 1, 5))
             .unwrap_err()
             .kind(),
         CssSpecifiedValueSerializationErrorKind::ByteLimit
     );
     assert_eq!(number_spelling(&number), "-12.50");
     assert_eq!(percentage_spelling(&percentage), "-12.50");
-    assert_eq!(number.serialize_specified().unwrap(), "-12.5");
-    assert_eq!(percentage.serialize_specified().unwrap(), "-12.5%");
+    assert_eq!(
+        number.serialize_specified(Default::default()).unwrap(),
+        "-12.5"
+    );
+    assert_eq!(
+        percentage.serialize_specified(Default::default()).unwrap(),
+        "-12.5%"
+    );
 }
 
 #[test]
@@ -583,11 +592,7 @@ fn shared_signed_number_projection_keeps_cumulative_variation_budgets() {
     let expected = "\"wght\" -1, \"wdth\" 2";
     assert_eq!(
         value
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                4,
-                4,
-                expected.len()
-            ))
+            .serialize_specified(CssSerializationLimits::new(4, 4, expected.len()))
             .unwrap(),
         expected
     );
@@ -613,15 +618,16 @@ fn shared_signed_number_projection_keeps_cumulative_variation_budgets() {
     ] {
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    input, projection, bytes
-                ))
+                .serialize_specified(CssSerializationLimits::new(input, projection, bytes))
                 .unwrap_err()
                 .kind(),
             kind
         );
     }
-    assert_eq!(value.serialize_specified().unwrap(), expected);
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
 }
 
 fn scale_number(value: &CssTransformScaleComponent) -> &CssSpecifiedNumber {

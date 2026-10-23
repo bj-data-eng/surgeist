@@ -1390,16 +1390,23 @@ mod import_construction_tests {
             (CssComponentValue::try_token("@import").unwrap(), "'a'"),
             (parsed_keyword, "'b'"),
         ] {
-            let components = CssComponentValues::try_new(vec![
-                keyword,
-                CssComponentValue::try_token(" ").unwrap(),
-                CssComponentValue::try_token(target).unwrap(),
-                CssComponentValue::try_token(";").unwrap(),
-            ])
+            let components = CssComponentValues::try_new(
+                vec![
+                    keyword,
+                    CssComponentValue::try_token(" ").unwrap(),
+                    CssComponentValue::try_token(target).unwrap(),
+                    CssComponentValue::try_token(";").unwrap(),
+                ],
+                Default::default(),
+            )
             .unwrap();
             sheet.push_rule(CssRule::Import(
-                CssImportRule::try_from_components(components, &CssNamespaceContext::default())
-                    .unwrap(),
+                CssImportRule::try_from_components(
+                    components,
+                    &CssNamespaceContext::default(),
+                    Default::default(),
+                )
+                .unwrap(),
             ));
         }
         let normalized = normalize_sheet(&sheet).unwrap();
@@ -1416,7 +1423,13 @@ mod import_construction_tests {
             panic!("programmatic import")
         };
         assert_eq!(first_import.origin(), &CssValueOrigin::Programmatic);
-        assert_eq!(first_import.serialize().unwrap().as_css(), "@import 'a';");
+        assert_eq!(
+            first_import
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            "@import 'a';"
+        );
         let CssRuleContextKindRef::Import(second_import) = second.kind() else {
             panic!("import with original parsed at-keyword")
         };
@@ -1428,7 +1441,13 @@ mod import_construction_tests {
         assert!(actual.source().same_snapshot(expected.source()));
         assert_eq!(actual.span(), expected.span());
         assert_eq!(second.position(), Some(expected.span().start()));
-        assert_eq!(second_import.serialize().unwrap().as_css(), "@import 'b';");
+        assert_eq!(
+            second_import
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            "@import 'b';"
+        );
         assert!(first.parent().is_none());
         assert!(second.parent().is_none());
     }

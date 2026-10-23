@@ -380,7 +380,10 @@ fn typed_length_consumer_exposes_exact_products_and_sums() {
     assert_eq!(height.as_css(), "calc((1px + 2%) * 3)");
     // Distribution is derived from 3 × (1px + 2%), while the typed tree
     // below retains the authored product for later layout resolution.
-    assert_eq!(length.serialize_specified().unwrap(), "calc(6% + 3px)");
+    assert_eq!(
+        length.serialize_specified(Default::default()).unwrap(),
+        "calc(6% + 3px)"
+    );
     let calculation = length.calculation().expect("exact typed calculation");
     assert_eq!(
         calculation.result_type(),
@@ -592,7 +595,13 @@ fn scalar_property_accessors_preserve_exact_literal_domains() {
     assert!(
         matches!(value.value(), CssOpacityValue::Scalar(value) if value.numeric().representation() == "0.5")
     );
-    assert_eq!(value.value().serialize_specified().unwrap(), "0.5");
+    assert_eq!(
+        value
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "0.5"
+    );
 
     let CssKnownPropertyValueRef::FlexGrow(value) = report.syntax()[1]
         .known()
@@ -602,7 +611,13 @@ fn scalar_property_accessors_preserve_exact_literal_domains() {
     else {
         panic!("expected flex-grow wrapper");
     };
-    assert_eq!(value.factor().serialize_specified().unwrap(), "2");
+    assert_eq!(
+        value
+            .factor()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "2"
+    );
 
     let CssKnownPropertyValueRef::FlexShrink(value) = report.syntax()[2]
         .known()
@@ -612,7 +627,13 @@ fn scalar_property_accessors_preserve_exact_literal_domains() {
     else {
         panic!("expected flex-shrink wrapper");
     };
-    assert_eq!(value.factor().serialize_specified().unwrap(), "0");
+    assert_eq!(
+        value
+            .factor()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "0"
+    );
 
     let CssKnownPropertyValueRef::Order(value) = report.syntax()[3]
         .known()
@@ -625,7 +646,13 @@ fn scalar_property_accessors_preserve_exact_literal_domains() {
     assert!(
         matches!(value.value(), CssIntegerValue::Literal(value) if value.numeric().representation() == "-2")
     );
-    assert_eq!(value.value().serialize_specified().unwrap(), "-2");
+    assert_eq!(
+        value
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "-2"
+    );
 
     let CssKnownPropertyValueRef::ZIndex(value) = report.syntax()[4]
         .known()
@@ -661,11 +688,19 @@ fn scalar_property_accessors_preserve_exact_literal_domains() {
         panic!("expected literal flex components");
     };
     assert_eq!(
-        components.grow().unwrap().serialize_specified().unwrap(),
+        components
+            .grow()
+            .unwrap()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "2"
     );
     assert_eq!(
-        components.shrink().unwrap().serialize_specified().unwrap(),
+        components
+            .shrink()
+            .unwrap()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "0"
     );
 }
@@ -726,12 +761,16 @@ fn exact_construction_preserves_mixed_origins_and_canonical_operator_mapping() {
     let operator = children.items()[2].origin().clone();
     let function = CssComponentValue::try_function("CALC", children).unwrap();
     let calculation = CssLengthCalculation::try_from_components(
-        CssComponentValues::try_new(vec![function]).unwrap(),
+        CssComponentValues::try_new(vec![function], Default::default()).unwrap(),
+        Default::default(),
     )
     .unwrap();
     assert!(matches!(calculation.origin(), CssValueOrigin::Programmatic));
-    let rebuilt =
-        CssLengthCalculation::try_from_components(calculation.components().clone()).unwrap();
+    let rebuilt = CssLengthCalculation::try_from_components(
+        calculation.components().clone(),
+        Default::default(),
+    )
+    .unwrap();
     assert_eq!(calculation, rebuilt);
     let CssCalculationExpressionRef::Sum(sum) = calculation_body(calculation.expression()) else {
         panic!("expected sum")
@@ -747,7 +786,7 @@ fn exact_construction_preserves_mixed_origins_and_canonical_operator_mapping() {
         panic!("expected parsed source")
     };
     assert!(found.source().same_snapshot(original.source()));
-    let serialized = calculation.serialize().unwrap();
+    let serialized = calculation.serialize_tokens(Default::default()).unwrap();
     assert_eq!(serialized.as_css(), "calc(1px + 2px)");
     assert!(
         matches!(serialized.origin_at(9), Some(surgeist_css::CssSerializedOrigin::Token(origin)) if origin == &operator)
@@ -762,6 +801,7 @@ fn exact_public_roots_keep_long_numbers_special_values_and_integer_requirements_
     };
     let integer = CssIntegerCalculation::try_from_components(
         parse_component_values("1234567890123456789012345678901234567890").unwrap(),
+        Default::default(),
     )
     .unwrap();
     assert!(!integer.requires_rounding());
@@ -772,41 +812,51 @@ fn exact_public_roots_keep_long_numbers_special_values_and_integer_requirements_
         leaf.literal().representation(),
         "1234567890123456789012345678901234567890"
     );
-    let rounded =
-        CssIntegerCalculation::try_from_components(parse_component_values("calc(1.5)").unwrap())
-            .unwrap();
+    let rounded = CssIntegerCalculation::try_from_components(
+        parse_component_values("calc(1.5)").unwrap(),
+        Default::default(),
+    )
+    .unwrap();
     assert!(rounded.requires_rounding());
-    let finite =
-        CssNumberCalculation::try_from_components(parse_component_values("calc(1e99999)").unwrap())
-            .unwrap();
+    let finite = CssNumberCalculation::try_from_components(
+        parse_component_values("calc(1e99999)").unwrap(),
+        Default::default(),
+    )
+    .unwrap();
     assert!(
         matches!(calculation_body(finite.expression()), CssCalculationExpressionRef::Value(v) if v.literal().representation() == "1e99999")
     );
     let symbolic = CssNumberCalculation::try_from_components(
         parse_component_values("calc(infinity)").unwrap(),
+        Default::default(),
     )
     .unwrap();
     assert!(
         matches!(calculation_body(symbolic.expression()), CssCalculationExpressionRef::Constant(v) if v.value() == CssNumericConstant::Infinity)
     );
-    let zero =
-        CssNumberCalculation::try_from_components(parse_component_values("-0").unwrap()).unwrap();
+    let zero = CssNumberCalculation::try_from_components(
+        parse_component_values("-0").unwrap(),
+        Default::default(),
+    )
+    .unwrap();
     assert!(
         matches!(zero.expression(), CssCalculationExpressionRef::Value(v) if v.literal().representation() == "-0")
     );
     assert_eq!(
         CssResolutionCalculation::try_from_components(
-            parse_component_values("calc(-1dppx / 0)").unwrap()
+            parse_component_values("calc(-1dppx / 0)").unwrap(),
+            Default::default()
         )
         .unwrap()
-        .serialize()
+        .serialize_tokens(Default::default())
         .unwrap()
         .as_css(),
         "calc(-1dppx / 0)"
     );
     assert_eq!(
         CssLengthCalculation::try_from_components(
-            parse_component_values("calc(1px + 2%)").unwrap()
+            parse_component_values("calc(1px + 2%)").unwrap(),
+            Default::default()
         )
         .unwrap_err()
         .kind(),
@@ -814,7 +864,8 @@ fn exact_public_roots_keep_long_numbers_special_values_and_integer_requirements_
     );
     assert!(
         CssLengthPercentageCalculation::try_from_components(
-            parse_component_values("calc(1px + 2%)").unwrap()
+            parse_component_values("calc(1px + 2%)").unwrap(),
+            Default::default()
         )
         .is_ok()
     );
@@ -832,13 +883,12 @@ fn checked_numeric_construction_reports_resource_substitution_and_recovery_failu
         CssComponentValueLimits::try_new(1, 4, 9).unwrap(),
     ] {
         let error =
-            CssNumberCalculation::try_from_components_with_limits(components.clone(), limits)
-                .unwrap_err();
+            CssNumberCalculation::try_from_components(components.clone(), limits).unwrap_err();
         assert_eq!(error.kind(), &Kind::ResourceLimit);
         assert!(error.origin().is_some());
     }
     assert!(
-        CssNumberCalculation::try_from_components_with_limits(
+        CssNumberCalculation::try_from_components(
             components,
             CssComponentValueLimits::try_new(1, 4, 11).unwrap()
         )
@@ -851,9 +901,12 @@ fn checked_numeric_construction_reports_resource_substitution_and_recovery_failu
         ("min()", Kind::Arity),
     ] {
         assert_eq!(
-            CssNumberCalculation::try_from_components(parse_component_values(source).unwrap())
-                .unwrap_err()
-                .kind(),
+            CssNumberCalculation::try_from_components(
+                parse_component_values(source).unwrap(),
+                Default::default()
+            )
+            .unwrap_err()
+            .kind(),
             &kind,
             "{source}"
         );

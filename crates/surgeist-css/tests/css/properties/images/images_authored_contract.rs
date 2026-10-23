@@ -15,8 +15,8 @@ use crate::css::support::serialization_limits::LimitLadder;
 use crate::css::support::serialization_limits::assert_limits as primitive_budget;
 use authored_property::{ParserFront, assert_source, checked, invalid};
 use surgeist_css::{
-    CssKnownProperty as P, CssSpecifiedValueSerializationErrorKind as K,
-    CssSpecifiedValueSerializationLimits as L, *,
+    CssKnownProperty as P, CssSerializationLimits as L,
+    CssSpecifiedValueSerializationErrorKind as K, *,
 };
 
 const FRONTS: [ParserFront; 5] = [
@@ -125,7 +125,7 @@ fn accept(property: P, values: &[(&str, &str)]) {
         for front in FRONTS {
             let source = front.valid(property, input, expected);
             assert_wrapper(&source, input);
-            let output = source.to_specified_css().unwrap();
+            let output = source.serialize_specified(Default::default()).unwrap();
             let report = parse_style_attribute(&output);
             assert!(report.is_clean(), "{output}: {:?}", report.diagnostics());
             let [reparsed] = report.syntax().as_slice() else {
@@ -133,7 +133,10 @@ fn accept(property: P, values: &[(&str, &str)]) {
             };
             assert_eq!(reparsed.known().unwrap().property(), property);
             assert_eq!(reparsed.importance(), CssImportance::Important);
-            assert_eq!(reparsed.to_specified_css().unwrap(), output);
+            assert_eq!(
+                reparsed.serialize_specified(Default::default()).unwrap(),
+                output
+            );
         }
     }
 }
@@ -297,7 +300,10 @@ fn physical_position_and_orientation_keep_exact_scalar_bytes_utf16_and_semantic_
                         CssValueTokenRef::Percentage(number)) if number.representation() == "-2.00")
                     );
                     assert_eq!(
-                        value.position().serialize_specified().unwrap(),
+                        value
+                            .position()
+                            .serialize_specified(Default::default())
+                            .unwrap(),
                         "right -0.01px bottom -2%"
                     );
                 }
@@ -310,7 +316,10 @@ fn physical_position_and_orientation_keep_exact_scalar_bytes_utf16_and_semantic_
                     assert_eq!(literal.numeric().representation(), "-3.000e1");
                     assert_eq!(literal.unit(), CssAngleUnit::Gradians);
                     assert_eq!(
-                        value.orientation().serialize_specified().unwrap(),
+                        value
+                            .orientation()
+                            .serialize_specified(Default::default())
+                            .unwrap(),
                         "-30grad flip"
                     );
                 }
@@ -345,7 +354,7 @@ fn keyword_component_origins_preserve_decoded_escape_identity_and_source_spans()
         let start = raw.find(':').unwrap() - property.canonical_name().len();
         point(source.position().unwrap(), raw, start);
         let before = source.clone();
-        source.to_specified_css().unwrap();
+        source.serialize_specified(Default::default()).unwrap();
         assert_eq!(source, before);
     }
 }
@@ -464,24 +473,19 @@ fn pending(property: P, valid: &str, expected: &str, rejected: &str) {
             let source = front.parse(property, authored);
             let before = source.clone();
             let expected_pending = format!("{}: {authored} !important;", property.canonical_name());
-            assert_eq!(source.to_specified_css().unwrap(), expected_pending);
+            assert_eq!(
+                source.serialize_specified(Default::default()).unwrap(),
+                expected_pending
+            );
             assert_eq!(
                 source
-                    .to_specified_css_with_limits(L::new(
-                        usize::MAX,
-                        usize::MAX,
-                        expected_pending.len()
-                    ))
+                    .serialize_specified(L::new(usize::MAX, usize::MAX, expected_pending.len()))
                     .unwrap(),
                 expected_pending
             );
             assert_eq!(
                 source
-                    .to_specified_css_with_limits(L::new(
-                        usize::MAX,
-                        usize::MAX,
-                        expected_pending.len() - 1
-                    ))
+                    .serialize_specified(L::new(usize::MAX, usize::MAX, expected_pending.len() - 1))
                     .unwrap_err()
                     .kind(),
                 K::ByteLimit
@@ -536,7 +540,7 @@ fn pending(property: P, valid: &str, expected: &str, rejected: &str) {
                 assert_eq!(replacement, old_replacement);
                 let direct = checked(property, valid, false);
                 assert_eq!(
-                    direct.to_specified_css().unwrap(),
+                    direct.serialize_specified(Default::default()).unwrap(),
                     format!("{}: {expected} !important;", property.canonical_name())
                 );
                 for (global, keyword) in GLOBALS {
@@ -695,7 +699,7 @@ fn declaration_budget(property: P, input: &str, output: &str, inputs: usize, pro
         let expected = format!("{}: {output} !important;", property.canonical_name());
         // The declaration adds one input and one projection node to its value.
         LimitLadder::new(&expected, inputs + 2, projections + 2)
-            .assert_unchanged(&source, CssDeclaration::to_specified_css_with_limits);
+            .assert_unchanged(&source, CssDeclaration::serialize_specified);
     }
 }
 #[test]
@@ -749,7 +753,7 @@ fn sibling_image_roles_share_sheet_work_and_final_output_bytes_atomically() {
     // Four declarations/names 8; physical position 5; angle + flip 2; two keywords 2.
     // Total 1 + 2*(1+2+1) + 8 + 5 + 2 + 2 = 26 semantic nodes in both work budgets.
     let exact = L::new(26, 26, expected.len());
-    assert_eq!(sheet.to_specified_css_with_limits(exact).unwrap(), expected);
+    assert_eq!(sheet.serialize_specified(exact).unwrap(), expected);
     for (limits, kind) in [
         (L::new(25, 26, expected.len()), K::InputNodeLimit),
         (L::new(26, 25, expected.len()), K::ProjectionNodeLimit),
@@ -759,19 +763,16 @@ fn sibling_image_roles_share_sheet_work_and_final_output_bytes_atomically() {
             sheet
                 .rules()
                 .iter()
-                .all(|rule| rule.to_specified_css_with_limits(limits).is_ok())
+                .all(|rule| rule.serialize_specified(limits).is_ok())
         );
         for _ in 0..2 {
-            let error = sheet.to_specified_css_with_limits(limits).unwrap_err();
-            assert_eq!(
-                error.kind(),
-                CssSpecifiedRuleSerializationErrorKind::Resource(kind)
-            );
+            let error = sheet.serialize_specified(limits).unwrap_err();
+            assert_eq!(error.kind(), kind);
             assert_eq!(error.rule_index(), Some(1));
             assert_eq!(sheet, &before);
         }
     }
-    assert_eq!(sheet.to_specified_css_with_limits(exact).unwrap(), expected);
+    assert_eq!(sheet.serialize_specified(exact).unwrap(), expected);
 }
 
 fn lp(text: &str) -> CssSpecifiedLengthPercentage {
@@ -785,9 +786,7 @@ fn typed_keyword_and_orientation_constructors_emit_independent_canonical_values(
         (CssImageRendering::Pixelated, "pixelated"),
         (CssImageRendering::CrispEdges, "crisp-edges"),
     ] {
-        primitive_budget(expected, 1, 1, |limits| {
-            value.serialize_specified_with_limits(limits)
-        });
+        primitive_budget(expected, 1, 1, |limits| value.serialize_specified(limits));
     }
     for (value, expected) in [
         (CssObjectFit::Fill, "fill"),
@@ -796,9 +795,7 @@ fn typed_keyword_and_orientation_constructors_emit_independent_canonical_values(
         (CssObjectFit::None, "none"),
         (CssObjectFit::ScaleDown, "scale-down"),
     ] {
-        primitive_budget(expected, 1, 1, |limits| {
-            value.serialize_specified_with_limits(limits)
-        });
+        primitive_budget(expected, 1, 1, |limits| value.serialize_specified(limits));
     }
     for (value, expected, nodes) in [
         (CssImageOrientation::FromImage, "from-image", 1),
@@ -814,7 +811,7 @@ fn typed_keyword_and_orientation_constructors_emit_independent_canonical_values(
     ] {
         let before = value.clone();
         primitive_budget(expected, nodes, nodes, |limits| {
-            value.serialize_specified_with_limits(limits)
+            value.serialize_specified(limits)
         });
         assert_eq!(value, before);
     }
@@ -847,7 +844,7 @@ fn physical_position_checked_construction_rejects_unpaired_and_logical_edges_and
     .unwrap();
     let before = position.clone();
     primitive_budget("right -1px bottom -2%", 5, 5, |limits| {
-        position.serialize_specified_with_limits(limits)
+        position.serialize_specified(limits)
     });
     let (CssHorizontalPosition::RightOffset(x), CssVerticalPosition::BottomOffset(y)) =
         (position.horizontal(), position.vertical())
@@ -879,6 +876,7 @@ fn programmatic_checked_property_components_keep_origins_without_declaration_coo
                 .into_iter()
                 .map(|t| CssComponentValue::try_token(t).unwrap())
                 .collect(),
+            Default::default(),
         )
         .unwrap();
         let before = components.clone();
@@ -902,7 +900,7 @@ fn programmatic_checked_property_components_keep_origins_without_declaration_coo
                     .all(|item| item.origin() == &CssValueOrigin::Programmatic)
             );
             assert_eq!(
-                source.to_specified_css().unwrap(),
+                source.serialize_specified(Default::default()).unwrap(),
                 format!("{}: {expected} !important;", property.canonical_name())
             );
         }
@@ -990,7 +988,7 @@ fn images_implicit_origin(components: &CssComponentValues) -> CssValueOrigin {
             return value.clone();
         }
     }
-    let output = components.serialize().unwrap();
+    let output = components.serialize_tokens(Default::default()).unwrap();
     (0..output.as_css().len())
         .find_map(|offset| match output.origin_at(offset) {
             Some(CssSerializedOrigin::Token(value @ CssValueOrigin::ImplicitClosure { .. })) => {

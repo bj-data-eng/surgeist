@@ -1,71 +1,52 @@
 //! Bounded authored filter serialization, before contextual resolution or execution.
 
 use crate::{
-    CssFilter, CssFilterAmount, CssFilterFunction, CssFilterFunctionList,
-    CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits,
+    CssFilter, CssFilterAmount, CssFilterFunction, CssFilterFunctionList, CssSerializationError,
     specified_rule_serialization::SpecifiedRuleWriter,
 };
 
-type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
+type Result<T> = std::result::Result<T, CssSerializationError>;
 
 macro_rules! specified_filter_methods {
-    () => {
-        /// Serializes specified filters in authored order, preserving omitted arguments.
-        /// Child providers retain exact ordinary magnitudes and symbolic values.
-        pub fn serialize_specified(&self) -> Result<String> {
-            self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
+    ($ty:ty) => {
+        impl crate::specified_rule_serialization::SpecifiedProvider for $ty {
+            fn append_to_rule_writer(
+                &self,
+                writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+            ) -> std::result::Result<(), crate::CssSerializationError> {
+                self.append_specified(writer)?;
+                Ok(())
+            }
         }
-
-        /// Uses one cumulative input, projection, and UTF-8 byte budget.
-        /// Failure returns no partial CSS and leaves the authored value unchanged.
-        pub fn serialize_specified_with_limits(
-            &self,
-            limits: CssSpecifiedValueSerializationLimits,
-        ) -> Result<String> {
-            let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-            self.append_to_rule_writer(&mut writer)?;
-            Ok(writer.css)
-        }
-
-        pub(crate) fn append_to_rule_writer(
-            &self,
-            writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-        ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-            self.append_specified(writer)?;
-            Ok(())
-        }
+        crate::specified_rule_serialization::specified_serialization!($ty);
     };
 }
 
 impl CssFilter {
-    specified_filter_methods!();
-
     pub(crate) fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         match self {
             Self::None => {
-                charge_aggregate(writer)?;
+                writer.node()?;
                 writer.append("none")
             }
             Self::Functions(functions) => functions.append_specified(writer),
         }
     }
 }
+specified_filter_methods!(CssFilter);
 
 impl CssFilterFunctionList {
-    specified_filter_methods!();
-
     fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
-        charge_aggregate(writer)?;
+        writer.node()?;
         writer.space_separated(self.functions(), |writer, function| {
             function.append_specified(writer)
         })?;
         Ok(())
     }
 }
+specified_filter_methods!(CssFilterFunctionList);
 
 impl CssFilterFunction {
-    specified_filter_methods!();
-
     fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         // These children already own the complete function and its aggregate charge.
         match self {
@@ -73,7 +54,7 @@ impl CssFilterFunction {
             Self::Url(value) => return value.append_specified(writer),
             _ => {}
         }
-        charge_aggregate(writer)?;
+        writer.node()?;
         match self {
             Self::Blur(value) => {
                 writer.append("blur(")?;
@@ -99,6 +80,7 @@ impl CssFilterFunction {
         writer.append(")")
     }
 }
+specified_filter_methods!(CssFilterFunction);
 
 fn append_amount(
     opening: &str,
@@ -118,9 +100,4 @@ fn append_amount(
             value.append_specified(&mut writer.context, &mut writer.css)
         }
     }
-}
-
-fn charge_aggregate(writer: &mut SpecifiedRuleWriter) -> Result<()> {
-    writer.context.charge_input(1)?;
-    writer.context.charge_projection(1)
 }

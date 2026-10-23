@@ -16,7 +16,7 @@ fn parsed_color(text: &str) -> CssColor {
 }
 
 fn error_kind(
-    result: Result<String, CssSpecifiedValueSerializationError>,
+    result: Result<String, CssSerializationError>,
 ) -> CssSpecifiedValueSerializationErrorKind {
     result.unwrap_err().kind()
 }
@@ -29,7 +29,10 @@ fn logical_color_pairs_preserve_omission_exact_values_and_cumulative_limits() {
     assert!(one.start().is_current_color());
     assert!(one.authored_end().is_none());
     assert_eq!(one.end(), one.start());
-    assert_eq!(one.serialize_specified().unwrap(), "currentcolor");
+    assert_eq!(
+        one.serialize_specified(Default::default()).unwrap(),
+        "currentcolor"
+    );
     assert_ne!(
         one,
         CssBorderColorPair::new(first.clone(), Some(first.clone()))
@@ -39,32 +42,29 @@ fn logical_color_pairs_preserve_omission_exact_values_and_cumulative_limits() {
     assert_eq!(pair.authored_end(), Some(&second));
     assert!(pair.end().is_transparent());
     assert_eq!(
-        pair.serialize_specified().unwrap(),
+        pair.serialize_specified(Default::default()).unwrap(),
         "currentcolor transparent"
     );
-    let exact = CssSpecifiedValueSerializationLimits::new(3, 3, 24);
+    let exact = CssSerializationLimits::new(3, 3, 24);
     assert_eq!(
-        pair.serialize_specified_with_limits(exact).unwrap(),
+        pair.serialize_specified(exact).unwrap(),
         "currentcolor transparent"
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(2, 3, 24),
+            CssSerializationLimits::new(2, 3, 24),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(3, 2, 24),
+            CssSerializationLimits::new(3, 2, 24),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(3, 3, 23),
+            CssSerializationLimits::new(3, 3, 23),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
-        assert_eq!(
-            error_kind(pair.serialize_specified_with_limits(limits)),
-            kind
-        );
+        assert_eq!(error_kind(pair.serialize_specified(limits)), kind);
     }
 }
 
@@ -98,14 +98,17 @@ fn four_side_colors_keep_authored_arity_and_independent_role_assignments() {
             assert_eq!(
                 shorthand
                     .assigned_values()
-                    .map(|color| color.to_specified_css().unwrap()),
+                    .map(|color| color.serialize_specified(Default::default()).unwrap()),
                 expected_roles.map(str::to_owned)
             );
             let expected = match kind {
                 CssBoxSideKind::Physical => specified.to_owned(),
                 CssBoxSideKind::Logical => format!("logical {specified}"),
             };
-            assert_eq!(shorthand.serialize_specified().unwrap(), expected);
+            assert_eq!(
+                shorthand.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
         }
     }
     let one = CssBorderColorShorthand::try_new(CssBoxSideKind::Physical, vec![colors[0].clone()])
@@ -125,29 +128,23 @@ fn logical_four_color_budget_charges_only_authored_colors_and_prefix_bytes() {
     let shorthand =
         CssBorderColorShorthand::try_new(CssBoxSideKind::Logical, colors.to_vec()).unwrap();
     let expected = "logical red blue transparent currentcolor";
-    let exact = CssSpecifiedValueSerializationLimits::new(5, 5, 41);
-    assert_eq!(
-        shorthand.serialize_specified_with_limits(exact).unwrap(),
-        expected
-    );
+    let exact = CssSerializationLimits::new(5, 5, 41);
+    assert_eq!(shorthand.serialize_specified(exact).unwrap(), expected);
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(4, 5, 41),
+            CssSerializationLimits::new(4, 5, 41),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(5, 4, 41),
+            CssSerializationLimits::new(5, 4, 41),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(5, 5, 40),
+            CssSerializationLimits::new(5, 5, 40),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
-        assert_eq!(
-            error_kind(shorthand.serialize_specified_with_limits(limits)),
-            kind
-        );
+        assert_eq!(error_kind(shorthand.serialize_specified(limits)), kind);
     }
     let one = CssBorderColorShorthand::try_new(
         CssBoxSideKind::Physical,
@@ -155,7 +152,7 @@ fn logical_four_color_budget_charges_only_authored_colors_and_prefix_bytes() {
     )
     .unwrap();
     assert_eq!(
-        one.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(2, 2, 12))
+        one.serialize_specified(CssSerializationLimits::new(2, 2, 12))
             .unwrap(),
         "currentcolor"
     );
@@ -232,7 +229,10 @@ fn constructed_aggregates_retain_one_checked_symbolic_graph_and_its_source() {
     let pair = CssBorderColorPair::new(color.clone(), None);
     assert_eq!(pair.start(), &color);
     assert_eq!(pair.end(), &color);
-    assert_eq!(pair.serialize_specified().unwrap(), source);
+    assert_eq!(
+        pair.serialize_specified(Default::default()).unwrap(),
+        source
+    );
 
     let shorthand = CssBorderColorShorthand::try_new(
         CssBoxSideKind::Logical,
@@ -244,7 +244,7 @@ fn constructed_aggregates_retain_one_checked_symbolic_graph_and_its_source() {
     assert_eq!(assigned[0], &color);
     assert_eq!(assigned[2], &color);
     assert_eq!(
-        shorthand.serialize_specified().unwrap(),
+        shorthand.serialize_specified(Default::default()).unwrap(),
         "logical alpha(from red / none) blue"
     );
 }

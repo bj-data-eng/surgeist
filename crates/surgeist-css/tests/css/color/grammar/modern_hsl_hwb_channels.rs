@@ -50,13 +50,16 @@ fn checked_mixed_channels_keep_original_parsed_and_programmatic_components() {
             let text = format!("{function}({arguments})");
             for programmatic in [false, true] {
                 let values = if programmatic {
-                    CssComponentValues::try_new(vec![
-                        CssComponentValue::try_function(
-                            function,
-                            parse_component_values(arguments).unwrap(),
-                        )
-                        .unwrap(),
-                    ])
+                    CssComponentValues::try_new(
+                        vec![
+                            CssComponentValue::try_function(
+                                function,
+                                parse_component_values(arguments).unwrap(),
+                            )
+                            .unwrap(),
+                        ],
+                        Default::default(),
+                    )
                     .unwrap()
                 } else {
                     parse_component_values(&text).unwrap()

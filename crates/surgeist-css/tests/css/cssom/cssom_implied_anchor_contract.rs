@@ -25,11 +25,11 @@ fn nested_literal_implicit_descendant_and_each_leading_combinator_have_implied_a
         let before = report.clone();
         let value = &report.syntax().rules()[0];
         assert_eq!(
-            value.to_specified_css().unwrap(),
+            value.serialize_specified(Default::default()).unwrap(),
             format!(".parent {{ {prelude} {{ }} }}")
         );
         expected.push(format!(".parent {{\n  {literal} {{ }}\n}}"));
-        actual.push(value.serialize_cssom().unwrap());
+        actual.push(value.serialize_cssom(Default::default()).unwrap());
         assert_eq!(report, before);
     }
     assert_eq!(actual, expected);
@@ -41,11 +41,14 @@ fn parsed_multilevel_children_add_their_own_implied_anchor_only_in_literal_outpu
     assert!(report.is_clean());
     let before = report.clone();
     assert_eq!(
-        report.syntax().to_specified_css().unwrap(),
+        report
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
         ".outer { .middle { > .inner { } } }"
     );
     assert_eq!(
-        report.syntax().serialize_cssom().unwrap(),
+        report.syntax().serialize_cssom(Default::default()).unwrap(),
         ".outer {\n  & .middle {\n  & > .inner { }\n}\n}"
     );
     assert_eq!(report, before);
@@ -65,11 +68,16 @@ fn checked_scoped_nested_role_absolutizes_relative_payload_without_mutating_sour
     let CssAdmittedStyleSelectors::Scoped(list) = parsed.selectors() else {
         panic!("scoped")
     };
-    let declarations = CssSpecifiedDeclarationBlock::try_from_entries(&[]).unwrap();
-    let view = CssEditedRuleView::try_scoped_style(list, &declarations, &[]).unwrap();
-    assert_eq!(view.to_specified_css().unwrap(), "> .child, + .sibling { }");
+    let declarations =
+        CssSpecifiedDeclarationBlock::try_from_entries(&[], Default::default()).unwrap();
+    let view =
+        CssEditedRuleView::try_scoped_style(list, &declarations, &[], Default::default()).unwrap();
     assert_eq!(
-        view.serialize_cssom().unwrap(),
+        view.serialize_specified(Default::default()).unwrap(),
+        "> .child, + .sibling { }"
+    );
+    assert_eq!(
+        view.serialize_cssom(Default::default()).unwrap(),
         "& > .child, & + .sibling { }"
     );
     assert_eq!(parsed.origin().source().as_str(), source);
@@ -81,7 +89,7 @@ fn explicit_repeated_and_retained_invalid_anchors_are_controls_without_an_extra_
     let report = parse_sheet(".parent { &.one {} &&.two {} .before & {} }");
     assert!(report.is_clean());
     assert_eq!(
-        report.syntax().serialize_cssom().unwrap(),
+        report.syntax().serialize_cssom(Default::default()).unwrap(),
         ".parent {\n  &.one { }\n  &&.two { }\n  .before & { }\n}"
     );
     let raw = parse_style_selector_list(
@@ -99,10 +107,11 @@ fn explicit_repeated_and_retained_invalid_anchors_are_controls_without_an_extra_
     else {
         panic!("ordinary")
     };
-    let declarations = CssSpecifiedDeclarationBlock::try_from_entries(&[]).unwrap();
-    let view = CssEditedRuleView::try_style(list, &declarations, &[]).unwrap();
+    let declarations =
+        CssSpecifiedDeclarationBlock::try_from_entries(&[], Default::default()).unwrap();
+    let view = CssEditedRuleView::try_style(list, &declarations, &[], Default::default()).unwrap();
     assert_eq!(
-        view.serialize_cssom().unwrap(),
+        view.serialize_cssom(Default::default()).unwrap(),
         "&:is(.ok,&.bad:unknown()) { }"
     );
     // Nesting §3.1 counts the ampersand even when it only occurs in an
@@ -116,9 +125,9 @@ fn explicit_repeated_and_retained_invalid_anchors_are_controls_without_an_extra_
     else {
         panic!("ordinary")
     };
-    let view = CssEditedRuleView::try_style(list, &declarations, &[]).unwrap();
+    let view = CssEditedRuleView::try_style(list, &declarations, &[], Default::default()).unwrap();
     assert_eq!(
-        view.serialize_cssom().unwrap(),
+        view.serialize_cssom(Default::default()).unwrap(),
         ":is(.ok,&.bad:unknown()) { }"
     );
 }
@@ -136,7 +145,7 @@ fn general_relative_output_and_strict_rejection_are_unchanged_controls() {
             .syntax()
             .as_ref()
             .unwrap()
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .unwrap(),
         ".implicit, > .child, + .next, ~ .later, || .column"
     );
@@ -158,5 +167,8 @@ fn general_relative_output_and_strict_rejection_are_unchanged_controls() {
     let [CssRule::Style(_)] = report.syntax().rules() else {
         panic!("ordinary style")
     };
-    assert_eq!(report.syntax().serialize_cssom().unwrap(), ".plain { }");
+    assert_eq!(
+        report.syntax().serialize_cssom(Default::default()).unwrap(),
+        ".plain { }"
+    );
 }

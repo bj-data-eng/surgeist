@@ -18,7 +18,10 @@ fn parses_grid_track_lists_and_template_areas() {
         panic!("grid columns")
     };
     assert_eq!(
-        value.value().serialize_specified().unwrap(),
+        value
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "[main] repeat(2, minmax(10px, 1fr)) fit-content(20%)"
     );
     let areas = declaration(
@@ -31,7 +34,10 @@ fn parses_grid_track_lists_and_template_areas() {
         panic!("grid areas")
     };
     assert_eq!(
-        value.value().serialize_specified().unwrap(),
+        value
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "\"header header\" \"nav main\""
     );
     let none = declaration(
@@ -81,15 +87,18 @@ fn parses_grid_flow_lines_and_shorthands() {
         let declaration = declaration(css, property);
         let value = declaration.known().unwrap().property_value().unwrap();
         let serialized = match value {
-            CssKnownPropertyValueRef::GridRowStart(value) => {
-                value.value().serialize_specified().unwrap()
-            }
-            CssKnownPropertyValueRef::GridColumn(value) => {
-                value.value().serialize_specified().unwrap()
-            }
-            CssKnownPropertyValueRef::GridArea(value) => {
-                value.value().serialize_specified().unwrap()
-            }
+            CssKnownPropertyValueRef::GridRowStart(value) => value
+                .value()
+                .serialize_specified(Default::default())
+                .unwrap(),
+            CssKnownPropertyValueRef::GridColumn(value) => value
+                .value()
+                .serialize_specified(Default::default())
+                .unwrap(),
+            CssKnownPropertyValueRef::GridArea(value) => value
+                .value()
+                .serialize_specified(Default::default())
+                .unwrap(),
             _ => panic!("grid placement"),
         };
         assert_eq!(serialized, expected);
@@ -108,7 +117,12 @@ fn parses_grid_template_and_grid_shorthands() {
         panic!("grid template")
     };
     assert_eq!(
-        value.value().rows().unwrap().serialize_specified().unwrap(),
+        value
+            .value()
+            .rows()
+            .unwrap()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "100px 1fr"
     );
     assert_eq!(
@@ -116,7 +130,7 @@ fn parses_grid_template_and_grid_shorthands() {
             .value()
             .columns()
             .unwrap()
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "repeat(2, minmax(10px, 1fr))"
     );
@@ -136,7 +150,7 @@ fn parses_grid_template_and_grid_shorthands() {
             .value()
             .auto_tracks()
             .unwrap()
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "12px"
     );
@@ -145,7 +159,7 @@ fn parses_grid_template_and_grid_shorthands() {
             .value()
             .explicit_tracks()
             .unwrap()
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "repeat(auto-fit, 10px)"
     );

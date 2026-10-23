@@ -3,8 +3,8 @@
 use std::fmt;
 
 use crate::{
-    CssKeyframeSelector, CssKeyframeSelectorList, CssSpecifiedValueSerializationError,
-    CssSpecifiedValueSerializationErrorKind, CssSpecifiedValueSerializationLimits, CssValueOrigin,
+    CssKeyframeSelector, CssKeyframeSelectorList, CssSerializationError, CssSerializationLimits,
+    CssSpecifiedValueSerializationErrorKind, CssValueOrigin,
     numeric::{DeferredNumericProjection, prepare_keyframe_matching},
     specified_serialization::SpecifiedSerializationContext,
 };
@@ -24,7 +24,7 @@ pub enum CssKeyframeSelectorComparisonStage {
 /// programmatic lists do not acquire fabricated positions.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssKeyframeSelectorComparisonError {
-    cause: CssSpecifiedValueSerializationError,
+    cause: CssSerializationError,
     stage: CssKeyframeSelectorComparisonStage,
     selector_index: Option<usize>,
     left_origin: Option<Box<CssValueOrigin>>,
@@ -33,7 +33,7 @@ pub struct CssKeyframeSelectorComparisonError {
 
 impl CssKeyframeSelectorComparisonError {
     #[must_use]
-    pub fn cause(&self) -> &CssSpecifiedValueSerializationError {
+    pub fn cause(&self) -> &CssSerializationError {
         &self.cause
     }
     #[must_use]
@@ -117,29 +117,27 @@ fn normalize<'a>(
             .map_err(|e| failure(e, Some(index)))?;
         offsets.try_reserve(1).map_err(|_| {
             failure(
-                CssSpecifiedValueSerializationError::new(
+                CssSerializationError::new(
                     CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
                 ),
                 Some(index),
             )
         })?;
-        let mut prepare =
-            || -> Result<NormalizedOffset<'a>, CssSpecifiedValueSerializationError> {
-                match selector {
-                    CssKeyframeSelector::From => Ok(NormalizedOffset::Literal(0.0)),
-                    CssKeyframeSelector::To => Ok(NormalizedOffset::Literal(100.0)),
-                    CssKeyframeSelector::Percent(percent) => {
-                        if let Some(value) = percent.literal_value() {
-                            Ok(NormalizedOffset::Literal(value))
-                        } else {
-                            let calculation =
-                                percent.calculation().expect("checked percentage phase");
-                            prepare_keyframe_matching(&calculation.expression, context)
-                                .map(NormalizedOffset::Calculation)
-                        }
+        let mut prepare = || -> Result<NormalizedOffset<'a>, CssSerializationError> {
+            match selector {
+                CssKeyframeSelector::From => Ok(NormalizedOffset::Literal(0.0)),
+                CssKeyframeSelector::To => Ok(NormalizedOffset::Literal(100.0)),
+                CssKeyframeSelector::Percent(percent) => {
+                    if let Some(value) = percent.literal_value() {
+                        Ok(NormalizedOffset::Literal(value))
+                    } else {
+                        let calculation = percent.calculation().expect("checked percentage phase");
+                        prepare_keyframe_matching(&calculation.expression, context)
+                            .map(NormalizedOffset::Calculation)
                     }
                 }
-            };
+            }
+        };
         offsets.push(prepare().map_err(|e| failure(e, Some(index)))?);
     }
     Ok(offsets)
@@ -160,15 +158,10 @@ impl CssKeyframeSelectorList {
     /// let left = parse_keyframe_selector_list("from, calc(5% + 5%)");
     /// let right = parse_keyframe_selector_list("0%, calc( 10% )");
     /// assert!(left.syntax().as_ref().unwrap().selectors()
-    ///     .matches_normalized(right.syntax().as_ref().unwrap().selectors()).unwrap());
+    ///     .matches_normalized(right.syntax().as_ref().unwrap().selectors(), Default::default())
+    ///     .unwrap());
     /// ```
-    pub fn matches_normalized(
-        &self,
-        other: &Self,
-    ) -> Result<bool, CssKeyframeSelectorComparisonError> {
-        self.matches_normalized_with_limits(other, CssSpecifiedValueSerializationLimits::default())
-    }
-
+    ///
     /// Shares cumulative input/projection limits across both lists and comparison.
     ///
     /// Each list aggregate and selector costs one input and projection node;
@@ -177,12 +170,12 @@ impl CssKeyframeSelectorList {
     /// No CSS is emitted, so the byte limit is unused (zero is sufficient).
     /// Failure returns no comparison result, leaves inputs unchanged, and permits
     /// retry. CSSOM retains last-match selection and live object operations.
-    pub fn matches_normalized_with_limits(
+    pub fn matches_normalized(
         &self,
         other: &Self,
-        limits: CssSpecifiedValueSerializationLimits,
+        limits: CssSerializationLimits,
     ) -> Result<bool, CssKeyframeSelectorComparisonError> {
-        CssKeyframeSelectorMatcher::try_new_with_limits(self, limits)?.matches(other)
+        CssKeyframeSelectorMatcher::try_new(self, limits)?.matches(other)
     }
 }
 
@@ -197,16 +190,10 @@ pub struct CssKeyframeSelectorMatcher<'query> {
     context: SpecifiedSerializationContext,
 }
 impl<'query> CssKeyframeSelectorMatcher<'query> {
+    /// Normalizes the query exactly once under the native cumulative budget.
     pub fn try_new(
         query: &'query CssKeyframeSelectorList,
-    ) -> Result<Self, CssKeyframeSelectorComparisonError> {
-        Self::try_new_with_limits(query, CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Normalizes the query exactly once under the native cumulative budget.
-    pub fn try_new_with_limits(
-        query: &'query CssKeyframeSelectorList,
-        limits: CssSpecifiedValueSerializationLimits,
+        limits: CssSerializationLimits,
     ) -> Result<Self, CssKeyframeSelectorComparisonError> {
         let mut context = SpecifiedSerializationContext::new(limits);
         let normalized = normalize(
@@ -237,7 +224,7 @@ impl<'query> CssKeyframeSelectorMatcher<'query> {
         }
         let mut equal = true;
         for (index, (a, b)) in self.normalized.iter().zip(&right).enumerate() {
-            let mut compare = || -> Result<bool, CssSpecifiedValueSerializationError> {
+            let mut compare = || -> Result<bool, CssSerializationError> {
                 self.context.charge_generated_projection(1)?;
                 match (a, b) {
                     (NormalizedOffset::Literal(a), NormalizedOffset::Literal(b)) => Ok(a == b),

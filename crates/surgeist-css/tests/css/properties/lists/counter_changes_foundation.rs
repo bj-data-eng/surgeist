@@ -173,10 +173,13 @@ fn invalid_names_operands_and_reversed_function_drop_only_their_declaration() {
 #[test]
 fn programmatic_components_share_grammar_and_have_programmatic_origins() {
     for property in PROPERTIES {
-        let components = CssComponentValues::try_new(vec![
-            CssComponentValue::try_ident("chapter").unwrap(),
-            CssComponentValue::try_token("-2").unwrap(),
-        ])
+        let components = CssComponentValues::try_new(
+            vec![
+                CssComponentValue::try_ident("chapter").unwrap(),
+                CssComponentValue::try_token("-2").unwrap(),
+            ],
+            Default::default(),
+        )
         .unwrap();
         let checked = parse_property_value(
             CssPropertyNameRef::Known(property),
@@ -192,10 +195,13 @@ fn programmatic_components_share_grammar_and_have_programmatic_origins() {
                 .iter()
                 .all(|component| matches!(component.origin(), CssValueOrigin::Programmatic))
         );
-        let invalid = CssComponentValues::try_new(vec![
-            CssComponentValue::try_ident("chapter").unwrap(),
-            CssComponentValue::try_token("1px").unwrap(),
-        ])
+        let invalid = CssComponentValues::try_new(
+            vec![
+                CssComponentValue::try_ident("chapter").unwrap(),
+                CssComponentValue::try_token("1px").unwrap(),
+            ],
+            Default::default(),
+        )
         .unwrap();
         assert_programmatic_rejection(
             parse_property_value(

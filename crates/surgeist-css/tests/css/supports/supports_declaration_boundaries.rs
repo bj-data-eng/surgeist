@@ -52,7 +52,10 @@ fn opaque_supports(condition: &CssSupportsCondition, expected: &str) {
         panic!("expected opaque supports operand {expected}: {condition:?}");
     };
     assert_eq!(value.authored(), Some(expected));
-    assert_eq!(value.serialize().unwrap().as_css(), expected);
+    assert_eq!(
+        value.serialize_tokens(Default::default()).unwrap().as_css(),
+        expected
+    );
 }
 
 #[test]

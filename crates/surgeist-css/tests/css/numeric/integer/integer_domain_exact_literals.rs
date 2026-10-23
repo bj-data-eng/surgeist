@@ -19,7 +19,10 @@ fn serialized_columns(value: &str) -> String {
     else {
         panic!("expected checked grid-template-columns");
     };
-    wrapper.value().serialize_specified().unwrap()
+    wrapper
+        .value()
+        .serialize_specified(Default::default())
+        .unwrap()
 }
 
 #[test]

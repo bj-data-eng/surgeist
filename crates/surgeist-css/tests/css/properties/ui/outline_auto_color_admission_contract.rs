@@ -229,7 +229,7 @@ fn checked_outline_color_auto_preserves_supplied_escaped_token_origin() {
     let start = source.find('\\').unwrap();
     position(origin.span().start(), source, start);
     position(origin.span().end(), source, source.len());
-    let supplied = CssComponentValues::try_new(vec![auto.clone()]).unwrap();
+    let supplied = CssComponentValues::try_new(vec![auto.clone()], Default::default()).unwrap();
     for grammar in [false, true] {
         checked_components_admit(CssKnownProperty::OutlineColor, supplied.clone(), grammar);
     }

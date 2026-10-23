@@ -3,12 +3,16 @@
 use crate::{
     CssComponentValue, CssIntegerCalculation, CssIntegerLiteral, CssNumericConstructionError,
     CssNumericConstructionErrorKind, CssPositiveIntegerLiteral, CssPositiveIntegerValue,
-    CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits, CssValueOrigin,
+    CssValueOrigin,
 };
 
 /// A positive authored line count or deferred integer math.
 ///
 /// Fragmentation 3 `<integer [1,∞]>` is the shared positive-integer production.
+///
+/// # Specified serialization
+///
+/// Serializes without resolving symbolic math.
 #[derive(Clone, Debug)]
 pub struct CssPageLineMinimum {
     value: CssPositiveIntegerValue,
@@ -109,26 +113,13 @@ impl CssPageLineMinimum {
             CssPositiveIntegerValue::Calculation(value) => value.origin(),
         }
     }
-
-    /// Serializes without resolving symbolic math.
-    pub fn serialize_specified(&self) -> Result<String, CssSpecifiedValueSerializationError> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes atomically under cumulative input, projection, and byte limits.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String, CssSpecifiedValueSerializationError> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+}
+impl crate::specified_rule_serialization::SpecifiedProvider for CssPageLineMinimum {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         self.value.append_to_rule_writer(writer)
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssPageLineMinimum);

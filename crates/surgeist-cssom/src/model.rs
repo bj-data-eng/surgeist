@@ -26,7 +26,7 @@ pub struct CssomLimits {
     pub max_identity: u64,
     pub max_revision: u64,
     pub summary_history: usize,
-    pub css: CssSpecifiedValueSerializationLimits,
+    pub css: CssSerializationLimits,
     pub max_pending_owner_effects: usize,
     pub max_pending_owner_effect_bytes: usize,
     pub max_owner_effect_identity: u64,
@@ -45,7 +45,7 @@ impl Default for CssomLimits {
             max_identity: u64::MAX,
             max_revision: u64::MAX,
             summary_history: 128,
-            css: CssSpecifiedValueSerializationLimits::default(),
+            css: CssSerializationLimits::default(),
             max_pending_owner_effects: 1024,
             max_pending_owner_effect_bytes: 16 * 1024 * 1024,
             max_owner_effect_identity: u64::MAX,
@@ -821,7 +821,7 @@ impl CssomSnapshot {
     pub fn specified_property_css_text(
         &self,
         id: &CssomBlockId,
-        limits: CssSpecifiedValueSerializationLimits,
+        limits: CssSerializationLimits,
     ) -> Result<String, CssomError> {
         let block = self.block(id)?;
         let CssomBlockData::Properties { selected, .. } = block.data() else {
@@ -831,9 +831,9 @@ impl CssomSnapshot {
             return Ok(String::new());
         }
         match selected {
-            CssomProjection::Available(v) => v
-                .serialize_cssom_with_limits(limits)
-                .map_err(CssomError::Declaration),
+            CssomProjection::Available(v) => {
+                v.serialize_cssom(limits).map_err(CssomError::Declaration)
+            }
             CssomProjection::Unavailable(e) => Err(CssomError::Declaration(e.clone())),
         }
     }
@@ -912,7 +912,7 @@ pub enum CssomError {
     Expansion(CssExpansionError),
     PageBlock(CssPageBlockError),
     FontFace(CssFontFaceDeclarationBlockError),
-    Value(CssSpecifiedValueSerializationError),
+    Value(CssSerializationError),
     ForeignOwner,
     MissingObject,
     WrongKind,
@@ -932,10 +932,10 @@ pub enum CssomError {
     Page(CssPageProjectionError),
     ParseResource(Box<CssRecoveryDiagnostic>),
     Component(CssComponentValueError),
-    Media(CssMediaCssomSerializationError),
+    Media(CssSerializationError),
     AuthoredFeatureConversion,
-    Format(CssRuleCssomSerializationError),
-    Serialization(CssSpecifiedValueSerializationError),
+    Format(CssRuleSerializationError),
+    Serialization(CssSerializationError),
     QueryMatch(CssomQueryMatchError),
     Keyframe(CssKeyframeRuleViewError),
     KeyframeComparison(CssKeyframeSelectorComparisonError),

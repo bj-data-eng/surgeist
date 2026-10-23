@@ -331,8 +331,12 @@ fn part_and_user_action_pseudo_element_suffixes_are_retained() {
 
 #[test]
 fn selector_list_constructor_rejects_empty_lists() {
-    assert!(CssSelectorList::try_new(Vec::new()).is_err());
-    let list = CssSelectorList::try_new(vec![CssSelector::Class("button".to_owned())]).unwrap();
+    assert!(CssSelectorList::try_new(Vec::new(), Default::default()).is_err());
+    let list = CssSelectorList::try_new(
+        vec![CssSelector::Class("button".to_owned())],
+        Default::default(),
+    )
+    .unwrap();
     assert_eq!(list.selectors(), &[CssSelector::Class("button".to_owned())]);
 }
 
@@ -364,7 +368,7 @@ fn pseudo_element_sequence_constructor_guards_supported_terminal_shapes() {
 
 #[test]
 fn relative_selector_list_constructor_requires_selectors() {
-    assert!(CssRelativeSelectorList::try_new(Vec::new()).is_err());
+    assert!(CssRelativeSelectorList::try_new(Vec::new(), Default::default()).is_err());
 }
 
 #[test]
@@ -380,8 +384,11 @@ fn relative_selector_preserves_combinator_and_selector() {
 
 #[test]
 fn nth_child_pattern_preserves_optional_selector_list() {
-    let list =
-        CssPseudoSelectorList::try_new(vec![CssSelector::Class("important".to_owned())]).unwrap();
+    let list = CssPseudoSelectorList::try_new(
+        vec![CssSelector::Class("important".to_owned())],
+        Default::default(),
+    )
+    .unwrap();
     let pattern =
         CssNthChildPattern::new(CssNthPattern::AnPlusB(CssNthAnPlusB::new(2, 1)), Some(list));
 

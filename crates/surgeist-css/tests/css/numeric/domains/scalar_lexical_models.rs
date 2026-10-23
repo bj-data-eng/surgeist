@@ -41,7 +41,8 @@ fn checked_integer_tokens_keep_sign_digits_kind_and_origins_at_every_magnitude()
             CssComponentValue::try_number(text).unwrap(),
             parse_component_values(text).unwrap().items()[0].clone(),
         ] {
-            let components = CssComponentValues::try_new(vec![component.clone()]).unwrap();
+            let components =
+                CssComponentValues::try_new(vec![component.clone()], Default::default()).unwrap();
             let declaration = parse_property_value(
                 CssPropertyNameRef::Known(CssKnownProperty::Order),
                 components,
@@ -120,7 +121,8 @@ fn checked_opacity_tokens_keep_number_or_percentage_identity_without_rounding_or
             CssComponentValue::try_token(text).unwrap(),
             parse_component_values(text).unwrap().items()[0].clone(),
         ] {
-            let components = CssComponentValues::try_new(vec![component.clone()]).unwrap();
+            let components =
+                CssComponentValues::try_new(vec![component.clone()], Default::default()).unwrap();
             let declaration = parse_property_value(
                 CssPropertyNameRef::Known(CssKnownProperty::Opacity),
                 components,
@@ -231,35 +233,25 @@ fn bounded_scalar_serialization_normalizes_output_without_changing_retained_toke
         let value = CssOpacityValue::Scalar(scalar);
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    1,
-                    1,
-                    expected.len()
-                ))
+                .serialize_specified(CssSerializationLimits::new(1, 1, expected.len()))
                 .unwrap(),
             expected
         );
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(0, 1, 10),
+                CssSerializationLimits::new(0, 1, 10),
                 CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 0, 10),
+                CssSerializationLimits::new(1, 0, 10),
                 CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 1, expected.len() - 1),
+                CssSerializationLimits::new(1, 1, expected.len() - 1),
                 CssSpecifiedValueSerializationErrorKind::ByteLimit,
             ),
         ] {
-            assert_eq!(
-                value
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
-                kind
-            );
+            assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
         }
         let CssOpacityValue::Scalar(scalar) = value else {
             unreachable!()

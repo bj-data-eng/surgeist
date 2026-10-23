@@ -78,7 +78,7 @@ fn checked_scalar_constructor_retains_numeric_components_without_rounding() {
             text.trim_end_matches('%')
         );
         assert_eq!(scalar.origin(), &CssValueOrigin::Programmatic);
-        let values = CssComponentValues::try_new(vec![component]).unwrap();
+        let values = CssComponentValues::try_new(vec![component], Default::default()).unwrap();
         let source = parse_property_value(
             CssPropertyNameRef::Known(CssKnownProperty::Opacity),
             values.clone(),

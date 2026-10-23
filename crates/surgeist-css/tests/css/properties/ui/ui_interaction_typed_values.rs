@@ -50,14 +50,17 @@ fn exact_payload(source: &CssDeclaration, ordinary: &CssLonghandValue) {
 
 #[test]
 fn logical_resize_variants_emit_authored_axes_and_enforce_exact_primitive_limits() {
+    use CssSerializationLimits as Limits;
     use CssSpecifiedValueSerializationErrorKind as Kind;
-    use CssSpecifiedValueSerializationLimits as Limits;
     for (value, expected) in [(CssResize::Block, "block"), (CssResize::Inline, "inline")] {
         let before = value;
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_eq!(
             value
-                .serialize_specified_with_limits(Limits::new(1, 1, expected.len()))
+                .serialize_specified(Limits::new(1, 1, expected.len()))
                 .unwrap(),
             expected
         );
@@ -66,18 +69,12 @@ fn logical_resize_variants_emit_authored_axes_and_enforce_exact_primitive_limits
             (Limits::new(1, 0, expected.len()), Kind::ProjectionNodeLimit),
             (Limits::new(1, 1, expected.len() - 1), Kind::ByteLimit),
         ] {
-            assert_eq!(
-                value
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
-                kind
-            );
+            assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
             assert_eq!(value, before);
         }
         assert_eq!(
             value
-                .serialize_specified_with_limits(Limits::new(1, 1, expected.len()))
+                .serialize_specified(Limits::new(1, 1, expected.len()))
                 .unwrap(),
             expected
         );

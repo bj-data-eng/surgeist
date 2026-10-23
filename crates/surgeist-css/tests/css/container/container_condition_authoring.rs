@@ -35,7 +35,10 @@ fn assert_container_theme_value(condition: &CssContainerCondition) {
         panic!("plain custom feature")
     };
     assert_eq!(name.as_str(), "--theme");
-    assert_eq!(value.serialize().unwrap().as_css(), " dark");
+    assert_eq!(
+        value.serialize_tokens(Default::default()).unwrap().as_css(),
+        " dark"
+    );
 }
 
 #[test]
@@ -122,7 +125,10 @@ fn container_condition_parser_retains_unrecognized_enclosures() {
         let CssContainerConditionKind::GeneralEnclosed(value) = condition.kind() else {
             panic!("{css} should retain an opaque enclosure");
         };
-        assert_eq!(value.serialize().unwrap().as_css(), css);
+        assert_eq!(
+            value.serialize_tokens(Default::default()).unwrap().as_css(),
+            css
+        );
     }
 }
 
@@ -159,7 +165,14 @@ fn container_condition_parser_preserves_size_feature_structure() {
     let CssContainerLengthRef::Numeric(value) = value.view() else {
         panic!("typed length")
     };
-    assert_eq!(value.components().serialize().unwrap().as_css(), "30rem");
+    assert_eq!(
+        value
+            .components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        "30rem"
+    );
 }
 
 #[test]
@@ -189,7 +202,7 @@ fn container_condition_parser_preserves_ratio_and_logic_structure() {
         value
             .numerator()
             .components()
-            .serialize()
+            .serialize_tokens(Default::default())
             .unwrap()
             .as_css()
             .trim(),
@@ -199,7 +212,7 @@ fn container_condition_parser_preserves_ratio_and_logic_structure() {
         value
             .denominator()
             .components()
-            .serialize()
+            .serialize_tokens(Default::default())
             .unwrap()
             .as_css()
             .trim(),

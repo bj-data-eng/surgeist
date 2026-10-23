@@ -175,7 +175,10 @@ fn explicit_font_sets_present_values_and_resets_every_other_member() {
     else {
         panic!("authored weight")
     };
-    assert_eq!(weight.serialize_specified().unwrap(), "753");
+    assert_eq!(
+        weight.serialize_specified(Default::default()).unwrap(),
+        "753"
+    );
 
     let caps = important_declaration("font", "small-caps 16px serif");
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =

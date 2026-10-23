@@ -48,7 +48,7 @@ impl ParserFront {
     pub fn valid(self, property: CssKnownProperty, input: &str, expected: &str) -> CssDeclaration {
         let source = self.parse(property, input);
         let before = source.clone();
-        let actual = source.to_specified_css().unwrap_or_else(|error| {
+        let actual = source.serialize_specified(Default::default()).unwrap_or_else(|error| {
             panic!(
                 "{property:?}: {input:?} via {self:?}: specified serialization failed: {error:?}"
             )

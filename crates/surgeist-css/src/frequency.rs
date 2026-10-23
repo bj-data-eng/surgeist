@@ -9,6 +9,17 @@ pub(crate) const fn suffix(unit: CssFrequencyUnit) -> &'static str {
 
 crate::dimension::dimension_literal_owner!(
     /// An exact signed ordinary frequency, retaining coefficient, selected unit and provenance.
+    ///
+    /// # Specified serialization
+    ///
+    /// Emits ordinary frequencies with the selected lowercase hz or khz unit. This authored phase
+    /// follows the selected primitive serialization policy; CSSOM's specified/computed phase
+    /// question remains open. Ordinary text rounds to six fractional places, nearest with ties away
+    /// from zero; retained coefficients stay exact. This literal operation performs no calculation
+    /// projection. Ordinary units are retained lowercased with at most six fractional places,
+    /// nearest with ties away from zero and no scientific fallback. CSSOM's specified/computed
+    /// frequency phase question stays open. This literal operation performs no calculation
+    /// projection;
     CssFrequencyLiteral,
     CssFrequencyUnit,
     suffix
@@ -18,6 +29,18 @@ crate::dimension::dimension_value_owner!(
     /// An authored frequency dimension or retained Frequency-root math expression.
     ///
     /// Checked conversion requires original graph closure; no bare number is admitted.
+    ///
+    /// # Specified serialization
+    ///
+    /// Emits ordinary frequencies with the selected lowercase hz or khz unit. This authored phase
+    /// follows the selected primitive serialization policy; CSSOM's specified/computed phase
+    /// question remains open. Ordinary text rounds to six fractional places, nearest with ties away
+    /// from zero; retained coefficients stay exact. Finite math text rounds the actual binary64
+    /// value to six places; arithmetic precision and range remain unfinished. Ordinary units are
+    /// retained lowercased with at most six fractional places, nearest with ties away from zero and
+    /// no scientific fallback. CSSOM's specified/computed frequency phase question stays open.
+    /// Actual math retains its canonical units and simplification. Finite number text follows the
+    /// six-place policy; arithmetic precision and range remain unfinished.
     CssFrequencyValue,
     CssFrequencyLiteral,
     CssFrequencyCalculation
@@ -82,14 +105,18 @@ mod tests {
             } else {
                 (left.clone(), right.clone(), &left_closure)
             };
-            let arguments = crate::CssComponentValues::try_new(vec![
-                first,
-                crate::CssComponentValue::try_token(",").unwrap(),
-                second,
-            ])
+            let arguments = crate::CssComponentValues::try_new(
+                vec![
+                    first,
+                    crate::CssComponentValue::try_token(",").unwrap(),
+                    second,
+                ],
+                Default::default(),
+            )
             .unwrap();
             let outer = crate::CssComponentValue::try_function("min", arguments).unwrap();
-            let values = crate::CssComponentValues::try_new(vec![outer]).unwrap();
+            let values =
+                crate::CssComponentValues::try_new(vec![outer], Default::default()).unwrap();
             let expression = crate::numeric::NumericInputContext::Parsed(&source)
                 .admit(values, crate::numeric::CalculationRoot::Frequency)
                 .unwrap();
@@ -133,7 +160,10 @@ mod tests {
         // The existing authored writer materializes closings; strict admission
         // must inspect the original graph rather than this serialized output.
         assert_eq!(
-            calculation.serialize().unwrap().as_css(),
+            calculation
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             "calc(min(-1hz, 2hz))"
         );
         let error = CssFrequencyValue::try_from_calculation(calculation.clone()).unwrap_err();

@@ -412,7 +412,7 @@ mod tests {
         let source = format!("{}color{}", "(".repeat(70), ")".repeat(70));
         let components = crate::parse_component_values(&source).unwrap();
         let error = with_parser_thread_unavailable(|| {
-            CssMediaQuery::try_from_components(components.clone())
+            CssMediaQuery::try_from_components(components.clone(), Default::default())
         })
         .expect_err("refused without the parser thread");
         let crate::CssMediaConstructionError::Component(error) = &error else {
@@ -420,7 +420,7 @@ mod tests {
         };
         // The block with 63 enclosing blocks opens at byte 63.
         assert_media_component_refusal(error, 63);
-        assert!(CssMediaQuery::try_from_components(components).is_ok());
+        assert!(CssMediaQuery::try_from_components(components, Default::default()).is_ok());
     }
 
     #[test]
@@ -429,12 +429,16 @@ mod tests {
         let report = crate::parse_media_query(&source);
         assert!(report.is_clean(), "{:?}", report.diagnostics());
         let query = report.syntax();
-        let error = with_parser_thread_unavailable(|| query.serialize())
+        let error = with_parser_thread_unavailable(|| query.serialize_tokens(Default::default()))
             .expect_err("refused without the parser thread");
-        let crate::CssMediaSerializationError::Component(error) = &error else {
+        let Some(component) = error.component_error() else {
             panic!("component refusal: {error:?}")
         };
-        assert_media_component_refusal(error, 0);
-        assert!(query.serialize().is_ok());
+        assert_eq!(
+            error.kind(),
+            crate::CssSpecifiedValueSerializationErrorKind::UnserializableBoundary
+        );
+        assert_media_component_refusal(component, 0);
+        assert!(query.serialize_tokens(Default::default()).is_ok());
     }
 }

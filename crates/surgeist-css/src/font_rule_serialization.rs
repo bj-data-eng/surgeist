@@ -1,13 +1,12 @@
 //! One cumulative Fonts specified-value/rule projection; authored occurrences remain intact.
+use crate::specified_rule_serialization::SpecifiedProvider as _;
 use crate::{
     CssAuthoredFontFaceDescriptorValue, CssComponentValue, CssComponentValueRef, CssFontDisplay,
     CssFontFaceDescriptorKind as Kind, CssFontFaceDescriptorValue, CssFontFaceRule,
     CssFontFeatureDisplayValue, CssFontFeatureDisplayValueRef, CssFontFeatureValue,
     CssFontFeatureValueDefinition, CssFontFeatureValueRef, CssFontFeatureValuesItem,
-    CssFontFeatureValuesRule, CssPendingFontFaceDescriptorValue,
-    CssSpecifiedValueSerializationError as Error,
-    CssSpecifiedValueSerializationErrorKind as ErrorKind,
-    CssSpecifiedValueSerializationLimits as Limits, CssValueTokenRef,
+    CssFontFeatureValuesRule, CssPendingFontFaceDescriptorValue, CssSerializationError as Error,
+    CssSpecifiedValueSerializationErrorKind as ErrorKind, CssValueTokenRef,
     specified_rule_serialization::SpecifiedRuleWriter,
 };
 type Result<T> = std::result::Result<T, Error>;
@@ -57,24 +56,6 @@ fn display(writer: &mut SpecifiedRuleWriter, value: CssFontDisplay) -> Result<()
     })
 }
 impl CssFontFaceDescriptorValue {
-    /// Canonical specified descriptor value, without a synthetic rule or resource loading.
-    pub fn serialize_specified(&self) -> Result<String> {
-        self.serialize_specified_with_limits(Limits::default())
-    }
-    /// One cumulative input/projection/output budget; failures return no partial CSS.
-    pub fn serialize_specified_with_limits(&self, limits: Limits) -> Result<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        self.append_specified(writer)?;
-        Ok(())
-    }
     pub(crate) fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         match self {
             Self::FontFamily(value) => value.append_specified(writer),
@@ -107,6 +88,16 @@ impl CssFontFaceDescriptorValue {
         }
     }
 }
+impl crate::specified_rule_serialization::SpecifiedProvider for CssFontFaceDescriptorValue {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        self.append_specified(writer)?;
+        Ok(())
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(CssFontFaceDescriptorValue);
 fn authored(
     writer: &mut SpecifiedRuleWriter,
     value: &CssAuthoredFontFaceDescriptorValue,
@@ -123,40 +114,26 @@ fn authored(
     }
 }
 
-impl CssAuthoredFontFaceDescriptorValue {
-    /// Reads a checked ordinary or pending descriptor through its owning writer.
-    /// No descriptor name or containing rule is generated.
-    pub fn serialize_specified(&self) -> Result<String> {
-        self.serialize_specified_with_limits(Limits::default())
-    }
-    /// One cumulative input/projection/output allowance; failure returns no text.
-    pub fn serialize_specified_with_limits(&self, limits: Limits) -> Result<String> {
-        let mut writer = SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-    pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+impl crate::specified_rule_serialization::SpecifiedProvider for CssAuthoredFontFaceDescriptorValue {
+    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         authored(writer, self)
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssAuthoredFontFaceDescriptorValue);
 
-impl CssPendingFontFaceDescriptorValue {
-    /// Reads the supported pending whole-descriptor component stream without
-    /// substitution, resolving a font or changing its original token origins.
-    pub fn serialize_specified(&self) -> Result<String> {
-        self.serialize_specified_with_limits(Limits::default())
-    }
-    /// Nested/trivia components and actual output share cumulative allowances.
-    pub fn serialize_specified_with_limits(&self, limits: Limits) -> Result<String> {
-        let mut writer = SpecifiedRuleWriter::new(limits);
+impl crate::specified_rule_serialization::SpecifiedProvider for CssPendingFontFaceDescriptorValue {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         crate::pending_serialization::append_pending_specified(
             self.components(),
             &mut writer.context,
             &mut writer.css,
-        )?;
-        Ok(writer.css)
+        )
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssPendingFontFaceDescriptorValue);
 
 impl SpecifiedRuleWriter {
     /// The graph owns the rule node; the selected declaration owner charges its
@@ -321,8 +298,8 @@ pub(crate) fn literal_equals(component: Option<&CssComponentValue>, magnitude: &
         .value_eq(&crate::exact_decimal::LexicalDecimal::new(magnitude))
 }
 
-impl CssFontFeatureDisplayValue {
-    pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+impl crate::specified_rule_serialization::SpecifiedProvider for CssFontFeatureDisplayValue {
+    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         match self.view() {
             CssFontFeatureDisplayValueRef::Ordinary(value) => display(writer, value),
             CssFontFeatureDisplayValueRef::Pending(_) => {
@@ -334,22 +311,13 @@ impl CssFontFeatureDisplayValue {
             }
         }
     }
-    /// Serializes the value without manufacturing a declaration occurrence.
-    pub fn to_specified_css(&self) -> Result<String> {
-        self.to_specified_css_with_limits(Limits::default())
-    }
-    pub fn to_specified_css_with_limits(&self, limits: Limits) -> Result<String> {
-        let mut writer = SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
 }
-impl CssFontFeatureValue {
-    pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+crate::specified_rule_serialization::specified_serialization!(CssFontFeatureDisplayValue);
+impl crate::specified_rule_serialization::SpecifiedProvider for CssFontFeatureValue {
+    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         match self.view() {
             CssFontFeatureValueRef::Indexes(values) => {
-                writer.context.charge_input(values.len())?;
-                writer.context.charge_projection(values.len())?;
+                writer.nodes(values.len())?;
                 writer.space_separated(values, |writer, value| {
                     writer.append(value.as_decimal_str())
                 })?;
@@ -364,13 +332,5 @@ impl CssFontFeatureValue {
             }
         }
     }
-    /// Serializes completed exact indexes or the pending whole component stream.
-    pub fn to_specified_css(&self) -> Result<String> {
-        self.to_specified_css_with_limits(Limits::default())
-    }
-    pub fn to_specified_css_with_limits(&self, limits: Limits) -> Result<String> {
-        let mut writer = SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
 }
+crate::specified_rule_serialization::specified_serialization!(CssFontFeatureValue);

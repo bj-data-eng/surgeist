@@ -302,7 +302,7 @@ fn property_specific_witnesses_compose_providers_and_intrinsic_terminal_shapes()
         ] {
             let before = source.clone();
             assert_eq!(
-                source.to_specified_css().unwrap(),
+                source.serialize_specified(Default::default()).unwrap(),
                 format!("{}: {} !important;", w.name, w.canonical)
             );
             let values = expanded(&source);
@@ -355,7 +355,7 @@ fn imported_numeric_domains_keep_signed_lengths_but_distinguish_literal_ranges_a
         let source = checked(name, input, true);
         let before = source.value_components().clone();
         assert_eq!(
-            source.to_specified_css().unwrap(),
+            source.serialize_specified(Default::default()).unwrap(),
             format!("{name}: {canonical} !important;")
         );
         assert_eq!(source.value_components(), &before);
@@ -377,13 +377,13 @@ fn imported_numeric_domains_keep_signed_lengths_but_distinguish_literal_ranges_a
 fn imported_strings_keep_property_specific_empty_and_grapheme_constraints() {
     assert_eq!(
         checked("hyphenate-character", "\"\"", true)
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .unwrap(),
         "hyphenate-character: \"\" !important;"
     );
     let alignment = checked("text-align-all", "\"\\65\\301 \"", true);
     assert_eq!(
-        alignment.to_specified_css().unwrap(),
+        alignment.serialize_specified(Default::default()).unwrap(),
         "text-align-all: \"é\" !important;"
     );
     invalid("text-align-all", "\"\"");
@@ -401,7 +401,7 @@ fn all_globals_are_whole_values_even_when_property_tables_omit_them() {
             ] {
                 assert_eq!(source.known().unwrap().global(), Some(keyword));
                 assert_eq!(
-                    source.to_specified_css().unwrap(),
+                    source.serialize_specified(Default::default()).unwrap(),
                     format!("{}: {text} !important;", w.name)
                 );
                 for item in expanded(&source).items() {
@@ -436,7 +436,7 @@ fn implicit_origin(components: &CssComponentValues) -> CssValueOrigin {
             return origin.clone();
         }
     }
-    let serialized = components.serialize().unwrap();
+    let serialized = components.serialize_tokens(Default::default()).unwrap();
     (0..serialized.as_css().len())
         .find_map(|offset| match serialized.origin_at(offset) {
             Some(CssSerializedOrigin::Token(origin @ CssValueOrigin::ImplicitClosure { .. })) => {
@@ -744,36 +744,26 @@ fn composed_normalization_and_sheet_bytes_preserve_all_occurrences_and_member_bo
             .unwrap()
             .same_occurrence(declarations.last().unwrap().source())
     );
-    let byte_exact =
-        CssSpecifiedValueSerializationLimits::new(usize::MAX, usize::MAX, expected.len());
-    let byte_short =
-        CssSpecifiedValueSerializationLimits::new(usize::MAX, usize::MAX, expected.len() - 1);
+    let byte_exact = CssSerializationLimits::new(usize::MAX, usize::MAX, expected.len());
+    let byte_short = CssSerializationLimits::new(usize::MAX, usize::MAX, expected.len() - 1);
     assert_eq!(
-        report
-            .syntax()
-            .to_specified_css_with_limits(byte_exact)
-            .unwrap(),
+        report.syntax().serialize_specified(byte_exact).unwrap(),
         expected
     );
     for _ in 0..2 {
         assert_eq!(
             report
                 .syntax()
-                .to_specified_css_with_limits(byte_short)
+                .serialize_specified(byte_short)
                 .unwrap_err()
                 .kind(),
-            CssSpecifiedRuleSerializationErrorKind::Resource(
-                CssSpecifiedValueSerializationErrorKind::ByteLimit
-            )
+            CssSpecifiedValueSerializationErrorKind::ByteLimit
         );
         assert_eq!(report, before);
     }
     assert!(normalize_report_with_limits(&report, exact).is_ok());
     assert_eq!(
-        report
-            .syntax()
-            .to_specified_css_with_limits(byte_exact)
-            .unwrap(),
+        report.syntax().serialize_specified(byte_exact).unwrap(),
         expected
     );
 }
@@ -793,7 +783,7 @@ fn owner_complete_components_preserve_value_and_source_contracts() {
             for grammar in [false, true] {
                 let source = checked(name, &text, grammar);
                 assert_eq!(
-                    source.to_specified_css().unwrap(),
+                    source.serialize_specified(Default::default()).unwrap(),
                     format!("{name}: {} !important;", w.canonical)
                 );
                 expanded(&source);

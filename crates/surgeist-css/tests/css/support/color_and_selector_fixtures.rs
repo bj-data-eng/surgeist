@@ -24,7 +24,11 @@ pub fn parsed_important_declaration(property: &str, text: &str) -> CssDeclaratio
         "{source}"
     );
     assert_eq!(
-        declaration.value_components().serialize().unwrap().as_css(),
+        declaration
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         text,
         "{source}"
     );
@@ -201,8 +205,8 @@ pub fn assert_color_text_rejected(
 #[track_caller]
 pub fn assert_color_limit_error(value: &CssColor, limits: Limits, kind: LimitKind) {
     let before = value.clone();
-    let result = value.to_specified_css_with_limits(limits);
-    assert_eq!(result, value.to_specified_css_with_limits(limits));
+    let result = value.serialize_specified(limits);
+    assert_eq!(result, value.serialize_specified(limits));
     assert_eq!(value, &before);
     assert_eq!(result.unwrap_err().kind(), kind, "{limits:?}");
 }
@@ -217,7 +221,7 @@ pub fn assert_bounded_serialization<T>(
     expected: &str,
     input: usize,
     projection: usize,
-    serialize: impl Fn(&T, Limits) -> Result<String, CssSpecifiedValueSerializationError>,
+    serialize: impl Fn(&T, Limits) -> Result<String, CssSerializationError>,
 ) where
     T: Clone + Debug + PartialEq,
 {
@@ -252,7 +256,7 @@ pub fn assert_color_limits(value: &CssColor, expected: &str, input: usize, proje
         expected,
         input,
         projection,
-        CssColor::to_specified_css_with_limits,
+        CssColor::serialize_specified,
     );
 }
 
@@ -270,7 +274,7 @@ pub fn assert_scratch_serialization<T>(
     input: usize,
     projection: usize,
     bytes: usize,
-    serialize: impl Fn(&T, Limits) -> Result<String, CssSpecifiedValueSerializationError>,
+    serialize: impl Fn(&T, Limits) -> Result<String, CssSerializationError>,
 ) where
     T: Clone + Debug + PartialEq,
 {
@@ -345,10 +349,7 @@ pub fn assert_specified_construction_cause(error: &CssSelectorConstructionError,
     };
     assert_eq!(cause.kind(), kind, "{error:?}");
     let source = std::error::Error::source(error).expect("original specified source");
-    assert_eq!(
-        source.downcast_ref::<CssSpecifiedValueSerializationError>(),
-        Some(cause)
-    );
+    assert_eq!(source.downcast_ref::<CssSerializationError>(), Some(cause));
 }
 
 /// Typed evidence that construction of an invalid selector graph failed

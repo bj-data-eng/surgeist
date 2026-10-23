@@ -263,7 +263,10 @@ fn grid_repeat_typed_calculation_stays_symbolic() {
     };
     assert!(value.value().auto_list().is_some());
     assert_eq!(
-        value.value().serialize_specified().unwrap(),
+        value
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "repeat(auto-fit, calc(10% + 20px))"
     );
 }

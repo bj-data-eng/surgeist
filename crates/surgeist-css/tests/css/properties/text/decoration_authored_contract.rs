@@ -104,32 +104,27 @@ fn canonical(name: &str, text: &str, expected: &str) {
     for source in fronts(name, text) {
         let before = source.clone();
         let expected = format!("{name}: {expected} !important;");
-        assert_eq!(source.to_specified_css().unwrap(), expected);
-        assert_eq!(source, before);
-        let limits = CssSpecifiedValueSerializationLimits::new(65_536, 262_144, expected.len());
         assert_eq!(
-            source.to_specified_css_with_limits(limits).unwrap(),
+            source.serialize_specified(Default::default()).unwrap(),
             expected
         );
+        assert_eq!(source, before);
+        let limits = CssSerializationLimits::new(65_536, 262_144, expected.len());
+        assert_eq!(source.serialize_specified(limits).unwrap(), expected);
         for _ in 0..2 {
-            let short =
-                CssSpecifiedValueSerializationLimits::new(65_536, 262_144, expected.len() - 1);
+            let short = CssSerializationLimits::new(65_536, 262_144, expected.len() - 1);
             assert_eq!(
-                source
-                    .to_specified_css_with_limits(short)
-                    .unwrap_err()
-                    .kind(),
+                source.serialize_specified(short).unwrap_err().kind(),
                 CssSpecifiedValueSerializationErrorKind::ByteLimit
             );
             assert_eq!(source, before);
         }
-        assert_eq!(
-            source.to_specified_css_with_limits(limits).unwrap(),
-            expected
-        );
+        assert_eq!(source.serialize_specified(limits).unwrap(), expected);
     }
     assert_eq!(
-        checked(name, expected, true).to_specified_css().unwrap(),
+        checked(name, expected, true)
+            .serialize_specified(Default::default())
+            .unwrap(),
         format!("{name}: {expected} !important;")
     );
 }
@@ -326,7 +321,7 @@ fn closure(name: &str, ordinary: &str) {
     ] {
         let components = parse_component_values(&text).unwrap();
         let snapshot = components.clone();
-        let serialized = components.serialize().unwrap();
+        let serialized = components.serialize_tokens(Default::default()).unwrap();
         let origin = (0..=serialized.as_css().len())
             .find_map(|n| match serialized.origin_at(n) {
                 Some(CssSerializedOrigin::Token(v @ CssValueOrigin::ImplicitClosure { .. })) => {
@@ -492,47 +487,28 @@ fn accepted_decoration_projection_and_cumulative_prices_are_independent_controls
         let source = checked(name, input, true);
         let before = source.clone();
         let output = format!("{name}: {expected} !important;");
-        let exact =
-            CssSpecifiedValueSerializationLimits::new(input_nodes, projection_nodes, output.len());
-        assert_eq!(source.to_specified_css_with_limits(exact).unwrap(), output);
+        let exact = CssSerializationLimits::new(input_nodes, projection_nodes, output.len());
+        assert_eq!(source.serialize_specified(exact).unwrap(), output);
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(
-                    input_nodes - 1,
-                    projection_nodes,
-                    output.len(),
-                ),
+                CssSerializationLimits::new(input_nodes - 1, projection_nodes, output.len()),
                 CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(
-                    input_nodes,
-                    projection_nodes - 1,
-                    output.len(),
-                ),
+                CssSerializationLimits::new(input_nodes, projection_nodes - 1, output.len()),
                 CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(
-                    input_nodes,
-                    projection_nodes,
-                    output.len() - 1,
-                ),
+                CssSerializationLimits::new(input_nodes, projection_nodes, output.len() - 1),
                 CssSpecifiedValueSerializationErrorKind::ByteLimit,
             ),
         ] {
             for _ in 0..2 {
-                assert_eq!(
-                    source
-                        .to_specified_css_with_limits(limits)
-                        .unwrap_err()
-                        .kind(),
-                    kind
-                );
+                assert_eq!(source.serialize_specified(limits).unwrap_err().kind(), kind);
                 assert_eq!(source, before);
             }
         }
-        assert_eq!(source.to_specified_css_with_limits(exact).unwrap(), output);
+        assert_eq!(source.serialize_specified(exact).unwrap(), output);
     }
 }
 
@@ -1231,6 +1207,7 @@ fn checked_programmatic_inputs_and_zero_resource_failures_leave_supplied_graphs_
                 .iter()
                 .map(|v| CssComponentValue::try_token(v).unwrap())
                 .collect(),
+            Default::default(),
         )
         .unwrap();
         let before = components.clone();
@@ -1246,25 +1223,19 @@ fn checked_programmatic_inputs_and_zero_resource_failures_leave_supplied_graphs_
             let snapshot = source.clone();
             for (limits, kind) in [
                 (
-                    CssSpecifiedValueSerializationLimits::new(0, 262_144, 1_048_576),
+                    CssSerializationLimits::new(0, 262_144, 1_048_576),
                     CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
                 ),
                 (
-                    CssSpecifiedValueSerializationLimits::new(65_536, 0, 1_048_576),
+                    CssSerializationLimits::new(65_536, 0, 1_048_576),
                     CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
                 ),
                 (
-                    CssSpecifiedValueSerializationLimits::new(65_536, 262_144, 0),
+                    CssSerializationLimits::new(65_536, 262_144, 0),
                     CssSpecifiedValueSerializationErrorKind::ByteLimit,
                 ),
             ] {
-                assert_eq!(
-                    source
-                        .to_specified_css_with_limits(limits)
-                        .unwrap_err()
-                        .kind(),
-                    kind
-                );
+                assert_eq!(source.serialize_specified(limits).unwrap_err().kind(), kind);
                 assert_eq!(source, snapshot);
             }
         }

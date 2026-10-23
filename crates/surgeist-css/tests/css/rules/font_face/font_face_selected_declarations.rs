@@ -1,7 +1,7 @@
 //! Independent public consumer oracles for #1086; no preimplementation RED.
 use CssFontFaceDescriptorKind as K;
+use CssSerializationLimits as L;
 use CssSpecifiedValueSerializationErrorKind as E;
-use CssSpecifiedValueSerializationLimits as L;
 use surgeist_css::*;
 
 fn entries(source: &str) -> Vec<CssFontFaceDescriptor> {
@@ -82,11 +82,10 @@ fn selected_order_and_edits_are_distinct_from_whole_font_rule_order() {
     let raw = parse_font_face_descriptor_value("B", K::FontFamily);
     let family = CssFontFaceDescriptor::new(raw.syntax().as_ref().unwrap().clone());
     assert!(family.position().is_none());
-    let selected = CssSpecifiedFontFaceDeclarationBlock::try_from_entries(&[
-        authored[2].clone(),
-        family,
-        authored[1].clone(),
-    ])
+    let selected = CssSpecifiedFontFaceDeclarationBlock::try_from_entries(
+        &[authored[2].clone(), family, authored[1].clone()],
+        Default::default(),
+    )
     .unwrap();
     assert_eq!(
         selected
@@ -97,18 +96,24 @@ fn selected_order_and_edits_are_distinct_from_whole_font_rule_order() {
         [K::FontDisplay, K::FontFamily, K::Src]
     );
     assert_eq!(
-        selected.serialize_cssom().unwrap(),
+        selected.serialize_cssom(Default::default()).unwrap(),
         "font-display: swap; font-family: B; src: local(\"A\");"
     );
     assert_eq!(
         CssRule::FontFace(CssFontFaceRule::new(CssFontFaceDescriptors::new(
             selected.entries().to_vec()
         )))
-        .to_specified_css()
+        .serialize_specified(Default::default())
         .unwrap(),
         "@font-face { font-family: B; src: local(\"A\"); font-display: swap; }"
     );
-    assert_eq!(authored[0].value().serialize_specified().unwrap(), "A");
+    assert_eq!(
+        authored[0]
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "A"
+    );
 }
 
 #[test]
@@ -119,22 +124,20 @@ fn selected_membership_rejects_raw_duplicates_and_alias_duplicates() {
     ] {
         let raw = entries(source);
         assert!(
-            matches!(CssSpecifiedFontFaceDeclarationBlock::try_from_entries(&raw),
+            matches!(CssSpecifiedFontFaceDeclarationBlock::try_from_entries(&raw, Default::default()),
             Err(CssFontFaceDeclarationBlockError::DuplicateDescriptor { kind: found }) if found == kind)
         );
-        let selected = CssSpecifiedFontFaceDeclarationBlock::try_from_entries(&raw[1..]).unwrap();
+        let selected =
+            CssSpecifiedFontFaceDeclarationBlock::try_from_entries(&raw[1..], Default::default())
+                .unwrap();
         assert_eq!(selected.entries().len(), 1);
     }
-    let empty = CssSpecifiedFontFaceDeclarationBlock::try_from_entries(&[]).unwrap();
+    let empty =
+        CssSpecifiedFontFaceDeclarationBlock::try_from_entries(&[], Default::default()).unwrap();
     assert!(empty.entries().is_empty());
-    assert_eq!(
-        empty.serialize_cssom_with_limits(L::new(1, 1, 0)).unwrap(),
-        ""
-    );
+    assert_eq!(empty.serialize_cssom(L::new(1, 1, 0)).unwrap(), "");
     cause(
-        empty
-            .serialize_cssom_with_limits(L::new(0, 1, 0))
-            .unwrap_err(),
+        empty.serialize_cssom(L::new(0, 1, 0)).unwrap_err(),
         E::InputNodeLimit,
     );
 }
@@ -142,25 +145,41 @@ fn selected_membership_rejects_raw_duplicates_and_alias_duplicates() {
 #[test]
 fn ordinary_and_supported_pending_scalars_keep_their_owned_grammar_and_text() {
     let values = entries("font-weight:400 700; font-display:optional; font-width:env(width, 75%)");
-    assert_eq!(values[0].value().serialize_specified().unwrap(), "400 700");
-    assert_eq!(values[1].value().serialize_specified().unwrap(), "optional");
     assert_eq!(
-        values[2].value().serialize_specified().unwrap(),
+        values[0]
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "400 700"
+    );
+    assert_eq!(
+        values[1]
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "optional"
+    );
+    assert_eq!(
+        values[2]
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "env(width, 75%)"
     );
     let CssAuthoredFontFaceDescriptorValue::Pending(pending) = values[2].value() else {
         panic!()
     };
-    assert_eq!(pending.serialize_specified().unwrap(), "env(width, 75%)");
     assert_eq!(
-        pending
-            .serialize_specified_with_limits(L::new(100, 100, 15))
-            .unwrap(),
+        pending.serialize_specified(Default::default()).unwrap(),
+        "env(width, 75%)"
+    );
+    assert_eq!(
+        pending.serialize_specified(L::new(100, 100, 15)).unwrap(),
         "env(width, 75%)"
     );
     assert_eq!(
         pending
-            .serialize_specified_with_limits(L::new(100, 100, 14))
+            .serialize_specified(L::new(100, 100, 14))
             .unwrap_err()
             .kind(),
         E::ByteLimit
@@ -174,9 +193,11 @@ fn selected_occurrence_positions_and_pending_origins_survive_input_drop() {
         let input = source.to_owned();
         entries(&input)
     };
-    let selected =
-        CssSpecifiedFontFaceDeclarationBlock::try_from_entries(&[raw[1].clone(), raw[0].clone()])
-            .unwrap();
+    let selected = CssSpecifiedFontFaceDeclarationBlock::try_from_entries(
+        &[raw[1].clone(), raw[0].clone()],
+        Default::default(),
+    )
+    .unwrap();
     assert_eq!(
         selected.entries()[1]
             .position()
@@ -201,10 +222,16 @@ fn selected_occurrence_positions_and_pending_origins_survive_input_drop() {
     assert_eq!(origin.source().as_str(), source);
     assert_eq!(origin.span().start().byte_offset().value(), 22);
     assert_eq!(
-        selected.serialize_cssom().unwrap(),
+        selected.serialize_cssom(Default::default()).unwrap(),
         "font-display: swap; font-weight: env(weight);"
     );
-    assert_eq!(raw[0].value().serialize_specified().unwrap(), "env(weight)");
+    assert_eq!(
+        raw[0]
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "env(weight)"
+    );
 }
 
 #[test]
@@ -213,27 +240,20 @@ fn selected_values_and_punctuation_share_exact_cumulative_allowances_and_retry()
     let expected = "font-display: swap; font-weight: env(weight);";
     // Block + two entries + display scalar + pending list/function/ident = seven.
     let adequate = L::new(7, 7, expected.len());
-    let selected =
-        CssSpecifiedFontFaceDeclarationBlock::try_from_entries_with_limits(&raw, adequate).unwrap();
-    assert_eq!(
-        selected.serialize_cssom_with_limits(adequate).unwrap(),
-        expected
-    );
+    let selected = CssSpecifiedFontFaceDeclarationBlock::try_from_entries(&raw, adequate).unwrap();
+    assert_eq!(selected.serialize_cssom(adequate).unwrap(), expected);
     for (limits, kind) in [
         (L::new(6, 7, expected.len()), E::InputNodeLimit),
         (L::new(7, 6, expected.len()), E::ProjectionNodeLimit),
         (L::new(7, 7, expected.len() - 1), E::ByteLimit),
     ] {
-        cause(
-            selected.serialize_cssom_with_limits(limits).unwrap_err(),
-            kind,
-        );
+        cause(selected.serialize_cssom(limits).unwrap_err(), kind);
+        assert_eq!(selected.serialize_cssom(adequate).unwrap(), expected);
         assert_eq!(
-            selected.serialize_cssom_with_limits(adequate).unwrap(),
-            expected
-        );
-        assert_eq!(
-            selected.entries()[1].value().serialize_specified().unwrap(),
+            selected.entries()[1]
+                .value()
+                .serialize_specified(Default::default())
+                .unwrap(),
             "env(weight)"
         );
     }
@@ -242,45 +262,45 @@ fn selected_values_and_punctuation_share_exact_cumulative_allowances_and_retry()
         (L::new(7, 6, 0), E::ProjectionNodeLimit),
     ] {
         cause(
-            CssSpecifiedFontFaceDeclarationBlock::try_from_entries_with_limits(&raw, limits)
-                .unwrap_err(),
+            CssSpecifiedFontFaceDeclarationBlock::try_from_entries(&raw, limits).unwrap_err(),
             kind,
         );
         assert_eq!(
-            CssSpecifiedFontFaceDeclarationBlock::try_from_entries_with_limits(&raw, adequate)
+            CssSpecifiedFontFaceDeclarationBlock::try_from_entries(&raw, adequate)
                 .unwrap()
-                .serialize_cssom()
+                .serialize_cssom(Default::default())
                 .unwrap(),
             expected
         );
     }
     let value = raw[1].value();
     assert_eq!(
-        value
-            .serialize_specified_with_limits(L::new(3, 3, 11))
-            .unwrap(),
+        value.serialize_specified(L::new(3, 3, 11)).unwrap(),
         "env(weight)"
     );
     assert_eq!(
         value
-            .serialize_specified_with_limits(L::new(2, 3, 11))
+            .serialize_specified(L::new(2, 3, 11))
             .unwrap_err()
             .kind(),
         E::InputNodeLimit
     );
     assert_eq!(
         value
-            .serialize_specified_with_limits(L::new(3, 2, 11))
+            .serialize_specified(L::new(3, 2, 11))
             .unwrap_err()
             .kind(),
         E::ProjectionNodeLimit
     );
     assert_eq!(
         value
-            .serialize_specified_with_limits(L::new(3, 3, 10))
+            .serialize_specified(L::new(3, 3, 10))
             .unwrap_err()
             .kind(),
         E::ByteLimit
     );
-    assert_eq!(value.serialize_specified().unwrap(), "env(weight)");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "env(weight)"
+    );
 }

@@ -20,7 +20,8 @@ fn programmatic_width_keeps_exact_spelling_and_has_no_source_coordinates() {
         token(":"),
         CssComponentValue::try_dimension("+001.5", "PX").unwrap(),
     ]);
-    let declaration = CssSupportsDeclaration::try_from_components(original.clone()).unwrap();
+    let declaration =
+        CssSupportsDeclaration::try_from_components(original.clone(), Default::default()).unwrap();
     assert_eq!(declaration.components(), original.items());
     assert_eq!(declaration.origin(), &CssValueOrigin::Programmatic);
     assert_eq!(declaration.position(), None);
@@ -52,17 +53,36 @@ fn programmatic_width_keeps_exact_spelling_and_has_no_source_coordinates() {
     assert_eq!(number.representation(), "+001.5");
     assert_eq!(unit, "PX");
     assert_eq!(width.as_css(), "+001.5PX");
-    assert_eq!(width.value().serialize_specified().unwrap(), "1.5px");
-    assert_eq!(declaration.serialize().unwrap().as_css(), "width:+001.5PX");
+    assert_eq!(
+        width
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "1.5px"
+    );
+    assert_eq!(
+        declaration
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        "width:+001.5PX"
+    );
     let wrapped = CssComponentValue::try_block(CssBlockKind::Parenthesis, original).unwrap();
     let condition = CssSupportsCondition::try_from_components(
         values(vec![wrapped]),
         &CssNamespaceContext::default(),
+        Default::default(),
     )
     .unwrap();
     assert_eq!(condition.origin(), &CssValueOrigin::Programmatic);
     assert_eq!(condition.position(), None);
-    assert_eq!(condition.serialize().unwrap().as_css(), "(width:+001.5PX)");
+    assert_eq!(
+        condition
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        "(width:+001.5PX)"
+    );
 }
 
 #[test]
@@ -86,6 +106,7 @@ fn mixed_source_declaration_preserves_each_original_snapshot_inside_a_new_wrappe
     let condition = CssSupportsCondition::try_from_components(
         values(vec![wrapped]),
         &CssNamespaceContext::default(),
+        Default::default(),
     )
     .unwrap();
     assert_eq!(condition.position(), None);
@@ -95,7 +116,7 @@ fn mixed_source_declaration_preserves_each_original_snapshot_inside_a_new_wrappe
     same_parsed_origin(declaration.property_component().origin(), &property_origin);
     same_parsed_origin(declaration.value_components()[0].origin(), &numeric_origin);
     assert_eq!(declaration.authored(), None);
-    let output = condition.serialize().unwrap();
+    let output = condition.serialize_tokens(Default::default()).unwrap();
     assert_eq!(output.as_css(), "(width:+001.5PX)");
     for (offset, expected) in [(1, &property_origin), (7, &numeric_origin)] {
         let Some(CssSerializedOrigin::Token(actual)) = output.origin_at(offset) else {
@@ -110,7 +131,13 @@ fn construction_from_parsed_components_does_not_claim_an_authored_declaration_sl
     let source = "WIDth/**/: +001.5PX";
     let constructed = checked_supports_declaration(source);
     assert_eq!(constructed.authored(), None);
-    assert_eq!(constructed.serialize().unwrap().as_css(), source);
+    assert_eq!(
+        constructed
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        source
+    );
     let sheet = parse_sheet(&format!("/*😀*/\n@supports ({source}) {{}}"));
     assert!(sheet.is_clean(), "{sheet:?}");
     let CssRule::Supports(rule) = &sheet.syntax().rules()[0] else {
@@ -120,7 +147,13 @@ fn construction_from_parsed_components_does_not_claim_an_authored_declaration_sl
         panic!("declaration")
     };
     assert_eq!(parsed.authored(), Some(source));
-    assert_eq!(parsed.serialize().unwrap().as_css(), source);
+    assert_eq!(
+        parsed
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        source
+    );
     assert!(parsed.position().is_some());
 }
 
@@ -140,11 +173,10 @@ fn identical_numeric_spellings_from_distinct_snapshots_keep_distinct_leaf_identi
         values(vec![left, token(" "), token("+"), token(" "), right]),
     )
     .unwrap();
-    let declaration = CssSupportsDeclaration::try_from_components(values(vec![
-        token("opacity"),
-        token(":"),
-        calc,
-    ]))
+    let declaration = CssSupportsDeclaration::try_from_components(
+        values(vec![token("opacity"), token(":"), calc]),
+        Default::default(),
+    )
     .unwrap();
     let CssKnownPropertyValueRef::Opacity(opacity) =
         declaration.known().unwrap().property_value().unwrap()
@@ -174,7 +206,10 @@ fn identical_numeric_spellings_from_distinct_snapshots_keep_distinct_leaf_identi
         Some(&CssValueOrigin::Programmatic)
     );
     assert_eq!(
-        declaration.serialize().unwrap().as_css(),
+        declaration
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         "opacity:calc(1 + 1)"
     );
 }
@@ -184,7 +219,13 @@ fn supports_declaration_validity_is_independent_of_known_property_value_support(
     for source in ["width:", "future:yes", "width:red", "--x:"] {
         let declaration = checked_supports_declaration(source);
         assert!(declaration.known().is_none(), "{source}");
-        assert_eq!(declaration.serialize().unwrap().as_css(), source);
+        assert_eq!(
+            declaration
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            source
+        );
         assert!(matches!(
             condition(&format!("({source})")).kind(),
             CssSupportsConditionKind::Declaration(_)
@@ -211,9 +252,15 @@ fn terminal_importance_is_excluded_from_the_value_but_preserved_in_serialization
     let source = "width:1px !/**/ImPoRtAnT/**/";
     let declaration = checked_supports_declaration(source);
     assert_eq!(declaration.importance(), CssImportance::Important);
-    assert_eq!(declaration.serialize().unwrap().as_css(), source);
+    assert_eq!(
+        declaration
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        source
+    );
     let output = values(declaration.value_components().to_vec())
-        .serialize()
+        .serialize_tokens(Default::default())
         .unwrap();
     assert_eq!(output.as_css(), "1px ");
     for source in [
@@ -226,7 +273,8 @@ fn terminal_importance_is_excluded_from_the_value_but_preserved_in_serialization
         assert!(
             matches!(
                 CssSupportsDeclaration::try_from_components(
-                    parse_component_values(source).unwrap()
+                    parse_component_values(source).unwrap(),
+                    Default::default()
                 ),
                 Err(CssSupportsConstructionError::InvalidDeclarationGrammar { .. })
             ),
@@ -247,7 +295,8 @@ fn malformed_root_operators_are_rejected_while_general_enclosed_remains_opaque()
             matches!(
                 CssSupportsCondition::try_from_components(
                     parse_component_values(source).unwrap(),
-                    &CssNamespaceContext::default()
+                    &CssNamespaceContext::default(),
+                    Default::default(),
                 ),
                 Err(CssSupportsConstructionError::InvalidConditionGrammar { .. })
             ),
@@ -268,13 +317,20 @@ fn malformed_root_operators_are_rejected_while_general_enclosed_remains_opaque()
     let condition = CssSupportsCondition::try_from_components(
         values(vec![function.clone()]),
         &CssNamespaceContext::default(),
+        Default::default(),
     )
     .unwrap();
     let CssSupportsConditionKind::GeneralEnclosed(opaque) = condition.kind() else {
         panic!("opaque")
     };
     assert_eq!(opaque.component(), &function);
-    assert_eq!(condition.serialize().unwrap().as_css(), "Future(1/**/e2)");
+    assert_eq!(
+        condition
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        "Future(1/**/e2)"
+    );
 }
 
 #[test]
@@ -286,6 +342,7 @@ fn supplied_namespace_context_selects_the_typed_selector_without_resolving_its_c
         let condition = CssSupportsCondition::try_from_components(
             parse_component_values(source).unwrap(),
             &context,
+            Default::default(),
         )
         .unwrap();
         let CssSupportsConditionKind::Selector(CssSelector::Compound(selector)) = condition.kind()
@@ -300,7 +357,13 @@ fn supplied_namespace_context_selects_the_typed_selector_without_resolving_its_c
         } else {
             assert_eq!(constraint, &CssNamespaceConstraint::Default);
         }
-        assert_eq!(condition.serialize().unwrap().as_css(), source);
+        assert_eq!(
+            condition
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            source
+        );
     }
 }
 
@@ -313,9 +376,12 @@ fn grouping_and_cloned_interior_children_serialize_independently_of_unrelated_si
         )
         .unwrap(),
     ]);
-    let standalone =
-        CssSupportsCondition::try_from_components(child.clone(), &CssNamespaceContext::default())
-            .unwrap();
+    let standalone = CssSupportsCondition::try_from_components(
+        child.clone(),
+        &CssNamespaceContext::default(),
+        Default::default(),
+    )
+    .unwrap();
     let mut siblings = child.items().to_vec();
     siblings.extend([
         token(" "),
@@ -326,6 +392,7 @@ fn grouping_and_cloned_interior_children_serialize_independently_of_unrelated_si
     let parent = CssSupportsCondition::try_from_components(
         values(siblings),
         &CssNamespaceContext::default(),
+        Default::default(),
     )
     .unwrap();
     let CssSupportsConditionKind::And(list) = parent.kind() else {
@@ -334,13 +401,25 @@ fn grouping_and_cloned_interior_children_serialize_independently_of_unrelated_si
     let cloned = list.conditions()[0].clone();
     assert_eq!(cloned, standalone);
     drop(parent);
-    assert_eq!(cloned.serialize().unwrap().as_css(), "(width:1px)");
+    assert_eq!(
+        cloned
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        "(width:1px)"
+    );
     for source in [
         "(((width:1px)))",
         "not ((width:1px) or (height:2px))",
         "((width:1px) and (height:2px)) or future()",
     ] {
-        assert_eq!(condition(source).serialize().unwrap().as_css(), source);
+        assert_eq!(
+            condition(source)
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            source
+        );
     }
 }
 
@@ -348,9 +427,12 @@ fn grouping_and_cloned_interior_children_serialize_independently_of_unrelated_si
 fn recovery_and_explicit_resource_limits_report_the_original_component_origin() {
     let recovered = parse_component_values("Future(").unwrap();
     let original_origin = recovered.items()[0].origin().clone();
-    let error =
-        CssSupportsCondition::try_from_components(recovered, &CssNamespaceContext::default())
-            .unwrap_err();
+    let error = CssSupportsCondition::try_from_components(
+        recovered,
+        &CssNamespaceContext::default(),
+        Default::default(),
+    )
+    .unwrap_err();
     assert!(matches!(
         error,
         CssSupportsConstructionError::RecoveredInput { .. }
@@ -368,7 +450,8 @@ fn recovery_and_explicit_resource_limits_report_the_original_component_origin() 
     assert_eq!(at.span().start().byte_offset().value(), "Future(".len());
     assert!(matches!(
         CssSupportsDeclaration::try_from_components(
-            parse_component_values("width:calc(1px").unwrap()
+            parse_component_values("width:calc(1px").unwrap(),
+            Default::default()
         ),
         Err(CssSupportsConstructionError::RecoveredInput { .. })
     ));
@@ -392,7 +475,7 @@ fn recovery_and_explicit_resource_limits_report_the_original_component_origin() 
             CssComponentValueErrorKind::ByteLimit,
         ),
     ] {
-        let error = CssSupportsCondition::try_from_components_with_limits(
+        let error = CssSupportsCondition::try_from_components(
             components.clone(),
             &CssNamespaceContext::default(),
             limits,
@@ -412,13 +495,13 @@ fn recovery_and_explicit_resource_limits_report_the_original_component_origin() 
     }
     let exact = CssComponentValueLimits::try_new(1, 1, 8).unwrap();
     assert_eq!(
-        CssSupportsCondition::try_from_components_with_limits(
+        CssSupportsCondition::try_from_components(
             components,
             &CssNamespaceContext::default(),
             exact
         )
         .unwrap()
-        .serialize()
+        .serialize_tokens(Default::default())
         .unwrap()
         .as_css(),
         "future()"
@@ -441,6 +524,7 @@ fn grammar_error_after_programmatic_tokens_identifies_the_original_parsed_offend
             offender,
         ]),
         &CssNamespaceContext::default(),
+        Default::default(),
     )
     .unwrap_err();
     assert!(matches!(
@@ -467,11 +551,10 @@ fn nested_math_preserves_function_and_literal_origins_from_the_original_value_tr
         inner.origin().clone(),
         leaf.origin().clone(),
     ];
-    let declaration = CssSupportsDeclaration::try_from_components(values(vec![
-        token("opacity"),
-        token(":"),
-        outer,
-    ]))
+    let declaration = CssSupportsDeclaration::try_from_components(
+        values(vec![token("opacity"), token(":"), outer]),
+        Default::default(),
+    )
     .unwrap();
     let CssKnownPropertyValueRef::Opacity(opacity) =
         declaration.known().unwrap().property_value().unwrap()
@@ -513,8 +596,7 @@ fn declaration_limits_count_original_components_and_exact_lexical_output() {
         ),
     ] {
         let error =
-            CssSupportsDeclaration::try_from_components_with_limits(components.clone(), limits)
-                .unwrap_err();
+            CssSupportsDeclaration::try_from_components(components.clone(), limits).unwrap_err();
         let CssSupportsConstructionError::Component(error) = error else {
             panic!("component limit")
         };
@@ -523,9 +605,9 @@ fn declaration_limits_count_original_components_and_exact_lexical_output() {
     }
     let exact = CssComponentValueLimits::try_new(0, 3, 9).unwrap();
     assert_eq!(
-        CssSupportsDeclaration::try_from_components_with_limits(components, exact)
+        CssSupportsDeclaration::try_from_components(components, exact)
             .unwrap()
-            .serialize()
+            .serialize_tokens(Default::default())
             .unwrap()
             .as_css(),
         "width:1px"
@@ -565,7 +647,13 @@ fn parsed_eof_recovery_keeps_the_known_numeric_view_that_checked_construction_re
         panic!("exact recovered calculation")
     };
     let calculation = length.calculation().expect("exact recovered calculation");
-    assert_eq!(calculation.serialize().unwrap().as_css(), "calc(1px)");
+    assert_eq!(
+        calculation
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        "calc(1px)"
+    );
     let CssCalculationExpressionRef::NestedCalc(calc) = calculation.expression() else {
         panic!("calc")
     };
@@ -587,11 +675,18 @@ fn parsed_eof_recovery_keeps_the_known_numeric_view_that_checked_construction_re
         origin.span().start().column().value(),
         u32::try_from(source[..source.find("1px").unwrap()].encode_utf16().count()).unwrap()
     );
-    assert_eq!(condition.serialize().unwrap().as_css(), "(width:calc(1px))");
+    assert_eq!(
+        condition
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        "(width:calc(1px))"
+    );
     assert!(matches!(
         CssSupportsCondition::try_from_components(
             values(condition.components().to_vec()),
-            &CssNamespaceContext::default()
+            &CssNamespaceContext::default(),
+            Default::default(),
         ),
         Err(CssSupportsConstructionError::RecoveredInput { .. })
     ));
@@ -620,7 +715,13 @@ fn authored_legacy_property_alias_keeps_its_own_grammar_in_parsed_and_constructe
                 .expect("authored alias grammar admits the value");
             assert_eq!(known.property(), CssKnownProperty::TextOrientation);
             assert_eq!(known.grammar(), grammar);
-            assert_eq!(declaration.serialize().unwrap().as_css(), source);
+            assert_eq!(
+                declaration
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
+                source
+            );
             match value {
                 "inherit" => assert_eq!(known.global(), Some(CssGlobalKeyword::Inherit)),
                 "var(--orientation)" => assert!(known.substitution_dependent().is_some()),

@@ -57,9 +57,14 @@ fn primitive(source: &CssDeclaration) -> &CssTextTransform {
     wrapper.value()
 }
 fn canonical(source: &CssDeclaration, expected: &str) {
-    assert_eq!(primitive(source).serialize_specified().unwrap(), expected);
     assert_eq!(
-        source.to_specified_css().unwrap(),
+        primitive(source)
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
+    assert_eq!(
+        source.serialize_specified(Default::default()).unwrap(),
         format!("text-transform: {expected} !important;")
     );
 }
@@ -67,7 +72,12 @@ fn accepted(input: &str, expected: &str) {
     for front in FRONTS {
         let source = front.valid(PROPERTY, input, expected);
         let before = source.clone();
-        assert_eq!(primitive(&source).serialize_specified().unwrap(), expected);
+        assert_eq!(
+            primitive(&source)
+                .serialize_specified(Default::default())
+                .unwrap(),
+            expected
+        );
         let values = completed(&source);
         let item = &values.items()[0];
         assert!(matches!(item.value(), CssContributionValueRef::Ordinary(_)));
@@ -179,9 +189,11 @@ fn singleton_primitive_provider_controls_execute_without_intrinsic_metadata() {
 }
 #[test]
 fn programmatic_components_have_checked_identity_importance_and_original_origins() {
-    let components =
-        CssComponentValues::try_new(vec![CssComponentValue::try_ident("uppercase").unwrap()])
-            .unwrap();
+    let components = CssComponentValues::try_new(
+        vec![CssComponentValue::try_ident("uppercase").unwrap()],
+        Default::default(),
+    )
+    .unwrap();
     for grammar in [false, true] {
         let source = checked_components(
             PROPERTY,
@@ -324,12 +336,12 @@ fn normalization_counts_terminals_and_occurrences_cumulatively_preserving_order_
 }
 fn assert_primitive_limits(value: &CssTextTransform, expected: &str, nodes: usize) {
     LimitLadder::new(expected, nodes, nodes)
-        .assert_unchanged(value, CssTextTransform::serialize_specified_with_limits);
+        .assert_unchanged(value, CssTextTransform::serialize_specified);
 }
 #[test]
 fn primitive_and_declaration_resources_charge_only_emitted_keywords_and_retry_atomically() {
+    use CssSerializationLimits as Limits;
     use CssSpecifiedValueSerializationErrorKind as Kind;
-    use CssSpecifiedValueSerializationLimits as Limits;
     for text in STATES {
         let source = checked(PROPERTY, text, true);
         // This is the adopted semantic tariff: one per keyword. Counting the
@@ -339,10 +351,7 @@ fn primitive_and_declaration_resources_charge_only_emitted_keywords_and_retry_at
         let expected = format!("text-transform: {text} !important;");
         let before = source.clone();
         let exact = Limits::new(nodes + 2, nodes + 2, expected.len());
-        assert_eq!(
-            source.to_specified_css_with_limits(exact).unwrap(),
-            expected
-        );
+        assert_eq!(source.serialize_specified(exact).unwrap(), expected);
         for (limits, kind) in [
             (
                 Limits::new(nodes + 1, nodes + 2, expected.len()),
@@ -358,27 +367,18 @@ fn primitive_and_declaration_resources_charge_only_emitted_keywords_and_retry_at
             ),
         ] {
             for _ in 0..2 {
-                assert_eq!(
-                    source
-                        .to_specified_css_with_limits(limits)
-                        .unwrap_err()
-                        .kind(),
-                    kind
-                );
+                assert_eq!(source.serialize_specified(limits).unwrap_err().kind(), kind);
                 assert_eq!(source, before);
             }
         }
-        assert_eq!(
-            source.to_specified_css_with_limits(exact).unwrap(),
-            expected
-        );
+        assert_eq!(source.serialize_specified(exact).unwrap(), expected);
     }
     for (text, _) in GLOBALS {
         let source = checked(PROPERTY, text, true);
         let expected = format!("text-transform: {text} !important;");
         assert_eq!(
             source
-                .to_specified_css_with_limits(Limits::new(3, 3, expected.len()))
+                .serialize_specified(Limits::new(3, 3, expected.len()))
                 .unwrap(),
             expected
         );
@@ -387,17 +387,11 @@ fn primitive_and_declaration_resources_charge_only_emitted_keywords_and_retry_at
             (Limits::new(3, 2, expected.len()), Kind::ProjectionNodeLimit),
             (Limits::new(3, 3, expected.len() - 1), Kind::ByteLimit),
         ] {
-            assert_eq!(
-                source
-                    .to_specified_css_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
-                kind
-            );
+            assert_eq!(source.serialize_specified(limits).unwrap_err().kind(), kind);
         }
         assert_eq!(
             source
-                .to_specified_css_with_limits(Limits::new(3, 3, expected.len()))
+                .serialize_specified(Limits::new(3, 3, expected.len()))
                 .unwrap(),
             expected
         );
@@ -405,7 +399,7 @@ fn primitive_and_declaration_resources_charge_only_emitted_keywords_and_retry_at
 }
 #[test]
 fn whole_sheet_siblings_share_exact_utf8_bytes_and_failed_attempts_leave_reusable_input() {
-    use CssSpecifiedValueSerializationLimits as Limits;
+    use CssSerializationLimits as Limits;
     let report = parse_sheet(
         ".a{text-transform:full-size-kana uppercase full-width!important}.b{text-transform:math-auto}",
     );
@@ -415,32 +409,32 @@ fn whole_sheet_siblings_share_exact_utf8_bytes_and_failed_attempts_leave_reusabl
     let expected = ".a { text-transform: uppercase full-width full-size-kana !important; }\n.b { text-transform: math-auto; }";
     let exact = Limits::new(usize::MAX, usize::MAX, expected.len());
     let short = Limits::new(usize::MAX, usize::MAX, expected.len() - 1);
-    assert_eq!(sheet.to_specified_css_with_limits(exact).unwrap(), expected);
+    assert_eq!(sheet.serialize_specified(exact).unwrap(), expected);
     assert!(
         sheet
             .rules()
             .iter()
-            .all(|rule| rule.to_specified_css_with_limits(short).is_ok())
+            .all(|rule| rule.serialize_specified(short).is_ok())
     );
     for _ in 0..2 {
-        let error = sheet.to_specified_css_with_limits(short).unwrap_err();
+        let error = sheet.serialize_specified(short).unwrap_err();
         assert_eq!(
             error.kind(),
-            CssSpecifiedRuleSerializationErrorKind::Resource(
-                CssSpecifiedValueSerializationErrorKind::ByteLimit
-            )
+            CssSpecifiedValueSerializationErrorKind::ByteLimit
         );
         assert_eq!(error.rule_index(), Some(1));
         assert_eq!(sheet, &before);
     }
-    assert_eq!(sheet.to_specified_css_with_limits(exact).unwrap(), expected);
+    assert_eq!(sheet.serialize_specified(exact).unwrap(), expected);
 }
 #[test]
 fn selected_numeric_flow_and_color_controls_remain_independent_of_new_transform_metadata() {
     let report = parse_style_attribute("flow-tolerance:calc(-2px - 3%);color:red");
     assert!(report.is_clean());
     assert_eq!(
-        report.syntax()[0].to_specified_css().unwrap(),
+        report.syntax()[0]
+            .serialize_specified(Default::default())
+            .unwrap(),
         "flow-tolerance: calc(-3% - 2px);"
     );
     for source in report.syntax().iter() {

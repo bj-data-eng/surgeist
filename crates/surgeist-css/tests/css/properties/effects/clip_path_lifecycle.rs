@@ -269,8 +269,11 @@ fn parsed_and_checked_ordinary_values_expand_with_their_occurrence_and_importanc
         ] {
             let parsed = validated_declaration("clip-path", text, importance);
             let components = if matches!(text, "none" | "border-box") {
-                CssComponentValues::try_new(vec![CssComponentValue::try_token(text).unwrap()])
-                    .unwrap()
+                CssComponentValues::try_new(
+                    vec![CssComponentValue::try_token(text).unwrap()],
+                    Default::default(),
+                )
+                .unwrap()
             } else {
                 parse_component_values(text).unwrap()
             };

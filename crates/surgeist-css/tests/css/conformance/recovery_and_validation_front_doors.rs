@@ -23,7 +23,7 @@ fn recovery_front_doors_retain_valid_siblings() {
             .syntax()
             .rules()
             .iter()
-            .map(|rule| rule.to_specified_css().unwrap())
+            .map(|rule| rule.serialize_specified(Default::default()).unwrap())
             .collect::<Vec<_>>(),
         [
             ".before { color: red; }",
@@ -53,7 +53,7 @@ fn recovery_front_doors_retain_valid_siblings() {
             .syntax()
             .as_slice()
             .iter()
-            .map(|declaration| declaration.to_specified_css().unwrap())
+            .map(|declaration| declaration.serialize_specified(Default::default()).unwrap())
             .collect::<Vec<_>>(),
         ["color: red;", "width: 2px;"],
         "style retention"

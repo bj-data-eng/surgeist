@@ -105,7 +105,7 @@ fn checked_and_raw_width(
     let [component] = components.items() else {
         panic!("one original calc-size function")
     };
-    let value = CssCalcSize::try_from_component(component.clone()).unwrap();
+    let value = CssCalcSize::try_from_component(component.clone(), Default::default()).unwrap();
     let original_value = value.clone();
     let origin = value.origin().clone();
     let basis_origin = value.basis_origin().clone();
@@ -116,43 +116,37 @@ fn checked_and_raw_width(
 
     // Literal expected byte length applies to the complete output, including
     // both sums and every nested basis. No budget is reset between children.
-    let exact_bytes = CssSpecifiedValueSerializationLimits::new(128, 128, expected.len());
-    assert_eq!(
-        value.serialize_specified_with_limits(exact_bytes).unwrap(),
-        expected
-    );
+    let exact_bytes = CssSerializationLimits::new(128, 128, expected.len());
+    assert_eq!(value.serialize_specified(exact_bytes).unwrap(), expected);
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(0, 128, expected.len()),
+            CssSerializationLimits::new(0, 128, expected.len()),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(128, 0, expected.len()),
+            CssSerializationLimits::new(128, 0, expected.len()),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(128, 128, expected.len() - 1),
+            CssSerializationLimits::new(128, 128, expected.len() - 1),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
-        assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            kind
-        );
+        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
         assert_eq!(value, original_value);
         assert_eq!(value.origin(), &origin);
         assert_eq!(value.basis_origin(), &basis_origin);
         assert_eq!(value.calculation().origin(), &calculation_origin);
-        assert_eq!(
-            value.serialize_specified_with_limits(exact_bytes).unwrap(),
-            expected
-        );
+        assert_eq!(value.serialize_specified(exact_bytes).unwrap(), expected);
     }
     assert_eq!(components, original_components);
-    assert_eq!(components.serialize().unwrap().as_css(), raw);
+    assert_eq!(
+        components
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        raw
+    );
 
     let checked = parse_property_value(
         CssPropertyNameRef::Known(CssKnownProperty::Width),
@@ -165,7 +159,9 @@ fn checked_and_raw_width(
     assert_eq!(width_calc(&checked), &value);
     assert_eq!(width_calc(&checked).origin(), value.origin());
     assert_eq!(
-        width_calc(&checked).serialize_specified().unwrap(),
+        width_calc(&checked)
+            .serialize_specified(Default::default())
+            .unwrap(),
         expected
     );
     assert_eq!(checked, before_checked);
@@ -191,7 +187,12 @@ fn checked_and_raw_width(
         closing_start,
         closing_start + 1,
     );
-    assert_eq!(width_calc(parsed).serialize_specified().unwrap(), expected);
+    assert_eq!(
+        width_calc(parsed)
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
     assert_eq!(parsed, &before_parsed);
     assert!(parsed.same_occurrence(&before_parsed));
     value
@@ -353,7 +354,7 @@ fn pending_function_basis_reentry_preserves_occurrence_origins_and_allows_retry(
             39,
         );
         assert_eq!(
-            value.serialize_specified().unwrap(),
+            value.serialize_specified(Default::default()).unwrap(),
             "calc-size(min-content, 5px + size)"
         );
         size_then_lengths(value.calculation(), &["2", "3"]);
@@ -396,7 +397,7 @@ fn pending_function_basis_reentry_preserves_occurrence_origins_and_allows_retry(
     size_then_lengths(child.calculation(), &["2"]);
     size_then_lengths(value.calculation(), &["3"]);
     assert_eq!(
-        value.serialize_specified().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         "calc-size(calc-size(50%, 2px + size), 3px + size)"
     );
 

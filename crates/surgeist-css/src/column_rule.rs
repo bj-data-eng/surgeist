@@ -1,16 +1,16 @@
 //! Exact authored `column-rule` components and specified shorthand serialization.
 
-use crate::{
-    CssBorder, CssBorderStyle, CssBorderWidth, CssColor, CssSpecifiedValueSerializationError,
-    CssSpecifiedValueSerializationLimits,
-};
-
-type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
+use crate::{CssBorder, CssBorderStyle, CssBorderWidth, CssColor};
 
 /// A nonempty authored column rule with exact width and color components.
 ///
 /// Omitted shorthand members are reset to their initials during intrinsic
 /// expansion. The stored components retain which values were explicitly given.
+///
+/// # Specified serialization
+///
+/// Serializes the specified shorthand in width, style, color order. Initial-valued members are
+/// omitted; an all-initial rule emits `none`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssColumnRule {
     components: CssBorder,
@@ -42,31 +42,14 @@ impl CssColumnRule {
     pub const fn color(&self) -> Option<&CssColor> {
         self.components.color()
     }
-
-    /// Serializes the specified shorthand in width, style, color order.
-    /// Initial-valued members are omitted; an all-initial rule emits `none`.
-    pub fn serialize_specified(&self) -> Result<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Uses one cumulative budget, including explicitly authored initial values
-    /// that disappear from the canonical output.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+}
+impl crate::specified_rule_serialization::SpecifiedProvider for CssColumnRule {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         let start = writer.css.len();
-        writer.context.charge_input(1)?;
-        writer.context.charge_projection(1)?;
+        writer.node()?;
         let emit_width = self
             .width()
             .is_some_and(|width| *width != CssBorderWidth::Medium);
@@ -80,8 +63,7 @@ impl CssColumnRule {
                 if emit_width {
                     width.append_specified(&mut writer.context, &mut writer.css)
                 } else {
-                    writer.context.charge_input(1)?;
-                    writer.context.charge_projection(1)
+                    writer.node()
                 }
             })?;
         }
@@ -95,8 +77,7 @@ impl CssColumnRule {
                     }
                     style.append_specified(&mut writer.context, &mut writer.css)
                 } else {
-                    writer.context.charge_input(1)?;
-                    writer.context.charge_projection(1)
+                    writer.node()
                 }
             })?;
         } else if all_initial {
@@ -114,11 +95,11 @@ impl CssColumnRule {
                     }
                     color.append_specified(&mut writer.context, &mut writer.css)
                 } else {
-                    writer.context.charge_input(1)?;
-                    writer.context.charge_projection(1)
+                    writer.node()
                 }
             })?;
         }
         Ok(())
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssColumnRule);

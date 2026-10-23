@@ -49,7 +49,7 @@ fn source_free_face_and_sheet_preserve_ordered_children_and_empty_rules() {
     ])
     .unwrap();
     assert_eq!(
-        input.to_specified_css().unwrap(),
+        input.serialize_specified(Default::default()).unwrap(),
         "@font-face { }\n@font-face { font-weight: 600; }"
     );
     assert_eq!(face.descriptors().occurrences().len(), 2);
@@ -274,7 +274,10 @@ fn namespace_constraints_check_declared_prefix_and_default_structure_without_uri
 fn scope_raw_identifiers_and_functional_arguments_are_intrinsically_checked() {
     // The old Is(NUL class) scope-rule defense is retained privately. Checked
     // public list construction now rejects that exact raw member first.
-    assert!(CssPseudoSelectorList::try_new(vec![CssSelector::Class("\0".into())]).is_err());
+    assert!(
+        CssPseudoSelectorList::try_new(vec![CssSelector::Class("\0".into())], Default::default())
+            .is_err()
+    );
     for selector in [
         CssSelector::Tag(String::new()),
         CssSelector::Key("\0".into()),
@@ -316,7 +319,7 @@ fn scope_raw_identifiers_and_functional_arguments_are_intrinsically_checked() {
     let mut selector = CssSelector::Class("ok".into());
     for _ in 0..256 {
         selector = CssSelector::PseudoClass(CssPseudoClass::Is(
-            CssPseudoSelectorList::try_new(vec![selector]).unwrap(),
+            CssPseudoSelectorList::try_new(vec![selector], Default::default()).unwrap(),
         ));
     }
     let root =
@@ -332,7 +335,7 @@ fn scope_raw_identifiers_and_functional_arguments_are_intrinsically_checked() {
         .is_ok()
     );
     selector = CssSelector::PseudoClass(CssPseudoClass::Is(
-        CssPseudoSelectorList::try_new(vec![selector]).unwrap(),
+        CssPseudoSelectorList::try_new(vec![selector], Default::default()).unwrap(),
     ));
     let root = CssScopeSelectorList::try_new(vec![CssScopeSelector::Selector(selector)]).unwrap();
     assert_eq!(
@@ -404,10 +407,14 @@ fn aggregate_descriptor_front_door_covers_all_fourteen_kinds() {
     ] {
         let value = ordinary(source, kind);
         let before = value.clone();
-        assert_eq!(value.serialize_specified().unwrap(), expected, "{kind:?}");
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected,
+            "{kind:?}"
+        );
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
+                .serialize_specified(CssSerializationLimits::new(
                     usize::MAX,
                     usize::MAX,
                     expected.len()
@@ -417,7 +424,7 @@ fn aggregate_descriptor_front_door_covers_all_fourteen_kinds() {
         );
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
+                .serialize_specified(CssSerializationLimits::new(
                     usize::MAX,
                     usize::MAX,
                     expected.len() - 1
@@ -436,45 +443,35 @@ fn suppressed_descriptor_occurrences_and_feature_names_charge_work_without_bytes
         "suppressed".repeat(100)
     ));
     let expected = "@font-face { font-family: Demo; }";
-    let limits = CssSpecifiedValueSerializationLimits::new(5, 5, expected.len());
-    assert_eq!(
-        input.to_specified_css_with_limits(limits).unwrap(),
-        expected
-    );
+    let limits = CssSerializationLimits::new(5, 5, expected.len());
+    assert_eq!(input.serialize_specified(limits).unwrap(), expected);
     let input = rule(
         "@font-feature-values Demo { @swash { pretty: 999999999999999999999999999999; } @swash { pretty: 1; } }",
     );
     let expected = "@font-feature-values Demo { @swash { pretty: 1; } }";
     assert_eq!(
         input
-            .to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::new(
-                10,
-                10,
-                expected.len()
-            ))
+            .serialize_specified(CssSerializationLimits::new(10, 10, expected.len()))
             .unwrap(),
         expected
     );
     for (limits, resource) in [
         (
-            CssSpecifiedValueSerializationLimits::new(9, 10, expected.len()),
+            CssSerializationLimits::new(9, 10, expected.len()),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(10, 9, expected.len()),
+            CssSerializationLimits::new(10, 9, expected.len()),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(10, 10, expected.len() - 1),
+            CssSerializationLimits::new(10, 10, expected.len() - 1),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
         assert_eq!(
-            input
-                .to_specified_css_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            CssSpecifiedRuleSerializationErrorKind::Resource(resource)
+            input.serialize_specified(limits).unwrap_err().kind(),
+            resource
         );
     }
 }
@@ -483,7 +480,7 @@ fn pending_descriptor_effective_value_uses_shared_authored_owner() {
     let input = rule("@font-face { font-weight: 400; font-weight: env(weight); }");
     let before = input.clone();
     assert_eq!(
-        input.to_specified_css().unwrap(),
+        input.serialize_specified(Default::default()).unwrap(),
         "@font-face { font-weight:  env(weight); }"
     );
     assert_eq!(input, before);
@@ -497,7 +494,9 @@ fn pending_descriptor_effective_value_uses_shared_authored_owner() {
     let record = face.descriptors().occurrences().next().unwrap();
     assert_eq!(record.position(), None);
     assert_eq!(
-        CssRule::FontFace(face).to_specified_css().unwrap(),
+        CssRule::FontFace(face)
+            .serialize_specified(Default::default())
+            .unwrap(),
         "@font-face { font-weight: env(weight); }"
     );
 }
@@ -597,7 +596,9 @@ fn semantic_endpoint_shortening_does_not_require_identical_units_or_keyword_bran
         ),
     ] {
         assert_eq!(
-            ordinary(source, kind).serialize_specified().unwrap(),
+            ordinary(source, kind)
+                .serialize_specified(Default::default())
+                .unwrap(),
             expected,
             "{source}"
         );
@@ -609,7 +610,10 @@ fn extreme_exact_angle_exponents_do_not_become_a_machine_integer_admission_limit
     let exponent = "99999999999999999999999999999999999999999999999999";
     let source = format!("oblique 9e-{exponent}deg 10e-{exponent}grad");
     let value = ordinary(&source, CssFontFaceDescriptorKind::FontStyle);
-    assert_eq!(value.serialize_specified().unwrap(), "oblique 0deg");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "oblique 0deg"
+    );
 }
 
 #[test]
@@ -623,7 +627,7 @@ fn descriptor_rule_order_uses_selected_cssom_relative_order_and_fonts4_append_po
     }",
     );
     assert_eq!(
-        input.to_specified_css().unwrap(),
+        input.serialize_specified(Default::default()).unwrap(),
         "@font-face { font-family: Demo; src: local(\"Demo\"); unicode-range: U+0-7F; font-feature-settings: normal; font-width: 100%; font-weight: 400; font-style: italic; font-display: auto; font-variation-settings: normal; font-named-instance: auto; font-language-override: normal; ascent-override: normal; descent-override: normal; line-gap-override: normal; }"
     );
 }
@@ -711,14 +715,13 @@ fn equal_symbolic_ranges_discard_bytes_but_retain_both_projection_visits() {
         let single = ordinary(single, kind);
         let repeated = ordinary(repeated, kind);
         let before = repeated.clone();
-        assert_eq!(single.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            single.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_eq!(
             repeated
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    100,
-                    100,
-                    expected.len()
-                ))
+                .serialize_specified(CssSerializationLimits::new(100, 100, expected.len()))
                 .unwrap(),
             expected
         );
@@ -728,23 +731,20 @@ fn equal_symbolic_ranges_discard_bytes_but_retain_both_projection_visits() {
             let single_boundary = (0..100)
                 .find(|&limit| {
                     let limits = if input_budget {
-                        CssSpecifiedValueSerializationLimits::new(limit, 100, expected.len())
+                        CssSerializationLimits::new(limit, 100, expected.len())
                     } else {
-                        CssSpecifiedValueSerializationLimits::new(100, limit, expected.len())
+                        CssSerializationLimits::new(100, limit, expected.len())
                     };
-                    single.serialize_specified_with_limits(limits).is_ok()
+                    single.serialize_specified(limits).is_ok()
                 })
                 .expect("bounded single endpoint");
             let limits = if input_budget {
-                CssSpecifiedValueSerializationLimits::new(single_boundary, 100, expected.len())
+                CssSerializationLimits::new(single_boundary, 100, expected.len())
             } else {
-                CssSpecifiedValueSerializationLimits::new(100, single_boundary, expected.len())
+                CssSerializationLimits::new(100, single_boundary, expected.len())
             };
             assert_eq!(
-                repeated
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                repeated.serialize_specified(limits).unwrap_err().kind(),
                 if input_budget {
                     CssSpecifiedValueSerializationErrorKind::InputNodeLimit
                 } else {
@@ -755,11 +755,7 @@ fn equal_symbolic_ranges_discard_bytes_but_retain_both_projection_visits() {
         }
         assert_eq!(
             repeated
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    100,
-                    100,
-                    expected.len() - 1
-                ))
+                .serialize_specified(CssSerializationLimits::new(100, 100, expected.len() - 1))
                 .unwrap_err()
                 .kind(),
             CssSpecifiedValueSerializationErrorKind::ByteLimit
@@ -779,11 +775,7 @@ fn overwritten_symbolic_metrics_use_shared_numeric_visits_without_formatting() {
         let expected = format!("@font-face {{ {name}: 40%; }}");
         assert_eq!(
             input
-                .to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    100,
-                    100,
-                    expected.len()
-                ))
+                .serialize_specified(CssSerializationLimits::new(100, 100, expected.len()))
                 .unwrap(),
             expected
         );
@@ -791,28 +783,25 @@ fn overwritten_symbolic_metrics_use_shared_numeric_visits_without_formatting() {
             let boundary = (0..100)
                 .find(|&limit| {
                     let limits = if input_budget {
-                        CssSpecifiedValueSerializationLimits::new(limit, 100, expected.len())
+                        CssSerializationLimits::new(limit, 100, expected.len())
                     } else {
-                        CssSpecifiedValueSerializationLimits::new(100, limit, expected.len())
+                        CssSerializationLimits::new(100, limit, expected.len())
                     };
-                    surviving.to_specified_css_with_limits(limits).is_ok()
+                    surviving.serialize_specified(limits).is_ok()
                 })
                 .expect("bounded surviving metric");
             let limits = if input_budget {
-                CssSpecifiedValueSerializationLimits::new(boundary, 100, expected.len())
+                CssSerializationLimits::new(boundary, 100, expected.len())
             } else {
-                CssSpecifiedValueSerializationLimits::new(100, boundary, expected.len())
+                CssSerializationLimits::new(100, boundary, expected.len())
             };
             assert_eq!(
-                input
-                    .to_specified_css_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
-                CssSpecifiedRuleSerializationErrorKind::Resource(if input_budget {
+                input.serialize_specified(limits).unwrap_err().kind(),
+                if input_budget {
                     CssSpecifiedValueSerializationErrorKind::InputNodeLimit
                 } else {
                     CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
-                })
+                }
             );
             assert_eq!(input, before);
         }
@@ -831,11 +820,7 @@ fn overwritten_pending_streams_charge_visits_without_discarded_bytes() {
     let expected = "@font-face { font-weight: 600; }";
     assert_eq!(
         input
-            .to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::new(
-                100,
-                100,
-                expected.len()
-            ))
+            .serialize_specified(CssSerializationLimits::new(100, 100, expected.len()))
             .unwrap(),
         expected
     );
@@ -843,43 +828,34 @@ fn overwritten_pending_streams_charge_visits_without_discarded_bytes() {
         let boundary = (0..100)
             .find(|&limit| {
                 let limits = if input_budget {
-                    CssSpecifiedValueSerializationLimits::new(limit, 100, expected.len())
+                    CssSerializationLimits::new(limit, 100, expected.len())
                 } else {
-                    CssSpecifiedValueSerializationLimits::new(100, limit, expected.len())
+                    CssSerializationLimits::new(100, limit, expected.len())
                 };
-                surviving.to_specified_css_with_limits(limits).is_ok()
+                surviving.serialize_specified(limits).is_ok()
             })
             .expect("bounded surviving descriptor");
         let limits = if input_budget {
-            CssSpecifiedValueSerializationLimits::new(boundary, 100, expected.len())
+            CssSerializationLimits::new(boundary, 100, expected.len())
         } else {
-            CssSpecifiedValueSerializationLimits::new(100, boundary, expected.len())
+            CssSerializationLimits::new(100, boundary, expected.len())
         };
         assert_eq!(
-            input
-                .to_specified_css_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            CssSpecifiedRuleSerializationErrorKind::Resource(if input_budget {
+            input.serialize_specified(limits).unwrap_err().kind(),
+            if input_budget {
                 CssSpecifiedValueSerializationErrorKind::InputNodeLimit
             } else {
                 CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
-            })
+            }
         );
         assert_eq!(input, before);
     }
     assert_eq!(
         input
-            .to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::new(
-                100,
-                100,
-                expected.len() - 1
-            ))
+            .serialize_specified(CssSerializationLimits::new(100, 100, expected.len() - 1))
             .unwrap_err()
             .kind(),
-        CssSpecifiedRuleSerializationErrorKind::Resource(
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
-        )
+        CssSpecifiedValueSerializationErrorKind::ByteLimit
     );
     assert_eq!(input, before);
 }
@@ -926,14 +902,13 @@ fn exact_spelling_identity_in_matching_calculations_shortens_ranges() {
         let single = ordinary(&format!("{prefix}{first}"), kind);
         let repeated = ordinary(&format!("{prefix}{first} {second}"), kind);
         let before = repeated.clone();
-        assert_eq!(single.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            single.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_eq!(
             repeated
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    100,
-                    100,
-                    expected.len()
-                ))
+                .serialize_specified(CssSerializationLimits::new(100, 100, expected.len()))
                 .unwrap(),
             expected
         );
@@ -941,23 +916,20 @@ fn exact_spelling_identity_in_matching_calculations_shortens_ranges() {
             let boundary = (0..100)
                 .find(|&limit| {
                     let limits = if input_budget {
-                        CssSpecifiedValueSerializationLimits::new(limit, 100, expected.len())
+                        CssSerializationLimits::new(limit, 100, expected.len())
                     } else {
-                        CssSpecifiedValueSerializationLimits::new(100, limit, expected.len())
+                        CssSerializationLimits::new(100, limit, expected.len())
                     };
-                    single.serialize_specified_with_limits(limits).is_ok()
+                    single.serialize_specified(limits).is_ok()
                 })
                 .expect("bounded first endpoint");
             let limits = if input_budget {
-                CssSpecifiedValueSerializationLimits::new(boundary, 100, expected.len())
+                CssSerializationLimits::new(boundary, 100, expected.len())
             } else {
-                CssSpecifiedValueSerializationLimits::new(100, boundary, expected.len())
+                CssSerializationLimits::new(100, boundary, expected.len())
             };
             assert_eq!(
-                repeated
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                repeated.serialize_specified(limits).unwrap_err().kind(),
                 if input_budget {
                     CssSpecifiedValueSerializationErrorKind::InputNodeLimit
                 } else {
@@ -968,11 +940,7 @@ fn exact_spelling_identity_in_matching_calculations_shortens_ranges() {
         }
         assert_eq!(
             repeated
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    100,
-                    100,
-                    expected.len() - 1
-                ))
+                .serialize_specified(CssSerializationLimits::new(100, 100, expected.len() - 1))
                 .unwrap_err()
                 .kind(),
             CssSpecifiedValueSerializationErrorKind::ByteLimit
@@ -1009,11 +977,7 @@ fn matching_calculation_structure_does_not_equate_distinct_rounded_leaves() {
         let before = value.clone();
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    100,
-                    100,
-                    expected.len()
-                ))
+                .serialize_specified(CssSerializationLimits::new(100, 100, expected.len()))
                 .unwrap(),
             expected
         );
@@ -1035,14 +999,13 @@ fn exact_absolute_units_inside_number_cancellation_share_retained_identity() {
         let single = ordinary(first, kind);
         let repeated = ordinary(&format!("{first} {second}"), kind);
         let before = repeated.clone();
-        assert_eq!(single.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            single.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_eq!(
             repeated
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    100,
-                    100,
-                    expected.len()
-                ))
+                .serialize_specified(CssSerializationLimits::new(100, 100, expected.len()))
                 .unwrap(),
             expected
         );
@@ -1050,23 +1013,20 @@ fn exact_absolute_units_inside_number_cancellation_share_retained_identity() {
             let boundary = (0..100)
                 .find(|&limit| {
                     let limits = if input_budget {
-                        CssSpecifiedValueSerializationLimits::new(limit, 100, expected.len())
+                        CssSerializationLimits::new(limit, 100, expected.len())
                     } else {
-                        CssSpecifiedValueSerializationLimits::new(100, limit, expected.len())
+                        CssSerializationLimits::new(100, limit, expected.len())
                     };
-                    single.serialize_specified_with_limits(limits).is_ok()
+                    single.serialize_specified(limits).is_ok()
                 })
                 .expect("bounded cancellation expression");
             let limits = if input_budget {
-                CssSpecifiedValueSerializationLimits::new(boundary, 100, expected.len())
+                CssSerializationLimits::new(boundary, 100, expected.len())
             } else {
-                CssSpecifiedValueSerializationLimits::new(100, boundary, expected.len())
+                CssSerializationLimits::new(100, boundary, expected.len())
             };
             assert_eq!(
-                repeated
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                repeated.serialize_specified(limits).unwrap_err().kind(),
                 if input_budget {
                     CssSpecifiedValueSerializationErrorKind::InputNodeLimit
                 } else {
@@ -1107,11 +1067,7 @@ fn numeric_identity_preserves_different_dimensions_context_and_irrational_angles
         let before = value.clone();
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    100,
-                    100,
-                    expected.len()
-                ))
+                .serialize_specified(CssSerializationLimits::new(100, 100, expected.len()))
                 .unwrap(),
             expected
         );
@@ -1139,14 +1095,13 @@ fn typed_constant_and_round_strategy_identity_ignores_case_and_escape_spelling()
         let single = ordinary(first, kind);
         let repeated = ordinary(&format!("{first} {second}"), kind);
         let before = repeated.clone();
-        assert_eq!(single.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            single.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_eq!(
             repeated
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    100,
-                    100,
-                    expected.len()
-                ))
+                .serialize_specified(CssSerializationLimits::new(100, 100, expected.len()))
                 .unwrap(),
             expected
         );
@@ -1154,23 +1109,20 @@ fn typed_constant_and_round_strategy_identity_ignores_case_and_escape_spelling()
             let boundary = (0..100)
                 .find(|&limit| {
                     let limits = if input_budget {
-                        CssSpecifiedValueSerializationLimits::new(limit, 100, expected.len())
+                        CssSerializationLimits::new(limit, 100, expected.len())
                     } else {
-                        CssSpecifiedValueSerializationLimits::new(100, limit, expected.len())
+                        CssSerializationLimits::new(100, limit, expected.len())
                     };
-                    single.serialize_specified_with_limits(limits).is_ok()
+                    single.serialize_specified(limits).is_ok()
                 })
                 .expect("bounded typed expression");
             let limits = if input_budget {
-                CssSpecifiedValueSerializationLimits::new(boundary, 100, expected.len())
+                CssSerializationLimits::new(boundary, 100, expected.len())
             } else {
-                CssSpecifiedValueSerializationLimits::new(100, boundary, expected.len())
+                CssSerializationLimits::new(100, boundary, expected.len())
             };
             assert_eq!(
-                repeated
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                repeated.serialize_specified(limits).unwrap_err().kind(),
                 if input_budget {
                     CssSpecifiedValueSerializationErrorKind::InputNodeLimit
                 } else {
@@ -1205,11 +1157,7 @@ fn typed_expression_identity_preserves_different_constants_strategies_and_rounde
         let before = value.clone();
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    100,
-                    100,
-                    expected.len()
-                ))
+                .serialize_specified(CssSerializationLimits::new(100, 100, expected.len()))
                 .unwrap(),
             expected
         );

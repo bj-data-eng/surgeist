@@ -114,7 +114,11 @@ pub fn checked_feature_value(
         }
         components.push(CssComponentValue::try_number(spelling).unwrap());
     }
-    CssFontFeatureValue::try_from_components(kind, CssComponentValues::try_new(components).unwrap())
+    CssFontFeatureValue::try_from_components(
+        kind,
+        CssComponentValues::try_new(components, Default::default()).unwrap(),
+        Default::default(),
+    )
 }
 
 /// Assert that an ordinary-integer regression still retains its exact literal variant.

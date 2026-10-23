@@ -244,7 +244,10 @@ fn shorthand_sets_only_x_then_y_and_preserves_uncomputed_axis_values() {
             panic!("existing overflow wrapper")
         };
         assert_eq!(
-            value.value().serialize_specified().unwrap(),
+            value
+                .value()
+                .serialize_specified(Default::default())
+                .unwrap(),
             authored.replace("overlay", "auto")
         );
     }
@@ -256,7 +259,7 @@ fn shorthand_sets_only_x_then_y_and_preserves_uncomputed_axis_values() {
     assert_eq!(
         declaration("overflow-x", "overlay")
             .value_components()
-            .serialize()
+            .serialize_tokens(Default::default())
             .unwrap()
             .as_css(),
         "overlay",
@@ -398,7 +401,7 @@ fn normalization_preserves_order_and_logical_names_after_invalid_recovery() {
         assert_eq!(
             item.source()
                 .value_components()
-                .serialize()
+                .serialize_tokens(Default::default())
                 .unwrap()
                 .as_css(),
             authored

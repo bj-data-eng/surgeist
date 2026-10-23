@@ -166,7 +166,10 @@ fn area_names_accept_reserved_spellings() {
             panic!("typed area value")
         };
         assert_eq!(
-            value.value().serialize_specified().unwrap(),
+            value
+                .value()
+                .serialize_specified(Default::default())
+                .unwrap(),
             "\"auto span inherit revert-layer\""
         );
         terminal(&source);

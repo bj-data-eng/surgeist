@@ -7,7 +7,7 @@ use super::{
 use crate::{
     CssContributionValueRef, CssDeclaration, CssDeclarationList, CssGlobalKeyword, CssImportance,
     CssKeyframeDeclarationList, CssKnownProperty, CssPropertyKindRef, CssPropertyNameRef,
-    CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits,
+    CssSerializationError, CssSerializationLimits,
     declaration_serialization::{append_global, append_retained_value},
     specified_inverse,
     specified_rule_serialization::SpecifiedRuleWriter,
@@ -101,25 +101,16 @@ fn candidates_for_name(property: CssKnownProperty) -> &'static [&'static Candida
 }
 
 impl CssSpecifiedDeclarationBlock {
-    pub fn serialize_cssom(&self) -> Result<String> {
-        self.serialize_cssom_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-    pub fn serialize_cssom_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String> {
+    pub fn serialize_cssom(&self, limits: CssSerializationLimits) -> Result<String> {
         let mut writer = SpecifiedRuleWriter::new(limits);
         self.append_cssom(&mut writer)?;
         Ok(writer.css)
     }
     /// Reads a terminal or exact requested shorthand; absence/nonrepresentability is None.
-    pub fn property_value(&self, name: CssPropertyNameRef<'_>) -> Result<Option<String>> {
-        self.property_value_with_limits(name, CssSpecifiedValueSerializationLimits::default())
-    }
-    pub fn property_value_with_limits(
+    pub fn property_value(
         &self,
         name: CssPropertyNameRef<'_>,
-        limits: CssSpecifiedValueSerializationLimits,
+        limits: CssSerializationLimits,
     ) -> Result<Option<String>> {
         let mut writer = SpecifiedRuleWriter::new(limits);
         writer.node()?;
@@ -459,7 +450,7 @@ impl Inverse {
     fn append(
         &self,
         writer: &mut SpecifiedRuleWriter,
-    ) -> std::result::Result<(), CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), CssSerializationError> {
         match self {
             Self::Global(keyword) => append_global(*keyword, writer),
             Self::Pending(source) => append_retained_value(source.value_components(), writer),
@@ -501,7 +492,8 @@ mod tests {
     fn block(source: &str) -> CssSpecifiedDeclarationBlock {
         let report = crate::parse_style_attribute(source);
         assert!(report.is_clean());
-        CssSpecifiedDeclarationBlock::try_from_declarations(report.syntax()).unwrap()
+        CssSpecifiedDeclarationBlock::try_from_declarations(report.syntax(), Default::default())
+            .unwrap()
     }
     fn kind(error: CssDeclarationBlockError) -> CssSpecifiedValueSerializationErrorKind {
         let CssDeclarationBlockErrorKind::Serialization(error) = error.kind else {
@@ -516,8 +508,7 @@ mod tests {
         // Successful None pair: P18 intrinsic probe + I2/P2 actual pair
         // provider (pair + before leaf), bounded temporary "none" = four bytes.
         let full = block("pause-before:none;pause-after:none");
-        let mut writer =
-            SpecifiedRuleWriter::new(CssSpecifiedValueSerializationLimits::new(2, 20, 4));
+        let mut writer = SpecifiedRuleWriter::new(CssSerializationLimits::new(2, 20, 4));
         let Some(Inverse::Ordinary(value)) = full
             .inverse(
                 candidate,
@@ -533,15 +524,15 @@ mod tests {
         assert!(writer.css.is_empty());
         for (limits, expected) in [
             (
-                CssSpecifiedValueSerializationLimits::new(1, 20, 4),
+                CssSerializationLimits::new(1, 20, 4),
                 CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(2, 19, 4),
+                CssSerializationLimits::new(2, 19, 4),
                 CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(2, 20, 3),
+                CssSerializationLimits::new(2, 20, 3),
                 CssSpecifiedValueSerializationErrorKind::ByteLimit,
             ),
         ] {
@@ -570,19 +561,15 @@ mod tests {
             ),
         ] {
             let value = block(source);
-            let mut writer =
-                SpecifiedRuleWriter::new(CssSpecifiedValueSerializationLimits::new(0, tariff, 0));
+            let mut writer = SpecifiedRuleWriter::new(CssSerializationLimits::new(0, tariff, 0));
             assert!(
                 value
                     .inverse(candidate, &serialized, &mut writer, InversePurpose::Block)
                     .unwrap()
                     .is_none()
             );
-            let mut writer = SpecifiedRuleWriter::new(CssSpecifiedValueSerializationLimits::new(
-                0,
-                tariff - 1,
-                0,
-            ));
+            let mut writer =
+                SpecifiedRuleWriter::new(CssSerializationLimits::new(0, tariff - 1, 0));
             assert_eq!(
                 kind(
                     value
@@ -600,12 +587,13 @@ mod tests {
         let report = crate::parse_style_attribute("pause:var(--P);pause:var(--P)");
         assert!(report.is_clean());
         let list = report.syntax();
-        let mut value = CssSpecifiedDeclarationBlock::try_from_declarations(list).unwrap();
+        let mut value =
+            CssSpecifiedDeclarationBlock::try_from_declarations(list, Default::default()).unwrap();
         assert!(!list[0].same_occurrence(&list[1]));
         value.entries[0].source = list[0].clone();
         value.entries[0].authored_ordinal = 0;
         let candidate = candidates_for_name(CssKnownProperty::Pause)[0];
-        let mut writer = SpecifiedRuleWriter::new(CssSpecifiedValueSerializationLimits::default());
+        let mut writer = SpecifiedRuleWriter::new(CssSerializationLimits::default());
         assert!(
             value
                 .inverse(
@@ -618,7 +606,7 @@ mod tests {
                 .is_none()
         );
         assert_eq!(
-            value.serialize_cssom().unwrap(),
+            value.serialize_cssom(Default::default()).unwrap(),
             "pause-before: ; pause-after: ;"
         );
         assert!(value.entries[0].source.same_occurrence(&list[0]));
@@ -632,8 +620,7 @@ mod tests {
         // Complete intrinsic work P66 includes three four-node comparison
         // work lists; owning pair I5/P4 adds the actual final numeric arena.
         // Each math visit retains Calc + Sum + two leaves and arena nodes3.
-        let mut writer =
-            SpecifiedRuleWriter::new(CssSpecifiedValueSerializationLimits::new(5, 70, 8));
+        let mut writer = SpecifiedRuleWriter::new(CssSerializationLimits::new(5, 70, 8));
         let Some(Inverse::Ordinary(css)) = value
             .inverse(
                 candidate,
@@ -646,8 +633,7 @@ mod tests {
             panic!("finite math inverse")
         };
         assert_eq!(css, "calc(3s)");
-        let mut writer =
-            SpecifiedRuleWriter::new(CssSpecifiedValueSerializationLimits::new(5, 69, 8));
+        let mut writer = SpecifiedRuleWriter::new(CssSerializationLimits::new(5, 69, 8));
         assert_eq!(
             kind(
                 value
@@ -680,8 +666,7 @@ mod tests {
         // verification costs initiation1 + original7 + generated7 + four
         // comparison slots = P19, twice. Final pair provider I5/P4 and bounded
         // temporary "calc(3s)" B8. Total P6+19+3+38+4 = P70.
-        let mut writer =
-            SpecifiedRuleWriter::new(CssSpecifiedValueSerializationLimits::new(5, 70, 8));
+        let mut writer = SpecifiedRuleWriter::new(CssSerializationLimits::new(5, 70, 8));
         let Some(Inverse::Ordinary(css)) = value
             .inverse(
                 candidate,
@@ -695,8 +680,7 @@ mod tests {
         };
         assert_eq!(css, "calc(3s)");
         assert!(writer.css.is_empty());
-        let mut writer =
-            SpecifiedRuleWriter::new(CssSpecifiedValueSerializationLimits::new(5, 69, 8));
+        let mut writer = SpecifiedRuleWriter::new(CssSerializationLimits::new(5, 69, 8));
         assert_eq!(
             kind(
                 value
@@ -712,8 +696,7 @@ mod tests {
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
         );
         assert!(writer.css.is_empty());
-        let mut retry =
-            SpecifiedRuleWriter::new(CssSpecifiedValueSerializationLimits::new(5, 70, 8));
+        let mut retry = SpecifiedRuleWriter::new(CssSerializationLimits::new(5, 70, 8));
         let Some(Inverse::Ordinary(css)) = value
             .inverse(
                 candidate,
@@ -750,7 +733,7 @@ mod tests {
         // = P76. The actual GridArea provider has no aggregate visit; its four
         // integer calculations cost I16/P12 and its value owns B37. Total
         // P12+29+24+5+76+12 = P158.
-        let exact = CssSpecifiedValueSerializationLimits::new(16, 158, 37);
+        let exact = CssSerializationLimits::new(16, 158, 37);
         let mut writer = SpecifiedRuleWriter::new(exact);
         let Some(Inverse::Ordinary(css)) = value
             .inverse(candidate, &[false; 4], &mut writer, InversePurpose::Block)
@@ -762,15 +745,15 @@ mod tests {
         assert!(writer.css.is_empty());
         for (limits, expected) in [
             (
-                CssSpecifiedValueSerializationLimits::new(15, 158, 37),
+                CssSerializationLimits::new(15, 158, 37),
                 CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(16, 157, 37),
+                CssSerializationLimits::new(16, 157, 37),
                 CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(16, 158, 36),
+                CssSerializationLimits::new(16, 158, 36),
                 CssSpecifiedValueSerializationErrorKind::ByteLimit,
             ),
         ] {
@@ -819,8 +802,7 @@ mod tests {
             ("grid-area:span 2 / span 3 / auto / auto", "span 2 / span 3"),
         ] {
             let value = block(source);
-            let mut writer =
-                SpecifiedRuleWriter::new(CssSpecifiedValueSerializationLimits::default());
+            let mut writer = SpecifiedRuleWriter::new(CssSerializationLimits::default());
             let Some(Inverse::Ordinary(css)) = value
                 .inverse(candidate, &[false; 4], &mut writer, InversePurpose::Block)
                 .unwrap()
@@ -835,16 +817,14 @@ mod tests {
         );
         assert!(report.is_clean());
         let list = report.syntax();
-        let value = CssSpecifiedDeclarationBlock::try_from_declarations(list).unwrap();
+        let value =
+            CssSpecifiedDeclarationBlock::try_from_declarations(list, Default::default()).unwrap();
         // Prefix comparison starts after eligibility12+hypothetical29=P41.
         // P42 reaches first C root; P50 reaches prefix2 E root; P62 reaches
         // prefix3 F root. Each next child admission fails at that actual member.
         for (projections, ordinal) in [(42, 1), (50, 2), (62, 3)] {
-            let mut writer = SpecifiedRuleWriter::new(CssSpecifiedValueSerializationLimits::new(
-                0,
-                projections,
-                0,
-            ));
+            let mut writer =
+                SpecifiedRuleWriter::new(CssSerializationLimits::new(0, projections, 0));
             let error = value
                 .inverse(candidate, &[false; 4], &mut writer, InversePurpose::Block)
                 .err()
@@ -868,7 +848,7 @@ mod tests {
         // P6 eligibility + P19 hypothetical/shortening + P3 check expansion +
         // P38 verification + P11 final (aggregate1, two numeric arenas3, and
         // the retained comparison4) = P77. Final visits I1+4+4 = I9, B17.
-        let exact = CssSpecifiedValueSerializationLimits::new(9, 77, 17);
+        let exact = CssSerializationLimits::new(9, 77, 17);
         let mut failures = Vec::new();
         for (property, source) in [
             (
@@ -900,8 +880,7 @@ mod tests {
             };
             assert_eq!(css, "calc(3s) calc(4s)");
             assert!(writer.css.is_empty());
-            let mut writer =
-                SpecifiedRuleWriter::new(CssSpecifiedValueSerializationLimits::new(9, 76, 17));
+            let mut writer = SpecifiedRuleWriter::new(CssSerializationLimits::new(9, 76, 17));
             match value.inverse(candidate, &[false; 2], &mut writer, InversePurpose::Block) {
                 Err(error) => {
                     if kind(error) != CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit {
@@ -946,8 +925,7 @@ mod tests {
         // One Color and three direct channel visits = P4. The nonzero channel
         // actually materializes its one-limb coefficient, multiplication and
         // exact-text clone = P3. Zero channels own no coefficient limbs.
-        let mut writer =
-            SpecifiedRuleWriter::new(CssSpecifiedValueSerializationLimits::new(0, 7, 0));
+        let mut writer = SpecifiedRuleWriter::new(CssSerializationLimits::new(0, 7, 0));
         writer
             .visit_semantic(|writer| {
                 value
@@ -956,8 +934,7 @@ mod tests {
             })
             .unwrap();
         assert!(writer.css.is_empty());
-        let mut writer =
-            SpecifiedRuleWriter::new(CssSpecifiedValueSerializationLimits::new(0, 6, 0));
+        let mut writer = SpecifiedRuleWriter::new(CssSerializationLimits::new(0, 6, 0));
         assert_eq!(
             writer
                 .visit_semantic(|writer| value

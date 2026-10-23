@@ -1,8 +1,7 @@
 //! Shared serialization of a substitution-dependent whole component value.
 
 use crate::{
-    CssComponentValues, CssSpecifiedValueSerializationError,
-    CssSpecifiedValueSerializationErrorKind,
+    CssComponentValues, CssSerializationError, CssSpecifiedValueSerializationErrorKind,
     specified_serialization::SpecifiedSerializationContext,
 };
 
@@ -12,19 +11,18 @@ pub(crate) fn append_pending_specified(
     values: &CssComponentValues,
     context: &mut SpecifiedSerializationContext,
     output: &mut String,
-) -> Result<(), CssSpecifiedValueSerializationError> {
+) -> Result<(), CssSerializationError> {
     let nodes = values.component_count().checked_add(1).ok_or_else(|| {
-        CssSpecifiedValueSerializationError::new(
-            CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
-        )
+        CssSerializationError::new(CssSpecifiedValueSerializationErrorKind::CapacityOverflow)
     })?;
-    context.charge_input(nodes)?;
-    context.charge_projection(nodes)?;
+    context.charge_nodes(nodes)?;
     if context.output_suppressed() {
         return Ok(());
     }
     let serialized = values
-        .serialize_with_limit(context.remaining_bytes())
+        .serialize_tokens(crate::CssComponentValueLimits::with_max_css_bytes(
+            context.remaining_bytes(),
+        ))
         .map_err(crate::component_values::specified_component_error)?;
     context.append(output, serialized.as_css())
 }
@@ -32,7 +30,7 @@ pub(crate) fn append_pending_specified(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{CssComponentValueLimits, CssSpecifiedValueSerializationLimits};
+    use crate::{CssComponentValueLimits, CssSerializationLimits};
 
     #[test]
     fn retained_trailing_reverse_solidus_is_an_unserializable_boundary() {
@@ -50,8 +48,7 @@ mod tests {
             CssComponentValueLimits::default(),
         )
         .unwrap();
-        let mut context =
-            SpecifiedSerializationContext::new(CssSpecifiedValueSerializationLimits::default());
+        let mut context = SpecifiedSerializationContext::new(CssSerializationLimits::default());
         let mut output = String::new();
         assert_eq!(
             append_pending_specified(&values, &mut context, &mut output)

@@ -4,31 +4,16 @@ use crate::content_serialization;
 use crate::specified_rule_serialization::SpecifiedRuleWriter;
 use crate::{
     CssImageValue, CssListStylePosition, CssListStyleTypeValue, CssListStyleValue, CssMarkerSide,
-    CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits,
+    CssSerializationError,
 };
 
-type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
+type Result<T> = std::result::Result<T, CssSerializationError>;
 
-impl CssMarkerSide {
-    /// Serializes the specified keyword without resolving directionality.
-    pub fn serialize_specified(&self) -> Result<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Charges one input node, one projection node, and the emitted CSS bytes.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssMarkerSide {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         writer.keyword(match self {
             Self::MatchSelf => "match-self",
             Self::MatchParent => "match-parent",
@@ -36,6 +21,7 @@ impl CssMarkerSide {
         Ok(())
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssMarkerSide);
 
 fn append_type(writer: &mut SpecifiedRuleWriter, value: &CssListStyleTypeValue) -> Result<()> {
     match value {
@@ -63,82 +49,33 @@ fn append_position(writer: &mut SpecifiedRuleWriter, value: CssListStylePosition
     })
 }
 
-impl CssListStylePosition {
-    /// Serializes a checked marker position without placing a marker.
-    pub fn serialize_specified(&self) -> Result<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Uses one input, projection, and byte budget for this keyword.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssListStylePosition {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         append_position(writer, *self)?;
         Ok(())
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssListStylePosition);
 
-impl CssListStyleTypeValue {
-    /// Serializes an authored counter style, string, or `none` without resolution.
-    pub fn serialize_specified(&self) -> Result<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Applies one cumulative input, projection, and CSS byte budget.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssListStyleTypeValue {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         append_type(writer, self)?;
         Ok(())
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssListStyleTypeValue);
 
-impl CssListStyleValue {
-    /// Serializes effective marker values in position, image, type order.
-    ///
-    /// Initial values are omitted only where parsing still preserves the same
-    /// meaning. An `outside` position is inserted when a named `inside` or
-    /// `outside` counter style would otherwise be parsed as the position.
-    pub fn serialize_specified(&self) -> Result<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Charges each authored component even when its initial spelling is omitted.
-    /// An inserted disambiguating or all-initial `outside` costs one projection
-    /// node, but no authored input node.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssListStyleValue {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         writer.node()?; // The checked shorthand aggregate.
 
         let emit_type = self.style_type().is_some_and(|value| !is_disc(value));
@@ -198,3 +135,4 @@ impl CssListStyleValue {
         Ok(())
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssListStyleValue);

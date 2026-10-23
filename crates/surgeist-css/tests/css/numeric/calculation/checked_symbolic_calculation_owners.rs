@@ -4,11 +4,13 @@ use surgeist_css::CssCalculationSumOperator as Op;
 use surgeist_css::*;
 type Calculation = CssLengthPercentageCalculation;
 fn operand(source: &str) -> Calculation {
-    Calculation::try_from_components(parse_component_values(source).unwrap()).unwrap()
+    Calculation::try_from_components(parse_component_values(source).unwrap(), Default::default())
+        .unwrap()
 }
 fn pure(value: Calculation) -> Result<CssSpecifiedLength, CssNumericConstructionError> {
     CssSpecifiedLength::try_from_calculation(CssLengthCalculation::try_from_components(
         value.components().clone(),
+        Default::default(),
     )?)
 }
 fn nonnegative_pure(
@@ -16,6 +18,7 @@ fn nonnegative_pure(
 ) -> Result<CssSpecifiedNonNegativeLength, CssNumericConstructionError> {
     CssSpecifiedNonNegativeLength::try_from_calculation(CssLengthCalculation::try_from_components(
         value.components().clone(),
+        Default::default(),
     )?)
 }
 fn lp(value: Calculation) -> Result<CssSpecifiedLengthPercentage, CssNumericConstructionError> {
@@ -67,11 +70,15 @@ fn admitted(value: Calculation) -> Vec<CssComponentValues> {
 }
 #[test]
 fn signed_first_operands_and_later_subtraction_remain_symbolic() {
-    let first = Calculation::try_sum(operand("-1px"), []).unwrap();
-    let sum = Calculation::try_sum(first, [(Op::Subtract, operand("2px"))]).unwrap();
+    let first = Calculation::try_sum(operand("-1px"), [], Default::default()).unwrap();
+    let sum =
+        Calculation::try_sum(first, [(Op::Subtract, operand("2px"))], Default::default()).unwrap();
     for components in admitted(sum) {
         assert_eq!(
-            components.serialize().unwrap().as_css(),
+            components
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             "calc(calc(-1px) - 2px)"
         );
     }
@@ -80,7 +87,7 @@ fn signed_first_operands_and_later_subtraction_remain_symbolic() {
 fn pure_readmission_preserves_typed_child_components_and_original_snapshots() {
     let child = operand("calc(10% / 10% * 1px)");
     let original = child.components().clone();
-    let sum = Calculation::try_sum(child, []).unwrap();
+    let sum = Calculation::try_sum(child, [], Default::default()).unwrap();
     for components in admitted(sum).into_iter().skip(1) {
         let CssComponentValueRef::Function(outer) = components.items()[0].view() else {
             panic!("outer calc")
@@ -300,11 +307,16 @@ fn grid_track_accepts(calculation: Calculation, mode: u8) -> bool {
         2 => CssGridTrackSize::try_minmax(breadth, CssGridTrackBreadth::auto()).unwrap(),
         _ => CssGridTrackSize::try_minmax(CssGridTrackBreadth::auto(), breadth).unwrap(),
     };
-    size.serialize_specified().is_ok()
+    size.serialize_specified(Default::default()).is_ok()
 }
 #[test]
 fn checked_length_owners_admit_valid_typed_symbolic_subtraction() {
-    let sum = Calculation::try_sum(operand("2px"), [(Op::Subtract, operand("1px"))]).unwrap();
+    let sum = Calculation::try_sum(
+        operand("2px"),
+        [(Op::Subtract, operand("1px"))],
+        Default::default(),
+    )
+    .unwrap();
     // Both spacing properties now consume the checked length-percentage owner
     // directly; preserve the same symbolic subtraction admission at that boundary.
     for name in ["word-spacing", "letter-spacing"] {
@@ -329,7 +341,10 @@ fn checked_length_owners_admit_valid_typed_symbolic_subtraction() {
                 .components(),
             sum.components()
         );
-        assert_eq!(spacing.serialize_specified().unwrap(), "calc(1px)");
+        assert_eq!(
+            spacing.serialize_specified(Default::default()).unwrap(),
+            "calc(1px)"
+        );
     }
     let rejected: Vec<_> = checked_owners()
         .into_iter()

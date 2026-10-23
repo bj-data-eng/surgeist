@@ -116,20 +116,29 @@ fn profile_math_is_scoped_and_has_no_percentage_hint() {
     for valid in ["calc(cyan * 2)", "min(cyan, magenta)", "calc(20% / 2)"] {
         expression(valid);
     }
-    assert!(CssNumberCalculation::try_from_components(components("calc(cyan)")).is_err());
-    assert!(CssPercentageCalculation::try_from_components(components("calc(cyan)")).is_err());
+    assert!(
+        CssNumberCalculation::try_from_components(components("calc(cyan)"), Default::default())
+            .is_err()
+    );
+    assert!(
+        CssPercentageCalculation::try_from_components(components("calc(cyan)"), Default::default())
+            .is_err()
+    );
 }
 
 #[test]
 fn programmatic_math_retains_parsed_profile_leaf_origin() {
     let leaf = components("Cyan").items()[0].clone();
-    let graph = CssComponentValues::try_new(vec![
-        CssComponentValue::try_function(
-            "calc",
-            CssComponentValues::try_new(vec![leaf.clone()]).unwrap(),
-        )
-        .unwrap(),
-    ])
+    let graph = CssComponentValues::try_new(
+        vec![
+            CssComponentValue::try_function(
+                "calc",
+                CssComponentValues::try_new(vec![leaf.clone()], Default::default()).unwrap(),
+            )
+            .unwrap(),
+        ],
+        Default::default(),
+    )
     .unwrap();
     let value = CssProfileColorExpression::try_from_components(graph.clone()).unwrap();
     assert_eq!(value.components(), &graph);
@@ -214,7 +223,9 @@ fn relative_profile_alpha_is_an_unbound_name_and_not_transparency() {
 fn custom_and_relative_math_share_the_composed_depth_limit() {
     for depth in [254, 255, 256] {
         let text = format!("{}1{}", "calc(".repeat(depth), ")".repeat(depth));
-        let calculation = CssNumberCalculation::try_from_components(components(&text)).unwrap();
+        let calculation =
+            CssNumberCalculation::try_from_components(components(&text), Default::default())
+                .unwrap();
         let custom = CssCustomColor::try_new(
             profile(),
             vec![CssColorComponent::NumberCalculation(calculation)],
@@ -277,7 +288,7 @@ fn wide_custom_lists_keep_cumulative_token_and_byte_budgets() {
             expected
         );
         assert_eq!(
-            CssComponentValues::try_new_with_limits(graph.items().to_vec(), limits)
+            CssComponentValues::try_new(graph.items().to_vec(), limits)
                 .unwrap_err()
                 .kind(),
             expected

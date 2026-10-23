@@ -84,10 +84,19 @@ fn assert_nested_lifecycle(chain: Chain) {
         panic!("expected one retained definition");
     };
     assert_chain(rule.body(), chain, ADMITTED_BODY_DEPTH);
-    assert_eq!(rule.serialize().unwrap().as_css(), source);
-    assert_eq!(rule.to_specified_css().unwrap(), expected_specified);
     assert_eq!(
-        report.syntax().to_specified_css().unwrap(),
+        rule.serialize_tokens(Default::default()).unwrap().as_css(),
+        source
+    );
+    assert_eq!(
+        rule.serialize_specified(Default::default()).unwrap(),
+        expected_specified
+    );
+    assert_eq!(
+        report
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
         expected_specified
     );
 
@@ -102,21 +111,35 @@ fn assert_nested_lifecycle(chain: Chain) {
     );
     drop(report);
     assert_chain(cloned.body(), chain, ADMITTED_BODY_DEPTH);
-    assert_eq!(cloned.serialize().unwrap().as_css(), source);
-    assert_eq!(cloned.to_specified_css().unwrap(), expected_specified);
+    assert_eq!(
+        cloned
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        source
+    );
+    assert_eq!(
+        cloned.serialize_specified(Default::default()).unwrap(),
+        expected_specified
+    );
     drop(cloned);
     drop(normalized);
 
     // Checked construction must apply the same aggregate structural ceiling.
     let components = parse_component_values(&body).unwrap();
-    let constructed_body = CssSupportsTestBody::try_from_components(components).unwrap();
+    let constructed_body =
+        CssSupportsTestBody::try_from_components(components, Default::default()).unwrap();
     assert_chain(&constructed_body, chain, ADMITTED_BODY_DEPTH);
     let constructed = CssSupportsConditionRule::try_new(
         CssSupportsConditionName::try_new("--deep").unwrap(),
         constructed_body,
+        Default::default(),
     )
     .unwrap();
-    assert_eq!(constructed.to_specified_css().unwrap(), expected_specified);
+    assert_eq!(
+        constructed.serialize_specified(Default::default()).unwrap(),
+        expected_specified
+    );
     drop(constructed);
 
     // A body at depth 256 is independently valid, but the enclosing definition
@@ -143,15 +166,16 @@ fn assert_nested_lifecycle(chain: Chain) {
     assert_eq!(after.name().as_str(), "--after");
     let components = parse_component_values(&too_deep_body).unwrap();
     let tighter = CssComponentValueLimits::try_new(255, usize::MAX, usize::MAX).unwrap();
-    let error = CssSupportsTestBody::try_from_components_with_limits(components.clone(), tighter)
-        .unwrap_err();
+    let error = CssSupportsTestBody::try_from_components(components.clone(), tighter).unwrap_err();
     assert!(
         matches!(error, CssNamedSupportsConstructionError::Component(ref detail) if detail.kind() == CssComponentValueErrorKind::NestingLimit)
     );
-    let body_at_ceiling = CssSupportsTestBody::try_from_components(components).unwrap();
+    let body_at_ceiling =
+        CssSupportsTestBody::try_from_components(components, Default::default()).unwrap();
     let error = CssSupportsConditionRule::try_new(
         CssSupportsConditionName::try_new("--deep").unwrap(),
         body_at_ceiling,
+        Default::default(),
     )
     .unwrap_err();
     assert!(

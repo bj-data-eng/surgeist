@@ -417,7 +417,13 @@ fn validation_page_rules_match_ordinary_retention_and_recovery() {
     else {
         panic!("negative physical margin")
     };
-    assert_eq!(value.value().serialize_specified().unwrap(), "-2cm");
+    assert_eq!(
+        value
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "-2cm"
+    );
     assert_eq!(recovered.diagnostics().len(), 3);
     assert!(
         recovered

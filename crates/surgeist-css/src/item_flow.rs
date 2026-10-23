@@ -5,33 +5,12 @@
 //! its computed `wrap reverse` equivalent. The shorthand stores four complete
 //! constituents, filling only omitted whole constituents with their initials.
 
+use crate::specified_rule_serialization::SpecifiedProvider as _;
 use crate::{
-    CssFlowTolerance, CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits,
-    specified_rule_serialization::SpecifiedRuleWriter,
+    CssFlowTolerance, CssSerializationError, specified_rule_serialization::SpecifiedRuleWriter,
 };
 
-type SerializationResult<T> = Result<T, CssSpecifiedValueSerializationError>;
-
-macro_rules! specified_methods {
-    () => {
-        /// Emits canonical authored text without evaluating layout context.
-        pub fn serialize_specified(&self) -> SerializationResult<String> {
-            self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-        }
-
-        /// Emits atomically under cumulative input, projection and byte limits.
-        /// Each keyword facet costs one node in each work budget. Composite
-        /// carriers add no node; tolerance retains its existing owning costs.
-        pub fn serialize_specified_with_limits(
-            &self,
-            limits: CssSpecifiedValueSerializationLimits,
-        ) -> SerializationResult<String> {
-            let mut writer = SpecifiedRuleWriter::new(limits);
-            self.append_to_rule_writer(&mut writer)?;
-            Ok(writer.css)
-        }
-    };
-}
+type SerializationResult<T> = Result<T, CssSerializationError>;
 
 /// Symbolic flow-oriented placement direction, before choosing physical axes.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -45,13 +24,8 @@ pub enum CssItemDirection {
     ColumnReverse,
 }
 
-impl CssItemDirection {
-    specified_methods!();
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut SpecifiedRuleWriter,
-    ) -> SerializationResult<()> {
+impl crate::specified_rule_serialization::SpecifiedProvider for CssItemDirection {
+    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> SerializationResult<()> {
         writer.keyword(match self {
             Self::Auto => "auto",
             Self::Row => "row",
@@ -61,6 +35,7 @@ impl CssItemDirection {
         })
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssItemDirection);
 
 /// One authored wrapping mode facet; `Auto` remains contextual.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -119,13 +94,8 @@ impl Default for CssItemWrap {
     }
 }
 
-impl CssItemWrap {
-    specified_methods!();
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut SpecifiedRuleWriter,
-    ) -> SerializationResult<()> {
+impl crate::specified_rule_serialization::SpecifiedProvider for CssItemWrap {
+    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> SerializationResult<()> {
         match self {
             Self::Mode(mode) => writer.keyword(mode.keyword()),
             Self::Order(order) => writer.keyword(order.keyword()),
@@ -138,6 +108,7 @@ impl CssItemWrap {
         }
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssItemWrap);
 
 /// Authored packing strategy; `normal` cannot coexist with dense or balance.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -150,13 +121,8 @@ pub enum CssItemPack {
     DenseBalance,
 }
 
-impl CssItemPack {
-    specified_methods!();
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut SpecifiedRuleWriter,
-    ) -> SerializationResult<()> {
+impl crate::specified_rule_serialization::SpecifiedProvider for CssItemPack {
+    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> SerializationResult<()> {
         match self {
             Self::Normal => writer.keyword("normal"),
             Self::Dense => writer.keyword("dense"),
@@ -169,6 +135,7 @@ impl CssItemPack {
         }
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssItemPack);
 
 /// Four checked authored `item-flow` constituents in stable grammar order.
 ///
@@ -254,13 +221,9 @@ impl CssItemFlow {
     pub const fn tolerance(&self) -> &CssFlowTolerance {
         &self.tolerance
     }
-
-    specified_methods!();
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut SpecifiedRuleWriter,
-    ) -> SerializationResult<()> {
+}
+impl crate::specified_rule_serialization::SpecifiedProvider for CssItemFlow {
+    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> SerializationResult<()> {
         self.direction.append_to_rule_writer(writer)?;
         writer.append(" ")?;
         self.wrap.append_to_rule_writer(writer)?;
@@ -270,6 +233,7 @@ impl CssItemFlow {
         self.tolerance.append_to_rule_writer(writer)
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssItemFlow);
 
 impl Default for CssItemFlow {
     fn default() -> Self {
@@ -285,11 +249,11 @@ impl Default for CssItemFlow {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::CssSerializationLimits as Limits;
     use crate::{
         CssLengthPercentageCalculation, CssSpecifiedLengthPercentage,
         CssSpecifiedValueSerializationErrorKind as Kind, parse_component_values,
     };
-    use CssSpecifiedValueSerializationLimits as Limits;
 
     fn composed_budget(
         append: impl Fn(&mut SpecifiedRuleWriter) -> SerializationResult<()>,
@@ -402,6 +366,7 @@ mod tests {
             CssSpecifiedLengthPercentage::try_from_calculation(
                 CssLengthPercentageCalculation::try_from_components(
                     parse_component_values("calc(1px + 2em)").unwrap(),
+                    Default::default(),
                 )
                 .unwrap(),
             )

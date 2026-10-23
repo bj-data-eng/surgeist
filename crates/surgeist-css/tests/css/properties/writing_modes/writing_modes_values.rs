@@ -35,23 +35,20 @@ impl Expected {
             _ => panic!("expected {self:?}, got {value:?}"),
         }
     }
-    fn serialize(
-        self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String, CssSpecifiedValueSerializationError> {
+    fn serialize(self, limits: CssSerializationLimits) -> Result<String, CssSerializationError> {
         match self {
-            Self::Direction(value) => value.serialize_specified_with_limits(limits),
-            Self::Bidi(value) => value.serialize_specified_with_limits(limits),
-            Self::Writing(value) => value.serialize_specified_with_limits(limits),
-            Self::Orientation(value) => value.serialize_specified_with_limits(limits),
+            Self::Direction(value) => value.serialize_specified(limits),
+            Self::Bidi(value) => value.serialize_specified(limits),
+            Self::Writing(value) => value.serialize_specified(limits),
+            Self::Orientation(value) => value.serialize_specified(limits),
         }
     }
-    fn default_serialize(self) -> Result<String, CssSpecifiedValueSerializationError> {
+    fn default_serialize(self) -> Result<String, CssSerializationError> {
         match self {
-            Self::Direction(value) => value.serialize_specified(),
-            Self::Bidi(value) => value.serialize_specified(),
-            Self::Writing(value) => value.serialize_specified(),
-            Self::Orientation(value) => value.serialize_specified(),
+            Self::Direction(value) => value.serialize_specified(Default::default()),
+            Self::Bidi(value) => value.serialize_specified(Default::default()),
+            Self::Writing(value) => value.serialize_specified(Default::default()),
+            Self::Orientation(value) => value.serialize_specified(Default::default()),
         }
     }
 }
@@ -116,25 +113,25 @@ fn all_sixteen_typed_keywords_serialize_canonically_with_atomic_limits() {
         assert_eq!(value.default_serialize().unwrap(), text);
         assert_eq!(
             value
-                .serialize(CssSpecifiedValueSerializationLimits::new(1, 1, text.len()))
+                .serialize(CssSerializationLimits::new(1, 1, text.len()))
                 .unwrap(),
             text
         );
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(0, 0, 0),
+                CssSerializationLimits::new(0, 0, 0),
                 CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 0, 0),
+                CssSerializationLimits::new(1, 0, 0),
                 CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 1, text.len() - 1),
+                CssSerializationLimits::new(1, 1, text.len() - 1),
                 CssSpecifiedValueSerializationErrorKind::ByteLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 1, 0),
+                CssSerializationLimits::new(1, 1, 0),
                 CssSpecifiedValueSerializationErrorKind::ByteLimit,
             ),
         ] {
@@ -152,7 +149,11 @@ fn all_sixteen_typed_keywords_serialize_canonically_with_atomic_limits() {
         value.assert_payload(item.ordinary_value().unwrap().view());
         assert!(item.source().same_occurrence(&source));
         assert_eq!(
-            source.value_components().serialize().unwrap().as_css(),
+            source
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             text
         );
     }
@@ -168,7 +169,11 @@ fn checked_values_and_pending_reentry_preserve_typed_payload_and_both_origins() 
         };
         for components in [
             parse_component_values(&text.to_ascii_uppercase()).unwrap(),
-            CssComponentValues::try_new(vec![CssComponentValue::try_token(text).unwrap()]).unwrap(),
+            CssComponentValues::try_new(
+                vec![CssComponentValue::try_token(text).unwrap()],
+                Default::default(),
+            )
+            .unwrap(),
         ] {
             let source = parse_property_value(
                 CssPropertyNameRef::Known(property),
@@ -302,11 +307,9 @@ fn parsed_wrapper_accessors_serialize_case_escapes_and_trivia_without_mutation()
             ($wrapper:expr, $value:expr, $expected:expr) => {{
                 let value = $value;
                 assert_eq!(value, &$expected);
-                let output = value.serialize_specified().unwrap();
+                let output = value.serialize_specified(Default::default()).unwrap();
                 let error = value
-                    .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                        1, 1, 0,
-                    ))
+                    .serialize_specified(CssSerializationLimits::new(1, 1, 0))
                     .unwrap_err();
                 ($wrapper.as_css(), output, error.kind())
             }};
@@ -331,7 +334,11 @@ fn parsed_wrapper_accessors_serialize_case_escapes_and_trivia_without_mutation()
         assert_eq!(error, CssSpecifiedValueSerializationErrorKind::ByteLimit);
         assert_eq!(source.value_components(), &components);
         assert_eq!(
-            source.value_components().serialize().unwrap().as_css(),
+            source
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             input
         );
     }

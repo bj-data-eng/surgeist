@@ -6,9 +6,8 @@
 use crate::css::support::serialization_limits::assert_limits as budget;
 use surgeist_css::{
     CssBlockPosition as B, CssHorizontalPosition as H, CssInlinePosition as I,
-    CssPositionConstructionError as E, CssRelativeAxisPosition as R,
-    CssSpecifiedValueSerializationErrorKind as K, CssSpecifiedValueSerializationLimits as L,
-    CssVerticalPosition as V, *,
+    CssPositionConstructionError as E, CssRelativeAxisPosition as R, CssSerializationLimits as L,
+    CssSpecifiedValueSerializationErrorKind as K, CssVerticalPosition as V, *,
 };
 
 fn lp(text: &str) -> CssSpecifiedLengthPercentage {
@@ -16,6 +15,7 @@ fn lp(text: &str) -> CssSpecifiedLengthPercentage {
         CssSpecifiedLengthPercentage::try_from_calculation(
             CssLengthPercentageCalculation::try_from_components(
                 parse_component_values(text).unwrap(),
+                Default::default(),
             )
             .unwrap(),
         )
@@ -282,7 +282,7 @@ fn restriction_lifting_and_restricted_consumers_keep_one_physical_payload() {
     assert_eq!(list.positions(), std::slice::from_ref(&physical));
     assert!(CssPhysicalPositionList::try_new(Vec::new()).is_none());
     budget("right bottom", 4, 4, |limits| {
-        list.serialize_specified_with_limits(limits)
+        list.serialize_specified(limits)
     });
     let layers = CssPhysicalPositionList::try_new(vec![
         physical.clone(),
@@ -290,7 +290,7 @@ fn restriction_lifting_and_restricted_consumers_keep_one_physical_payload() {
     ])
     .unwrap();
     budget("right bottom, left top", 7, 7, |limits| {
-        layers.serialize_specified_with_limits(limits)
+        layers.serialize_specified(limits)
     });
     let origin = CssTransformOrigin::try_new(physical.clone(), None).unwrap();
     assert_eq!(origin.horizontal(), physical.horizontal());
@@ -341,7 +341,7 @@ fn specified_order_preserves_keyword_family_and_serializes_implied_center() {
     ] {
         let position = parsed(authored);
         assert_eq!(
-            position.serialize_specified().unwrap(),
+            position.serialize_specified(Default::default()).unwrap(),
             expected,
             "{authored}"
         );
@@ -455,7 +455,7 @@ fn every_family_charges_one_aggregate_two_axes_and_authored_scalars() {
     ] {
         let before = position.clone();
         budget(expected, 3, 3, |limits| {
-            position.serialize_specified_with_limits(limits)
+            position.serialize_specified(limits)
         });
         assert_eq!(position, before);
     }
@@ -480,21 +480,21 @@ fn every_family_charges_one_aggregate_two_axes_and_authored_scalars() {
     ] {
         let before = position.clone();
         budget(expected, 5, 5, |limits| {
-            position.serialize_specified_with_limits(limits)
+            position.serialize_specified(limits)
         });
         assert_eq!(position, before);
     }
     let physical = CssPhysicalPosition::try_new(H::Right, V::Bottom).unwrap();
     budget("right bottom", 3, 3, |limits| {
-        physical.serialize_specified_with_limits(limits)
+        physical.serialize_specified(limits)
     });
     let full: CssPosition = physical.into();
     budget("right bottom", 3, 3, |limits| {
-        full.serialize_specified_with_limits(limits)
+        full.serialize_specified(limits)
     });
     let background = CssBackgroundPosition::try_new(H::RightOffset(lp("2%")), V::Top).unwrap();
     budget("right 2% top", 4, 4, |limits| {
-        background.serialize_specified_with_limits(limits)
+        background.serialize_specified(limits)
     });
 }
 
@@ -503,29 +503,29 @@ fn shape_composition_charges_no_extra_family_or_view_nodes() {
     let position = CssPosition::try_from_relative_axes(R::Start, R::End).unwrap();
     let circle = CssCircleShape::new(CssCircleRadius::Default, Some(position.clone()));
     budget("circle(at start end)", 4, 4, |limits| {
-        circle.serialize_specified_with_limits(limits)
+        circle.serialize_specified(limits)
     });
     let ellipse = CssEllipseShape::new(None, Some(position));
     budget("ellipse(at start end)", 4, 4, |limits| {
-        ellipse.serialize_specified_with_limits(limits)
+        ellipse.serialize_specified(limits)
     });
     let clip = CssClipPath::BasicShape(CssClipPathShape::new(
         CssBasicShape::Circle(circle.clone()),
         None,
     ));
     budget("circle(at start end)", 5, 5, |limits| {
-        clip.serialize_specified_with_limits(limits)
+        clip.serialize_specified(limits)
     });
     let boxed = CssClipPath::BasicShape(CssClipPathShape::new(
         CssBasicShape::Circle(circle),
         Some(CssBoxEdgeKeyword::BorderBox),
     ));
     budget("circle(at start end) border-box", 6, 6, |limits| {
-        boxed.serialize_specified_with_limits(limits)
+        boxed.serialize_specified(limits)
     });
     let omitted = CssCircleShape::new(CssCircleRadius::Default, None);
     budget("circle()", 1, 1, |limits| {
-        omitted.serialize_specified_with_limits(limits)
+        omitted.serialize_specified(limits)
     });
 }
 
@@ -553,12 +553,12 @@ fn math_arenas_are_cumulative_across_both_flow_axes_and_shape_composition() {
     ] {
         let before = position.clone();
         budget(expected, 11, 13, |limits| {
-            position.serialize_specified_with_limits(limits)
+            position.serialize_specified(limits)
         });
         assert_eq!(position, before);
         let circle = CssCircleShape::new(CssCircleRadius::Default, Some(position));
         budget(&format!("circle(at {expected})"), 12, 14, |limits| {
-            circle.serialize_specified_with_limits(limits)
+            circle.serialize_specified(limits)
         });
     }
 }
@@ -595,7 +595,10 @@ fn mixed_math_offsets_keep_family_order_and_original_numeric_provenance() {
     ] {
         let value = parsed(source);
         assert_eq!(value, constructed);
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         let offset = match value.view() {
             CssPositionRef::Cartesian(view) => {
                 let H::XStartOffset(offset) = view.horizontal() else {
@@ -621,7 +624,11 @@ fn mixed_math_offsets_keep_family_order_and_original_numeric_provenance() {
         assert!(matches!(before, CssValueOrigin::Parsed(_)));
         let calculation = offset.calculation().unwrap();
         assert_eq!(
-            calculation.components().serialize().unwrap().as_css(),
+            calculation
+                .components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             "calc(10% - 1px)"
         );
         let CssComponentValueRef::Function(function) = calculation.components().items()[0].view()
@@ -640,7 +647,7 @@ fn mixed_math_offsets_keep_family_order_and_original_numeric_provenance() {
         );
         assert_eq!(
             value
-                .serialize_specified_with_limits(L::new(0, 100, 100))
+                .serialize_specified(L::new(0, 100, 100))
                 .unwrap_err()
                 .kind(),
             K::InputNodeLimit

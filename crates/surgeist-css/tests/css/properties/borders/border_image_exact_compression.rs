@@ -8,7 +8,7 @@
 
 use surgeist_css::*;
 
-type Limits = CssSpecifiedValueSerializationLimits;
+type Limits = CssSerializationLimits;
 type Kind = CssSpecifiedValueSerializationErrorKind;
 
 #[derive(Clone, Copy, Debug)]
@@ -36,11 +36,11 @@ enum Group {
     Outset(CssBorderImageOutset),
 }
 impl Group {
-    fn serialize(&self, limits: Limits) -> Result<String, CssSpecifiedValueSerializationError> {
+    fn serialize(&self, limits: Limits) -> Result<String, CssSerializationError> {
         match self {
-            Self::Slice(value) => value.serialize_specified_with_limits(limits),
-            Self::Width(value) => value.serialize_specified_with_limits(limits),
-            Self::Outset(value) => value.serialize_specified_with_limits(limits),
+            Self::Slice(value) => value.serialize_specified(limits),
+            Self::Width(value) => value.serialize_specified(limits),
+            Self::Outset(value) => value.serialize_specified(limits),
         }
     }
     fn literals(&self) -> Vec<&CssComponentValue> {
@@ -155,9 +155,9 @@ fn group(slot: Slot, coefficients: [&str; 4]) -> Group {
     }
 }
 fn raw(component: &CssComponentValue) -> String {
-    CssComponentValues::try_new(vec![component.clone()])
+    CssComponentValues::try_new(vec![component.clone()], Default::default())
         .unwrap()
-        .serialize()
+        .serialize_tokens(Default::default())
         .unwrap()
         .as_css()
         .to_owned()
@@ -435,7 +435,10 @@ fn length_zero_normalization_preserves_kind_and_unit_boundaries() {
         length_percentage("+0px"),
     ])
     .unwrap();
-    assert_eq!(value.serialize_specified().unwrap(), "0px");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "0px"
+    );
     let value = CssBorderImageWidth::try_new(vec![
         CssBorderImageWidthComponent::Number(
             CssSpecifiedNonNegativeNumber::try_from_component(
@@ -448,7 +451,10 @@ fn length_zero_normalization_preserves_kind_and_unit_boundaries() {
         length_percentage("0%"),
     ])
     .unwrap();
-    assert_eq!(value.serialize_specified().unwrap(), "0 0px 0em 0%");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "0 0px 0em 0%"
+    );
     let length = |text| {
         CssBorderImageOutsetComponent::Length(
             CssSpecifiedNonNegativeLength::try_from_component(
@@ -464,7 +470,10 @@ fn length_zero_normalization_preserves_kind_and_unit_boundaries() {
         length("+0px"),
     ])
     .unwrap();
-    assert_eq!(value.serialize_specified().unwrap(), "0px");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "0px"
+    );
     let value = CssBorderImageOutset::try_new(vec![
         length("0px"),
         length("0em"),
@@ -472,7 +481,10 @@ fn length_zero_normalization_preserves_kind_and_unit_boundaries() {
         length("0em"),
     ])
     .unwrap();
-    assert_eq!(value.serialize_specified().unwrap(), "0px 0em");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "0px 0em"
+    );
     let value = CssBorderImageSlice::try_new(
         vec![
             CssBorderImageSliceComponent::Number(
@@ -491,7 +503,10 @@ fn length_zero_normalization_preserves_kind_and_unit_boundaries() {
         false,
     )
     .unwrap();
-    assert_eq!(value.serialize_specified().unwrap(), "0 0%");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "0 0%"
+    );
 }
 
 #[test]
@@ -507,7 +522,7 @@ fn parsed_quad_preserves_raw_components_and_origins_after_serialization() {
         };
         assert_eq!(origin.source().as_str(), authored);
     }
-    let serialized = value.serialize_specified();
+    let serialized = value.serialize_specified(Default::default());
     assert_eq!(value, before);
     assert_eq!(serialized.unwrap(), "0.123456 0.123456 0.123456 0.123456");
 }
@@ -522,7 +537,11 @@ fn rounded_near_initial_values_are_retained_in_shorthand() {
     ] {
         let value = image(authored);
         let before = value.clone();
-        assert_eq!(value.serialize_specified().unwrap(), expected, "{authored}");
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected,
+            "{authored}"
+        );
         assert_eq!(value, before);
     }
 }

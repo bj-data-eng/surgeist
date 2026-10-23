@@ -3,6 +3,12 @@
 use crate::{CssContentString, CssCursorKeyword, CssResolutionValue, CssSpecifiedNumber, CssUrl};
 
 /// An authored cursor keyword or ordered image alternatives with a required fallback.
+///
+/// # Specified serialization
+///
+/// Emits canonical authored cursor syntax without loading resources or clamping hotspots. Candidate
+/// order and omission survive; set descriptors emit resolution before type. The standard prefixed
+/// image-set alias emits `image-set()`.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssCursor {

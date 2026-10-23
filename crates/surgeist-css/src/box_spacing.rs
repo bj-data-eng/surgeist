@@ -2,11 +2,11 @@
 
 use crate::specified_serialization::SpecifiedSerializationContext;
 use crate::{
-    CssSpecifiedLengthPercentage, CssSpecifiedNonNegativeLengthPercentage,
-    CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits, CssValueOrigin,
+    CssSerializationError, CssSpecifiedLengthPercentage, CssSpecifiedNonNegativeLengthPercentage,
+    CssValueOrigin,
 };
 
-type SerializationResult<T> = Result<T, CssSpecifiedValueSerializationError>;
+type SerializationResult<T> = Result<T, CssSerializationError>;
 
 trait SpacingValue {
     fn serialize_into(
@@ -16,16 +16,11 @@ trait SpacingValue {
     ) -> SerializationResult<()>;
 }
 
-fn append_auto(
-    context: &mut SpecifiedSerializationContext,
-    output: &mut String,
-) -> SerializationResult<()> {
-    context.charge_input(1)?;
-    context.charge_projection(1)?;
-    context.append(output, "auto")
-}
-
 /// One physical or flow-relative margin longhand value.
+///
+/// # Specified serialization
+///
+/// Serializes the specified value without resolving layout context.
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssMarginValue {
@@ -49,29 +44,16 @@ impl CssMarginValue {
         self.length_percentage()
             .map(CssSpecifiedLengthPercentage::origin)
     }
-
-    /// Serializes the specified value without resolving layout context.
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes under explicit resource limits.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+}
+impl crate::specified_rule_serialization::SpecifiedProvider for CssMarginValue {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         self.serialize_into(&mut writer.context, &mut writer.css)
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssMarginValue);
 
 impl SpacingValue for CssMarginValue {
     fn serialize_into(
@@ -80,7 +62,7 @@ impl SpacingValue for CssMarginValue {
         output: &mut String,
     ) -> SerializationResult<()> {
         match self {
-            Self::Auto => append_auto(context, output),
+            Self::Auto => context.keyword(output, "auto"),
             Self::LengthPercentage(value) => {
                 let captured = value.capture_specified(context)?;
                 context.append(output, &captured)
@@ -104,6 +86,10 @@ impl PartialEq for CssMarginValue {
 impl Eq for CssMarginValue {}
 
 /// One nonnegative padding longhand value.
+///
+/// # Specified serialization
+///
+/// Serializes the specified value without resolving layout context.
 #[derive(Clone, Debug)]
 pub struct CssPaddingValue(CssSpecifiedNonNegativeLengthPercentage);
 
@@ -123,29 +109,16 @@ impl CssPaddingValue {
     pub fn origin(&self) -> &CssValueOrigin {
         self.0.origin()
     }
-
-    /// Serializes the specified value without resolving layout context.
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes under explicit resource limits.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+}
+impl crate::specified_rule_serialization::SpecifiedProvider for CssPaddingValue {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         self.serialize_into(&mut writer.context, &mut writer.css)
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssPaddingValue);
 
 impl SpacingValue for CssPaddingValue {
     fn serialize_into(
@@ -195,7 +168,7 @@ impl<T> Pair<T> {
     }
 }
 
-impl<T: SpacingValue> Pair<T> {
+impl<T: SpacingValue> crate::specified_rule_serialization::SpecifiedProvider for Pair<T> {
     fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
@@ -242,29 +215,16 @@ impl CssMarginPair {
     pub fn end(&self) -> &CssMarginValue {
         self.0.end()
     }
-
-    /// Serializes only authored values with default limits.
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes both authored values under one resource budget.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+}
+impl crate::specified_rule_serialization::SpecifiedProvider for CssMarginPair {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         self.0.append_to_rule_writer(writer)
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssMarginPair);
 
 /// One- or two-value logical padding-axis shorthand.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -294,29 +254,16 @@ impl CssPaddingPair {
     pub fn end(&self) -> &CssPaddingValue {
         self.0.end()
     }
-
-    /// Serializes only authored values with default limits.
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes both authored values under one resource budget.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+}
+impl crate::specified_rule_serialization::SpecifiedProvider for CssPaddingPair {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         self.0.append_to_rule_writer(writer)
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssPaddingPair);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct FourSides<T> {
@@ -347,15 +294,14 @@ impl<T> FourSides<T> {
     }
 }
 
-impl<T: SpacingValue> FourSides<T> {
+impl<T: SpacingValue> crate::specified_rule_serialization::SpecifiedProvider for FourSides<T> {
     fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> SerializationResult<()> {
         if self.kind == CssBoxSideKind::Logical {
             writer.source_member(0, |writer| {
-                writer.context.charge_input(1)?;
-                writer.context.charge_projection(1)?;
+                writer.node()?;
                 writer.append("logical ")
             })?;
         }
@@ -397,29 +343,16 @@ impl CssMarginShorthand {
     pub fn assigned_values(&self) -> [&CssMarginValue; 4] {
         self.0.assigned_values()
     }
-
-    /// Serializes the authored shorthand with default limits.
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes the `logical` switch and authored values under one budget.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+}
+impl crate::specified_rule_serialization::SpecifiedProvider for CssMarginShorthand {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         self.0.append_to_rule_writer(writer)
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssMarginShorthand);
 
 /// A checked one- to four-value padding shorthand with explicit side kind.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -447,26 +380,13 @@ impl CssPaddingShorthand {
     pub fn assigned_values(&self) -> [&CssPaddingValue; 4] {
         self.0.assigned_values()
     }
-
-    /// Serializes the authored shorthand with default limits.
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes the `logical` switch and authored values under one budget.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+}
+impl crate::specified_rule_serialization::SpecifiedProvider for CssPaddingShorthand {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         self.0.append_to_rule_writer(writer)
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssPaddingShorthand);

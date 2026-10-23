@@ -1,10 +1,6 @@
 //! Checked authored optimization hints from CSS Will Change 1 §2.
 
-use crate::{
-    CssComponentValue, CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits,
-};
-
-type SerializationResult<T> = Result<T, CssSpecifiedValueSerializationError>;
+use crate::CssComponentValue;
 
 /// A decoded property name in the `will-change` custom-identifier branch.
 /// Unknown future and custom property names are retained without resolving them.
@@ -71,6 +67,10 @@ impl CssWillChangeFeatures {
 }
 
 /// The specified `auto | <animateable-feature>#` value, before optimizations.
+///
+/// # Specified serialization
+///
+/// Emits canonical specified CSS, preserving property-name case and repeats.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssWillChange {
@@ -78,36 +78,18 @@ pub enum CssWillChange {
     Features(CssWillChangeFeatures),
 }
 
-impl CssWillChange {
-    /// Emits canonical specified CSS, preserving property-name case and repeats.
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Uses one cumulative budget: one node for `auto`, or one list plus one
-    /// node per hint, for both input and projection. All emitted bytes count.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssWillChange {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         let Self::Features(features) = self else {
             return writer.keyword("auto");
         };
 
-        writer.context.charge_input(1)?;
-        writer.context.charge_projection(1)?;
+        writer.node()?;
         for (index, feature) in features.items().iter().enumerate() {
-            writer.context.charge_input(1)?;
-            writer.context.charge_projection(1)?;
+            writer.node()?;
             if index != 0 {
                 writer.append(", ")?;
             }
@@ -120,3 +102,4 @@ impl CssWillChange {
         Ok(())
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssWillChange);

@@ -11,8 +11,8 @@ pub struct CssomContainerCondition {
     pub name: String,
     pub query: String,
 }
-fn text_limits(max_bytes: usize) -> CssSpecifiedValueSerializationLimits {
-    CssSpecifiedValueSerializationLimits::new(usize::MAX, usize::MAX, max_bytes)
+fn text_limits(max_bytes: usize) -> CssSerializationLimits {
+    CssSerializationLimits::new(usize::MAX, usize::MAX, max_bytes)
 }
 fn container_name_text(
     entry: &CssContainerQueryEntry,
@@ -21,7 +21,7 @@ fn container_name_text(
     entry
         .name()
         .map(|name| {
-            serialize_css_identifier_with_limits(name.as_str(), text_limits(max_bytes))
+            serialize_css_identifier(name.as_str(), text_limits(max_bytes))
                 .map_err(CssomError::Serialization)
         })
         .unwrap_or_else(|| Ok(String::new()))
@@ -34,7 +34,7 @@ fn container_query_text(
         .query()
         .map(|query| {
             query
-                .serialize_with_limit(max_bytes)
+                .serialize_tokens(crate::css_adapter::token_byte_limits(max_bytes))
                 .map(|text| text.as_css().to_owned())
                 .map_err(CssomError::Component)
         })
@@ -119,12 +119,12 @@ impl CssomSnapshot {
                 (true, _) => &[&condition.query],
             };
             items.push(
-                serialize_css_whitespace_separated_list_with_limits(fields, text_limits(max_bytes))
+                serialize_css_whitespace_separated_list(fields, text_limits(max_bytes))
                     .map_err(CssomError::Serialization)?,
             );
         }
         let items: Vec<&str> = items.iter().map(String::as_str).collect();
-        serialize_css_comma_separated_list_with_limits(&items, text_limits(max_bytes))
+        serialize_css_comma_separated_list(&items, text_limits(max_bytes))
             .map_err(CssomError::Serialization)
     }
     /// Readonly decoded name under Surgeist's inert named-support grouping policy.
@@ -585,7 +585,7 @@ impl CssomSnapshot {
     pub(crate) fn style_selector_text(
         &self,
         id: &CssomRuleId,
-        limits: CssSpecifiedValueSerializationLimits,
+        limits: CssSerializationLimits,
     ) -> Result<String, CssomError> {
         let namespaces = self.state.rule_namespaces(id)?;
         let context = self.state.selector_context(id)?;
@@ -593,11 +593,11 @@ impl CssomSnapshot {
             CssomRuleData::Style {
                 selectors: CssomSelectors::Ordinary(list),
                 ..
-            } => list.serialize_cssom_with_limits(&namespaces, context, limits),
+            } => list.serialize_cssom(&namespaces, context, limits),
             CssomRuleData::Style {
                 selectors: CssomSelectors::Scoped(list),
                 ..
-            } => list.serialize_cssom_with_limits(&namespaces, context, limits),
+            } => list.serialize_cssom(&namespaces, context, limits),
             _ => return Err(CssomError::WrongKind),
         }
         .map_err(CssomError::Serialization)
@@ -605,11 +605,11 @@ impl CssomSnapshot {
     pub(crate) fn page_selector_text(
         &self,
         id: &CssomRuleId,
-        limits: CssSpecifiedValueSerializationLimits,
+        limits: CssSerializationLimits,
     ) -> Result<String, CssomError> {
         match self.rule(id)?.data() {
             CssomRuleData::Page { selectors, .. } => selectors
-                .serialize_cssom_with_limits(limits)
+                .serialize_cssom(limits)
                 .map_err(CssomError::Serialization),
             _ => Err(CssomError::WrongKind),
         }
@@ -617,11 +617,11 @@ impl CssomSnapshot {
     pub(crate) fn keyframe_key_text(
         &self,
         id: &CssomRuleId,
-        limits: CssSpecifiedValueSerializationLimits,
+        limits: CssSerializationLimits,
     ) -> Result<String, CssomError> {
         match self.rule(id)?.data() {
             CssomRuleData::Keyframe { selectors, .. } => selectors
-                .serialize_key_text_with_limits(limits)
+                .serialize_key_text(limits)
                 .map_err(CssomError::Serialization),
             _ => Err(CssomError::WrongKind),
         }
@@ -923,7 +923,7 @@ impl CssomSnapshot {
                 .map(|supports| {
                     supports
                         .condition()
-                        .serialize_with_limit(max_bytes)
+                        .serialize_tokens(crate::css_adapter::token_byte_limits(max_bytes))
                         .map(|value| value.as_css().to_owned())
                         .map_err(CssomError::Component)
                 })
@@ -972,7 +972,7 @@ impl CssomSnapshot {
                 prelude: CssomGroupPrelude::Supports(condition),
                 ..
             } => condition
-                .serialize_with_limit(max_bytes)
+                .serialize_tokens(crate::css_adapter::token_byte_limits(max_bytes))
                 .map(|value| value.as_css().to_owned())
                 .map_err(CssomError::Component),
             _ => Err(CssomError::WrongKind),
@@ -982,7 +982,7 @@ impl CssomSnapshot {
     pub(crate) fn scope_start(
         &self,
         id: &CssomRuleId,
-        limits: CssSpecifiedValueSerializationLimits,
+        limits: CssSerializationLimits,
     ) -> Result<Option<String>, CssomError> {
         let CssomRuleData::Group {
             prelude: CssomGroupPrelude::Scope { start, .. },
@@ -1004,7 +1004,7 @@ impl CssomSnapshot {
             .as_ref()
             .map(|value| {
                 value
-                    .serialize_cssom_with_limits(
+                    .serialize_cssom(
                         &namespaces,
                         CssScopeSelectorCssomContext::Start(nesting),
                         limits,
@@ -1016,7 +1016,7 @@ impl CssomSnapshot {
     pub(crate) fn scope_end(
         &self,
         id: &CssomRuleId,
-        limits: CssSpecifiedValueSerializationLimits,
+        limits: CssSerializationLimits,
     ) -> Result<Option<String>, CssomError> {
         let CssomRuleData::Group {
             prelude: CssomGroupPrelude::Scope { end, .. },
@@ -1029,11 +1029,7 @@ impl CssomSnapshot {
         end.as_ref()
             .map(|value| {
                 value
-                    .serialize_cssom_with_limits(
-                        &namespaces,
-                        CssScopeSelectorCssomContext::End,
-                        limits,
-                    )
+                    .serialize_cssom(&namespaces, CssScopeSelectorCssomContext::End, limits)
                     .map_err(CssomError::Serialization)
             })
             .transpose()
@@ -1060,7 +1056,7 @@ impl CssomSnapshot {
     pub(crate) fn condition_text(
         &self,
         id: &CssomRuleId,
-        limits: CssSpecifiedValueSerializationLimits,
+        limits: CssSerializationLimits,
     ) -> Result<String, CssomError> {
         match self.rule(id)?.data() {
             CssomRuleData::Group {
@@ -1068,7 +1064,7 @@ impl CssomSnapshot {
                 ..
             } => self
                 .media(media)?
-                .serialize_cssom_with_limits(limits)
+                .serialize_cssom(limits)
                 .map(|value| value.as_css().to_owned())
                 .map_err(CssomError::Media),
             CssomRuleData::Group {
@@ -1096,7 +1092,7 @@ impl CssomSnapshot {
                 None => Ok(None),
                 Some(CssImportLayer::Anonymous) => Ok(Some(String::new())),
                 Some(CssImportLayer::Named(name)) => name
-                    .serialize_specified_with_limits(text_limits(max_bytes))
+                    .serialize_specified(text_limits(max_bytes))
                     .map(Some)
                     .map_err(CssomError::Serialization),
                 _ => Err(CssomError::WrongKind),
@@ -1117,7 +1113,7 @@ impl CssomSnapshot {
             } => name
                 .as_ref()
                 .map(|name| {
-                    name.serialize_specified_with_limits(text_limits(max_bytes))
+                    name.serialize_specified(text_limits(max_bytes))
                         .map_err(CssomError::Serialization)
                 })
                 .unwrap_or_else(|| Ok(String::new())),
@@ -1150,7 +1146,7 @@ impl CssomSnapshot {
         let mut remaining = max_bytes;
         for name in names.names() {
             let text = name
-                .serialize_specified_with_limits(text_limits(remaining))
+                .serialize_specified(text_limits(remaining))
                 .map_err(CssomError::Serialization)?;
             remaining -= text.len();
             result.push(text);
@@ -1178,9 +1174,8 @@ impl State {
         };
         // One query and one monotonic native normalization/comparison budget for
         // the complete reverse-last search. No authored equality or text keys.
-        let mut matcher =
-            CssKeyframeSelectorMatcher::try_new_with_limits(query.selectors(), limits.css)
-                .map_err(CssomError::KeyframeComparison)?;
+        let mut matcher = CssKeyframeSelectorMatcher::try_new(query.selectors(), limits.css)
+            .map_err(CssomError::KeyframeComparison)?;
         let children = self.lists.get(list).expect("owned Keyframes list");
         for (visited, (index, child)) in children.iter().enumerate().rev().enumerate() {
             if visited >= limits.max_entries {

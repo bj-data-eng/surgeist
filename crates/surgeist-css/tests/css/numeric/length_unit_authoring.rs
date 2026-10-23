@@ -85,7 +85,10 @@ fn parses_calc_width_as_css_calc_length() {
         calculation.result_type(),
         CssCalculationType::LengthPercentage
     );
-    assert_eq!(value.serialize_specified().unwrap(), "calc(10% + 20px)");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "calc(10% + 20px)"
+    );
 }
 
 #[test]
@@ -386,7 +389,10 @@ fn flow_tolerance_calc_is_preserved_as_css_syntax() {
                 Some(surgeist_css::CssNumericDimension::Length)
             );
             assert_eq!(
-                calc.components().serialize().unwrap().as_css(),
+                calc.components()
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
                 "calc(8px + 2%)"
             );
         }
@@ -420,10 +426,16 @@ fn parses_calc_in_edge_shorthands() {
         top.calculation().unwrap().result_type(),
         CssCalculationType::LengthPercentage
     );
-    assert_eq!(top.serialize_specified().unwrap(), "calc(1% + 4px)");
+    assert_eq!(
+        top.serialize_specified(Default::default()).unwrap(),
+        "calc(1% + 4px)"
+    );
     assert_eq!(top, bottom.length_percentage().unwrap());
     assert_eq!(right, left);
-    assert_eq!(right.serialize_specified().unwrap(), "2px");
+    assert_eq!(
+        right.serialize_specified(Default::default()).unwrap(),
+        "2px"
+    );
     assert_eq!(edges.authored_values().len(), 2);
 
     assert_eq!(style_rule(&sheet.rules()[0]).declarations().len(), 1);

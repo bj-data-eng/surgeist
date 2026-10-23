@@ -149,9 +149,11 @@ fn expansion_states(property: P, reentry_keyword: &str) {
                 continue;
             }
             let parsed = declaration(property, text, importance);
-            let components =
-                CssComponentValues::try_new(vec![CssComponentValue::try_token(text).unwrap()])
-                    .unwrap();
+            let components = CssComponentValues::try_new(
+                vec![CssComponentValue::try_token(text).unwrap()],
+                Default::default(),
+            )
+            .unwrap();
             let checked = parse_property_value(
                 CssPropertyNameRef::Known(property),
                 components.clone(),
@@ -276,9 +278,11 @@ fn sixteen_keywords_have_exact_parsed_and_checked_views() {
                 parsed.value_components().items()[0].origin(),
                 CssValueOrigin::Parsed(_)
             ));
-            let components =
-                CssComponentValues::try_new(vec![CssComponentValue::try_token(text).unwrap()])
-                    .unwrap();
+            let components = CssComponentValues::try_new(
+                vec![CssComponentValue::try_token(text).unwrap()],
+                Default::default(),
+            )
+            .unwrap();
             let checked = parse_property_value(
                 CssPropertyNameRef::Known(property),
                 components.clone(),

@@ -13,6 +13,10 @@ use crate::{
 };
 
 /// A complete quoted String operand, without assigning resource interpretation.
+///
+/// # Specified serialization
+///
+/// Emits the authored operand/function without assigning downstream execution meaning.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssFilterImageString {
     component: CssComponentValue,
@@ -72,6 +76,10 @@ enum FilterImageInput {
 }
 
 /// One admitted first operand of `filter()`, preserving String/Image identity.
+///
+/// # Specified serialization
+///
+/// Emits the authored operand/function without assigning downstream execution meaning.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssFilterImageInput {
     value: FilterImageInput,
@@ -119,6 +127,10 @@ impl CssFilterImageInput {
 ///
 /// The selected draft does not define String-to-processing-input interpretation.
 /// This model retains authored operands only and never loads or filters an image.
+///
+/// # Specified serialization
+///
+/// Emits the authored operand/function without assigning downstream execution meaning.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssFilterImage {
     input: CssFilterImageInput,
@@ -130,7 +142,7 @@ impl CssFilterImage {
         &self,
         other: &Self,
         context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-    ) -> Result<bool, crate::CssSpecifiedValueSerializationError> {
+    ) -> Result<bool, crate::CssSerializationError> {
         use crate::specified_inverse::BoundedStructuralEquality;
         Ok(self.input.bounded_eq(&other.input, context)?
             && self.filters.bounded_eq(&other.filters, context)?
@@ -203,7 +215,7 @@ impl CssLightDarkImage {
         &self,
         other: &Self,
         context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-    ) -> Result<bool, crate::CssSpecifiedValueSerializationError> {
+    ) -> Result<bool, crate::CssSerializationError> {
         use crate::specified_inverse::BoundedStructuralEquality;
         Ok(self.light.bounded_eq(&other.light, context)?
             && self.dark.bounded_eq(&other.dark, context)?
@@ -423,6 +435,10 @@ fn filter_depth(value: &CssFilterFunction) -> Result<u32, CssImageConstructionEr
 }
 
 /// One authored `<image>`, excluding property-specific `none` keywords.
+///
+/// # Specified serialization
+///
+/// Serializes the checked image without resolving its resource or geometry.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssImage {
     value: CssImageValue,

@@ -107,7 +107,7 @@ fn owning_snapshot_retains_origin_and_selected_shorthand_survivors_after_owner_d
     }
     assert_eq!(
         after
-            .specified_property_css_text(&block, CssSpecifiedValueSerializationLimits::default())
+            .specified_property_css_text(&block, CssSerializationLimits::default())
             .unwrap(),
         "margin-right: 2px !important; margin-bottom: 3px !important; margin-left: 4px !important; --x: var(--input);"
     );
@@ -187,7 +187,11 @@ fn empty_nested_child_remains_live_and_css_provider_filters_only_its_text() {
         .iter()
         .map(|id| match after.rule(id).unwrap().data() {
             CssomRuleData::NestedDeclarations { block } => {
-                CssEditedRuleView::try_nested_declarations(selected(&after, block)).unwrap()
+                CssEditedRuleView::try_nested_declarations(
+                    selected(&after, block),
+                    Default::default(),
+                )
+                .unwrap()
             }
             _ => match after.rule(id).unwrap().authored() {
                 CssomAuthoredRule::Ordinary(v) => CssEditedRuleView::from_rule(v),
@@ -203,9 +207,15 @@ fn empty_nested_child_remains_live_and_css_provider_filters_only_its_text() {
     else {
         panic!("style")
     };
-    let view = CssEditedRuleView::try_style(selectors, selected(&after, block), &views).unwrap();
+    let view = CssEditedRuleView::try_style(
+        selectors,
+        selected(&after, block),
+        &views,
+        Default::default(),
+    )
+    .unwrap();
     assert_eq!(
-        view.serialize_cssom().unwrap(),
+        view.serialize_cssom(Default::default()).unwrap(),
         "a {\n  & b { color: red; }\n  & c { color: green; }\n}"
     );
     let media_id = match after.rule(&media).unwrap().data() {
@@ -219,11 +229,12 @@ fn empty_nested_child_remains_live_and_css_provider_filters_only_its_text() {
     let media_view = CssEditedRuleView::try_group(
         CssEditedGroupPreludeRef::Media(after.media(media_id).unwrap()),
         &child_views,
+        Default::default(),
     )
     .unwrap();
     // Selected CSSOM §serialize-rule indents each serialized child item once.
     assert_eq!(
-        media_view.serialize_cssom().unwrap(),
+        media_view.serialize_cssom(Default::default()).unwrap(),
         "@media screen {\n  a {\n  & b { color: red; }\n  & c { color: green; }\n}\n}"
     );
 }
@@ -388,10 +399,7 @@ fn computed_readonly_owner_and_null_base_are_independent_explicit_inputs() {
             assert_eq!(before.block(&id).unwrap().owner().unwrap().revision, 3);
             assert_eq!(
                 before
-                    .specified_property_css_text(
-                        &id,
-                        CssSpecifiedValueSerializationLimits::default()
-                    )
+                    .specified_property_css_text(&id, CssSerializationLimits::default())
                     .unwrap(),
                 if computed { "" } else { "color: red;" }
             );
@@ -786,7 +794,7 @@ fn current_import_facets_and_nullable_child_capture_are_owned_independently() {
         before
             .media(&media)
             .unwrap()
-            .serialize_cssom()
+            .serialize_cssom(Default::default())
             .unwrap()
             .as_css(),
         "screen"
@@ -923,7 +931,7 @@ fn unavailable_symbolic_projection_is_retained_but_resource_failures_abort() {
     assert_eq!(store.snapshot().revision(), snapshot.revision());
     let mut bounded = CssomStore::new(
         CssomLimits {
-            css: CssSpecifiedValueSerializationLimits::new(0, 0, 0),
+            css: CssSerializationLimits::new(0, 0, 0),
             ..CssomLimits::default()
         },
         CssomContext::default(),
@@ -999,8 +1007,10 @@ fn media_with_only_empty_nested_child_keeps_literal_two_newline_frame() {
         children(&after, &media).as_slice(),
         std::slice::from_ref(&nested)
     );
-    let nested_view = CssEditedRuleView::try_nested_declarations(selected(&after, &block)).unwrap();
-    assert_eq!(nested_view.serialize_cssom().unwrap(), "");
+    let nested_view =
+        CssEditedRuleView::try_nested_declarations(selected(&after, &block), Default::default())
+            .unwrap();
+    assert_eq!(nested_view.serialize_cssom(Default::default()).unwrap(), "");
     let children = [nested_view];
     let CssomRuleData::Group {
         prelude: CssomGroupPrelude::Media(id),
@@ -1012,9 +1022,13 @@ fn media_with_only_empty_nested_child_keeps_literal_two_newline_frame() {
     let media = CssEditedRuleView::try_group(
         CssEditedGroupPreludeRef::Media(after.media(id).unwrap()),
         &children,
+        Default::default(),
     )
     .unwrap();
-    assert_eq!(media.serialize_cssom().unwrap(), "@media screen {\n\n}");
+    assert_eq!(
+        media.serialize_cssom(Default::default()).unwrap(),
+        "@media screen {\n\n}"
+    );
 }
 
 #[test]
@@ -1183,10 +1197,7 @@ fn parsed_ingress_uses_current_parser_facts_and_typed_ingress_keeps_its_own() {
     let parsed_block = block(&after, &root(&after, parsed));
     assert_eq!(
         after
-            .specified_property_css_text(
-                &parsed_block,
-                CssSpecifiedValueSerializationLimits::default()
-            )
+            .specified_property_css_text(&parsed_block, CssSerializationLimits::default())
             .unwrap(),
         "width: 10px;"
     );
@@ -1215,7 +1226,7 @@ fn parsed_ingress_uses_current_parser_facts_and_typed_ingress_keeps_its_own() {
         latest
             .specified_property_css_text(
                 &block(&latest, &root(&latest, &standard)),
-                CssSpecifiedValueSerializationLimits::default()
+                CssSerializationLimits::default()
             )
             .unwrap(),
         "height: 11px;"

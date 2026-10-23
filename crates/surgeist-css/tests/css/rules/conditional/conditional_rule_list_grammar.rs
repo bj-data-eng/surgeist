@@ -443,7 +443,11 @@ fn discarded_semicolon_keeps_comments_unicode_and_balanced_block_siblings() {
         panic!("one custom declaration: {b:?}")
     };
     assert_eq!(
-        declaration.value_components().serialize().unwrap().as_css(),
+        declaration
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         "'}'"
     );
 }

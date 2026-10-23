@@ -8,10 +8,9 @@ use surgeist_css::{
     CssAttributeCaseSensitivity, CssAttributeMatcher, CssAttributeName, CssAttributeSelector,
     CssCompoundSelector, CssIdent, CssNamespaceContext, CssPseudoClass, CssPseudoElement,
     CssPseudoElementSegment as Segment, CssQualifiedAttributeName, CssQualifiedNamePrefix, CssRule,
-    CssRuleCssomSerializationErrorKind as RuleError, CssSelector, CssSimpleSelector as Simple,
-    CssSpecifiedValueSerializationErrorKind as Resource,
-    CssSpecifiedValueSerializationLimits as Limits, CssStyleSelector, CssStyleSelectorContext,
-    CssValueOrigin, parse_rule, parse_sheet,
+    CssRuleCssomSerializationErrorKind as RuleError, CssSelector, CssSerializationLimits as Limits,
+    CssSimpleSelector as Simple, CssSpecifiedValueSerializationErrorKind as Resource,
+    CssStyleSelector, CssStyleSelectorContext, CssValueOrigin, parse_rule, parse_sheet,
 };
 
 const AUTHORED: &str = ".One#X:hover[A='é'].Two#Y:focus[B='two'].One#X:hover[A='é']";
@@ -34,6 +33,7 @@ fn attribute(name: &str, value: &str) -> Simple {
             name,
             CssAttributeMatcher::Equals(value.into()),
             CssAttributeCaseSensitivity::DocumentDefault,
+            Default::default(),
         )
         .unwrap(),
     )
@@ -44,27 +44,38 @@ fn interleaved_repetitions_keep_authored_order_through_checked_parse_and_rule_ou
     // Members serialize in authored order; the grouped accessors still expose
     // each category's relative order and every repeated member.
     let checked = CssSelector::Compound(
-        CssCompoundSelector::try_new(vec![
-            Simple::Class(ident("One")),
-            Simple::Id(ident("X")),
-            Simple::PseudoClass(CssPseudoClass::Hover),
-            attribute("A", "é"),
-            Simple::Class(ident("Two")),
-            Simple::Id(ident("Y")),
-            Simple::PseudoClass(CssPseudoClass::Focus),
-            attribute("B", "two"),
-            Simple::Class(ident("One")),
-            Simple::Id(ident("X")),
-            Simple::PseudoClass(CssPseudoClass::Hover),
-            attribute("A", "é"),
-        ])
+        CssCompoundSelector::try_new(
+            vec![
+                Simple::Class(ident("One")),
+                Simple::Id(ident("X")),
+                Simple::PseudoClass(CssPseudoClass::Hover),
+                attribute("A", "é"),
+                Simple::Class(ident("Two")),
+                Simple::Id(ident("Y")),
+                Simple::PseudoClass(CssPseudoClass::Focus),
+                attribute("B", "two"),
+                Simple::Class(ident("One")),
+                Simple::Id(ident("X")),
+                Simple::PseudoClass(CssPseudoClass::Hover),
+                attribute("A", "é"),
+            ],
+            Default::default(),
+        )
         .unwrap(),
     );
     assert_eq!(parsed(AUTHORED), checked);
     assert_eq!(parsed(SERIALIZED), checked);
     assert_ne!(parsed(GROUPED), checked);
-    assert_eq!(parsed(GROUPED).to_specified_css().unwrap(), GROUPED);
-    assert_eq!(checked.to_specified_css().unwrap(), SERIALIZED);
+    assert_eq!(
+        parsed(GROUPED)
+            .serialize_specified(Default::default())
+            .unwrap(),
+        GROUPED
+    );
+    assert_eq!(
+        checked.serialize_specified(Default::default()).unwrap(),
+        SERIALIZED
+    );
     let CssSelector::Compound(compound) = &checked else {
         panic!("checked compound")
     };
@@ -106,8 +117,11 @@ fn interleaved_repetitions_keep_authored_order_through_checked_parse_and_rule_ou
         AUTHORED.encode_utf16().count() + 1
     );
     let expected = format!("{SERIALIZED} {{ opacity: 0; }}");
-    assert_eq!(rule.serialize_cssom().unwrap(), expected);
-    assert_eq!(rule.to_specified_css().unwrap(), expected);
+    assert_eq!(rule.serialize_cssom(Default::default()).unwrap(), expected);
+    assert_eq!(
+        rule.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     let roundtrip = parse_rule(&expected, &CssNamespaceContext::default());
     assert!(roundtrip.is_clean());
     let CssRule::Style(reparsed) = roundtrip.syntax().as_ref().unwrap() else {
@@ -124,10 +138,18 @@ fn authored_category_order_keeps_pseudo_element_attachments_order_sensitive() {
     let expected = source;
     let selector = parsed(source);
     let before = selector.clone();
-    assert_eq!(selector.to_specified_css().unwrap(), expected);
+    assert_eq!(
+        selector.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     // Part names include parsed source provenance in equality. Round-trip output
     // and semantic attachment are checked without erasing that provenance.
-    assert_eq!(parsed(expected).to_specified_css().unwrap(), expected);
+    assert_eq!(
+        parsed(expected)
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
     let CssSelector::Compound(compound) = &selector else {
         panic!("originating compound")
     };
@@ -172,9 +194,12 @@ fn authored_category_order_keeps_pseudo_element_attachments_order_sensitive() {
     let report = parse_rule(&format!("{source}{{}}"), &CssNamespaceContext::default());
     assert!(report.is_clean(), "{report:?}");
     let rule = report.syntax().as_ref().unwrap();
-    assert_eq!(rule.serialize_cssom().unwrap(), format!("{expected} {{ }}"));
     assert_eq!(
-        rule.to_specified_css().unwrap(),
+        rule.serialize_cssom(Default::default()).unwrap(),
+        format!("{expected} {{ }}")
+    );
+    assert_eq!(
+        rule.serialize_specified(Default::default()).unwrap(),
         format!("{expected} {{ }}")
     );
     assert_eq!(selector, before);
@@ -202,18 +227,9 @@ fn interleaved_rule_siblings_share_exact_limits_and_failure_preserves_retry() {
     // Per empty style: rule1 + selector-list1 + build1 + output1 =4 more.
     // Sheet1 + two complete Style17 =35 input and projection visits.
     let adequate = Limits::new(35, 35, expected.len());
+    assert_eq!(report.syntax().serialize_cssom(adequate).unwrap(), expected);
     assert_eq!(
-        report
-            .syntax()
-            .serialize_cssom_with_limits(adequate)
-            .unwrap(),
-        expected
-    );
-    assert_eq!(
-        report
-            .syntax()
-            .to_specified_css_with_limits(adequate)
-            .unwrap(),
+        report.syntax().serialize_specified(adequate).unwrap(),
         expected
     );
     for (limits, kind) in [
@@ -239,20 +255,11 @@ fn interleaved_rule_siblings_share_exact_limits_and_failure_preserves_retry() {
             Resource::ByteLimit,
         ),
     ] {
-        let failure = report
-            .syntax()
-            .serialize_cssom_with_limits(limits)
-            .unwrap_err();
+        let failure = report.syntax().serialize_cssom(limits).unwrap_err();
         assert_eq!(failure.kind(), RuleError::Resource(kind));
         assert_eq!(failure.rule_path(), &[1]);
         assert_eq!(report, before);
-        assert_eq!(
-            report
-                .syntax()
-                .serialize_cssom_with_limits(adequate)
-                .unwrap(),
-            expected
-        );
+        assert_eq!(report.syntax().serialize_cssom(adequate).unwrap(), expected);
     }
 }
 
@@ -281,9 +288,10 @@ fn nested_selector_texts(source: &str) -> Vec<(String, String, usize)> {
                     .serialize_cssom(
                         &CssNamespaceContext::default(),
                         CssStyleSelectorContext::Nested,
+                        Default::default(),
                     )
                     .unwrap(),
-                selector.to_specified_css().unwrap(),
+                selector.serialize_specified(Default::default()).unwrap(),
                 compound.nesting_selectors(),
             )
         })
@@ -343,7 +351,7 @@ fn scope_anchor_serializes_at_its_authored_compound_position() {
                 panic!("one compound")
             };
             (
-                selector.to_specified_css().unwrap(),
+                selector.serialize_specified(Default::default()).unwrap(),
                 compound.scope_anchors(),
             )
         })

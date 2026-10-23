@@ -35,7 +35,11 @@ fn original_style(style: &CssStyleRule, source: &str, start: usize, color: &str)
         panic!("one retained color declaration")
     };
     assert_eq!(
-        declaration.value_components().serialize().unwrap().as_css(),
+        declaration
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         color
     );
     let value = declaration.parsed_value().unwrap();
@@ -557,7 +561,10 @@ fn direct_depth_on_two_mib(depth: usize) {
                     let cloned = report.clone();
                     assert_eq!(cloned.syntax(), report.syntax());
                     assert_eq!(cloned.diagnostics(), report.diagnostics());
-                    let output = report.syntax().to_specified_css().unwrap();
+                    let output = report
+                        .syntax()
+                        .serialize_specified(Default::default())
+                        .unwrap();
                     assert_eq!(
                         output
                             .matches(if scoped { "@scope" } else { "@media" })

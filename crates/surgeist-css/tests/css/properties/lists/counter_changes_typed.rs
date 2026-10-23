@@ -75,7 +75,12 @@ fn one_checked_value_uses_explicit_property_context_for_missing_operands() {
         (CssCounterProperty::Increment, "chapter 1 section -2"),
         (CssCounterProperty::Set, "chapter 0 section -2"),
     ] {
-        assert_eq!(value.serialize_specified(property).unwrap(), expected);
+        assert_eq!(
+            value
+                .serialize_specified(property, Default::default())
+                .unwrap(),
+            expected
+        );
     }
     assert!(value.changes().unwrap()[0].value().is_none());
     for property in [
@@ -85,7 +90,7 @@ fn one_checked_value_uses_explicit_property_context_for_missing_operands() {
     ] {
         assert_eq!(
             CssCounterChangesValue::none()
-                .serialize_specified(property)
+                .serialize_specified(property, Default::default())
                 .unwrap(),
             "none"
         );
@@ -105,13 +110,13 @@ fn decoded_names_are_escaped_and_exact_large_integers_stay_exact() {
     .unwrap();
     assert_eq!(
         value
-            .serialize_specified(CssCounterProperty::Reset)
+            .serialize_specified(CssCounterProperty::Reset, Default::default())
             .unwrap(),
         format!(r"\31 chapter {huge} chapter\ name 0")
     );
     assert_eq!(
         value
-            .serialize_specified(CssCounterProperty::Increment)
+            .serialize_specified(CssCounterProperty::Increment, Default::default())
             .unwrap(),
         format!(r"\31 chapter {huge} chapter\ name 1")
     );
@@ -144,7 +149,7 @@ fn small_counter_tokens_preserve_lexemes_and_escaped_names() {
     assert!(matches!(literal.origin(), CssValueOrigin::Parsed(_)));
     assert_eq!(
         representable
-            .serialize_specified(CssCounterProperty::Reset)
+            .serialize_specified(CssCounterProperty::Reset, Default::default())
             .unwrap(),
         "chapter -2"
     );
@@ -162,7 +167,7 @@ fn small_counter_tokens_preserve_lexemes_and_escaped_names() {
     assert_eq!(
         wrapper
             .value()
-            .serialize_specified(CssCounterProperty::Reset)
+            .serialize_specified(CssCounterProperty::Reset, Default::default())
             .unwrap(),
         r"chapter\ name 2"
     );
@@ -191,12 +196,15 @@ fn parsed_values_preserve_full_source_origins() {
         );
         assert_eq!(
             current(&ordinary)
-                .serialize_specified(match property {
-                    CssKnownProperty::CounterReset => CssCounterProperty::Reset,
-                    CssKnownProperty::CounterIncrement => CssCounterProperty::Increment,
-                    CssKnownProperty::CounterSet => CssCounterProperty::Set,
-                    _ => unreachable!(),
-                })
+                .serialize_specified(
+                    match property {
+                        CssKnownProperty::CounterReset => CssCounterProperty::Reset,
+                        CssKnownProperty::CounterIncrement => CssCounterProperty::Increment,
+                        CssKnownProperty::CounterSet => CssCounterProperty::Set,
+                        _ => unreachable!(),
+                    },
+                    Default::default()
+                )
                 .unwrap(),
             if property == CssKnownProperty::CounterIncrement {
                 "chapter 1 section -2 chapter 0"
@@ -244,7 +252,7 @@ fn parsed_values_preserve_full_source_origins() {
             "calc("
         );
         let canonical = current(&math)
-            .serialize_specified(CssCounterProperty::Reset)
+            .serialize_specified(CssCounterProperty::Reset, Default::default())
             .unwrap();
         assert_eq!(canonical, "chapter calc(2.5)");
     }
@@ -254,9 +262,9 @@ fn parsed_values_preserve_full_source_origins() {
 fn omitted_defaults_and_sibling_entries_share_exact_node_and_byte_budgets() {
     let one = CssCounterChangesValue::try_changes(vec![entry("chapter", None)]).unwrap();
     assert_eq!(
-        one.serialize_specified_with_limits(
+        one.serialize_specified(
             CssCounterProperty::Increment,
-            CssSpecifiedValueSerializationLimits::new(3, 4, 9),
+            CssSerializationLimits::new(3, 4, 9),
         )
         .unwrap(),
         "chapter 1"
@@ -266,44 +274,44 @@ fn omitted_defaults_and_sibling_entries_share_exact_node_and_byte_budgets() {
             .unwrap();
     let expected = "chapter 1 section 1";
     assert_eq!(
-        two.serialize_specified_with_limits(
+        two.serialize_specified(
             CssCounterProperty::Increment,
-            CssSpecifiedValueSerializationLimits::new(5, 7, expected.len()),
+            CssSerializationLimits::new(5, 7, expected.len()),
         )
         .unwrap(),
         expected
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(0, 7, expected.len()),
+            CssSerializationLimits::new(0, 7, expected.len()),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(4, 7, expected.len()),
+            CssSerializationLimits::new(4, 7, expected.len()),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(5, 0, expected.len()),
+            CssSerializationLimits::new(5, 0, expected.len()),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(5, 6, expected.len()),
+            CssSerializationLimits::new(5, 6, expected.len()),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(5, 7, expected.len() - 1),
+            CssSerializationLimits::new(5, 7, expected.len() - 1),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
         assert_eq!(
-            two.serialize_specified_with_limits(CssCounterProperty::Increment, limits)
+            two.serialize_specified(CssCounterProperty::Increment, limits)
                 .unwrap_err()
                 .kind(),
             kind
         );
     }
     assert_eq!(
-        two.serialize_specified(CssCounterProperty::Increment)
+        two.serialize_specified(CssCounterProperty::Increment, Default::default())
             .unwrap(),
         expected
     );
@@ -315,6 +323,7 @@ fn two_symbolic_integers_share_the_css_byte_budget_without_resolution() {
         CssIntegerValue::Calculation(
             CssIntegerCalculation::try_from_components(
                 parse_component_values("calc(2.5)").unwrap(),
+                Default::default(),
             )
             .unwrap(),
         )
@@ -328,19 +337,19 @@ fn two_symbolic_integers_share_the_css_byte_budget_without_resolution() {
     let single = "a calc(2.5)";
     let both = "a calc(2.5) b calc(2.5)";
     assert_eq!(
-        one.serialize_specified(CssCounterProperty::Increment)
+        one.serialize_specified(CssCounterProperty::Increment, Default::default())
             .unwrap(),
         single
     );
     assert_eq!(
-        two.serialize_specified(CssCounterProperty::Increment)
+        two.serialize_specified(CssCounterProperty::Increment, Default::default())
             .unwrap(),
         both
     );
     assert_eq!(
-        one.serialize_specified_with_limits(
+        one.serialize_specified(
             CssCounterProperty::Increment,
-            CssSpecifiedValueSerializationLimits::new(100, 100, single.len()),
+            CssSerializationLimits::new(100, 100, single.len()),
         )
         .unwrap(),
         single
@@ -349,51 +358,51 @@ fn two_symbolic_integers_share_the_css_byte_budget_without_resolution() {
     // leaf cost two input nodes; numeric projection unwraps calc to one scalar
     // node. The second sibling adds four input and three projection nodes.
     assert_eq!(
-        one.serialize_specified_with_limits(
+        one.serialize_specified(
             CssCounterProperty::Increment,
-            CssSpecifiedValueSerializationLimits::new(5, 4, single.len()),
+            CssSerializationLimits::new(5, 4, single.len()),
         )
         .unwrap(),
         single
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(8, 7, both.len()),
+            CssSerializationLimits::new(8, 7, both.len()),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(9, 6, both.len()),
+            CssSerializationLimits::new(9, 6, both.len()),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
     ] {
         assert_eq!(
-            two.serialize_specified_with_limits(CssCounterProperty::Increment, limits)
+            two.serialize_specified(CssCounterProperty::Increment, limits)
                 .unwrap_err()
                 .kind(),
             kind
         );
     }
     assert_eq!(
-        two.serialize_specified_with_limits(
+        two.serialize_specified(
             CssCounterProperty::Increment,
-            CssSpecifiedValueSerializationLimits::new(9, 7, both.len()),
+            CssSerializationLimits::new(9, 7, both.len()),
         )
         .unwrap(),
         both
     );
     assert_eq!(
-        two.serialize_specified_with_limits(
+        two.serialize_specified(
             CssCounterProperty::Increment,
-            CssSpecifiedValueSerializationLimits::new(100, 100, single.len()),
+            CssSerializationLimits::new(100, 100, single.len()),
         )
         .unwrap_err()
         .kind(),
         CssSpecifiedValueSerializationErrorKind::ByteLimit
     );
     assert_eq!(
-        two.serialize_specified_with_limits(
+        two.serialize_specified(
             CssCounterProperty::Increment,
-            CssSpecifiedValueSerializationLimits::new(100, 100, both.len()),
+            CssSerializationLimits::new(100, 100, both.len()),
         )
         .unwrap(),
         both

@@ -1,17 +1,16 @@
 //! Canonical authored profiles using the enclosing cumulative specified writer.
 use crate::{
     CssColorProfileDescriptor, CssColorProfileDescriptorValue, CssColorProfileDescriptorValueRef,
-    CssColorProfileRule, CssColorProfileRuleName, CssSpecifiedValueSerializationError,
-    CssSpecifiedValueSerializationLimits, specified_rule_serialization::SpecifiedRuleWriter,
+    CssColorProfileRule, CssColorProfileRuleName, CssSerializationError,
+    specified_rule_serialization::SpecifiedRuleWriter,
 };
 
 impl SpecifiedRuleWriter {
     pub(crate) fn color_profile(
         &mut self,
         rule: &CssColorProfileRule,
-    ) -> Result<(), CssSpecifiedValueSerializationError> {
-        self.context.charge_input(1)?;
-        self.context.charge_projection(1)?;
+    ) -> Result<(), CssSerializationError> {
+        self.node()?;
         self.append("@color-profile ")?;
         match rule.name() {
             CssColorProfileRuleName::Custom(name) => self.append_identifier(name.as_str())?,
@@ -29,9 +28,8 @@ impl SpecifiedRuleWriter {
     fn profile_descriptor(
         &mut self,
         descriptor: &CssColorProfileDescriptor,
-    ) -> Result<(), CssSpecifiedValueSerializationError> {
-        self.context.charge_input(1)?;
-        self.context.charge_projection(1)?;
+    ) -> Result<(), CssSerializationError> {
+        self.node()?;
         self.append(descriptor.value().kind().css_name())?;
         self.append(": ")?;
         self.profile_value(descriptor.value())
@@ -40,12 +38,11 @@ impl SpecifiedRuleWriter {
     fn profile_value(
         &mut self,
         value: &CssColorProfileDescriptorValue,
-    ) -> Result<(), CssSpecifiedValueSerializationError> {
+    ) -> Result<(), CssSerializationError> {
         match value.view() {
             CssColorProfileDescriptorValueRef::Src(url) => url.append_specified(self),
             CssColorProfileDescriptorValueRef::RenderingIntent(intent) => {
-                self.context.charge_input(1)?;
-                self.context.charge_projection(1)?;
+                self.node()?;
                 self.append(intent.css_name())
             }
             CssColorProfileDescriptorValueRef::Components(names) => {
@@ -53,8 +50,7 @@ impl SpecifiedRuleWriter {
                     if index != 0 {
                         self.append(", ")?;
                     }
-                    self.context.charge_input(1)?;
-                    self.context.charge_projection(1)?;
+                    self.node()?;
                     self.append_identifier(name.as_str())?;
                 }
                 Ok(())
@@ -70,47 +66,32 @@ impl SpecifiedRuleWriter {
     }
 }
 
-impl CssColorProfileDescriptorValue {
-    /// Emits ordinary checked grammar or symbolic pending tokens without substitution.
-    pub fn to_specified_css(&self) -> Result<String, CssSpecifiedValueSerializationError> {
-        self.to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-    pub fn to_specified_css_with_limits(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssColorProfileDescriptorValue {
+    fn append_to_rule_writer(
         &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String, CssSpecifiedValueSerializationError> {
-        let mut writer = SpecifiedRuleWriter::new(limits);
-        writer.profile_value(self)?;
-        Ok(writer.css)
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        writer.profile_value(self)
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssColorProfileDescriptorValue);
 
-impl CssColorProfileDescriptor {
-    /// Emits one name and value, without the enclosing list's semicolon.
-    pub fn to_specified_css(&self) -> Result<String, CssSpecifiedValueSerializationError> {
-        self.to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-    pub fn to_specified_css_with_limits(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssColorProfileDescriptor {
+    fn append_to_rule_writer(
         &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String, CssSpecifiedValueSerializationError> {
-        let mut writer = SpecifiedRuleWriter::new(limits);
-        writer.profile_descriptor(self)?;
-        Ok(writer.css)
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        writer.profile_descriptor(self)
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssColorProfileDescriptor);
 
-impl CssColorProfileRule {
-    /// Emits every retained occurrence in authored order, including empty definitions.
-    pub fn to_specified_css(&self) -> Result<String, CssSpecifiedValueSerializationError> {
-        self.to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-    pub fn to_specified_css_with_limits(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssColorProfileRule {
+    fn append_to_rule_writer(
         &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String, CssSpecifiedValueSerializationError> {
-        let mut writer = SpecifiedRuleWriter::new(limits);
-        writer.color_profile(self)?;
-        Ok(writer.css)
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        writer.color_profile(self)
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssColorProfileRule);

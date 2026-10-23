@@ -273,7 +273,7 @@ fn accepted(name: &str, input: &str, canonical: &str) {
     for source in fronts(name, input) {
         let before = source.clone();
         assert_eq!(
-            source.to_specified_css().unwrap(),
+            source.serialize_specified(Default::default()).unwrap(),
             format!("{name}: {canonical} !important;")
         );
         assert!(source.known().unwrap().property_value().is_some());
@@ -290,7 +290,9 @@ fn accepted(name: &str, input: &str, canonical: &str) {
         assert_eq!(source, before);
     }
     assert_eq!(
-        checked(name, canonical, true).to_specified_css().unwrap(),
+        checked(name, canonical, true)
+            .serialize_specified(Default::default())
+            .unwrap(),
         format!("{name}: {canonical} !important;")
     );
 }
@@ -306,7 +308,7 @@ fn implicit_origin(components: &CssComponentValues) -> CssValueOrigin {
             return origin.clone();
         }
     }
-    let serialized = components.serialize().unwrap();
+    let serialized = components.serialize_tokens(Default::default()).unwrap();
     (0..serialized.as_css().len())
         .find_map(|offset| match serialized.origin_at(offset) {
             Some(CssSerializedOrigin::Token(origin @ CssValueOrigin::ImplicitClosure { .. })) => {
@@ -336,38 +338,26 @@ fn assert_closure(error: &CssPropertyValueParseError, origin: &CssValueOrigin, t
 
 #[test]
 fn canonical_keyword_declarations_have_exact_node_byte_budgets_and_atomic_reusable_failures() {
+    use CssSerializationLimits as Limits;
     use CssSpecifiedValueSerializationErrorKind as Kind;
-    use CssSpecifiedValueSerializationLimits as Limits;
     for name in FAMILY {
         for &text in keywords(name) {
             for source in [parsed(name, text), checked(name, text, true)] {
                 let before = source.clone();
                 let expected = format!("{name}: {text} !important;");
                 let exact = Limits::new(3, 3, expected.len());
-                assert_eq!(
-                    source.to_specified_css_with_limits(exact).unwrap(),
-                    expected
-                );
+                assert_eq!(source.serialize_specified(exact).unwrap(), expected);
                 for (limits, kind) in [
                     (Limits::new(2, 3, expected.len()), Kind::InputNodeLimit),
                     (Limits::new(3, 2, expected.len()), Kind::ProjectionNodeLimit),
                     (Limits::new(3, 3, expected.len() - 1), Kind::ByteLimit),
                 ] {
                     for _ in 0..2 {
-                        assert_eq!(
-                            source
-                                .to_specified_css_with_limits(limits)
-                                .unwrap_err()
-                                .kind(),
-                            kind
-                        );
+                        assert_eq!(source.serialize_specified(limits).unwrap_err().kind(), kind);
                         assert_eq!(source, before);
                     }
                 }
-                assert_eq!(
-                    source.to_specified_css_with_limits(exact).unwrap(),
-                    expected
-                );
+                assert_eq!(source.serialize_specified(exact).unwrap(), expected);
             }
         }
     }
@@ -395,7 +385,10 @@ fn flow_flex_grid_item_and_color_controls_execute_independently_of_ui_metadata()
         let report = parse_style_attribute(&format!("{name}:{input}"));
         assert!(report.is_clean());
         for source in report.syntax().iter() {
-            assert_eq!(source.to_specified_css().unwrap(), expected);
+            assert_eq!(
+                source.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
             let CssExpansion::Contributions(CssContributions::Longhands(values)) =
                 expand_declaration(source).unwrap()
             else {
@@ -441,7 +434,7 @@ fn canonical_and_standard_alias_share_one_identity_and_original_name_provenance(
             );
             assert_eq!(source.position(), Some(origin.span().start()));
             assert_eq!(
-                source.to_specified_css().unwrap(),
+                source.serialize_specified(Default::default()).unwrap(),
                 format!("user-select: {text} !important;")
             );
             completed(source);
@@ -452,7 +445,9 @@ fn canonical_and_standard_alias_share_one_identity_and_original_name_provenance(
     assert!(report.is_clean());
     assert_eq!(report.syntax()[0].known().unwrap().property(), canonical);
     assert_eq!(
-        report.syntax()[0].to_specified_css().unwrap(),
+        report.syntax()[0]
+            .serialize_specified(Default::default())
+            .unwrap(),
         "user-select: all !important;"
     );
     for alias in ["-fake-user-select", "webkit-user-select"] {
@@ -490,7 +485,7 @@ fn standard_alias_rejects_invalid_grammar_and_original_checked_closures() {
             let source = checked(alias, "ALL/**/", grammar);
             assert_eq!(source.known().unwrap().property(), property("user-select"));
             assert_eq!(
-                source.to_specified_css().unwrap(),
+                source.serialize_specified(Default::default()).unwrap(),
                 "user-select: all !important;"
             );
         }
@@ -652,7 +647,13 @@ fn caret_imports_complete_color_families_and_delegates_canonical_child_output() 
         else {
             panic!("shared Color")
         };
-        assert_eq!(child.value().to_specified_css().unwrap(), expected);
+        assert_eq!(
+            child
+                .value()
+                .serialize_specified(Default::default())
+                .unwrap(),
+            expected
+        );
         for source in fronts("caret-color", text) {
             let CssKnownPropertyValueRef::CaretColor(caret) =
                 source.known().unwrap().property_value().unwrap()
@@ -662,9 +663,12 @@ fn caret_imports_complete_color_families_and_delegates_canonical_child_output() 
             let CssCaretColor::Color(child) = caret.caret() else {
                 panic!("transparent Color carrier")
             };
-            assert_eq!(child.to_specified_css().unwrap(), expected);
             assert_eq!(
-                source.to_specified_css().unwrap(),
+                child.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
+            assert_eq!(
+                source.serialize_specified(Default::default()).unwrap(),
                 format!("caret-color: {expected} !important;")
             );
             completed(&source);
@@ -851,7 +855,7 @@ fn cursor_checked_payload_retains_order_omissions_descriptors_and_exact_scalar_o
         }
         assert_eq!(source.value_components(), &supplied);
         assert_eq!(
-            source.to_specified_css().unwrap(),
+            source.serialize_specified(Default::default()).unwrap(),
             "cursor: image-set(\"first.png\" 1dppx type(\"image/png\"), url(\"second.png\")) -3.5 4.25, url(\"last.cur\"), pointer !important;"
         );
     }
@@ -971,20 +975,14 @@ fn normalization_keeps_ui_order_contexts_alias_pending_importance_and_exact_coun
 }
 fn primitive_css(
     source: &CssDeclaration,
-    limits: CssSpecifiedValueSerializationLimits,
-) -> Result<String, CssSpecifiedValueSerializationError> {
+    limits: CssSerializationLimits,
+) -> Result<String, CssSerializationError> {
     match source.known().unwrap().property_value().unwrap() {
-        CssKnownPropertyValueRef::CaretColor(v) => {
-            v.caret().serialize_specified_with_limits(limits)
-        }
-        CssKnownPropertyValueRef::Cursor(v) => v.value().serialize_specified_with_limits(limits),
-        CssKnownPropertyValueRef::PointerEvents(v) => {
-            v.value().serialize_specified_with_limits(limits)
-        }
-        CssKnownPropertyValueRef::UserSelect(v) => {
-            v.value().serialize_specified_with_limits(limits)
-        }
-        CssKnownPropertyValueRef::Resize(v) => v.resize().serialize_specified_with_limits(limits),
+        CssKnownPropertyValueRef::CaretColor(v) => v.caret().serialize_specified(limits),
+        CssKnownPropertyValueRef::Cursor(v) => v.value().serialize_specified(limits),
+        CssKnownPropertyValueRef::PointerEvents(v) => v.value().serialize_specified(limits),
+        CssKnownPropertyValueRef::UserSelect(v) => v.value().serialize_specified(limits),
+        CssKnownPropertyValueRef::Resize(v) => v.resize().serialize_specified(limits),
         _ => panic!("owning UI provider"),
     }
 }
@@ -994,12 +992,12 @@ fn provider_witnesses(name: &str, witnesses: &[(&str, &str)]) {
             let before = source.clone();
             let supplied = source.value_components().clone();
             assert_eq!(
-                primitive_css(&source, CssSpecifiedValueSerializationLimits::default()).unwrap(),
+                primitive_css(&source, CssSerializationLimits::default()).unwrap(),
                 expected,
                 "{name}:{input}"
             );
             assert_eq!(
-                source.to_specified_css().unwrap(),
+                source.serialize_specified(Default::default()).unwrap(),
                 format!("{name}: {expected} !important;"),
                 "{name}:{input}"
             );
@@ -1019,8 +1017,8 @@ fn caret_providers_emit_every_explicit_golden_without_intrinsic_metadata() {
 
 #[test]
 fn primitive_providers_charge_exact_keyword_and_cursor_child_work_atomically() {
+    use CssSerializationLimits as Limits;
     use CssSpecifiedValueSerializationErrorKind as Kind;
-    use CssSpecifiedValueSerializationLimits as Limits;
     let mut cases: Vec<(&str, &str, &str, usize)> = Vec::new();
     for name in FAMILY {
         for text in keywords(name) {
@@ -1076,10 +1074,7 @@ fn primitive_providers_charge_exact_keyword_and_cursor_child_work_atomically() {
         assert_eq!(primitive_css(&source, exact).unwrap(), expected);
         let declaration = format!("{name}: {expected} !important;");
         let exact = Limits::new(nodes + 2, nodes + 2, declaration.len());
-        assert_eq!(
-            source.to_specified_css_with_limits(exact).unwrap(),
-            declaration
-        );
+        assert_eq!(source.serialize_specified(exact).unwrap(), declaration);
         for (limits, kind) in [
             (
                 Limits::new(nodes + 1, nodes + 2, declaration.len()),
@@ -1094,51 +1089,35 @@ fn primitive_providers_charge_exact_keyword_and_cursor_child_work_atomically() {
                 Kind::ByteLimit,
             ),
         ] {
-            assert_eq!(
-                source
-                    .to_specified_css_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
-                kind
-            );
+            assert_eq!(source.serialize_specified(limits).unwrap_err().kind(), kind);
         }
         assert_eq!(source, before);
     }
 }
 #[test]
 fn huge_rgb_scalar_suppression_uses_only_final_output_bytes_and_keeps_source_reusable() {
-    use CssSpecifiedValueSerializationLimits as Limits;
+    use CssSerializationLimits as Limits;
     let source = checked("caret-color", "rgb(1e2000000 0 0)", true);
     let before = source.clone();
     let expected = "caret-color: rgb(255, 0, 0) !important;";
     let exact = Limits::new(usize::MAX, usize::MAX, expected.len());
-    assert_eq!(
-        source.to_specified_css_with_limits(exact).unwrap(),
-        expected
-    );
+    assert_eq!(source.serialize_specified(exact).unwrap(), expected);
     for _ in 0..2 {
         assert_eq!(
             source
-                .to_specified_css_with_limits(Limits::new(
-                    usize::MAX,
-                    usize::MAX,
-                    expected.len() - 1
-                ))
+                .serialize_specified(Limits::new(usize::MAX, usize::MAX, expected.len() - 1))
                 .unwrap_err()
                 .kind(),
             CssSpecifiedValueSerializationErrorKind::ByteLimit
         );
         assert_eq!(source, before);
     }
-    assert_eq!(
-        source.to_specified_css_with_limits(exact).unwrap(),
-        expected
-    );
+    assert_eq!(source.serialize_specified(exact).unwrap(), expected);
 }
 #[test]
 fn sheet_siblings_share_final_bytes_and_nodes_and_remain_reusable_after_failure() {
+    use CssSerializationLimits as Limits;
     use CssSpecifiedValueSerializationErrorKind as Kind;
-    use CssSpecifiedValueSerializationLimits as Limits;
     let report = parse_sheet(
         ".a{caret-color:auto!important;cursor:url(a) 30 -.25,pointer}.b{pointer-events:none;-webkit-user-select:all}.c{resize:block}",
     );
@@ -1148,19 +1127,16 @@ fn sheet_siblings_share_final_bytes_and_nodes_and_remain_reusable_after_failure(
     let expected = ".a { caret-color: auto !important; cursor: url(\"a\") 30 -0.25, pointer; }\n.b { pointer-events: none; user-select: all; }\n.c { resize: block; }";
     let exact = Limits::new(usize::MAX, usize::MAX, expected.len());
     let short = Limits::new(usize::MAX, usize::MAX, expected.len() - 1);
-    assert_eq!(sheet.to_specified_css_with_limits(exact).unwrap(), expected);
+    assert_eq!(sheet.serialize_specified(exact).unwrap(), expected);
     assert!(
         sheet
             .rules()
             .iter()
-            .all(|rule| rule.to_specified_css_with_limits(short).is_ok())
+            .all(|rule| rule.serialize_specified(short).is_ok())
     );
     for _ in 0..2 {
-        let error = sheet.to_specified_css_with_limits(short).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            CssSpecifiedRuleSerializationErrorKind::Resource(Kind::ByteLimit)
-        );
+        let error = sheet.serialize_specified(short).unwrap_err();
+        assert_eq!(error.kind(), Kind::ByteLimit);
         assert_eq!(error.rule_index(), Some(2));
         assert_eq!(sheet, &before);
     }
@@ -1171,14 +1147,12 @@ fn sheet_siblings_share_final_bytes_and_nodes_and_remain_reusable_after_failure(
         Limits::new(9, usize::MAX, expected.len()),
         Limits::new(usize::MAX, 9, expected.len()),
     ] {
-        let error = sheet.to_specified_css_with_limits(limits).unwrap_err();
+        let error = sheet.serialize_specified(limits).unwrap_err();
         assert!(matches!(
             error.kind(),
-            CssSpecifiedRuleSerializationErrorKind::Resource(
-                Kind::InputNodeLimit | Kind::ProjectionNodeLimit
-            )
+            Kind::InputNodeLimit | Kind::ProjectionNodeLimit
         ));
         assert_eq!(sheet, &before);
     }
-    assert_eq!(sheet.to_specified_css_with_limits(exact).unwrap(), expected);
+    assert_eq!(sheet.serialize_specified(exact).unwrap(), expected);
 }

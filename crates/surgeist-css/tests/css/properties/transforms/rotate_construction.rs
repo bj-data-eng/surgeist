@@ -87,12 +87,15 @@ fn vector_construction_preserves_exact_signed_zero_and_extreme_operands() {
 fn typed_math_construction_keeps_angle_and_number_domains_symbolic() {
     let angle_calculation = CssAngleCalculation::try_from_components(
         parse_component_values("calc(15deg + 15deg)").unwrap(),
+        Default::default(),
     )
     .unwrap();
     let angle_value = CssAngleValue::try_from_calculation(angle_calculation.clone()).unwrap();
-    let axis_calculation =
-        CssNumberCalculation::try_from_components(parse_component_values("calc(1 + 1)").unwrap())
-            .unwrap();
+    let axis_calculation = CssNumberCalculation::try_from_components(
+        parse_component_values("calc(1 + 1)").unwrap(),
+        Default::default(),
+    )
+    .unwrap();
     let x = CssSpecifiedNumber::try_from_calculation(axis_calculation.clone()).unwrap();
     let value = CssRotateValues::new(
         angle_value,
@@ -217,6 +220,7 @@ fn recovered_angle_closure_is_reported_and_cannot_enter_checked_property_admissi
     );
     let recovered = CssAngleCalculation::try_from_components(
         parse_component_values("calc(15deg + 15deg").unwrap(),
+        Default::default(),
     );
     assert!(
         recovered.is_err(),
@@ -280,8 +284,11 @@ fn checked_angle_type_error_identifies_the_incompatible_right_hand_dimension() {
     // numeric boundary establishes the specific operand origin to preserve,
     // independently of the rotate parser's speculative alternatives.
     let source = "/*😀*/calc(15deg + 1px)";
-    let error = CssAngleCalculation::try_from_components(parse_component_values(source).unwrap())
-        .unwrap_err();
+    let error = CssAngleCalculation::try_from_components(
+        parse_component_values(source).unwrap(),
+        Default::default(),
+    )
+    .unwrap_err();
     assert_eq!(
         error.kind(),
         &CssNumericConstructionErrorKind::IncompatibleTypes

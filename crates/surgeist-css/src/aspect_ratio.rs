@@ -5,8 +5,7 @@
 
 use crate::{
     CssComponentValue, CssComponentValueRef, CssNumberCalculation, CssNumericConstructionError,
-    CssNumericConstructionErrorKind, CssSpecifiedValueSerializationError,
-    CssSpecifiedValueSerializationLimits, CssValueOrigin, CssValueTokenRef,
+    CssNumericConstructionErrorKind, CssSerializationError, CssValueOrigin, CssValueTokenRef,
     numeric_formatting::format_css_number, specified_serialization::SpecifiedSerializationContext,
 };
 
@@ -90,11 +89,10 @@ impl CssRatioOperand {
         &self,
         context: &mut SpecifiedSerializationContext,
         output: &mut String,
-    ) -> Result<(), CssSpecifiedValueSerializationError> {
+    ) -> Result<(), CssSerializationError> {
         match &self.value {
             RatioOperandValue::Number(component) => {
-                context.charge_input(1)?;
-                context.charge_projection(1)?;
+                context.charge_nodes(1)?;
                 if context.output_suppressed() {
                     return Ok(());
                 }
@@ -116,6 +114,10 @@ impl CssRatioOperand {
 }
 
 /// An authored ratio with an optional denominator; omission means one.
+///
+/// # Specified serialization
+///
+/// Serializes the specified pair; an omitted denominator is emitted as one.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssSpecifiedRatio {
     numerator: CssRatioOperand,
@@ -139,78 +141,49 @@ impl CssSpecifiedRatio {
         self.denominator.as_ref()
     }
 
-    /// Serializes the specified pair; an omitted denominator is emitted as one.
-    pub fn serialize_specified(&self) -> Result<String, CssSpecifiedValueSerializationError> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String, CssSpecifiedValueSerializationError> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        let context = &mut writer.context;
-        let output = &mut writer.css;
-        self.append_specified(context, output)?;
-        Ok(())
-    }
-
     fn append_specified(
         &self,
         context: &mut SpecifiedSerializationContext,
         output: &mut String,
-    ) -> Result<(), CssSpecifiedValueSerializationError> {
+    ) -> Result<(), CssSerializationError> {
         self.numerator.append_specified(context, output)?;
         context.append(output, " / ")?;
         if let Some(denominator) = &self.denominator {
             denominator.append_specified(context, output)
         } else {
-            context.charge_input(1)?;
-            context.charge_projection(1)?;
+            context.charge_nodes(1)?;
             context.append(output, "1")
         }
     }
 }
-
-impl crate::CssAspectRatioValue {
-    /// Produces canonical specified aspect-ratio text with one cumulative budget.
-    pub fn serialize_specified(&self) -> Result<String, CssSpecifiedValueSerializationError> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String, CssSpecifiedValueSerializationError> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssSpecifiedRatio {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        let context = &mut writer.context;
+        let output = &mut writer.css;
+        self.append_specified(context, output)?;
+        Ok(())
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(CssSpecifiedRatio);
+
+impl crate::specified_rule_serialization::SpecifiedProvider for crate::CssAspectRatioValue {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         let context = &mut writer.context;
         let output = &mut writer.css;
         match self {
             Self::Auto => {
-                context.charge_input(1)?;
-                context.charge_projection(1)?;
+                context.charge_nodes(1)?;
                 context.append(output, "auto")?;
             }
             Self::Ratio(ratio) => ratio.append_specified(context, output)?,
             Self::AutoRatio(ratio) => {
-                context.charge_input(1)?;
-                context.charge_projection(1)?;
+                context.charge_nodes(1)?;
                 context.append(output, "auto ")?;
                 ratio.append_specified(context, output)?;
             }
@@ -218,3 +191,4 @@ impl crate::CssAspectRatioValue {
         Ok(())
     }
 }
+crate::specified_rule_serialization::specified_serialization!(crate::CssAspectRatioValue);

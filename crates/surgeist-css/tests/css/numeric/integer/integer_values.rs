@@ -24,21 +24,25 @@ fn exact(text: &str) -> CssIntegerValue {
 
 fn assert_output(value: &CssIntegerValue, expected: &str) {
     let before = value.clone();
-    assert_eq!(value.serialize_specified().unwrap(), expected);
-    assert_eq!(order(expected).serialize_specified().unwrap(), expected);
     assert_eq!(
-        value
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                65_536,
-                262_144,
-                expected.len()
-            ))
+        value.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
+    assert_eq!(
+        order(expected)
+            .serialize_specified(Default::default())
             .unwrap(),
         expected
     );
     assert_eq!(
         value
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
+            .serialize_specified(CssSerializationLimits::new(65_536, 262_144, expected.len()))
+            .unwrap(),
+        expected
+    );
+    assert_eq!(
+        value
+            .serialize_specified(CssSerializationLimits::new(
                 65_536,
                 262_144,
                 expected.len() - 1
@@ -93,8 +97,11 @@ fn both_integer_properties_preserve_exact_payloads_and_original_origins() {
             let components = parse_component_values(text).unwrap();
             for supplied in [
                 components,
-                CssComponentValues::try_new(vec![CssComponentValue::try_number(text).unwrap()])
-                    .unwrap(),
+                CssComponentValues::try_new(
+                    vec![CssComponentValue::try_number(text).unwrap()],
+                    Default::default(),
+                )
+                .unwrap(),
             ] {
                 let declaration = parse_property_value(
                     CssPropertyNameRef::Known(property),
@@ -174,29 +181,26 @@ fn ordinary_integer_limits_charge_canonical_bytes_and_one_node_per_stage() {
     ] {
         for (limits, expected) in [
             (
-                CssSpecifiedValueSerializationLimits::new(0, 0, 0),
+                CssSerializationLimits::new(0, 0, 0),
                 CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 0, 0),
+                CssSerializationLimits::new(1, 0, 0),
                 CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 1, 1),
+                CssSerializationLimits::new(1, 1, 1),
                 CssSpecifiedValueSerializationErrorKind::ByteLimit,
             ),
         ] {
             assert_eq!(
-                value
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                value.serialize_specified(limits).unwrap_err().kind(),
                 expected
             );
         }
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(1, 1, 2))
+                .serialize_specified(CssSerializationLimits::new(1, 1, 2))
                 .unwrap(),
             "-2"
         );
@@ -208,7 +212,8 @@ fn explicit_calculation_leaf_keeps_its_exact_coefficient_without_mutating_input(
     // An operation-free calculation leaf serializes its exact authored
     // coefficient, as the literal does (#1297), not binary64 9007199254740992.
     let components = parse_component_values("9007199254740993").unwrap();
-    let calculation = CssIntegerCalculation::try_from_components(components.clone()).unwrap();
+    let calculation =
+        CssIntegerCalculation::try_from_components(components.clone(), Default::default()).unwrap();
     let CssCalculationExpressionRef::Value(leaf) = calculation.expression() else {
         panic!("exact authored leaf")
     };
@@ -256,27 +261,26 @@ fn integer_context_math_preserves_fractional_results_and_symbolic_requirements()
         ("sign(1em - 1px)", "sign(1em - 1px)"),
     ] {
         assert_output(&order(input), expected);
-        let calculation =
-            CssIntegerCalculation::try_from_components(parse_component_values(input).unwrap())
-                .unwrap();
+        let calculation = CssIntegerCalculation::try_from_components(
+            parse_component_values(input).unwrap(),
+            Default::default(),
+        )
+        .unwrap();
         assert_output(&CssIntegerValue::Calculation(calculation), expected);
     }
     let value = order("calc(1 + 2)");
     for (limits, expected) in [
         (
-            CssSpecifiedValueSerializationLimits::new(0, 100, 100),
+            CssSerializationLimits::new(0, 100, 100),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(100, 0, 100),
+            CssSerializationLimits::new(100, 0, 100),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
     ] {
         assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            value.serialize_specified(limits).unwrap_err().kind(),
             expected
         );
     }
@@ -323,7 +327,8 @@ fn parsed_exact_payloads_retain_the_original_source_token() {
 fn ordinary_huge_integers_and_operation_free_calculation_leaves_stay_exact() {
     let digits = "9".repeat(400);
     let components = parse_component_values(&digits).unwrap();
-    let calculation = CssIntegerCalculation::try_from_components(components.clone()).unwrap();
+    let calculation =
+        CssIntegerCalculation::try_from_components(components.clone(), Default::default()).unwrap();
     assert_output(
         &CssIntegerValue::Calculation(calculation.clone()),
         &format!("calc({digits})"),

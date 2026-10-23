@@ -82,7 +82,11 @@ fn pause_rest_time_calculations_remain_authored_without_computed_range_evaluatio
             assert_admitted(name, value);
             let source = declaration(name, value);
             assert_eq!(
-                source.value_components().serialize().unwrap().as_css(),
+                source
+                    .value_components()
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
                 value
             );
         }
@@ -129,8 +133,16 @@ fn pause_rest_shorthands_expand_one_value_twice_and_two_values_before_then_after
             ] {
                 // Reuse exact child origins: authored value equality includes
                 // provenance, so independently parsed occurrences are unequal.
-                let component = CssComponentValues::try_new(vec![component.clone()]).unwrap();
-                assert_eq!(component.serialize().unwrap().as_css(), expected);
+                let component =
+                    CssComponentValues::try_new(vec![component.clone()], Default::default())
+                        .unwrap();
+                assert_eq!(
+                    component
+                        .serialize_tokens(Default::default())
+                        .unwrap()
+                        .as_css(),
+                    expected
+                );
                 let expected = expanded(&checked(terminal, component));
                 assert_eq!(item.property(), property(terminal));
                 assert_eq!(
@@ -389,19 +401,25 @@ fn pause_rest_authored_case_escapes_comments_and_exact_numbers_survive_bounded_s
         let components = source.value_components();
         assert_eq!(
             components
-                .serialize_with_limit(text.len())
+                .serialize_tokens(crate::css::support::byte_limits(text.len()))
                 .unwrap()
                 .as_css(),
             text
         );
         assert_eq!(
             components
-                .serialize_with_limit(text.len() - 1)
+                .serialize_tokens(crate::css::support::byte_limits(text.len() - 1))
                 .unwrap_err()
                 .kind(),
             CssComponentValueErrorKind::ByteLimit
         );
-        assert_eq!(components.serialize().unwrap().as_css(), text);
+        assert_eq!(
+            components
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            text
+        );
     }
 }
 

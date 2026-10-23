@@ -1,5 +1,6 @@
 //! Checked authored coordinate families and consumer-specific position restrictions.
 use super::{CssSpecifiedLength, CssSpecifiedLengthPercentage, optional_numeric_eq};
+use crate::specified_rule_serialization::SpecifiedProvider as _;
 use std::{error::Error, fmt};
 
 /// An intrinsic failure to construct a checked authored position.
@@ -198,6 +199,11 @@ impl CssCartesianPosition {
 }
 
 /// A checked physical-only generic position for older selected consumer grammars.
+///
+/// # Specified serialization
+///
+/// Serializes the checked physical position in horizontal-then-vertical order. Percentages and
+/// calculations retain their symbolic specified meaning.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssPhysicalPosition {
     cartesian: CssCartesianPosition,
@@ -381,8 +387,13 @@ pub enum CssPositionRef<'a> {
 /// let CssPositionRef::NamedFlow(axes) = position.view() else { panic!("named axes") };
 /// assert_eq!(axes.block(), &CssBlockPosition::Start);
 /// assert_eq!(axes.inline(), &CssInlinePosition::End);
-/// assert_eq!(position.serialize_specified().unwrap(), "block-start inline-end");
+/// assert_eq!(position.serialize_specified(Default::default()).unwrap(), "block-start inline-end");
 /// ```
+///
+/// # Specified serialization
+///
+/// Serializes Cartesian axes in horizontal/vertical order and flow axes in block/inline order.
+/// Percentages and calculations retain their symbolic specified meaning.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssPosition {
     family: PositionFamily,
@@ -497,6 +508,10 @@ impl From<CssPhysicalPosition> for CssPosition {
 }
 
 /// A nonempty authored comma list of checked physical positions.
+///
+/// # Specified serialization
+///
+/// Serializes the nonempty authored layers in comma order.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssPhysicalPositionList {
     positions: Vec<CssPhysicalPosition>,
@@ -515,6 +530,16 @@ impl CssPhysicalPositionList {
 }
 
 /// One checked physical layer of background-position's one/two/three/four grammar.
+///
+/// # Specified serialization
+///
+/// Serializes the checked background position in horizontal-then-vertical order. In a three-
+/// component position, the absent edge offset remains omitted. Percentages and calculations retain
+/// their symbolic specified meaning.
+///
+/// # Specified serialization
+///
+/// In a three-component position, the absent edge offset remains omitted.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssBackgroundPosition {
     axes: PositionAxes,
@@ -553,6 +578,10 @@ impl CssBackgroundPosition {
 }
 
 /// A nonempty authored comma list of `background-position` layers.
+///
+/// # Specified serialization
+///
+/// Serializes the nonempty authored layers in comma order.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssBackgroundPositionList {
     positions: Vec<CssBackgroundPosition>,
@@ -582,6 +611,13 @@ impl CssBackgroundPositionList {
 }
 
 /// A physical planar transform origin plus an optional authored pure-length Z.
+///
+/// # Specified serialization
+///
+/// Emits canonical specified syntax from retained typed operands. Percentages and calculations
+/// retain their owning specified policy without resolving reference boxes or matrices. Numeric
+/// output retains six-place formatting. General rotate3d axes share the Rotate owner's
+/// approximation and representability policy.
 #[derive(Clone, Debug)]
 pub struct CssTransformOrigin {
     position: CssPhysicalPosition,
@@ -593,7 +629,7 @@ impl CssTransformOrigin {
     pub(crate) fn append_planar_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> Result<(), crate::CssSerializationError> {
         self.position.append_to_rule_writer(writer)
     }
 

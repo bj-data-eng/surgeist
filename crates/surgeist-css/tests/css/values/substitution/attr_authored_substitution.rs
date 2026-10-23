@@ -198,12 +198,21 @@ fn shorthand_attr_reentry_preserves_original_occurrence_and_importance() {
 fn checked_attr_function_keeps_mixed_component_origins_without_combining_tokens() {
     let parsed_name = parse_component_values("foo").unwrap().items()[0].clone();
     let keyword_syntax = CssComponentValue::try_ident("bar").unwrap();
-    let arguments =
-        CssComponentValues::try_new(vec![parsed_name.clone(), keyword_syntax.clone()]).unwrap();
+    let arguments = CssComponentValues::try_new(
+        vec![parsed_name.clone(), keyword_syntax.clone()],
+        Default::default(),
+    )
+    .unwrap();
     let function = CssComponentValue::try_function("attr", arguments).unwrap();
     assert!(matches!(function.origin(), CssValueOrigin::Programmatic));
-    let components = CssComponentValues::try_new(vec![function]).unwrap();
-    assert_eq!(components.serialize().unwrap().as_css(), "attr(foo/**/bar)");
+    let components = CssComponentValues::try_new(vec![function], Default::default()).unwrap();
+    assert_eq!(
+        components
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        "attr(foo/**/bar)"
+    );
     let declaration = parse_property_value(
         CssPropertyNameRef::Known(CssKnownProperty::Display),
         components.clone(),
@@ -299,6 +308,7 @@ fn pending_attr_normalization_retains_recovered_order_and_importance() {
 fn property_attr_deferral_does_not_admit_query_or_descriptor_operands() {
     let query = CssContainerCondition::try_from_components(
         parse_component_values("(width:attr(foo))").unwrap(),
+        Default::default(),
     )
     .unwrap();
     let CssContainerConditionKind::GeneralEnclosed(opaque) = query.kind() else {

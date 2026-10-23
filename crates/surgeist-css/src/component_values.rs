@@ -34,9 +34,9 @@ use crate::STRUCTURAL_NESTING_LIMIT as MAX_COMPONENT_DEPTH;
 pub(crate) fn charge_specified_components(
     context: &mut crate::specified_serialization::SpecifiedSerializationContext,
     components: &[CssComponentValue],
-) -> Result<(), crate::CssSpecifiedValueSerializationError> {
+) -> Result<(), crate::CssSerializationError> {
     let capacity_error = || {
-        crate::CssSpecifiedValueSerializationError::new(
+        crate::CssSerializationError::new(
             crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
         )
     };
@@ -45,8 +45,7 @@ pub(crate) fn charge_specified_components(
     pending.push(components);
     while let Some(items) = pending.pop() {
         if let Some((component, rest)) = items.split_first() {
-            context.charge_input(1)?;
-            context.charge_projection(1)?;
+            context.charge_nodes(1)?;
             pending.try_reserve(2).map_err(|_| capacity_error())?;
             pending.push(rest);
             if let Some(children) = component.child_values() {
@@ -85,12 +84,13 @@ pub(crate) fn specified_root_components(components: &[CssComponentValue]) -> &[C
 /// budget changes. Retained components were checked at construction and keep
 /// their lexical form, so any other failure is an unrepresentable boundary,
 /// never a resource exhaustion.
-pub(crate) fn specified_component_error(
-    error: CssComponentValueError,
-) -> crate::CssSpecifiedValueSerializationError {
+/// The serialization classification of a lexical component failure.
+pub(crate) fn specified_component_kind(
+    error: &CssComponentValueError,
+) -> crate::CssSpecifiedValueSerializationErrorKind {
     use crate::CssSpecifiedValueSerializationErrorKind as Kind;
     use CssComponentValueErrorKind as Component;
-    crate::CssSpecifiedValueSerializationError::new(match error.kind() {
+    match error.kind() {
         Component::ByteLimit => Kind::ByteLimit,
         Component::NestingLimit | Component::ComponentLimit | Component::CapacityOverflow => {
             Kind::CapacityOverflow
@@ -107,7 +107,16 @@ pub(crate) fn specified_component_error(
         | Component::InvalidDimension
         | Component::InvalidFunction
         | Component::InvalidString => Kind::UnserializableBoundary,
-    })
+    }
+}
+
+/// A component failure as a serialization failure of its kind, without the
+/// component itself; providers that keep the component use
+/// [`CssSerializationError::component`](crate::CssSerializationError).
+pub(crate) fn specified_component_error(
+    error: CssComponentValueError,
+) -> crate::CssSerializationError {
+    crate::CssSerializationError::new(specified_component_kind(&error))
 }
 
 /// Resource limits for one component-value construction or parse.
@@ -159,6 +168,16 @@ impl CssComponentValueLimits {
     #[must_use]
     pub const fn max_css_bytes(self) -> usize {
         self.max_css_bytes
+    }
+
+    /// The default structural limits with an explicit byte limit, for internal
+    /// token serialization under a caller's remaining output budget.
+    pub(crate) const fn with_max_css_bytes(max_css_bytes: usize) -> Self {
+        Self {
+            max_depth: MAX_COMPONENT_DEPTH,
+            max_components: usize::MAX,
+            max_css_bytes,
+        }
     }
 }
 
@@ -1006,13 +1025,13 @@ impl CssComponentValues {
         &self,
         origin: &CssParsedOrigin,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> Result<(), crate::CssSerializationError> {
         enum Event<'a> {
             Items(&'a [CssComponentValue]),
             Closing(&'a Lexeme),
         }
         use crate::CssSpecifiedValueSerializationErrorKind as Kind;
-        let error = |kind| crate::CssSpecifiedValueSerializationError::new(kind);
+        let error = |kind| crate::CssSerializationError::new(kind);
         let mut pending = Vec::new();
         // The caller has already charged the carrier before scratch admission.
         pending
@@ -1115,12 +1134,9 @@ impl CssComponentValues {
     }
 
     /// Joins components without merging tokens or changing their origins.
-    pub fn try_new(items: Vec<CssComponentValue>) -> Result<Self, CssComponentValueError> {
-        Self::try_new_with_limits(items, CssComponentValueLimits::default())
-    }
-
+    ///
     /// Joins components under explicit resource limits, including output bytes.
-    pub fn try_new_with_limits(
+    pub fn try_new(
         items: Vec<CssComponentValue>,
         limits: CssComponentValueLimits,
     ) -> Result<Self, CssComponentValueError> {
@@ -1298,15 +1314,16 @@ impl CssComponentValues {
     /// Actual whitespace and comments remain intact. Syntax implied at EOF is
     /// emitted explicitly with its own origin. This is not canonical CSSOM
     /// property serialization and does not validate any property grammar.
-    pub fn serialize(&self) -> Result<CssSerializedValue, CssComponentValueError> {
-        self.serialize_with_limit(usize::MAX)
-    }
-
+    ///
     /// Serializes while bounding generated UTF-8 bytes, including separators.
-    pub fn serialize_with_limit(
+    ///
+    /// `limits.max_css_bytes()` caps the output, including inserted syntax; the other component
+    /// limits do not apply.
+    pub fn serialize_tokens(
         &self,
-        max_css_bytes: usize,
+        limits: crate::CssComponentValueLimits,
     ) -> Result<CssSerializedValue, CssComponentValueError> {
+        let max_css_bytes = limits.max_css_bytes();
         serialize::serialize(self, max_css_bytes)
     }
 }
@@ -1547,9 +1564,9 @@ mod tests {
             .into_iter()
             .map(|css| CssComponentValue::try_token(css).expect("individual token"))
             .collect();
-        let css = CssComponentValues::try_new(items)
+        let css = CssComponentValues::try_new(items, Default::default())
             .expect("three tokens")
-            .serialize()
+            .serialize_tokens(Default::default())
             .expect("token-preserving output");
         assert_eq!(css.as_css(), "<!/**/--");
         let parsed = parse_component_values(css.as_css()).expect("three separate tokens");
@@ -1574,9 +1591,9 @@ mod tests {
             .items()
             .to_vec();
         items.push(CssComponentValue::try_ident("x").expect("following identifier"));
-        let css = CssComponentValues::try_new(items)
+        let css = CssComponentValues::try_new(items, Default::default())
             .expect("joined components")
-            .serialize()
+            .serialize_tokens(Default::default())
             .expect("close string without escaping its new quote");
         assert_eq!(css.as_css(), "\"abc\\\n\"x");
         let parsed = parse_component_values(css.as_css()).expect("closed string and identifier");
@@ -1599,7 +1616,7 @@ mod tests {
         for (source, expected) in [("a\\", "a\\fffd "), ("url(a\\", "url(a\\fffd )")] {
             let css = parse_component_values(source)
                 .expect("EOF escape")
-                .serialize()
+                .serialize_tokens(Default::default())
                 .expect("explicit escape termination");
             assert_eq!(css.as_css(), expected);
             let parsed = parse_component_values(css.as_css()).expect("terminated token");
@@ -1616,7 +1633,7 @@ mod tests {
     fn eof_comment_closure_preserves_its_last_asterisk() {
         let css = parse_component_values("/*a*")
             .expect("EOF-terminated comment")
-            .serialize()
+            .serialize_tokens(Default::default())
             .expect("closed comment");
         assert_eq!(css.as_css(), "/*a**/");
         let parsed = parse_component_values(css.as_css()).expect("complete comment");
@@ -1694,7 +1711,7 @@ mod original_region_tests {
         )
         .unwrap();
         let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(
-            crate::CssSpecifiedValueSerializationLimits::new(1, 1, 10),
+            crate::CssSerializationLimits::new(1, 1, 10),
         );
         assert_eq!(
             shortened

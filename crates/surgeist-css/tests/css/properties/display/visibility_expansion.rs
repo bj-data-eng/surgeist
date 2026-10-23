@@ -63,9 +63,11 @@ fn all_visibility_keywords_expand_once_with_original_occurrence() {
     for text in ["visible", "hidden", "collapse"] {
         for important in [false, true] {
             ordinary(&declaration(text, important));
-            let components =
-                CssComponentValues::try_new(vec![CssComponentValue::try_token(text).unwrap()])
-                    .unwrap();
+            let components = CssComponentValues::try_new(
+                vec![CssComponentValue::try_token(text).unwrap()],
+                Default::default(),
+            )
+            .unwrap();
             let source = parse_property_value(
                 CssPropertyNameRef::Known(CssKnownProperty::Visibility),
                 components.clone(),
@@ -158,8 +160,11 @@ fn visibility_keyword_grammar_identity_and_recovery_are_preserved() {
         (r"v\69 sible", CssVisibility::Visible),
     ] {
         let parsed = declaration(text, false);
-        let components =
-            CssComponentValues::try_new(vec![CssComponentValue::try_token(text).unwrap()]).unwrap();
+        let components = CssComponentValues::try_new(
+            vec![CssComponentValue::try_token(text).unwrap()],
+            Default::default(),
+        )
+        .unwrap();
         let checked = parse_property_value(
             CssPropertyNameRef::Known(CssKnownProperty::Visibility),
             components.clone(),

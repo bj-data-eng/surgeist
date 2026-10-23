@@ -6,6 +6,10 @@ use crate::{CssColorInterpolation, CssColorMixWeight, CssFontPaletteName};
 
 /// A keyword, symbolic palette name, or checked authored palette mix.
 /// Palette availability and equivalence depend on the selected font downstream.
+///
+/// # Specified serialization
+///
+/// Canonical authored output; named palettes and calculations stay symbolic.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontPalette {

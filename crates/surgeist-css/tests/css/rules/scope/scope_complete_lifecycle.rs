@@ -263,7 +263,7 @@ fn checked_boundary_lists_reject_empty_and_recursive_pseudo_elements() {
     };
     // The recursive Is/Not(PE) boundary defenses remain in owning private tests;
     // these graphs cannot be admitted through the corrected public list front.
-    assert!(CssPseudoSelectorList::try_new(vec![selector.clone()]).is_err());
+    assert!(CssPseudoSelectorList::try_new(vec![selector.clone()], Default::default()).is_err());
     assert!(
         CssScopeSelectorList::try_new(vec![CssScopeSelector::Selector(selector.clone())]).is_none()
     );
@@ -335,7 +335,7 @@ fn ordinary_scope_rejects_declarations_while_style_nested_scope_retains_runs() {
     assert_eq!(
         first.declarations()[0]
             .value_components()
-            .serialize()
+            .serialize_tokens(Default::default())
             .unwrap()
             .as_css(),
         ".25"
@@ -343,7 +343,7 @@ fn ordinary_scope_rejects_declarations_while_style_nested_scope_retains_runs() {
     assert_eq!(
         last.declarations()[0]
             .value_components()
-            .serialize()
+            .serialize_tokens(Default::default())
             .unwrap()
             .as_css(),
         ".5"
@@ -405,7 +405,10 @@ fn parsed_and_checked_scope_serialize_every_boundary_omission_explicitly() {
         );
         for value in [parsed, constructed] {
             let before = value.clone();
-            assert_eq!(value.to_specified_css().unwrap(), expected);
+            assert_eq!(
+                value.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
             assert_eq!(value, before);
             let output = scope(expected);
             let CssRule::Scope(original) = &value else {
@@ -433,7 +436,9 @@ fn scope_serialization_preserves_nested_rule_order_and_authored_origins() {
     let expected = "@scope (.root) to (.stop) { @scope (.first) { } @scope to (.second) { } }";
     for value in [parsed, constructed] {
         let before = value.clone();
-        let text = CssRule::Scope(value.clone()).to_specified_css().unwrap();
+        let text = CssRule::Scope(value.clone())
+            .serialize_specified(Default::default())
+            .unwrap();
         assert_eq!(text, expected);
         assert_eq!(value, before);
         let output = scope(&text);
@@ -453,7 +458,7 @@ fn style_nested_scope_serialization_preserves_direct_declaration_run_order() {
     let input = sheet(".parent{@scope{opacity:.25;.child{}opacity:.5;}}");
     let before = input.clone();
     assert_eq!(
-        input.to_specified_css().unwrap(),
+        input.serialize_specified(Default::default()).unwrap(),
         ".parent { @scope { opacity: 0.25; .child { } opacity: 0.5; } }"
     );
     assert_eq!(input, before);
@@ -476,16 +481,12 @@ fn scope_serialization_byte_limits_are_atomic_and_cumulative_across_sheet_rules(
     let expected = "@scope { }\n@scope { }";
     assert_eq!(
         input
-            .to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::new(
-                65536,
-                65536,
-                expected.len()
-            ))
+            .serialize_specified(CssSerializationLimits::new(65536, 65536, expected.len()))
             .unwrap(),
         expected
     );
     let error = input
-        .to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::new(
+        .serialize_specified(CssSerializationLimits::new(
             65536,
             65536,
             expected.len() - 1,
@@ -493,11 +494,12 @@ fn scope_serialization_byte_limits_are_atomic_and_cumulative_across_sheet_rules(
         .unwrap_err();
     assert_eq!(
         error.kind(),
-        CssSpecifiedRuleSerializationErrorKind::Resource(
-            CssSpecifiedValueSerializationErrorKind::ByteLimit
-        )
+        CssSpecifiedValueSerializationErrorKind::ByteLimit
     );
     assert_eq!(error.rule_index(), Some(1));
     assert_eq!(input, before);
-    assert_eq!(input.to_specified_css().unwrap(), expected);
+    assert_eq!(
+        input.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
 }

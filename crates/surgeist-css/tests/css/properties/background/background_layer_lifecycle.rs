@@ -154,9 +154,10 @@ fn pending_lists_reenter_strictly_repeatably_with_replacement_origins() {
             );
         }
         let parsed = parse_component_values(case.replacement).unwrap();
-        let programmatic = CssComponentValues::try_new(vec![
-            CssComponentValue::try_ident(case.programmatic).unwrap(),
-        ])
+        let programmatic = CssComponentValues::try_new(
+            vec![CssComponentValue::try_ident(case.programmatic).unwrap()],
+            Default::default(),
+        )
         .unwrap();
         for replacement in [parsed, programmatic] {
             for _ in 0..2 {

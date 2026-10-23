@@ -40,7 +40,11 @@ fn accepted(name: &str, value: &str) {
         assert_eq!(source.known().unwrap().property(), property);
         assert_eq!(source.importance(), CssImportance::Important);
         assert_eq!(
-            source.value_components().serialize().unwrap().as_css(),
+            source
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             value
         );
     }
@@ -60,8 +64,11 @@ fn one_value(source: &CssDeclaration) -> CssLonghandValue {
 }
 
 fn programmatic_zero(name: &str) -> CssLonghandValue {
-    let components =
-        CssComponentValues::try_new(vec![CssComponentValue::try_number("0").unwrap()]).unwrap();
+    let components = CssComponentValues::try_new(
+        vec![CssComponentValue::try_number("0").unwrap()],
+        Default::default(),
+    )
+    .unwrap();
     let source =
         parse_property_value_for_grammar(grammar(name), components, CssImportance::Normal).unwrap();
     one_value(&source)

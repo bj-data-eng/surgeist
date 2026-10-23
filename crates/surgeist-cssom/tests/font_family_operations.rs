@@ -245,14 +245,14 @@ fn family_output_budget_is_cumulative_and_raw_input_storage_joins_the_global_all
     let captured = object.capture(&snapshot).unwrap();
     assert_eq!(
         captured
-            .font_family(CssSpecifiedValueSerializationLimits::new(2, 2, 4))
+            .font_family(CssSerializationLimits::new(2, 2, 4))
             .unwrap(),
         "A, B"
     );
     for limits in [
-        CssSpecifiedValueSerializationLimits::new(1, 2, 4),
-        CssSpecifiedValueSerializationLimits::new(2, 1, 4),
-        CssSpecifiedValueSerializationLimits::new(2, 2, 3),
+        CssSerializationLimits::new(1, 2, 4),
+        CssSerializationLimits::new(2, 1, 4),
+        CssSerializationLimits::new(2, 2, 3),
     ] {
         assert!(matches!(
             captured.font_family(limits),

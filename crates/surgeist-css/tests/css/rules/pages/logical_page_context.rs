@@ -29,18 +29,36 @@ fn logical_page_pseudos_retain_symbolic_spelling_without_becoming_physical_sides
                 CssImportance::Important
             );
             let expected = format!("@page :{canonical} {{ margin-left: -1px !important; }}");
-            assert_eq!(report.syntax().to_specified_css().unwrap(), expected);
             assert_eq!(
-                report.syntax().rules()[0].to_specified_css().unwrap(),
+                report
+                    .syntax()
+                    .serialize_specified(Default::default())
+                    .unwrap(),
+                expected
+            );
+            assert_eq!(
+                report.syntax().rules()[0]
+                    .serialize_specified(Default::default())
+                    .unwrap(),
                 expected
             );
             let reparsed = parse_sheet(&expected);
             assert!(reparsed.is_clean());
-            assert_eq!(reparsed.syntax().to_specified_css().unwrap(), expected);
+            assert_eq!(
+                reparsed
+                    .syntax()
+                    .serialize_specified(Default::default())
+                    .unwrap(),
+                expected
+            );
             let one = context.parse_rule(&source, &CssNamespaceContext::default());
             assert!(one.is_clean());
             assert_eq!(
-                one.syntax().as_ref().unwrap().to_specified_css().unwrap(),
+                one.syntax()
+                    .as_ref()
+                    .unwrap()
+                    .serialize_specified(Default::default())
+                    .unwrap(),
                 expected
             );
         }
@@ -111,7 +129,10 @@ fn logical_page_pairs_preserve_neighbors_origins_margin_order_and_normalized_pay
     );
     assert_eq!(declarations[0].order(), 0);
     assert_eq!(
-        report.syntax().to_specified_css().unwrap(),
+        report
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "@page :recto { margin-left: 1px; margin-right: 2% !important; }\n@page :verso { margin-left: 3px; }\n.a { float: inline-start; }"
     );
     assert_eq!(report, before);
@@ -131,7 +152,10 @@ fn logical_pages_compose_in_ordinary_and_scoped_groups_without_element_mapping()
             .all(|item| !matches!(item, CssNormalizedItem::Declaration(_)))
     );
     assert_eq!(
-        report.syntax().to_specified_css().unwrap(),
+        report
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "@media print { @page :recto { margin: 1px; } @page :verso { margin: 2px; } }\n@scope (.host) { @media all { @page :recto { margin-left: 3px; } } }"
     );
 }
@@ -168,7 +192,10 @@ fn logical_page_body_recovery_keeps_valid_margin_payload_and_siblings() {
         CssKnownProperty::MarginTop
     );
     assert_eq!(
-        report.syntax().to_specified_css().unwrap(),
+        report
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
         ".before { }\n@page :recto { margin-left: 1px; margin-top: 2%; }\n.after { }"
     );
     let eof = parse_sheet("@page:verso{margin-left:1px");
@@ -179,7 +206,9 @@ fn logical_page_body_recovery_keeps_valid_margin_payload_and_siblings() {
         CssRecoveryAction::RetainWithImplicitClosure
     );
     assert_eq!(
-        eof.syntax().to_specified_css().unwrap(),
+        eof.syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "@page :verso { margin-left: 1px; }"
     );
 }
@@ -211,7 +240,10 @@ fn malformed_page_pseudos_drop_each_rule_atomically_and_ordinary_pages_are_contr
         );
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropAtRule);
         assert_eq!(
-            report.syntax().to_specified_css().unwrap(),
+            report
+                .syntax()
+                .serialize_specified(Default::default())
+                .unwrap(),
             ".before { }\n@page :right { margin: 2px; }\n.after { }"
         );
     }
@@ -219,7 +251,10 @@ fn malformed_page_pseudos_drop_each_rule_atomically_and_ordinary_pages_are_contr
         let report = parse_sheet(&format!("@page:{pseudo}{{margin:1px}}"));
         assert!(report.is_clean());
         assert_eq!(
-            report.syntax().to_specified_css().unwrap(),
+            report
+                .syntax()
+                .serialize_specified(Default::default())
+                .unwrap(),
             format!("@page :{pseudo} {{ margin: 1px; }}")
         );
     }
@@ -251,7 +286,10 @@ fn logical_page_names_do_not_become_property_keywords_or_style_block_rules() {
         );
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropAtRule);
         assert_eq!(
-            report.syntax().to_specified_css().unwrap(),
+            report
+                .syntax()
+                .serialize_specified(Default::default())
+                .unwrap(),
             ".host { color: red; }\n.after { }"
         );
         let report = parse_style_attribute(&format!("float:{pseudo};color:red"));
@@ -280,7 +318,9 @@ fn selected_directional_consumers_remain_symbolic_and_reject_forbidden_keyword_m
         let report = parse_style_attribute(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         assert_eq!(
-            report.syntax()[0].to_specified_css().unwrap(),
+            report.syntax()[0]
+                .serialize_specified(Default::default())
+                .unwrap(),
             format!("{name}: {canonical};")
         );
         assert_eq!(
@@ -361,7 +401,10 @@ fn logical_and_physical_property_occurrences_keep_relative_order_and_original_po
         CssImportance::Important
     );
     assert_eq!(
-        report.syntax().to_specified_css().unwrap(),
+        report
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
         ".a { margin-left: 1px; margin-inline-start: 2px; margin-top: 3px; margin-block-start: 4px !important; }"
     );
 }
@@ -375,47 +418,37 @@ fn logical_page_output_and_normalization_share_atomic_cumulative_limits() {
     // Page rule + selector-list + selector + pseudo + declaration + name + numeric leaf.
     for rule in report.syntax().rules() {
         assert!(
-            rule.to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::new(
-                7,
-                7,
-                expected.len()
-            ))
-            .is_ok()
+            rule.serialize_specified(CssSerializationLimits::new(7, 7, expected.len()))
+                .is_ok()
         );
     }
-    let exact = CssSpecifiedValueSerializationLimits::new(usize::MAX, usize::MAX, expected.len());
+    let exact = CssSerializationLimits::new(usize::MAX, usize::MAX, expected.len());
     assert_eq!(
-        report.syntax().to_specified_css_with_limits(exact).unwrap(),
+        report.syntax().serialize_specified(exact).unwrap(),
         expected
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(6, usize::MAX, expected.len()),
+            CssSerializationLimits::new(6, usize::MAX, expected.len()),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(usize::MAX, 6, expected.len()),
+            CssSerializationLimits::new(usize::MAX, 6, expected.len()),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(usize::MAX, usize::MAX, expected.len() - 1),
+            CssSerializationLimits::new(usize::MAX, usize::MAX, expected.len() - 1),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
         for _ in 0..2 {
-            let error = report
-                .syntax()
-                .to_specified_css_with_limits(limits)
-                .unwrap_err();
-            assert_eq!(
-                error.kind(),
-                CssSpecifiedRuleSerializationErrorKind::Resource(kind)
-            );
+            let error = report.syntax().serialize_specified(limits).unwrap_err();
+            assert_eq!(error.kind(), kind);
             assert_eq!(report, before);
         }
     }
     assert_eq!(
-        report.syntax().to_specified_css_with_limits(exact).unwrap(),
+        report.syntax().serialize_specified(exact).unwrap(),
         expected
     );
     let exact = CssNormalizationLimits::try_new(0, 2, 0, 0).unwrap();

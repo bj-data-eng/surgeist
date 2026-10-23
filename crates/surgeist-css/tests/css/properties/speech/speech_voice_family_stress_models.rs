@@ -77,7 +77,7 @@ fn checked_voice_names_keep_quoted_and_identifier_forms_and_reject_reserved_toke
     for word in ["child", "young", "old", "serif", "sans-serif", "menu"] {
         assert_eq!(
             family(vec![CssVoiceFamilyEntry::Name(named(&[word]))])
-                .serialize_specified()
+                .serialize_specified(Default::default())
                 .unwrap(),
             word
         );
@@ -88,7 +88,9 @@ fn checked_voice_names_keep_quoted_and_identifier_forms_and_reject_reserved_toke
 fn voice_list_is_nonempty_and_preserve_remains_a_distinct_alternative() {
     assert!(CssVoiceFamilyList::try_new(vec![]).is_none());
     assert_eq!(
-        CssVoiceFamily::Preserve.serialize_specified().unwrap(),
+        CssVoiceFamily::Preserve
+            .serialize_specified(Default::default())
+            .unwrap(),
         "preserve"
     );
     let value = family(vec![
@@ -96,7 +98,7 @@ fn voice_list_is_nonempty_and_preserve_remains_a_distinct_alternative() {
         CssVoiceFamilyEntry::Name(CssVoiceFamilyName::try_quoted("valley girl").unwrap()),
     ]);
     assert_eq!(
-        value.serialize_specified().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         "john doe, \"valley girl\""
     );
     assert!(matches!(&value, CssVoiceFamily::Voices(list) if list.entries().len() == 2));
@@ -119,13 +121,13 @@ fn generic_voice_retains_optional_age_and_variant_without_default_voice_selectio
     assert_ne!(omitted, explicit);
     assert_eq!(
         family(vec![CssVoiceFamilyEntry::Generic(omitted)])
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "neutral"
     );
     assert_eq!(
         family(vec![CssVoiceFamilyEntry::Generic(explicit)])
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "neutral 1"
     );
@@ -143,7 +145,7 @@ fn generic_voice_retains_optional_age_and_variant_without_default_voice_selectio
         );
         assert_eq!(
             family(vec![CssVoiceFamilyEntry::Generic(value)])
-                .serialize_specified()
+                .serialize_specified(Default::default())
                 .unwrap(),
             format!("{spelling} female 2")
         );
@@ -160,12 +162,12 @@ fn voice_variant_serialization_keeps_exact_large_indices() {
             CssGenericVoice::try_new(None, CssVoiceGender::Male, Some(positive(digits))).unwrap();
         let value = family(vec![CssVoiceFamilyEntry::Generic(generic)]);
         assert_eq!(
-            value.serialize_specified().unwrap(),
+            value.serialize_specified(Default::default()).unwrap(),
             format!("male {digits}")
         );
         assert_eq!(
-            parsed(&value.serialize_specified().unwrap())
-                .serialize_specified()
+            parsed(&value.serialize_specified(Default::default()).unwrap())
+                .serialize_specified(Default::default())
                 .unwrap(),
             format!("male {digits}")
         );
@@ -197,9 +199,11 @@ fn checked_generic_constructor_validates_bare_calculation_literals_and_retains_m
         literal.variant(),
         Some(CssPositiveIntegerValue::Literal(_))
     ));
-    let calculation =
-        CssIntegerCalculation::try_from_components(parse_component_values("calc(1 + 1)").unwrap())
-            .unwrap();
+    let calculation = CssIntegerCalculation::try_from_components(
+        parse_component_values("calc(1 + 1)").unwrap(),
+        Default::default(),
+    )
+    .unwrap();
     let generic = CssGenericVoice::try_new(
         None,
         CssVoiceGender::Male,
@@ -212,7 +216,7 @@ fn checked_generic_constructor_validates_bare_calculation_literals_and_retains_m
     ));
     let value = family(vec![CssVoiceFamilyEntry::Generic(generic)]);
     // Specified math projection is owned by the shared integer engine.
-    let serialized = value.serialize_specified().unwrap();
+    let serialized = value.serialize_specified(Default::default()).unwrap();
     assert!(parse_style_attribute(&format!("voice-family:{serialized}")).is_clean());
     assert!(
         matches!(parsed("male min(2, 3)"), CssVoiceFamily::Voices(list) if matches!(list.entries()[0], CssVoiceFamilyEntry::Generic(_)))
@@ -231,11 +235,17 @@ fn voice_names_use_shared_escaping_and_roundtrip_without_form_conversion() {
         let value = family(vec![CssVoiceFamilyEntry::Name(
             CssVoiceFamilyName::try_quoted(name).unwrap(),
         )]);
-        assert_eq!(parsed(&value.serialize_specified().unwrap()), value);
+        assert_eq!(
+            parsed(&value.serialize_specified(Default::default()).unwrap()),
+            value
+        );
     }
     for ident in ["john/doe", "1stvoice", "Mike Smith", "a,b"] {
         let value = family(vec![CssVoiceFamilyEntry::Name(named(&[ident]))]);
-        assert_eq!(parsed(&value.serialize_specified().unwrap()), value);
+        assert_eq!(
+            parsed(&value.serialize_specified(Default::default()).unwrap()),
+            value
+        );
     }
 }
 
@@ -243,38 +253,32 @@ fn voice_names_use_shared_escaping_and_roundtrip_without_form_conversion() {
 fn voice_family_serialization_has_cumulative_atomic_limits() {
     let value = parsed("Mike, young female +0002");
     let original = value.clone();
-    let css = value.serialize_specified().unwrap();
+    let css = value.serialize_specified(Default::default()).unwrap();
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(0, usize::MAX, usize::MAX),
+            CssSerializationLimits::new(0, usize::MAX, usize::MAX),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(usize::MAX, 0, usize::MAX),
+            CssSerializationLimits::new(usize::MAX, 0, usize::MAX),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(usize::MAX, usize::MAX, css.len() - 1),
+            CssSerializationLimits::new(usize::MAX, usize::MAX, css.len() - 1),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
         // The first entry fits by itself, but all entries share one budget.
         (
-            CssSpecifiedValueSerializationLimits::new(3, usize::MAX, usize::MAX),
+            CssSerializationLimits::new(3, usize::MAX, usize::MAX),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
     ] {
-        assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            kind
-        );
+        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
         assert_eq!(value, original);
     }
     assert_eq!(
         value
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
+            .serialize_specified(CssSerializationLimits::new(
                 usize::MAX,
                 usize::MAX,
                 css.len()
@@ -293,24 +297,16 @@ fn voice_stress_models_serialize_all_five_symbolic_modes() {
         (CssVoiceStress::None, "none"),
         (CssVoiceStress::Reduced, "reduced"),
     ] {
-        assert_eq!(value.serialize_specified().unwrap(), css);
+        assert_eq!(value.serialize_specified(Default::default()).unwrap(), css);
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    1,
-                    1,
-                    css.len()
-                ))
+                .serialize_specified(CssSerializationLimits::new(1, 1, css.len()))
                 .unwrap(),
             css
         );
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    1,
-                    1,
-                    css.len() - 1
-                ))
+                .serialize_specified(CssSerializationLimits::new(1, 1, css.len() - 1))
                 .unwrap_err()
                 .kind(),
             CssSpecifiedValueSerializationErrorKind::ByteLimit

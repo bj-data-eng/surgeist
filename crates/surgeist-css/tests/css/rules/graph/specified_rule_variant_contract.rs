@@ -122,7 +122,7 @@ fn detached_nested_declarations_emits_the_authored_run() {
     };
     let before = run.clone();
     assert_eq!(
-        run.to_specified_css().unwrap(),
+        run.serialize_specified(Default::default()).unwrap(),
         "opacity: 0.5 !important; opacity: 0.25;"
     );
     assert_eq!(run, &before);

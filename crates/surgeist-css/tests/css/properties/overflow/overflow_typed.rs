@@ -21,38 +21,28 @@ fn every_keyword_serializes_canonically_with_one_node_and_exact_bytes() {
         (CssOverflow::Scroll, "scroll"),
         (CssOverflow::Auto, "auto"),
     ] {
-        assert_eq!(value.serialize_specified().unwrap(), text);
+        assert_eq!(value.serialize_specified(Default::default()).unwrap(), text);
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    1,
-                    1,
-                    text.len()
-                ))
+                .serialize_specified(CssSerializationLimits::new(1, 1, text.len()))
                 .unwrap(),
             text
         );
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(0, 1, text.len()),
+                CssSerializationLimits::new(0, 1, text.len()),
                 CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 0, text.len()),
+                CssSerializationLimits::new(1, 0, text.len()),
                 CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 1, text.len() - 1),
+                CssSerializationLimits::new(1, 1, text.len() - 1),
                 CssSpecifiedValueSerializationErrorKind::ByteLimit,
             ),
         ] {
-            assert_eq!(
-                value
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
-                kind
-            );
+            assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
         }
     }
 }
@@ -64,10 +54,13 @@ fn shorthand_retains_authored_arity_and_charges_outer_and_child_nodes() {
         (single.x(), single.authored_y(), single.y()),
         (CssOverflow::Clip, None, CssOverflow::Clip)
     );
-    assert_eq!(single.serialize_specified().unwrap(), "clip");
+    assert_eq!(
+        single.serialize_specified(Default::default()).unwrap(),
+        "clip"
+    );
     assert_eq!(
         single
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(2, 2, 4))
+            .serialize_specified(CssSerializationLimits::new(2, 2, 4))
             .unwrap(),
         "clip"
     );
@@ -84,32 +77,30 @@ fn shorthand_retains_authored_arity_and_charges_outer_and_child_nodes() {
         CssOverflowValue::new(CssOverflow::Visible, None),
         CssOverflowValue::new(CssOverflow::Visible, Some(CssOverflow::Visible))
     );
-    assert_eq!(pair.serialize_specified().unwrap(), "visible auto");
     assert_eq!(
-        pair.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(3, 3, 12))
+        pair.serialize_specified(Default::default()).unwrap(),
+        "visible auto"
+    );
+    assert_eq!(
+        pair.serialize_specified(CssSerializationLimits::new(3, 3, 12))
             .unwrap(),
         "visible auto"
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(2, 3, 12),
+            CssSerializationLimits::new(2, 3, 12),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(3, 2, 12),
+            CssSerializationLimits::new(3, 2, 12),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(3, 3, 11),
+            CssSerializationLimits::new(3, 3, 11),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
-        assert_eq!(
-            pair.serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            kind
-        );
+        assert_eq!(pair.serialize_specified(limits).unwrap_err().kind(), kind);
     }
 }
 
@@ -177,7 +168,13 @@ fn parsed_aliases_and_wrappers_keep_semantics_separate_from_authored_spelling() 
         );
 
         assert_eq!(value.as_css(), text);
-        assert_eq!(value.value().serialize_specified().unwrap(), "auto");
+        assert_eq!(
+            value
+                .value()
+                .serialize_specified(Default::default())
+                .unwrap(),
+            "auto"
+        );
     }
 }
 

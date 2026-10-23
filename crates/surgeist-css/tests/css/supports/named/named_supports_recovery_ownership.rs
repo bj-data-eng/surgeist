@@ -151,8 +151,11 @@ fn nested_only_recovery_summary_uses_first_child_without_reordering_history() {
 #[test]
 fn empty_semicolons_are_ignored_recursively_by_the_block_partition() {
     let contents = ";color:red;; & { ; } @future { ;; inner:yes;; } ;";
-    let body = CssSupportsTestBody::try_from_components(parse_component_values(contents).unwrap())
-        .unwrap();
+    let body = CssSupportsTestBody::try_from_components(
+        parse_component_values(contents).unwrap(),
+        Default::default(),
+    )
+    .unwrap();
     assert!(body.recovery_origin().is_none());
     let [
         CssSupportsTestItem::Declarations(run),
@@ -171,7 +174,7 @@ fn empty_semicolons_are_ignored_recursively_by_the_block_partition() {
     assert_eq!(inner.declarations().len(), 1);
     assert_eq!(inner.declarations()[0].property(), "inner");
     assert_eq!(
-        body.to_specified_css().unwrap(),
+        body.serialize_specified(Default::default()).unwrap(),
         "color: red; & { } @future  { inner: yes; }"
     );
     let report = parse_sheet(
@@ -180,7 +183,7 @@ fn empty_semicolons_are_ignored_recursively_by_the_block_partition() {
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert_eq!(
         definition(report.syntax().rules())
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .unwrap(),
         "@supports-condition --x { color: red; & { } @future  { inner: yes; } }"
     );

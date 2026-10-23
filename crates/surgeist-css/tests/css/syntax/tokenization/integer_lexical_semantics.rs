@@ -26,8 +26,14 @@ fn grid_line_indices_preserve_spelling_at_every_integer_magnitude() {
     ] {
         let left = line(&format!("grid-column-start:{left}"));
         let right = line(&format!("grid-column-start:{right}"));
-        assert_eq!(left.serialize_specified().unwrap(), canonical);
-        assert_eq!(right.serialize_specified().unwrap(), canonical);
+        assert_eq!(
+            left.serialize_specified(Default::default()).unwrap(),
+            canonical
+        );
+        assert_eq!(
+            right.serialize_specified(Default::default()).unwrap(),
+            canonical
+        );
         assert_ne!(left, right, "authored integer spellings remain distinct");
     }
 }

@@ -8,7 +8,7 @@ fn rejection_failures(property: CssKnownProperty, source: &str) -> Vec<String> {
     let mut failures = Vec::new();
     let components = parse_component_values(source).unwrap();
     let before = components.clone();
-    let serialized = components.serialize().unwrap();
+    let serialized = components.serialize_tokens(Default::default()).unwrap();
     // The component serializer exposes the original implicit delimiter origin;
     // it may emit a closing delimiter, but that does not make the input complete.
     let origin = (0..serialized.as_css().len())

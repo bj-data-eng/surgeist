@@ -238,10 +238,16 @@ fn measure_source_stripe(source: &str, flex: bool) -> Stats {
     } else {
         "stripes(red calc(1px))"
     };
-    assert_eq!(image.serialize_specified().unwrap(), expected);
+    assert_eq!(
+        image.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     let start = source.find("calc(").unwrap();
     assert_eq!(
-        components.serialize().unwrap().as_css(),
+        components
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         &source[start..source.len() - 1]
     );
     let CssValueOrigin::Parsed(origin) = components.items()[0].origin() else {
@@ -329,7 +335,11 @@ fn assert_retained_url_modifier(
         let expected = format!("\"{decoded}\"");
         assert_eq!(modifier.arguments().as_css(), expected);
         assert_eq!(
-            modifier.argument_components().serialize().unwrap().as_css(),
+            modifier
+                .argument_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             expected
         );
         assert!(
@@ -354,7 +364,11 @@ fn assert_retained_url_modifier(
     }
     let value_source = source.strip_prefix("background-image:").unwrap_or(source);
     assert_eq!(
-        declaration.value_components().serialize().unwrap().as_css(),
+        declaration
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         value_source
     );
 }

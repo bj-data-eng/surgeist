@@ -2,15 +2,18 @@
 
 use crate::specified_serialization::SpecifiedSerializationContext;
 use crate::{
-    CssHintedNumberCalculation, CssSpecifiedNonNegativeLengthPercentage,
-    CssSpecifiedNonNegativeNumber, CssSpecifiedValueSerializationError,
-    CssSpecifiedValueSerializationLimits,
+    CssHintedNumberCalculation, CssSerializationError, CssSpecifiedNonNegativeLengthPercentage,
+    CssSpecifiedNonNegativeNumber,
 };
 
-type SerializationResult<T> = Result<T, CssSpecifiedValueSerializationError>;
+type SerializationResult<T> = Result<T, CssSerializationError>;
 
 /// An authored `line-height`. Numbers, lengths, and percentages remain distinct.
 /// Equality compares authored structure while ignoring source origin.
+///
+/// # Specified serialization
+///
+/// Serializes the specified value without resolving font metrics.
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssLineHeight {
@@ -39,31 +42,6 @@ impl PartialEq for CssLineHeight {
 impl Eq for CssLineHeight {}
 
 impl CssLineHeight {
-    /// Serializes the specified value without resolving font metrics.
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes atomically under explicit resource limits.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        let context = &mut writer.context;
-        let output = &mut writer.css;
-        self.append_specified(context, output)?;
-        Ok(())
-    }
-
     pub(crate) fn append_specified(
         &self,
         context: &mut SpecifiedSerializationContext,
@@ -71,8 +49,7 @@ impl CssLineHeight {
     ) -> SerializationResult<()> {
         match self {
             Self::Normal => {
-                context.charge_input(1)?;
-                context.charge_projection(1)?;
+                context.charge_nodes(1)?;
                 context.append(output, "normal")?;
             }
             Self::Number(value) => {
@@ -91,3 +68,15 @@ impl CssLineHeight {
         Ok(())
     }
 }
+impl crate::specified_rule_serialization::SpecifiedProvider for CssLineHeight {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        let context = &mut writer.context;
+        let output = &mut writer.css;
+        self.append_specified(context, output)?;
+        Ok(())
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(CssLineHeight);

@@ -91,9 +91,11 @@ fn main() {
         "(orientation: var(--mode))",
         "future-size(1px)",
     ] {
-        let condition =
-            CssContainerCondition::try_from_components(parse_component_values(source).unwrap())
-                .unwrap();
+        let condition = CssContainerCondition::try_from_components(
+            parse_component_values(source).unwrap(),
+            Default::default(),
+        )
+        .unwrap();
         let description = match condition.kind() {
             CssContainerConditionKind::Feature(feature) => match feature {
                 CssContainerFeatureQuery::Boolean(kind) => format!("boolean {}", kind.name()),

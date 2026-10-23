@@ -31,7 +31,7 @@ fn assert_percentage_context(value: &CssTextSpacingAdjustment) {
         Some(CssNumericDimension::Length)
     );
     assert_eq!(
-        value.serialize_specified().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         "calc(10% * 1px / 10%)"
     );
 }
@@ -52,7 +52,10 @@ fn letter_spacing_percentage_cancellation_retains_its_percentage_context() {
 fn pure_length_math_and_additive_percentage_zero_keep_distinct_contexts() {
     for name in ["word-spacing", "letter-spacing"] {
         let pure = authored(name, "calc(1px - 2px)");
-        assert_eq!(pure.serialize_specified().unwrap(), "calc(-1px)");
+        assert_eq!(
+            pure.serialize_specified(Default::default()).unwrap(),
+            "calc(-1px)"
+        );
         assert_eq!(
             pure.length_percentage()
                 .unwrap()

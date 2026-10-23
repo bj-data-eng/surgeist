@@ -21,7 +21,13 @@ fn retained_whitespace_bytes(nested: bool, length: usize) -> usize {
     let allocations = region.change();
 
     assert!(parser.is_exhausted());
-    assert_eq!(values.serialize().unwrap().as_css(), text);
+    assert_eq!(
+        values
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        text
+    );
     let leaves = if nested {
         let CssComponentValueRef::Function(function) = values.items()[0].view() else {
             panic!("function containing whitespace");

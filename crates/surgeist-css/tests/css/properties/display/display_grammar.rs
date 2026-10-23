@@ -135,7 +135,7 @@ fn checked_component_construction_uses_the_same_display_grammar() {
             }
             tokens.push(CssComponentValue::try_token(word).unwrap());
         }
-        let components = CssComponentValues::try_new(tokens).unwrap();
+        let components = CssComponentValues::try_new(tokens, Default::default()).unwrap();
         let declaration = parse_property_value(
             CssPropertyNameRef::Known(CssKnownProperty::Display),
             components.clone(),
@@ -196,9 +196,11 @@ fn selected_grid_lanes_keywords_preserve_identity_and_authored_spelling() {
                 CssValueOrigin::Parsed(_)
             ));
         }
-        let components =
-            CssComponentValues::try_new(vec![CssComponentValue::try_token(source).unwrap()])
-                .unwrap();
+        let components = CssComponentValues::try_new(
+            vec![CssComponentValue::try_token(source).unwrap()],
+            Default::default(),
+        )
+        .unwrap();
         let declaration = parse_property_value(
             CssPropertyNameRef::Known(CssKnownProperty::Display),
             components.clone(),

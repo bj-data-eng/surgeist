@@ -118,7 +118,7 @@ fn font_face_descriptor_collection_preserves_optional_matching_fields() {
     assert_eq!(face_value!(descriptors, Src), &src);
     assert_eq!(
         face_value!(descriptors, FontWeight)
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "400 700"
     );
@@ -130,7 +130,7 @@ fn font_face_descriptor_collection_preserves_optional_matching_fields() {
         face_value!(descriptors, FontWidth)
             .end()
             .unwrap()
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "125%"
     );
@@ -206,7 +206,12 @@ fn font_face_source_and_unicode_lists_reject_empty_values() {
 #[test]
 fn font_face_numeric_descriptors_enforce_invariants() {
     for valid in ["1", "400", "1000"] {
-        assert_eq!(weight_number(valid).serialize_specified().unwrap(), valid);
+        assert_eq!(
+            weight_number(valid)
+                .serialize_specified(Default::default())
+                .unwrap(),
+            valid
+        );
     }
     for invalid in ["0", "1001", "0.999", "1000.001"] {
         assert!(
@@ -221,7 +226,7 @@ fn font_face_numeric_descriptors_enforce_invariants() {
             start: CssAbsoluteFontWeight::Number(weight_number("700")),
             end: Some(CssAbsoluteFontWeight::Number(weight_number("400"))),
         }
-        .serialize_specified()
+        .serialize_specified(Default::default())
         .unwrap(),
         "700 400"
     );
@@ -243,15 +248,27 @@ fn font_face_numeric_descriptors_enforce_invariants() {
         end: Some(CssFontWidth::Keyword(CssFontWidthKeyword::Condensed)),
     };
     assert_eq!(
-        descending_width.serialize_specified().unwrap(),
+        descending_width
+            .serialize_specified(Default::default())
+            .unwrap(),
         "expanded condensed"
     );
 
     let descending =
         CssFontFaceObliqueRange::new(oblique_angle("90deg"), Some(oblique_angle("-90deg")));
-    assert_eq!(descending.start().serialize_specified().unwrap(), "90deg");
     assert_eq!(
-        descending.end().unwrap().serialize_specified().unwrap(),
+        descending
+            .start()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "90deg"
+    );
+    assert_eq!(
+        descending
+            .end()
+            .unwrap()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "-90deg"
     );
     for invalid in ["-90.1deg", "90.1deg"] {
@@ -299,7 +316,7 @@ fn font_face_rule_parser_accepts_descriptor_block() {
     assert!(source.tech().is_empty());
     assert_eq!(
         face_value!(descriptors, FontWeight)
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "400 700"
     );
@@ -380,16 +397,26 @@ fn font_face_rule_parser_accepts_strict_numeric_ranges() {
     else {
         panic!("expected oblique range");
     };
-    assert_eq!(oblique.start().serialize_specified().unwrap(), "-10deg");
     assert_eq!(
-        oblique.end().unwrap().serialize_specified().unwrap(),
+        oblique
+            .start()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "-10deg"
+    );
+    assert_eq!(
+        oblique
+            .end()
+            .unwrap()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "20deg"
     );
     assert_eq!(
         face_value!(descriptors, FontWidth)
             .start()
             .unwrap()
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "75%"
     );
@@ -397,7 +424,7 @@ fn font_face_rule_parser_accepts_strict_numeric_ranges() {
         face_value!(descriptors, FontWidth)
             .end()
             .unwrap()
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "125%"
     );

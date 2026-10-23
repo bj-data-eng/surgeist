@@ -23,7 +23,8 @@ use crate::{
 pub(crate) fn container_condition_from_enclosed(
     enclosed: CssGeneralEnclosed,
 ) -> Result<CssContainerCondition, CssContainerConstructionError> {
-    let values = CssComponentValues::try_new(vec![enclosed.component().clone()])?;
+    let values =
+        CssComponentValues::try_new(vec![enclosed.component().clone()], Default::default())?;
     construct_container_condition(values, CssComponentValueLimits::default())
 }
 
@@ -406,7 +407,7 @@ fn container_ratio(items: &[CssComponentValue]) -> ContainerFeatureResult<CssCon
         )));
     }
     let operand = |items: &[CssComponentValue]| -> ContainerFeatureResult<CssNumberCalculation> {
-        let values = CssComponentValues::try_new(items.to_vec())?;
+        let values = CssComponentValues::try_new(items.to_vec(), Default::default())?;
         if media_literal_number(&values).is_some_and(negative_literal) {
             return Err(ContainerFeatureError::Grammar);
         }
@@ -429,9 +430,13 @@ fn container_ratio(items: &[CssComponentValue]) -> ContainerFeatureResult<CssCon
     let denominator = if let Some(items) = denominator_items {
         operand(items)?
     } else {
-        CssNumberCalculation::try_from_components(CssComponentValues::try_new(vec![
-            CssComponentValue::try_number("1")?,
-        ])?)
+        CssNumberCalculation::try_from_components(
+            CssComponentValues::try_new(
+                vec![CssComponentValue::try_number("1")?],
+                Default::default(),
+            )?,
+            Default::default(),
+        )
         .expect("implicit ratio denominator is one")
     };
     Ok(CssContainerRatio::typed(

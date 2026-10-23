@@ -274,7 +274,7 @@ fn a_whole_reverse_search_shares_native_work_and_resource_failure_rolls_back_bat
     // The provider's public literal tariff admits query + two candidates at
     // (6,8), but not a third; resetting a pair budget would falsely succeed.
     let limits = CssomLimits {
-        css: CssSpecifiedValueSerializationLimits::new(6, 8, 0),
+        css: CssSerializationLimits::new(6, 8, 0),
         ..CssomLimits::default()
     };
     let (mut store, sheet, root, children) =
@@ -292,7 +292,7 @@ fn a_whole_reverse_search_shares_native_work_and_resource_failure_rolls_back_bat
         assert!(
             query
                 .selectors()
-                .matches_normalized_with_limits(selectors, limits.css)
+                .matches_normalized(selectors, limits.css)
                 .is_ok()
         );
     }

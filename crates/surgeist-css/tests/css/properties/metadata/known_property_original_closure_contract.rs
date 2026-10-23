@@ -48,7 +48,9 @@ fn finish(failures: Vec<String>) {
 // Obtain a PUBLIC original witness, then check its coordinates independently.
 // We never derive the expectation from the property error or a private helper.
 fn comment_witness(values: &CssComponentValues, source: &str) -> CssValueOrigin {
-    let serialized = values.serialize().expect("fixture component serialization");
+    let serialized = values
+        .serialize_tokens(Default::default())
+        .expect("fixture component serialization");
     let origin = (0..serialized.as_css().len())
         .find_map(|offset| match serialized.origin_at(offset) {
             Some(CssSerializedOrigin::Token(value @ CssValueOrigin::ImplicitClosure { .. })) => {
@@ -259,9 +261,11 @@ fn every_record_matched_closed_globals_and_programmatic_globals_preserve_identit
     for case in fixtures() {
         for (keyword, expected) in GLOBALS {
             let parsed = parse_component_values(&format!("/*😀*/{keyword}/**/")).unwrap();
-            let programmatic =
-                CssComponentValues::try_new(vec![CssComponentValue::try_ident(keyword).unwrap()])
-                    .unwrap();
+            let programmatic = CssComponentValues::try_new(
+                vec![CssComponentValue::try_ident(keyword).unwrap()],
+                Default::default(),
+            )
+            .unwrap();
             assert!(
                 programmatic
                     .items()
@@ -302,14 +306,20 @@ fn every_record_matched_closed_globals_and_programmatic_globals_preserve_identit
 #[test]
 fn every_record_matched_closed_pending_and_programmatic_pending_preserve_original_components() {
     for case in fixtures() {
-        let programmatic = CssComponentValues::try_new(vec![
-            CssComponentValue::try_function(
-                "var",
-                CssComponentValues::try_new(vec![CssComponentValue::try_ident("--known").unwrap()])
+        let programmatic = CssComponentValues::try_new(
+            vec![
+                CssComponentValue::try_function(
+                    "var",
+                    CssComponentValues::try_new(
+                        vec![CssComponentValue::try_ident("--known").unwrap()],
+                        Default::default(),
+                    )
                     .unwrap(),
-            )
-            .unwrap(),
-        ])
+                )
+                .unwrap(),
+            ],
+            Default::default(),
+        )
         .unwrap();
         for values in PENDING
             .into_iter()
@@ -699,7 +709,7 @@ fn mixed_programmatic_known_keyword_and_parsed_comment_keep_actual_original_snap
     let witness = comment_witness(&comment, "/*unfinished");
     let mut items = vec![CssComponentValue::try_ident("inherit").unwrap()];
     items.extend(comment.items().iter().cloned());
-    let values = CssComponentValues::try_new(items).unwrap();
+    let values = CssComponentValues::try_new(items, Default::default()).unwrap();
     assert!(matches!(
         values.items()[0].origin(),
         CssValueOrigin::Programmatic
@@ -731,9 +741,11 @@ fn mixed_programmatic_known_keyword_and_parsed_comment_keep_actual_original_snap
                     case.name
                 ));
             }
-            let complete =
-                CssComponentValues::try_new(vec![CssComponentValue::try_ident("inherit").unwrap()])
-                    .unwrap();
+            let complete = CssComponentValues::try_new(
+                vec![CssComponentValue::try_ident("inherit").unwrap()],
+                Default::default(),
+            )
+            .unwrap();
             assert_global_retry(
                 handle.reenter(complete.clone()).unwrap(),
                 &source,
@@ -750,7 +762,7 @@ fn programmatic_wrapper_preserves_recovered_child_original_eof_in_every_known_fr
     let child = parse_component_values("future(value").unwrap();
     let witness = function_witness(&child, "future(value");
     let outer = CssComponentValue::try_function("outer", child.clone()).unwrap();
-    let values = CssComponentValues::try_new(vec![outer]).unwrap();
+    let values = CssComponentValues::try_new(vec![outer], Default::default()).unwrap();
     let before = values.clone();
     let mut failures = Vec::new();
     for case in fixtures() {
@@ -821,11 +833,15 @@ fn repaired_component_output_keeps_byte_failures_atomic_and_original_closure_ori
     let expected = "future(1px)";
     assert_eq!(expected.len(), 11);
     for _ in 0..2 {
-        let error = values.serialize_with_limit(10).unwrap_err();
+        let error = values
+            .serialize_tokens(crate::css::support::byte_limits(10))
+            .unwrap_err();
         assert_eq!(error.kind(), CssComponentValueErrorKind::ByteLimit);
         assert_eq!(error.origin(), &witness);
         assert_eq!(values, before);
-        let output = values.serialize_with_limit(11).unwrap();
+        let output = values
+            .serialize_tokens(crate::css::support::byte_limits(11))
+            .unwrap();
         assert_eq!(output.as_css(), expected);
         assert_eq!(
             output.origin_at(10),
@@ -834,7 +850,7 @@ fn repaired_component_output_keeps_byte_failures_atomic_and_original_closure_ori
         assert_eq!(values, before);
     }
     let exact = CssComponentValueLimits::try_new(1, 2, 11).unwrap();
-    let joined = CssComponentValues::try_new_with_limits(values.items().to_vec(), exact).unwrap();
+    let joined = CssComponentValues::try_new(values.items().to_vec(), exact).unwrap();
     assert_eq!(joined, values);
     for (limits, kind) in [
         (
@@ -851,7 +867,7 @@ fn repaired_component_output_keeps_byte_failures_atomic_and_original_closure_ori
         ),
     ] {
         assert_eq!(
-            CssComponentValues::try_new_with_limits(values.items().to_vec(), limits)
+            CssComponentValues::try_new(values.items().to_vec(), limits)
                 .unwrap_err()
                 .kind(),
             kind
@@ -860,11 +876,17 @@ fn repaired_component_output_keeps_byte_failures_atomic_and_original_closure_ori
     }
     let complete = parse_component_values(expected).unwrap();
     assert_eq!(
-        complete.serialize_with_limit(11).unwrap().as_css(),
+        complete
+            .serialize_tokens(crate::css::support::byte_limits(11))
+            .unwrap()
+            .as_css(),
         expected
     );
     assert_eq!(
-        complete.serialize_with_limit(10).unwrap_err().kind(),
+        complete
+            .serialize_tokens(crate::css::support::byte_limits(10))
+            .unwrap_err()
+            .kind(),
         CssComponentValueErrorKind::ByteLimit
     );
 }

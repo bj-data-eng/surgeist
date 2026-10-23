@@ -13,8 +13,8 @@
 use crate::css::support::serialization_limits::assert_node_limits;
 use surgeist_css::*;
 
-type Limits = CssSpecifiedValueSerializationLimits;
-type Error = CssSpecifiedValueSerializationError;
+type Limits = CssSerializationLimits;
+type Error = CssSerializationError;
 type Kind = CssSpecifiedValueSerializationErrorKind;
 
 fn component(text: &str, parsed: bool) -> CssComponentValue {
@@ -42,9 +42,9 @@ fn padding(text: &str, parsed: bool) -> CssScrollPaddingValue {
     }
 }
 fn raw(component: &CssComponentValue) -> String {
-    CssComponentValues::try_new(vec![component.clone()])
+    CssComponentValues::try_new(vec![component.clone()], Default::default())
         .unwrap()
-        .serialize()
+        .serialize_tokens(Default::default())
         .unwrap()
         .as_css()
         .to_owned()
@@ -71,7 +71,7 @@ fn pair_padding(texts: [&str; 2], expected: &str) {
     let end = padding(texts[1], false);
     let value = CssScrollPaddingPair::new(start.clone(), Some(end.clone()));
     let before = value.clone();
-    let result = value.serialize_specified();
+    let result = value.serialize_specified(Default::default());
     assert_eq!(value, before);
     assert_eq!(value.start(), &start);
     assert_eq!(value.authored_end(), Some(&end));
@@ -85,7 +85,7 @@ fn pair_margin(texts: [&str; 2], expected: &str) {
     let end = length(texts[1], false);
     let value = CssScrollMarginPair::new(start.clone(), Some(end.clone()));
     let before = value.clone();
-    let result = value.serialize_specified();
+    let result = value.serialize_specified(Default::default());
     assert_eq!(value, before);
     assert_eq!(value.start(), &start);
     assert_eq!(value.authored_end(), Some(&end));
@@ -125,7 +125,7 @@ fn quad_padding(kind: CssScrollSideKind, texts: &[&str], expected: &str) {
         .collect();
     let value = CssScrollPaddingShorthand::try_new(kind, authored.clone()).unwrap();
     let before = value.clone();
-    let result = value.serialize_specified();
+    let result = value.serialize_specified(Default::default());
     assert_eq!(value, before);
     assert_eq!(value.kind(), kind);
     assert_eq!(value.authored_values(), authored);
@@ -150,7 +150,7 @@ fn quad_margin(kind: CssScrollSideKind, texts: &[&str], expected: &str) {
         .collect();
     let value = CssScrollMarginShorthand::try_new(kind, authored.clone()).unwrap();
     let before = value.clone();
-    let result = value.serialize_specified();
+    let result = value.serialize_specified(Default::default());
     assert_eq!(value, before);
     assert_eq!(value.kind(), kind);
     assert_eq!(value.authored_values(), authored);
@@ -330,16 +330,20 @@ fn explicit_units_auto_and_nonzero_physical_units_remain_distinct() {
     pair_margin(["0px", "0cm"], "0px 0cm");
     pair_margin(["96px", "1in"], "96px 1in");
     let pair = CssScrollPaddingPair::new(padding("auto", false), Some(padding("auto", false)));
-    assert_eq!(pair.serialize_specified().unwrap(), "auto");
+    assert_eq!(
+        pair.serialize_specified(Default::default()).unwrap(),
+        "auto"
+    );
     let pair = CssScrollPaddingPair::new(padding("auto", false), Some(padding("0", false)));
-    assert_eq!(pair.serialize_specified().unwrap(), "auto 0");
+    assert_eq!(
+        pair.serialize_specified(Default::default()).unwrap(),
+        "auto 0"
+    );
     let single = CssScrollPaddingPair::new(padding("auto", false), None);
     assert!(single.authored_end().is_none());
     assert_eq!(single.end(), single.start());
     assert_eq!(
-        single
-            .serialize_specified_with_limits(Limits::new(1, 1, 4))
-            .unwrap(),
+        single.serialize_specified(Limits::new(1, 1, 4)).unwrap(),
         "auto"
     );
 }
@@ -439,7 +443,7 @@ fn pair_limits_charge_only_authored_children_and_both_rounded_tokens() {
     let before = value.clone();
     // Two 10-byte lengths and one space, each child one input/projection.
     exact_limits("0.123456px 0.123456px", 2, 21, |limits| {
-        let result = value.serialize_specified_with_limits(limits);
+        let result = value.serialize_specified(limits);
         assert_eq!(value, before);
         result
     });
@@ -462,7 +466,7 @@ fn quad_limits_charge_authored_children_and_logical_marker_before_final_text() {
         5,
         51,
         |limits| {
-            let result = value.serialize_specified_with_limits(limits);
+            let result = value.serialize_specified(limits);
             assert_eq!(value, before);
             result
         },
@@ -477,7 +481,7 @@ fn compressed_authored_counts_scratch_limits_and_failure_order_stay_exact() {
         )
         .unwrap();
         exact_limits("0.123456px", count, 10, |limits| {
-            value.serialize_specified_with_limits(limits)
+            value.serialize_specified(limits)
         });
         let value = CssScrollPaddingShorthand::try_new(
             CssScrollSideKind::Logical,
@@ -485,7 +489,7 @@ fn compressed_authored_counts_scratch_limits_and_failure_order_stay_exact() {
         )
         .unwrap();
         exact_limits("logical 0.123456px", count + 1, 18, |limits| {
-            value.serialize_specified_with_limits(limits)
+            value.serialize_specified(limits)
         });
     }
     let pair = CssScrollMarginPair::new(
@@ -493,48 +497,50 @@ fn compressed_authored_counts_scratch_limits_and_failure_order_stay_exact() {
         Some(length(".123456410px", false)),
     );
     exact_limits("0.123456px", 2, 10, |limits| {
-        pair.serialize_specified_with_limits(limits)
+        pair.serialize_specified(limits)
     });
     assert_eq!(
-        pair.serialize_specified_with_limits(Limits::new(0, 0, 0))
+        pair.serialize_specified(Limits::new(0, 0, 0))
             .unwrap_err()
             .kind(),
         Kind::InputNodeLimit
     );
     assert_eq!(
-        pair.serialize_specified_with_limits(Limits::new(1, 0, 0))
+        pair.serialize_specified(Limits::new(1, 0, 0))
             .unwrap_err()
             .kind(),
         Kind::ProjectionNodeLimit
     );
     assert_eq!(
-        pair.serialize_specified_with_limits(Limits::new(2, 2, 9))
+        pair.serialize_specified(Limits::new(2, 2, 9))
             .unwrap_err()
             .kind(),
         Kind::ByteLimit
     );
     let pair = CssScrollMarginPair::new(length("1px", false), Some(length("1px", false)));
-    exact_limits("1px", 2, 3, |limits| {
-        pair.serialize_specified_with_limits(limits)
-    });
+    exact_limits("1px", 2, 3, |limits| pair.serialize_specified(limits));
     let single = CssScrollMarginPair::new(length("1px", false), None);
-    exact_limits("1px", 1, 3, |limits| {
-        single.serialize_specified_with_limits(limits)
-    });
+    exact_limits("1px", 1, 3, |limits| single.serialize_specified(limits));
 }
 
 #[test]
 fn canonical_math_pair_and_quad_compression_keeps_actual_calculation_policy() {
     let calc = |text| {
         CssSpecifiedLength::try_from_calculation(
-            CssLengthCalculation::try_from_components(parse_component_values(text).unwrap())
-                .unwrap(),
+            CssLengthCalculation::try_from_components(
+                parse_component_values(text).unwrap(),
+                Default::default(),
+            )
+            .unwrap(),
         )
         .unwrap()
     };
     let pair = CssScrollMarginPair::new(calc("calc(1px + 2px)"), Some(calc("calc(3px)")));
     let before = pair.clone();
-    assert_eq!(pair.serialize_specified().unwrap(), "calc(3px)");
+    assert_eq!(
+        pair.serialize_specified(Default::default()).unwrap(),
+        "calc(3px)"
+    );
     assert_eq!(pair, before);
     let quad = CssScrollMarginShorthand::try_new(
         CssScrollSideKind::Logical,
@@ -548,7 +554,7 @@ fn canonical_math_pair_and_quad_compression_keeps_actual_calculation_policy() {
     .unwrap();
     let before = quad.clone();
     assert_eq!(
-        quad.serialize_specified().unwrap(),
+        quad.serialize_specified(Default::default()).unwrap(),
         "logical calc(1em + 2px)"
     );
     assert_eq!(quad, before);
@@ -579,7 +585,7 @@ fn parsed_property_pair_preserves_declaration_and_source_after_rounding() {
         };
         assert_eq!(origin.source().as_str(), source);
     }
-    let result = pair.serialize_specified();
+    let result = pair.serialize_specified(Default::default());
     assert_eq!(declaration, &before);
     assert_eq!(result.unwrap(), "0.123456px 0.123456px");
 }

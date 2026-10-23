@@ -7,7 +7,11 @@ use surgeist_css::*;
 
 fn calculation(text: &str) -> CssIntegerValue {
     CssIntegerValue::Calculation(
-        CssIntegerCalculation::try_from_components(parse_component_values(text).unwrap()).unwrap(),
+        CssIntegerCalculation::try_from_components(
+            parse_component_values(text).unwrap(),
+            Default::default(),
+        )
+        .unwrap(),
     )
 }
 
@@ -88,7 +92,7 @@ fn symbolic_order_is_deferred_while_adjacent_literal_descent_remains_checked() {
 fn fixed_calculated_default_retains_its_wrapper_and_explicit_occurrence() {
     let rule = parsed("@counter-style x { system: fixed calc(1); }");
     assert_eq!(
-        rule.descriptor_specified_css(CssCounterStyleDescriptorKind::System)
+        rule.descriptor_specified_css(CssCounterStyleDescriptorKind::System, Default::default())
             .unwrap(),
         "fixed calc(1)"
     );
@@ -118,12 +122,12 @@ fn isolated_rule_and_genuine_body_fronts_share_math_and_complete_member_recovery
     };
     assert_eq!(rule.descriptors().occurrences().count(), 4);
     assert_eq!(
-        rule.descriptor_specified_css(CssCounterStyleDescriptorKind::Pad)
+        rule.descriptor_specified_css(CssCounterStyleDescriptorKind::Pad, Default::default())
             .unwrap(),
         "calc(1) \"0\""
     );
     assert_eq!(
-        rule.descriptor_specified_css(CssCounterStyleDescriptorKind::Range)
+        rule.descriptor_specified_css(CssCounterStyleDescriptorKind::Range, Default::default())
             .unwrap(),
         "calc(8) calc(2)"
     );
@@ -151,7 +155,11 @@ fn parsed_integer_graphs_keep_exact_lexical_source_and_origin_sensitive_identity
         "calc("
     );
     assert_eq!(
-        graph.components().serialize().unwrap().as_css(),
+        graph
+            .components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         "calc(+0001 + 1)"
     );
     let same = parsed(source);
@@ -172,13 +180,17 @@ fn checked_pending_env_math_reentry_is_reusable_and_rejects_residual_var_and_env
         let pending = CssCounterStyleDescriptorValue::try_from_components(
             CssCounterStyleDescriptorKind::AdditiveSymbols,
             parse_component_values(token).unwrap(),
+            Default::default(),
         )
         .unwrap();
         let before = pending.clone();
         // Counter Styles 3 §3.6: literal weights must strictly descend, so
         // the second weight is responsible.
         let error = pending
-            .reparse_after_substitution(parse_component_values("2 X, 2 Y").unwrap())
+            .reparse_after_substitution(
+                parse_component_values("2 X, 2 Y").unwrap(),
+                Default::default(),
+            )
             .unwrap_err();
         let CssCounterStyleValueErrorKind::Grammar(detail) = error.kind() else {
             panic!("grammar failure: {error:?}")
@@ -189,7 +201,10 @@ fn checked_pending_env_math_reentry_is_reusable_and_rejects_residual_var_and_env
         for residual in ["calc(var(--weight)) X", "calc(env(weight)) X"] {
             assert_eq!(
                 pending
-                    .reparse_after_substitution(parse_component_values(residual).unwrap())
+                    .reparse_after_substitution(
+                        parse_component_values(residual).unwrap(),
+                        Default::default()
+                    )
                     .unwrap_err()
                     .kind(),
                 &CssCounterStyleValueErrorKind::ResidualSubstitution,
@@ -199,6 +214,7 @@ fn checked_pending_env_math_reentry_is_reusable_and_rejects_residual_var_and_env
         let completed = pending
             .reparse_after_substitution(
                 parse_component_values("calc(1.5) X, calc(-1.5) Y").unwrap(),
+                Default::default(),
             )
             .unwrap();
         assert!(matches!(
@@ -234,13 +250,13 @@ fn normalization_keeps_math_payloads_and_descriptor_origins_in_conditional_and_s
     assert_eq!(counters.len(), 2);
     assert_eq!(
         counters[0]
-            .descriptor_specified_css(CssCounterStyleDescriptorKind::System)
+            .descriptor_specified_css(CssCounterStyleDescriptorKind::System, Default::default())
             .unwrap(),
         "fixed calc(1.5)"
     );
     assert_eq!(
         counters[1]
-            .descriptor_specified_css(CssCounterStyleDescriptorKind::Pad)
+            .descriptor_specified_css(CssCounterStyleDescriptorKind::Pad, Default::default())
             .unwrap(),
         "calc(-1.5) \"0\""
     );
@@ -262,19 +278,16 @@ fn suppressed_duplicate_math_spends_cumulative_input_budget_without_emitting_byt
     let duplicated =
         parsed("@counter-style x { system: fixed calc(1 + 2 + 3 + 4 + 5 + 6); system: fixed; }");
     let expected = "@counter-style x { system: fixed; }";
-    let limits = CssSpecifiedValueSerializationLimits::new(10, 1000, expected.len());
+    let limits = CssSerializationLimits::new(10, 1000, expected.len());
+    assert_eq!(effective.serialize_specified(limits).unwrap(), expected);
     assert_eq!(
-        effective.to_specified_css_with_limits(limits).unwrap(),
-        expected
-    );
-    assert_eq!(
-        duplicated
-            .to_specified_css_with_limits(limits)
-            .unwrap_err()
-            .kind(),
+        duplicated.serialize_specified(limits).unwrap_err().kind(),
         CssSpecifiedValueSerializationErrorKind::InputNodeLimit
     );
-    assert_eq!(duplicated.to_specified_css().unwrap(), expected);
+    assert_eq!(
+        duplicated.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
 }
 
 #[test]
@@ -282,6 +295,7 @@ fn checked_math_depth_failure_keeps_the_original_pending_descriptor() {
     let pending = CssCounterStyleDescriptorValue::try_from_components(
         CssCounterStyleDescriptorKind::Pad,
         parse_component_values("env(pad)").unwrap(),
+        Default::default(),
     )
     .unwrap();
     let source = "calc(1 + (2 + (3 + (4 + 5)))) '0'";
@@ -290,12 +304,14 @@ fn checked_math_depth_failure_keeps_the_original_pending_descriptor() {
     let before = pending.clone();
     assert_eq!(
         pending
-            .reparse_after_substitution_with_limits(components.clone(), limits)
+            .reparse_after_substitution(components.clone(), limits)
             .unwrap_err()
             .kind(),
         &CssCounterStyleValueErrorKind::Component(CssComponentValueErrorKind::NestingLimit)
     );
-    let completed = pending.reparse_after_substitution(components).unwrap();
+    let completed = pending
+        .reparse_after_substitution(components, Default::default())
+        .unwrap();
     assert!(matches!(
         completed.view(),
         CssCounterStyleDescriptorValueRef::Pad(_)

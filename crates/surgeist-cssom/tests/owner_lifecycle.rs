@@ -232,7 +232,7 @@ fn bounded_consumer_read_refusal_leaves_the_same_effect_retryable() {
     let before = store.snapshot();
     store.validate_pending_owner_effect(&effect).unwrap();
     let refused = CssomDeclarationRequestLimits {
-        provider: CssSpecifiedValueSerializationLimits::new(1000, 1000, 0),
+        provider: CssSerializationLimits::new(1000, 1000, 0),
         ..Default::default()
     };
     assert!(matches!(
@@ -593,7 +593,7 @@ fn byte_and_serialization_refusals_release_partial_reservations_without_publicat
     edit.request_owner_synchronization(
         &block,
         CssomDeclarationRequestLimits {
-            provider: CssSpecifiedValueSerializationLimits::new(1000, 1000, 0),
+            provider: CssSerializationLimits::new(1000, 1000, 0),
             ..Default::default()
         },
     )

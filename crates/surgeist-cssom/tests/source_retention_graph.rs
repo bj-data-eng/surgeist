@@ -187,7 +187,7 @@ fn empty_block(owner: &mut CssomStore) -> CssomBlockId {
     let mut edit = batch(owner);
     let ticket = edit
         .create_declarations(
-            CssDeclarationList::try_new(Vec::new()).unwrap(),
+            CssDeclarationList::try_new(Vec::new(), Default::default()).unwrap(),
             false,
             false,
             None,

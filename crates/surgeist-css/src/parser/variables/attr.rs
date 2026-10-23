@@ -411,11 +411,14 @@ mod tests {
             .unwrap()
             .items()[0]
             .clone();
-        let children = crate::CssComponentValues::try_new(vec![
-            CssComponentValue::try_ident("foo").unwrap(),
-            CssComponentValue::try_token(" ").unwrap(),
-            outer.clone(),
-        ])
+        let children = crate::CssComponentValues::try_new(
+            vec![
+                CssComponentValue::try_ident("foo").unwrap(),
+                CssComponentValue::try_token(" ").unwrap(),
+                outer.clone(),
+            ],
+            Default::default(),
+        )
         .unwrap();
         assert_eq!(
             valid(children.items()).unwrap_err().origin(),

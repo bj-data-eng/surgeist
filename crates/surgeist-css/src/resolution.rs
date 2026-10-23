@@ -1,12 +1,12 @@
 //! Exact nonnegative ordinary resolution and strict Resolution-root value admission.
 use crate::{
     CssComponentValue, CssNumericConstructionError, CssNumericConstructionErrorKind,
-    CssNumericTokenRef, CssResolutionUnit, CssSpecifiedValueSerializationError,
-    CssSpecifiedValueSerializationErrorKind, CssSpecifiedValueSerializationLimits, CssValueOrigin,
+    CssNumericTokenRef, CssResolutionUnit, CssSerializationError,
+    CssSpecifiedValueSerializationErrorKind, CssValueOrigin,
     specified_serialization::SpecifiedSerializationContext,
 };
 
-type SerializationResult<T> = Result<T, CssSpecifiedValueSerializationError>;
+type SerializationResult<T> = Result<T, CssSerializationError>;
 
 const fn suffix(unit: CssResolutionUnit) -> &'static str {
     crate::numeric::units::suffix(crate::CssNumericUnit::Resolution(unit))
@@ -22,6 +22,13 @@ pub(crate) const fn exact_factor(unit: CssResolutionUnit) -> crate::exact_decima
 ///
 /// Media resolution has a separate signed authored domain. Specified serialization
 /// converts this ordinary value to `dppx` without changing its authored storage.
+///
+/// # Specified serialization
+///
+/// Emits canonical `dppx` after exact unit conversion and six-place rounding. The CSSOM resolution
+/// rule selects dots per CSS pixel. Conversion uses exactly 96 dots per inch and 127/4800 dots per
+/// pixel per dot per centimeter. Shared number serialization rounds halfway values away from zero;
+/// signed zero emits zero. The original coefficient, unit and origin survive.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssResolutionLiteral {
     component: Box<CssComponentValue>,
@@ -90,47 +97,12 @@ impl CssResolutionLiteral {
         self.component.origin()
     }
 
-    /// Emits canonical `dppx` after exact unit conversion and six-place rounding.
-    ///
-    /// The CSSOM resolution rule selects dots per CSS pixel. Conversion uses
-    /// exactly 96 dots per inch and 127/4800 dots per pixel per dot per centimeter.
-    /// Shared number serialization rounds halfway values away from zero;
-    /// signed zero emits zero. The original coefficient, unit and origin survive.
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Uses one cumulative input, projection-work and generated-byte budget.
-    ///
-    /// Bytes include the suffix and are checked against actual rounded output.
-    /// Exact conversion spends shared rational work under the projection limit.
-    /// Failure returns no partial text and does not alter the authored value.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        let context = &mut writer.context;
-        let output = &mut writer.css;
-        self.append_specified(context, output)?;
-        Ok(())
-    }
-
     pub(crate) fn append_specified(
         &self,
         context: &mut SpecifiedSerializationContext,
         output: &mut String,
     ) -> SerializationResult<()> {
-        context.charge_input(1)?;
-        context.charge_projection(1)?;
+        context.charge_nodes(1)?;
         if context.output_suppressed() {
             return Ok(());
         }
@@ -143,9 +115,7 @@ impl CssResolutionLiteral {
             )?
         } else {
             let number_bytes = context.remaining_bytes().checked_sub(4).ok_or_else(|| {
-                CssSpecifiedValueSerializationError::new(
-                    CssSpecifiedValueSerializationErrorKind::ByteLimit,
-                )
+                CssSerializationError::new(CssSpecifiedValueSerializationErrorKind::ByteLimit)
             })?;
             let factor = exact_factor(self.unit());
             let number = crate::exact_decimal::ExactRational::format_generic_number(
@@ -160,45 +130,34 @@ impl CssResolutionLiteral {
         context.append(output, &text)
     }
 }
+impl crate::specified_rule_serialization::SpecifiedProvider for CssResolutionLiteral {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        let context = &mut writer.context;
+        let output = &mut writer.css;
+        self.append_specified(context, output)?;
+        Ok(())
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(CssResolutionLiteral);
 
 crate::dimension::dimension_value_owner!(
-    /// An authored ordinary resolution with a nonnegative range, retaining actual math symbolically.
+    /// An authored ordinary resolution with a nonnegative range, retaining actual math
+    /// symbolically.
     ///
-    /// This does not replace the signed media Resolution-root domain or evaluate/clamp calculations.
+    /// This does not replace the signed media Resolution-root domain or evaluate/clamp
+    /// calculations.
+    ///
+    /// # Specified serialization
+    ///
+    /// Emits an ordinary resolution in `dppx` or projects retained numeric math. Calculations use
+    /// the existing shared finite/structural simplifier.
     CssResolutionValue,
     CssResolutionLiteral,
     CssResolutionCalculation,
     {
-        /// Emits an ordinary resolution in `dppx` or projects retained numeric math.
-        ///
-        /// Calculations use the existing shared finite/structural simplifier. Their
-        /// original components and type remain unchanged; this does not resolve a
-        /// media query or apply the ordinary literal's range to a calculated result.
-        pub fn serialize_specified(&self) -> SerializationResult<String> {
-            self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-        }
-
-        /// Shares cumulative visits, numeric projection work and UTF-8 output bytes.
-        /// Failure is atomic; no raw-component fallback or contextual evaluation occurs.
-        pub fn serialize_specified_with_limits(
-            &self,
-            limits: CssSpecifiedValueSerializationLimits,
-        ) -> SerializationResult<String> {
-            let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-            self.append_to_rule_writer(&mut writer)?;
-            Ok(writer.css)
-        }
-
-        pub(crate) fn append_to_rule_writer(
-            &self,
-            writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-        ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-            let context = &mut writer.context;
-            let output = &mut writer.css;
-            self.append_specified(context, output)?;
-            Ok(())
-        }
-
         pub(crate) fn append_specified(
             &self,
             context: &mut SpecifiedSerializationContext,
@@ -216,10 +175,20 @@ crate::dimension::dimension_value_owner!(
         }
     }
 );
+impl crate::specified_rule_serialization::SpecifiedProvider for CssResolutionValue {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> SerializationResult<()> {
+        self.append_specified(&mut writer.context, &mut writer.css)
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(CssResolutionValue);
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::CssSerializationLimits;
     use crate::{CssComponentValueRef, CssResolutionCalculation, parse_component_values};
     use std::error::Error;
 
@@ -227,8 +196,7 @@ mod tests {
     fn resolution_children_share_consumed_input_projection_and_output_budgets() {
         let component = parse_component_values("-0dppx").unwrap().items()[0].clone();
         let value = CssResolutionLiteral::try_from_component(component).unwrap();
-        let mut context =
-            SpecifiedSerializationContext::new(CssSpecifiedValueSerializationLimits::new(2, 2, 10));
+        let mut context = SpecifiedSerializationContext::new(CssSerializationLimits::new(2, 2, 10));
         let mut output = String::new();
         value.append_specified(&mut context, &mut output).unwrap();
         value.append_specified(&mut context, &mut output).unwrap();
@@ -249,9 +217,9 @@ mod tests {
             ),
             (2, 9, CssSpecifiedValueSerializationErrorKind::ByteLimit),
         ] {
-            let mut context = SpecifiedSerializationContext::new(
-                CssSpecifiedValueSerializationLimits::new(2, projection, bytes),
-            );
+            let mut context = SpecifiedSerializationContext::new(CssSerializationLimits::new(
+                2, projection, bytes,
+            ));
             let mut output = String::new();
             value.append_specified(&mut context, &mut output).unwrap();
             assert_eq!(
@@ -297,14 +265,18 @@ mod tests {
             } else {
                 (left.clone(), right.clone(), &left_closure)
             };
-            let arguments = crate::CssComponentValues::try_new(vec![
-                first,
-                crate::CssComponentValue::try_token(",").unwrap(),
-                second,
-            ])
+            let arguments = crate::CssComponentValues::try_new(
+                vec![
+                    first,
+                    crate::CssComponentValue::try_token(",").unwrap(),
+                    second,
+                ],
+                Default::default(),
+            )
             .unwrap();
             let outer = crate::CssComponentValue::try_function("min", arguments).unwrap();
-            let values = crate::CssComponentValues::try_new(vec![outer]).unwrap();
+            let values =
+                crate::CssComponentValues::try_new(vec![outer], Default::default()).unwrap();
             let expression = crate::numeric::NumericInputContext::Parsed(&source)
                 .admit(values, crate::numeric::CalculationRoot::Resolution)
                 .unwrap();
@@ -348,7 +320,10 @@ mod tests {
         // The existing authored writer materializes closings; strict admission
         // must inspect the original graph rather than this serialized output.
         assert_eq!(
-            calculation.serialize().unwrap().as_css(),
+            calculation
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             "calc(min(-1dppx, 2dppx))"
         );
         let error = CssResolutionValue::try_from_calculation(calculation.clone()).unwrap_err();

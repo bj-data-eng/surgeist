@@ -34,23 +34,17 @@ impl<'a> CssImportRuleView<'a> {
     ) -> Self {
         Self { rule, media }
     }
-    pub fn try_new(
-        rule: &'a CssImportRule,
-        media: &'a CssMediaQueryList,
-    ) -> Result<Self, CssRuleCssomSerializationError> {
-        Self::try_new_with_limits(rule, media, CssSpecifiedValueSerializationLimits::default())
-    }
 
     /// Checks the complete current payload under one cumulative formatting budget.
     /// An empty supplied list removes authored media from output. Existing import
     /// wrapper qualifications and recovered-media CSSOM behavior remain intact.
-    pub fn try_new_with_limits(
+    pub fn try_new(
         rule: &'a CssImportRule,
         media: &'a CssMediaQueryList,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<Self, CssRuleCssomSerializationError> {
+        limits: CssSerializationLimits,
+    ) -> Result<Self, CssRuleSerializationError> {
         let view = Self { rule, media };
-        view.serialize_cssom_with_limits(limits)?;
+        view.serialize_cssom(limits)?;
         Ok(view)
     }
 
@@ -64,16 +58,12 @@ impl<'a> CssImportRuleView<'a> {
         self.media
     }
 
-    pub fn serialize_cssom(self) -> Result<String, CssRuleCssomSerializationError> {
-        self.serialize_cssom_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
     /// Uses the owning import writer; failure returns no partial text and permits
     /// unchanged retry without modifying either borrowed input.
-    pub fn serialize_cssom_with_limits(
+    pub fn serialize_cssom(
         self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String, CssRuleCssomSerializationError> {
+        limits: CssSerializationLimits,
+    ) -> Result<String, CssRuleSerializationError> {
         let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
         writer
             .node()
@@ -83,49 +73,43 @@ impl<'a> CssImportRuleView<'a> {
                     .append_cssom_with_media(&mut writer, Some(self.media))
                     .map_err(Into::into)
             })
-            .map_err(|error| CssRuleCssomSerializationError::new(error, Vec::new(), None))?;
+            .map_err(|error| CssRuleSerializationError::new(error, Vec::new(), None))?;
         Ok(writer.css)
     }
 }
-/// Failure to serialize a checked authored import atomically.
+/// A lexical import emission failure, before its public classification.
+///
+/// Rule-graph providers and the public token serializer map it to
+/// [`CssSerializationError`] through [`import_error`].
 #[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssImportSerializationError {
+pub(crate) enum ImportSerializationFailure {
     Component(CssComponentValueError),
-    Media(CssMediaSerializationError),
+    Media(crate::media::MediaSerializationFailure),
     InterpretationChanged { origin: CssValueOrigin },
 }
-impl CssImportSerializationError {
-    pub fn origin(&self) -> &CssValueOrigin {
-        match self {
-            Self::Component(value) => value.origin(),
-            Self::Media(value) => value.origin(),
-            Self::InterpretationChanged { origin } => origin,
-        }
-    }
-}
-impl fmt::Display for CssImportSerializationError {
-    fn fmt(&self, out: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(out, "import serialization failed: {self:?}")
-    }
-}
-impl std::error::Error for CssImportSerializationError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::Component(error) => Some(error),
-            Self::Media(error) => Some(error),
-            Self::InterpretationChanged { .. } => None,
-        }
-    }
-}
-impl From<CssComponentValueError> for CssImportSerializationError {
+impl From<CssComponentValueError> for ImportSerializationFailure {
     fn from(value: CssComponentValueError) -> Self {
         Self::Component(value)
     }
 }
-impl From<CssMediaSerializationError> for CssImportSerializationError {
-    fn from(value: CssMediaSerializationError) -> Self {
+impl From<crate::media::MediaSerializationFailure> for ImportSerializationFailure {
+    fn from(value: crate::media::MediaSerializationFailure) -> Self {
         Self::Media(value)
+    }
+}
+/// Classifies an import emission failure: a component failure by its kind, a
+/// media failure as media serialization classifies it, and a changed
+/// interpretation as an unrepresentable value.
+pub(crate) fn import_error(error: ImportSerializationFailure) -> CssSerializationError {
+    match error {
+        ImportSerializationFailure::Component(error) => CssSerializationError::component(
+            crate::component_values::specified_component_kind(&error),
+            error,
+        ),
+        ImportSerializationFailure::Media(error) => crate::media::media_error(error),
+        ImportSerializationFailure::InterpretationChanged { origin } => {
+            CssSerializationError::import_interpretation(&origin)
+        }
     }
 }
 /// A complete import construction failure located in the original input.
@@ -137,7 +121,7 @@ pub enum CssImportConstructionError {
     Component(CssComponentValueError),
     Supports(CssSupportsConstructionError),
     Media(CssMediaConstructionError),
-    Serialization(CssImportSerializationError),
+    Serialization(CssSerializationError),
     WorkerUnavailable { origin: CssValueOrigin },
 }
 impl CssImportConstructionError {
@@ -149,7 +133,7 @@ impl CssImportConstructionError {
             Self::Component(error) => error.origin(),
             Self::Supports(error) => error.origin(),
             Self::Media(error) => error.origin(),
-            Self::Serialization(error) => error.origin(),
+            Self::Serialization(error) => error.origin().unwrap_or(&CssValueOrigin::Programmatic),
         }
     }
 }
@@ -184,8 +168,8 @@ impl From<CssMediaConstructionError> for CssImportConstructionError {
         Self::Media(error)
     }
 }
-impl From<CssImportSerializationError> for CssImportConstructionError {
-    fn from(error: CssImportSerializationError) -> Self {
+impl From<CssSerializationError> for CssImportConstructionError {
+    fn from(error: CssSerializationError) -> Self {
         Self::Serialization(error)
     }
 }
@@ -193,15 +177,10 @@ impl From<CssImportSerializationError> for CssImportConstructionError {
 impl CssImportRule {
     /// Checks one complete import, including its explicit semicolon. Surrounding
     /// trivia is allowed and counted against input limits; canonical output may omit it.
-    pub fn try_from_components(
-        values: CssComponentValues,
-        context: &CssNamespaceContext,
-    ) -> Result<Self, CssImportConstructionError> {
-        Self::try_from_components_with_limits(values, context, CssComponentValueLimits::default())
-    }
+    ///
     /// Checks lexical input and canonical output under the supplied resource limits.
     /// Recovered components and malformed media are rejected before any rule escapes.
-    pub fn try_from_components_with_limits(
+    pub fn try_from_components(
         values: CssComponentValues,
         context: &CssNamespaceContext,
         limits: CssComponentValueLimits,
@@ -231,18 +210,24 @@ impl CssImportRule {
         })
     }
 
-    /// Serializes authored clauses and symbolic media without evaluating or loading them.
+    /// Serializes authored clauses and symbolic media as tokens with their
+    /// origins, without evaluating or loading them.
+    ///
     /// Recovered media members prevent serialization of the entire rule.
-    pub fn serialize(&self) -> Result<CssSerializedValue, CssImportSerializationError> {
-        self.serialize_with_limit(usize::MAX)
-    }
-    /// Applies a byte limit to canonical output, including inserted syntax and
-    /// expanded symbolic media representations. No partial output is returned.
-    /// This caps output bytes, not temporary allocation for interpretation probes.
-    pub fn serialize_with_limit(
+    /// `limits.max_css_bytes()` caps canonical output, including inserted
+    /// syntax and expanded symbolic media representations; it does not cap
+    /// temporary allocation for interpretation probes. The other component
+    /// limits do not apply. No partial output is returned.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CssSerializationError`] for a recovered media member, an
+    /// exhausted byte limit, or output that would reparse differently.
+    pub fn serialize_tokens(
         &self,
-        max_css_bytes: usize,
-    ) -> Result<CssSerializedValue, CssImportSerializationError> {
+        limits: CssComponentValueLimits,
+    ) -> Result<CssSerializedValue, CssSerializationError> {
+        let max_css_bytes = limits.max_css_bytes();
         // Both original clauses and symbolic media can contain deep component trees.
         let deep = [&self.syntax.prelude.target]
             .into_iter()
@@ -254,6 +239,7 @@ impl CssImportRule {
                 .is_some_and(|media| media.queries().iter().any(crate::media::query_is_deep));
         let origin = || self.syntax.prelude.target.origin().clone();
         crate::media::with_media_stack(deep, origin, || self.serialize_import(max_css_bytes))
+            .map_err(import_error)
     }
     /// Generic graph projection: the enclosing graph owns the rule node.
     /// Targets and clauses own their retained component trees; the media provider
@@ -262,7 +248,7 @@ impl CssImportRule {
         &self,
         context: &mut crate::specified_serialization::SpecifiedSerializationContext,
         output: &mut String,
-    ) -> Result<(), crate::query_rule_serialization::QueryRuleSerializationError> {
+    ) -> Result<(), crate::specified_rule_serialization::SpecifiedRuleSerializationSource> {
         self.append_specified_with_media(context, output, self.media())
     }
 
@@ -271,7 +257,7 @@ impl CssImportRule {
         context: &mut crate::specified_serialization::SpecifiedSerializationContext,
         output: &mut String,
         media: Option<&CssMediaQueryList>,
-    ) -> Result<(), crate::query_rule_serialization::QueryRuleSerializationError> {
+    ) -> Result<(), crate::specified_rule_serialization::SpecifiedRuleSerializationSource> {
         for component in [&self.syntax.prelude.target]
             .into_iter()
             .chain(self.syntax.prelude.layer.iter())
@@ -305,7 +291,7 @@ impl CssImportRule {
             )?;
             let mut out = CssCanonicalBuilder::new(context.remaining_bytes());
             self.emit_import_into(&mut out, media, protect, crate::media::emit_query_projected)?;
-            Ok::<_, CssImportSerializationError>(out.finish()?)
+            Ok::<_, ImportSerializationFailure>(out.finish()?)
         })?;
         context.append(output, value.as_css())?;
         Ok(())
@@ -319,7 +305,7 @@ impl CssImportRule {
     pub(crate) fn append_cssom(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> Result<(), crate::query_rule_serialization::QueryRuleSerializationError> {
+    ) -> Result<(), crate::specified_rule_serialization::SpecifiedRuleSerializationSource> {
         self.append_cssom_with_media(writer, self.media())
     }
 
@@ -327,7 +313,7 @@ impl CssImportRule {
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
         media: Option<&CssMediaQueryList>,
-    ) -> Result<(), crate::query_rule_serialization::QueryRuleSerializationError> {
+    ) -> Result<(), crate::specified_rule_serialization::SpecifiedRuleSerializationSource> {
         // Serialize a URL takes only the location: string, `url()` and `src()`
         // targets share it, and request modifiers have no CSSOM step.
         let location = match self.target() {
@@ -383,14 +369,14 @@ impl CssImportRule {
     fn serialize_import(
         &self,
         max_css_bytes: usize,
-    ) -> Result<CssSerializedValue, CssImportSerializationError> {
+    ) -> Result<CssSerializedValue, ImportSerializationFailure> {
         if let Some(media) = self.media()
             && let Some(CssMediaQuery::Never(value)) = media
                 .queries()
                 .iter()
                 .find(|q| matches!(q, CssMediaQuery::Never(_)))
         {
-            return Err(CssMediaSerializationError::RecoveredNever {
+            return Err(crate::media::MediaSerializationFailure::RecoveredNever {
                 origin: value.origin().clone(),
             }
             .into());
@@ -408,8 +394,8 @@ impl CssImportRule {
         emit_query: fn(
             &mut CssCanonicalBuilder,
             &CssMediaQuery,
-        ) -> Result<(), CssMediaSerializationError>,
-    ) -> Result<bool, CssImportSerializationError> {
+        ) -> Result<(), crate::media::MediaSerializationFailure>,
+    ) -> Result<bool, ImportSerializationFailure> {
         let (tail, expected) = self.import_tail(media, false, max_bytes, emit_query)?;
         let origin = self.syntax.at_keyword.origin();
         let protect = if crate::parser::import_boundaries_match(&tail, expected, origin)? {
@@ -419,13 +405,13 @@ impl CssImportRule {
                 media.and_then(|media| media.queries().first()),
                 Some(CssMediaQuery::Condition(_))
             ) {
-                return Err(CssImportSerializationError::InterpretationChanged {
+                return Err(ImportSerializationFailure::InterpretationChanged {
                     origin: origin.clone(),
                 });
             }
             let (protected, boundaries) = self.import_tail(media, true, max_bytes, emit_query)?;
             if !crate::parser::import_boundaries_match(&protected, boundaries, origin)? {
-                return Err(CssImportSerializationError::InterpretationChanged {
+                return Err(ImportSerializationFailure::InterpretationChanged {
                     origin: origin.clone(),
                 });
             }
@@ -441,8 +427,8 @@ impl CssImportRule {
         emit_query: fn(
             &mut CssCanonicalBuilder,
             &CssMediaQuery,
-        ) -> Result<(), CssMediaSerializationError>,
-    ) -> Result<(), CssImportSerializationError> {
+        ) -> Result<(), crate::media::MediaSerializationFailure>,
+    ) -> Result<(), ImportSerializationFailure> {
         out.push_grammar(
             CssCanonicalToken::AtKeyword("import"),
             self.syntax.at_keyword.origin(),
@@ -464,8 +450,8 @@ impl CssImportRule {
         emit_query: fn(
             &mut CssCanonicalBuilder,
             &CssMediaQuery,
-        ) -> Result<(), CssMediaSerializationError>,
-    ) -> Result<(CssSerializedValue, [Option<usize>; 2]), CssImportSerializationError> {
+        ) -> Result<(), crate::media::MediaSerializationFailure>,
+    ) -> Result<(CssSerializedValue, [Option<usize>; 2]), ImportSerializationFailure> {
         // Scratch bytes are not final emission bytes. The caller selects the
         // direct byte-only or shared bounded projection contract.
         let mut out = CssCanonicalBuilder::new(max_bytes);
@@ -480,8 +466,8 @@ impl CssImportRule {
         emit_query: fn(
             &mut CssCanonicalBuilder,
             &CssMediaQuery,
-        ) -> Result<(), CssMediaSerializationError>,
-    ) -> Result<[Option<usize>; 2], CssImportSerializationError> {
+        ) -> Result<(), crate::media::MediaSerializationFailure>,
+    ) -> Result<[Option<usize>; 2], ImportSerializationFailure> {
         let mut boundaries = [None, None];
         for (index, component) in [&self.syntax.prelude.layer, &self.syntax.prelude.supports]
             .into_iter()

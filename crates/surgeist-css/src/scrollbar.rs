@@ -1,9 +1,6 @@
 //! Authored CSS Scrollbars 1 values, before contextual color or UI resolution.
 
-use crate::{
-    CssColor, CssScrollbarWidth, CssSpecifiedValueSerializationError,
-    CssSpecifiedValueSerializationLimits,
-};
+use crate::{CssColor, CssScrollbarWidth};
 
 /// Automatic scrollbar coloring or an exact thumb/track pair of checked colors.
 ///
@@ -13,6 +10,10 @@ use crate::{
 /// CSS Scrollbars 1 makes this inherited, initially `auto`, applicable to
 /// scroll containers, and animated by computed value; those contextual and
 /// animation operations belong to downstream owners.
+///
+/// # Specified serialization
+///
+/// Writes canonical specified CSS while keeping contextual colors symbolic.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssScrollbarColor {
     colors: Option<[CssColor; 2]>,
@@ -50,30 +51,15 @@ impl CssScrollbarColor {
             None => None,
         }
     }
-
-    /// Writes canonical specified CSS while keeping contextual colors symbolic.
-    pub fn serialize_specified(&self) -> Result<String, CssSpecifiedValueSerializationError> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Writes atomically under one cumulative root-and-colors resource budget.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String, CssSpecifiedValueSerializationError> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+}
+impl crate::specified_rule_serialization::SpecifiedProvider for CssScrollbarColor {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         let context = &mut writer.context;
         let output = &mut writer.css;
-        context.charge_input(1)?;
-        context.charge_projection(1)?;
+        context.charge_nodes(1)?;
         match &self.colors {
             None => context.append(output, "auto")?,
             Some([thumb, track]) => {
@@ -85,27 +71,13 @@ impl CssScrollbarColor {
         Ok(())
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssScrollbarColor);
 
-impl CssScrollbarWidth {
-    /// Writes the specified keyword without resolving scrollbar geometry.
-    pub fn serialize_specified(&self) -> Result<String, CssSpecifiedValueSerializationError> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Writes one keyword under the shared specified-value resource limits.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String, CssSpecifiedValueSerializationError> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssScrollbarWidth {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         writer.keyword(match self {
             Self::Auto => "auto",
             Self::Thin => "thin",
@@ -113,3 +85,4 @@ impl CssScrollbarWidth {
         })
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssScrollbarWidth);

@@ -218,6 +218,10 @@ pub(crate) enum CssColorProfileDescriptorData {
 }
 
 /// One checked whole descriptor value with original component provenance.
+///
+/// # Specified serialization
+///
+/// Emits ordinary checked grammar or symbolic pending tokens without substitution.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssColorProfileDescriptorValue {
     kind: CssColorProfileDescriptorKind,
@@ -227,15 +231,9 @@ pub struct CssColorProfileDescriptorValue {
 
 impl CssColorProfileDescriptorValue {
     /// Checks the selected grammar while retaining mixed or programmatic origins.
-    pub fn try_new(
-        kind: CssColorProfileDescriptorKind,
-        components: CssComponentValues,
-    ) -> Result<Self, CssColorProfileValueError> {
-        Self::try_new_with_limits(kind, components, CssComponentValueLimits::default())
-    }
-
+    ///
     /// Uses the same component and output-byte limits as shared component serialization.
-    pub fn try_new_with_limits(
+    pub fn try_new(
         kind: CssColorProfileDescriptorKind,
         components: CssComponentValues,
         limits: CssComponentValueLimits,
@@ -245,7 +243,7 @@ impl CssColorProfileDescriptorValue {
             .map_err(CssColorProfileValueError::from_component)?;
         reject_recovered(&components)?;
         let serialized = components
-            .serialize_with_limit(limits.max_css_bytes())
+            .serialize_tokens(limits)
             .map_err(CssColorProfileValueError::from_component)?;
         let data = crate::parser::color_profile::construct_descriptor_value(
             kind,
@@ -265,13 +263,6 @@ impl CssColorProfileDescriptorValue {
     pub fn reparse_after_substitution(
         &self,
         replacement: CssComponentValues,
-    ) -> Result<Self, CssColorProfileValueError> {
-        self.reparse_after_substitution_with_limits(replacement, CssComponentValueLimits::default())
-    }
-
-    pub fn reparse_after_substitution_with_limits(
-        &self,
-        replacement: CssComponentValues,
         limits: CssComponentValueLimits,
     ) -> Result<Self, CssColorProfileValueError> {
         if !matches!(self.data, CssColorProfileDescriptorData::Pending(_)) {
@@ -284,7 +275,7 @@ impl CssColorProfileDescriptorValue {
         if let Some(origin) = crate::parser::first_substitution_origin(&replacement) {
             return Err(CssColorProfileValueError::residual(origin));
         }
-        Self::try_new_with_limits(self.kind, replacement, limits)
+        Self::try_new(self.kind, replacement, limits)
     }
 
     pub(crate) fn from_parts(
@@ -343,6 +334,10 @@ impl CssColorProfileDescriptorValue {
 }
 
 /// One ordered descriptor occurrence; checked construction invents no source position.
+///
+/// # Specified serialization
+///
+/// Emits one name and value, without the enclosing list's semicolon.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssColorProfileDescriptor {
     value: CssColorProfileDescriptorValue,
@@ -375,6 +370,10 @@ impl CssColorProfileDescriptor {
 }
 
 /// One authored global definition, preserving duplicates and absence.
+///
+/// # Specified serialization
+///
+/// Emits every retained occurrence in authored order, including empty definitions.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssColorProfileRule {
     name: CssColorProfileRuleName,

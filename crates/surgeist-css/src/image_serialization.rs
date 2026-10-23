@@ -1,81 +1,50 @@
 //! Bounded specified serialization for the shared authored Image graph.
 
+use crate::specified_rule_serialization::SpecifiedProvider as _;
 use crate::specified_rule_serialization::SpecifiedRuleWriter;
 use crate::{
     CssAngleOrZero, CssColorStopList, CssColorStopListItem, CssFilterImage, CssFilterImageInput,
     CssFilterImageInputRef, CssFilterImageString, CssGradient, CssHorizontalGradientSide,
     CssHorizontalPosition, CssImage, CssImageValue, CssImageValueList, CssLinearGradient,
     CssLinearGradientDirection, CssPosition, CssPositionRef, CssRadialExtent, CssRadialGradient,
-    CssRadialShape, CssRadialSize, CssSpecifiedLengthPercentage,
-    CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits,
+    CssRadialShape, CssRadialSize, CssSerializationError, CssSpecifiedLengthPercentage,
     CssVerticalGradientSide, CssVerticalPosition,
 };
 
-type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
-
-fn charge(writer: &mut SpecifiedRuleWriter, count: usize) -> Result<()> {
-    writer.context.charge_input(count)?;
-    writer.context.charge_projection(count)
-}
+type Result<T> = std::result::Result<T, CssSerializationError>;
 
 impl CssImage {
-    /// Serializes the checked image without resolving its resource or geometry.
-    pub fn serialize_specified(&self) -> Result<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes under one cumulative input, projection, and byte budget.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        self.append_specified(writer)?;
-        Ok(())
-    }
-
     /// Appends to an enclosing specified writer without resetting its budget.
     pub(crate) fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         self.value().append_specified(writer)
     }
 }
-
-impl CssImageValue {
-    /// Serializes an authored image value, including the property-level `none` branch.
-    pub fn serialize_specified(&self) -> Result<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes under one cumulative input, projection, and byte budget.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssImage {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         self.append_specified(writer)?;
         Ok(())
     }
+}
+crate::specified_rule_serialization::specified_serialization!(CssImage);
 
+impl CssImageValue {
     pub(crate) fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         append_image_work(Work::Image(self), writer)
     }
 }
+impl crate::specified_rule_serialization::SpecifiedProvider for CssImageValue {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        self.append_specified(writer)?;
+        Ok(())
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(CssImageValue);
 
 enum Work<'a> {
     Image(&'a CssImageValue),
@@ -87,9 +56,7 @@ enum Work<'a> {
 
 fn append_image_work(first: Work<'_>, writer: &mut SpecifiedRuleWriter) -> Result<()> {
     let capacity = || {
-        CssSpecifiedValueSerializationError::new(
-            crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
-        )
+        CssSerializationError::new(crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow)
     };
     let mut work = Vec::new();
     work.try_reserve(1).map_err(|_| capacity())?;
@@ -106,7 +73,7 @@ fn append_image_work(first: Work<'_>, writer: &mut SpecifiedRuleWriter) -> Resul
                 }
             },
             Work::Filter(value) => {
-                charge(writer, 1)?;
+                writer.node()?;
                 work.try_reserve(5).map_err(|_| capacity())?;
                 work.push(Work::Text(")"));
                 work.push(Work::List(value.filters()));
@@ -116,7 +83,7 @@ fn append_image_work(first: Work<'_>, writer: &mut SpecifiedRuleWriter) -> Resul
             }
             Work::Image(image) => match image {
                 CssImageValue::None => {
-                    charge(writer, 1)?;
+                    writer.node()?;
                     writer.append("none")?;
                 }
                 CssImageValue::Url(url) => url.append_specified(writer)?,
@@ -126,7 +93,7 @@ fn append_image_work(first: Work<'_>, writer: &mut SpecifiedRuleWriter) -> Resul
                     work.push(Work::Filter(value));
                 }
                 CssImageValue::LightDark(value) => {
-                    charge(writer, 1)?;
+                    writer.node()?;
                     work.try_reserve(5).map_err(|_| capacity())?;
                     work.push(Work::Text(")"));
                     work.push(Work::Image(value.dark()));
@@ -140,97 +107,52 @@ fn append_image_work(first: Work<'_>, writer: &mut SpecifiedRuleWriter) -> Resul
     Ok(())
 }
 
-macro_rules! filter_image_methods {
-    () => {
-        /// Emits the authored operand/function without assigning downstream execution meaning.
-        pub fn serialize_specified(&self) -> Result<String> {
-            self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
+/// Filter-image providers write through their writer-level `append_specified`.
+macro_rules! filter_image_provider {
+    ($($ty:ty),+ $(,)?) => {$(
+        impl crate::specified_rule_serialization::SpecifiedProvider for $ty {
+            fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+                self.append_specified(writer)
+            }
         }
-        /// Shares one cumulative input, projection and UTF-8 budget; failure exposes no partial CSS.
-        pub fn serialize_specified_with_limits(
-            &self,
-            limits: CssSpecifiedValueSerializationLimits,
-        ) -> Result<String> {
-            let mut writer = SpecifiedRuleWriter::new(limits);
-            self.append_specified(&mut writer)?;
-            Ok(writer.css)
-        }
-    };
+        crate::specified_rule_serialization::specified_serialization!($ty);
+    )+};
 }
+filter_image_provider!(CssFilterImage, CssFilterImageInput, CssFilterImageString);
 impl CssFilterImage {
-    filter_image_methods!();
     pub(crate) fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         append_image_work(Work::Filter(self), writer)
     }
 }
 impl CssFilterImageInput {
-    filter_image_methods!();
     pub(crate) fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         append_image_work(Work::Input(self), writer)
     }
 }
 impl CssFilterImageString {
-    filter_image_methods!();
     pub(crate) fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
-        charge(writer, 1)?;
+        writer.node()?;
         writer.append_string(self.as_str())
     }
 }
 
-impl CssImageValueList {
-    /// Serializes every image in its authored order.
-    pub fn serialize_specified(&self) -> Result<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes the entire list under one cumulative resource budget.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssImageValueList {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        charge(writer, 1)?;
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        writer.node()?;
         writer.comma_separated(self.images(), |writer, image| {
             image.append_specified(writer)
         })?;
         Ok(())
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssImageValueList);
 
 impl CssGradient {
-    /// Serializes the checked gradient with its authored function identity.
-    pub fn serialize_specified(&self) -> Result<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes under one cumulative input, projection, and byte budget.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        self.append_specified(writer)?;
-        Ok(())
-    }
-
     fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
-        charge(writer, 1)?;
+        writer.node()?;
         match self {
             Self::Linear(value) => {
                 writer.append("linear-gradient(")?;
@@ -256,6 +178,16 @@ impl CssGradient {
         writer.append(")")
     }
 }
+impl crate::specified_rule_serialization::SpecifiedProvider for CssGradient {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        self.append_specified(writer)?;
+        Ok(())
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(CssGradient);
 
 fn append_linear(value: &CssLinearGradient, writer: &mut SpecifiedRuleWriter) -> Result<()> {
     let mut emitted = false;
@@ -311,7 +243,7 @@ fn append_interpolation(
     writer: &mut SpecifiedRuleWriter,
 ) -> Result<()> {
     if let Some(value) = value {
-        charge(writer, 1)?;
+        writer.node()?;
         if value
             .predefined()
             .is_some_and(|method| default.matches_emitted(method.space()))
@@ -348,7 +280,7 @@ fn append_direction(
     direction: &CssLinearGradientDirection,
     writer: &mut SpecifiedRuleWriter,
 ) -> Result<bool> {
-    charge(writer, 1)?;
+    writer.node()?;
     match direction {
         CssLinearGradientDirection::Angle(angle) => {
             if let CssAngleOrZero::Angle(value) = angle
@@ -375,7 +307,7 @@ fn append_direction(
                 writer.append("to ")?;
             }
             if let Some(horizontal) = side.horizontal() {
-                charge(writer, 1)?;
+                writer.node()?;
                 if !omitted {
                     writer.append(match horizontal {
                         CssHorizontalGradientSide::Left => "left",
@@ -384,7 +316,7 @@ fn append_direction(
                 }
             }
             if let Some(vertical) = side.vertical() {
-                charge(writer, 1)?;
+                writer.node()?;
                 if !omitted {
                     if side.horizontal().is_some() {
                         writer.append(" ")?;
@@ -403,7 +335,7 @@ fn append_direction(
 fn append_radial(value: &CssRadialGradient, writer: &mut SpecifiedRuleWriter) -> Result<()> {
     let mut emitted = false;
     if let Some(shape) = value.shape() {
-        charge(writer, 1)?;
+        writer.node()?;
         let omit = matches!(shape, CssRadialShape::Ellipse)
             || (matches!(shape, CssRadialShape::Circle)
                 && matches!(value.size(), Some(CssRadialSize::Circle(_))));
@@ -416,7 +348,7 @@ fn append_radial(value: &CssRadialGradient, writer: &mut SpecifiedRuleWriter) ->
         }
     }
     if let Some(size) = value.size() {
-        charge(writer, 1)?;
+        writer.node()?;
         let omit = matches!(size, CssRadialSize::Extent(CssRadialExtent::FarthestCorner));
         if !omit {
             if emitted {
@@ -424,7 +356,7 @@ fn append_radial(value: &CssRadialGradient, writer: &mut SpecifiedRuleWriter) ->
             }
             match size {
                 CssRadialSize::Extent(extent) => {
-                    charge(writer, 1)?;
+                    writer.node()?;
                     writer.append(radial_extent(*extent))?;
                 }
                 CssRadialSize::Circle(circle) => {
@@ -442,7 +374,7 @@ fn append_radial(value: &CssRadialGradient, writer: &mut SpecifiedRuleWriter) ->
             }
             emitted = true;
         } else {
-            charge(writer, 1)?;
+            writer.node()?;
         }
     }
     if let Some(position) = value.position() {
@@ -498,13 +430,13 @@ fn append_stops(
     writer: &mut SpecifiedRuleWriter,
 ) -> Result<GradientDefault> {
     let mut default = GradientDefault::new();
-    charge(writer, 1)?;
+    writer.node()?;
     let last = stops.items().len() - 1;
     for (index, item) in stops.items().iter().enumerate() {
         if index != 0 {
             writer.append(", ")?;
         }
-        charge(writer, 1)?;
+        writer.node()?;
         match item {
             CssColorStopListItem::Stop(stop) => {
                 stop.color()
@@ -515,7 +447,7 @@ fn append_stops(
                         && ((index == 0 && is_direct_zero(position))
                             || (last > 0 && index == last && is_direct_hundred_percent(position)));
                     if omit {
-                        charge(writer, 1)?;
+                        writer.node()?;
                     } else {
                         writer.append(" ")?;
                         append_line_position(position, writer)?;
@@ -574,13 +506,13 @@ fn append_angular_stops(
     writer: &mut SpecifiedRuleWriter,
 ) -> Result<GradientDefault> {
     let mut default = GradientDefault::new();
-    charge(writer, 1)?;
+    writer.node()?;
     let last = stops.items().len() - 1;
     for (index, item) in stops.items().iter().enumerate() {
         if index != 0 {
             writer.append(", ")?;
         }
-        charge(writer, 1)?;
+        writer.node()?;
         match item {
             crate::CssAngularColorStopListItem::Stop(stop) => {
                 stop.color()
@@ -639,19 +571,6 @@ fn angular_endpoint_is(value: &crate::CssAngularColorStopPosition, end: bool) ->
 }
 
 impl crate::CssAngularColorStopPosition {
-    /// Serializes a checked angular position without resolving its percentage basis.
-    pub fn serialize_specified(&self) -> Result<String> {
-        self.serialize_specified_with_limits(crate::CssSpecifiedValueSerializationLimits::default())
-    }
-    /// Charges all numeric work to one cumulative writer; errors return no partial output.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: crate::CssSpecifiedValueSerializationLimits,
-    ) -> Result<String> {
-        let mut writer = SpecifiedRuleWriter::new(limits);
-        self.append_specified(&mut writer)?;
-        Ok(writer.css)
-    }
     pub(crate) fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         match self {
             Self::Angle(value) => value.append_specified(&mut writer.context, &mut writer.css),
@@ -666,6 +585,15 @@ impl crate::CssAngularColorStopPosition {
         }
     }
 }
+impl crate::specified_rule_serialization::SpecifiedProvider for crate::CssAngularColorStopPosition {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        self.append_specified(writer)
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(crate::CssAngularColorStopPosition);
 
 fn is_direct_zero(value: &CssSpecifiedLengthPercentage) -> bool {
     value
@@ -709,9 +637,7 @@ fn append_line_position(
 mod filter_image_writer_tests {
     use super::*;
     use crate::{CssImportance, CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef};
-    use crate::{
-        CssSpecifiedValueSerializationErrorKind as K, CssSpecifiedValueSerializationLimits as L,
-    };
+    use crate::{CssSerializationLimits as L, CssSpecifiedValueSerializationErrorKind as K};
 
     fn value(text: &str) -> CssFilterImage {
         let source = crate::parse_property_value(
@@ -811,9 +737,7 @@ mod filter_image_writer_tests {
         assert_eq!(writer.css, "kept");
         assert_eq!(filter, before);
         assert_eq!(
-            filter
-                .serialize_specified_with_limits(L::new(8, 9, 64))
-                .unwrap(),
+            filter.serialize_specified(L::new(8, 9, 64)).unwrap(),
             "filter(\"a\", blur(calc(2em + 1px)))"
         );
     }

@@ -11,20 +11,22 @@ use crate::css::support::{
 };
 use surgeist_css::*;
 
-type Limits = CssSpecifiedValueSerializationLimits;
+type Limits = CssSerializationLimits;
 type Kind = CssSpecifiedValueSerializationErrorKind;
 
 fn assert_value(value: &CssColor, expected: &str) {
     let before = value.clone();
-    let text = value.to_specified_css();
-    assert_eq!(text, value.to_specified_css());
+    let text = value.serialize_specified(Default::default());
+    assert_eq!(text, value.serialize_specified(Default::default()));
     assert_eq!(value, &before);
     assert_eq!(text.unwrap(), expected);
     // A independently required canonical value must also be admitted by the
     // real property grammar; this does not assert equality across color spaces.
     let reparsed = declaration(expected);
     assert_eq!(
-        declaration_color(&reparsed).to_specified_css().unwrap(),
+        declaration_color(&reparsed)
+            .serialize_specified(Default::default())
+            .unwrap(),
         expected
     );
 }
@@ -38,7 +40,11 @@ fn assert_text(source: &str, expected: &str) {
         let before = value.clone();
         assert_eq!(value.importance(), CssImportance::Important);
         assert_eq!(
-            value.value_components().serialize().unwrap().as_css(),
+            value
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             source
         );
         assert_value(declaration_color(value), expected);
@@ -265,7 +271,11 @@ fn parsed_none_alpha_kind_and_raw_tokens_survive_repeated_serialization() {
     assert_value(declaration_color(&declared), "color(srgb 1 0 0 / none)");
     assert_eq!(declared, before);
     assert_eq!(
-        declared.value_components().serialize().unwrap().as_css(),
+        declared
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         source
     );
 }
@@ -336,7 +346,8 @@ fn omitted_direct_unity_and_calculated_alpha_are_distinct_from_none() {
     let omitted = checked_rgb(true, None);
     let missing = checked_rgb(true, Some(CssColorComponent::None));
     let calculated = CssColorComponent::NumberCalculation(
-        CssNumberCalculation::try_from_components(components("calc(1 / 128)")).unwrap(),
+        CssNumberCalculation::try_from_components(components("calc(1 / 128)"), Default::default())
+            .unwrap(),
     );
     let retained = checked_rgb(true, Some(calculated.clone()));
     assert_eq!(omitted.rgb_value().unwrap().alpha(), None);
@@ -421,7 +432,7 @@ fn serialized_missing_alpha_reenters_real_property_grammar() {
         "hwb(0 0 0 / none)",
     ] {
         let value = color(source);
-        let text = value.to_specified_css().unwrap();
+        let text = value.serialize_specified(Default::default()).unwrap();
         let result = parse_property_value(
             CssPropertyNameRef::Known(CssKnownProperty::Color),
             components(&text),
@@ -459,8 +470,8 @@ macro_rules! byte_case {
             let value = color($source);
             let before = value.clone();
             let limits = Limits::new(usize::MAX, usize::MAX, $expected.len());
-            let result = value.to_specified_css_with_limits(limits);
-            assert_eq!(result, value.to_specified_css_with_limits(limits));
+            let result = value.serialize_specified(limits);
+            assert_eq!(result, value.serialize_specified(limits));
             assert_eq!(value, before);
             assert_eq!(result.unwrap(), $expected);
             assert_error(
@@ -497,12 +508,12 @@ fn border_pair_siblings_share_final_bytes_and_spent_prefix() {
     let expected = "color(srgb 1 0 0 / none) hsl(0 100% 50% / none)";
     let before = pair.clone();
     let limits = Limits::new(usize::MAX, usize::MAX, expected.len());
-    let result = pair.serialize_specified_with_limits(limits);
-    assert_eq!(result, pair.serialize_specified_with_limits(limits));
+    let result = pair.serialize_specified(limits);
+    assert_eq!(result, pair.serialize_specified(limits));
     assert_eq!(pair, before);
     assert_eq!(result.unwrap(), expected);
     let error = pair
-        .serialize_specified_with_limits(Limits::new(usize::MAX, usize::MAX, expected.len() - 1))
+        .serialize_specified(Limits::new(usize::MAX, usize::MAX, expected.len() - 1))
         .unwrap_err();
     assert_eq!(error.kind(), Kind::ByteLimit);
     assert_eq!(pair, before);
@@ -518,14 +529,14 @@ fn border_pair_input_limit_is_cumulative_across_literal_colors() {
     // Pair root: one input. Each color: root, three literal channels, missing
     // alpha = five inputs. Literal exact-rational work adds no input visits.
     assert_eq!(
-        pair.serialize_specified_with_limits(Limits::new(10, usize::MAX, usize::MAX))
+        pair.serialize_specified(Limits::new(10, usize::MAX, usize::MAX))
             .unwrap_err()
             .kind(),
         Kind::InputNodeLimit
     );
     assert_eq!(pair, before);
     assert_eq!(
-        pair.serialize_specified_with_limits(Limits::new(11, usize::MAX, usize::MAX))
+        pair.serialize_specified(Limits::new(11, usize::MAX, usize::MAX))
             .unwrap(),
         "color(srgb 1 0 0 / none) hsl(0 100% 50% / none)"
     );
@@ -567,8 +578,8 @@ fn utf8_caller_prefix_and_missing_alpha_share_exact_final_bytes() {
     let expected = "color(--é 0) color(srgb 1 0 0 / none)";
     let before = pair.clone();
     let limits = Limits::new(usize::MAX, usize::MAX, expected.len());
-    let result = pair.serialize_specified_with_limits(limits);
-    assert_eq!(result, pair.serialize_specified_with_limits(limits));
+    let result = pair.serialize_specified(limits);
+    assert_eq!(result, pair.serialize_specified(limits));
     assert_eq!(pair, before);
     assert_eq!(result.unwrap(), expected);
 }
@@ -582,8 +593,8 @@ fn utf8_caller_prefix_leaves_one_below_missing_alpha_final_bytes() {
         usize::MAX,
         "color(--é 0) color(srgb 1 0 0 / none)".len() - 1,
     );
-    let result = pair.serialize_specified_with_limits(limits);
-    assert_eq!(result, pair.serialize_specified_with_limits(limits));
+    let result = pair.serialize_specified(limits);
+    assert_eq!(result, pair.serialize_specified(limits));
     assert_eq!(pair, before);
     assert_eq!(result.unwrap_err().kind(), Kind::ByteLimit);
 }

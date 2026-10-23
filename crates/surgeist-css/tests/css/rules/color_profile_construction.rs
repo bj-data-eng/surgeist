@@ -8,15 +8,20 @@ use surgeist_css::{
     CssColorProfileRuleName as Name, CssColorProfileValueErrorKind as Failure, CssComponentValue,
     CssComponentValueErrorKind, CssComponentValueLimits, CssComponentValueRef, CssComponentValues,
     CssErrorCode, CssNormalizedItem, CssRecoveryAction, CssRule, CssRuleContextKindRef,
-    CssSerializedOrigin, CssSpecifiedValueSerializationErrorKind as EmitFailure,
-    CssSpecifiedValueSerializationLimits as EmitLimits, CssSupportStatus, CssUrlFunction,
+    CssSerializationLimits as EmitLimits, CssSerializedOrigin,
+    CssSpecifiedValueSerializationErrorKind as EmitFailure, CssSupportStatus, CssUrlFunction,
     CssValueOrigin, CssValueTokenRef, feature_metadata, normalize_report,
     parse_color_profile_descriptor_value as fragment, parse_component_values, parse_sheet,
     validate_sheet,
 };
 
 fn value(kind: Kind, source: &str) -> Value {
-    Value::try_new(kind, parse_component_values(source).unwrap()).unwrap()
+    Value::try_new(
+        kind,
+        parse_component_values(source).unwrap(),
+        Default::default(),
+    )
+    .unwrap()
 }
 fn pending(kind: Kind) -> Value {
     value(kind, "env(selection)")
@@ -87,8 +92,14 @@ fn parsed_fragment_and_construction_agree_on_every_ordinary_descriptor_grammar()
         let constructed = value(kind, source);
         assert_eq!(parsed.kind(), kind);
         assert_eq!(parsed.view(), constructed.view());
-        assert_eq!(parsed.to_specified_css().unwrap(), expected);
-        assert_eq!(constructed.to_specified_css().unwrap(), expected);
+        assert_eq!(
+            parsed.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
+        assert_eq!(
+            constructed.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
     let source_url = value(Kind::Src, "src(\"a\" cors)");
     let View::Src(url) = source_url.view() else {
@@ -129,9 +140,13 @@ fn ordinary_components_exclude_only_none_and_keep_order_and_duplicates() {
             "{invalid}"
         );
         assert!(matches!(
-            Value::try_new(Kind::Components, parse_component_values(invalid).unwrap())
-                .unwrap_err()
-                .kind(),
+            Value::try_new(
+                Kind::Components,
+                parse_component_values(invalid).unwrap(),
+                Default::default()
+            )
+            .unwrap_err()
+            .kind(),
             Failure::Grammar(_)
         ));
     }
@@ -160,7 +175,7 @@ fn effective_lookup_retains_last_pending_occurrence_without_selecting_profiles()
     let descriptor = CssColorProfileDescriptor::new(value(Kind::RenderingIntent, "saturation"));
     assert_eq!(descriptor.position(), None);
     assert_eq!(
-        descriptor.to_specified_css().unwrap(),
+        descriptor.serialize_specified(Default::default()).unwrap(),
         "rendering-intent: saturation"
     );
 }
@@ -198,7 +213,12 @@ fn environment_only_admission_defers_whole_grammar_without_a_var_veto() {
             let report = fragment(invalid, kind);
             assert!(report.syntax().is_none(), "{kind:?}: {invalid}");
             expected.assert_first(&report);
-            let error = Value::try_new(kind, parse_component_values(invalid).unwrap()).unwrap_err();
+            let error = Value::try_new(
+                kind,
+                parse_component_values(invalid).unwrap(),
+                Default::default(),
+            )
+            .unwrap_err();
             let Failure::Grammar(detail) = error.kind() else {
                 panic!("{kind:?}: {invalid}: grammar failure: {error:?}")
             };
@@ -214,7 +234,7 @@ fn url_strings_and_escaped_names_do_not_confuse_data_with_substitution() {
     }
     for source in [r"v\61 r(--x)", r"ENV(x)"] {
         let error = pending(Kind::Src)
-            .reparse_after_substitution(parse_component_values(source).unwrap())
+            .reparse_after_substitution(parse_component_values(source).unwrap(), Default::default())
             .unwrap_err();
         assert_eq!(error.kind(), &Failure::ResidualSubstitution);
     }
@@ -228,17 +248,25 @@ fn replacement_reentry_returns_ordinary_values_or_typed_errors_never_pending() {
         (Kind::Components, "red, green"),
     ] {
         let checked = pending(kind)
-            .reparse_after_substitution(parse_component_values(replacement).unwrap())
+            .reparse_after_substitution(
+                parse_component_values(replacement).unwrap(),
+                Default::default(),
+            )
             .unwrap();
         assert!(!matches!(checked.view(), View::Pending(_)));
         assert_eq!(checked.kind(), kind);
         assert_eq!(
-            checked.to_specified_css().unwrap(),
-            value(kind, replacement).to_specified_css().unwrap()
+            checked.serialize_specified(Default::default()).unwrap(),
+            value(kind, replacement)
+                .serialize_specified(Default::default())
+                .unwrap()
         );
         assert_eq!(
             checked
-                .reparse_after_substitution(parse_component_values(replacement).unwrap())
+                .reparse_after_substitution(
+                    parse_component_values(replacement).unwrap(),
+                    Default::default()
+                )
                 .unwrap_err()
                 .kind(),
             &Failure::NotPending
@@ -253,7 +281,10 @@ fn replacement_reentry_returns_ordinary_values_or_typed_errors_never_pending() {
         "{env(x)}",
     ] {
         let error = pending(Kind::RenderingIntent)
-            .reparse_after_substitution(parse_component_values(invalid).unwrap())
+            .reparse_after_substitution(
+                parse_component_values(invalid).unwrap(),
+                Default::default(),
+            )
             .unwrap_err();
         // Color 5 §5.3: one rendering-intent keyword, with no substitution
         // function left anywhere in the replacement.
@@ -297,9 +328,9 @@ fn strict_construction_and_reentry_reject_recovered_closures_with_original_origi
                     == CssRecoveryAction::RetainWithImplicitClosure)
         );
         for error in [
-            Value::try_new(kind, parsed.components().clone()).unwrap_err(),
+            Value::try_new(kind, parsed.components().clone(), Default::default()).unwrap_err(),
             pending(kind)
-                .reparse_after_substitution(parsed.components().clone())
+                .reparse_after_substitution(parsed.components().clone(), Default::default())
                 .unwrap_err(),
         ] {
             assert_eq!(error.kind(), &Failure::RecoveredComponent);
@@ -318,9 +349,9 @@ fn strict_construction_and_reentry_reject_recovered_closures_with_original_origi
 fn mixed_components_and_replacement_errors_keep_original_token_identity() {
     let mut items = parse_component_values("red,").unwrap().items().to_vec();
     items.push(CssComponentValue::try_ident("Green").unwrap());
-    let components = CssComponentValues::try_new(items).unwrap();
+    let components = CssComponentValues::try_new(items, Default::default()).unwrap();
     let checked = pending(Kind::Components)
-        .reparse_after_substitution(components.clone())
+        .reparse_after_substitution(components.clone(), Default::default())
         .unwrap();
     assert_eq!(checked.components(), &components);
     assert!(matches!(
@@ -335,7 +366,8 @@ fn mixed_components_and_replacement_errors_keep_original_token_identity() {
     invalid.push(CssComponentValue::try_token("1").unwrap());
     let error = Value::try_new(
         Kind::Components,
-        CssComponentValues::try_new(invalid).unwrap(),
+        CssComponentValues::try_new(invalid, Default::default()).unwrap(),
+        Default::default(),
     )
     .unwrap_err();
     assert!(matches!(error.kind(), Failure::Grammar(_)));
@@ -348,29 +380,35 @@ fn mixed_components_and_replacement_errors_keep_original_token_identity() {
 
 #[test]
 fn separately_constructed_adjacent_tokens_do_not_merge_into_an_identifier() {
-    let components = CssComponentValues::try_new(vec![
-        CssComponentValue::try_ident("red").unwrap(),
-        CssComponentValue::try_ident("green").unwrap(),
-    ])
+    let components = CssComponentValues::try_new(
+        vec![
+            CssComponentValue::try_ident("red").unwrap(),
+            CssComponentValue::try_ident("green").unwrap(),
+        ],
+        Default::default(),
+    )
     .unwrap();
     // Color 5 §5.3 components: <ident>#; the second identifier needs a comma.
-    let error = Value::try_new(Kind::Components, components).unwrap_err();
+    let error = Value::try_new(Kind::Components, components, Default::default()).unwrap_err();
     let Failure::Grammar(detail) = error.kind() else {
         panic!("grammar failure: {error:?}")
     };
     invalid_descriptor("color-profile", "components")
         .at("green")
         .assert_kind(detail);
-    let values = CssComponentValues::try_new(vec![
-        CssComponentValue::try_ident("red").unwrap(),
-        CssComponentValue::try_token(",").unwrap(),
-        CssComponentValue::try_ident("green").unwrap(),
-    ])
+    let values = CssComponentValues::try_new(
+        vec![
+            CssComponentValue::try_ident("red").unwrap(),
+            CssComponentValue::try_token(",").unwrap(),
+            CssComponentValue::try_ident("green").unwrap(),
+        ],
+        Default::default(),
+    )
     .unwrap();
     assert_eq!(
-        Value::try_new(Kind::Components, values)
+        Value::try_new(Kind::Components, values, Default::default())
             .unwrap()
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .unwrap(),
         "red, green"
     );
@@ -392,7 +430,7 @@ fn root_annotations_fail_before_environment_deferral() {
             assert!(report.syntax().is_none(), "{source}");
             rejected(token).assert_first(&report);
             if let Ok(components) = parse_component_values(source) {
-                let error = Value::try_new(kind, components).unwrap_err();
+                let error = Value::try_new(kind, components, Default::default()).unwrap_err();
                 let Failure::Grammar(detail) = error.kind() else {
                     panic!("{source}: grammar failure: {error:?}")
                 };
@@ -492,7 +530,7 @@ fn normalization_borrows_typed_profile_payload_and_keeps_descriptor_origins() {
 #[test]
 fn descriptor_and_component_limits_are_checked_at_construction_and_emission() {
     let components = parse_component_values("red, green").unwrap();
-    let error = Value::try_new_with_limits(
+    let error = Value::try_new(
         Kind::Components,
         components.clone(),
         CssComponentValueLimits::try_new(10, 0, 100).unwrap(),
@@ -503,7 +541,7 @@ fn descriptor_and_component_limits_are_checked_at_construction_and_emission() {
         &Failure::Component(CssComponentValueErrorKind::ComponentLimit)
     );
     let error = pending(Kind::Components)
-        .reparse_after_substitution_with_limits(
+        .reparse_after_substitution(
             components,
             CssComponentValueLimits::try_new(10, 100, 1).unwrap(),
         )
@@ -522,16 +560,13 @@ fn descriptor_and_component_limits_are_checked_at_construction_and_emission() {
         (EmitLimits::new(100, 100, 9), EmitFailure::ByteLimit),
     ] {
         assert_eq!(
-            checked
-                .to_specified_css_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            checked.serialize_specified(limits).unwrap_err().kind(),
             expected
         );
     }
     assert_eq!(
         checked
-            .to_specified_css_with_limits(EmitLimits::new(2, 2, 10))
+            .serialize_specified(EmitLimits::new(2, 2, 10))
             .unwrap(),
         "red, green"
     );
@@ -588,15 +623,20 @@ fn programmatic_profile_composes_checked_descriptors_and_generic_writer() {
         ],
     );
     let expected = "@color-profile --Programmatic { src: src(\"a.icc\" cors); rendering-intent: perceptual; components: R, G, B; }";
-    assert_eq!(rule.to_specified_css().unwrap(), expected);
     assert_eq!(
-        CssRule::ColorProfile(rule).to_specified_css().unwrap(),
+        rule.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
+    assert_eq!(
+        CssRule::ColorProfile(rule)
+            .serialize_specified(Default::default())
+            .unwrap(),
         expected
     );
     assert_eq!(
         validate_sheet(expected)
             .unwrap()
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .unwrap(),
         expected
     );

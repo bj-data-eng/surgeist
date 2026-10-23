@@ -633,7 +633,7 @@ fn timing_wrappers_expose_exact_property_specific_accessors() {
                     matches!(item.delay().and_then(|value| value.literal()), Some(t) if t.numeric().representation() == "-4")
                 );
                 assert!(
-                    matches!(item.iteration_count(), Some(CssAnimationIterationCount::Number(n)) if n.serialize_specified().unwrap() == "2")
+                    matches!(item.iteration_count(), Some(CssAnimationIterationCount::Number(n)) if n.serialize_specified(Default::default()).unwrap() == "2")
                 );
             }
             _ => panic!("unexpected property wrapper"),
@@ -993,7 +993,11 @@ fn every_aggregate_color_consumer_retains_typed_color_mix() {
         _ => panic!("expected border shorthand"),
     };
     assert_eq!(
-        border.width().unwrap().serialize_specified().unwrap(),
+        border
+            .width()
+            .unwrap()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "1px"
     );
     for declaration in &report.syntax()[1..5] {

@@ -341,7 +341,11 @@ fn expand_family(family: &Family) {
                 checked(family.name, &value),
             ] {
                 assert_eq!(
-                    source.value_components().serialize().unwrap().as_css(),
+                    source
+                        .value_components()
+                        .serialize_tokens(Default::default())
+                        .unwrap()
+                        .as_css(),
                     value
                 );
                 assert_values(family, logical, arity, &source, &terminals(&source), None);
@@ -437,7 +441,7 @@ fn reusable_pending_handle_selects_replacement_mode_and_retains_both_origins() {
                     values.items()[0]
                         .source()
                         .value_components()
-                        .serialize()
+                        .serialize_tokens(Default::default())
                         .unwrap()
                         .as_css(),
                     "var(--edges)"
@@ -499,7 +503,11 @@ fn invalid_and_residual_reentry_are_atomic_and_keep_pending_source_usable() {
         );
         assert!(handle.source().same_occurrence(&source));
         assert_eq!(
-            source.value_components().serialize().unwrap().as_css(),
+            source
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             "var(--edges)"
         );
     }
@@ -534,11 +542,19 @@ fn parser_drops_invalid_quad_atomically_between_valid_neighbors() {
             );
             let syntax = report.syntax().as_slice();
             assert_eq!(
-                syntax[0].value_components().serialize().unwrap().as_css(),
+                syntax[0]
+                    .value_components()
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
                 "red"
             );
             assert_eq!(
-                syntax[1].value_components().serialize().unwrap().as_css(),
+                syntax[1]
+                    .value_components()
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
                 "blue"
             );
         }
@@ -659,7 +675,7 @@ fn standalone_quad_writers_keep_mode_output_and_atomic_byte_limits() {
                 assert_eq!(
                     canonical_with_limits(
                         &source,
-                        CssSpecifiedValueSerializationLimits::new(256, usize::MAX, text.len())
+                        CssSerializationLimits::new(256, usize::MAX, text.len())
                     )
                     .unwrap(),
                     text
@@ -667,7 +683,7 @@ fn standalone_quad_writers_keep_mode_output_and_atomic_byte_limits() {
                 assert_eq!(
                     canonical_with_limits(
                         &source,
-                        CssSpecifiedValueSerializationLimits::new(256, usize::MAX, text.len() - 1)
+                        CssSerializationLimits::new(256, usize::MAX, text.len() - 1)
                     )
                     .unwrap_err()
                     .kind(),
@@ -692,37 +708,21 @@ fn standalone_quad_writers_keep_mode_output_and_atomic_byte_limits() {
     }
 }
 fn canonical(source: &CssDeclaration) -> String {
-    canonical_with_limits(source, CssSpecifiedValueSerializationLimits::default()).unwrap()
+    canonical_with_limits(source, CssSerializationLimits::default()).unwrap()
 }
 fn canonical_with_limits(
     source: &CssDeclaration,
-    limits: CssSpecifiedValueSerializationLimits,
-) -> Result<String, CssSpecifiedValueSerializationError> {
+    limits: CssSerializationLimits,
+) -> Result<String, CssSerializationError> {
     match source.known().unwrap().property_value().unwrap() {
-        CssKnownPropertyValueRef::BorderColor(value) => {
-            value.value().serialize_specified_with_limits(limits)
-        }
-        CssKnownPropertyValueRef::BorderStyle(value) => {
-            value.value().serialize_specified_with_limits(limits)
-        }
-        CssKnownPropertyValueRef::BorderWidth(value) => {
-            value.value().serialize_specified_with_limits(limits)
-        }
-        CssKnownPropertyValueRef::Inset(value) => {
-            value.value().serialize_specified_with_limits(limits)
-        }
-        CssKnownPropertyValueRef::Margin(value) => {
-            value.value().serialize_specified_with_limits(limits)
-        }
-        CssKnownPropertyValueRef::Padding(value) => {
-            value.value().serialize_specified_with_limits(limits)
-        }
-        CssKnownPropertyValueRef::ScrollMargin(value) => {
-            value.value().serialize_specified_with_limits(limits)
-        }
-        CssKnownPropertyValueRef::ScrollPadding(value) => {
-            value.value().serialize_specified_with_limits(limits)
-        }
+        CssKnownPropertyValueRef::BorderColor(value) => value.value().serialize_specified(limits),
+        CssKnownPropertyValueRef::BorderStyle(value) => value.value().serialize_specified(limits),
+        CssKnownPropertyValueRef::BorderWidth(value) => value.value().serialize_specified(limits),
+        CssKnownPropertyValueRef::Inset(value) => value.value().serialize_specified(limits),
+        CssKnownPropertyValueRef::Margin(value) => value.value().serialize_specified(limits),
+        CssKnownPropertyValueRef::Padding(value) => value.value().serialize_specified(limits),
+        CssKnownPropertyValueRef::ScrollMargin(value) => value.value().serialize_specified(limits),
+        CssKnownPropertyValueRef::ScrollPadding(value) => value.value().serialize_specified(limits),
         _ => panic!("quad provider"),
     }
 }

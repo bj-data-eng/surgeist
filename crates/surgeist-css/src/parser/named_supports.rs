@@ -437,7 +437,7 @@ fn partition(
                     .map(|issue| issue.origin().clone()),
             );
             let prelude = if malformed {
-                CssComponentValues::try_new(Vec::new())?
+                CssComponentValues::try_new(Vec::new(), Default::default())?
             } else {
                 promote(document, &candidate.prelude)?
             };
@@ -564,7 +564,7 @@ fn partition(
                     .map(|issue| issue.origin().clone()),
             );
             let prelude = if malformed {
-                CssComponentValues::try_new(Vec::new())?
+                CssComponentValues::try_new(Vec::new(), Default::default())?
             } else {
                 promote(document, &candidate.prelude)?
             };

@@ -15,7 +15,10 @@ fn main() {
         panic!("ordinary palette")
     };
     assert_eq!(
-        value.palette().serialize_specified().unwrap(),
+        value
+            .palette()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "palette-mix(light 30%, dark 70%)"
     );
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =
@@ -36,8 +39,11 @@ fn main() {
         .unwrap(),
     ));
     assert_eq!(
-        checked.serialize_specified().unwrap(),
+        checked.serialize_specified(Default::default()).unwrap(),
         "palette-mix(light, dark)"
     );
-    println!("{}", checked.serialize_specified().unwrap());
+    println!(
+        "{}",
+        checked.serialize_specified(Default::default()).unwrap()
+    );
 }

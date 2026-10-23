@@ -1,43 +1,17 @@
 //! Authored border styles before writing-mode or painting resolution.
 
 use crate::specified_serialization::SpecifiedSerializationContext;
-use crate::{
-    CssBorderStyle, CssBoxSideKind, CssSpecifiedValueSerializationError,
-    CssSpecifiedValueSerializationLimits,
-};
+use crate::{CssBorderStyle, CssBoxSideKind, CssSerializationError};
 
-type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
+type Result<T> = std::result::Result<T, CssSerializationError>;
 
 impl CssBorderStyle {
-    /// Serializes one specified line-style keyword under the default budget.
-    pub fn serialize_specified(&self) -> Result<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes one specified line-style keyword under independent budgets.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        self.append_specified(&mut writer.context, &mut writer.css)
-    }
-
     pub(crate) fn append_specified(
         &self,
         context: &mut SpecifiedSerializationContext,
         output: &mut String,
     ) -> Result<()> {
-        context.charge_input(1)?;
-        context.charge_projection(1)?;
+        context.charge_nodes(1)?;
         context.append(
             output,
             match self {
@@ -55,6 +29,15 @@ impl CssBorderStyle {
         )
     }
 }
+impl crate::specified_rule_serialization::SpecifiedProvider for CssBorderStyle {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        self.append_specified(&mut writer.context, &mut writer.css)
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(CssBorderStyle);
 
 /// One or two authored flow-relative border styles.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -83,28 +66,15 @@ impl CssBorderStylePair {
     pub fn end(&self) -> &CssBorderStyle {
         self.authored_end.as_ref().unwrap_or(&self.start)
     }
-
-    pub fn serialize_specified(&self) -> Result<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+}
+impl crate::specified_rule_serialization::SpecifiedProvider for CssBorderStylePair {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         let context = &mut writer.context;
 
-        context.charge_input(1)?;
-        context.charge_projection(1)?;
+        context.charge_nodes(1)?;
         writer.source_member(0, |writer| {
             self.start
                 .append_specified(&mut writer.context, &mut writer.css)
@@ -118,6 +88,7 @@ impl CssBorderStylePair {
         Ok(())
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssBorderStylePair);
 
 /// One to four authored physical or flow-relative border styles.
 ///
@@ -156,28 +127,15 @@ impl CssBorderStyleShorthand {
             _ => unreachable!("checked arity"),
         }
     }
-
-    pub fn serialize_specified(&self) -> Result<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+}
+impl crate::specified_rule_serialization::SpecifiedProvider for CssBorderStyleShorthand {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         let context = &mut writer.context;
 
-        context.charge_input(1)?;
-        context.charge_projection(1)?;
+        context.charge_nodes(1)?;
         if self.kind == CssBoxSideKind::Logical {
             writer.source_member(0, |writer| writer.append("logical "))?;
         }
@@ -192,3 +150,4 @@ impl CssBorderStyleShorthand {
         Ok(())
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssBorderStyleShorthand);

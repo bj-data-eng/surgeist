@@ -3,11 +3,8 @@
 
 use crate::{
     CssAbsoluteFontWeight, CssExplicitFont, CssFontStyle, CssFontStyleKeyword, CssFontValue,
-    CssFontVariant, CssFontWeight, CssFontWidthKeyword, CssSpecifiedValueSerializationError,
-    CssSpecifiedValueSerializationLimits, CssSystemFont,
+    CssFontVariant, CssFontWeight, CssFontWidthKeyword, CssSystemFont,
 };
-
-type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
 
 impl CssSystemFont {
     const fn as_css(self) -> &'static str {
@@ -22,60 +19,28 @@ impl CssSystemFont {
     }
 }
 
-impl CssFontValue {
-    /// Serializes a complete authored shorthand without resolving system fonts.
-    pub fn serialize_specified(&self) -> Result<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes with one cumulative input, projection, and byte budget.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssFontValue {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         match self {
             Self::Explicit(font) => font.append_to_rule_writer(writer),
             Self::System(system) => {
-                writer.context.charge_input(1)?;
-                writer.context.charge_projection(1)?;
+                writer.node()?;
                 writer.append(system.as_css())?;
                 Ok(())
             }
         }
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssFontValue);
 
-impl CssExplicitFont {
-    /// Serializes the authored components in Fonts 4 grammar order.
-    /// Optional `normal` components are omitted because they have the same
-    /// shorthand expansion as an omitted component.
-    pub fn serialize_specified(&self) -> Result<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes atomically under one cumulative resource budget.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssExplicitFont {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         if let Some(style) = self.style() {
             writer.source_property(crate::CssKnownProperty::FontStyle, |writer| {
                 if matches!(style, CssFontStyle::Keyword(CssFontStyleKeyword::Normal)) {
@@ -147,3 +112,4 @@ impl CssExplicitFont {
         Ok(())
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssExplicitFont);

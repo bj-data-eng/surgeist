@@ -121,7 +121,11 @@ fn fronts(name: &str, text: &str) -> Vec<CssDeclaration> {
         assert_eq!(source.importance(), CssImportance::Important);
         assert_eq!(source.known().unwrap().grammar(), p.grammar());
         assert_eq!(
-            source.value_components().serialize().unwrap().as_css(),
+            source
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             text
         );
     }
@@ -131,32 +135,27 @@ fn canonical(name: &str, text: &str, expected: &str) {
     for source in fronts(name, text) {
         let before = source.clone();
         let expected = format!("{name}: {expected} !important;");
-        let exact = CssSpecifiedValueSerializationLimits::new(65_536, 262_144, expected.len());
-        assert_eq!(
-            source.to_specified_css_with_limits(exact).unwrap(),
-            expected
-        );
+        let exact = CssSerializationLimits::new(65_536, 262_144, expected.len());
+        assert_eq!(source.serialize_specified(exact).unwrap(), expected);
         for _ in 0..2 {
-            let short =
-                CssSpecifiedValueSerializationLimits::new(65_536, 262_144, expected.len() - 1);
+            let short = CssSerializationLimits::new(65_536, 262_144, expected.len() - 1);
             assert_eq!(
-                source
-                    .to_specified_css_with_limits(short)
-                    .unwrap_err()
-                    .kind(),
+                source.serialize_specified(short).unwrap_err().kind(),
                 CssSpecifiedValueSerializationErrorKind::ByteLimit
             );
             assert_eq!(source, before);
         }
-        assert_eq!(
-            source.to_specified_css_with_limits(exact).unwrap(),
-            expected
-        );
+        assert_eq!(source.serialize_specified(exact).unwrap(), expected);
         // Canonical text must be accepted again through the actual strict owner.
-        let css = source.to_specified_css().unwrap();
+        let css = source.serialize_specified(Default::default()).unwrap();
         let report = parse_style_attribute(&css);
         assert!(report.is_clean());
-        assert_eq!(report.syntax()[0].to_specified_css().unwrap(), expected);
+        assert_eq!(
+            report.syntax()[0]
+                .serialize_specified(Default::default())
+                .unwrap(),
+            expected
+        );
     }
 }
 fn completed(source: &CssDeclaration) -> CssLonghandContributions {
@@ -244,9 +243,11 @@ fn four_filter_longhands_are_recognized_case_insensitively_with_intrinsic_metada
         };
         // Existing generic API bridges independently sourced initial spelling;
         // new payload variants need direct typed functional assertions at GREEN.
-        let components =
-            CssComponentValues::try_new(vec![CssComponentValue::try_token(initial).unwrap()])
-                .unwrap();
+        let components = CssComponentValues::try_new(
+            vec![CssComponentValue::try_token(initial).unwrap()],
+            Default::default(),
+        )
+        .unwrap();
         let control = checked_components(name, components, true).unwrap();
         canonical(name, initial, canonical_initial);
         let values = completed(&control);
@@ -631,40 +632,28 @@ fn borrowed_keyword_color_and_numeric_providers_keep_three_node_declaration_pric
         let source = checked(name, text, true);
         let before = source.clone();
         let expected = format!("{name}: {output} !important;");
-        let exact = CssSpecifiedValueSerializationLimits::new(3, 3, expected.len());
-        assert_eq!(
-            source.to_specified_css_with_limits(exact).unwrap(),
-            expected
-        );
+        let exact = CssSerializationLimits::new(3, 3, expected.len());
+        assert_eq!(source.serialize_specified(exact).unwrap(), expected);
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(2, 3, expected.len()),
+                CssSerializationLimits::new(2, 3, expected.len()),
                 CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(3, 2, expected.len()),
+                CssSerializationLimits::new(3, 2, expected.len()),
                 CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(3, 3, expected.len() - 1),
+                CssSerializationLimits::new(3, 3, expected.len() - 1),
                 CssSpecifiedValueSerializationErrorKind::ByteLimit,
             ),
         ] {
             for _ in 0..2 {
-                assert_eq!(
-                    source
-                        .to_specified_css_with_limits(limits)
-                        .unwrap_err()
-                        .kind(),
-                    kind
-                );
+                assert_eq!(source.serialize_specified(limits).unwrap_err().kind(), kind);
                 assert_eq!(source, before);
             }
         }
-        assert_eq!(
-            source.to_specified_css_with_limits(exact).unwrap(),
-            expected
-        );
+        assert_eq!(source.serialize_specified(exact).unwrap(), expected);
     }
 }
 #[test]
@@ -676,28 +665,25 @@ fn sheet_siblings_share_final_bytes_and_fail_atomically_at_the_later_rule() {
     let sheet = report.syntax();
     let before = sheet.clone();
     let expected = ".a { flood-color: red !important; flood-opacity: 1.5; }\n.b { lighting-color: currentcolor; color-interpolation-filters: linearrgb; }";
-    let exact = CssSpecifiedValueSerializationLimits::new(usize::MAX, usize::MAX, expected.len());
-    let short =
-        CssSpecifiedValueSerializationLimits::new(usize::MAX, usize::MAX, expected.len() - 1);
-    assert_eq!(sheet.to_specified_css_with_limits(exact).unwrap(), expected);
+    let exact = CssSerializationLimits::new(usize::MAX, usize::MAX, expected.len());
+    let short = CssSerializationLimits::new(usize::MAX, usize::MAX, expected.len() - 1);
+    assert_eq!(sheet.serialize_specified(exact).unwrap(), expected);
     assert!(
         sheet
             .rules()
             .iter()
-            .all(|v| v.to_specified_css_with_limits(short).is_ok())
+            .all(|v| v.serialize_specified(short).is_ok())
     );
     for _ in 0..2 {
-        let error = sheet.to_specified_css_with_limits(short).unwrap_err();
+        let error = sheet.serialize_specified(short).unwrap_err();
         assert_eq!(
             error.kind(),
-            CssSpecifiedRuleSerializationErrorKind::Resource(
-                CssSpecifiedValueSerializationErrorKind::ByteLimit
-            )
+            CssSpecifiedValueSerializationErrorKind::ByteLimit
         );
         assert_eq!(error.rule_index(), Some(1));
         assert_eq!(sheet, &before);
     }
-    assert_eq!(sheet.to_specified_css_with_limits(exact).unwrap(), expected);
+    assert_eq!(sheet.serialize_specified(exact).unwrap(), expected);
 }
 #[test]
 fn huge_flood_exponents_report_atomic_output_limits_without_clamping_or_mutation() {
@@ -705,7 +691,10 @@ fn huge_flood_exponents_report_atomic_output_limits_without_clamping_or_mutation
     let before = source.clone();
     for _ in 0..2 {
         assert_eq!(
-            source.to_specified_css().unwrap_err().kind(),
+            source
+                .serialize_specified(Default::default())
+                .unwrap_err()
+                .kind(),
             CssSpecifiedValueSerializationErrorKind::ByteLimit
         );
         assert_eq!(source, before);
@@ -745,34 +734,22 @@ fn hinted_flood_calculation_uses_existing_seven_input_eight_projection_provider_
     let source = checked(ALPHA, "calc((1px + 1%) / 1px)", true);
     let before = source.clone();
     let expected = "flood-opacity: calc((1% + 1px) / 1px) !important;";
-    let exact = CssSpecifiedValueSerializationLimits::new(9, 10, expected.len());
-    assert_eq!(
-        source.to_specified_css_with_limits(exact).unwrap(),
-        expected
-    );
+    let exact = CssSerializationLimits::new(9, 10, expected.len());
+    assert_eq!(source.serialize_specified(exact).unwrap(), expected);
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(8, 10, expected.len()),
+            CssSerializationLimits::new(8, 10, expected.len()),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(9, 9, expected.len()),
+            CssSerializationLimits::new(9, 9, expected.len()),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
     ] {
-        assert_eq!(
-            source
-                .to_specified_css_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            kind
-        );
+        assert_eq!(source.serialize_specified(limits).unwrap_err().kind(), kind);
         assert_eq!(source, before);
     }
-    assert_eq!(
-        source.to_specified_css_with_limits(exact).unwrap(),
-        expected
-    );
+    assert_eq!(source.serialize_specified(exact).unwrap(), expected);
 }
 #[test]
 fn invalid_filter_declaration_diagnostics_keep_byte_and_utf16_coordinates() {

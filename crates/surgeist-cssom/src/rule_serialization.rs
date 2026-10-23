@@ -12,7 +12,7 @@ pub struct CssomRuleFormatLimits {
     pub max_nodes: usize,
     pub max_preparation_steps: usize,
     pub max_depth: usize,
-    pub css: CssSpecifiedValueSerializationLimits,
+    pub css: CssSerializationLimits,
 }
 impl Default for CssomRuleFormatLimits {
     fn default() -> Self {
@@ -20,7 +20,7 @@ impl Default for CssomRuleFormatLimits {
             max_nodes: 100_000,
             max_preparation_steps: 1_000_000,
             max_depth: 256,
-            css: CssSpecifiedValueSerializationLimits::default(),
+            css: CssSerializationLimits::default(),
         }
     }
 }
@@ -142,13 +142,13 @@ impl State {
         if matches!(root.data(), CssomRuleData::Keyframe { .. }) {
             return self
                 .keyframe_view(id)?
-                .serialize_cssom_with_limits(limits.css)
+                .serialize_cssom(limits.css)
                 .map_err(CssomError::Keyframe);
         }
         if matches!(root.data(), CssomRuleData::Margin { .. }) {
             return self
                 .margin_view(id)?
-                .serialize_cssom_with_limits(limits.css)
+                .serialize_cssom(limits.css)
                 .map_err(CssomError::Format);
         }
         let mut parent = &root.parent;
@@ -373,10 +373,10 @@ impl State {
         views[0]
             .get()
             .expect("root initialized")
-            .serialize_cssom_with_graph_limits(
+            .serialize_cssom(
                 namespaces,
                 ancestor,
-                CssRuleGraphSerializationLimits {
+                CssRuleSerializationLimits {
                     values: limits.css,
                     max_depth: limits.max_depth.saturating_sub(depth),
                 },

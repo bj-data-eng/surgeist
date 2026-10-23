@@ -158,7 +158,7 @@ fn mixed_origin_all_recovery_rejects_the_actual_comment_source_without_fabricati
             .iter()
             .cloned(),
     );
-    let values = CssComponentValues::try_new(items).unwrap();
+    let values = CssComponentValues::try_new(items, Default::default()).unwrap();
     let before = values.clone();
     assert_eq!(values.items()[0].origin(), &CssValueOrigin::Programmatic);
     for grammar in [false, true] {
@@ -192,7 +192,7 @@ fn mixed_origin_all_recovery_rejects_the_actual_comment_source_without_fabricati
             .iter()
             .cloned(),
     );
-    let complete = CssComponentValues::try_new(complete_items).unwrap();
+    let complete = CssComponentValues::try_new(complete_items, Default::default()).unwrap();
     let CssContributions::UniversalReset(value) = handle.reenter(complete.clone()).unwrap() else {
         panic!("mixed complete retry")
     };
@@ -253,12 +253,16 @@ fn complete_all_globals_keep_all_five_fronts_canonical_output_and_symbolic_exclu
             );
             assert_eq!(declaration.importance(), CssImportance::Important);
             assert_eq!(
-                declaration.value_components().serialize().unwrap().as_css(),
+                declaration
+                    .value_components()
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
                 text
             );
             reset(&declaration, expected);
             assert_eq!(
-                declaration.to_specified_css().unwrap(),
+                declaration.serialize_specified(Default::default()).unwrap(),
                 format!("all: {keyword} !important;")
             );
         }
@@ -290,9 +294,10 @@ fn complete_all_pending_reentry_keeps_original_occurrence_and_parsed_or_programm
                 let cloned = handle.clone();
                 assert!(cloned.source().same_occurrence(&declaration));
                 let parsed = parse_component_values("revert-layer/**/").unwrap();
-                let programmatic = CssComponentValues::try_new(vec![
-                    CssComponentValue::try_ident("revert-layer").unwrap(),
-                ])
+                let programmatic = CssComponentValues::try_new(
+                    vec![CssComponentValue::try_ident("revert-layer").unwrap()],
+                    Default::default(),
+                )
                 .unwrap();
                 for replacement in [parsed, programmatic] {
                     for _ in 0..2 {
@@ -479,39 +484,30 @@ fn global_all_canonical_writer_preserves_three_node_prices_and_atomic_source() {
         let declaration = source(&format!("{keyword}/**/"), CssImportance::Important, true);
         let before = declaration.clone();
         let expected = format!("all: {keyword} !important;");
-        let exact = CssSpecifiedValueSerializationLimits::new(3, 3, expected.len());
-        assert_eq!(
-            declaration.to_specified_css_with_limits(exact).unwrap(),
-            expected
-        );
+        let exact = CssSerializationLimits::new(3, 3, expected.len());
+        assert_eq!(declaration.serialize_specified(exact).unwrap(), expected);
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(2, 3, expected.len()),
+                CssSerializationLimits::new(2, 3, expected.len()),
                 CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(3, 2, expected.len()),
+                CssSerializationLimits::new(3, 2, expected.len()),
                 CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(3, 3, expected.len() - 1),
+                CssSerializationLimits::new(3, 3, expected.len() - 1),
                 CssSpecifiedValueSerializationErrorKind::ByteLimit,
             ),
         ] {
             for _ in 0..2 {
                 assert_eq!(
-                    declaration
-                        .to_specified_css_with_limits(limits)
-                        .unwrap_err()
-                        .kind(),
+                    declaration.serialize_specified(limits).unwrap_err().kind(),
                     kind
                 );
                 assert_eq!(declaration, before);
             }
         }
-        assert_eq!(
-            declaration.to_specified_css_with_limits(exact).unwrap(),
-            expected
-        );
+        assert_eq!(declaration.serialize_specified(exact).unwrap(), expected);
     }
 }

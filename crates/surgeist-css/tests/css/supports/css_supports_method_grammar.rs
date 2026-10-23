@@ -72,7 +72,13 @@ fn bare_one_argument_declarations_gain_parentheses_with_original_child_sources()
         for value in query.value_components() {
             original(value.origin(), text);
         }
-        assert_eq!(condition.serialize().unwrap().as_css(), format!("({text})"));
+        assert_eq!(
+            condition
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            format!("({text})")
+        );
         let values = parse_component_values(text).unwrap();
         assert_eq!(query.components(), values.items());
         assert_eq!(text, before);
@@ -83,7 +89,13 @@ fn complete_conditions_remain_first_and_both_method_overloads_force_standards() 
     let text = "(color:red) and (width:1px)";
     let condition = parse_css_supports_condition(text).unwrap();
     assert!(matches!(condition.kind(), CssSupportsConditionKind::And(_)));
-    assert_eq!(condition.serialize().unwrap().as_css(), text);
+    assert_eq!(
+        condition
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        text
+    );
     for property in ["color", "COLOR"] {
         let value = parse_css_supports_declaration(property, "/*😀*/red").unwrap();
         assert!(value.known().is_some());

@@ -3,7 +3,7 @@
 //! retain the same immutable snapshot throughout a chain. Mutations inherit the
 //! supplied store’s existing quotas; lookup/formatting reads accept native limits.
 use crate::*;
-use surgeist_css::{CssRecoveryDiagnostic, CssSpecifiedValueSerializationLimits};
+use surgeist_css::{CssRecoveryDiagnostic, CssSerializationLimits};
 
 macro_rules! value_reader {
     ($kind:ident, $name:ident, $native:ident, $result:ty $(, $arg:ident : $ty:ty)*) => {
@@ -48,9 +48,9 @@ macro_rules! string_reader {
         }
     };
 }
-value_reader!(CssStyleRule, selector_text, style_selector_text, String, limits: CssSpecifiedValueSerializationLimits);
-value_reader!(CssPageRule, selector_text, page_selector_text, String, limits: CssSpecifiedValueSerializationLimits);
-value_reader!(CssKeyframeRule, key_text, keyframe_key_text, String, limits: CssSpecifiedValueSerializationLimits);
+value_reader!(CssStyleRule, selector_text, style_selector_text, String, limits: CssSerializationLimits);
+value_reader!(CssPageRule, selector_text, page_selector_text, String, limits: CssSerializationLimits);
+value_reader!(CssKeyframeRule, key_text, keyframe_key_text, String, limits: CssSerializationLimits);
 string_reader!(CssMarginRule, name, margin_name);
 string_reader!(CssImportRule, href, import_href);
 string_reader!(CssNamespaceRule, namespace_uri, namespace_uri);
@@ -61,8 +61,8 @@ value_reader!(CssImportRule, layer_name, import_layer_name, Option<String>, max_
 value_reader!(CssImportRule, supports_text, import_supports_text, Option<String>, max_bytes: usize);
 value_reader!(CssLayerBlockRule, name, layer_block_name, String, max_bytes: usize);
 value_reader!(CssLayerStatementRule, name_list, layer_statement_names, Vec<String>, max_bytes: usize);
-value_reader!(CssScopeRule, start, scope_start, Option<String>, limits: CssSpecifiedValueSerializationLimits);
-value_reader!(CssScopeRule, end, scope_end, Option<String>, limits: CssSpecifiedValueSerializationLimits);
+value_reader!(CssScopeRule, start, scope_start, Option<String>, limits: CssSerializationLimits);
+value_reader!(CssScopeRule, end, scope_end, Option<String>, limits: CssSerializationLimits);
 value_reader!(CssContainerRule, container_name, container_name, String, max_bytes: usize);
 value_reader!(CssContainerRule, container_query, container_query, String, max_bytes: usize);
 value_reader!(CssContainerRule, conditions, container_conditions, Vec<CssomContainerCondition>, max_bytes: usize);
@@ -136,7 +136,7 @@ impl CssomCapture<CssImportRule> {
 }
 macro_rules! condition_members {
     ($kind:ident) => {
-        value_reader!($kind, condition_text, condition_text, String, limits: CssSpecifiedValueSerializationLimits);
+        value_reader!($kind, condition_text, condition_text, String, limits: CssSerializationLimits);
     };
 }
 condition_members!(CssConditionRule);

@@ -64,7 +64,7 @@ fn generic_position_retains_symbolic_offsets_and_nonempty_list_order() {
     )
     .unwrap();
     assert!(
-        matches!(symbolic.horizontal(), H::Offset(v) if v.calculation().is_some_and(|calc| calc.components().serialize().unwrap().as_css() == "calc(10px + 20%)"))
+        matches!(symbolic.horizontal(), H::Offset(v) if v.calculation().is_some_and(|calc| calc.components().serialize_tokens(Default::default()).unwrap().as_css() == "calc(10px + 20%)"))
     );
     let keyword = CssPhysicalPosition::try_new(H::Left, V::Top).unwrap();
     let list = CssPhysicalPositionList::try_new(vec![symbolic, keyword]).unwrap();
@@ -169,14 +169,13 @@ fn transform_origin_checks_planar_grammar_and_keeps_optional_pure_length_z() {
         Some(pure_symbolic),
     )
     .unwrap();
-    assert!(
-        symbolic.z().unwrap().calculation().is_some_and(|calc| calc
-            .components()
-            .serialize()
+    assert!(symbolic.z().unwrap().calculation().is_some_and(|calc| {
+        calc.components()
+            .serialize_tokens(Default::default())
             .unwrap()
             .as_css()
-            == "calc(2px + 3px)")
-    );
+            == "calc(2px + 3px)"
+    }));
 
     let edge_pair = CssPhysicalPosition::try_new(
         H::LeftOffset(signed_length_percentage("1px")),
@@ -190,7 +189,8 @@ fn transform_origin_checks_planar_grammar_and_keeps_optional_pure_length_z() {
     );
     assert!(
         CssLengthCalculation::try_from_components(
-            parse_component_values("calc(2px + 3%)").unwrap()
+            parse_component_values("calc(2px + 3%)").unwrap(),
+            Default::default()
         )
         .is_err()
     );
@@ -254,7 +254,8 @@ fn signed_length(css: &str) -> surgeist_css::CssSpecifiedLength {
     let components = surgeist_css::parse_component_values(css).unwrap();
     if css.contains('(') {
         surgeist_css::CssSpecifiedLength::try_from_calculation(
-            surgeist_css::CssLengthCalculation::try_from_components(components).unwrap(),
+            surgeist_css::CssLengthCalculation::try_from_components(components, Default::default())
+                .unwrap(),
         )
         .unwrap()
     } else {
@@ -268,7 +269,11 @@ fn signed_length_percentage(css: &str) -> surgeist_css::CssSpecifiedLengthPercen
     let components = surgeist_css::parse_component_values(css).unwrap();
     if css.contains('(') {
         surgeist_css::CssSpecifiedLengthPercentage::try_from_calculation(
-            surgeist_css::CssLengthPercentageCalculation::try_from_components(components).unwrap(),
+            surgeist_css::CssLengthPercentageCalculation::try_from_components(
+                components,
+                Default::default(),
+            )
+            .unwrap(),
         )
         .unwrap()
     } else {

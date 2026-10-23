@@ -113,21 +113,17 @@ fn lists(values: &CssLonghandContributions) -> Lists<'_> {
 }
 fn output(
     value: CssLonghandValueRef<'_>,
-    limits: CssSpecifiedValueSerializationLimits,
-) -> Result<String, CssSpecifiedValueSerializationError> {
+    limits: CssSerializationLimits,
+) -> Result<String, CssSerializationError> {
     match value {
-        CssLonghandValueRef::AnimationDuration(v) => v.serialize_specified_with_limits(limits),
-        CssLonghandValueRef::AnimationTimingFunction(v) => {
-            v.serialize_specified_with_limits(limits)
-        }
-        CssLonghandValueRef::AnimationDelay(v) => v.serialize_specified_with_limits(limits),
-        CssLonghandValueRef::AnimationIterationCount(v) => {
-            v.serialize_specified_with_limits(limits)
-        }
-        CssLonghandValueRef::AnimationDirection(v) => v.serialize_specified_with_limits(limits),
-        CssLonghandValueRef::AnimationFillMode(v) => v.serialize_specified_with_limits(limits),
-        CssLonghandValueRef::AnimationPlayState(v) => v.serialize_specified_with_limits(limits),
-        CssLonghandValueRef::AnimationName(v) => v.serialize_specified_with_limits(limits),
+        CssLonghandValueRef::AnimationDuration(v) => v.serialize_specified(limits),
+        CssLonghandValueRef::AnimationTimingFunction(v) => v.serialize_specified(limits),
+        CssLonghandValueRef::AnimationDelay(v) => v.serialize_specified(limits),
+        CssLonghandValueRef::AnimationIterationCount(v) => v.serialize_specified(limits),
+        CssLonghandValueRef::AnimationDirection(v) => v.serialize_specified(limits),
+        CssLonghandValueRef::AnimationFillMode(v) => v.serialize_specified(limits),
+        CssLonghandValueRef::AnimationPlayState(v) => v.serialize_specified(limits),
+        CssLonghandValueRef::AnimationName(v) => v.serialize_specified(limits),
         other => panic!("animation payload: {other:?}"),
     }
 }
@@ -267,11 +263,7 @@ fn eight_borrowed_initial_variants_have_exact_programmatic_scalar_contents() {
         };
         assert_eq!(length(value.view()), 1);
         assert_eq!(
-            output(
-                value.view(),
-                CssSpecifiedValueSerializationLimits::default()
-            )
-            .unwrap(),
+            output(value.view(), CssSerializationLimits::default()).unwrap(),
             expected
         );
         match value.view() {
@@ -437,7 +429,7 @@ fn all_nine_properties_preserve_every_entry_of_twenty_item_lists_across_three_fr
                     let view = item.ordinary_value().unwrap().view();
                     assert_eq!(length(view), 20);
                     assert_eq!(
-                        output(view, CssSpecifiedValueSerializationLimits::default()).unwrap(),
+                        output(view, CssSerializationLimits::default()).unwrap(),
                         canonical_entries(slot)
                     );
                 }
@@ -447,7 +439,7 @@ fn all_nine_properties_preserve_every_entry_of_twenty_item_lists_across_three_fr
                 let view = values.items()[0].ordinary_value().unwrap().view();
                 assert_eq!(length(view), 20);
                 assert_eq!(
-                    output(view, CssSpecifiedValueSerializationLimits::default()).unwrap(),
+                    output(view, CssSerializationLimits::default()).unwrap(),
                     canonical_entries(slot)
                 );
             }
@@ -476,7 +468,7 @@ fn sparse_items_use_scalar_defaults_and_preserve_explicit_child_origins() {
         let view = item.ordinary_value().unwrap().view();
         assert_eq!(length(view), 3);
         assert_eq!(
-            output(view, CssSpecifiedValueSerializationLimits::default()).unwrap(),
+            output(view, CssSerializationLimits::default()).unwrap(),
             expected
         );
     }
@@ -526,7 +518,7 @@ fn explicit_initial_slots_retain_parsed_origins_while_omitted_defaults_are_progr
         assert_eq!(
             output(
                 list.ordinary_value().unwrap().view(),
-                CssSpecifiedValueSerializationLimits::default()
+                CssSerializationLimits::default()
             )
             .unwrap(),
             expected
@@ -570,9 +562,27 @@ fn symbolic_count_and_easing_children_retain_original_graphs_and_numeric_precisi
         let values = completed(&source);
         let actual = lists(&values);
         explicit_children(&actual, animation(&source));
-        assert_eq!(actual.durations.serialize_specified().unwrap(), "calc(3s)");
-        assert_eq!(actual.delays.serialize_specified().unwrap(), "calc(-0.25s)");
-        assert_eq!(actual.counts.serialize_specified().unwrap(), "calc(2.5)");
+        assert_eq!(
+            actual
+                .durations
+                .serialize_specified(Default::default())
+                .unwrap(),
+            "calc(3s)"
+        );
+        assert_eq!(
+            actual
+                .delays
+                .serialize_specified(Default::default())
+                .unwrap(),
+            "calc(-0.25s)"
+        );
+        assert_eq!(
+            actual
+                .counts
+                .serialize_specified(Default::default())
+                .unwrap(),
+            "calc(2.5)"
+        );
         assert!(actual.durations.values()[0].time().calculation().is_some());
         let CssAnimationIterationCount::Number(count) = &actual.counts.values()[0] else {
             panic!("count")
@@ -584,7 +594,13 @@ fn symbolic_count_and_easing_children_retain_original_graphs_and_numeric_precisi
         } else {
             "steps(calc(3), jump-none)"
         };
-        assert_eq!(actual.easings.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            actual
+                .easings
+                .serialize_specified(Default::default())
+                .unwrap(),
+            expected
+        );
     }
 }
 
@@ -615,7 +631,7 @@ fn mixed_programmatic_and_parsed_children_survive_checked_projection_and_reentry
         .unwrap();
     items[duration] = dimension.clone();
     items[count] = number.clone();
-    let replacement = CssComponentValues::try_new(items).unwrap();
+    let replacement = CssComponentValues::try_new(items, Default::default()).unwrap();
     let source = parse_property_value_for_grammar(
         P::Animation.grammar(),
         replacement.clone(),
@@ -718,7 +734,7 @@ fn late_recovered_time_projections_keep_implicit_graphs_through_output_and_norma
         assert_eq!(at.span().start().byte_offset().value(), css.len());
         assert_eq!(at.span().start(), at.span().end());
         assert_eq!(
-            time.serialize_specified().unwrap(),
+            time.serialize_specified(Default::default()).unwrap(),
             if duration { "calc(2s)" } else { "calc(-0.25s)" }
         );
         assert_eq!(time.calculation().unwrap().components(), &raw);
@@ -793,7 +809,7 @@ fn pending_handles_retry_original_eof_grammar_residual_and_output_resource_failu
         for item in first.items() {
             let view = item.ordinary_value().unwrap().view();
             assert_eq!(
-                output(view, CssSpecifiedValueSerializationLimits::new(100, 100, 0))
+                output(view, CssSerializationLimits::new(100, 100, 0))
                     .unwrap_err()
                     .kind(),
                 CssSpecifiedValueSerializationErrorKind::ByteLimit
@@ -812,7 +828,7 @@ fn pending_handles_retry_original_eof_grammar_residual_and_output_resource_failu
             assert!(
                 output(
                     b.ordinary_value().unwrap().view(),
-                    CssSpecifiedValueSerializationLimits::default()
+                    CssSerializationLimits::default()
                 )
                 .is_ok()
             );
@@ -840,7 +856,7 @@ fn projected_eight_lists_use_exact_cumulative_provider_budgets_and_fail_atomical
         (3, "fade, slide"),
     ]) {
         let view = item.ordinary_value().unwrap().view();
-        let limits = CssSpecifiedValueSerializationLimits::new;
+        let limits = CssSerializationLimits::new;
         assert_eq!(
             output(view, limits(nodes, nodes, expected.len())).unwrap(),
             expected
@@ -1028,7 +1044,10 @@ fn quoted_names_and_keyword_priority_remain_independent_of_projection_defaults()
     let actual = lists(&values);
     explicit_children(&actual, animation(&source));
     assert_eq!(
-        actual.names.serialize_specified().unwrap(),
+        actual
+            .names
+            .serialize_specified(Default::default())
+            .unwrap(),
         "\"\", \" \", none, none, reverse, infinite, running, \"none\""
     );
     assert_eq!(actual.fills.modes()[2], CssAnimationFillMode::None);
@@ -1040,7 +1059,7 @@ fn quoted_names_and_keyword_priority_remain_independent_of_projection_defaults()
     let CssAnimationIterationCount::Number(count) = &actual.counts.values()[5] else {
         panic!("explicit count before colliding name")
     };
-    assert_eq!(count.serialize_specified().unwrap(), "2");
+    assert_eq!(count.serialize_specified(Default::default()).unwrap(), "2");
     assert_eq!(actual.plays.states()[6], CssAnimationPlayState::Paused);
     let CssKnownPropertyValueRef::Animation(original) =
         source.known().unwrap().property_value().unwrap()
@@ -1048,7 +1067,10 @@ fn quoted_names_and_keyword_priority_remain_independent_of_projection_defaults()
         panic!("animation")
     };
     assert_eq!(
-        original.animations().serialize_specified().unwrap(),
+        original
+            .animations()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "1s \"\", 2s \" \", 3s none, 4s backwards, 5s normal reverse, 6s 2 infinite, 7s paused running, 8s \"none\""
     );
     let name = CssAnimationNameList::try_new(vec![CssAnimationName::String(
@@ -1056,7 +1078,9 @@ fn quoted_names_and_keyword_priority_remain_independent_of_projection_defaults()
     )])
     .unwrap();
     assert_eq!(
-        name.serialize_specified().unwrap_err().kind(),
+        name.serialize_specified(Default::default())
+            .unwrap_err()
+            .kind(),
         CssSpecifiedValueSerializationErrorKind::UnrepresentableValue
     );
 }

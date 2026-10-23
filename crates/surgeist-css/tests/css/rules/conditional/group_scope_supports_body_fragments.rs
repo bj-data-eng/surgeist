@@ -65,7 +65,11 @@ fn property(list: &CssDeclarationList, name: CssKnownProperty, value: &str) {
     };
     assert_eq!(declaration.known().unwrap().property(), name);
     assert_eq!(
-        declaration.value_components().serialize().unwrap().as_css(),
+        declaration
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         value
     );
 }
@@ -444,7 +448,9 @@ fn all_three_context_methods_carry_quirks_into_actual_child_property_providers()
     namespaced_selector(style.selectors().selectors()[0].selector());
     assert_eq!(style.declarations().len(), 2);
     assert_eq!(
-        style.declarations()[0].to_specified_css().unwrap(),
+        style.declarations()[0]
+            .serialize_specified(Default::default())
+            .unwrap(),
         "width: 7px;"
     );
     clean(&q);
@@ -469,7 +475,9 @@ fn all_three_context_methods_carry_quirks_into_actual_child_property_providers()
         };
         assert_eq!(style.declarations().len(), 2);
         assert_eq!(
-            style.declarations()[0].to_specified_css().unwrap(),
+            style.declarations()[0]
+                .serialize_specified(Default::default())
+                .unwrap(),
             "width: 7px;"
         );
         clean(&q);
@@ -492,7 +500,9 @@ fn all_three_context_methods_carry_quirks_into_actual_child_property_providers()
             panic!("quirks direct run")
         };
         assert_eq!(
-            scoped_run(run)[0].to_specified_css().unwrap(),
+            scoped_run(run)[0]
+                .serialize_specified(Default::default())
+                .unwrap(),
             "width: 7px;"
         );
         clean(&report);
@@ -694,7 +704,11 @@ fn generic_supports_candidates_keep_order_payloads_and_the_complete_original_sna
     ));
     original(value.origin(), source, 17, 20, fragment.origin());
     assert_eq!(
-        qualified.prelude().serialize().unwrap().as_css(),
+        qualified
+            .prelude()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         "future x"
     );
     assert!(
@@ -725,7 +739,14 @@ fn named_test_at_rule_at_real_parent_close_does_not_promote_baseline_eof_fault()
         assert!(fragment.body().recovery_origin().is_none());
         clean(&report);
         // Output punctuation has its separate checked owner; original input is unchanged.
-        assert_eq!(fragment.body().serialize().unwrap().as_css(), "@future;");
+        assert_eq!(
+            fragment
+                .body()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            "@future;"
+        );
     }
     let source = "{@future";
     let report = parse_supports_test_block(source);
@@ -842,7 +863,8 @@ fn implicit_supports_function_and_body_retain_actual_origins_but_reject_clean_re
     assert!(matches!(
         CssSupportsConditionRule::try_new(
             CssSupportsConditionName::try_new("--x").unwrap(),
-            fragment.body().clone()
+            fragment.body().clone(),
+            Default::default(),
         ),
         Err(CssNamedSupportsConstructionError::RecoveredInput { .. })
     ));

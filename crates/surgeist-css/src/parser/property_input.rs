@@ -1021,10 +1021,13 @@ mod tests {
 
     #[test]
     fn independent_checked_leaves_do_not_merge_into_a_new_token() {
-        let values = CssComponentValues::try_new(vec![
-            CssComponentValue::try_ident("a").unwrap(),
-            CssComponentValue::try_ident("b").unwrap(),
-        ])
+        let values = CssComponentValues::try_new(
+            vec![
+                CssComponentValue::try_ident("a").unwrap(),
+                CssComponentValue::try_ident("b").unwrap(),
+            ],
+            Default::default(),
+        )
         .unwrap();
         let document = normalize(
             SyntaxInput::CheckedComponents(values.items()),
@@ -1094,7 +1097,7 @@ mod tests {
         let children = parse_component_values("\n 2px").unwrap();
         let origin = children.items()[1].origin().clone();
         let group = CssComponentValue::try_function("f", children).unwrap();
-        let values = CssComponentValues::try_new(vec![group]).unwrap();
+        let values = CssComponentValues::try_new(vec![group], Default::default()).unwrap();
         let document = normalize(
             SyntaxInput::CheckedComponents(values.items()),
             SyntaxInputLimits::default(),
@@ -1388,12 +1391,15 @@ mod native_adapter_tests {
 
     #[test]
     fn checked_prefix_adapter_borrows_the_original_component_across_inserted_separators() {
-        let values = CssComponentValues::try_new(vec![
-            CssComponentValue::try_ident("a").unwrap(),
-            CssComponentValue::try_ident("b").unwrap(),
-        ])
+        let values = CssComponentValues::try_new(
+            vec![
+                CssComponentValue::try_ident("a").unwrap(),
+                CssComponentValue::try_ident("b").unwrap(),
+            ],
+            Default::default(),
+        )
         .unwrap();
-        let serialized = values.serialize().unwrap();
+        let serialized = values.serialize_tokens(Default::default()).unwrap();
         let mut storage = cssparser::ParserInput::new(serialized.as_css());
         let mut native = cssparser::Parser::new(&mut storage);
         let address = adapt_native(
@@ -1419,7 +1425,7 @@ mod native_adapter_tests {
     #[test]
     fn checked_nested_adapter_maps_the_actual_child_path_to_existing_native_input() {
         let values = parse_component_values("f(a wrong)").unwrap();
-        let serialized = values.serialize().unwrap();
+        let serialized = values.serialize_tokens(Default::default()).unwrap();
         let mut storage = cssparser::ParserInput::new(serialized.as_css());
         let mut native = cssparser::Parser::new(&mut storage);
         let error = adapt_native(

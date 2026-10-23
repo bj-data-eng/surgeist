@@ -22,7 +22,11 @@ fn assert_style(rule: &CssRule, source: &str, class: &str, value: &str) {
         panic!("one color declaration")
     };
     assert_eq!(
-        declaration.value_components().serialize().unwrap().as_css(),
+        declaration
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         value
     );
     let origin = declaration.parsed_value().unwrap();
@@ -135,7 +139,12 @@ fn delimiters_inside_prelude_components_do_not_end_the_outer_at_rule() {
         CssSupportsConditionKind::GeneralEnclosed(_)
     ));
     assert_eq!(
-        supports.condition().serialize().unwrap().as_css().trim(),
+        supports
+            .condition()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css()
+            .trim(),
         "future(\";{}\" [a;b] {c;d} (@hidden;))"
     );
     assert_eq!(

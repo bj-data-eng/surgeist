@@ -356,7 +356,7 @@ fn producer_refusals_leave_old_evidence_and_do_not_spend_fresh_identity() {
         };
         let mut request = limits(4_000_000, 64);
         if identity_limit == 2 {
-            request.declaration.provider = CssSpecifiedValueSerializationLimits::new(1000, 1000, 0);
+            request.declaration.provider = CssSerializationLimits::new(1000, 1000, 0);
         }
         let err = dom
             .resume_inline_style_feedback()

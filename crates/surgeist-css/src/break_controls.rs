@@ -1,30 +1,12 @@
 //! Bounded specified keyword rendering for fragmentation controls.
 
-use crate::{
-    CssBreakBetween, CssBreakInside, CssSpecifiedValueSerializationError,
-    CssSpecifiedValueSerializationLimits,
-};
+use crate::{CssBreakBetween, CssBreakInside};
 
-impl CssBreakBetween {
-    /// Serializes one canonical specified break keyword.
-    pub fn serialize_specified(&self) -> Result<String, CssSpecifiedValueSerializationError> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Charges one input and projection node plus the canonical CSS bytes.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String, CssSpecifiedValueSerializationError> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssBreakBetween {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         writer.keyword(match self {
             Self::Auto => "auto",
             Self::Avoid => "avoid",
@@ -41,27 +23,13 @@ impl CssBreakBetween {
         })
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssBreakBetween);
 
-impl CssBreakInside {
-    /// Serializes one canonical specified break-inside keyword.
-    pub fn serialize_specified(&self) -> Result<String, CssSpecifiedValueSerializationError> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Charges one input and projection node plus the canonical CSS bytes.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String, CssSpecifiedValueSerializationError> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssBreakInside {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         writer.keyword(match self {
             Self::Auto => "auto",
             Self::Avoid => "avoid",
@@ -71,30 +39,17 @@ impl CssBreakInside {
         })
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssBreakInside);
 
-impl crate::CssBoxDecorationBreak {
-    /// Emits the canonical authored fragmentation-decoration keyword.
-    pub fn serialize_specified(&self) -> Result<String, CssSpecifiedValueSerializationError> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Charges one input node, one projection node, and the emitted bytes.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String, CssSpecifiedValueSerializationError> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for crate::CssBoxDecorationBreak {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         writer.keyword(match self {
             Self::Slice => "slice",
             Self::Clone => "clone",
         })
     }
 }
+crate::specified_rule_serialization::specified_serialization!(crate::CssBoxDecorationBreak);

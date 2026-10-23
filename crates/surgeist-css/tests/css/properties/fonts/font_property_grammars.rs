@@ -475,7 +475,7 @@ fn kerning_size_adjust_and_synthesis_follow_fonts3() {
     };
     assert!(matches!(
         size_adjust.size_adjust(),
-        surgeist_css::CssFontSizeAdjust::Number(value) if value.serialize_specified().unwrap() == "0.5"
+        surgeist_css::CssFontSizeAdjust::Number(value) if value.serialize_specified(Default::default()).unwrap() == "0.5"
     ));
 
     let CssKnownPropertyValueRef::FontSynthesis(synthesis) = report.syntax()[2]
@@ -588,7 +588,7 @@ fn font_size_family_line_height_and_shorthand_follow_fonts3() {
     assert!(matches!(
         line_height.line_height(),
         CssLineHeight::Number(value)
-            if value.serialize_specified().unwrap() == "1.25"
+            if value.serialize_specified(Default::default()).unwrap() == "1.25"
     ));
 
     let CssKnownPropertyValueRef::FontFamily(family) = report.syntax()[2]

@@ -118,7 +118,7 @@ fn assert_symbolic(color: &CssColor, expected: CssSystemColor, text: &str) {
         CssAbsoluteColorEligibility::Contextual(CssAbsoluteColorExclusion::SystemColor),
         "{text}",
     );
-    assert_eq!(color.to_specified_css().unwrap(), text);
+    assert_eq!(color.serialize_specified(Default::default()).unwrap(), text);
 }
 
 #[test]

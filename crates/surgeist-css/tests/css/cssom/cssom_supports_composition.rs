@@ -7,12 +7,12 @@ use surgeist_css::{
     CssEditedGroupPreludeRef as Prelude, CssEditedRuleView as View, CssKeyframeRuleView,
     CssKeyframesName, CssKeyframesRuleView, CssKeyframesString, CssKnownProperty as K,
     CssMarginBox, CssMarginRuleView, CssNamespaceContext, CssPageRuleView, CssPropertyNameRef,
-    CssRule, CssRuleCssomFormat, CssRuleCssomSerializationErrorKind as Kind,
-    CssSpecifiedDeclarationBlock as Block, CssSpecifiedDeclarationEntry as Entry,
-    CssSpecifiedPageDeclarationBlock as PageBlock, CssSpecifiedPageDeclarationEntry as PageEntry,
-    CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationErrorKind as Resource,
-    CssSpecifiedValueSerializationLimits as Limits, CssValueOrigin, parse_keyframe_selector_list,
-    parse_page_selector_list, parse_rule, parse_sheet,
+    CssRule, CssRuleCssomFormat, CssRuleCssomSerializationErrorKind as Kind, CssSerializationError,
+    CssSerializationLimits as Limits, CssSpecifiedDeclarationBlock as Block,
+    CssSpecifiedDeclarationEntry as Entry, CssSpecifiedPageDeclarationBlock as PageBlock,
+    CssSpecifiedPageDeclarationEntry as PageEntry,
+    CssSpecifiedValueSerializationErrorKind as Resource, CssValueOrigin,
+    parse_keyframe_selector_list, parse_page_selector_list, parse_rule, parse_sheet,
 };
 
 fn property(block: &Block, name: K) -> &Entry {
@@ -51,7 +51,7 @@ fn parsed_supports_condition_and_child_share_exact_limits_and_retry_atomically()
     // Supports rule 1 + condition aggregate 1 + block/ident/colon/ident 4 =6.
     // Empty Style rule 1 + selector list/class 2 + build/output aggregates 2 =5.
     let exact = Limits::new(11, 11, expected.len());
-    assert_eq!(rule.serialize_cssom_with_limits(exact).unwrap(), expected);
+    assert_eq!(rule.serialize_cssom(exact).unwrap(), expected);
     for (limits, kind, path) in [
         (
             Limits::new(10, 11, expected.len()),
@@ -74,21 +74,21 @@ fn parsed_supports_condition_and_child_share_exact_limits_and_retry_atomically()
             &[][..],
         ),
     ] {
-        let error = rule.serialize_cssom_with_limits(limits).unwrap_err();
+        let error = rule.serialize_cssom(limits).unwrap_err();
         assert_eq!(error.kind(), Kind::Resource(kind));
         assert_eq!(error.rule_path(), path);
         // Declaration admission can own the resource failure; preserve its
         // real wrapper while following the public chain to the typed cause.
         let mut source = error.source().unwrap();
         loop {
-            if let Some(value) = source.downcast_ref::<CssSpecifiedValueSerializationError>() {
+            if let Some(value) = source.downcast_ref::<CssSerializationError>() {
                 assert_eq!(value.kind(), kind);
                 break;
             }
             source = source.source().expect("typed resource provider");
         }
         assert_eq!(rule, &before);
-        assert_eq!(rule.serialize_cssom_with_limits(exact).unwrap(), expected);
+        assert_eq!(rule.serialize_cssom(exact).unwrap(), expected);
     }
 }
 
@@ -99,15 +99,20 @@ fn omitted_empty_children_consume_work_and_preserve_the_next_child_failure_index
     let [CssRule::Supports(supports), child] = report.syntax().rules() else {
         panic!("rules");
     };
-    let empty = Block::try_from_entries(&[]).unwrap();
-    let empty_child = View::try_nested_declarations(&empty).unwrap();
+    let empty = Block::try_from_entries(&[], Default::default()).unwrap();
+    let empty_child = View::try_nested_declarations(&empty, Default::default()).unwrap();
     let children = [empty_child, View::from_rule(child), empty_child];
-    let group = View::try_group(Prelude::Supports(supports.condition()), &children).unwrap();
+    let group = View::try_group(
+        Prelude::Supports(supports.condition()),
+        &children,
+        Default::default(),
+    )
+    .unwrap();
     let expected = "@supports (display:grid) {\n  .x { }\n}";
     // The parsed payload costs I11/P11. Each empty live view adds its real rule
     // and declaration aggregate: I2/P2, with no prefix or child output bytes.
     let exact = Limits::new(15, 15, expected.len());
-    assert_eq!(group.serialize_cssom_with_limits(exact).unwrap(), expected);
+    assert_eq!(group.serialize_cssom(exact).unwrap(), expected);
     for (limits, kind, path) in [
         (
             Limits::new(8, 15, expected.len()),
@@ -135,12 +140,12 @@ fn omitted_empty_children_consume_work_and_preserve_the_next_child_failure_index
             &[][..],
         ),
     ] {
-        let error = group.serialize_cssom_with_limits(limits).unwrap_err();
+        let error = group.serialize_cssom(limits).unwrap_err();
         assert_eq!(error.kind(), Kind::Resource(kind));
         assert_eq!(error.rule_path(), path);
-        assert_eq!(group.serialize_cssom_with_limits(exact).unwrap(), expected);
-        assert_eq!(children[0].serialize_cssom().unwrap(), "");
-        assert_eq!(children[2].serialize_cssom().unwrap(), "");
+        assert_eq!(group.serialize_cssom(exact).unwrap(), expected);
+        assert_eq!(children[0].serialize_cssom(Default::default()).unwrap(), "");
+        assert_eq!(children[2].serialize_cssom(Default::default()).unwrap(), "");
     }
 }
 
@@ -150,14 +155,19 @@ fn all_empty_children_have_exact_bytes_but_retain_their_own_work_tariffs() {
     let CssRule::Supports(supports) = &report.syntax().rules()[0] else {
         panic!("Supports")
     };
-    let empty = Block::try_from_entries(&[]).unwrap();
-    let child = View::try_nested_declarations(&empty).unwrap();
+    let empty = Block::try_from_entries(&[], Default::default()).unwrap();
+    let child = View::try_nested_declarations(&empty, Default::default()).unwrap();
     let children = [child, child];
-    let group = View::try_group(Prelude::Supports(supports.condition()), &children).unwrap();
+    let group = View::try_group(
+        Prelude::Supports(supports.condition()),
+        &children,
+        Default::default(),
+    )
+    .unwrap();
     let expected = "@supports (display:grid) {\n}";
     assert_eq!(
         group
-            .serialize_cssom_with_limits(Limits::new(10, 10, expected.len()))
+            .serialize_cssom(Limits::new(10, 10, expected.len()))
             .unwrap(),
         expected
     );
@@ -170,13 +180,10 @@ fn all_empty_children_have_exact_bytes_but_retain_their_own_work_tariffs() {
         (Limits::new(10, 10, expected.len() - 1), Resource::ByteLimit),
     ] {
         assert_eq!(
-            group
-                .serialize_cssom_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            group.serialize_cssom(limits).unwrap_err().kind(),
             Kind::Resource(kind)
         );
-        assert_eq!(group.serialize_cssom().unwrap(), expected);
+        assert_eq!(group.serialize_cssom(Default::default()).unwrap(), expected);
     }
 }
 
@@ -187,14 +194,19 @@ fn unavailable_descendants_keep_their_typed_cause_and_index_after_an_empty_child
     let [CssRule::Supports(supports), container] = report.syntax().rules() else {
         panic!("rules")
     };
-    let empty = Block::try_from_entries(&[]).unwrap();
+    let empty = Block::try_from_entries(&[], Default::default()).unwrap();
     let children = [
-        View::try_nested_declarations(&empty).unwrap(),
+        View::try_nested_declarations(&empty, Default::default()).unwrap(),
         View::from_rule(container),
     ];
-    let group = View::try_group(Prelude::Supports(supports.condition()), &children).unwrap();
+    let group = View::try_group(
+        Prelude::Supports(supports.condition()),
+        &children,
+        Default::default(),
+    )
+    .unwrap();
     for _ in 0..2 {
-        let error = group.serialize_cssom().unwrap_err();
+        let error = group.serialize_cssom(Default::default()).unwrap_err();
         assert_eq!(
             error.kind(),
             Kind::FormatUnavailable(CssRuleCssomFormat::Container)
@@ -203,10 +215,10 @@ fn unavailable_descendants_keep_their_typed_cause_and_index_after_an_empty_child
         assert!(error.source().is_none());
     }
     assert_eq!(
-        group.to_specified_css().unwrap(),
+        group.serialize_specified(Default::default()).unwrap(),
         "@supports (display:grid) { @container (width>1px) { } }"
     );
-    assert_eq!(children[0].serialize_cssom().unwrap(), "");
+    assert_eq!(children[0].serialize_cssom(Default::default()).unwrap(), "");
 }
 
 #[test]
@@ -217,12 +229,12 @@ fn supports_preserves_actual_sheet_namespace_bindings_and_detached_symbolic_spel
     assert!(report.is_clean());
     let before = report.clone();
     assert_eq!(
-        report.syntax().serialize_cssom().unwrap(),
+        report.syntax().serialize_cssom(Default::default()).unwrap(),
         "@namespace n url(\"urn:x\");\n@namespace url(\"urn:x\");\n@supports (display:grid) {\n  leaf[a] { }\n}"
     );
     let supports = &report.syntax().rules()[2];
     assert_eq!(
-        supports.serialize_cssom().unwrap(),
+        supports.serialize_cssom(Default::default()).unwrap(),
         "@supports (display:grid) {\n  n|leaf[a] { }\n}"
     );
     let CssRule::Supports(supports) = supports else {
@@ -243,8 +255,14 @@ fn nested_supports_preserves_logical_and_future_condition_tokens_without_simplif
     assert!(report.is_clean(), "{report:?}");
     let before = report.clone();
     let expected = "@supports ((display:grid) or (display:flex)) and (future-token(foo)) {\n  @supports not (color:red) {\n  .x { }\n}\n}";
-    assert_eq!(report.syntax().serialize_cssom().unwrap(), expected);
-    assert_eq!(report.syntax().serialize_cssom().unwrap(), expected);
+    assert_eq!(
+        report.syntax().serialize_cssom(Default::default()).unwrap(),
+        expected
+    );
+    assert_eq!(
+        report.syntax().serialize_cssom(Default::default()).unwrap(),
+        expected
+    );
     assert_eq!(report, before);
 }
 
@@ -260,7 +278,10 @@ fn supports_composes_current_page_margin_and_keyframe_edits_without_source_recon
     let [CssRule::Page(page), CssRule::Keyframes(keyframes)] = supports.rules() else {
         panic!("children")
     };
-    let original_page = page.declarations().try_specified().unwrap();
+    let original_page = page
+        .declarations()
+        .try_specified(Default::default())
+        .unwrap();
     let right = page_property(&original_page, K::MarginRight);
     let size = original_page
         .entries()
@@ -268,29 +289,40 @@ fn supports_composes_current_page_margin_and_keyframe_edits_without_source_recon
         .find(|entry| matches!(entry, PageEntry::Descriptor(_)))
         .unwrap()
         .clone();
-    let current_page =
-        PageBlock::try_from_entries(&[PageEntry::Property(right.clone()), size]).unwrap();
+    let current_page = PageBlock::try_from_entries(
+        &[PageEntry::Property(right.clone()), size],
+        Default::default(),
+    )
+    .unwrap();
     let original_margin = page.margin_rules()[0]
         .declarations()
-        .try_specified_properties()
+        .try_specified_properties(Default::default())
         .unwrap();
     let left = property(&original_margin, K::MarginLeft);
-    let current_margin = Block::try_from_margin_entries(std::slice::from_ref(left)).unwrap();
+    let current_margin =
+        Block::try_from_margin_entries(std::slice::from_ref(left), Default::default()).unwrap();
     let margins = [CssMarginRuleView::try_new(CssMarginBox::TopCenter, &current_margin).unwrap()];
     let selectors = parse_page_selector_list(" /*edit*/ invoice:left ");
     assert!(selectors.is_clean());
-    let page_view = View::try_page(CssPageRuleView::new(
-        selectors.syntax().as_ref().unwrap(),
-        &current_page,
-        &margins,
-    ))
+    let page_view = View::try_page(
+        CssPageRuleView::new(
+            selectors.syntax().as_ref().unwrap(),
+            &current_page,
+            &margins,
+        ),
+        Default::default(),
+    )
     .unwrap();
 
-    let original_keyframe =
-        Block::try_from_keyframe_declarations(keyframes.blocks()[0].declarations()).unwrap();
+    let original_keyframe = Block::try_from_keyframe_declarations(
+        keyframes.blocks()[0].declarations(),
+        Default::default(),
+    )
+    .unwrap();
     let keyframe_right = property(&original_keyframe, K::MarginRight);
     let current_keyframe =
-        Block::try_from_keyframe_entries(std::slice::from_ref(keyframe_right)).unwrap();
+        Block::try_from_keyframe_entries(std::slice::from_ref(keyframe_right), Default::default())
+            .unwrap();
     let keys = parse_keyframe_selector_list(" /*edit*/ 50% ");
     assert!(keys.is_clean());
     let blocks = [CssKeyframeRuleView::try_new(
@@ -299,26 +331,34 @@ fn supports_composes_current_page_margin_and_keyframe_edits_without_source_recon
     )
     .unwrap()];
     let name = CssKeyframesName::String(CssKeyframesString::new("current"));
-    let keyframes_view =
-        View::try_keyframes(CssKeyframesRuleView::try_new(&name, &blocks).unwrap()).unwrap();
+    let keyframes_view = View::try_keyframes(
+        CssKeyframesRuleView::try_new(&name, &blocks, Default::default()).unwrap(),
+        Default::default(),
+    )
+    .unwrap();
     let children = [keyframes_view, page_view, keyframes_view];
-    let group = View::try_group(Prelude::Supports(supports.condition()), &children).unwrap();
+    let group = View::try_group(
+        Prelude::Supports(supports.condition()),
+        &children,
+        Default::default(),
+    )
+    .unwrap();
     let expected = "@supports (display:grid) {\n  @keyframes current {   50% { margin-right: 2px; }\n}\n  @page invoice:left { margin-right: 2px; size: a4; @top-center { margin-left: 6px; } }\n  @keyframes current {   50% { margin-right: 2px; }\n}\n}";
-    assert_eq!(group.serialize_cssom().unwrap(), expected);
+    assert_eq!(group.serialize_cssom(Default::default()).unwrap(), expected);
     assert_eq!(
         group
-            .serialize_cssom_with_limits(Limits::new(10000, 100000, expected.len()))
+            .serialize_cssom(Limits::new(10000, 100000, expected.len()))
             .unwrap(),
         expected
     );
     assert_eq!(
         group
-            .serialize_cssom_with_limits(Limits::new(10000, 100000, expected.len() - 1))
+            .serialize_cssom(Limits::new(10000, 100000, expected.len() - 1))
             .unwrap_err()
             .kind(),
         Kind::Resource(Resource::ByteLimit)
     );
-    assert_eq!(group.serialize_cssom().unwrap(), expected);
+    assert_eq!(group.serialize_cssom(Default::default()).unwrap(), expected);
     assert!(
         page_property(&current_page, K::MarginRight)
             .source()

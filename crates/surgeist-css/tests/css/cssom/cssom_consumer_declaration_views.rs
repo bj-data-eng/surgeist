@@ -8,14 +8,19 @@ fn complete_margin_getter_crosses_logical_interference_without_reordering_css_te
         "margin-top:1px; margin-inline-start:7px; margin-right:2px; margin-bottom:3px; margin-left:4px",
     );
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let block = CssSpecifiedDeclarationBlock::try_from_declarations(report.syntax()).unwrap();
+    let block =
+        CssSpecifiedDeclarationBlock::try_from_declarations(report.syntax(), Default::default())
+            .unwrap();
     assert_eq!(
-        block.serialize_cssom().unwrap(),
+        block.serialize_cssom(Default::default()).unwrap(),
         "margin-top: 1px; margin-inline-start: 7px; margin-right: 2px; margin-bottom: 3px; margin-left: 4px;",
     );
     assert_eq!(
         block
-            .property_value(CssPropertyNameRef::Known(CssKnownProperty::Margin))
+            .property_value(
+                CssPropertyNameRef::Known(CssKnownProperty::Margin),
+                Default::default()
+            )
             .unwrap(),
         Some("1px 2px 3px 4px".to_owned()),
     );
@@ -24,7 +29,8 @@ fn complete_margin_getter_crosses_logical_interference_without_reordering_css_te
 fn block(source: &str) -> CssSpecifiedDeclarationBlock {
     let report = parse_declaration_list_text(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    CssSpecifiedDeclarationBlock::try_from_declarations(report.syntax()).unwrap()
+    CssSpecifiedDeclarationBlock::try_from_declarations(report.syntax(), Default::default())
+        .unwrap()
 }
 
 #[test]
@@ -37,21 +43,28 @@ fn selected_survivors_keep_order_priority_and_original_margin_occurrence() {
         entries[1].with_importance(CssImportance::Important),
         entries[2].clone(),
     ];
-    let edited = CssSpecifiedDeclarationBlock::try_from_entries(&selected).unwrap();
+    let edited =
+        CssSpecifiedDeclarationBlock::try_from_entries(&selected, Default::default()).unwrap();
     assert_eq!(
         edited
-            .property_value(CssPropertyNameRef::Known(CssKnownProperty::MarginTop))
+            .property_value(
+                CssPropertyNameRef::Known(CssKnownProperty::MarginTop),
+                Default::default()
+            )
             .unwrap(),
         None
     );
     assert_eq!(
         edited
-            .property_value(CssPropertyNameRef::Known(CssKnownProperty::Margin))
+            .property_value(
+                CssPropertyNameRef::Known(CssKnownProperty::Margin),
+                Default::default()
+            )
             .unwrap(),
         None
     );
     assert_eq!(
-        edited.serialize_cssom().unwrap(),
+        edited.serialize_cssom(Default::default()).unwrap(),
         "margin-left: 4px; margin-right: 2px !important; margin-bottom: 3px;"
     );
     for (entry, source_entry) in
@@ -66,7 +79,7 @@ fn selected_survivors_keep_order_priority_and_original_margin_occurrence() {
         assert_eq!(entry.member_ordinal(), source_entry.member_ordinal());
     }
     assert_eq!(
-        original.serialize_cssom().unwrap(),
+        original.serialize_cssom(Default::default()).unwrap(),
         "margin: 1px 2px 3px 4px;"
     );
 }
@@ -77,19 +90,27 @@ fn selected_pending_members_retain_origin_and_reject_duplicates_atomically() {
     let original = block("margin-inline:var(--m)");
     let mut selected = original.entries().to_vec();
     selected.reverse();
-    let edited = CssSpecifiedDeclarationBlock::try_from_entries(&selected).unwrap();
+    let edited =
+        CssSpecifiedDeclarationBlock::try_from_entries(&selected, Default::default()).unwrap();
     assert_eq!(
         edited
-            .property_value(CssPropertyNameRef::Known(CssKnownProperty::MarginInline))
+            .property_value(
+                CssPropertyNameRef::Known(CssKnownProperty::MarginInline),
+                Default::default()
+            )
             .unwrap()
             .as_deref(),
         Some("var(--m)")
     );
     selected[0] = selected[0].with_importance(CssImportance::Important);
-    let mixed = CssSpecifiedDeclarationBlock::try_from_entries(&selected).unwrap();
+    let mixed =
+        CssSpecifiedDeclarationBlock::try_from_entries(&selected, Default::default()).unwrap();
     assert_eq!(
         mixed
-            .property_value(CssPropertyNameRef::Known(CssKnownProperty::MarginInline))
+            .property_value(
+                CssPropertyNameRef::Known(CssKnownProperty::MarginInline),
+                Default::default()
+            )
             .unwrap(),
         None
     );
@@ -102,18 +123,18 @@ fn selected_pending_members_retain_origin_and_reject_duplicates_atomically() {
     selected[0] = other.entries()[0].clone();
     selected[1] = selected[0].clone();
     assert!(matches!(
-        CssSpecifiedDeclarationBlock::try_from_entries(&selected)
+        CssSpecifiedDeclarationBlock::try_from_entries(&selected, Default::default())
             .unwrap_err()
             .kind(),
         CssDeclarationBlockErrorKind::DuplicateTerminal
     ));
     assert_eq!(
-        original.serialize_cssom().unwrap(),
+        original.serialize_cssom(Default::default()).unwrap(),
         "margin-inline: var(--m);"
     );
     let survivors = &original.entries()[1..];
     assert_eq!(
-        CssSpecifiedDeclarationBlock::try_from_entries(survivors)
+        CssSpecifiedDeclarationBlock::try_from_entries(survivors, Default::default())
             .unwrap()
             .entries()
             .len(),
@@ -121,7 +142,7 @@ fn selected_pending_members_retain_origin_and_reject_duplicates_atomically() {
     );
     let report = parse_declaration_list_text("inset:var(--i)");
     assert!(matches!(
-        CssSpecifiedDeclarationBlock::try_from_declarations(report.syntax())
+        CssSpecifiedDeclarationBlock::try_from_declarations(report.syntax(), Default::default())
             .unwrap_err()
             .kind(),
         CssDeclarationBlockErrorKind::PendingFootprintUndetermined { .. }
@@ -161,63 +182,80 @@ fn empty_live_nested_declarations_are_retained_and_filtered_from_style_and_media
     let [CssRule::Style(style), CssRule::Media(media)] = report.syntax().rules() else {
         panic!("rules");
     };
-    let leading =
-        CssSpecifiedDeclarationBlock::try_from_declarations(style.declarations()).unwrap();
-    let empty = CssSpecifiedDeclarationBlock::try_from_entries(&[]).unwrap();
-    let empty_child = CssEditedRuleView::try_nested_declarations(&empty).unwrap();
-    assert_eq!(empty_child.serialize_cssom().unwrap(), "");
+    let leading = CssSpecifiedDeclarationBlock::try_from_declarations(
+        style.declarations(),
+        Default::default(),
+    )
+    .unwrap();
+    let empty = CssSpecifiedDeclarationBlock::try_from_entries(&[], Default::default()).unwrap();
+    let empty_child =
+        CssEditedRuleView::try_nested_declarations(&empty, Default::default()).unwrap();
+    assert_eq!(empty_child.serialize_cssom(Default::default()).unwrap(), "");
     let child = CssEditedRuleView::from_rule(&style.rules()[0]);
     assert!(std::ptr::eq(
         child.parsed_rule().unwrap(),
         &style.rules()[0]
     ));
     let children = [empty_child, child, empty_child];
-    let edited = CssEditedRuleView::try_style(style.selectors(), &leading, &children).unwrap();
+    let edited =
+        CssEditedRuleView::try_style(style.selectors(), &leading, &children, Default::default())
+            .unwrap();
     assert!(edited.parsed_rule().is_none());
     assert_eq!(
-        edited.serialize_cssom().unwrap(),
+        edited.serialize_cssom(Default::default()).unwrap(),
         ".host {\n  color: red;\n  & > .child { opacity: 0.5; }\n}"
     );
     let children = [empty_child, edited, empty_child];
-    let group =
-        CssEditedRuleView::try_group(CssEditedGroupPreludeRef::Media(media.query()), &children)
-            .unwrap();
+    let group = CssEditedRuleView::try_group(
+        CssEditedGroupPreludeRef::Media(media.query()),
+        &children,
+        Default::default(),
+    )
+    .unwrap();
     assert_eq!(
-        group.serialize_cssom().unwrap(),
+        group.serialize_cssom(Default::default()).unwrap(),
         "@media screen {\n  .host {\n  color: red;\n  & > .child { opacity: 0.5; }\n}\n}"
     );
     let only_empty = [empty_child];
     assert_eq!(
-        CssEditedRuleView::try_style(style.selectors(), &empty, &only_empty)
+        CssEditedRuleView::try_style(style.selectors(), &empty, &only_empty, Default::default())
             .unwrap()
-            .serialize_cssom()
+            .serialize_cssom(Default::default())
             .unwrap(),
         ".host {\n}"
     );
     assert_eq!(
-        CssEditedRuleView::try_group(CssEditedGroupPreludeRef::Media(media.query()), &only_empty)
-            .unwrap()
-            .serialize_cssom()
-            .unwrap(),
+        CssEditedRuleView::try_group(
+            CssEditedGroupPreludeRef::Media(media.query()),
+            &only_empty,
+            Default::default()
+        )
+        .unwrap()
+        .serialize_cssom(Default::default())
+        .unwrap(),
         "@media screen {\n\n}"
     );
     assert_eq!(
-        CssEditedRuleView::try_style(style.selectors(), &empty, &only_empty)
+        CssEditedRuleView::try_style(style.selectors(), &empty, &only_empty, Default::default())
             .unwrap()
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .unwrap(),
         ".host { }"
     );
     assert_eq!(
-        CssEditedRuleView::try_group(CssEditedGroupPreludeRef::Media(media.query()), &only_empty)
-            .unwrap()
-            .to_specified_css()
-            .unwrap(),
+        CssEditedRuleView::try_group(
+            CssEditedGroupPreludeRef::Media(media.query()),
+            &only_empty,
+            Default::default()
+        )
+        .unwrap()
+        .serialize_specified(Default::default())
+        .unwrap(),
         "@media screen { }"
     );
     assert!(
         style.rules()[0]
-            .serialize_cssom()
+            .serialize_cssom(Default::default())
             .unwrap()
             .contains("opacity: 0.5")
     );
@@ -227,21 +265,17 @@ fn empty_live_nested_declarations_are_retained_and_filtered_from_style_and_media
 fn selection_and_edited_graph_limits_are_cumulative_and_retry_preserves_sources() {
     use surgeist_css::{
         CssDeclarationBlockErrorKind, CssEditedGroupPreludeRef, CssEditedRuleView, CssRule,
-        CssRuleCssomSerializationErrorKind, CssSpecifiedValueSerializationErrorKind as Kind,
-        CssSpecifiedValueSerializationLimits as Limits, parse_sheet,
+        CssRuleCssomSerializationErrorKind, CssSerializationLimits as Limits,
+        CssSpecifiedValueSerializationErrorKind as Kind, parse_sheet,
     };
     let input = block("margin-left:1px; padding-left:2px");
     // Input aggregate + each occurrence/name/component aggregate/dimension = 9.
-    let exact = CssSpecifiedDeclarationBlock::try_from_entries_with_limits(
-        input.entries(),
-        Limits::new(9, 100, 0),
-    )
-    .unwrap();
-    let failure = CssSpecifiedDeclarationBlock::try_from_entries_with_limits(
-        input.entries(),
-        Limits::new(8, 100, 0),
-    )
-    .unwrap_err();
+    let exact =
+        CssSpecifiedDeclarationBlock::try_from_entries(input.entries(), Limits::new(9, 100, 0))
+            .unwrap();
+    let failure =
+        CssSpecifiedDeclarationBlock::try_from_entries(input.entries(), Limits::new(8, 100, 0))
+            .unwrap_err();
     assert!(
         matches!(failure.kind(), CssDeclarationBlockErrorKind::Serialization(error) if error.kind()==Kind::InputNodeLimit)
     );
@@ -252,32 +286,32 @@ fn selection_and_edited_graph_limits_are_cumulative_and_retry_preserves_sources(
             .unwrap()
             .same_occurrence(input.entries()[1].source())
     );
-    let projection_failure = CssSpecifiedDeclarationBlock::try_from_entries_with_limits(
-        input.entries(),
-        Limits::new(100, 2, 0),
-    )
-    .unwrap_err();
+    let projection_failure =
+        CssSpecifiedDeclarationBlock::try_from_entries(input.entries(), Limits::new(100, 2, 0))
+            .unwrap_err();
     assert!(
         matches!(projection_failure.kind(), CssDeclarationBlockErrorKind::Serialization(error) if error.kind()==Kind::ProjectionNodeLimit)
     );
     assert_eq!(
-        exact.serialize_cssom().unwrap(),
+        exact.serialize_cssom(Default::default()).unwrap(),
         "margin-left: 1px; padding-left: 2px;"
     );
     let report = parse_sheet("@media screen { .a {} }");
     let [CssRule::Media(media)] = report.syntax().rules() else {
         panic!("media");
     };
-    let empty = CssSpecifiedDeclarationBlock::try_from_entries(&[]).unwrap();
-    let empty_child = CssEditedRuleView::try_nested_declarations(&empty).unwrap();
+    let empty = CssSpecifiedDeclarationBlock::try_from_entries(&[], Default::default()).unwrap();
+    let empty_child =
+        CssEditedRuleView::try_nested_declarations(&empty, Default::default()).unwrap();
     let parsed = CssEditedRuleView::from_rule(&media.rules()[0]);
     let children = [empty_child, parsed, empty_child];
-    let group =
-        CssEditedRuleView::try_group(CssEditedGroupPreludeRef::Media(media.query()), &children)
-            .unwrap();
-    let skipped_failure = group
-        .serialize_cssom_with_limits(Limits::new(5, 100, 100))
-        .unwrap_err();
+    let group = CssEditedRuleView::try_group(
+        CssEditedGroupPreludeRef::Media(media.query()),
+        &children,
+        Default::default(),
+    )
+    .unwrap();
+    let skipped_failure = group.serialize_cssom(Limits::new(5, 100, 100)).unwrap_err();
     assert_eq!(
         skipped_failure.kind(),
         CssRuleCssomSerializationErrorKind::Resource(Kind::InputNodeLimit)
@@ -286,20 +320,20 @@ fn selection_and_edited_graph_limits_are_cumulative_and_retry_preserves_sources(
     let expected = "@media screen {\n  .a { }\n}";
     assert_eq!(
         group
-            .serialize_cssom_with_limits(Limits::new(100, 100, expected.len()))
+            .serialize_cssom(Limits::new(100, 100, expected.len()))
             .unwrap(),
         expected
     );
     let failure = group
-        .serialize_cssom_with_limits(Limits::new(100, 100, expected.len() - 1))
+        .serialize_cssom(Limits::new(100, 100, expected.len() - 1))
         .unwrap_err();
     assert_eq!(
         failure.kind(),
         CssRuleCssomSerializationErrorKind::Resource(Kind::ByteLimit)
     );
-    assert_eq!(group.serialize_cssom().unwrap(), expected);
+    assert_eq!(group.serialize_cssom(Default::default()).unwrap(), expected);
     assert_eq!(
-        CssEditedRuleView::try_group_with_limits(
+        CssEditedRuleView::try_group(
             CssEditedGroupPreludeRef::Media(media.query()),
             &children,
             Limits::new(1, 100, 100)
@@ -313,8 +347,8 @@ fn selection_and_edited_graph_limits_are_cumulative_and_retry_preserves_sources(
 #[test]
 fn getters_reject_incomplete_mixed_reset_and_incompatible_pending_members() {
     use surgeist_css::{
-        CssDeclarationBlockErrorKind, CssSpecifiedValueSerializationErrorKind as Kind,
-        CssSpecifiedValueSerializationLimits as Limits,
+        CssDeclarationBlockErrorKind, CssSerializationLimits as Limits,
+        CssSpecifiedValueSerializationErrorKind as Kind,
     };
     let name = CssPropertyNameRef::Known(CssKnownProperty::Margin);
     for source in [
@@ -330,7 +364,7 @@ fn getters_reject_incomplete_mixed_reset_and_incompatible_pending_members() {
         };
         assert_eq!(
             input
-                .property_value(CssPropertyNameRef::Known(property))
+                .property_value(CssPropertyNameRef::Known(property), Default::default())
                 .unwrap(),
             None
         );
@@ -340,9 +374,12 @@ fn getters_reject_incomplete_mixed_reset_and_incompatible_pending_members() {
     let mut selected = first.entries().to_vec();
     selected[1] = second.entries()[1].clone();
     assert_eq!(
-        CssSpecifiedDeclarationBlock::try_from_entries(&selected)
+        CssSpecifiedDeclarationBlock::try_from_entries(&selected, Default::default())
             .unwrap()
-            .property_value(CssPropertyNameRef::Known(CssKnownProperty::MarginInline))
+            .property_value(
+                CssPropertyNameRef::Known(CssKnownProperty::MarginInline),
+                Default::default()
+            )
             .unwrap(),
         None
     );
@@ -350,16 +387,16 @@ fn getters_reject_incomplete_mixed_reset_and_incompatible_pending_members() {
         "margin-top:1px; margin-inline-start:7px; margin-right:2px; margin-bottom:3px; margin-left:4px",
     );
     assert!(
-        matches!(input.property_value_with_limits(name, Limits::new(100, 1, 100)).unwrap_err().kind(), CssDeclarationBlockErrorKind::Serialization(error) if error.kind()==Kind::ProjectionNodeLimit)
+        matches!(input.property_value(name, Limits::new(100, 1, 100)).unwrap_err().kind(), CssDeclarationBlockErrorKind::Serialization(error) if error.kind()==Kind::ProjectionNodeLimit)
     );
     assert_eq!(
         input
-            .property_value_with_limits(name, Limits::new(10000, 10000, 15))
+            .property_value(name, Limits::new(10000, 10000, 15))
             .unwrap(),
         Some("1px 2px 3px 4px".into())
     );
     assert!(
-        matches!(input.property_value_with_limits(name, Limits::new(10000, 10000, 14)).unwrap_err().kind(), CssDeclarationBlockErrorKind::Serialization(error) if error.kind()==Kind::ByteLimit)
+        matches!(input.property_value(name, Limits::new(10000, 10000, 14)).unwrap_err().kind(), CssDeclarationBlockErrorKind::Serialization(error) if error.kind()==Kind::ByteLimit)
     );
 }
 
@@ -370,15 +407,21 @@ fn selected_keyframe_domain_rejects_priority_and_animation_terminals() {
         CssInvalidKeyframeSourceReason,
     };
     let ordinary = block("opacity:0.5");
-    let keyframe =
-        CssSpecifiedDeclarationBlock::try_from_keyframe_entries(ordinary.entries()).unwrap();
+    let keyframe = CssSpecifiedDeclarationBlock::try_from_keyframe_entries(
+        ordinary.entries(),
+        Default::default(),
+    )
+    .unwrap();
     assert!(keyframe.is_keyframe());
     assert!(!ordinary.is_keyframe());
-    assert_eq!(keyframe.serialize_cssom().unwrap(), "opacity: 0.5;");
-    assert!(CssEditedRuleView::try_nested_declarations(&keyframe).is_err());
+    assert_eq!(
+        keyframe.serialize_cssom(Default::default()).unwrap(),
+        "opacity: 0.5;"
+    );
+    assert!(CssEditedRuleView::try_nested_declarations(&keyframe, Default::default()).is_err());
     let entries = [ordinary.entries()[0].with_importance(CssImportance::Important)];
     assert!(matches!(
-        CssSpecifiedDeclarationBlock::try_from_keyframe_entries(&entries)
+        CssSpecifiedDeclarationBlock::try_from_keyframe_entries(&entries, Default::default())
             .unwrap_err()
             .kind(),
         CssDeclarationBlockErrorKind::InvalidKeyframeSource {
@@ -387,9 +430,12 @@ fn selected_keyframe_domain_rejects_priority_and_animation_terminals() {
     ));
     let animation = block("animation-name:a");
     assert!(matches!(
-        CssSpecifiedDeclarationBlock::try_from_keyframe_entries(animation.entries())
-            .unwrap_err()
-            .kind(),
+        CssSpecifiedDeclarationBlock::try_from_keyframe_entries(
+            animation.entries(),
+            Default::default()
+        )
+        .unwrap_err()
+        .kind(),
         CssDeclarationBlockErrorKind::InvalidKeyframeSource {
             reason: CssInvalidKeyframeSourceReason::Property
         }
@@ -411,11 +457,16 @@ fn selected_completed_replacements_and_programmatic_sources_keep_their_own_paylo
             .reenter(parse_component_values("9px 10px").unwrap())
             .unwrap(),
     );
-    let projected = CssSpecifiedDeclarationBlock::try_from_expansions(&[expansion]).unwrap();
-    let survivor =
-        CssSpecifiedDeclarationBlock::try_from_entries(&projected.entries()[1..]).unwrap();
+    let projected =
+        CssSpecifiedDeclarationBlock::try_from_expansions(&[expansion], Default::default())
+            .unwrap();
+    let survivor = CssSpecifiedDeclarationBlock::try_from_entries(
+        &projected.entries()[1..],
+        Default::default(),
+    )
+    .unwrap();
     assert_eq!(
-        survivor.serialize_cssom().unwrap(),
+        survivor.serialize_cssom(Default::default()).unwrap(),
         "padding-inline-end: 10px;"
     );
     assert!(
@@ -425,25 +476,38 @@ fn selected_completed_replacements_and_programmatic_sources_keep_their_own_paylo
     );
     let supplied = parse_property_value(
         CssPropertyNameRef::Known(CssKnownProperty::Color),
-        CssComponentValues::try_new(vec![CssComponentValue::try_ident("red").unwrap()]).unwrap(),
+        CssComponentValues::try_new(
+            vec![CssComponentValue::try_ident("red").unwrap()],
+            Default::default(),
+        )
+        .unwrap(),
         CssImportance::Normal,
     )
     .unwrap();
     assert_eq!(supplied.position(), None);
     assert!(supplied.parsed_value().is_none());
     let programmatic = CssSpecifiedDeclarationBlock::try_from_declarations(
-        &CssDeclarationList::try_new(vec![supplied.clone()]).unwrap(),
+        &CssDeclarationList::try_new(vec![supplied.clone()], Default::default()).unwrap(),
+        Default::default(),
     )
     .unwrap();
-    let selected = CssSpecifiedDeclarationBlock::try_from_entries(programmatic.entries()).unwrap();
-    assert_eq!(selected.serialize_cssom().unwrap(), "color: red;");
+    let selected =
+        CssSpecifiedDeclarationBlock::try_from_entries(programmatic.entries(), Default::default())
+            .unwrap();
+    assert_eq!(
+        selected.serialize_cssom(Default::default()).unwrap(),
+        "color: red;"
+    );
     assert!(selected.entries()[0].source().same_occurrence(&supplied));
     assert!(selected.entries()[0].source().position().is_none());
-    let empty = CssSpecifiedDeclarationBlock::try_from_entries(&[]).unwrap();
-    assert_eq!(empty.serialize_cssom().unwrap(), "");
+    let empty = CssSpecifiedDeclarationBlock::try_from_entries(&[], Default::default()).unwrap();
+    assert_eq!(empty.serialize_cssom(Default::default()).unwrap(), "");
     assert_eq!(
         empty
-            .property_value(CssPropertyNameRef::Known(CssKnownProperty::Margin))
+            .property_value(
+                CssPropertyNameRef::Known(CssKnownProperty::Margin),
+                Default::default()
+            )
             .unwrap(),
         None
     );
@@ -466,13 +530,20 @@ fn edited_group_views_reuse_preludes_and_retain_typed_literal_unavailability() {
     else {
         panic!("groups");
     };
-    let supports_view = View::try_group(Prelude::Supports(supports.condition()), &[]).unwrap();
+    let supports_view = View::try_group(
+        Prelude::Supports(supports.condition()),
+        &[],
+        Default::default(),
+    )
+    .unwrap();
     assert_eq!(
-        supports_view.to_specified_css().unwrap(),
+        supports_view
+            .serialize_specified(Default::default())
+            .unwrap(),
         "@supports (display:grid) { }"
     );
     assert_eq!(
-        supports_view.serialize_cssom().unwrap(),
+        supports_view.serialize_cssom(Default::default()).unwrap(),
         "@supports (display:grid) {\n}"
     );
     for (prelude, expected, format) in [
@@ -487,13 +558,19 @@ fn edited_group_views_reuse_preludes_and_retain_typed_literal_unavailability() {
             CssRuleCssomFormat::LayerBlock,
         ),
     ] {
-        let view = View::try_group(prelude, &[]).unwrap();
-        assert_eq!(view.to_specified_css().unwrap(), expected);
+        let view = View::try_group(prelude, &[], Default::default()).unwrap();
         assert_eq!(
-            view.serialize_cssom().unwrap_err().kind(),
+            view.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
+        assert_eq!(
+            view.serialize_cssom(Default::default()).unwrap_err().kind(),
             ErrorKind::FormatUnavailable(format)
         );
-        assert_eq!(view.to_specified_css().unwrap(), expected);
+        assert_eq!(
+            view.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
 }
 
@@ -504,14 +581,18 @@ fn edited_style_accepts_detached_checked_selector_list_without_rebuilding_a_rule
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let selectors = report.syntax().as_ref().unwrap();
     let original = block("margin:1px 2px 3px 4px");
-    let edited = CssSpecifiedDeclarationBlock::try_from_entries(&original.entries()[1..]).unwrap();
-    let view = CssEditedRuleView::try_style(selectors, &edited, &[]).unwrap();
+    let edited = CssSpecifiedDeclarationBlock::try_from_entries(
+        &original.entries()[1..],
+        Default::default(),
+    )
+    .unwrap();
+    let view = CssEditedRuleView::try_style(selectors, &edited, &[], Default::default()).unwrap();
     assert_eq!(
-        view.serialize_cssom().unwrap(),
+        view.serialize_cssom(Default::default()).unwrap(),
         ".edited, #next::before { margin-right: 2px; margin-bottom: 3px; margin-left: 4px; }"
     );
     assert!(view.parsed_rule().is_none());
-    assert!(view.serialize_cssom().is_ok());
+    assert!(view.serialize_cssom(Default::default()).is_ok());
 }
 
 #[test]
@@ -522,13 +603,18 @@ fn selected_page_supported_property_terminals_keep_page_sources_and_survivors() 
     let [CssRule::Page(page)] = report.syntax().rules() else {
         panic!("Page");
     };
-    let original =
-        CssSpecifiedDeclarationBlock::try_from_declarations(page.declarations().properties())
-            .unwrap();
-    let selected =
-        CssSpecifiedDeclarationBlock::try_from_page_entries(&original.entries()[1..]).unwrap();
+    let original = CssSpecifiedDeclarationBlock::try_from_declarations(
+        page.declarations().properties(),
+        Default::default(),
+    )
+    .unwrap();
+    let selected = CssSpecifiedDeclarationBlock::try_from_page_entries(
+        &original.entries()[1..],
+        Default::default(),
+    )
+    .unwrap();
     assert_eq!(
-        selected.serialize_cssom().unwrap(),
+        selected.serialize_cssom(Default::default()).unwrap(),
         "margin-right: 2px; margin-bottom: 3px; margin-left: 4px; --note: paper;"
     );
     assert!(
@@ -538,7 +624,10 @@ fn selected_page_supported_property_terminals_keep_page_sources_and_survivors() 
     );
     assert_eq!(
         selected
-            .property_value(CssPropertyNameRef::Known(CssKnownProperty::MarginTop))
+            .property_value(
+                CssPropertyNameRef::Known(CssKnownProperty::MarginTop),
+                Default::default()
+            )
             .unwrap(),
         None
     );
@@ -556,14 +645,18 @@ fn edited_scoped_styles_borrow_scope_context_and_preserve_scoped_descendant_orig
     let [CssScopedRule::Style(style)] = scope.rules().rules() else {
         panic!("scoped style");
     };
-    let leading =
-        CssSpecifiedDeclarationBlock::try_from_declarations(style.declarations()).unwrap();
-    let empty = CssSpecifiedDeclarationBlock::try_from_entries(&[]).unwrap();
-    let empty_child = View::try_nested_declarations(&empty).unwrap();
+    let leading = CssSpecifiedDeclarationBlock::try_from_declarations(
+        style.declarations(),
+        Default::default(),
+    )
+    .unwrap();
+    let empty = CssSpecifiedDeclarationBlock::try_from_entries(&[], Default::default()).unwrap();
+    let empty_child = View::try_nested_declarations(&empty, Default::default()).unwrap();
     let children = [empty_child, View::from_rule(&style.rules()[0]), empty_child];
-    let edited = View::try_scoped_style(style.selectors(), &leading, &children).unwrap();
+    let edited =
+        View::try_scoped_style(style.selectors(), &leading, &children, Default::default()).unwrap();
     assert_eq!(
-        edited.serialize_cssom().unwrap(),
+        edited.serialize_cssom(Default::default()).unwrap(),
         "& .child {\n  color: red;\n  & > .nested { opacity: 0.5; }\n}"
     );
     assert!(edited.parsed_scoped_rule().is_none());
@@ -573,8 +666,8 @@ fn edited_scoped_styles_borrow_scope_context_and_preserve_scoped_descendant_orig
         &scope.rules().rules()[0]
     ));
     assert_eq!(
-        borrowed.serialize_cssom().unwrap(),
-        edited.serialize_cssom().unwrap()
+        borrowed.serialize_cssom(Default::default()).unwrap(),
+        edited.serialize_cssom(Default::default()).unwrap()
     );
     assert!(borrowed.parsed_rule().is_none());
 }

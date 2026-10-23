@@ -29,7 +29,7 @@ fn assert_pattern(argument: &str, expected: (i32, i32), canonical: &str) {
     let selector = parsed(&source);
     assert_eq!(coefficients(pattern(&selector)), expected, "{source}");
     let before = selector.clone();
-    let output = selector.to_specified_css().unwrap();
+    let output = selector.serialize_specified(Default::default()).unwrap();
     assert_eq!(output, format!(":nth-child({canonical})"), "{source}");
     assert_eq!(
         selector, before,
@@ -230,7 +230,7 @@ fn typed_coefficients_cover_every_canonical_output_branch_and_i32_endpoint() {
             CssNthAnPlusB::new(a, b),
         )));
         let before = selector.clone();
-        let output = selector.to_specified_css().unwrap();
+        let output = selector.serialize_specified(Default::default()).unwrap();
         assert_eq!(output, format!(":nth-of-type({canonical})"));
         assert_eq!(selector, before);
         assert_eq!(coefficients(pattern(&parsed(&output))), (a, b));
@@ -334,7 +334,7 @@ fn all_nth_wrappers_keep_coefficients_and_only_child_wrappers_admit_of_lists() {
         let selector = parsed(&format!(":{name}(-2n + 3)"));
         assert_eq!(coefficients(pattern(&selector)), (-2, 3));
         assert_eq!(
-            selector.to_specified_css().unwrap(),
+            selector.serialize_specified(Default::default()).unwrap(),
             format!(":{name}(-2n+3)")
         );
     }
@@ -358,7 +358,7 @@ fn all_nth_wrappers_keep_coefficients_and_only_child_wrappers_admit_of_lists() {
         assert_eq!(first, &CssSelector::Class("a".into()));
         assert_eq!(second, &CssSelector::Key("b".into()));
         assert_eq!(
-            selector.to_specified_css().unwrap(),
+            selector.serialize_specified(Default::default()).unwrap(),
             format!(":{name}(2n+1 of .a, #b)")
         );
     }
@@ -383,6 +383,9 @@ fn invalid_nth_outer_rule_drops_locally_and_preserves_a_later_sibling() {
         let [CssStyleSelector::Selector(selector)] = rule.selectors().selectors() else {
             panic!("one retained later selector");
         };
-        assert_eq!(selector.to_specified_css().unwrap(), ".after");
+        assert_eq!(
+            selector.serialize_specified(Default::default()).unwrap(),
+            ".after"
+        );
     }
 }

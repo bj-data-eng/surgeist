@@ -122,7 +122,13 @@ fn checked_context_retains_property_quirks_and_page_restrictions() {
     else {
         panic!("typed width");
     };
-    assert_eq!(value.value().serialize_specified().unwrap(), "7px");
+    assert_eq!(
+        value
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "7px"
+    );
     assert_eq!(width.parser_context(), context);
     assert!(
         context
@@ -202,8 +208,11 @@ fn checked_error_summaries_keep_programmatic_and_escaped_mixed_origins() {
     ] {
         let origin = component.origin().clone();
         let unrelated = parse_component_values("/*different snapshot*/").unwrap();
-        let values =
-            CssComponentValues::try_new(vec![unrelated.items()[0].clone(), component]).unwrap();
+        let values = CssComponentValues::try_new(
+            vec![unrelated.items()[0].clone(), component],
+            Default::default(),
+        )
+        .unwrap();
         drop(unrelated);
         let error = parse_property_value(
             CssPropertyNameRef::Known(CssKnownProperty::Width),
@@ -236,9 +245,11 @@ fn trivia_does_not_replace_the_responsible_token_in_checked_errors() {
     let comment = parse_component_values("/*different snapshot*/").unwrap();
     let number = parse_component_values(spelling).unwrap();
     let expected = number.items()[0].origin().clone();
-    let values =
-        CssComponentValues::try_new(vec![comment.items()[0].clone(), number.items()[0].clone()])
-            .unwrap();
+    let values = CssComponentValues::try_new(
+        vec![comment.items()[0].clone(), number.items()[0].clone()],
+        Default::default(),
+    )
+    .unwrap();
     drop(comment);
     drop(number);
     let error = parse_property_value(
@@ -350,10 +361,10 @@ fn separately_owned_tokens_keep_their_lexical_boundaries_and_original_snapshots(
             let second = parse_component_values(second).unwrap();
             let first_origin = first.items()[0].origin().clone();
             (
-                CssComponentValues::try_new(vec![
-                    first.items()[0].clone(),
-                    second.items()[0].clone(),
-                ])
+                CssComponentValues::try_new(
+                    vec![first.items()[0].clone(), second.items()[0].clone()],
+                    Default::default(),
+                )
                 .unwrap(),
                 first_origin,
             )
@@ -374,8 +385,11 @@ fn separately_owned_tokens_keep_their_lexical_boundaries_and_original_snapshots(
     let values = {
         let left = parse_component_values("1px").unwrap();
         let right = parse_component_values("2px").unwrap();
-        CssComponentValues::try_new(vec![left.items()[0].clone(), right.items()[0].clone()])
-            .unwrap()
+        CssComponentValues::try_new(
+            vec![left.items()[0].clone(), right.items()[0].clone()],
+            Default::default(),
+        )
+        .unwrap()
     };
     let before = values.clone();
     let declaration = parse_property_value(
@@ -399,7 +413,10 @@ fn separately_owned_tokens_keep_their_lexical_boundaries_and_original_snapshots(
         let CssMarginValue::LengthPercentage(actual) = actual else {
             panic!("explicit length margin");
         };
-        assert_eq!(actual.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            actual.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
     assert_eq!(declaration.importance(), CssImportance::Important);
     assert!(declaration.parsed_value().is_none());

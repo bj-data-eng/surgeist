@@ -54,7 +54,7 @@ pub(crate) fn construct_import(
     {
         return Err(import_construction_grammar(value.origin()));
     }
-    let serialized = values.serialize_with_limit(limits.max_css_bytes())?;
+    let serialized = values.serialize_tokens(limits)?;
     let selected = classify_constructed_import(&values, &serialized, context)?;
     let target_component = &items[selected.target_index];
     let layer_component = selected.layer_index.map(|index| items[index].clone());
@@ -66,8 +66,7 @@ pub(crate) fn construct_import(
         let body = function.values().clone();
         let condition = match selected.supports_form {
             SupportsAuthoredForm::BareDeclaration => {
-                let declaration =
-                    CssSupportsDeclaration::try_from_components_with_limits(body, limits)?;
+                let declaration = CssSupportsDeclaration::try_from_components(body, limits)?;
                 let lexical = declaration.lexical().clone();
                 CssSupportsCondition::new(
                     CssSupportsConditionKind::Declaration(Box::new(declaration)),
@@ -93,7 +92,7 @@ pub(crate) fn construct_import(
                 )
             }
             SupportsAuthoredForm::Condition => {
-                CssSupportsCondition::try_from_components_with_limits(body, context, limits)?
+                CssSupportsCondition::try_from_components(body, context, limits)?
             }
         };
         Some(CssImportSupports::new(condition))
@@ -120,7 +119,7 @@ pub(crate) fn construct_import(
             },
         },
     );
-    rule.serialize_with_limit(limits.max_css_bytes())?;
+    rule.serialize_tokens(limits)?;
     Ok(rule)
 }
 fn import_construction_grammar(
@@ -266,10 +265,8 @@ fn construct_import_media(
         if let Some(error) = crate::media::empty_media_member_error(items, start, end) {
             return Err(error.into());
         }
-        let values = crate::CssComponentValues::try_new_with_limits(member.to_vec(), limits)?;
-        queries.push(CssMediaQuery::try_from_components_with_limits(
-            values, limits,
-        )?);
+        let values = crate::CssComponentValues::try_new(member.to_vec(), limits)?;
+        queries.push(CssMediaQuery::try_from_components(values, limits)?);
         if let Some(comma) = items.get(end) {
             commas.push(comma.origin().clone());
         }
@@ -474,7 +471,7 @@ pub(crate) fn import_boundaries_match(
     serialized: &crate::CssSerializedValue,
     expected: [Option<usize>; 2],
     original_origin: &crate::CssValueOrigin,
-) -> Result<bool, crate::CssImportSerializationError> {
+) -> Result<bool, crate::imports::ImportSerializationFailure> {
     let source = serialized.as_css();
     let recovery = RecoveryState::at_depth(source, 0, StyleContextCaptures::default());
     let working_source = crate::tokenization::prepare(source);
@@ -516,10 +513,10 @@ pub(crate) fn import_boundaries_match(
             _ => None,
         };
         match kind {
-            Some(kind) => crate::CssImportSerializationError::Component(
+            Some(kind) => crate::imports::ImportSerializationFailure::Component(
                 crate::CssComponentValueError::new(kind, origin),
             ),
-            None => crate::CssImportSerializationError::InterpretationChanged { origin },
+            None => crate::imports::ImportSerializationFailure::InterpretationChanged { origin },
         }
     })
 }

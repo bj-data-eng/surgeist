@@ -3,9 +3,7 @@
 
 use crate::css::support::property_admission::assert_checked_closure_rejected;
 use crate::css::support::sole_declaration;
-use surgeist_css::{
-    CssSpecifiedValueSerializationErrorKind as K, CssSpecifiedValueSerializationLimits as L, *,
-};
+use surgeist_css::{CssSerializationLimits as L, CssSpecifiedValueSerializationErrorKind as K, *};
 
 fn name(value: &str) -> CssContentName {
     CssContentName::try_new(CssIdent::try_new(value).unwrap()).unwrap()
@@ -18,7 +16,11 @@ fn declaration(property: &str, value: &str) -> CssDeclaration {
 }
 fn calculation(value: &str) -> CssPositiveIntegerValue {
     CssPositiveIntegerValue::Calculation(
-        CssIntegerCalculation::try_from_components(parse_component_values(value).unwrap()).unwrap(),
+        CssIntegerCalculation::try_from_components(
+            parse_component_values(value).unwrap(),
+            Default::default(),
+        )
+        .unwrap(),
     )
 }
 
@@ -36,11 +38,16 @@ fn string_set_checks_both_nonempty_boundaries_and_preserves_duplicate_names() {
     assert_eq!(entries[0].strings()[0].as_str(), "");
     assert_eq!(entries[0].strings()[1].as_str(), "A");
     assert_eq!(
-        value.serialize_specified().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         "none \"\" \"A\", none \"B\""
     );
     assert!(CssStringSet::none().entries().is_none());
-    assert_eq!(CssStringSet::none().serialize_specified().unwrap(), "none");
+    assert_eq!(
+        CssStringSet::none()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "none"
+    );
 }
 
 #[test]
@@ -65,7 +72,10 @@ fn string_set_uses_generic_names_and_escaped_separate_string_leaves() {
         ["a\"b", ""]
     );
     assert_eq!(
-        wrapper.value().serialize_specified().unwrap(),
+        wrapper
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
         r#"Chapter\ name "a\"b" """#
     );
     assert!(source.position().is_some());
@@ -84,7 +94,7 @@ fn string_set_direct_writer_charges_all_assignments_and_recovers_after_failure()
     // One outer list + two entries + two names + three strings = eight nodes.
     assert_eq!(
         value
-            .serialize_specified_with_limits(L::new(8, 8, expected.len()))
+            .serialize_specified(L::new(8, 8, expected.len()))
             .unwrap(),
         expected
     );
@@ -93,15 +103,12 @@ fn string_set_direct_writer_charges_all_assignments_and_recovers_after_failure()
         (L::new(8, 7, expected.len()), K::ProjectionNodeLimit),
         (L::new(8, 8, expected.len() - 1), K::ByteLimit),
     ] {
-        assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            kind
-        );
+        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
         assert_eq!(value, before);
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
 }
 
@@ -118,7 +125,10 @@ fn bookmark_level_constructor_rejects_nonpositive_bare_calculation_tokens() {
         panic!("bare positive calculation normalizes to literal")
     };
     assert_eq!(literal.integer().numeric().representation(), "+001");
-    assert_eq!(positive.serialize_specified().unwrap(), "1");
+    assert_eq!(
+        positive.serialize_specified(Default::default()).unwrap(),
+        "1"
+    );
     for deferred in ["calc(-1)", "calc(0)", "min(-1, 0)"] {
         let level = CssBookmarkLevel::try_new(calculation(deferred)).unwrap();
         assert!(matches!(
@@ -128,7 +138,9 @@ fn bookmark_level_constructor_rejects_nonpositive_bare_calculation_tokens() {
     }
     assert!(CssBookmarkLevel::none().level().is_none());
     assert_eq!(
-        CssBookmarkLevel::none().serialize_specified().unwrap(),
+        CssBookmarkLevel::none()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "none"
     );
 }
@@ -161,13 +173,13 @@ fn bookmark_level_retains_exact_large_integer_and_parsed_numeric_origin() {
     );
     assert_eq!(
         copied
-            .serialize_specified_with_limits(L::new(1, 1, digits.len()))
+            .serialize_specified(L::new(1, 1, digits.len()))
             .unwrap(),
         digits
     );
     assert_eq!(
         copied
-            .serialize_specified_with_limits(L::new(0, 1, digits.len()))
+            .serialize_specified(L::new(0, 1, digits.len()))
             .unwrap_err()
             .kind(),
         K::InputNodeLimit
@@ -188,7 +200,10 @@ fn full_content_list_checks_empty_and_keeps_sole_label_image_as_list() {
     };
     let list = CssContentList::try_new(vec![CssContentValueItem::Image(image.clone())]).unwrap();
     assert!(matches!(list.items(), [CssContentValueItem::Image(_)]));
-    assert_eq!(list.serialize_specified().unwrap(), "url(\"a.png\")");
+    assert_eq!(
+        list.serialize_specified(Default::default()).unwrap(),
+        "url(\"a.png\")"
+    );
     let generated = CssGeneratedContent::try_new(list.items().to_vec(), None).unwrap();
     assert!(matches!(
         generated.body(),
@@ -213,10 +228,13 @@ fn mixed_parsed_image_and_programmatic_content_children_share_list_and_writer() 
     let list = CssContentList::try_new(items).unwrap();
     assert_eq!(&list.items()[1..3], retained.as_slice());
     let expected = "\"programmatic\" url(\"a.png\") counter(Chapter) content(before)";
-    assert_eq!(list.serialize_specified().unwrap(), expected);
+    assert_eq!(
+        list.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     let reentered = declaration("bookmark-label", expected);
     assert_eq!(
-        reentered.to_specified_css().unwrap(),
+        reentered.serialize_specified(Default::default()).unwrap(),
         format!("bookmark-label: {expected};")
     );
 }
@@ -228,25 +246,27 @@ fn explicit_content_text_omission_keeps_work_tariff_and_argument_view() {
     ))])
     .unwrap();
     let implicit = CssContentList::try_new(vec![CssContentValueItem::Content(None)]).unwrap();
-    assert_eq!(explicit.serialize_specified().unwrap(), "content()");
-    assert_eq!(implicit.serialize_specified().unwrap(), "content()");
     assert_eq!(
-        explicit
-            .serialize_specified_with_limits(L::new(3, 3, 9))
-            .unwrap(),
+        explicit.serialize_specified(Default::default()).unwrap(),
+        "content()"
+    );
+    assert_eq!(
+        implicit.serialize_specified(Default::default()).unwrap(),
+        "content()"
+    );
+    assert_eq!(
+        explicit.serialize_specified(L::new(3, 3, 9)).unwrap(),
         "content()"
     );
     assert_eq!(
         explicit
-            .serialize_specified_with_limits(L::new(2, 3, 9))
+            .serialize_specified(L::new(2, 3, 9))
             .unwrap_err()
             .kind(),
         K::InputNodeLimit
     );
     assert_eq!(
-        implicit
-            .serialize_specified_with_limits(L::new(2, 2, 9))
-            .unwrap(),
+        implicit.serialize_specified(L::new(2, 2, 9)).unwrap(),
         "content()"
     );
     assert!(matches!(
@@ -272,12 +292,12 @@ fn explicit_counter_and_named_string_defaults_cost_nodes_even_when_suppressed() 
     let expected = "counter(Chapter) string(Title)";
     // List one; each function, name and explicit default one: total seven.
     assert_eq!(
-        list.serialize_specified_with_limits(L::new(7, 7, expected.len()))
+        list.serialize_specified(L::new(7, 7, expected.len()))
             .unwrap(),
         expected
     );
     assert_eq!(
-        list.serialize_specified_with_limits(L::new(7, 6, expected.len()))
+        list.serialize_specified(L::new(7, 6, expected.len()))
             .unwrap_err()
             .kind(),
         K::ProjectionNodeLimit
@@ -310,7 +330,10 @@ fn four_new_intrinsic_initial_views_retain_exact_payloads() {
                         CssContentReferenceMode::Text
                     ))]
                 ));
-                assert_eq!(value.serialize_specified().unwrap(), "content()");
+                assert_eq!(
+                    value.serialize_specified(Default::default()).unwrap(),
+                    "content()"
+                );
             }
             CssLonghandValueRef::BookmarkState(value) => assert_eq!(*value, CssBookmarkState::Open),
             _ => panic!("new initial payload"),
@@ -327,25 +350,28 @@ fn bookmark_state_direct_writer_has_only_keyword_tariff() {
     ] {
         assert_eq!(
             state
-                .serialize_specified_with_limits(L::new(1, 1, expected.len()))
+                .serialize_specified(L::new(1, 1, expected.len()))
                 .unwrap(),
             expected
         );
         assert_eq!(
             state
-                .serialize_specified_with_limits(L::new(1, 1, expected.len() - 1))
+                .serialize_specified(L::new(1, 1, expected.len() - 1))
                 .unwrap_err()
                 .kind(),
             K::ByteLimit
         );
         assert_eq!(
             state
-                .serialize_specified_with_limits(L::new(0, 1, expected.len()))
+                .serialize_specified(L::new(0, 1, expected.len()))
                 .unwrap_err()
                 .kind(),
             K::InputNodeLimit
         );
-        assert_eq!(state.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            state.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
 }
 
@@ -391,7 +417,7 @@ fn string_set_checked_front_preserves_mixed_component_origins_without_inventing_
     let parsed = parse_component_values("Chapter ").unwrap();
     let mut components = parsed.items().to_vec();
     components.push(CssComponentValue::try_string("programmatic").unwrap());
-    let mixed = CssComponentValues::try_new(components).unwrap();
+    let mixed = CssComponentValues::try_new(components, Default::default()).unwrap();
     assert!(matches!(
         mixed.items()[0].origin(),
         CssValueOrigin::Parsed(_)
@@ -420,7 +446,7 @@ fn string_set_checked_front_preserves_mixed_component_origins_without_inventing_
     assert_eq!(entry.name().as_str(), "Chapter");
     assert_eq!(entry.strings()[0].as_str(), "programmatic");
     assert_eq!(
-        checked.to_specified_css().unwrap(),
+        checked.serialize_specified(Default::default()).unwrap(),
         "string-set: Chapter \"programmatic\";"
     );
 }

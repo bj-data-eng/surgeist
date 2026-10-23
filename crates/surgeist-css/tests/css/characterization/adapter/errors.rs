@@ -52,8 +52,8 @@ fn sheet(source: &str) -> CssSheet {
     parse_sheet(source).syntax().clone()
 }
 
-fn zero() -> CssSpecifiedValueSerializationLimits {
-    CssSpecifiedValueSerializationLimits::new(0, 0, 0)
+fn zero() -> CssSerializationLimits {
+    CssSerializationLimits::new(0, 0, 0)
 }
 
 fn red() -> CssColor {
@@ -101,36 +101,37 @@ fn facts(case: &str, observation: &mut Observation) -> Vec<String> {
         "color-profile-value" => failed(CssColorProfileDescriptorValue::try_new(
             CssColorProfileDescriptorKind::RenderingIntent,
             values("banana"),
+            Default::default(),
         )),
         "color-scalar" => failed(CssColorMixPercentage::try_from_component(token("150%"))),
         "color-scheme-construction" => failed(CssColorScheme::try_new(vec![], false)),
         "component-value" => failed(CssIdent::try_new("")),
-        "container-construction" => failed(CssContainerCondition::try_from_components(values(
-            "width > ",
-        ))),
+        "container-construction" => failed(CssContainerCondition::try_from_components(
+            values("width > "),
+            Default::default(),
+        )),
         "counter-style-value" => failed(CssCounterStyleDescriptorValue::try_from_components(
             CssCounterStyleDescriptorKind::System,
             values("banana"),
+            Default::default(),
         )),
-        "custom-media-construction" => {
-            failed(CssCustomMediaRule::try_from_components(values("x (color)")))
-        }
+        "custom-media-construction" => failed(CssCustomMediaRule::try_from_components(
+            values("x (color)"),
+            Default::default(),
+        )),
         "custom-media-serialization" => {
             let sheet = sheet("@custom-media --x (color), ???, screen;");
             let [CssRule::CustomMedia(rule)] = sheet.rules() else {
                 panic!("one custom media rule")
             };
-            failed(rule.serialize())
+            failed(rule.serialize_tokens(Default::default()))
         }
         "declaration-block" => {
             let sheet = sheet("@keyframes k { from { opacity: 0 } }");
             let [CssRule::Keyframes(rule)] = sheet.rules() else {
                 panic!("one keyframes rule")
             };
-            let error = match rule.blocks()[0]
-                .declarations()
-                .serialize_cssom_with_limits(zero())
-            {
+            let error = match rule.blocks()[0].declarations().serialize_cssom(zero()) {
                 Ok(_) => return vec!["unexpected-ok".to_owned()],
                 Err(error) => error,
             };
@@ -162,20 +163,20 @@ fn facts(case: &str, observation: &mut Observation) -> Vec<String> {
                 .occurrences()
                 .cloned()
                 .collect::<Vec<_>>();
-            failed(
-                CssSpecifiedFontFaceDeclarationBlock::try_from_entries_with_limits(
-                    &entries,
-                    zero(),
-                ),
-            )
+            failed(CssSpecifiedFontFaceDeclarationBlock::try_from_entries(
+                &entries,
+                zero(),
+            ))
         }
         "font-face-value" => failed(CssAuthoredFontFaceDescriptorValue::try_from_components(
             CssFontFaceDescriptorKind::FontDisplay,
             values("never"),
+            Default::default(),
         )),
         "font-feature-value" => failed(CssFontFeatureValue::try_from_components(
             CssFontFeatureValueKind::Swash,
             values("1 2"),
+            Default::default(),
         )),
         "font-feature-values" => {
             let error = match CssFontFeatureValueIndex::try_from_decimal("-1") {
@@ -197,6 +198,7 @@ fn facts(case: &str, observation: &mut Observation) -> Vec<String> {
         "font-palette-value" => failed(CssFontPaletteDescriptorValue::try_new(
             CssFontPaletteDescriptorKind::BasePalette,
             values("-1"),
+            Default::default(),
         )),
         "general-enclosed" => failed(CssGeneralEnclosed::try_from_component(token("a"))),
         "gradient-stop-construction" => {
@@ -214,13 +216,14 @@ fn facts(case: &str, observation: &mut Observation) -> Vec<String> {
         "import-construction" => failed(CssImportRule::try_from_components(
             values("1px"),
             &CssNamespaceContext::default(),
+            Default::default(),
         )),
         "import-serialization" => {
             let sheet = sheet("@import 'x' screen,???;");
             let [CssRule::Import(rule)] = sheet.rules() else {
                 panic!("one import rule")
             };
-            failed(rule.serialize())
+            failed(rule.serialize_tokens(Default::default()))
         }
         "input-decode" => failed(decode_stylesheet_bytes_with_limits(
             b".a { color: red }",
@@ -232,11 +235,12 @@ fn facts(case: &str, observation: &mut Observation) -> Vec<String> {
             let rule = report.syntax().as_ref().expect("keyframe rule");
             let block = CssSpecifiedDeclarationBlock::try_from_keyframe_declarations(
                 rule.block().declarations(),
+                Default::default(),
             )
             .expect("keyframe declarations");
             let view = CssKeyframeRuleView::try_new(rule.block().selectors(), &block)
                 .expect("keyframe view");
-            failed(view.serialize_cssom_with_limits(zero()))
+            failed(view.serialize_cssom(zero()))
         }
         "keyframe-selector-comparison" => {
             let list = |source: &str| {
@@ -247,24 +251,26 @@ fn facts(case: &str, observation: &mut Observation) -> Vec<String> {
                     .selectors()
                     .clone()
             };
-            let error =
-                match list("from, to").matches_normalized_with_limits(&list("0%,100%"), zero()) {
-                    Ok(_) => return vec!["unexpected-ok".to_owned()],
-                    Err(error) => error,
-                };
+            let error = match list("from, to").matches_normalized(&list("0%,100%"), zero()) {
+                Ok(_) => return vec!["unexpected-ok".to_owned()],
+                Err(error) => error,
+            };
             with(
                 &error,
                 [format!("selector-index={}", index(error.selector_index()))],
             )
         }
-        "media-construction" => failed(CssMediaQuery::try_from_components(values("screen and"))),
+        "media-construction" => failed(CssMediaQuery::try_from_components(
+            values("screen and"),
+            Default::default(),
+        )),
         "media-cssom-serialization" => {
             let report = parse_media_query("screen and (min-width: 1px)");
-            failed(report.syntax().serialize_cssom_with_limits(zero()))
+            failed(report.syntax().serialize_cssom(zero()))
         }
         "media-serialization" => {
             let report = parse_media_query("screen and");
-            failed(report.syntax().serialize())
+            failed(report.syntax().serialize_tokens(Default::default()))
         }
         "motion-construction" => failed(CssOffsetRotate::try_new(None, None)),
         "named-supports-construction" => {
@@ -289,17 +295,19 @@ fn facts(case: &str, observation: &mut Observation) -> Vec<String> {
         "numeric-construction" => failed(CssSpecifiedLength::try_from_component(token("red"))),
         "page-block" => {
             let report = parse_declaration_block_contents("display: block");
-            let error =
-                match CssMarginDeclarationBlock::try_new(report.syntax().as_slice().to_vec()) {
-                    Ok(_) => return vec!["unexpected-ok".to_owned()],
-                    Err(error) => error,
-                };
+            let error = match CssMarginDeclarationBlock::try_new(
+                report.syntax().as_slice().to_vec(),
+                Default::default(),
+            ) {
+                Ok(_) => return vec!["unexpected-ok".to_owned()],
+                Err(error) => error,
+            };
             with(&error, [format!("ordinal={}", index(error.ordinal()))])
         }
         "page-projection" => {
             let report = parse_page_declaration_block_contents("size: a4; size: a5; margin: 1px");
             let block = report.syntax().as_ref().expect("page declarations");
-            failed(block.try_specified_with_limits(zero()))
+            failed(block.try_specified(zero()))
         }
         "parse-diagnostic" => {
             let report = parse_style_attribute("width: red");
@@ -406,7 +414,7 @@ fn facts(case: &str, observation: &mut Observation) -> Vec<String> {
             with(&error, [format!("path={}", path(error.path()))])
         }
         "rule-cssom-serialization" => {
-            let error = match sheet(".a { color: red }").serialize_cssom_with_limits(zero()) {
+            let error = match sheet(".a { color: red }").serialize_cssom(zero()) {
                 Ok(_) => return vec!["unexpected-ok".to_owned()],
                 Err(error) => error,
             };
@@ -419,10 +427,10 @@ fn facts(case: &str, observation: &mut Observation) -> Vec<String> {
                 )],
             )
         }
-        "selector-construction" => failed(CssSelectorList::try_new(Vec::new())),
+        "selector-construction" => failed(CssSelectorList::try_new(Vec::new(), Default::default())),
         "shape-construction" => failed(CssShapeCommandList::try_new(Vec::new())),
         "specified-rule-serialization" => {
-            let error = match sheet(".a { color: red }").to_specified_css_with_limits(zero()) {
+            let error = match sheet(".a { color: red }").serialize_specified(zero()) {
                 Ok(_) => return vec!["unexpected-ok".to_owned()],
                 Err(error) => error,
             };
@@ -433,7 +441,7 @@ fn facts(case: &str, observation: &mut Observation) -> Vec<String> {
         }
         "specified-value-serialization" => {
             let report = parse_style_attribute("color: red");
-            failed(report.syntax().as_slice()[0].to_specified_css_with_limits(zero()))
+            failed(report.syntax().as_slice()[0].serialize_specified(zero()))
         }
         "supports-construction" => failed(parse_css_supports_condition("display: grid (")),
         "utf16-input-interrupted" => {

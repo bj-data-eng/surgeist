@@ -38,18 +38,20 @@ fn parsed(css: &str) -> (CssDeclaration, CssImageValue) {
 fn verify(css: &str, expected: &str) {
     let (declaration, image) = parsed(css);
     let before = declaration.clone();
-    assert_eq!(image.serialize_specified().unwrap(), expected);
+    assert_eq!(
+        image.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     let checked = CssImage::try_new(image.clone()).unwrap();
-    assert_eq!(checked.serialize_specified().unwrap(), expected);
+    assert_eq!(
+        checked.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     // Exact output capacity succeeds; every failure is reusable and returns no
     // partial string. This exercises the existing public cumulative provider.
     assert_eq!(
         image
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                1000,
-                1000,
-                expected.len(),
-            ))
+            .serialize_specified(CssSerializationLimits::new(1000, 1000, expected.len(),))
             .unwrap(),
         expected,
     );
@@ -74,18 +76,24 @@ fn verify(css: &str, expected: &str) {
         ),
     ] {
         let error = image
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                input, projection, bytes,
-            ))
+            .serialize_specified(CssSerializationLimits::new(input, projection, bytes))
             .unwrap_err();
         assert_eq!(error.kind(), cause);
-        assert_eq!(image.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            image.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
-    let output = declaration.to_specified_css().unwrap();
+    let output = declaration.serialize_specified(Default::default()).unwrap();
     assert_eq!(output, format!("background-image: {expected} !important;"));
     let report = parse_style_attribute(&output);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    assert_eq!(report.syntax()[0].to_specified_css().unwrap(), output);
+    assert_eq!(
+        report.syntax()[0]
+            .serialize_specified(Default::default())
+            .unwrap(),
+        output
+    );
     assert_eq!(declaration, before);
 }
 

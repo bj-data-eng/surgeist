@@ -163,18 +163,22 @@ fn normalization_preserves_import_alternatives_and_symbolic_media_origins() {
     assert!(import.layer().is_none());
     assert!(import.supports().is_none());
     assert_eq!(
-        import.serialize().unwrap().as_css(),
+        import
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         "@import 'x' layer(theme) and (color);"
     );
     let CssRuleContextKindRef::Media(media) = media.kind() else {
         panic!("media context");
     };
     assert_eq!(
-        media.serialize().unwrap().as_css(),
+        media.serialize_tokens(Default::default()).unwrap().as_css(),
         "(-2px < width <= calc(1em + 1px))"
     );
     let constructed = CssMediaQuery::try_from_components(
         parse_component_values("(-2px < width <= calc(1em + 1px))").unwrap(),
+        Default::default(),
     )
     .unwrap();
     let CssMediaQuery::Condition(condition) = &constructed else {
@@ -184,7 +188,10 @@ fn normalization_preserves_import_alternatives_and_symbolic_media_origins() {
         matches!(condition.kind(), CssMediaConditionKind::Feature(feature) if feature.name() == "width")
     );
     assert_eq!(
-        constructed.serialize().unwrap().as_css(),
+        constructed
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         "(-2px < width <= calc(1em + 1px))"
     );
     let [query] = media.queries() else {

@@ -144,6 +144,10 @@ pub(crate) enum FontFeatureDisplayData {
 }
 
 /// The authored outer font-display descriptor with retained complete components.
+///
+/// # Specified serialization
+///
+/// Serializes the value without manufacturing a declaration occurrence.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssFontFeatureDisplayValue {
     data: FontFeatureDisplayData,
@@ -198,6 +202,10 @@ pub(crate) enum FontFeatureValueData {
 ///
 /// Ordinary indexes retain exact normalized magnitude and supplied token origins.
 /// Pending input retains its whole component stream without fabricated indexes.
+///
+/// # Specified serialization
+///
+/// Serializes completed exact indexes or the pending whole component stream.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssFontFeatureValue {
     kind: CssFontFeatureValueKind,
@@ -447,14 +455,9 @@ impl std::error::Error for CssFontFeatureValueError {
 
 impl CssCounterStyleDescriptorValue {
     /// Admits the selected authored grammar while preserving every supplied component origin.
-    pub fn try_from_components(
-        kind: CssCounterStyleDescriptorKind,
-        components: CssComponentValues,
-    ) -> Result<Self, CssCounterStyleValueError> {
-        Self::try_from_components_with_limits(kind, components, CssComponentValueLimits::default())
-    }
+    ///
     /// Checks cumulative component and byte limits before grammar or env qualification.
-    pub fn try_from_components_with_limits(
+    pub fn try_from_components(
         kind: CssCounterStyleDescriptorKind,
         components: CssComponentValues,
         limits: CssComponentValueLimits,
@@ -471,7 +474,7 @@ impl CssCounterStyleDescriptorValue {
         limits: CssComponentValueLimits,
     ) -> Result<Self, CssCounterStyleValueError> {
         let serialized = components
-            .serialize_with_limit(limits.max_css_bytes())
+            .serialize_tokens(limits)
             .map_err(CssCounterStyleValueError::from_component)?;
         let data = crate::parser::counter_style::construct_descriptor_value(
             kind,
@@ -487,14 +490,9 @@ impl CssCounterStyleDescriptorValue {
         })
     }
     /// Rechecks a replacement without performing host lookup or substitution.
-    pub fn reparse_after_substitution(
-        &self,
-        replacement: CssComponentValues,
-    ) -> Result<Self, CssCounterStyleValueError> {
-        self.reparse_after_substitution_with_limits(replacement, CssComponentValueLimits::default())
-    }
+    ///
     /// Rejects recovered closures and residual decoded var/env functions before ordinary grammar.
-    pub fn reparse_after_substitution_with_limits(
+    pub fn reparse_after_substitution(
         &self,
         replacement: CssComponentValues,
         limits: CssComponentValueLimits,
@@ -515,13 +513,9 @@ impl CssCounterStyleDescriptorValue {
 
 impl CssFontFeatureDisplayValue {
     /// Admits the selected authored grammar while preserving every supplied component origin.
-    pub fn try_from_components(
-        components: CssComponentValues,
-    ) -> Result<Self, CssFontFeatureValueError> {
-        Self::try_from_components_with_limits(components, CssComponentValueLimits::default())
-    }
+    ///
     /// Checks cumulative component and byte limits before grammar or env qualification.
-    pub fn try_from_components_with_limits(
+    pub fn try_from_components(
         components: CssComponentValues,
         limits: CssComponentValueLimits,
     ) -> Result<Self, CssFontFeatureValueError> {
@@ -536,7 +530,7 @@ impl CssFontFeatureDisplayValue {
         limits: CssComponentValueLimits,
     ) -> Result<Self, CssFontFeatureValueError> {
         let serialized = components
-            .serialize_with_limit(limits.max_css_bytes())
+            .serialize_tokens(limits)
             .map_err(CssFontFeatureValueError::from_component)?;
         let data =
             crate::parser::font_feature_values::construct_display_value(&components, &serialized)
@@ -548,14 +542,9 @@ impl CssFontFeatureDisplayValue {
         })
     }
     /// Rechecks a replacement without performing host lookup or substitution.
-    pub fn reparse_after_substitution(
-        &self,
-        replacement: CssComponentValues,
-    ) -> Result<Self, CssFontFeatureValueError> {
-        self.reparse_after_substitution_with_limits(replacement, CssComponentValueLimits::default())
-    }
+    ///
     /// Rejects recovered closures and residual decoded var/env functions before ordinary grammar.
-    pub fn reparse_after_substitution_with_limits(
+    pub fn reparse_after_substitution(
         &self,
         replacement: CssComponentValues,
         limits: CssComponentValueLimits,
@@ -576,14 +565,9 @@ impl CssFontFeatureDisplayValue {
 
 impl CssFontFeatureValue {
     /// Admits the selected authored grammar while preserving every supplied component origin.
-    pub fn try_from_components(
-        kind: CssFontFeatureValueKind,
-        components: CssComponentValues,
-    ) -> Result<Self, CssFontFeatureValueError> {
-        Self::try_from_components_with_limits(kind, components, CssComponentValueLimits::default())
-    }
+    ///
     /// Checks cumulative component and byte limits before grammar or env qualification.
-    pub fn try_from_components_with_limits(
+    pub fn try_from_components(
         kind: CssFontFeatureValueKind,
         components: CssComponentValues,
         limits: CssComponentValueLimits,
@@ -600,7 +584,7 @@ impl CssFontFeatureValue {
         limits: CssComponentValueLimits,
     ) -> Result<Self, CssFontFeatureValueError> {
         let serialized = components
-            .serialize_with_limit(limits.max_css_bytes())
+            .serialize_tokens(limits)
             .map_err(CssFontFeatureValueError::from_component)?;
         let data = crate::parser::font_feature_values::construct_feature_value(
             kind,
@@ -616,14 +600,9 @@ impl CssFontFeatureValue {
         })
     }
     /// Rechecks a replacement without performing host lookup or substitution.
-    pub fn reparse_after_substitution(
-        &self,
-        replacement: CssComponentValues,
-    ) -> Result<Self, CssFontFeatureValueError> {
-        self.reparse_after_substitution_with_limits(replacement, CssComponentValueLimits::default())
-    }
+    ///
     /// Rejects recovered closures and residual decoded var/env functions before ordinary grammar.
-    pub fn reparse_after_substitution_with_limits(
+    pub fn reparse_after_substitution(
         &self,
         replacement: CssComponentValues,
         limits: CssComponentValueLimits,

@@ -18,7 +18,7 @@ fn statement(body: &CssSupportsTestBody) -> &CssSupportsAtRuleTest {
 }
 
 fn generated_semicolon(body: &CssSupportsTestBody) {
-    let output = body.serialize().unwrap();
+    let output = body.serialize_tokens(Default::default()).unwrap();
     assert_eq!(output.as_css(), "@future;");
     assert!(matches!(
         output.origin_at(7),
@@ -49,7 +49,7 @@ fn explicit_named_body_close_and_checked_components_allow_an_unterminated_symbol
 
     let input = parse_component_values("@future").unwrap();
     let input_origin = input.items()[0].origin().clone();
-    let body = CssSupportsTestBody::try_from_components(input).unwrap();
+    let body = CssSupportsTestBody::try_from_components(input, Default::default()).unwrap();
     let keyword = statement(&body);
     assert_eq!(keyword.origin(), &input_origin);
     let (CssValueOrigin::Parsed(before), CssValueOrigin::Parsed(after)) =
@@ -97,7 +97,7 @@ fn actual_source_eof_retains_the_statement_and_only_the_real_named_body_closure(
         report.diagnostics()
     );
     assert!(matches!(
-        CssSupportsConditionRule::try_new(definition.name().clone(), definition.body().clone()),
+        CssSupportsConditionRule::try_new(definition.name().clone(), definition.body().clone(), Default::default()),
         Err(CssNamedSupportsConstructionError::RecoveredInput { origin }) if &origin == recovery
     ));
 }

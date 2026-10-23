@@ -11,11 +11,11 @@ use surgeist_css::{
     CssComponentValueRef as Component, CssComponentValues, CssErrorCode,
     CssFontFaceDescriptorKind as Kind, CssFontFaceDescriptorValue as Value,
     CssFontFaceValueErrorKind, CssNamespaceContext, CssNumericTokenKind, CssRecoveryAction,
-    CssRule, CssSelector, CssSelectorCombinator, CssSerializedOrigin,
-    CssSpecifiedValueSerializationErrorKind as OutputError,
-    CssSpecifiedValueSerializationLimits as OutputLimits, CssUnicodeRange, CssUnicodeRangeList,
-    CssValueOrigin, CssValueTokenRef as Token, ErrorKind, parse_component_values,
-    parse_font_face_descriptor_value, parse_selector, parse_sheet, validate_sheet,
+    CssRule, CssSelector, CssSelectorCombinator, CssSerializationLimits as OutputLimits,
+    CssSerializedOrigin, CssSpecifiedValueSerializationErrorKind as OutputError, CssUnicodeRange,
+    CssUnicodeRangeList, CssValueOrigin, CssValueTokenRef as Token, ErrorKind,
+    parse_component_values, parse_font_face_descriptor_value, parse_selector, parse_sheet,
+    validate_sheet,
 };
 
 fn endpoints(value: &Authored) -> Vec<(u32, u32)> {
@@ -33,7 +33,7 @@ fn specified(value: &Authored) -> String {
     let Authored::Ordinary(value) = value else {
         panic!("ordinary descriptor: {value:?}");
     };
-    value.serialize_specified().unwrap()
+    value.serialize_specified(Default::default()).unwrap()
 }
 
 fn assert_lifecycle(source: &str, expected: &[(u32, u32)], canonical: &str) {
@@ -46,7 +46,9 @@ fn assert_lifecycle(source: &str, expected: &[(u32, u32)], canonical: &str) {
 
     let components = parse_component_values(source).unwrap();
     let before = components.clone();
-    let checked = Authored::try_from_components(Kind::UnicodeRange, components.clone()).unwrap();
+    let checked =
+        Authored::try_from_components(Kind::UnicodeRange, components.clone(), Default::default())
+            .unwrap();
     assert_eq!(endpoints(&checked), expected, "{source:?}");
     assert_eq!(specified(&checked), canonical, "{source:?}");
     assert_eq!(components, before);
@@ -74,9 +76,12 @@ fn assert_lifecycle(source: &str, expected: &[(u32, u32)], canonical: &str) {
 /// offset, or `None` when the failure is at EOF after the last token.
 #[track_caller]
 fn unicode_range_rejection_offset(source: &str) -> Option<usize> {
-    let error =
-        Authored::try_from_components(Kind::UnicodeRange, parse_component_values(source).unwrap())
-            .unwrap_err();
+    let error = Authored::try_from_components(
+        Kind::UnicodeRange,
+        parse_component_values(source).unwrap(),
+        Default::default(),
+    )
+    .unwrap_err();
     assert!(
         matches!(
             error.kind(),
@@ -241,7 +246,10 @@ fn u_plus_a_remains_two_type_selectors_and_a_sibling_combinator() {
             part.selector().type_selector().unwrap().local_name(),
             Some("a")
         );
-        assert_eq!(selector.to_specified_css().unwrap(), "u + a");
+        assert_eq!(
+            selector.serialize_specified(Default::default()).unwrap(),
+            "u + a"
+        );
     }
     let sheet = parse_sheet("u+a{color:green}");
     assert!(sheet.is_clean(), "{sheet:?}");
@@ -251,7 +259,13 @@ fn u_plus_a_remains_two_type_selectors_and_a_sibling_combinator() {
     let [selector] = rule.selectors().selectors() else {
         panic!("one ordinary selector");
     };
-    assert_eq!(selector.selector().to_specified_css().unwrap(), "u + a");
+    assert_eq!(
+        selector
+            .selector()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "u + a"
+    );
 }
 
 #[test]
@@ -521,12 +535,16 @@ fn missing_range_tokens_or_endpoints_name_the_last_authored_token() {
 #[test]
 fn checked_mixed_origins_preserve_representation_and_map_the_actual_rejected_component() {
     let parsed_number = parse_component_values("+12e-130").unwrap().items()[0].clone();
-    let mixed = CssComponentValues::try_new(vec![
-        CssComponentValue::try_ident("u").unwrap(),
-        parsed_number.clone(),
-    ])
+    let mixed = CssComponentValues::try_new(
+        vec![
+            CssComponentValue::try_ident("u").unwrap(),
+            parsed_number.clone(),
+        ],
+        Default::default(),
+    )
     .unwrap();
-    let checked = Authored::try_from_components(Kind::UnicodeRange, mixed).unwrap();
+    let checked =
+        Authored::try_from_components(Kind::UnicodeRange, mixed, Default::default()).unwrap();
     assert_eq!(endpoints(&checked), vec![(302, 304)]);
     assert_eq!(specified(&checked), "U+12E-130");
     let CssValueOrigin::Parsed(number_origin) = parsed_number.origin() else {
@@ -536,13 +554,17 @@ fn checked_mixed_origins_preserve_representation_and_map_the_actual_rejected_com
 
     let escaped = parse_component_values(r"\61").unwrap().items()[0].clone();
     let escaped_origin = escaped.origin().clone();
-    let mixed = CssComponentValues::try_new(vec![
-        CssComponentValue::try_ident("u").unwrap(),
-        CssComponentValue::try_token("+").unwrap(),
-        escaped,
-    ])
+    let mixed = CssComponentValues::try_new(
+        vec![
+            CssComponentValue::try_ident("u").unwrap(),
+            CssComponentValue::try_token("+").unwrap(),
+            escaped,
+        ],
+        Default::default(),
+    )
     .unwrap();
-    let error = Authored::try_from_components(Kind::UnicodeRange, mixed).unwrap_err();
+    let error =
+        Authored::try_from_components(Kind::UnicodeRange, mixed, Default::default()).unwrap_err();
     assert!(matches!(
         error.kind(),
         CssFontFaceValueErrorKind::Grammar(ErrorKind::InvalidDescriptorValue(_))
@@ -555,13 +577,17 @@ fn checked_mixed_origins_preserve_representation_and_map_the_actual_rejected_com
     assert_eq!(origin.span().start().byte_offset().value(), 0);
     assert_eq!(origin.span().end().byte_offset().value(), 3);
 
-    let programmatic = CssComponentValues::try_new(vec![
-        CssComponentValue::try_ident("u").unwrap(),
-        CssComponentValue::try_token("+").unwrap(),
-        CssComponentValue::try_ident("g").unwrap(),
-    ])
+    let programmatic = CssComponentValues::try_new(
+        vec![
+            CssComponentValue::try_ident("u").unwrap(),
+            CssComponentValue::try_token("+").unwrap(),
+            CssComponentValue::try_ident("g").unwrap(),
+        ],
+        Default::default(),
+    )
     .unwrap();
-    let error = Authored::try_from_components(Kind::UnicodeRange, programmatic).unwrap_err();
+    let error = Authored::try_from_components(Kind::UnicodeRange, programmatic, Default::default())
+        .unwrap_err();
     assert_eq!(
         error.origin(),
         &CssSerializedOrigin::Token(CssValueOrigin::Programmatic)
@@ -592,7 +618,7 @@ fn checked_ranges_keep_domain_order_overlap_and_atomic_specified_limits() {
     // One list plus three retained range members, even for duplicate members.
     assert_eq!(
         value
-            .serialize_specified_with_limits(OutputLimits::new(4, 4, expected.len()))
+            .serialize_specified(OutputLimits::new(4, 4, expected.len()))
             .unwrap(),
         expected
     );
@@ -610,16 +636,13 @@ fn checked_ranges_keep_domain_order_overlap_and_atomic_specified_limits() {
             OutputError::ByteLimit,
         ),
     ] {
-        assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            kind
-        );
+        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
         assert_eq!(value, before);
     }
-    assert_eq!(value.serialize_specified().unwrap(), expected);
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
 }
 
 /// Fonts 4 unicode-range: whitespace after a range may still continue the

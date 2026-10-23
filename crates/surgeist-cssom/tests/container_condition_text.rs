@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-use surgeist_css::CssSpecifiedValueSerializationLimits;
+use surgeist_css::CssSerializationLimits;
 use surgeist_cssom::{
     CssomContext, CssomEditGuard, CssomError, CssomInputRole, CssomInputVersion, CssomLimits,
     CssomSheetInputs, CssomStore,
@@ -49,13 +49,13 @@ fn inherited_container_condition_text_preserves_order_duplicates_and_empty_field
             store
                 .css_container_rule(rule)
                 .and_then(|handle| handle.capture(&snapshot))
-                .and_then(|capture| capture.condition_text(
-                    CssSpecifiedValueSerializationLimits::new(
+                .and_then(
+                    |capture| capture.condition_text(CssSerializationLimits::new(
                         usize::MAX,
                         usize::MAX,
                         expected.len()
-                    )
-                ))
+                    ))
+                )
                 .unwrap(),
             expected,
             "the owning native provider is an independent passing control"
@@ -97,9 +97,7 @@ fn inherited_container_condition_text_preserves_order_duplicates_and_empty_field
         store
             .css_condition_rule(&rules[4])
             .and_then(|handle| handle.capture(&snapshot))
-            .and_then(
-                |capture| capture.condition_text(CssSpecifiedValueSerializationLimits::default())
-            ),
+            .and_then(|capture| capture.condition_text(CssSerializationLimits::default())),
         Err(CssomError::WrongKind)
     ));
 
@@ -111,11 +109,7 @@ fn inherited_container_condition_text_preserves_order_duplicates_and_empty_field
                 .css_condition_rule(rule)
                 .and_then(|handle| handle.capture(&snapshot))
                 .and_then(|capture| {
-                    capture.condition_text(CssSpecifiedValueSerializationLimits::new(
-                        1000,
-                        1000,
-                        text.len(),
-                    ))
+                    capture.condition_text(CssSerializationLimits::new(1000, 1000, text.len()))
                 })
         })
         .collect();

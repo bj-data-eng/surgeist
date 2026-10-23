@@ -1,13 +1,12 @@
 //! Authored clipping, scrolling, and ellipsis controls from CSS Overflow 3.
 
-use crate::{
-    CssBoxEdgeKeyword, CssComponentValue, CssSpecifiedNonNegativeLength,
-    CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits, CssTextOverflow,
-};
-
-type SerializationResult<T> = Result<T, CssSpecifiedValueSerializationError>;
+use crate::{CssBoxEdgeKeyword, CssComponentValue, CssSpecifiedNonNegativeLength, CssTextOverflow};
 
 /// The authored `<visual-box> || <length [0,∞]>` clip-margin value.
+///
+/// # Specified serialization
+///
+/// Serializes only the authored components in canonical box-first order.
 #[derive(Clone, Debug)]
 pub struct CssOverflowClipMargin {
     authored_box_edge: Option<CssBoxEdgeKeyword>,
@@ -88,33 +87,17 @@ impl CssOverflowClipMargin {
     pub fn offset(&self) -> CssSpecifiedNonNegativeLength {
         self.authored_offset.clone().unwrap_or_else(Self::zero_px)
     }
-
-    /// Serializes only the authored components in canonical box-first order.
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes the complete authored value under one resource budget.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+}
+impl crate::specified_rule_serialization::SpecifiedProvider for CssOverflowClipMargin {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         let context = &mut writer.context;
         let output = &mut writer.css;
-        context.charge_input(1)?;
-        context.charge_projection(1)?;
+        context.charge_nodes(1)?;
         if let Some(edge) = self.authored_box_edge {
-            context.charge_input(1)?;
-            context.charge_projection(1)?;
+            context.charge_nodes(1)?;
             context.append(output, edge.as_css_str())?;
         }
         if let Some(offset) = &self.authored_offset {
@@ -127,6 +110,7 @@ impl CssOverflowClipMargin {
         Ok(())
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssOverflowClipMargin);
 
 /// The authored scroll-behavior keyword, before scroll execution.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -137,26 +121,6 @@ pub enum CssScrollBehavior {
 }
 
 impl CssScrollBehavior {
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        writer.keyword(self.as_css())
-    }
-
     const fn as_css(self) -> &'static str {
         match self {
             Self::Auto => "auto",
@@ -164,6 +128,15 @@ impl CssScrollBehavior {
         }
     }
 }
+impl crate::specified_rule_serialization::SpecifiedProvider for CssScrollBehavior {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        writer.keyword(self.as_css())
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(CssScrollBehavior);
 
 /// The valid authored scrollbar-gutter keyword combinations.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -175,26 +148,6 @@ pub enum CssScrollbarGutter {
 }
 
 impl CssScrollbarGutter {
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        writer.keyword(self.as_css())
-    }
-
     const fn as_css(self) -> &'static str {
         match self {
             Self::Auto => "auto",
@@ -203,33 +156,28 @@ impl CssScrollbarGutter {
         }
     }
 }
-
-impl CssTextOverflow {
-    /// Serializes the canonical Overflow 3 ellipsis keyword.
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes one keyword under exact resource limits.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssScrollbarGutter {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        writer.keyword(self.as_css())
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(CssScrollbarGutter);
+
+impl crate::specified_rule_serialization::SpecifiedProvider for CssTextOverflow {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         writer.keyword(match self {
             Self::Clip => "clip",
             Self::Ellipsis => "ellipsis",
         })
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssTextOverflow);
 
 /// Authored scroll-anchoring opt-out, applying to all elements with discrete animation.
 /// Anchor selection and scroll adjustment belong to downstream style and layout owners.
@@ -240,29 +188,15 @@ pub enum CssOverflowAnchor {
     None,
 }
 
-impl CssOverflowAnchor {
-    /// Emits the canonical authored keyword.
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Charges one input node, one projection node, and the emitted bytes.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssOverflowAnchor {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         writer.keyword(match self {
             Self::Auto => "auto",
             Self::None => "none",
         })
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssOverflowAnchor);

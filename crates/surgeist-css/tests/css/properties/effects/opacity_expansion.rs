@@ -136,7 +136,7 @@ fn opacity_expansion_accepts_and_keeps_distinct_authored_numeric_branches() {
             contribution
                 .source()
                 .value_components()
-                .serialize()
+                .serialize_tokens(Default::default())
                 .unwrap()
                 .as_css(),
             *value
@@ -199,7 +199,7 @@ fn opacity_pending_reentry_is_strict_atomic_and_reusable() {
         assert_eq!(scalar.kind(), CssOpacityScalarKind::Percentage);
         assert_eq!(
             CssOpacityValue::Scalar(scalar.clone())
-                .serialize_specified()
+                .serialize_specified(Default::default())
                 .unwrap(),
             "1.5"
         );
@@ -282,7 +282,7 @@ fn recovered_child_fixture_normalizes_original_opacity_with_order_and_context() 
             value
                 .source()
                 .value_components()
-                .serialize()
+                .serialize_tokens(Default::default())
                 .unwrap()
                 .as_css(),
             format!(" {text}")

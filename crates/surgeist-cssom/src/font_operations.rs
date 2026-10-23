@@ -68,12 +68,8 @@ impl<'a> CssomFontFeatureValuesView<'a> {
         self.input
     }
     /// One native cumulative list writer over the current literal families.
-    pub(crate) fn font_family(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String, CssomError> {
-        serialize_font_face_family_list_with_limits(self.families, limits)
-            .map_err(CssomError::Value)
+    pub(crate) fn font_family(&self, limits: CssSerializationLimits) -> Result<String, CssomError> {
+        serialize_font_face_family_list(self.families, limits).map_err(CssomError::Value)
     }
     /// Exact authored display occurrences, independently of current maps.
     pub fn font_display(&self) -> &'a [CssFontFeatureDisplayOccurrence] {
@@ -95,28 +91,19 @@ impl CssomFontPaletteValuesView<'_> {
     pub fn name(&self) -> &str {
         self.value.name().as_str()
     }
-    pub fn font_family(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String, CssomError> {
+    pub fn font_family(&self, limits: CssSerializationLimits) -> Result<String, CssomError> {
         self.descriptor(CssFontPaletteDescriptorKind::FontFamily, limits)
     }
-    pub fn base_palette(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String, CssomError> {
+    pub fn base_palette(&self, limits: CssSerializationLimits) -> Result<String, CssomError> {
         self.descriptor(CssFontPaletteDescriptorKind::BasePalette, limits)
     }
-    pub fn override_colors(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String, CssomError> {
+    pub fn override_colors(&self, limits: CssSerializationLimits) -> Result<String, CssomError> {
         self.descriptor(CssFontPaletteDescriptorKind::OverrideColors, limits)
     }
     fn descriptor(
         &self,
         kind: CssFontPaletteDescriptorKind,
-        limits: CssSpecifiedValueSerializationLimits,
+        limits: CssSerializationLimits,
     ) -> Result<String, CssomError> {
         self.value
             .descriptors()
@@ -126,7 +113,7 @@ impl CssomFontPaletteValuesView<'_> {
             .map(|entry| {
                 entry
                     .value()
-                    .to_specified_css_with_limits(limits)
+                    .serialize_specified(limits)
                     .map_err(CssomError::Value)
             })
             .unwrap_or_else(|| Ok(String::new()))

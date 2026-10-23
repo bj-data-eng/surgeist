@@ -25,7 +25,11 @@ fn assert_style(rule: &CssRule, source: &str, class: &str, value: &str) {
         panic!("one surviving color declaration")
     };
     assert_eq!(
-        declaration.value_components().serialize().unwrap().as_css(),
+        declaration
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         value
     );
     let origin = declaration.parsed_value().unwrap();
@@ -182,7 +186,7 @@ fn block_contents_discard_semicolons_in_group_and_style_bodies_but_not_at_the_ro
     assert_eq!(
         host_style.declarations()[0]
             .value_components()
-            .serialize()
+            .serialize_tokens(Default::default())
             .unwrap()
             .as_css(),
         "red"

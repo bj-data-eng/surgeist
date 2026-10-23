@@ -102,9 +102,11 @@ fn pending_color_reentry_is_strict_reusable_and_retains_replacement_origins() {
         );
     }
     let parsed = parse_component_values("red").unwrap();
-    let programmatic =
-        CssComponentValues::try_new(vec![CssComponentValue::try_ident("currentcolor").unwrap()])
-            .unwrap();
+    let programmatic = CssComponentValues::try_new(
+        vec![CssComponentValue::try_ident("currentcolor").unwrap()],
+        Default::default(),
+    )
+    .unwrap();
     assert!(matches!(
         parsed.items()[0].origin(),
         CssValueOrigin::Parsed(_)
@@ -182,7 +184,12 @@ fn normalization_keeps_ordered_occurrences_and_counts_one_unit_each() {
         };
         assert_ordinary(item, value.source());
     }
-    assert_eq!(color(red.source()).to_specified_css().unwrap(), "red");
+    assert_eq!(
+        color(red.source())
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "red"
+    );
     assert!(color(current.source()).is_current_color());
     assert_eq!(red.source().importance(), CssImportance::Important);
     assert_eq!(
@@ -216,10 +223,20 @@ fn parsed_literal_and_symbolic_colors_use_existing_checked_color_provider() {
         color(&literal),
         &CssColor::from_named(CssNamedColor::try_new("red").unwrap())
     );
-    assert_eq!(color(&literal).to_specified_css().unwrap(), "red");
+    assert_eq!(
+        color(&literal)
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "red"
+    );
     let symbolic = declaration("background-color:currentcolor");
     assert_eq!(color(&symbolic), &CssColor::current_color());
-    assert_eq!(color(&symbolic).to_specified_css().unwrap(), "currentcolor");
+    assert_eq!(
+        color(&symbolic)
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "currentcolor"
+    );
     assert!(matches!(
         literal.value_components().items()[0].origin(),
         CssValueOrigin::Parsed(_)

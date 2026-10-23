@@ -12,7 +12,7 @@ fn assert_color(declaration: &CssDeclaration, expected: &str) {
     assert_eq!(
         declaration
             .value_components()
-            .serialize()
+            .serialize_tokens(Default::default())
             .unwrap()
             .as_css()
             .trim(),

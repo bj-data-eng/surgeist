@@ -118,7 +118,11 @@ fn type_accepts_counter_style_strings_and_generic_custom_names() {
             "{value}"
         );
         assert_eq!(
-            source.value_components().serialize().unwrap().as_css(),
+            source
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             value
         );
     }
@@ -141,7 +145,11 @@ fn image_accepts_selected_images_and_position_keeps_its_two_keywords() {
             "{value}"
         );
         assert_eq!(
-            source.value_components().serialize().unwrap().as_css(),
+            source
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             value
         );
     }
@@ -179,7 +187,11 @@ fn shorthand_accepts_unordered_members_and_allocates_ambiguous_none() {
             "{value}"
         );
         assert_eq!(
-            source.value_components().serialize().unwrap().as_css(),
+            source
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             value
         );
     }
@@ -224,9 +236,11 @@ fn checked_construction_uses_the_same_grammar_and_retains_programmatic_origin() 
         (IMAGE, "none"),
         (SHORTHAND, "inside"),
     ] {
-        let components =
-            CssComponentValues::try_new(vec![CssComponentValue::try_ident(keyword).unwrap()])
-                .unwrap();
+        let components = CssComponentValues::try_new(
+            vec![CssComponentValue::try_ident(keyword).unwrap()],
+            Default::default(),
+        )
+        .unwrap();
         let checked = parse_property_value(
             CssPropertyNameRef::Known(property),
             components,
@@ -241,9 +255,11 @@ fn checked_construction_uses_the_same_grammar_and_retains_programmatic_origin() 
         ));
     }
     for (property, invalid) in [(TYPE, "default"), (POSITION, "none"), (IMAGE, "outside")] {
-        let components =
-            CssComponentValues::try_new(vec![CssComponentValue::try_ident(invalid).unwrap()])
-                .unwrap();
+        let components = CssComponentValues::try_new(
+            vec![CssComponentValue::try_ident(invalid).unwrap()],
+            Default::default(),
+        )
+        .unwrap();
         assert_programmatic_rejection(
             parse_property_value(
                 CssPropertyNameRef::Known(property),

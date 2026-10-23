@@ -61,8 +61,14 @@ fn assert_members(
             (None, None) => {}
             (Some(actual), Some(expected)) => {
                 assert_eq!(
-                    actual.serialize().unwrap().as_css(),
-                    expected.serialize().unwrap().as_css()
+                    actual
+                        .serialize_tokens(Default::default())
+                        .unwrap()
+                        .as_css(),
+                    expected
+                        .serialize_tokens(Default::default())
+                        .unwrap()
+                        .as_css()
                 );
                 assert_eq!(actual.items().len(), expected.items().len());
                 for (actual, expected) in actual.items().iter().zip(expected.items()) {
@@ -88,12 +94,18 @@ fn assert_slice(slice: &CssBorderImageSlice, texts: [&str; 4], fill: bool) {
             let CssBorderImageSliceComponent::Percentage(number) = edge else {
                 panic!("percentage slice");
             };
-            assert_eq!(number.serialize_specified().unwrap(), format!("{percent}%"));
+            assert_eq!(
+                number.serialize_specified(Default::default()).unwrap(),
+                format!("{percent}%")
+            );
         } else {
             let CssBorderImageSliceComponent::Number(number) = edge else {
                 panic!("number slice");
             };
-            assert_eq!(number.serialize_specified().unwrap(), text);
+            assert_eq!(
+                number.serialize_specified(Default::default()).unwrap(),
+                text
+            );
         }
     }
 }
@@ -105,12 +117,18 @@ fn assert_width(width: &CssBorderImageWidth, texts: [&str; 4]) {
             (CssBorderImageWidthComponent::LengthPercentage(number), text)
                 if text.ends_with('%') || text.ends_with("px") =>
             {
-                assert_eq!(number.serialize_specified().unwrap(), text);
+                assert_eq!(
+                    number.serialize_specified(Default::default()).unwrap(),
+                    text
+                );
             }
             (CssBorderImageWidthComponent::Number(number), text)
                 if !text.ends_with('%') && !text.ends_with("px") && text != "auto" =>
             {
-                assert_eq!(number.serialize_specified().unwrap(), text);
+                assert_eq!(
+                    number.serialize_specified(Default::default()).unwrap(),
+                    text
+                );
             }
             _ => panic!("width branch for {text}: {edge:?}"),
         }
@@ -121,10 +139,16 @@ fn assert_outset(outset: &CssBorderImageOutset, texts: [&str; 4]) {
     for (edge, text) in outset.values().iter().zip(texts) {
         match edge {
             CssBorderImageOutsetComponent::Length(number) if text.ends_with("px") => {
-                assert_eq!(number.serialize_specified().unwrap(), text);
+                assert_eq!(
+                    number.serialize_specified(Default::default()).unwrap(),
+                    text
+                );
             }
             CssBorderImageOutsetComponent::Number(number) if !text.ends_with("px") => {
-                assert_eq!(number.serialize_specified().unwrap(), text);
+                assert_eq!(
+                    number.serialize_specified(Default::default()).unwrap(),
+                    text
+                );
             }
             _ => panic!("outset branch for {text}: {edge:?}"),
         }
@@ -388,7 +412,7 @@ fn border_image_pending_reentry_rejects_atomically_and_retries_with_mixed_origin
         };
         let before = source
             .value_components()
-            .serialize()
+            .serialize_tokens(Default::default())
             .unwrap()
             .as_css()
             .to_owned();
@@ -427,7 +451,7 @@ fn border_image_pending_reentry_rejects_atomically_and_retries_with_mixed_origin
                 pending
                     .source()
                     .value_components()
-                    .serialize()
+                    .serialize_tokens(Default::default())
                     .unwrap()
                     .as_css(),
                 before
@@ -437,7 +461,7 @@ fn border_image_pending_reentry_rejects_atomically_and_retries_with_mixed_origin
         let mut items = parsed.items().to_vec();
         let width_index = items.iter().position(|item| matches!(item.view(), CssComponentValueRef::Token(CssValueTokenRef::Number(number)) if number.representation() == "2")).unwrap();
         items[width_index] = CssComponentValue::try_number("2").unwrap();
-        let replacement = CssComponentValues::try_new(items).unwrap();
+        let replacement = CssComponentValues::try_new(items, Default::default()).unwrap();
         for _ in 0..2 {
             let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap()
             else {
@@ -479,7 +503,7 @@ fn border_image_pending_reentry_rejects_atomically_and_retries_with_mixed_origin
             pending
                 .source()
                 .value_components()
-                .serialize()
+                .serialize_tokens(Default::default())
                 .unwrap()
                 .as_css(),
             before

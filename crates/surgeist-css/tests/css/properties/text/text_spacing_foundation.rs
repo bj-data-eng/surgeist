@@ -57,7 +57,11 @@ fn signed_percentages_and_mixed_math_remain_authored_symbolic_values() {
             let source = declaration(name, value);
             assert_eq!(source.known().unwrap().property().canonical_name(), name);
             assert_eq!(
-                source.value_components().serialize().unwrap().as_css(),
+                source
+                    .value_components()
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
                 value
             );
             let [item] = expanded(&source)
@@ -75,7 +79,11 @@ fn signed_percentages_and_mixed_math_remain_authored_symbolic_values() {
             .unwrap();
             assert_eq!(checked.known().unwrap().property().canonical_name(), name);
             assert_eq!(
-                checked.value_components().serialize().unwrap().as_css(),
+                checked
+                    .value_components()
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
                 value
             );
         }
@@ -95,7 +103,11 @@ fn exact_large_exponent_authored_tokens_and_signed_lengths_are_retained() {
         ] {
             let source = declaration(name, value);
             assert_eq!(
-                source.value_components().serialize().unwrap().as_css(),
+                source
+                    .value_components()
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
                 value
             );
             let [item] = expanded(&source)

@@ -38,7 +38,11 @@ fn both_crossorigin_choices_are_typed_without_changing_authored_identity() {
         };
         assert_eq!(parsed.request_modifier(), constructed.request_modifier());
         assert_eq!(
-            parsed.argument_components().serialize().unwrap().as_css(),
+            parsed
+                .argument_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             arguments
         );
         assert!(url.is_local_url());
@@ -108,7 +112,7 @@ fn integrity_view_borrows_decoded_string_without_hash_validation_or_token_loss()
             "asset",
             vec![CssUrlModifier::Function(constructed.clone())],
         );
-        let reparse = parsed(&url.serialize_specified().unwrap());
+        let reparse = parsed(&url.serialize_specified(Default::default()).unwrap());
         let [CssUrlModifier::Function(reparsed)] = reparse.modifiers() else {
             panic!("function")
         };
@@ -158,7 +162,11 @@ fn checked_invalid_argument_errors_preserve_original_and_programmatic_origins() 
     assert_eq!(error.origin(), &extra_origin);
     let error = CssUrlModifierFunction::try_new(
         CssIdent::try_new("crossorigin").unwrap(),
-        CssComponentValues::try_new(vec![CssComponentValue::try_ident("wrong").unwrap()]).unwrap(),
+        CssComponentValues::try_new(
+            vec![CssComponentValue::try_ident("wrong").unwrap()],
+            Default::default(),
+        )
+        .unwrap(),
     )
     .unwrap_err();
     assert_eq!(error.kind(), CssComponentValueErrorKind::InvalidFunction);

@@ -6,12 +6,11 @@ use unicode_segmentation::UnicodeSegmentation;
 
 use crate::specified_serialization::SpecifiedSerializationContext;
 use crate::{
-    CssComponentValue, CssComponentValueErrorKind, CssComponentValueRef,
-    CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits, CssTextAlign,
-    CssValueOrigin, CssValueTokenRef,
+    CssComponentValue, CssComponentValueErrorKind, CssComponentValueRef, CssSerializationError,
+    CssTextAlign, CssValueOrigin, CssValueTokenRef,
 };
 
-type SerializationResult<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
+type SerializationResult<T> = std::result::Result<T, CssSerializationError>;
 
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -86,26 +85,6 @@ pub struct CssCharacterAlignment {
 }
 
 impl CssCharacterAlignment {
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        self.append_specified(&mut writer.context, &mut writer.css)
-    }
-
     pub fn try_new(
         decoded: impl Into<String>,
         authored_fallback: Option<CssTextAlignPosition>,
@@ -173,18 +152,25 @@ impl CssCharacterAlignment {
         context: &mut SpecifiedSerializationContext,
         output: &mut String,
     ) -> SerializationResult<()> {
-        context.charge_input(1)?;
-        context.charge_projection(1)?;
+        context.charge_nodes(1)?;
         crate::serialization_escaping::append_string(self.decoded(), context, output)?;
         if let Some(fallback) = self.authored_fallback {
-            context.charge_input(1)?;
-            context.charge_projection(1)?;
+            context.charge_nodes(1)?;
             context.append(output, " ")?;
             context.append(output, fallback.keyword())?;
         }
         Ok(())
     }
 }
+impl crate::specified_rule_serialization::SpecifiedProvider for CssCharacterAlignment {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        self.append_specified(&mut writer.context, &mut writer.css)
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(CssCharacterAlignment);
 
 #[non_exhaustive]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -213,26 +199,6 @@ impl CssTextAlignAllValue {
         Self::Keyword(CssTextAlign::Start)
     }
 
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        self.append_specified(&mut writer.context, &mut writer.css)
-    }
-
     fn append_specified(
         &self,
         context: &mut SpecifiedSerializationContext,
@@ -244,72 +210,59 @@ impl CssTextAlignAllValue {
         }
     }
 }
-
-impl CssTextAlignValue {
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssTextAlignAllValue {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        self.append_specified(&mut writer.context, &mut writer.css)
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(CssTextAlignAllValue);
+
+impl crate::specified_rule_serialization::SpecifiedProvider for CssTextAlignValue {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         let context = &mut writer.context;
         let output = &mut writer.css;
         match self {
             Self::Alignment(value) => value.append_specified(context, output),
-            Self::JustifyAll => append_raw_keyword("justify-all", context, output),
+            Self::JustifyAll => context.keyword(output, "justify-all"),
         }
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssTextAlignValue);
 
 impl CssTextAlignLastValue {
     #[must_use]
     pub const fn initial() -> Self {
         Self::Auto
     }
-
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+}
+impl crate::specified_rule_serialization::SpecifiedProvider for CssTextAlignLastValue {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         let context = &mut writer.context;
         let output = &mut writer.css;
         match self {
-            Self::Auto => append_raw_keyword("auto", context, output),
+            Self::Auto => context.keyword(output, "auto"),
             Self::Keyword(value) => append_keyword(*value, context, output),
         }
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssTextAlignLastValue);
 
 fn append_keyword(
     value: CssTextAlign,
     context: &mut SpecifiedSerializationContext,
     output: &mut String,
 ) -> SerializationResult<()> {
-    append_raw_keyword(
+    context.keyword(
+        output,
         match value {
             CssTextAlign::Start => "start",
             CssTextAlign::End => "end",
@@ -319,19 +272,7 @@ fn append_keyword(
             CssTextAlign::Justify => "justify",
             CssTextAlign::MatchParent => "match-parent",
         },
-        context,
-        output,
     )
-}
-
-fn append_raw_keyword(
-    keyword: &str,
-    context: &mut SpecifiedSerializationContext,
-    output: &mut String,
-) -> SerializationResult<()> {
-    context.charge_input(1)?;
-    context.charge_projection(1)?;
-    context.append(output, keyword)
 }
 
 pub(crate) fn shorthand_all(value: &CssTextAlignValue) -> CssTextAlignAllValue {

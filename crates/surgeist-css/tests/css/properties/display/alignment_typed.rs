@@ -135,20 +135,27 @@ fn typed_longhands_serialize_selected_keywords_in_canonical_order() {
         CssAlignContentValue::try_new(CssAlignmentValue::Baseline(CssBaselinePosition::Last))
             .unwrap();
     assert_eq!(
-        align_content.serialize_specified().unwrap(),
+        align_content
+            .serialize_specified(Default::default())
+            .unwrap(),
         "last baseline"
     );
     let first =
         CssAlignContentValue::try_new(CssAlignmentValue::Baseline(CssBaselinePosition::First))
             .unwrap();
-    assert_eq!(first.serialize_specified().unwrap(), "baseline");
+    assert_eq!(
+        first.serialize_specified(Default::default()).unwrap(),
+        "baseline"
+    );
     let justify_content = CssJustifyContentValue::try_new(position(
         Some(CssOverflowPosition::Unsafe),
         CssAlignmentPosition::Right,
     ))
     .unwrap();
     assert_eq!(
-        justify_content.serialize_specified().unwrap(),
+        justify_content
+            .serialize_specified(Default::default())
+            .unwrap(),
         "unsafe right"
     );
     let align_items = CssAlignItemsValue::try_new(position(
@@ -157,24 +164,39 @@ fn typed_longhands_serialize_selected_keywords_in_canonical_order() {
     ))
     .unwrap();
     assert_eq!(
-        align_items.serialize_specified().unwrap(),
+        align_items.serialize_specified(Default::default()).unwrap(),
         "safe self-start"
     );
     let justify_items =
         CssJustifyItemsValue::try_new(CssAlignmentValue::Legacy(Some(CssLegacyAlignment::Center)))
             .unwrap();
     assert_eq!(
-        justify_items.serialize_specified().unwrap(),
+        justify_items
+            .serialize_specified(Default::default())
+            .unwrap(),
         "legacy center"
     );
     let legacy_right =
         CssJustifyItemsValue::try_new(CssAlignmentValue::Legacy(Some(CssLegacyAlignment::Right)))
             .unwrap();
-    assert_eq!(legacy_right.serialize_specified().unwrap(), "legacy right");
+    assert_eq!(
+        legacy_right
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "legacy right"
+    );
     let align_self = CssAlignSelfValue::try_new(normal(Some(CssOverflowPosition::Safe))).unwrap();
-    assert_eq!(align_self.serialize_specified().unwrap(), "safe normal");
+    assert_eq!(
+        align_self.serialize_specified(Default::default()).unwrap(),
+        "safe normal"
+    );
     let justify_self = CssJustifySelfValue::try_new(CssAlignmentValue::Auto).unwrap();
-    assert_eq!(justify_self.serialize_specified().unwrap(), "auto");
+    assert_eq!(
+        justify_self
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "auto"
+    );
 }
 
 #[test]
@@ -188,32 +210,50 @@ fn shorthand_construction_and_omission_default_values_work_without_parsing() {
         content.justify().value(),
         position(None, CssAlignmentPosition::Start)
     );
-    assert_eq!(content.serialize_specified().unwrap(), "baseline start");
+    assert_eq!(
+        content.serialize_specified(Default::default()).unwrap(),
+        "baseline start"
+    );
     let right =
         CssJustifyContentValue::try_new(position(None, CssAlignmentPosition::Right)).unwrap();
     let explicit = CssPlaceContentValue::new(baseline, right);
     assert_eq!(explicit.justify(), right);
-    assert_eq!(explicit.serialize_specified().unwrap(), "baseline right");
+    assert_eq!(
+        explicit.serialize_specified(Default::default()).unwrap(),
+        "baseline right"
+    );
 
     let stretch = CssAlignItemsValue::try_new(CssAlignmentValue::Stretch).unwrap();
     let items = CssPlaceItemsValue::from_align(stretch);
     assert_eq!(items.align(), stretch);
     assert_eq!(items.justify().value(), CssAlignmentValue::Stretch);
-    assert_eq!(items.serialize_specified().unwrap(), "stretch stretch");
+    assert_eq!(
+        items.serialize_specified(Default::default()).unwrap(),
+        "stretch stretch"
+    );
     let legacy = CssJustifyItemsValue::try_new(CssAlignmentValue::Legacy(None)).unwrap();
     let explicit = CssPlaceItemsValue::new(stretch, legacy);
     assert_eq!(explicit.justify(), legacy);
-    assert_eq!(explicit.serialize_specified().unwrap(), "stretch legacy");
+    assert_eq!(
+        explicit.serialize_specified(Default::default()).unwrap(),
+        "stretch legacy"
+    );
 
     let auto = CssAlignSelfValue::try_new(CssAlignmentValue::Auto).unwrap();
     let self_pair = CssPlaceSelfValue::from_align(auto);
     assert_eq!(self_pair.align(), auto);
     assert_eq!(self_pair.justify().value(), CssAlignmentValue::Auto);
-    assert_eq!(self_pair.serialize_specified().unwrap(), "auto auto");
+    assert_eq!(
+        self_pair.serialize_specified(Default::default()).unwrap(),
+        "auto auto"
+    );
     let right = CssJustifySelfValue::try_new(position(None, CssAlignmentPosition::Right)).unwrap();
     let explicit = CssPlaceSelfValue::new(auto, right);
     assert_eq!(explicit.justify(), right);
-    assert_eq!(explicit.serialize_specified().unwrap(), "auto right");
+    assert_eq!(
+        explicit.serialize_specified(Default::default()).unwrap(),
+        "auto right"
+    );
 }
 
 #[test]
@@ -293,10 +333,16 @@ fn parsed_shorthands_keep_authored_css_and_canonical_specified_pairs() {
     };
     assert_eq!(value.as_css(), "BASELINE");
     assert_eq!(
-        value.value().serialize_specified().unwrap(),
+        value
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "baseline start"
     );
-    let canonical = value.value().serialize_specified().unwrap();
+    let canonical = value
+        .value()
+        .serialize_specified(Default::default())
+        .unwrap();
     let reparsed = declaration(&format!("place-content:{canonical}"));
     let CssKnownPropertyValueRef::PlaceContent(reparsed) =
         reparsed.known().unwrap().property_value().unwrap()
@@ -312,7 +358,10 @@ fn parsed_shorthands_keep_authored_css_and_canonical_specified_pairs() {
         panic!("place-items wrapper")
     };
     assert_eq!(
-        value.value().serialize_specified().unwrap(),
+        value
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "normal legacy"
     );
 
@@ -322,7 +371,13 @@ fn parsed_shorthands_keep_authored_css_and_canonical_specified_pairs() {
     else {
         panic!("place-self wrapper")
     };
-    assert_eq!(value.value().serialize_specified().unwrap(), "auto right");
+    assert_eq!(
+        value
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "auto right"
+    );
 
     let source = declaration("place-content: center end");
     let CssKnownPropertyValueRef::PlaceContent(value) =
@@ -350,7 +405,7 @@ fn place_items_component_boundary_keeps_legacy_on_justify_axis() {
     assert_eq!(constructed.align(), center);
     assert_eq!(constructed.justify(), legacy_center);
     assert_eq!(
-        constructed.serialize_specified().unwrap(),
+        constructed.serialize_specified(Default::default()).unwrap(),
         "center legacy center"
     );
 
@@ -377,7 +432,13 @@ fn place_items_component_boundary_keeps_legacy_on_justify_axis() {
             position(None, CssAlignmentPosition::Center)
         );
         assert_eq!(value.value().justify().value(), expected_justify);
-        assert_eq!(value.value().serialize_specified().unwrap(), canonical);
+        assert_eq!(
+            value
+                .value()
+                .serialize_specified(Default::default())
+                .unwrap(),
+            canonical
+        );
     }
     let source = declaration("justify-items:center legacy");
     let CssKnownPropertyValueRef::JustifyItems(value) =
@@ -390,7 +451,10 @@ fn place_items_component_boundary_keeps_legacy_on_justify_axis() {
         CssAlignmentValue::Legacy(Some(CssLegacyAlignment::Center))
     );
     assert_eq!(
-        value.value().serialize_specified().unwrap(),
+        value
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "legacy center"
     );
 }
@@ -407,7 +471,13 @@ fn first_baseline_keeps_its_authored_value_despite_canonical_baseline() {
         value.value().value(),
         CssAlignmentValue::Baseline(CssBaselinePosition::First)
     );
-    assert_eq!(value.value().serialize_specified().unwrap(), "baseline");
+    assert_eq!(
+        value
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "baseline"
+    );
 }
 
 #[test]
@@ -496,7 +566,7 @@ fn adjacent_baseline_components_serialize_without_swapping_their_axes() {
             pair.justify().value(),
             CssAlignmentValue::Baseline(CssBaselinePosition::Last)
         );
-        let serialized = pair.serialize_specified().unwrap();
+        let serialized = pair.serialize_specified(Default::default()).unwrap();
         assert_eq!(serialized, "baseline last baseline");
         let source = declaration(&format!("place-items:{serialized}"));
         let CssKnownPropertyValueRef::PlaceItems(parsed) =
@@ -523,7 +593,7 @@ fn adjacent_baseline_components_serialize_without_swapping_their_axes() {
             pair.justify().value(),
             CssAlignmentValue::Baseline(CssBaselinePosition::Last)
         );
-        let serialized = pair.serialize_specified().unwrap();
+        let serialized = pair.serialize_specified(Default::default()).unwrap();
         assert_eq!(serialized, "baseline last baseline");
         let source = declaration(&format!("place-self:{serialized}"));
         let CssKnownPropertyValueRef::PlaceSelf(parsed) =
@@ -551,31 +621,25 @@ fn serializers_enforce_exact_keyword_and_cumulative_pair_limits() {
     .unwrap();
     assert_eq!(
         single
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(2, 2, 11))
+            .serialize_specified(CssSerializationLimits::new(2, 2, 11))
             .unwrap(),
         "safe center"
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(1, 2, 11),
+            CssSerializationLimits::new(1, 2, 11),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(2, 1, 11),
+            CssSerializationLimits::new(2, 1, 11),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(2, 2, 10),
+            CssSerializationLimits::new(2, 2, 10),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
-        assert_eq!(
-            single
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            kind
-        );
+        assert_eq!(single.serialize_specified(limits).unwrap_err().kind(), kind);
     }
 
     let align = CssAlignContentValue::try_new(position(
@@ -590,29 +654,24 @@ fn serializers_enforce_exact_keyword_and_cumulative_pair_limits() {
     .unwrap();
     let pair = CssPlaceContentValue::new(align, justify);
     assert_eq!(
-        pair.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(4, 4, 24))
+        pair.serialize_specified(CssSerializationLimits::new(4, 4, 24))
             .unwrap(),
         "safe center unsafe right"
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(3, 4, 24),
+            CssSerializationLimits::new(3, 4, 24),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(4, 3, 24),
+            CssSerializationLimits::new(4, 3, 24),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(4, 4, 23),
+            CssSerializationLimits::new(4, 4, 23),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
-        assert_eq!(
-            pair.serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            kind
-        );
+        assert_eq!(pair.serialize_specified(limits).unwrap_err().kind(), kind);
     }
 }

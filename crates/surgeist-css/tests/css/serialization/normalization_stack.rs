@@ -37,7 +37,7 @@ fn assert_color(value: &CssNormalizedDeclaration, source: &str, color: &str, ord
         value
             .source()
             .value_components()
-            .serialize()
+            .serialize_tokens(Default::default())
             .unwrap()
             .as_css(),
         color

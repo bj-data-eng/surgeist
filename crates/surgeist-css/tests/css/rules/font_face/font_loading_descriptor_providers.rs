@@ -11,7 +11,7 @@ use surgeist_css::*;
 type Kind = CssFontFaceDescriptorKind;
 type Value = CssFontFaceDescriptorValue;
 type Authored = CssAuthoredFontFaceDescriptorValue;
-type Limits = CssSpecifiedValueSerializationLimits;
+type Limits = CssSerializationLimits;
 type ErrorKind = CssSpecifiedValueSerializationErrorKind;
 
 fn cases() -> [(Kind, &'static str, &'static str); 14] {
@@ -42,10 +42,12 @@ fn cases() -> [(Kind, &'static str, &'static str); 14] {
 }
 
 fn assert_atomic_limits(value: &Value, expected: &str, nodes: usize) {
-    LimitLadder::new(expected, nodes, nodes).assert_unchanged(value, |value, limits| {
-        value.serialize_specified_with_limits(limits)
-    });
-    assert_eq!(value.serialize_specified().unwrap(), expected);
+    LimitLadder::new(expected, nodes, nodes)
+        .assert_unchanged(value, |value, limits| value.serialize_specified(limits));
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
 }
 
 #[test]
@@ -53,13 +55,24 @@ fn every_descriptor_emits_the_same_canonical_value_after_raw_and_checked_admissi
     for (kind, source, expected) in cases() {
         let value = ordinary(source, kind);
         assert_eq!(value.kind(), kind);
-        assert_eq!(value.serialize_specified().unwrap(), expected, "{kind:?}");
-        let checked =
-            Authored::try_from_components(kind, parse_component_values(source).unwrap()).unwrap();
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected,
+            "{kind:?}"
+        );
+        let checked = Authored::try_from_components(
+            kind,
+            parse_component_values(source).unwrap(),
+            Default::default(),
+        )
+        .unwrap();
         let Authored::Ordinary(checked) = checked else {
             panic!("checked ordinary descriptor")
         };
-        assert_eq!(checked.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            checked.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         let before = value.clone();
         for (limits, error) in [
             (
@@ -75,16 +88,13 @@ fn every_descriptor_emits_the_same_canonical_value_after_raw_and_checked_admissi
                 ErrorKind::ByteLimit,
             ),
         ] {
-            assert_eq!(
-                value
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
-                error
-            );
+            assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), error);
             assert_eq!(value, before);
         }
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
 }
 
@@ -96,8 +106,12 @@ fn environment_pending_values_reenter_each_concrete_grammar_without_mutating_aut
             .into_validation_result()
             .unwrap()
             .unwrap();
-        let checked =
-            Authored::try_from_components(kind, parse_component_values(source).unwrap()).unwrap();
+        let checked = Authored::try_from_components(
+            kind,
+            parse_component_values(source).unwrap(),
+            Default::default(),
+        )
+        .unwrap();
         for authored in [raw, checked] {
             let Authored::Pending(pending) = authored else {
                 panic!("whole descriptor pending")
@@ -105,14 +119,23 @@ fn environment_pending_values_reenter_each_concrete_grammar_without_mutating_aut
             assert_eq!(pending.kind(), kind);
             let before = pending.components().clone();
             let value = pending
-                .reparse_after_substitution(parse_component_values(replacement).unwrap())
+                .reparse_after_substitution(
+                    parse_component_values(replacement).unwrap(),
+                    Default::default(),
+                )
                 .unwrap();
             assert_eq!(value.kind(), kind);
-            assert_eq!(value.serialize_specified().unwrap(), expected);
+            assert_eq!(
+                value.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
             for residual in ["env(face-value)", "var(--face-value)"] {
                 assert_eq!(
                     pending
-                        .reparse_after_substitution(parse_component_values(residual).unwrap())
+                        .reparse_after_substitution(
+                            parse_component_values(residual).unwrap(),
+                            Default::default()
+                        )
                         .unwrap_err()
                         .kind(),
                     &CssFontFaceValueErrorKind::ResidualSubstitution,
@@ -153,9 +176,12 @@ fn descriptor_boundaries_and_stylesheet_only_substitution_do_not_become_ordinary
             let report = parse_font_face_descriptor_value(&invalid, kind);
             assert!(report.syntax().is_none(), "{kind:?}: {invalid}: {report:?}");
             expected.assert_first(&report);
-            let error =
-                Authored::try_from_components(kind, parse_component_values(&invalid).unwrap())
-                    .unwrap_err();
+            let error = Authored::try_from_components(
+                kind,
+                parse_component_values(&invalid).unwrap(),
+                Default::default(),
+            )
+            .unwrap_err();
             let CssFontFaceValueErrorKind::Grammar(detail) = error.kind() else {
                 panic!("{kind:?}: {invalid}: grammar failure: {error:?}")
             };
@@ -204,7 +230,8 @@ fn shared_strings_use_escaped_utf8_byte_limits_and_retain_original_string_origin
     let expected = "\"é\\\"Face\"";
     let components = parse_component_values(source).unwrap();
     let Authored::Ordinary(value) =
-        Authored::try_from_components(Kind::FontNamedInstance, components).unwrap()
+        Authored::try_from_components(Kind::FontNamedInstance, components, Default::default())
+            .unwrap()
     else {
         panic!("named instance")
     };
@@ -250,14 +277,13 @@ fn metric_calculations_remain_authored_and_original_after_aggregate_failure() {
             let calculation = percentage.calculation().unwrap();
             assert_eq!(calculation.result_type(), CssCalculationType::Percentage);
             let before = calculation.components().clone();
-            assert_eq!(value.serialize_specified().unwrap(), expected);
+            assert_eq!(
+                value.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
             assert_eq!(
                 value
-                    .serialize_specified_with_limits(Limits::new(
-                        usize::MAX,
-                        usize::MAX,
-                        expected.len() - 1
-                    ))
+                    .serialize_specified(Limits::new(usize::MAX, usize::MAX, expected.len() - 1))
                     .unwrap_err()
                     .kind(),
                 ErrorKind::ByteLimit
@@ -288,14 +314,13 @@ fn aggregate_source_emission_preserves_url_phase_modifiers_and_original_argument
     };
     let before = modifier.argument_components().clone();
     let expected = "src(\"relative.face\" integrity(\"sha256\")) format(woff2), url(\"\")";
-    assert_eq!(value.serialize_specified().unwrap(), expected);
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     assert_eq!(
         value
-            .serialize_specified_with_limits(Limits::new(
-                usize::MAX,
-                usize::MAX,
-                expected.len() - 1
-            ))
+            .serialize_specified(Limits::new(usize::MAX, usize::MAX, expected.len() - 1))
             .unwrap_err()
             .kind(),
         ErrorKind::ByteLimit
@@ -314,7 +339,10 @@ fn aggregate_source_emission_preserves_url_phase_modifiers_and_original_argument
     };
     assert_eq!(last.url().function(), CssUrlFunction::Url);
     assert_eq!(last.url().as_str(), "");
-    assert_eq!(value.serialize_specified().unwrap(), expected);
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
 }
 
 #[test]
@@ -339,7 +367,7 @@ fn eof_string_recovery_stays_visible_and_checked_descriptor_reentry_rejects_it()
         assert!(report.into_validation_result().is_err());
         let components = parse_component_values(source).unwrap();
         assert_eq!(
-            Authored::try_from_components(kind, components.clone())
+            Authored::try_from_components(kind, components.clone(), Default::default())
                 .unwrap_err()
                 .kind(),
             &CssFontFaceValueErrorKind::RecoveredComponent,
@@ -354,7 +382,7 @@ fn eof_string_recovery_stays_visible_and_checked_descriptor_reentry_rejects_it()
         };
         assert_eq!(
             pending
-                .reparse_after_substitution(components)
+                .reparse_after_substitution(components, Default::default())
                 .unwrap_err()
                 .kind(),
             &CssFontFaceValueErrorKind::RecoveredComponent,
@@ -374,7 +402,10 @@ fn stretch_alias_uses_width_grammar_while_removed_variant_has_no_descriptor_prov
     let Authored::Ordinary(value) = width.value() else {
         panic!("ordinary width under legacy descriptor name")
     };
-    assert_eq!(value.serialize_specified().unwrap(), "75%");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "75%"
+    );
     assert_eq!(face.descriptors().occurrences().len(), 2);
     assert!(face.descriptors().effective(Kind::FontDisplay).is_some());
     let [diagnostic] = report.diagnostics() else {

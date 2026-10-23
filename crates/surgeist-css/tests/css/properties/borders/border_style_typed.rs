@@ -14,35 +14,29 @@ fn scalar_style_keywords_share_exact_bounded_serialization() {
         (CssBorderStyle::Inset, "inset"),
         (CssBorderStyle::Outset, "outset"),
     ] {
-        assert_eq!(style.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            style.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
     let style = CssBorderStyle::None;
-    let exact = CssSpecifiedValueSerializationLimits::new(1, 1, 4);
-    assert_eq!(
-        style.serialize_specified_with_limits(exact).unwrap(),
-        "none"
-    );
+    let exact = CssSerializationLimits::new(1, 1, 4);
+    assert_eq!(style.serialize_specified(exact).unwrap(), "none");
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(0, 1, 4),
+            CssSerializationLimits::new(0, 1, 4),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(1, 0, 4),
+            CssSerializationLimits::new(1, 0, 4),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(1, 1, 3),
+            CssSerializationLimits::new(1, 1, 3),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
-        assert_eq!(
-            style
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            kind
-        );
+        assert_eq!(style.serialize_specified(limits).unwrap_err().kind(), kind);
     }
 }
 
@@ -52,7 +46,10 @@ fn logical_pairs_keep_authored_omission_and_cumulative_budget() {
     assert_eq!(one.start(), &CssBorderStyle::Dotted);
     assert_eq!(one.authored_end(), None);
     assert_eq!(one.end(), one.start());
-    assert_eq!(one.serialize_specified().unwrap(), "dotted");
+    assert_eq!(
+        one.serialize_specified(Default::default()).unwrap(),
+        "dotted"
+    );
     assert_ne!(
         one,
         CssBorderStylePair::new(CssBorderStyle::Dotted, Some(CssBorderStyle::Dotted))
@@ -61,31 +58,23 @@ fn logical_pairs_keep_authored_omission_and_cumulative_budget() {
     let pair = CssBorderStylePair::new(CssBorderStyle::Dotted, Some(CssBorderStyle::Dashed));
     assert_eq!(pair.authored_end(), Some(&CssBorderStyle::Dashed));
     assert_eq!(pair.end(), &CssBorderStyle::Dashed);
-    let exact = CssSpecifiedValueSerializationLimits::new(3, 3, 13);
-    assert_eq!(
-        pair.serialize_specified_with_limits(exact).unwrap(),
-        "dotted dashed"
-    );
+    let exact = CssSerializationLimits::new(3, 3, 13);
+    assert_eq!(pair.serialize_specified(exact).unwrap(), "dotted dashed");
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(2, 3, 13),
+            CssSerializationLimits::new(2, 3, 13),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(3, 2, 13),
+            CssSerializationLimits::new(3, 2, 13),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(3, 3, 12),
+            CssSerializationLimits::new(3, 3, 12),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
-        assert_eq!(
-            pair.serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            kind
-        );
+        assert_eq!(pair.serialize_specified(limits).unwrap_err().kind(), kind);
     }
 }
 
@@ -120,11 +109,14 @@ fn four_side_styles_preserve_authored_arity_and_physical_or_logical_roles() {
                 CssBoxSideKind::Physical => serialized.to_string(),
                 CssBoxSideKind::Logical => format!("logical {serialized}"),
             };
-            assert_eq!(shorthand.serialize_specified().unwrap(), expected);
+            assert_eq!(
+                shorthand.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
             assert_eq!(
                 shorthand
                     .assigned_values()
-                    .map(|value| value.serialize_specified().unwrap()),
+                    .map(|value| value.serialize_specified(Default::default()).unwrap()),
                 assigned
             );
         }
@@ -141,30 +133,27 @@ fn four_side_styles_preserve_authored_arity_and_physical_or_logical_roles() {
         vec![None, Solid, Dashed, CssBorderStyle::Double],
     )
     .unwrap();
-    let exact = CssSpecifiedValueSerializationLimits::new(5, 5, 32);
+    let exact = CssSerializationLimits::new(5, 5, 32);
     assert_eq!(
-        logical.serialize_specified_with_limits(exact).unwrap(),
+        logical.serialize_specified(exact).unwrap(),
         "logical none solid dashed double"
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(4, 5, 32),
+            CssSerializationLimits::new(4, 5, 32),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(5, 4, 32),
+            CssSerializationLimits::new(5, 4, 32),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(5, 5, 31),
+            CssSerializationLimits::new(5, 5, 31),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
         assert_eq!(
-            logical
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            logical.serialize_specified(limits).unwrap_err().kind(),
             kind
         );
     }

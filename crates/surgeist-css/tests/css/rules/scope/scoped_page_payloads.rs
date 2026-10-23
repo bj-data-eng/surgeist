@@ -32,7 +32,10 @@ fn assert_margin(page: &CssPageRule) {
             }
             other => panic!("unexpected page margin token: {other:?}"),
         }
-        assert_eq!(side.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            side.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
     assert!(matches!(bottom, CssMarginValue::Auto));
 }

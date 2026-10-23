@@ -160,13 +160,17 @@ fn spacing(item: &CssLonghandContribution) -> String {
             | CssLonghandValueRef::MarginBottom(value)
             | CssLonghandValueRef::MarginLeft(value)
             | CssLonghandValueRef::MarginBlockStart(value)
-            | CssLonghandValueRef::MarginBlockEnd(value) => value.serialize_specified().unwrap(),
+            | CssLonghandValueRef::MarginBlockEnd(value) => {
+                value.serialize_specified(Default::default()).unwrap()
+            }
             CssLonghandValueRef::PaddingTop(value)
             | CssLonghandValueRef::PaddingRight(value)
             | CssLonghandValueRef::PaddingBottom(value)
             | CssLonghandValueRef::PaddingLeft(value)
             | CssLonghandValueRef::PaddingBlockStart(value)
-            | CssLonghandValueRef::PaddingBlockEnd(value) => value.serialize_specified().unwrap(),
+            | CssLonghandValueRef::PaddingBlockEnd(value) => {
+                value.serialize_specified(Default::default()).unwrap()
+            }
             other => panic!("expected spacing value: {other:?}"),
         },
         other => panic!("expected ordinary spacing value: {other:?}"),
@@ -296,14 +300,14 @@ fn four_sided_length_shorthands() {
                     value
                         .value()
                         .assigned_values()
-                        .map(|side| side.serialize_specified().unwrap())
+                        .map(|side| side.serialize_specified(Default::default()).unwrap())
                 }
                 CssKnownPropertyValueRef::Padding(value) => {
                     assert_eq!(value.as_css(), css);
                     value
                         .value()
                         .assigned_values()
-                        .map(|side| side.serialize_specified().unwrap())
+                        .map(|side| side.serialize_specified(Default::default()).unwrap())
                 }
                 other => panic!("expected checked box spacing: {other:?}"),
             };
@@ -328,7 +332,7 @@ fn four_sided_length_shorthands() {
             authored
                 .value()
                 .assigned_values()
-                .map(|width| width.serialize_specified().unwrap()),
+                .map(|width| width.serialize_specified(Default::default()).unwrap()),
             expected.map(|n| format!("{n}px"))
         );
         assert_selected_four(expand_declaration(&source));
@@ -342,7 +346,7 @@ fn four_sided_length_shorthands() {
         authored
             .value()
             .assigned_values()
-            .map(|side| side.serialize_specified().unwrap()),
+            .map(|side| side.serialize_specified(Default::default()).unwrap()),
         ["auto", "10%", "-3px", "10%"]
     );
     assert_eq!(authored.as_css(), "auto 10% -3px");
@@ -766,11 +770,14 @@ fn pending_reentry_preserves_original_and_replacement_provenance() {
     let pending = pending_expansion(source);
     let first = parse_component_values("7px").unwrap();
     let second = parse_component_values("11%").unwrap();
-    let replacement = CssComponentValues::try_new(vec![
-        first.items()[0].clone(),
-        CssComponentValue::try_token(" ").unwrap(),
-        second.items()[0].clone(),
-    ])
+    let replacement = CssComponentValues::try_new(
+        vec![
+            first.items()[0].clone(),
+            CssComponentValue::try_token(" ").unwrap(),
+            second.items()[0].clone(),
+        ],
+        Default::default(),
+    )
     .unwrap();
     let completed: CssContributions = pending.reenter(replacement.clone()).unwrap();
     let CssContributions::Longhands(values) = completed else {
@@ -805,7 +812,13 @@ fn pending_reentry_preserves_original_and_replacement_provenance() {
                 assert!(actual.source().same_snapshot(expected.source()));
             }
         }
-        assert_eq!(actual.serialize().unwrap().as_css(), "7px 11%");
+        assert_eq!(
+            actual
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            "7px 11%"
+        );
     }
     for property in [Property::Border, Property::All] {
         let source = declaration(property, "var(--reset)", CssImportance::Important);
@@ -1025,7 +1038,11 @@ fn custom_properties_preserve_symbolic_values_and_occurrences() {
                 }
                 assert_eq!(checked.position(), None);
                 assert_eq!(
-                    checked.value_components().serialize().unwrap().as_css(),
+                    checked
+                        .value_components()
+                        .serialize_tokens(Default::default())
+                        .unwrap()
+                        .as_css(),
                     value
                 );
                 for (actual, expected) in checked
@@ -1049,9 +1066,11 @@ fn custom_properties_preserve_symbolic_values_and_occurrences() {
             ("revert", CssGlobalKeyword::Revert),
             ("revert-layer", CssGlobalKeyword::RevertLayer),
         ] {
-            let components =
-                CssComponentValues::try_new(vec![CssComponentValue::try_ident(css).unwrap()])
-                    .unwrap();
+            let components = CssComponentValues::try_new(
+                vec![CssComponentValue::try_ident(css).unwrap()],
+                Default::default(),
+            )
+            .unwrap();
             let checked = parse_property_value(
                 CssPropertyNameRef::Custom(&name),
                 components,

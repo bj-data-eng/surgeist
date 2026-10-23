@@ -10,7 +10,7 @@ use crate::css::support::important_declaration as declaration;
 use crate::css::support::value_assertions::assert_component_rejected;
 use surgeist_css::*;
 
-type Limits = CssSpecifiedValueSerializationLimits;
+type Limits = CssSerializationLimits;
 type Kind = CssSpecifiedValueSerializationErrorKind;
 
 fn component(text: &str) -> CssComponentValue {
@@ -23,22 +23,55 @@ fn component(text: &str) -> CssComponentValue {
 
 fn specified(value: &CssDeclaration) -> String {
     match value.known().unwrap().property_value().unwrap() {
-        CssKnownPropertyValueRef::Color(v) => v.value().to_specified_css().unwrap(),
-        CssKnownPropertyValueRef::Filter(v) => v.value().serialize_specified().unwrap(),
-        CssKnownPropertyValueRef::AspectRatio(v) => v.ratio().serialize_specified().unwrap(),
-        CssKnownPropertyValueRef::Clip(v) => v.clip().serialize_specified().unwrap(),
-        CssKnownPropertyValueRef::Content(v) => v.value().serialize_specified().unwrap(),
-        CssKnownPropertyValueRef::FontSize(v) => v.size().serialize_specified().unwrap(),
-        CssKnownPropertyValueRef::FontFamily(v) => v.families().serialize_specified().unwrap(),
-        CssKnownPropertyValueRef::VoiceFamily(v) => v.value().serialize_specified().unwrap(),
-        CssKnownPropertyValueRef::BorderTopWidth(v) => v.value().serialize_specified().unwrap(),
-        CssKnownPropertyValueRef::BorderTopStyle(v) => v.value().serialize_specified().unwrap(),
-        CssKnownPropertyValueRef::Top(v) => v.value().serialize_specified().unwrap(),
-        CssKnownPropertyValueRef::Right(v) => v.value().serialize_specified().unwrap(),
-        CssKnownPropertyValueRef::Bottom(v) => v.value().serialize_specified().unwrap(),
-        CssKnownPropertyValueRef::Left(v) => v.value().serialize_specified().unwrap(),
-        CssKnownPropertyValueRef::MarginTop(v) => v.value().serialize_specified().unwrap(),
-        CssKnownPropertyValueRef::PaddingTop(v) => v.value().serialize_specified().unwrap(),
+        CssKnownPropertyValueRef::Color(v) => {
+            v.value().serialize_specified(Default::default()).unwrap()
+        }
+        CssKnownPropertyValueRef::Filter(v) => {
+            v.value().serialize_specified(Default::default()).unwrap()
+        }
+        CssKnownPropertyValueRef::AspectRatio(v) => {
+            v.ratio().serialize_specified(Default::default()).unwrap()
+        }
+        CssKnownPropertyValueRef::Clip(v) => {
+            v.clip().serialize_specified(Default::default()).unwrap()
+        }
+        CssKnownPropertyValueRef::Content(v) => {
+            v.value().serialize_specified(Default::default()).unwrap()
+        }
+        CssKnownPropertyValueRef::FontSize(v) => {
+            v.size().serialize_specified(Default::default()).unwrap()
+        }
+        CssKnownPropertyValueRef::FontFamily(v) => v
+            .families()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        CssKnownPropertyValueRef::VoiceFamily(v) => {
+            v.value().serialize_specified(Default::default()).unwrap()
+        }
+        CssKnownPropertyValueRef::BorderTopWidth(v) => {
+            v.value().serialize_specified(Default::default()).unwrap()
+        }
+        CssKnownPropertyValueRef::BorderTopStyle(v) => {
+            v.value().serialize_specified(Default::default()).unwrap()
+        }
+        CssKnownPropertyValueRef::Top(v) => {
+            v.value().serialize_specified(Default::default()).unwrap()
+        }
+        CssKnownPropertyValueRef::Right(v) => {
+            v.value().serialize_specified(Default::default()).unwrap()
+        }
+        CssKnownPropertyValueRef::Bottom(v) => {
+            v.value().serialize_specified(Default::default()).unwrap()
+        }
+        CssKnownPropertyValueRef::Left(v) => {
+            v.value().serialize_specified(Default::default()).unwrap()
+        }
+        CssKnownPropertyValueRef::MarginTop(v) => {
+            v.value().serialize_specified(Default::default()).unwrap()
+        }
+        CssKnownPropertyValueRef::PaddingTop(v) => {
+            v.value().serialize_specified(Default::default()).unwrap()
+        }
         _ => panic!("fixture selects a concrete component owner"),
     }
 }
@@ -59,17 +92,17 @@ fn scalar_outputs_compose_without_losing_exact_authored_components() {
     let frequency = CssFrequencyLiteral::try_from_component(component("2KHz")).unwrap();
     let resolution = CssResolutionLiteral::try_from_component(component("150DPI")).unwrap();
     let values = [
-        number.serialize_specified().unwrap(),
-        integer.serialize_specified().unwrap(),
-        percentage.serialize_specified().unwrap(),
-        length.serialize_specified().unwrap(),
-        time.serialize_specified().unwrap(),
-        frequency.serialize_specified().unwrap(),
-        resolution.serialize_specified().unwrap(),
+        number.serialize_specified(Default::default()).unwrap(),
+        integer.serialize_specified(Default::default()).unwrap(),
+        percentage.serialize_specified(Default::default()).unwrap(),
+        length.serialize_specified(Default::default()).unwrap(),
+        time.serialize_specified(Default::default()).unwrap(),
+        frequency.serialize_specified(Default::default()).unwrap(),
+        resolution.serialize_specified(Default::default()).unwrap(),
     ];
     let items: Vec<&str> = values.iter().map(String::as_str).collect();
     assert_eq!(
-        serialize_css_whitespace_separated_list(&items).unwrap(),
+        serialize_css_whitespace_separated_list(&items, Default::default()).unwrap(),
         "1.234568 -2147483649 12.5% 2.5q 1.25s 2khz 1.5625dppx"
     );
     assert_eq!(number.literal_component(), Some(&number_component));
@@ -91,7 +124,10 @@ fn scalar_outputs_compose_without_losing_exact_authored_components() {
     let checked = CssSpecifiedNumber::try_from_component(checked_component.clone()).unwrap();
     assert_eq!(checked.origin(), &CssValueOrigin::Programmatic);
     assert_eq!(checked.literal_component(), Some(&checked_component));
-    assert_eq!(checked.serialize_specified().unwrap(), "1.234568");
+    assert_eq!(
+        checked.serialize_specified(Default::default()).unwrap(),
+        "1.234568"
+    );
     // Syntax 3 §4.3.3: an exponent makes a <number-token> of type "number".
     assert_eq!(
         CssIntegerLiteral::try_from_component(component("1e0"))
@@ -191,12 +227,12 @@ fn macro_aliases_delegate_to_concrete_property_grammar_and_family_rules() {
 
 #[test]
 fn common_escaping_and_authored_wrappers_compose_already_serialized_items() {
-    let identifier = serialize_css_identifier("1é😀").unwrap();
-    let string = serialize_css_string("a\"\\\n\0").unwrap();
+    let identifier = serialize_css_identifier("1é😀", Default::default()).unwrap();
+    let string = serialize_css_string("a\"\\\n\0", Default::default()).unwrap();
     let url = CssUrl::new("../é😀.woff2#face");
     let local = CssFontLocalName::try_new("1é😀").unwrap();
-    let url_text = url.serialize_specified().unwrap();
-    let local_text = local.serialize_specified().unwrap();
+    let url_text = url.serialize_specified(Default::default()).unwrap();
+    let local_text = local.serialize_specified(Default::default()).unwrap();
     assert_eq!(identifier, "\\31 é😀");
     assert_eq!(string, "\"a\\\"\\\\\\a �\"");
     assert_eq!(url_text, "url(\"../é😀.woff2#face\")");
@@ -212,13 +248,12 @@ fn common_escaping_and_authored_wrappers_compose_already_serialized_items() {
     ];
     let expected = "\\31 é😀, \"a\\\"\\\\\\a �\", url(\"../é😀.woff2#face\"), local(\"1é😀\"), ";
     assert_eq!(
-        serialize_css_comma_separated_list(&items).unwrap(),
+        serialize_css_comma_separated_list(&items, Default::default()).unwrap(),
         expected
     );
     // One list and five already-serialized items; Unicode consumes UTF-8 bytes.
     assert_eq!(
-        serialize_css_comma_separated_list_with_limits(&items, Limits::new(6, 6, expected.len()))
-            .unwrap(),
+        serialize_css_comma_separated_list(&items, Limits::new(6, 6, expected.len())).unwrap(),
         expected
     );
     for (limits, kind) in [
@@ -227,7 +262,7 @@ fn common_escaping_and_authored_wrappers_compose_already_serialized_items() {
         (Limits::new(6, 6, expected.len() - 1), Kind::ByteLimit),
     ] {
         assert_eq!(
-            serialize_css_comma_separated_list_with_limits(&items, limits)
+            serialize_css_comma_separated_list(&items, limits)
                 .unwrap_err()
                 .kind(),
             kind
@@ -261,7 +296,7 @@ fn local_and_url_source_children_share_one_atomic_resource_budget() {
         let before = value.clone();
         assert_eq!(
             value
-                .serialize_specified_with_limits(Limits::new(6, 6, expected.len()))
+                .serialize_specified(Limits::new(6, 6, expected.len()))
                 .unwrap(),
             expected
         );
@@ -270,16 +305,13 @@ fn local_and_url_source_children_share_one_atomic_resource_budget() {
             (Limits::new(6, 5, expected.len()), Kind::ProjectionNodeLimit),
             (Limits::new(6, 6, expected.len() - 1), Kind::ByteLimit),
         ] {
-            assert_eq!(
-                value
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
-                kind
-            );
+            assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
             assert_eq!(value, &before);
         }
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
 }
 
@@ -309,7 +341,7 @@ fn rectangle_edges_share_cumulative_limits_and_keep_their_authored_origins() {
     // One rectangle and four effective edge scalars; clip adds no extra node.
     assert_eq!(
         value
-            .serialize_specified_with_limits(Limits::new(5, 5, expected.len()))
+            .serialize_specified(Limits::new(5, 5, expected.len()))
             .unwrap(),
         expected
     );
@@ -318,13 +350,7 @@ fn rectangle_edges_share_cumulative_limits_and_keep_their_authored_origins() {
         (Limits::new(5, 4, expected.len()), Kind::ProjectionNodeLimit),
         (Limits::new(5, 5, expected.len() - 1), Kind::ByteLimit),
     ] {
-        assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            kind
-        );
+        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
         assert_eq!(value, &before);
         assert!(source.same_occurrence(&source.clone()));
         for (edge, original) in [rect.top(), rect.bottom(), rect.left()]
@@ -338,7 +364,10 @@ fn rectangle_edges_share_cumulative_limits_and_keep_their_authored_origins() {
             assert_eq!(length.origin(), original.origin());
         }
     }
-    assert_eq!(value.serialize_specified().unwrap(), expected);
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
 }
 
 fn color(text: &str) -> CssColor {
@@ -366,8 +395,17 @@ fn declared_color4_replacement_preserves_keywords_and_missing_components() {
     ] {
         let value = color(text);
         let before = value.clone();
-        assert_eq!(value.to_specified_css().unwrap(), expected, "{text}");
-        assert_eq!(color(expected).to_specified_css().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected,
+            "{text}"
+        );
+        assert_eq!(
+            color(expected)
+                .serialize_specified(Default::default())
+                .unwrap(),
+            expected
+        );
         assert_eq!(value, before);
     }
 }
@@ -424,21 +462,30 @@ fn every_byte_alpha_has_an_independent_cssom_witness_and_atomic_byte_limit() {
         // A hex color is one color node in both input and projection counts.
         assert_eq!(
             value
-                .to_specified_css_with_limits(Limits::new(1, 1, expected.len()))
+                .serialize_specified(Limits::new(1, 1, expected.len()))
                 .unwrap(),
             expected,
             "{text}"
         );
         assert_eq!(
             value
-                .to_specified_css_with_limits(Limits::new(1, 1, expected.len() - 1))
+                .serialize_specified(Limits::new(1, 1, expected.len() - 1))
                 .unwrap_err()
                 .kind(),
             Kind::ByteLimit
         );
         assert_eq!(value, before);
-        assert_eq!(value.to_specified_css().unwrap(), expected);
-        assert_eq!(checked.value().to_specified_css().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
+        assert_eq!(
+            checked
+                .value()
+                .serialize_specified(Default::default())
+                .unwrap(),
+            expected
+        );
         assert_eq!(checked_declaration.value_components(), &retained);
     }
     for (byte, expected) in [(1, "0.004"), (127, "0.498"), (128, "0.5"), (254, "0.996")] {

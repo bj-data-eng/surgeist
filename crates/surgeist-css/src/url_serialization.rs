@@ -2,51 +2,18 @@
 
 use crate::component_values::{CssCanonicalBuilder, specified_component_error};
 use crate::specified_rule_serialization::SpecifiedRuleWriter;
-use crate::{
-    CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits, CssUrl,
-    CssUrlFunction, CssUrlModifier,
-};
+use crate::{CssSerializationError, CssUrl, CssUrlFunction, CssUrlModifier};
 
-type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
+type Result<T> = std::result::Result<T, CssSerializationError>;
 
 impl CssUrl {
-    /// Serializes the authored URL function without resolving its target or modifiers.
-    ///
-    /// The decoded target uses CSS string serialization, which replaces U+0000
-    /// with U+FFFD. The stored authored value remains unchanged.
-    pub fn serialize_specified(&self) -> Result<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes one complete URL function under cumulative node and byte limits.
-    ///
-    /// One URL aggregate, its string target, each modifier, and every retained
-    /// argument component (including nested components and trivia) each charge
-    /// one input node and one projection node.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        self.append_specified(writer)?;
-        Ok(())
-    }
-
     /// Appends to an enclosing specified-value writer without resetting its budget.
     pub(crate) fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         // An enclosing shorthand can prove this complete URL redundant. Hidden
         // authored input still incurs every provider visit, but needs no escaped
         // output scratch bounded by the already consumed final byte budget.
         let suppressed = writer.context.output_suppressed();
-        charge_nodes(writer, 1)?;
+        writer.node()?;
         if !suppressed {
             writer.append(match self.function() {
                 CssUrlFunction::Url => "url(",
@@ -54,7 +21,7 @@ impl CssUrl {
             })?;
         }
 
-        charge_nodes(writer, 1)?;
+        writer.node()?;
         if !suppressed {
             writer.append_string(self.as_str())?;
         }
@@ -63,7 +30,7 @@ impl CssUrl {
             if !suppressed {
                 writer.append(" ")?;
             }
-            charge_nodes(writer, 1)?;
+            writer.node()?;
             match modifier {
                 CssUrlModifier::Ident(ident) => {
                     if !suppressed {
@@ -72,7 +39,7 @@ impl CssUrl {
                 }
                 CssUrlModifier::Function(function) => {
                     let components = function.argument_components();
-                    charge_nodes(writer, components.component_count())?;
+                    writer.nodes(components.component_count())?;
                     if suppressed {
                         continue;
                     }
@@ -98,8 +65,13 @@ impl CssUrl {
         Ok(())
     }
 }
-
-fn charge_nodes(writer: &mut SpecifiedRuleWriter, count: usize) -> Result<()> {
-    writer.context.charge_input(count)?;
-    writer.context.charge_projection(count)
+impl crate::specified_rule_serialization::SpecifiedProvider for CssUrl {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        self.append_specified(writer)?;
+        Ok(())
+    }
 }
+crate::specified_rule_serialization::specified_serialization!(CssUrl);

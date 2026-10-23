@@ -51,10 +51,14 @@ fn implicit_initials_are_omitted_authored_values_without_forged_occurrences() {
         CssCounterStyleDescriptorKind::AdditiveSymbols,
         CssCounterStyleDescriptorKind::SpeakAs,
     ] {
-        assert_eq!(rule.descriptor_specified_css(kind).unwrap(), "");
+        assert_eq!(
+            rule.descriptor_specified_css(kind, Default::default())
+                .unwrap(),
+            ""
+        );
     }
     assert_eq!(
-        rule.to_specified_css().unwrap(),
+        rule.serialize_specified(Default::default()).unwrap(),
         "@counter-style Custom { symbols: a; }"
     );
 }
@@ -113,7 +117,7 @@ fn explicit_initial_values_remain_distinct_from_omission() {
         CssCounterStyleSpeakAs::Auto
     ));
     assert_eq!(
-        rule.to_specified_css().unwrap(),
+        rule.serialize_specified(Default::default()).unwrap(),
         concat!(
             "@counter-style Custom { system: symbolic; negative: \"-\"; prefix: \"\"; ",
             "suffix: \". \"; range: auto; pad: 0 \"\"; fallback: decimal; symbols: a; speak-as: auto; }"
@@ -134,8 +138,11 @@ fn every_system_retains_its_valid_minimum_symbol_boundary() {
     ] {
         let rule = counter(body);
         assert_eq!(
-            rule.descriptor_specified_css(CssCounterStyleDescriptorKind::System)
-                .unwrap(),
+            rule.descriptor_specified_css(
+                CssCounterStyleDescriptorKind::System,
+                Default::default()
+            )
+            .unwrap(),
             expected
         );
         match (
@@ -241,7 +248,8 @@ fn every_descriptor_selects_last_valid_duplicate_after_whole_value_recovery() {
         };
         let retained = rule.clone();
         assert_eq!(
-            rule.descriptor_specified_css(kind).unwrap(),
+            rule.descriptor_specified_css(kind, Default::default())
+                .unwrap(),
             expected,
             "{source}"
         );
@@ -266,7 +274,7 @@ fn every_descriptor_selects_last_valid_duplicate_after_whole_value_recovery() {
             validate_sheet(&source).unwrap_err().diagnostics(),
             report.diagnostics()
         );
-        let _ = rule.to_specified_css().unwrap();
+        let _ = rule.serialize_specified(Default::default()).unwrap();
         assert_eq!(rule, &retained);
     }
 }
@@ -279,7 +287,7 @@ fn unknown_descriptor_and_unsupported_value_recover_independently() {
         panic!("counter and following rule");
     };
     assert_eq!(
-        rule.to_specified_css().unwrap(),
+        rule.serialize_specified(Default::default()).unwrap(),
         "@counter-style Custom { suffix: \".\"; symbols: a; }"
     );
     let [unknown, unsupported] = report.diagnostics() else {
@@ -306,8 +314,11 @@ fn descriptor_annotations_invalidate_only_the_annotated_descriptor() {
             panic!("annotation recovery");
         };
         assert_eq!(
-            rule.descriptor_specified_css(CssCounterStyleDescriptorKind::Prefix)
-                .unwrap(),
+            rule.descriptor_specified_css(
+                CssCounterStyleDescriptorKind::Prefix,
+                Default::default()
+            )
+            .unwrap(),
             "\"kept\""
         );
         let [diagnostic] = report.diagnostics() else {
@@ -329,7 +340,7 @@ fn descriptor_body_at_rules_follow_forward_recovery_without_losing_valid_values(
         panic!("whole unknown nested units recover");
     };
     assert_eq!(
-        rule.to_specified_css().unwrap(),
+        rule.serialize_specified(Default::default()).unwrap(),
         "@counter-style Custom { prefix: \"before\"; suffix: \"after\"; symbols: a; }"
     );
     let [unknown, forbidden] = report.diagnostics() else {
@@ -355,20 +366,20 @@ fn extends_omission_and_explicit_range_auto_remain_distinct() {
     ));
     assert_eq!(
         omitted
-            .descriptor_specified_css(CssCounterStyleDescriptorKind::Range)
+            .descriptor_specified_css(CssCounterStyleDescriptorKind::Range, Default::default())
             .unwrap(),
         ""
     );
     assert_eq!(
         explicit
-            .descriptor_specified_css(CssCounterStyleDescriptorKind::Range)
+            .descriptor_specified_css(CssCounterStyleDescriptorKind::Range, Default::default())
             .unwrap(),
         "auto"
     );
     assert!(explicit.descriptors().fallback().is_none());
     assert!(explicit.descriptors().speak_as().is_none());
     assert_eq!(
-        explicit.to_specified_css().unwrap(),
+        explicit.serialize_specified(Default::default()).unwrap(),
         "@counter-style Custom { system: extends Missing; range: auto; }"
     );
 }
@@ -396,7 +407,7 @@ fn extends_symbol_conflicts_keep_authored_rules_and_invalid_descriptors_recover_
         panic!("invalid symbol descriptors are ignored before effective combination validation");
     };
     assert_eq!(
-        rule.to_specified_css().unwrap(),
+        rule.serialize_specified(Default::default()).unwrap(),
         "@counter-style Custom { system: extends Missing; suffix: \".\"; }"
     );
     assert!(
@@ -433,8 +444,11 @@ fn unknown_named_targets_and_speech_choices_remain_symbolic() {
     ] {
         let rule = counter(&format!("symbols:a; speak-as:{body};"));
         assert_eq!(
-            rule.descriptor_specified_css(CssCounterStyleDescriptorKind::SpeakAs)
-                .unwrap(),
+            rule.descriptor_specified_css(
+                CssCounterStyleDescriptorKind::SpeakAs,
+                Default::default()
+            )
+            .unwrap(),
             expected
         );
     }
@@ -542,12 +556,12 @@ fn huge_integer_fields_and_signed_zero_keep_authored_tokens_without_range_clampi
         "-000"
     );
     assert_eq!(
-        rule.descriptor_specified_css(CssCounterStyleDescriptorKind::Range)
+        rule.descriptor_specified_css(CssCounterStyleDescriptorKind::Range, Default::default())
             .unwrap(),
         format!("-{huge} {huge}, infinite -1, 0 infinite")
     );
     assert_eq!(
-        rule.descriptor_specified_css(CssCounterStyleDescriptorKind::Pad)
+        rule.descriptor_specified_css(CssCounterStyleDescriptorKind::Pad, Default::default())
             .unwrap(),
         "0 \"_\""
     );
@@ -583,7 +597,7 @@ fn eof_body_recovery_keeps_valid_occurrences_and_matches_strict_diagnostics() {
         panic!("EOF retains completed descriptors");
     };
     assert_eq!(
-        rule.to_specified_css().unwrap(),
+        rule.serialize_specified(Default::default()).unwrap(),
         "@counter-style Custom { suffix: \".\"; symbols: a; }"
     );
     assert!(

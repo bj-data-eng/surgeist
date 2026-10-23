@@ -5,16 +5,15 @@
 
 use crate::{
     CssAngleCalculation, CssAngleUnit, CssComponentValue, CssComponentValueRef,
-    CssNumericConstructionError, CssNumericConstructionErrorKind,
-    CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationErrorKind,
-    CssSpecifiedValueSerializationLimits, CssValueOrigin, CssValueTokenRef,
+    CssNumericConstructionError, CssNumericConstructionErrorKind, CssSerializationError,
+    CssSpecifiedValueSerializationErrorKind, CssValueOrigin, CssValueTokenRef,
 };
 use crate::{
     numeric_formatting::format_css_number, specified_serialization::SpecifiedSerializationContext,
 };
 
 type ConstructionResult<T> = Result<T, CssNumericConstructionError>;
-type SerializationResult<T> = Result<T, CssSpecifiedValueSerializationError>;
+type SerializationResult<T> = Result<T, CssSerializationError>;
 
 /// The first 1000 significant digits of π/2 = 1.5707963267948966192…, the
 /// Fonts 4 oblique radian bound. π/2 is irrational, so this truncation lies
@@ -54,6 +53,10 @@ impl CssFontStyleKeyword {
 }
 
 /// An authored oblique angle with exact literal spelling or symbolic angle math.
+///
+/// # Specified serialization
+///
+/// Serializes the specified angle without computing font matching.
 #[derive(Clone, Debug)]
 pub struct CssFontObliqueAngle {
     value: ObliqueAngleValue,
@@ -168,31 +171,6 @@ impl CssFontObliqueAngle {
         }
     }
 
-    /// Serializes the specified angle without computing font matching.
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes atomically under the supplied resource limits.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        let context = &mut writer.context;
-        let output = &mut writer.css;
-        self.append_specified(context, output)?;
-        Ok(())
-    }
-
     pub(crate) fn append_specified(
         &self,
         context: &mut SpecifiedSerializationContext,
@@ -200,8 +178,7 @@ impl CssFontObliqueAngle {
     ) -> SerializationResult<()> {
         match &self.value {
             ObliqueAngleValue::Literal(component) => {
-                context.charge_input(1)?;
-                context.charge_projection(1)?;
+                context.charge_nodes(1)?;
                 if context.output_suppressed() {
                     return Ok(());
                 }
@@ -220,7 +197,7 @@ impl CssFontObliqueAngle {
                     .remaining_bytes()
                     .checked_sub(suffix.len())
                     .ok_or_else(|| {
-                        CssSpecifiedValueSerializationError::new(
+                        CssSerializationError::new(
                             CssSpecifiedValueSerializationErrorKind::ByteLimit,
                         )
                     })?;
@@ -236,8 +213,24 @@ impl CssFontObliqueAngle {
         }
     }
 }
+impl crate::specified_rule_serialization::SpecifiedProvider for CssFontObliqueAngle {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        let context = &mut writer.context;
+        let output = &mut writer.css;
+        self.append_specified(context, output)?;
+        Ok(())
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(CssFontObliqueAngle);
 
 /// An authored `font-style` property value.
+///
+/// # Specified serialization
+///
+/// Serializes the authored keyword or optional oblique angle.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontStyle {
@@ -246,6 +239,10 @@ pub enum CssFontStyle {
 }
 
 /// One or two authored oblique descriptor endpoints, in source order.
+///
+/// # Specified serialization
+///
+/// Serializes the exact authored one- or two-endpoint range.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssFontFaceObliqueRange {
     start: CssFontObliqueAngle,
@@ -271,31 +268,6 @@ impl CssFontFaceObliqueRange {
         self.end.as_ref()
     }
 
-    /// Serializes the exact authored one- or two-endpoint range.
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Charges both endpoints cumulatively; equal retained endpoints emit only the first.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        let context = &mut writer.context;
-        let output = &mut writer.css;
-        self.append_specified(context, output)?;
-        Ok(())
-    }
-
     pub(crate) fn append_specified(
         &self,
         context: &mut SpecifiedSerializationContext,
@@ -319,8 +291,24 @@ impl CssFontFaceObliqueRange {
         Ok(())
     }
 }
+impl crate::specified_rule_serialization::SpecifiedProvider for CssFontFaceObliqueRange {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        let context = &mut writer.context;
+        let output = &mut writer.css;
+        self.append_specified(context, output)?;
+        Ok(())
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(CssFontFaceObliqueRange);
 
 /// An authored `@font-face` style descriptor, before font matching.
+///
+/// # Specified serialization
+///
+/// Serializes `auto`, a keyword, or the authored oblique range.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontFaceStyle {
@@ -331,52 +319,16 @@ pub enum CssFontFaceStyle {
     },
 }
 
-fn append_keyword(
-    keyword: CssFontStyleKeyword,
-    context: &mut SpecifiedSerializationContext,
-    output: &mut String,
-) -> SerializationResult<()> {
-    context.charge_input(1)?;
-    context.charge_projection(1)?;
-    context.append(output, keyword.as_css())
-}
-
 impl CssFontStyle {
-    /// Serializes the authored keyword or optional oblique angle.
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Charges the keyword and any explicit angle to one cumulative budget.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        let context = &mut writer.context;
-        let output = &mut writer.css;
-        self.append_specified(context, output)?;
-        Ok(())
-    }
-
     pub(crate) fn append_specified(
         &self,
         context: &mut SpecifiedSerializationContext,
         output: &mut String,
     ) -> SerializationResult<()> {
         match self {
-            Self::Keyword(keyword) => append_keyword(*keyword, context, output)?,
+            Self::Keyword(keyword) => context.keyword(output, keyword.as_css())?,
             Self::Oblique { angle } => {
-                context.charge_input(1)?;
-                context.charge_projection(1)?;
+                context.charge_nodes(1)?;
                 context.append(output, "oblique")?;
                 if let Some(angle) = angle {
                     // Fonts 4 §2.4: a missing angle represents 14deg, so CSSOM's
@@ -396,43 +348,30 @@ impl CssFontStyle {
         Ok(())
     }
 }
-
-impl CssFontFaceStyle {
-    /// Serializes `auto`, a keyword, or the authored oblique range.
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Charges the descriptor keyword and each explicit endpoint cumulatively.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssFontStyle {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         let context = &mut writer.context;
         let output = &mut writer.css;
         self.append_specified(context, output)?;
         Ok(())
     }
+}
+crate::specified_rule_serialization::specified_serialization!(CssFontStyle);
 
+impl CssFontFaceStyle {
     pub(crate) fn append_specified(
         &self,
         context: &mut SpecifiedSerializationContext,
         output: &mut String,
     ) -> SerializationResult<()> {
         match self {
-            Self::Auto => append_text("auto", context, output)?,
-            Self::Keyword(keyword) => append_keyword(*keyword, context, output)?,
+            Self::Auto => context.keyword(output, "auto")?,
+            Self::Keyword(keyword) => context.keyword(output, keyword.as_css())?,
             Self::Oblique { range } => {
-                append_text("oblique", context, output)?;
+                context.keyword(output, "oblique")?;
                 if let Some(range) = range {
                     context.append(output, " ")?;
                     range.append_specified(context, output)?;
@@ -442,16 +381,18 @@ impl CssFontFaceStyle {
         Ok(())
     }
 }
-
-fn append_text(
-    text: &str,
-    context: &mut SpecifiedSerializationContext,
-    output: &mut String,
-) -> SerializationResult<()> {
-    context.charge_input(1)?;
-    context.charge_projection(1)?;
-    context.append(output, text)
+impl crate::specified_rule_serialization::SpecifiedProvider for CssFontFaceStyle {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        let context = &mut writer.context;
+        let output = &mut writer.css;
+        self.append_specified(context, output)?;
+        Ok(())
+    }
 }
+crate::specified_rule_serialization::specified_serialization!(CssFontFaceStyle);
 
 impl CssFontObliqueAngle {
     /// Whether this literal is exactly the 14deg that an omitted angle represents.

@@ -17,7 +17,7 @@ fn order_initial_is_literal_zero_and_ordinary_values_keep_identity() {
     let CssLonghandValueRef::Order(value) = initial.view() else {
         panic!("order")
     };
-    assert_eq!(value.serialize_specified().unwrap(), "0");
+    assert_eq!(value.serialize_specified(Default::default()).unwrap(), "0");
     for text in ["0", "-2", "2147483648", "-2147483649", "calc(1.5)"] {
         let source = declaration(&format!("order:{text}!important"));
         let CssKnownPropertyValueRef::Order(authored) =
@@ -75,9 +75,10 @@ fn order_reentry_is_atomic_and_preserves_exact_replacement_origin() {
     );
     for replacement in [
         parse_component_values("+0002147483648").unwrap(),
-        CssComponentValues::try_new(vec![
-            CssComponentValue::try_number("+0002147483648").unwrap(),
-        ])
+        CssComponentValues::try_new(
+            vec![CssComponentValue::try_number("+0002147483648").unwrap()],
+            Default::default(),
+        )
         .unwrap(),
     ] {
         for _ in 0..2 {
@@ -156,7 +157,10 @@ fn normalization_preserves_authored_order_around_nested_rules_instead_of_sorting
         let CssLonghandValueRef::Order(integer) = value.ordinary_value().unwrap().view() else {
             panic!("order")
         };
-        assert_eq!(integer.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            integer.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert!(value.source().same_occurrence(item.source()));
         assert_eq!(
             item.source().position().unwrap().byte_offset().value(),

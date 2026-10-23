@@ -7,6 +7,7 @@ fn alpha(text: &str) -> CssRelativeColorExpression {
         parse_component_values(text).unwrap(),
         CssRelativeColorEnvironment::Alpha,
         CssRelativeColorResultDomain::Alpha,
+        Default::default(),
     )
     .unwrap()
 }
@@ -60,6 +61,7 @@ fn alpha_math_keeps_transparency_references_and_rejects_foreign_environments() {
                 parse_component_values(text).unwrap(),
                 CssRelativeColorEnvironment::Alpha,
                 CssRelativeColorResultDomain::Alpha,
+                Default::default(),
             )
             .is_err(),
             "{text}"
@@ -218,18 +220,22 @@ fn nested_alpha_custom_and_mix_branches_remain_typed() {
 #[test]
 fn alpha_math_retains_parsed_leaf_in_a_programmatic_function() {
     let leaf = parse_component_values("alpha").unwrap().items()[0].clone();
-    let graph = CssComponentValues::try_new(vec![
-        CssComponentValue::try_function(
-            "calc",
-            CssComponentValues::try_new(vec![leaf.clone()]).unwrap(),
-        )
-        .unwrap(),
-    ])
+    let graph = CssComponentValues::try_new(
+        vec![
+            CssComponentValue::try_function(
+                "calc",
+                CssComponentValues::try_new(vec![leaf.clone()], Default::default()).unwrap(),
+            )
+            .unwrap(),
+        ],
+        Default::default(),
+    )
     .unwrap();
     let value = CssRelativeColorExpression::try_from_components(
         graph,
         CssRelativeColorEnvironment::Alpha,
         CssRelativeColorResultDomain::Alpha,
+        Default::default(),
     )
     .unwrap();
     let CssRelativeColorExpressionValue::Calculation(calculation) = value.value() else {

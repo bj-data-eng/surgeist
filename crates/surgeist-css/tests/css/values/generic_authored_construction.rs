@@ -179,7 +179,13 @@ fn exact_numeric_tokens_preserve_kind_sign_spelling_and_programmatic_origin() {
             assert_eq!(number.kind(), kind);
             assert_eq!(number.has_sign(), sign);
         }
-        assert_eq!(parsed.serialize().unwrap().as_css(), text);
+        assert_eq!(
+            parsed
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            text
+        );
         assert_ne!(parsed.items()[0], programmatic);
     }
 }

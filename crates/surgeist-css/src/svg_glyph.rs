@@ -10,6 +10,11 @@ enum Value {
 
 /// An authored SVG `auto`, angle, or Number literal with implied degrees.
 /// Equality includes the retained providers' provenance, not computed orientation.
+///
+/// # Specified serialization
+///
+/// Emits specified syntax with the shared six-fraction-place CSSOM policy. Unitless Numbers become
+/// explicit degrees; no computed quadrant is selected.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssSvgGlyphOrientationVerticalValue {
     value: Value,
@@ -108,24 +113,14 @@ impl CssSvgGlyphOrientationVerticalValue {
             || admission.mode() == CssParserMode::Quirks
             || raw_number(number, component.origin()).is_ok_and(|value| value == 0.0)
     }
-    /// Emits specified syntax with the shared six-fraction-place CSSOM policy.
-    /// Unitless Numbers become explicit degrees; no computed quadrant is selected.
-    pub fn serialize_specified(&self) -> Result<String, CssSpecifiedValueSerializationError> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-    /// Emits atomically using shared cumulative resource limits.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String, CssSpecifiedValueSerializationError> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-    pub(crate) fn append_to_rule_writer(
+}
+impl crate::specified_rule_serialization::SpecifiedProvider
+    for CssSvgGlyphOrientationVerticalValue
+{
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> Result<(), CssSpecifiedValueSerializationError> {
+    ) -> Result<(), CssSerializationError> {
         match &self.value {
             Value::Auto => writer.keyword("auto"),
             Value::Angle(angle) => angle.append_specified(&mut writer.context, &mut writer.css),
@@ -138,6 +133,7 @@ impl CssSvgGlyphOrientationVerticalValue {
         }
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssSvgGlyphOrientationVerticalValue);
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Role {
@@ -274,9 +270,10 @@ impl CssSvgGlyphOrientationVerticalMetadata {
 #[cfg(test)]
 mod writer_tests {
     use super::*;
+    use crate::specified_rule_serialization::SpecifiedProvider as _;
     use crate::specified_rule_serialization::SpecifiedRuleWriter;
+    use CssSerializationLimits as Limits;
     use CssSpecifiedValueSerializationErrorKind as Kind;
-    use CssSpecifiedValueSerializationLimits as Limits;
     fn number() -> CssSvgGlyphOrientationVerticalValue {
         CssSvgGlyphOrientationVerticalValue::try_from_unitless(
             CssComponentValue::try_number("-135").unwrap(),

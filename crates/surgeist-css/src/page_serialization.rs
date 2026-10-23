@@ -3,30 +3,19 @@ use crate::{
     CssDeclarationBlockError, CssImportance, CssMarginRule, CssPageBleed, CssPageDeclaration,
     CssPageDeclarationBlock, CssPageDescriptorValue, CssPageDescriptorValueRef as V,
     CssPageOrientation, CssPageOutputOrientation, CssPageRule, CssPageSelectorList,
-    CssPageSizeValue, CssSpecifiedDeclarationBlock, CssSpecifiedDeclarationEntry,
-    CssSpecifiedValueSerializationError as Error, CssSpecifiedValueSerializationLimits as Limits,
+    CssPageSizeValue, CssSerializationError as Error, CssSerializationLimits as Limits,
+    CssSpecifiedDeclarationBlock, CssSpecifiedDeclarationEntry,
     cssom_rule_serialization::RuleCssomSource, specified_rule_serialization::SpecifiedRuleWriter,
 };
 type Result<T> = std::result::Result<T, Error>;
 impl CssPageSelectorList {
-    pub fn serialize_cssom(&self) -> Result<String> {
-        self.serialize_cssom_with_limits(Limits::default())
-    }
-    pub fn serialize_cssom_with_limits(&self, limits: Limits) -> Result<String> {
+    pub fn serialize_cssom(&self, limits: Limits) -> Result<String> {
         let mut writer = SpecifiedRuleWriter::new(limits);
         writer.append_page_selectors(self)?;
         Ok(writer.css)
     }
 }
 impl CssPageDescriptorValue {
-    pub fn serialize_specified(&self) -> Result<String> {
-        self.serialize_specified_with_limits(Limits::default())
-    }
-    pub fn serialize_specified_with_limits(&self, limits: Limits) -> Result<String> {
-        let mut writer = SpecifiedRuleWriter::new(limits);
-        self.append_value(&mut writer)?;
-        Ok(writer.css)
-    }
     pub(crate) fn append_value(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         writer.node()?;
         match self.view() {
@@ -82,6 +71,15 @@ impl CssPageDescriptorValue {
         }
     }
 }
+impl crate::specified_rule_serialization::SpecifiedProvider for CssPageDescriptorValue {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        self.append_value(writer)
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(CssPageDescriptorValue);
 impl SpecifiedRuleWriter {
     fn append_page_selectors(&mut self, list: &CssPageSelectorList) -> Result<()> {
         self.node()?;
@@ -275,42 +273,27 @@ impl SpecifiedRuleWriter {
 impl CssMarginRule {
     pub fn serialize_cssom(
         &self,
-    ) -> std::result::Result<String, crate::CssRuleCssomSerializationError> {
-        self.serialize_cssom_with_limits(Limits::default())
-    }
-    pub fn serialize_cssom_with_limits(
-        &self,
         limits: Limits,
-    ) -> std::result::Result<String, crate::CssRuleCssomSerializationError> {
+    ) -> std::result::Result<String, crate::CssRuleSerializationError> {
         let mut writer = SpecifiedRuleWriter::new(limits);
         writer
             .append_margin_cssom(self)
-            .map_err(|error| crate::CssRuleCssomSerializationError::new(error, Vec::new(), None))?;
+            .map_err(|error| crate::CssRuleSerializationError::new(error, Vec::new(), None))?;
         Ok(writer.css)
     }
 }
 impl CssPageDeclarationBlock {
     pub fn serialize_cssom(
         &self,
-    ) -> std::result::Result<String, crate::CssRuleCssomSerializationError> {
-        self.serialize_cssom_with_limits(Limits::default())
-    }
-    pub fn serialize_cssom_with_limits(
-        &self,
         limits: Limits,
-    ) -> std::result::Result<String, crate::CssRuleCssomSerializationError> {
+    ) -> std::result::Result<String, crate::CssRuleSerializationError> {
         let mut writer = SpecifiedRuleWriter::new(limits);
         writer
             .append_page_block(self)
-            .map_err(|error| crate::CssRuleCssomSerializationError::new(error, Vec::new(), None))?;
+            .map_err(|error| crate::CssRuleSerializationError::new(error, Vec::new(), None))?;
         Ok(writer.css)
     }
     pub fn try_specified_properties(
-        &self,
-    ) -> std::result::Result<CssSpecifiedDeclarationBlock, CssDeclarationBlockError> {
-        self.try_specified_properties_with_limits(Limits::default())
-    }
-    pub fn try_specified_properties_with_limits(
         &self,
         limits: Limits,
     ) -> std::result::Result<CssSpecifiedDeclarationBlock, CssDeclarationBlockError> {

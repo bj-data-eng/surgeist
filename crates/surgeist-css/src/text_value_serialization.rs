@@ -7,40 +7,16 @@
 //! Numeric/color children keep their owning costs. Punctuation costs only bytes.
 
 use crate::{
-    CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationErrorKind,
-    CssSpecifiedValueSerializationLimits, CssTabSize, CssTextDecoration, CssTextDecorationLine,
-    CssTextDecorationLineComponent, CssTextDecorationThickness, CssTextIndent, CssVerticalAlign,
-    specified_rule_serialization::SpecifiedRuleWriter,
+    CssSerializationError, CssSpecifiedValueSerializationErrorKind, CssTabSize, CssTextDecoration,
+    CssTextDecorationLine, CssTextDecorationLineComponent, CssTextDecorationThickness,
+    CssTextIndent, CssVerticalAlign, specified_rule_serialization::SpecifiedRuleWriter,
 };
 
-type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
+type Result<T> = std::result::Result<T, CssSerializationError>;
 
-macro_rules! specified_methods {
-    () => {
-        /// Emits canonical specified syntax from retained semantic fields.
-        /// Optional values remain omitted; explicit initials remain explicit.
-        /// This does not resolve percentages or floor actual decoration thickness.
-        pub fn serialize_specified(&self) -> Result<String> {
-            self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-        }
-
-        /// Emits atomically under cumulative input, projection and CSS byte limits.
-        /// Children share one context; failure returns no partial CSS and leaves
-        /// the original exact coefficients, units, field order and origins intact.
-        pub fn serialize_specified_with_limits(
-            &self,
-            limits: CssSpecifiedValueSerializationLimits,
-        ) -> Result<String> {
-            let mut writer = SpecifiedRuleWriter::new(limits);
-            self.append_to_rule_writer(&mut writer)?;
-            Ok(writer.css)
-        }
-    };
-}
-
-impl CssTabSize {
-    specified_methods!();
-    pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+crate::specified_rule_serialization::specified_serialization!(CssTabSize);
+impl crate::specified_rule_serialization::SpecifiedProvider for CssTabSize {
+    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         match self {
             Self::Number(value) => value.append_to_rule_writer(writer),
             Self::Length(value) => value.append_to_rule_writer(writer),
@@ -48,10 +24,9 @@ impl CssTabSize {
     }
 }
 
-impl CssTextIndent {
-    specified_methods!();
-
-    pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+crate::specified_rule_serialization::specified_serialization!(CssTextIndent);
+impl crate::specified_rule_serialization::SpecifiedProvider for CssTextIndent {
+    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         writer.node()?;
         self.length().append_to_rule_writer(writer)?;
         if self.hanging() {
@@ -66,10 +41,9 @@ impl CssTextIndent {
     }
 }
 
-impl CssVerticalAlign {
-    specified_methods!();
-
-    pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+crate::specified_rule_serialization::specified_serialization!(CssVerticalAlign);
+impl crate::specified_rule_serialization::SpecifiedProvider for CssVerticalAlign {
+    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         let keyword = match self {
             Self::Baseline => "baseline",
             Self::Sub => "sub",
@@ -85,16 +59,13 @@ impl CssVerticalAlign {
     }
 }
 
-fn unrepresentable() -> CssSpecifiedValueSerializationError {
-    CssSpecifiedValueSerializationError::new(
-        CssSpecifiedValueSerializationErrorKind::UnrepresentableValue,
-    )
+fn unrepresentable() -> CssSerializationError {
+    CssSerializationError::new(CssSpecifiedValueSerializationErrorKind::UnrepresentableValue)
 }
 
-impl CssTextDecorationLine {
-    specified_methods!();
-
-    pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+crate::specified_rule_serialization::specified_serialization!(CssTextDecorationLine);
+impl crate::specified_rule_serialization::SpecifiedProvider for CssTextDecorationLine {
+    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         writer.node()?;
         if self.is_none() {
             if !self.components().is_empty() {
@@ -146,10 +117,9 @@ impl CssTextDecorationLine {
     }
 }
 
-impl CssTextDecorationThickness {
-    specified_methods!();
-
-    pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+crate::specified_rule_serialization::specified_serialization!(CssTextDecorationThickness);
+impl crate::specified_rule_serialization::SpecifiedProvider for CssTextDecorationThickness {
+    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         match self {
             Self::Auto => writer.keyword("auto"),
             Self::FromFont => writer.keyword("from-font"),
@@ -158,10 +128,9 @@ impl CssTextDecorationThickness {
     }
 }
 
-impl CssTextDecoration {
-    specified_methods!();
-
-    pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+crate::specified_rule_serialization::specified_serialization!(CssTextDecoration);
+impl crate::specified_rule_serialization::SpecifiedProvider for CssTextDecoration {
+    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         writer.node()?;
         let mut started = false;
         // Selected Text Decoration 4 §2.6: line || thickness || style || color.
@@ -199,9 +168,10 @@ impl CssTextDecoration {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::CssSerializationLimits as L;
+    use crate::specified_rule_serialization::SpecifiedProvider as _;
     use crate::{CssColor, CssSpecifiedLengthPercentage, CssTextDecorationStyle};
     use CssSpecifiedValueSerializationErrorKind as K;
-    use CssSpecifiedValueSerializationLimits as L;
 
     fn length() -> CssSpecifiedLengthPercentage {
         CssSpecifiedLengthPercentage::try_from_component(
@@ -319,6 +289,7 @@ mod tests {
         let number = CssSpecifiedLengthPercentage::try_from_calculation(
             crate::CssLengthPercentageCalculation::try_from_components(
                 crate::parse_component_values("calc(1px + 2px)").unwrap(),
+                Default::default(),
             )
             .unwrap(),
         )
@@ -342,7 +313,9 @@ mod tests {
             CssTextDecorationLine::new(vec![CssTextDecorationLineComponent::Underline; 2]),
         ] {
             assert_eq!(
-                line.serialize_specified().unwrap_err().kind(),
+                line.serialize_specified(Default::default())
+                    .unwrap_err()
+                    .kind(),
                 K::UnrepresentableValue
             );
             let mut writer = SpecifiedRuleWriter::new(L::new(100, 100, 1));
@@ -360,7 +333,10 @@ mod tests {
         }
         let value = CssTextDecoration::new(None, None, None, None);
         assert_eq!(
-            value.serialize_specified().unwrap_err().kind(),
+            value
+                .serialize_specified(Default::default())
+                .unwrap_err()
+                .kind(),
             K::UnrepresentableValue
         );
     }
@@ -399,6 +375,7 @@ mod tests {
             crate::CssSpecifiedNonNegativeLength::try_from_calculation(
                 crate::CssLengthCalculation::try_from_components(
                     crate::parse_component_values("calc(1px + 2em)").unwrap(),
+                    Default::default(),
                 )
                 .unwrap(),
             )

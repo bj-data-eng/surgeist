@@ -483,9 +483,11 @@ mod tests {
     #[test]
     fn checked_numeric_error_retains_exact_lexeme_without_float_rounding() {
         let spelling = "123456789012345678901234567890123456789";
-        let values =
-            CssComponentValues::try_new(vec![CssComponentValue::try_number(spelling).unwrap()])
-                .unwrap();
+        let values = CssComponentValues::try_new(
+            vec![CssComponentValue::try_number(spelling).unwrap()],
+            Default::default(),
+        )
+        .unwrap();
         let document = normalize(
             SyntaxInput::CheckedComponents(values.items()),
             SyntaxInputLimits::default(),

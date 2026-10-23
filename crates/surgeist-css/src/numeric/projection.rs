@@ -5,9 +5,9 @@ use super::{
     CssRoundingStrategy, NodeKind,
 };
 #[cfg(test)]
-use crate::CssSpecifiedValueSerializationLimits as Limits;
+use crate::CssSerializationLimits as Limits;
 use crate::{
-    CssComponentValueRef, CssSpecifiedValueSerializationError as Error,
+    CssComponentValueRef, CssSerializationError as Error,
     CssSpecifiedValueSerializationErrorKind as ErrorKind, CssValueTokenRef,
     specified_serialization::SpecifiedSerializationContext,
 };
@@ -1927,10 +1927,14 @@ mod tests {
 
     fn projected(source: &str) -> String {
         let components = parse_component_values(source).unwrap();
-        if let Ok(value) = CssNumberCalculation::try_from_components(components.clone()) {
+        if let Ok(value) =
+            CssNumberCalculation::try_from_components(components.clone(), Default::default())
+        {
             project_specified(&value.expression, Limits::default()).unwrap()
         } else {
-            let value = CssPercentageCalculation::try_from_components(components).unwrap();
+            let value =
+                CssPercentageCalculation::try_from_components(components, Default::default())
+                    .unwrap();
             project_specified(&value.expression, Limits::default()).unwrap()
         }
     }
@@ -2007,6 +2011,7 @@ mod tests {
     fn limits_fail_atomically_and_do_not_change_the_authored_tree() {
         let value = CssNumberCalculation::try_from_components(
             parse_component_values("calc(1 / 2)").unwrap(),
+            Default::default(),
         )
         .unwrap();
         let before = value.clone();
@@ -2033,6 +2038,7 @@ mod tests {
     fn shared_context_charges_sequential_numeric_children_cumulatively() {
         let value = CssNumberCalculation::try_from_components(
             parse_component_values("calc(1 / 2)").unwrap(),
+            Default::default(),
         )
         .unwrap();
 
@@ -2063,6 +2069,7 @@ mod tests {
     fn shared_context_emits_into_one_bounded_output_and_reports_dependence() {
         let value = CssNumberCalculation::try_from_components(
             parse_component_values("calc(1 / 2)").unwrap(),
+            Default::default(),
         )
         .unwrap();
         let mut context = SpecifiedSerializationContext::new(Limits::new(100, 100, 11));
@@ -2076,6 +2083,7 @@ mod tests {
 
         let contextual = CssNumberCalculation::try_from_components(
             parse_component_values("calc(1em / 1px)").unwrap(),
+            Default::default(),
         )
         .unwrap();
         let mut context = SpecifiedSerializationContext::new(Limits::default());
@@ -2091,6 +2099,7 @@ mod tests {
     fn bounded_capture_defers_only_final_output_charging() {
         let value = CssNumberCalculation::try_from_components(
             parse_component_values("calc(1 / 2)").unwrap(),
+            Default::default(),
         )
         .unwrap();
         let mut context = SpecifiedSerializationContext::new(Limits::new(4, 100, 10));
@@ -2193,9 +2202,11 @@ mod tests {
     #[test]
     fn flat_and_deep_borrowed_graphs_have_bounded_projection_and_atomic_failure() {
         let source = format!("calc({})", vec!["1"; 4096].join(" + "));
-        let value =
-            CssNumberCalculation::try_from_components(parse_component_values(&source).unwrap())
-                .unwrap();
+        let value = CssNumberCalculation::try_from_components(
+            parse_component_values(&source).unwrap(),
+            Default::default(),
+        )
+        .unwrap();
         let before = value.clone();
         assert_eq!(
             project_specified(&value.expression, Limits::new(100, 10000, 100))
@@ -2264,10 +2275,12 @@ mod comparison_capture_tests {
 
     fn expression(source: &str) -> Box<CssCalculationExpression> {
         let components = parse_component_values(source).unwrap();
-        if let Ok(value) = CssNumberCalculation::try_from_components(components.clone()) {
+        if let Ok(value) =
+            CssNumberCalculation::try_from_components(components.clone(), Default::default())
+        {
             value.expression
         } else {
-            CssLengthCalculation::try_from_components(components)
+            CssLengthCalculation::try_from_components(components, Default::default())
                 .unwrap()
                 .expression
         }
@@ -2595,13 +2608,18 @@ mod scaled_capture_tests {
     use crate::{CssNumberCalculation, CssPercentageCalculation, parse_component_values};
 
     fn number(source: &str) -> CssNumberCalculation {
-        CssNumberCalculation::try_from_components(parse_component_values(source).unwrap()).unwrap()
+        CssNumberCalculation::try_from_components(
+            parse_component_values(source).unwrap(),
+            Default::default(),
+        )
+        .unwrap()
     }
 
     #[test]
     fn scaled_percentage_rounds_text_without_rounding_the_scalar() {
         let value = CssPercentageCalculation::try_from_components(
             parse_component_values("calc(.78125%)").unwrap(),
+            Default::default(),
         )
         .unwrap();
         let before = value.clone();

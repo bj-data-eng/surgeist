@@ -119,7 +119,11 @@ fn every_selected_scroll_snap_name_has_known_identity_and_accepts_its_ordinary_g
         );
         assert_eq!(parsed.importance(), CssImportance::Important);
         assert_eq!(
-            parsed.value_components().serialize().unwrap().as_css(),
+            parsed
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             value
         );
 
@@ -131,7 +135,11 @@ fn every_selected_scroll_snap_name_has_known_identity_and_accepts_its_ordinary_g
         assert_eq!(constructed.importance(), CssImportance::Important);
         assert!(constructed.parsed_value().is_none());
         assert_eq!(
-            constructed.value_components().serialize().unwrap().as_css(),
+            constructed
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             value
         );
     }
@@ -446,10 +454,16 @@ fn snap_models_retain_optional_components_and_serialize_selected_keywords() {
         )
     );
     assert_eq!(value.as_css(), "BlOcK PrOxImItY");
-    assert_eq!(value.value().serialize_specified().unwrap(), "block");
+    assert_eq!(
+        value
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "block"
+    );
     assert_eq!(
         CssScrollSnapType::axis(CssScrollSnapAxis::X, None)
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "x"
     );
@@ -458,12 +472,14 @@ fn snap_models_retain_optional_components_and_serialize_selected_keywords() {
             CssScrollSnapAxis::Y,
             Some(CssScrollSnapStrictness::Mandatory)
         )
-        .serialize_specified()
+        .serialize_specified(Default::default())
         .unwrap(),
         "y mandatory"
     );
     assert_eq!(
-        CssScrollSnapType::None.serialize_specified().unwrap(),
+        CssScrollSnapType::None
+            .serialize_specified(Default::default())
+            .unwrap(),
         "none"
     );
 
@@ -479,18 +495,29 @@ fn snap_models_retain_optional_components_and_serialize_selected_keywords() {
         Some(CssScrollSnapAlignment::Start)
     );
     assert_eq!(value.value().inline(), CssScrollSnapAlignment::Start);
-    assert_eq!(value.value().serialize_specified().unwrap(), "start");
+    assert_eq!(
+        value
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "start"
+    );
     let one = CssScrollSnapAlign::new(CssScrollSnapAlignment::End, None);
     assert_eq!(one.authored_inline(), None);
     assert_eq!(one.inline(), CssScrollSnapAlignment::End);
-    assert_eq!(one.serialize_specified().unwrap(), "end");
+    assert_eq!(one.serialize_specified(Default::default()).unwrap(), "end");
     assert_eq!(
-        CssScrollSnapStop::Always.serialize_specified().unwrap(),
+        CssScrollSnapStop::Always
+            .serialize_specified(Default::default())
+            .unwrap(),
         "always"
     );
 
-    let components =
-        CssComponentValues::try_new(vec![CssComponentValue::try_token("-2px").unwrap()]).unwrap();
+    let components = CssComponentValues::try_new(
+        vec![CssComponentValue::try_token("-2px").unwrap()],
+        Default::default(),
+    )
+    .unwrap();
     assert!(matches!(
         components.items()[0].origin(),
         CssValueOrigin::Programmatic
@@ -512,7 +539,13 @@ fn snap_models_retain_optional_components_and_serialize_selected_keywords() {
         value.value().origin(),
         CssValueOrigin::Programmatic
     ));
-    assert_eq!(value.value().serialize_specified().unwrap(), "-2px");
+    assert_eq!(
+        value
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "-2px"
+    );
 }
 
 #[test]
@@ -520,18 +553,33 @@ fn pair_and_four_side_models_keep_authored_cardinality_and_role_order() {
     let pair = CssScrollPaddingPair::new(padding("auto"), None);
     assert!(pair.authored_end().is_none());
     assert_eq!(pair.end(), pair.start());
-    assert_eq!(pair.serialize_specified().unwrap(), "auto");
+    assert_eq!(
+        pair.serialize_specified(Default::default()).unwrap(),
+        "auto"
+    );
     let margin = CssScrollMarginPair::new(length("1px"), Some(length("2px")));
-    assert_eq!(margin.start().serialize_specified().unwrap(), "1px");
+    assert_eq!(
+        margin
+            .start()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "1px"
+    );
     assert_eq!(
         margin
             .authored_end()
             .unwrap()
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "2px"
     );
-    assert_eq!(margin.end().serialize_specified().unwrap(), "2px");
+    assert_eq!(
+        margin
+            .end()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "2px"
+    );
 
     let two = CssScrollMarginShorthand::try_new(
         CssScrollSideKind::Logical,
@@ -542,7 +590,10 @@ fn pair_and_four_side_models_keep_authored_cardinality_and_role_order() {
     assert_eq!(two.authored_values().len(), 2);
     for (role, expected) in ["1px", "2px", "1px", "2px"].into_iter().enumerate() {
         assert_eq!(
-            two.role(role).unwrap().serialize_specified().unwrap(),
+            two.role(role)
+                .unwrap()
+                .serialize_specified(Default::default())
+                .unwrap(),
             expected
         );
     }
@@ -555,7 +606,11 @@ fn pair_and_four_side_models_keep_authored_cardinality_and_role_order() {
     assert_eq!(three.authored_values().len(), 3);
     for (role, expected) in ["1px", "2px", "3px", "2px"].into_iter().enumerate() {
         assert_eq!(
-            three.role(role).unwrap().serialize_specified().unwrap(),
+            three
+                .role(role)
+                .unwrap()
+                .serialize_specified(Default::default())
+                .unwrap(),
             expected
         );
     }
@@ -575,7 +630,7 @@ fn canonical_pair_and_quad_compression_compares_values_across_distinct_origins()
     assert_ne!(parsed, programmatic, "origins are retained in owned values");
     let pair = CssScrollMarginPair::new(parsed.clone(), Some(programmatic.clone()));
     assert_eq!(pair.authored_end(), Some(&programmatic));
-    assert_eq!(pair.serialize_specified().unwrap(), "1px");
+    assert_eq!(pair.serialize_specified(Default::default()).unwrap(), "1px");
 
     for (values, expected) in [
         (vec!["1px", "1px", "1px", "1px"], "1px"),
@@ -586,7 +641,10 @@ fn canonical_pair_and_quad_compression_compares_values_across_distinct_origins()
         let authored = values.into_iter().map(length).collect();
         let quad =
             CssScrollMarginShorthand::try_new(CssScrollSideKind::Physical, authored).unwrap();
-        assert_eq!(quad.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            quad.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
     let logical = CssScrollMarginShorthand::try_new(
         CssScrollSideKind::Logical,
@@ -598,7 +656,10 @@ fn canonical_pair_and_quad_compression_compares_values_across_distinct_origins()
         ],
     )
     .unwrap();
-    assert_eq!(logical.serialize_specified().unwrap(), "logical 1px 2px");
+    assert_eq!(
+        logical.serialize_specified(Default::default()).unwrap(),
+        "logical 1px 2px"
+    );
     let padding = CssScrollPaddingShorthand::try_new(
         CssScrollSideKind::Physical,
         vec![
@@ -609,39 +670,42 @@ fn canonical_pair_and_quad_compression_compares_values_across_distinct_origins()
         ],
     )
     .unwrap();
-    assert_eq!(padding.serialize_specified().unwrap(), "auto 5%");
+    assert_eq!(
+        padding.serialize_specified(Default::default()).unwrap(),
+        "auto 5%"
+    );
 }
 
 #[test]
 fn pair_and_quad_serialization_charge_each_authored_child_under_one_budget() {
     let pair = CssScrollMarginPair::new(length("1px"), Some(length("2px")));
     assert_eq!(
-        pair.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(1, 2, 7))
+        pair.serialize_specified(CssSerializationLimits::new(1, 2, 7))
             .unwrap_err()
             .kind(),
         CssSpecifiedValueSerializationErrorKind::InputNodeLimit
     );
     assert_eq!(
-        pair.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(2, 1, 7))
+        pair.serialize_specified(CssSerializationLimits::new(2, 1, 7))
             .unwrap_err()
             .kind(),
         CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
     );
     assert_eq!(
-        pair.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(2, 2, 6))
+        pair.serialize_specified(CssSerializationLimits::new(2, 2, 6))
             .unwrap_err()
             .kind(),
         CssSpecifiedValueSerializationErrorKind::ByteLimit
     );
     assert_eq!(
-        pair.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(2, 2, 7))
+        pair.serialize_specified(CssSerializationLimits::new(2, 2, 7))
             .unwrap(),
         "1px 2px"
     );
     let compressed_pair = CssScrollMarginPair::new(length("1px"), Some(length("1px")));
     assert_eq!(
         compressed_pair
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(2, 2, 3))
+            .serialize_specified(CssSerializationLimits::new(2, 2, 3))
             .unwrap(),
         "1px"
     );
@@ -650,26 +714,29 @@ fn pair_and_quad_serialization_charge_each_authored_child_under_one_budget() {
         vec![length("1px"), length("1px"), length("1px"), length("1px")],
     )
     .unwrap();
-    assert_eq!(quad.serialize_specified().unwrap(), "logical 1px");
     assert_eq!(
-        quad.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(4, 5, 64))
+        quad.serialize_specified(Default::default()).unwrap(),
+        "logical 1px"
+    );
+    assert_eq!(
+        quad.serialize_specified(CssSerializationLimits::new(4, 5, 64))
             .unwrap_err()
             .kind(),
         CssSpecifiedValueSerializationErrorKind::InputNodeLimit
     );
     assert_eq!(
-        quad.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(5, 4, 64))
+        quad.serialize_specified(CssSerializationLimits::new(5, 4, 64))
             .unwrap_err()
             .kind(),
         CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
     );
     assert_eq!(
-        quad.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(5, 5, 11))
+        quad.serialize_specified(CssSerializationLimits::new(5, 5, 11))
             .unwrap(),
         "logical 1px"
     );
     assert_eq!(
-        quad.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(5, 5, 10))
+        quad.serialize_specified(CssSerializationLimits::new(5, 5, 10))
             .unwrap_err()
             .kind(),
         CssSpecifiedValueSerializationErrorKind::ByteLimit
@@ -682,29 +749,32 @@ fn math_pair_captures_both_authored_trees_with_one_input_budget() {
     // each tree costs four input nodes even if it simplifies to one length.
     let math = |text| {
         CssSpecifiedLength::try_from_calculation(
-            CssLengthCalculation::try_from_components(parse_component_values(text).unwrap())
-                .unwrap(),
+            CssLengthCalculation::try_from_components(
+                parse_component_values(text).unwrap(),
+                Default::default(),
+            )
+            .unwrap(),
         )
         .unwrap()
     };
     let first = math("calc(1px + 2px)");
     let second = math("calc(3px + 4px)");
-    let ample_projection_and_bytes = CssSpecifiedValueSerializationLimits::new(4, 64, 64);
+    let ample_projection_and_bytes = CssSerializationLimits::new(4, 64, 64);
     first
-        .serialize_specified_with_limits(ample_projection_and_bytes)
+        .serialize_specified(ample_projection_and_bytes)
         .unwrap();
     second
-        .serialize_specified_with_limits(ample_projection_and_bytes)
+        .serialize_specified(ample_projection_and_bytes)
         .unwrap();
     let pair = CssScrollMarginPair::new(first, Some(second));
     assert_eq!(
-        pair.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(7, 64, 64))
+        pair.serialize_specified(CssSerializationLimits::new(7, 64, 64))
             .unwrap_err()
             .kind(),
         CssSpecifiedValueSerializationErrorKind::InputNodeLimit
     );
     assert!(
-        pair.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(8, 64, 64))
+        pair.serialize_specified(CssSerializationLimits::new(8, 64, 64))
             .is_ok()
     );
 }

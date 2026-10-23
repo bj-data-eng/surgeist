@@ -27,12 +27,18 @@ fn length(css: &str) -> CssSpecifiedNonNegativeLengthPercentage {
 
 fn text(value: CssLonghandValueRef<'_>) -> String {
     match value {
-        CssLonghandValueRef::BackgroundSize(v) => v.serialize_specified().unwrap(),
-        CssLonghandValueRef::BackgroundRepeat(v) => v.serialize_specified().unwrap(),
-        CssLonghandValueRef::BackgroundOrigin(v) | CssLonghandValueRef::BackgroundClip(v) => {
-            v.serialize_specified().unwrap()
+        CssLonghandValueRef::BackgroundSize(v) => {
+            v.serialize_specified(Default::default()).unwrap()
         }
-        CssLonghandValueRef::BackgroundAttachment(v) => v.serialize_specified().unwrap(),
+        CssLonghandValueRef::BackgroundRepeat(v) => {
+            v.serialize_specified(Default::default()).unwrap()
+        }
+        CssLonghandValueRef::BackgroundOrigin(v) | CssLonghandValueRef::BackgroundClip(v) => {
+            v.serialize_specified(Default::default()).unwrap()
+        }
+        CssLonghandValueRef::BackgroundAttachment(v) => {
+            v.serialize_specified(Default::default()).unwrap()
+        }
         _ => panic!("selected background layer value"),
     }
 }
@@ -194,9 +200,11 @@ fn strict_reentry_retains_programmatic_components_and_expected_typed_values() {
         let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
             panic!("pending")
         };
-        let replacement =
-            CssComponentValues::try_new(vec![CssComponentValue::try_ident(keyword).unwrap()])
-                .unwrap();
+        let replacement = CssComponentValues::try_new(
+            vec![CssComponentValue::try_ident(keyword).unwrap()],
+            Default::default(),
+        )
+        .unwrap();
         for _ in 0..2 {
             let CssContributions::Longhands(items) = pending.reenter(replacement.clone()).unwrap()
             else {
@@ -220,8 +228,11 @@ fn strict_reentry_retains_programmatic_components_and_expected_typed_values() {
     let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
         panic!("pending size")
     };
-    let replacement =
-        CssComponentValues::try_new(vec![CssComponentValue::try_token("25%").unwrap()]).unwrap();
+    let replacement = CssComponentValues::try_new(
+        vec![CssComponentValue::try_token("25%").unwrap()],
+        Default::default(),
+    )
+    .unwrap();
     let CssContributions::Longhands(items) = pending.reenter(replacement.clone()).unwrap() else {
         panic!("numeric replacement")
     };
@@ -258,12 +269,20 @@ fn specified_sizes_preserve_effective_auto_height_and_symbolic_values() {
         ("calc(10px - 5%)", "calc(-5% + 10px) auto"),
     ] {
         let value = size(css);
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         for layer in value.sizes() {
-            assert!(layer.serialize_specified().is_ok());
+            assert!(layer.serialize_specified(Default::default()).is_ok());
         }
         // Canonical auto collapse/math reordering need not preserve authored AST Eq.
-        assert_eq!(size(expected).serialize_specified().unwrap(), expected);
+        assert_eq!(
+            size(expected)
+                .serialize_specified(Default::default())
+                .unwrap(),
+            expected
+        );
     }
     let value = size("calc(10px - 5%)");
     let [
@@ -334,16 +353,28 @@ fn repeat_aliases_equal_axes_and_directional_pairs_use_shorter_equivalents() {
             "space round",
         ),
     ] {
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         let list = CssBackgroundRepeatList::try_new(vec![value]).unwrap();
-        assert_eq!(list.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            list.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         let parsed = declaration(&format!("background-repeat:{expected}"));
         let CssKnownPropertyValueRef::BackgroundRepeat(reparsed) =
             parsed.known().unwrap().property_value().unwrap()
         else {
             panic!("repeat roundtrip")
         };
-        assert_eq!(reparsed.repeats().serialize_specified().unwrap(), expected);
+        assert_eq!(
+            reparsed
+                .repeats()
+                .serialize_specified(Default::default())
+                .unwrap(),
+            expected
+        );
     }
 }
 
@@ -370,10 +401,13 @@ fn scalar_budgets_account_for_authored_alias_axes_and_omitted_auto_components() 
     ] {
         let original = value;
         exact_bounds(expected, nodes, nodes, |limits| {
-            value.serialize_specified_with_limits(limits)
+            value.serialize_specified(limits)
         });
         assert_eq!(value, original);
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
     for (value, expected, nodes) in [
         (
@@ -403,16 +437,19 @@ fn scalar_budgets_account_for_authored_alias_axes_and_omitted_auto_components() 
     ] {
         let original = value.clone();
         exact_bounds(expected, nodes, nodes, |limits| {
-            value.serialize_specified_with_limits(limits)
+            value.serialize_specified(limits)
         });
         assert_eq!(value, original);
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
     exact_bounds("padding-box", 1, 1, |limits| {
-        CssBackgroundBox::PaddingBox.serialize_specified_with_limits(limits)
+        CssBackgroundBox::PaddingBox.serialize_specified(limits)
     });
     exact_bounds("scroll", 1, 1, |limits| {
-        CssBackgroundAttachment::Scroll.serialize_specified_with_limits(limits)
+        CssBackgroundAttachment::Scroll.serialize_specified(limits)
     });
 }
 
@@ -422,7 +459,7 @@ fn list_budgets_cover_all_owned_layers_numeric_children_and_separators() {
     let original = sizes.clone();
     // List + cover + explicit size + width component/literal + explicit auto.
     exact_bounds("cover, 10px auto", 6, 6, |limits| {
-        sizes.serialize_specified_with_limits(limits)
+        sizes.serialize_specified(limits)
     });
     assert_eq!(sizes, original);
     let repeats = CssBackgroundRepeatList::try_new(vec![
@@ -434,7 +471,7 @@ fn list_budgets_cover_all_owned_layers_numeric_children_and_separators() {
     ])
     .unwrap();
     exact_bounds("repeat-x, space round", 5, 5, |limits| {
-        repeats.serialize_specified_with_limits(limits)
+        repeats.serialize_specified(limits)
     });
     let boxes = CssBackgroundBoxList::try_new(vec![
         CssBackgroundBox::ContentBox,
@@ -442,7 +479,7 @@ fn list_budgets_cover_all_owned_layers_numeric_children_and_separators() {
     ])
     .unwrap();
     exact_bounds("content-box, border-box", 3, 3, |limits| {
-        boxes.serialize_specified_with_limits(limits)
+        boxes.serialize_specified(limits)
     });
     let attachments = CssBackgroundAttachmentList::try_new(vec![
         CssBackgroundAttachment::Local,
@@ -450,7 +487,7 @@ fn list_budgets_cover_all_owned_layers_numeric_children_and_separators() {
     ])
     .unwrap();
     exact_bounds("local, fixed", 3, 3, |limits| {
-        attachments.serialize_specified_with_limits(limits)
+        attachments.serialize_specified(limits)
     });
     assert!(CssBackgroundSizeList::try_new(Vec::new()).is_none());
     assert!(CssBackgroundRepeatList::try_new(Vec::new()).is_none());
@@ -465,10 +502,11 @@ fn symbolic_size_projection_uses_one_monotonic_budget_across_layers() {
     // One list plus two explicit size/component/math subgraphs. Each math
     // contributes four input nodes and five projection nodes, and each generated
     // auto adds one projection node without adding authored input.
-    exact_bounds(expected, 13, 17, |limits| {
-        sizes.serialize_specified_with_limits(limits)
-    });
+    exact_bounds(expected, 13, 17, |limits| sizes.serialize_specified(limits));
     let original = sizes.clone();
-    assert_eq!(sizes.serialize_specified().unwrap(), expected);
+    assert_eq!(
+        sizes.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     assert_eq!(sizes, original);
 }

@@ -15,7 +15,7 @@ use crate::css::support::{
 };
 use surgeist_css::*;
 
-type Limits = CssSpecifiedValueSerializationLimits;
+type Limits = CssSerializationLimits;
 type Kind = CssSpecifiedValueSerializationErrorKind;
 
 fn assert_text(source: &str, expected: &str) {
@@ -45,7 +45,11 @@ fn assert_text(source: &str, expected: &str) {
     );
     assert_eq!(parsed.importance(), CssImportance::Important);
     assert_eq!(
-        parsed.value_components().serialize().unwrap().as_css(),
+        parsed
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         source
     );
     for value in [&checked, parsed] {
@@ -53,14 +57,22 @@ fn assert_text(source: &str, expected: &str) {
         let payload = color_property_value(value);
         for _ in 0..3 {
             assert_eq!(
-                payload.value().to_specified_css().unwrap(),
+                payload
+                    .value()
+                    .serialize_specified(Default::default())
+                    .unwrap(),
                 expected,
                 "{source}"
             );
         }
         assert_eq!(value, &before);
     }
-    assert_eq!(color(expected).to_specified_css().unwrap(), expected);
+    assert_eq!(
+        color(expected)
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
 }
 macro_rules! text_case {
     ($name:ident, $source:literal, $expected:literal) => {
@@ -370,7 +382,7 @@ fn background_color_alternative_expands_with_image_and_important_occurrence() {
         panic!("image")
     };
     assert_eq!(
-        image.serialize_specified().unwrap(),
+        image.serialize_specified(Default::default()).unwrap(),
         "light-dark(none, url(\"a.svg\"))"
     );
     let value = values
@@ -382,7 +394,7 @@ fn background_color_alternative_expands_with_image_and_important_occurrence() {
         panic!("color")
     };
     assert_eq!(
-        value.to_specified_css().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         "device-cmyk(0 0.81 0.81 0.3)"
     );
     let source = declaration("background:device-cmyk(0 0 0 1)");
@@ -428,21 +440,25 @@ fn parsed_programmatic_and_mixed_components_keep_origins_importance_and_raw_iden
     let mixed_child = parse_component_values("0 0 0 1").unwrap();
     let mixed_origin = mixed_child.items()[0].origin().clone();
     for child in [
-        CssComponentValues::try_new(vec![
-            CssComponentValue::try_number("0").unwrap(),
-            CssComponentValue::try_token(" ").unwrap(),
-            CssComponentValue::try_number("0").unwrap(),
-            CssComponentValue::try_token(" ").unwrap(),
-            CssComponentValue::try_number("0").unwrap(),
-            CssComponentValue::try_token(" ").unwrap(),
-            CssComponentValue::try_number("1").unwrap(),
-        ])
+        CssComponentValues::try_new(
+            vec![
+                CssComponentValue::try_number("0").unwrap(),
+                CssComponentValue::try_token(" ").unwrap(),
+                CssComponentValue::try_number("0").unwrap(),
+                CssComponentValue::try_token(" ").unwrap(),
+                CssComponentValue::try_number("0").unwrap(),
+                CssComponentValue::try_token(" ").unwrap(),
+                CssComponentValue::try_number("1").unwrap(),
+            ],
+            Default::default(),
+        )
         .unwrap(),
         mixed_child,
     ] {
-        let graph = CssComponentValues::try_new(vec![
-            CssComponentValue::try_function("device-cmyk", child.clone()).unwrap(),
-        ])
+        let graph = CssComponentValues::try_new(
+            vec![CssComponentValue::try_function("device-cmyk", child.clone()).unwrap()],
+            Default::default(),
+        )
         .unwrap();
         let source = parse_property_value(
             CssPropertyNameRef::Known(CssKnownProperty::Color),
@@ -470,7 +486,10 @@ fn parsed_programmatic_and_mixed_components_keep_origins_importance_and_raw_iden
         else {
             panic!("color contribution")
         };
-        assert_eq!(value.to_specified_css().unwrap(), "device-cmyk(0 0 0 1)");
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            "device-cmyk(0 0 0 1)"
+        );
         assert_eq!(source, before);
         assert_eq!(source.importance(), CssImportance::Important);
     }
@@ -568,9 +587,11 @@ fn normalization_preserves_device_cmyk_order_values_and_source_occurrences() {
         );
         let output = match items.items()[0].ordinary_value().unwrap().view() {
             CssLonghandValueRef::Color(value) | CssLonghandValueRef::BackgroundColor(value) => {
-                value.to_specified_css().unwrap()
+                value.serialize_specified(Default::default()).unwrap()
             }
-            CssLonghandValueRef::BackgroundImage(value) => value.serialize_specified().unwrap(),
+            CssLonghandValueRef::BackgroundImage(value) => {
+                value.serialize_specified(Default::default()).unwrap()
+            }
             _ => panic!("selected normalized value"),
         };
         assert_eq!(output, expected);
@@ -582,10 +603,7 @@ fn assert_limit_error(value: &CssColor, limits: Limits, expected: Kind) {
     let before = value.clone();
     for _ in 0..3 {
         assert_eq!(
-            value
-                .to_specified_css_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            value.serialize_specified(limits).unwrap_err().kind(),
             expected
         );
         assert_eq!(value, &before);
@@ -648,7 +666,7 @@ fn scalar_channels_and_omitted_mix_weights_exhaust_the_same_typed_resources() {
     let expected = "color-mix(device-cmyk(none none none none / none), blue)";
     assert_eq!(
         value
-            .to_specified_css_with_limits(Limits::new(8, usize::MAX, expected.len()))
+            .serialize_specified(Limits::new(8, usize::MAX, expected.len()))
             .unwrap(),
         expected
     );
@@ -674,22 +692,14 @@ fn utf8_sibling_and_caller_prefix_share_exact_bytes_with_device_alpha() {
     let before = pair.clone();
     for _ in 0..3 {
         assert_eq!(
-            pair.serialize_specified_with_limits(Limits::new(
-                usize::MAX,
-                usize::MAX,
-                expected.len()
-            ))
-            .unwrap(),
+            pair.serialize_specified(Limits::new(usize::MAX, usize::MAX, expected.len()))
+                .unwrap(),
             expected
         );
         assert_eq!(
-            pair.serialize_specified_with_limits(Limits::new(
-                usize::MAX,
-                usize::MAX,
-                expected.len() - 1
-            ))
-            .unwrap_err()
-            .kind(),
+            pair.serialize_specified(Limits::new(usize::MAX, usize::MAX, expected.len() - 1))
+                .unwrap_err()
+                .kind(),
             Kind::ByteLimit
         );
         assert_eq!(pair, before);
@@ -705,17 +715,13 @@ fn utf8_sibling_and_caller_prefix_share_exact_bytes_with_device_alpha() {
     let expected = "url(\"café.svg\") device-cmyk(0 0.81 0.81 0.3 / none)";
     assert_eq!(
         value
-            .serialize_specified_with_limits(Limits::new(usize::MAX, usize::MAX, expected.len()))
+            .serialize_specified(Limits::new(usize::MAX, usize::MAX, expected.len()))
             .unwrap(),
         expected
     );
     assert_eq!(
         value
-            .serialize_specified_with_limits(Limits::new(
-                usize::MAX,
-                usize::MAX,
-                expected.len() - 1
-            ))
+            .serialize_specified(Limits::new(usize::MAX, usize::MAX, expected.len() - 1))
             .unwrap_err()
             .kind(),
         Kind::ByteLimit
@@ -733,21 +739,13 @@ fn image_wrappers_and_gradient_siblings_share_one_complete_byte_budget() {
     for _ in 0..3 {
         assert_eq!(
             value
-                .serialize_specified_with_limits(Limits::new(
-                    usize::MAX,
-                    usize::MAX,
-                    expected.len()
-                ))
+                .serialize_specified(Limits::new(usize::MAX, usize::MAX, expected.len()))
                 .unwrap(),
             expected
         );
         assert_eq!(
             value
-                .serialize_specified_with_limits(Limits::new(
-                    usize::MAX,
-                    usize::MAX,
-                    expected.len() - 1
-                ))
+                .serialize_specified(Limits::new(usize::MAX, usize::MAX, expected.len() - 1))
                 .unwrap_err()
                 .kind(),
             Kind::ByteLimit
@@ -790,7 +788,10 @@ fn numeric_depth_in_every_ink_channel_and_alpha_counts_the_device_function() {
             "device-cmyk({} / {expected_alpha})",
             expected_channels.join(" ")
         );
-        assert_eq!(value.to_specified_css().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_eq!(value, before);
         for invalid in [
             format!("contrast-color({text})"),

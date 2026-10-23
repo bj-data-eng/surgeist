@@ -6,7 +6,7 @@ use crate::css::support::rules::ExpectedRejection;
 use crate::css::support::sole_declaration as declaration;
 use CssPseudoElementSegment::{PseudoClass as P, PseudoElement as E};
 use surgeist_css::*;
-type Limits = CssSpecifiedValueSerializationLimits;
+type Limits = CssSerializationLimits;
 type LimitKind = CssSpecifiedValueSerializationErrorKind;
 
 fn ident(text: &str) -> CssViewTransitionIdent {
@@ -124,14 +124,16 @@ fn checked_property_ident_excludes_its_keywords_without_changing_generic_ident()
         assert_eq!(domain.as_str(), decoded);
         assert_eq!(
             CssViewTransitionName::Custom(domain)
-                .serialize_specified()
+                .serialize_specified(Default::default())
                 .unwrap(),
             specified
         );
     }
     assert_ne!(ident("Card"), ident("card"));
     assert_eq!(
-        CssViewTransitionName::None.serialize_specified().unwrap(),
+        CssViewTransitionName::None
+            .serialize_specified(Default::default())
+            .unwrap(),
         "none"
     );
 }
@@ -155,10 +157,10 @@ fn ordinary_wrapper_global_alternatives_and_intrinsic_metadata_share_one_propert
         assert_eq!(source.known().unwrap().property(), property);
         assert_eq!(value(&source), &expected);
         assert_eq!(
-            source.to_specified_css().unwrap(),
+            source.serialize_specified(Default::default()).unwrap(),
             format!(
                 "view-transition-name: {};",
-                expected.serialize_specified().unwrap()
+                expected.serialize_specified(Default::default()).unwrap()
             )
         );
     }
@@ -247,9 +249,11 @@ fn parsed_value_window_and_checked_origins_remain_truthful_with_unicode() {
         (0, 7),
     );
     let space = parse_component_values(" ").unwrap().items()[0].clone();
-    let mixed =
-        CssComponentValues::try_new(vec![space, CssComponentValue::try_ident("Card").unwrap()])
-            .unwrap();
+    let mixed = CssComponentValues::try_new(
+        vec![space, CssComponentValue::try_ident("Card").unwrap()],
+        Default::default(),
+    )
+    .unwrap();
     let mixed_checked = parse_property_value(
         CssPropertyNameRef::Known(CssKnownProperty::ViewTransitionName),
         mixed.clone(),
@@ -416,14 +420,23 @@ fn every_typed_pseudo_argument_branch_is_distinct_and_checked_readmission_retain
             assert_eq!(segments(&parsed), &[E(element.clone())]);
             let checked_sequence = CssPseudoElementSequence::try_new(vec![element]).unwrap();
             assert_eq!(checked_sequence.segments(), segments(&parsed));
-            let checked_list = CssSelectorList::try_new(vec![parsed.clone()]).unwrap();
+            let checked_list =
+                CssSelectorList::try_new(vec![parsed.clone()], Default::default()).unwrap();
             assert_eq!(checked_list.selectors(), &[parsed]);
-            assert_eq!(checked_list.to_specified_css().unwrap(), css);
+            assert_eq!(
+                checked_list
+                    .serialize_specified(Default::default())
+                    .unwrap(),
+                css
+            );
         }
     }
     let root = selector("::VIEW-TRANSITION");
     assert_eq!(segments(&root), &[E(CssPseudoElement::ViewTransition)]);
-    assert_eq!(root.to_specified_css().unwrap(), "::view-transition");
+    assert_eq!(
+        root.serialize_specified(Default::default()).unwrap(),
+        "::view-transition"
+    );
     assert_ne!(
         selector("::view-transition-old(Card)"),
         selector("::view-transition-old(card)")
@@ -467,7 +480,7 @@ fn malformed_names_reject_and_implicit_function_eof_is_retained_but_not_clean() 
             .syntax()
             .as_ref()
             .unwrap()
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .unwrap(),
         "::view-transition-old(Card)"
     );
@@ -578,7 +591,7 @@ fn typed_parent_child_edges_and_tree_abiding_receivers_keep_names_symbolic() {
     }
     assert_eq!(
         selector("::view-transition-group(A)::view-transition-image-pair(B)")
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .unwrap(),
         "::view-transition-group(A)::view-transition-image-pair(B)"
     );
@@ -613,12 +626,15 @@ fn retained_invalid_logical_items_require_actual_suffix_permission_inclusion() {
         "::view-transition-old(Card):is(:NoPe(&))"
     );
     assert_eq!(
-        named.to_specified_css().unwrap(),
+        named.serialize_specified(Default::default()).unwrap(),
         "::view-transition-old(Card):is(:NoPe(&))"
     );
     let detached = CssSelector::PseudoClass(CssPseudoClass::Is(suffix_list(&named).clone()));
     assert_eq!(
-        detached.to_specified_css().unwrap_err().kind(),
+        detached
+            .serialize_specified(Default::default())
+            .unwrap_err()
+            .kind(),
         LimitKind::UnrepresentableValue
     );
 }
@@ -668,15 +684,16 @@ fn supports_lexical_snapshot_keeps_function_opener_closer_and_identifier_spans_s
     );
     parsed_range(inner.1.closing_origin(), source, (52, 53), (49, 50));
     let reused = CssSupportsCondition::try_from_components(
-        CssComponentValues::try_new(condition.components().to_vec()).unwrap(),
+        CssComponentValues::try_new(condition.components().to_vec(), Default::default()).unwrap(),
         &CssNamespaceContext::default(),
+        Default::default(),
     )
     .unwrap();
     assert_eq!(&reused, condition);
     let sheet = CssSheet::try_from_rules(report.syntax().rules().to_vec()).unwrap();
     assert_eq!(sheet.rules(), report.syntax().rules());
     assert_eq!(
-        sheet.to_specified_css().unwrap(),
+        sheet.serialize_specified(Default::default()).unwrap(),
         "@supports selector(::view-transition-old(Δa)) { .x { view-transition-name: Card; } }"
     );
 }
@@ -687,7 +704,13 @@ fn real_nested_scoped_rules_normalize_and_recover_whole_invalid_selector_units()
     let expected = ".p { view-transition-name: Card; @scope (.s) { &::view-transition-new(Card):only-child { view-transition-name: none; } } }";
     let report = parse_sheet(source);
     assert!(report.is_clean(), "{report:?}");
-    assert_eq!(report.syntax().to_specified_css().unwrap(), expected);
+    assert_eq!(
+        report
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
     let normalized = normalize_sheet(report.syntax()).unwrap();
     let values: Vec<_> = normalized
         .items()
@@ -725,9 +748,7 @@ fn proposed_scalar_and_selector_list_tariffs_are_cumulative_atomic_and_repeatabl
     let scalar = name("A B");
     let expected = r"A\ B";
     assert_eq!(
-        scalar
-            .serialize_specified_with_limits(Limits::new(1, 1, 4))
-            .unwrap(),
+        scalar.serialize_specified(Limits::new(1, 1, 4)).unwrap(),
         expected
     );
     for (limits, cause) in [
@@ -736,17 +757,14 @@ fn proposed_scalar_and_selector_list_tariffs_are_cumulative_atomic_and_repeatabl
         (Limits::new(1, 1, 3), LimitKind::ByteLimit),
     ] {
         assert_eq!(
-            scalar
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            scalar.serialize_specified(limits).unwrap_err().kind(),
             cause
         );
         assert_eq!(scalar, name("A B"));
     }
     assert_eq!(
         CssViewTransitionName::None
-            .serialize_specified_with_limits(Limits::new(1, 1, 4))
+            .serialize_specified(Limits::new(1, 1, 4))
             .unwrap(),
         "none"
     );
@@ -756,31 +774,26 @@ fn proposed_scalar_and_selector_list_tariffs_are_cumulative_atomic_and_repeatabl
     ];
     let css = "::view-transition-old(Card), ::view-transition";
     let fit = Limits::new(6, 6, css.len());
-    let list = CssSelectorList::try_new_with_limits(members.clone(), fit).unwrap();
+    let list = CssSelectorList::try_new(members.clone(), fit).unwrap();
     let before = list.clone();
-    assert_eq!(list.to_specified_css_with_limits(fit).unwrap(), css);
+    assert_eq!(list.serialize_specified(fit).unwrap(), css);
     for (limits, cause) in [
         (Limits::new(5, 6, css.len()), LimitKind::InputNodeLimit),
         (Limits::new(6, 5, css.len()), LimitKind::ProjectionNodeLimit),
         (Limits::new(6, 6, css.len() - 1), LimitKind::ByteLimit),
     ] {
         for member in &members {
-            assert!(member.to_specified_css_with_limits(limits).is_ok());
+            assert!(member.serialize_specified(limits).is_ok());
         }
-        let error = CssSelectorList::try_new_with_limits(members.clone(), limits).unwrap_err();
+        let error = CssSelectorList::try_new(members.clone(), limits).unwrap_err();
         let CssSelectorConstructionErrorKind::Specified(error) = error.kind() else {
             panic!("shared specified cause")
         };
         assert_eq!(error.kind(), cause);
-        assert_eq!(
-            list.to_specified_css_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            cause
-        );
+        assert_eq!(list.serialize_specified(limits).unwrap_err().kind(), cause);
         assert_eq!(list, before);
     }
-    assert_eq!(list.to_specified_css_with_limits(fit).unwrap(), css);
+    assert_eq!(list.serialize_specified(fit).unwrap(), css);
 }
 
 #[test]
@@ -810,8 +823,11 @@ fn checked_pending_components_obey_the_real_256_ceiling_and_keep_leaf_origins() 
     let CssExpansion::Pending(pending) = expand_declaration(&declaration).unwrap() else {
         panic!("deep authored pending name")
     };
-    let replacement =
-        CssComponentValues::try_new(vec![CssComponentValue::try_ident("Card").unwrap()]).unwrap();
+    let replacement = CssComponentValues::try_new(
+        vec![CssComponentValue::try_ident("Card").unwrap()],
+        Default::default(),
+    )
+    .unwrap();
     let CssContributions::Longhands(items) = pending.reenter(replacement.clone()).unwrap() else {
         panic!("valid bounded replacement")
     };

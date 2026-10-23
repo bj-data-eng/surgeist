@@ -1,8 +1,8 @@
 //! Functional public-model evidence paired with implementation. Expectations use
 //! selected Decoration 4 §§2.1, 2.7–2.10, 3 and 4 and adopted CSSOM omissions.
 use crate::css::support::sole_declaration as declaration;
+use CssSerializationLimits as L;
 use CssSpecifiedValueSerializationErrorKind as K;
-use CssSpecifiedValueSerializationLimits as L;
 use surgeist_css::*;
 
 fn length(text: &str) -> CssSpecifiedLength {
@@ -27,14 +27,17 @@ fn exclusive_error_lines_are_constructible_without_ordinary_flags() {
         assert_eq!(line.error_kind(), Some(kind));
         assert!(!line.is_none());
         assert!(line.components().is_empty());
-        assert_eq!(line.serialize_specified().unwrap(), expected);
         assert_eq!(
-            line.serialize_specified_with_limits(L::new(2, 2, expected.len()))
+            line.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
+        assert_eq!(
+            line.serialize_specified(L::new(2, 2, expected.len()))
                 .unwrap(),
             expected
         );
         assert_eq!(
-            line.serialize_specified_with_limits(L::new(1, 2, expected.len()))
+            line.serialize_specified(L::new(1, 2, expected.len()))
                 .unwrap_err()
                 .kind(),
             K::InputNodeLimit
@@ -43,7 +46,7 @@ fn exclusive_error_lines_are_constructible_without_ordinary_flags() {
             CssTextDecoration::try_new(Some(line), None, Some(CssTextDecorationStyle::Wavy), None)
                 .unwrap();
         assert_eq!(
-            value.serialize_specified().unwrap(),
+            value.serialize_specified(Default::default()).unwrap(),
             format!("{expected} wavy")
         );
     }
@@ -62,7 +65,7 @@ fn underline_models_encode_separate_auto_and_nonempty_choices_and_signed_offset(
     assert_eq!(position.side(), Some(CssTextSide::Left));
     assert_eq!(
         CssTextUnderlinePosition::Position(position)
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "left"
     );
@@ -71,12 +74,15 @@ fn underline_models_encode_separate_auto_and_nonempty_choices_and_signed_offset(
         Some(CssTextSide::Right),
     )
     .unwrap();
-    assert_eq!(position.serialize_specified().unwrap(), "from-font right");
+    assert_eq!(
+        position.serialize_specified(Default::default()).unwrap(),
+        "from-font right"
+    );
     let value = CssTextUnderlineOffsetLength::try_new(signed_percentage("-25%")).unwrap();
     assert_eq!(value.value().origin(), &CssValueOrigin::Programmatic);
     assert_eq!(
         CssTextUnderlineOffset::Length(value)
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "-25%"
     );
@@ -100,7 +106,10 @@ fn emphasis_mark_and_position_retain_explicit_slots_and_original_origins() {
     assert!(CssTextEmphasisMark::try_new(None, None).is_none());
     let fill_only = CssTextEmphasisMark::try_new(Some(CssTextEmphasisFill::Filled), None).unwrap();
     assert_eq!(fill_only.shape(), None);
-    assert_eq!(fill_only.serialize_specified().unwrap(), "filled");
+    assert_eq!(
+        fill_only.serialize_specified(Default::default()).unwrap(),
+        "filled"
+    );
     let assumed = CssTextEmphasisMark::try_new(None, Some(CssTextEmphasisShape::Circle)).unwrap();
     assert_eq!(assumed.fill(), None);
     assert_eq!(assumed.fill_origin(), None);
@@ -126,13 +135,9 @@ fn emphasis_mark_and_position_retain_explicit_slots_and_original_origins() {
         Some(CssValueOrigin::Parsed(_))
     ));
     assert_ne!(mark.fill_origin(), mark.shape_origin());
+    assert_eq!(mark.serialize_specified(L::new(2, 1, 3)).unwrap(), "dot");
     assert_eq!(
-        mark.serialize_specified_with_limits(L::new(2, 1, 3))
-            .unwrap(),
-        "dot"
-    );
-    assert_eq!(
-        mark.serialize_specified_with_limits(L::new(1, 1, 3))
+        mark.serialize_specified(L::new(1, 1, 3))
             .unwrap_err()
             .kind(),
         K::InputNodeLimit
@@ -151,10 +156,13 @@ fn emphasis_mark_and_position_retain_explicit_slots_and_original_origins() {
         assert_eq!(value.side().is_some(), explicit);
         assert_eq!(value.side_origin().is_some(), explicit);
         assert!(matches!(value.vertical_origin(), CssValueOrigin::Parsed(_)));
-        assert_eq!(value.serialize_specified().unwrap(), "over");
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            "over"
+        );
         assert_eq!(
             value
-                .serialize_specified_with_limits(L::new(if explicit { 2 } else { 1 }, 1, 4))
+                .serialize_specified(L::new(if explicit { 2 } else { 1 }, 1, 4))
                 .unwrap(),
             "over"
         );
@@ -174,7 +182,7 @@ fn emphasis_strings_keep_decoded_content_and_provenance_without_ua_truncation() 
                 .component(),
             &component
         );
-        let serialized = value.serialize_specified().unwrap();
+        let serialized = value.serialize_specified(Default::default()).unwrap();
         let parsed = parse_component_values(&serialized).unwrap();
         let parsed = CssTextEmphasisString::try_from_component(parsed.items()[0].clone()).unwrap();
         assert_eq!(parsed.as_str(), content);
@@ -223,8 +231,8 @@ fn emphasis_semantic_equality_preserves_authored_slots_and_borrows_original_prov
     let omitted = style("text-emphasis-style:dot");
     assert_ne!(explicit, omitted);
     assert_eq!(
-        explicit.serialize_specified().unwrap(),
-        omitted.serialize_specified().unwrap()
+        explicit.serialize_specified(Default::default()).unwrap(),
+        omitted.serialize_specified(Default::default()).unwrap()
     );
     assert_ne!(explicit, style("text-emphasis-style:open dot"));
 
@@ -240,8 +248,8 @@ fn emphasis_semantic_equality_preserves_authored_slots_and_borrows_original_prov
     let omitted = position("text-emphasis-position:over");
     assert_ne!(left, omitted);
     assert_eq!(
-        left.serialize_specified().unwrap(),
-        omitted.serialize_specified().unwrap()
+        left.serialize_specified(Default::default()).unwrap(),
+        omitted.serialize_specified(Default::default()).unwrap()
     );
     assert_ne!(left, position("text-emphasis-position:under right"));
     assert_ne!(left, position("text-emphasis-position:over left"));
@@ -356,7 +364,10 @@ fn checked_emphasis_string_and_aggregate_reject_recovered_quotes_without_losing_
         assert!(CssTextEmphasisString::try_from_component(before.clone()).is_none());
         assert!(CssTextEmphasis::try_new(Some(style.clone()), None).is_none());
         assert_eq!(string.component(), &before);
-        assert_eq!(style.serialize_specified().unwrap(), "\"hello\"");
+        assert_eq!(
+            style.serialize_specified(Default::default()).unwrap(),
+            "\"hello\""
+        );
     }
     for text in ["'hello'", "\"hello\""] {
         let components = parse_component_values(text).unwrap();
@@ -380,7 +391,7 @@ fn checked_text_shadow_narrows_spread_but_reuses_retained_box_children() {
     )
     .unwrap();
     assert_eq!(
-        negative.serialize_specified().unwrap(),
+        negative.serialize_specified(Default::default()).unwrap(),
         "currentcolor -1px 2px 3px -4px inset"
     );
     assert!(CssTextShadowLayer::try_from_shadow(negative).is_none());
@@ -417,10 +428,13 @@ fn checked_text_shadow_narrows_spread_but_reuses_retained_box_children() {
     assert!(layer.shadow().inset());
     assert!(layer.shadow().color().unwrap().is_current_color());
     let expected = "currentcolor -1px 2px 3px 4px inset";
-    assert_eq!(layer.serialize_specified().unwrap(), expected);
+    assert_eq!(
+        layer.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     assert_eq!(
         layer
-            .serialize_specified_with_limits(L::new(7, 7, expected.len()))
+            .serialize_specified(L::new(7, 7, expected.len()))
             .unwrap(),
         expected
     );
@@ -429,14 +443,11 @@ fn checked_text_shadow_narrows_spread_but_reuses_retained_box_children() {
         (L::new(7, 6, expected.len()), K::ProjectionNodeLimit),
         (L::new(7, 7, expected.len() - 1), K::ByteLimit),
     ] {
+        assert_eq!(layer.serialize_specified(limits).unwrap_err().kind(), kind);
         assert_eq!(
-            layer
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            kind
+            layer.serialize_specified(Default::default()).unwrap(),
+            expected
         );
-        assert_eq!(layer.serialize_specified().unwrap(), expected);
     }
     assert!(CssTextShadowList::try_new(vec![]).is_none());
     let list = CssTextShadowList::try_new(vec![layer.clone(), layer.clone()]).unwrap();
@@ -446,7 +457,7 @@ fn checked_text_shadow_narrows_spread_but_reuses_retained_box_children() {
     let before = value.clone();
     assert_eq!(
         value
-            .serialize_specified_with_limits(L::new(15, 15, expected.len()))
+            .serialize_specified(L::new(15, 15, expected.len()))
             .unwrap(),
         expected
     );
@@ -455,15 +466,12 @@ fn checked_text_shadow_narrows_spread_but_reuses_retained_box_children() {
         (L::new(15, 14, expected.len()), K::ProjectionNodeLimit),
         (L::new(15, 15, expected.len() - 1), K::ByteLimit),
     ] {
-        assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            kind
-        );
+        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
         assert_eq!(value, before);
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
     let source = declaration("text-shadow:1px 2px calc(-1px) calc(-2px) inset");
     let CssKnownPropertyValueRef::TextShadow(value) =

@@ -8,10 +8,9 @@ use surgeist_css::{
     CssFontPaletteDescriptor, CssFontPaletteDescriptorKind as Kind, CssFontPaletteDescriptorValue,
     CssFontPaletteDescriptorValueRef, CssFontPaletteIndex, CssFontPaletteName,
     CssFontPaletteValueErrorKind, CssFontPaletteValuesRule, CssIntegerValue, CssNamespaceContext,
-    CssNormalizedItem, CssRecoveryAction, CssRule, CssRuleContextKindRef,
-    CssSpecifiedRuleSerializationErrorKind, CssSpecifiedValueSerializationErrorKind,
-    CssSpecifiedValueSerializationLimits, CssValueOrigin, normalize_sheet, parse_component_values,
-    parse_font_palette_descriptor_value, parse_rule, parse_sheet,
+    CssNormalizedItem, CssRecoveryAction, CssRule, CssRuleContextKindRef, CssSerializationLimits,
+    CssSpecifiedValueSerializationErrorKind, CssValueOrigin, normalize_sheet,
+    parse_component_values, parse_font_palette_descriptor_value, parse_rule, parse_sheet,
 };
 
 #[test]
@@ -34,7 +33,7 @@ fn checked_construction_rejects_missing_family_negative_index_and_tight_componen
     );
 
     let components = parse_component_values("dark").unwrap();
-    let err = CssFontPaletteDescriptorValue::try_new_with_limits(
+    let err = CssFontPaletteDescriptorValue::try_new(
         Kind::BasePalette,
         components,
         CssComponentValueLimits::try_new(256, 10, 3).unwrap(),
@@ -116,7 +115,7 @@ fn palette_payload_survives_deep_scoped_chunk_conversion() {
     assert_eq!(
         palettes[0].descriptors()[1]
             .value()
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .unwrap(),
         "7"
     );
@@ -150,11 +149,18 @@ fn recovered_raw_closure_is_distinct_from_strict_reentry() {
         CssValueOrigin::ImplicitClosure { .. }
     ));
     assert_eq!(
-        pending.components().serialize().unwrap().as_css(),
+        pending
+            .components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         "var(--base)"
     );
     let error = pending
-        .reparse_after_substitution(parse_component_values("var(--base").unwrap())
+        .reparse_after_substitution(
+            parse_component_values("var(--base").unwrap(),
+            Default::default(),
+        )
         .unwrap_err();
     assert_eq!(
         error.kind(),
@@ -338,11 +344,19 @@ fn descriptors_keep_occurrences_and_repeated_override_pairs() {
     };
     assert_eq!(overrides.len(), 3);
     assert_eq!(
-        overrides[0].index().value().serialize_specified().unwrap(),
+        overrides[0]
+            .index()
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "0"
     );
     assert_eq!(
-        overrides[1].index().value().serialize_specified().unwrap(),
+        overrides[1]
+            .index()
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "0"
     );
     assert_eq!(overrides[2].color().kind_name(), "alpha");
@@ -351,7 +365,13 @@ fn descriptors_keep_occurrences_and_repeated_override_pairs() {
     else {
         panic!("expected exact base index");
     };
-    assert_eq!(index.value().serialize_specified().unwrap(), "7");
+    assert_eq!(
+        index
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "7"
+    );
 }
 
 #[test]
@@ -496,7 +516,7 @@ fn index_grammar_keeps_exact_literals_and_delays_integer_math_ranges() {
                 .syntax()
                 .as_ref()
                 .unwrap()
-                .to_specified_css()
+                .serialize_specified(Default::default())
                 .unwrap(),
             expected,
             "{source}"
@@ -562,13 +582,23 @@ fn canonical_values_and_rule_keep_duplicates_without_evaluating_colors() {
     let light = parse_font_palette_descriptor_value("LIGHT", Kind::BasePalette);
     assert!(light.is_clean(), "{:?}", light.diagnostics());
     assert_eq!(
-        light.syntax().as_ref().unwrap().to_specified_css().unwrap(),
+        light
+            .syntax()
+            .as_ref()
+            .unwrap()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "light"
     );
     let index = parse_font_palette_descriptor_value("+0007", Kind::BasePalette);
     assert!(index.is_clean(), "{:?}", index.diagnostics());
     assert_eq!(
-        index.syntax().as_ref().unwrap().to_specified_css().unwrap(),
+        index
+            .syntax()
+            .as_ref()
+            .unwrap()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "7"
     );
 
@@ -582,7 +612,10 @@ fn canonical_values_and_rule_keep_duplicates_without_evaluating_colors() {
     };
     let expected = "@font-palette-values -- { font-family: Demo; font-family: \"serif\"; \
                     override-colors: 0 red, 0 color(display-p3 1 0 0), 2 alpha(from blue / 0.5); }";
-    assert_eq!(rule.to_specified_css().unwrap(), expected);
+    assert_eq!(
+        rule.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     let reparsed = parse_sheet(expected);
     assert!(reparsed.is_clean(), "{:?}", reparsed.diagnostics());
     let [CssRule::FontPaletteValues(reparsed)] = reparsed.syntax().rules() else {
@@ -590,7 +623,10 @@ fn canonical_values_and_rule_keep_duplicates_without_evaluating_colors() {
     };
     assert_eq!(reparsed.name().as_str(), "--");
     assert_eq!(reparsed.descriptors().len(), 3);
-    assert_eq!(reparsed.to_specified_css().unwrap(), expected);
+    assert_eq!(
+        reparsed.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
 }
 
 #[test]
@@ -602,7 +638,7 @@ fn quoted_family_with_reserved_member_stays_quoted_after_canonicalization() {
         let [CssRule::FontPaletteValues(rule)] = parsed.syntax().rules() else {
             panic!("expected quoted family");
         };
-        let canonical = rule.to_specified_css().unwrap();
+        let canonical = rule.serialize_specified(Default::default()).unwrap();
         assert!(
             canonical.contains(&format!("font-family: \"{name}\";")),
             "{canonical}"
@@ -621,6 +657,7 @@ fn strict_reentry_rejects_residual_functions_before_grammar() {
     let pending = CssFontPaletteDescriptorValue::try_new(
         Kind::BasePalette,
         parse_component_values("env(index)").unwrap(),
+        Default::default(),
     )
     .unwrap();
     assert!(matches!(
@@ -628,7 +665,10 @@ fn strict_reentry_rejects_residual_functions_before_grammar() {
         CssFontPaletteDescriptorValueRef::Pending(_)
     ));
     let residual = pending
-        .reparse_after_substitution(parse_component_values(r"c\61 lc(var(--x))").unwrap())
+        .reparse_after_substitution(
+            parse_component_values(r"c\61 lc(var(--x))").unwrap(),
+            Default::default(),
+        )
         .unwrap_err();
     assert_eq!(
         residual.kind(),
@@ -636,11 +676,14 @@ fn strict_reentry_rejects_residual_functions_before_grammar() {
     );
 
     let checked = pending
-        .reparse_after_substitution(parse_component_values("12").unwrap())
+        .reparse_after_substitution(parse_component_values("12").unwrap(), Default::default())
         .unwrap();
-    assert_eq!(checked.to_specified_css().unwrap(), "12");
+    assert_eq!(
+        checked.serialize_specified(Default::default()).unwrap(),
+        "12"
+    );
     let round_trip = parse_font_palette_descriptor_value(
-        &checked.to_specified_css().unwrap(),
+        &checked.serialize_specified(Default::default()).unwrap(),
         Kind::BasePalette,
     );
     assert!(round_trip.is_clean(), "{:?}", round_trip.diagnostics());
@@ -652,10 +695,16 @@ fn strict_reentry_rejects_residual_functions_before_grammar() {
     else {
         panic!("canonical replacement must remain an index");
     };
-    assert_eq!(index.value().serialize_specified().unwrap(), "12");
+    assert_eq!(
+        index
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "12"
+    );
     assert_eq!(
         checked
-            .reparse_after_substitution(parse_component_values("13").unwrap())
+            .reparse_after_substitution(parse_component_values("13").unwrap(), Default::default())
             .unwrap_err()
             .kind(),
         &CssFontPaletteValueErrorKind::NotPending
@@ -672,9 +721,14 @@ fn pending_canonical_text_preserves_fallback_whitespace() {
         value.view(),
         CssFontPaletteDescriptorValueRef::Pending(_)
     ));
-    assert_eq!(value.to_specified_css().unwrap(), source);
-    let reparsed =
-        parse_font_palette_descriptor_value(&value.to_specified_css().unwrap(), Kind::BasePalette);
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        source
+    );
+    let reparsed = parse_font_palette_descriptor_value(
+        &value.serialize_specified(Default::default()).unwrap(),
+        Kind::BasePalette,
+    );
     assert!(reparsed.is_clean(), "{:?}", reparsed.diagnostics());
     assert!(matches!(
         reparsed.syntax().as_ref().unwrap().view(),
@@ -688,7 +742,8 @@ fn checked_components_preserve_mixed_origins_without_fabricating_occurrence_posi
     components.push(CssComponentValue::try_ident("red").unwrap());
     let value = CssFontPaletteDescriptorValue::try_new(
         Kind::OverrideColors,
-        CssComponentValues::try_new(components).unwrap(),
+        CssComponentValues::try_new(components, Default::default()).unwrap(),
+        Default::default(),
     )
     .unwrap();
     let items = value.components().items();
@@ -719,27 +774,24 @@ fn whole_rule_and_sheet_share_limits_with_a_style_sibling() {
     else {
         panic!("expected two authored palettes");
     };
-    let first_css = first.to_specified_css().unwrap();
-    let second_css = second.to_specified_css().unwrap();
+    let first_css = first.serialize_specified(Default::default()).unwrap();
+    let second_css = second.serialize_specified(Default::default()).unwrap();
     assert_eq!(
-        report.syntax().to_specified_css().unwrap(),
+        report
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
         format!("{first_css}\n{second_css}")
     );
 
     let whole = format!("{first_css}\n{second_css}");
     let err = report
         .syntax()
-        .to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::new(
-            1000,
-            1000,
-            whole.len() - 1,
-        ))
+        .serialize_specified(CssSerializationLimits::new(1000, 1000, whole.len() - 1))
         .unwrap_err();
     assert_eq!(
         err.kind(),
-        CssSpecifiedRuleSerializationErrorKind::Resource(
-            CssSpecifiedValueSerializationErrorKind::ByteLimit
-        )
+        CssSpecifiedValueSerializationErrorKind::ByteLimit
     );
     assert_eq!(err.rule_index(), Some(1));
 
@@ -753,24 +805,18 @@ fn whole_rule_and_sheet_share_limits_with_a_style_sibling() {
     };
     for (limits, expected) in [
         (
-            CssSpecifiedValueSerializationLimits::new(4, 100, 1000),
+            CssSerializationLimits::new(4, 100, 1000),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(100, 4, 1000),
+            CssSerializationLimits::new(100, 4, 1000),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
     ] {
-        assert!(first_simple.to_specified_css_with_limits(limits).is_ok());
-        assert!(second_simple.to_specified_css_with_limits(limits).is_ok());
-        let err = simple
-            .syntax()
-            .to_specified_css_with_limits(limits)
-            .unwrap_err();
-        assert_eq!(
-            err.kind(),
-            CssSpecifiedRuleSerializationErrorKind::Resource(expected)
-        );
+        assert!(first_simple.serialize_specified(limits).is_ok());
+        assert!(second_simple.serialize_specified(limits).is_ok());
+        let err = simple.syntax().serialize_specified(limits).unwrap_err();
+        assert_eq!(err.kind(), expected);
         assert_eq!(err.rule_index(), Some(1));
     }
 
@@ -778,7 +824,10 @@ fn whole_rule_and_sheet_share_limits_with_a_style_sibling() {
     assert!(mixed.is_clean(), "{:?}", mixed.diagnostics());
     let before = mixed.clone();
     assert_eq!(
-        mixed.syntax().to_specified_css().unwrap(),
+        mixed
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "@font-palette-values --one { font-family: Demo; override-colors: 0 red, 1 blue; }\n@font-palette-values --two { font-family: Other; }\n.after { color: red; }"
     );
     assert_eq!(mixed, before);

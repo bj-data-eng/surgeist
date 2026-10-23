@@ -455,18 +455,22 @@ fn calculated_rule_width_preserves_expression_and_source_origin() {
     assert_eq!(value.rule().style(), Some(CssBorderStyle::Solid));
     let programmatic_calc = CssComponentValue::try_function(
         "calc",
-        CssComponentValues::try_new(vec![
-            CssComponentValue::try_dimension("1", "px").unwrap(),
-            CssComponentValue::try_token(" ").unwrap(),
-            CssComponentValue::try_token("*").unwrap(),
-            CssComponentValue::try_token(" ").unwrap(),
-            CssComponentValue::try_token("2").unwrap(),
-        ])
+        CssComponentValues::try_new(
+            vec![
+                CssComponentValue::try_dimension("1", "px").unwrap(),
+                CssComponentValue::try_token(" ").unwrap(),
+                CssComponentValue::try_token("*").unwrap(),
+                CssComponentValue::try_token(" ").unwrap(),
+                CssComponentValue::try_token("2").unwrap(),
+            ],
+            Default::default(),
+        )
         .unwrap(),
     )
     .unwrap();
     let calculation = CssLengthCalculation::try_from_components(
-        CssComponentValues::try_new(vec![programmatic_calc]).unwrap(),
+        CssComponentValues::try_new(vec![programmatic_calc], Default::default()).unwrap(),
+        Default::default(),
     )
     .unwrap();
     let constructed = CssColumnRule::try_new(
@@ -553,7 +557,10 @@ fn column_rule_canonical_output_omits_initials_and_charges_one_cumulative_budget
         panic!("typed reordered rule")
     };
     assert_eq!(
-        reordered.rule().serialize_specified().unwrap(),
+        reordered
+            .rule()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "2px solid red"
     );
     let current = authored_color("currentcolor");
@@ -567,48 +574,51 @@ fn column_rule_canonical_output_omits_initials_and_charges_one_cumulative_budget
     // shortest all-initial representation (CSSOM "serialize a CSS value"
     // step 2), as `border` and `outline` do. Each retained member still costs
     // one input and one projection node.
-    assert_eq!(all_initial.serialize_specified().unwrap(), "none");
+    assert_eq!(
+        all_initial.serialize_specified(Default::default()).unwrap(),
+        "none"
+    );
     assert_eq!(
         all_initial
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(4, 4, 4))
+            .serialize_specified(CssSerializationLimits::new(4, 4, 4))
             .unwrap(),
         "none"
     );
     for (limits, expected) in [
         (
-            CssSpecifiedValueSerializationLimits::new(3, 4, 4),
+            CssSerializationLimits::new(3, 4, 4),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(4, 3, 4),
+            CssSerializationLimits::new(4, 3, 4),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(4, 4, 3),
+            CssSerializationLimits::new(4, 4, 3),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
         assert_eq!(
-            all_initial
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            all_initial.serialize_specified(limits).unwrap_err().kind(),
             expected
         );
     }
     // An authored initial style is the retained member: aggregate and style
     // each cost one input and one projection node, with nothing synthesized.
     let style_only = CssColumnRule::try_new(None, Some(CssBorderStyle::None), None).unwrap();
-    assert_eq!(style_only.serialize_specified().unwrap(), "none");
+    assert_eq!(
+        style_only.serialize_specified(Default::default()).unwrap(),
+        "none"
+    );
     assert_eq!(
         style_only
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(2, 2, 4))
+            .serialize_specified(CssSerializationLimits::new(2, 2, 4))
             .unwrap(),
         "none"
     );
     assert_eq!(
         style_only
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(2, 1, 4))
+            .serialize_specified(CssSerializationLimits::new(2, 1, 4))
             .unwrap_err()
             .kind(),
         CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
@@ -616,32 +626,32 @@ fn column_rule_canonical_output_omits_initials_and_charges_one_cumulative_budget
     // Without an authored style the `none` token is synthesized: it charges
     // one projection node and no input node.
     let synthetic = CssColumnRule::try_new(Some(CssBorderWidth::Medium), None, None).unwrap();
-    assert_eq!(synthetic.serialize_specified().unwrap(), "none");
+    assert_eq!(
+        synthetic.serialize_specified(Default::default()).unwrap(),
+        "none"
+    );
     assert_eq!(
         synthetic
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(2, 3, 4))
+            .serialize_specified(CssSerializationLimits::new(2, 3, 4))
             .unwrap(),
         "none"
     );
     for (limits, expected) in [
         (
-            CssSpecifiedValueSerializationLimits::new(1, 3, 4),
+            CssSerializationLimits::new(1, 3, 4),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(2, 2, 4),
+            CssSerializationLimits::new(2, 2, 4),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(2, 3, 3),
+            CssSerializationLimits::new(2, 3, 3),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
         assert_eq!(
-            synthetic
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            synthetic.serialize_specified(limits).unwrap_err().kind(),
             expected
         );
     }
@@ -651,9 +661,12 @@ fn column_rule_canonical_output_omits_initials_and_charges_one_cumulative_budget
         Some(authored_color("red")),
     )
     .unwrap();
-    assert_eq!(rule.serialize_specified().unwrap(), "2px red");
     assert_eq!(
-        rule.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(4, 4, 7))
+        rule.serialize_specified(Default::default()).unwrap(),
+        "2px red"
+    );
+    assert_eq!(
+        rule.serialize_specified(CssSerializationLimits::new(4, 4, 7))
             .unwrap(),
         "2px red"
     );
@@ -666,46 +679,30 @@ fn fill_and_span_keyword_output_is_bounded() {
         (CssColumnFill::Balance, "balance"),
         (CssColumnFill::BalanceAll, "balance-all"),
     ] {
-        assert_eq!(fill.serialize_specified().unwrap(), text);
+        assert_eq!(fill.serialize_specified(Default::default()).unwrap(), text);
         assert_eq!(
-            fill.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                1,
-                1,
-                text.len(),
-            ))
-            .unwrap(),
+            fill.serialize_specified(CssSerializationLimits::new(1, 1, text.len(),))
+                .unwrap(),
             text
         );
         assert_eq!(
-            fill.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                1,
-                1,
-                text.len() - 1,
-            ))
-            .unwrap_err()
-            .kind(),
+            fill.serialize_specified(CssSerializationLimits::new(1, 1, text.len() - 1,))
+                .unwrap_err()
+                .kind(),
             CssSpecifiedValueSerializationErrorKind::ByteLimit
         );
     }
     for (span, text) in [(CssColumnSpan::None, "none"), (CssColumnSpan::All, "all")] {
-        assert_eq!(span.serialize_specified().unwrap(), text);
+        assert_eq!(span.serialize_specified(Default::default()).unwrap(), text);
         assert_eq!(
-            span.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                1,
-                1,
-                text.len(),
-            ))
-            .unwrap(),
+            span.serialize_specified(CssSerializationLimits::new(1, 1, text.len(),))
+                .unwrap(),
             text
         );
         assert_eq!(
-            span.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                1,
-                1,
-                text.len() - 1
-            ))
-            .unwrap_err()
-            .kind(),
+            span.serialize_specified(CssSerializationLimits::new(1, 1, text.len() - 1))
+                .unwrap_err()
+                .kind(),
             CssSpecifiedValueSerializationErrorKind::ByteLimit
         );
     }
@@ -721,26 +718,16 @@ fn fill_and_span_keyword_output_is_bounded() {
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
     ] {
-        let limits = CssSpecifiedValueSerializationLimits::new(input_limit, projection_limit, 32);
+        let limits = CssSerializationLimits::new(input_limit, projection_limit, 32);
         for fill in [
             CssColumnFill::Auto,
             CssColumnFill::Balance,
             CssColumnFill::BalanceAll,
         ] {
-            assert_eq!(
-                fill.serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
-                error
-            );
+            assert_eq!(fill.serialize_specified(limits).unwrap_err().kind(), error);
         }
         for span in [CssColumnSpan::None, CssColumnSpan::All] {
-            assert_eq!(
-                span.serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
-                error
-            );
+            assert_eq!(span.serialize_specified(limits).unwrap_err().kind(), error);
         }
     }
 }
@@ -761,11 +748,11 @@ fn nested_math_and_modern_color_share_the_rule_budget() {
         (1..=256)
             .find(|count| {
                 let limits = if input {
-                    CssSpecifiedValueSerializationLimits::new(*count, usize::MAX, usize::MAX)
+                    CssSerializationLimits::new(*count, usize::MAX, usize::MAX)
                 } else {
-                    CssSpecifiedValueSerializationLimits::new(usize::MAX, *count, usize::MAX)
+                    CssSerializationLimits::new(usize::MAX, *count, usize::MAX)
                 };
-                rule.serialize_specified_with_limits(limits).is_ok()
+                rule.serialize_specified(limits).is_ok()
             })
             .unwrap()
     };
@@ -777,15 +764,12 @@ fn nested_math_and_modern_color_share_the_rule_budget() {
         assert!(color_nodes > 2, "modern color has nested nodes");
         assert_eq!(combined_nodes, width_nodes + color_nodes - 1);
         let limits = if input {
-            CssSpecifiedValueSerializationLimits::new(combined_nodes - 1, usize::MAX, usize::MAX)
+            CssSerializationLimits::new(combined_nodes - 1, usize::MAX, usize::MAX)
         } else {
-            CssSpecifiedValueSerializationLimits::new(usize::MAX, combined_nodes - 1, usize::MAX)
+            CssSerializationLimits::new(usize::MAX, combined_nodes - 1, usize::MAX)
         };
         assert_eq!(
-            combined
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            combined.serialize_specified(limits).unwrap_err().kind(),
             if input {
                 CssSpecifiedValueSerializationErrorKind::InputNodeLimit
             } else {
@@ -794,10 +778,13 @@ fn nested_math_and_modern_color_share_the_rule_budget() {
         );
     }
     let expected = "calc(2px) color-mix(in srgb, red, green, blue)";
-    assert_eq!(combined.serialize_specified().unwrap(), expected);
+    assert_eq!(
+        combined.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     assert_eq!(
         combined
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
+            .serialize_specified(CssSerializationLimits::new(
                 usize::MAX,
                 usize::MAX,
                 expected.len(),
@@ -807,7 +794,7 @@ fn nested_math_and_modern_color_share_the_rule_budget() {
     );
     assert_eq!(
         combined
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
+            .serialize_specified(CssSerializationLimits::new(
                 usize::MAX,
                 usize::MAX,
                 expected.len() - 1,

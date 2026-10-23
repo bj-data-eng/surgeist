@@ -170,7 +170,7 @@ fn border_image_one_to_four_arity_expands_by_css_edge_rules() {
                     .iter()
                     .map(|value| match value {
                         CssBorderImageSliceComponent::Number(value) => {
-                            value.serialize_specified().unwrap()
+                            value.serialize_specified(Default::default()).unwrap()
                         }
                         _ => panic!("{source}: expected number"),
                     })
@@ -181,7 +181,7 @@ fn border_image_one_to_four_arity_expands_by_css_edge_rules() {
                     .iter()
                     .map(|value| match value {
                         CssBorderImageWidthComponent::Number(value) => {
-                            value.serialize_specified().unwrap()
+                            value.serialize_specified(Default::default()).unwrap()
                         }
                         _ => panic!("{source}: expected number"),
                     })
@@ -192,7 +192,7 @@ fn border_image_one_to_four_arity_expands_by_css_edge_rules() {
                     .iter()
                     .map(|value| match value {
                         CssBorderImageOutsetComponent::Number(value) => {
-                            value.serialize_specified().unwrap()
+                            value.serialize_specified(Default::default()).unwrap()
                         }
                         _ => panic!("{source}: expected number"),
                     })
@@ -247,7 +247,9 @@ fn image_orientation_rendering_and_object_fit_retain_typed_keywords() {
     };
     assert_eq!(value.rendering(), &CssImageRendering::Smooth);
     assert_eq!(
-        smooth.syntax()[0].to_specified_css().unwrap(),
+        smooth.syntax()[0]
+            .serialize_specified(Default::default())
+            .unwrap(),
         "image-rendering: smooth;"
     );
     let report = parse_style_attribute(concat!(
@@ -343,7 +345,7 @@ fn unordered_image_orientation_keeps_typed_angle_flip_and_adjacent_declarations(
         assert_eq!(literal.numeric().representation(), "90");
         assert_eq!(literal.unit(), CssAngleUnit::Degrees);
         assert_eq!(
-            orientation.to_specified_css().unwrap(),
+            orientation.serialize_specified(Default::default()).unwrap(),
             "image-orientation: 90deg flip;"
         );
     }

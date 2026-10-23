@@ -124,7 +124,10 @@ fn check(
     assert_eq!(attribute.case_sensitivity(), case);
     assert_eq!(attribute.namespace(), namespace);
     assert_eq!(attribute.qualified_name().prefix(), prefix);
-    assert_eq!(selector.to_specified_css().unwrap(), literal);
+    assert_eq!(
+        selector.serialize_specified(Default::default()).unwrap(),
+        literal
+    );
 }
 
 fn comments(front: Front) {

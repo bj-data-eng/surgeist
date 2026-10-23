@@ -111,7 +111,7 @@ fn keyframe_blocks_drop_nested_rules_and_keep_surrounding_declarations() {
                     declaration
                         .source()
                         .value_components()
-                        .serialize()
+                        .serialize_tokens(Default::default())
                         .unwrap()
                         .as_css()
                         .to_owned(),

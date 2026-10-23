@@ -1,8 +1,6 @@
 //! Authored names and selector arguments from CSS View Transitions 1.
 
-use crate::{
-    CssCustomIdent, CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits,
-};
+use crate::{CssCustomIdent, CssSerializationError};
 
 /// A checked participant name in the `view-transition-name` custom-ident arm.
 /// The decoded name preserves case; `none` and `auto` are excluded in every ASCII case.
@@ -34,6 +32,10 @@ impl CssViewTransitionIdent {
 }
 
 /// The specified `none | <custom-ident>` value, before participant discovery.
+///
+/// # Specified serialization
+///
+/// Emits canonical specified CSS using the shared identifier escaping rules.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssViewTransitionName {
@@ -41,34 +43,19 @@ pub enum CssViewTransitionName {
     Custom(CssViewTransitionIdent),
 }
 
-impl CssViewTransitionName {
-    /// Emits canonical specified CSS using the shared identifier escaping rules.
-    pub fn serialize_specified(&self) -> Result<String, CssSpecifiedValueSerializationError> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Charges one input and one projection node, and every emitted UTF-8 byte.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String, CssSpecifiedValueSerializationError> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssViewTransitionName {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> Result<(), CssSpecifiedValueSerializationError> {
-        writer.context.charge_input(1)?;
-        writer.context.charge_projection(1)?;
+    ) -> Result<(), CssSerializationError> {
+        writer.node()?;
         match self {
             Self::None => writer.append("none"),
             Self::Custom(name) => writer.append_identifier(name.as_str()),
         }
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssViewTransitionName);
 
 /// A named transition pseudo-element's wildcard or case-sensitive custom name.
 /// Unlike the property name, selector names admit `none` and `auto`.

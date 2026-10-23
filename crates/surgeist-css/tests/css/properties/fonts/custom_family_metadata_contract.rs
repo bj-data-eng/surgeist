@@ -83,7 +83,10 @@ fn assert_authored_initial_distinction(
         contribution.declaration().name().metadata(),
         metadata
     ));
-    assert_eq!(declaration.to_specified_css().unwrap(), expected);
+    assert_eq!(
+        declaration.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     assert_eq!(declaration, &before);
     assert!(declaration.same_occurrence(&before));
     assert_eq!(declaration.value_components(), &components);

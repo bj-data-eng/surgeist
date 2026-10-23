@@ -26,7 +26,10 @@ fn checked_speak_as_rejects_empty_modifiers_and_preserves_every_authored_choice(
     assert!(!normal.spell_out());
     assert!(!normal.digits());
     assert_eq!(normal.punctuation(), None);
-    assert_eq!(normal.serialize_specified().unwrap(), "normal");
+    assert_eq!(
+        normal.serialize_specified(Default::default()).unwrap(),
+        "normal"
+    );
     assert_eq!(normal, speak_as("normal"));
     for (spell_out, digits, punctuation, expected) in [
         (true, false, None, "spell-out"),
@@ -86,7 +89,10 @@ fn checked_speak_as_rejects_empty_modifiers_and_preserves_every_authored_choice(
         assert_eq!(value.spell_out(), spell_out);
         assert_eq!(value.digits(), digits);
         assert_eq!(value.punctuation(), punctuation);
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_eq!(speak_as(expected), value);
     }
 }
@@ -105,7 +111,13 @@ fn specified_speech_keywords_canonicalize_order_case_and_escapes_without_rewriti
     };
     let expected = "spell-out digits no-punctuation";
     assert_eq!(value.as_css(), authored);
-    assert_eq!(value.value().serialize_specified().unwrap(), expected);
+    assert_eq!(
+        value
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
     assert_eq!(*value.value(), speak_as(expected));
     let CssExpansion::Contributions(CssContributions::Longhands(items)) =
         expand_declaration(source).unwrap()
@@ -119,11 +131,18 @@ fn specified_speech_keywords_canonicalize_order_case_and_escapes_without_rewriti
         panic!("speak-as terminal")
     };
     assert_eq!(expanded, value.value());
-    assert_eq!(expanded.serialize_specified().unwrap(), expected);
+    assert_eq!(
+        expanded.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     assert!(item.source().same_occurrence(source));
     assert_eq!(value.as_css(), authored);
     assert_eq!(
-        source.value_components().serialize().unwrap().as_css(),
+        source
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         authored
     );
     for (text, expected_value, expected_css) in [
@@ -142,7 +161,13 @@ fn specified_speech_keywords_canonicalize_order_case_and_escapes_without_rewriti
             panic!("speak")
         };
         assert_eq!(*value.value(), expected_value);
-        assert_eq!(value.value().serialize_specified().unwrap(), expected_css);
+        assert_eq!(
+            value
+                .value()
+                .serialize_specified(Default::default())
+                .unwrap(),
+            expected_css
+        );
         assert_eq!(value.as_css(), text);
     }
 }
@@ -177,37 +202,33 @@ fn speech_specified_serialization_obeys_exact_leaf_and_byte_limits_atomically() 
     let expected = "spell-out digits literal-punctuation";
     assert_eq!(
         compound
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                1,
-                1,
-                expected.len()
-            ))
+            .serialize_specified(CssSerializationLimits::new(1, 1, expected.len()))
             .unwrap(),
         expected
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(0, 1, expected.len()),
+            CssSerializationLimits::new(0, 1, expected.len()),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(1, 0, expected.len()),
+            CssSerializationLimits::new(1, 0, expected.len()),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(1, 1, expected.len() - 1),
+            CssSerializationLimits::new(1, 1, expected.len() - 1),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
         assert_eq!(
-            compound
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            compound.serialize_specified(limits).unwrap_err().kind(),
             kind
         );
     }
-    assert_eq!(compound.serialize_specified().unwrap(), expected);
+    assert_eq!(
+        compound.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     for (value, css) in [
         (CssSpeak::Auto, "auto"),
         (CssSpeak::Never, "never"),
@@ -215,21 +236,13 @@ fn speech_specified_serialization_obeys_exact_leaf_and_byte_limits_atomically() 
     ] {
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    1,
-                    1,
-                    css.len()
-                ))
+                .serialize_specified(CssSerializationLimits::new(1, 1, css.len()))
                 .unwrap(),
             css
         );
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    1,
-                    1,
-                    css.len() - 1
-                ))
+                .serialize_specified(CssSerializationLimits::new(1, 1, css.len() - 1))
                 .unwrap_err()
                 .kind(),
             CssSpecifiedValueSerializationErrorKind::ByteLimit

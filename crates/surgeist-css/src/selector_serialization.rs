@@ -3,7 +3,7 @@
 use crate::specified_rule_serialization::SpecifiedRuleWriter;
 use crate::syntax::{CssCompoundMember, CssPseudoSuffixContext, CssSelectorGrammarContext};
 use crate::*;
-type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
+type Result<T> = std::result::Result<T, CssSerializationError>;
 /// Output proof scope, independent of the existing intrinsic selector grammar.
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum OutputRole {
@@ -50,9 +50,7 @@ enum Event<'a> {
 }
 fn push<'a>(work: &mut Vec<Event<'a>>, event: Event<'a>) -> Result<()> {
     work.try_reserve(1).map_err(|_| {
-        CssSpecifiedValueSerializationError::new(
-            CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
-        )
+        CssSerializationError::new(CssSpecifiedValueSerializationErrorKind::CapacityOverflow)
     })?;
     work.push(event);
     Ok(())
@@ -72,54 +70,34 @@ fn push_argument<'a>(work: &mut Vec<Event<'a>>, event: Event<'a>, role: OutputRo
     )
 }
 
-impl CssSelector {
-    /// Emits an authored selector, without resolving its symbolic ancestry.
-    pub fn to_specified_css(&self) -> Result<String> {
-        self.to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-    /// Emits atomically with cumulative semantic-node and UTF-8 byte limits.
-    pub fn to_specified_css_with_limits(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssSelector {
+    fn append_to_rule_writer(
         &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String> {
-        let mut writer = SpecifiedRuleWriter::new(limits);
-        writer.selector(self)?;
-        Ok(writer.css)
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        writer.selector(self)
     }
 }
-impl CssSelectorList {
-    /// Emits the complete ordinary list without resolving symbolic ancestry.
-    pub fn to_specified_css(&self) -> Result<String> {
-        self.to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Emits atomically with one cumulative aggregate/member/UTF-8 budget.
-    pub fn to_specified_css_with_limits(
+crate::specified_rule_serialization::specified_serialization!(CssSelector);
+impl crate::specified_rule_serialization::SpecifiedProvider for CssSelectorList {
+    fn append_to_rule_writer(
         &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String> {
-        let mut writer = SpecifiedRuleWriter::new(limits);
-        writer.ordinary_selectors(self)?;
-        Ok(writer.css)
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        writer.ordinary_selectors(self)
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssSelectorList);
 
-impl CssRelativeSelectorList {
-    /// Emits general relatives with their explicit or implicit leading relation.
-    pub fn to_specified_css(&self) -> Result<String> {
-        self.to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Emits atomically, including every relative carrier in one shared budget.
-    pub fn to_specified_css_with_limits(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssRelativeSelectorList {
+    fn append_to_rule_writer(
         &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String> {
-        let mut writer = SpecifiedRuleWriter::new(limits);
-        writer.relative_selectors(self)?;
-        Ok(writer.css)
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        writer.relative_selectors(self)
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssRelativeSelectorList);
 
 /// The actual role of a checked scope boundary. Start binds to its enclosing
 /// context; End binds to the scope introduced by its rule.
@@ -131,16 +109,10 @@ pub enum CssScopeSelectorCssomContext {
 
 impl CssSelectorList {
     /// Formats a literal ordinary list using actual namespace URI bindings.
-    pub fn serialize_cssom(&self, namespaces: &CssNamespaceContext) -> Result<String> {
-        self.serialize_cssom_with_limits(
-            namespaces,
-            CssSpecifiedValueSerializationLimits::default(),
-        )
-    }
-    pub fn serialize_cssom_with_limits(
+    pub fn serialize_cssom(
         &self,
         namespaces: &CssNamespaceContext,
-        limits: CssSpecifiedValueSerializationLimits,
+        limits: CssSerializationLimits,
     ) -> Result<String> {
         let mut writer = SpecifiedRuleWriter::new(limits);
         writer.node()?;
@@ -158,16 +130,10 @@ impl CssSelectorList {
 impl CssRelativeSelectorList {
     /// Formats general relative selectors. These are not nested style rules;
     /// their leading relationships remain relative, including inside `:has()`.
-    pub fn serialize_cssom(&self, namespaces: &CssNamespaceContext) -> Result<String> {
-        self.serialize_cssom_with_limits(
-            namespaces,
-            CssSpecifiedValueSerializationLimits::default(),
-        )
-    }
-    pub fn serialize_cssom_with_limits(
+    pub fn serialize_cssom(
         &self,
         namespaces: &CssNamespaceContext,
-        limits: CssSpecifiedValueSerializationLimits,
+        limits: CssSerializationLimits,
     ) -> Result<String> {
         let mut writer = SpecifiedRuleWriter::new(limits);
         writer.node()?;
@@ -189,18 +155,7 @@ impl CssStyleSelectorList {
         &self,
         namespaces: &CssNamespaceContext,
         context: CssStyleSelectorContext,
-    ) -> Result<String> {
-        self.serialize_cssom_with_limits(
-            namespaces,
-            context,
-            CssSpecifiedValueSerializationLimits::default(),
-        )
-    }
-    pub fn serialize_cssom_with_limits(
-        &self,
-        namespaces: &CssNamespaceContext,
-        context: CssStyleSelectorContext,
-        limits: CssSpecifiedValueSerializationLimits,
+        limits: CssSerializationLimits,
     ) -> Result<String> {
         let nested = match context {
             CssStyleSelectorContext::Ordinary => false,
@@ -230,18 +185,7 @@ impl CssScopedStyleSelectorList {
         &self,
         namespaces: &CssNamespaceContext,
         context: CssStyleSelectorContext,
-    ) -> Result<String> {
-        self.serialize_cssom_with_limits(
-            namespaces,
-            context,
-            CssSpecifiedValueSerializationLimits::default(),
-        )
-    }
-    pub fn serialize_cssom_with_limits(
-        &self,
-        namespaces: &CssNamespaceContext,
-        context: CssStyleSelectorContext,
-        limits: CssSpecifiedValueSerializationLimits,
+        limits: CssSerializationLimits,
     ) -> Result<String> {
         let CssStyleSelectorContext::Scoped(ancestor) = context else {
             return Err(invalid_context());
@@ -262,23 +206,17 @@ impl CssScopedStyleSelectorList {
 impl CssParsedStyleSelectors {
     /// Delegates using the actual retained admission role and original graph.
     /// Namespace URI bindings remain an explicit, separate context input.
-    pub fn serialize_cssom(&self, namespaces: &CssNamespaceContext) -> Result<String> {
-        self.serialize_cssom_with_limits(
-            namespaces,
-            CssSpecifiedValueSerializationLimits::default(),
-        )
-    }
-    pub fn serialize_cssom_with_limits(
+    pub fn serialize_cssom(
         &self,
         namespaces: &CssNamespaceContext,
-        limits: CssSpecifiedValueSerializationLimits,
+        limits: CssSerializationLimits,
     ) -> Result<String> {
         match self.selectors() {
             CssAdmittedStyleSelectors::Ordinary(list) => {
-                list.serialize_cssom_with_limits(namespaces, self.context(), limits)
+                list.serialize_cssom(namespaces, self.context(), limits)
             }
             CssAdmittedStyleSelectors::Scoped(list) => {
-                list.serialize_cssom_with_limits(namespaces, self.context(), limits)
+                list.serialize_cssom(namespaces, self.context(), limits)
             }
         }
     }
@@ -289,18 +227,7 @@ impl CssScopeSelectorList {
         &self,
         namespaces: &CssNamespaceContext,
         context: CssScopeSelectorCssomContext,
-    ) -> Result<String> {
-        self.serialize_cssom_with_limits(
-            namespaces,
-            context,
-            CssSpecifiedValueSerializationLimits::default(),
-        )
-    }
-    pub fn serialize_cssom_with_limits(
-        &self,
-        namespaces: &CssNamespaceContext,
-        context: CssScopeSelectorCssomContext,
-        limits: CssSpecifiedValueSerializationLimits,
+        limits: CssSerializationLimits,
     ) -> Result<String> {
         let (nested, scoped) = match context {
             CssScopeSelectorCssomContext::Start(context) => (
@@ -337,22 +264,11 @@ impl CssScopeRule {
         &self,
         namespaces: &CssNamespaceContext,
         nesting: CssScopeNestingContext,
-    ) -> Result<Option<String>> {
-        self.serialize_cssom_start_with_limits(
-            namespaces,
-            nesting,
-            CssSpecifiedValueSerializationLimits::default(),
-        )
-    }
-    pub fn serialize_cssom_start_with_limits(
-        &self,
-        namespaces: &CssNamespaceContext,
-        nesting: CssScopeNestingContext,
-        limits: CssSpecifiedValueSerializationLimits,
+        limits: CssSerializationLimits,
     ) -> Result<Option<String>> {
         self.root()
             .map(|list| {
-                list.serialize_cssom_with_limits(
+                list.serialize_cssom(
                     namespaces,
                     CssScopeSelectorCssomContext::Start(nesting),
                     limits,
@@ -361,32 +277,18 @@ impl CssScopeRule {
             .transpose()
     }
     /// Returns the independently formatted end bound, or None for an omitted end.
-    pub fn serialize_cssom_end(&self, namespaces: &CssNamespaceContext) -> Result<Option<String>> {
-        self.serialize_cssom_end_with_limits(
-            namespaces,
-            CssSpecifiedValueSerializationLimits::default(),
-        )
-    }
-    pub fn serialize_cssom_end_with_limits(
+    pub fn serialize_cssom_end(
         &self,
         namespaces: &CssNamespaceContext,
-        limits: CssSpecifiedValueSerializationLimits,
+        limits: CssSerializationLimits,
     ) -> Result<Option<String>> {
         self.limit()
-            .map(|list| {
-                list.serialize_cssom_with_limits(
-                    namespaces,
-                    CssScopeSelectorCssomContext::End,
-                    limits,
-                )
-            })
+            .map(|list| list.serialize_cssom(namespaces, CssScopeSelectorCssomContext::End, limits))
             .transpose()
     }
 }
-fn invalid_context() -> CssSpecifiedValueSerializationError {
-    CssSpecifiedValueSerializationError::new(
-        CssSpecifiedValueSerializationErrorKind::UnrepresentableValue,
-    )
+fn invalid_context() -> CssSerializationError {
+    CssSerializationError::new(CssSpecifiedValueSerializationErrorKind::UnrepresentableValue)
 }
 
 impl SpecifiedRuleWriter {
@@ -407,7 +309,7 @@ impl SpecifiedRuleWriter {
 
     fn selector_identifier(&mut self, value: &str) -> Result<()> {
         if value.is_empty() || value.contains('\0') {
-            return Err(CssSpecifiedValueSerializationError::new(
+            return Err(CssSerializationError::new(
                 CssSpecifiedValueSerializationErrorKind::UnrepresentableValue,
             ));
         }
@@ -462,7 +364,7 @@ impl SpecifiedRuleWriter {
             _ => true,
         };
         if !available {
-            return Err(CssSpecifiedValueSerializationError::new(
+            return Err(CssSerializationError::new(
                 CssSpecifiedValueSerializationErrorKind::NamespaceBindingUnavailable,
             ));
         }
@@ -492,7 +394,7 @@ impl SpecifiedRuleWriter {
             return self.name_prefix(prefix);
         };
         let missing = || {
-            CssSpecifiedValueSerializationError::new(
+            CssSerializationError::new(
                 CssSpecifiedValueSerializationErrorKind::NamespaceBindingUnavailable,
             )
         };
@@ -669,7 +571,7 @@ impl SpecifiedRuleWriter {
                 }
                 Event::Selector(value, grammar) => {
                     if !grammar.admits_selector(value) {
-                        return Err(CssSpecifiedValueSerializationError::new(
+                        return Err(CssSerializationError::new(
                             CssSpecifiedValueSerializationErrorKind::UnrepresentableValue,
                         ));
                     }
@@ -716,7 +618,7 @@ impl SpecifiedRuleWriter {
                 }
                 Event::Compound(value, grammar) => {
                     if !grammar.admits_compound(value) {
-                        return Err(CssSpecifiedValueSerializationError::new(
+                        return Err(CssSerializationError::new(
                             CssSpecifiedValueSerializationErrorKind::UnrepresentableValue,
                         ));
                     }
@@ -864,7 +766,7 @@ impl SpecifiedRuleWriter {
                             CssPseudoSelectorListItem::InvalidNesting(value) => {
                                 self.node()?;
                                 if !forgiving || !value.admitted_in(grammar) {
-                                    return Err(CssSpecifiedValueSerializationError::new(CssSpecifiedValueSerializationErrorKind::UnrepresentableValue));
+                                    return Err(invalid_context());
                                 }
                                 value
                                     .components()
@@ -1008,7 +910,7 @@ impl SpecifiedRuleWriter {
                 }
                 Event::Pseudo(value, grammar) => {
                     if !grammar.admits_pseudo(value) {
-                        return Err(CssSpecifiedValueSerializationError::new(
+                        return Err(CssSerializationError::new(
                             CssSpecifiedValueSerializationErrorKind::UnrepresentableValue,
                         ));
                     }
@@ -1268,7 +1170,7 @@ mod invalid_nesting_context_tests {
         // This is the actual provider receiving grammar. Relative arguments
         // forbid Has but re-enable complexes, incomparable to the original proof.
         let grammar = CssSelectorGrammarContext::ORDINARY.relative_arguments();
-        let mut writer = SpecifiedRuleWriter::new(CssSpecifiedValueSerializationLimits::default());
+        let mut writer = SpecifiedRuleWriter::new(CssSerializationLimits::default());
         assert_eq!(
             writer
                 .selector_events(Event::Selector(&detached, grammar))
@@ -1278,7 +1180,7 @@ mod invalid_nesting_context_tests {
         );
         assert_eq!(detached, before);
         // Keeping the compound owner while tightening Has preserves both proofs.
-        let mut writer = SpecifiedRuleWriter::new(CssSpecifiedValueSerializationLimits::default());
+        let mut writer = SpecifiedRuleWriter::new(CssSerializationLimits::default());
         writer
             .selector_events(Event::Selector(&host, grammar))
             .unwrap();

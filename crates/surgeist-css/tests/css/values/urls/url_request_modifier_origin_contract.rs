@@ -56,8 +56,15 @@ fn detached(text: &str) -> (String, CssComponentValues) {
         parsed.items()[0].view(),
         CssComponentValueRef::Token(CssValueTokenRef::Whitespace(_))
     ));
-    let detached = CssComponentValues::try_new(parsed.items()[1..].to_vec()).unwrap();
-    assert_eq!(detached.serialize().unwrap().as_css(), text);
+    let detached =
+        CssComponentValues::try_new(parsed.items()[1..].to_vec(), Default::default()).unwrap();
+    assert_eq!(
+        detached
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        text
+    );
     let CssValueOrigin::Parsed(origin) = detached.items()[0].origin() else {
         panic!("retained original source")
     };
@@ -114,7 +121,7 @@ fn assert_retried_url(url: &CssUrl, source: &str, input: &CssComponentValues) {
     };
     assert_eq!(modifier.name(), "integrity");
     assert_eq!(
-        url.serialize_specified().unwrap(),
+        url.serialize_specified(Default::default()).unwrap(),
         "src(\"#asset\" integrity(\"hash\"))"
     );
     let [argument] = modifier.argument_components().items() else {
@@ -165,9 +172,12 @@ fn valid_detached_property_and_profile_controls_are_admitted() {
                 assert_eq!(admitted.importance(), CssImportance::Normal);
             }
             let (_, input) = detached(&url);
-            let profile =
-                CssColorProfileDescriptorValue::try_new(CssColorProfileDescriptorKind::Src, input)
-                    .unwrap();
+            let profile = CssColorProfileDescriptorValue::try_new(
+                CssColorProfileDescriptorKind::Src,
+                input,
+                Default::default(),
+            )
+            .unwrap();
             let CssColorProfileDescriptorValueRef::Src(admitted) = profile.view() else {
                 panic!("ordinary profile source")
             };
@@ -186,6 +196,7 @@ fn valid_detached_font_import_and_counter_controls_are_admitted() {
             let font = CssAuthoredFontFaceDescriptorValue::try_from_components(
                 CssFontFaceDescriptorKind::Src,
                 input,
+                Default::default(),
             )
             .unwrap_or_else(|error| panic!("{url}: {error:?}"));
             let CssAuthoredFontFaceDescriptorValue::Ordinary(CssFontFaceDescriptorValue::Src(
@@ -199,8 +210,12 @@ fn valid_detached_font_import_and_counter_controls_are_admitted() {
             };
             assert_admitted_url(font_source.url(), function, modifier);
             let (_, input) = detached(&format!("@import {url} layer(theme);"));
-            let import = CssImportRule::try_from_components(input, &CssNamespaceContext::default())
-                .unwrap_or_else(|error| panic!("{url}: {error:?}"));
+            let import = CssImportRule::try_from_components(
+                input,
+                &CssNamespaceContext::default(),
+                Default::default(),
+            )
+            .unwrap_or_else(|error| panic!("{url}: {error:?}"));
             let CssImportTarget::Url(target) = import.target() else {
                 panic!("URL import target: {url}");
             };
@@ -208,9 +223,12 @@ fn valid_detached_font_import_and_counter_controls_are_admitted() {
             assert!(import.layer().is_some(), "{url}: retained layer(theme)");
             for (kind, prefix) in COUNTERS {
                 let (_, input) = detached(&format!("{prefix}{url}"));
-                let counter =
-                    CssCounterStyleDescriptorValue::try_from_components(kind, input.clone())
-                        .unwrap_or_else(|error| panic!("{url}: {kind:?}: {error:?}"));
+                let counter = CssCounterStyleDescriptorValue::try_from_components(
+                    kind,
+                    input.clone(),
+                    Default::default(),
+                )
+                .unwrap_or_else(|error| panic!("{url}: {kind:?}: {error:?}"));
                 assert_eq!(counter.kind(), kind);
                 assert_eq!(counter.components(), &input, "{url}: {kind:?}");
                 assert!(
@@ -250,6 +268,7 @@ fn detached_profile_rejections_return_typed_errors_with_original_argument_origin
             let error = CssColorProfileDescriptorValue::try_new(
                 CssColorProfileDescriptorKind::Src,
                 input.clone(),
+                Default::default(),
             )
             .unwrap_err();
             assert!(matches!(
@@ -269,6 +288,7 @@ fn detached_font_rejections_retain_the_contextual_modifier_origin() {
             let error = CssAuthoredFontFaceDescriptorValue::try_from_components(
                 CssFontFaceDescriptorKind::Src,
                 input.clone(),
+                Default::default(),
             )
             .unwrap_err();
             assert!(matches!(
@@ -285,9 +305,12 @@ fn detached_import_rejections_retain_the_target_grammar_origin() {
     for function in ["url", "src"] {
         for (modifier, _, _) in INVALID {
             let (source, input) = detached(&format!("@import {function}(\"#asset\" {modifier});"));
-            let error =
-                CssImportRule::try_from_components(input.clone(), &CssNamespaceContext::default())
-                    .unwrap_err();
+            let error = CssImportRule::try_from_components(
+                input.clone(),
+                &CssNamespaceContext::default(),
+                Default::default(),
+            )
+            .unwrap_err();
             assert!(matches!(
                 &error,
                 CssImportConstructionError::InvalidRuleGrammar { .. }
@@ -304,9 +327,12 @@ fn detached_counter_rejections_return_typed_errors_with_original_argument_origin
             for (kind, prefix) in COUNTERS {
                 let (source, input) =
                     detached(&format!("{prefix}{function}(\"#asset\" {modifier})"));
-                let error =
-                    CssCounterStyleDescriptorValue::try_from_components(kind, input.clone())
-                        .unwrap_err();
+                let error = CssCounterStyleDescriptorValue::try_from_components(
+                    kind,
+                    input.clone(),
+                    Default::default(),
+                )
+                .unwrap_err();
                 assert!(matches!(
                     error.kind(),
                     CssCounterStyleValueErrorKind::Grammar(_)
@@ -363,12 +389,13 @@ fn detached_profile_reentry_rejects_with_original_origin_and_allows_valid_retry(
     let pending = CssColorProfileDescriptorValue::try_new(
         CssColorProfileDescriptorKind::Src,
         parse_component_values("env(profile)").unwrap(),
+        Default::default(),
     )
     .unwrap();
     for (modifier, argument, _) in INVALID {
         let (source, input) = detached(&format!("src(\"#asset\" {modifier})"));
         let error = pending
-            .reparse_after_substitution(input.clone())
+            .reparse_after_substitution(input.clone(), Default::default())
             .unwrap_err();
         assert!(matches!(
             error.kind(),
@@ -381,7 +408,9 @@ fn detached_profile_reentry_rejects_with_original_origin_and_allows_valid_retry(
         ));
     }
     let (source, valid) = detached("src(\"#asset\" integrity(\"hash\"))");
-    let retried = pending.reparse_after_substitution(valid.clone()).unwrap();
+    let retried = pending
+        .reparse_after_substitution(valid.clone(), Default::default())
+        .unwrap();
     let CssColorProfileDescriptorValueRef::Src(url) = retried.view() else {
         panic!("ordinary profile source");
     };
@@ -393,6 +422,7 @@ fn detached_font_reentry_rejects_with_original_origin_and_allows_valid_retry() {
     let authored = CssAuthoredFontFaceDescriptorValue::try_from_components(
         CssFontFaceDescriptorKind::Src,
         parse_component_values("env(font)").unwrap(),
+        Default::default(),
     )
     .unwrap();
     let CssAuthoredFontFaceDescriptorValue::Pending(pending) = authored else {
@@ -401,7 +431,7 @@ fn detached_font_reentry_rejects_with_original_origin_and_allows_valid_retry() {
     for (modifier, _, opening) in INVALID {
         let (source, input) = detached(&format!("src(\"#asset\" {modifier})"));
         let error = pending
-            .reparse_after_substitution(input.clone())
+            .reparse_after_substitution(input.clone(), Default::default())
             .unwrap_err();
         assert!(matches!(
             error.kind(),
@@ -410,8 +440,9 @@ fn detached_font_reentry_rejects_with_original_origin_and_allows_valid_retry() {
         serialized_argument(error.origin(), &input, &source, opening);
     }
     let (source, valid) = detached("src(\"#asset\" integrity(\"hash\"))");
-    let CssFontFaceDescriptorValue::Src(sources) =
-        pending.reparse_after_substitution(valid.clone()).unwrap()
+    let CssFontFaceDescriptorValue::Src(sources) = pending
+        .reparse_after_substitution(valid.clone(), Default::default())
+        .unwrap()
     else {
         panic!("ordinary font source list");
     };
@@ -426,12 +457,13 @@ fn detached_counter_reentry_rejects_with_original_origin_and_allows_valid_retry(
     let pending = CssCounterStyleDescriptorValue::try_from_components(
         CssCounterStyleDescriptorKind::Symbols,
         parse_component_values("env(symbols)").unwrap(),
+        Default::default(),
     )
     .unwrap();
     for (modifier, argument, _) in INVALID {
         let (source, input) = detached(&format!("src(\"#asset\" {modifier})"));
         let error = pending
-            .reparse_after_substitution(input.clone())
+            .reparse_after_substitution(input.clone(), Default::default())
             .unwrap_err();
         assert!(matches!(
             error.kind(),
@@ -444,7 +476,9 @@ fn detached_counter_reentry_rejects_with_original_origin_and_allows_valid_retry(
         ));
     }
     let (source, valid) = detached("src(\"#asset\" integrity(\"hash\"))");
-    let retried = pending.reparse_after_substitution(valid.clone()).unwrap();
+    let retried = pending
+        .reparse_after_substitution(valid.clone(), Default::default())
+        .unwrap();
     let CssCounterStyleDescriptorValueRef::Symbols(symbols) = retried.view() else {
         panic!("ordinary counter symbols");
     };

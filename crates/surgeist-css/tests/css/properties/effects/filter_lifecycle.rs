@@ -54,10 +54,30 @@ fn assert_omitted_hue_order(property: CssKnownProperty) {
         panic!("retain authored function order, defaults and URL: {list:?}");
     };
     assert!(blur.authored_length().is_none());
-    assert_eq!(blur.length().serialize_specified().unwrap(), "0px");
-    assert_eq!(contrast.serialize_specified().unwrap(), "25%");
-    assert_eq!(shadow.offset_x().serialize_specified().unwrap(), "-1px");
-    assert_eq!(shadow.offset_y().serialize_specified().unwrap(), "2px");
+    assert_eq!(
+        blur.length()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "0px"
+    );
+    assert_eq!(
+        contrast.serialize_specified(Default::default()).unwrap(),
+        "25%"
+    );
+    assert_eq!(
+        shadow
+            .offset_x()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "-1px"
+    );
+    assert_eq!(
+        shadow
+            .offset_y()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "2px"
+    );
     assert!(shadow.standard_deviation().is_none());
     assert!(shadow.color().is_some());
     assert_eq!(url.as_str(), "filters.svg#rough");

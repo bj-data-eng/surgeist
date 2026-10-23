@@ -21,15 +21,19 @@ fn part(names: &[&str]) -> CssPseudoElement {
 }
 
 fn pseudo_list(pseudo: CssPseudoClass) -> CssPseudoSelectorList {
-    CssPseudoSelectorList::try_new(vec![CssSelector::PseudoClass(pseudo)]).unwrap()
+    CssPseudoSelectorList::try_new(vec![CssSelector::PseudoClass(pseudo)], Default::default())
+        .unwrap()
 }
 
 fn has(selector: CssSelector) -> CssPseudoClass {
     CssPseudoClass::Has(
-        CssRelativeSelectorList::try_new(vec![CssRelativeSelector::new(
-            CssSelectorCombinator::Child,
-            selector,
-        )])
+        CssRelativeSelectorList::try_new(
+            vec![CssRelativeSelector::new(
+                CssSelectorCombinator::Child,
+                selector,
+            )],
+            Default::default(),
+        )
         .unwrap(),
     )
 }
@@ -65,10 +69,17 @@ fn compound_construction_preserves_primitive_and_namespace_arguments() {
 fn checked_arguments_reject_logical_complex_selectors_and_pseudo_elements() {
     // PE-bearing Where/nth argument containers are now rejected at admission;
     // their exact compound-argument defenses remain in owning private tests.
-    assert_unrepresentable_construction(CssPseudoSelectorList::try_new(vec![selector("::before")]));
+    assert_unrepresentable_construction(CssPseudoSelectorList::try_new(
+        vec![selector("::before")],
+        Default::default(),
+    ));
     for invalid in [
-        CssPseudoClass::Not(CssPseudoSelectorList::try_new(vec![selector(".a > .b")]).unwrap()),
-        CssPseudoClass::Is(CssPseudoSelectorList::try_new(vec![selector(".a > .b")]).unwrap()),
+        CssPseudoClass::Not(
+            CssPseudoSelectorList::try_new(vec![selector(".a > .b")], Default::default()).unwrap(),
+        ),
+        CssPseudoClass::Is(
+            CssPseudoSelectorList::try_new(vec![selector(".a > .b")], Default::default()).unwrap(),
+        ),
     ] {
         assert!(CssCompoundSelectorArgument::try_new(CssSelector::PseudoClass(invalid)).is_none());
     }
@@ -269,7 +280,9 @@ fn checked_logical_suffix_arguments_inherit_position_and_remain_pseudo_only() {
         .is_none()
     );
     for invalid in [selector(".class"), selector(":hover > :focus")] {
-        let logical = CssPseudoClass::Is(CssPseudoSelectorList::try_new(vec![invalid]).unwrap());
+        let logical = CssPseudoClass::Is(
+            CssPseudoSelectorList::try_new(vec![invalid], Default::default()).unwrap(),
+        );
         assert!(
             CssPseudoElementSequence::try_from_segments(vec![E(part(&["label"])), P(logical)])
                 .is_none()
@@ -277,7 +290,10 @@ fn checked_logical_suffix_arguments_inherit_position_and_remain_pseudo_only() {
     }
     // The Is(PE) suffix defense is private now; this external front rejects the
     // original pseudo-element member before suffix attachment is possible.
-    assert_unrepresentable_construction(CssPseudoSelectorList::try_new(vec![selector("::before")]));
+    assert_unrepresentable_construction(CssPseudoSelectorList::try_new(
+        vec![selector("::before")],
+        Default::default(),
+    ));
     let host = CssPseudoClass::HostFunction(argument(".inside"));
     assert!(
         CssPseudoElementSequence::try_from_segments(vec![

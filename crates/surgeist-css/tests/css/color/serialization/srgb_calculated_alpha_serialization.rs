@@ -14,13 +14,13 @@ use crate::css::support::{
 };
 use surgeist_css::*;
 
-type Limits = CssSpecifiedValueSerializationLimits;
+type Limits = CssSerializationLimits;
 type Kind = CssSpecifiedValueSerializationErrorKind;
 
 fn assert_value(value: &CssColor, expected: &str) {
     let before = value.clone();
-    let result = value.to_specified_css();
-    assert_eq!(result, value.to_specified_css());
+    let result = value.serialize_specified(Default::default());
+    assert_eq!(result, value.serialize_specified(Default::default()));
     assert_eq!(value, &before);
     assert_eq!(result.unwrap(), expected);
     // Reentry asserts admission only. A rounded explicit unity is a direct
@@ -38,7 +38,11 @@ fn assert_text(source: &str, expected: &str) {
         let before = value.clone();
         assert_eq!(value.importance(), CssImportance::Important);
         assert_eq!(
-            value.value_components().serialize().unwrap().as_css(),
+            value
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             source
         );
         assert!(matches!(
@@ -438,11 +442,15 @@ fn number(source: &str, programmatic: bool) -> CssColorComponent {
 
 fn checked_color(family: &str, programmatic: bool) -> CssColor {
     let values = if programmatic {
-        let arguments =
-            CssComponentValues::try_new(vec![CssComponentValue::try_number("2").unwrap()]).unwrap();
-        CssComponentValues::try_new(vec![
-            CssComponentValue::try_function("calc", arguments).unwrap(),
-        ])
+        let arguments = CssComponentValues::try_new(
+            vec![CssComponentValue::try_number("2").unwrap()],
+            Default::default(),
+        )
+        .unwrap();
+        CssComponentValues::try_new(
+            vec![CssComponentValue::try_function("calc", arguments).unwrap()],
+            Default::default(),
+        )
         .unwrap()
     } else {
         components("calc(2)")
@@ -451,7 +459,8 @@ fn checked_color(family: &str, programmatic: bool) -> CssColor {
         values.items()[0].origin() == &CssValueOrigin::Programmatic,
         programmatic
     );
-    let calculation = CssNumberCalculation::try_from_components(values.clone()).unwrap();
+    let calculation =
+        CssNumberCalculation::try_from_components(values.clone(), Default::default()).unwrap();
     assert_eq!(calculation.components(), &values);
     let alpha = Some(CssColorComponent::NumberCalculation(calculation));
     let CssColorComponent::Number(hue) = number("0", programmatic) else {
@@ -553,7 +562,7 @@ fn long_opaque_alpha_requires_scratch_before_omission() {
         6,
         5,
         27,
-        CssColor::to_specified_css_with_limits,
+        CssColor::serialize_specified,
     );
 }
 
@@ -583,7 +592,7 @@ fn sibling_calculations_share_all_three_limits() {
         expected,
         17,
         17,
-        CssBorderColorPair::serialize_specified_with_limits,
+        CssBorderColorPair::serialize_specified,
     );
 }
 
@@ -603,7 +612,7 @@ fn utf8_prefix_spends_bytes_before_long_opaque_capture() {
         9,
         8,
         expected.len() + 1,
-        CssBorderColorPair::serialize_specified_with_limits,
+        CssBorderColorPair::serialize_specified,
     );
 }
 

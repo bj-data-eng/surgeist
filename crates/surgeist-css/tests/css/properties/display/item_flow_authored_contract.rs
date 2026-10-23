@@ -133,13 +133,16 @@ fn assert_tolerance(values: &CssLonghandContributions, expected: &str) {
     else {
         panic!("ordinary typed tolerance")
     };
-    assert_eq!(value.serialize_specified().unwrap(), expected);
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
 }
 fn accepted(name: &str, input: &str, canonical: &str) {
     for source in fronts(name, input) {
         let before = source.clone();
         assert_eq!(
-            source.to_specified_css().unwrap(),
+            source.serialize_specified(Default::default()).unwrap(),
             format!("{name}: {canonical} !important;"),
             "{name}:{input}"
         );
@@ -157,7 +160,7 @@ fn accepted(name: &str, input: &str, canonical: &str) {
     }
     let source = checked(name, canonical, true);
     assert_eq!(
-        source.to_specified_css().unwrap(),
+        source.serialize_specified(Default::default()).unwrap(),
         format!("{name}: {canonical} !important;")
     );
 }
@@ -245,7 +248,9 @@ fn canonical_names_are_known_in_authored_input_and_alternative_proposals_stay_un
         property("item-direction")
     );
     assert_eq!(
-        report.syntax()[0].to_specified_css().unwrap(),
+        report.syntax()[0]
+            .serialize_specified(Default::default())
+            .unwrap(),
         "item-direction: row-reverse !important;"
     );
 }
@@ -285,7 +290,7 @@ fn checked_programmatic_components_keep_origins_importance_and_constructed_occur
         let p = property(name);
         let component = CssComponentValue::try_ident(keyword).unwrap();
         assert_eq!(component.origin(), &CssValueOrigin::Programmatic);
-        let components = CssComponentValues::try_new(vec![component]).unwrap();
+        let components = CssComponentValues::try_new(vec![component], Default::default()).unwrap();
         let before = components.clone();
         for source in [
             parse_property_value(
@@ -307,7 +312,7 @@ fn checked_programmatic_components_keep_origins_importance_and_constructed_occur
             assert!(source.parsed_value().is_none());
             assert_eq!(source.importance(), CssImportance::Important);
             assert_eq!(
-                source.to_specified_css().unwrap(),
+                source.serialize_specified(Default::default()).unwrap(),
                 format!("{name}: {canonical} !important;")
             );
             let values = completed(&source);
@@ -467,7 +472,7 @@ fn full_four_member_keyword_cross_product_readmits_its_independent_canonical_tex
                     let canonical = format!("{direction} {wrap} {pack} {tolerance}");
                     for source in [parsed(FLOW, &canonical), checked(FLOW, &canonical, true)] {
                         assert_eq!(
-                            source.to_specified_css().unwrap(),
+                            source.serialize_specified(Default::default()).unwrap(),
                             format!("item-flow: {canonical} !important;")
                         );
                         let values = completed(&source);
@@ -542,7 +547,7 @@ fn var_env_attr_pending_reentry_preserves_original_and_replacement_provenance() 
                 assert!(handle.source().same_occurrence(&source));
                 assert_eq!(handle.source().importance(), CssImportance::Important);
                 assert_eq!(
-                    source.to_specified_css().unwrap(),
+                    source.serialize_specified(Default::default()).unwrap(),
                     format!("{name}: {text} !important;")
                 );
                 let (replacement_text, canonical) = replacement_for(name);
@@ -581,7 +586,7 @@ fn var_env_attr_pending_reentry_preserves_original_and_replacement_provenance() 
                 assert_eq!(replacement, before);
                 assert_eq!(
                     checked(name, replacement_text, false)
-                        .to_specified_css()
+                        .serialize_specified(Default::default())
                         .unwrap(),
                     format!("{name}: {canonical} !important;")
                 );
@@ -776,7 +781,7 @@ fn illegal_annotations_map_to_the_original_token_through_checked_and_reentry_pat
         let p = property(name);
         let text = format!("/*😀*/{}!important", replacement_for(name).0);
         let components = parse_component_values(&text).unwrap();
-        let serialized = components.serialize().unwrap();
+        let serialized = components.serialize_tokens(Default::default()).unwrap();
         let expected = serialized
             .origin_at(serialized.as_css().find('!').unwrap())
             .unwrap()
@@ -1015,8 +1020,8 @@ fn normalization_keeps_order_context_importance_and_exact_one_four_pending_accou
 }
 #[test]
 fn adopted_keyword_and_numeric_declaration_costs_are_cumulative_atomic_and_reusable() {
+    use CssSerializationLimits as Limits;
     use CssSpecifiedValueSerializationErrorKind as Kind;
-    use CssSpecifiedValueSerializationLimits as Limits;
     // The literal table is the adopted public semantic pricing, not measured
     // implementation work. A declaration/name adds two nodes to child totals.
     for (name, input, canonical, inputs, projections) in [
@@ -1047,10 +1052,7 @@ fn adopted_keyword_and_numeric_declaration_costs_are_cumulative_atomic_and_reusa
         let before = source.clone();
         let expected = format!("{name}: {canonical} !important;");
         let exact = Limits::new(inputs, projections, expected.len());
-        assert_eq!(
-            source.to_specified_css_with_limits(exact).unwrap(),
-            expected
-        );
+        assert_eq!(source.serialize_specified(exact).unwrap(), expected);
         for (limits, kind) in [
             (
                 Limits::new(inputs - 1, projections, expected.len()),
@@ -1066,20 +1068,11 @@ fn adopted_keyword_and_numeric_declaration_costs_are_cumulative_atomic_and_reusa
             ),
         ] {
             for _ in 0..2 {
-                assert_eq!(
-                    source
-                        .to_specified_css_with_limits(limits)
-                        .unwrap_err()
-                        .kind(),
-                    kind
-                );
+                assert_eq!(source.serialize_specified(limits).unwrap_err().kind(), kind);
                 assert_eq!(source, before);
             }
         }
-        assert_eq!(
-            source.to_specified_css_with_limits(exact).unwrap(),
-            expected
-        );
+        assert_eq!(source.serialize_specified(exact).unwrap(), expected);
     }
     let source = checked(FLOW, "-1e999px", true);
     let before = source.clone();
@@ -1089,23 +1082,26 @@ fn adopted_keyword_and_numeric_declaration_costs_are_cumulative_atomic_and_reusa
     );
     assert_eq!(
         source
-            .to_specified_css_with_limits(Limits::new(6, 6, expected.len()))
+            .serialize_specified(Limits::new(6, 6, expected.len()))
             .unwrap(),
         expected
     );
     assert_eq!(
         source
-            .to_specified_css_with_limits(Limits::new(6, 6, expected.len() - 1))
+            .serialize_specified(Limits::new(6, 6, expected.len() - 1))
             .unwrap_err()
             .kind(),
         Kind::ByteLimit
     );
     assert_eq!(source, before);
-    assert_eq!(source.to_specified_css().unwrap(), expected);
+    assert_eq!(
+        source.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
 }
 #[test]
 fn item_sheet_siblings_share_exact_final_bytes_and_suppress_failed_output_atomically() {
-    use CssSpecifiedValueSerializationLimits as Limits;
+    use CssSerializationLimits as Limits;
     let report =
         parse_sheet(".a{item-flow:row!important}.b{item-flow:row auto normal calc(1px + 2em)}");
     assert!(report.is_clean());
@@ -1114,25 +1110,23 @@ fn item_sheet_siblings_share_exact_final_bytes_and_suppress_failed_output_atomic
     let expected = ".a { item-flow: row auto normal normal !important; }\n.b { item-flow: row auto normal calc(2em + 1px); }";
     let exact = Limits::new(usize::MAX, usize::MAX, expected.len());
     let short = Limits::new(usize::MAX, usize::MAX, expected.len() - 1);
-    assert_eq!(sheet.to_specified_css_with_limits(exact).unwrap(), expected);
+    assert_eq!(sheet.serialize_specified(exact).unwrap(), expected);
     assert!(
         sheet
             .rules()
             .iter()
-            .all(|v| v.to_specified_css_with_limits(short).is_ok())
+            .all(|v| v.serialize_specified(short).is_ok())
     );
     for _ in 0..2 {
-        let error = sheet.to_specified_css_with_limits(short).unwrap_err();
+        let error = sheet.serialize_specified(short).unwrap_err();
         assert_eq!(
             error.kind(),
-            CssSpecifiedRuleSerializationErrorKind::Resource(
-                CssSpecifiedValueSerializationErrorKind::ByteLimit
-            )
+            CssSpecifiedValueSerializationErrorKind::ByteLimit
         );
         assert_eq!(error.rule_index(), Some(1));
         assert_eq!(sheet, &before);
     }
-    assert_eq!(sheet.to_specified_css_with_limits(exact).unwrap(), expected);
+    assert_eq!(sheet.serialize_specified(exact).unwrap(), expected);
 }
 
 #[test]
@@ -1167,7 +1161,7 @@ fn flow_signed_math_and_original_closure_control_is_independent_of_item_registra
 fn flex_flow_keeps_its_two_members_and_own_omission_defaults() {
     let source = checked("flex-flow", "column", true);
     assert_eq!(
-        source.to_specified_css().unwrap(),
+        source.serialize_specified(Default::default()).unwrap(),
         "flex-flow: column nowrap !important;"
     );
     let values = completed(&source);
@@ -1184,7 +1178,7 @@ fn flex_flow_keeps_its_two_members_and_own_omission_defaults() {
     ));
     assert_eq!(
         checked("flex-flow", "wrap column", false)
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .unwrap(),
         "flex-flow: column wrap !important;"
     );
@@ -1219,7 +1213,7 @@ fn grid_template_grid_and_normal_auto_flow_membership_remain_independent() {
     ] {
         let source = checked(name, input, true);
         assert_eq!(
-            source.to_specified_css().unwrap(),
+            source.serialize_specified(Default::default()).unwrap(),
             format!("{name}: {expected} !important;")
         );
         assert_eq!(names(&completed(&source)), members);

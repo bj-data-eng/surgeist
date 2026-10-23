@@ -56,7 +56,10 @@ fn escaped_style_value_names_are_not_tokenized_twice() {
             panic!("value query")
         };
         assert_eq!(name.as_str(), expected);
-        assert_eq!(value.serialize().unwrap().as_css(), " red");
+        assert_eq!(
+            value.serialize_tokens(Default::default()).unwrap().as_css(),
+            " red"
+        );
     }
 }
 
@@ -71,5 +74,8 @@ fn plain_style_names_preserve_case_and_value() {
         panic!("value query")
     };
     assert_eq!(name.as_str(), "--Theme");
-    assert_eq!(value.serialize().unwrap().as_css(), " red");
+    assert_eq!(
+        value.serialize_tokens(Default::default()).unwrap().as_css(),
+        " red"
+    );
 }

@@ -81,7 +81,7 @@ fn globals(name: &str) {
             let declaration = source(name, text, front);
             assert_eq!(declaration.known().unwrap().global(), Some(keyword));
             assert_eq!(
-                declaration.to_specified_css().unwrap(),
+                declaration.serialize_specified(Default::default()).unwrap(),
                 format!("{name}: {text} !important;")
             );
             let CssExpansion::Contributions(CssContributions::Longhands(values)) =
@@ -116,10 +116,14 @@ fn calculations(name: &str) {
                 assert!(length.literal_component().is_none());
             }
             assert_eq!(
-                declaration.value_components().serialize().unwrap().as_css(),
+                declaration
+                    .value_components()
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
                 value
             );
-            let emitted = declaration.to_specified_css().unwrap();
+            let emitted = declaration.serialize_specified(Default::default()).unwrap();
             clean(&parse_page_block(&format!("{{{emitted}}}")));
         }
     }
@@ -137,7 +141,11 @@ fn units(name: &str) {
         for front in 0..4 {
             let declaration = source(name, value, front);
             assert_eq!(
-                declaration.value_components().serialize().unwrap().as_css(),
+                declaration
+                    .value_components()
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
                 value
             );
             for margin in margins(&declaration) {
@@ -447,7 +455,7 @@ fn shorthand_one_to_four_values_expand_in_physical_order() {
             assert_eq!(
                 margins(&declaration)
                     .into_iter()
-                    .map(|v| v.serialize_specified().unwrap())
+                    .map(|v| v.serialize_specified(Default::default()).unwrap())
                     .collect::<Vec<_>>(),
                 expected
             );
@@ -585,7 +593,10 @@ fn defined_font_relative_replacement_is_admitted_without_parser_time_fallback_se
             | CssLonghandValueRef::MarginLeft(v) => v,
             _ => panic!("physical margin terminal"),
         };
-        assert_eq!(margin.serialize_specified().unwrap(), "1em");
+        assert_eq!(
+            margin.serialize_specified(Default::default()).unwrap(),
+            "1em"
+        );
     }
     assert_eq!(
         handle
@@ -643,7 +654,11 @@ fn composed_values_preserve_unicode_snapshot_spans_and_occurrence_order() {
         );
         assert!(name_origin.source().same_snapshot(origin.source()));
         assert_eq!(
-            declaration.value_components().serialize().unwrap().as_css(),
+            declaration
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             value
         );
     }
@@ -791,45 +806,43 @@ fn specified_output_and_checked_list_assembly_share_atomic_cumulative_limits() {
     );
     let before = list.clone();
     let expected = "--m: 2Q; margin-left: var(--m) !important; margin-top: initial;";
-    assert_eq!(list.to_specified_css().unwrap(), expected);
-    let ample = CssSpecifiedValueSerializationLimits::new(1000, 1000, expected.len());
-    assert_eq!(list.to_specified_css_with_limits(ample).unwrap(), expected);
-    let short = CssSpecifiedValueSerializationLimits::new(1000, 1000, expected.len() - 1);
     assert_eq!(
-        list.to_specified_css_with_limits(short).unwrap_err().kind(),
+        list.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
+    let ample = CssSerializationLimits::new(1000, 1000, expected.len());
+    assert_eq!(list.serialize_specified(ample).unwrap(), expected);
+    let short = CssSerializationLimits::new(1000, 1000, expected.len() - 1);
+    assert_eq!(
+        list.serialize_specified(short).unwrap_err().kind(),
         CssSpecifiedValueSerializationErrorKind::ByteLimit
     );
     assert_eq!(
-        CssDeclarationList::try_new_with_limits(list.as_slice().to_vec(), short)
+        CssDeclarationList::try_new(list.as_slice().to_vec(), short)
             .unwrap_err()
             .kind(),
         CssSpecifiedValueSerializationErrorKind::ByteLimit
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(0, 1000, 1000),
+            CssSerializationLimits::new(0, 1000, 1000),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(1000, 0, 1000),
+            CssSerializationLimits::new(1000, 0, 1000),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
     ] {
-        assert_eq!(
-            list.to_specified_css_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            kind
-        );
+        assert_eq!(list.serialize_specified(limits).unwrap_err().kind(), kind);
     }
     assert_eq!(list, before);
-    let checked = CssDeclarationList::try_new_with_limits(list.as_slice().to_vec(), ample).unwrap();
+    let checked = CssDeclarationList::try_new(list.as_slice().to_vec(), ample).unwrap();
     let repeated = vec![checked[1].clone(), checked[1].clone()];
     let one_bytes = "margin-left: var(--m) !important;".len();
-    let one_budget = CssSpecifiedValueSerializationLimits::new(1000, 1000, one_bytes);
-    assert!(checked[1].to_specified_css_with_limits(one_budget).is_ok());
+    let one_budget = CssSerializationLimits::new(1000, 1000, one_bytes);
+    assert!(checked[1].serialize_specified(one_budget).is_ok());
     assert_eq!(
-        CssDeclarationList::try_new_with_limits(repeated, one_budget)
+        CssDeclarationList::try_new(repeated, one_budget)
             .unwrap_err()
             .kind(),
         CssSpecifiedValueSerializationErrorKind::ByteLimit
@@ -883,7 +896,9 @@ fn actual_group_page_values_compose_without_lifting_style_ancestor_placement() {
             panic!("following style survives excluded Page")
         };
         assert_eq!(
-            style.declarations()[0].to_specified_css().unwrap(),
+            style.declarations()[0]
+                .serialize_specified(Default::default())
+                .unwrap(),
             "color: red;"
         );
     }

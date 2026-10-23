@@ -10,6 +10,7 @@ use surgeist_css::{
 fn specified(source: &str) -> String {
     let calculation = CssLengthPercentageCalculation::try_from_components(
         parse_component_values(source).unwrap(),
+        Default::default(),
     )
     .unwrap();
     assert_eq!(
@@ -19,7 +20,7 @@ fn specified(source: &str) -> String {
     );
     CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(calculation)
         .unwrap()
-        .serialize_specified()
+        .serialize_specified(Default::default())
         .unwrap()
 }
 
@@ -52,12 +53,13 @@ fn comparisons_preserve_the_unknown_percentage_basis() {
 fn same_unit_length_sum_can_collapse_before_scalar_multiplication() {
     let calculation = CssLengthPercentageCalculation::try_from_components(
         parse_component_values("calc((1px + 2px) * 3)").unwrap(),
+        Default::default(),
     )
     .unwrap();
     assert_eq!(
         CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(calculation)
             .unwrap()
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "calc(9px)"
     );
@@ -67,12 +69,13 @@ fn same_unit_length_sum_can_collapse_before_scalar_multiplication() {
 fn compatible_absolute_units_can_collapse_before_scalar_multiplication() {
     let calculation = CssLengthPercentageCalculation::try_from_components(
         parse_component_values("calc((1in + 2px) * 3)").unwrap(),
+        Default::default(),
     )
     .unwrap();
     assert_eq!(
         CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(calculation)
             .unwrap()
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "calc(294px)"
     );

@@ -25,7 +25,13 @@ pub fn assert_exact_specified_sheet(source: &str, expected: &str) {
     let report = parse_sheet(source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let before = report.clone();
-    assert_eq!(report.syntax().to_specified_css().unwrap(), expected);
+    assert_eq!(
+        report
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
     assert_eq!(report, before);
     let emitted = parse_sheet(expected);
     assert!(
@@ -33,7 +39,13 @@ pub fn assert_exact_specified_sheet(source: &str, expected: &str) {
         "{expected}: {:?}",
         emitted.diagnostics()
     );
-    assert_eq!(emitted.syntax().to_specified_css().unwrap(), expected);
+    assert_eq!(
+        emitted
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
 }
 
 /// The sole rule of the clean sheet `source`, which must be `@counter-style`.
@@ -103,6 +115,7 @@ pub fn import_from_components(source: &str) -> CssImportRule {
     CssImportRule::try_from_components(
         parse_component_values(source).unwrap(),
         &CssNamespaceContext::default(),
+        Default::default(),
     )
     .unwrap()
 }

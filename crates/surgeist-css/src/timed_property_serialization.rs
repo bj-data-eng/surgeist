@@ -8,17 +8,18 @@
 //! omission keeps the meaning, still charging their nodes; every other explicit
 //! optional value, including each animation initial, is emitted.
 
+use crate::specified_rule_serialization::SpecifiedProvider as _;
 use crate::{
     CssAnimation, CssAnimationDirection, CssAnimationDirectionList, CssAnimationFillMode,
     CssAnimationFillModeList, CssAnimationIterationCount, CssAnimationIterationCountList,
     CssAnimationList, CssAnimationName, CssAnimationNameList, CssAnimationPlayState,
-    CssAnimationPlayStateList, CssDelayList, CssDurationList, CssSpecifiedValueSerializationError,
-    CssSpecifiedValueSerializationErrorKind, CssSpecifiedValueSerializationLimits, CssTransition,
-    CssTransitionList, CssTransitionProperty, CssTransitionPropertyList,
+    CssAnimationPlayStateList, CssDelayList, CssDurationList, CssSerializationError,
+    CssSpecifiedValueSerializationErrorKind, CssTransition, CssTransitionList,
+    CssTransitionProperty, CssTransitionPropertyList,
     specified_rule_serialization::SpecifiedRuleWriter,
 };
 
-type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
+type Result<T> = std::result::Result<T, CssSerializationError>;
 
 macro_rules! list_source_visit {
     ($writer:expr, $visit:expr) => {
@@ -31,26 +32,8 @@ macro_rules! list_source_visit {
 
 macro_rules! list_provider {
     ($ty:ty, $getter:ident, $append:expr $(, source = $source:ident)?) => {
-        impl $ty {
-            /// Emits canonical authored values in retained list order.
-            /// This performs no timing evaluation or contextual list expansion.
-            pub fn serialize_specified(&self) -> Result<String> {
-                self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-            }
-
-            /// Emits atomically using cumulative input, projection and byte limits.
-            /// Lists and items charge nodes; required defaults charge projection only.
-            /// Numeric children retain their shared domain serialization policy.
-            pub fn serialize_specified_with_limits(
-                &self,
-                limits: CssSpecifiedValueSerializationLimits,
-            ) -> Result<String> {
-                let mut writer = SpecifiedRuleWriter::new(limits);
-                self.append_to_rule_writer(&mut writer)?;
-                Ok(writer.css)
-            }
-
-            pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+        impl crate::specified_rule_serialization::SpecifiedProvider for $ty {
+            fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
                 // The shorthand list names its actual admitted item-count owner.
                 // Terminal lists keep the ordinary node and separator path.
                 list_source_visit!(writer, SpecifiedRuleWriter::node $(, $source)?)?;
@@ -64,6 +47,7 @@ macro_rules! list_provider {
                 Ok(())
             }
         }
+        crate::specified_rule_serialization::specified_serialization!($ty);
     };
 }
 
@@ -103,10 +87,8 @@ list_provider!(
 );
 list_provider!(CssAnimationList, values, animation, source = AnimationName);
 
-fn unrepresentable() -> CssSpecifiedValueSerializationError {
-    CssSpecifiedValueSerializationError::new(
-        CssSpecifiedValueSerializationErrorKind::UnrepresentableValue,
-    )
+fn unrepresentable() -> CssSerializationError {
+    CssSerializationError::new(CssSpecifiedValueSerializationErrorKind::UnrepresentableValue)
 }
 
 fn transition_property(
@@ -433,12 +415,12 @@ fn animation(writer: &mut SpecifiedRuleWriter, value: &CssAnimation) -> Result<(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::CssSerializationLimits as L;
     use crate::{
         CssAnimationComponents, CssEasing, CssEasingKeyword, CssTimeLiteral, CssTimeUnit,
         CssTimeValue,
     };
     use CssSpecifiedValueSerializationErrorKind as K;
-    use CssSpecifiedValueSerializationLimits as L;
 
     fn time() -> CssTimeValue {
         CssTimeValue::from_literal(CssTimeLiteral::try_new("-1", CssTimeUnit::Seconds).unwrap())

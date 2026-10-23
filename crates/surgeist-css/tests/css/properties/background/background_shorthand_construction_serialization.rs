@@ -64,7 +64,10 @@ fn construction_rejects_empty_layers_uncoupled_size_and_nonfinal_color() {
         Err(CssBackgroundConstructionError::NonFinalColor { layer_index: 1 })
     );
     let value = CssBackground::try_new(vec![layer(Some(CssColor::current_color()))]).unwrap();
-    assert_eq!(value.serialize_specified().unwrap(), "currentcolor");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "currentcolor"
+    );
     assert_eq!(
         CssBackgroundConstructionError::SizeWithoutPosition.to_string(),
         "background size requires a position"
@@ -198,18 +201,30 @@ fn direct_typed_construction_retains_components_omissions_and_programmatic_origi
 
 fn terminal_text(value: CssLonghandValueRef<'_>) -> String {
     match value {
-        CssLonghandValueRef::BackgroundImage(v) => v.serialize_specified().unwrap(),
-        CssLonghandValueRef::BackgroundPosition(v) => v.serialize_specified().unwrap(),
-        CssLonghandValueRef::BackgroundSize(v) => v.serialize_specified().unwrap(),
-        CssLonghandValueRef::BackgroundRepeat(v) => v.serialize_specified().unwrap(),
-        CssLonghandValueRef::BackgroundAttachment(v) => v.serialize_specified().unwrap(),
-        CssLonghandValueRef::BackgroundOrigin(v) | CssLonghandValueRef::BackgroundClip(v) => {
-            v.serialize_specified().unwrap()
+        CssLonghandValueRef::BackgroundImage(v) => {
+            v.serialize_specified(Default::default()).unwrap()
         }
-        CssLonghandValueRef::BackgroundColor(v) => v.to_specified_css().unwrap(),
+        CssLonghandValueRef::BackgroundPosition(v) => {
+            v.serialize_specified(Default::default()).unwrap()
+        }
+        CssLonghandValueRef::BackgroundSize(v) => {
+            v.serialize_specified(Default::default()).unwrap()
+        }
+        CssLonghandValueRef::BackgroundRepeat(v) => {
+            v.serialize_specified(Default::default()).unwrap()
+        }
+        CssLonghandValueRef::BackgroundAttachment(v) => {
+            v.serialize_specified(Default::default()).unwrap()
+        }
+        CssLonghandValueRef::BackgroundOrigin(v) | CssLonghandValueRef::BackgroundClip(v) => {
+            v.serialize_specified(Default::default()).unwrap()
+        }
+        CssLonghandValueRef::BackgroundColor(v) => {
+            v.serialize_specified(Default::default()).unwrap()
+        }
         CssLonghandValueRef::BackgroundBlendMode(v) => {
             assert_eq!(v.modes(), &[CssBlendMode::Normal]);
-            v.serialize_specified().unwrap()
+            v.serialize_specified(Default::default()).unwrap()
         }
         _ => panic!("background terminal"),
     }
@@ -277,12 +292,14 @@ fn canonical_grammar_omits_initials_preserves_context_and_round_trips_expansion(
     ] {
         let original = background(authored);
         let unchanged = original.clone();
-        let actual = original.serialize_specified().unwrap();
+        let actual = original.serialize_specified(Default::default()).unwrap();
         assert_eq!(actual, expected, "{authored}");
         assert_eq!(original, unchanged);
         assert_eq!(expanded(authored), expanded(expected), "{authored}");
         assert_eq!(
-            background(expected).serialize_specified().unwrap(),
+            background(expected)
+                .serialize_specified(Default::default())
+                .unwrap(),
             expected
         );
     }
@@ -290,9 +307,8 @@ fn canonical_grammar_omits_initials_preserves_context_and_round_trips_expansion(
 
 fn assert_limits(text: &str, input: usize, projection: usize, expected: &str) {
     let value = background(text);
-    LimitLadder::new(expected, input, projection).assert_unchanged(&value, |value, limits| {
-        value.serialize_specified_with_limits(limits)
-    });
+    LimitLadder::new(expected, input, projection)
+        .assert_unchanged(&value, |value, limits| value.serialize_specified(limits));
 }
 
 #[test]
@@ -309,7 +325,7 @@ fn omitted_nodes_consume_visits_but_only_generated_none_consumes_four_bytes() {
     // The tiny nonzero percentage must never be omitted through a machine-float zero.
     assert_eq!(
         background("1e-400% 0%")
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(100, 100, 4))
+            .serialize_specified(CssSerializationLimits::new(100, 100, 4))
             .unwrap_err()
             .kind(),
         CssSpecifiedValueSerializationErrorKind::ByteLimit

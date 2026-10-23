@@ -49,7 +49,7 @@ fn checked_literal_preserves_exact_lexeme_and_rejects_tiny_negative() {
         literal.origin()
     );
     let box_size = CssBoxSize::LengthPercentage(literal);
-    let canonical = box_size.serialize_specified().unwrap();
+    let canonical = box_size.serialize_specified(Default::default()).unwrap();
     assert!(canonical.ends_with("px"));
     assert_eq!(canonical.len(), 1002); // 1 followed by 999 zeroes, then px.
     assert_component_rejected(
@@ -76,7 +76,10 @@ fn parsed_intrinsic_and_fit_content_values_have_distinct_typed_branches() {
         panic!("typed fit-content argument")
     };
     assert!(argument.calculation().is_some());
-    assert_eq!(argument.serialize_specified().unwrap(), "calc(2% + 1px)");
+    assert_eq!(
+        argument.serialize_specified(Default::default()).unwrap(),
+        "calc(2% + 1px)"
+    );
 }
 
 #[test]
@@ -84,22 +87,30 @@ fn programmatic_checked_values_preserve_their_typed_boundary() {
     let length = CssSpecifiedNonNegativeLengthPercentage::try_from_component(component("2.5%"))
         .expect("checked percentage");
     let preferred = CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(length));
-    assert_eq!(preferred.serialize_specified().unwrap(), "2.5%");
-    let calc = CssCalcSize::try_from_component(component("calc-size(min-content, size + 1px)"))
-        .expect("checked calc-size");
+    assert_eq!(
+        preferred.serialize_specified(Default::default()).unwrap(),
+        "2.5%"
+    );
+    let calc = CssCalcSize::try_from_component(
+        component("calc-size(min-content, size + 1px)"),
+        Default::default(),
+    )
+    .expect("checked calc-size");
     let maximum = CssMaxSizeValue::try_box_size(CssBoxSize::CalcSize(calc.try_into().unwrap()))
         .expect("maximum permits intrinsic basis");
     assert_eq!(
-        maximum.serialize_specified().unwrap(),
+        maximum.serialize_specified(Default::default()).unwrap(),
         "calc-size(min-content, 1px + size)"
     );
 }
 
 #[test]
 fn maximum_constructor_rejects_auto_in_nested_calc_size_basis() {
-    let nested =
-        CssCalcSize::try_from_component(component("calc-size(calc-size(auto, 1px), size + 1px)"))
-            .unwrap();
+    let nested = CssCalcSize::try_from_component(
+        component("calc-size(calc-size(auto, 1px), size + 1px)"),
+        Default::default(),
+    )
+    .unwrap();
     let surgeist_css::CssCalcSizeBasisRef::Nested(child) = nested.basis() else {
         panic!("nested basis")
     };
@@ -109,7 +120,10 @@ fn maximum_constructor_rejects_auto_in_nested_calc_size_basis() {
     assert_eq!(error.origin(), Some(&auto_origin));
     let max = CssMaxSizeValue::try_box_size(CssBoxSize::Contain).unwrap();
     assert_eq!(max.box_size(), Some(&CssBoxSize::Contain));
-    assert_eq!(max.serialize_specified().unwrap(), "contain");
+    assert_eq!(
+        max.serialize_specified(Default::default()).unwrap(),
+        "contain"
+    );
     assert!(CssMaxSizeValue::NONE.is_none());
 }
 
@@ -157,7 +171,7 @@ fn checked_maximum_reports_nested_auto_origin_after_programmatic_trivia() {
         .items()
         .to_vec();
     items.extend(width.value_components().items().iter().cloned());
-    let components = surgeist_css::CssComponentValues::try_new(items).unwrap();
+    let components = surgeist_css::CssComponentValues::try_new(items, Default::default()).unwrap();
     let error = surgeist_css::parse_property_value_for_grammar(
         surgeist_css::CssPropertyGrammar::from_name("max-width").unwrap(),
         components,
@@ -217,6 +231,7 @@ fn sizing_equality_preserves_structure_across_distinct_origins() {
         CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(
             surgeist_css::CssLengthPercentageCalculation::try_from_components(
                 parse_component_values("calc(1px + 2%)").unwrap(),
+                Default::default(),
             )
             .unwrap(),
         )
@@ -226,10 +241,13 @@ fn sizing_equality_preserves_structure_across_distinct_origins() {
 
     let authored_calc = size("inline-size", "calc-size(min-content, size + 1px)");
     let checked_calc = CssSizeValue::BoxSize(CssBoxSize::CalcSize(
-        CssCalcSize::try_from_component(component("calc-size(min-content, size + 1px)"))
-            .unwrap()
-            .try_into()
-            .unwrap(),
+        CssCalcSize::try_from_component(
+            component("calc-size(min-content, size + 1px)"),
+            Default::default(),
+        )
+        .unwrap()
+        .try_into()
+        .unwrap(),
     ));
     assert_eq!(authored_calc, checked_calc);
 

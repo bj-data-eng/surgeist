@@ -316,7 +316,14 @@ fn content_attribute_reference_retains_pending_authored_components() {
         assert!(declaration.known().unwrap().property_value().is_none());
         let components = declaration.value_components();
         assert!(!components.items().is_empty());
-        assert_eq!(components.serialize().unwrap().as_css().trim(), authored);
+        assert_eq!(
+            components
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css()
+                .trim(),
+            authored
+        );
         assert!(components.items().iter().all(|component| matches!(
             component.origin(),
             CssValueOrigin::Parsed(origin) if origin.source().as_str() == input.as_str()
@@ -687,6 +694,12 @@ fn content_accepts_generated_lists_replacement_and_symbols_style() {
                 assert!(generated.alternative().is_none());
             }
         }
-        assert_eq!(wrapper.value().serialize_specified().unwrap(), expected);
+        assert_eq!(
+            wrapper
+                .value()
+                .serialize_specified(Default::default())
+                .unwrap(),
+            expected
+        );
     }
 }

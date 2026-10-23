@@ -69,17 +69,17 @@ fn same_path(left: &CssOffsetPath, right: &CssOffsetPath) {
                     } else {
                         assert_eq!(
                             CssRay::new(a.angle().clone(), None, false, None)
-                                .serialize_specified()
+                                .serialize_specified(Default::default())
                                 .unwrap(),
                             CssRay::new(b.angle().clone(), None, false, None)
-                                .serialize_specified()
+                                .serialize_specified(Default::default())
                                 .unwrap()
                         );
                     }
                 }
                 _ => assert_eq!(
-                    a.path().serialize_specified().unwrap(),
-                    b.path().serialize_specified().unwrap()
+                    a.path().serialize_specified(Default::default()).unwrap(),
+                    b.path().serialize_specified(Default::default()).unwrap()
                 ),
             }
         }
@@ -120,13 +120,15 @@ fn same_motion_value(left: &CssDeclaration, right: &CssDeclaration) {
             }
             assert_eq!(
                 a.distance()
-                    .map(|value| value.serialize_specified().unwrap()),
+                    .map(|value| value.serialize_specified(Default::default()).unwrap()),
                 b.distance()
-                    .map(|value| value.serialize_specified().unwrap())
+                    .map(|value| value.serialize_specified(Default::default()).unwrap())
             );
             assert_eq!(
-                a.rotate().map(|value| value.serialize_specified().unwrap()),
-                b.rotate().map(|value| value.serialize_specified().unwrap())
+                a.rotate()
+                    .map(|value| value.serialize_specified(Default::default()).unwrap()),
+                b.rotate()
+                    .map(|value| value.serialize_specified(Default::default()).unwrap())
             );
         }
         _ => panic!("same motion property"),
@@ -139,10 +141,17 @@ fn accept(name: &str, cases: &[(&str, &str)]) {
             let source = declaration(name, input, front);
             let snapshot = source.clone();
             let output = format!("{name}: {expected} !important;");
-            assert_eq!(source.to_specified_css().unwrap(), output, "front {front}");
+            assert_eq!(
+                source.serialize_specified(Default::default()).unwrap(),
+                output,
+                "front {front}"
+            );
             let reparsed = declaration(name, expected, front);
             same_motion_value(&source, &reparsed);
-            assert_eq!(reparsed.to_specified_css().unwrap(), output);
+            assert_eq!(
+                reparsed.serialize_specified(Default::default()).unwrap(),
+                output
+            );
             assert_eq!(source, snapshot);
         }
     }
@@ -303,14 +312,18 @@ fn full_position_owner_supplies_three_symbolic_families() {
             panic!("circle")
         };
         assert_eq!(
-            value.position().unwrap().serialize_specified().unwrap(),
+            value
+                .position()
+                .unwrap()
+                .serialize_specified(Default::default())
+                .unwrap(),
             expected
         );
     }
     let checked =
         CssPosition::try_from_named_axes(CssBlockPosition::Start, CssInlinePosition::End).unwrap();
     assert_eq!(
-        checked.serialize_specified().unwrap(),
+        checked.serialize_specified(Default::default()).unwrap(),
         "block-start inline-end"
     );
     assert_eq!(
@@ -319,7 +332,7 @@ fn full_position_owner_supplies_three_symbolic_families() {
             CssRelativeAxisPosition::End
         )
         .unwrap()
-        .serialize_specified()
+        .serialize_specified(Default::default())
         .unwrap(),
         "start end"
     );
@@ -454,7 +467,10 @@ fn shorthand_relative_position_preserves_order_and_authored_omissions() {
     else {
         panic!("position")
     };
-    assert_eq!(position.serialize_specified().unwrap(), "start end");
+    assert_eq!(
+        position.serialize_specified(Default::default()).unwrap(),
+        "start end"
+    );
 }
 
 #[test]
@@ -594,9 +610,15 @@ fn mixed_families_invalid_arity_and_background_three_values_drop_atomically() {
 
 fn terminal_css(item: &CssLonghandContribution) -> String {
     match item.ordinary_value().unwrap().view() {
-        CssLonghandValueRef::OffsetPosition(value) => value.serialize_specified().unwrap(),
-        CssLonghandValueRef::OffsetPath(value) => value.serialize_specified().unwrap(),
-        CssLonghandValueRef::OffsetAnchor(value) => value.serialize_specified().unwrap(),
+        CssLonghandValueRef::OffsetPosition(value) => {
+            value.serialize_specified(Default::default()).unwrap()
+        }
+        CssLonghandValueRef::OffsetPath(value) => {
+            value.serialize_specified(Default::default()).unwrap()
+        }
+        CssLonghandValueRef::OffsetAnchor(value) => {
+            value.serialize_specified(Default::default()).unwrap()
+        }
         other => panic!("position consumer: {other:?}"),
     }
 }
@@ -760,7 +782,7 @@ fn immutable_checked_motion_construction_reuses_parsed_symbolic_children() {
     .unwrap();
     assert_eq!(checked, snapshot);
     assert_eq!(
-        checked.serialize_specified().unwrap(),
+        checked.serialize_specified(Default::default()).unwrap(),
         "x-start center ray(0.25turn at block-start inline-end) -2% reverse 100grad / start end"
     );
     let CssOffsetPathRef::Path(path) = checked.path().unwrap().view() else {
@@ -965,7 +987,9 @@ fn physical_composition_confirms_the_same_cumulative_budget_control() {
 fn composed_budget(value: &CssOffset, expected: &str) {
     // Offset 1 + three positions (aggregate and two axes each) 9 + path pair 1
     // + ray 1 + literal angle 1 + authored default size 1 + contain 1 = 15.
-    LimitLadder::new(expected, 15, 15)
-        .assert_unchanged(value, CssOffset::serialize_specified_with_limits);
-    assert_eq!(value.serialize_specified().unwrap(), expected);
+    LimitLadder::new(expected, 15, 15).assert_unchanged(value, CssOffset::serialize_specified);
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
 }

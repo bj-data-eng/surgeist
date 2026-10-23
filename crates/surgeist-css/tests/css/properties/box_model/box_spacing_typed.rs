@@ -3,9 +3,9 @@ use surgeist_css::CssNumericConstructionErrorKind;
 use surgeist_css::{
     CssBoxSideKind, CssComponentValue, CssComponentValueRef, CssLengthPercentageCalculation,
     CssMarginPair, CssMarginShorthand, CssMarginValue, CssPaddingPair, CssPaddingShorthand,
-    CssPaddingValue, CssSpecifiedLengthPercentage, CssSpecifiedNonNegativeLengthPercentage,
-    CssSpecifiedValueSerializationErrorKind, CssSpecifiedValueSerializationLimits, CssValueOrigin,
-    CssValueTokenRef, parse_component_values,
+    CssPaddingValue, CssSerializationLimits, CssSpecifiedLengthPercentage,
+    CssSpecifiedNonNegativeLengthPercentage, CssSpecifiedValueSerializationErrorKind,
+    CssValueOrigin, CssValueTokenRef, parse_component_values,
 };
 
 fn component(text: &str) -> CssComponentValue {
@@ -24,6 +24,7 @@ fn margin(text: &str) -> CssMarginValue {
             CssSpecifiedLengthPercentage::try_from_calculation(
                 CssLengthPercentageCalculation::try_from_components(
                     parse_component_values(text).unwrap(),
+                    Default::default(),
                 )
                 .unwrap(),
             )
@@ -41,6 +42,7 @@ fn padding(text: &str) -> CssPaddingValue {
         CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(
             CssLengthPercentageCalculation::try_from_components(
                 parse_component_values(text).unwrap(),
+                Default::default(),
             )
             .unwrap(),
         )
@@ -68,22 +70,24 @@ fn signed_length_percentage_keeps_exact_extremes_and_literal_domain() {
     }
     assert_eq!(
         CssSpecifiedLengthPercentage::zero()
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "0"
     );
     assert_eq!(
         CssSpecifiedNonNegativeLengthPercentage::zero()
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "0"
     );
-    let huge = margin("-1e999px").serialize_specified().unwrap();
+    let huge = margin("-1e999px")
+        .serialize_specified(Default::default())
+        .unwrap();
     assert_eq!(huge.len(), 1003); // Minus, 1 followed by 999 zeroes, px.
     assert!(huge.starts_with("-1") && huge.ends_with("px"));
     let tiny = margin("-1e-999%");
     let before = tiny.clone();
-    assert_eq!(tiny.serialize_specified().unwrap(), "0%");
+    assert_eq!(tiny.serialize_specified(Default::default()).unwrap(), "0%");
     assert!(matches!(
         tiny.length_percentage().unwrap().literal_component().unwrap().view(),
         CssComponentValueRef::Token(CssValueTokenRef::Percentage(number))
@@ -108,15 +112,23 @@ fn signed_length_percentage_keeps_exact_extremes_and_literal_domain() {
 fn signed_math_stays_deferred_and_padding_wraps_checked_nonnegative_math() {
     let signed = margin("calc(1px - 2%)");
     assert!(signed.length_percentage().unwrap().calculation().is_some());
-    assert_eq!(signed.serialize_specified().unwrap(), "calc(-2% + 1px)");
+    assert_eq!(
+        signed.serialize_specified(Default::default()).unwrap(),
+        "calc(-2% + 1px)"
+    );
     let nonnegative = padding("calc(1px - 2%)");
     assert!(nonnegative.length_percentage().calculation().is_some());
     assert_eq!(
-        nonnegative.serialize_specified().unwrap(),
+        nonnegative.serialize_specified(Default::default()).unwrap(),
         "calc(-2% + 1px)"
     );
     assert!(matches!(nonnegative.origin(), CssValueOrigin::Parsed(_)));
-    assert_eq!(CssMarginValue::Auto.serialize_specified().unwrap(), "auto");
+    assert_eq!(
+        CssMarginValue::Auto
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "auto"
+    );
     assert!(CssMarginValue::Auto.length_percentage().is_none());
     assert!(CssMarginValue::Auto.origin().is_none());
 }
@@ -160,28 +172,37 @@ fn logical_pairs_keep_authored_cardinality_and_repeat_start_semantically() {
     let one = CssMarginPair::new(margin("auto"), None);
     assert_eq!(one.start(), one.end());
     assert!(one.authored_end().is_none());
-    assert_eq!(one.serialize_specified().unwrap(), "auto");
+    assert_eq!(one.serialize_specified(Default::default()).unwrap(), "auto");
     let two = CssMarginPair::new(margin("auto"), Some(margin("auto")));
     assert_eq!(two.start(), two.end());
     assert_ne!(
         one, two,
         "authored one and two values are different structures"
     );
-    assert_eq!(two.serialize_specified().unwrap(), "auto auto");
+    assert_eq!(
+        two.serialize_specified(Default::default()).unwrap(),
+        "auto auto"
+    );
 
     let padding_one = CssPaddingPair::new(padding("1px"), None);
     assert_eq!(padding_one.end(), padding_one.start());
-    assert_eq!(padding_one.serialize_specified().unwrap(), "1px");
+    assert_eq!(
+        padding_one.serialize_specified(Default::default()).unwrap(),
+        "1px"
+    );
     let padding_two = CssPaddingPair::new(padding("1px"), Some(padding("2%")));
     assert_eq!(
         padding_two
             .authored_end()
             .unwrap()
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "2%"
     );
-    assert_eq!(padding_two.serialize_specified().unwrap(), "1px 2%");
+    assert_eq!(
+        padding_two.serialize_specified(Default::default()).unwrap(),
+        "1px 2%"
+    );
 }
 
 #[test]
@@ -189,7 +210,7 @@ fn four_side_shorthands_preserve_kind_cardinality_and_exact_role_order() {
     let one = CssMarginShorthand::try_new(CssBoxSideKind::Physical, vec![margin("1px")]).unwrap();
     assert_eq!(
         one.assigned_values()
-            .map(|value| value.serialize_specified().unwrap()),
+            .map(|value| value.serialize_specified(Default::default()).unwrap()),
         ["1px", "1px", "1px", "1px"]
     );
     let two =
@@ -197,7 +218,7 @@ fn four_side_shorthands_preserve_kind_cardinality_and_exact_role_order() {
             .unwrap();
     assert_eq!(
         two.assigned_values()
-            .map(|value| value.serialize_specified().unwrap()),
+            .map(|value| value.serialize_specified(Default::default()).unwrap()),
         ["1px", "2px", "1px", "2px"]
     );
     let physical = CssMarginShorthand::try_new(
@@ -214,16 +235,19 @@ fn four_side_shorthands_preserve_kind_cardinality_and_exact_role_order() {
     assert_eq!(logical.kind(), CssBoxSideKind::Logical);
     assert_eq!(physical.authored_values().len(), 4);
     assert_ne!(physical, logical);
-    assert_eq!(physical.serialize_specified().unwrap(), "1px 2px 3px 4px");
     assert_eq!(
-        logical.serialize_specified().unwrap(),
+        physical.serialize_specified(Default::default()).unwrap(),
+        "1px 2px 3px 4px"
+    );
+    assert_eq!(
+        logical.serialize_specified(Default::default()).unwrap(),
         "logical 1px 2px 3px 4px"
     );
     // Physical assignments are top, right, bottom, left. Logical assignments
     // are block-start, inline-start, block-end, inline-end (§4.7).
     for assignments in [physical.assigned_values(), logical.assigned_values()] {
         assert_eq!(
-            assignments.map(|value| value.serialize_specified().unwrap()),
+            assignments.map(|value| value.serialize_specified(Default::default()).unwrap()),
             ["1px", "2px", "3px", "4px"]
         );
     }
@@ -235,7 +259,7 @@ fn four_side_shorthands_preserve_kind_cardinality_and_exact_role_order() {
     assert_eq!(
         three
             .assigned_values()
-            .map(|value| value.serialize_specified().unwrap()),
+            .map(|value| value.serialize_specified(Default::default()).unwrap()),
         ["1px", "2px", "3px", "2px"]
     );
     assert_ne!(three, logical);
@@ -252,7 +276,7 @@ fn four_side_shorthands_preserve_kind_cardinality_and_exact_role_order() {
     assert_eq!(
         padding_shorthand
             .assigned_values()
-            .map(|value| value.serialize_specified().unwrap()),
+            .map(|value| value.serialize_specified(Default::default()).unwrap()),
         ["1px", "2%", "3px", "4%"]
     );
     let one_padding =
@@ -260,7 +284,7 @@ fn four_side_shorthands_preserve_kind_cardinality_and_exact_role_order() {
     assert_eq!(
         one_padding
             .assigned_values()
-            .map(|value| value.serialize_specified().unwrap()),
+            .map(|value| value.serialize_specified(Default::default()).unwrap()),
         ["5px", "5px", "5px", "5px"]
     );
     let two_padding = CssPaddingShorthand::try_new(
@@ -271,11 +295,13 @@ fn four_side_shorthands_preserve_kind_cardinality_and_exact_role_order() {
     assert_eq!(
         two_padding
             .assigned_values()
-            .map(|value| value.serialize_specified().unwrap()),
+            .map(|value| value.serialize_specified(Default::default()).unwrap()),
         ["5px", "6%", "5px", "6%"]
     );
     assert_eq!(
-        padding_shorthand.serialize_specified().unwrap(),
+        padding_shorthand
+            .serialize_specified(Default::default())
+            .unwrap(),
         "logical 1px 2% 3px 4%"
     );
     assert!(CssPaddingShorthand::try_new(CssBoxSideKind::Physical, vec![]).is_none());
@@ -286,13 +312,13 @@ fn four_side_shorthands_preserve_kind_cardinality_and_exact_role_order() {
 fn combined_serialization_budgets_cover_every_child_and_logical_switch() {
     let pair = CssMarginPair::new(margin("1px"), Some(margin("2px")));
     assert_eq!(
-        pair.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(1, 9, 99))
+        pair.serialize_specified(CssSerializationLimits::new(1, 9, 99))
             .unwrap_err()
             .kind(),
         CssSpecifiedValueSerializationErrorKind::InputNodeLimit
     );
     assert_eq!(
-        pair.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(9, 1, 99))
+        pair.serialize_specified(CssSerializationLimits::new(9, 1, 99))
             .unwrap_err()
             .kind(),
         CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
@@ -304,24 +330,27 @@ fn combined_serialization_budgets_cover_every_child_and_logical_switch() {
     .unwrap();
     assert_eq!(
         logical
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(2, 9, 99))
+            .serialize_specified(CssSerializationLimits::new(2, 9, 99))
             .unwrap_err()
             .kind(),
         CssSpecifiedValueSerializationErrorKind::InputNodeLimit
     );
     assert_eq!(
         logical
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(9, 2, 99))
+            .serialize_specified(CssSerializationLimits::new(9, 2, 99))
             .unwrap_err()
             .kind(),
         CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
     );
     assert_eq!(
         logical
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(9, 9, 14))
+            .serialize_specified(CssSerializationLimits::new(9, 9, 14))
             .unwrap_err()
             .kind(),
         CssSpecifiedValueSerializationErrorKind::ByteLimit
     );
-    assert_eq!(logical.serialize_specified().unwrap(), "logical 1px 2px");
+    assert_eq!(
+        logical.serialize_specified(Default::default()).unwrap(),
+        "logical 1px 2px"
+    );
 }

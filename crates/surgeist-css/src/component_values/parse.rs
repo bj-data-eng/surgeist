@@ -68,7 +68,7 @@ pub(super) fn collect_one(
                 ),
             }
         })?;
-    let values = CssComponentValues::try_new(items)?;
+    let values = CssComponentValues::try_new(items, Default::default())?;
     values.into_single().ok_or_else(|| {
         CssComponentValueError::new(
             CssComponentValueErrorKind::InvalidToken,
@@ -1045,7 +1045,13 @@ mod tests {
                     .map_err(|error| nested.new_custom_error::<_, CssComponentValueError>(error))
             })
             .unwrap();
-        assert_eq!(values.serialize().unwrap().as_css(), "f([x])");
+        assert_eq!(
+            values
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            "f([x])"
+        );
         let CssValueOrigin::Parsed(opening) = values.items()[0].origin() else {
             panic!("the function has its original opening origin");
         };

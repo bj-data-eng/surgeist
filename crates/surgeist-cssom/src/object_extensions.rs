@@ -3,7 +3,7 @@ use crate::object_operations::execute;
 use crate::*;
 use std::vec::IntoIter;
 use surgeist_css::{
-    CssCounterStyleDescriptorKind, CssFontFeatureValueKind, CssSpecifiedValueSerializationLimits,
+    CssCounterStyleDescriptorKind, CssFontFeatureValueKind, CssSerializationLimits,
 };
 
 /// Ordered keys owned by one immutable map observation.
@@ -98,7 +98,7 @@ impl CssFontFeatureValuesRule {
     pub fn font_family(
         &self,
         store: &CssomStore,
-        limits: CssSpecifiedValueSerializationLimits,
+        limits: CssSerializationLimits,
     ) -> Result<String, CssomError> {
         Self::from_state(&store.state, self.id())?;
         store
@@ -119,10 +119,7 @@ impl CssFontFeatureValuesRule {
     }
 }
 impl CssomCapture<CssFontFeatureValuesRule> {
-    pub fn font_family(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String, CssomError> {
+    pub fn font_family(&self, limits: CssSerializationLimits) -> Result<String, CssomError> {
         self.snapshot
             .inspect_font_feature_values(self.handle.id())?
             .font_family(limits)
@@ -231,13 +228,13 @@ impl CssFontFeatureValuesMap {
 macro_rules! palette_fields {
     ($($method:ident),+) => {
         impl CssFontPaletteValuesRule { $(
-            pub fn $method(&self, store: &CssomStore, limits: CssSpecifiedValueSerializationLimits) -> Result<String, CssomError> {
+            pub fn $method(&self, store: &CssomStore, limits: CssSerializationLimits) -> Result<String, CssomError> {
                 Self::from_state(&store.state, self.id())?;
                 store.snapshot().palette_values(self.id())?.$method(limits)
             }
         )+ }
         impl CssomCapture<CssFontPaletteValuesRule> { $(
-            pub fn $method(&self, limits: CssSpecifiedValueSerializationLimits) -> Result<String, CssomError> {
+            pub fn $method(&self, limits: CssSerializationLimits) -> Result<String, CssomError> {
                 self.snapshot.palette_values(self.handle.id())?.$method(limits)
             }
         )+ }
@@ -259,7 +256,7 @@ impl CssomCapture<CssFontPaletteValuesRule> {
 macro_rules! counter_fields {
     ($($get:ident, $set:ident => $kind:ident),+ $(,)?) => {
         impl CssCounterStyleRule { $(
-            pub fn $get(&self, store: &CssomStore, limits: CssSpecifiedValueSerializationLimits) -> Result<String, CssomError> {
+            pub fn $get(&self, store: &CssomStore, limits: CssSerializationLimits) -> Result<String, CssomError> {
                 Self::from_state(&store.state, self.id())?;
                 store.snapshot().counter_descriptor(self.id(), CssCounterStyleDescriptorKind::$kind, limits)
             }
@@ -272,7 +269,7 @@ macro_rules! counter_fields {
             }
         )+ }
         impl CssomCapture<CssCounterStyleRule> { $(
-            pub fn $get(&self, limits: CssSpecifiedValueSerializationLimits) -> Result<String, CssomError> {
+            pub fn $get(&self, limits: CssSerializationLimits) -> Result<String, CssomError> {
                 self.snapshot.counter_descriptor(self.handle.id(), CssCounterStyleDescriptorKind::$kind, limits)
             }
         )+ }
@@ -289,7 +286,7 @@ impl CssCounterStyleRule {
     pub fn name(
         &self,
         store: &CssomStore,
-        limits: CssSpecifiedValueSerializationLimits,
+        limits: CssSerializationLimits,
     ) -> Result<String, CssomError> {
         Self::from_state(&store.state, self.id())?;
         store.snapshot().counter_name(self.id(), limits)
@@ -307,7 +304,7 @@ impl CssCounterStyleRule {
     }
 }
 impl CssomCapture<CssCounterStyleRule> {
-    pub fn name(&self, limits: CssSpecifiedValueSerializationLimits) -> Result<String, CssomError> {
+    pub fn name(&self, limits: CssSerializationLimits) -> Result<String, CssomError> {
         self.snapshot.counter_name(self.handle.id(), limits)
     }
 }
@@ -355,13 +352,13 @@ impl CssomCapture<CssCustomMediaRule> {
 macro_rules! profile_fields {
     ($($method:ident => $helper:ident),+) => {
         impl CssColorProfileRule { $(
-            pub fn $method(&self, store: &CssomStore, limits: CssSpecifiedValueSerializationLimits) -> Result<String, CssomError> {
+            pub fn $method(&self, store: &CssomStore, limits: CssSerializationLimits) -> Result<String, CssomError> {
                 Self::from_state(&store.state, self.id())?;
                 store.snapshot().$helper(self.id(), limits)
             }
         )+ }
         impl CssomCapture<CssColorProfileRule> { $(
-            pub fn $method(&self, limits: CssSpecifiedValueSerializationLimits) -> Result<String, CssomError> { self.snapshot.$helper(self.handle.id(), limits) }
+            pub fn $method(&self, limits: CssSerializationLimits) -> Result<String, CssomError> { self.snapshot.$helper(self.handle.id(), limits) }
         )+ }
     };
 }

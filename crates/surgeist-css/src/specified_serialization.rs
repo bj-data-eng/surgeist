@@ -9,13 +9,13 @@ use std::fmt;
 
 /// Resource policy for specified-value projection and serialization.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct CssSpecifiedValueSerializationLimits {
+pub struct CssSerializationLimits {
     max_input_nodes: usize,
     max_projection_nodes: usize,
     max_css_bytes: usize,
 }
 
-impl CssSpecifiedValueSerializationLimits {
+impl CssSerializationLimits {
     /// Sets independent limits. Zero is a valid limit.
     #[must_use]
     pub const fn new(
@@ -43,7 +43,7 @@ impl CssSpecifiedValueSerializationLimits {
     }
 }
 
-impl Default for CssSpecifiedValueSerializationLimits {
+impl Default for CssSerializationLimits {
     fn default() -> Self {
         Self::new(65_536, 262_144, 1_048_576)
     }
@@ -69,25 +69,93 @@ pub enum CssSpecifiedValueSerializationErrorKind {
     NamespaceBindingUnavailable,
 }
 
-/// Atomic failure: no partial CSS is returned and the authored input is unchanged.
+/// Why a specified, CSSOM or lexical serialization returned no text.
+///
+/// Failure is atomic: no partial CSS is returned and the serialized value is
+/// unchanged. [`kind`](Self::kind) classifies the failure; a lexical component
+/// failure is also available as the [`source`](std::error::Error::source).
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssSpecifiedValueSerializationError {
+pub struct CssSerializationError {
     kind: CssSpecifiedValueSerializationErrorKind,
-    origin: Option<Box<crate::CssValueOrigin>>,
+    detail: Option<Box<SerializationDetail>>,
 }
 
-impl CssSpecifiedValueSerializationError {
+/// Facts beyond the kind, boxed so the error stays two words wide.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct SerializationDetail {
+    cause: Option<SerializationCause>,
+    origin: Option<crate::CssValueOrigin>,
+    rule_index: Option<usize>,
+}
+
+/// The specific failure behind a kind, when the kind alone does not name it.
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum SerializationCause {
+    /// Retained component syntax or its byte budget refused lexical output.
+    Component(crate::CssComponentValueError),
+    /// A recovered media query has no authored serialization.
+    RecoveredMedia,
+    /// Reparsing the serialized import would change its interpretation.
+    ImportInterpretation,
+}
+
+impl CssSerializationError {
     pub(crate) const fn new(kind: CssSpecifiedValueSerializationErrorKind) -> Self {
-        Self { kind, origin: None }
+        Self { kind, detail: None }
+    }
+    fn with_cause(
+        kind: CssSpecifiedValueSerializationErrorKind,
+        cause: SerializationCause,
+        origin: &crate::CssValueOrigin,
+    ) -> Self {
+        Self {
+            kind,
+            detail: Some(Box::new(SerializationDetail {
+                cause: Some(cause),
+                origin: Some(origin.clone()),
+                rule_index: None,
+            })),
+        }
+    }
+    fn detail_mut(&mut self) -> &mut SerializationDetail {
+        self.detail.get_or_insert_with(Box::default)
+    }
+    fn cause(&self) -> Option<&SerializationCause> {
+        self.detail.as_ref()?.cause.as_ref()
+    }
+    /// A lexical component failure classified by its serializer, located at the
+    /// component's origin.
+    pub(crate) fn component(
+        kind: CssSpecifiedValueSerializationErrorKind,
+        error: crate::CssComponentValueError,
+    ) -> Self {
+        let origin = error.origin().clone();
+        Self::with_cause(kind, SerializationCause::Component(error), &origin)
+    }
+    /// A recovered media query member that authored serialization cannot emit.
+    pub(crate) fn recovered_media(origin: &crate::CssValueOrigin) -> Self {
+        Self::with_cause(
+            CssSpecifiedValueSerializationErrorKind::UnserializableBoundary,
+            SerializationCause::RecoveredMedia,
+            origin,
+        )
+    }
+    /// An import whose serialized form would reparse with different clauses.
+    pub(crate) fn import_interpretation(origin: &crate::CssValueOrigin) -> Self {
+        Self::with_cause(
+            CssSpecifiedValueSerializationErrorKind::UnrepresentableValue,
+            SerializationCause::ImportInterpretation,
+            origin,
+        )
     }
     /// Genuine owning/component provenance when the selected operation has an
     /// attributable witness. A programmatic graph wrapper can have no origin.
     pub fn origin(&self) -> Option<&crate::CssValueOrigin> {
-        self.origin.as_deref()
+        self.detail.as_ref()?.origin.as_ref()
     }
     pub(crate) fn at_origin(mut self, origin: &crate::CssValueOrigin) -> Self {
-        if self.origin.is_none() {
-            self.origin = Some(Box::new(origin.clone()));
+        if self.origin().is_none() {
+            self.detail_mut().origin = Some(origin.clone());
         }
         self
     }
@@ -95,9 +163,38 @@ impl CssSpecifiedValueSerializationError {
     pub const fn kind(&self) -> CssSpecifiedValueSerializationErrorKind {
         self.kind
     }
+    /// Zero-based stylesheet rule index when a sheet's rule caused the failure.
+    #[must_use]
+    pub fn rule_index(&self) -> Option<usize> {
+        self.detail.as_ref()?.rule_index
+    }
+    pub(crate) fn at_rule_index(mut self, index: usize) -> Self {
+        if self.rule_index().is_none() {
+            self.detail_mut().rule_index = Some(index);
+        }
+        self
+    }
+    /// The lexical component failure, for retained-source traversal.
+    pub(crate) fn component_error(&self) -> Option<&crate::CssComponentValueError> {
+        match self.cause() {
+            Some(SerializationCause::Component(error)) => Some(error),
+            _ => None,
+        }
+    }
 }
-impl fmt::Display for CssSpecifiedValueSerializationError {
+impl fmt::Display for CssSerializationError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.cause() {
+            Some(SerializationCause::RecoveredMedia) => {
+                return formatter
+                    .write_str("a recovered media query cannot be serialized as authored");
+            }
+            Some(SerializationCause::ImportInterpretation) => {
+                return formatter
+                    .write_str("the serialized import would change its interpretation");
+            }
+            Some(SerializationCause::Component(_)) | None => {}
+        }
         formatter.write_str(match self.kind {
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit => {
                 "specified-value input node limit exceeded"
@@ -126,15 +223,20 @@ impl fmt::Display for CssSpecifiedValueSerializationError {
         })
     }
 }
-impl std::error::Error for CssSpecifiedValueSerializationError {}
+impl std::error::Error for CssSerializationError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.component_error()
+            .map(|error| error as &(dyn std::error::Error + 'static))
+    }
+}
 
-type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
+type Result<T> = std::result::Result<T, CssSerializationError>;
 use CssSpecifiedValueSerializationErrorKind as Kind;
 
 /// Monotonic resources shared by every projection participating in one public
 /// specified-value serialization. Dropping a child arena never refunds work.
 pub(crate) struct SpecifiedSerializationContext {
-    limits: CssSpecifiedValueSerializationLimits,
+    limits: CssSerializationLimits,
     input_nodes: usize,
     projection_nodes: usize,
     css_bytes: usize,
@@ -144,7 +246,7 @@ pub(crate) struct SpecifiedSerializationContext {
 }
 
 impl SpecifiedSerializationContext {
-    pub(crate) const fn new(limits: CssSpecifiedValueSerializationLimits) -> Self {
+    pub(crate) const fn new(limits: CssSerializationLimits) -> Self {
         Self {
             limits,
             input_nodes: 0,
@@ -159,9 +261,9 @@ impl SpecifiedSerializationContext {
     fn charge(current: &mut usize, amount: usize, limit: usize, kind: Kind) -> Result<()> {
         let next = current
             .checked_add(amount)
-            .ok_or_else(|| CssSpecifiedValueSerializationError::new(Kind::CapacityOverflow))?;
+            .ok_or_else(|| CssSerializationError::new(Kind::CapacityOverflow))?;
         if next > limit {
-            return Err(CssSpecifiedValueSerializationError::new(kind));
+            return Err(CssSerializationError::new(kind));
         }
         *current = next;
         Ok(())
@@ -182,6 +284,19 @@ impl SpecifiedSerializationContext {
             self.limits.max_input_nodes(),
             Kind::InputNodeLimit,
         )
+    }
+
+    /// Charges `count` visited nodes to both the input and the projection
+    /// budget; the single owner of the node charge.
+    pub(crate) fn charge_nodes(&mut self, count: usize) -> Result<()> {
+        self.charge_input(count)?;
+        self.charge_projection(count)
+    }
+
+    /// Emits one keyword as one charged node followed by its bytes.
+    pub(crate) fn keyword(&mut self, output: &mut String, text: &str) -> Result<()> {
+        self.charge_nodes(1)?;
+        self.append(output, text)
     }
 
     pub(crate) fn charge_projection(&mut self, amount: usize) -> Result<()> {
@@ -241,13 +356,13 @@ impl SpecifiedSerializationContext {
             debug_assert_eq!(output.len(), bytes);
             let next = bytes
                 .checked_add(text.len())
-                .ok_or_else(|| CssSpecifiedValueSerializationError::new(Kind::CapacityOverflow))?;
+                .ok_or_else(|| CssSerializationError::new(Kind::CapacityOverflow))?;
             if next > self.limits.max_css_bytes() - self.css_bytes {
-                return Err(CssSpecifiedValueSerializationError::new(Kind::ByteLimit));
+                return Err(CssSerializationError::new(Kind::ByteLimit));
             }
             output
                 .try_reserve(text.len())
-                .map_err(|_| CssSpecifiedValueSerializationError::new(Kind::CapacityOverflow))?;
+                .map_err(|_| CssSerializationError::new(Kind::CapacityOverflow))?;
             output.push_str(text);
             self.temporary_css_bytes = Some(next);
             return Ok(());
@@ -256,13 +371,13 @@ impl SpecifiedSerializationContext {
         let next = self
             .css_bytes
             .checked_add(text.len())
-            .ok_or_else(|| CssSpecifiedValueSerializationError::new(Kind::CapacityOverflow))?;
+            .ok_or_else(|| CssSerializationError::new(Kind::CapacityOverflow))?;
         if next > self.limits.max_css_bytes() {
-            return Err(CssSpecifiedValueSerializationError::new(Kind::ByteLimit));
+            return Err(CssSerializationError::new(Kind::ByteLimit));
         }
         output
             .try_reserve(text.len())
-            .map_err(|_| CssSpecifiedValueSerializationError::new(Kind::CapacityOverflow))?;
+            .map_err(|_| CssSerializationError::new(Kind::CapacityOverflow))?;
         output.push_str(text);
         self.css_bytes = next;
         Ok(())
@@ -276,13 +391,13 @@ impl SpecifiedSerializationContext {
         let next = output
             .len()
             .checked_add(text.len())
-            .ok_or_else(|| CssSpecifiedValueSerializationError::new(Kind::CapacityOverflow))?;
+            .ok_or_else(|| CssSerializationError::new(Kind::CapacityOverflow))?;
         if next > self.remaining_bytes() {
-            return Err(CssSpecifiedValueSerializationError::new(Kind::ByteLimit));
+            return Err(CssSerializationError::new(Kind::ByteLimit));
         }
         output
             .try_reserve(text.len())
-            .map_err(|_| CssSpecifiedValueSerializationError::new(Kind::CapacityOverflow))?;
+            .map_err(|_| CssSerializationError::new(Kind::CapacityOverflow))?;
         output.push_str(text);
         Ok(())
     }
@@ -360,13 +475,11 @@ pub(crate) fn format_coefficient(
     limit: usize,
 ) -> Result<String> {
     let remaining = limit.checked_sub(suffix.len()).ok_or_else(|| {
-        crate::CssSpecifiedValueSerializationError::new(
-            crate::CssSpecifiedValueSerializationErrorKind::ByteLimit,
-        )
+        crate::CssSerializationError::new(crate::CssSpecifiedValueSerializationErrorKind::ByteLimit)
     })?;
     let mut result = format_css_number(text, shift, remaining)?;
     result.try_reserve(suffix.len()).map_err(|_| {
-        crate::CssSpecifiedValueSerializationError::new(
+        crate::CssSerializationError::new(
             crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
         )
     })?;
@@ -374,26 +487,11 @@ pub(crate) fn format_coefficient(
     Ok(result)
 }
 
-impl crate::CssOverflowWrap {
-    /// Serializes the specified overflow wrapping keyword before layout resolution.
-    pub fn serialize_specified(&self) -> Result<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes one keyword under exact input, projection, and byte limits.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for crate::CssOverflowWrap {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         writer.keyword(match self {
             Self::Normal => "normal",
             Self::BreakWord => "break-word",
@@ -401,171 +499,74 @@ impl crate::CssOverflowWrap {
         })
     }
 }
+crate::specified_rule_serialization::specified_serialization!(crate::CssOverflowWrap);
 
-impl CssBoxSizing {
-    /// Serializes the intrinsic specified keyword without resolving a box size.
-    pub fn serialize_specified(&self) -> Result<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes atomically under input, projection, and output limits.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssBoxSizing {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         writer.keyword(match self {
             Self::ContentBox => "content-box",
             Self::BorderBox => "border-box",
         })
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssBoxSizing);
 
-impl CssBorderCollapse {
-    /// Serializes the specified table border model keyword.
-    pub fn serialize_specified(&self) -> Result<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes atomically under input, projection, and output limits.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssBorderCollapse {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         writer.keyword(match self {
             Self::Collapse => "collapse",
             Self::Separate => "separate",
         })
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssBorderCollapse);
 
-impl CssCaptionSide {
-    /// Serializes the specified table caption side keyword.
-    pub fn serialize_specified(&self) -> Result<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes atomically under input, projection, and output limits.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssCaptionSide {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         writer.keyword(match self {
             Self::Top => "top",
             Self::Bottom => "bottom",
         })
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssCaptionSide);
 
-impl CssEmptyCells {
-    /// Serializes the specified empty-cell visibility keyword.
-    pub fn serialize_specified(&self) -> Result<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes atomically under input, projection, and output limits.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssEmptyCells {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         writer.keyword(match self {
             Self::Show => "show",
             Self::Hide => "hide",
         })
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssEmptyCells);
 
-impl CssTableLayout {
-    /// Serializes the specified table layout algorithm keyword.
-    pub fn serialize_specified(&self) -> Result<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes atomically under input, projection, and output limits.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssTableLayout {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         writer.keyword(match self {
             Self::Auto => "auto",
             Self::Fixed => "fixed",
         })
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssTableLayout);
 
 impl crate::CssFlowTolerance {
-    /// Serializes canonical specified tolerance without resolving `normal`,
-    /// relative lengths, or the percentage basis.
-    pub fn serialize_specified(&self) -> Result<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes atomically under cumulative input, projection, and byte limits.
-    /// Exact ordinary magnitudes and supported symbolic math use the shared
-    /// length-percentage serializer. Failure leaves the authored value unchanged.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        let context = &mut writer.context;
-        let output = &mut writer.css;
-        self.append_specified(context, output)?;
-        Ok(())
-    }
-
     pub(crate) fn append_specified(
         &self,
         context: &mut SpecifiedSerializationContext,
@@ -583,29 +584,21 @@ impl crate::CssFlowTolerance {
         context.append(output, keyword)
     }
 }
-
-impl CssOpacityValue {
-    /// Produces canonical specified opacity, without computed-value clamping.
-    ///
-    /// Ordinary input remains exact; emitted scalar text rounds to six fractional
-    /// places, nearest with ties away from zero, after percentage conversion.
-    /// Finite calculation text rounds the actual binary64 result with the same
-    /// six-place policy. Arithmetic uses the implementation-defined binary64
-    /// precision and range policy described in the crate's numeric reference.
-    pub fn serialize_specified(&self) -> Result<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Projects and serializes with independent input, projection and byte limits.
-    pub fn serialize_specified_with_limits(
+impl crate::specified_rule_serialization::SpecifiedProvider for crate::CssFlowTolerance {
+    fn append_to_rule_writer(
         &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        let context = &mut writer.context;
+        let output = &mut writer.css;
+        self.append_specified(context, output)?;
+        Ok(())
     }
-    pub(crate) fn append_to_rule_writer(
+}
+crate::specified_rule_serialization::specified_serialization!(crate::CssFlowTolerance);
+
+impl crate::specified_rule_serialization::SpecifiedProvider for CssOpacityValue {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> Result<()> {
@@ -643,6 +636,7 @@ impl CssOpacityValue {
         }
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssOpacityValue);
 
 fn format_lexical(text: &str, percentage: bool, limit: usize) -> Result<String> {
     format_css_number(text, if percentage { -2 } else { 0 }, limit)
@@ -666,19 +660,16 @@ mod composed_value_tests {
         let expected = "0.123456 1";
         let before = (first.clone(), second.clone());
         for (limits, failure) in [
-            (CssSpecifiedValueSerializationLimits::new(2, 2, 10), None),
+            (CssSerializationLimits::new(2, 2, 10), None),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 2, 10),
+                CssSerializationLimits::new(1, 2, 10),
                 Some(Kind::InputNodeLimit),
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(2, 1, 10),
+                CssSerializationLimits::new(2, 1, 10),
                 Some(Kind::ProjectionNodeLimit),
             ),
-            (
-                CssSpecifiedValueSerializationLimits::new(2, 2, 9),
-                Some(Kind::ByteLimit),
-            ),
+            (CssSerializationLimits::new(2, 2, 9), Some(Kind::ByteLimit)),
         ] {
             let mut context = SpecifiedSerializationContext::new(limits);
             let mut output = String::new();
@@ -703,15 +694,15 @@ mod composed_value_tests {
             crate::CssSpecifiedLengthPercentage::try_from_calculation(
                 crate::CssLengthPercentageCalculation::try_from_components(
                     crate::parse_component_values("calc(1px + 2em)").unwrap(),
+                    Default::default(),
                 )
                 .unwrap(),
             )
             .unwrap(),
         );
         let expected = "normal calc(2em + 1px)";
-        let mut context = SpecifiedSerializationContext::new(
-            CssSpecifiedValueSerializationLimits::new(5, 6, expected.len()),
-        );
+        let mut context =
+            SpecifiedSerializationContext::new(CssSerializationLimits::new(5, 6, expected.len()));
         let mut output = String::new();
         keyword.append_specified(&mut context, &mut output).unwrap();
         context.append(&mut output, " ").unwrap();
@@ -720,15 +711,15 @@ mod composed_value_tests {
 
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(4, 6, expected.len()),
+                CssSerializationLimits::new(4, 6, expected.len()),
                 Kind::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(5, 5, expected.len()),
+                CssSerializationLimits::new(5, 5, expected.len()),
                 Kind::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(5, 6, expected.len() - 1),
+                CssSerializationLimits::new(5, 6, expected.len() - 1),
                 Kind::ByteLimit,
             ),
         ] {
@@ -751,8 +742,7 @@ mod composed_value_tests {
         let color = CssColor::transparent();
         let integer = CssIntegerValue::Literal(crate::CssIntegerLiteral::from_i32(7));
 
-        let mut context =
-            SpecifiedSerializationContext::new(CssSpecifiedValueSerializationLimits::new(2, 2, 13));
+        let mut context = SpecifiedSerializationContext::new(CssSerializationLimits::new(2, 2, 13));
         let mut css = String::new();
         color.append_specified(&mut context, &mut css).unwrap();
         context.append(&mut css, " ").unwrap();
@@ -760,18 +750,12 @@ mod composed_value_tests {
         assert_eq!(css, "transparent 7");
 
         for (limits, expected) in [
+            (CssSerializationLimits::new(1, 2, 13), Kind::InputNodeLimit),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 2, 13),
-                Kind::InputNodeLimit,
-            ),
-            (
-                CssSpecifiedValueSerializationLimits::new(2, 1, 13),
+                CssSerializationLimits::new(2, 1, 13),
                 Kind::ProjectionNodeLimit,
             ),
-            (
-                CssSpecifiedValueSerializationLimits::new(2, 2, 12),
-                Kind::ByteLimit,
-            ),
+            (CssSerializationLimits::new(2, 2, 12), Kind::ByteLimit),
         ] {
             let mut context = SpecifiedSerializationContext::new(limits);
             let mut css = String::new();
@@ -793,9 +777,8 @@ mod composed_value_tests {
         let color = CssColor::transparent();
         let calculation = CssIntegerValue::Calculation(CssIntegerCalculation::literal(2));
 
-        let mut context = SpecifiedSerializationContext::new(
-            CssSpecifiedValueSerializationLimits::new(100, 100, 21),
-        );
+        let mut context =
+            SpecifiedSerializationContext::new(CssSerializationLimits::new(100, 100, 21));
         let mut css = String::new();
         color.append_specified(&mut context, &mut css).unwrap();
         assert_eq!(
@@ -806,9 +789,8 @@ mod composed_value_tests {
             Kind::ByteLimit
         );
 
-        let mut context = SpecifiedSerializationContext::new(
-            CssSpecifiedValueSerializationLimits::new(100, 100, 11),
-        );
+        let mut context =
+            SpecifiedSerializationContext::new(CssSerializationLimits::new(100, 100, 11));
         let mut css = String::new();
         color.append_specified(&mut context, &mut css).unwrap();
         assert_eq!(
@@ -1019,113 +1001,42 @@ impl crate::CssDuration {
         self.time().append_specified(context, output)
     }
 }
-impl crate::CssTimeLiteral {
-    /// Emits canonical seconds with at most six fractional places.
-    ///
-    /// Conversion precedes rounding, nearest with ties away from zero. Original
-    /// coefficients, units and origins remain exact. This literal operation does
-    /// no calculation projection. Calculation values share the six-place text
-    /// policy while retaining their arithmetic precision and range limitations.
-    pub fn serialize_specified(&self) -> Result<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-    /// Emits seconds using one cumulative input, projection and byte budget.
-    ///
-    /// Ordinary output rounds to six places without an exponential fallback.
-    /// Bytes budget actual rounded text including the seconds suffix; original
-    /// input remains unchanged. This literal operation does no math projection.
-    /// This operation does not certify recovered syntax as a clean report.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for crate::CssTimeLiteral {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         let context = &mut writer.context;
         let output = &mut writer.css;
         self.append_specified(context, output)?;
         Ok(())
     }
 }
-impl crate::CssTimeValue {
-    /// Emits canonical seconds with at most six fractional places.
-    ///
-    /// Conversion precedes rounding, nearest with ties away from zero. Original
-    /// coefficients, units and origins remain exact. Finite calculation text
-    /// rounds the projected binary64 value with the same policy; arithmetic
-    /// precision and range remain unfinished. Literals perform no math projection.
-    pub fn serialize_specified(&self) -> Result<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-    /// Emits seconds using one cumulative input, projection and byte budget.
-    ///
-    /// Ordinary output rounds to six places without an exponential fallback.
-    /// Bytes budget actual rounded text including the seconds suffix; original
-    /// input remains unchanged. Finite calculation text rounds the actual binary64
-    /// value; its arithmetic, traversal costs and symbolic behavior stay unchanged.
-    /// This operation does not certify recovered syntax as a clean report.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+crate::specified_rule_serialization::specified_serialization!(crate::CssTimeLiteral);
+impl crate::specified_rule_serialization::SpecifiedProvider for crate::CssTimeValue {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         let context = &mut writer.context;
         let output = &mut writer.css;
         self.append_specified(context, output)?;
         Ok(())
     }
 }
-impl crate::CssDuration {
-    /// Emits canonical seconds with at most six fractional places.
-    ///
-    /// Conversion precedes rounding, nearest with ties away from zero. Original
-    /// coefficients, units and origins remain exact. Finite calculation text
-    /// rounds the projected binary64 value with the same policy; arithmetic
-    /// precision and range remain unfinished. Literals perform no math projection.
-    pub fn serialize_specified(&self) -> Result<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-    /// Emits seconds using one cumulative input, projection and byte budget.
-    ///
-    /// Ordinary output rounds to six places without an exponential fallback.
-    /// Bytes budget actual rounded text including the seconds suffix; original
-    /// input remains unchanged. Finite calculation text rounds the actual binary64
-    /// value; its arithmetic, traversal costs and symbolic behavior stay unchanged.
-    /// This operation does not certify recovered syntax as a clean report.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+crate::specified_rule_serialization::specified_serialization!(crate::CssTimeValue);
+impl crate::specified_rule_serialization::SpecifiedProvider for crate::CssDuration {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         let context = &mut writer.context;
         let output = &mut writer.css;
         self.append_specified(context, output)?;
         Ok(())
     }
 }
+crate::specified_rule_serialization::specified_serialization!(crate::CssDuration);
 
 impl crate::CssFrequencyLiteral {
     pub(crate) fn append_specified(
@@ -1166,79 +1077,27 @@ impl crate::CssFrequencyValue {
         Ok(())
     }
 }
-impl crate::CssFrequencyLiteral {
-    /// Emits ordinary frequencies with the selected lowercase hz or khz unit.
-    ///
-    /// This authored phase follows the selected primitive serialization policy;
-    /// CSSOM's specified/computed phase question remains open. Ordinary text
-    /// rounds to six fractional places, nearest with ties away from zero; retained
-    /// coefficients stay exact. This literal operation performs no calculation projection.
-    /// FrequencyValue math projection has separate precision and range limitations.
-    pub fn serialize_specified(&self) -> Result<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-    /// Emits with one cumulative input, projection and byte budget.
-    ///
-    /// Ordinary units are retained lowercased with at most six fractional places,
-    /// nearest with ties away from zero and no scientific fallback. Actual rounded
-    /// text determines the byte budget; retained input stays exact. CSSOM's
-    /// specified/computed frequency phase question stays open.
-    /// This literal operation performs no calculation projection; FrequencyValue
-    /// math has separate shared-projector precision and range limitations.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for crate::CssFrequencyLiteral {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         let context = &mut writer.context;
         let output = &mut writer.css;
         self.append_specified(context, output)?;
         Ok(())
     }
 }
-impl crate::CssFrequencyValue {
-    /// Emits ordinary frequencies with the selected lowercase hz or khz unit.
-    ///
-    /// This authored phase follows the selected primitive serialization policy;
-    /// CSSOM's specified/computed phase question remains open. Ordinary text
-    /// rounds to six fractional places, nearest with ties away from zero; retained
-    /// coefficients stay exact. Finite math text rounds the actual binary64 value
-    /// to six places; arithmetic precision and range remain unfinished.
-    pub fn serialize_specified(&self) -> Result<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-    /// Emits with one cumulative input, projection and byte budget.
-    ///
-    /// Ordinary units are retained lowercased with at most six fractional places,
-    /// nearest with ties away from zero and no scientific fallback. Actual rounded
-    /// text determines the byte budget; retained input stays exact. CSSOM's
-    /// specified/computed frequency phase question stays open.
-    /// Actual math retains its canonical units and simplification. Finite number
-    /// text follows the six-place policy; arithmetic precision and range remain unfinished.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+crate::specified_rule_serialization::specified_serialization!(crate::CssFrequencyLiteral);
+impl crate::specified_rule_serialization::SpecifiedProvider for crate::CssFrequencyValue {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         let context = &mut writer.context;
         let output = &mut writer.css;
         self.append_specified(context, output)?;
         Ok(())
     }
 }
+crate::specified_rule_serialization::specified_serialization!(crate::CssFrequencyValue);

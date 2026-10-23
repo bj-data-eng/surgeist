@@ -159,7 +159,11 @@ fn importance_and_raw_root_boundaries_are_not_rescued_by_env() {
         panic!("valid env defers font-width including its matched block");
     };
     assert_eq!(
-        pending.components().serialize().unwrap().as_css(),
+        pending
+            .components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         "env(width){}"
     );
     let source = "@font-face{font-width:env(width)!important;font-display:swap}";

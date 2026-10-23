@@ -159,21 +159,33 @@ fn constructors_reject_only_empty_aggregates_and_preserve_authored_presence() {
     assert_eq!(style_only.style(), Some(CssTextWrapStyle::Auto));
     assert_eq!(mode_only.style(), None);
     assert_ne!(style_only, mode_only);
-    assert_eq!(style_only.serialize_specified().unwrap(), "auto");
-    assert_eq!(mode_only.serialize_specified().unwrap(), "wrap");
+    assert_eq!(
+        style_only.serialize_specified(Default::default()).unwrap(),
+        "auto"
+    );
+    assert_eq!(
+        mode_only.serialize_specified(Default::default()).unwrap(),
+        "wrap"
+    );
     for (before, after, inner, expected, _) in TRIM {
         let trim = CssWhiteSpaceTrim::new(before, after, inner);
         assert_eq!(trim.discard_before(), before);
         assert_eq!(trim.discard_after(), after);
         assert_eq!(trim.discard_inner(), inner);
         assert_eq!(trim.is_none(), !before && !after && !inner);
-        assert_eq!(trim.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            trim.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         let value = CssWhiteSpace::try_new(None, None, Some(trim)).unwrap();
         assert_eq!(value.keyword(), None);
         assert_eq!(value.collapse(), None);
         assert_eq!(value.mode(), None);
         assert_eq!(value.trim(), Some(trim));
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
     assert_eq!(
         CssWhiteSpaceTrim::none(),
@@ -191,9 +203,7 @@ fn every_mode_style_pair_has_programmatic_parsed_checked_and_typed_projection_pa
         for (style, style_css) in STYLES {
             let value = CssTextWrap::try_new(Some(mode), Some(style)).unwrap();
             let expected = format!("{mode_css} {style_css}");
-            provider(&expected, 2, |limits| {
-                value.serialize_specified_with_limits(limits)
-            });
+            provider(&expected, 2, |limits| value.serialize_specified(limits));
             for source in fronts(P::TextWrap, &format!("{style_css} {mode_css}")) {
                 assert_eq!(wrap(&source), &value);
                 let contributions = completed(&source);
@@ -244,9 +254,7 @@ fn special_white_space_forms_retain_alias_identity_and_exact_typed_projection() 
             (value.collapse(), value.mode(), value.trim()),
             (None, None, None)
         );
-        provider(css, 1, |limits| {
-            value.serialize_specified_with_limits(limits)
-        });
+        provider(css, 1, |limits| value.serialize_specified(limits));
         for source in fronts(P::WhiteSpace, css) {
             assert_eq!(space(&source), &value);
             let contributions = completed(&source);
@@ -258,7 +266,10 @@ fn special_white_space_forms_retain_alias_identity_and_exact_typed_projection() 
                 .unwrap();
         assert_ne!(components, value);
         assert_eq!(components.keyword(), None);
-        assert_ne!(components.serialize_specified().unwrap(), css);
+        assert_ne!(
+            components.serialize_specified(Default::default()).unwrap(),
+            css
+        );
     }
 }
 #[test]
@@ -283,9 +294,7 @@ fn all_nonempty_component_presence_states_preserve_omission_and_defaults_for_eve
             let work = usize::from(collapse.is_some())
                 + usize::from(mode.is_some())
                 + if trim.is_some() { trim_work } else { 0 };
-            provider(&expected, work, |limits| {
-                value.serialize_specified_with_limits(limits)
-            });
+            provider(&expected, work, |limits| value.serialize_specified(limits));
             for source in fronts(P::WhiteSpace, &expected) {
                 assert_eq!(space(&source), &value);
                 assert_eq!(
@@ -311,25 +320,17 @@ fn all_nonempty_component_presence_states_preserve_omission_and_defaults_for_eve
 #[test]
 fn all_new_constituent_primitive_states_have_exact_keyword_work_and_bytes() {
     for (value, css) in MODES {
-        provider(css, 1, |limits| {
-            value.serialize_specified_with_limits(limits)
-        });
+        provider(css, 1, |limits| value.serialize_specified(limits));
     }
     for (value, css) in STYLES {
-        provider(css, 1, |limits| {
-            value.serialize_specified_with_limits(limits)
-        });
+        provider(css, 1, |limits| value.serialize_specified(limits));
     }
     for (value, css) in COLLAPSE {
-        provider(css, 1, |limits| {
-            value.serialize_specified_with_limits(limits)
-        });
+        provider(css, 1, |limits| value.serialize_specified(limits));
     }
     for (before, after, inner, css, work) in TRIM {
         let value = CssWhiteSpaceTrim::new(before, after, inner);
-        provider(css, work, |limits| {
-            value.serialize_specified_with_limits(limits)
-        });
+        provider(css, work, |limits| value.serialize_specified(limits));
     }
 }
 #[test]
@@ -483,6 +484,7 @@ fn programmatic_keyword_components_reenter_without_fabricated_parsed_origins() {
             .into_iter()
             .map(|value| CssComponentValue::try_ident(value).unwrap())
             .collect(),
+        Default::default(),
     )
     .unwrap();
     assert!(
@@ -555,7 +557,9 @@ fn contiguous_trim_groups_permute_but_cannot_interleave_other_roles() {
                 CssWhiteSpaceTrim::new(true, true, true),
             );
             assert_eq!(
-                space(&source).serialize_specified().unwrap(),
+                space(&source)
+                    .serialize_specified(Default::default())
+                    .unwrap(),
                 "preserve nowrap discard-before discard-after discard-inner"
             );
         }
@@ -600,7 +604,10 @@ fn new_constituent_browser_recovery_retains_eof_and_strict_checked_rejection() {
             panic!("retained browser occurrence")
         };
         let before = source.clone();
-        let serialized = source.value_components().serialize().unwrap();
+        let serialized = source
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap();
         let origin = (0..serialized.as_css().len())
             .find_map(|offset| match serialized.origin_at(offset) {
                 Some(CssSerializedOrigin::Token(
@@ -863,14 +870,14 @@ fn seven_property_normalization_shares_context_and_atomic_eleven_member_budget()
 }
 #[test]
 fn new_trim_declarations_and_sibling_rules_share_exact_provider_budgets() {
+    use CssSerializationLimits as Limits;
     use CssSpecifiedValueSerializationErrorKind as Kind;
-    use CssSpecifiedValueSerializationLimits as Limits;
     let source = parsed(P::WhiteSpaceTrim, "discard-after discard-before");
     let before = source.clone();
     let expected = "white-space-trim: discard-before discard-after !important;";
     assert_eq!(
         source
-            .to_specified_css_with_limits(Limits::new(4, 4, expected.len()))
+            .serialize_specified(Limits::new(4, 4, expected.len()))
             .unwrap(),
         expected
     );
@@ -880,17 +887,14 @@ fn new_trim_declarations_and_sibling_rules_share_exact_provider_budgets() {
         (Limits::new(4, 4, expected.len() - 1), Kind::ByteLimit),
     ] {
         for _ in 0..2 {
-            assert_eq!(
-                source
-                    .to_specified_css_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
-                kind
-            );
+            assert_eq!(source.serialize_specified(limits).unwrap_err().kind(), kind);
         }
         assert_eq!(source, before);
     }
-    assert_eq!(source.to_specified_css().unwrap(), expected);
+    assert_eq!(
+        source.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     let report = parse_sheet(
         ".a{white-space-trim:discard-after discard-before}.b{text-wrap-style:avoid-short-last-line}",
     );
@@ -900,7 +904,7 @@ fn new_trim_declarations_and_sibling_rules_share_exact_provider_budgets() {
     let exact = Limits::new(usize::MAX, usize::MAX, expected.len());
     let short = Limits::new(usize::MAX, usize::MAX, expected.len() - 1);
     assert_eq!(
-        report.syntax().to_specified_css_with_limits(exact).unwrap(),
+        report.syntax().serialize_specified(exact).unwrap(),
         expected
     );
     assert!(
@@ -908,22 +912,16 @@ fn new_trim_declarations_and_sibling_rules_share_exact_provider_budgets() {
             .syntax()
             .rules()
             .iter()
-            .all(|rule| rule.to_specified_css_with_limits(short).is_ok())
+            .all(|rule| rule.serialize_specified(short).is_ok())
     );
     for _ in 0..2 {
-        let error = report
-            .syntax()
-            .to_specified_css_with_limits(short)
-            .unwrap_err();
-        assert_eq!(
-            error.kind(),
-            CssSpecifiedRuleSerializationErrorKind::Resource(Kind::ByteLimit)
-        );
+        let error = report.syntax().serialize_specified(short).unwrap_err();
+        assert_eq!(error.kind(), Kind::ByteLimit);
         assert_eq!(error.rule_index(), Some(1));
         assert_eq!(report, before);
     }
     assert_eq!(
-        report.syntax().to_specified_css_with_limits(exact).unwrap(),
+        report.syntax().serialize_specified(exact).unwrap(),
         expected
     );
 }

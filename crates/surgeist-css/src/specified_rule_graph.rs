@@ -7,16 +7,17 @@
 //! not allocate a pending event for every sibling before checking work limits.
 
 use crate::cssom_rule_serialization::{
-    CssRuleCssomFormat, CssRuleCssomKind, CssRuleCssomSerializationError, RuleCssomSource,
+    CssRuleCssomFormat, CssRuleCssomKind, CssRuleSerializationError, RuleCssomSource,
 };
 use crate::edited_rule::{
     CssEditedGroupPreludeRef, CssEditedRuleView, CssRuleGraphInput, EditedRuleChildrenRef,
     EditedRuleKind, EditedStyleSelectorsRef,
 };
-use crate::specified_rule_serialization::{SpecifiedRuleSerializationSource, SpecifiedRuleWriter};
+use crate::specified_rule_serialization::SpecifiedProvider as _;
+use crate::specified_rule_serialization::SpecifiedRuleWriter;
 use crate::{
     CssDeclarationList, CssLayerName, CssLayerNameList, CssMediaQueryList, CssRule, CssScopeRule,
-    CssScopedRule, CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationErrorKind,
+    CssScopedRule, CssSerializationError, CssSpecifiedValueSerializationErrorKind,
 };
 
 type Result<T> = std::result::Result<T, RuleCssomSource>;
@@ -32,36 +33,28 @@ struct GraphFailure {
     path: Vec<usize>,
     keyframe_block_index: Option<usize>,
 }
-type ValueResult<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
+type ValueResult<T> = std::result::Result<T, CssSerializationError>;
 
 fn ordinary_domain(block: &crate::CssSpecifiedDeclarationBlock) -> Result<()> {
     if block.is_ordinary() {
         Ok(())
     } else {
-        Err(CssSpecifiedValueSerializationError::new(
+        Err(CssSerializationError::new(
             CssSpecifiedValueSerializationErrorKind::UnserializableBoundary,
         )
         .into())
     }
 }
 
-impl CssLayerName {
-    /// Formats this checked name through its native aggregate/component writer.
-    /// Each identifier is escaped independently; dots are grammar punctuation.
-    pub fn serialize_specified(&self) -> ValueResult<String> {
-        self.serialize_specified_with_limits(crate::CssSpecifiedValueSerializationLimits::default())
-    }
-    /// One name aggregate and each component share input/projection/output
-    /// allowances. Failure returns no partial name and leaves retry unchanged.
-    pub fn serialize_specified_with_limits(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssLayerName {
+    fn append_to_rule_writer(
         &self,
-        limits: crate::CssSpecifiedValueSerializationLimits,
-    ) -> ValueResult<String> {
-        let mut writer = SpecifiedRuleWriter::new(limits);
-        writer.layer_name(self)?;
-        Ok(writer.css)
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        writer.layer_name(self)
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssLayerName);
 
 #[derive(Clone, Copy)]
 enum EditedChildStart {
@@ -109,9 +102,7 @@ enum Event<'a> {
 
 fn push<'a>(work: &mut Vec<Event<'a>>, event: Event<'a>) -> ValueResult<()> {
     work.try_reserve(1).map_err(|_| {
-        CssSpecifiedValueSerializationError::new(
-            CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
-        )
+        CssSerializationError::new(CssSpecifiedValueSerializationErrorKind::CapacityOverflow)
     })?;
     work.push(event);
     Ok(())
@@ -123,7 +114,7 @@ impl SpecifiedRuleWriter {
     pub(crate) fn append_rule_graph(
         &mut self,
         rule: &CssRule,
-    ) -> std::result::Result<(), SpecifiedRuleSerializationSource> {
+    ) -> std::result::Result<(), CssSerializationError> {
         self.append_graph(
             Event::Ordinary(rule, None),
             Format::Compact,
@@ -142,7 +133,7 @@ impl SpecifiedRuleWriter {
         rule: &CssRule,
         path: Vec<usize>,
         namespaces: Option<&crate::CssNamespaceContext>,
-    ) -> std::result::Result<(), CssRuleCssomSerializationError> {
+    ) -> std::result::Result<(), CssRuleSerializationError> {
         self.append_graph(
             Event::Ordinary(rule, None),
             Format::Cssom,
@@ -151,7 +142,7 @@ impl SpecifiedRuleWriter {
             false,
         )
         .map_err(|failure| {
-            CssRuleCssomSerializationError::new(
+            CssRuleSerializationError::new(
                 failure.source,
                 failure.path,
                 failure.keyframe_block_index,
@@ -163,7 +154,7 @@ impl SpecifiedRuleWriter {
         &mut self,
         rule: CssEditedRuleView<'_>,
         cssom: bool,
-    ) -> std::result::Result<(), CssRuleCssomSerializationError> {
+    ) -> std::result::Result<(), CssRuleSerializationError> {
         self.append_graph(
             Event::Edited(rule.kind, None),
             if cssom {
@@ -176,7 +167,7 @@ impl SpecifiedRuleWriter {
             false,
         )
         .map_err(|failure| {
-            CssRuleCssomSerializationError::new(
+            CssRuleSerializationError::new(
                 failure.source,
                 failure.path,
                 failure.keyframe_block_index,
@@ -189,7 +180,7 @@ impl SpecifiedRuleWriter {
         rule: CssRuleGraphInput<'_>,
         namespaces: &crate::CssNamespaceContext,
         ancestor: crate::CssStyleAncestor,
-    ) -> std::result::Result<(), CssRuleCssomSerializationError> {
+    ) -> std::result::Result<(), CssRuleSerializationError> {
         self.append_graph(
             Event::Edited(rule.kind, None),
             Format::Cssom,
@@ -198,7 +189,7 @@ impl SpecifiedRuleWriter {
             ancestor == crate::CssStyleAncestor::Present,
         )
         .map_err(|failure| {
-            CssRuleCssomSerializationError::new(
+            CssRuleSerializationError::new(
                 failure.source,
                 failure.path,
                 failure.keyframe_block_index,
@@ -287,7 +278,7 @@ impl SpecifiedRuleWriter {
                             && let Some(index) = index
                         {
                             path.try_reserve(1).map_err(|_| {
-                                CssSpecifiedValueSerializationError::new(
+                                CssSerializationError::new(
                                     CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
                                 )
                             })?;
@@ -498,7 +489,7 @@ impl SpecifiedRuleWriter {
                             && let Some(index) = index
                         {
                             path.try_reserve(1).map_err(|_| {
-                                CssSpecifiedValueSerializationError::new(
+                                CssSerializationError::new(
                                     CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
                                 )
                             })?;
@@ -756,7 +747,7 @@ impl SpecifiedRuleWriter {
                             && let Some(index) = index
                         {
                             path.try_reserve(1).map_err(|_| {
-                                CssSpecifiedValueSerializationError::new(
+                                CssSerializationError::new(
                                     CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
                                 )
                             })?;
@@ -998,7 +989,7 @@ impl SpecifiedRuleWriter {
         result.map_err(|mut source| {
             if let Some(index) = margin_rule_index {
                 if path.try_reserve(1).is_err() {
-                    source = crate::CssSpecifiedValueSerializationError::new(
+                    source = crate::CssSerializationError::new(
                         crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
                     )
                     .into();
@@ -1201,9 +1192,8 @@ impl SpecifiedRuleWriter {
 #[cfg(test)]
 mod tests {
     use crate::{
-        CssRule, CssSpecifiedRuleSerializationErrorKind as RuleKind,
-        CssSpecifiedValueSerializationErrorKind as Kind,
-        CssSpecifiedValueSerializationLimits as Limits, parse_sheet,
+        CssRule, CssSerializationLimits as Limits, CssSpecifiedValueSerializationErrorKind as Kind,
+        parse_sheet,
     };
 
     fn exact_nodes(source: &str, expected: &str, nodes: usize) {
@@ -1213,7 +1203,7 @@ mod tests {
         assert_eq!(
             report
                 .syntax()
-                .to_specified_css_with_limits(Limits::new(nodes, nodes, expected.len()))
+                .serialize_specified(Limits::new(nodes, nodes, expected.len()))
                 .unwrap(),
             expected,
         );
@@ -1231,11 +1221,8 @@ mod tests {
                 Kind::ByteLimit,
             ),
         ] {
-            let error = report
-                .syntax()
-                .to_specified_css_with_limits(limits)
-                .unwrap_err();
-            assert_eq!(error.kind(), RuleKind::Resource(kind));
+            let error = report.syntax().serialize_specified(limits).unwrap_err();
+            assert_eq!(error.kind(), kind);
             assert_eq!(error.rule_index(), Some(0));
             assert_eq!(report, before);
         }
@@ -1276,7 +1263,7 @@ mod tests {
         assert_eq!(
             report
                 .syntax()
-                .to_specified_css_with_limits(Limits::new(1, 1, 0))
+                .serialize_specified(Limits::new(1, 1, 0))
                 .unwrap(),
             "",
         );
@@ -1284,11 +1271,8 @@ mod tests {
             (Limits::new(0, 1, 0), Kind::InputNodeLimit),
             (Limits::new(1, 0, 0), Kind::ProjectionNodeLimit),
         ] {
-            let error = report
-                .syntax()
-                .to_specified_css_with_limits(limits)
-                .unwrap_err();
-            assert_eq!(error.kind(), RuleKind::Resource(kind));
+            let error = report.syntax().serialize_specified(limits).unwrap_err();
+            assert_eq!(error.kind(), kind);
             assert_eq!(error.rule_index(), None);
         }
         assert_eq!(report, before);
@@ -1303,12 +1287,18 @@ mod tests {
         let expected = "@namespace n url(\"u\");\n@scope { @layer { @font-face { } } }";
         let error = report
             .syntax()
-            .to_specified_css_with_limits(Limits::new(usize::MAX, usize::MAX, expected.len() - 1))
+            .serialize_specified(Limits::new(usize::MAX, usize::MAX, expected.len() - 1))
             .unwrap_err();
-        assert_eq!(error.kind(), RuleKind::Resource(Kind::ByteLimit));
+        assert_eq!(error.kind(), Kind::ByteLimit);
         assert_eq!(error.rule_index(), Some(1));
         assert_eq!(report, before);
-        assert_eq!(report.syntax().to_specified_css().unwrap(), expected);
+        assert_eq!(
+            report
+                .syntax()
+                .serialize_specified(Default::default())
+                .unwrap(),
+            expected
+        );
         assert!(matches!(report.syntax().rules()[1], CssRule::Scope(_)));
     }
 }

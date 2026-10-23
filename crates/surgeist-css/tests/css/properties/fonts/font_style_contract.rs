@@ -7,9 +7,9 @@ use surgeist_css::{
     CssContributions, CssExpansion, CssExpansionErrorKind, CssFontObliqueAngle, CssFontStyle,
     CssFontStyleKeyword, CssFontValue, CssImportance, CssInitialValueRef, CssKnownProperty,
     CssKnownPropertyValueRef, CssLonghandValueRef, CssNumericConstructionErrorKind,
-    CssPropertyKindRef, CssPropertyValueErrorKind, CssRecoveryAction, CssSerializedOrigin,
-    CssSpecifiedValueSerializationErrorKind, CssSpecifiedValueSerializationLimits, CssValueOrigin,
-    CssValueTokenRef, expand_declaration, parse_component_values, parse_style_attribute,
+    CssPropertyKindRef, CssPropertyValueErrorKind, CssRecoveryAction, CssSerializationLimits,
+    CssSerializedOrigin, CssSpecifiedValueSerializationErrorKind, CssValueOrigin, CssValueTokenRef,
+    expand_declaration, parse_component_values, parse_style_attribute,
 };
 
 fn angle(text: &str) -> CssFontObliqueAngle {
@@ -41,14 +41,16 @@ fn keywords_and_optional_oblique_angle_preserve_authored_distinctions() {
         assert_eq!(property(text), CssFontStyle::Keyword(expected));
         assert_eq!(
             CssFontStyle::Keyword(expected)
-                .serialize_specified()
+                .serialize_specified(Default::default())
                 .unwrap(),
             text
         );
     }
     assert_eq!(property("oblique"), CssFontStyle::Oblique { angle: None });
     assert_eq!(
-        property("oblique").serialize_specified().unwrap(),
+        property("oblique")
+            .serialize_specified(Default::default())
+            .unwrap(),
         "oblique"
     );
     let explicit = property("oblique 14deg");
@@ -65,7 +67,12 @@ fn keywords_and_optional_oblique_angle_preserve_authored_distinctions() {
     // still distinguishes the explicit angle from its omission. Witness
     // divergence: Chromium 152 (2026-10-21) keeps `oblique 14deg`; the spec governs.
     for text in ["oblique 14deg", "oblique 14.0deg", "oblique +1.4e1DEG"] {
-        assert_eq!(property(text).serialize_specified().unwrap(), "oblique");
+        assert_eq!(
+            property(text)
+                .serialize_specified(Default::default())
+                .unwrap(),
+            "oblique"
+        );
     }
     for (text, expected) in [
         ("oblique 15deg", "oblique 15deg"),
@@ -73,7 +80,12 @@ fn keywords_and_optional_oblique_angle_preserve_authored_distinctions() {
         // 14deg is a nonterminating number of gradians or turns.
         ("oblique 15.5556grad", "oblique 15.5556grad"),
     ] {
-        assert_eq!(property(text).serialize_specified().unwrap(), expected);
+        assert_eq!(
+            property(text)
+                .serialize_specified(Default::default())
+                .unwrap(),
+            expected
+        );
     }
 }
 
@@ -102,7 +114,7 @@ fn exact_lexical_bounds_and_radian_precision_retain_original_components() {
         assert_eq!(value.origin(), &CssValueOrigin::Programmatic, "{text}");
         assert!(
             property(&format!("oblique {text}"))
-                .serialize_specified()
+                .serialize_specified(Default::default())
                 .unwrap()
                 .starts_with("oblique "),
             "{text}"
@@ -136,14 +148,22 @@ fn exact_lexical_bounds_and_radian_precision_retain_original_components() {
     };
     assert_eq!(number.representation(), "1.5707963267948966");
     assert_eq!(unit, "rad");
-    assert_eq!(rad.serialize_specified().unwrap(), "1.570796rad");
+    assert_eq!(
+        rad.serialize_specified(Default::default()).unwrap(),
+        "1.570796rad"
+    );
     let same_binary64 = angle("1.5707963267948965rad");
     assert_eq!(
         "1.5707963267948965".parse::<f64>().unwrap(),
         "1.5707963267948966".parse::<f64>().unwrap(),
     );
     assert_ne!(rad, same_binary64);
-    assert_eq!(same_binary64.serialize_specified().unwrap(), "1.570796rad");
+    assert_eq!(
+        same_binary64
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "1.570796rad"
+    );
     let long = angle("0.0000000000000000000000000000000000000001turn");
     let CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }) =
         long.literal_component().unwrap().view()
@@ -188,7 +208,7 @@ fn oblique_angles_compare_their_exact_decimal_with_the_quarter_turn_bound() {
         assert!(angle(text).literal_component().is_some(), "{text}");
         assert!(
             property(&format!("oblique {text}"))
-                .serialize_specified()
+                .serialize_specified(Default::default())
                 .unwrap()
                 .starts_with("oblique "),
             "{text}"
@@ -237,20 +257,24 @@ fn wrong_domains_and_bare_math_roots_cannot_enter_the_angle_model() {
         );
     }
     for text in ["0deg", "91deg"] {
-        let calculation =
-            CssAngleCalculation::try_from_components(parse_component_values(text).unwrap())
-                .unwrap();
+        let calculation = CssAngleCalculation::try_from_components(
+            parse_component_values(text).unwrap(),
+            Default::default(),
+        )
+        .unwrap();
         let result = CssFontObliqueAngle::try_from_calculation(calculation);
         assert_eq!(result.is_ok(), text == "0deg", "{text}");
     }
     for text in ["calc(91deg)", "calc(-100deg)"] {
-        let calculation =
-            CssAngleCalculation::try_from_components(parse_component_values(text).unwrap())
-                .unwrap();
+        let calculation = CssAngleCalculation::try_from_components(
+            parse_component_values(text).unwrap(),
+            Default::default(),
+        )
+        .unwrap();
         let value = CssFontObliqueAngle::try_from_calculation(calculation).unwrap();
         assert!(value.calculation().is_some(), "{text}");
         assert!(value.literal_component().is_none(), "{text}");
-        assert_eq!(value.serialize_specified().unwrap(), text);
+        assert_eq!(value.serialize_specified(Default::default()).unwrap(), text);
         assert_eq!(
             property(&format!("oblique {text}")),
             CssFontStyle::Oblique { angle: Some(value) }
@@ -294,15 +318,21 @@ fn recovered_math_requires_parser_admission_before_typed_transfer() {
         panic!("retained oblique math")
     };
     let calculation = admitted.calculation().expect("typed recovered calculation");
-    let error =
-        CssAngleCalculation::try_from_components(calculation.components().clone()).unwrap_err();
+    let error = CssAngleCalculation::try_from_components(
+        calculation.components().clone(),
+        Default::default(),
+    )
+    .unwrap_err();
     assert_eq!(
         error.kind(),
         &CssNumericConstructionErrorKind::RecoveredComponent
     );
     let transferred = CssFontObliqueAngle::try_from_calculation(calculation.clone()).unwrap();
     assert_eq!(transferred.origin(), admitted.origin());
-    assert_eq!(transferred.serialize_specified().unwrap(), "calc(10deg)");
+    assert_eq!(
+        transferred.serialize_specified(Default::default()).unwrap(),
+        "calc(10deg)"
+    );
 }
 
 #[test]
@@ -329,10 +359,13 @@ fn checked_values_and_pending_reentry_preserve_real_origins_and_importance() {
 
     let programmatic = normal_grammar_components(
         "font-style",
-        CssComponentValues::try_new(vec![
-            CssComponentValue::try_ident("oblique").unwrap(),
-            CssComponentValue::try_token("12deg").unwrap(),
-        ])
+        CssComponentValues::try_new(
+            vec![
+                CssComponentValue::try_ident("oblique").unwrap(),
+                CssComponentValue::try_token("12deg").unwrap(),
+            ],
+            Default::default(),
+        )
         .unwrap(),
     )
     .unwrap();
@@ -348,10 +381,13 @@ fn checked_values_and_pending_reentry_preserve_real_origins_and_importance() {
 
     let invalid = normal_grammar_components(
         "font-style",
-        CssComponentValues::try_new(vec![
-            CssComponentValue::try_ident("oblique").unwrap(),
-            CssComponentValue::try_token("91deg").unwrap(),
-        ])
+        CssComponentValues::try_new(
+            vec![
+                CssComponentValue::try_ident("oblique").unwrap(),
+                CssComponentValue::try_token("91deg").unwrap(),
+            ],
+            Default::default(),
+        )
         .unwrap(),
     )
     .unwrap_err();
@@ -363,11 +399,14 @@ fn checked_values_and_pending_reentry_preserve_real_origins_and_importance() {
         invalid.origin(),
         &CssSerializedOrigin::Token(CssValueOrigin::Programmatic)
     );
-    let adjacent = CssComponentValues::try_new(vec![
-        CssComponentValue::try_ident("oblique").unwrap(),
-        CssComponentValue::try_number("1").unwrap(),
-        CssComponentValue::try_token("0deg").unwrap(),
-    ])
+    let adjacent = CssComponentValues::try_new(
+        vec![
+            CssComponentValue::try_ident("oblique").unwrap(),
+            CssComponentValue::try_number("1").unwrap(),
+            CssComponentValue::try_token("0deg").unwrap(),
+        ],
+        Default::default(),
+    )
     .unwrap();
     assert_programmatic_rejection(
         normal_grammar_components("font-style", adjacent),
@@ -395,7 +434,10 @@ fn checked_values_and_pending_reentry_preserve_real_origins_and_importance() {
     else {
         panic!("typed contribution")
     };
-    assert_eq!(value.serialize_specified().unwrap(), "-20grad");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "-20grad"
+    );
     let CssValueOrigin::Parsed(origin) = value.origin() else {
         panic!("parsed replacement angle")
     };
@@ -404,10 +446,13 @@ fn checked_values_and_pending_reentry_preserve_real_origins_and_importance() {
     assert_eq!(origin.span().end().byte_offset().value(), 15);
     let error = handle
         .reenter(
-            CssComponentValues::try_new(vec![
-                CssComponentValue::try_ident("oblique").unwrap(),
-                CssComponentValue::try_token("91deg").unwrap(),
-            ])
+            CssComponentValues::try_new(
+                vec![
+                    CssComponentValue::try_ident("oblique").unwrap(),
+                    CssComponentValue::try_token("91deg").unwrap(),
+                ],
+                Default::default(),
+            )
             .unwrap(),
         )
         .unwrap_err();
@@ -470,7 +515,7 @@ fn initial_metadata_css_wide_and_shorthand_ambiguity_are_typed() {
         assert_eq!(
             angle
                 .as_ref()
-                .map(|angle| angle.serialize_specified().unwrap())
+                .map(|angle| angle.serialize_specified(Default::default()).unwrap())
                 .as_deref(),
             expected_angle
         );
@@ -486,20 +531,29 @@ fn initial_metadata_css_wide_and_shorthand_ambiguity_are_typed() {
 #[test]
 fn scalar_and_property_serialization_charge_budgets_atomically() {
     let value = property("oblique 10deg");
-    assert_eq!(value.serialize_specified().unwrap(), "oblique 10deg");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "oblique 10deg"
+    );
     assert_eq!(
         value
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(8, 8, 4))
+            .serialize_specified(CssSerializationLimits::new(8, 8, 4))
             .unwrap_err()
             .kind(),
         CssSpecifiedValueSerializationErrorKind::ByteLimit
     );
-    assert_eq!(value.serialize_specified().unwrap(), "oblique 10deg");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "oblique 10deg"
+    );
     let value = angle("-10grad");
-    assert_eq!(value.serialize_specified().unwrap(), "-10grad");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "-10grad"
+    );
     assert_eq!(
         value
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(8, 8, 3))
+            .serialize_specified(CssSerializationLimits::new(8, 8, 3))
             .unwrap_err()
             .kind(),
         CssSpecifiedValueSerializationErrorKind::ByteLimit

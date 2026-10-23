@@ -140,15 +140,23 @@ fn present_svg_tokens_and_outer_number_roots_keep_exact_rejection_origins() {
             );
         }
         assert_eq!(values, before);
-        assert_eq!(values.serialize().unwrap().as_css(), text);
+        assert_eq!(
+            values
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            text
+        );
     }
     for argument in ["0", "90"] {
         let component =
             CssComponentValue::try_function("calc", parse_component_values(argument).unwrap())
                 .unwrap();
         assert_eq!(component.origin(), &CssValueOrigin::Programmatic);
-        let values = CssComponentValues::try_new(vec![component.clone()]).unwrap();
-        let native = CssAngleCalculation::try_from_components(values.clone()).unwrap_err();
+        let values =
+            CssComponentValues::try_new(vec![component.clone()], Default::default()).unwrap();
+        let native = CssAngleCalculation::try_from_components(values.clone(), Default::default())
+            .unwrap_err();
         assert_eq!(
             native.kind(),
             &CssNumericConstructionErrorKind::RootDomainMismatch
@@ -185,8 +193,11 @@ fn present_svg_tokens_and_outer_number_roots_keep_exact_rejection_origins() {
     ] {
         let child_values = parse_component_values("90deg").unwrap();
         let block = CssComponentValue::try_block(block_kind, child_values.clone()).unwrap();
-        let block_values = CssComponentValues::try_new(vec![block.clone()]).unwrap();
-        let native = CssAngleCalculation::try_from_components(block_values.clone()).unwrap_err();
+        let block_values =
+            CssComponentValues::try_new(vec![block.clone()], Default::default()).unwrap();
+        let native =
+            CssAngleCalculation::try_from_components(block_values.clone(), Default::default())
+                .unwrap_err();
         assert_eq!(
             native.kind(),
             &CssNumericConstructionErrorKind::RootDomainMismatch
@@ -215,7 +226,8 @@ fn present_svg_tokens_and_outer_number_roots_keep_exact_rejection_origins() {
     let native = CssAngleLiteral::try_from_component(string.clone()).unwrap_err();
     assert_eq!(native.kind(), CssComponentValueErrorKind::InvalidToken);
     assert_eq!(native.origin(), string.origin());
-    let string_values = CssComponentValues::try_new(vec![string.clone()]).unwrap();
+    let string_values =
+        CssComponentValues::try_new(vec![string.clone()], Default::default()).unwrap();
     for context in [SVG, QUIRKS] {
         let error = context
             .parse_property_value(NAME, string_values.clone(), CssImportance::Normal)
@@ -405,19 +417,22 @@ fn present_svg_tokens_and_outer_number_roots_keep_exact_rejection_origins() {
             unreachable!()
         };
         let responsible = responsible_component(&values, path);
-        let native = CssAngleCalculation::try_from_components(values.clone()).unwrap_err();
+        let native = CssAngleCalculation::try_from_components(values.clone(), Default::default())
+            .unwrap_err();
         assert_eq!(native.kind(), &native_kind);
         assert_eq!(native.path(), Some(path));
         assert_eq!(native.origin(), Some(responsible.origin()));
         let outer =
             CssComponentValue::try_function(function.name(), function.values().clone()).unwrap();
-        let mixed = CssComponentValues::try_new(vec![outer.clone()]).unwrap();
+        let mixed = CssComponentValues::try_new(vec![outer.clone()], Default::default()).unwrap();
         let mixed_responsible = responsible_component(&mixed, path);
         assert_eq!(outer.origin(), &CssValueOrigin::Programmatic);
         if path.len() > 1 {
             original(mixed_responsible.origin(), text);
         }
-        let mixed_native = CssAngleCalculation::try_from_components(mixed.clone()).unwrap_err();
+        let mixed_native =
+            CssAngleCalculation::try_from_components(mixed.clone(), Default::default())
+                .unwrap_err();
         assert_eq!(mixed_native.kind(), &native_kind);
         assert_eq!(mixed_native.path(), Some(path));
         assert_eq!(mixed_native.origin(), Some(mixed_responsible.origin()));
@@ -449,8 +464,17 @@ fn present_svg_tokens_and_outer_number_roots_keep_exact_rejection_origins() {
                 "glyph-orientation-vertical:".len() + offset,
             );
         }
-        assert_eq!(values.serialize().unwrap().as_css(), text);
-        assert_eq!(mixed.serialize().unwrap().as_css(), text);
+        assert_eq!(
+            values
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            text
+        );
+        assert_eq!(
+            mixed.serialize_tokens(Default::default()).unwrap().as_css(),
+            text
+        );
     }
     // Missing bounded arguments retain provider diagnostics. The native
     // calculation names the component where its expression stops, while a
@@ -495,7 +519,8 @@ fn present_svg_tokens_and_outer_number_roots_keep_exact_rejection_origins() {
     ] {
         let values = parse_component_values(text).unwrap();
         let native_responsible = responsible_component(&values, path);
-        let native = CssAngleCalculation::try_from_components(values.clone()).unwrap_err();
+        let native = CssAngleCalculation::try_from_components(values.clone(), Default::default())
+            .unwrap_err();
         assert_eq!(native.kind(), &native_kind);
         assert_eq!(native.path(), Some(path));
         assert_eq!(native.origin(), Some(native_responsible.origin()));
@@ -616,7 +641,11 @@ fn selection_preserves_modes_finite_alias_and_explicit_definition_precedence() {
         let source = declaration(SVG, text);
         assert!(svg(&source).value().unwrap().is_auto());
         assert_eq!(
-            source.value_components().serialize().unwrap().as_css(),
+            source
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             text
         );
     }
@@ -698,9 +727,11 @@ fn all_authored_fronts_preserve_angle_units_coefficients_origins_and_numeric_fla
             let raw = context.parse_property_value_text(text, NAME, CssImportance::Important);
             assert!(raw.is_clean());
             let values = parse_component_values(text).unwrap();
-            let rust =
-                CssComponentValues::try_new(vec![CssComponentValue::try_token(text).unwrap()])
-                    .unwrap();
+            let rust = CssComponentValues::try_new(
+                vec![CssComponentValue::try_token(text).unwrap()],
+                Default::default(),
+            )
+            .unwrap();
             for source in [
                 parsed,
                 raw.syntax().as_ref().unwrap().clone(),
@@ -718,7 +749,11 @@ fn all_authored_fronts_preserve_angle_units_coefficients_origins_and_numeric_fla
                 assert_eq!(angle.numeric().representation(), coefficient);
                 assert_eq!(angle.unit(), unit);
                 assert_eq!(
-                    source.value_components().serialize().unwrap().as_css(),
+                    source
+                        .value_components()
+                        .serialize_tokens(Default::default())
+                        .unwrap()
+                        .as_css(),
                     text
                 );
             }
@@ -784,7 +819,11 @@ fn all_authored_fronts_preserve_angle_units_coefficients_origins_and_numeric_fla
                 );
                 let parsed = declaration(context, text);
                 assert_eq!(
-                    parsed.value_components().serialize().unwrap().as_css(),
+                    parsed
+                        .value_components()
+                        .serialize_tokens(Default::default())
+                        .unwrap()
+                        .as_css(),
                     text
                 );
                 let raw = context.parse_property_value_text(text, NAME, CssImportance::Important);
@@ -872,7 +911,13 @@ fn intrinsic_constructors_reject_wrong_roots_raw_overflow_and_recovered_math() {
                 matches!(error.kind(), CssPropertyValueErrorKind::Grammar(_)),
                 "{text}: {error:?}"
             );
-            assert_eq!(values.serialize().unwrap().as_css(), text);
+            assert_eq!(
+                values
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
+                text
+            );
             let report = context.parse_svg_glyph_orientation_vertical_attribute_value(text);
             assert!(report.syntax().is_none() && !report.is_clean());
         }
@@ -890,7 +935,11 @@ fn intrinsic_constructors_reject_wrong_roots_raw_overflow_and_recovered_math() {
         let value = svg(&source).value().unwrap();
         assert!(value.angle().unwrap().calculation().is_some());
         assert_eq!(
-            source.value_components().serialize().unwrap().as_css(),
+            source
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             text
         );
         let native =
@@ -961,13 +1010,20 @@ fn binary64_raw_boundaries_never_replace_exact_original_coefficients() {
             text.strip_suffix("deg").unwrap()
         );
         assert_eq!(
-            source.value_components().serialize().unwrap().as_css(),
+            source
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             text
         );
     }
     let tiny = declaration(SVG, "1e-324");
     assert_eq!(
-        tiny.value_components().serialize().unwrap().as_css(),
+        tiny.value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         "1e-324"
     );
     assert!(svg(&tiny).value().unwrap().unitless_component().is_some());
@@ -1082,10 +1138,13 @@ fn checked_original_closure_utf16_mixed_sources_and_retry_keep_real_origins() {
         assert_eq!(values, before);
     }
     let comment = parse_component_values("/*").unwrap();
-    let mixed = CssComponentValues::try_new(vec![
-        CssComponentValue::try_ident("auto").unwrap(),
-        comment.items()[0].clone(),
-    ])
+    let mixed = CssComponentValues::try_new(
+        vec![
+            CssComponentValue::try_ident("auto").unwrap(),
+            comment.items()[0].clone(),
+        ],
+        Default::default(),
+    )
     .unwrap();
     let error = SVG
         .parse_property_value(NAME, mixed, CssImportance::Normal)
@@ -1126,10 +1185,13 @@ fn checked_original_closure_utf16_mixed_sources_and_retry_keep_real_origins() {
     );
     assert_eq!(angle.numeric().representation(), "+090.0");
     let parsed = parse_component_values("/*😀*/180deg").unwrap();
-    let mixed = CssComponentValues::try_new(vec![
-        CssComponentValue::try_token(" ").unwrap(),
-        parsed.items().last().unwrap().clone(),
-    ])
+    let mixed = CssComponentValues::try_new(
+        vec![
+            CssComponentValue::try_token(" ").unwrap(),
+            parsed.items().last().unwrap().clone(),
+        ],
+        Default::default(),
+    )
     .unwrap();
     let checked = SVG
         .parse_property_value(NAME, mixed.clone(), CssImportance::Normal)
@@ -1171,7 +1233,7 @@ fn globals_metadata_and_pending_reentry_use_actual_body_and_admission() {
         assert!(contribution.source().same_occurrence(&source));
         assert_eq!(contribution.source().importance(), CssImportance::Important);
         assert_eq!(
-            source.to_specified_css().unwrap(),
+            source.serialize_specified(Default::default()).unwrap(),
             format!("glyph-orientation-vertical: {text} !important;")
         );
     }
@@ -1381,7 +1443,13 @@ fn supports_overloads_preserve_literal_boundary_importance_standards_and_sources
             test.svg_glyph_orientation_vertical().is_some(),
             text.contains("180deg")
         );
-        assert_eq!(condition.serialize().unwrap().as_css(), format!("({text})"));
+        assert_eq!(
+            condition
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            format!("({text})")
+        );
         original(test.property_component().origin(), text);
     }
     let text = "(glyph-orientation-vertical:180deg) and (width:1px)";
@@ -1398,7 +1466,13 @@ fn supports_overloads_preserve_literal_boundary_importance_standards_and_sources
         query(&children.conditions()[1]).known().unwrap().property(),
         CssKnownProperty::Width
     );
-    assert_eq!(condition.serialize().unwrap().as_css(), text);
+    assert_eq!(
+        condition
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        text
+    );
     assert!(
         parse_css_supports_declaration("glyph-orientation-vertical", "180deg")
             .unwrap()
@@ -1516,7 +1590,13 @@ fn supports_component_recovery_and_resource_failures_are_not_grammar_retried() {
             .parser_mode(),
         CssParserMode::Standards
     );
-    assert_eq!(condition.serialize().unwrap().as_css(), deep);
+    assert_eq!(
+        condition
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        deep
+    );
     let valid = SVG
         .parse_css_supports_declaration("glyph-orientation-vertical", "180deg")
         .unwrap();
@@ -1574,16 +1654,18 @@ fn nested_rule_fragment_import_keyframe_and_recovery_fronts_retain_definition() 
                 .syntax()
                 .as_ref()
                 .unwrap()
-                .to_specified_css()
+                .serialize_specified(Default::default())
                 .unwrap(),
-            sheet.syntax().rules()[0].to_specified_css().unwrap()
+            sheet.syntax().rules()[0]
+                .serialize_specified(Default::default())
+                .unwrap()
         );
     }
     let block = SVG.parse_style_block("{glyph-orientation-vertical:180deg}", &namespaces);
     assert!(block.is_clean());
     assert_eq!(
         block.syntax().as_ref().unwrap().declarations()[0]
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .unwrap(),
         "glyph-orientation-vertical: 180deg;"
     );
@@ -1609,7 +1691,9 @@ fn nested_rule_fragment_import_keyframe_and_recovery_fronts_retain_definition() 
         CssKnownProperty::Color
     );
     assert_eq!(
-        list.syntax()[1].to_specified_css().unwrap(),
+        list.syntax()[1]
+            .serialize_specified(Default::default())
+            .unwrap(),
         "color: rgb(0, 1, 35);"
     );
     assert!(svg(&list.syntax()[2]).value().unwrap().angle().is_some());
@@ -1947,11 +2031,8 @@ fn specified_goldens_use_shared_leaf_math_tariffs_and_atomic_three_budget_retry(
         assert_eq!(expected.len(), bytes);
         let source = declaration(context, text);
         let before = source.clone();
-        let exact = CssSpecifiedValueSerializationLimits::new(input, projection, bytes);
-        assert_eq!(
-            source.to_specified_css_with_limits(exact).unwrap(),
-            expected
-        );
+        let exact = CssSerializationLimits::new(input, projection, bytes);
+        assert_eq!(source.serialize_specified(exact).unwrap(), expected);
         let standalone = expected
             .strip_prefix("glyph-orientation-vertical: ")
             .unwrap()
@@ -1962,7 +2043,7 @@ fn specified_goldens_use_shared_leaf_math_tariffs_and_atomic_three_budget_retry(
             svg(&source)
                 .value()
                 .unwrap()
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
+                .serialize_specified(CssSerializationLimits::new(
                     input - 2,
                     projection - 2,
                     standalone.len()
@@ -1972,32 +2053,23 @@ fn specified_goldens_use_shared_leaf_math_tariffs_and_atomic_three_budget_retry(
         );
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(input - 1, projection, bytes),
+                CssSerializationLimits::new(input - 1, projection, bytes),
                 CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(input, projection - 1, bytes),
+                CssSerializationLimits::new(input, projection - 1, bytes),
                 CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(input, projection, bytes - 1),
+                CssSerializationLimits::new(input, projection, bytes - 1),
                 CssSpecifiedValueSerializationErrorKind::ByteLimit,
             ),
         ] {
-            assert_eq!(
-                source
-                    .to_specified_css_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
-                kind
-            );
+            assert_eq!(source.serialize_specified(limits).unwrap_err().kind(), kind);
             assert_eq!(source, before);
             assert!(source.same_occurrence(&before));
         }
-        assert_eq!(
-            source.to_specified_css_with_limits(exact).unwrap(),
-            expected
-        );
+        assert_eq!(source.serialize_specified(exact).unwrap(), expected);
         // Complete specified declarations include their list semicolon.
         let reparsed = SVG.parse_style_attribute(expected);
         assert!(
@@ -2010,11 +2082,14 @@ fn specified_goldens_use_shared_leaf_math_tariffs_and_atomic_three_budget_retry(
         assert_eq!(occurrence.property_name(), NAME);
         assert!(occurrence.svg_glyph_orientation_vertical().is_some());
         assert_eq!(occurrence.importance(), source.importance());
-        assert_eq!(occurrence.to_specified_css().unwrap(), expected);
+        assert_eq!(
+            occurrence.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
     let unitless = declaration(QUIRKS, "45.0000005");
     assert_eq!(
-        unitless.to_specified_css().unwrap(),
+        unitless.serialize_specified(Default::default()).unwrap(),
         "glyph-orientation-vertical: 45.000001deg;"
     );
     let reparse = declaration(SVG, "45.000001deg");
@@ -2027,7 +2102,11 @@ fn specified_goldens_use_shared_leaf_math_tariffs_and_atomic_three_budget_retry(
     );
     assert!(svg(&reparse).value().unwrap().angle().is_some());
     assert_eq!(
-        unitless.value_components().serialize().unwrap().as_css(),
+        unitless
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         "45.0000005"
     );
     let sheet = SVG
@@ -2037,14 +2116,11 @@ fn specified_goldens_use_shared_leaf_math_tariffs_and_atomic_three_budget_retry(
         ".a { glyph-orientation-vertical: 180deg; }\n.b { glyph-orientation-vertical: 90deg; }";
     // Sheet aggregate 1; each rule 1 + selector list 1 + class leaf 1
     // + declaration-list aggregate 1 + declaration/name/value 3 = 7.
-    let exact = CssSpecifiedValueSerializationLimits::new(15, 15, expected.len());
-    assert_eq!(
-        sheet.syntax().to_specified_css_with_limits(exact).unwrap(),
-        expected
-    );
+    let exact = CssSerializationLimits::new(15, 15, expected.len());
+    assert_eq!(sheet.syntax().serialize_specified(exact).unwrap(), expected);
     let error = sheet
         .syntax()
-        .to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::new(
+        .serialize_specified(CssSerializationLimits::new(
             usize::MAX,
             usize::MAX,
             expected.len() - 1,
@@ -2052,34 +2128,23 @@ fn specified_goldens_use_shared_leaf_math_tariffs_and_atomic_three_budget_retry(
         .unwrap_err();
     assert_eq!(
         error.kind(),
-        CssSpecifiedRuleSerializationErrorKind::Resource(
-            CssSpecifiedValueSerializationErrorKind::ByteLimit
-        )
+        CssSpecifiedValueSerializationErrorKind::ByteLimit
     );
     assert_eq!(error.rule_index(), Some(1));
     assert_eq!(sheet, before);
-    assert_eq!(
-        sheet.syntax().to_specified_css_with_limits(exact).unwrap(),
-        expected
-    );
+    assert_eq!(sheet.syntax().serialize_specified(exact).unwrap(), expected);
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(14, 15, expected.len()),
+            CssSerializationLimits::new(14, 15, expected.len()),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(15, 14, expected.len()),
+            CssSerializationLimits::new(15, 14, expected.len()),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
     ] {
-        let error = sheet
-            .syntax()
-            .to_specified_css_with_limits(limits)
-            .unwrap_err();
-        assert_eq!(
-            error.kind(),
-            CssSpecifiedRuleSerializationErrorKind::Resource(kind)
-        );
+        let error = sheet.syntax().serialize_specified(limits).unwrap_err();
+        assert_eq!(error.kind(), kind);
         assert_eq!(error.rule_index(), Some(1));
         assert_eq!(sheet, before);
     }
@@ -2095,11 +2160,7 @@ fn specified_goldens_use_shared_leaf_math_tariffs_and_atomic_three_budget_retry(
         };
         assert_eq!(
             finite
-                .to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    3,
-                    projection,
-                    expected.len()
-                ))
+                .serialize_specified(CssSerializationLimits::new(3, projection, expected.len()))
                 .unwrap(),
             expected
         );

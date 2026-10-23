@@ -25,7 +25,7 @@ fn specified(declaration: &str) -> String {
         .syntax()
         .as_ref()
         .expect("retained declaration")
-        .to_specified_css()
+        .serialize_specified(Default::default())
         .unwrap()
 }
 

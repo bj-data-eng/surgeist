@@ -48,14 +48,11 @@ fn parity(source: &str) -> CssParseReport<CssDeclarationList> {
 fn atomic_bytes(declaration: &CssDeclaration, expected: &str) {
     let before = declaration.clone();
     let components = declaration.value_components().clone();
-    let exact = CssSpecifiedValueSerializationLimits::new(10_000, 10_000, expected.len());
-    assert_eq!(
-        declaration.to_specified_css_with_limits(exact).unwrap(),
-        expected
-    );
+    let exact = CssSerializationLimits::new(10_000, 10_000, expected.len());
+    assert_eq!(declaration.serialize_specified(exact).unwrap(), expected);
     assert_eq!(
         declaration
-            .to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::new(
+            .serialize_specified(CssSerializationLimits::new(
                 10_000,
                 10_000,
                 expected.len() - 1,
@@ -67,14 +64,20 @@ fn atomic_bytes(declaration: &CssDeclaration, expected: &str) {
     assert_eq!(declaration, &before);
     assert!(declaration.same_occurrence(&before));
     assert_eq!(declaration.value_components(), &components);
-    assert_eq!(declaration.to_specified_css().unwrap(), expected);
+    assert_eq!(
+        declaration.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     let reparsed = parity(expected);
     assert!(reparsed.is_clean(), "{:?}", reparsed.diagnostics());
     let [reparsed] = reparsed.syntax().as_slice() else {
         panic!("one complete emitted declaration");
     };
     assert_eq!(reparsed.importance(), declaration.importance());
-    assert_eq!(reparsed.to_specified_css().unwrap(), expected);
+    assert_eq!(
+        reparsed.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
 }
 
 #[test]
@@ -133,34 +136,29 @@ fn twenty_family_repetitions_keep_order_and_use_one_atomic_output_budget() {
         );
         assert_eq!(
             values
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    40, 40, 98
-                ))
+                .serialize_specified(CssSerializationLimits::new(40, 40, 98))
                 .unwrap(),
             TWENTY_CSS,
         );
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(39, 40, 98),
+                CssSerializationLimits::new(39, 40, 98),
                 CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(40, 39, 98),
+                CssSerializationLimits::new(40, 39, 98),
                 CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(40, 40, 97),
+                CssSerializationLimits::new(40, 40, 97),
                 CssSpecifiedValueSerializationErrorKind::ByteLimit,
             ),
         ] {
+            assert_eq!(values.serialize_specified(limits).unwrap_err().kind(), kind);
             assert_eq!(
-                values
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
-                kind
+                values.serialize_specified(Default::default()).unwrap(),
+                TWENTY_CSS
             );
-            assert_eq!(values.serialize_specified().unwrap(), TWENTY_CSS);
         }
         atomic_bytes(
             declaration,
@@ -168,7 +166,9 @@ fn twenty_family_repetitions_keep_order_and_use_one_atomic_output_budget() {
         );
     }
     assert_eq!(
-        report.syntax()[1].to_specified_css().unwrap(),
+        report.syntax()[1]
+            .serialize_specified(Default::default())
+            .unwrap(),
         "width: 2px;"
     );
 }
@@ -194,7 +194,10 @@ fn a_resource_denied_tail_discards_the_whole_twenty_member_declaration_locally()
     assert_eq!(color.known().unwrap().property(), CssKnownProperty::Color);
     assert_eq!(width.known().unwrap().property(), CssKnownProperty::Width);
     assert_eq!(width.position().unwrap().byte_offset().value(), 875);
-    assert_eq!(width.to_specified_css().unwrap(), "width: 2px;");
+    assert_eq!(
+        width.serialize_specified(Default::default()).unwrap(),
+        "width: 2px;"
+    );
     let [diagnostic] = report.diagnostics() else {
         panic!("one closed, locally resource-denied declaration");
     };
@@ -244,7 +247,9 @@ fn string_escapes_and_continuations_keep_decoded_family_identity_in_imported_fon
             assert_eq!(literal.generic_family(), None);
             assert_eq!(generic.generic_family(), Some(CssGenericFontFamily::Serif));
             assert_eq!(
-                families(declaration).serialize_specified().unwrap(),
+                families(declaration)
+                    .serialize_specified(Default::default())
+                    .unwrap(),
                 format!("{canonical}, serif")
             );
         }
@@ -262,7 +267,7 @@ fn string_escapes_and_continuations_keep_decoded_family_identity_in_imported_fon
         assert_eq!(checked.value_components(), &supplied);
         assert_eq!(families(&checked).families()[0].as_str(), decoded);
         assert_eq!(
-            checked.to_specified_css().unwrap(),
+            checked.serialize_specified(Default::default()).unwrap(),
             format!("font-family: {canonical}, serif !important;")
         );
     }
@@ -282,7 +287,8 @@ fn checked_exact_numeric_origins_survive_whole_declaration_output_failure_and_re
             CssSpecifiedNonNegativeLengthPercentage::try_from_component(component.clone()).unwrap();
         assert_eq!(exact.literal_component(), Some(&component));
         assert_eq!(exact.origin(), component.origin());
-        let components = CssComponentValues::try_new(vec![component.clone()]).unwrap();
+        let components =
+            CssComponentValues::try_new(vec![component.clone()], Default::default()).unwrap();
         let declaration = parse_property_value(
             CssPropertyNameRef::Known(CssKnownProperty::Width),
             components.clone(),
@@ -307,10 +313,13 @@ fn checked_exact_numeric_origins_survive_whole_declaration_output_failure_and_re
 
         // A valid prefix cannot make a residual value complete. Supplied
         // components remain reusable; the successful declaration is immutable.
-        let residual = CssComponentValues::try_new(vec![
-            component.clone(),
-            CssComponentValue::try_ident("auto").unwrap(),
-        ])
+        let residual = CssComponentValues::try_new(
+            vec![
+                component.clone(),
+                CssComponentValue::try_ident("auto").unwrap(),
+            ],
+            Default::default(),
+        )
         .unwrap();
         property_rejection(
             parse_property_value(
@@ -321,7 +330,10 @@ fn checked_exact_numeric_origins_survive_whole_declaration_output_failure_and_re
             CssKnownProperty::Width,
         );
         assert_eq!(declaration.value_components(), &components);
-        assert_eq!(declaration.to_specified_css().unwrap(), EXPECTED);
+        assert_eq!(
+            declaration.serialize_specified(Default::default()).unwrap(),
+            EXPECTED
+        );
     }
     let negative = CssComponentValue::try_dimension("-1e-999", "px").unwrap();
     assert_eq!(
@@ -333,7 +345,7 @@ fn checked_exact_numeric_origins_survive_whole_declaration_output_failure_and_re
     property_rejection(
         parse_property_value(
             CssPropertyNameRef::Known(CssKnownProperty::Width),
-            CssComponentValues::try_new(vec![negative]).unwrap(),
+            CssComponentValues::try_new(vec![negative], Default::default()).unwrap(),
             CssImportance::Normal,
         ),
         CssKnownProperty::Width,
@@ -342,7 +354,10 @@ fn checked_exact_numeric_origins_survive_whole_declaration_output_failure_and_re
     let [width, height] = report.syntax().as_slice() else {
         panic!("the exact negative is rejected rather than underflowed to zero");
     };
-    assert_eq!(width.to_specified_css().unwrap(), EXPECTED);
+    assert_eq!(
+        width.serialize_specified(Default::default()).unwrap(),
+        EXPECTED
+    );
     assert_eq!(height.known().unwrap().property(), CssKnownProperty::Height);
     let [diagnostic] = report.diagnostics() else {
         panic!("one rejected range atom");
@@ -402,11 +417,17 @@ fn a_greedy_imported_position_stops_before_the_whole_angle_function_and_rejects_
             let CssVerticalPosition::BottomOffset(bottom) = position.vertical() else {
                 panic!("bottom edge offset");
             };
-            assert_eq!(right.serialize_specified().unwrap(), "1px");
-            assert_eq!(bottom.serialize_specified().unwrap(), "2%");
+            assert_eq!(
+                right.serialize_specified(Default::default()).unwrap(),
+                "1px"
+            );
+            assert_eq!(
+                bottom.serialize_specified(Default::default()).unwrap(),
+                "2%"
+            );
             assert!(ray.angle().calculation().is_some());
             assert_eq!(
-                ray.serialize_specified().unwrap(),
+                ray.serialize_specified(Default::default()).unwrap(),
                 "ray(calc(270deg) contain at right 1px bottom 2%)"
             );
             let original_source = if declaration.position().is_some() {

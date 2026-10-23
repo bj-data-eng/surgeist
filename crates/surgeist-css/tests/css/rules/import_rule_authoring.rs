@@ -37,7 +37,7 @@ fn import_layer_name_preserves_decoded_identifier_components() {
         let name = CssLayerName::try_new(["outer", component]).unwrap();
         assert_eq!(name.components(), &["outer", component]);
         assert_eq!(
-            name.serialize_specified().unwrap(),
+            name.serialize_specified(Default::default()).unwrap(),
             format!("outer.{spelling}")
         );
     }

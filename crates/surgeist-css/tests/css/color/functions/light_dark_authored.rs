@@ -39,9 +39,17 @@ fn two_colors_preserve_order_case_normalization_and_symbolic_branches() {
         ),
     ] {
         let value = color(source);
-        assert_eq!(value.to_specified_css().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_ne!(value, color("red"));
-        assert_eq!(color(expected).to_specified_css().unwrap(), expected);
+        assert_eq!(
+            color(expected)
+                .serialize_specified(Default::default())
+                .unwrap(),
+            expected
+        );
     }
     assert_ne!(
         color("light-dark(red, blue)"),
@@ -66,7 +74,9 @@ fn ordinary_child_rgb_hsl_and_calculated_alpha_have_explicit_canonical_values() 
         ),
     ] {
         assert_eq!(
-            color(source).to_specified_css().unwrap(),
+            color(source)
+                .serialize_specified(Default::default())
+                .unwrap(),
             expected,
             "{source}"
         );
@@ -94,7 +104,9 @@ fn light_dark_children_use_standalone_serialization_under_origin_and_mix_roles()
         ),
     ] {
         assert_eq!(
-            color(source).to_specified_css().unwrap(),
+            color(source)
+                .serialize_specified(Default::default())
+                .unwrap(),
             expected,
             "{source}"
         );
@@ -139,13 +151,24 @@ fn two_image_branches_preserve_none_url_src_gradients_and_nested_pairs() {
         ),
     ] {
         let value = images(source);
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         let image = &value.images()[0];
         assert_ne!(image, &CssImageValue::None);
         let checked =
             CssImage::try_new(image.clone()).expect("LightDark none/none is a real image");
-        assert_eq!(checked.serialize_specified().unwrap(), expected);
-        assert_eq!(images(expected).serialize_specified().unwrap(), expected);
+        assert_eq!(
+            checked.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
+        assert_eq!(
+            images(expected)
+                .serialize_specified(Default::default())
+                .unwrap(),
+            expected
+        );
     }
     assert_ne!(
         images("light-dark(none, url(a.svg))"),
@@ -258,7 +281,7 @@ fn selected_color_consumers_admit_light_dark_without_selecting_a_branch() {
     }
     assert_eq!(
         images("linear-gradient(light-dark(red, blue), green)")
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "linear-gradient(light-dark(red, blue), green)"
     );
@@ -310,7 +333,10 @@ fn background_disambiguates_the_two_forms_and_projects_both_actual_values() {
             }
             _ => "light-dark(none, url(\"a.svg\")), none",
         };
-        assert_eq!(image.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            image.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         let color = values
             .items()
             .iter()
@@ -320,7 +346,10 @@ fn background_disambiguates_the_two_forms_and_projects_both_actual_values() {
         else {
             panic!("color")
         };
-        assert_eq!(color.to_specified_css().unwrap(), "light-dark(red, blue)");
+        assert_eq!(
+            color.serialize_specified(Default::default()).unwrap(),
+            "light-dark(red, blue)"
+        );
     }
     let value = background("light-dark(red, blue)");
     assert!(value.layers()[0].image().is_none());
@@ -402,18 +431,24 @@ fn parsed_and_programmatic_components_keep_origin_importance_and_raw_identity() 
         parsed.value_components().items()[0].origin(),
         CssValueOrigin::Parsed(_)
     ));
-    let graph = CssComponentValues::try_new(vec![
-        CssComponentValue::try_function(
-            "light-dark",
-            CssComponentValues::try_new(vec![
-                CssComponentValue::try_ident("red").unwrap(),
-                CssComponentValue::try_token(",").unwrap(),
-                CssComponentValue::try_ident("blue").unwrap(),
-            ])
+    let graph = CssComponentValues::try_new(
+        vec![
+            CssComponentValue::try_function(
+                "light-dark",
+                CssComponentValues::try_new(
+                    vec![
+                        CssComponentValue::try_ident("red").unwrap(),
+                        CssComponentValue::try_token(",").unwrap(),
+                        CssComponentValue::try_ident("blue").unwrap(),
+                    ],
+                    Default::default(),
+                )
+                .unwrap(),
+            )
             .unwrap(),
-        )
-        .unwrap(),
-    ])
+        ],
+        Default::default(),
+    )
     .unwrap();
     let programmatic = parse_property_value(
         CssPropertyNameRef::Known(CssKnownProperty::Color),
@@ -436,7 +471,10 @@ fn parsed_and_programmatic_components_keep_origin_importance_and_raw_identity() 
         let CssLonghandValueRef::Color(value) = value.ordinary_value().unwrap().view() else {
             panic!("color terminal")
         };
-        assert_eq!(value.to_specified_css().unwrap(), "light-dark(red, blue)");
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            "light-dark(red, blue)"
+        );
         assert_eq!(source, before);
         assert_eq!(source.importance(), CssImportance::Important);
     }
@@ -535,14 +573,20 @@ fn normalization_retains_color_and_image_order_values_and_sources() {
         );
         match items.items()[0].ordinary_value().unwrap().view() {
             CssLonghandValueRef::Color(v) => {
-                assert_eq!(v.to_specified_css().unwrap(), "light-dark(red, blue)")
+                assert_eq!(
+                    v.serialize_specified(Default::default()).unwrap(),
+                    "light-dark(red, blue)"
+                )
             }
             CssLonghandValueRef::BackgroundImage(v) => assert_eq!(
-                v.serialize_specified().unwrap(),
+                v.serialize_specified(Default::default()).unwrap(),
                 "light-dark(none, url(\"a.svg\"))"
             ),
             CssLonghandValueRef::MaskImage(v) => {
-                assert_eq!(v.serialize_specified().unwrap(), "light-dark(none, none)")
+                assert_eq!(
+                    v.serialize_specified(Default::default()).unwrap(),
+                    "light-dark(none, none)"
+                )
             }
             _ => panic!("expected normalized value"),
         }
@@ -556,36 +600,26 @@ fn color_pair_charges_wrapper_and_both_siblings_in_one_resource_context() {
     let expected = "light-dark(red, blue)";
     assert_eq!(
         value
-            .to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::new(
-                3,
-                3,
-                expected.len()
-            ))
+            .serialize_specified(CssSerializationLimits::new(3, 3, expected.len()))
             .unwrap(),
         expected
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(2, 3, expected.len()),
+            CssSerializationLimits::new(2, 3, expected.len()),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(3, 2, expected.len()),
+            CssSerializationLimits::new(3, 2, expected.len()),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(3, 3, expected.len() - 1),
+            CssSerializationLimits::new(3, 3, expected.len() - 1),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
         let before = value.clone();
-        assert_eq!(
-            value
-                .to_specified_css_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            kind
-        );
+        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
         assert_eq!(value, before);
     }
 }
@@ -597,36 +631,26 @@ fn image_pairs_and_list_siblings_share_input_projection_and_punctuation_budgets(
     // list + two wrappers + four none leaves = seven visited nodes.
     assert_eq!(
         value
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                7,
-                7,
-                expected.len()
-            ))
+            .serialize_specified(CssSerializationLimits::new(7, 7, expected.len()))
             .unwrap(),
         expected
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(6, 7, expected.len()),
+            CssSerializationLimits::new(6, 7, expected.len()),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(7, 6, expected.len()),
+            CssSerializationLimits::new(7, 6, expected.len()),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(7, 7, expected.len() - 1),
+            CssSerializationLimits::new(7, 7, expected.len() - 1),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
         let before = value.clone();
-        assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            kind
-        );
+        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
         assert_eq!(value, before);
     }
 }
@@ -637,21 +661,13 @@ fn utf8_image_bytes_and_background_prefixes_have_exact_atomic_limits() {
     let expected = "light-dark(url(\"café.svg\"), none)";
     assert_eq!(
         value
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                100,
-                100,
-                expected.len()
-            ))
+            .serialize_specified(CssSerializationLimits::new(100, 100, expected.len()))
             .unwrap(),
         expected
     );
     assert_eq!(
         value
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                100,
-                100,
-                expected.len() - 1
-            ))
+            .serialize_specified(CssSerializationLimits::new(100, 100, expected.len() - 1))
             .unwrap_err()
             .kind(),
         CssSpecifiedValueSerializationErrorKind::ByteLimit
@@ -661,21 +677,13 @@ fn utf8_image_bytes_and_background_prefixes_have_exact_atomic_limits() {
     let expected = "light-dark(none, none) left top / cover no-repeat light-dark(red, blue)";
     assert_eq!(
         value
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                100,
-                100,
-                expected.len()
-            ))
+            .serialize_specified(CssSerializationLimits::new(100, 100, expected.len()))
             .unwrap(),
         expected
     );
     assert_eq!(
         value
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                100,
-                100,
-                expected.len() - 1
-            ))
+            .serialize_specified(CssSerializationLimits::new(100, 100, expected.len() - 1))
             .unwrap_err()
             .kind(),
         CssSpecifiedValueSerializationErrorKind::ByteLimit
@@ -701,10 +709,16 @@ fn nested_color_and_image_grammar_obeys_the_shared_256_level_ceiling() {
         .expect("LightDark accepts the full structural ceiling");
         match source.known().unwrap().property_value().unwrap() {
             CssKnownPropertyValueRef::Color(v) => {
-                assert_eq!(v.value().to_specified_css().unwrap(), text)
+                assert_eq!(
+                    v.value().serialize_specified(Default::default()).unwrap(),
+                    text
+                )
             }
             CssKnownPropertyValueRef::BackgroundImage(v) => {
-                assert_eq!(v.images().serialize_specified().unwrap(), text)
+                assert_eq!(
+                    v.images().serialize_specified(Default::default()).unwrap(),
+                    text
+                )
             }
             _ => panic!("selected deep value"),
         }
@@ -733,7 +747,13 @@ fn full_image_subtree_nesting_errors_survive_ambiguous_consumer_retries() {
     }
     let components = parse_component_values(&text).expect("raw graph fits its ceiling");
     assert_eq!(components.nesting_depth(), 256);
-    assert_eq!(components.serialize().unwrap().as_css(), text);
+    assert_eq!(
+        components
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        text
+    );
     let mut leaf = &components.items()[0];
     for _ in 0..256 {
         let CssComponentValueRef::Function(function) = leaf.view() else {
@@ -796,8 +816,16 @@ fn repeated_serialization_preserves_authored_graphs_including_nested_math_and_im
     let expected = "light-dark(linear-gradient(light-dark(red, blue) calc(5% + 1px), transparent), light-dark(src(\"#id\"), none))";
     let before = value.clone();
     for _ in 0..3 {
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_eq!(value, before);
     }
-    assert_eq!(images(expected).serialize_specified().unwrap(), expected);
+    assert_eq!(
+        images(expected)
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
 }

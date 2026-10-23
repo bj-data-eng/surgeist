@@ -3,49 +3,19 @@
 
 use crate::specified_rule_serialization::SpecifiedRuleWriter;
 use crate::{
-    CssBlendModeList, CssCaretColor, CssContain, CssContainComponent,
-    CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits,
+    CssBlendModeList, CssCaretColor, CssContain, CssContainComponent, CssSerializationError,
 };
 
-type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
+type Result<T> = std::result::Result<T, CssSerializationError>;
 
-macro_rules! public_serialization {
-    ($ty:ty, $description:literal) => {
-        impl $ty {
-            #[doc = $description]
-            pub fn serialize_specified(&self) -> Result<String> {
-                self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-            }
-
-            /// Emits complete CSS with one cumulative input, projection and byte budget.
-            /// Failure returns no partial output and leaves authored values unchanged.
-            pub fn serialize_specified_with_limits(
-                &self,
-                limits: CssSpecifiedValueSerializationLimits,
-            ) -> Result<String> {
-                let mut writer = SpecifiedRuleWriter::new(limits);
-                self.append_to_rule_writer(&mut writer)?;
-                Ok(writer.css)
-            }
-        }
-    };
-}
-
-public_serialization!(
+crate::specified_rule_serialization::specified_serialization!(
     CssCaretColor,
-    "Emits `auto` or the child color's specified CSS without resolving the caret color. The keyword charges one node in each budget; the Color branch retains the child's accounting without an extra carrier node."
-);
-public_serialization!(
     CssContain,
-    "Emits Containment 2 syntax in size/layout/style/paint grammar order, preserving `strict` and `content`. A keyword charges one node in each budget; a component list charges one aggregate plus each keyword. Authored component order remains unchanged."
-);
-public_serialization!(
-    CssBlendModeList,
-    "Emits every represented blend mode in its authored comma-list order, including duplicates. The list charges one aggregate plus each primitive in both node budgets; punctuation charges only final bytes."
+    CssBlendModeList
 );
 
-impl CssCaretColor {
-    pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+impl crate::specified_rule_serialization::SpecifiedProvider for CssCaretColor {
+    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         match self {
             Self::Auto => writer.keyword("auto"),
             // The enum is a transparent carrier: Color owns its node accounting.
@@ -54,8 +24,8 @@ impl CssCaretColor {
     }
 }
 
-impl CssContain {
-    pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+impl crate::specified_rule_serialization::SpecifiedProvider for CssContain {
+    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         match self {
             Self::None => writer.keyword("none"),
             Self::Strict => writer.keyword("strict"),
@@ -83,8 +53,8 @@ impl CssContain {
     }
 }
 
-impl CssBlendModeList {
-    pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+impl crate::specified_rule_serialization::SpecifiedProvider for CssBlendModeList {
+    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         writer.node()?;
         writer.comma_separated(self.modes(), |writer, mode| {
             mode.append_to_rule_writer(writer)
@@ -96,9 +66,10 @@ impl CssBlendModeList {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::CssSerializationLimits as Limits;
     use crate::CssSpecifiedValueSerializationErrorKind as Kind;
+    use crate::specified_rule_serialization::SpecifiedProvider as _;
     use crate::{CssBlendMode, CssColor, CssContainComponentList};
-    use CssSpecifiedValueSerializationLimits as Limits;
 
     fn caret(writer: &mut SpecifiedRuleWriter) -> Result<()> {
         CssCaretColor::Color(Box::new(CssColor::transparent())).append_to_rule_writer(writer)
@@ -282,7 +253,13 @@ mod tests {
         assert!(writer.css.is_empty());
         assert!(!writer.context.output_suppressed());
         assert_eq!(value.caret(), &before);
-        assert_eq!(value.caret().serialize_specified().unwrap(), "rgb(1, 2, 3)");
+        assert_eq!(
+            value
+                .caret()
+                .serialize_specified(Default::default())
+                .unwrap(),
+            "rgb(1, 2, 3)"
+        );
     }
 
     #[test]

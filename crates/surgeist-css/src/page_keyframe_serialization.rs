@@ -9,14 +9,15 @@
 //! Calculated selectors also spend their shared percentage provider's input and
 //! projection work without resetting the caller's cumulative limits.
 
+use crate::specified_rule_serialization::SpecifiedProvider as _;
 use crate::{
     CssImportance, CssKeyframeBlock, CssKeyframeSelector, CssKeyframesName, CssKeyframesRule,
-    CssPageRule, CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationErrorKind,
+    CssPageRule, CssSerializationError, CssSpecifiedValueSerializationErrorKind,
     declaration_serialization::append_authored_declaration,
     numeric_formatting::format_projected_number, specified_rule_serialization::SpecifiedRuleWriter,
 };
 
-type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
+type Result<T> = std::result::Result<T, CssSerializationError>;
 
 impl SpecifiedRuleWriter {
     /// Appends one page payload after the graph has charged its logical rule.
@@ -184,7 +185,7 @@ impl SpecifiedRuleWriter {
                     .remaining_bytes()
                     .checked_sub(1)
                     .ok_or_else(|| {
-                        CssSpecifiedValueSerializationError::new(
+                        CssSerializationError::new(
                             CssSpecifiedValueSerializationErrorKind::ByteLimit,
                         )
                     })?;
@@ -204,7 +205,7 @@ impl SpecifiedRuleWriter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{CssRule, CssSpecifiedValueSerializationLimits as Limits, parse_sheet};
+    use crate::{CssRule, CssSerializationLimits as Limits, parse_sheet};
     use CssSpecifiedValueSerializationErrorKind as Kind;
 
     fn append_rule(writer: &mut SpecifiedRuleWriter, rule: &CssRule) -> Result<()> {

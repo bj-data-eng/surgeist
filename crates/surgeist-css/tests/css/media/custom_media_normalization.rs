@@ -1,10 +1,9 @@
 //! Authored custom-media definitions remain ordered payloads, not evaluated aliases.
 use crate::css::support::authored_syntax::{assert_diagnostics, parsed_origin};
 use surgeist_css::{
-    CssCustomMediaBody, CssCustomMediaSerializationError, CssErrorCode, CssMediaSerializationError,
-    CssNormalizationErrorKind, CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
-    CssRecoveryAction, CssRule, CssRuleContextKindRef, normalize_report, normalize_sheet,
-    normalize_sheet_with_limits, parse_sheet,
+    CssCustomMediaBody, CssErrorCode, CssNormalizationErrorKind, CssNormalizationLimits,
+    CssNormalizationResource, CssNormalizedItem, CssRecoveryAction, CssRule, CssRuleContextKindRef,
+    normalize_report, normalize_sheet, normalize_sheet_with_limits, parse_sheet,
 };
 
 #[test]
@@ -116,13 +115,12 @@ fn normalized_report_preserves_recovered_definition_and_original_diagnostics() {
         panic!("authored definition");
     };
     assert_eq!(definition, original);
-    let Err(CssCustomMediaSerializationError::Media(CssMediaSerializationError::RecoveredNever {
-        origin,
-    })) = definition.serialize()
-    else {
-        panic!("recovered member: {:?}", definition.serialize())
-    };
-    let origin = parsed_origin(&origin);
+    let error = definition.serialize_tokens(Default::default()).unwrap_err();
+    assert!(
+        crate::css::support::is_recovered_media_failure(&error),
+        "recovered member: {error:?}"
+    );
+    let origin = parsed_origin(error.origin().expect("recovered member origin"));
     assert_eq!(origin.source().as_str(), source);
     assert_eq!(origin.span().start().byte_offset().value(), malformed);
 }

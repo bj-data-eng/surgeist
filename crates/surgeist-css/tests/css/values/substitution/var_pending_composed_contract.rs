@@ -46,7 +46,14 @@ fn later_var_commas_are_retained_fallback_tokens_in_known_and_custom_values() {
                 panic!("retained var function")
             };
             assert_eq!(function.name(), "var");
-            assert_eq!(function.values().serialize().unwrap().as_css(), arguments);
+            assert_eq!(
+                function
+                    .values()
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
+                arguments
+            );
             assert_eq!(
                 function
                     .values()
@@ -156,7 +163,11 @@ fn strict_pending_reentry_retains_original_priority_source_after_failed_replacem
         VALUE
     );
     assert_eq!(
-        source.value_components().serialize().unwrap().as_css(),
+        source
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         VALUE
     );
     let origin = source.parsed_value().unwrap();
@@ -208,7 +219,10 @@ fn strict_pending_reentry_retains_original_priority_source_after_failed_replacem
         let CssLonghandValueRef::Display(display) = value.ordinary_value().unwrap().view() else {
             panic!("actual replacement display")
         };
-        assert_eq!(display.serialize_specified().unwrap(), "block");
+        assert_eq!(
+            display.serialize_specified(Default::default()).unwrap(),
+            "block"
+        );
         assert!(value.source().same_occurrence(source));
         assert_eq!(value.source().importance(), CssImportance::Important);
         assert_eq!(
@@ -219,7 +233,7 @@ fn strict_pending_reentry_retains_original_priority_source_after_failed_replacem
             value
                 .source()
                 .value_components()
-                .serialize()
+                .serialize_tokens(Default::default())
                 .unwrap()
                 .as_css(),
             VALUE

@@ -9,7 +9,11 @@ use crate::css::support::rules::sole_keyframes as keyframes;
 use surgeist_css::*;
 
 fn calculation(source: &str) -> CssPercentageCalculation {
-    CssPercentageCalculation::try_from_components(parse_component_values(source).unwrap()).unwrap()
+    CssPercentageCalculation::try_from_components(
+        parse_component_values(source).unwrap(),
+        Default::default(),
+    )
+    .unwrap()
 }
 
 fn percentage(source: &str) -> CssKeyframePercent {
@@ -118,9 +122,12 @@ fn wrong_numeric_types_and_malformed_functions_fail_checked_percentage_construct
         ("min()", Failure::Arity),
     ] {
         assert_eq!(
-            CssPercentageCalculation::try_from_components(parse_component_values(source).unwrap())
-                .unwrap_err()
-                .kind(),
+            CssPercentageCalculation::try_from_components(
+                parse_component_values(source).unwrap(),
+                Default::default()
+            )
+            .unwrap_err()
+            .kind(),
             &expected,
             "{source}"
         );
@@ -130,7 +137,8 @@ fn wrong_numeric_types_and_malformed_functions_fail_checked_percentage_construct
     // type, so the sum has incompatible types.
     assert_eq!(
         CssPercentageCalculation::try_from_components(
-            parse_component_values("calc(25% + 1px)").unwrap()
+            parse_component_values("calc(25% + 1px)").unwrap(),
+            Default::default()
         )
         .unwrap_err()
         .kind(),
@@ -142,19 +150,28 @@ fn wrong_numeric_types_and_malformed_functions_fail_checked_percentage_construct
 fn a_percentage_group_is_rejected_before_keyframe_construction() {
     let components = parse_component_values("(25%)").unwrap();
     let before = components.clone();
-    let error = CssPercentageCalculation::try_from_components(components.clone()).unwrap_err();
+    let error =
+        CssPercentageCalculation::try_from_components(components.clone(), Default::default())
+            .unwrap_err();
     assert_eq!(
         error.kind(),
         &CssNumericConstructionErrorKind::RootDomainMismatch
     );
     assert_eq!(components, before);
-    assert_eq!(components.serialize().unwrap().as_css(), "(25%)");
+    assert_eq!(
+        components
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        "(25%)"
+    );
 }
 
 #[test]
 fn standalone_checked_percentage_functions_reject_implicit_closures() {
     let components = parse_component_values("calc(25%").unwrap();
-    let error = CssPercentageCalculation::try_from_components(components).unwrap_err();
+    let error =
+        CssPercentageCalculation::try_from_components(components, Default::default()).unwrap_err();
     assert_eq!(
         error.kind(),
         &CssNumericConstructionErrorKind::RecoveredComponent
@@ -187,9 +204,12 @@ fn checked_constructors_refuse_a_recovered_parsed_percentage_child() {
         &CssNumericConstructionErrorKind::RecoveredComponent
     );
     assert_eq!(
-        CssPercentageCalculation::try_from_components(original.components().clone())
-            .unwrap_err()
-            .kind(),
+        CssPercentageCalculation::try_from_components(
+            original.components().clone(),
+            Default::default()
+        )
+        .unwrap_err()
+        .kind(),
         &CssNumericConstructionErrorKind::RecoveredComponent
     );
     // Refusal leaves the parsed child and its implicit origin intact.
@@ -272,7 +292,7 @@ fn calculated_percentage_equality_preserves_authored_source_provenance() {
             .calculation()
             .unwrap()
             .components()
-            .serialize()
+            .serialize_tokens(Default::default())
             .unwrap()
             .as_css(),
         "calc(25%)"
@@ -285,10 +305,16 @@ fn calculated_selector_output_keeps_math_form_and_authored_out_of_range_coeffici
     let input = sheet(source);
     let before = input.clone();
     let expected = "@keyframes k { calc(120%) { } calc(-10%) { } calc(25%) { } 100% { } }";
-    assert_eq!(input.to_specified_css().unwrap(), expected);
+    assert_eq!(
+        input.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     assert_eq!(input, before);
     let reentered = validate_sheet(expected).unwrap();
-    assert_eq!(reentered.to_specified_css().unwrap(), expected);
+    assert_eq!(
+        reentered.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     assert_eq!(keyframes(&reentered).blocks().len(), 4);
     for block in &keyframes(&reentered).blocks()[..3] {
         assert!(
@@ -333,30 +359,27 @@ fn calculated_graph_output_shares_exact_cumulative_limits_and_remains_reusable_a
     let expected = "@keyframes k { calc(120%) { } calc(-10%) { } }";
     // Sheet/rule/name cost three. Each block/list/selector/declaration-list costs four.
     // Each calculation visits two input nodes and creates one projected percentage leaf.
-    let exact = CssSpecifiedValueSerializationLimits::new(15, 13, expected.len());
-    assert_eq!(input.to_specified_css_with_limits(exact).unwrap(), expected);
+    let exact = CssSerializationLimits::new(15, 13, expected.len());
+    assert_eq!(input.serialize_specified(exact).unwrap(), expected);
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(14, 13, expected.len()),
+            CssSerializationLimits::new(14, 13, expected.len()),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(15, 12, expected.len()),
+            CssSerializationLimits::new(15, 12, expected.len()),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(15, 13, expected.len() - 1),
+            CssSerializationLimits::new(15, 13, expected.len() - 1),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
-        let error = input.to_specified_css_with_limits(limits).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            CssSpecifiedRuleSerializationErrorKind::Resource(kind)
-        );
+        let error = input.serialize_specified(limits).unwrap_err();
+        assert_eq!(error.kind(), kind);
         assert_eq!(error.rule_index(), Some(0));
         assert_eq!(input, before);
-        assert_eq!(input.to_specified_css_with_limits(exact).unwrap(), expected);
+        assert_eq!(input.serialize_specified(exact).unwrap(), expected);
     }
     assert_eq!(input, before);
 }
@@ -380,7 +403,10 @@ fn unrepresentable_constructed_string_name_fails_output_without_changing_identit
     let names =
         CssAnimationNameList::try_new(vec![CssAnimationName::String(name.clone())]).unwrap();
     assert_eq!(
-        names.serialize_specified().unwrap_err().kind(),
+        names
+            .serialize_specified(Default::default())
+            .unwrap_err()
+            .kind(),
         CssSpecifiedValueSerializationErrorKind::UnrepresentableValue
     );
     assert!(matches!(names.names(), [CssAnimationName::String(retained)] if retained == &name));

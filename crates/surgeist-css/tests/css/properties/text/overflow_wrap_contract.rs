@@ -62,36 +62,32 @@ fn direct_keyword_serialization_is_canonical_and_budgeted() {
         (CssOverflowWrap::BreakWord, "break-word"),
         (CssOverflowWrap::Anywhere, "anywhere"),
     ] {
-        assert_eq!(value.serialize_specified().unwrap(), spelling);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            spelling
+        );
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    1,
-                    1,
-                    spelling.len()
-                ))
+                .serialize_specified(CssSerializationLimits::new(1, 1, spelling.len()))
                 .unwrap(),
             spelling
         );
         for (limits, expected) in [
             (
-                CssSpecifiedValueSerializationLimits::new(0, 1, spelling.len()),
+                CssSerializationLimits::new(0, 1, spelling.len()),
                 CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 0, spelling.len()),
+                CssSerializationLimits::new(1, 0, spelling.len()),
                 CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 1, spelling.len() - 1),
+                CssSerializationLimits::new(1, 1, spelling.len() - 1),
                 CssSpecifiedValueSerializationErrorKind::ByteLimit,
             ),
         ] {
             assert_eq!(
-                value
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                value.serialize_specified(limits).unwrap_err().kind(),
                 expected
             );
         }

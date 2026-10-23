@@ -137,7 +137,9 @@ fn serialized_names_roundtrip_decoded_names_and_all_authored_prefixes() {
                     &context,
                 )
                 .unwrap();
-                let serialized = name.serialize_with_limit(usize::MAX).unwrap();
+                let serialized = name
+                    .serialize_tokens(crate::css::support::byte_limits(usize::MAX))
+                    .unwrap();
                 let source = format!("{}.mark", serialized.as_css());
                 let report = parse_selector(&source, &context);
                 assert!(report.is_clean(), "{source}: {report:?}");
@@ -151,7 +153,9 @@ fn serialized_names_roundtrip_decoded_names_and_all_authored_prefixes() {
                     &context,
                 )
                 .unwrap();
-                let serialized = attribute.serialize_with_limit(usize::MAX).unwrap();
+                let serialized = attribute
+                    .serialize_tokens(crate::css::support::byte_limits(usize::MAX))
+                    .unwrap();
                 let source = format!("[{}]", serialized.as_css());
                 let report = parse_selector(&source, &context);
                 assert!(report.is_clean(), "{source}: {report:?}");
@@ -164,7 +168,9 @@ fn serialized_names_roundtrip_decoded_names_and_all_authored_prefixes() {
                 assert_eq!(parsed.qualified_name(), &attribute);
             }
             let universal = CssQualifiedSelectorName::try_universal(prefix, &context).unwrap();
-            let serialized = universal.serialize_with_limit(usize::MAX).unwrap();
+            let serialized = universal
+                .serialize_tokens(crate::css::support::byte_limits(usize::MAX))
+                .unwrap();
             let report = parse_selector(serialized.as_css(), &context);
             assert!(report.is_clean(), "{report:?}");
             let Some(CssSelector::Compound(compound)) = report.syntax() else {
@@ -192,24 +198,37 @@ fn name_serialization_bounds_complete_escaped_output_without_fabricating_source_
         )
         .unwrap();
         for serialized in [
-            name.serialize_with_limit(usize::MAX).unwrap(),
-            attribute.serialize_with_limit(usize::MAX).unwrap(),
+            name.serialize_tokens(crate::css::support::byte_limits(usize::MAX))
+                .unwrap(),
+            attribute
+                .serialize_tokens(crate::css::support::byte_limits(usize::MAX))
+                .unwrap(),
         ] {
             let bytes = serialized.as_css().len();
             assert_eq!(
-                name.serialize_with_limit(bytes).unwrap().as_css(),
+                name.serialize_tokens(crate::css::support::byte_limits(bytes))
+                    .unwrap()
+                    .as_css(),
                 serialized.as_css()
             );
             assert_eq!(
-                attribute.serialize_with_limit(bytes).unwrap().as_css(),
+                attribute
+                    .serialize_tokens(crate::css::support::byte_limits(bytes))
+                    .unwrap()
+                    .as_css(),
                 serialized.as_css()
             );
             for limit in [0, bytes - 1] {
-                let error = name.serialize_with_limit(limit).unwrap_err();
+                let error = name
+                    .serialize_tokens(crate::css::support::byte_limits(limit))
+                    .unwrap_err();
                 assert_eq!(error.kind(), CssComponentValueErrorKind::ByteLimit);
                 assert_eq!(error.origin(), &CssValueOrigin::Programmatic);
                 assert_eq!(
-                    attribute.serialize_with_limit(limit).unwrap_err().kind(),
+                    attribute
+                        .serialize_tokens(crate::css::support::byte_limits(limit))
+                        .unwrap_err()
+                        .kind(),
                     CssComponentValueErrorKind::ByteLimit
                 );
             }
@@ -244,10 +263,19 @@ fn literal_identifier_star_and_universal_remain_distinct() {
     let universal = CssQualifiedSelectorName::try_universal(prefix, &context).unwrap();
     assert_ne!(identifier, universal);
     assert_eq!(
-        identifier.serialize_with_limit(10).unwrap().as_css(),
+        identifier
+            .serialize_tokens(crate::css::support::byte_limits(10))
+            .unwrap()
+            .as_css(),
         r"*|\*"
     );
-    assert_eq!(universal.serialize_with_limit(10).unwrap().as_css(), "*|*");
+    assert_eq!(
+        universal
+            .serialize_tokens(crate::css::support::byte_limits(10))
+            .unwrap()
+            .as_css(),
+        "*|*"
+    );
     for invalid in ["", "\0", "a\0b"] {
         assert_eq!(
             CssIdent::try_new(invalid).unwrap_err().kind(),

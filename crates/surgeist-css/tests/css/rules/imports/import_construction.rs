@@ -2,17 +2,18 @@
 //! exact component provenance, and strict admission independent of loading.
 use crate::css::support::rules::import_from_components as construct;
 use surgeist_css::{
-    CssCalculationExpressionRef, CssComponentValue, CssComponentValueErrorKind,
-    CssComponentValueLimits, CssComponentValueRef, CssComponentValues, CssImportConstructionError,
-    CssImportLayer, CssImportRule, CssImportSerializationError, CssImportTarget,
+    CssCalculationExpressionRef, CssComponentValue, CssComponentValueError,
+    CssComponentValueErrorKind, CssComponentValueLimits, CssComponentValueRef, CssComponentValues,
+    CssImportConstructionError, CssImportLayer, CssImportRule, CssImportTarget,
     CssKnownPropertyValueRef, CssMediaConditionKind, CssMediaConstructionError,
     CssMediaFeatureQuery, CssMediaQuery, CssMediaRangeRef, CssMediaType, CssNamespaceConstraint,
-    CssNamespaceContext, CssOpacityValue, CssRule, CssSelector, CssSerializedOrigin,
-    CssSupportsConditionKind, CssValueOrigin, parse_component_values, parse_sheet,
+    CssNamespaceContext, CssOpacityValue, CssRule, CssSelector, CssSerializationError,
+    CssSerializedOrigin, CssSpecifiedValueSerializationErrorKind, CssSupportsConditionKind,
+    CssValueOrigin, parse_component_values, parse_sheet,
 };
 
 fn values(items: Vec<CssComponentValue>) -> CssComponentValues {
-    CssComponentValues::try_new(items).unwrap()
+    CssComponentValues::try_new(items, Default::default()).unwrap()
 }
 fn token(source: &str) -> CssComponentValue {
     CssComponentValue::try_token(source).unwrap()
@@ -35,7 +36,10 @@ fn opaque(import: &CssImportRule, expected: &str) {
     let CssMediaConditionKind::GeneralEnclosed(value) = condition.kind() else {
         panic!("opaque media")
     };
-    assert_eq!(value.serialize().unwrap().as_css(), expected);
+    assert_eq!(
+        value.serialize_tokens(Default::default()).unwrap().as_css(),
+        expected
+    );
 }
 
 #[test]
@@ -52,7 +56,13 @@ fn whole_rule_admission_requires_one_import_and_an_explicit_terminator() {
         assert!(import.layer().is_none());
         assert!(import.supports().is_none());
         assert!(import.media().is_none());
-        assert_eq!(import.serialize().unwrap().as_css(), "@import 'x';");
+        assert_eq!(
+            import
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            "@import 'x';"
+        );
         let CssValueOrigin::Parsed(origin) = import.origin() else {
             panic!("at-keyword origin")
         };
@@ -78,7 +88,8 @@ fn whole_rule_admission_requires_one_import_and_an_explicit_terminator() {
             matches!(
                 CssImportRule::try_from_components(
                     parse_component_values(source).unwrap(),
-                    &CssNamespaceContext::default()
+                    &CssNamespaceContext::default(),
+                    Default::default(),
                 ),
                 Err(CssImportConstructionError::InvalidRuleGrammar { .. })
             ),
@@ -116,7 +127,13 @@ fn empty_and_whitespace_targets_remain_authored_values_without_loading() {
         assert!(
             matches!(import.media().unwrap().queries(), [CssMediaQuery::Typed(query)] if query.media_type() == CssMediaType::Print)
         );
-        assert_eq!(import.serialize().unwrap().as_css(), source);
+        assert_eq!(
+            import
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            source
+        );
     }
 }
 
@@ -145,7 +162,7 @@ fn specific_optional_clauses_win_only_when_the_complete_derivation_matches() {
             .supports()
             .unwrap()
             .condition()
-            .serialize()
+            .serialize_tokens(Default::default())
             .unwrap()
             .as_css(),
         "(display:grid)"
@@ -222,6 +239,7 @@ fn malformed_media_rejects_the_whole_import_instead_of_retaining_never_members()
         let error = CssImportRule::try_from_components(
             parse_component_values(&format!("@import 'x' {source};")).unwrap(),
             &CssNamespaceContext::default(),
+            Default::default(),
         )
         .unwrap_err();
         assert!(
@@ -250,9 +268,12 @@ fn namespace_context_changes_selector_admission_without_resolving_the_namespace(
         ("@import 'x' supports(selector(svg|a));", true),
         ("@import 'x' supports(selector(a));", false),
     ] {
-        let import =
-            CssImportRule::try_from_components(parse_component_values(source).unwrap(), &context)
-                .unwrap();
+        let import = CssImportRule::try_from_components(
+            parse_component_values(source).unwrap(),
+            &context,
+            Default::default(),
+        )
+        .unwrap();
         let CssSupportsConditionKind::Selector(CssSelector::Compound(selector)) =
             import.supports().unwrap().condition().kind()
         else {
@@ -266,7 +287,13 @@ fn namespace_context_changes_selector_admission_without_resolving_the_namespace(
         } else {
             assert_eq!(namespace, &CssNamespaceConstraint::Default);
         }
-        assert_eq!(import.serialize().unwrap().as_css(), source);
+        assert_eq!(
+            import
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            source
+        );
     }
 }
 
@@ -316,6 +343,7 @@ fn programmatic_import_and_mixed_numeric_children_keep_honest_independent_origin
             token(";"),
         ]),
         &CssNamespaceContext::default(),
+        Default::default(),
     )
     .unwrap();
     assert_eq!(import.origin(), &CssValueOrigin::Programmatic);
@@ -354,7 +382,7 @@ fn programmatic_import_and_mixed_numeric_children_keep_honest_independent_origin
         panic!("plain width")
     };
     original(value.calculation().origin(), &media_origin);
-    let output = import.serialize().unwrap();
+    let output = import.serialize_tokens(Default::default()).unwrap();
     assert_eq!(
         output.as_css(),
         "@import 'x' supports(opacity:calc(1e999)) (width: +001.5PX);"
@@ -375,10 +403,16 @@ fn programmatic_import_and_mixed_numeric_children_keep_honest_independent_origin
     let media = import.media().unwrap().clone();
     drop(import);
     assert_eq!(
-        supports.serialize().unwrap().as_css(),
+        supports
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         "(opacity:calc(1e999))"
     );
-    assert_eq!(media.serialize().unwrap().as_css(), "(width: +001.5PX)");
+    assert_eq!(
+        media.serialize_tokens(Default::default()).unwrap().as_css(),
+        "(width: +001.5PX)"
+    );
 }
 
 #[test]
@@ -396,6 +430,7 @@ fn parsed_at_keyword_and_terminator_keep_their_snapshots_among_programmatic_chil
             end,
         ]),
         &CssNamespaceContext::default(),
+        Default::default(),
     )
     .unwrap();
     original(import.origin(), &at_origin);
@@ -403,7 +438,7 @@ fn parsed_at_keyword_and_terminator_keep_their_snapshots_among_programmatic_chil
         panic!("at")
     };
     assert_eq!(import.position(), Some(at.span().start()));
-    let output = import.serialize().unwrap();
+    let output = import.serialize_tokens(Default::default()).unwrap();
     assert_eq!(output.as_css(), "@import \"\";");
     let Some(CssSerializedOrigin::Token(origin)) = output.origin_at(output.as_css().len() - 1)
     else {
@@ -419,9 +454,12 @@ fn recovered_components_reject_before_invalid_envelope_and_preserve_eof_provenan
         panic!("function")
     };
     let expected = function.closing_origin().clone();
-    let error =
-        CssImportRule::try_from_components(recovered.clone(), &CssNamespaceContext::default())
-            .unwrap_err();
+    let error = CssImportRule::try_from_components(
+        recovered.clone(),
+        &CssNamespaceContext::default(),
+        Default::default(),
+    )
+    .unwrap_err();
     assert!(matches!(
         error,
         CssImportConstructionError::RecoveredInput { .. }
@@ -431,16 +469,17 @@ fn recovered_components_reject_before_invalid_envelope_and_preserve_eof_provenan
     components.extend_from_slice(recovered.items());
     components.push(token(";"));
     assert!(matches!(
-        CssImportRule::try_from_components(values(components), &CssNamespaceContext::default()),
+        CssImportRule::try_from_components(
+            values(components),
+            &CssNamespaceContext::default(),
+            Default::default()
+        ),
         Err(CssImportConstructionError::RecoveredInput { .. })
     ));
     let zero = CssComponentValueLimits::try_new(256, 0, usize::MAX).unwrap();
-    let error = CssImportRule::try_from_components_with_limits(
-        recovered,
-        &CssNamespaceContext::default(),
-        zero,
-    )
-    .unwrap_err();
+    let error =
+        CssImportRule::try_from_components(recovered, &CssNamespaceContext::default(), zero)
+            .unwrap_err();
     assert!(
         matches!(error, CssImportConstructionError::Component(ref error) if error.kind() == CssComponentValueErrorKind::ComponentLimit)
     );
@@ -451,7 +490,7 @@ fn all_input_trivia_counts_toward_limits_before_canonical_trivia_is_omitted() {
     let source = "@import 'x'; /**/";
     let components = parse_component_values(source).unwrap();
     let limits = CssComponentValueLimits::try_new(256, usize::MAX, source.len() - 1).unwrap();
-    let error = CssImportRule::try_from_components_with_limits(
+    let error = CssImportRule::try_from_components(
         components.clone(),
         &CssNamespaceContext::default(),
         limits,
@@ -465,13 +504,13 @@ fn all_input_trivia_counts_toward_limits_before_canonical_trivia_is_omitted() {
     let limits =
         CssComponentValueLimits::try_new(0, components.items().len(), source.len()).unwrap();
     assert_eq!(
-        CssImportRule::try_from_components_with_limits(
+        CssImportRule::try_from_components(
             components.clone(),
             &CssNamespaceContext::default(),
             limits
         )
         .unwrap()
-        .serialize()
+        .serialize_tokens(Default::default())
         .unwrap()
         .as_css(),
         "@import 'x';"
@@ -479,12 +518,12 @@ fn all_input_trivia_counts_toward_limits_before_canonical_trivia_is_omitted() {
     let limits =
         CssComponentValueLimits::try_new(0, components.items().len() - 1, source.len()).unwrap();
     assert!(
-        matches!(CssImportRule::try_from_components_with_limits(components, &CssNamespaceContext::default(), limits), Err(CssImportConstructionError::Component(error)) if error.kind() == CssComponentValueErrorKind::ComponentLimit)
+        matches!(CssImportRule::try_from_components(components, &CssNamespaceContext::default(), limits), Err(CssImportConstructionError::Component(error)) if error.kind() == CssComponentValueErrorKind::ComponentLimit)
     );
     let components = parse_component_values("@import 'x' future();").unwrap();
     let limits = CssComponentValueLimits::try_new(0, usize::MAX, usize::MAX).unwrap();
     assert!(
-        matches!(CssImportRule::try_from_components_with_limits(components, &CssNamespaceContext::default(), limits), Err(CssImportConstructionError::Component(error)) if error.kind() == CssComponentValueErrorKind::NestingLimit)
+        matches!(CssImportRule::try_from_components(components, &CssNamespaceContext::default(), limits), Err(CssImportConstructionError::Component(error)) if error.kind() == CssComponentValueErrorKind::NestingLimit)
     );
 }
 
@@ -494,35 +533,35 @@ fn byte_limits_include_canonical_media_expansion_and_the_output_terminator() {
     let expected = "@import 'x' (aspect-ratio: 2 / 1);";
     let components = parse_component_values(source).unwrap();
     let tight = CssComponentValueLimits::try_new(256, usize::MAX, source.len()).unwrap();
-    let error = CssImportRule::try_from_components_with_limits(
+    let error = CssImportRule::try_from_components(
         components.clone(),
         &CssNamespaceContext::default(),
         tight,
     )
     .unwrap_err();
     assert!(
-        matches!(error, CssImportConstructionError::Serialization(CssImportSerializationError::Media(surgeist_css::CssMediaSerializationError::Component(ref error))) if error.kind() == CssComponentValueErrorKind::ByteLimit),
+        matches!(error, CssImportConstructionError::Serialization(ref error) if error.kind() == CssSpecifiedValueSerializationErrorKind::ByteLimit),
         "{error:?}"
     );
     let exact = CssComponentValueLimits::try_new(256, usize::MAX, expected.len()).unwrap();
-    let import = CssImportRule::try_from_components_with_limits(
-        components,
-        &CssNamespaceContext::default(),
-        exact,
-    )
-    .unwrap();
+    let import =
+        CssImportRule::try_from_components(components, &CssNamespaceContext::default(), exact)
+            .unwrap();
     assert_eq!(
         import
-            .serialize_with_limit(expected.len())
+            .serialize_tokens(crate::css::support::byte_limits(expected.len()))
             .unwrap()
             .as_css(),
         expected
     );
-    let error = import.serialize_with_limit(expected.len() - 1).unwrap_err();
+    let error = import
+        .serialize_tokens(crate::css::support::byte_limits(expected.len() - 1))
+        .unwrap_err();
     assert!(
-        matches!(error, CssImportSerializationError::Component(ref error) if error.kind() == CssComponentValueErrorKind::ByteLimit)
+        error.kind() == CssSpecifiedValueSerializationErrorKind::ByteLimit
+            && component_kind(&error) == Some(CssComponentValueErrorKind::ByteLimit)
     );
-    let CssValueOrigin::Parsed(origin) = error.origin() else {
+    let Some(CssValueOrigin::Parsed(origin)) = error.origin() else {
         panic!("original terminator")
     };
     assert_eq!(
@@ -534,15 +573,30 @@ fn byte_limits_include_canonical_media_expansion_and_the_output_terminator() {
 #[test]
 fn complete_output_byte_budget_identifies_the_first_overflowing_rule_token() {
     let rule = construct("@import 'x' (width:1px);");
-    let error = rule.serialize_with_limit(0).unwrap_err();
-    assert!(matches!(
-        error,
-        CssImportSerializationError::Component(ref error)
-            if error.kind() == CssComponentValueErrorKind::ByteLimit
-    ));
+    let error = rule
+        .serialize_tokens(crate::css::support::byte_limits(0))
+        .unwrap_err();
+    assert_eq!(
+        error.kind(),
+        CssSpecifiedValueSerializationErrorKind::ByteLimit
+    );
+    assert_eq!(
+        component_kind(&error),
+        Some(CssComponentValueErrorKind::ByteLimit)
+    );
     // The complete output starts with @import. A speculative tail's whitespace
     // or media token is not the first token overflowing the whole-rule budget.
-    original(error.origin(), rule.origin());
+    original(
+        error.origin().expect("overflowing token origin"),
+        rule.origin(),
+    );
+}
+
+/// The lexical component failure behind a serialization failure, if any.
+fn component_kind(error: &CssSerializationError) -> Option<CssComponentValueErrorKind> {
+    std::error::Error::source(error)
+        .and_then(|source| source.downcast_ref::<CssComponentValueError>())
+        .map(CssComponentValueError::kind)
 }
 
 #[test]
@@ -555,13 +609,19 @@ fn canonical_output_keeps_complete_clause_interpretation_and_needed_token_bounda
         "supports(display:grid) and (color)",
     ] {
         let import = tail(source);
-        let output = import.serialize().unwrap();
+        let output = import.serialize_tokens(Default::default()).unwrap();
         assert_eq!(output.as_css(), format!("@import 'x' {source};"));
         let reparsed = construct(output.as_css());
         assert!(reparsed.layer().is_none());
         assert!(reparsed.supports().is_none());
         assert_eq!(reparsed.media().unwrap().queries().len(), 1);
-        assert_eq!(reparsed.serialize().unwrap().as_css(), output.as_css());
+        assert_eq!(
+            reparsed
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            output.as_css()
+        );
     }
     let function =
         CssComponentValue::try_function("Future", values(vec![token("1"), token("e2")])).unwrap();
@@ -575,13 +635,22 @@ fn canonical_output_keeps_complete_clause_interpretation_and_needed_token_bounda
             token(";"),
         ]),
         &CssNamespaceContext::default(),
+        Default::default(),
     )
     .unwrap();
     assert_eq!(
-        import.serialize().unwrap().as_css(),
+        import
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         "@import 'x' Future(1/**/e2);"
     );
-    let report = parse_sheet(import.serialize().unwrap().as_css());
+    let report = parse_sheet(
+        import
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+    );
     assert!(report.is_clean());
     assert!(matches!(report.syntax().rules(), [CssRule::Import(_)]));
 }

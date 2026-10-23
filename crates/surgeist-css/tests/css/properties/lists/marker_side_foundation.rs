@@ -58,7 +58,11 @@ fn two_keywords_and_case_insensitive_identifiers_retain_authored_spelling() {
         let source = validated_important_declaration(NAME, value);
         assert!(source.known().unwrap().property_value().is_some());
         assert_eq!(
-            source.value_components().serialize().unwrap().as_css(),
+            source
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             value
         );
         let item = contribution(&source);
@@ -118,9 +122,11 @@ fn malformed_marker_side_values_drop_only_their_declaration() {
 #[test]
 fn programmatic_components_use_the_same_grammar_and_origin() {
     let property = known_property(NAME);
-    let components =
-        CssComponentValues::try_new(vec![CssComponentValue::try_ident("match-parent").unwrap()])
-            .unwrap();
+    let components = CssComponentValues::try_new(
+        vec![CssComponentValue::try_ident("match-parent").unwrap()],
+        Default::default(),
+    )
+    .unwrap();
     let source = parse_property_value(
         CssPropertyNameRef::Known(property),
         components,
@@ -133,9 +139,11 @@ fn programmatic_components_use_the_same_grammar_and_origin() {
         CssValueOrigin::Programmatic
     ));
     assert!(contribution(&source).ordinary_value().is_some());
-    let invalid =
-        CssComponentValues::try_new(vec![CssComponentValue::try_ident("outside").unwrap()])
-            .unwrap();
+    let invalid = CssComponentValues::try_new(
+        vec![CssComponentValue::try_ident("outside").unwrap()],
+        Default::default(),
+    )
+    .unwrap();
     assert_programmatic_rejection(
         parse_property_value(
             CssPropertyNameRef::Known(property),

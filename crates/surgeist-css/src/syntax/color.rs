@@ -13,6 +13,10 @@ pub(crate) use recognition::{numeric_relative_channel, predefined_color_space};
 pub(crate) mod serialization;
 
 /// An authored color retaining its specified syntax and symbolic dependencies.
+///
+/// # Specified serialization
+///
+/// Produces canonical specified color text without resolving external color context.
 #[derive(Clone)]
 pub struct CssColor {
     representation: CssColorRepresentation,
@@ -260,6 +264,17 @@ impl CssColor {
     }
 }
 
+impl crate::specified_rule_serialization::SpecifiedProvider for CssColor {
+    /// Emits canonical specified colour text without resolving external colour context.
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> Result<(), crate::CssSerializationError> {
+        self.append_specified(&mut writer.context, &mut writer.css)
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(CssColor);
+
 impl CssColor {
     /// Retains an uncalibrated device input without conversion or ink clamping.
     pub fn from_device_cmyk(value: CssDeviceCmykColor) -> Self {
@@ -312,19 +327,6 @@ impl CssColor {
     pub(crate) fn nesting_depth(&self) -> Result<u32, CssColorConstructionError> {
         authored_color_depth(self).map_err(Into::into)
     }
-    /// Produces canonical specified color text without resolving external color context.
-    pub fn to_specified_css(&self) -> Result<String, crate::CssSpecifiedValueSerializationError> {
-        self.to_specified_css_with_limits(crate::CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Produces canonical specified color text under cumulative resource limits.
-    pub fn to_specified_css_with_limits(
-        &self,
-        limits: crate::CssSpecifiedValueSerializationLimits,
-    ) -> Result<String, crate::CssSpecifiedValueSerializationError> {
-        serialization::serialize(self, limits)
-    }
-
     pub const fn from_custom(value: CssCustomColor) -> Self {
         Self {
             original_closed: true,

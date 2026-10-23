@@ -15,7 +15,10 @@ fn main() {
         panic!("ordinary synthesis")
     };
     assert_eq!(
-        value.synthesis().serialize_specified().unwrap(),
+        value
+            .synthesis()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "weight position"
     );
     let checked = CssFontSynthesis::Values(
@@ -31,5 +34,8 @@ fn main() {
     for value in values.items() {
         assert!(value.source().same_occurrence(source));
     }
-    println!("{}", checked.serialize_specified().unwrap());
+    println!(
+        "{}",
+        checked.serialize_specified(Default::default()).unwrap()
+    );
 }

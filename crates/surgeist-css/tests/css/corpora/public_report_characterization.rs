@@ -1501,7 +1501,10 @@ fn assert_captured_border(border: &surgeist_css::CssBorder, expected: &str) {
     assert_eq!(border.style(), style);
     match (border.width(), width) {
         (Some(Width::Length(actual)), Some(expected)) => {
-            assert_eq!(actual.serialize_specified().unwrap(), expected);
+            assert_eq!(
+                actual.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
             assert!(matches!(
                 actual.origin(),
                 surgeist_css::CssValueOrigin::Parsed(_)
@@ -1543,11 +1546,17 @@ fn assert_captured_grid_columns(list: &surgeist_css::CssGridTrackList) {
     assert_eq!(
         min.length_percentage()
             .unwrap()
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "10px"
     );
-    assert_eq!(max.flex().unwrap().serialize_specified().unwrap(), "1fr");
+    assert_eq!(
+        max.flex()
+            .unwrap()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "1fr"
+    );
 }
 
 // Fonts 4 §2.1: one quoted family name followed by the `sans-serif` generic.
@@ -1781,7 +1790,13 @@ fn assert_known_property_value(
                 "1" => "1",
                 _ => panic!("unexpected captured opacity"),
             };
-            assert_eq!(value.value().serialize_specified().unwrap(), expected);
+            assert_eq!(
+                value
+                    .value()
+                    .serialize_specified(Default::default())
+                    .unwrap(),
+                expected
+            );
             Some(value.as_css())
         }
         (
@@ -1793,7 +1808,13 @@ fn assert_known_property_value(
                 panic!("captured order integer")
             };
             assert_eq!(literal.numeric().representation(), "-2");
-            assert_eq!(value.value().serialize_specified().unwrap(), "-2");
+            assert_eq!(
+                value
+                    .value()
+                    .serialize_specified(Default::default())
+                    .unwrap(),
+                "-2"
+            );
             Some(value.as_css())
         }
         (
@@ -2177,7 +2198,10 @@ fn assert_known_property_value(
             assert_eq!(value.as_css(), authored.value);
 
             assert_eq!(
-                value.value().serialize_specified().unwrap(),
+                value
+                    .value()
+                    .serialize_specified(Default::default())
+                    .unwrap(),
                 "symbols(cyclic \"*\" \"+\")"
             );
             let surgeist_css::CssListStyleTypeValue::CounterStyle(style) = value.value() else {
@@ -2205,7 +2229,10 @@ fn assert_known_property_value(
             };
             assert_eq!(style.named().unwrap().as_str(), "outside");
             assert_eq!(
-                value.value().serialize_specified().unwrap(),
+                value
+                    .value()
+                    .serialize_specified(Default::default())
+                    .unwrap(),
                 "inside outside"
             );
             assert!(value.value().image().is_none());
@@ -2536,7 +2563,13 @@ fn assert_known_property_value(
             assert_eq!(number.representation(), "0.1");
             assert_eq!(unit, "em");
             assert!(matches!(length.origin(), CssValueOrigin::Parsed(_)));
-            assert_eq!(value.value().serialize_specified().unwrap(), "0.1em");
+            assert_eq!(
+                value
+                    .value()
+                    .serialize_specified(Default::default())
+                    .unwrap(),
+                "0.1em"
+            );
             return;
         }
         (
@@ -2597,7 +2630,10 @@ fn assert_known_property_value(
             else {
                 panic!("{}: expected captured numeric font weight", frozen.case_id);
             };
-            assert_eq!(number.serialize_specified().unwrap(), "725");
+            assert_eq!(
+                number.serialize_specified(Default::default()).unwrap(),
+                "725"
+            );
             assert_captured_numeric_metadata(property.stable_id(), value.as_css(), authored);
             return;
         }
@@ -2937,7 +2973,7 @@ fn assert_known_property_value(
                     .unwrap()
                     .length_percentage()
                     .unwrap()
-                    .serialize_specified()
+                    .serialize_specified(Default::default())
                     .unwrap(),
                 "100px"
             );
@@ -2946,7 +2982,7 @@ fn assert_known_property_value(
                     .unwrap()
                     .flex()
                     .unwrap()
-                    .serialize_specified()
+                    .serialize_specified(Default::default())
                     .unwrap(),
                 "1fr"
             );
@@ -2995,7 +3031,7 @@ fn assert_known_property_value(
                     .unwrap()
                     .length_percentage()
                     .unwrap()
-                    .serialize_specified()
+                    .serialize_specified(Default::default())
                     .unwrap(),
                 "100px"
             );
@@ -3004,7 +3040,7 @@ fn assert_known_property_value(
                     .unwrap()
                     .flex()
                     .unwrap()
-                    .serialize_specified()
+                    .serialize_specified(Default::default())
                     .unwrap(),
                 "1fr"
             );
@@ -3022,7 +3058,7 @@ fn assert_known_property_value(
             assert_eq!(
                 min.length_percentage()
                     .unwrap()
-                    .serialize_specified()
+                    .serialize_specified(Default::default())
                     .unwrap(),
                 "10px"
             );
@@ -3038,7 +3074,10 @@ fn assert_known_property_value(
             };
             assert_eq!(size.kind(), SizeKind::FitContent);
             assert_eq!(
-                size.fit_content().unwrap().serialize_specified().unwrap(),
+                size.fit_content()
+                    .unwrap()
+                    .serialize_specified(Default::default())
+                    .unwrap(),
                 "20%"
             );
             Some(value.as_css())
@@ -3063,7 +3102,13 @@ fn assert_known_property_value(
             };
             assert!(span.integer().is_some());
             assert_eq!(span.name().unwrap().ident().as_str(), "main");
-            assert_eq!(value.value().serialize_specified().unwrap(), "span 2 main");
+            assert_eq!(
+                value
+                    .value()
+                    .serialize_specified(Default::default())
+                    .unwrap(),
+                "span 2 main"
+            );
             Some(value.as_css())
         }
         (
@@ -3091,7 +3136,13 @@ fn assert_known_property_value(
                 panic!("indexed column end")
             };
             assert!(index.name().is_none());
-            assert_eq!(value.value().serialize_specified().unwrap(), "4");
+            assert_eq!(
+                value
+                    .value()
+                    .serialize_specified(Default::default())
+                    .unwrap(),
+                "4"
+            );
             Some(value.as_css())
         }
         (
@@ -3101,7 +3152,10 @@ fn assert_known_property_value(
             let range = value.value();
             assert!(matches!(range.start(), GridLine::Indexed(_)));
             assert!(matches!(range.authored_end(), Some(GridLine::Span(_))));
-            assert_eq!(range.serialize_specified().unwrap(), "1 / span 2");
+            assert_eq!(
+                range.serialize_specified(Default::default()).unwrap(),
+                "1 / span 2"
+            );
             Some(value.as_css())
         }
         (
@@ -3140,7 +3194,7 @@ fn assert_known_property_value(
             };
             assert_eq!(end.ident().as_str(), "main");
             assert_eq!(
-                area.serialize_specified().unwrap(),
+                area.serialize_specified(Default::default()).unwrap(),
                 "header / 1 / span 2 / main"
             );
             Some(value.as_css())
@@ -3163,7 +3217,7 @@ fn assert_known_property_value(
                     .unwrap()
                     .length_percentage()
                     .unwrap()
-                    .serialize_specified()
+                    .serialize_specified(Default::default())
                     .unwrap(),
                 "12px"
             );
@@ -3185,7 +3239,7 @@ fn assert_known_property_value(
                     .unwrap()
                     .flex()
                     .unwrap()
-                    .serialize_specified()
+                    .serialize_specified(Default::default())
                     .unwrap(),
                 "1fr"
             );

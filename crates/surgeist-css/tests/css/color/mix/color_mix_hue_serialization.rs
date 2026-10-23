@@ -28,10 +28,21 @@ fn constructed(space: ColorSpace, hue: HueInterpolation) -> CssColor {
 
 fn assert_text(value: &CssColor, expected: &str) {
     let before = value.clone();
-    assert_eq!(value.to_specified_css().unwrap(), expected);
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     assert_eq!(value, &before);
-    assert_eq!(value.to_specified_css().unwrap(), expected);
-    assert_eq!(parsed(expected).to_specified_css().unwrap(), expected);
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
+    assert_eq!(
+        parsed(expected)
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
 }
 
 macro_rules! shorter {
@@ -164,7 +175,11 @@ fn shorter_omission_preserves_style_importance_and_authored_tokens() {
     let declaration = &report.syntax()[0];
     assert_eq!(declaration.importance(), CssImportance::Important);
     assert_eq!(
-        declaration.value_components().serialize().unwrap().as_css(),
+        declaration
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         authored
     );
     assert_text(
@@ -172,7 +187,11 @@ fn shorter_omission_preserves_style_importance_and_authored_tokens() {
         "color-mix(in lch, red, blue)",
     );
     assert_eq!(
-        declaration.value_components().serialize().unwrap().as_css(),
+        declaration
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         authored
     );
     assert_eq!(
@@ -190,36 +209,26 @@ fn omitted_hue_uses_final_byte_length_and_retains_traversal_costs() {
     let expected = "color-mix(in lch, red, blue)";
     for (limits, error) in [
         (
-            CssSpecifiedValueSerializationLimits::new(3, 24, usize::MAX),
+            CssSerializationLimits::new(3, 24, usize::MAX),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(4, 23, usize::MAX),
+            CssSerializationLimits::new(4, 23, usize::MAX),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(4, 24, expected.len() - 1),
+            CssSerializationLimits::new(4, 24, expected.len() - 1),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
         for _ in 0..2 {
-            assert_eq!(
-                value
-                    .to_specified_css_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
-                error
-            );
+            assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), error);
             assert_eq!(value, before);
         }
     }
     assert_eq!(
         value
-            .to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::new(
-                4,
-                24,
-                expected.len()
-            ))
+            .serialize_specified(CssSerializationLimits::new(4, 24, expected.len()))
             .unwrap(),
         expected
     );

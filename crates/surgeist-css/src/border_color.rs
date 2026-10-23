@@ -1,11 +1,7 @@
 //! Authored border colors and physical side expansion.
 
+use crate::CssBoxSideKind;
 use crate::syntax::CssColor;
-use crate::{
-    CssBoxSideKind, CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits,
-};
-
-type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
 
 /// The four authored side colors expanded from a `border-color` shorthand.
 ///
@@ -95,38 +91,17 @@ impl CssBorderColorPair {
         self.authored_end.as_ref().unwrap_or(&self.start)
     }
 
-    pub fn serialize_specified(&self) -> Result<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        self.append_to_rule_writer_with_color_visit(writer, |_| {})
-    }
-
     // A composed inverse retains each original member while this owning writer
     // advances. The ordinary provider keeps its exact ordering and tariff.
     pub(crate) fn append_to_rule_writer_with_color_visit(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
         mut before_color: impl FnMut(usize),
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         let context = &mut writer.context;
         let output = &mut writer.css;
 
-        context.charge_input(1)?;
-        context.charge_projection(1)?;
+        context.charge_nodes(1)?;
         before_color(0);
         self.start.append_specified(context, output)?;
         if let Some(end) = &self.authored_end {
@@ -137,6 +112,15 @@ impl CssBorderColorPair {
         Ok(())
     }
 }
+impl crate::specified_rule_serialization::SpecifiedProvider for CssBorderColorPair {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        self.append_to_rule_writer_with_color_visit(writer, |_| {})
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(CssBorderColorPair);
 
 /// One to four authored physical or flow-relative border colors.
 ///
@@ -178,38 +162,17 @@ impl CssBorderColorShorthand {
         }
     }
 
-    pub fn serialize_specified(&self) -> Result<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        self.append_to_rule_writer_with_color_visit(writer, |_| {})
-    }
-
     // A composed inverse retains each original member while this owning writer
     // advances. The ordinary provider keeps its exact ordering and tariff.
     pub(crate) fn append_to_rule_writer_with_color_visit(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
         mut before_color: impl FnMut(usize),
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         let context = &mut writer.context;
         let output = &mut writer.css;
 
-        context.charge_input(1)?;
-        context.charge_projection(1)?;
+        context.charge_nodes(1)?;
         if self.kind == CssBoxSideKind::Logical {
             context.append(output, "logical ")?;
         }
@@ -223,3 +186,12 @@ impl CssBorderColorShorthand {
         Ok(())
     }
 }
+impl crate::specified_rule_serialization::SpecifiedProvider for CssBorderColorShorthand {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        self.append_to_rule_writer_with_color_visit(writer, |_| {})
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(CssBorderColorShorthand);

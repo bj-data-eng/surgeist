@@ -91,7 +91,7 @@ fn checked_animation_preserves_eight_semantic_slots() {
         Some(CssEasing::Keyword(CssEasingKeyword::EaseOut))
     ));
     assert!(
-        matches!(animation.iteration_count(), Some(CssAnimationIterationCount::Number(value)) if value.serialize_specified().unwrap() == "3")
+        matches!(animation.iteration_count(), Some(CssAnimationIterationCount::Number(value)) if value.serialize_specified(Default::default()).unwrap() == "3")
     );
     assert_eq!(
         animation.direction(),

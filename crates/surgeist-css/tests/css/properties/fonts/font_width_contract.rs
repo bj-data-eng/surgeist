@@ -64,11 +64,17 @@ fn nine_keywords_have_the_fonts_four_exact_percentage_mapping() {
         (UltraExpanded, "ultra-expanded", "200%"),
     ] {
         assert_eq!(
-            keyword.percentage().serialize_specified().unwrap(),
+            keyword
+                .percentage()
+                .serialize_specified(Default::default())
+                .unwrap(),
             percentage
         );
         let direct = CssFontWidth::Keyword(keyword);
-        assert_eq!(direct.serialize_specified().unwrap(), spelling);
+        assert_eq!(
+            direct.serialize_specified(Default::default()).unwrap(),
+            spelling
+        );
         for name in ["font-width", "font-stretch"] {
             for checked in [false, true] {
                 assert_eq!(width(name, spelling, checked), direct);
@@ -87,7 +93,10 @@ fn percentage_constructor_preserves_exact_literals_and_rejects_invalid_roots() {
         ("999999999999999999999999%", "999999999999999999999999%"),
     ] {
         let direct = CssFontWidth::Percentage(scalar(text));
-        assert_eq!(direct.serialize_specified().unwrap(), canonical);
+        assert_eq!(
+            direct.serialize_specified(Default::default()).unwrap(),
+            canonical
+        );
         for name in ["font-width", "font-stretch"] {
             for checked in [false, true] {
                 let actual = width(name, text, checked);
@@ -97,7 +106,7 @@ fn percentage_constructor_preserves_exact_literals_and_rejects_invalid_roots() {
                     text.trim_end_matches('%')
                 );
                 assert_eq!(
-                    actual.serialize_specified().unwrap(),
+                    actual.serialize_specified(Default::default()).unwrap(),
                     canonical,
                     "{name}:{text}"
                 );
@@ -145,9 +154,11 @@ fn percentage_constructor_preserves_exact_literals_and_rejects_invalid_roots() {
 #[test]
 fn bare_percentage_calculation_roots_reenter_exact_range_admission() {
     for text in ["-1%", "-1e-999%"] {
-        let typed =
-            CssPercentageCalculation::try_from_components(parse_component_values(text).unwrap())
-                .expect("negative percentage is in the percentage calculation domain");
+        let typed = CssPercentageCalculation::try_from_components(
+            parse_component_values(text).unwrap(),
+            Default::default(),
+        )
+        .expect("negative percentage is in the percentage calculation domain");
         assert_eq!(
             CssSpecifiedNonNegativePercentage::try_from_calculation(typed)
                 .unwrap_err()
@@ -157,13 +168,19 @@ fn bare_percentage_calculation_roots_reenter_exact_range_admission() {
         );
     }
     let positive = CssSpecifiedNonNegativePercentage::try_from_calculation(
-        CssPercentageCalculation::try_from_components(parse_component_values("125%").unwrap())
-            .unwrap(),
+        CssPercentageCalculation::try_from_components(
+            parse_component_values("125%").unwrap(),
+            Default::default(),
+        )
+        .unwrap(),
     )
     .unwrap();
     assert!(positive.literal_component().is_some());
     assert!(positive.calculation().is_none());
-    assert_eq!(positive.serialize_specified().unwrap(), "125%");
+    assert_eq!(
+        positive.serialize_specified(Default::default()).unwrap(),
+        "125%"
+    );
 }
 
 #[test]
@@ -186,7 +203,10 @@ fn parsed_percentages_keep_source_origin_and_symbolic_math_unresolved() {
         scalar("62.500000000000000000001%").origin(),
         CssValueOrigin::Parsed(_)
     ));
-    assert_eq!(parsed.serialize_specified().unwrap(), "62.5%");
+    assert_eq!(
+        parsed.serialize_specified(Default::default()).unwrap(),
+        "62.5%"
+    );
 
     assert!(matches!(
         parsed.literal_component().unwrap().view(),
@@ -194,14 +214,16 @@ fn parsed_percentages_keep_source_origin_and_symbolic_math_unresolved() {
             if number.representation() == "62.500000000000000000001"
     ));
     for text in ["calc(25% + 50%)", "calc(25% - 50%)"] {
-        let calculation =
-            CssPercentageCalculation::try_from_components(parse_component_values(text).unwrap())
-                .unwrap();
+        let calculation = CssPercentageCalculation::try_from_components(
+            parse_component_values(text).unwrap(),
+            Default::default(),
+        )
+        .unwrap();
         let exact = CssSpecifiedNonNegativePercentage::try_from_calculation(calculation).unwrap();
         assert!(exact.calculation().is_some());
         assert!(exact.literal_component().is_none());
         let value = CssFontWidth::Percentage(exact);
-        assert!(value.serialize_specified().is_ok());
+        assert!(value.serialize_specified(Default::default()).is_ok());
         for checked in [false, true] {
             let parsed = width("font-width", text, checked);
             assert_eq!(parsed, value);
@@ -210,8 +232,8 @@ fn parsed_percentages_keep_source_origin_and_symbolic_math_unresolved() {
             };
             assert!(parsed.calculation().is_some());
             assert_eq!(
-                parsed.serialize_specified().unwrap(),
-                value.serialize_specified().unwrap()
+                parsed.serialize_specified(Default::default()).unwrap(),
+                value.serialize_specified(Default::default()).unwrap()
             );
         }
     }
@@ -220,45 +242,42 @@ fn parsed_percentages_keep_source_origin_and_symbolic_math_unresolved() {
 #[test]
 fn scalar_and_width_serialization_enforce_input_projection_and_byte_budgets() {
     let value = CssFontWidth::Percentage(scalar("75%"));
-    assert_eq!(value.serialize_specified().unwrap(), "75%");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "75%"
+    );
     assert_eq!(
         value
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(1, 1, 3))
+            .serialize_specified(CssSerializationLimits::new(1, 1, 3))
             .unwrap(),
         "75%"
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(0, 1, 3),
+            CssSerializationLimits::new(0, 1, 3),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(1, 0, 3),
+            CssSerializationLimits::new(1, 0, 3),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(1, 1, 2),
+            CssSerializationLimits::new(1, 1, 2),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
-        assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            kind
-        );
+        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
     }
     let scalar = scalar("75%");
     assert_eq!(
         scalar
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(1, 1, 3))
+            .serialize_specified(CssSerializationLimits::new(1, 1, 3))
             .unwrap(),
         "75%"
     );
     assert_eq!(
         scalar
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(1, 1, 2))
+            .serialize_specified(CssSerializationLimits::new(1, 1, 2))
             .unwrap_err()
             .kind(),
         CssSpecifiedValueSerializationErrorKind::ByteLimit

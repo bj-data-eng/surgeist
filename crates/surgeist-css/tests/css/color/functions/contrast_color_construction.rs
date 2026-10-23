@@ -11,7 +11,7 @@ fn numeric_color(depth: usize, alpha: bool) -> CssColor {
     let raw = parse_component_values(&text).unwrap();
     assert_eq!(raw.nesting_depth() as usize, depth);
     let calculation = CssColorComponent::PercentageCalculation(
-        CssPercentageCalculation::try_from_components(raw).unwrap(),
+        CssPercentageCalculation::try_from_components(raw, Default::default()).unwrap(),
     );
     let zero = CssColorComponent::Number(
         CssColorNumberLiteral::try_from_component(
@@ -51,7 +51,9 @@ fn checked_payload_retains_independent_input_and_exposes_one_semantic_accessor()
         CssContrastColor::try_new(named("blue")).unwrap()
     );
     assert_eq!(
-        contrast(named("red")).to_specified_css().unwrap(),
+        contrast(named("red"))
+            .serialize_specified(Default::default())
+            .unwrap(),
         "contrast-color(red)"
     );
 }
@@ -80,7 +82,10 @@ fn constructor_counts_the_complete_numeric_channel_and_alpha_subtrees() {
         } else {
             "contrast-color(rgb(127.5, 0, 0))"
         };
-        assert_eq!(value.to_specified_css().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_eq!(
             CssContrastColor::try_new(value).unwrap_err(),
             CssColorConstructionError::NestingLimit
@@ -113,7 +118,9 @@ fn contrast_depth_composes_with_both_light_dark_branches_and_gradient_images() {
     let pair =
         CssColor::from_light_dark(CssLightDarkColor::try_new(named("red"), named("blue")).unwrap());
     assert_eq!(
-        contrast(pair).to_specified_css().unwrap(),
+        contrast(pair)
+            .serialize_specified(Default::default())
+            .unwrap(),
         "contrast-color(light-dark(red, blue))"
     );
     let stops = CssColorStopList::try_new(vec![

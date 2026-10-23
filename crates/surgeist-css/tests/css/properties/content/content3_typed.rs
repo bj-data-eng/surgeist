@@ -129,7 +129,7 @@ fn all_predefined_counter_styles_normalize_but_custom_names_keep_case() {
         assert_eq!(via_outer, direct);
         assert_eq!(
             CssCounterStyleValue::Named(direct)
-                .serialize_specified()
+                .serialize_specified(Default::default())
                 .unwrap(),
             spelling
         );
@@ -151,7 +151,7 @@ fn all_predefined_counter_styles_normalize_but_custom_names_keep_case() {
     assert_eq!(custom.as_str(), "MyStyle");
     assert_eq!(
         CssCounterStyleValue::Named(custom)
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "MyStyle"
     );
@@ -192,13 +192,16 @@ fn symbols_require_the_selected_count_and_only_checked_string_or_image_leaves() 
         CssSymbolsStyleValue::try_new(None, vec![CssCounterSymbolValue::Image(image)]).unwrap(),
     );
     assert_eq!(
-        style.serialize_specified().unwrap(),
+        style.serialize_specified(Default::default()).unwrap(),
         "symbols(url(\"#star\"))"
     );
     let symbolic = CssCounterStyleValue::Symbols(
         CssSymbolsStyleValue::try_new(Some(CssSymbolsSystem::Symbolic), vec![star]).unwrap(),
     );
-    assert_eq!(symbolic.serialize_specified().unwrap(), "symbols(\"*\")");
+    assert_eq!(
+        symbolic.serialize_specified(Default::default()).unwrap(),
+        "symbols(\"*\")"
+    );
 }
 
 #[test]
@@ -238,7 +241,7 @@ fn checked_generated_content_classifies_a_sole_image_as_replacement() {
         .unwrap(),
     );
     assert_eq!(
-        value.serialize_specified().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         "\"caption\" / \"spoken\""
     );
 }
@@ -251,7 +254,7 @@ fn canonical_functions_omit_only_defined_defaults_and_retain_symbolic_targets() 
             "chapter",
             Some(decimal.clone())
         )))
-        .serialize_specified()
+        .serialize_specified(Default::default())
         .unwrap(),
         "counter(chapter)"
     );
@@ -259,7 +262,7 @@ fn canonical_functions_omit_only_defined_defaults_and_retain_symbolic_targets() 
         CssContentCounters::new(counter_name("chapter"), string("."), Some(decimal.clone()));
     assert_eq!(
         item(CssContentValueItem::Counters(counters))
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "counters(chapter, \".\")"
     );
@@ -268,7 +271,7 @@ fn canonical_functions_omit_only_defined_defaults_and_retain_symbolic_targets() 
             name("chapter"),
             Some(CssNamedStringMode::First)
         )))
-        .serialize_specified()
+        .serialize_specified(Default::default())
         .unwrap(),
         "string(chapter)"
     );
@@ -276,7 +279,7 @@ fn canonical_functions_omit_only_defined_defaults_and_retain_symbolic_targets() 
         item(CssContentValueItem::Content(Some(
             CssContentReferenceMode::Text
         )))
-        .serialize_specified()
+        .serialize_specified(Default::default())
         .unwrap(),
         "content()"
     );
@@ -285,7 +288,7 @@ fn canonical_functions_omit_only_defined_defaults_and_retain_symbolic_targets() 
             CssContentTarget::String(string("#ch")),
             Some(CssTargetTextMode::Content)
         )))
-        .serialize_specified()
+        .serialize_specified(Default::default())
         .unwrap(),
         "target-text(\"#ch\")"
     );
@@ -295,7 +298,7 @@ fn canonical_functions_omit_only_defined_defaults_and_retain_symbolic_targets() 
             name("chapter"),
             Some(decimal)
         )))
-        .serialize_specified()
+        .serialize_specified(Default::default())
         .unwrap(),
         "target-counter(\"#ch\", chapter)"
     );
@@ -306,7 +309,7 @@ fn canonical_functions_omit_only_defined_defaults_and_retain_symbolic_targets() 
     ] {
         assert_eq!(
             item(CssContentValueItem::Leader(leader))
-                .serialize_specified()
+                .serialize_specified(Default::default())
                 .unwrap(),
             expected
         );
@@ -335,13 +338,19 @@ fn parsed_content_retains_strings_counters_and_images() {
     };
 
     assert_eq!(
-        wrapper.value().serialize_specified().unwrap(),
+        wrapper
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "contents linear-gradient(red, blue)"
     );
     let programmatic = parse_property_value(
         CssPropertyNameRef::Known(CssKnownProperty::Content),
-        CssComponentValues::try_new(vec![CssComponentValue::try_ident("contents").unwrap()])
-            .unwrap(),
+        CssComponentValues::try_new(
+            vec![CssComponentValue::try_ident("contents").unwrap()],
+            Default::default(),
+        )
+        .unwrap(),
         CssImportance::Normal,
     )
     .unwrap();
@@ -375,44 +384,40 @@ fn serialization_limits_are_cumulative_and_fail_without_mutation() {
         .unwrap(),
     );
     let expected = "\"a\" \"b\"";
-    assert_eq!(value.serialize_specified().unwrap(), expected);
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     assert_eq!(
         value
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                3,
-                3,
-                expected.len()
-            ))
+            .serialize_specified(CssSerializationLimits::new(3, 3, expected.len()))
             .unwrap(),
         expected
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(2, 3, expected.len()),
+            CssSerializationLimits::new(2, 3, expected.len()),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(3, 2, expected.len()),
+            CssSerializationLimits::new(3, 2, expected.len()),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(3, 3, expected.len() - 1),
+            CssSerializationLimits::new(3, 3, expected.len() - 1),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(0, 0, 0),
+            CssSerializationLimits::new(0, 0, 0),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
     ] {
-        assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            kind
-        );
+        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
     }
-    assert_eq!(value.serialize_specified().unwrap(), expected);
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
 }
 
 #[test]
@@ -509,26 +514,24 @@ fn nested_symbols_images_preserve_math_modifier_order_and_shared_budget() {
         "flag"
     );
     let canonical = "counter(chapter, symbols(linear-gradient(red calc(2% + 1px), blue) url(\"#star\" policy(flag))))";
-    assert_eq!(wrapper.value().serialize_specified().unwrap(), canonical);
     assert_eq!(
         wrapper
             .value()
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                128,
-                256,
-                canonical.len(),
-            ))
+            .serialize_specified(Default::default())
             .unwrap(),
         canonical
     );
     assert_eq!(
         wrapper
             .value()
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                128,
-                256,
-                canonical.len() - 1,
-            ))
+            .serialize_specified(CssSerializationLimits::new(128, 256, canonical.len(),))
+            .unwrap(),
+        canonical
+    );
+    assert_eq!(
+        wrapper
+            .value()
+            .serialize_specified(CssSerializationLimits::new(128, 256, canonical.len() - 1,))
             .unwrap_err()
             .kind(),
         CssSpecifiedValueSerializationErrorKind::ByteLimit
@@ -536,11 +539,7 @@ fn nested_symbols_images_preserve_math_modifier_order_and_shared_budget() {
     assert_eq!(
         wrapper
             .value()
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                6,
-                256,
-                canonical.len(),
-            ))
+            .serialize_specified(CssSerializationLimits::new(6, 256, canonical.len(),))
             .unwrap_err()
             .kind(),
         CssSpecifiedValueSerializationErrorKind::InputNodeLimit
@@ -568,30 +567,20 @@ fn two_image_symbols_share_the_outer_input_and_projection_limits() {
     let expected = "counter(chapter, symbols(url(\"#a\") url(\"#b\")))";
     assert_eq!(
         value
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                8,
-                8,
-                expected.len(),
-            ))
+            .serialize_specified(CssSerializationLimits::new(8, 8, expected.len(),))
             .unwrap(),
         expected
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(7, 8, expected.len()),
+            CssSerializationLimits::new(7, 8, expected.len()),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(8, 7, expected.len()),
+            CssSerializationLimits::new(8, 7, expected.len()),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
     ] {
-        assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            kind
-        );
+        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
     }
 }

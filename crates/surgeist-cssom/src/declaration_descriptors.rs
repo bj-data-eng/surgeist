@@ -70,7 +70,7 @@ pub(super) fn descriptor_value(
             match entry {
                 Some(value) => value
                     .value()
-                    .serialize_specified_with_limits(budget.provider()?)
+                    .serialize_specified(budget.provider()?)
                     .map_err(CssomError::Value),
                 None => Ok(String::new()),
             }
@@ -83,7 +83,7 @@ pub(super) fn descriptor_value(
             {
                 Some(value) => value
                     .value()
-                    .serialize_specified_with_limits(budget.provider()?)
+                    .serialize_specified(budget.provider()?)
                     .map_err(CssomError::Value),
                 None => Ok(String::new()),
             }
@@ -203,11 +203,9 @@ impl CssomBatch {
             })
             .collect::<Result<Vec<_>, _>>()?;
         let winners = font_winners(entries.clone());
-        let selected = CssSpecifiedFontFaceDeclarationBlock::try_from_entries_with_limits(
-            &winners,
-            budget.provider()?,
-        )
-        .map_err(CssomError::FontFace)?;
+        let selected =
+            CssSpecifiedFontFaceDeclarationBlock::try_from_entries(&winners, budget.provider()?)
+                .map_err(CssomError::FontFace)?;
         let block = self.staged.blocks.get_mut(id).expect("owned block");
         block.data = std::sync::Arc::new(CssomBlockData::FontFace(CssFontFaceDescriptors::new(
             entries,
@@ -221,11 +219,9 @@ impl CssomBatch {
         entries: &[CssFontFaceDescriptor],
         budget: &mut DeclarationBudget,
     ) -> Result<(), CssomError> {
-        let selected = CssSpecifiedFontFaceDeclarationBlock::try_from_entries_with_limits(
-            entries,
-            budget.provider()?,
-        )
-        .map_err(CssomError::FontFace)?;
+        let selected =
+            CssSpecifiedFontFaceDeclarationBlock::try_from_entries(entries, budget.provider()?)
+                .map_err(CssomError::FontFace)?;
         self.staged
             .blocks
             .get_mut(id)

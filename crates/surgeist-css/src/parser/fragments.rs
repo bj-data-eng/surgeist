@@ -831,7 +831,7 @@ pub fn parse_selector_list(
 /// ).into_validation_result().unwrap().unwrap();
 /// assert_eq!(list.selectors()[0].combinator(), CssSelectorCombinator::Child);
 /// assert_eq!(list.selectors()[1].combinator(), CssSelectorCombinator::Descendant);
-/// assert_eq!(list.to_specified_css().unwrap(), "> .Child, .Descendant");
+/// assert_eq!(list.serialize_specified(Default::default()).unwrap(), "> .Child, .Descendant");
 /// ```
 ///
 /// An ordinary checked list cannot take a relative carrier:
@@ -995,7 +995,7 @@ pub(crate) fn parse_media_query_list_snapshot(
 /// let report = parse_cssom_media_query("???");
 /// assert!(!report.is_clean());
 /// assert_eq!(
-///     report.syntax().as_ref().unwrap().serialize_cssom().unwrap().as_css(),
+///     report.syntax().as_ref().unwrap().serialize_cssom(Default::default()).unwrap().as_css(),
 ///     "not all"
 /// );
 /// ```
@@ -1119,7 +1119,8 @@ pub fn parse_page_descriptor_value(
         ))
     })
 }
-/// Parses one genuine margin descriptor block; Page-only descriptors and structural children recover locally.
+/// Parses one genuine margin descriptor block; Page-only descriptors and structural children
+/// recover locally.
 #[must_use]
 pub fn parse_margin_block(
     source: &str,

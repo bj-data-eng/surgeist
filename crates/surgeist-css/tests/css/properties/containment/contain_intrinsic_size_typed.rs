@@ -2,8 +2,8 @@ use crate::css::support::property_admission::{assert_component_rejected, assert_
 use surgeist_css::CssNumericConstructionErrorKind;
 use surgeist_css::{
     CssComponentValue, CssContainIntrinsicSize, CssContainIntrinsicSizeFallback,
-    CssContainIntrinsicSizeValue, CssLengthCalculation, CssSpecifiedNonNegativeLength,
-    CssSpecifiedValueSerializationErrorKind, CssSpecifiedValueSerializationLimits, CssValueOrigin,
+    CssContainIntrinsicSizeValue, CssLengthCalculation, CssSerializationLimits,
+    CssSpecifiedNonNegativeLength, CssSpecifiedValueSerializationErrorKind, CssValueOrigin,
     parse_component_values,
 };
 
@@ -18,8 +18,11 @@ fn component(text: &str) -> CssComponentValue {
 fn length(text: &str) -> CssSpecifiedNonNegativeLength {
     if text.starts_with("calc(") {
         CssSpecifiedNonNegativeLength::try_from_calculation(
-            CssLengthCalculation::try_from_components(parse_component_values(text).unwrap())
-                .unwrap(),
+            CssLengthCalculation::try_from_components(
+                parse_component_values(text).unwrap(),
+                Default::default(),
+            )
+            .unwrap(),
         )
         .unwrap()
     } else {
@@ -41,7 +44,7 @@ fn checked_nonnegative_length_preserves_exact_literal_domain() {
     }
     assert_eq!(
         CssSpecifiedNonNegativeLength::zero()
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "0"
     );
@@ -55,7 +58,9 @@ fn checked_nonnegative_length_preserves_exact_literal_domain() {
         panic!("retained negative-zero dimension")
     };
     assert_eq!(number.representation(), "-0");
-    let huge = length("1e999px").serialize_specified().unwrap();
+    let huge = length("1e999px")
+        .serialize_specified(Default::default())
+        .unwrap();
     assert_eq!(huge.len(), 1002); // 1 followed by 999 zeroes, then px.
     assert!(huge.starts_with('1') && huge.ends_with("px"));
     for (text, kind) in [
@@ -75,14 +80,23 @@ fn checked_nonnegative_length_preserves_exact_literal_domain() {
 
 #[test]
 fn bare_calculation_roots_reenter_ordinary_admission_but_negative_math_stays_deferred() {
-    let bare =
-        CssLengthCalculation::try_from_components(parse_component_values("2px").unwrap()).unwrap();
+    let bare = CssLengthCalculation::try_from_components(
+        parse_component_values("2px").unwrap(),
+        Default::default(),
+    )
+    .unwrap();
     let value = CssSpecifiedNonNegativeLength::try_from_calculation(bare).unwrap();
     assert!(value.literal_component().is_some());
     assert!(value.calculation().is_none());
-    assert_eq!(value.serialize_specified().unwrap(), "2px");
-    let negative =
-        CssLengthCalculation::try_from_components(parse_component_values("-1px").unwrap()).unwrap();
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "2px"
+    );
+    let negative = CssLengthCalculation::try_from_components(
+        parse_component_values("-1px").unwrap(),
+        Default::default(),
+    )
+    .unwrap();
     assert_numeric_rejected(
         CssSpecifiedNonNegativeLength::try_from_calculation(negative),
         CssNumericConstructionErrorKind::OutOfRange,
@@ -90,7 +104,10 @@ fn bare_calculation_roots_reenter_ordinary_admission_but_negative_math_stays_def
 
     let symbolic = length("calc(1px - 2px)");
     assert!(symbolic.calculation().is_some());
-    assert_eq!(symbolic.serialize_specified().unwrap(), "calc(-1px)");
+    assert_eq!(
+        symbolic.serialize_specified(Default::default()).unwrap(),
+        "calc(-1px)"
+    );
 }
 
 #[test]
@@ -103,14 +120,23 @@ fn fallback_and_auto_are_explicit_checked_structure() {
         none.fallback(),
         CssContainIntrinsicSizeFallback::None
     ));
-    assert_eq!(none.serialize_specified().unwrap(), "none");
-    assert_eq!(auto_none.serialize_specified().unwrap(), "auto none");
+    assert_eq!(
+        none.serialize_specified(Default::default()).unwrap(),
+        "none"
+    );
+    assert_eq!(
+        auto_none.serialize_specified(Default::default()).unwrap(),
+        "auto none"
+    );
     assert_ne!(none, auto_none);
 
     let auto_length = CssContainIntrinsicSizeValue::with_auto(
         CssContainIntrinsicSizeFallback::Length(length("2px")),
     );
-    assert_eq!(auto_length.serialize_specified().unwrap(), "auto 2px");
+    assert_eq!(
+        auto_length.serialize_specified(Default::default()).unwrap(),
+        "auto 2px"
+    );
     assert!(matches!(
         auto_length.fallback(),
         CssContainIntrinsicSizeFallback::Length(value) if value.literal_component().is_some()
@@ -157,7 +183,10 @@ fn shorthand_repeats_the_entire_first_value_and_retains_authored_height() {
     assert_eq!(one.width(), one.height());
     assert!(one.height().uses_auto());
     assert!(one.authored_height().is_none());
-    assert_eq!(one.serialize_specified().unwrap(), "auto 3px");
+    assert_eq!(
+        one.serialize_specified(Default::default()).unwrap(),
+        "auto 3px"
+    );
 
     let two = CssContainIntrinsicSize::new(
         auto_width,
@@ -172,7 +201,10 @@ fn shorthand_repeats_the_entire_first_value_and_retains_authored_height() {
         CssContainIntrinsicSizeFallback::None
     ));
     assert!(two.authored_height().is_some());
-    assert_eq!(two.serialize_specified().unwrap(), "auto 3px none");
+    assert_eq!(
+        two.serialize_specified(Default::default()).unwrap(),
+        "auto 3px none"
+    );
     assert_ne!(one, two);
 
     let one_none = CssContainIntrinsicSize::new(
@@ -180,7 +212,10 @@ fn shorthand_repeats_the_entire_first_value_and_retains_authored_height() {
         None,
     );
     assert_eq!(
-        one_none.height().serialize_specified().unwrap(),
+        one_none
+            .height()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "auto none"
     );
 }
@@ -191,24 +226,27 @@ fn serialization_shares_input_projection_and_byte_budgets_across_whole_values() 
         CssContainIntrinsicSizeValue::with_auto(CssContainIntrinsicSizeFallback::None),
         Some(length_value("2px")),
     );
-    assert_eq!(shorthand.serialize_specified().unwrap(), "auto none 2px");
+    assert_eq!(
+        shorthand.serialize_specified(Default::default()).unwrap(),
+        "auto none 2px"
+    );
     assert_eq!(
         shorthand
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(2, 9, 99))
+            .serialize_specified(CssSerializationLimits::new(2, 9, 99))
             .unwrap_err()
             .kind(),
         CssSpecifiedValueSerializationErrorKind::InputNodeLimit
     );
     assert_eq!(
         shorthand
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(9, 2, 99))
+            .serialize_specified(CssSerializationLimits::new(9, 2, 99))
             .unwrap_err()
             .kind(),
         CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
     );
     assert_eq!(
         shorthand
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(9, 9, 12))
+            .serialize_specified(CssSerializationLimits::new(9, 9, 12))
             .unwrap_err()
             .kind(),
         CssSpecifiedValueSerializationErrorKind::ByteLimit

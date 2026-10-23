@@ -13,20 +13,26 @@ fn width() -> CssComponentValue {
     .unwrap()
 }
 fn programmatic(items: Vec<CssComponentValue>) -> CssContainerCondition {
-    CssContainerCondition::try_from_components(values(items)).unwrap()
+    CssContainerCondition::try_from_components(values(items), Default::default()).unwrap()
 }
 
 #[test]
 fn every_authored_group_operator_and_leaf_has_an_inspectable_region() {
     let source = "NoT ( ((WIDTH > 01.00px)) aNd style(--Theme: r\\65 d) )";
     let condition = construct(source);
-    assert_eq!(condition.serialize().unwrap().as_css(), source);
+    assert_eq!(
+        condition
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        source
+    );
     assert_eq!(condition.position().unwrap().byte_offset().value(), 0);
     let CssContainerConditionKind::Not(outer) = condition.kind() else {
         panic!("not")
     };
     assert_eq!(
-        outer.serialize().unwrap().as_css(),
+        outer.serialize_tokens(Default::default()).unwrap().as_css(),
         "( ((WIDTH > 01.00px)) aNd style(--Theme: r\\65 d) )"
     );
     let CssContainerConditionKind::Parenthesized(and) = outer.kind() else {
@@ -52,10 +58,20 @@ fn every_authored_group_operator_and_leaf_has_an_inspectable_region() {
     let CssContainerLengthRef::Numeric(value) = value.view() else {
         panic!("length")
     };
-    assert_eq!(value.components().serialize().unwrap().as_css(), "01.00px");
-    assert_eq!(width.serialize().unwrap().as_css(), "(WIDTH > 01.00px)");
     assert_eq!(
-        style.serialize().unwrap().as_css(),
+        value
+            .components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        "01.00px"
+    );
+    assert_eq!(
+        width.serialize_tokens(Default::default()).unwrap().as_css(),
+        "(WIDTH > 01.00px)"
+    );
+    assert_eq!(
+        style.serialize_tokens(Default::default()).unwrap().as_css(),
         "style(--Theme: r\\65 d)"
     );
     let CssContainerConditionKind::Style(query) = style.kind() else {
@@ -69,7 +85,10 @@ fn every_authored_group_operator_and_leaf_has_an_inspectable_region() {
         panic!("plain custom feature")
     };
     assert_eq!(name.as_str(), "--Theme");
-    assert_eq!(value.serialize().unwrap().as_css(), " r\\65 d");
+    assert_eq!(
+        value.serialize_tokens(Default::default()).unwrap().as_css(),
+        " r\\65 d"
+    );
     for child in [
         outer.as_ref(),
         and.as_ref(),
@@ -95,7 +114,13 @@ fn checked_programmatic_boolean_grammar_cannot_construct_ungrouped_mixtures() {
     ));
     assert_eq!(condition.origin(), &CssValueOrigin::Programmatic);
     assert_eq!(condition.position(), None);
-    assert_eq!(condition.serialize().unwrap().as_css(), "not (width:1px)");
+    assert_eq!(
+        condition
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        "not (width:1px)"
+    );
     for invalid in [
         vec![],
         vec![token("not")],
@@ -123,7 +148,7 @@ fn checked_programmatic_boolean_grammar_cannot_construct_ungrouped_mixtures() {
         ],
     ] {
         assert!(matches!(
-            CssContainerCondition::try_from_components(values(invalid)),
+            CssContainerCondition::try_from_components(values(invalid), Default::default()),
             Err(CssContainerConstructionError::InvalidConditionGrammar {
                 origin: CssValueOrigin::Programmatic
             })
@@ -156,8 +181,20 @@ fn child_equality_and_lifetimes_do_not_depend_on_unrelated_siblings() {
     assert_eq!(left_child, right_child);
     drop(left);
     drop(right);
-    assert_eq!(left_child.serialize().unwrap().as_css(), "(width:1px)");
-    assert_eq!(right_child.serialize().unwrap().as_css(), "(width:1px)");
+    assert_eq!(
+        left_child
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        "(width:1px)"
+    );
+    assert_eq!(
+        right_child
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        "(width:1px)"
+    );
     assert_eq!(left_child, right_child);
 }
 
@@ -180,7 +217,7 @@ fn original_token_boundaries_survive_recognized_style_serialization() {
         condition.kind(),
         CssContainerConditionKind::Style(_)
     ));
-    let serialized = condition.serialize().unwrap();
+    let serialized = condition.serialize_tokens(Default::default()).unwrap();
     assert_eq!(serialized.as_css(), "style(--Theme:1/**/e2)");
     assert_eq!(
         serialized.origin_at(14),
@@ -203,9 +240,9 @@ fn checked_resource_limits_apply_before_recognized_and_opaque_classification() {
         )
         .unwrap();
         assert_eq!(
-            CssContainerCondition::try_from_components_with_limits(components.clone(), exact)
+            CssContainerCondition::try_from_components(components.clone(), exact)
                 .unwrap()
-                .serialize()
+                .serialize_tokens(Default::default())
                 .unwrap()
                 .as_css(),
             source
@@ -225,7 +262,7 @@ fn checked_resource_limits_apply_before_recognized_and_opaque_classification() {
             ),
         ] {
             let Err(CssContainerConstructionError::Component(error)) =
-                CssContainerCondition::try_from_components_with_limits(components.clone(), limits)
+                CssContainerCondition::try_from_components(components.clone(), limits)
             else {
                 panic!("typed component limit")
             };
@@ -235,14 +272,14 @@ fn checked_resource_limits_apply_before_recognized_and_opaque_classification() {
         let condition = construct(source);
         assert_eq!(
             condition
-                .serialize_with_limit(source.len())
+                .serialize_tokens(crate::css::support::byte_limits(source.len()))
                 .unwrap()
                 .as_css(),
             source
         );
         assert_eq!(
             condition
-                .serialize_with_limit(source.len() - 1)
+                .serialize_tokens(crate::css::support::byte_limits(source.len() - 1))
                 .unwrap_err()
                 .kind(),
             CssComponentValueErrorKind::ByteLimit
@@ -253,14 +290,18 @@ fn checked_resource_limits_apply_before_recognized_and_opaque_classification() {
 #[test]
 fn trusted_enclosure_recovery_preserves_recognized_grouping_and_closure_origins() {
     let components = parse_component_values("((width:1px").unwrap();
-    let from_components = CssContainerCondition::try_from_components(components.clone()).unwrap();
+    let from_components =
+        CssContainerCondition::try_from_components(components.clone(), Default::default()).unwrap();
     let condition = CssContainerCondition::try_from_enclosed(
         CssGeneralEnclosed::try_from_component(components.items()[0].clone()).unwrap(),
     )
     .unwrap();
     assert_eq!(condition, from_components);
     assert_eq!(
-        from_components.serialize().unwrap().as_css(),
+        from_components
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         "((width:1px))"
     );
     let CssContainerConditionKind::Parenthesized(child) = condition.kind() else {
@@ -270,7 +311,7 @@ fn trusted_enclosure_recovery_preserves_recognized_grouping_and_closure_origins(
         child.kind(),
         CssContainerConditionKind::Feature(_)
     ));
-    let serialized = condition.serialize().unwrap();
+    let serialized = condition.serialize_tokens(Default::default()).unwrap();
     assert_eq!(serialized.as_css(), "((width:1px))");
     for offset in [11, 12] {
         assert!(matches!(
@@ -301,9 +342,21 @@ fn supported_container_depth_has_safe_owned_tree_lifetimes_on_an_ordinary_stack(
                     let condition = construct(&source);
                     let cloned = condition.clone();
                     assert_eq!(condition, cloned);
-                    assert_eq!(condition.serialize().unwrap().as_css(), source);
+                    assert_eq!(
+                        condition
+                            .serialize_tokens(Default::default())
+                            .unwrap()
+                            .as_css(),
+                        source
+                    );
                     drop(condition);
-                    assert_eq!(cloned.serialize().unwrap().as_css(), source);
+                    assert_eq!(
+                        cloned
+                            .serialize_tokens(Default::default())
+                            .unwrap()
+                            .as_css(),
+                        source
+                    );
                     drop(cloned);
                 }
                 let source = format!("{}width:1px{}", "(".repeat(255), ")".repeat(255));
@@ -313,7 +366,10 @@ fn supported_container_depth_has_safe_owned_tree_lifetimes_on_an_ordinary_stack(
                 };
                 let child = list.conditions()[0].clone();
                 drop(parent);
-                assert_eq!(child.serialize().unwrap().as_css(), source);
+                assert_eq!(
+                    child.serialize_tokens(Default::default()).unwrap().as_css(),
+                    source
+                );
                 let cloned = child.clone();
                 assert_eq!(child, cloned);
                 drop(child);

@@ -10,7 +10,7 @@ fn rejection_failures(property: CssKnownProperty, source: &str) -> Vec<String> {
     let mut failures = Vec::new();
     let components = parse_component_values(source).unwrap();
     let before = components.clone();
-    let serialized = components.serialize().unwrap();
+    let serialized = components.serialize_tokens(Default::default()).unwrap();
     // Scan actual emitted origin mappings; do not infer an EOF position from
     // the repaired CSS length or assume the implicit ending is a suffix.
     let origin = (0..serialized.as_css().len())

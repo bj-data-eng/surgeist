@@ -5,6 +5,7 @@ use surgeist_css::*;
 fn main() {
     let condition = CssContainerCondition::try_from_components(
         parse_component_values("style((color: var(--theme)) and (1px < --size <= 10px))").unwrap(),
+        Default::default(),
     )
     .unwrap();
     let CssContainerConditionKind::Style(query) = condition.kind() else {

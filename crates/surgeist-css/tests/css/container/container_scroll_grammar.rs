@@ -9,9 +9,11 @@
 use surgeist_css::*;
 
 fn assert_query(source: &str, recognized: bool) {
-    let checked =
-        CssContainerCondition::try_from_components(parse_component_values(source).unwrap())
-            .unwrap();
+    let checked = CssContainerCondition::try_from_components(
+        parse_component_values(source).unwrap(),
+        Default::default(),
+    )
+    .unwrap();
     assert_eq!(
         !matches!(
             checked.kind(),
@@ -20,7 +22,13 @@ fn assert_query(source: &str, recognized: bool) {
         recognized,
         "checked {source}",
     );
-    assert_eq!(checked.serialize().unwrap().as_css(), source);
+    assert_eq!(
+        checked
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        source
+    );
     let input = format!("@container {source}{{}}");
     let report = parse_sheet(&input);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
@@ -33,7 +41,13 @@ fn assert_query(source: &str, recognized: bool) {
         recognized,
         "parsed {source}",
     );
-    assert_eq!(parsed.serialize().unwrap().as_css(), source);
+    assert_eq!(
+        parsed
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        source
+    );
 }
 
 #[test]
@@ -91,10 +105,13 @@ fn compound_variable_values_are_retained_as_complete_pending_operands() {
 fn fully_programmatic_scroll_features_use_the_same_checked_boundary() {
     let pending = CssComponentValue::try_function(
         "var",
-        CssComponentValues::try_new(vec![
-            CssComponentValue::try_ident("--edge").unwrap(),
-            CssComponentValue::try_token(",").unwrap(),
-        ])
+        CssComponentValues::try_new(
+            vec![
+                CssComponentValue::try_ident("--edge").unwrap(),
+                CssComponentValue::try_token(",").unwrap(),
+            ],
+            Default::default(),
+        )
         .unwrap(),
     )
     .unwrap();
@@ -105,15 +122,19 @@ fn fully_programmatic_scroll_features_use_the_same_checked_boundary() {
         ),
         (pending, "scroll-state(stuck:var(--edge,))"),
     ] {
-        let values = CssComponentValues::try_new(vec![
-            CssComponentValue::try_ident("stuck").unwrap(),
-            CssComponentValue::try_token(":").unwrap(),
-            value,
-        ])
+        let values = CssComponentValues::try_new(
+            vec![
+                CssComponentValue::try_ident("stuck").unwrap(),
+                CssComponentValue::try_token(":").unwrap(),
+                value,
+            ],
+            Default::default(),
+        )
         .unwrap();
         let function = CssComponentValue::try_function("scroll-state", values).unwrap();
         let condition = CssContainerCondition::try_from_components(
-            CssComponentValues::try_new(vec![function]).unwrap(),
+            CssComponentValues::try_new(vec![function], Default::default()).unwrap(),
+            Default::default(),
         )
         .unwrap();
         assert!(!matches!(
@@ -121,7 +142,13 @@ fn fully_programmatic_scroll_features_use_the_same_checked_boundary() {
             CssContainerConditionKind::GeneralEnclosed(_)
         ));
         assert_eq!(condition.origin(), &CssValueOrigin::Programmatic);
-        assert_eq!(condition.serialize().unwrap().as_css(), expected);
+        assert_eq!(
+            condition
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            expected
+        );
         assert_query(expected, true);
     }
 }

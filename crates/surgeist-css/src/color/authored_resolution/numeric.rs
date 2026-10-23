@@ -1014,6 +1014,7 @@ mod tests {
                 Some(
                     crate::CssNumberCalculation::try_from_components(
                         crate::parse_component_values(source).unwrap(),
+                        Default::default(),
                     )
                     .unwrap(),
                 )

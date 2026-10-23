@@ -32,7 +32,10 @@ fn intrinsic_initial_is_typed_transparent_without_an_authored_occurrence() {
     };
     assert_eq!(color, &CssColor::transparent());
     assert!(color.is_transparent());
-    assert_eq!(color.to_specified_css().unwrap(), "transparent");
+    assert_eq!(
+        color.serialize_specified(Default::default()).unwrap(),
+        "transparent"
+    );
 }
 
 #[test]
@@ -61,7 +64,12 @@ fn ordinary_typed_payloads_retain_literal_and_context_dependent_color_meaning() 
             panic!("one terminal")
         };
         assert_eq!(typed_color(item), &expected);
-        assert_eq!(typed_color(item).to_specified_css().unwrap(), canonical);
+        assert_eq!(
+            typed_color(item)
+                .serialize_specified(Default::default())
+                .unwrap(),
+            canonical
+        );
         assert!(item.source().same_occurrence(&source));
         assert_eq!(item.source().importance(), CssImportance::Important);
         assert!(item.replacement_components().is_none());
@@ -75,9 +83,11 @@ fn reusable_reentry_retains_typed_programmatic_and_parsed_colors_and_symbolic_gl
         panic!("pending color")
     };
     let parsed = parse_component_values("red").unwrap();
-    let programmatic =
-        CssComponentValues::try_new(vec![CssComponentValue::try_ident("currentcolor").unwrap()])
-            .unwrap();
+    let programmatic = CssComponentValues::try_new(
+        vec![CssComponentValue::try_ident("currentcolor").unwrap()],
+        Default::default(),
+    )
+    .unwrap();
     for (replacement, expected) in [
         (
             parsed,

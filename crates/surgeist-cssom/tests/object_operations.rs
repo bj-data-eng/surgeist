@@ -65,7 +65,7 @@ fn text(snapshot: &CssomSnapshot, object: &CssStyleDeclaration) -> String {
         CssomBlockData::Properties {
             selected: CssomProjection::Available(value),
             ..
-        } => value.serialize_cssom().unwrap(),
+        } => value.serialize_cssom(Default::default()).unwrap(),
         other => panic!("current selected properties: {other:?}"),
     }
 }
@@ -260,7 +260,11 @@ fn resolver_receives_actual_candidates_and_captured_support_then_runs_once() {
                     CssPropertyGrammar::from_name("width").unwrap()
                 );
                 assert_eq!(
-                    declaration.value_components().serialize().unwrap().as_css(),
+                    declaration
+                        .value_components()
+                        .serialize_tokens(Default::default())
+                        .unwrap()
+                        .as_css(),
                     "2px"
                 );
                 Ok(admission(request, CssomDeclarationUsability::Usable))

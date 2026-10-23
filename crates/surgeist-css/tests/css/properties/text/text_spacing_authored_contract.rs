@@ -37,7 +37,7 @@ fn contributions(source: &CssDeclaration) -> CssLonghandContributions {
 }
 fn canonical(source: &CssDeclaration, name: &str, text: &str) {
     assert_eq!(
-        source.to_specified_css().unwrap(),
+        source.serialize_specified(Default::default()).unwrap(),
         format!("{name}: {text} !important;")
     );
 }
@@ -94,7 +94,7 @@ fn programmatic_components_preserve_origin_identity_and_importance_at_both_check
         } else {
             CssComponentValue::try_ident(text).unwrap()
         };
-        let components = CssComponentValues::try_new(vec![value]).unwrap();
+        let components = CssComponentValues::try_new(vec![value], Default::default()).unwrap();
         for grammar in [false, true] {
             let source = checked_components(name, components.clone(), grammar).unwrap();
             assert_eq!(source.value_components(), &components);
@@ -129,8 +129,11 @@ fn intrinsic_initials_and_inheritance_equal_authored_terminal_values_without_fab
         let declaration = if name == "line-padding" {
             checked_components(
                 name,
-                CssComponentValues::try_new(vec![CssComponentValue::try_number("0").unwrap()])
-                    .unwrap(),
+                CssComponentValues::try_new(
+                    vec![CssComponentValue::try_number("0").unwrap()],
+                    Default::default(),
+                )
+                .unwrap(),
                 true,
             )
             .unwrap()
@@ -255,7 +258,7 @@ fn declaration_limits(name: &str, text: &str, nodes: usize) {
     for source in [parsed(name, text), checked(name, text, true)] {
         let expected = format!("{name}: {text} !important;");
         LimitLadder::new(&expected, nodes + 2, nodes + 2)
-            .assert_unchanged(&source, CssDeclaration::to_specified_css_with_limits);
+            .assert_unchanged(&source, CssDeclaration::serialize_specified);
     }
 }
 #[test]
@@ -742,23 +745,33 @@ fn spacing_projection_does_not_reset_white_space_letter_word_or_justify_siblings
     let source = &report.syntax()[4];
     projected(source, ["space-all", "no-autospace"]);
     assert_eq!(
-        report.syntax()[0].to_specified_css().unwrap(),
+        report.syntax()[0]
+            .serialize_specified(Default::default())
+            .unwrap(),
         "white-space: pre;"
     );
     assert_eq!(
-        report.syntax()[1].to_specified_css().unwrap(),
+        report.syntax()[1]
+            .serialize_specified(Default::default())
+            .unwrap(),
         "word-spacing: 2px;"
     );
     assert_eq!(
-        report.syntax()[2].to_specified_css().unwrap(),
+        report.syntax()[2]
+            .serialize_specified(Default::default())
+            .unwrap(),
         "letter-spacing: 3px;"
     );
     assert_eq!(
-        report.syntax()[3].to_specified_css().unwrap(),
+        report.syntax()[3]
+            .serialize_specified(Default::default())
+            .unwrap(),
         "text-justify: distribute;"
     );
     assert_eq!(
-        report.syntax()[5].to_specified_css().unwrap(),
+        report.syntax()[5]
+            .serialize_specified(Default::default())
+            .unwrap(),
         "color: red;"
     );
 }
@@ -780,8 +793,8 @@ fn sheet_siblings_share_exact_work_and_non_ascii_output_bytes_without_charging_h
 
 #[test]
 fn signed_length_provider_keeps_exact_source_and_bare_root_admission_with_atomic_limits() {
+    use CssSerializationLimits as Limits;
     use CssSpecifiedValueSerializationErrorKind as Kind;
-    use CssSpecifiedValueSerializationLimits as Limits;
     for (input, expected) in [
         ("0", "0"),
         ("-2PX", "-2px"),
@@ -807,10 +820,7 @@ fn signed_length_provider_keeps_exact_source_and_bare_root_admission_with_atomic
         assert_eq!(numeric.literal_component(), Some(token));
         let before = numeric.clone();
         let exact = Limits::new(1, 1, expected.len());
-        assert_eq!(
-            numeric.serialize_specified_with_limits(exact).unwrap(),
-            expected
-        );
+        assert_eq!(numeric.serialize_specified(exact).unwrap(), expected);
         for (limits, kind) in [
             (Limits::new(0, 1, expected.len()), Kind::InputNodeLimit),
             (Limits::new(1, 0, expected.len()), Kind::ProjectionNodeLimit),
@@ -818,23 +828,19 @@ fn signed_length_provider_keeps_exact_source_and_bare_root_admission_with_atomic
         ] {
             for _ in 0..2 {
                 assert_eq!(
-                    numeric
-                        .serialize_specified_with_limits(limits)
-                        .unwrap_err()
-                        .kind(),
+                    numeric.serialize_specified(limits).unwrap_err().kind(),
                     kind
                 );
                 assert_eq!(numeric, before);
             }
         }
-        assert_eq!(
-            numeric.serialize_specified_with_limits(exact).unwrap(),
-            expected
-        );
+        assert_eq!(numeric.serialize_specified(exact).unwrap(), expected);
     }
     for text in ["1", "-1", "1%"] {
-        let calculation =
-            CssLengthCalculation::try_from_components(parse_component_values(text).unwrap());
+        let calculation = CssLengthCalculation::try_from_components(
+            parse_component_values(text).unwrap(),
+            Default::default(),
+        );
         if let Ok(calculation) = calculation {
             assert!(CssSpecifiedLength::try_from_calculation(calculation).is_err());
         }

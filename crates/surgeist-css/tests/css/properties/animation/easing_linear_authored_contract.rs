@@ -94,7 +94,12 @@ fn unordered_stop_components_and_ordered_stop_lists_share_all_consumers() {
         for property in CONSUMERS {
             let value = body(property, source);
             let original = parsed(property, &value);
-            assert_eq!(easing(&original).serialize_specified().unwrap(), canonical);
+            assert_eq!(
+                easing(&original)
+                    .serialize_specified(Default::default())
+                    .unwrap(),
+                canonical
+            );
             let components = parse_component_values(&value).unwrap();
             for checked in [
                 parse_property_value(
@@ -134,9 +139,18 @@ fn authored_omissions_pairs_and_descending_inputs_wait_for_numeric_fixup() {
     ] {
         for property in LONGHANDS {
             let declaration = parsed(property, source);
-            assert_eq!(easing(&declaration).serialize_specified().unwrap(), source);
             assert_eq!(
-                declaration.value_components().serialize().unwrap().as_css(),
+                easing(&declaration)
+                    .serialize_specified(Default::default())
+                    .unwrap(),
+                source
+            );
+            assert_eq!(
+                declaration
+                    .value_components()
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
                 source
             );
             assert_eq!(easing(&parsed(property, source)), easing(&declaration),);
@@ -154,9 +168,16 @@ fn linear_keyword_and_equivalent_function_keep_separate_authored_identity() {
             &CssEasing::Keyword(CssEasingKeyword::Linear)
         );
         assert_ne!(easing(&keyword), easing(&function));
-        assert_eq!(easing(&keyword).serialize_specified().unwrap(), "linear");
         assert_eq!(
-            easing(&function).serialize_specified().unwrap(),
+            easing(&keyword)
+                .serialize_specified(Default::default())
+                .unwrap(),
+            "linear"
+        );
+        assert_eq!(
+            easing(&function)
+                .serialize_specified(Default::default())
+                .unwrap(),
             "linear(0, 1)"
         );
     }
@@ -181,16 +202,25 @@ fn symbolic_number_and_percentage_graphs_remain_authored_and_roundtrip() {
         for property in CONSUMERS {
             let value = parsed(property, &body(property, source));
             let before = easing(&value).clone();
-            assert_eq!(easing(&value).serialize_specified().unwrap(), canonical);
+            assert_eq!(
+                easing(&value)
+                    .serialize_specified(Default::default())
+                    .unwrap(),
+                canonical
+            );
             assert_eq!(easing(&value), &before);
             assert_eq!(
                 easing(&parsed(property, &body(property, canonical)))
-                    .serialize_specified()
+                    .serialize_specified(Default::default())
                     .unwrap(),
                 canonical
             );
             assert_eq!(
-                value.value_components().serialize().unwrap().as_css(),
+                value
+                    .value_components()
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
                 body(property, source)
             );
         }
@@ -262,7 +292,9 @@ fn implicit_linear_closure_is_retained_in_browser_parsing_but_checked_reentry_re
             panic!("browser retains implicit function closure: {css}")
         };
         assert_eq!(
-            easing(recovered).serialize_specified().unwrap(),
+            easing(recovered)
+                .serialize_specified(Default::default())
+                .unwrap(),
             "linear(0, 1)"
         );
         assert!(report.diagnostics().iter().any(|diagnostic| {
@@ -443,7 +475,7 @@ fn normalization_keeps_linear_declaration_order_and_grouped_transition_members()
     }
     assert_eq!(
         easing(declarations[1].source())
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "linear(0 80%, 1 20%)"
     );
@@ -457,9 +489,12 @@ fn multiple_linear_functions_share_atomic_numeric_and_byte_budgets() {
         let list = easing_list(&declaration);
         let original = list.clone();
         assert_eq!(list.values().len(), 2);
-        assert_eq!(list.serialize_specified().unwrap(), expected);
         assert_eq!(
-            list.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
+            list.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
+        assert_eq!(
+            list.serialize_specified(CssSerializationLimits::new(
                 usize::MAX,
                 usize::MAX,
                 expected.len()
@@ -469,39 +504,29 @@ fn multiple_linear_functions_share_atomic_numeric_and_byte_budgets() {
         );
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(1, usize::MAX, usize::MAX),
+                CssSerializationLimits::new(1, usize::MAX, usize::MAX),
                 CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(usize::MAX, 1, usize::MAX),
+                CssSerializationLimits::new(usize::MAX, 1, usize::MAX),
                 CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(
-                    usize::MAX,
-                    usize::MAX,
-                    expected.len() - 1,
-                ),
+                CssSerializationLimits::new(usize::MAX, usize::MAX, expected.len() - 1),
                 CssSpecifiedValueSerializationErrorKind::ByteLimit,
             ),
             // Each individual function fits, but the combined list does not.
             (
-                CssSpecifiedValueSerializationLimits::new(
-                    usize::MAX,
-                    usize::MAX,
-                    "linear(1 20% 40%, 0)".len(),
-                ),
+                CssSerializationLimits::new(usize::MAX, usize::MAX, "linear(1 20% 40%, 0)".len()),
                 CssSpecifiedValueSerializationErrorKind::ByteLimit,
             ),
         ] {
-            assert_eq!(
-                list.serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
-                kind
-            );
+            assert_eq!(list.serialize_specified(limits).unwrap_err().kind(), kind);
             assert_eq!(list, &original);
-            assert_eq!(list.serialize_specified().unwrap(), expected);
+            assert_eq!(
+                list.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
         }
     }
 }

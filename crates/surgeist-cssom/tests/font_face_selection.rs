@@ -5,8 +5,8 @@ use surgeist_cssom::*;
 #[test]
 fn new_font_face_selection_initialization_rejects_resource_failure_atomically() {
     for css in [
-        CssSpecifiedValueSerializationLimits::new(0, 1000, 1000),
-        CssSpecifiedValueSerializationLimits::new(1000, 0, 1000),
+        CssSerializationLimits::new(0, 1000, 1000),
+        CssSerializationLimits::new(1000, 0, 1000),
     ] {
         let mut store = CssomStore::new(
             CssomLimits {

@@ -7,8 +7,8 @@ use surgeist_css::*;
 
 type Kind = CssFontFaceDescriptorKind;
 type Value = CssFontFaceDescriptorValue;
-type Limits = CssSpecifiedValueSerializationLimits;
-type Error = CssSpecifiedValueSerializationError;
+type Limits = CssSerializationLimits;
+type Error = CssSerializationError;
 type ErrorKind = CssSpecifiedValueSerializationErrorKind;
 
 fn parsed(kind: Kind, text: &str) -> Value {
@@ -17,11 +17,11 @@ fn parsed(kind: Kind, text: &str) -> Value {
 
 fn emit(value: &Value, limits: Limits) -> Result<String, Error> {
     match value {
-        Value::FontNamedInstance(value) => value.serialize_specified_with_limits(limits),
-        Value::FontLanguageOverride(value) => value.serialize_specified_with_limits(limits),
+        Value::FontNamedInstance(value) => value.serialize_specified(limits),
+        Value::FontLanguageOverride(value) => value.serialize_specified(limits),
         Value::AscentOverride(value)
         | Value::DescentOverride(value)
-        | Value::LineGapOverride(value) => value.serialize_specified_with_limits(limits),
+        | Value::LineGapOverride(value) => value.serialize_specified(limits),
         _ => panic!("one of the five descriptor payloads"),
     }
 }
@@ -47,19 +47,22 @@ fn named_instance_strings_keep_decoded_names_and_original_components() {
     assert_eq!(origin.source().as_str(), input);
     assert_eq!(origin.span().start().byte_offset().value(), 0);
     assert_eq!(origin.span().end().byte_offset().value(), input.len());
-    assert_eq!(name.serialize_specified().unwrap(), "\"Grotesque\"");
+    assert_eq!(
+        name.serialize_specified(Default::default()).unwrap(),
+        "\"Grotesque\""
+    );
     let programmatic = CssFontNamedInstanceString::try_new("Grotesque").unwrap();
     assert_eq!(programmatic.origin(), &CssValueOrigin::Programmatic);
     assert_eq!(name, programmatic);
     assert_eq!(
         programmatic
-            .serialize_specified_with_limits(Limits::new(1, 1, 11))
+            .serialize_specified(Limits::new(1, 1, 11))
             .unwrap(),
         "\"Grotesque\""
     );
     assert_eq!(
         programmatic
-            .serialize_specified_with_limits(Limits::new(1, 1, 10))
+            .serialize_specified(Limits::new(1, 1, 10))
             .unwrap_err()
             .kind(),
         ErrorKind::ByteLimit
@@ -97,7 +100,10 @@ fn strings_and_keywords_emit_canonical_text_under_exact_limits() {
         ("A\"\\\n\u{1}'", "\"A\\\"\\\\\\a \\1 '\""),
     ] {
         let name = CssFontNamedInstanceString::try_new(decoded).unwrap();
-        assert_eq!(name.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            name.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_primitive(
             Value::FontNamedInstance(CssFontNamedInstance::String(name)),
             expected,
@@ -176,10 +182,13 @@ fn three_metric_branches_share_exact_percentage_payloads_without_losing_identity
     )
     .unwrap();
     let constructed = CssFontMetricOverride::Percentage(percentage);
-    assert_eq!(constructed.serialize_specified().unwrap(), "125%");
+    assert_eq!(
+        constructed.serialize_specified(Default::default()).unwrap(),
+        "125%"
+    );
     assert_eq!(
         constructed
-            .serialize_specified_with_limits(Limits::new(1, 1, 4))
+            .serialize_specified(Limits::new(1, 1, 4))
             .unwrap(),
         "125%"
     );
@@ -222,7 +231,14 @@ fn metric_calculations_preserve_authored_range_type_and_origins_on_atomic_failur
             assert!(percentage.literal_component().is_none());
             let calculation = percentage.calculation().unwrap();
             assert_eq!(calculation.result_type(), CssCalculationType::Percentage);
-            assert_eq!(calculation.components().serialize().unwrap().as_css(), text);
+            assert_eq!(
+                calculation
+                    .components()
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
+                text
+            );
             let CssValueOrigin::Parsed(origin) = percentage.origin() else {
                 panic!("calculation retains parsed provenance")
             };
@@ -251,17 +267,28 @@ fn metric_calculations_preserve_authored_range_type_and_origins_on_atomic_failur
                 ErrorKind::ProjectionNodeLimit
             );
             assert_eq!(value, before);
-            assert_eq!(calculation.components().serialize().unwrap().as_css(), text);
+            assert_eq!(
+                calculation
+                    .components()
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
+                text
+            );
         }
     }
     let calculation = CssPercentageCalculation::try_from_components(
         parse_component_values("calc(-10%)").unwrap(),
+        Default::default(),
     )
     .unwrap();
     let constructed = CssFontMetricOverride::Percentage(
         CssSpecifiedNonNegativePercentage::try_from_calculation(calculation).unwrap(),
     );
-    assert_eq!(constructed.serialize_specified().unwrap(), "calc(-10%)");
+    assert_eq!(
+        constructed.serialize_specified(Default::default()).unwrap(),
+        "calc(-10%)"
+    );
 }
 
 #[test]
@@ -279,7 +306,9 @@ fn substituted_values_return_concrete_descriptor_branches_and_original_replaceme
             panic!("whole env deferral")
         };
         let replacement = parse_component_values(text).unwrap();
-        let ordinary = pending.reparse_after_substitution(replacement).unwrap();
+        let ordinary = pending
+            .reparse_after_substitution(replacement, Default::default())
+            .unwrap();
         assert_eq!(ordinary.kind(), kind);
         let origin = match &ordinary {
             Value::FontNamedInstance(CssFontNamedInstance::String(name)) => name.origin(),

@@ -1,9 +1,10 @@
 //! Cross-owner cumulative bridge contracts, with independently authored text.
+use crate::specified_rule_serialization::SpecifiedProvider as _;
 use crate::specified_rule_serialization::SpecifiedRuleWriter;
 use crate::*;
+use CssSerializationLimits as Limits;
 use CssSpecifiedValueSerializationErrorKind as Kind;
-use CssSpecifiedValueSerializationLimits as Limits;
-fn compose(writer: &mut SpecifiedRuleWriter) -> Result<(), CssSpecifiedValueSerializationError> {
+fn compose(writer: &mut SpecifiedRuleWriter) -> Result<(), CssSerializationError> {
     writer.append("start ")?;
     CssColor::transparent().append_specified(&mut writer.context, &mut writer.css)?;
     writer.append(" ")?;
@@ -37,10 +38,7 @@ fn exact_shared_nodes_and_bytes_charge_final_text_once() {
         assert_eq!(compose(&mut writer).unwrap_err().kind(), kind);
     }
 }
-fn emit(
-    writer: &mut SpecifiedRuleWriter,
-    source: &str,
-) -> Result<(), CssSpecifiedValueSerializationError> {
+fn emit(writer: &mut SpecifiedRuleWriter, source: &str) -> Result<(), CssSerializationError> {
     let report = parse_style_attribute(source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     match report.syntax()[0]
@@ -73,7 +71,7 @@ fn emit(
 // The exact visit counts follow the retained scalar or pair graph, independently
 // of text length and of the enclosing suppression mode.
 fn assert_suppressed_work(
-    emit: fn(&mut SpecifiedRuleWriter) -> Result<(), CssSpecifiedValueSerializationError>,
+    emit: fn(&mut SpecifiedRuleWriter) -> Result<(), CssSerializationError>,
     expected: &str,
     nodes: usize,
 ) {
@@ -173,7 +171,7 @@ fn emit_font_range(
     writer: &mut SpecifiedRuleWriter,
     source: &str,
     kind: CssFontFaceDescriptorKind,
-) -> Result<(), CssSpecifiedValueSerializationError> {
+) -> Result<(), CssSerializationError> {
     let report = parse_font_face_descriptor_value(source, kind);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let Some(CssAuthoredFontFaceDescriptorValue::Ordinary(value)) = report.syntax() else {
@@ -285,7 +283,7 @@ fn grid_auto_flow_reuses_final_output_storage_and_cumulative_resources() {
         assert_eq!(writer.css, full);
         assert_eq!(
             value
-                .serialize_specified_with_limits(Limits::new(nodes, nodes, expected.len()))
+                .serialize_specified(Limits::new(nodes, nodes, expected.len()))
                 .unwrap(),
             expected
         );

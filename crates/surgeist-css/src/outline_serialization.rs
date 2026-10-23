@@ -2,32 +2,13 @@
 //! Auto, shared Color and imported image-1D use their owning providers.
 
 use crate::specified_rule_serialization::SpecifiedRuleWriter;
-use crate::{
-    CssOutline, CssOutlineColor, CssOutlineStyle, CssOutlineWidth,
-    CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits,
-};
+use crate::{CssOutline, CssOutlineColor, CssOutlineStyle, CssOutlineWidth, CssSerializationError};
 
-type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
+type Result<T> = std::result::Result<T, CssSerializationError>;
 
 macro_rules! provider {
     ($ty:ty, $description:literal) => {
-        impl $ty {
-            #[doc = $description]
-            pub fn serialize_specified(&self) -> Result<String> {
-                self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-            }
-
-            /// Emits complete specified CSS using one cumulative resource context.
-            /// Failure returns no partial CSS and leaves operands and origins unchanged.
-            pub fn serialize_specified_with_limits(
-                &self,
-                limits: CssSpecifiedValueSerializationLimits,
-            ) -> Result<String> {
-                let mut writer = SpecifiedRuleWriter::new(limits);
-                self.append_to_rule_writer(&mut writer)?;
-                Ok(writer.css)
-            }
-        }
+        crate::specified_rule_serialization::specified_serialization!($ty);
     };
 }
 
@@ -48,8 +29,8 @@ provider!(
     "Emits width, style, color in selected UI4 grammar order. The aggregate and all retained children charge input and projection work, including an omitted second auto. A required synthesized none style charges one projection node and no input node."
 );
 
-impl CssOutlineStyle {
-    pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+impl crate::specified_rule_serialization::SpecifiedProvider for CssOutlineStyle {
+    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         writer.keyword(match self {
             Self::Auto => "auto",
             Self::None => "none",
@@ -65,8 +46,8 @@ impl CssOutlineStyle {
     }
 }
 
-impl CssOutlineWidth {
-    pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+impl crate::specified_rule_serialization::SpecifiedProvider for CssOutlineWidth {
+    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         match self {
             Self::Thin => writer.keyword("thin"),
             Self::Medium => writer.keyword("medium"),
@@ -76,8 +57,8 @@ impl CssOutlineWidth {
     }
 }
 
-impl CssOutlineColor {
-    pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+impl crate::specified_rule_serialization::SpecifiedProvider for CssOutlineColor {
+    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         match self {
             Self::Auto => writer.keyword("auto"),
             Self::Color(color) => color.append_specified(&mut writer.context, &mut writer.css),
@@ -86,8 +67,8 @@ impl CssOutlineColor {
     }
 }
 
-impl CssOutline {
-    pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+impl crate::specified_rule_serialization::SpecifiedProvider for CssOutline {
+    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         writer.node()?;
         let mut started = false;
         if let Some(width) = self.width() {
@@ -128,9 +109,10 @@ impl CssOutline {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::CssSerializationLimits as Limits;
     use crate::CssSpecifiedValueSerializationErrorKind as Kind;
+    use crate::specified_rule_serialization::SpecifiedProvider as _;
     use crate::{CssColor, CssKnownPropertyValueRef, parse_style_attribute};
-    use CssSpecifiedValueSerializationLimits as Limits;
 
     fn width(writer: &mut SpecifiedRuleWriter) -> Result<()> {
         CssOutlineWidth::Thin.append_to_rule_writer(writer)
@@ -276,7 +258,10 @@ mod tests {
         assert!(!writer.context.output_suppressed());
         assert_eq!(value.value(), &before);
         assert_eq!(
-            value.value().serialize_specified().unwrap(),
+            value
+                .value()
+                .serialize_specified(Default::default())
+                .unwrap(),
             "2px solid rgb(1, 2, 3)"
         );
     }

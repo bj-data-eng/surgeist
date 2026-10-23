@@ -236,22 +236,22 @@ fn properties(block: &CssomBlock) -> Result<Vec<CssSpecifiedDeclarationEntry>, C
 fn selected_properties(
     block: &CssomBlock,
     entries: &[CssSpecifiedDeclarationEntry],
-    limits: CssSpecifiedValueSerializationLimits,
+    limits: CssSerializationLimits,
 ) -> Result<CssSpecifiedDeclarationBlock, CssomError> {
     match block.data() {
         CssomBlockData::Properties { domain, .. } => match domain {
             CssomPropertyDomain::Ordinary => {
-                CssSpecifiedDeclarationBlock::try_from_entries_with_limits(entries, limits)
+                CssSpecifiedDeclarationBlock::try_from_entries(entries, limits)
             }
             CssomPropertyDomain::Keyframe => {
-                CssSpecifiedDeclarationBlock::try_from_keyframe_entries_with_limits(entries, limits)
+                CssSpecifiedDeclarationBlock::try_from_keyframe_entries(entries, limits)
             }
             CssomPropertyDomain::Margin => {
-                CssSpecifiedDeclarationBlock::try_from_margin_entries_with_limits(entries, limits)
+                CssSpecifiedDeclarationBlock::try_from_margin_entries(entries, limits)
             }
         },
         CssomBlockData::Page { .. } => {
-            CssSpecifiedDeclarationBlock::try_from_page_entries_with_limits(entries, limits)
+            CssSpecifiedDeclarationBlock::try_from_page_entries(entries, limits)
         }
         _ => return Err(CssomError::WrongKind),
     }
@@ -302,13 +302,13 @@ pub(crate) fn serialize_block(
 ) -> Result<String, CssomError> {
     match block.data() {
         CssomBlockData::FontFace(_) => font_selected(block)?
-            .serialize_cssom_with_limits(budget.provider()?)
+            .serialize_cssom(budget.provider()?)
             .map_err(CssomError::FontFace),
         CssomBlockData::Properties {
             selected: CssomProjection::Available(selected),
             ..
         } => selected
-            .serialize_cssom_with_limits(budget.provider()?)
+            .serialize_cssom(budget.provider()?)
             .map_err(CssomError::Declaration),
         CssomBlockData::Properties {
             selected: CssomProjection::Unavailable(error),
@@ -318,7 +318,7 @@ pub(crate) fn serialize_block(
             selected: CssomProjection::Available(selected),
             ..
         } => selected
-            .serialize_cssom_with_limits(budget.provider()?)
+            .serialize_cssom(budget.provider()?)
             .map_err(CssomError::Format),
         CssomBlockData::Page {
             selected: CssomProjection::Unavailable(error),
@@ -360,7 +360,7 @@ fn query_value(
     }
     let projection = selected_properties(block, &entries, budget.provider()?)?;
     projection
-        .property_value_with_limits(name.as_ref(), budget.provider()?)
+        .property_value(name.as_ref(), budget.provider()?)
         .map(|value| value.unwrap_or_default())
         .map_err(CssomError::Declaration)
 }
@@ -677,7 +677,7 @@ impl CssomBatch {
                         }
                 )
             {
-                declaration = match CssMarginDeclarationBlock::try_new_with_limits(
+                declaration = match CssMarginDeclarationBlock::try_new(
                     vec![value.clone()],
                     budget.provider()?,
                 ) {
@@ -986,7 +986,7 @@ impl CssomBatch {
                         && *previous_admissions == admission_inputs;
                     let page = matches!(this.staged.block(id)?.data(), CssomBlockData::Page { .. });
                     if page {
-                        let authored = CssPageDeclarationBlock::try_new_with_limits(
+                        let authored = CssPageDeclarationBlock::try_new(
                             retained
                                 .into_iter()
                                 .map(|value| match value {
@@ -1003,7 +1003,7 @@ impl CssomBatch {
                         )
                         .map_err(CssomError::PageBlock)?;
                         let selected = authored
-                            .try_specified_with_limits(prepared.budget.provider()?)
+                            .try_specified(prepared.budget.provider()?)
                             .map_err(CssomError::Page)?;
                         this.staged.blocks.get_mut(id).expect("owned block").data =
                             Arc::new(CssomBlockData::Page {
@@ -1064,12 +1064,11 @@ impl CssomBatch {
                                 Err(error) => return Err(error),
                             }
                         }
-                        let entries =
-                            CssSpecifiedDeclarationBlock::try_select_winning_entries_with_limits(
-                                entries,
-                                prepared.budget.provider()?,
-                            )
-                            .map_err(CssomError::Declaration)?;
+                        let entries = CssSpecifiedDeclarationBlock::try_select_winning_entries(
+                            entries,
+                            prepared.budget.provider()?,
+                        )
+                        .map_err(CssomError::Declaration)?;
                         if unchanged {
                             selected_properties(
                                 this.staged.block(id)?,
@@ -1079,11 +1078,9 @@ impl CssomBatch {
                         } else {
                             this.replace_properties(id, entries, &mut prepared.budget)?;
                         }
-                        let occurrences = CssDeclarationList::try_new_with_limits(
-                            admitted,
-                            prepared.budget.provider()?,
-                        )
-                        .map_err(CssomError::Value)?;
+                        let occurrences =
+                            CssDeclarationList::try_new(admitted, prepared.budget.provider()?)
+                                .map_err(CssomError::Value)?;
                         if !unchanged {
                             let CssomBlockData::Properties { authored, .. } = this
                                 .staged
@@ -1254,11 +1251,9 @@ impl CssomBatch {
                     }
                 })
                 .collect::<Vec<_>>();
-            let selected = CssSpecifiedPageDeclarationBlock::try_from_entries_with_limits(
-                &mixed,
-                budget.provider()?,
-            )
-            .map_err(CssomError::Page)?;
+            let selected =
+                CssSpecifiedPageDeclarationBlock::try_from_entries(&mixed, budget.provider()?)
+                    .map_err(CssomError::Page)?;
             let CssomBlockData::Page {
                 selected: current, ..
             } = self
@@ -1316,11 +1311,8 @@ impl CssomBatch {
                 }
         ) {
             Some(
-                CssMarginDeclarationBlock::try_new_with_limits(
-                    declarations.to_vec(),
-                    budget.provider()?,
-                )
-                .map_err(CssomError::PageBlock)?,
+                CssMarginDeclarationBlock::try_new(declarations.to_vec(), budget.provider()?)
+                    .map_err(CssomError::PageBlock)?,
             )
         } else {
             None
@@ -1337,14 +1329,11 @@ impl CssomBatch {
             CssomBlockData::Properties {
                 domain: CssomPropertyDomain::Keyframe,
                 ..
-            } => CssSpecifiedDeclarationBlock::try_from_keyframe_expansions_with_limits(
+            } => CssSpecifiedDeclarationBlock::try_from_keyframe_expansions(
                 &expansions,
                 budget.provider()?,
             ),
-            _ => CssSpecifiedDeclarationBlock::try_from_expansions_with_limits(
-                &expansions,
-                budget.provider()?,
-            ),
+            _ => CssSpecifiedDeclarationBlock::try_from_expansions(&expansions, budget.provider()?),
         }
         .map_err(CssomError::Declaration)?;
         selected_properties(block, selected.entries(), budget.provider()?)

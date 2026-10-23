@@ -264,7 +264,9 @@ fn selected_page_consumer_retains_margin_children_and_removes_invalid_qualified_
     assert_eq!(properties(after.declarations()), [CssKnownProperty::Width]);
     assert_eq!(page.margin_rules().len(), 1);
     assert_eq!(
-        page.margin_rules()[0].serialize_cssom().unwrap(),
+        page.margin_rules()[0]
+            .serialize_cssom(Default::default())
+            .unwrap(),
         "@top-left { content: \"title\"; }"
     );
     let [nested_style] = report.diagnostics() else {

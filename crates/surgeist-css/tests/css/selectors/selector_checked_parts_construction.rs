@@ -13,8 +13,8 @@ use surgeist_css::{
     CssQualifiedAttributeName, CssQualifiedNameError, CssQualifiedNamePrefix as Prefix,
     CssQualifiedSelectorName, CssRelativeSelector, CssRelativeSelectorList, CssSelector,
     CssSelectorCombinator as Combinator, CssSelectorConstructionErrorKind as ConstructionKind,
-    CssSimpleSelector as Simple, CssSpecifiedValueSerializationErrorKind as Kind,
-    CssSpecifiedValueSerializationLimits as Limits, CssValueOrigin,
+    CssSerializationLimits as Limits, CssSimpleSelector as Simple,
+    CssSpecifiedValueSerializationErrorKind as Kind, CssValueOrigin,
 };
 
 fn ident(value: &str) -> CssIdent {
@@ -26,7 +26,7 @@ fn class(value: &str) -> Simple {
 }
 
 fn compound(value: &str) -> CssCompoundSelector {
-    CssCompoundSelector::try_new(vec![class(value)]).unwrap()
+    CssCompoundSelector::try_new(vec![class(value)], Default::default()).unwrap()
 }
 
 fn name() -> CssQualifiedAttributeName {
@@ -53,22 +53,40 @@ fn attributes_preserve_each_matcher_operand_and_explicit_modifier() {
             (Case::AsciiCaseInsensitive, " i"),
             (Case::ExplicitSensitive, " s"),
         ] {
-            let attribute = CssAttributeSelector::try_new(name(), matcher.clone(), case).unwrap();
+            let attribute =
+                CssAttributeSelector::try_new(name(), matcher.clone(), case, Default::default())
+                    .unwrap();
             assert_eq!(attribute.name().as_str(), "A");
             assert_eq!(attribute.matcher(), &matcher);
             assert_eq!(attribute.case_sensitivity(), case);
-            let value = CssCompoundSelector::try_new(vec![Simple::Attribute(attribute)]).unwrap();
+            let value = CssCompoundSelector::try_new(
+                vec![Simple::Attribute(attribute)],
+                Default::default(),
+            )
+            .unwrap();
             let selector = CssSelector::Compound(value);
             let literal = format!("[A{operator}\"MiX\"{suffix}]");
-            assert_eq!(selector.to_specified_css().unwrap(), literal);
+            assert_eq!(
+                selector.serialize_specified(Default::default()).unwrap(),
+                literal
+            );
             assert_eq!(parsed(&literal, &CssNamespaceContext::default()), selector);
         }
     }
-    let attribute =
-        CssAttributeSelector::try_new(name(), Matcher::Exists, Case::DocumentDefault).unwrap();
-    let value = CssCompoundSelector::try_new(vec![Simple::Attribute(attribute)]).unwrap();
+    let attribute = CssAttributeSelector::try_new(
+        name(),
+        Matcher::Exists,
+        Case::DocumentDefault,
+        Default::default(),
+    )
+    .unwrap();
+    let value =
+        CssCompoundSelector::try_new(vec![Simple::Attribute(attribute)], Default::default())
+            .unwrap();
     assert_eq!(
-        CssSelector::Compound(value).to_specified_css().unwrap(),
+        CssSelector::Compound(value)
+            .serialize_specified(Default::default())
+            .unwrap(),
         "[A]"
     );
 }
@@ -84,12 +102,17 @@ fn decoded_attribute_values_keep_empty_whitespace_and_escaped_identity() {
             name(),
             Matcher::Includes(operand.into()),
             Case::DocumentDefault,
+            Default::default(),
         )
         .unwrap();
         let selector = CssSelector::Compound(
-            CssCompoundSelector::try_new(vec![Simple::Attribute(attribute)]).unwrap(),
+            CssCompoundSelector::try_new(vec![Simple::Attribute(attribute)], Default::default())
+                .unwrap(),
         );
-        assert_eq!(selector.to_specified_css().unwrap(), literal);
+        assert_eq!(
+            selector.serialize_specified(Default::default()).unwrap(),
+            literal
+        );
         assert_eq!(parsed(literal, &CssNamespaceContext::default()), selector);
     }
     let from_ident = parsed("[A=MiX I]", &CssNamespaceContext::default());
@@ -98,14 +121,19 @@ fn decoded_attribute_values_keep_empty_whitespace_and_escaped_identity() {
         name(),
         Matcher::Equals("MiX".into()),
         Case::AsciiCaseInsensitive,
+        Default::default(),
     )
     .unwrap();
     let selector = CssSelector::Compound(
-        CssCompoundSelector::try_new(vec![Simple::Attribute(attribute)]).unwrap(),
+        CssCompoundSelector::try_new(vec![Simple::Attribute(attribute)], Default::default())
+            .unwrap(),
     );
     assert_eq!(from_ident, selector);
     assert_eq!(from_string, selector);
-    assert_eq!(selector.to_specified_css().unwrap(), "[A=\"MiX\" i]");
+    assert_eq!(
+        selector.serialize_specified(Default::default()).unwrap(),
+        "[A=\"MiX\" i]"
+    );
 }
 
 #[test]
@@ -148,29 +176,41 @@ fn qualified_composition_preserves_namespaces_case_and_universal_identity() {
             attribute_name.clone(),
             Matcher::Equals("VaL".into()),
             Case::ExplicitSensitive,
+            Default::default(),
         )
         .unwrap();
         assert_eq!(attribute.qualified_name(), &attribute_name);
-        let value = CssCompoundSelector::try_new(vec![
-            Simple::Type(qualified.clone()),
-            Simple::Attribute(attribute),
-        ])
+        let value = CssCompoundSelector::try_new(
+            vec![
+                Simple::Type(qualified.clone()),
+                Simple::Attribute(attribute),
+            ],
+            Default::default(),
+        )
         .unwrap();
         assert_eq!(value.type_selector(), Some(&qualified));
         let selector = CssSelector::Compound(value);
         let literal = format!("{prefix_css}Leaf[{prefix_css}DATA=\"VaL\" s]");
-        assert_eq!(selector.to_specified_css().unwrap(), literal);
+        assert_eq!(
+            selector.serialize_specified(Default::default()).unwrap(),
+            literal
+        );
         assert_eq!(parsed(&literal, &context), selector);
 
         let universal = CssQualifiedSelectorName::try_universal(prefix, &context).unwrap();
-        let value =
-            CssCompoundSelector::try_new(vec![Simple::Type(universal.clone()), class("MiX")])
-                .unwrap();
+        let value = CssCompoundSelector::try_new(
+            vec![Simple::Type(universal.clone()), class("MiX")],
+            Default::default(),
+        )
+        .unwrap();
         assert!(value.type_selector().unwrap().is_universal());
         assert_eq!(value.type_selector(), Some(&universal));
         let selector = CssSelector::Compound(value);
         let literal = format!("{prefix_css}*.MiX");
-        assert_eq!(selector.to_specified_css().unwrap(), literal);
+        assert_eq!(
+            selector.serialize_specified(Default::default()).unwrap(),
+            literal
+        );
         assert_eq!(parsed(&literal, &context), selector);
     }
     let missing = CssNamespacePrefix::try_new("svg").unwrap();
@@ -188,13 +228,9 @@ fn qualified_composition_preserves_namespaces_case_and_universal_identity() {
 #[test]
 fn attribute_modifier_and_nul_failures_keep_typed_programmatic_causes() {
     for case in [Case::AsciiCaseInsensitive, Case::ExplicitSensitive] {
-        let error = CssAttributeSelector::try_new_with_limits(
-            name(),
-            Matcher::Exists,
-            case,
-            Limits::new(0, 0, 0),
-        )
-        .unwrap_err();
+        let error =
+            CssAttributeSelector::try_new(name(), Matcher::Exists, case, Limits::new(0, 0, 0))
+                .unwrap_err();
         assert_eq!(error.kind(), &ConstructionKind::ModifierWithoutValue);
         assert!(std::error::Error::source(&error).is_none());
     }
@@ -206,8 +242,13 @@ fn attribute_modifier_and_nul_failures_keep_typed_programmatic_causes() {
         Matcher::Suffix("a\0b".into()),
         Matcher::Substring("a\0b".into()),
     ] {
-        let error =
-            CssAttributeSelector::try_new(name(), matcher, Case::DocumentDefault).unwrap_err();
+        let error = CssAttributeSelector::try_new(
+            name(),
+            matcher,
+            Case::DocumentDefault,
+            Default::default(),
+        )
+        .unwrap_err();
         let ConstructionKind::InvalidAttributeValue(cause) = error.kind() else {
             panic!("decoded attribute string cause: {error:?}");
         };
@@ -220,9 +261,13 @@ fn attribute_modifier_and_nul_failures_keep_typed_programmatic_causes() {
             Some(cause)
         );
     }
-    let retry =
-        CssAttributeSelector::try_new(name(), Matcher::Equals("ab".into()), Case::DocumentDefault)
-            .unwrap();
+    let retry = CssAttributeSelector::try_new(
+        name(),
+        Matcher::Equals("ab".into()),
+        Case::DocumentDefault,
+        Default::default(),
+    )
+    .unwrap();
     assert_eq!(retry.matcher(), &Matcher::Equals("ab".into()));
 }
 
@@ -230,7 +275,7 @@ fn attribute_modifier_and_nul_failures_keep_typed_programmatic_causes() {
 fn attribute_limits_charge_one_node_and_exact_utf8_output_atomically() {
     let literal = "[A=\"é\" i]";
     let matcher = Matcher::Equals("é".into());
-    let attribute = CssAttributeSelector::try_new_with_limits(
+    let attribute = CssAttributeSelector::try_new(
         name(),
         matcher.clone(),
         Case::AsciiCaseInsensitive,
@@ -238,16 +283,23 @@ fn attribute_limits_charge_one_node_and_exact_utf8_output_atomically() {
     )
     .unwrap();
     let selector = CssSelector::Compound(
-        CssCompoundSelector::try_new(vec![Simple::Attribute(attribute.clone())]).unwrap(),
+        CssCompoundSelector::try_new(
+            vec![Simple::Attribute(attribute.clone())],
+            Default::default(),
+        )
+        .unwrap(),
     );
-    assert_eq!(selector.to_specified_css().unwrap(), literal);
+    assert_eq!(
+        selector.serialize_specified(Default::default()).unwrap(),
+        literal
+    );
     for (limits, cause) in [
         (Limits::new(0, 1, literal.len()), Kind::InputNodeLimit),
         (Limits::new(1, 0, literal.len()), Kind::ProjectionNodeLimit),
         (Limits::new(1, 1, literal.len() - 1), Kind::ByteLimit),
     ] {
         specified_cause(
-            &CssAttributeSelector::try_new_with_limits(
+            &CssAttributeSelector::try_new(
                 name(),
                 matcher.clone(),
                 Case::AsciiCaseInsensitive,
@@ -258,8 +310,13 @@ fn attribute_limits_charge_one_node_and_exact_utf8_output_atomically() {
         );
         assert_eq!(attribute.matcher(), &matcher);
         assert_eq!(
-            CssAttributeSelector::try_new(name(), matcher.clone(), Case::AsciiCaseInsensitive)
-                .unwrap(),
+            CssAttributeSelector::try_new(
+                name(),
+                matcher.clone(),
+                Case::AsciiCaseInsensitive,
+                Default::default()
+            )
+            .unwrap(),
             attribute
         );
     }
@@ -267,8 +324,7 @@ fn attribute_limits_charge_one_node_and_exact_utf8_output_atomically() {
 
 #[test]
 fn compound_rejects_empty_duplicate_and_misplaced_type_members() {
-    let error =
-        CssCompoundSelector::try_new_with_limits(Vec::new(), Limits::new(0, 0, 0)).unwrap_err();
+    let error = CssCompoundSelector::try_new(Vec::new(), Limits::new(0, 0, 0)).unwrap_err();
     assert_eq!(error.kind(), &ConstructionKind::EmptyCompound);
     let name = CssQualifiedSelectorName::try_new(
         Prefix::Unqualified,
@@ -294,8 +350,7 @@ fn compound_rejects_empty_duplicate_and_misplaced_type_members() {
             2,
         ),
     ] {
-        let error =
-            CssCompoundSelector::try_new_with_limits(members, Limits::new(0, 0, 0)).unwrap_err();
+        let error = CssCompoundSelector::try_new(members, Limits::new(0, 0, 0)).unwrap_err();
         assert_eq!(
             error.kind(),
             &ConstructionKind::InvalidTypePosition { member_index }
@@ -314,7 +369,7 @@ fn compound_keeps_repeated_ids_classes_and_decoded_whitespace_inside_identifiers
         class("a b"),
         Simple::PseudoClass(CssPseudoClass::Hover),
     ];
-    let value = CssCompoundSelector::try_new(members).unwrap();
+    let value = CssCompoundSelector::try_new(members, Default::default()).unwrap();
     assert_eq!(value.ids(), ["X", "X"]);
     assert_eq!(value.classes(), ["One", "One", "a b"]);
     assert_eq!(value.pseudo_classes(), [CssPseudoClass::Hover]);
@@ -323,7 +378,10 @@ fn compound_keeps_repeated_ids_classes_and_decoded_whitespace_inside_identifiers
     let selector = CssSelector::Compound(value);
     // CSSOM "serialize a selector": members serialize in their given order.
     let literal = ".One#X.One#X.a\\ b:hover";
-    assert_eq!(selector.to_specified_css().unwrap(), literal);
+    assert_eq!(
+        selector.serialize_specified(Default::default()).unwrap(),
+        literal
+    );
     assert_eq!(parsed(literal, &CssNamespaceContext::default()), selector);
     assert_ne!(
         parsed(".a .b", &CssNamespaceContext::default()),
@@ -333,8 +391,13 @@ fn compound_keeps_repeated_ids_classes_and_decoded_whitespace_inside_identifiers
 
 #[test]
 fn compound_limits_aggregate_independently_admitted_children_and_allow_retry() {
-    let attribute =
-        CssAttributeSelector::try_new(name(), Matcher::Exists, Case::DocumentDefault).unwrap();
+    let attribute = CssAttributeSelector::try_new(
+        name(),
+        Matcher::Exists,
+        Case::DocumentDefault,
+        Default::default(),
+    )
+    .unwrap();
     let members = vec![
         Simple::Id(ident("X")),
         class("é"),
@@ -343,12 +406,11 @@ fn compound_limits_aggregate_independently_admitted_children_and_allow_retry() {
     let literal = "#X.é[A]";
     // Compound aggregate + ID + class + attribute = four nodes.
     let value =
-        CssCompoundSelector::try_new_with_limits(members.clone(), Limits::new(4, 4, literal.len()))
-            .unwrap();
+        CssCompoundSelector::try_new(members.clone(), Limits::new(4, 4, literal.len())).unwrap();
     assert_eq!(value.attributes(), [attribute]);
     assert_eq!(
         CssSelector::Compound(value.clone())
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .unwrap(),
         literal
     );
@@ -358,11 +420,11 @@ fn compound_limits_aggregate_independently_admitted_children_and_allow_retry() {
         (Limits::new(4, 4, literal.len() - 1), Kind::ByteLimit),
     ] {
         specified_cause(
-            &CssCompoundSelector::try_new_with_limits(members.clone(), limits).unwrap_err(),
+            &CssCompoundSelector::try_new(members.clone(), limits).unwrap_err(),
             cause,
         );
         assert_eq!(
-            CssCompoundSelector::try_new(members.clone()).unwrap(),
+            CssCompoundSelector::try_new(members.clone(), Default::default()).unwrap(),
             value
         );
     }
@@ -370,19 +432,22 @@ fn compound_limits_aggregate_independently_admitted_children_and_allow_retry() {
 
 #[test]
 fn compound_rechecks_raw_strict_and_nested_has_graphs_in_their_containing_context() {
-    let empty = CssPseudoSelectorList::try_new_forgiving(Vec::new()).unwrap();
+    let empty = CssPseudoSelectorList::try_new_forgiving(Vec::new(), Default::default()).unwrap();
     let inner_has = CssSelector::PseudoClass(CssPseudoClass::Has(
-        CssRelativeSelectorList::try_new(vec![CssRelativeSelector::new(
-            Combinator::Child,
-            CssSelector::Class("One".into()),
-        )])
+        CssRelativeSelectorList::try_new(
+            vec![CssRelativeSelector::new(
+                Combinator::Child,
+                CssSelector::Class("One".into()),
+            )],
+            Default::default(),
+        )
         .unwrap(),
     ));
     let outer_has = CssPseudoClass::Has(
-        CssRelativeSelectorList::try_new(vec![CssRelativeSelector::new(
-            Combinator::Child,
-            inner_has,
-        )])
+        CssRelativeSelectorList::try_new(
+            vec![CssRelativeSelector::new(Combinator::Child, inner_has)],
+            Default::default(),
+        )
         .unwrap(),
     );
     for pseudo in [
@@ -398,8 +463,11 @@ fn compound_rechecks_raw_strict_and_nested_has_graphs_in_their_containing_contex
         outer_has,
     ] {
         specified_cause(
-            &CssCompoundSelector::try_new(vec![class("One"), Simple::PseudoClass(pseudo)])
-                .unwrap_err(),
+            &CssCompoundSelector::try_new(
+                vec![class("One"), Simple::PseudoClass(pseudo)],
+                Default::default(),
+            )
+            .unwrap_err(),
             Kind::UnrepresentableValue,
         );
     }
@@ -407,10 +475,15 @@ fn compound_rechecks_raw_strict_and_nested_has_graphs_in_their_containing_contex
         (CssPseudoClass::Is(empty.clone()), ".One:is()"),
         (CssPseudoClass::Where(empty), ".One:where()"),
     ] {
-        let value =
-            CssCompoundSelector::try_new(vec![class("One"), Simple::PseudoClass(pseudo)]).unwrap();
+        let value = CssCompoundSelector::try_new(
+            vec![class("One"), Simple::PseudoClass(pseudo)],
+            Default::default(),
+        )
+        .unwrap();
         assert_eq!(
-            CssSelector::Compound(value).to_specified_css().unwrap(),
+            CssSelector::Compound(value)
+                .serialize_specified(Default::default())
+                .unwrap(),
             literal
         );
     }
@@ -418,36 +491,47 @@ fn compound_rechecks_raw_strict_and_nested_has_graphs_in_their_containing_contex
 
 #[test]
 fn ordinary_compound_allows_complex_logical_arguments_but_shadow_attachment_rechecks() {
-    let list = CssPseudoSelectorList::try_new(vec![parsed(
-        ".One > .Two",
-        &CssNamespaceContext::default(),
-    )])
+    let list = CssPseudoSelectorList::try_new(
+        vec![parsed(".One > .Two", &CssNamespaceContext::default())],
+        Default::default(),
+    )
     .unwrap();
-    let value =
-        CssCompoundSelector::try_new(vec![Simple::PseudoClass(CssPseudoClass::Not(list))]).unwrap();
+    let value = CssCompoundSelector::try_new(
+        vec![Simple::PseudoClass(CssPseudoClass::Not(list))],
+        Default::default(),
+    )
+    .unwrap();
     assert_eq!(
         CssSelector::Compound(value.clone())
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .unwrap(),
         ":not(.One > .Two)"
     );
     assert!(CssCompoundSelectorArgument::try_new(CssSelector::Compound(value)).is_none());
 
     let has = CssPseudoClass::Has(
-        CssRelativeSelectorList::try_new(vec![CssRelativeSelector::new(
-            Combinator::Child,
-            CssSelector::Class("One".into()),
-        )])
+        CssRelativeSelectorList::try_new(
+            vec![CssRelativeSelector::new(
+                Combinator::Child,
+                CssSelector::Class("One".into()),
+            )],
+            Default::default(),
+        )
         .unwrap(),
     );
-    let inner = CssCompoundSelector::try_new(vec![Simple::PseudoClass(has)]).unwrap();
+    let inner =
+        CssCompoundSelector::try_new(vec![Simple::PseudoClass(has)], Default::default()).unwrap();
     let argument = CssCompoundSelectorArgument::try_new(CssSelector::Compound(inner)).unwrap();
-    let value = CssCompoundSelector::try_new(vec![Simple::PseudoClass(
-        CssPseudoClass::HostFunction(argument),
-    )])
+    let value = CssCompoundSelector::try_new(
+        vec![Simple::PseudoClass(CssPseudoClass::HostFunction(argument))],
+        Default::default(),
+    )
     .unwrap();
     let selector = CssSelector::Compound(value);
-    assert_eq!(selector.to_specified_css().unwrap(), ":host(:has(> .One))");
+    assert_eq!(
+        selector.serialize_specified(Default::default()).unwrap(),
+        ":host(:has(> .One))"
+    );
 }
 
 #[test]
@@ -462,7 +546,7 @@ fn parts_charge_compound_nodes_and_their_own_relationship_bytes() {
     ] {
         let part_css = format!("{relationship}.é");
         // A part adds no semantic aggregate beyond its two-node compound.
-        let part = CssComplexSelectorPart::try_new_with_limits(
+        let part = CssComplexSelectorPart::try_new(
             combinator,
             value.clone(),
             Limits::new(2, 2, part_css.len()),
@@ -470,10 +554,15 @@ fn parts_charge_compound_nodes_and_their_own_relationship_bytes() {
         .unwrap();
         assert_eq!(part.combinator(), combinator);
         assert_eq!(part.selector(), &value);
-        let complex = CssComplexSelector::try_new(compound("A"), vec![part.clone()]).unwrap();
+        let complex =
+            CssComplexSelector::try_new(compound("A"), vec![part.clone()], Default::default())
+                .unwrap();
         let selector = CssSelector::Complex(complex);
         let literal = format!(".A{part_css}");
-        assert_eq!(selector.to_specified_css().unwrap(), literal);
+        assert_eq!(
+            selector.serialize_specified(Default::default()).unwrap(),
+            literal
+        );
         assert_eq!(parsed(&literal, &CssNamespaceContext::default()), selector);
         for (limits, cause) in [
             (Limits::new(1, 2, part_css.len()), Kind::InputNodeLimit),
@@ -481,12 +570,12 @@ fn parts_charge_compound_nodes_and_their_own_relationship_bytes() {
             (Limits::new(2, 2, part_css.len() - 1), Kind::ByteLimit),
         ] {
             specified_cause(
-                &CssComplexSelectorPart::try_new_with_limits(combinator, value.clone(), limits)
-                    .unwrap_err(),
+                &CssComplexSelectorPart::try_new(combinator, value.clone(), limits).unwrap_err(),
                 cause,
             );
             assert_eq!(
-                CssComplexSelectorPart::try_new(combinator, value.clone()).unwrap(),
+                CssComplexSelectorPart::try_new(combinator, value.clone(), Default::default())
+                    .unwrap(),
                 part
             );
         }
@@ -496,10 +585,12 @@ fn parts_charge_compound_nodes_and_their_own_relationship_bytes() {
 #[test]
 fn complex_limits_charge_first_rest_and_aggregate_with_exact_typed_causes() {
     let first = compound("A");
-    let part = CssComplexSelectorPart::try_new(Combinator::Child, compound("é")).unwrap();
+    let part =
+        CssComplexSelectorPart::try_new(Combinator::Child, compound("é"), Default::default())
+            .unwrap();
     let literal = ".A > .é";
     // One complex + two compounds + two classes = five nodes.
-    let value = CssComplexSelector::try_new_with_limits(
+    let value = CssComplexSelector::try_new(
         first.clone(),
         vec![part.clone()],
         Limits::new(5, 5, literal.len()),
@@ -509,7 +600,7 @@ fn complex_limits_charge_first_rest_and_aggregate_with_exact_typed_causes() {
     assert_eq!(value.rest(), std::slice::from_ref(&part));
     assert_eq!(
         CssSelector::Complex(value.clone())
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .unwrap(),
         literal
     );
@@ -519,12 +610,12 @@ fn complex_limits_charge_first_rest_and_aggregate_with_exact_typed_causes() {
         (Limits::new(5, 5, literal.len() - 1), Kind::ByteLimit),
     ] {
         specified_cause(
-            &CssComplexSelector::try_new_with_limits(first.clone(), vec![part.clone()], limits)
-                .unwrap_err(),
+            &CssComplexSelector::try_new(first.clone(), vec![part.clone()], limits).unwrap_err(),
             cause,
         );
         assert_eq!(
-            CssComplexSelector::try_new(first.clone(), vec![part.clone()]).unwrap(),
+            CssComplexSelector::try_new(first.clone(), vec![part.clone()], Default::default())
+                .unwrap(),
             value
         );
     }
@@ -536,24 +627,32 @@ fn valid_terminal_part_is_rechecked_when_placed_before_a_following_compound() {
     let CssSelector::Complex(parsed) = parsed else {
         panic!("parsed complex");
     };
-    let terminal =
-        CssComplexSelectorPart::try_new(Combinator::Child, parsed.rest()[0].selector().clone())
-            .unwrap();
-    let value =
-        CssComplexSelector::try_new(parsed.first().clone(), vec![terminal.clone()]).unwrap();
+    let terminal = CssComplexSelectorPart::try_new(
+        Combinator::Child,
+        parsed.rest()[0].selector().clone(),
+        Default::default(),
+    )
+    .unwrap();
+    let value = CssComplexSelector::try_new(
+        parsed.first().clone(),
+        vec![terminal.clone()],
+        Default::default(),
+    )
+    .unwrap();
     assert_eq!(
-        CssSelector::Complex(value).to_specified_css().unwrap(),
+        CssSelector::Complex(value)
+            .serialize_specified(Default::default())
+            .unwrap(),
         ".A > .B::before"
     );
-    let error = CssComplexSelector::try_new_with_limits(
-        parsed.first().clone(),
-        Vec::new(),
-        Limits::new(0, 0, 0),
-    )
-    .unwrap_err();
+    let error =
+        CssComplexSelector::try_new(parsed.first().clone(), Vec::new(), Limits::new(0, 0, 0))
+            .unwrap_err();
     assert_eq!(error.kind(), &ConstructionKind::EmptyComplexRest);
-    let following = CssComplexSelectorPart::try_new(Combinator::Child, compound("C")).unwrap();
-    let error = CssComplexSelector::try_new_with_limits(
+    let following =
+        CssComplexSelectorPart::try_new(Combinator::Child, compound("C"), Default::default())
+            .unwrap();
+    let error = CssComplexSelector::try_new(
         terminal.selector().clone(),
         vec![following.clone()],
         Limits::new(0, 0, 0),
@@ -563,7 +662,7 @@ fn valid_terminal_part_is_rechecked_when_placed_before_a_following_compound() {
         error.kind(),
         &ConstructionKind::NonTerminalPseudoElement { compound_index: 0 }
     );
-    let error = CssComplexSelector::try_new_with_limits(
+    let error = CssComplexSelector::try_new(
         parsed.first().clone(),
         vec![terminal, following],
         Limits::new(0, 0, 0),
@@ -588,10 +687,15 @@ fn parser_proved_complex_keeps_its_grammar_budget_before_programmatic_readmissio
     assert_eq!(value.first().classes(), ["One", "Two", "Three"]);
     assert_eq!(value.rest().len(), 32_766);
     specified_cause(
-        &CssComplexSelector::try_new(value.first().clone(), value.rest().to_vec()).unwrap_err(),
+        &CssComplexSelector::try_new(
+            value.first().clone(),
+            value.rest().to_vec(),
+            Default::default(),
+        )
+        .unwrap_err(),
         Kind::InputNodeLimit,
     );
-    let admitted = CssComplexSelector::try_new_with_limits(
+    let admitted = CssComplexSelector::try_new(
         value.first().clone(),
         value.rest().to_vec(),
         Limits::new(65_537, 65_537, source.len()),
@@ -603,7 +707,7 @@ fn parser_proved_complex_keeps_its_grammar_budget_before_programmatic_readmissio
     );
     assert!(
         CssSelector::Complex(admitted)
-            .to_specified_css_with_limits(Limits::new(65_537, 65_537, source.len()))
+            .serialize_specified(Limits::new(65_537, 65_537, source.len()))
             .unwrap()
             == source,
         "larger explicit output preserves the independently authored canonical source"
@@ -613,22 +717,26 @@ fn parser_proved_complex_keeps_its_grammar_budget_before_programmatic_readmissio
 #[test]
 fn default_complex_byte_failure_keeps_its_cause_and_explicit_retry_preserves_identity() {
     let decoded = format!("{}a", "é".repeat(524_284));
-    let first = CssCompoundSelector::try_new(vec![Simple::Class(
-        CssIdent::try_new(decoded.clone()).unwrap(),
-    )])
+    let first = CssCompoundSelector::try_new(
+        vec![Simple::Class(CssIdent::try_new(decoded.clone()).unwrap())],
+        Default::default(),
+    )
     .unwrap();
-    let part = CssComplexSelectorPart::try_new(Combinator::Child, compound("Two")).unwrap();
+    let part =
+        CssComplexSelectorPart::try_new(Combinator::Child, compound("Two"), Default::default())
+            .unwrap();
     let literal = format!(".{decoded} > .Two");
     assert_eq!(literal.len(), 1_048_577);
     specified_cause(
-        &CssComplexSelector::try_new(first.clone(), vec![part.clone()]).unwrap_err(),
+        &CssComplexSelector::try_new(first.clone(), vec![part.clone()], Default::default())
+            .unwrap_err(),
         Kind::ByteLimit,
     );
     assert!(
         first.classes() == [decoded],
         "first compound retains decoded identity after failure"
     );
-    let value = CssComplexSelector::try_new_with_limits(
+    let value = CssComplexSelector::try_new(
         first.clone(),
         vec![part.clone()],
         Limits::new(5, 5, literal.len()),
@@ -641,7 +749,7 @@ fn default_complex_byte_failure_keeps_its_cause_and_explicit_retry_preserves_ide
     assert_eq!(value.rest(), [part]);
     assert!(
         CssSelector::Complex(value)
-            .to_specified_css_with_limits(Limits::new(5, 5, literal.len()))
+            .serialize_specified(Limits::new(5, 5, literal.len()))
             .unwrap()
             == literal,
         "explicit retry preserves the independently authored UTF-8 output"

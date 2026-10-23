@@ -1,7 +1,8 @@
 //! Checked selected FontFace declarations, independent of whole-rule kind order.
+use crate::specified_rule_serialization::SpecifiedProvider as _;
 use crate::{
-    CssFontFaceDescriptor, CssFontFaceDescriptorKind, CssSpecifiedValueSerializationError,
-    CssSpecifiedValueSerializationErrorKind, CssSpecifiedValueSerializationLimits as Limits,
+    CssFontFaceDescriptor, CssFontFaceDescriptorKind, CssSerializationError,
+    CssSerializationLimits as Limits, CssSpecifiedValueSerializationErrorKind,
     specified_rule_serialization::SpecifiedRuleWriter,
 };
 
@@ -12,7 +13,7 @@ pub enum CssFontFaceDeclarationBlockError {
     /// An authored inventory with duplicate kinds is not selected membership.
     DuplicateDescriptor { kind: CssFontFaceDescriptorKind },
     /// The scalar/punctuation owner retains its precise resource or capability cause.
-    Serialization(CssSpecifiedValueSerializationError),
+    Serialization(CssSerializationError),
 }
 impl std::fmt::Display for CssFontFaceDeclarationBlockError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -32,8 +33,8 @@ impl std::error::Error for CssFontFaceDeclarationBlockError {
         }
     }
 }
-impl From<CssSpecifiedValueSerializationError> for CssFontFaceDeclarationBlockError {
-    fn from(error: CssSpecifiedValueSerializationError) -> Self {
+impl From<CssSerializationError> for CssFontFaceDeclarationBlockError {
+    fn from(error: CssSerializationError) -> Self {
         Self::Serialization(error)
     }
 }
@@ -49,14 +50,9 @@ pub struct CssSpecifiedFontFaceDeclarationBlock {
     entries: Vec<CssFontFaceDescriptor>,
 }
 impl CssSpecifiedFontFaceDeclarationBlock {
-    pub fn try_from_entries(
-        entries: &[CssFontFaceDescriptor],
-    ) -> Result<Self, CssFontFaceDeclarationBlockError> {
-        Self::try_from_entries_with_limits(entries, Limits::default())
-    }
     /// Validates selected membership and traverses every supplied value under
     /// one cumulative input/projection budget. Construction emits no output.
-    pub fn try_from_entries_with_limits(
+    pub fn try_from_entries(
         entries: &[CssFontFaceDescriptor],
         limits: Limits,
     ) -> Result<Self, CssFontFaceDeclarationBlockError> {
@@ -74,7 +70,7 @@ impl CssSpecifiedFontFaceDeclarationBlock {
             }
             writer.without_output(|writer| entry.value().append_to_rule_writer(writer))?;
             admitted.try_reserve(1).map_err(|_| {
-                CssSpecifiedValueSerializationError::new(
+                CssSerializationError::new(
                     CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
                 )
             })?;
@@ -90,12 +86,10 @@ impl CssSpecifiedFontFaceDeclarationBlock {
     /// Emits the exact supplied selected order as an unbraced declaration block.
     /// Every declaration uses canonical name, `: `, scalar text and `;`, separated
     /// by one space. Empty membership emits the empty string successfully.
-    pub fn serialize_cssom(&self) -> Result<String, CssFontFaceDeclarationBlockError> {
-        self.serialize_cssom_with_limits(Limits::default())
-    }
+    ///
     /// Full input, value projection and punctuation/output share one allowance.
     /// No partial text escapes; an unchanged larger-budget retry is independent.
-    pub fn serialize_cssom_with_limits(
+    pub fn serialize_cssom(
         &self,
         limits: Limits,
     ) -> Result<String, CssFontFaceDeclarationBlockError> {
@@ -106,7 +100,7 @@ impl CssSpecifiedFontFaceDeclarationBlock {
     pub(crate) fn append_cssom(
         &self,
         writer: &mut SpecifiedRuleWriter,
-    ) -> Result<(), CssSpecifiedValueSerializationError> {
+    ) -> Result<(), CssSerializationError> {
         writer.node()?;
         for (index, entry) in self.entries.iter().enumerate() {
             writer.node()?;

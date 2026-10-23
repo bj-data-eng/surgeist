@@ -8,7 +8,7 @@ use crate::css::support::named_property::assert_implicit_closure_rejection;
 use surgeist_color::ColorSpace;
 use surgeist_css::*;
 
-type Limits = CssSpecifiedValueSerializationLimits;
+type Limits = CssSerializationLimits;
 type Kind = CssSpecifiedValueSerializationErrorKind;
 
 fn palette(source: &CssDeclaration) -> &CssFontPalette {
@@ -47,19 +47,30 @@ fn assert_text(authored: &str, expected: &str) {
     for source in [&parsed, &checked] {
         let before = source.clone();
         let value = palette(source);
-        assert_eq!(value.serialize_specified().unwrap(), expected, "{authored}");
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected,
+            "{authored}"
+        );
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_eq!(source, &before);
         assert_eq!(source.importance(), CssImportance::Important);
         assert_eq!(
-            source.value_components().serialize().unwrap().as_css(),
+            source
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             authored
         );
     }
     // Canonical output is admitted and stable without comparing source origins.
     assert_eq!(
         palette(&important_declaration("font-palette", expected))
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         expected
     );
@@ -104,7 +115,10 @@ fn typed_keywords_and_names_retain_their_distinct_authored_meanings() {
             r"--A\ B",
         ),
     ] {
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
 }
 
@@ -134,7 +148,7 @@ fn checked_mixes_preserve_order_duplicates_weights_and_omitted_method() {
     assert!(value.components()[1].weight().is_none());
     assert_eq!(
         CssFontPalette::Mix(Box::new(value))
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "palette-mix(--Theme 25%, dark 37.5%, --Theme 37.5%)"
     );
@@ -222,7 +236,7 @@ fn explicit_default_and_nondefault_interpolation_keep_authored_method_identity()
     assert_eq!(value.interpolation(), Some(&custom));
     assert_eq!(
         CssFontPalette::Mix(Box::new(value))
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "palette-mix(in --P, dark)"
     );
@@ -295,7 +309,8 @@ fn calculated_weights_keep_their_graph_and_leave_omitted_weights_unknown() {
         assert_text(authored, expected);
     }
     let graph = parse_component_values("calc(100% - 20%)").unwrap();
-    let root = CssPercentageCalculation::try_from_components(graph.clone()).unwrap();
+    let root =
+        CssPercentageCalculation::try_from_components(graph.clone(), Default::default()).unwrap();
     let weight = CssColorMixWeight::try_calculation(root.clone()).unwrap();
     let value = CssFontPaletteMix::try_new(
         None,
@@ -315,7 +330,7 @@ fn calculated_weights_keep_their_graph_and_leave_omitted_weights_unknown() {
     assert!(value.components()[1].weight().is_none());
     let source = CssFontPalette::Mix(Box::new(value));
     assert_eq!(
-        source.serialize_specified().unwrap(),
+        source.serialize_specified(Default::default()).unwrap(),
         "palette-mix(light calc(80%), dark)"
     );
 }
@@ -352,7 +367,7 @@ fn checked_palette_and_math_graphs_share_the_complete_256_level_ceiling() {
     // so 256 single-component levels serialize as 256 nested `palette-mix(`
     // openings around `dark`, built here independently of the serializer.
     assert_eq!(
-        value.serialize_specified().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         format!("{}dark{}", "palette-mix(".repeat(256), ")".repeat(256))
     );
     assert_eq!(
@@ -362,7 +377,8 @@ fn checked_palette_and_math_graphs_share_the_complete_256_level_ceiling() {
     );
     let text = format!("{}10%{}", "calc(".repeat(256), ")".repeat(256));
     let graph = parse_component_values(&text).unwrap();
-    let calculation = CssPercentageCalculation::try_from_components(graph).unwrap();
+    let calculation =
+        CssPercentageCalculation::try_from_components(graph, Default::default()).unwrap();
     let weight = CssColorMixWeight::try_calculation(calculation).unwrap();
     assert_eq!(
         CssFontPaletteMix::try_new(
@@ -389,7 +405,7 @@ fn specified_limits_are_cumulative_atomic_and_exact_for_simple_palette_leaves() 
         let before = value.clone();
         assert_eq!(
             value
-                .serialize_specified_with_limits(Limits::new(1, 1, expected.len()))
+                .serialize_specified(Limits::new(1, 1, expected.len()))
                 .unwrap(),
             expected
         );
@@ -398,15 +414,12 @@ fn specified_limits_are_cumulative_atomic_and_exact_for_simple_palette_leaves() 
             (Limits::new(1, 0, expected.len()), Kind::ProjectionNodeLimit),
             (Limits::new(1, 1, expected.len() - 1), Kind::ByteLimit),
         ] {
-            assert_eq!(
-                value
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
-                kind
-            );
+            assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
             assert_eq!(value, before);
-            assert_eq!(value.serialize_specified().unwrap(), expected);
+            assert_eq!(
+                value.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
         }
     }
     let source = important_declaration(
@@ -418,7 +431,7 @@ fn specified_limits_are_cumulative_atomic_and_exact_for_simple_palette_leaves() 
     let expected = "palette-mix(in oklch longer hue, palette-mix(light 30%, dark 70%), --Theme)";
     assert_eq!(
         value
-            .serialize_specified_with_limits(Limits::new(usize::MAX, usize::MAX, expected.len()))
+            .serialize_specified(Limits::new(usize::MAX, usize::MAX, expected.len()))
             .unwrap(),
         expected
     );
@@ -436,15 +449,12 @@ fn specified_limits_are_cumulative_atomic_and_exact_for_simple_palette_leaves() 
             Kind::ByteLimit,
         ),
     ] {
-        assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            kind
-        );
+        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
         assert_eq!(source, before);
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
 }
 
@@ -479,7 +489,7 @@ fn strict_checked_admission_and_reentry_reject_implicit_closures() {
         panic!("typed contribution")
     };
     assert_eq!(
-        value.serialize_specified().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         "palette-mix(in --Profile, --Theme calc(10%), dark)"
     );
     assert!(values.items()[0].source().same_occurrence(&source));

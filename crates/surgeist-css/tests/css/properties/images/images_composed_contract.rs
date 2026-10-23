@@ -125,8 +125,14 @@ fn rejects_background(text: &str) {
     let [first, last] = report.syntax().as_slice() else {
         panic!("only the two valid neighbors remain: {source}")
     };
-    assert_eq!(first.to_specified_css().unwrap(), "color: red;");
-    assert_eq!(last.to_specified_css().unwrap(), "color: blue !important;");
+    assert_eq!(
+        first.serialize_specified(Default::default()).unwrap(),
+        "color: red;"
+    );
+    assert_eq!(
+        last.serialize_specified(Default::default()).unwrap(),
+        "color: blue !important;"
+    );
     let [diagnostic] = report.diagnostics() else {
         panic!("one rejected image declaration: {source}")
     };
@@ -190,16 +196,30 @@ fn all_four_gradients_keep_signed_positions_hint_origins_and_function_identity()
             else {
                 panic!("exactly two stops with one intervening hint")
             };
-            assert_eq!(first.color().to_specified_css().unwrap(), "red");
-            assert_eq!(last.color().to_specified_css().unwrap(), "blue");
+            assert_eq!(
+                first
+                    .color()
+                    .serialize_specified(Default::default())
+                    .unwrap(),
+                "red"
+            );
+            assert_eq!(
+                last.color()
+                    .serialize_specified(Default::default())
+                    .unwrap(),
+                "blue"
+            );
             percentage(first.position().unwrap(), &source, "-10%");
             percentage(hint, &source, "40%");
             percentage(last.position().unwrap(), &source, "120%");
-            assert_eq!(value.serialize_specified().unwrap(), text);
+            assert_eq!(value.serialize_specified(Default::default()).unwrap(), text);
             let checked = CssImage::try_new(image(&declaration).clone()).unwrap();
-            assert_eq!(checked.serialize_specified().unwrap(), text);
             assert_eq!(
-                declaration.to_specified_css().unwrap(),
+                checked.serialize_specified(Default::default()).unwrap(),
+                text
+            );
+            assert_eq!(
+                declaration.serialize_specified(Default::default()).unwrap(),
                 format!("background-image: {text} !important;"),
             );
         }
@@ -223,7 +243,9 @@ fn reversed_corner_order_and_unitless_zero_have_the_same_linear_sibling_grammar(
                 );
                 assert_eq!(direction.vertical(), Some(CssVerticalGradientSide::Top));
                 assert_eq!(
-                    gradient(&declaration).serialize_specified().unwrap(),
+                    gradient(&declaration)
+                        .serialize_specified(Default::default())
+                        .unwrap(),
                     format!("{function}(to right top, red, blue)"),
                 );
             }
@@ -255,7 +277,9 @@ fn radial_siblings_keep_unordered_shape_size_and_omitted_authored_defaults() {
                 assert!(matches!(value.size(), Some(CssRadialSize::Circle(_))));
                 assert!(value.position().is_some());
                 assert_eq!(
-                    gradient(&declaration).serialize_specified().unwrap(),
+                    gradient(&declaration)
+                        .serialize_specified(Default::default())
+                        .unwrap(),
                     format!("{function}(5em at left top, red, blue)"),
                 );
             }
@@ -273,7 +297,9 @@ fn radial_siblings_keep_unordered_shape_size_and_omitted_authored_defaults() {
                 parsed_origin(horizontal.origin(), &source, "20%");
                 parsed_origin(vertical.origin(), &source, "30%");
                 assert_eq!(
-                    gradient(&declaration).serialize_specified().unwrap(),
+                    gradient(&declaration)
+                        .serialize_specified(Default::default())
+                        .unwrap(),
                     format!("{function}(20% 30%, red, blue)"),
                 );
             }
@@ -284,7 +310,12 @@ fn radial_siblings_keep_unordered_shape_size_and_omitted_authored_defaults() {
             assert_eq!(value.shape(), None);
             assert_eq!(value.size(), None);
             assert_eq!(value.position(), None);
-            assert_eq!(gradient(&declaration).serialize_specified().unwrap(), text);
+            assert_eq!(
+                gradient(&declaration)
+                    .serialize_specified(Default::default())
+                    .unwrap(),
+                text
+            );
         }
         for prelude in [
             "circle 10%",
@@ -355,7 +386,10 @@ fn nested_src_and_repeating_gradient_pairs_cross_real_image_consumers_without_br
             percentage(hint, &source, "40%");
             percentage(last.position().unwrap(), &source, "120%");
             let expected = format!("{}: {text} !important;", property.canonical_name());
-            assert_eq!(declaration.to_specified_css().unwrap(), expected);
+            assert_eq!(
+                declaration.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
             let CssExpansion::Contributions(CssContributions::Longhands(values)) =
                 expand_declaration(&declaration).unwrap()
             else {

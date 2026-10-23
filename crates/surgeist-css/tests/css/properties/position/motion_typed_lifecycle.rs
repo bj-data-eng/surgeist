@@ -13,8 +13,8 @@ fn declaration(name: &str, input: &str) -> CssDeclaration {
     source.clone()
 }
 use crate::css::support::serialization_limits::assert_node_limits as budget;
+use CssSerializationLimits as L;
 use CssSpecifiedValueSerializationErrorKind as K;
-use CssSpecifiedValueSerializationLimits as L;
 use surgeist_css::*;
 
 fn angle(number: &str, unit: CssAngleUnit) -> CssAngleValue {
@@ -81,9 +81,7 @@ fn checked_coord_conversion_admits_six_boxes_and_rejects_margin() {
             Some(coord)
         );
         assert_eq!(coord.as_css_str(), keyword);
-        budget(keyword, 1, |limits| {
-            coord.serialize_specified_with_limits(limits)
-        });
+        budget(keyword, 1, |limits| coord.serialize_specified(limits));
     }
     assert_eq!(
         CssCoordBox::try_from(CssBoxEdgeKeyword::MarginBox),
@@ -112,13 +110,13 @@ fn ray_constructor_retains_required_bearing_and_optional_presence() {
     assert!(!omitted.contain());
     assert!(omitted.position().is_none());
     budget("ray(450deg)", 2, |limits| {
-        omitted.serialize_specified_with_limits(limits)
+        omitted.serialize_specified(limits)
     });
     let explicit = CssRay::new(bearing.clone(), Some(CssRaySize::ClosestSide), false, None);
     assert_ne!(explicit, omitted);
     assert_eq!(explicit.size(), Some(CssRaySize::ClosestSide));
     budget("ray(450deg)", 3, |limits| {
-        explicit.serialize_specified_with_limits(limits)
+        explicit.serialize_specified(limits)
     });
     let full = CssRay::new(bearing, Some(CssRaySize::Sides), true, Some(position()));
     let CssPositionRef::Cartesian(axes) = full.position().unwrap().view() else {
@@ -126,7 +124,7 @@ fn ray_constructor_retains_required_bearing_and_optional_presence() {
     };
     assert_eq!(axes.horizontal(), &CssHorizontalPosition::Left);
     budget("ray(450deg sides contain at left top)", 7, |limits| {
-        full.serialize_specified_with_limits(limits)
+        full.serialize_specified(limits)
     });
 }
 
@@ -144,9 +142,7 @@ fn ray_sizes_have_independent_direct_keyword_and_retained_default_contracts() {
             Some(size)
         );
         assert_eq!(size.as_css_str(), text);
-        budget(text, 1, |limits| {
-            size.serialize_specified_with_limits(limits)
-        });
+        budget(text, 1, |limits| size.serialize_specified(limits));
     }
     assert!(CssRaySize::from_keyword("contain").is_none());
     let source = declaration(
@@ -166,7 +162,7 @@ fn ray_sizes_have_independent_direct_keyword_and_retained_default_contracts() {
     );
     assert_eq!(value.position().unwrap(), &position());
     assert_eq!(
-        value.serialize_specified().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         "ray(100grad contain at left top)"
     );
 }
@@ -184,22 +180,16 @@ fn rotation_rejects_empty_and_preserves_modifier_angle_omissions() {
         alone.angle().unwrap().origin(),
         &CssValueOrigin::Programmatic
     );
-    budget("0.25turn", 2, |limits| {
-        alone.serialize_specified_with_limits(limits)
-    });
+    budget("0.25turn", 2, |limits| alone.serialize_specified(limits));
     let automatic = CssOffsetRotate::auto();
     assert_eq!(automatic.modifier(), Some(CssOffsetRotateModifier::Auto));
     assert!(automatic.angle().is_none());
-    budget("auto", 2, |limits| {
-        automatic.serialize_specified_with_limits(limits)
-    });
+    budget("auto", 2, |limits| automatic.serialize_specified(limits));
     for (modifier, text) in [
         (CssOffsetRotateModifier::Auto, "auto"),
         (CssOffsetRotateModifier::Reverse, "reverse"),
     ] {
-        budget(text, 1, |limits| {
-            modifier.serialize_specified_with_limits(limits)
-        });
+        budget(text, 1, |limits| modifier.serialize_specified(limits));
         let both = CssOffsetRotate::try_new(Some(modifier), Some(literal.clone())).unwrap();
         assert_eq!(both.modifier(), Some(modifier));
         assert_eq!(
@@ -213,7 +203,7 @@ fn rotation_rejects_empty_and_preserves_modifier_angle_omissions() {
         );
         assert_ne!(both, alone);
         budget(&format!("{text} 0.25turn"), 3, |limits| {
-            both.serialize_specified_with_limits(limits)
+            both.serialize_specified(limits)
         });
     }
 }
@@ -229,13 +219,16 @@ fn motion_angle_construction_uses_strict_angle_owner_errors_and_origins() {
     let bearing = ray(&source).angle();
     let components = bearing.calculation().unwrap().components().clone();
     let constructed = CssAngleValue::try_from_calculation(
-        CssAngleCalculation::try_from_components(components.clone()).unwrap(),
+        CssAngleCalculation::try_from_components(components.clone(), Default::default()).unwrap(),
     )
     .unwrap();
     assert_eq!(constructed.calculation().unwrap().components(), &components);
     assert_eq!(constructed.origin(), bearing.origin());
     let model = CssRay::new(constructed, None, false, None);
-    assert_eq!(model.serialize_specified().unwrap(), "ray(calc(270deg))");
+    assert_eq!(
+        model.serialize_specified(Default::default()).unwrap(),
+        "ray(calc(270deg))"
+    );
     assert_eq!(
         model.angle().calculation().unwrap().components(),
         &components
@@ -286,7 +279,9 @@ fn ray_catalog_reports_exact_selected_production_and_authored_complete_status() 
     assert!(feature.supported_subset().is_none() && feature.unsupported_remainder().is_none());
     let source = declaration("offset-path", "ray(90deg sides contain at left top)");
     assert_eq!(
-        ray(&source).serialize_specified().unwrap(),
+        ray(&source)
+            .serialize_specified(Default::default())
+            .unwrap(),
         "ray(90deg sides contain at left top)"
     );
 }
@@ -295,16 +290,14 @@ fn ray_catalog_reports_exact_selected_production_and_authored_complete_status() 
 fn whole_path_views_preserve_none_box_only_and_each_coupled_path_kind() {
     let none = CssOffsetPath::none();
     assert_eq!(none.view(), CssOffsetPathRef::None);
-    budget("none", 1, |limits| {
-        none.serialize_specified_with_limits(limits)
-    });
+    budget("none", 1, |limits| none.serialize_specified(limits));
     let box_only = CssOffsetPath::from_coord_box(CssCoordBox::BorderBox);
     assert_eq!(
         box_only.view(),
         CssOffsetPathRef::CoordBox(CssCoordBox::BorderBox)
     );
     budget("border-box", 1, |limits| {
-        box_only.serialize_specified_with_limits(limits)
+        box_only.serialize_specified(limits)
     });
     let kinds = [
         (
@@ -328,9 +321,7 @@ fn whole_path_views_preserve_none_box_only_and_each_coupled_path_kind() {
         ),
     ];
     for (kind, css, nodes) in kinds {
-        budget(css, nodes, |limits| {
-            kind.serialize_specified_with_limits(limits)
-        });
+        budget(css, nodes, |limits| kind.serialize_specified(limits));
         let pair = CssOffsetPathValue::new(kind.clone(), Some(CssCoordBox::BorderBox));
         assert_eq!(pair.path(), &kind);
         assert_eq!(pair.coord_box(), Some(CssCoordBox::BorderBox));
@@ -339,17 +330,15 @@ fn whole_path_views_preserve_none_box_only_and_each_coupled_path_kind() {
         assert_ne!(path, box_only);
         let expected = format!("{css} border-box");
         budget(&expected, nodes + 2, |limits| {
-            pair.serialize_specified_with_limits(limits)
+            pair.serialize_specified(limits)
         });
         budget(&expected, nodes + 2, |limits| {
-            path.serialize_specified_with_limits(limits)
+            path.serialize_specified(limits)
         });
         let omitted = CssOffsetPathValue::new(kind, None);
         assert!(omitted.coord_box().is_none());
         assert_ne!(omitted, pair);
-        budget(css, nodes + 1, |limits| {
-            omitted.serialize_specified_with_limits(limits)
-        });
+        budget(css, nodes + 1, |limits| omitted.serialize_specified(limits));
     }
 }
 
@@ -370,14 +359,17 @@ fn path_url_view_retains_src_target_modifier_order_and_never_becomes_image() {
     assert_eq!(url.as_str(), "é.svg");
     assert_eq!(url.modifiers().len(), 2);
     assert_eq!(
-        pair.serialize_specified().unwrap(),
+        pair.serialize_specified(Default::default()).unwrap(),
         "src(\"é.svg\" CORS integrity(\"sha256\")) view-box"
     );
     let empty = CssOffsetPath::from_path(CssOffsetPathValue::new(
         CssOffsetPathKind::Url(CssUrl::new(String::new())),
         None,
     ));
-    assert_eq!(empty.serialize_specified().unwrap(), "url(\"\")");
+    assert_eq!(
+        empty.serialize_specified(Default::default()).unwrap(),
+        "url(\"\")"
+    );
 }
 
 #[test]
@@ -399,20 +391,18 @@ fn physical_position_anchor_and_position_branches_retain_checked_axes_and_origin
     let start = CssOffsetPosition::Position(physical.clone().into());
     let anchor = CssOffsetAnchor::Position(physical.into());
     // Position aggregate + two axis nodes + the retained percentage leaf.
+    budget("-25% bottom", 4, |limits| start.serialize_specified(limits));
     budget("-25% bottom", 4, |limits| {
-        start.serialize_specified_with_limits(limits)
-    });
-    budget("-25% bottom", 4, |limits| {
-        anchor.serialize_specified_with_limits(limits)
+        anchor.serialize_specified(limits)
     });
     budget("normal", 1, |limits| {
-        CssOffsetPosition::Normal.serialize_specified_with_limits(limits)
+        CssOffsetPosition::Normal.serialize_specified(limits)
     });
     budget("auto", 1, |limits| {
-        CssOffsetPosition::Auto.serialize_specified_with_limits(limits)
+        CssOffsetPosition::Auto.serialize_specified(limits)
     });
     budget("auto", 1, |limits| {
-        CssOffsetAnchor::Auto.serialize_specified_with_limits(limits)
+        CssOffsetAnchor::Auto.serialize_specified(limits)
     });
     assert_eq!(
         CssPhysicalPosition::try_new(CssHorizontalPosition::XStart, CssVerticalPosition::Top),
@@ -467,7 +457,7 @@ fn shorthand_constructor_rejects_anchor_only_and_pathless_distance_or_rotation()
             && position_only.anchor().is_none()
     );
     budget("normal", 2, |limits| {
-        position_only.serialize_specified_with_limits(limits)
+        position_only.serialize_specified(limits)
     });
     let full = CssOffset::try_new(
         Some(CssOffsetPosition::Normal),
@@ -488,7 +478,7 @@ fn shorthand_constructor_rejects_anchor_only_and_pathless_distance_or_rotation()
     );
     assert_eq!(full.anchor(), Some(&CssOffsetAnchor::Auto));
     budget("normal none 0 auto / auto", 7, |limits| {
-        full.serialize_specified_with_limits(limits)
+        full.serialize_specified(limits)
     });
 }
 
@@ -544,7 +534,12 @@ fn intrinsic_initial_payloads_and_omitted_shorthand_members_use_exact_central_va
             assert!(item.replacement_components().is_none());
             assert_initial(item.ordinary_value().unwrap().view());
         }
-        assert_eq!(offset(&source).serialize_specified().unwrap(), text);
+        assert_eq!(
+            offset(&source)
+                .serialize_specified(Default::default())
+                .unwrap(),
+            text
+        );
     }
 }
 
@@ -661,7 +656,7 @@ fn typed_checked_construction_preserves_supplied_angle_and_distance_component_id
     );
     let before = model.clone();
     budget("ray(450grad) -25%", 5, |limits| {
-        model.serialize_specified_with_limits(limits)
+        model.serialize_specified(limits)
     });
     assert_eq!(model, before);
     assert_eq!(
@@ -684,20 +679,23 @@ fn composed_motion_numeric_graphs_share_projection_limits_without_mutation() {
     // and two literals, projecting four retained canonical math nodes.
     assert_eq!(
         value
-            .serialize_specified_with_limits(L::new(8, 7, expected.len()))
+            .serialize_specified(L::new(8, 7, expected.len()))
             .unwrap(),
         expected
     );
     let error = value
-        .serialize_specified_with_limits(L::new(8, 6, expected.len()))
+        .serialize_specified(L::new(8, 6, expected.len()))
         .unwrap_err();
     assert_eq!(error.kind(), K::ProjectionNodeLimit);
     assert_eq!(value, &before);
     assert_eq!(
         value
-            .serialize_specified_with_limits(L::new(8, 6, expected.len()))
+            .serialize_specified(L::new(8, 6, expected.len()))
             .unwrap_err(),
         error
     );
-    assert_eq!(value.serialize_specified().unwrap(), expected);
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
 }

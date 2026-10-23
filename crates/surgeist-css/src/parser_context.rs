@@ -110,7 +110,8 @@ impl CssParserContext {
     ) -> Result<CssSupportsCondition, CssSupportsConstructionError> {
         css_supports_condition(source, self.standards())
     }
-    /// Parses the literal property/value overload with Standards admission and this definition choice.
+    /// Parses the literal property/value overload with Standards admission and this definition
+    /// choice.
     pub fn parse_css_supports_declaration(
         self,
         property: &str,
@@ -405,7 +406,7 @@ fn css_supports_condition(
         ) => {
             let block = CssComponentValue::try_block(CssBlockKind::Parenthesis, values)?;
             CssSupportsCondition::try_from_components_in_context(
-                CssComponentValues::try_new(vec![block])?,
+                CssComponentValues::try_new(vec![block], Default::default())?,
                 &namespaces,
                 CssComponentValueLimits::default(),
                 context,
@@ -469,7 +470,7 @@ fn css_supports_declaration(
     items.push(CssComponentValue::try_token(":")?);
     items.extend_from_slice(value.items());
     CssSupportsDeclaration::try_from_components_in_context(
-        CssComponentValues::try_new(items)?,
+        CssComponentValues::try_new(items, Default::default())?,
         context,
     )
 }

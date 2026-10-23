@@ -1,7 +1,7 @@
 //! Cumulative specified emission of authored shape commands.
 use crate::specified_rule_serialization::SpecifiedRuleWriter;
 use crate::*;
-type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
+type Result<T> = std::result::Result<T, CssSerializationError>;
 fn scalar(v: &CssSpecifiedLengthPercentage, w: &mut SpecifiedRuleWriter) -> Result<()> {
     v.append_specified(&mut w.context, &mut w.css)
 }
@@ -52,19 +52,6 @@ fn relative(v: &CssShapeRelativeControlPoint, w: &mut SpecifiedRuleWriter) -> Re
     Ok(())
 }
 impl CssShapeFunction {
-    /// Serializes authored components without resolving geometry or inserting defaults.
-    pub fn serialize_specified(&self) -> Result<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-    /// Uses one cumulative input, projection and byte budget for the complete function.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String> {
-        let mut w = SpecifiedRuleWriter::new(limits);
-        self.append_specified(&mut w)?;
-        Ok(w.css)
-    }
     pub(crate) fn append_specified(&self, w: &mut SpecifiedRuleWriter) -> Result<()> {
         w.node()?;
         w.append("shape(")?;
@@ -89,6 +76,15 @@ impl CssShapeFunction {
         w.append(")")
     }
 }
+impl crate::specified_rule_serialization::SpecifiedProvider for CssShapeFunction {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        self.append_specified(writer)
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(CssShapeFunction);
 fn command(c: &CssShapeCommand, w: &mut SpecifiedRuleWriter) -> Result<()> {
     w.node()?;
     match c {

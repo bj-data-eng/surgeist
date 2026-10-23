@@ -16,7 +16,7 @@ fn implicit(components: &CssComponentValues) -> CssValueOrigin {
             return value.clone();
         }
     }
-    let text = components.serialize().unwrap();
+    let text = components.serialize_tokens(Default::default()).unwrap();
     (0..text.as_css().len())
         .find_map(|offset| match text.origin_at(offset) {
             Some(CssSerializedOrigin::Token(value @ CssValueOrigin::ImplicitClosure { .. })) => {

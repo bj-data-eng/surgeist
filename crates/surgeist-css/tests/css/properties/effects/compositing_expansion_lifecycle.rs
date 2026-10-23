@@ -105,12 +105,12 @@ fn one(values: &CssLonghandContributions, property: P) -> CssLonghandValueRef<'_
 }
 fn output(
     value: CssLonghandValueRef<'_>,
-    limits: CssSpecifiedValueSerializationLimits,
-) -> Result<String, CssSpecifiedValueSerializationError> {
+    limits: CssSerializationLimits,
+) -> Result<String, CssSerializationError> {
     match value {
-        CssLonghandValueRef::BackgroundBlendMode(v) => v.serialize_specified_with_limits(limits),
-        CssLonghandValueRef::Isolation(v) => v.serialize_specified_with_limits(limits),
-        CssLonghandValueRef::MixBlendMode(v) => v.serialize_specified_with_limits(limits),
+        CssLonghandValueRef::BackgroundBlendMode(v) => v.serialize_specified(limits),
+        CssLonghandValueRef::Isolation(v) => v.serialize_specified(limits),
+        CssLonghandValueRef::MixBlendMode(v) => v.serialize_specified(limits),
         other => panic!("compositing payload: {other:?}"),
     }
 }
@@ -160,11 +160,7 @@ fn three_borrowed_initial_views_have_noninherited_exact_scalar_contents() {
             "normal"
         };
         assert_eq!(
-            output(
-                initial.view(),
-                CssSpecifiedValueSerializationLimits::default()
-            )
-            .unwrap(),
+            output(initial.view(), CssSerializationLimits::default()).unwrap(),
             css
         );
         let explicit = completed(&checked(property, css));
@@ -224,7 +220,7 @@ fn all_selected_blend_and_isolation_keywords_reach_typed_views_through_three_fro
                     other => panic!("family payload: {other:?}"),
                 }
                 assert_eq!(
-                    output(view, CssSpecifiedValueSerializationLimits::default()).unwrap(),
+                    output(view, CssSerializationLimits::default()).unwrap(),
                     css
                 );
             }
@@ -269,7 +265,10 @@ fn sixty_four_authored_blend_entries_keep_every_index_duplicate_and_decoded_orde
             assert_eq!(*mode, expected_modes[index]);
         }
         assert_eq!(value.modes(), expected_modes);
-        assert_eq!(value.serialize_specified().unwrap(), expected_css);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected_css
+        );
         let CssKnownPropertyValueRef::BackgroundBlendMode(original) =
             source.known().unwrap().property_value().unwrap()
         else {
@@ -278,21 +277,13 @@ fn sixty_four_authored_blend_entries_keep_every_index_duplicate_and_decoded_orde
         assert_eq!(value, original.modes());
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    65,
-                    65,
-                    expected_css.len()
-                ))
+                .serialize_specified(CssSerializationLimits::new(65, 65, expected_css.len()))
                 .unwrap(),
             expected_css
         );
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    64,
-                    65,
-                    expected_css.len()
-                ))
+                .serialize_specified(CssSerializationLimits::new(64, 65, expected_css.len()))
                 .unwrap_err()
                 .kind(),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit
@@ -324,7 +315,7 @@ fn checked_programmatic_keywords_preserve_component_origins_and_original_grammar
         };
         let programmatic = CssComponentValue::try_ident(keyword).unwrap();
         items[last] = programmatic.clone();
-        let components = CssComponentValues::try_new(items).unwrap();
+        let components = CssComponentValues::try_new(items, Default::default()).unwrap();
         for source in [
             parse_property_value(
                 CssPropertyNameRef::Known(property),
@@ -348,11 +339,7 @@ fn checked_programmatic_keywords_preserve_component_origins_and_original_grammar
             );
             let values = completed(&source);
             assert_eq!(
-                output(
-                    one(&values, property),
-                    CssSpecifiedValueSerializationLimits::default()
-                )
-                .unwrap(),
+                output(one(&values, property), CssSerializationLimits::default()).unwrap(),
                 css
             );
             if property == P::BackgroundBlendMode {
@@ -368,14 +355,20 @@ fn checked_programmatic_keywords_preserve_component_origins_and_original_grammar
 #[test]
 fn pending_family_handles_retry_strict_original_eof_grammar_residual_and_provider_failures() {
     for (property, good) in FAMILY {
-        let programmatic = CssComponentValues::try_new(vec![
-            CssComponentValue::try_function(
-                "var",
-                CssComponentValues::try_new(vec![CssComponentValue::try_ident("--mode").unwrap()])
+        let programmatic = CssComponentValues::try_new(
+            vec![
+                CssComponentValue::try_function(
+                    "var",
+                    CssComponentValues::try_new(
+                        vec![CssComponentValue::try_ident("--mode").unwrap()],
+                        Default::default(),
+                    )
                     .unwrap(),
-            )
-            .unwrap(),
-        ])
+                )
+                .unwrap(),
+            ],
+            Default::default(),
+        )
         .unwrap();
         for source in [
             parsed(&format!(
@@ -433,7 +426,7 @@ fn pending_family_handles_retry_strict_original_eof_grammar_residual_and_provide
             assert_eq!(
                 output(
                     one(&first, property),
-                    CssSpecifiedValueSerializationLimits::new(100, 100, 0)
+                    CssSerializationLimits::new(100, 100, 0)
                 )
                 .unwrap_err()
                 .kind(),
@@ -445,11 +438,7 @@ fn pending_family_handles_retry_strict_original_eof_grammar_residual_and_provide
             };
             assert_eq!(one(&first, property), one(&retry, property));
             assert_eq!(
-                output(
-                    one(&retry, property),
-                    CssSpecifiedValueSerializationLimits::default()
-                )
-                .unwrap(),
+                output(one(&retry, property), CssSerializationLimits::default()).unwrap(),
                 good
             );
             context(&retry.items()[0], &source, Some(&replacement));
@@ -489,7 +478,7 @@ fn projected_family_payloads_and_singleton_reset_keep_exact_provider_budgets() {
             "normal",
         ),
     ] {
-        let limits = CssSpecifiedValueSerializationLimits::new;
+        let limits = CssSerializationLimits::new;
         assert_eq!(output(view, limits(nodes, nodes, css.len())).unwrap(), css);
         for (budget, kind) in [
             (
@@ -549,14 +538,23 @@ fn ordinary_background_resets_to_one_normal_independently_of_layer_or_explicit_l
             else {
                 panic!("final color stays seventh index")
             };
-            assert_eq!(color.to_specified_css().unwrap(), "red");
+            assert_eq!(
+                color.serialize_specified(Default::default()).unwrap(),
+                "red"
+            );
             let CssKnownPropertyValueRef::Background(original) =
                 source.known().unwrap().property_value().unwrap()
             else {
                 panic!("original background")
             };
             assert_eq!(original.background().layers().len(), count);
-            assert_eq!(original.background().serialize_specified().unwrap(), css);
+            assert_eq!(
+                original
+                    .background()
+                    .serialize_specified(Default::default())
+                    .unwrap(),
+                css
+            );
         }
     }
     assert_eq!(
@@ -623,14 +621,22 @@ fn global_and_pending_backgrounds_keep_nine_terminals_and_reset_replacement_cont
             .kind(),
         &CssExpansionErrorKind::ResidualSubstitution
     );
-    let replacement =
-        CssComponentValues::try_new(vec![CssComponentValue::try_ident("red").unwrap()]).unwrap();
+    let replacement = CssComponentValues::try_new(
+        vec![CssComponentValue::try_ident("red").unwrap()],
+        Default::default(),
+    )
+    .unwrap();
     for _ in 0..2 {
         let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap()
         else {
             panic!("ordinary replacement")
         };
-        assert_eq!(reset(&values).serialize_specified().unwrap(), "normal");
+        assert_eq!(
+            reset(&values)
+                .serialize_specified(Default::default())
+                .unwrap(),
+            "normal"
+        );
         for item in values.items() {
             context(item, &source, Some(&replacement));
         }
@@ -746,11 +752,7 @@ fn browser_recovered_comments_preserve_typed_payloads_and_unclean_report_normali
             panic!("recovered ordinary payload")
         };
         assert_eq!(
-            output(
-                one(values, property),
-                CssSpecifiedValueSerializationLimits::default()
-            )
-            .unwrap(),
+            output(one(values, property), CssSerializationLimits::default()).unwrap(),
             css
         );
         context(&values.items()[0], declaration.source(), None);

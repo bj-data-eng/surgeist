@@ -90,7 +90,9 @@ fn blocks_and_functions_inside_the_remnants_are_consumed_whole() {
         assert_remnant(&source, unit, &["width"]);
         let report = parse_style_attribute(&source);
         assert_eq!(
-            report.syntax()[0].to_specified_css().unwrap(),
+            report.syntax()[0]
+                .serialize_specified(Default::default())
+                .unwrap(),
             "width: 2px;"
         );
     }

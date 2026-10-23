@@ -1,49 +1,16 @@
-//! Private carrier preserving the selected query provider's typed failure.
-use crate::{CssMediaCssomSerializationError, CssSpecifiedValueSerializationError};
+//! `?` conversions of query-rule provider failures into the rule-graph carrier.
+use crate::specified_rule_serialization::SpecifiedRuleSerializationSource;
 
-#[derive(Debug)]
-pub(crate) enum QueryRuleSerializationError {
-    Value(CssSpecifiedValueSerializationError),
-    Media(CssMediaCssomSerializationError),
-}
-impl From<CssSpecifiedValueSerializationError> for QueryRuleSerializationError {
-    fn from(error: CssSpecifiedValueSerializationError) -> Self {
-        Self::Value(error)
+impl From<crate::imports::ImportSerializationFailure> for SpecifiedRuleSerializationSource {
+    fn from(error: crate::imports::ImportSerializationFailure) -> Self {
+        Self(crate::imports::import_error(error))
     }
 }
-impl From<CssMediaCssomSerializationError> for QueryRuleSerializationError {
-    fn from(error: CssMediaCssomSerializationError) -> Self {
-        Self::Media(error)
-    }
-}
-impl From<crate::CssComponentValueError> for QueryRuleSerializationError {
-    fn from(error: crate::CssComponentValueError) -> Self {
-        Self::Value(crate::component_values::specified_component_error(error))
-    }
-}
-impl From<crate::CssImportSerializationError> for QueryRuleSerializationError {
-    fn from(error: crate::CssImportSerializationError) -> Self {
-        match error {
-            crate::CssImportSerializationError::Component(error) => error.into(),
-            crate::CssImportSerializationError::Media(error) => {
-                Self::Media(crate::media::bounded_error(error))
-            }
-            crate::CssImportSerializationError::InterpretationChanged { .. } => {
-                Self::Value(CssSpecifiedValueSerializationError::new(
-                    crate::CssSpecifiedValueSerializationErrorKind::UnrepresentableValue,
-                ))
-            }
-        }
-    }
-}
-impl From<crate::CssCustomMediaSerializationError> for QueryRuleSerializationError {
-    fn from(error: crate::CssCustomMediaSerializationError) -> Self {
-        match error {
-            crate::CssCustomMediaSerializationError::Component(error) => error.into(),
-            crate::CssCustomMediaSerializationError::Media(error) => {
-                Self::Media(crate::media::bounded_error(error))
-            }
-        }
+impl From<crate::custom_media::CustomMediaSerializationFailure>
+    for SpecifiedRuleSerializationSource
+{
+    fn from(error: crate::custom_media::CustomMediaSerializationFailure) -> Self {
+        Self(crate::custom_media::custom_media_error(error))
     }
 }
 
@@ -52,9 +19,8 @@ mod tests {
     use super::*;
     use crate::{
         CssContainerPrelude, CssCustomMediaBody, CssNamespaceContext, CssRule,
-        CssSpecifiedValueSerializationErrorKind as Kind,
-        CssSpecifiedValueSerializationLimits as Limits, CssSupportsCondition,
-        parse_component_values, parse_sheet,
+        CssSerializationLimits as Limits, CssSpecifiedValueSerializationErrorKind as Kind,
+        CssSupportsCondition, parse_component_values, parse_sheet,
         specified_serialization::SpecifiedSerializationContext,
     };
 
@@ -63,10 +29,12 @@ mod tests {
         let condition = CssSupportsCondition::try_from_components(
             parse_component_values("  (display:grid)  ").unwrap(),
             &CssNamespaceContext::default(),
+            Default::default(),
         )
         .unwrap();
         let prelude = CssContainerPrelude::try_from_components(
             parse_component_values("  (width>1px)  ").unwrap(),
+            Default::default(),
         )
         .unwrap();
         let mut context = SpecifiedSerializationContext::new(Limits::new(14, 14, 0));
@@ -115,16 +83,11 @@ mod tests {
         );
         let mut context = SpecifiedSerializationContext::new(Limits::new(5, 6, 0));
         context.replace_output_suppression(true);
-        let QueryRuleSerializationError::Media(error) = rule
+        let SpecifiedRuleSerializationSource(error) = rule
             .append_specified(&mut context, &mut output)
-            .unwrap_err()
-        else {
-            panic!("media error");
-        };
-        assert_eq!(error.origin(), &rejected_origin);
-        assert!(
-            matches!(error, CssMediaCssomSerializationError::Resource { error, .. } if error.kind() == Kind::ProjectionNodeLimit)
-        );
+            .unwrap_err();
+        assert_eq!(error.origin(), Some(&rejected_origin));
+        assert_eq!(error.kind(), Kind::ProjectionNodeLimit);
         assert_eq!(report, before);
     }
 
@@ -166,7 +129,7 @@ mod tests {
             panic!("import");
         };
         assert!(rule.layer().is_none() && rule.supports().is_none());
-        let expected = rule.serialize().unwrap();
+        let expected = rule.serialize_tokens(Default::default()).unwrap();
         let prefix = "prior ";
         let mut context = SpecifiedSerializationContext::new(Limits::new(
             128,

@@ -37,7 +37,10 @@ fn assert_declaration(
     region(name_origin, source, name.0, name.1);
     region(value_origin, source, value.0, value.1);
     assert!(name_origin.source().same_snapshot(value_origin.source()));
-    assert_eq!(declaration.to_specified_css().unwrap(), expected_css);
+    assert_eq!(
+        declaration.serialize_specified(Default::default()).unwrap(),
+        expected_css
+    );
 }
 
 fn report_with_validation_parity(source: &str) -> CssParseReport<CssDeclarationList> {

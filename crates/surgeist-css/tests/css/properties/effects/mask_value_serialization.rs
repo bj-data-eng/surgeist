@@ -4,7 +4,7 @@
 use crate::css::support::normal_declaration;
 use crate::css::support::serialization_limits::LimitLadder;
 use surgeist_css::*;
-type Limits = CssSpecifiedValueSerializationLimits;
+type Limits = CssSerializationLimits;
 type Kind = CssSpecifiedValueSerializationErrorKind;
 
 fn mask_list(css: &str) -> CssMaskList {
@@ -19,8 +19,11 @@ fn mask_list(css: &str) -> CssMaskList {
 
 fn bounds(value: &CssMaskList, expected: &str, input: usize, projection: usize) {
     LimitLadder::new(expected, input, projection)
-        .assert_unchanged(value, CssMaskList::serialize_specified_with_limits);
-    assert_eq!(value.serialize_specified().unwrap(), expected);
+        .assert_unchanged(value, CssMaskList::serialize_specified);
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
 }
 
 #[test]
@@ -42,8 +45,16 @@ fn parsed_fields_emit_in_canonical_layer_order() {
     ] {
         let value = mask_list(input);
         let before = value.clone();
-        assert_eq!(value.serialize_specified().unwrap(), expected);
-        assert_eq!(mask_list(expected).serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
+        assert_eq!(
+            mask_list(expected)
+                .serialize_specified(Default::default())
+                .unwrap(),
+            expected
+        );
         assert_eq!(value, before);
     }
 }
@@ -170,7 +181,7 @@ fn constructors_preserve_order_and_omitted_image_position_size_repeat() {
     .unwrap();
     let before = value.clone();
     assert_eq!(
-        value.serialize_specified().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         "url(\"first.svg\") 0% 0% / cover, center center repeat-x, none"
     );
     assert_eq!(value, before);
@@ -211,12 +222,15 @@ fn symbolic_math_keeps_source_graph_and_non_bmp_origin_after_failure_and_retry()
     let expected = "calc(1em + 10px) top / contain";
     assert_eq!(
         value
-            .serialize_specified_with_limits(Limits::new(100, 100, 1))
+            .serialize_specified(Limits::new(100, 100, 1))
             .unwrap_err()
             .kind(),
         Kind::ByteLimit
     );
-    assert_eq!(value.serialize_specified().unwrap(), expected);
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     assert_eq!(*value, before);
     assert_eq!(offset.calculation().unwrap().components(), &components);
 }
@@ -228,7 +242,7 @@ fn failure_after_first_layer_or_separator_is_atomic_and_retryable() {
     for bytes in [4, 5, 6, 9] {
         assert_eq!(
             value
-                .serialize_specified_with_limits(Limits::new(5, 5, bytes))
+                .serialize_specified(Limits::new(5, 5, bytes))
                 .unwrap_err()
                 .kind(),
             Kind::ByteLimit

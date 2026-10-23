@@ -25,9 +25,11 @@ fn parsed_clip(declaration: &CssDeclaration) -> &CssClip {
 fn checked_edge_construction_accepts_signed_pure_lengths_and_rejects_other_domains() {
     for css in ["0", "-1px", "2em"] {
         let value = signed_length(css);
-        assert_eq!(value.serialize_specified().unwrap(), css);
+        assert_eq!(value.serialize_specified(Default::default()).unwrap(), css);
         assert_eq!(
-            CssClipEdge::Length(value).serialize_specified().unwrap(),
+            CssClipEdge::Length(value)
+                .serialize_specified(Default::default())
+                .unwrap(),
             css
         );
     }
@@ -53,8 +55,18 @@ fn checked_edge_construction_accepts_signed_pure_lengths_and_rejects_other_domai
         signed_length("2em").origin(),
         CssValueOrigin::Programmatic
     ));
-    assert_eq!(CssClipEdge::Auto.serialize_specified().unwrap(), "auto");
-    assert_eq!(CssClip::Auto.serialize_specified().unwrap(), "auto");
+    assert_eq!(
+        CssClipEdge::Auto
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "auto"
+    );
+    assert_eq!(
+        CssClip::Auto
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "auto"
+    );
 }
 
 #[test]
@@ -76,18 +88,20 @@ fn constructed_rectangle_preserves_four_edge_order_and_canonical_commas() {
         matches!(rect.left(), CssClipEdge::Length(length) if exact_literal(length.literal_component(), "0"))
     );
     assert_eq!(
-        rect.serialize_specified().unwrap(),
+        rect.serialize_specified(Default::default()).unwrap(),
         "rect(auto, -1px, 2em, 0)"
     );
     let clip = CssClip::Rect(rect);
     assert_eq!(
-        clip.serialize_specified().unwrap(),
+        clip.serialize_specified(Default::default()).unwrap(),
         "rect(auto, -1px, 2em, 0)"
     );
 
     let from_space = parsed("clip:rect(auto -1px 2em 0)");
     assert_eq!(
-        parsed_clip(&from_space).serialize_specified().unwrap(),
+        parsed_clip(&from_space)
+            .serialize_specified(Default::default())
+            .unwrap(),
         "rect(auto, -1px, 2em, 0)"
     );
     let reparsed = parsed("clip:rect(auto, -1px, 2em, 0)");
@@ -137,7 +151,12 @@ fn checked_calculations_remain_wrapped_and_canonical() {
     };
     assert_eq!(value.representation(), "-2");
     assert_eq!(value.unit(), Some("px"));
-    assert_eq!(literal_math.serialize_specified().unwrap(), "calc(-2px)");
+    assert_eq!(
+        literal_math
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "calc(-2px)"
+    );
 
     let folded = signed_length("calc(1px - 2px)");
     let mixed = signed_length("calc(1px + 2em)");
@@ -177,10 +196,13 @@ fn checked_calculations_remain_wrapped_and_canonical() {
         CssClipEdge::Auto,
     ));
     assert_eq!(
-        clip.serialize_specified().unwrap(),
+        clip.serialize_specified(Default::default()).unwrap(),
         "rect(calc(-2px), calc(-1px), calc(2em + 1px), auto)"
     );
-    let parsed = parsed(&format!("clip:{}", clip.serialize_specified().unwrap()));
+    let parsed = parsed(&format!(
+        "clip:{}",
+        clip.serialize_specified(Default::default()).unwrap()
+    ));
     let CssClip::Rect(rect) = parsed_clip(&parsed) else {
         panic!("math rectangle")
     };
@@ -202,7 +224,12 @@ fn initial_and_authored_expansion_have_typed_auto_and_rectangle_values() {
     let CssLonghandValueRef::Clip(initial_clip) = value.view() else {
         panic!("typed initial")
     };
-    assert_eq!(initial_clip.serialize_specified().unwrap(), "auto");
+    assert_eq!(
+        initial_clip
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "auto"
+    );
 
     let authored = parsed("clip:rect(auto -1px 2em 0)!important");
     let CssExpansion::Contributions(CssContributions::Longhands(items)) =
@@ -217,7 +244,7 @@ fn initial_and_authored_expansion_have_typed_auto_and_rectangle_values() {
         panic!("typed clip contribution")
     };
     assert_eq!(
-        clip.serialize_specified().unwrap(),
+        clip.serialize_specified(Default::default()).unwrap(),
         "rect(auto, -1px, 2em, 0)"
     );
     assert!(item.source().same_occurrence(&authored));
@@ -228,30 +255,25 @@ fn initial_and_authored_expansion_have_typed_auto_and_rectangle_values() {
 fn edge_and_rectangle_limits_share_exact_cumulative_budgets() {
     let one = CssClipEdge::Auto;
     assert_eq!(
-        one.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(1, 1, 4))
+        one.serialize_specified(CssSerializationLimits::new(1, 1, 4))
             .unwrap(),
         "auto"
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(0, 1, 4),
+            CssSerializationLimits::new(0, 1, 4),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(1, 0, 4),
+            CssSerializationLimits::new(1, 0, 4),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(1, 1, 3),
+            CssSerializationLimits::new(1, 1, 3),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
-        assert_eq!(
-            one.serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            kind
-        );
+        assert_eq!(one.serialize_specified(limits).unwrap_err().kind(), kind);
     }
     let rect = CssClipRect::new(
         CssClipEdge::Auto,
@@ -262,33 +284,28 @@ fn edge_and_rectangle_limits_share_exact_cumulative_budgets() {
     let expected = "rect(auto, -1px, 2em, 0)";
     assert_eq!(expected.len(), 24);
     assert_eq!(
-        rect.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(5, 5, 24))
+        rect.serialize_specified(CssSerializationLimits::new(5, 5, 24))
             .unwrap(),
         expected
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(4, 5, 24),
+            CssSerializationLimits::new(4, 5, 24),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(5, 4, 24),
+            CssSerializationLimits::new(5, 4, 24),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(5, 5, 23),
+            CssSerializationLimits::new(5, 5, 23),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
-        assert_eq!(
-            rect.serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            kind
-        );
+        assert_eq!(rect.serialize_specified(limits).unwrap_err().kind(), kind);
     }
     assert_eq!(
-        rect.serialize_specified().unwrap(),
+        rect.serialize_specified(Default::default()).unwrap(),
         expected,
         "failed serialization leaves value unchanged"
     );
@@ -297,49 +314,43 @@ fn edge_and_rectangle_limits_share_exact_cumulative_budgets() {
 #[test]
 fn symbolic_math_edges_obey_one_shared_rectangle_byte_budget() {
     let mixed = edge(signed_length("calc(1px + 2em)"));
-    assert_eq!(mixed.serialize_specified().unwrap(), "calc(2em + 1px)");
+    assert_eq!(
+        mixed.serialize_specified(Default::default()).unwrap(),
+        "calc(2em + 1px)"
+    );
     assert_eq!(
         mixed
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                1_000, 1_000, 15
-            ))
+            .serialize_specified(CssSerializationLimits::new(1_000, 1_000, 15))
             .unwrap(),
         "calc(2em + 1px)"
     );
     let rect = CssClipRect::new(mixed.clone(), mixed, CssClipEdge::Auto, CssClipEdge::Auto);
     let expected = "rect(calc(2em + 1px), calc(2em + 1px), auto, auto)";
-    assert_eq!(rect.serialize_specified().unwrap(), expected);
     assert_eq!(
-        rect.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-            1_000,
-            1_000,
-            expected.len()
-        ))
-        .unwrap(),
+        rect.serialize_specified(Default::default()).unwrap(),
         expected
     );
     assert_eq!(
-        rect.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-            1_000, 1_000, 15
-        ))
-        .unwrap_err()
-        .kind(),
+        rect.serialize_specified(CssSerializationLimits::new(1_000, 1_000, expected.len()))
+            .unwrap(),
+        expected
+    );
+    assert_eq!(
+        rect.serialize_specified(CssSerializationLimits::new(1_000, 1_000, 15))
+            .unwrap_err()
+            .kind(),
         CssSpecifiedValueSerializationErrorKind::ByteLimit
     );
     assert_eq!(
-        rect.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-            0, 1_000, 1_000
-        ))
-        .unwrap_err()
-        .kind(),
+        rect.serialize_specified(CssSerializationLimits::new(0, 1_000, 1_000))
+            .unwrap_err()
+            .kind(),
         CssSpecifiedValueSerializationErrorKind::InputNodeLimit
     );
     assert_eq!(
-        rect.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-            1_000, 0, 1_000
-        ))
-        .unwrap_err()
-        .kind(),
+        rect.serialize_specified(CssSerializationLimits::new(1_000, 0, 1_000))
+            .unwrap_err()
+            .kind(),
         CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
     );
 }
@@ -355,7 +366,8 @@ fn signed_length(css: &str) -> surgeist_css::CssSpecifiedLength {
     let components = surgeist_css::parse_component_values(css).unwrap();
     if css.contains('(') {
         surgeist_css::CssSpecifiedLength::try_from_calculation(
-            surgeist_css::CssLengthCalculation::try_from_components(components).unwrap(),
+            surgeist_css::CssLengthCalculation::try_from_components(components, Default::default())
+                .unwrap(),
         )
         .unwrap()
     } else {

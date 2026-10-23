@@ -26,7 +26,12 @@ fn stream(sheet: &CssNormalizedSheet) -> Vec<String> {
                     context
                         .selectors()
                         .iter()
-                        .map(|entry| { entry.selector().to_specified_css().unwrap() })
+                        .map(|entry| {
+                            entry
+                                .selector()
+                                .serialize_specified(Default::default())
+                                .unwrap()
+                        })
                         .collect::<Vec<_>>()
                         .join(", ")
                 ),
@@ -82,21 +87,29 @@ fn mixed_nested_members_share_the_complete_original_parent_context() {
     };
     assert_eq!(compound.nesting_selectors(), 1);
     assert_eq!(compound.classes(), &["Child".to_owned()]);
-    assert_eq!(explicit.to_specified_css().unwrap(), ".Else &");
+    assert_eq!(
+        explicit.serialize_specified(Default::default()).unwrap(),
+        ".Else &"
+    );
     assert_eq!(plain, &CssSelector::Class("Plain".to_owned()));
     assert_eq!(
         child
             .selectors()
             .selectors()
             .iter()
-            .map(|entry| { entry.selector().to_specified_css().unwrap() })
+            .map(|entry| {
+                entry
+                    .selector()
+                    .serialize_specified(Default::default())
+                    .unwrap()
+            })
             .collect::<Vec<_>>(),
         ["&.Child", ".Else &", ".Plain"]
     );
     assert_eq!(
         last.selectors().selectors()[0]
             .selector()
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .unwrap(),
         ".Last"
     );
@@ -212,28 +225,28 @@ fn invalid_ampersand_child_drops_its_declarations_and_grandchild_between_sibling
     assert_eq!(
         parent.selectors().selectors()[0]
             .selector()
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .unwrap(),
         ".P"
     );
     assert_eq!(
         before.selectors().selectors()[0]
             .selector()
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .unwrap(),
         ".Before"
     );
     assert_eq!(
         after.selectors().selectors()[0]
             .selector()
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .unwrap(),
         ".After"
     );
     assert_eq!(
         outside.selectors().selectors()[0]
             .selector()
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .unwrap(),
         ".Outside"
     );
@@ -310,7 +323,7 @@ fn identifier_led_invalid_child_is_one_recovery_unit_without_descendant_promotio
     assert_eq!(
         after.selectors().selectors()[0]
             .selector()
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .unwrap(),
         ".After"
     );
@@ -400,7 +413,7 @@ fn legal_type_first_and_noninitial_repeated_anchors_have_stable_specified_output
                 .syntax()
                 .as_ref()
                 .unwrap()
-                .to_specified_css()
+                .serialize_specified(Default::default())
                 .unwrap(),
             expected
         );
@@ -425,7 +438,7 @@ fn legal_type_first_and_noninitial_repeated_anchors_have_stable_specified_output
             .syntax()
             .as_ref()
             .unwrap()
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .unwrap(),
         ".Lead > .Card&&"
     );
@@ -486,14 +499,14 @@ fn parentless_nesting_identity_is_distinct_from_literal_scope_identity() {
     assert_eq!(
         anchor_context.selectors()[0]
             .selector()
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .unwrap(),
         "&"
     );
     assert_eq!(
         scope_context.selectors()[0]
             .selector()
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .unwrap(),
         ":scope"
     );

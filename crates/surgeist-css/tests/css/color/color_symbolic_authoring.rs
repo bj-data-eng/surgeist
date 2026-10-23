@@ -422,10 +422,15 @@ fn color_model_preserves_authored_hex_and_currentcolor() {
     let hex = CssHexColor::try_new("ff800080").expect("eight hex digits");
     let color = CssColor::from_hex(hex);
     assert_eq!(color.hex_value().unwrap().digits(), "ff800080");
-    assert_eq!(color.to_specified_css().unwrap(), "rgba(255, 128, 0, 0.5)");
+    assert_eq!(
+        color.serialize_specified(Default::default()).unwrap(),
+        "rgba(255, 128, 0, 0.5)"
+    );
     assert!(CssColor::current_color().is_current_color());
     assert_eq!(
-        CssColor::current_color().to_specified_css().unwrap(),
+        CssColor::current_color()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "currentcolor"
     );
 }

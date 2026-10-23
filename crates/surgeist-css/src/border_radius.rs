@@ -2,12 +2,9 @@
 
 use crate::specified_rule_serialization::SpecifiedRuleWriter;
 use crate::specified_serialization::SpecifiedSerializationContext;
-use crate::{
-    CssSpecifiedNonNegativeLengthPercentage, CssSpecifiedValueSerializationError,
-    CssSpecifiedValueSerializationLimits,
-};
+use crate::{CssSerializationError, CssSpecifiedNonNegativeLengthPercentage};
 
-type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
+type Result<T> = std::result::Result<T, CssSerializationError>;
 
 fn append_scalar(
     value: &CssSpecifiedNonNegativeLengthPercentage,
@@ -23,6 +20,10 @@ fn append_scalar(
 /// Missing vertical radius repeats the horizontal radius. Both numeric origins
 /// remain inspectable through the borrowed scalar values. Serialization charges
 /// one aggregate node plus each authored scalar under one cumulative budget.
+///
+/// # Specified serialization
+///
+/// Serializes the authored corner without resolving box geometry.
 #[derive(Clone, Debug)]
 pub struct CssCornerRadiusValue {
     horizontal: CssSpecifiedNonNegativeLengthPercentage,
@@ -54,30 +55,16 @@ impl CssCornerRadiusValue {
     pub fn vertical(&self) -> &CssSpecifiedNonNegativeLengthPercentage {
         self.authored_vertical.as_ref().unwrap_or(&self.horizontal)
     }
-
-    /// Serializes the authored corner without resolving box geometry.
-    pub fn serialize_specified(&self) -> Result<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-    /// Serializes all authored components under one resource budget.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+}
+impl crate::specified_rule_serialization::SpecifiedProvider for CssCornerRadiusValue {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         let context = &mut writer.context;
         let output = &mut writer.css;
 
-        context.charge_input(1)?;
-        context.charge_projection(1)?;
+        context.charge_nodes(1)?;
         append_scalar(&self.horizontal, context, output)?;
         if let Some(vertical) = &self.authored_vertical {
             context.append(output, " ")?;
@@ -86,6 +73,7 @@ impl CssCornerRadiusValue {
         Ok(())
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssCornerRadiusValue);
 
 impl PartialEq for CssCornerRadiusValue {
     fn eq(&self, other: &Self) -> bool {
@@ -185,32 +173,9 @@ impl CssBorderRadiusShorthand {
         self.corner(3)
     }
 
-    /// Serializes only authored values with default resource limits.
-    pub fn serialize_specified(&self) -> Result<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-    /// Serializes all authored values under one cumulative resource budget.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        self.append_specified(writer)?;
-        Ok(())
-    }
-
     /// Shares the owning shape's cumulative budget without changing authored radii.
     pub(crate) fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
-        writer.context.charge_input(1)?;
-        writer.context.charge_projection(1)?;
+        writer.node()?;
         for (index, value) in self.horizontal.iter().enumerate() {
             writer.source_member(index, |writer| {
                 if index > 0 {
@@ -230,6 +195,16 @@ impl CssBorderRadiusShorthand {
         Ok(())
     }
 }
+impl crate::specified_rule_serialization::SpecifiedProvider for CssBorderRadiusShorthand {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        self.append_specified(writer)?;
+        Ok(())
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(CssBorderRadiusShorthand);
 
 impl PartialEq for CssBorderRadiusShorthand {
     fn eq(&self, other: &Self) -> bool {

@@ -39,7 +39,11 @@ fn assert_profile(expression: &CssProfileColorExpression) {
     assert_hinted_number(calculation.expression().numeric_type());
     assert!(calculation.references().is_empty());
     assert_eq!(
-        calculation.components().serialize().unwrap().as_css(),
+        calculation
+            .components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         HINTED
     );
 }
@@ -66,7 +70,11 @@ fn parsed(text: &str) -> CssDeclaration {
     assert!(validate_style_attribute(&source).is_ok());
     let declaration = report.syntax()[0].clone();
     assert_eq!(
-        declaration.value_components().serialize().unwrap().as_css(),
+        declaration
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         text
     );
     assert_eq!(declaration.importance(), CssImportance::Important);
@@ -143,6 +151,7 @@ fn relative_expression_constructors_admit_hinted_number_only_in_percentage_permi
                 original.clone(),
                 environment,
                 domain,
+                Default::default(),
             )
             .unwrap();
             assert_relative(&value);
@@ -151,9 +160,13 @@ fn relative_expression_constructors_admit_hinted_number_only_in_percentage_permi
             assert_eq!(value.origin(), original.items()[0].origin());
         }
     }
-    let value =
-        CssRelativeColorExpression::try_from_components(components(HINTED), E::Alpha, D::Alpha)
-            .unwrap();
+    let value = CssRelativeColorExpression::try_from_components(
+        components(HINTED),
+        E::Alpha,
+        D::Alpha,
+        Default::default(),
+    )
+    .unwrap();
     assert_relative(&value);
 }
 
@@ -235,6 +248,7 @@ fn hue_does_not_gain_percentage_permission_from_neighboring_channels() {
             components(HINTED),
             environment,
             D::Hue,
+            Default::default(),
         )
         .unwrap_err();
         assert_eq!(
@@ -246,7 +260,8 @@ fn hue_does_not_gain_percentage_permission_from_neighboring_channels() {
             CssRelativeColorExpression::try_from_components(
                 components("calc(1deg / 1deg)"),
                 environment,
-                D::Hue
+                D::Hue,
+                Default::default(),
             )
             .is_ok()
         );

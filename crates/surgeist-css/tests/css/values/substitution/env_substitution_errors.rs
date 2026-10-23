@@ -54,10 +54,13 @@ fn checked_missing_variable_name_keeps_original_closing_origin() {
         assert_eq!(error.origin(), &expected, "{text}");
     }
     for argument in [" ", "/**/"] {
-        let values = CssComponentValues::try_new(vec![
-            CssComponentValue::try_function("var", parse_component_values(argument).unwrap())
-                .unwrap(),
-        ])
+        let values = CssComponentValues::try_new(
+            vec![
+                CssComponentValue::try_function("var", parse_component_values(argument).unwrap())
+                    .unwrap(),
+            ],
+            Default::default(),
+        )
         .unwrap();
         let error = parse_property_value(
             CssPropertyNameRef::Custom(&name),

@@ -114,7 +114,10 @@ fn attribute_and_singular_fronts_decode_prefix_escapes_and_retain_original_name_
     let declaration = report.syntax().as_ref().unwrap();
     assert_eq!(declaration.custom().unwrap().name(), &plain);
     name_region(declaration, SINGLE, 0, 13);
-    assert_eq!(declaration.to_specified_css().unwrap(), "--Theme: RED;");
+    assert_eq!(
+        declaration.serialize_specified(Default::default()).unwrap(),
+        "--Theme: RED;"
+    );
 }
 
 #[test]
@@ -136,7 +139,10 @@ fn checked_custom_admission_emits_decoded_name_and_preserves_supplied_value_orig
     assert_eq!(declaration.value_components(), &before_components);
     assert_eq!(declaration.importance(), CssImportance::Important);
     const EXPECTED: &str = "--Theme: MiXeD !important;";
-    assert_eq!(declaration.to_specified_css().unwrap(), EXPECTED);
+    assert_eq!(
+        declaration.serialize_specified(Default::default()).unwrap(),
+        EXPECTED
+    );
     assert_eq!(declaration, before);
     assert!(declaration.same_occurrence(&before));
     let (CssValueOrigin::Parsed(original), CssValueOrigin::Parsed(retained)) = (
@@ -151,7 +157,10 @@ fn checked_custom_admission_emits_decoded_name_and_preserves_supplied_value_orig
         panic!("one canonical custom declaration");
     };
     assert_eq!(reparsed.custom().unwrap().name(), &name);
-    assert_eq!(reparsed.to_specified_css().unwrap(), EXPECTED);
+    assert_eq!(
+        reparsed.serialize_specified(Default::default()).unwrap(),
+        EXPECTED
+    );
 }
 
 #[test]

@@ -32,7 +32,11 @@ fn accepted(name: &str, value: &str) {
         );
         assert_eq!(source.importance(), CssImportance::Important);
         assert_eq!(
-            source.value_components().serialize().unwrap().as_css(),
+            source
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             value
         );
     }
@@ -204,7 +208,10 @@ fn omitted_facets_use_logical_longhand_initials_in_facet_major_order() {
     assert_eq!(partial.width(), None);
     assert_eq!(partial.style(), Some(CssBorderStyle::Solid));
     assert_eq!(partial.color(), None);
-    assert_eq!(partial.serialize_specified().unwrap(), "solid");
+    assert_eq!(
+        partial.serialize_specified(Default::default()).unwrap(),
+        "solid"
+    );
     let full = CssBorder::try_new(
         Some(CssBorderWidth::Thin),
         Some(CssBorderStyle::Solid),
@@ -212,7 +219,7 @@ fn omitted_facets_use_logical_longhand_initials_in_facet_major_order() {
     )
     .unwrap();
     assert_eq!(
-        full.serialize_specified().unwrap(),
+        full.serialize_specified(Default::default()).unwrap(),
         "thin solid currentcolor"
     );
     let physical = declaration("border-top", "thin solid currentcolor");
@@ -263,7 +270,7 @@ fn explicit_width_style_and_color_reach_each_logical_target_without_mapping() {
                 assert_eq!(oklch.alpha(), None);
                 let color_only = CssBorder::try_new(None, None, Some(color.clone())).unwrap();
                 assert_eq!(
-                    color_only.serialize_specified().unwrap(),
+                    color_only.serialize_specified(Default::default()).unwrap(),
                     "oklch(0.5 0.2 30)"
                 );
             } else {

@@ -121,6 +121,10 @@ impl CssFontFaceDescriptorKind {
 /// positions separately in diagnostics; stylesheet occurrences retain their real
 /// authored name positions in [`CssFontFaceDescriptor`]. Values remain authored:
 /// they do not perform font matching, loading, or contextual usability checks.
+///
+/// # Specified serialization
+///
+/// Canonical specified descriptor value, without a synthetic rule or resource loading.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontFaceDescriptorValue {
@@ -164,6 +168,11 @@ impl CssFontFaceDescriptorValue {
 }
 
 /// An authored font-face value: checked ordinary grammar or deferred whole-descriptor grammar.
+///
+/// # Specified serialization
+///
+/// Reads a checked ordinary or pending descriptor through its owning writer. No descriptor name or
+/// containing rule is generated.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssAuthoredFontFaceDescriptorValue {
@@ -192,6 +201,11 @@ impl From<CssFontFaceDescriptorValue> for CssAuthoredFontFaceDescriptorValue {
 }
 
 /// A complete descriptor token stream awaiting environment substitution.
+///
+/// # Specified serialization
+///
+/// Reads the supported pending whole-descriptor component stream without substitution, resolving a
+/// font or changing its original token origins.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssPendingFontFaceDescriptorValue {
     kind: CssFontFaceDescriptorKind,
@@ -273,6 +287,9 @@ impl CssFontFaceDescriptors {
     }
 }
 
+/// # Specified serialization
+///
+/// Emits one retained local or URL source through its concrete provider.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontFaceSource {
@@ -280,6 +297,10 @@ pub enum CssFontFaceSource {
     Local(CssFontLocalName),
 }
 
+/// # Specified serialization
+///
+/// Emits the authored URL followed by its optional format and ordered technologies. Keyword and
+/// string format productions remain distinct, including empty strings.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssFontFaceUrlSource {
     url: CssUrl,
@@ -403,6 +424,10 @@ impl CssFontFormatString {
     }
 }
 
+/// # Specified serialization
+///
+/// Emits a decoded literal family name, quoting names that cannot be bare identifier sequences.
+/// This model has no generic or authored-quoting branch.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssFontFaceFamily {
     name: String,
@@ -424,6 +449,9 @@ impl CssFontFaceFamily {
     }
 }
 
+/// # Specified serialization
+///
+/// Emits `local()` containing the CSSOM string serialization of the decoded name.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssFontLocalName {
     name: String,
@@ -445,6 +473,9 @@ impl CssFontLocalName {
     }
 }
 
+/// # Specified serialization
+///
+/// Emits the checked nonempty source list in retained order, separated by `, `.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssFontFaceSourceList {
     sources: Vec<CssFontFaceSource>,

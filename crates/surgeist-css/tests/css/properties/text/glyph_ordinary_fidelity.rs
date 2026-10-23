@@ -35,8 +35,11 @@ fn parsed_near_terminal_dimensions_are_rejected_with_neighbor_recovery() {
 fn checked_near_terminal_dimensions_are_rejected_for_both_origins() {
     for text in NEGATIVE {
         let parsed = parse_component_values(text).unwrap();
-        let programmatic =
-            CssComponentValues::try_new(vec![CssComponentValue::try_token(text).unwrap()]).unwrap();
+        let programmatic = CssComponentValues::try_new(
+            vec![CssComponentValue::try_token(text).unwrap()],
+            Default::default(),
+        )
+        .unwrap();
         assert!(matches!(
             programmatic.items()[0].origin(),
             CssValueOrigin::Programmatic
@@ -73,8 +76,11 @@ fn exact_terminals_keep_mapping_spelling_and_origins() {
         let report = parse_style_attribute(&format!("glyph-orientation-vertical:{text}!important"));
         assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
         let parsed = report.syntax()[0].clone();
-        let components =
-            CssComponentValues::try_new(vec![CssComponentValue::try_token(text).unwrap()]).unwrap();
+        let components = CssComponentValues::try_new(
+            vec![CssComponentValue::try_token(text).unwrap()],
+            Default::default(),
+        )
+        .unwrap();
         let checked = parse_property_value_for_grammar(
             selected_grammar("glyph-orientation-vertical"),
             components.clone(),

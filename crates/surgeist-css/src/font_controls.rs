@@ -3,11 +3,10 @@
 use crate::specified_rule_serialization::SpecifiedRuleWriter;
 use crate::{
     CssComponentValue, CssComponentValueError, CssComponentValueErrorKind, CssComponentValueRef,
-    CssSpecifiedNonNegativeNumber, CssSpecifiedValueSerializationError,
-    CssSpecifiedValueSerializationLimits, CssValueOrigin, CssValueTokenRef,
+    CssSerializationError, CssSpecifiedNonNegativeNumber, CssValueOrigin, CssValueTokenRef,
 };
 
-type SerializationResult<T> = Result<T, CssSpecifiedValueSerializationError>;
+type SerializationResult<T> = Result<T, CssSerializationError>;
 
 /// The authored `font-kerning` choice.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -108,60 +107,28 @@ pub enum CssFontOpticalSizing {
     None,
 }
 
-fn keyword(writer: &mut SpecifiedRuleWriter, value: &str) -> SerializationResult<()> {
-    writer.context.charge_input(1)?;
-    writer.context.charge_projection(1)?;
-    writer.append(value)
-}
-
-impl CssFontKerning {
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssFontKerning {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        keyword(
-            writer,
-            match self {
-                Self::Auto => "auto",
-                Self::Normal => "normal",
-                Self::None => "none",
-            },
-        )?;
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        writer.keyword(match self {
+            Self::Auto => "auto",
+            Self::Normal => "normal",
+            Self::None => "none",
+        })?;
         Ok(())
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssFontKerning);
 
-impl CssFontSizeAdjust {
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssFontSizeAdjust {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         match self {
-            Self::None => keyword(writer, "none")?,
+            Self::None => writer.keyword("none")?,
             Self::Number(value) => {
                 let captured = value.capture_specified(&mut writer.context)?;
                 writer.append(&captured)?;
@@ -170,92 +137,56 @@ impl CssFontSizeAdjust {
         Ok(())
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssFontSizeAdjust);
 
-impl CssFontLanguageString {
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssFontLanguageString {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        writer.context.charge_input(1)?;
-        writer.context.charge_projection(1)?;
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        writer.node()?;
         writer.append_string(self.as_str())?;
         Ok(())
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssFontLanguageString);
 
 impl CssFontLanguageOverride {
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        self.append_specified(writer)?;
-        Ok(())
-    }
-
     pub(crate) fn append_specified(
         &self,
         writer: &mut SpecifiedRuleWriter,
     ) -> SerializationResult<()> {
         match self {
-            Self::Normal => keyword(writer, "normal")?,
+            Self::Normal => writer.keyword("normal")?,
             Self::String(value) => {
-                writer.context.charge_input(1)?;
-                writer.context.charge_projection(1)?;
+                writer.node()?;
                 writer.append_string(value.as_str())?;
             }
         }
         Ok(())
     }
 }
-
-impl CssFontOpticalSizing {
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssFontLanguageOverride {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        keyword(
-            writer,
-            match self {
-                Self::Auto => "auto",
-                Self::None => "none",
-            },
-        )?;
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        self.append_specified(writer)?;
         Ok(())
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssFontLanguageOverride);
+
+impl crate::specified_rule_serialization::SpecifiedProvider for CssFontOpticalSizing {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        writer.keyword(match self {
+            Self::Auto => "auto",
+            Self::None => "none",
+        })?;
+        Ok(())
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(CssFontOpticalSizing);

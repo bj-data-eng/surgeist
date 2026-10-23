@@ -110,7 +110,7 @@ fn percentage_math_weights_keep_specified_range_deferral() {
                     .calculation()
                     .unwrap()
                     .components()
-                    .serialize()
+                    .serialize_tokens(Default::default())
                     .unwrap()
                     .as_css(),
                 if text.contains("-5%") {
@@ -127,7 +127,7 @@ fn percentage_math_weights_keep_specified_range_deferral() {
                         .calculation()
                         .unwrap()
                         .components()
-                        .serialize()
+                        .serialize_tokens(Default::default())
                         .unwrap()
                         .as_css(),
                     "calc(120%)"

@@ -47,9 +47,9 @@ fn page_recovers_mixed_domains_and_preserves_duplicate_occurrences_before_select
             .importance(),
         CssImportance::Important
     );
-    let selected = block.try_specified().unwrap();
+    let selected = block.try_specified(Default::default()).unwrap();
     assert_eq!(
-        selected.serialize_cssom().unwrap(),
+        selected.serialize_cssom(Default::default()).unwrap(),
         "margin: 1px; --Theme: RAW; color: red; size: a3 !important; --theme: lower;"
     );
     let CssPageDeclaration::Property(property) = &block.occurrences()[1] else {
@@ -80,7 +80,11 @@ fn page_drops_nested_rules_as_units_without_creating_margin_children() {
             .any(|d| d.action() == CssRecoveryAction::DropQualifiedRule)
     );
     assert_eq!(
-        block.try_specified().unwrap().serialize_cssom().unwrap(),
+        block
+            .try_specified(Default::default())
+            .unwrap()
+            .serialize_cssom(Default::default())
+            .unwrap(),
         "marks: crop; margin: 2px; bleed: 1pt; color: blue;"
     );
 }
@@ -123,7 +127,7 @@ fn font_face_recovers_invalid_neighbors_priority_and_duplicate_order() {
     // An honest programmatic containing rule uses existing effective-descriptor formatting.
     let rule = CssRule::FontFace(CssFontFaceRule::new(block.clone()));
     assert_eq!(
-        rule.to_specified_css().unwrap(),
+        rule.serialize_specified(Default::default()).unwrap(),
         "@font-face { font-family: Example; src: local(\"Example\"); font-weight: 400; font-display: optional; }"
     );
 }
@@ -188,7 +192,7 @@ fn src_member_recovery_and_mixed_curly_fallback_use_current_owners() {
     );
     assert_eq!(
         CssRule::FontFace(CssFontFaceRule::new(block.clone()))
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .unwrap(),
         "@font-face { src: local(\"A\"), local(\"B\"); font-display: swap; }"
     );

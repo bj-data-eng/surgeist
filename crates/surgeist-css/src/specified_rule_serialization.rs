@@ -1,135 +1,29 @@
 //! Canonical specified rule and stylesheet composition.
 
-use std::fmt;
-
 use crate::serialization_escaping::EscapedKind;
 
 use crate::{
-    CssMediaCssomSerializationError, CssNamespaceRule, CssRule, CssSheet,
-    CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationErrorKind,
-    CssSpecifiedValueSerializationLimits, specified_serialization::SpecifiedSerializationContext,
+    CssNamespaceRule, CssRule, CssSerializationError, CssSerializationLimits, CssSheet,
+    specified_serialization::SpecifiedSerializationContext,
 };
 
-/// Why generic rule or sheet serialization could not return complete CSS.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssSpecifiedRuleSerializationErrorKind {
-    /// A node, byte or capacity resource was exhausted.
-    Resource(CssSpecifiedValueSerializationErrorKind),
-    /// A value or component boundary cannot be faithfully emitted.
-    Value(CssSpecifiedValueSerializationErrorKind),
-}
-
-/// An atomic graph serialization failure with its enclosing rule and typed cause.
+/// Private carrier for `?` conversions inside rule-graph providers.
+///
+/// Every failure it carries is already a [`CssSerializationError`]; the carrier
+/// only lets component, import and custom-media failures convert with `?`
+/// without adding public conversions.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssSpecifiedRuleSerializationError {
-    kind: CssSpecifiedRuleSerializationErrorKind,
-    rule_index: Option<usize>,
-    source: SpecifiedRuleSerializationSource,
-}
+pub(crate) struct SpecifiedRuleSerializationSource(pub(crate) CssSerializationError);
 
-/// Closed provider provenance. The public error exposes the contained payload
-/// directly so callers can downcast it without an internal wrapper in the chain.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) enum SpecifiedRuleSerializationSource {
-    Value(CssSpecifiedValueSerializationError),
-    Media(Box<CssMediaCssomSerializationError>),
-}
-
-impl From<CssSpecifiedValueSerializationError> for SpecifiedRuleSerializationSource {
-    fn from(error: CssSpecifiedValueSerializationError) -> Self {
-        Self::Value(error)
+impl From<CssSerializationError> for SpecifiedRuleSerializationSource {
+    fn from(error: CssSerializationError) -> Self {
+        Self(error)
     }
 }
 
-impl From<CssMediaCssomSerializationError> for SpecifiedRuleSerializationSource {
-    fn from(error: CssMediaCssomSerializationError) -> Self {
-        Self::Media(Box::new(error))
-    }
-}
-
-impl From<crate::query_rule_serialization::QueryRuleSerializationError>
-    for SpecifiedRuleSerializationSource
-{
-    fn from(error: crate::query_rule_serialization::QueryRuleSerializationError) -> Self {
-        match error {
-            crate::query_rule_serialization::QueryRuleSerializationError::Value(error) => {
-                Self::Value(error)
-            }
-            crate::query_rule_serialization::QueryRuleSerializationError::Media(error) => {
-                Self::Media(Box::new(error))
-            }
-        }
-    }
-}
-
-impl CssSpecifiedRuleSerializationError {
-    #[must_use]
-    pub const fn kind(&self) -> CssSpecifiedRuleSerializationErrorKind {
-        self.kind
-    }
-
-    /// Zero-based stylesheet rule index when a rule caused the failure.
-    #[must_use]
-    pub const fn rule_index(&self) -> Option<usize> {
-        self.rule_index
-    }
-
-    fn value_error(error: CssSpecifiedValueSerializationError, rule_index: Option<usize>) -> Self {
-        Self::provider_error(error.into(), rule_index)
-    }
-
-    fn provider_error(source: SpecifiedRuleSerializationSource, rule_index: Option<usize>) -> Self {
-        let value_kind = match &source {
-            SpecifiedRuleSerializationSource::Value(error) => error.kind(),
-            SpecifiedRuleSerializationSource::Media(error) => match error.as_ref() {
-                CssMediaCssomSerializationError::Resource { error, .. } => error.kind(),
-                CssMediaCssomSerializationError::Media(_) => {
-                    CssSpecifiedValueSerializationErrorKind::UnserializableBoundary
-                }
-            },
-        };
-        let kind = match value_kind {
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit
-            | CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
-            | CssSpecifiedValueSerializationErrorKind::ByteLimit
-            | CssSpecifiedValueSerializationErrorKind::DepthLimit
-            | CssSpecifiedValueSerializationErrorKind::CapacityOverflow => {
-                CssSpecifiedRuleSerializationErrorKind::Resource(value_kind)
-            }
-            CssSpecifiedValueSerializationErrorKind::UnserializableBoundary
-            | CssSpecifiedValueSerializationErrorKind::UnrepresentableValue
-            | CssSpecifiedValueSerializationErrorKind::NamespaceBindingUnavailable => {
-                CssSpecifiedRuleSerializationErrorKind::Value(value_kind)
-            }
-        };
-        Self {
-            kind,
-            rule_index,
-            source,
-        }
-    }
-}
-
-impl fmt::Display for CssSpecifiedRuleSerializationError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.kind {
-            CssSpecifiedRuleSerializationErrorKind::Resource(_) => {
-                formatter.write_str("canonical CSS rule serialization exceeded a resource limit")
-            }
-            CssSpecifiedRuleSerializationErrorKind::Value(_) => {
-                formatter.write_str("canonical CSS rule serialization cannot represent a value")
-            }
-        }
-    }
-}
-
-impl std::error::Error for CssSpecifiedRuleSerializationError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        Some(match &self.source {
-            SpecifiedRuleSerializationSource::Value(error) => error,
-            SpecifiedRuleSerializationSource::Media(error) => error.as_ref(),
-        })
+impl From<crate::CssComponentValueError> for SpecifiedRuleSerializationSource {
+    fn from(error: crate::CssComponentValueError) -> Self {
+        Self(crate::component_values::specified_component_error(error))
     }
 }
 
@@ -165,8 +59,67 @@ pub(crate) struct SpecifiedRuleWriter {
     inverse_source_member: Option<crate::CssKnownProperty>,
 }
 
+/// The private provider behind every public `serialize_specified` (#1288).
+///
+/// A serializable type implements this one method, appending its canonical
+/// specified CSS and charging the writer's shared input, projection and byte
+/// budgets; node and keyword charges are [`SpecifiedRuleWriter::node`] and
+/// [`SpecifiedRuleWriter::keyword`]. [`specified_serialization!`] then supplies
+/// the public method and its one documentation.
+///
+/// Leaf values also keep a value-level `append_specified(context, output)`.
+/// It stays distinct because context-only callers (media CSSOM capture and
+/// keyframe selector comparison) and scratch captures charge a
+/// [`SpecifiedSerializationContext`] into their own buffers without a rule
+/// writer's inverse-source tracking, graph depth or namespace state; the
+/// providers of those values delegate to it with the writer's context and
+/// output.
+pub(crate) trait SpecifiedProvider {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut SpecifiedRuleWriter,
+    ) -> Result<(), CssSerializationError>;
+}
+
+/// Runs one provider under `limits`, returning its complete text or no text.
+pub(crate) fn serialize_specified(
+    value: &(impl SpecifiedProvider + ?Sized),
+    limits: CssSerializationLimits,
+) -> Result<String, CssSerializationError> {
+    let mut writer = SpecifiedRuleWriter::new(limits);
+    value.append_to_rule_writer(&mut writer)?;
+    Ok(writer.css)
+}
+
+/// Supplies `serialize_specified` for each listed [`SpecifiedProvider`].
+macro_rules! specified_serialization {
+    ($($ty:ty),+ $(,)?) => {$(
+        impl $ty {
+            /// Serializes this value as canonical specified CSS.
+            ///
+            /// The text is context-independent: nothing is computed, resolved
+            /// or substituted, and symbolic values stay symbolic. `limits`
+            /// bounds input nodes, projection nodes and output UTF-8 bytes
+            /// cumulatively across the value and all of its children.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`CssSerializationError`](crate::CssSerializationError)
+            /// when a limit is exhausted or the value cannot be represented.
+            /// No partial text is returned and the value is unchanged.
+            pub fn serialize_specified(
+                &self,
+                limits: $crate::CssSerializationLimits,
+            ) -> ::std::result::Result<::std::string::String, $crate::CssSerializationError> {
+                $crate::specified_rule_serialization::serialize_specified(self, limits)
+            }
+        }
+    )+};
+}
+pub(crate) use specified_serialization;
+
 impl SpecifiedRuleWriter {
-    pub(crate) fn new(limits: CssSpecifiedValueSerializationLimits) -> Self {
+    pub(crate) fn new(limits: CssSerializationLimits) -> Self {
         Self {
             context: SpecifiedSerializationContext::new(limits),
             css: String::new(),
@@ -183,9 +136,9 @@ impl SpecifiedRuleWriter {
         &mut self,
         property: crate::CssKnownProperty,
         mode: Option<crate::CssBoxSideKind>,
-        visit: impl FnOnce(&mut Self) -> Result<T, CssSpecifiedValueSerializationError>,
+        visit: impl FnOnce(&mut Self) -> Result<T, CssSerializationError>,
     ) -> (
-        Result<T, CssSpecifiedValueSerializationError>,
+        Result<T, CssSerializationError>,
         Option<crate::CssKnownProperty>,
     ) {
         let previous_tracking = self
@@ -204,8 +157,8 @@ impl SpecifiedRuleWriter {
     fn source_visit<T>(
         &mut self,
         property: crate::CssKnownProperty,
-        visit: impl FnOnce(&mut Self) -> Result<T, CssSpecifiedValueSerializationError>,
-    ) -> Result<T, CssSpecifiedValueSerializationError> {
+        visit: impl FnOnce(&mut Self) -> Result<T, CssSerializationError>,
+    ) -> Result<T, CssSerializationError> {
         let previous = self.inverse_source_tracking.take();
         if previous.is_some() {
             self.inverse_source_member = Some(property);
@@ -218,8 +171,8 @@ impl SpecifiedRuleWriter {
     pub(crate) fn source_member<T>(
         &mut self,
         index: usize,
-        visit: impl FnOnce(&mut Self) -> Result<T, CssSpecifiedValueSerializationError>,
-    ) -> Result<T, CssSpecifiedValueSerializationError> {
+        visit: impl FnOnce(&mut Self) -> Result<T, CssSerializationError>,
+    ) -> Result<T, CssSerializationError> {
         let Some(selection) = self.inverse_source_tracking else {
             return visit(self);
         };
@@ -229,8 +182,8 @@ impl SpecifiedRuleWriter {
     pub(crate) fn source_property<T>(
         &mut self,
         property: crate::CssKnownProperty,
-        visit: impl FnOnce(&mut Self) -> Result<T, CssSpecifiedValueSerializationError>,
-    ) -> Result<T, CssSpecifiedValueSerializationError> {
+        visit: impl FnOnce(&mut Self) -> Result<T, CssSerializationError>,
+    ) -> Result<T, CssSerializationError> {
         let Some(selection) = self.inverse_source_tracking else {
             return visit(self);
         };
@@ -249,8 +202,8 @@ impl SpecifiedRuleWriter {
         &mut self,
         index: usize,
         groups: usize,
-        visit: impl FnOnce(&mut Self) -> Result<T, CssSpecifiedValueSerializationError>,
-    ) -> Result<T, CssSpecifiedValueSerializationError> {
+        visit: impl FnOnce(&mut Self) -> Result<T, CssSerializationError>,
+    ) -> Result<T, CssSerializationError> {
         let Some(selection) = self.inverse_source_tracking else {
             return visit(self);
         };
@@ -262,24 +215,39 @@ impl SpecifiedRuleWriter {
         )
     }
 
-    pub(crate) fn append(&mut self, text: &str) -> Result<(), CssSpecifiedValueSerializationError> {
+    pub(crate) fn append(&mut self, text: &str) -> Result<(), CssSerializationError> {
         self.context.append(&mut self.css, text)
     }
 
     /// Charges one semantic node: one input visit and one projection node.
     /// This is the shared node tariff for specified value providers.
-    pub(crate) fn node(&mut self) -> Result<(), CssSpecifiedValueSerializationError> {
-        self.context.charge_input(1)?;
-        self.context.charge_projection(1)
+    pub(crate) fn node(&mut self) -> Result<(), CssSerializationError> {
+        self.context.charge_nodes(1)
+    }
+
+    /// Charges `count` visited nodes to both work budgets.
+    pub(crate) fn nodes(&mut self, count: usize) -> Result<(), CssSerializationError> {
+        self.context.charge_nodes(count)
     }
 
     /// Emits one keyword as one charged node followed by its bytes.
-    pub(crate) fn keyword(
-        &mut self,
-        text: &str,
-    ) -> Result<(), CssSpecifiedValueSerializationError> {
+    pub(crate) fn keyword(&mut self, text: &str) -> Result<(), CssSerializationError> {
         self.node()?;
         self.append(text)
+    }
+
+    /// Emits one decoded identifier as one charged node, escaped as CSSOM
+    /// "serialize an identifier" requires.
+    pub(crate) fn identifier(&mut self, value: &str) -> Result<(), CssSerializationError> {
+        self.node()?;
+        self.append_identifier(value)
+    }
+
+    /// Emits one decoded string as one charged node, quoted as CSSOM
+    /// "serialize a string" requires.
+    pub(crate) fn string(&mut self, value: &str) -> Result<(), CssSerializationError> {
+        self.node()?;
+        self.append_string(value)
     }
 
     /// CSSOM "serialize a CSS value" step 5: writes the space that separates
@@ -287,7 +255,7 @@ impl SpecifiedRuleWriter {
     pub(crate) fn space_before_item(
         &mut self,
         emitted: &mut bool,
-    ) -> Result<(), CssSpecifiedValueSerializationError> {
+    ) -> Result<(), CssSerializationError> {
         if *emitted {
             self.append(" ")?;
         }
@@ -299,8 +267,8 @@ impl SpecifiedRuleWriter {
     pub(crate) fn comma_separated<T>(
         &mut self,
         items: &[T],
-        mut item: impl FnMut(&mut Self, &T) -> Result<(), CssSpecifiedValueSerializationError>,
-    ) -> Result<(), CssSpecifiedValueSerializationError> {
+        mut item: impl FnMut(&mut Self, &T) -> Result<(), CssSerializationError>,
+    ) -> Result<(), CssSerializationError> {
         self.separated(items, ", ", &mut item)
     }
 
@@ -308,8 +276,8 @@ impl SpecifiedRuleWriter {
     pub(crate) fn space_separated<T>(
         &mut self,
         items: &[T],
-        mut item: impl FnMut(&mut Self, &T) -> Result<(), CssSpecifiedValueSerializationError>,
-    ) -> Result<(), CssSpecifiedValueSerializationError> {
+        mut item: impl FnMut(&mut Self, &T) -> Result<(), CssSerializationError>,
+    ) -> Result<(), CssSerializationError> {
         self.separated(items, " ", &mut item)
     }
 
@@ -317,8 +285,8 @@ impl SpecifiedRuleWriter {
         &mut self,
         items: &[T],
         separator: &str,
-        item: &mut impl FnMut(&mut Self, &T) -> Result<(), CssSpecifiedValueSerializationError>,
-    ) -> Result<(), CssSpecifiedValueSerializationError> {
+        item: &mut impl FnMut(&mut Self, &T) -> Result<(), CssSerializationError>,
+    ) -> Result<(), CssSerializationError> {
         for (index, value) in items.iter().enumerate() {
             if index != 0 {
                 self.append(separator)?;
@@ -332,8 +300,8 @@ impl SpecifiedRuleWriter {
     /// CSSOM probe tariff rather than rendering/canonicalizing another value.
     pub(crate) fn visit_semantic<T>(
         &mut self,
-        visit: impl FnOnce(&mut Self) -> Result<T, CssSpecifiedValueSerializationError>,
-    ) -> Result<T, CssSpecifiedValueSerializationError> {
+        visit: impl FnOnce(&mut Self) -> Result<T, CssSerializationError>,
+    ) -> Result<T, CssSerializationError> {
         let previous = self.context.replace_semantic_traversal(true);
         let result = self.without_output(visit);
         self.context.replace_semantic_traversal(previous);
@@ -344,8 +312,8 @@ impl SpecifiedRuleWriter {
     /// Scratch bytes consume remaining capacity without charging final bytes twice.
     pub(crate) fn capture_value<T>(
         &mut self,
-        visit: impl FnOnce(&mut Self) -> Result<T, CssSpecifiedValueSerializationError>,
-    ) -> Result<(T, String), CssSpecifiedValueSerializationError> {
+        visit: impl FnOnce(&mut Self) -> Result<T, CssSerializationError>,
+    ) -> Result<(T, String), CssSerializationError> {
         let final_css = std::mem::take(&mut self.css);
         let previous = self.context.replace_temporary_output(Some(0));
         let result = visit(self);
@@ -358,18 +326,15 @@ impl SpecifiedRuleWriter {
     pub(crate) fn namespace(
         &mut self,
         rule: &CssNamespaceRule,
-    ) -> Result<(), CssSpecifiedValueSerializationError> {
-        self.context.charge_input(1)?;
-        self.context.charge_projection(1)?;
+    ) -> Result<(), CssSerializationError> {
+        self.node()?;
         self.append("@namespace ")?;
         if let Some(prefix) = rule.prefix() {
-            self.context.charge_input(1)?;
-            self.context.charge_projection(1)?;
+            self.node()?;
             self.append_identifier(prefix.as_str())?;
             self.append(" ")?;
         }
-        self.context.charge_input(1)?;
-        self.context.charge_projection(1)?;
+        self.node()?;
         self.append("url(")?;
         self.append_string(rule.name().as_str())?;
         self.append(");")
@@ -379,25 +344,19 @@ impl SpecifiedRuleWriter {
     /// Restores the enclosing emission mode even when a nested visit fails.
     pub(crate) fn without_output<T>(
         &mut self,
-        visit: impl FnOnce(&mut Self) -> Result<T, CssSpecifiedValueSerializationError>,
-    ) -> Result<T, CssSpecifiedValueSerializationError> {
+        visit: impl FnOnce(&mut Self) -> Result<T, CssSerializationError>,
+    ) -> Result<T, CssSerializationError> {
         let previous = self.context.replace_output_suppression(true);
         let result = visit(self);
         self.context.replace_output_suppression(previous);
         result
     }
 
-    pub(crate) fn append_identifier(
-        &mut self,
-        value: &str,
-    ) -> Result<(), CssSpecifiedValueSerializationError> {
+    pub(crate) fn append_identifier(&mut self, value: &str) -> Result<(), CssSerializationError> {
         self.append_escaped(value, EscapedKind::Identifier)
     }
 
-    pub(crate) fn append_string(
-        &mut self,
-        value: &str,
-    ) -> Result<(), CssSpecifiedValueSerializationError> {
+    pub(crate) fn append_string(&mut self, value: &str) -> Result<(), CssSerializationError> {
         self.append_escaped(value, EscapedKind::String)
     }
 
@@ -405,7 +364,7 @@ impl SpecifiedRuleWriter {
         &mut self,
         value: &str,
         kind: EscapedKind,
-    ) -> Result<(), CssSpecifiedValueSerializationError> {
+    ) -> Result<(), CssSerializationError> {
         if self.context.output_suppressed() {
             return Ok(());
         }
@@ -414,93 +373,64 @@ impl SpecifiedRuleWriter {
     }
 }
 
-impl CssNamespaceRule {
-    /// Serializes the declaration using CSSOM's escaped prefix and quoted URL form.
-    /// The stored literal name and optional source position remain unchanged.
-    /// CSSOM string serialization replaces programmatic U+0000 with U+FFFD.
-    pub fn to_specified_css(&self) -> Result<String, CssSpecifiedValueSerializationError> {
-        self.to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes atomically under cumulative node and generated-byte limits.
-    /// The rule, its optional prefix, and its literal name each charge one input
-    /// and one projection node. Enclosing sheets share these same budgets.
-    pub fn to_specified_css_with_limits(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssNamespaceRule {
+    fn append_to_rule_writer(
         &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String, CssSpecifiedValueSerializationError> {
-        let mut writer = SpecifiedRuleWriter::new(limits);
-        writer.namespace(self)?;
-        Ok(writer.css)
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        writer.namespace(self)
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssNamespaceRule);
 
-impl CssRule {
+impl SpecifiedProvider for CssRule {
     /// Serializes the authored rule graph, preserving declaration and child order.
-    pub fn to_specified_css(&self) -> Result<String, CssSpecifiedRuleSerializationError> {
-        self.to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Shares cumulative rule, selector, declaration, provider and UTF-8 byte
-    /// budgets across all descendants. No partial string is returned on failure.
-    pub fn to_specified_css_with_limits(
+    /// Rule, selector, declaration and provider work share one budget.
+    fn append_to_rule_writer(
         &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String, CssSpecifiedRuleSerializationError> {
-        let mut writer = SpecifiedRuleWriter::new(limits);
-        writer
-            .append_rule_graph(self)
-            .map_err(|error| CssSpecifiedRuleSerializationError::provider_error(error, None))?;
-        Ok(writer.css)
+        writer: &mut SpecifiedRuleWriter,
+    ) -> Result<(), CssSerializationError> {
+        writer.append_rule_graph(self)
     }
 }
+specified_serialization!(CssRule);
 
-impl CssSheet {
-    /// Serializes a complete stylesheet atomically in source order.
-    /// Serializes retained authored rules; discarded source and its diagnostics
-    /// remain on the original parse report.
-    pub fn to_specified_css(&self) -> Result<String, CssSpecifiedRuleSerializationError> {
-        self.to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
+impl SpecifiedProvider for CssSheet {
+    /// Serializes retained authored rules atomically in source order; discarded
+    /// source and its diagnostics remain on the original parse report.
+    ///
     /// Charges one sheet aggregate and every logical rule once in both work
     /// budgets, then consumes each provider's shared costs. Enum carriers and
-    /// child slices add no node. Top-level rules are separated by one newline.
-    pub fn to_specified_css_with_limits(
+    /// child slices add no node. Top-level rules are separated by one newline,
+    /// and a failure caused by a rule carries that rule's index.
+    fn append_to_rule_writer(
         &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String, CssSpecifiedRuleSerializationError> {
-        let mut writer = SpecifiedRuleWriter::new(limits);
-        writer
-            .context
-            .charge_input(1)
-            .map_err(|error| CssSpecifiedRuleSerializationError::value_error(error, None))?;
-        writer
-            .context
-            .charge_projection(1)
-            .map_err(|error| CssSpecifiedRuleSerializationError::value_error(error, None))?;
+        writer: &mut SpecifiedRuleWriter,
+    ) -> Result<(), CssSerializationError> {
+        writer.node()?;
         for (index, rule) in self.rules().iter().enumerate() {
             if index != 0 {
-                writer.append("\n").map_err(|error| {
-                    CssSpecifiedRuleSerializationError::value_error(error, Some(index))
-                })?;
+                writer
+                    .append("\n")
+                    .map_err(|error| error.at_rule_index(index))?;
             }
-            writer.append_rule_graph(rule).map_err(|error| {
-                CssSpecifiedRuleSerializationError::provider_error(error, Some(index))
-            })?;
+            writer
+                .append_rule_graph(rule)
+                .map_err(|error| error.at_rule_index(index))?;
         }
-        Ok(writer.css)
+        Ok(())
     }
 }
+specified_serialization!(CssSheet);
 
 #[cfg(test)]
 mod suppression_tests {
     use super::*;
+    use crate::CssSpecifiedValueSerializationErrorKind;
 
     #[test]
     fn nested_suppression_restores_enclosing_mode_on_success_and_failure() {
-        let mut writer =
-            SpecifiedRuleWriter::new(CssSpecifiedValueSerializationLimits::new(1, 1, 1));
+        let mut writer = SpecifiedRuleWriter::new(CssSerializationLimits::new(1, 1, 1));
         writer
             .without_output(|writer| {
                 writer.append("discarded outer text")?;
@@ -525,8 +455,7 @@ mod suppression_tests {
 
     #[test]
     fn failing_suppressed_literal_preserves_nodes_and_resumes_final_emission() {
-        let mut writer =
-            SpecifiedRuleWriter::new(CssSpecifiedValueSerializationLimits::new(1, 0, 1));
+        let mut writer = SpecifiedRuleWriter::new(CssSerializationLimits::new(1, 0, 1));
         let zero = crate::CssSpecifiedLengthPercentage::zero();
         let error = writer
             .without_output(|writer| zero.append_specified(&mut writer.context, &mut writer.css))
@@ -549,53 +478,33 @@ mod suppression_tests {
 #[cfg(test)]
 mod value_error_tests {
     use super::*;
+    use crate::CssSpecifiedValueSerializationErrorKind;
     use std::error::Error;
 
     #[test]
-    fn value_failure_mapping_preserves_category_source_and_rule_index() {
-        use CssSpecifiedValueSerializationErrorKind as Kind;
-        for (kind, resource) in [
-            (Kind::InputNodeLimit, true),
-            (Kind::ProjectionNodeLimit, true),
-            (Kind::ByteLimit, true),
-            (Kind::CapacityOverflow, true),
-            (Kind::UnserializableBoundary, false),
-            (Kind::UnrepresentableValue, false),
+    fn rule_index_marks_the_first_responsible_rule_and_keeps_the_value_failure() {
+        use crate::CssSpecifiedValueSerializationErrorKind as Kind;
+        for kind in [
+            Kind::InputNodeLimit,
+            Kind::ProjectionNodeLimit,
+            Kind::ByteLimit,
+            Kind::CapacityOverflow,
+            Kind::UnserializableBoundary,
+            Kind::UnrepresentableValue,
         ] {
-            for index in [None, Some(7)] {
-                let source = CssSpecifiedValueSerializationError::new(kind);
-                let error = CssSpecifiedRuleSerializationError::value_error(source.clone(), index);
-                assert_eq!(
-                    error.kind(),
-                    if resource {
-                        CssSpecifiedRuleSerializationErrorKind::Resource(kind)
-                    } else {
-                        CssSpecifiedRuleSerializationErrorKind::Value(kind)
-                    }
-                );
-                assert_eq!(error.rule_index(), index);
-                assert_eq!(
-                    error
-                        .source()
-                        .unwrap()
-                        .downcast_ref::<CssSpecifiedValueSerializationError>(),
-                    Some(&source)
-                );
-                assert_eq!(
-                    error.to_string(),
-                    if resource {
-                        "canonical CSS rule serialization exceeded a resource limit"
-                    } else {
-                        "canonical CSS rule serialization cannot represent a value"
-                    }
-                );
-            }
+            let value = CssSerializationError::new(kind);
+            let error = value.clone().at_rule_index(7).at_rule_index(3);
+            assert_eq!(error.kind(), kind);
+            assert_eq!(error.rule_index(), Some(7));
+            assert_eq!(value.rule_index(), None);
+            assert_eq!(error.to_string(), value.to_string());
+            assert!(error.source().is_none());
         }
     }
 
     #[test]
     fn unrepresentable_failure_explains_a_value_limit_without_a_resource_claim() {
-        let error = CssSpecifiedValueSerializationError::new(
+        let error = CssSerializationError::new(
             CssSpecifiedValueSerializationErrorKind::UnrepresentableValue,
         );
         assert_eq!(
@@ -606,7 +515,7 @@ mod value_error_tests {
     }
 
     #[test]
-    fn nested_recovered_media_failure_exposes_its_provider_directly() {
+    fn nested_recovered_media_failure_keeps_the_media_origin_and_sheet_rule_index() {
         let report = crate::parse_sheet("@namespace n 'u';@scope{@media screen,???,print{}}");
         let before = report.clone();
         let [CssRule::Namespace(_), CssRule::Scope(scope)] = report.syntax().rules() else {
@@ -619,36 +528,24 @@ mod value_error_tests {
         // + Never 1 precede its two generated projection nodes.
         let error = report
             .syntax()
-            .to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::new(
-                usize::MAX,
-                11,
-                512,
-            ))
+            .serialize_specified(CssSerializationLimits::new(usize::MAX, 11, 512))
             .unwrap_err();
         assert_eq!(
             error.kind(),
-            CssSpecifiedRuleSerializationErrorKind::Resource(
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
-            ),
+            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         );
         assert_eq!(error.rule_index(), Some(1));
-        let source = error
-            .source()
-            .unwrap()
-            .downcast_ref::<CssMediaCssomSerializationError>()
-            .expect("the immediate public source is the owning media provider");
-        assert_eq!(source.origin(), media.query().queries()[1].origin());
+        assert_eq!(error.origin(), Some(media.query().queries()[1].origin()));
         assert_eq!(report, before);
     }
 }
 
 #[cfg(test)]
 mod inverse_source_scope_contract {
-    use super::SpecifiedRuleWriter;
+    use super::{SpecifiedProvider as _, SpecifiedRuleWriter};
     use crate::{
         CssKnownProperty as Property, CssKnownPropertyValueRef as Value,
-        CssSpecifiedValueSerializationErrorKind as Kind,
-        CssSpecifiedValueSerializationLimits as Limits,
+        CssSerializationLimits as Limits, CssSpecifiedValueSerializationErrorKind as Kind,
     };
 
     #[test]
@@ -679,7 +576,7 @@ mod inverse_source_scope_contract {
         // inside OffsetPath. The independent literal is twenty UTF-8 bytes.
         let exact = Limits::new(7, 7, 20);
         assert_eq!(
-            offset.serialize_specified_with_limits(exact).unwrap(),
+            offset.serialize_specified(exact).unwrap(),
             "inset(1px round 2px)"
         );
         for (limits, kind) in [
@@ -757,10 +654,7 @@ mod inverse_source_scope_contract {
             // I2/P2. An equal end is captured but never appended; the final
             // responsible source is reselected to the start's captured bytes.
             let exact = Limits::new(2, 2, bytes);
-            assert_eq!(
-                pair.serialize_specified_with_limits(exact).unwrap(),
-                expected
-            );
+            assert_eq!(pair.serialize_specified(exact).unwrap(), expected);
             let mut writer = SpecifiedRuleWriter::new(exact);
             let (result, member) =
                 writer.with_inverse_sources(Property::ScrollPaddingBlock, None, |writer| {
@@ -782,10 +676,7 @@ mod inverse_source_scope_contract {
                 assert_eq!(member, Some(Property::ScrollPaddingBlockEnd));
                 assert!(writer.css.is_empty());
             }
-            assert_eq!(
-                pair.serialize_specified_with_limits(exact).unwrap(),
-                expected
-            );
+            assert_eq!(pair.serialize_specified(exact).unwrap(), expected);
         }
         let report = crate::parse_style_attribute("scroll-padding-block:1px 2px");
         let Value::ScrollPaddingBlock(pair) = report.syntax()[0]

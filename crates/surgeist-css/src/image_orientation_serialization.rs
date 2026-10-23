@@ -5,32 +5,13 @@
 //! its complete cost to the shared angle owner. Separators cost only bytes.
 
 use crate::{
-    CssImageOrientation, CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits,
-    specified_rule_serialization::SpecifiedRuleWriter,
+    CssImageOrientation, CssSerializationError, specified_rule_serialization::SpecifiedRuleWriter,
 };
 
-type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
+type Result<T> = std::result::Result<T, CssSerializationError>;
 
-impl CssImageOrientation {
-    /// Emits canonical specified syntax, with an authored angle before `flip`.
-    /// Omitted angles stay omitted; explicit keywords and zero angles remain
-    /// explicit. This does not perform computed-value rotation normalization.
-    pub fn serialize_specified(&self) -> Result<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Shares cumulative input, projection and emitted-byte limits with children.
-    /// Failure returns no partial CSS and preserves exact authored values and origins.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String> {
-        let mut writer = SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+impl crate::specified_rule_serialization::SpecifiedProvider for CssImageOrientation {
+    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         match self {
             Self::FromImage => writer.keyword("from-image"),
             Self::None => writer.keyword("none"),
@@ -45,14 +26,16 @@ impl CssImageOrientation {
         }
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssImageOrientation);
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::specified_rule_serialization::SpecifiedProvider as _;
     use crate::{
         CssAngleCalculation, CssAngleLiteral, CssAngleUnit, CssAngleValue,
-        CssSpecifiedValueSerializationErrorKind as Kind,
-        CssSpecifiedValueSerializationLimits as Limits, parse_component_values,
+        CssSerializationLimits as Limits, CssSpecifiedValueSerializationErrorKind as Kind,
+        parse_component_values,
     };
 
     fn value() -> CssImageOrientation {
@@ -66,6 +49,7 @@ mod tests {
             CssAngleValue::try_from_calculation(
                 CssAngleCalculation::try_from_components(
                     parse_component_values("calc(15deg + 15deg)").unwrap(),
+                    Default::default(),
                 )
                 .unwrap(),
             )

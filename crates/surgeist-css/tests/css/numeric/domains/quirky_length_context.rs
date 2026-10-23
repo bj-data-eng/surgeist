@@ -104,15 +104,21 @@ fn logical_value_css(item: &CssLonghandContribution) -> String {
         CssLonghandValueRef::MarginBlockStart(v)
         | CssLonghandValueRef::MarginInlineStart(v)
         | CssLonghandValueRef::MarginBlockEnd(v)
-        | CssLonghandValueRef::MarginInlineEnd(v) => v.serialize_specified().unwrap(),
+        | CssLonghandValueRef::MarginInlineEnd(v) => {
+            v.serialize_specified(Default::default()).unwrap()
+        }
         CssLonghandValueRef::PaddingBlockStart(v)
         | CssLonghandValueRef::PaddingInlineStart(v)
         | CssLonghandValueRef::PaddingBlockEnd(v)
-        | CssLonghandValueRef::PaddingInlineEnd(v) => v.serialize_specified().unwrap(),
+        | CssLonghandValueRef::PaddingInlineEnd(v) => {
+            v.serialize_specified(Default::default()).unwrap()
+        }
         CssLonghandValueRef::BorderBlockStartWidth(v)
         | CssLonghandValueRef::BorderInlineStartWidth(v)
         | CssLonghandValueRef::BorderBlockEndWidth(v)
-        | CssLonghandValueRef::BorderInlineEndWidth(v) => v.serialize_specified().unwrap(),
+        | CssLonghandValueRef::BorderInlineEndWidth(v) => {
+            v.serialize_specified(Default::default()).unwrap()
+        }
         _ => panic!("logical terminal, never a complementary physical target"),
     }
 }
@@ -190,11 +196,18 @@ fn listed_number_tokens_are_lengths_only_in_document_quirks_mode() {
             assert_eq!(value.parser_context(), QUIRKS);
             assert_eq!(value.importance(), CssImportance::Important);
             assert_eq!(
-                value.to_specified_css().unwrap(),
+                value.serialize_specified(Default::default()).unwrap(),
                 format!("{name}: {px} !important;")
             );
-            assert_eq!(value.value_components().serialize().unwrap().as_css(), text);
-            let emitted = value.to_specified_css().unwrap();
+            assert_eq!(
+                value
+                    .value_components()
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
+                text
+            );
+            let emitted = value.serialize_specified(Default::default()).unwrap();
             assert!(parse_style_attribute(&emitted).is_clean());
         }
         assert_eq!(raw, raw_before);
@@ -210,9 +223,11 @@ fn fractions_exponents_signed_lengths_and_rust_authored_tokens_keep_exact_origin
         ("-.25", "-0.25px"),
     ] {
         let parsed = parse_component_values(text).unwrap();
-        let generated =
-            CssComponentValues::try_new(vec![CssComponentValue::try_number(text).unwrap()])
-                .unwrap();
+        let generated = CssComponentValues::try_new(
+            vec![CssComponentValue::try_number(text).unwrap()],
+            Default::default(),
+        )
+        .unwrap();
         for values in [parsed.clone(), generated.clone()] {
             let before = values.clone();
             crate::css::support::value_assertions::property_rejection(
@@ -240,9 +255,9 @@ fn fractions_exponents_signed_lengths_and_rust_authored_tokens_keep_exact_origin
                 panic!("length")
             };
             assert_eq!(length.origin(), values.items()[0].origin());
-            assert_eq!(length.serialize_specified().unwrap(), px);
+            assert_eq!(length.serialize_specified(Default::default()).unwrap(), px);
             assert_eq!(
-                value.to_specified_css().unwrap(),
+                value.serialize_specified(Default::default()).unwrap(),
                 format!("margin-top: {px};")
             );
             assert_eq!(values, before);
@@ -278,15 +293,15 @@ fn expressly_listed_quads_assign_every_slot_without_complementary_writes() {
                 CssKnownPropertyValueRef::Margin(v) => v
                     .value()
                     .assigned_values()
-                    .map(|v| v.serialize_specified().unwrap()),
+                    .map(|v| v.serialize_specified(Default::default()).unwrap()),
                 CssKnownPropertyValueRef::Padding(v) => v
                     .value()
                     .assigned_values()
-                    .map(|v| v.serialize_specified().unwrap()),
+                    .map(|v| v.serialize_specified(Default::default()).unwrap()),
                 CssKnownPropertyValueRef::BorderWidth(v) => v
                     .value()
                     .assigned_values()
-                    .map(|v| v.serialize_specified().unwrap()),
+                    .map(|v| v.serialize_specified(Default::default()).unwrap()),
                 _ => panic!("quad"),
             };
             assert_eq!(actual, assigned);
@@ -331,11 +346,15 @@ fn logical_marker_keeps_named_shorthand_quirk_permission_and_assigns_only_logica
                 assert_eq!(kind, CssBoxSideKind::Logical);
                 assert_eq!(source.parser_context(), QUIRKS);
                 assert_eq!(
-                    source.value_components().serialize().unwrap().as_css(),
+                    source
+                        .value_components()
+                        .serialize_tokens(Default::default())
+                        .unwrap()
+                        .as_css(),
                     text
                 );
                 assert_eq!(
-                    source.to_specified_css().unwrap(),
+                    source.serialize_specified(Default::default()).unwrap(),
                     format!("{name}: logical {px} !important;")
                 );
                 let CssExpansion::Contributions(CssContributions::Longhands(items)) =
@@ -361,7 +380,7 @@ fn logical_marker_keeps_named_shorthand_quirk_permission_and_assigns_only_logica
     }
     let source = checked(QUIRKS, "margin", "logical auto -1 2% 3px");
     assert_eq!(
-        source.to_specified_css().unwrap(),
+        source.serialize_specified(Default::default()).unwrap(),
         "margin: logical auto -1px 2% 3px !important;"
     );
     let CssExpansion::Contributions(CssContributions::Longhands(items)) =
@@ -420,7 +439,7 @@ fn logical_marker_preserves_ranges_functions_arity_and_logical_property_exclusio
         for context in [STANDARDS, QUIRKS] {
             let source = checked(context, name, "logical 1px 2px");
             assert_eq!(
-                source.to_specified_css().unwrap(),
+                source.serialize_specified(Default::default()).unwrap(),
                 format!("{name}: logical 1px 2px !important;")
             );
             for text in [
@@ -496,13 +515,16 @@ fn pending_logical_number_replacement_selects_logical_targets_and_retains_both_o
                     .kind(),
                 &CssExpansionErrorKind::ResidualSubstitution
             );
-            let generated = CssComponentValues::try_new(vec![
-                CssComponentValue::try_ident("logical").unwrap(),
-                CssComponentValue::try_token(" ").unwrap(),
-                CssComponentValue::try_number("1").unwrap(),
-                CssComponentValue::try_token(" ").unwrap(),
-                CssComponentValue::try_number("2").unwrap(),
-            ])
+            let generated = CssComponentValues::try_new(
+                vec![
+                    CssComponentValue::try_ident("logical").unwrap(),
+                    CssComponentValue::try_token(" ").unwrap(),
+                    CssComponentValue::try_number("1").unwrap(),
+                    CssComponentValue::try_token(" ").unwrap(),
+                    CssComponentValue::try_number("2").unwrap(),
+                ],
+                Default::default(),
+            )
             .unwrap();
             for replacement in [parse_component_values("logical 1 2").unwrap(), generated] {
                 let replacement_before = replacement.clone();
@@ -544,7 +566,11 @@ fn pending_logical_number_replacement_selects_logical_targets_and_retains_both_o
             }
             assert_eq!(source, before);
             assert_eq!(
-                source.value_components().serialize().unwrap().as_css(),
+                source
+                    .value_components()
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
                 pending
             );
         }
@@ -573,7 +599,7 @@ fn background_and_spacing_offsets_admit_every_length_slot_and_keep_nonlength_par
     ] {
         let value = checked(QUIRKS, name, text);
         assert_eq!(
-            value.to_specified_css().unwrap(),
+            value.serialize_specified(Default::default()).unwrap(),
             format!("{name}: {expected} !important;")
         );
         rejected(STANDARDS, name, text);
@@ -589,7 +615,9 @@ fn clip_rect_exception_admits_all_four_edges_without_relaxing_nested_math_or_sha
         ("r\\65 ct(1, 2, 3, 4)", "rect(1px, 2px, 3px, 4px)"),
     ] {
         assert_eq!(
-            checked(QUIRKS, "clip", text).to_specified_css().unwrap(),
+            checked(QUIRKS, "clip", text)
+                .serialize_specified(Default::default())
+                .unwrap(),
             format!("clip: {expected} !important;")
         );
         rejected(STANDARDS, "clip", text);
@@ -668,13 +696,17 @@ fn ordinary_zero_dimensions_percentages_numbers_and_css_wide_values_are_controls
             ("border-image-outset", "7", "7"),
         ] {
             assert_eq!(
-                checked(context, name, text).to_specified_css().unwrap(),
+                checked(context, name, text)
+                    .serialize_specified(Default::default())
+                    .unwrap(),
                 format!("{name}: {expected} !important;")
             );
         }
         for text in ["inherit", "initial", "unset", "revert", "revert-layer"] {
             assert_eq!(
-                checked(context, "margin", text).to_specified_css().unwrap(),
+                checked(context, "margin", text)
+                    .serialize_specified(Default::default())
+                    .unwrap(),
                 format!("margin: {text} !important;")
             );
         }
@@ -691,7 +723,7 @@ fn decoded_property_spelling_selects_the_same_scoped_length_permission() {
                 .syntax()
                 .as_ref()
                 .unwrap()
-                .to_specified_css()
+                .serialize_specified(Default::default())
                 .unwrap(),
             "margin-top: 7px;"
         );
@@ -779,7 +811,11 @@ fn pending_reentry_retains_document_mode_original_and_replacement_origins_after_
             }
             assert_eq!(source, before);
             assert_eq!(
-                source.value_components().serialize().unwrap().as_css(),
+                source
+                    .value_components()
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
                 pending
             );
             let standard = checked(STANDARDS, name, pending);
@@ -844,7 +880,11 @@ fn sheet_rule_and_block_fronts_keep_quirks_mode_and_normalized_occurrence_order(
     let rule = QUIRKS.parse_rule(".a{margin-top:7}", &namespaces);
     assert!(rule.is_clean());
     assert_eq!(
-        rule.syntax().as_ref().unwrap().to_specified_css().unwrap(),
+        rule.syntax()
+            .as_ref()
+            .unwrap()
+            .serialize_specified(Default::default())
+            .unwrap(),
         ".a { margin-top: 7px; }"
     );
     let block = QUIRKS.parse_style_block("{margin-top:7}", &namespaces);
@@ -919,38 +959,26 @@ fn converted_length_keeps_scalar_tariff_and_shared_cumulative_atomic_budgets() {
     let before = source.clone();
     let expected = "margin-top: 7px !important;";
     // Declared composition tariff: declaration + property name + numeric leaf.
-    let exact = CssSpecifiedValueSerializationLimits::new(3, 3, expected.len());
-    assert_eq!(
-        source.to_specified_css_with_limits(exact).unwrap(),
-        expected
-    );
+    let exact = CssSerializationLimits::new(3, 3, expected.len());
+    assert_eq!(source.serialize_specified(exact).unwrap(), expected);
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(2, 3, expected.len()),
+            CssSerializationLimits::new(2, 3, expected.len()),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(3, 2, expected.len()),
+            CssSerializationLimits::new(3, 2, expected.len()),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(3, 3, expected.len() - 1),
+            CssSerializationLimits::new(3, 3, expected.len() - 1),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
-        assert_eq!(
-            source
-                .to_specified_css_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            kind
-        );
+        assert_eq!(source.serialize_specified(limits).unwrap_err().kind(), kind);
         assert_eq!(source, before);
     }
-    assert_eq!(
-        source.to_specified_css_with_limits(exact).unwrap(),
-        expected
-    );
+    assert_eq!(source.serialize_specified(exact).unwrap(), expected);
     let report = QUIRKS.parse_sheet(".a{margin-top:7}.b{margin-top:8}");
     assert!(report.is_clean());
     let before = report.clone();
@@ -958,34 +986,25 @@ fn converted_length_keeps_scalar_tariff_and_shared_cumulative_atomic_budgets() {
     // Rule, selector-list, compound, class, declaration-list, three-node declaration.
     for rule in report.syntax().rules() {
         assert!(
-            rule.to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::new(
-                8,
-                8,
-                expected.len()
-            ))
-            .is_ok()
+            rule.serialize_specified(CssSerializationLimits::new(8, 8, expected.len()))
+                .is_ok()
         );
     }
-    let exact = CssSpecifiedValueSerializationLimits::new(17, 17, expected.len());
+    let exact = CssSerializationLimits::new(17, 17, expected.len());
     assert_eq!(
-        report.syntax().to_specified_css_with_limits(exact).unwrap(),
+        report.syntax().serialize_specified(exact).unwrap(),
         expected
     );
     for limits in [
-        CssSpecifiedValueSerializationLimits::new(9, 17, expected.len()),
-        CssSpecifiedValueSerializationLimits::new(17, 9, expected.len()),
-        CssSpecifiedValueSerializationLimits::new(17, 17, expected.len() - 1),
+        CssSerializationLimits::new(9, 17, expected.len()),
+        CssSerializationLimits::new(17, 9, expected.len()),
+        CssSerializationLimits::new(17, 17, expected.len() - 1),
     ] {
-        assert!(
-            report
-                .syntax()
-                .to_specified_css_with_limits(limits)
-                .is_err()
-        );
+        assert!(report.syntax().serialize_specified(limits).is_err());
         assert_eq!(report, before);
     }
     assert_eq!(
-        report.syntax().to_specified_css_with_limits(exact).unwrap(),
+        report.syntax().serialize_specified(exact).unwrap(),
         expected
     );
 }

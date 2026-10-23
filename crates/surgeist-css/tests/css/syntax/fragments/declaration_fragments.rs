@@ -72,8 +72,14 @@ fn custom_values_preserve_ordered_nested_data_and_allow_empty_values() {
         let origin = declaration.parsed_value().unwrap();
         assert_eq!(origin.span().start().byte_offset().value(), 4);
         assert_eq!(origin.span().end().byte_offset().value(), source.len());
-        let actual = declaration.value_components().serialize().unwrap();
-        let expected = parse_component_values(value).unwrap().serialize().unwrap();
+        let actual = declaration
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap();
+        let expected = parse_component_values(value)
+            .unwrap()
+            .serialize_tokens(Default::default())
+            .unwrap();
         assert_eq!(actual.as_css(), expected.as_css());
     }
 }

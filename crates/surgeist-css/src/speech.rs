@@ -9,14 +9,13 @@
 //! specified value; the prose additionally gives contextual rules for `auto`.
 
 use crate::specified_serialization::SpecifiedSerializationContext;
-use crate::{
-    CssDuration, CssNumericConstructionError, CssSpecifiedValueSerializationError,
-    CssSpecifiedValueSerializationLimits, CssTimeValue,
-};
-
-type SerializationResult = Result<String, CssSpecifiedValueSerializationError>;
+use crate::{CssDuration, CssNumericConstructionError, CssSerializationError, CssTimeValue};
 
 /// Whether an element is authored to participate in speech rendering.
+///
+/// # Specified serialization
+///
+/// Serializes the specified keyword without resolving speech participation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssSpeak {
@@ -28,26 +27,11 @@ pub enum CssSpeak {
     Always,
 }
 
-impl CssSpeak {
-    /// Serializes the specified keyword without resolving speech participation.
-    pub fn serialize_specified(&self) -> SerializationResult {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes one semantic leaf under the shared keyword resource limits.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssSpeak {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         writer.keyword(match self {
             Self::Auto => "auto",
             Self::Never => "never",
@@ -55,6 +39,7 @@ impl CssSpeak {
         })
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssSpeak);
 
 /// An explicitly authored punctuation mode for `speak-as`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -82,6 +67,10 @@ enum SpeakAsState {
 /// `spell-out` and `digits` at most once and at most one punctuation mode.
 /// Original order, case, escapes and token origins remain available through
 /// the property wrapper and declaration components, independently of this model.
+///
+/// # Specified serialization
+///
+/// Serializes in grammar order: spell-out, digits, then punctuation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CssSpeakAs {
     state: SpeakAsState,
@@ -150,26 +139,12 @@ impl CssSpeakAs {
             SpeakAsState::Modifiers { punctuation, .. } => punctuation,
         }
     }
-
-    /// Serializes in grammar order: spell-out, digits, then punctuation.
-    pub fn serialize_specified(&self) -> SerializationResult {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes one semantic keyword-combination leaf under shared limits.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+}
+impl crate::specified_rule_serialization::SpecifiedProvider for CssSpeakAs {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         use CssSpeakAsPunctuation::{Literal, None as Omit};
         let text = match self.state {
             SpeakAsState::Normal => "normal",
@@ -195,6 +170,7 @@ impl CssSpeakAs {
         writer.keyword(text)
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssSpeakAs);
 
 /// An authored pause/rest strength whose absolute duration remains contextual.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -225,6 +201,10 @@ impl CssSpeechBreakStrength {
 /// calculations remain authored until computed range handling downstream.
 /// `none` is preserved separately from an explicit zero time. This model does
 /// not assign strength durations or execute pause collapse or additive rests.
+///
+/// # Specified serialization
+///
+/// Serializes a specified keyword or canonical time without speech execution.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssSpeechBreak {
@@ -254,54 +234,45 @@ impl CssSpeechBreak {
             _ => self == other,
         }
     }
-    /// Serializes a specified keyword or canonical time without speech execution.
-    pub fn serialize_specified(&self) -> SerializationResult {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Uses the shared cumulative input, projection and emitted-byte policy.
-    /// Time output follows [`CssDuration::serialize_specified`]; authored input
-    /// and provenance remain unchanged, including on atomic failure.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        let context = &mut writer.context;
-        let output = &mut writer.css;
-        self.append_specified(context, output)?;
-        Ok(())
-    }
 
     fn append_specified(
         &self,
         context: &mut SpecifiedSerializationContext,
         output: &mut String,
-    ) -> Result<(), CssSpecifiedValueSerializationError> {
+    ) -> Result<(), CssSerializationError> {
         let keyword = match self {
             Self::None => "none",
             Self::Strength(strength) => strength.as_css(),
             Self::Time(duration) => return duration.append_specified(context, output),
         };
-        context.charge_input(1)?;
-        context.charge_projection(1)?;
+        context.charge_nodes(1)?;
         context.append(output, keyword)
     }
 }
+impl crate::specified_rule_serialization::SpecifiedProvider for CssSpeechBreak {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        let context = &mut writer.context;
+        let output = &mut writer.css;
+        self.append_specified(context, output)?;
+        Ok(())
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(CssSpeechBreak);
 
 /// Authored before/after components of a `pause` or `rest` shorthand.
 ///
 /// The optional second component remains distinct from an explicitly equal
 /// value. Omission applies the first component to both longhands; the property
 /// schema supplies their pause/rest identities and source occurrence.
+///
+/// # Specified serialization
+///
+/// Serializes in grammar order, omitting an equal second component as CSSOM requires, without
+/// discarding its authored presence from this model. An omitted effective-after value incurs no
+/// duplicate input traversal.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssSpeechBreakPair {
     before: CssSpeechBreak,
@@ -346,34 +317,6 @@ impl CssSpeechBreakPair {
         }
     }
 
-    /// Serializes in grammar order, omitting an equal second component as CSSOM
-    /// requires, without discarding its authored presence from this model.
-    pub fn serialize_specified(&self) -> SerializationResult {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Shares one cumulative budget across the pair and both authored children.
-    /// An omitted effective-after value incurs no duplicate input traversal.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        self.append_to_rule_writer_with_comparison(
-            writer,
-            &mut |after, before, _| Ok(after.specified_value_eq(before)),
-            &mut |_| {},
-        )
-    }
-
     pub(crate) fn append_to_rule_writer_with_comparison(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
@@ -381,13 +324,12 @@ impl CssSpeechBreakPair {
             &CssSpeechBreak,
             &CssSpeechBreak,
             &mut SpecifiedSerializationContext,
-        ) -> Result<bool, crate::CssSpecifiedValueSerializationError>,
+        ) -> Result<bool, crate::CssSerializationError>,
         before_value: &mut impl FnMut(usize),
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         before_value(0);
         let context = &mut writer.context;
-        context.charge_input(1)?;
-        context.charge_projection(1)?;
+        context.charge_nodes(1)?;
         let output = &mut writer.css;
         self.before.append_specified(context, output)?;
         if let Some(after) = &self.after {
@@ -407,6 +349,19 @@ impl CssSpeechBreakPair {
         Ok(())
     }
 }
+impl crate::specified_rule_serialization::SpecifiedProvider for CssSpeechBreakPair {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        self.append_to_rule_writer_with_comparison(
+            writer,
+            &mut |after, before, _| Ok(after.specified_value_eq(before)),
+            &mut |_| {},
+        )
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(CssSpeechBreakPair);
 
 /// An exact signed ordinary Speech 1 decibel dimension, retaining its origin.
 ///
@@ -474,36 +429,11 @@ impl CssDecibelLiteral {
         )
     }
 
-    /// Formats the retained coefficient with shared specified precision and
-    /// the canonical lowercase `db` unit; authored spelling remains unchanged.
-    pub fn serialize_specified(&self) -> SerializationResult {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Charges one terminal under the shared input, projection and byte limits.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        self.append_specified(writer)?;
-        Ok(())
-    }
-
     fn append_specified(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> Result<(), CssSpecifiedValueSerializationError> {
-        writer.context.charge_input(1)?;
-        writer.context.charge_projection(1)?;
+    ) -> Result<(), CssSerializationError> {
+        writer.node()?;
         if writer.context.output_suppressed() {
             return Ok(());
         }
@@ -516,11 +446,25 @@ impl CssDecibelLiteral {
         writer.append(&text)
     }
 }
+impl crate::specified_rule_serialization::SpecifiedProvider for CssDecibelLiteral {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        self.append_specified(writer)?;
+        Ok(())
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(CssDecibelLiteral);
 
 /// An authored auditory resource and its optional relative decibel offset.
 ///
 /// Omission remains distinct from an explicit zero offset. Resource loading,
 /// alternative cues and the computed relationship to voice-volume are downstream.
+///
+/// # Specified serialization
+///
+/// Serializes the shared URL followed by a nonzero optional offset.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssAudioCue {
     url: crate::CssUrl,
@@ -580,37 +524,11 @@ impl CssAudioCue {
             }
     }
 
-    /// Serializes the shared URL followed by a nonzero optional offset.
-    /// CSSOM omission of the implied 0dB leaves the authored field unchanged.
-    pub fn serialize_specified(&self) -> SerializationResult {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Shares the cumulative budget with the URL and the optional offset.
-    /// Explicit zero still incurs its terminal visit even when omitted.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        self.append_specified(writer)?;
-        Ok(())
-    }
-
     fn append_specified(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> Result<(), CssSpecifiedValueSerializationError> {
-        writer.context.charge_input(1)?;
-        writer.context.charge_projection(1)?;
+    ) -> Result<(), CssSerializationError> {
+        writer.node()?;
         self.url.append_specified(writer)?;
         if let Some(decibel) = &self.decibel {
             if decibel.is_zero() {
@@ -623,8 +541,22 @@ impl CssAudioCue {
         Ok(())
     }
 }
+impl crate::specified_rule_serialization::SpecifiedProvider for CssAudioCue {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        self.append_specified(writer)?;
+        Ok(())
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(CssAudioCue);
 
 /// One authored cue: no auditory icon, or a shared URL plus optional dB offset.
+///
+/// # Specified serialization
+///
+/// Serializes the specified cue without loading or resolving its resource.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssCue {
@@ -652,45 +584,35 @@ impl CssCue {
         self.equivalent(other)
     }
 
-    /// Serializes the specified cue without loading or resolving its resource.
-    pub fn serialize_specified(&self) -> SerializationResult {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Uses the shared cumulative input, projection and emitted-byte limits.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        self.append_specified(writer)?;
-        Ok(())
-    }
-
     fn append_specified(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> Result<(), CssSpecifiedValueSerializationError> {
+    ) -> Result<(), CssSerializationError> {
         match self {
             Self::None => {
-                writer.context.charge_input(1)?;
-                writer.context.charge_projection(1)?;
+                writer.node()?;
                 writer.append("none")
             }
             Self::Audio(value) => value.append_specified(writer),
         }
     }
 }
+impl crate::specified_rule_serialization::SpecifiedProvider for CssCue {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        self.append_specified(writer)?;
+        Ok(())
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(CssCue);
 
 /// Ordered cue shorthand components, retaining whether after was authored.
+///
+/// # Specified serialization
+///
+/// Serializes in grammar order, omitting an equivalent optional second cue.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssCuePair {
     before: CssCue,
@@ -732,28 +654,13 @@ impl CssCuePair {
             None => &self.before,
         }
     }
-
-    /// Serializes in grammar order, omitting an equivalent optional second cue.
-    pub fn serialize_specified(&self) -> SerializationResult {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Explicitly redundant children still charge cumulative traversal work.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+}
+impl crate::specified_rule_serialization::SpecifiedProvider for CssCuePair {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        writer.context.charge_input(1)?;
-        writer.context.charge_projection(1)?;
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        writer.node()?;
         writer.source_member(0, |writer| self.before.append_specified(writer))?;
         if let Some(after) = &self.after {
             writer.source_member(1, |writer| {
@@ -768,6 +675,7 @@ impl CssCuePair {
         Ok(())
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssCuePair);
 
 /// Symbolic vocal stress; acoustic realization belongs to a speech renderer.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -779,25 +687,11 @@ pub enum CssVoiceStress {
     None,
     Reduced,
 }
-impl CssVoiceStress {
-    /// Serializes the specified keyword.
-    pub fn serialize_specified(&self) -> SerializationResult {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-    /// Serializes under the shared cumulative resource limits.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssVoiceStress {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         writer.keyword(match self {
             Self::Normal => "normal",
             Self::Strong => "strong",
@@ -807,6 +701,7 @@ impl CssVoiceStress {
         })
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssVoiceStress);
 
 /// An authored generic voice age.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1015,40 +910,22 @@ impl CssVoiceFamilyList {
     }
 }
 /// A prioritized voice list or the distinct language-preservation alternative.
+///
+/// # Specified serialization
+///
+/// Serializes specified author choices without contextual voice selection.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssVoiceFamily {
     Voices(CssVoiceFamilyList),
     Preserve,
 }
-impl CssVoiceFamily {
-    /// Serializes specified author choices without contextual voice selection.
-    pub fn serialize_specified(&self) -> SerializationResult {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-    /// Uses shared identifier/string escaping and cumulative integer projection.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssVoiceFamily {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        use crate::specified_rule_serialization::SpecifiedRuleWriter;
-        fn leaf(
-            writer: &mut SpecifiedRuleWriter,
-        ) -> Result<(), CssSpecifiedValueSerializationError> {
-            writer.context.charge_input(1)?;
-            writer.context.charge_projection(1)
-        }
-
-        leaf(writer)?;
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        writer.node()?;
         match self {
             Self::Preserve => writer.append("preserve")?,
             Self::Voices(list) => {
@@ -1056,11 +933,11 @@ impl CssVoiceFamily {
                     if index > 0 {
                         writer.append(", ")?;
                     }
-                    leaf(writer)?;
+                    writer.node()?;
                     match entry {
                         CssVoiceFamilyEntry::Name(name) => match name.view() {
                             CssVoiceFamilyNameRef::Quoted(value) => {
-                                leaf(writer)?;
+                                writer.node()?;
                                 writer.append_string(value)?;
                             }
                             CssVoiceFamilyNameRef::Identifiers(values) => {
@@ -1068,18 +945,18 @@ impl CssVoiceFamily {
                                     if index > 0 {
                                         writer.append(" ")?;
                                     }
-                                    leaf(writer)?;
+                                    writer.node()?;
                                     writer.append_identifier(value.as_str())?;
                                 }
                             }
                         },
                         CssVoiceFamilyEntry::Generic(value) => {
                             if let Some(age) = value.age {
-                                leaf(writer)?;
+                                writer.node()?;
                                 writer.append(age.keyword())?;
                                 writer.append(" ")?;
                             }
-                            leaf(writer)?;
+                            writer.node()?;
                             writer.append(value.gender.keyword())?;
                             if let Some(variant) = &value.variant {
                                 writer.append(" ")?;
@@ -1102,8 +979,13 @@ impl CssVoiceFamily {
         Ok(())
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssVoiceFamily);
 
 /// The authored speech-subtree duration; subtree precedence is resolved downstream.
+///
+/// # Specified serialization
+///
+/// Serializes the specified value without applying subtree precedence.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssVoiceDuration {
@@ -1115,24 +997,12 @@ impl CssVoiceDuration {
     pub fn try_time(time: CssTimeValue) -> Result<Self, CssNumericConstructionError> {
         CssDuration::try_new(time).map(Self::Time)
     }
-    /// Serializes the specified value without applying subtree precedence.
-    pub fn serialize_specified(&self) -> SerializationResult {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-    /// Uses the existing duration provider under one cumulative resource policy.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+}
+impl crate::specified_rule_serialization::SpecifiedProvider for CssVoiceDuration {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         match self {
             Self::Auto => writer.keyword("auto"),
             Self::Time(value) => {
@@ -1142,6 +1012,7 @@ impl CssVoiceDuration {
         }
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssVoiceDuration);
 
 /// A voice-dependent symbolic pitch or pitch-range level.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1208,31 +1079,12 @@ impl CssSemitoneLiteral {
     pub const fn origin(&self) -> &crate::CssValueOrigin {
         self.component.origin()
     }
-    pub fn serialize_specified(&self) -> SerializationResult {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
 
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        self.append_specified(writer)?;
-        Ok(())
-    }
     fn append_specified(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> Result<(), CssSpecifiedValueSerializationError> {
-        writer.context.charge_input(1)?;
-        writer.context.charge_projection(1)?;
+    ) -> Result<(), CssSerializationError> {
+        writer.node()?;
         if writer.context.output_suppressed() {
             return Ok(());
         }
@@ -1245,6 +1097,16 @@ impl CssSemitoneLiteral {
         writer.append(&text)
     }
 }
+impl crate::specified_rule_serialization::SpecifiedProvider for CssSemitoneLiteral {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        self.append_specified(writer)?;
+        Ok(())
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(CssSemitoneLiteral);
 
 /// One signed relative offset, without applying it to an inherited voice frequency.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1301,7 +1163,7 @@ impl CssVoiceOffset {
         if matches!(component.view(), crate::CssComponentValueRef::Token(_)) {
             return Self::from_literal_component(component);
         }
-        let values = crate::CssComponentValues::try_new(vec![component])
+        let values = crate::CssComponentValues::try_new(vec![component], Default::default())
             .map_err(CssNumericConstructionError::component)?;
         let expression =
             context.admit(values, crate::numeric::CalculationRoot::FrequencyPercentage)?;
@@ -1330,7 +1192,7 @@ impl CssVoiceOffset {
     fn append_specified(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> Result<(), CssSpecifiedValueSerializationError> {
+    ) -> Result<(), CssSerializationError> {
         match self {
             Self::Frequency(value) => value.append_specified(&mut writer.context, &mut writer.css),
             Self::Semitones(value) => value.append_specified(writer),
@@ -1355,6 +1217,14 @@ enum VoicePitchRangeState {
 }
 /// Checked shared authored grammar for `voice-pitch` and `voice-range`.
 /// Absolute frequency cannot carry a level; relative composition is nonempty.
+///
+/// # Specified serialization
+///
+/// Emits frequency before `absolute`, or level before offset. It does not compute a voice
+/// frequency. Ordinary frequency output shares its six-place precision owner. If a positive
+/// absolute literal rounds to zero, serialization returns `UnrepresentableValue` rather than
+/// emitting invalid grammar. Exact input remains retained; this does not perform computed voice
+/// clamping.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssVoicePitchRange {
     state: VoicePitchRangeState,
@@ -1440,30 +1310,13 @@ impl CssVoicePitchRange {
             VoicePitchRangeState::Absolute(_) => None,
         }
     }
-    pub fn serialize_specified(&self) -> SerializationResult {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-    /// Emits frequency before `absolute`, or level before offset, under one
-    /// cumulative visit and output budget. It does not compute a voice frequency.
-    /// Ordinary frequency output shares its six-place precision owner. If a
-    /// positive absolute literal rounds to zero, returns `UnrepresentableValue`
-    /// atomically rather than emitting invalid grammar. Exact input remains
-    /// retained; this does not perform computed voice clamping.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+}
+impl crate::specified_rule_serialization::SpecifiedProvider for CssVoicePitchRange {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        writer.context.charge_input(1)?;
-        writer.context.charge_projection(1)?;
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        writer.node()?;
         match &self.state {
             VoicePitchRangeState::Absolute(value) => {
                 let start = writer.css.len();
@@ -1473,19 +1326,17 @@ impl CssVoicePitchRange {
                         .strip_suffix(crate::frequency::suffix(literal.unit()))
                         .expect("frequency provider emits its selected canonical unit");
                     if crate::exact_decimal::LexicalDecimal::new(coefficient).is_zero() {
-                        return Err(CssSpecifiedValueSerializationError::new(
+                        return Err(CssSerializationError::new(
                             crate::CssSpecifiedValueSerializationErrorKind::UnrepresentableValue,
                         ));
                     }
                 }
-                writer.context.charge_input(1)?;
-                writer.context.charge_projection(1)?;
+                writer.node()?;
                 writer.append(" absolute")?;
             }
             VoicePitchRangeState::Relative { level, offset } => {
                 if let Some(level) = level {
-                    writer.context.charge_input(1)?;
-                    writer.context.charge_projection(1)?;
+                    writer.node()?;
                     writer.append(level.keyword())?;
                 }
                 if let Some(offset) = offset {
@@ -1499,6 +1350,7 @@ impl CssVoicePitchRange {
         Ok(())
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssVoicePitchRange);
 
 /// A symbolic voice-rate keyword, without a words-per-minute mapping.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1525,6 +1377,11 @@ impl CssVoiceRateKeyword {
 }
 /// Checked nonempty rate keyword/percentage composition; a retained 100% stays
 /// distinct from omission even when canonical output omits a neutral modifier.
+///
+/// # Specified serialization
+///
+/// Emits grammar order and omits only an exact ordinary neutral 100% modifier beside an explicit
+/// keyword. The suppressed child is still visited.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssVoiceRate {
     keyword: Option<CssVoiceRateKeyword>,
@@ -1577,29 +1434,15 @@ impl CssVoiceRate {
     pub const fn percentage(&self) -> Option<&crate::CssSpecifiedNonNegativePercentage> {
         self.percentage.as_ref()
     }
-    pub fn serialize_specified(&self) -> SerializationResult {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-    /// Emits grammar order and omits only an exact ordinary neutral 100%
-    /// modifier beside an explicit keyword. The suppressed child is still visited.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+}
+impl crate::specified_rule_serialization::SpecifiedProvider for CssVoiceRate {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        writer.context.charge_input(1)?;
-        writer.context.charge_projection(1)?;
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        writer.node()?;
         if let Some(keyword) = self.keyword {
-            writer.context.charge_input(1)?;
-            writer.context.charge_projection(1)?;
+            writer.node()?;
             writer.append(keyword.keyword())?;
         }
         if let Some(percentage) = &self.percentage {
@@ -1621,6 +1464,7 @@ impl CssVoiceRate {
         Ok(())
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssVoiceRate);
 
 /// An authored spatial-balance keyword; numerical resolution belongs downstream.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1650,6 +1494,10 @@ enum VoiceBalanceState {
 }
 /// Exact authored balance keyword or unrestricted pure Number value.
 /// Specified admission does not clamp numbers or resolve inherited adjustments.
+///
+/// # Specified serialization
+///
+/// Formats through shared Number precision without Speech clamping.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssVoiceBalance {
     state: VoiceBalanceState,
@@ -1701,30 +1549,19 @@ impl CssVoiceBalance {
             VoiceBalanceState::Keyword(_) => None,
         }
     }
-    /// Formats through shared Number precision without Speech clamping.
-    pub fn serialize_specified(&self) -> SerializationResult {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-    /// Uses the keyword or pure Number provider's cumulative resource policy.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+}
+impl crate::specified_rule_serialization::SpecifiedProvider for CssVoiceBalance {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         match &self.state {
             VoiceBalanceState::Keyword(value) => writer.keyword(value.keyword()),
             VoiceBalanceState::Number(value) => value.append_to_rule_writer(writer),
         }
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssVoiceBalance);
 
 /// A symbolic user-calibrated volume level, excluding the distinct silent state.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1750,6 +1587,11 @@ impl CssVoiceVolumeLevel {
 /// A nonempty authored volume grammar, retaining absent level and offset.
 /// These alternatives exclude empty compositions and every companion to silent.
 /// Calibration, inheritance and synthesis remain downstream.
+///
+/// # Specified serialization
+///
+/// Serializes level before offset, preserving standalone offset meaning. Standalone zero and
+/// rounded tiny nonzero offsets are emitted.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssVoiceVolume {
@@ -1760,34 +1602,17 @@ pub enum CssVoiceVolume {
     },
     Offset(CssDecibelLiteral),
 }
-impl CssVoiceVolume {
-    /// Serializes level before offset, preserving standalone offset meaning.
-    pub fn serialize_specified(&self) -> SerializationResult {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-    /// Visits an explicitly authored offset even when an exact zero companion
-    /// is omitted. Standalone zero and rounded tiny nonzero offsets are emitted.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssVoiceVolume {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         match self {
             Self::Silent => writer.keyword("silent"),
             Self::Offset(value) => value.append_to_rule_writer(writer),
             Self::Level { level, decibel } => {
-                writer.context.charge_input(1)?;
-                writer.context.charge_projection(1)?;
-                writer.context.charge_input(1)?;
-                writer.context.charge_projection(1)?;
+                writer.node()?;
+                writer.node()?;
                 writer.append(level.keyword())?;
                 if let Some(value) = decibel {
                     if value.is_zero() {
@@ -1802,3 +1627,4 @@ impl CssVoiceVolume {
         }
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssVoiceVolume);

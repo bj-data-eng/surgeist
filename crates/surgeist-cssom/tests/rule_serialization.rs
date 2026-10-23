@@ -20,7 +20,7 @@ fn edited_font_families_and_counter_name_keep_native_wrapper_limits() {
             .unwrap()
             .capture(&current)
             .unwrap()
-            .font_family(CssSpecifiedValueSerializationLimits::default())
+            .font_family(CssSerializationLimits::default())
             .unwrap(),
         "Current"
     );
@@ -30,7 +30,7 @@ fn edited_font_families_and_counter_name_keep_native_wrapper_limits() {
             .unwrap()
             .capture(&before)
             .unwrap()
-            .font_family(CssSpecifiedValueSerializationLimits::default())
+            .font_family(CssSerializationLimits::default())
             .unwrap(),
         "Original"
     );
@@ -40,7 +40,7 @@ fn edited_font_families_and_counter_name_keep_native_wrapper_limits() {
             .unwrap()
             .capture(&current)
             .unwrap()
-            .name(CssSpecifiedValueSerializationLimits::default())
+            .name(CssSerializationLimits::default())
             .unwrap(),
         "current"
     );
@@ -50,7 +50,7 @@ fn edited_font_families_and_counter_name_keep_native_wrapper_limits() {
             .unwrap()
             .capture(&before)
             .unwrap()
-            .name(CssSpecifiedValueSerializationLimits::default())
+            .name(CssSerializationLimits::default())
             .unwrap(),
         "original"
     );
@@ -301,7 +301,7 @@ fn independent_work_and_native_output_failures_preserve_capture_and_retry() {
         })
     ));
     let native = CssomRuleFormatLimits {
-        css: CssSpecifiedValueSerializationLimits::new(1, 1, normal.len()),
+        css: CssSerializationLimits::new(1, 1, normal.len()),
         ..CssomRuleFormatLimits::default()
     };
     assert!(matches!(
@@ -309,7 +309,7 @@ fn independent_work_and_native_output_failures_preserve_capture_and_retry() {
         Err(CssomError::Format(_))
     ));
     let short = CssomRuleFormatLimits {
-        css: CssSpecifiedValueSerializationLimits::new(usize::MAX, usize::MAX, normal.len() - 1),
+        css: CssSerializationLimits::new(usize::MAX, usize::MAX, normal.len() - 1),
         ..CssomRuleFormatLimits::default()
     };
     assert!(matches!(
@@ -399,7 +399,7 @@ fn unavailable_wrapper_is_lazy_and_reports_actual_path_without_preparing_descend
         store
             .css_scope_rule(&scope)
             .and_then(|handle| handle.capture(&snapshot))
-            .and_then(|capture| capture.start(CssSpecifiedValueSerializationLimits::default()))
+            .and_then(|capture| capture.start(CssSerializationLimits::default()))
             .unwrap()
             .as_deref(),
         Some(".outer")
@@ -602,7 +602,7 @@ fn custom_media_current_query_keeps_native_unavailable_wrapper_boundary() {
             .unwrap()
             .capture(&current)
             .unwrap()
-            .media_text(CssSpecifiedValueSerializationLimits::default())
+            .media_text(CssSerializationLimits::default())
             .unwrap(),
         "print"
     );
@@ -612,7 +612,7 @@ fn custom_media_current_query_keeps_native_unavailable_wrapper_boundary() {
             .unwrap()
             .capture(&before)
             .unwrap()
-            .media_text(CssSpecifiedValueSerializationLimits::default())
+            .media_text(CssSerializationLimits::default())
             .unwrap(),
         "screen"
     );
@@ -634,7 +634,13 @@ fn custom_media_current_query_keeps_native_unavailable_wrapper_boundary() {
     let CssCustomMediaBody::Media(original_query) = original.body() else {
         panic!("original query");
     };
-    assert_eq!(original_query.serialize_cssom().unwrap().as_css(), "screen");
+    assert_eq!(
+        original_query
+            .serialize_cssom(Default::default())
+            .unwrap()
+            .as_css(),
+        "screen"
+    );
 }
 
 #[test]
@@ -680,7 +686,7 @@ fn supports_writer_consumes_current_selectors_declarations_and_child_membership(
         panic!("genuine original");
     };
     assert_eq!(
-        original.serialize_cssom().unwrap(),
+        original.serialize_cssom(Default::default()).unwrap(),
         "@supports (display:grid) {\n  a { color: red; }\n}"
     );
 }

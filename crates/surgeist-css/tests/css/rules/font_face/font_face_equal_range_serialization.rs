@@ -4,8 +4,7 @@
 use crate::css::support::rules::ordinary_font_face_descriptor as ordinary;
 use surgeist_css::{
     CssFontFaceDescriptorKind as Kind, CssFontFaceDescriptorValue as Value, CssFontFaceStyle,
-    CssSpecifiedValueSerializationErrorKind as ErrorKind,
-    CssSpecifiedValueSerializationLimits as Limits,
+    CssSerializationLimits as Limits, CssSpecifiedValueSerializationErrorKind as ErrorKind,
 };
 
 // Both retained endpoints consume visits, including the endpoint suppressed in
@@ -16,10 +15,13 @@ macro_rules! assert_shortened {
         let before = value.clone();
         let expected = $expected;
         let nodes = $nodes;
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_eq!(
             value
-                .serialize_specified_with_limits(Limits::new(nodes, nodes, expected.len()))
+                .serialize_specified(Limits::new(nodes, nodes, expected.len()))
                 .unwrap(),
             expected
         );
@@ -37,13 +39,7 @@ macro_rules! assert_shortened {
                 ErrorKind::ByteLimit,
             ),
         ] {
-            assert_eq!(
-                value
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
-                kind
-            );
+            assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
             assert_eq!(value, before);
         }
     }};
@@ -110,9 +106,9 @@ fn different_retained_endpoints_are_not_collapsed_after_rounding() {
         let value = ordinary(source, kind);
         let before = value.clone();
         let output = match &value {
-            Value::FontWeight(value) => value.serialize_specified().unwrap(),
-            Value::FontWidth(value) => value.serialize_specified().unwrap(),
-            Value::FontStyle(value) => value.serialize_specified().unwrap(),
+            Value::FontWeight(value) => value.serialize_specified(Default::default()).unwrap(),
+            Value::FontWidth(value) => value.serialize_specified(Default::default()).unwrap(),
+            Value::FontStyle(value) => value.serialize_specified(Default::default()).unwrap(),
             _ => panic!("unexpected descriptor"),
         };
         assert_eq!(output, expected, "{source}");

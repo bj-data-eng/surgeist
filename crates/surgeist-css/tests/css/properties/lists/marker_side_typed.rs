@@ -23,9 +23,16 @@ fn both_checked_values_and_parsed_wrappers_have_distinct_symbolic_meanings() {
     ] {
         let declaration = normal_declaration("marker-side", value);
         assert_eq!(current(&declaration), expected);
-        assert_eq!(expected.serialize_specified().unwrap(), canonical);
         assert_eq!(
-            declaration.value_components().serialize().unwrap().as_css(),
+            expected.serialize_specified(Default::default()).unwrap(),
+            canonical
+        );
+        assert_eq!(
+            declaration
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             value
         );
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
@@ -47,9 +54,11 @@ fn both_checked_values_and_parsed_wrappers_have_distinct_symbolic_meanings() {
 
 #[test]
 fn programmatic_declaration_retains_origin_and_the_constructed_keyword() {
-    let components =
-        CssComponentValues::try_new(vec![CssComponentValue::try_ident("match-parent").unwrap()])
-            .unwrap();
+    let components = CssComponentValues::try_new(
+        vec![CssComponentValue::try_ident("match-parent").unwrap()],
+        Default::default(),
+    )
+    .unwrap();
     let declaration = parse_property_value(
         CssPropertyNameRef::Known(CssKnownProperty::MarkerSide),
         components,
@@ -58,7 +67,9 @@ fn programmatic_declaration_retains_origin_and_the_constructed_keyword() {
     .unwrap();
     assert_eq!(current(&declaration), CssMarkerSide::MatchParent);
     assert_eq!(
-        CssMarkerSide::MatchParent.serialize_specified().unwrap(),
+        CssMarkerSide::MatchParent
+            .serialize_specified(Default::default())
+            .unwrap(),
         "match-parent"
     );
     assert!(matches!(
@@ -83,33 +94,27 @@ fn keyword_serialization_has_exact_independent_node_and_byte_limits() {
         (CssMarkerSide::MatchSelf, "match-self"),
         (CssMarkerSide::MatchParent, "match-parent"),
     ] {
-        let exact = CssSpecifiedValueSerializationLimits::new(1, 1, canonical.len());
-        assert_eq!(
-            value.serialize_specified_with_limits(exact).unwrap(),
-            canonical
-        );
+        let exact = CssSerializationLimits::new(1, 1, canonical.len());
+        assert_eq!(value.serialize_specified(exact).unwrap(), canonical);
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(0, 1, canonical.len()),
+                CssSerializationLimits::new(0, 1, canonical.len()),
                 CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 0, canonical.len()),
+                CssSerializationLimits::new(1, 0, canonical.len()),
                 CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 1, canonical.len() - 1),
+                CssSerializationLimits::new(1, 1, canonical.len() - 1),
                 CssSpecifiedValueSerializationErrorKind::ByteLimit,
             ),
         ] {
+            assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
             assert_eq!(
-                value
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
-                kind
+                value.serialize_specified(Default::default()).unwrap(),
+                canonical
             );
-            assert_eq!(value.serialize_specified().unwrap(), canonical);
         }
     }
 }

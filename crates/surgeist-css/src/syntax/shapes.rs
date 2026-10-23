@@ -464,6 +464,10 @@ impl CssClipPathShape {
 
 /// A Shapes 1 reference box: the Box 4 visual boxes plus `margin-box`.
 /// SVG geometry boxes are outside this authored grammar.
+///
+/// # Specified serialization
+///
+/// Serializes authored children without selecting geometry or loading images.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[non_exhaustive]
 pub enum CssShapeBox {
@@ -501,6 +505,10 @@ impl CssShapeBox {
 /// An authored `shape-outside` value before float geometry or resource loading.
 /// The checked image branch excludes bare `none` but retains symbolic image/none
 /// children of `light-dark()`.
+///
+/// # Specified serialization
+///
+/// Serializes authored children without selecting geometry or loading images.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssShapeOutside {
@@ -512,6 +520,10 @@ pub enum CssShapeOutside {
 
 /// A basic shape with an optional explicit Shapes reference box.
 /// Omission stays distinct from explicit `margin-box`; the default is downstream.
+///
+/// # Specified serialization
+///
+/// Serializes authored children without selecting geometry or loading images.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssShapeOutsideShape {
     shape: CssBasicShape,

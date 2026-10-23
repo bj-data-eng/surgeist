@@ -206,7 +206,10 @@ fn css2_residual_properties_retain_typed_values() {
         panic!("expected word-spacing");
     };
     assert_eq!(
-        word_spacing.spacing().serialize_specified().unwrap(),
+        word_spacing
+            .spacing()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "-0.25em"
     );
     assert!(matches!(
@@ -449,7 +452,10 @@ fn css2_residual_eof_and_non_bmp_recovery_preserve_exact_coordinates() {
         panic!("accepted percentage word spacing")
     };
     assert_eq!(
-        accepted_spacing.spacing().serialize_specified().unwrap(),
+        accepted_spacing
+            .spacing()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "10%"
     );
 

@@ -12,7 +12,7 @@ use crate::css::support::lab_direct_component_cases::{
 use crate::css::support::{checked_color as color, component_values as components};
 use surgeist_css::*;
 
-type Limits = CssSpecifiedValueSerializationLimits;
+type Limits = CssSerializationLimits;
 type Kind = CssSpecifiedValueSerializationErrorKind;
 
 macro_rules! text_case {
@@ -44,11 +44,16 @@ text_case!(
 
 fn assert_limited(value: &CssColor, limits: Limits, expected: &str) {
     let before = value.clone();
-    let result = value.to_specified_css_with_limits(limits);
-    assert_eq!(result, value.to_specified_css_with_limits(limits));
+    let result = value.serialize_specified(limits);
+    assert_eq!(result, value.serialize_specified(limits));
     assert_eq!(value, &before);
     assert_eq!(result.unwrap(), expected);
-    assert_eq!(color(expected).to_specified_css().unwrap(), expected);
+    assert_eq!(
+        color(expected)
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
 }
 
 macro_rules! limit_success {
@@ -310,8 +315,8 @@ fn pair() -> CssBorderColorPair {
 
 fn assert_pair_result(value: &CssBorderColorPair, limits: Limits, expected: Result<&str, Kind>) {
     let before = value.clone();
-    let result = value.serialize_specified_with_limits(limits);
-    assert_eq!(result, value.serialize_specified_with_limits(limits));
+    let result = value.serialize_specified(limits);
+    assert_eq!(result, value.serialize_specified(limits));
     assert_eq!(value, &before);
     match expected {
         Ok(expected) => assert_eq!(result.unwrap(), expected),
@@ -437,8 +442,8 @@ fn checked_lab(programmatic: bool, oklab: bool) {
         "lab(100 0 0)"
     };
     let before = value.clone();
-    let result = value.to_specified_css();
-    assert_eq!(result, value.to_specified_css());
+    let result = value.serialize_specified(Default::default());
+    assert_eq!(result, value.serialize_specified(Default::default()));
     assert_eq!(value, before);
     let retained = if oklab {
         value.oklab_value().unwrap()
@@ -484,8 +489,8 @@ fn checked_lch_percentage_literal_keeps_coefficient_kind_and_origin() {
     .unwrap();
     let value = CssColor::from_lch(model);
     let before = value.clone();
-    let result = value.to_specified_css();
-    assert_eq!(result, value.to_specified_css());
+    let result = value.serialize_specified(Default::default());
+    assert_eq!(result, value.serialize_specified(Default::default()));
     assert_eq!(value, before);
     assert_eq!(value.lch_value().unwrap().chroma(), &before_chroma);
     assert_eq!(result.unwrap(), "lch(50 0 30)");
@@ -537,8 +542,8 @@ fn checked_oklch_percentages(programmatic: bool) {
     .unwrap();
     let value = CssColor::from_oklch(model);
     let before = value.clone();
-    let result = value.to_specified_css();
-    assert_eq!(result, value.to_specified_css());
+    let result = value.serialize_specified(Default::default());
+    assert_eq!(result, value.serialize_specified(Default::default()));
     assert_eq!(value, before);
     assert_eq!(value.oklch_value().unwrap().lightness(), &before_lightness);
     assert_eq!(value.oklch_value().unwrap().chroma(), &before_chroma);

@@ -91,7 +91,7 @@ fn parsed_and_checked_z_index_keep_the_selected_grammar_and_exact_origins() {
         CssComponentValue::try_ident("AUTO").unwrap(),
         CssComponentValue::try_number("+0002").unwrap(),
     ] {
-        let components = CssComponentValues::try_new(vec![token]).unwrap();
+        let components = CssComponentValues::try_new(vec![token], Default::default()).unwrap();
         let checked = parse_property_value(
             CssPropertyNameRef::Known(CssKnownProperty::ZIndex),
             components.clone(),
@@ -112,7 +112,10 @@ fn parsed_and_checked_z_index_keep_the_selected_grammar_and_exact_origins() {
         let CssZIndexValue::Integer(integer) = value(&source).value() else {
             panic!("integer")
         };
-        assert_eq!(integer.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            integer.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         let CssIntegerValue::Literal(literal) = integer else {
             panic!("literal")
         };
@@ -155,8 +158,11 @@ fn invalid_z_index_values_fail_typed_checking_and_recovery_preserves_neighbors()
             CssPropertyValueErrorKind::Grammar(_)
         ));
     }
-    let components =
-        CssComponentValues::try_new(vec![CssComponentValue::try_ident("none").unwrap()]).unwrap();
+    let components = CssComponentValues::try_new(
+        vec![CssComponentValue::try_ident("none").unwrap()],
+        Default::default(),
+    )
+    .unwrap();
     let error = parse_property_value(
         CssPropertyNameRef::Known(CssKnownProperty::ZIndex),
         components,

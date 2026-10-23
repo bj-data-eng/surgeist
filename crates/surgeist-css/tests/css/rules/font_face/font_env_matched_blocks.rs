@@ -33,7 +33,13 @@ const PALETTE_KINDS: [PaletteKind; 3] = [
 ];
 
 fn retained(components: &CssComponentValues, value: &str, original_source: &str) {
-    assert_eq!(components.serialize().unwrap().as_css(), value);
+    assert_eq!(
+        components
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        value
+    );
     let mut first_source = None;
     for component in components.items() {
         let CssValueOrigin::Parsed(origin) = component.origin() else {
@@ -78,8 +84,12 @@ fn raw_font_face_width_defers_matched_root_blocks_and_retains_original_component
 fn checked_font_face_width_defers_matched_root_blocks_without_losing_provenance() {
     for value in FACE_VALUES {
         let components = parse_component_values(value).unwrap();
-        let checked =
-            FaceValue::try_from_components(FaceKind::FontWidth, components.clone()).unwrap();
+        let checked = FaceValue::try_from_components(
+            FaceKind::FontWidth,
+            components.clone(),
+            Default::default(),
+        )
+        .unwrap();
         pending_face(&checked, value, value);
         let FaceValue::Pending(pending) = checked else {
             unreachable!()
@@ -143,7 +153,8 @@ fn checked_palette_descriptors_defer_matched_root_blocks_without_losing_provenan
     for kind in PALETTE_KINDS {
         for value in PALETTE_VALUES {
             let components = parse_component_values(value).unwrap();
-            let checked = PaletteValue::try_new(kind, components.clone()).unwrap();
+            let checked =
+                PaletteValue::try_new(kind, components.clone(), Default::default()).unwrap();
             pending_palette(&checked, kind, value, value);
             assert_eq!(checked.components(), &components);
         }
@@ -202,8 +213,12 @@ fn malformed_env_and_ordinary_root_blocks_remain_invalid_in_raw_and_checked_fron
         assert!(face.syntax().is_none(), "{value}: {face:?}");
         face_rejection.assert_first(&face);
         let components = parse_component_values(value).unwrap();
-        let error =
-            FaceValue::try_from_components(FaceKind::FontWidth, components.clone()).unwrap_err();
+        let error = FaceValue::try_from_components(
+            FaceKind::FontWidth,
+            components.clone(),
+            Default::default(),
+        )
+        .unwrap_err();
         let CssFontFaceValueErrorKind::Grammar(detail) = error.kind() else {
             panic!("{value}: grammar failure: {error:?}")
         };
@@ -218,7 +233,8 @@ fn malformed_env_and_ordinary_root_blocks_remain_invalid_in_raw_and_checked_fron
                 kind.css_name()
             );
             palette_rejection.assert_first(&palette);
-            let error = PaletteValue::try_new(kind, components.clone()).unwrap_err();
+            let error =
+                PaletteValue::try_new(kind, components.clone(), Default::default()).unwrap_err();
             let CssFontPaletteValueErrorKind::Grammar(detail) = error.kind() else {
                 panic!("{}:{value}: grammar failure: {error:?}", kind.css_name())
             };
@@ -253,14 +269,19 @@ fn root_bangs_semicolons_and_unmatched_closers_are_not_rescued_by_valid_env() {
         // Component admission may itself reject unmatched closers. If it admits
         // the token stream, the descriptor constructor must reject it.
         if let Ok(components) = parse_component_values(value) {
-            let error = FaceValue::try_from_components(FaceKind::FontWidth, components.clone())
-                .unwrap_err();
+            let error = FaceValue::try_from_components(
+                FaceKind::FontWidth,
+                components.clone(),
+                Default::default(),
+            )
+            .unwrap_err();
             let CssFontFaceValueErrorKind::Grammar(detail) = error.kind() else {
                 panic!("{value}: grammar failure: {error:?}")
             };
             face_rejection.assert_kind(detail);
             for kind in PALETTE_KINDS {
-                let error = PaletteValue::try_new(kind, components.clone()).unwrap_err();
+                let error = PaletteValue::try_new(kind, components.clone(), Default::default())
+                    .unwrap_err();
                 let CssFontPaletteValueErrorKind::Grammar(detail) = error.kind() else {
                     panic!("{}:{value}: grammar failure: {error:?}", kind.css_name())
                 };

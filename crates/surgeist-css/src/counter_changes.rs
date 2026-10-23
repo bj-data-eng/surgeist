@@ -32,6 +32,12 @@ impl CssCounterChangeValue {
 /// A checked `counter-reset`, `counter-increment`, or `counter-set` value.
 ///
 /// `None` is distinct from a nonempty ordered list, including repeated names.
+///
+/// # Specified serialization
+///
+/// Emits every counter name and effective integer for the selected longhand. Omitted operands
+/// remain absent in this authored model. Serialization inserts `0` for reset/set or `1` for
+/// increment, without executing any counter operations or resolving symbolic integer calculations.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssCounterChangesValue {
     changes: Option<Vec<CssCounterChangeValue>>,

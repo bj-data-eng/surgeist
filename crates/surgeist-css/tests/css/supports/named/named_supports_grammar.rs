@@ -49,6 +49,7 @@ fn empty_and_whitespace_only_qualified_preludes_retain_nested_tests() {
         };
         let constructed = surgeist_css::CssSupportsTestBody::try_from_components(
             surgeist_css::parse_component_values(authored).unwrap(),
+            Default::default(),
         )
         .unwrap();
         for body in [rule.body(), &constructed] {
@@ -68,14 +69,17 @@ fn empty_and_whitespace_only_qualified_preludes_retain_nested_tests() {
             };
             assert_eq!(declaration.property(), "future");
         }
-        let canonical = rule.to_specified_css().unwrap();
+        let canonical = rule.serialize_specified(Default::default()).unwrap();
         assert_eq!(canonical, "@supports-condition --x { { future: value; } }");
         let reparsed = parse_sheet(&canonical);
         assert!(reparsed.is_clean(), "{:?}", reparsed.diagnostics());
         let [CssRule::SupportsCondition(again)] = reparsed.syntax().rules() else {
             panic!("one roundtrip definition");
         };
-        assert_eq!(again.to_specified_css().unwrap(), canonical);
+        assert_eq!(
+            again.serialize_specified(Default::default()).unwrap(),
+            canonical
+        );
     }
 }
 
@@ -117,6 +121,7 @@ fn terminal_importance_is_removed_before_noncustom_curly_restriction() {
         let parsed = body(&source);
         let constructed = surgeist_css::CssSupportsTestBody::try_from_components(
             surgeist_css::parse_component_values(authored).unwrap(),
+            Default::default(),
         )
         .unwrap();
         for body in [&parsed, &constructed] {

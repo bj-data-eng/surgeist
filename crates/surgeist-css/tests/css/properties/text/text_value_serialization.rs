@@ -6,9 +6,7 @@
 
 use crate::css::support::serialization_limits::assert_limits_with_zero as budget;
 use crate::css::support::sole_declaration as declaration;
-use surgeist_css::{
-    CssSpecifiedValueSerializationErrorKind as K, CssSpecifiedValueSerializationLimits as L, *,
-};
+use surgeist_css::{CssSerializationLimits as L, CssSpecifiedValueSerializationErrorKind as K, *};
 
 fn length(text: &str) -> CssSpecifiedLengthPercentage {
     CssSpecifiedLengthPercentage::try_from_component(CssComponentValue::try_token(text).unwrap())
@@ -17,8 +15,11 @@ fn length(text: &str) -> CssSpecifiedLengthPercentage {
 
 fn calculation(text: &str) -> CssSpecifiedLengthPercentage {
     CssSpecifiedLengthPercentage::try_from_calculation(
-        CssLengthPercentageCalculation::try_from_components(parse_component_values(text).unwrap())
-            .unwrap(),
+        CssLengthPercentageCalculation::try_from_components(
+            parse_component_values(text).unwrap(),
+            Default::default(),
+        )
+        .unwrap(),
     )
     .unwrap()
 }
@@ -39,9 +40,12 @@ macro_rules! check {
     ($value:expr, $input:expr, $projection:expr, $expected:expr) => {{
         let value = $value;
         let expected: &str = $expected;
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         budget(expected, $input, $projection, |limits| {
-            value.serialize_specified_with_limits(limits)
+            value.serialize_specified(limits)
         });
     }};
 }
@@ -86,7 +90,7 @@ fn every_indent_permutation_reenters_the_same_semantic_value() {
         let value = parsed!(&format!("text-indent:{text}"), TextIndent);
         assert_eq!(value, expected);
         assert_eq!(
-            value.serialize_specified().unwrap(),
+            value.serialize_specified(Default::default()).unwrap(),
             "-1px hanging each-line"
         );
     }
@@ -261,7 +265,7 @@ fn decoration_order_is_line_thickness_style_color_and_all_fields_stay_explicit()
         TextDecoration
     );
     assert_eq!(
-        parsed.serialize_specified().unwrap(),
+        parsed.serialize_specified(Default::default()).unwrap(),
         "underline overline -1px wavy currentcolor"
     );
     let reparsed = parsed!(
@@ -351,13 +355,16 @@ fn shared_numeric_projection_preserves_symbolic_origins_and_exact_budgets() {
         "text-decoration-thickness:calc(40% - 20px)",
         TextDecorationThickness
     );
-    assert_eq!(mixed.serialize_specified().unwrap(), "calc(40% - 20px)");
+    assert_eq!(
+        mixed.serialize_specified(Default::default()).unwrap(),
+        "calc(40% - 20px)"
+    );
     assert_eq!(
         parsed!(
             "text-decoration-thickness:calc(-20px + 40%)",
             TextDecorationThickness
         )
-        .serialize_specified()
+        .serialize_specified(Default::default())
         .unwrap(),
         "calc(40% - 20px)"
     );
@@ -371,7 +378,7 @@ fn rounding_and_failed_serialization_keep_exact_coefficients_units_and_origins()
     check!(&value, 1, 1, "0%");
     assert_eq!(
         value
-            .serialize_specified_with_limits(L::new(1, 1, 1))
+            .serialize_specified(L::new(1, 1, 1))
             .unwrap_err()
             .kind(),
         K::ByteLimit
@@ -399,7 +406,7 @@ fn rounding_and_failed_serialization_keep_exact_coefficients_units_and_origins()
     );
     let huge = CssTextDecorationThickness::Length(length("1e999px"));
     assert_eq!(
-        huge.serialize_specified_with_limits(L::new(1, 1, 16))
+        huge.serialize_specified(L::new(1, 1, 16))
             .unwrap_err()
             .kind(),
         K::ByteLimit
@@ -427,7 +434,7 @@ fn a_late_aggregate_failure_returns_no_partial_css_and_does_not_mutate_children(
     let expected = "underline blink -10px solid currentcolor";
     assert_eq!(
         value
-            .serialize_specified_with_limits(L::new(7, 7, expected.len() - 1))
+            .serialize_specified(L::new(7, 7, expected.len() - 1))
             .unwrap_err()
             .kind(),
         K::ByteLimit
@@ -440,5 +447,8 @@ fn a_late_aggregate_failure_returns_no_partial_css_and_does_not_mutate_children(
             CssTextDecorationLineComponent::Underline
         ]
     );
-    assert_eq!(value.serialize_specified().unwrap(), expected);
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
 }

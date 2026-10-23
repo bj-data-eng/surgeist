@@ -163,7 +163,7 @@ impl<L: DimensionRoot, C: DimensionCalculation> DimensionValue<L, C> {
         if matches!(component.view(), CssComponentValueRef::Token(_)) {
             return L::from_root(component).map(Self::Literal);
         }
-        let values = CssComponentValues::try_new(vec![component])
+        let values = CssComponentValues::try_new(vec![component], Default::default())
             .map_err(CssNumericConstructionError::component)?;
         if closure_first {
             match context.ordinary() {

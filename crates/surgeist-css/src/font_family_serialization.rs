@@ -1,41 +1,18 @@
 //! Canonical specified family names, retaining the authored property form.
 //! Descriptor families own a decoded literal name rather than an authored form.
 
+use crate::specified_rule_serialization::SpecifiedProvider as _;
 use crate::{
     CssFontFaceFamily, CssFontFamilyList, CssFontFamilyName, CssFontFamilyNameKind,
-    CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits,
+    CssSerializationError, CssSerializationLimits,
     specified_rule_serialization::SpecifiedRuleWriter,
 };
 
-type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
+type Result<T> = std::result::Result<T, CssSerializationError>;
 
 impl CssFontFamilyName {
-    /// Emits the retained quoted, identifier-sequence, or generic form.
-    pub fn serialize_specified(&self) -> Result<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Emits atomically, charging one name node and each retained identifier token.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        self.append_specified(writer)?;
-        Ok(())
-    }
-
     pub(crate) fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
-        writer.context.charge_input(1)?;
-        writer.context.charge_projection(1)?;
+        writer.node()?;
         match self.kind() {
             CssFontFamilyNameKind::Quoted => writer.append_string(self.as_str()),
             CssFontFamilyNameKind::Generic => writer.append(self.as_str()),
@@ -49,8 +26,7 @@ impl CssFontFamilyName {
                     if index != 0 {
                         writer.append(" ")?;
                     }
-                    writer.context.charge_input(1)?;
-                    writer.context.charge_projection(1)?;
+                    writer.node()?;
                     writer.append_identifier(identifier)?;
                 }
                 Ok(())
@@ -58,32 +34,18 @@ impl CssFontFamilyName {
         }
     }
 }
-
-impl CssFontFamilyList {
-    /// Emits the nonempty family list in retained order and authored forms.
-    pub fn serialize_specified(&self) -> Result<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Uses one cumulative budget for names, identifier tokens, and emitted bytes.
-    /// The list container adds no node charge, matching the embedded font writer.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssFontFamilyName {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         self.append_specified(writer)?;
         Ok(())
     }
+}
+crate::specified_rule_serialization::specified_serialization!(CssFontFamilyName);
 
+impl CssFontFamilyList {
     pub(crate) fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         writer.comma_separated(self.families(), |writer, family| {
             family.append_specified(writer)
@@ -91,35 +53,20 @@ impl CssFontFamilyList {
         Ok(())
     }
 }
-
-impl CssFontFaceFamily {
-    /// Emits a decoded literal family name, quoting names that cannot be bare
-    /// identifier sequences. This model has no generic or authored-quoting branch.
-    pub fn serialize_specified(&self) -> Result<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Emits atomically, charging one literal node even for a multiword name.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssFontFamilyList {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         self.append_specified(writer)?;
         Ok(())
     }
+}
+crate::specified_rule_serialization::specified_serialization!(CssFontFamilyList);
 
+impl CssFontFaceFamily {
     pub(crate) fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
-        writer.context.charge_input(1)?;
-        writer.context.charge_projection(1)?;
+        writer.node()?;
         let name = self.as_str();
         if can_serialize_family_unquoted(name) {
             for (index, word) in name.split(' ').enumerate() {
@@ -134,6 +81,16 @@ impl CssFontFaceFamily {
         }
     }
 }
+impl crate::specified_rule_serialization::SpecifiedProvider for CssFontFaceFamily {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        self.append_specified(writer)?;
+        Ok(())
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(CssFontFaceFamily);
 
 fn can_serialize_family_unquoted(name: &str) -> bool {
     if name.is_empty() || name.starts_with(' ') || name.ends_with(' ') || name.contains("  ") {
@@ -164,19 +121,13 @@ fn can_serialize_family_unquoted(name: &str) -> bool {
 /// Emits actual decoded literal families in order, separated by comma-space.
 /// An empty slice emits empty text; feature-value nonemptiness is checked by
 /// [`crate::CssFontFeatureValuesFamilyList`], independently of this formatter.
-pub fn serialize_font_face_family_list(families: &[CssFontFaceFamily]) -> Result<String> {
-    serialize_font_face_family_list_with_limits(
-        families,
-        CssSpecifiedValueSerializationLimits::default(),
-    )
-}
-
+///
 /// Uses one native writer and cumulative input, projection and UTF-8 output
 /// budget. Each literal costs one input and one projection node; the container
 /// adds no charge. Failure returns no partial text and leaves the slice unchanged.
-pub fn serialize_font_face_family_list_with_limits(
+pub fn serialize_font_face_family_list(
     families: &[CssFontFaceFamily],
-    limits: CssSpecifiedValueSerializationLimits,
+    limits: CssSerializationLimits,
 ) -> Result<String> {
     let mut writer = SpecifiedRuleWriter::new(limits);
     writer.comma_separated(families, |writer, family| {

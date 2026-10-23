@@ -3482,7 +3482,10 @@ fn complete_z_index_catalogue_matches_the_typed_authored_lifecycle() {
         let CssLonghandValueRef::ZIndex(value) = item.ordinary_value().unwrap().view() else {
             panic!("z-index payload")
         };
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert!(item.source().same_occurrence(source));
         assert_eq!(item.source().importance(), CssImportance::Important);
     }
@@ -3503,7 +3506,7 @@ fn quirky_length_metadata_matches_scoped_pixel_admission() {
             .syntax()
             .as_ref()
             .unwrap()
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .unwrap(),
         "margin-top: 7px;"
     );

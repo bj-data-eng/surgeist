@@ -38,7 +38,11 @@ fn positive_integer_literals_preserve_exact_authored_magnitude() {
             for source in [declaration(name, value), checked(name, value)] {
                 assert_eq!(source.importance(), CssImportance::Important);
                 assert_eq!(
-                    source.value_components().serialize().unwrap().as_css(),
+                    source
+                        .value_components()
+                        .serialize_tokens(Default::default())
+                        .unwrap()
+                        .as_css(),
                     value
                 );
             }
@@ -226,9 +230,11 @@ fn checked_construction_preserves_exact_tokens_and_origins() {
 #[test]
 fn calculation_constructor_checks_bare_roots_and_retains_math() {
     for text in ["0", "-1"] {
-        let calculation =
-            CssIntegerCalculation::try_from_components(parse_component_values(text).unwrap())
-                .unwrap();
+        let calculation = CssIntegerCalculation::try_from_components(
+            parse_component_values(text).unwrap(),
+            Default::default(),
+        )
+        .unwrap();
         let error = CssPageLineMinimum::try_from_calculation(calculation).unwrap_err();
         assert_eq!(error.kind(), &CssNumericConstructionErrorKind::OutOfRange);
         assert!(matches!(error.origin(), Some(CssValueOrigin::Parsed(_))));
@@ -237,20 +243,27 @@ fn calculation_constructor_checks_bare_roots_and_retains_math() {
         CssPageLineMinimum::try_from_calculation(CssIntegerCalculation::literal(-1)).unwrap_err();
     assert_eq!(error.kind(), &CssNumericConstructionErrorKind::OutOfRange);
     assert_eq!(error.origin(), Some(&CssValueOrigin::Programmatic));
-    let bare =
-        CssIntegerCalculation::try_from_components(parse_component_values("2147483648").unwrap())
-            .unwrap();
+    let bare = CssIntegerCalculation::try_from_components(
+        parse_component_values("2147483648").unwrap(),
+        Default::default(),
+    )
+    .unwrap();
     let admitted = CssPageLineMinimum::try_from_calculation(bare).unwrap();
     assert!(admitted.exact_literal().is_some());
     assert_eq!(admitted.literal(), None);
     for (text, expected) in [("calc(-1)", "calc(-1)"), ("calc(2 + 1)", "calc(3)")] {
-        let calculation =
-            CssIntegerCalculation::try_from_components(parse_component_values(text).unwrap())
-                .unwrap();
+        let calculation = CssIntegerCalculation::try_from_components(
+            parse_component_values(text).unwrap(),
+            Default::default(),
+        )
+        .unwrap();
         let value = CssPageLineMinimum::try_from_calculation(calculation).unwrap();
         assert!(value.calculation().is_some());
         assert!(matches!(value.origin(), CssValueOrigin::Parsed(_)));
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
 }
 
@@ -262,26 +275,32 @@ fn specified_serialization_is_exact_and_resource_bounded() {
         ("9999999999999999999999", "9999999999999999999999"),
     ] {
         let value = minimum(&declaration("widows", authored)).clone();
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
     let value = minimum(&declaration("orphans", "2147483648")).clone();
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(0, 8, 20),
+            CssSerializationLimits::new(0, 8, 20),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(8, 0, 20),
+            CssSerializationLimits::new(8, 0, 20),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(8, 8, 3),
+            CssSerializationLimits::new(8, 8, 3),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
-        let error = value.serialize_specified_with_limits(limits).unwrap_err();
+        let error = value.serialize_specified(limits).unwrap_err();
         assert_eq!(error.kind(), kind);
-        assert_eq!(value.serialize_specified().unwrap(), "2147483648");
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            "2147483648"
+        );
     }
 }
 

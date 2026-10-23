@@ -15,10 +15,17 @@ fn programmatic_functions_preserve_mixed_origins_and_separators() {
     let name = parse_component_values("Future").unwrap().items()[0].clone();
     let index = CssComponentValue::try_token("2").unwrap();
     // Separate tokens must not become the single environment name Future2.
-    let arguments = CssComponentValues::try_new(vec![name.clone(), index.clone()]).unwrap();
+    let arguments =
+        CssComponentValues::try_new(vec![name.clone(), index.clone()], Default::default()).unwrap();
     let function = CssComponentValue::try_function("env", arguments).unwrap();
-    let values = CssComponentValues::try_new(vec![function]).unwrap();
-    assert_eq!(values.serialize().unwrap().as_css(), "env(Future/**/2)");
+    let values = CssComponentValues::try_new(vec![function], Default::default()).unwrap();
+    assert_eq!(
+        values
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        "env(Future/**/2)"
+    );
     let declaration = display(values.clone());
     assert_eq!(declaration.value_components(), &values);
     assert_eq!(declaration.position(), None);
@@ -85,9 +92,11 @@ fn property_substitution_does_not_admit_env_as_size_or_scroll_operands() {
         "scroll-state(snapped:env(foo))",
         "scroll-state(scrollable:env(foo))",
     ] {
-        let condition =
-            CssContainerCondition::try_from_components(parse_component_values(text).unwrap())
-                .unwrap();
+        let condition = CssContainerCondition::try_from_components(
+            parse_component_values(text).unwrap(),
+            Default::default(),
+        )
+        .unwrap();
         let CssContainerConditionKind::GeneralEnclosed(opaque) = condition.kind() else {
             panic!("env must not add query-domain admission: {text}")
         };
@@ -95,6 +104,7 @@ fn property_substitution_does_not_admit_env_as_size_or_scroll_operands() {
     }
     let style = CssContainerCondition::try_from_components(
         parse_component_values("style(--x:env(foo))").unwrap(),
+        Default::default(),
     )
     .unwrap();
     assert!(matches!(style.kind(), CssContainerConditionKind::Style(_)));
@@ -118,18 +128,25 @@ fn style_env_components_obey_explicit_enclosing_resource_limits() {
         ),
     ] {
         let Err(CssContainerConstructionError::Component(error)) =
-            CssContainerCondition::try_from_components_with_limits(values.clone(), limits)
+            CssContainerCondition::try_from_components(values.clone(), limits)
         else {
             panic!("resource failure must not become opaque success")
         };
         assert_eq!(error.kind(), kind);
     }
-    let accepted = CssContainerCondition::try_from_components(values.clone()).unwrap();
+    let accepted =
+        CssContainerCondition::try_from_components(values.clone(), Default::default()).unwrap();
     assert!(matches!(
         accepted.kind(),
         CssContainerConditionKind::Style(_)
     ));
-    assert_eq!(values.serialize().unwrap().as_css(), "style(--x:env(foo))");
+    assert_eq!(
+        values
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        "style(--x:env(foo))"
+    );
 }
 
 #[test]

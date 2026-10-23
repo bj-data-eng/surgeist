@@ -21,7 +21,10 @@ fn exact(source: &str, specified: &str) -> CssSelector {
         .as_ref()
         .expect("selected selector retained")
         .clone();
-    assert_eq!(value.to_specified_css().unwrap(), specified);
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        specified
+    );
     assert_eq!(
         parse_selector(specified, &CssNamespaceContext::default()).syntax(),
         &Some(value.clone())

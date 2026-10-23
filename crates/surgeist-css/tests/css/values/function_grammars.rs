@@ -1369,7 +1369,11 @@ fn signed_length_percentage(css: &str) -> surgeist_css::CssSpecifiedLengthPercen
     let components = surgeist_css::parse_component_values(css).unwrap();
     if css.contains('(') {
         surgeist_css::CssSpecifiedLengthPercentage::try_from_calculation(
-            surgeist_css::CssLengthPercentageCalculation::try_from_components(components).unwrap(),
+            surgeist_css::CssLengthPercentageCalculation::try_from_components(
+                components,
+                Default::default(),
+            )
+            .unwrap(),
         )
         .unwrap()
     } else {
@@ -1385,7 +1389,11 @@ fn nonnegative_length_percentage(
     let components = surgeist_css::parse_component_values(css).unwrap();
     if css.contains('(') {
         surgeist_css::CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(
-            surgeist_css::CssLengthPercentageCalculation::try_from_components(components).unwrap(),
+            surgeist_css::CssLengthPercentageCalculation::try_from_components(
+                components,
+                Default::default(),
+            )
+            .unwrap(),
         )
         .unwrap()
     } else {
@@ -1410,7 +1418,13 @@ fn checked_number(representation: &str) -> surgeist_css::CssSpecifiedNumber {
 fn rectangular_basic_shape_functions_parse_through_the_clip_path_front_door() {
     for value in ["rect(0 1px 1px 0)", "xywh(0 0 1px 1px)"] {
         let property = parsed_clip_path_property(value);
-        assert_eq!(property.value().serialize_specified().unwrap(), value);
+        assert_eq!(
+            property
+                .value()
+                .serialize_specified(Default::default())
+                .unwrap(),
+            value
+        );
     }
 }
 
@@ -1418,7 +1432,10 @@ fn rectangular_basic_shape_functions_parse_through_the_clip_path_front_door() {
 fn path_shape_uses_the_checked_clip_path_front_door() {
     let property = parsed_clip_path_property("path('M 0 0 L 1 1')");
     assert_eq!(
-        property.value().serialize_specified().unwrap(),
+        property
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "path(\"M 0 0 L 1 1\")"
     );
 }

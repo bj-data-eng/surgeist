@@ -21,11 +21,13 @@ fn main() {
     assert!(area.authored_column_end().is_none());
     assert_eq!(area.effective_column_end(), area.effective_column_start());
     assert_eq!(
-        area.effective_row_end().serialize_specified().unwrap(),
+        area.effective_row_end()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "span calc(-1)"
     );
     assert_eq!(
-        area.serialize_specified().unwrap(),
+        area.serialize_specified(Default::default()).unwrap(),
         "2147483648 main / nav / span calc(-1)"
     );
     let CssGridLine::Indexed(index) = area.row_start() else {

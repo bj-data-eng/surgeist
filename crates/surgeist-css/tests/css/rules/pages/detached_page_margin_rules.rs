@@ -28,11 +28,14 @@ fn detached_margin_accepts_actual_decoded_names_and_composes_checked_selected_bo
     }
     let report = parse_page_margin_rule("@top-left {content:'X'; color:red !important}");
     let rule = report.syntax().as_ref().unwrap();
-    let selected = rule.declarations().try_specified_properties().unwrap();
+    let selected = rule
+        .declarations()
+        .try_specified_properties(Default::default())
+        .unwrap();
     assert_eq!(
         CssMarginRuleView::try_new(rule.name(), &selected)
             .unwrap()
-            .serialize_cssom()
+            .serialize_cssom(Default::default())
             .unwrap(),
         "@top-left { content: \"X\"; color: red !important; }"
     );
@@ -63,7 +66,9 @@ fn local_invalid_neighbors_descriptors_and_structural_units_recover_under_margin
             .any(|d| d.action() == CssRecoveryAction::DropAtRule)
     );
     assert_eq!(
-        rule.declarations().serialize_cssom().unwrap(),
+        rule.declarations()
+            .serialize_cssom(Default::default())
+            .unwrap(),
         "content: \"X\"; margin-left: 2px; --X: RAW; color: blue !important;"
     );
 }

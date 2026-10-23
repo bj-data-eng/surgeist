@@ -10,7 +10,7 @@ use crate::css::support::authored_syntax::{
 use crate::css::support::serialization_limits::LimitLadder;
 use surgeist_css::*;
 
-type Limits = CssSpecifiedValueSerializationLimits;
+type Limits = CssSerializationLimits;
 type Kind = CssSpecifiedValueSerializationErrorKind;
 
 #[test]
@@ -724,7 +724,7 @@ fn every_represented_ordinary_property_dispatches_its_typed_payload() {
                     "ordinary {name}"
                 );
                 let before = declaration.clone();
-                let output = declaration.to_specified_css();
+                let output = declaration.serialize_specified(Default::default());
                 if output.as_deref() != Ok(expected.as_str()) {
                     failures.push(format!("{source}: expected {expected:?}, got {output:?}"));
                     continue;
@@ -735,7 +735,12 @@ fn every_represented_ordinary_property_dispatches_its_typed_payload() {
                     "{expected}: {:?}",
                     reparse.diagnostics()
                 );
-                assert_eq!(reparse.syntax()[0].to_specified_css().unwrap(), expected);
+                assert_eq!(
+                    reparse.syntax()[0]
+                        .serialize_specified(Default::default())
+                        .unwrap(),
+                    expected
+                );
                 assert_eq!(declaration, &before);
                 assert!(declaration.same_occurrence(&before));
             }
@@ -753,9 +758,12 @@ fn exact_limits(declaration: &CssDeclaration, expected: &str, input: usize, proj
         .zero_limits()
         .assert_unchanged_with(
             declaration,
-            CssDeclaration::to_specified_css_with_limits,
+            CssDeclaration::serialize_specified,
             |_, _, _| {
-                assert_eq!(declaration.to_specified_css().unwrap(), expected);
+                assert_eq!(
+                    declaration.serialize_specified(Default::default()).unwrap(),
+                    expected
+                );
                 assert!(declaration.same_occurrence(&before));
                 assert_eq!(declaration.value_components(), &components);
                 assert_eq!(declaration.parsed_name(), name_origin.as_ref());
@@ -806,7 +814,10 @@ fn name_equivalent_aliases_use_canonical_owners_and_preserve_original_names() {
             checked(name, input, CssImportance::Normal),
         ] {
             let original = declaration.parsed_name().cloned();
-            assert_eq!(declaration.to_specified_css().unwrap(), expected);
+            assert_eq!(
+                declaration.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
             assert_eq!(declaration.parsed_name(), original.as_ref());
             if let Some(origin) = original {
                 assert_eq!(origin.source().as_str(), format!("{name}:{input}"));
@@ -846,7 +857,12 @@ fn legacy_grammar_text_inverts_only_its_source_defined_semantic_mapping() {
                 reparse.syntax()[0].known().unwrap().grammar(),
                 declaration.known().unwrap().grammar()
             );
-            assert_eq!(reparse.syntax()[0].to_specified_css().unwrap(), expected);
+            assert_eq!(
+                reparse.syntax()[0]
+                    .serialize_specified(Default::default())
+                    .unwrap(),
+                expected
+            );
         }
     }
 }
@@ -916,10 +932,13 @@ fn semantic_children_canonicalize_numeric_math_and_aggregate_owners() {
         ] {
             let before = declaration.clone();
             let components = declaration.value_components().clone();
-            assert_eq!(declaration.to_specified_css().unwrap(), expected);
+            assert_eq!(
+                declaration.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
             assert_eq!(
                 declaration
-                    .to_specified_css_with_limits(Limits::new(65_536, 262_144, expected.len() - 1))
+                    .serialize_specified(Limits::new(65_536, 262_144, expected.len() - 1))
                     .unwrap_err()
                     .kind(),
                 Kind::ByteLimit
@@ -1008,7 +1027,10 @@ fn pending_known_values_and_all_keep_original_function_case_and_symbolic_text() 
         let expected = format!("{name}: {input};");
         let declaration = parsed(&format!("{name}:{input}"));
         let components = declaration.value_components().clone();
-        assert_eq!(declaration.to_specified_css().unwrap(), expected);
+        assert_eq!(
+            declaration.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_eq!(declaration.value_components(), &components);
     }
 }
@@ -1016,10 +1038,13 @@ fn pending_known_values_and_all_keep_original_function_case_and_symbolic_text() 
 #[test]
 fn constructed_custom_adjacency_uses_the_shared_component_boundary_owner() {
     let name = CssCustomPropertyName::try_new("--Tokens").unwrap();
-    let components = CssComponentValues::try_new(vec![
-        CssComponentValue::try_ident("A").unwrap(),
-        CssComponentValue::try_ident("B").unwrap(),
-    ])
+    let components = CssComponentValues::try_new(
+        vec![
+            CssComponentValue::try_ident("A").unwrap(),
+            CssComponentValue::try_ident("B").unwrap(),
+        ],
+        Default::default(),
+    )
     .unwrap();
     let declaration = parse_property_value(
         CssPropertyNameRef::Custom(&name),
@@ -1051,7 +1076,10 @@ fn owning_precision_failure_returns_no_declaration_text_and_preserves_occurrence
             let value_origin = declaration.parsed_value().cloned();
             for _ in 0..2 {
                 assert_eq!(
-                    declaration.to_specified_css().unwrap_err().kind(),
+                    declaration
+                        .serialize_specified(Default::default())
+                        .unwrap_err()
+                        .kind(),
                     Kind::UnrepresentableValue
                 );
                 assert_eq!(declaration.value_components(), &components);
@@ -1092,7 +1120,12 @@ fn symbolic_edge_whitespace_is_trimmed_without_dropping_comments_or_refunding_wo
                 "{expected}: {:?}",
                 reparse.diagnostics()
             );
-            assert_eq!(reparse.syntax()[0].to_specified_css().unwrap(), expected);
+            assert_eq!(
+                reparse.syntax()[0]
+                    .serialize_specified(Default::default())
+                    .unwrap(),
+                expected
+            );
         }
     }
 }
@@ -1106,7 +1139,10 @@ fn nested_symbolic_trivia_and_recovered_closures_keep_their_original_origins() {
         custom_checked("--X", input, CssImportance::Normal),
     ] {
         let components = declaration.value_components().clone();
-        assert_eq!(declaration.to_specified_css().unwrap(), expected);
+        assert_eq!(
+            declaration.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_eq!(declaration.value_components(), &components);
     }
     let source = "--X:var(--Case";

@@ -18,7 +18,11 @@ fn color(declaration: &CssDeclaration, expected: &str, source: &str) {
         CssKnownProperty::Color
     );
     assert_eq!(
-        declaration.value_components().serialize().unwrap().as_css(),
+        declaration
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         expected
     );
     let offset = source.find(&format!("color:{expected}")).unwrap();

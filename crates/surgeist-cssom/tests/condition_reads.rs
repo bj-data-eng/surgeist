@@ -1,4 +1,4 @@
-use surgeist_css::CssSpecifiedValueSerializationLimits;
+use surgeist_css::CssSerializationLimits;
 use surgeist_cssom::*;
 
 fn version(role: CssomInputRole, identity: &str) -> CssomInputVersion {
@@ -123,7 +123,7 @@ fn container_plural_getters_preserve_order_duplicates_opaque_queries_and_name_on
             .css_container_rule(&rules[0])
             .and_then(|handle| handle.capture(&snapshot))
             .and_then(
-                |capture| capture.condition_text(CssSpecifiedValueSerializationLimits::new(
+                |capture| capture.condition_text(CssSerializationLimits::new(
                     usize::MAX,
                     usize::MAX,
                     text.len()
@@ -137,7 +137,7 @@ fn container_plural_getters_preserve_order_duplicates_opaque_queries_and_name_on
             .css_container_rule(&rules[0])
             .and_then(|handle| handle.capture(&snapshot))
             .and_then(
-                |capture| capture.condition_text(CssSpecifiedValueSerializationLimits::new(
+                |capture| capture.condition_text(CssSerializationLimits::new(
                     usize::MAX,
                     usize::MAX,
                     text.len() - 1
@@ -182,7 +182,7 @@ fn container_plural_getters_preserve_order_duplicates_opaque_queries_and_name_on
             .css_container_rule(&rules[1])
             .and_then(|handle| handle.capture(&snapshot))
             .and_then(
-                |capture| capture.condition_text(CssSpecifiedValueSerializationLimits::new(
+                |capture| capture.condition_text(CssSerializationLimits::new(
                     usize::MAX,
                     usize::MAX,
                     1024
@@ -252,7 +252,7 @@ fn omitted_scope_bounds_and_defined_named_support_name_do_not_require_whole_wrap
     );
     let snapshot = owner.snapshot();
     assert_eq!(rules.len(), 2);
-    let zero = surgeist_css::CssSpecifiedValueSerializationLimits::new(0, 0, 0);
+    let zero = surgeist_css::CssSerializationLimits::new(0, 0, 0);
     assert_eq!(
         owner
             .css_scope_rule(&rules[0])

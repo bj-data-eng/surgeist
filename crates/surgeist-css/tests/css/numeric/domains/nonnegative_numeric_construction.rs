@@ -21,14 +21,21 @@ fn percentage(text: &str) -> CssSpecifiedNonNegativePercentage {
 }
 fn number_math(text: &str) -> CssSpecifiedNonNegativeNumber {
     CssSpecifiedNonNegativeNumber::try_from_calculation(
-        CssNumberCalculation::try_from_components(parse_component_values(text).unwrap()).unwrap(),
+        CssNumberCalculation::try_from_components(
+            parse_component_values(text).unwrap(),
+            Default::default(),
+        )
+        .unwrap(),
     )
     .unwrap()
 }
 fn percentage_math(text: &str) -> CssSpecifiedNonNegativePercentage {
     CssSpecifiedNonNegativePercentage::try_from_calculation(
-        CssPercentageCalculation::try_from_components(parse_component_values(text).unwrap())
-            .unwrap(),
+        CssPercentageCalculation::try_from_components(
+            parse_component_values(text).unwrap(),
+            Default::default(),
+        )
+        .unwrap(),
     )
     .unwrap()
 }
@@ -78,7 +85,12 @@ fn shared_nonnegative_scalars_keep_exact_huge_tiny_positive_and_signed_zero_lexe
         assert_eq!(n.origin(), &CssValueOrigin::Programmatic);
         assert_eq!(p.origin(), &CssValueOrigin::Programmatic);
     }
-    assert_eq!(percentage("250%").serialize_specified().unwrap(), "250%");
+    assert_eq!(
+        percentage("250%")
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "250%"
+    );
 }
 
 #[test]
@@ -127,18 +139,22 @@ fn bare_nonnegative_roots_recheck_range_and_actual_math_remains_symbolic() {
         assert_eq!(number_text(&number_math(text)), text);
         assert_eq!(percentage_text(&percentage_math(&format!("{text}%"))), text);
     }
-    let number_root =
-        CssNumberCalculation::try_from_components(parse_component_values("-1e-999").unwrap())
-            .unwrap();
+    let number_root = CssNumberCalculation::try_from_components(
+        parse_component_values("-1e-999").unwrap(),
+        Default::default(),
+    )
+    .unwrap();
     assert_eq!(
         CssSpecifiedNonNegativeNumber::try_from_calculation(number_root)
             .unwrap_err()
             .kind(),
         &CssNumericConstructionErrorKind::OutOfRange
     );
-    let percentage_root =
-        CssPercentageCalculation::try_from_components(parse_component_values("-1e-999%").unwrap())
-            .unwrap();
+    let percentage_root = CssPercentageCalculation::try_from_components(
+        parse_component_values("-1e-999%").unwrap(),
+        Default::default(),
+    )
+    .unwrap();
     assert_eq!(
         CssSpecifiedNonNegativePercentage::try_from_calculation(percentage_root)
             .unwrap_err()
@@ -157,13 +173,19 @@ fn bare_nonnegative_roots_recheck_range_and_actual_math_remains_symbolic() {
         p.calculation().unwrap().result_type(),
         CssCalculationType::Percentage
     );
-    assert_eq!(n.serialize_specified().unwrap(), "calc(-1)");
-    assert_eq!(p.serialize_specified().unwrap(), "calc(-1%)");
+    assert_eq!(
+        n.serialize_specified(Default::default()).unwrap(),
+        "calc(-1)"
+    );
+    assert_eq!(
+        p.serialize_specified(Default::default()).unwrap(),
+        "calc(-1%)"
+    );
     assert_eq!(
         n.calculation()
             .unwrap()
             .components()
-            .serialize()
+            .serialize_tokens(Default::default())
             .unwrap()
             .as_css(),
         "calc(-1)"
@@ -172,7 +194,7 @@ fn bare_nonnegative_roots_recheck_range_and_actual_math_remains_symbolic() {
         p.calculation()
             .unwrap()
             .components()
-            .serialize()
+            .serialize_tokens(Default::default())
             .unwrap()
             .as_css(),
         "calc(-1%)"
@@ -323,7 +345,11 @@ fn filter_and_backdrop_parsers_preserve_all_amount_roles_and_exact_payloads() {
                     ("calc(-1)", CssFilterAmount::Number(value)) => {
                         let calculation = value.calculation().expect("symbolic calculation");
                         assert_eq!(
-                            calculation.components().serialize().unwrap().as_css(),
+                            calculation
+                                .components()
+                                .serialize_tokens(Default::default())
+                                .unwrap()
+                                .as_css(),
                             amount
                         );
                         assert_origin(calculation.origin(), &source, start, 5);
@@ -331,7 +357,11 @@ fn filter_and_backdrop_parsers_preserve_all_amount_roles_and_exact_payloads() {
                     ("calc(-1%)", CssFilterAmount::Percentage(value)) => {
                         let calculation = value.calculation().expect("symbolic calculation");
                         assert_eq!(
-                            calculation.components().serialize().unwrap().as_css(),
+                            calculation
+                                .components()
+                                .serialize_tokens(Default::default())
+                                .unwrap()
+                                .as_css(),
                             amount
                         );
                         assert_origin(calculation.origin(), &source, start, 5);
@@ -810,12 +840,12 @@ fn shared_nonnegative_projection_limits_are_atomic_and_percentage_ranges_share_b
     let n = number("12.50");
     let p = percentage("12.50%");
     assert_eq!(
-        n.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(1, 1, 4))
+        n.serialize_specified(CssSerializationLimits::new(1, 1, 4))
             .unwrap(),
         "12.5"
     );
     assert_eq!(
-        p.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(1, 1, 5))
+        p.serialize_specified(CssSerializationLimits::new(1, 1, 5))
             .unwrap(),
         "12.5%"
     );
@@ -835,19 +865,15 @@ fn shared_nonnegative_projection_limits_are_atomic_and_percentage_ranges_share_b
         (1, 1, 3, CssSpecifiedValueSerializationErrorKind::ByteLimit),
     ] {
         assert_eq!(
-            n.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                input, projection, bytes
-            ))
-            .unwrap_err()
-            .kind(),
+            n.serialize_specified(CssSerializationLimits::new(input, projection, bytes))
+                .unwrap_err()
+                .kind(),
             kind
         );
         assert_eq!(
-            p.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                input, projection, bytes
-            ))
-            .unwrap_err()
-            .kind(),
+            p.serialize_specified(CssSerializationLimits::new(input, projection, bytes))
+                .unwrap_err()
+                .kind(),
             kind
         );
     }
@@ -859,7 +885,7 @@ fn shared_nonnegative_projection_limits_are_atomic_and_percentage_ranges_share_b
     };
     assert_eq!(
         range
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(3, 3, 8))
+            .serialize_specified(CssSerializationLimits::new(3, 3, 8))
             .unwrap(),
         "75% 125%"
     );
@@ -880,15 +906,16 @@ fn shared_nonnegative_projection_limits_are_atomic_and_percentage_ranges_share_b
     ] {
         assert_eq!(
             range
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    input, projection, bytes
-                ))
+                .serialize_specified(CssSerializationLimits::new(input, projection, bytes))
                 .unwrap_err()
                 .kind(),
             kind
         );
     }
-    assert_eq!(range.serialize_specified().unwrap(), "75% 125%");
+    assert_eq!(
+        range.serialize_specified(Default::default()).unwrap(),
+        "75% 125%"
+    );
 }
 
 fn assert_origin(origin: &CssValueOrigin, source: &str, start: usize, length: usize) {
@@ -979,7 +1006,11 @@ fn border_and_iteration_payloads_keep_exact_source_coordinates_and_kinds() {
     let calculation = math.calculation().expect("symbolic number function");
     assert_origin(calculation.origin(), source, 115, 5);
     assert_eq!(
-        calculation.components().serialize().unwrap().as_css(),
+        calculation
+            .components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         "calc(-1)"
     );
 }

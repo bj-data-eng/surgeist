@@ -2,8 +2,8 @@
 
 use surgeist_css::{
     CssComponentValue, CssComponentValueRef, CssNumberCalculation, CssNumericConstructionErrorKind,
-    CssSpecifiedNonNegativeNumber, CssSpecifiedValueSerializationErrorKind,
-    CssSpecifiedValueSerializationLimits, CssValueOrigin, CssValueTokenRef, parse_component_values,
+    CssSerializationLimits, CssSpecifiedNonNegativeNumber, CssSpecifiedValueSerializationErrorKind,
+    CssValueOrigin, CssValueTokenRef, parse_component_values,
 };
 
 fn literal(text: &str) -> CssSpecifiedNonNegativeNumber {
@@ -28,12 +28,15 @@ fn exact_ordinary_numbers_survive_admission_without_float_narrowing() {
             panic!("number token")
         };
         assert_eq!(number.representation(), authored);
-        assert_eq!(value.serialize_specified().unwrap(), canonical);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            canonical
+        );
         assert_eq!(value.origin(), &CssValueOrigin::Programmatic);
     }
     let huge = literal("1e999");
     assert_eq!(
-        huge.serialize_specified().unwrap(),
+        huge.serialize_specified(Default::default()).unwrap(),
         format!("1{}", "0".repeat(999))
     );
 }
@@ -83,9 +86,11 @@ fn exact_negative_and_wrong_domain_errors_retain_component_origin() {
 #[test]
 fn bare_calculation_roots_reenter_literals_and_actual_math_stays_symbolic() {
     for text in ["0", "1e999", "-1e-999"] {
-        let calculation =
-            CssNumberCalculation::try_from_components(parse_component_values(text).unwrap())
-                .unwrap();
+        let calculation = CssNumberCalculation::try_from_components(
+            parse_component_values(text).unwrap(),
+            Default::default(),
+        )
+        .unwrap();
         let result = CssSpecifiedNonNegativeNumber::try_from_calculation(calculation);
         if text.starts_with('-') {
             assert_eq!(
@@ -99,15 +104,24 @@ fn bare_calculation_roots_reenter_literals_and_actual_math_stays_symbolic() {
         }
     }
     let math = CssSpecifiedNonNegativeNumber::try_from_calculation(
-        CssNumberCalculation::try_from_components(parse_component_values("calc(-1)").unwrap())
-            .unwrap(),
+        CssNumberCalculation::try_from_components(
+            parse_component_values("calc(-1)").unwrap(),
+            Default::default(),
+        )
+        .unwrap(),
     )
     .unwrap();
     assert!(math.literal_component().is_none());
     assert!(math.calculation().is_some());
-    assert_eq!(math.serialize_specified().unwrap(), "calc(-1)");
+    assert_eq!(
+        math.serialize_specified(Default::default()).unwrap(),
+        "calc(-1)"
+    );
     crate::css::support::value_assertions::assert_calculation_rejected(
-        CssNumberCalculation::try_from_components(parse_component_values("calc(1 + 2%)").unwrap()),
+        CssNumberCalculation::try_from_components(
+            parse_component_values("calc(1 + 2%)").unwrap(),
+            Default::default(),
+        ),
         Some(surgeist_css::CssNumericConstructionErrorKind::IncompatibleTypes),
     );
 }
@@ -119,30 +133,38 @@ fn shared_scalar_equality_retains_provenance_and_budgets_are_atomic() {
         CssSpecifiedNonNegativeNumber::try_from_component(parsed.items()[0].clone()).unwrap();
     let programmatic = literal("1.250");
     assert_ne!(parsed, programmatic);
-    assert_eq!(parsed.serialize_specified().unwrap(), "1.25");
-    assert_eq!(programmatic.serialize_specified().unwrap(), "1.25");
+    assert_eq!(
+        parsed.serialize_specified(Default::default()).unwrap(),
+        "1.25"
+    );
+    assert_eq!(
+        programmatic
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "1.25"
+    );
     let value = literal("12.5");
     for (limits, expected) in [
         (
-            CssSpecifiedValueSerializationLimits::new(0, 10, 10),
+            CssSerializationLimits::new(0, 10, 10),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(10, 0, 10),
+            CssSerializationLimits::new(10, 0, 10),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(10, 10, 3),
+            CssSerializationLimits::new(10, 10, 3),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
         assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            value.serialize_specified(limits).unwrap_err().kind(),
             expected
         );
-        assert_eq!(value.serialize_specified().unwrap(), "12.5");
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            "12.5"
+        );
     }
 }

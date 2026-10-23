@@ -3,56 +3,36 @@
 use crate::{
     CssBasicShape, CssCircleRadius, CssCircleShape, CssClipPath, CssClipPathShape,
     CssEllipseRadius, CssEllipseShape, CssFillRule, CssInsetShape, CssPathShape, CssPolygonShape,
-    CssPosition, CssRadialExtent, CssRectShape, CssRectShapeEdge,
-    CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits, CssXywhShape,
-    specified_rule_serialization::SpecifiedRuleWriter,
+    CssPosition, CssRadialExtent, CssRectShape, CssRectShapeEdge, CssSerializationError,
+    CssXywhShape, specified_rule_serialization::SpecifiedRuleWriter,
 };
 
-type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
+type Result<T> = std::result::Result<T, CssSerializationError>;
 
 macro_rules! specified_shape_methods {
-    () => {
-        /// Serializes authored components without resolving geometry or inserting defaults.
-        pub fn serialize_specified(&self) -> Result<String> {
-            self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
+    ($ty:ty) => {
+        impl crate::specified_rule_serialization::SpecifiedProvider for $ty {
+            fn append_to_rule_writer(
+                &self,
+                writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+            ) -> std::result::Result<(), crate::CssSerializationError> {
+                self.append_specified(writer)?;
+                Ok(())
+            }
         }
-
-        /// Uses one cumulative input, projection and UTF-8 byte budget for all children.
-        /// Failure returns no partial CSS and leaves authored values and origins unchanged.
-        pub fn serialize_specified_with_limits(
-            &self,
-            limits: CssSpecifiedValueSerializationLimits,
-        ) -> Result<String> {
-            let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-            self.append_to_rule_writer(&mut writer)?;
-            Ok(writer.css)
-        }
-
-        pub(crate) fn append_to_rule_writer(
-            &self,
-            writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-        ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-            self.append_specified(writer)?;
-            Ok(())
-        }
+        crate::specified_rule_serialization::specified_serialization!($ty);
     };
 }
 
-fn charge_node(writer: &mut SpecifiedRuleWriter) -> Result<()> {
-    writer.context.charge_input(1)?;
-    writer.context.charge_projection(1)
-}
-
 impl CssClipPath {
-    specified_shape_methods!();
     pub(crate) fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         match self {
             Self::None => {
-                charge_node(writer)?;
+                writer.node()?;
                 writer.append("none")
             }
             Self::GeometryBox(value) => {
-                charge_node(writer)?;
+                writer.node()?;
                 writer.append(value.as_css_str())
             }
             Self::Url(value) => value.append_specified(writer),
@@ -60,23 +40,23 @@ impl CssClipPath {
         }
     }
 }
+specified_shape_methods!(CssClipPath);
 
 impl CssClipPathShape {
-    specified_shape_methods!();
     fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
-        charge_node(writer)?;
+        writer.node()?;
         self.shape().append_specified(writer)?;
         if let Some(reference_box) = self.reference_box() {
             writer.append(" ")?;
-            charge_node(writer)?;
+            writer.node()?;
             writer.append(reference_box.as_css_str())?;
         }
         Ok(())
     }
 }
+specified_shape_methods!(CssClipPathShape);
 
 impl CssBasicShape {
-    specified_shape_methods!();
     pub(crate) fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         match self {
             Self::Shape(value) => value.append_specified(writer),
@@ -90,13 +70,13 @@ impl CssBasicShape {
         }
     }
 }
+specified_shape_methods!(CssBasicShape);
 
 impl CssInsetShape {
-    specified_shape_methods!();
     fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
-        charge_node(writer)?;
+        writer.node()?;
         writer.append("inset(")?;
-        charge_node(writer)?; // Authored offsets list, independently of arity.
+        writer.node()?; // Authored offsets list, independently of arity.
         writer.space_separated(self.offsets().values(), |writer, offset| {
             offset.append_specified(&mut writer.context, &mut writer.css)
         })?;
@@ -107,11 +87,11 @@ impl CssInsetShape {
         writer.append(")")
     }
 }
+specified_shape_methods!(CssInsetShape);
 
 impl CssCircleShape {
-    specified_shape_methods!();
     fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
-        charge_node(writer)?;
+        writer.node()?;
         writer.append("circle(")?;
         let explicit_radius = !matches!(self.radius(), CssCircleRadius::Default);
         match self.radius() {
@@ -125,14 +105,14 @@ impl CssCircleShape {
         writer.append(")")
     }
 }
+specified_shape_methods!(CssCircleShape);
 
 impl CssEllipseShape {
-    specified_shape_methods!();
     fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
-        charge_node(writer)?;
+        writer.node()?;
         writer.append("ellipse(")?;
         if let Some(radii) = self.radii() {
-            charge_node(writer)?;
+            writer.node()?;
             append_ellipse_radius(radii.horizontal(), writer)?;
             writer.append(" ")?;
             append_ellipse_radius(radii.vertical(), writer)?;
@@ -141,6 +121,7 @@ impl CssEllipseShape {
         writer.append(")")
     }
 }
+specified_shape_methods!(CssEllipseShape);
 
 fn append_ellipse_radius(value: &CssEllipseRadius, writer: &mut SpecifiedRuleWriter) -> Result<()> {
     match value {
@@ -152,7 +133,7 @@ fn append_ellipse_radius(value: &CssEllipseRadius, writer: &mut SpecifiedRuleWri
 }
 
 fn append_extent(value: CssRadialExtent, writer: &mut SpecifiedRuleWriter) -> Result<()> {
-    charge_node(writer)?;
+    writer.node()?;
     writer.append(match value {
         CssRadialExtent::ClosestSide => "closest-side",
         CssRadialExtent::FarthestSide => "farthest-side",
@@ -177,12 +158,11 @@ fn append_position(
 }
 
 impl CssPolygonShape {
-    specified_shape_methods!();
     fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
-        charge_node(writer)?;
+        writer.node()?;
         writer.append("polygon(")?;
         if let Some(fill) = self.fill_rule() {
-            charge_node(writer)?;
+            writer.node()?;
             writer.append(match fill {
                 CssFillRule::Nonzero => "nonzero",
                 CssFillRule::Evenodd => "evenodd",
@@ -198,12 +178,12 @@ impl CssPolygonShape {
         if self.fill_rule().is_some() || self.round().is_some() {
             writer.append(", ")?;
         }
-        charge_node(writer)?; // Point list.
+        writer.node()?; // Point list.
         for (index, point) in self.points().points().iter().enumerate() {
             if index != 0 {
                 writer.append(", ")?;
             }
-            charge_node(writer)?;
+            writer.node()?;
             point
                 .x()
                 .append_specified(&mut writer.context, &mut writer.css)?;
@@ -215,30 +195,30 @@ impl CssPolygonShape {
         writer.append(")")
     }
 }
+specified_shape_methods!(CssPolygonShape);
 
 impl CssPathShape {
-    specified_shape_methods!();
     fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
-        charge_node(writer)?;
+        writer.node()?;
         writer.append("path(")?;
         if let Some(fill) = self.fill_rule() {
-            charge_node(writer)?;
+            writer.node()?;
             writer.append(match fill {
                 CssFillRule::Nonzero => "nonzero",
                 CssFillRule::Evenodd => "evenodd",
             })?;
             writer.append(", ")?;
         }
-        charge_node(writer)?;
+        writer.node()?;
         writer.append_string(self.data().as_str())?;
         writer.append(")")
     }
 }
+specified_shape_methods!(CssPathShape);
 
 impl CssRectShape {
-    specified_shape_methods!();
     fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
-        charge_node(writer)?;
+        writer.node()?;
         writer.append("rect(")?;
         for (index, edge) in [self.top(), self.right(), self.bottom(), self.left()]
             .into_iter()
@@ -249,7 +229,7 @@ impl CssRectShape {
             }
             match edge {
                 CssRectShapeEdge::Auto => {
-                    charge_node(writer)?;
+                    writer.node()?;
                     writer.append("auto")?;
                 }
                 CssRectShapeEdge::LengthPercentage(value) => {
@@ -261,11 +241,11 @@ impl CssRectShape {
         writer.append(")")
     }
 }
+specified_shape_methods!(CssRectShape);
 
 impl CssXywhShape {
-    specified_shape_methods!();
     fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
-        charge_node(writer)?;
+        writer.node()?;
         writer.append("xywh(")?;
         self.x()
             .append_specified(&mut writer.context, &mut writer.css)?;
@@ -282,6 +262,7 @@ impl CssXywhShape {
         writer.append(")")
     }
 }
+specified_shape_methods!(CssXywhShape);
 
 fn append_rectangle_round(
     round: Option<&crate::CssBorderRadiusShorthand>,

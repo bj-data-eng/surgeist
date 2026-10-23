@@ -26,7 +26,7 @@ macro_rules! calculation_text {
         $value
             .calculation()
             .expect("retained symbolic calculation")
-            .serialize()
+            .serialize_tokens(Default::default())
             .unwrap()
             .as_css()
             .to_owned()

@@ -365,21 +365,17 @@ fn collection_and_sheet_shells_check_existing_identity_and_share_captures() {
 
 #[test]
 fn css_namespace_forwards_native_unicode_replacement_and_typed_limits() {
-    use surgeist_css::{
-        CssSpecifiedValueSerializationLimits, serialize_css_identifier_with_limits,
-    };
-    assert_eq!(css::escape("0a\0é").unwrap(), "\\30 a�é");
-    assert_eq!(css::escape("").unwrap(), "");
-    let limits = CssSpecifiedValueSerializationLimits::new(0, 10, 10);
+    use surgeist_css::{CssSerializationLimits, serialize_css_identifier};
+    let defaults = CssSerializationLimits::default();
+    assert_eq!(css::escape("0a\0é", defaults).unwrap(), "\\30 a�é");
+    assert_eq!(css::escape("", defaults).unwrap(), "");
+    let limits = CssSerializationLimits::new(0, 10, 10);
     assert_eq!(
-        css::escape_with_limits("é", limits),
-        serialize_css_identifier_with_limits("é", limits)
+        css::escape("é", limits),
+        serialize_css_identifier("é", limits)
     );
-    assert!(css::escape_with_limits("é", limits).is_err());
-    assert_eq!(
-        css::escape_with_limits("é", CssSpecifiedValueSerializationLimits::default()).unwrap(),
-        "é"
-    );
+    assert!(css::escape("é", limits).is_err());
+    assert_eq!(css::escape("é", defaults).unwrap(), "é");
 }
 
 #[test]

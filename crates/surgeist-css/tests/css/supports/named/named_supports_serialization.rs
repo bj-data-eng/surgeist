@@ -1,7 +1,7 @@
 use surgeist_css::{
-    CssComponentValue, CssComponentValues, CssRule, CssSpecifiedRuleSerializationErrorKind,
-    CssSpecifiedValueSerializationErrorKind, CssSpecifiedValueSerializationLimits,
-    CssSupportsTestBody, CssSupportsTestItem, CssValueTokenRef, parse_sheet,
+    CssComponentValue, CssComponentValues, CssRule, CssSerializationLimits,
+    CssSpecifiedValueSerializationErrorKind, CssSupportsTestBody, CssSupportsTestItem,
+    CssValueTokenRef, parse_sheet,
 };
 
 fn definition(source: &str) -> String {
@@ -10,7 +10,7 @@ fn definition(source: &str) -> String {
     let [CssRule::SupportsCondition(rule)] = report.syntax().rules() else {
         panic!("expected one named supports definition: {source}");
     };
-    rule.to_specified_css().unwrap()
+    rule.serialize_specified(Default::default()).unwrap()
 }
 
 #[test]
@@ -77,17 +77,24 @@ fn canonical_body_keeps_earlier_bangs_and_distinguishes_at_rule_forms() {
 #[test]
 fn independently_supplied_adjacent_tokens_gain_a_safe_separator() {
     let body = CssSupportsTestBody::try_from_components(
-        CssComponentValues::try_new(vec![
-            CssComponentValue::try_ident("future").unwrap(),
-            CssComponentValue::try_token(":").unwrap(),
-            CssComponentValue::try_token("1").unwrap(),
-            CssComponentValue::try_ident("e3").unwrap(),
-            CssComponentValue::try_token(";").unwrap(),
-        ])
+        CssComponentValues::try_new(
+            vec![
+                CssComponentValue::try_ident("future").unwrap(),
+                CssComponentValue::try_token(":").unwrap(),
+                CssComponentValue::try_token("1").unwrap(),
+                CssComponentValue::try_ident("e3").unwrap(),
+                CssComponentValue::try_token(";").unwrap(),
+            ],
+            Default::default(),
+        )
         .unwrap(),
+        Default::default(),
     )
     .unwrap();
-    assert_eq!(body.to_specified_css().unwrap(), "future: 1/**/e3;");
+    assert_eq!(
+        body.serialize_specified(Default::default()).unwrap(),
+        "future: 1/**/e3;"
+    );
     let [CssSupportsTestItem::Declarations(run)] = body.items() else {
         panic!("expected a checked declaration run");
     };
@@ -110,14 +117,20 @@ fn sheet_budget_is_monotonic_across_palette_and_definition() {
     let [palette, named] = report.syntax().rules() else {
         panic!("expected two rules");
     };
-    let first = palette.to_specified_css().unwrap();
-    let second = named.to_specified_css().unwrap();
+    let first = palette.serialize_specified(Default::default()).unwrap();
+    let second = named.serialize_specified(Default::default()).unwrap();
     let expected = format!("{first}\n{second}");
-    assert_eq!(report.syntax().to_specified_css().unwrap(), expected);
+    assert_eq!(
+        report
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
 
     let error = report
         .syntax()
-        .to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::new(
+        .serialize_specified(CssSerializationLimits::new(
             usize::MAX,
             usize::MAX,
             expected.len() - 1,
@@ -125,9 +138,7 @@ fn sheet_budget_is_monotonic_across_palette_and_definition() {
         .unwrap_err();
     assert_eq!(
         error.kind(),
-        CssSpecifiedRuleSerializationErrorKind::Resource(
-            CssSpecifiedValueSerializationErrorKind::ByteLimit
-        )
+        CssSpecifiedValueSerializationErrorKind::ByteLimit
     );
     assert_eq!(error.rule_index(), Some(1));
 
@@ -144,14 +155,14 @@ fn sheet_budget_is_monotonic_across_palette_and_definition() {
         ),
     ] {
         let limit = (1..100).find(|limit| {
-            let limits = CssSpecifiedValueSerializationLimits::new(
+            let limits = CssSerializationLimits::new(
                 if input { *limit } else { usize::MAX },
                 if projection { *limit } else { usize::MAX },
                 usize::MAX,
             );
-            palette.to_specified_css_with_limits(limits).is_ok()
-                && named.to_specified_css_with_limits(limits).is_ok()
-                && matches!(report.syntax().to_specified_css_with_limits(limits), Err(ref error) if error.kind() == CssSpecifiedRuleSerializationErrorKind::Resource(expected_kind) && error.rule_index() == Some(1))
+            palette.serialize_specified(limits).is_ok()
+                && named.serialize_specified(limits).is_ok()
+                && matches!(report.syntax().serialize_specified(limits), Err(ref error) if error.kind() == expected_kind && error.rule_index() == Some(1))
         });
         assert!(
             limit.is_some(),
@@ -166,7 +177,10 @@ fn supported_definitions_compose_with_a_following_style_rule() {
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let before = report.clone();
     assert_eq!(
-        report.syntax().to_specified_css().unwrap(),
+        report
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "@supports-condition --feature { }\n.after { color: red; }"
     );
     assert_eq!(report, before);

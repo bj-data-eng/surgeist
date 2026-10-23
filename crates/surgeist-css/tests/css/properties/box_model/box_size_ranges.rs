@@ -86,5 +86,11 @@ fn signed_offsets_and_symbolic_box_calculations_remain_valid() {
     else {
         panic!("width")
     };
-    assert_eq!(width.value().serialize_specified().unwrap(), "calc(-1px)");
+    assert_eq!(
+        width
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "calc(-1px)"
+    );
 }

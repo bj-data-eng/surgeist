@@ -18,7 +18,7 @@ use surgeist_css::{
     CssCounterStyleAlgorithm as Algorithm, CssCounterStyleDefinitionIssue as Issue,
     CssCounterStyleDefinitionStatus as Status, CssCounterStyleDescriptorCollection as Collection,
     CssCounterStyleDescriptorEntry as Entry, CssCounterStyleDescriptorKind as K,
-    CssSpecifiedValueSerializationLimits as Limits, parse_counter_style_descriptor_value,
+    CssSerializationLimits as Limits, parse_counter_style_descriptor_value,
 };
 fn value(source: &str, kind: K) -> surgeist_css::CssCounterStyleDescriptorValue {
     let report = parse_counter_style_descriptor_value(source, kind);
@@ -49,7 +49,7 @@ fn prospective_numeric_edit_preserves_authored_occurrence_and_raw_edit_origin() 
     let edited = value(" /*edit*/ a b ", K::Symbols);
     let mut entries = rule.descriptors().entries().collect::<Vec<_>>();
     entries.push(Entry::from_value(&edited));
-    let next = Collection::try_new(entries).unwrap();
+    let next = Collection::try_new(entries, Default::default()).unwrap();
     assert_eq!(next.entries().len(), 4);
     assert_eq!(next.definition_status(), Status::Defined);
     assert!(next.effective(K::Symbols).unwrap().occurrence().is_none());
@@ -80,13 +80,13 @@ fn algorithm_identity_ignores_fixed_start_and_extends_target() {
         let a = value(left, K::System);
         let b = value(right, K::System);
         assert_eq!(
-            Collection::try_new(vec![Entry::from_value(&a)])
+            Collection::try_new(vec![Entry::from_value(&a)], Default::default())
                 .unwrap()
                 .algorithm(),
             Some(algorithm)
         );
         assert_eq!(
-            Collection::try_new(vec![Entry::from_value(&b)])
+            Collection::try_new(vec![Entry::from_value(&b)], Default::default())
                 .unwrap()
                 .algorithm(),
             Some(algorithm)
@@ -123,24 +123,26 @@ fn definition_admission_handles_missing_symbols_extends_and_additive_symbolic_we
             entries.push(Entry::from_value(s));
         }
         assert_eq!(
-            Collection::try_new(entries).unwrap().definition_status(),
+            Collection::try_new(entries, Default::default())
+                .unwrap()
+                .definition_status(),
             expected
         );
     }
     let system = value("additive", K::System);
     let symbols = value("calc(2) X, 1 I", K::AdditiveSymbols);
     assert_eq!(
-        Collection::try_new(vec![
-            Entry::from_value(&system),
-            Entry::from_value(&symbols)
-        ])
+        Collection::try_new(
+            vec![Entry::from_value(&system), Entry::from_value(&symbols)],
+            Default::default()
+        )
         .unwrap()
         .definition_status(),
         Status::RequiresResolution
     );
     let pending = value("env(counter-symbols)", K::Symbols);
     assert_eq!(
-        Collection::try_new(vec![Entry::from_value(&pending)])
+        Collection::try_new(vec![Entry::from_value(&pending)], Default::default())
             .unwrap()
             .definition_status(),
         Status::SubstitutionDependent
@@ -157,7 +159,7 @@ fn prospective_collection_limits_are_cumulative_and_retry_is_unchanged() {
     let b = value("a b", K::Symbols);
     let entries = vec![Entry::from_value(&a), Entry::from_value(&b)];
     assert_eq!(
-        Collection::try_new_with_limits(entries.clone(), Limits::new(100, 100, 7))
+        Collection::try_new(entries.clone(), Limits::new(100, 100, 7))
             .unwrap_err()
             .kind(),
         surgeist_css::CssSpecifiedValueSerializationErrorKind::ByteLimit
@@ -173,13 +175,13 @@ fn prospective_collection_limits_are_cumulative_and_retry_is_unchanged() {
         ),
     ] {
         assert_eq!(
-            Collection::try_new_with_limits(entries.clone(), limits)
+            Collection::try_new(entries.clone(), limits)
                 .unwrap_err()
                 .kind(),
             kind
         );
         assert_eq!(
-            Collection::try_new(entries.clone())
+            Collection::try_new(entries.clone(), Default::default())
                 .unwrap()
                 .definition_status(),
             Status::Defined
@@ -190,14 +192,19 @@ fn prospective_collection_limits_are_cumulative_and_retry_is_unchanged() {
 
 #[test]
 fn programmatic_prospective_values_do_not_invent_a_named_or_raw_source_origin() {
-    let components = surgeist_css::CssComponentValues::try_new(vec![
-        surgeist_css::CssComponentValue::try_ident("cyclic").unwrap(),
-    ])
+    let components = surgeist_css::CssComponentValues::try_new(
+        vec![surgeist_css::CssComponentValue::try_ident("cyclic").unwrap()],
+        Default::default(),
+    )
     .unwrap();
-    let system =
-        surgeist_css::CssCounterStyleDescriptorValue::try_from_components(K::System, components)
-            .unwrap();
-    let collection = Collection::try_new(vec![Entry::from_value(&system)]).unwrap();
+    let system = surgeist_css::CssCounterStyleDescriptorValue::try_from_components(
+        K::System,
+        components,
+        Default::default(),
+    )
+    .unwrap();
+    let collection =
+        Collection::try_new(vec![Entry::from_value(&system)], Default::default()).unwrap();
     assert!(collection.entries()[0].occurrence().is_none());
     assert!(collection.entries()[0].value().origin().is_none());
     assert_eq!(collection.algorithm(), Some(Algorithm::Cyclic));

@@ -6,8 +6,8 @@
 //! New specified-text APIs are tested alongside their implementation.
 use crate::css::support::authored_syntax::container_names as names;
 use crate::css::support::serialization_limits::assert_node_limits as assert_limits;
+use CssSerializationLimits as Limits;
 use CssSpecifiedValueSerializationErrorKind as Kind;
-use CssSpecifiedValueSerializationLimits as Limits;
 use surgeist_css::*;
 
 #[test]
@@ -40,10 +40,11 @@ fn six_type_states_preserve_semantics_and_use_grammar_order() {
             2,
         ),
     ] {
-        assert_eq!(value.serialize_specified().unwrap(), expected);
-        assert_limits(expected, nodes, |limits| {
-            value.serialize_specified_with_limits(limits)
-        });
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
+        assert_limits(expected, nodes, |limits| value.serialize_specified(limits));
         let report = parse_declaration(&format!("container-type:{authored}!important"));
         assert!(report.is_clean());
         let declaration = report.syntax().as_ref().unwrap();
@@ -54,7 +55,10 @@ fn six_type_states_preserve_semantics_and_use_grammar_order() {
         };
         assert_eq!(*wrapper.container_type(), value);
         assert_eq!(
-            wrapper.container_type().serialize_specified().unwrap(),
+            wrapper
+                .container_type()
+                .serialize_specified(Default::default())
+                .unwrap(),
             expected
         );
         assert_eq!(wrapper.as_css(), authored);
@@ -74,10 +78,11 @@ fn ordered_names_keep_case_duplicates_unicode_and_identifier_boundaries() {
         (names(&["1", "pane"]), r"\31  pane", 3),
         (names(&["1pane", "a b", "a,b"]), r"\31 pane a\ b a\,b", 4),
     ] {
-        assert_eq!(value.serialize_specified().unwrap(), expected);
-        assert_limits(expected, nodes, |limits| {
-            value.serialize_specified_with_limits(limits)
-        });
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
+        assert_limits(expected, nodes, |limits| value.serialize_specified(limits));
         let report = parse_declaration(&format!("container-name:{expected}"));
         assert!(report.is_clean());
         let declaration = report.syntax().as_ref().unwrap();
@@ -87,7 +92,13 @@ fn ordered_names_keep_case_duplicates_unicode_and_identifier_boundaries() {
             panic!("container-name");
         };
         assert_eq!(wrapper.names(), &value);
-        assert_eq!(wrapper.names().serialize_specified().unwrap(), expected);
+        assert_eq!(
+            wrapper
+                .names()
+                .serialize_specified(Default::default())
+                .unwrap(),
+            expected
+        );
     }
 }
 
@@ -110,10 +121,11 @@ fn shorthand_omits_normal_and_counts_the_retained_type() {
         ),
     ] {
         let value = CssContainer::new(names(&["Pane", "pane"]), kind);
-        assert_eq!(value.serialize_specified().unwrap(), expected);
-        assert_limits(expected, nodes, |limits| {
-            value.serialize_specified_with_limits(limits)
-        });
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
+        assert_limits(expected, nodes, |limits| value.serialize_specified(limits));
         let report = parse_declaration(&format!("container:{expected}"));
         assert!(report.is_clean());
         let declaration = report.syntax().as_ref().unwrap();
@@ -123,12 +135,16 @@ fn shorthand_omits_normal_and_counts_the_retained_type() {
             panic!("container");
         };
         assert_eq!(wrapper.container(), &value);
-        assert_eq!(wrapper.container().serialize_specified().unwrap(), expected);
+        assert_eq!(
+            wrapper
+                .container()
+                .serialize_specified(Default::default())
+                .unwrap(),
+            expected
+        );
     }
     let none = CssContainer::new(CssContainerNames::None, CssContainerType::Normal);
-    assert_limits("none", 3, |limits| {
-        none.serialize_specified_with_limits(limits)
-    });
+    assert_limits("none", 3, |limits| none.serialize_specified(limits));
 }
 
 #[test]
@@ -144,12 +160,12 @@ fn parsed_reordered_shorthand_keeps_its_authored_occurrence() {
     };
     let value = wrapper.container();
     let before = value.clone();
-    let components = value.to_components().unwrap();
+    let components = value.to_components(Default::default()).unwrap();
     assert_limits(r"\31 pane / inline-size scroll-state", 5, |limits| {
-        value.serialize_specified_with_limits(limits)
+        value.serialize_specified(limits)
     });
     assert_eq!(value, &before);
-    assert_eq!(value.to_components().unwrap(), components);
+    assert_eq!(value.to_components(Default::default()).unwrap(), components);
     assert_eq!(wrapper.as_css(), authored);
     assert_eq!(declaration.importance(), CssImportance::Important);
     assert!(declaration.position().is_some());
@@ -160,32 +176,30 @@ fn component_token_limits_and_programmatic_origins_remain_distinct() {
     let value = names(&["Pane", "Pane", "pane"]);
     let expected = "Pane Pane pane";
     // Three names plus two spaces are five component tokens, but four semantic nodes.
-    assert_limits(expected, 4, |limits| {
-        value.serialize_specified_with_limits(limits)
-    });
+    assert_limits(expected, 4, |limits| value.serialize_specified(limits));
     let limits = CssComponentValueLimits::try_new(0, 5, expected.len()).unwrap();
-    let components = value.to_components_with_limits(limits).unwrap();
+    let components = value.to_components(limits).unwrap();
     assert_eq!(components.items().len(), 5);
     for component in components.items() {
         assert_eq!(component.origin(), &CssValueOrigin::Programmatic);
     }
     assert_eq!(
         value
-            .to_components_with_limits(
-                CssComponentValueLimits::try_new(0, 4, expected.len()).unwrap()
-            )
+            .to_components(CssComponentValueLimits::try_new(0, 4, expected.len()).unwrap())
             .unwrap_err()
             .kind(),
         CssComponentValueErrorKind::ComponentLimit
     );
     assert_eq!(
         value
-            .serialize_with_limit(expected.len() - 1)
+            .serialize_tokens(crate::css::support::byte_limits(expected.len() - 1))
             .unwrap_err()
             .kind(),
         CssComponentValueErrorKind::ByteLimit
     );
-    let old_text = value.serialize_with_limit(expected.len()).unwrap();
+    let old_text = value
+        .serialize_tokens(crate::css::support::byte_limits(expected.len()))
+        .unwrap();
     assert_eq!(old_text.as_css(), expected);
     for segment in old_text.segments() {
         assert!(matches!(
@@ -211,13 +225,7 @@ fn wide_names_fail_under_small_work_limits_and_retry_without_mutation() {
         (Limits::new(2049, 2, 10239), Kind::ProjectionNodeLimit),
         (Limits::new(2049, 2049, 4), Kind::ByteLimit),
     ] {
-        assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            kind
-        );
+        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
         assert_eq!(value, before);
     }
     // 2048 four-byte names plus 2047 one-byte separators.
@@ -226,7 +234,7 @@ fn wide_names_fail_under_small_work_limits_and_retry_without_mutation() {
         .join(" ");
     assert_eq!(
         value
-            .serialize_specified_with_limits(Limits::new(2049, 2049, 10239))
+            .serialize_specified(Limits::new(2049, 2049, 10239))
             .unwrap(),
         expected
     );
@@ -259,10 +267,10 @@ fn explicit_normal_and_programmatic_components_keep_the_same_shorthand_value() {
         assert_eq!(wrapper.container(), &value);
         assert_eq!(wrapper.as_css(), authored);
         assert_limits(expected, nodes, |limits| {
-            wrapper.container().serialize_specified_with_limits(limits)
+            wrapper.container().serialize_specified(limits)
         });
 
-        let components = value.to_components().unwrap();
+        let components = value.to_components(Default::default()).unwrap();
         let checked = parse_property_value(
             CssPropertyNameRef::Known(CssKnownProperty::Container),
             components,
@@ -276,7 +284,10 @@ fn explicit_normal_and_programmatic_components_keep_the_same_shorthand_value() {
         };
         assert_eq!(checked_value.container(), &value);
         assert_eq!(
-            checked_value.container().serialize_specified().unwrap(),
+            checked_value
+                .container()
+                .serialize_specified(Default::default())
+                .unwrap(),
             expected
         );
         assert!(checked.position().is_none());

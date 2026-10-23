@@ -36,7 +36,7 @@ fn direct_longhand(name: &str, value: &str) -> CssLonghandValue {
 fn explicit_shorthand_serializes_in_grammar_order_and_preserves_family_boundaries() {
     let authored =
         font(r#"condensed small-caps bold oblique 25deg 16px/1.2 A\ B, A B, "serif", serif"#);
-    let serialized = authored.serialize_specified().unwrap();
+    let serialized = authored.serialize_specified(Default::default()).unwrap();
     assert_eq!(
         serialized,
         "oblique 25deg small-caps bold condensed 16px / 1.2 A\\ B, A B, \"serif\", serif"
@@ -65,7 +65,12 @@ fn system_keywords_and_programmatic_font_serialize_without_environment_lookup() 
         "small-caption",
         "status-bar",
     ] {
-        assert_eq!(font(keyword).serialize_specified().unwrap(), keyword);
+        assert_eq!(
+            font(keyword)
+                .serialize_specified(Default::default())
+                .unwrap(),
+            keyword
+        );
     }
     let families = CssFontFamilyList::try_new(vec![
         CssFontFamilyName::try_ident_sequence(vec!["A B".into()]).unwrap(),
@@ -75,7 +80,7 @@ fn system_keywords_and_programmatic_font_serialize_without_environment_lookup() 
     let explicit =
         CssExplicitFont::try_new(None, None, None, None, CssFontSize::Medium, None, families)
             .unwrap();
-    let css = explicit.serialize_specified().unwrap();
+    let css = explicit.serialize_specified(Default::default()).unwrap();
     assert_eq!(css, "medium A\\ B, serif");
     assert_eq!(font(&css), CssFontValue::Explicit(explicit));
 }
@@ -103,7 +108,7 @@ fn constructed_normal_components_have_the_same_expansion_as_their_canonical_form
     );
     assert!(constructed.stretch().is_none());
     assert_eq!(constructed.line_height(), Some(&CssLineHeight::Normal));
-    let css = constructed.serialize_specified().unwrap();
+    let css = constructed.serialize_specified(Default::default()).unwrap();
     assert_eq!(css, "medium serif");
 
     // Expansion accepts declarations, so serialization is the public bridge
@@ -225,28 +230,25 @@ fn shorthand_uses_one_cumulative_budget_for_all_components() {
     let authored = font("italic bold 16px/1.2 serif");
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(2, 100, 100),
+            CssSerializationLimits::new(2, 100, 100),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(100, 2, 100),
+            CssSerializationLimits::new(100, 2, 100),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(100, 100, 9),
+            CssSerializationLimits::new(100, 100, 9),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
         assert_eq!(
-            authored
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            authored.serialize_specified(limits).unwrap_err().kind(),
             kind
         );
     }
     assert_eq!(
-        authored.serialize_specified().unwrap(),
+        authored.serialize_specified(Default::default()).unwrap(),
         "italic bold 16px / 1.2 serif"
     );
 
@@ -264,12 +266,14 @@ fn shorthand_uses_one_cumulative_budget_for_all_components() {
     )
     .unwrap();
     assert_eq!(
-        normal_components.serialize_specified().unwrap(),
+        normal_components
+            .serialize_specified(Default::default())
+            .unwrap(),
         "medium serif"
     );
     assert_eq!(
         normal_components
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(6, 100, 100))
+            .serialize_specified(CssSerializationLimits::new(6, 100, 100))
             .unwrap_err()
             .kind(),
         CssSpecifiedValueSerializationErrorKind::InputNodeLimit
@@ -279,13 +283,16 @@ fn shorthand_uses_one_cumulative_budget_for_all_components() {
 #[test]
 fn mixed_symbolic_math_remains_parseable_after_canonical_serialization() {
     let authored = font("oblique calc(10deg + 5deg) calc(700) calc(14px) / calc(1.2) serif");
-    let serialized = authored.serialize_specified().unwrap();
+    let serialized = authored.serialize_specified(Default::default()).unwrap();
     assert_eq!(
         serialized,
         "oblique calc(15deg) calc(700) calc(14px) / calc(1.2) serif"
     );
     let reparsed = font(&serialized);
-    assert_eq!(reparsed.serialize_specified().unwrap(), serialized);
+    assert_eq!(
+        reparsed.serialize_specified(Default::default()).unwrap(),
+        serialized
+    );
 }
 
 #[test]
@@ -302,10 +309,13 @@ fn cssom_block_spaces_the_line_height_separator() {
     ] {
         let report = parse_style_attribute(source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-        let serialized = CssSpecifiedDeclarationBlock::try_from_declarations(report.syntax())
-            .unwrap()
-            .serialize_cssom()
-            .unwrap();
+        let serialized = CssSpecifiedDeclarationBlock::try_from_declarations(
+            report.syntax(),
+            Default::default(),
+        )
+        .unwrap()
+        .serialize_cssom(Default::default())
+        .unwrap();
         assert_eq!(serialized, expected, "{source}");
     }
 }

@@ -2,7 +2,7 @@
 
 use crate::specified_rule_serialization::SpecifiedRuleWriter;
 use crate::*;
-type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
+type Result<T> = std::result::Result<T, CssSerializationError>;
 
 macro_rules! keyword {
     ($ty:ident, $($variant:ident => $text:literal),+ $(,)?) => {
@@ -14,22 +14,13 @@ macro_rules! keyword {
 }
 macro_rules! provider {
     ($ty:ty, $value:ident, $writer:ident => $body:expr) => {
-        impl $ty {
-            /// Emits canonical specified syntax without contextual computation.
-            pub fn serialize_specified(&self) -> Result<String> {
-                self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-            }
-            /// Shares input, projection and UTF-8 byte limits across all children; failure is atomic.
-            pub fn serialize_specified_with_limits(&self, limits: CssSpecifiedValueSerializationLimits) -> Result<String> {
-                let mut writer = SpecifiedRuleWriter::new(limits);
-                self.append_to_rule_writer(&mut writer)?;
-                Ok(writer.css)
-            }
-            pub(crate) fn append_to_rule_writer(&self, $writer: &mut SpecifiedRuleWriter) -> Result<()> {
+        impl crate::specified_rule_serialization::SpecifiedProvider for $ty {
+            fn append_to_rule_writer(&self, $writer: &mut SpecifiedRuleWriter) -> Result<()> {
                 let $value = self;
                 $body
             }
         }
+        crate::specified_rule_serialization::specified_serialization!($ty);
     };
 }
 keyword!(CssUnderlinePositionVertical, FromFont => "from-font", Under => "under");
@@ -516,8 +507,9 @@ provider!(CssTextShadow, value, writer => match value { Self::None => writer.key
 #[cfg(test)]
 mod provider_tests {
     use super::*;
+    use crate::CssSerializationLimits as L;
     use crate::CssSpecifiedValueSerializationErrorKind as K;
-    use crate::CssSpecifiedValueSerializationLimits as L;
+    use crate::specified_rule_serialization::SpecifiedProvider as _;
 
     fn shared(
         css: &str,

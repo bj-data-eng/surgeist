@@ -54,7 +54,10 @@ fn explicit_auto_and_omission_have_distinct_authored_states() {
         "font-width"
     );
     let auto = CssFontFaceWidth::Auto;
-    assert_eq!(auto.serialize_specified().unwrap(), "auto");
+    assert_eq!(
+        auto.serialize_specified(Default::default()).unwrap(),
+        "auto"
+    );
     assert_eq!(raw("auto"), auto);
     for name in ["font-width", "font-stretch", "FONT-WIDTH", "FONT-STRETCH"] {
         assert_eq!(sheet(name, "auto").0, auto);
@@ -79,15 +82,24 @@ fn checked_ranges_preserve_mixed_values_descending_order_and_authored_arity() {
         end: Some(percent("75%")),
     };
     assert_ne!(single, repeated);
-    assert_eq!(single.serialize_specified().unwrap(), "75%");
-    assert_eq!(repeated.serialize_specified().unwrap(), "75%");
+    assert_eq!(
+        single.serialize_specified(Default::default()).unwrap(),
+        "75%"
+    );
+    assert_eq!(
+        repeated.serialize_specified(Default::default()).unwrap(),
+        "75%"
+    );
     assert_eq!(raw("75%"), single);
     assert_eq!(raw("75% 75%"), repeated);
     let mixed = CssFontFaceWidth::Range {
         start: CssFontWidth::Keyword(Expanded),
         end: Some(percent("62.5%")),
     };
-    assert_eq!(mixed.serialize_specified().unwrap(), "expanded 62.5%");
+    assert_eq!(
+        mixed.serialize_specified(Default::default()).unwrap(),
+        "expanded 62.5%"
+    );
     assert_eq!(raw("expanded 62.5%"), mixed);
     assert_eq!(sheet("font-width", "expanded 62.5%").0, mixed);
 
@@ -98,7 +110,10 @@ fn checked_ranges_preserve_mixed_values_descending_order_and_authored_arity() {
         ("125% condensed", "125% condensed"),
     ] {
         let actual = raw(text);
-        assert_eq!(actual.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            actual.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_eq!(sheet("font-stretch", text).0, actual);
     }
     let descending = CssFontFaceWidth::Range {
@@ -151,8 +166,11 @@ fn raw_and_sheet_parsing_preserve_numeric_origin_and_descriptor_name_position() 
             expected
         );
     }
-    assert_eq!(start.serialize_specified().unwrap(), "62.5%");
-    assert_eq!(end.serialize_specified().unwrap(), "75%");
+    assert_eq!(
+        start.serialize_specified(Default::default()).unwrap(),
+        "62.5%"
+    );
+    assert_eq!(end.serialize_specified(Default::default()).unwrap(), "75%");
     assert_ne!(
         start,
         CssSpecifiedNonNegativePercentage::try_from_component(
@@ -197,7 +215,7 @@ fn percentage_math_endpoints_remain_deferred_in_raw_and_sheet_values() {
         assert!(start.calculation().is_some());
         assert!(start.literal_component().is_none());
         assert!(end.calculation().is_none());
-        assert_eq!(end.serialize_specified().unwrap(), "125%");
+        assert_eq!(end.serialize_specified(Default::default()).unwrap(), "125%");
         assert!(matches!(start.origin(), CssValueOrigin::Parsed(_)));
         assert!(matches!(end.origin(), CssValueOrigin::Parsed(_)));
     }
@@ -239,7 +257,7 @@ fn aliases_share_ordered_occurrences_and_last_valid_projection() {
             };
             Some((
                 item.position().unwrap().byte_offset().value(),
-                value.serialize_specified().unwrap(),
+                value.serialize_specified(Default::default()).unwrap(),
             ))
         })
         .collect::<Vec<_>>();
@@ -264,7 +282,7 @@ fn aliases_share_ordered_occurrences_and_last_valid_projection() {
     assert_eq!(
         ordinary_face!(rule.descriptors(), FontWidth)
             .unwrap()
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "expanded condensed"
     );
@@ -274,7 +292,7 @@ fn aliases_share_ordered_occurrences_and_last_valid_projection() {
 fn descriptor_serializer_charges_two_endpoints_under_one_budget() {
     let auto = CssFontFaceWidth::Auto;
     assert_eq!(
-        auto.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(1, 1, 4))
+        auto.serialize_specified(CssSerializationLimits::new(1, 1, 4))
             .unwrap(),
         "auto"
     );
@@ -284,30 +302,24 @@ fn descriptor_serializer_charges_two_endpoints_under_one_budget() {
     };
     assert_eq!(
         range
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(3, 3, 8))
+            .serialize_specified(CssSerializationLimits::new(3, 3, 8))
             .unwrap(),
         "75% 125%"
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(2, 3, 8),
+            CssSerializationLimits::new(2, 3, 8),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(3, 2, 8),
+            CssSerializationLimits::new(3, 2, 8),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(3, 3, 7),
+            CssSerializationLimits::new(3, 3, 7),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
-        assert_eq!(
-            range
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            kind
-        );
+        assert_eq!(range.serialize_specified(limits).unwrap_err().kind(), kind);
     }
 }

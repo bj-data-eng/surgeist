@@ -4,9 +4,9 @@ use std::cmp::Ordering;
 
 use crate::{
     CssComponentValue, CssComponentValueError, CssComponentValueErrorKind, CssComponentValueRef,
-    CssIntegerValue, CssNumericTokenKind, CssNumericTokenRef, CssSpecifiedValueSerializationError,
-    CssSpecifiedValueSerializationErrorKind, CssSpecifiedValueSerializationLimits, CssValueOrigin,
-    CssValueTokenRef, CssZIndexValue, specified_serialization::SpecifiedSerializationContext,
+    CssIntegerValue, CssNumericTokenKind, CssNumericTokenRef, CssSerializationError,
+    CssSpecifiedValueSerializationErrorKind, CssValueOrigin, CssValueTokenRef, CssZIndexValue,
+    specified_serialization::SpecifiedSerializationContext,
 };
 
 /// One checked lexical integer token, without a machine-integer magnitude bound.
@@ -120,9 +120,8 @@ impl CssIntegerLiteral {
         &self,
         context: &mut SpecifiedSerializationContext,
         output: &mut String,
-    ) -> Result<(), CssSpecifiedValueSerializationError> {
-        context.charge_input(1)?;
-        context.charge_projection(1)?;
+    ) -> Result<(), CssSerializationError> {
+        context.charge_nodes(1)?;
         if context.output_suppressed() {
             return Ok(());
         }
@@ -169,6 +168,7 @@ pub(crate) fn nonnegative_integer_literal_controlled(
 
 #[cfg(test)]
 mod controlled_index_tests {
+
     use super::*;
     use crate::{
         CssComponentValueLimits, CssUtf16InputLimits, CssUtf16PropertyValueLimits,
@@ -260,44 +260,12 @@ pub(crate) fn exact_i32(text: &str) -> Option<i32> {
 }
 
 impl CssIntegerValue {
-    /// Produces canonical specified text without computed integer rounding.
-    ///
-    /// Ordinary literal magnitudes are exact. Calculation projection, including
-    /// an explicitly constructed literal-only calculation root, uses the shared
-    /// binary64 math policy while retaining its exact authored expression. Finite
-    /// results emit at most six fractional places, nearest with ties away from
-    /// zero, and preserve all exact integer digits of the binary64 result.
-    pub fn serialize_specified(&self) -> Result<String, CssSpecifiedValueSerializationError> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Projects atomically with the shared input, projection and output budgets.
-    /// Ordinary integers charge one input and one projection node.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String, CssSpecifiedValueSerializationError> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        let context = &mut writer.context;
-        let output = &mut writer.css;
-        self.append_specified(context, output)?;
-        Ok(())
-    }
-
     /// Appends one integer to a caller's cumulative specified-CSS budget.
     pub(crate) fn append_specified(
         &self,
         context: &mut SpecifiedSerializationContext,
         output: &mut String,
-    ) -> Result<(), CssSpecifiedValueSerializationError> {
+    ) -> Result<(), CssSerializationError> {
         if let Self::Calculation(calculation) = self {
             crate::numeric::project_specified_into(&calculation.expression, context, output)?;
             return Ok(());
@@ -308,58 +276,51 @@ impl CssIntegerValue {
         }
     }
 }
-
-impl CssZIndexValue {
-    /// Produces canonical specified `auto` or integer text, retaining authored identity.
-    ///
-    /// Integer literals retain exact magnitude. Math uses the shared specified
-    /// projection without computed integer rounding or contextual stacking policy.
-    pub fn serialize_specified(&self) -> Result<String, CssSpecifiedValueSerializationError> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes atomically under shared input, projection and UTF-8 byte budgets.
-    /// `auto` charges one input and one projection node. Integer values use the
-    /// integer writer's accounting without an additional wrapper charge.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String, CssSpecifiedValueSerializationError> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssIntegerValue {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         let context = &mut writer.context;
         let output = &mut writer.css;
         self.append_specified(context, output)?;
         Ok(())
     }
+}
+crate::specified_rule_serialization::specified_serialization!(CssIntegerValue);
 
+impl CssZIndexValue {
     pub(crate) fn append_specified(
         &self,
         context: &mut SpecifiedSerializationContext,
         output: &mut String,
-    ) -> Result<(), CssSpecifiedValueSerializationError> {
+    ) -> Result<(), CssSerializationError> {
         match self {
             Self::Auto => {
-                context.charge_input(1)?;
-                context.charge_projection(1)?;
+                context.charge_nodes(1)?;
                 context.append(output, "auto")
             }
             Self::Integer(value) => value.append_specified(context, output),
         }
     }
 }
+impl crate::specified_rule_serialization::SpecifiedProvider for CssZIndexValue {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        let context = &mut writer.context;
+        let output = &mut writer.css;
+        self.append_specified(context, output)?;
+        Ok(())
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(CssZIndexValue);
 
 fn serialize_integer_digits(
     text: &str,
     byte_limit: usize,
-) -> Result<String, CssSpecifiedValueSerializationError> {
+) -> Result<String, CssSerializationError> {
     use CssSpecifiedValueSerializationErrorKind as Kind;
     let negative = text.starts_with('-');
     let digits = text
@@ -374,9 +335,9 @@ fn serialize_integer_digits(
     let length = digits
         .len()
         .checked_add(usize::from(negative))
-        .ok_or_else(|| CssSpecifiedValueSerializationError::new(Kind::CapacityOverflow))?;
+        .ok_or_else(|| CssSerializationError::new(Kind::CapacityOverflow))?;
     if length > byte_limit {
-        return Err(CssSpecifiedValueSerializationError::new(Kind::ByteLimit));
+        return Err(CssSerializationError::new(Kind::ByteLimit));
     }
     let mut output = String::with_capacity(length);
     if negative {
@@ -390,6 +351,7 @@ fn serialize_integer_digits(
 mod z_index_serialization_tests {
     use super::*;
     use crate::CssIntegerCalculation;
+    use crate::CssSerializationLimits;
     use CssSpecifiedValueSerializationErrorKind as Kind;
 
     #[test]
@@ -401,19 +363,16 @@ mod z_index_serialization_tests {
         // The separator is a UTF-8 accounting probe in the shared private writer,
         // not a proposed CSS property grammar. "autoé-2" occupies eight bytes.
         for (limits, failure) in [
-            (CssSpecifiedValueSerializationLimits::new(2, 2, 8), None),
+            (CssSerializationLimits::new(2, 2, 8), None),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 2, 8),
+                CssSerializationLimits::new(1, 2, 8),
                 Some(Kind::InputNodeLimit),
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(2, 1, 8),
+                CssSerializationLimits::new(2, 1, 8),
                 Some(Kind::ProjectionNodeLimit),
             ),
-            (
-                CssSpecifiedValueSerializationLimits::new(2, 2, 7),
-                Some(Kind::ByteLimit),
-            ),
+            (CssSerializationLimits::new(2, 2, 7), Some(Kind::ByteLimit)),
         ] {
             let mut context = SpecifiedSerializationContext::new(limits);
             let mut output = String::new();
@@ -439,20 +398,17 @@ mod z_index_serialization_tests {
         ));
         let before = second.clone();
         for (limits, failure) in [
+            (CssSerializationLimits::new(100, 100, 12), None),
             (
-                CssSpecifiedValueSerializationLimits::new(100, 100, 12),
-                None,
-            ),
-            (
-                CssSpecifiedValueSerializationLimits::new(1, 100, 12),
+                CssSerializationLimits::new(1, 100, 12),
                 Some(Kind::InputNodeLimit),
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(100, 1, 12),
+                CssSerializationLimits::new(100, 1, 12),
                 Some(Kind::ProjectionNodeLimit),
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(100, 100, 11),
+                CssSerializationLimits::new(100, 100, 11),
                 Some(Kind::ByteLimit),
             ),
         ] {

@@ -41,11 +41,14 @@ fn extension_names_use_decoded_case_sensitive_identifiers_and_original_origin() 
     };
     assert_eq!(rule.name().as_str(), "--Theme");
     assert_eq!(
-        surgeist_css::CssComponentValues::try_new(vec![rule.name().component().clone()])
-            .unwrap()
-            .serialize()
-            .unwrap()
-            .as_css(),
+        surgeist_css::CssComponentValues::try_new(
+            vec![rule.name().component().clone()],
+            Default::default()
+        )
+        .unwrap()
+        .serialize_tokens(Default::default())
+        .unwrap()
+        .as_css(),
         "--\\54 heme"
     );
     assert!(matches!(rule.name().origin(), CssValueOrigin::Parsed(_)));
@@ -54,28 +57,30 @@ fn extension_names_use_decoded_case_sensitive_identifiers_and_original_origin() 
 #[test]
 fn checked_body_rejects_invalid_grammar_without_property_support_filtering() {
     let unknown = parse_component_values("future:unknown(foo);@future test{other:value}").unwrap();
-    let body = CssSupportsTestBody::try_from_components(unknown).unwrap();
+    let body = CssSupportsTestBody::try_from_components(unknown, Default::default()).unwrap();
     assert_eq!(body.items().len(), 2);
     let invalid = parse_component_values("missing-colon;").unwrap();
     assert!(matches!(
-        CssSupportsTestBody::try_from_components(invalid),
+        CssSupportsTestBody::try_from_components(invalid, Default::default()),
         Err(CssNamedSupportsConstructionError::InvalidBodyGrammar { .. })
     ));
     let recovered = parse_component_values("future:fn(").unwrap();
     assert!(matches!(
-        CssSupportsTestBody::try_from_components(recovered),
+        CssSupportsTestBody::try_from_components(recovered, Default::default()),
         Err(CssNamedSupportsConstructionError::RecoveredInput { .. })
     ));
 }
 
 #[test]
 fn strict_rule_budget_counts_name_shell_body_and_nested_structural_depth() {
-    let body =
-        CssSupportsTestBody::try_from_components(parse_component_values("x:y;").unwrap()).unwrap();
+    let body = CssSupportsTestBody::try_from_components(
+        parse_component_values("x:y;").unwrap(),
+        Default::default(),
+    )
+    .unwrap();
     let name = CssSupportsConditionName::try_new("--x").unwrap();
     let too_few = CssComponentValueLimits::try_new(256, 7, usize::MAX).unwrap();
-    let error = CssSupportsConditionRule::try_new_with_limits(name.clone(), body.clone(), too_few)
-        .unwrap_err();
+    let error = CssSupportsConditionRule::try_new(name.clone(), body.clone(), too_few).unwrap_err();
     assert!(
         matches!(error, CssNamedSupportsConstructionError::Component(ref detail) if detail.kind() == CssComponentValueErrorKind::ComponentLimit)
     );
@@ -83,22 +88,25 @@ fn strict_rule_budget_counts_name_shell_body_and_nested_structural_depth() {
         matches!(error.origin(), CssValueOrigin::Parsed(origin) if origin.span().start().byte_offset().value() == 3)
     );
     let enough = CssComponentValueLimits::try_new(256, 8, usize::MAX).unwrap();
-    CssSupportsConditionRule::try_new_with_limits(name.clone(), body, enough).unwrap();
+    CssSupportsConditionRule::try_new(name.clone(), body, enough).unwrap();
 
     let whitespace_limit = CssComponentValueLimits::try_new(256, 1, usize::MAX).unwrap();
-    let empty =
-        CssSupportsTestBody::try_from_components(parse_component_values("").unwrap()).unwrap();
+    let empty = CssSupportsTestBody::try_from_components(
+        parse_component_values("").unwrap(),
+        Default::default(),
+    )
+    .unwrap();
     let error =
-        CssSupportsConditionRule::try_new_with_limits(name.clone(), empty, whitespace_limit)
-            .unwrap_err();
+        CssSupportsConditionRule::try_new(name.clone(), empty, whitespace_limit).unwrap_err();
     assert!(matches!(error.origin(), CssValueOrigin::Programmatic));
 
-    let nested =
-        CssSupportsTestBody::try_from_components(parse_component_values("a{b:c}").unwrap())
-            .unwrap();
+    let nested = CssSupportsTestBody::try_from_components(
+        parse_component_values("a{b:c}").unwrap(),
+        Default::default(),
+    )
+    .unwrap();
     let too_shallow = CssComponentValueLimits::try_new(1, usize::MAX, usize::MAX).unwrap();
-    let error =
-        CssSupportsConditionRule::try_new_with_limits(name, nested, too_shallow).unwrap_err();
+    let error = CssSupportsConditionRule::try_new(name, nested, too_shallow).unwrap_err();
     assert!(
         matches!(error, CssNamedSupportsConstructionError::Component(ref detail) if detail.kind() == CssComponentValueErrorKind::NestingLimit)
     );
@@ -108,21 +116,21 @@ fn strict_rule_budget_counts_name_shell_body_and_nested_structural_depth() {
 fn checked_body_counts_generated_semicolon_and_boundary_comment() {
     let input = parse_component_values("x:y").unwrap();
     let too_few = CssComponentValueLimits::try_new(256, 3, usize::MAX).unwrap();
-    let error =
-        CssSupportsTestBody::try_from_components_with_limits(input.clone(), too_few).unwrap_err();
+    let error = CssSupportsTestBody::try_from_components(input.clone(), too_few).unwrap_err();
     assert!(
         matches!(error, CssNamedSupportsConstructionError::Component(ref detail) if detail.kind() == CssComponentValueErrorKind::ComponentLimit)
     );
     assert!(matches!(error.origin(), CssValueOrigin::Programmatic));
     let enough = CssComponentValueLimits::try_new(256, 4, usize::MAX).unwrap();
-    CssSupportsTestBody::try_from_components_with_limits(input, enough).unwrap();
+    CssSupportsTestBody::try_from_components(input, enough).unwrap();
 
     let mut adjacent = parse_component_values("x:").unwrap().items().to_vec();
     adjacent.push(CssComponentValue::try_number("1").unwrap());
     adjacent.push(CssComponentValue::try_ident("e3").unwrap());
-    let adjacent = CssComponentValues::try_new(adjacent).unwrap();
-    let body = CssSupportsTestBody::try_from_components(adjacent.clone()).unwrap();
-    let output = body.serialize().unwrap();
+    let adjacent = CssComponentValues::try_new(adjacent, Default::default()).unwrap();
+    let body =
+        CssSupportsTestBody::try_from_components(adjacent.clone(), Default::default()).unwrap();
+    let output = body.serialize_tokens(Default::default()).unwrap();
     assert_eq!(output.as_css(), "x:1/**/e3;");
     assert!(
         output
@@ -132,17 +140,18 @@ fn checked_body_counts_generated_semicolon_and_boundary_comment() {
     );
     let too_few = CssComponentValueLimits::try_new(256, 5, usize::MAX).unwrap();
     assert!(matches!(
-        CssSupportsTestBody::try_from_components_with_limits(adjacent.clone(), too_few),
+        CssSupportsTestBody::try_from_components(adjacent.clone(), too_few),
         Err(CssNamedSupportsConstructionError::Component(ref detail)) if detail.kind() == CssComponentValueErrorKind::ComponentLimit
     ));
     let enough = CssComponentValueLimits::try_new(256, 6, usize::MAX).unwrap();
-    CssSupportsTestBody::try_from_components_with_limits(adjacent, enough).unwrap();
+    CssSupportsTestBody::try_from_components(adjacent, enough).unwrap();
 }
 
 #[test]
 fn checked_declarations_keep_nonterminal_bangs_in_the_semantic_value() {
     let body = CssSupportsTestBody::try_from_components(
         parse_component_values("future:a !b;future:a !important !important;").unwrap(),
+        Default::default(),
     )
     .unwrap();
     let [CssSupportsTestItem::Declarations(run)] = body.items() else {
@@ -166,12 +175,18 @@ fn checked_declarations_keep_nonterminal_bangs_in_the_semantic_value() {
 
 #[test]
 fn lexical_serialization_maps_supplied_tokens_and_generated_delimiters() {
-    let body =
-        CssSupportsTestBody::try_from_components(parse_component_values("x:y").unwrap()).unwrap();
-    let rule =
-        CssSupportsConditionRule::try_new(CssSupportsConditionName::try_new("--x").unwrap(), body)
-            .unwrap();
-    let serialized = rule.serialize().unwrap();
+    let body = CssSupportsTestBody::try_from_components(
+        parse_component_values("x:y").unwrap(),
+        Default::default(),
+    )
+    .unwrap();
+    let rule = CssSupportsConditionRule::try_new(
+        CssSupportsConditionName::try_new("--x").unwrap(),
+        body,
+        Default::default(),
+    )
+    .unwrap();
+    let serialized = rule.serialize_tokens(Default::default()).unwrap();
     assert_eq!(serialized.as_css(), "@supports-condition --x{x:y;}");
     for delimiter in ["{", "}"] {
         assert!(

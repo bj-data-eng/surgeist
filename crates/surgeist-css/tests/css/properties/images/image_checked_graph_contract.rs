@@ -30,14 +30,22 @@ fn math(functions: usize, leaf: &str) -> CssComponentValues {
 
 fn lp(functions: usize) -> CssSpecifiedLengthPercentage {
     CssSpecifiedLengthPercentage::try_from_calculation(
-        CssLengthPercentageCalculation::try_from_components(math(functions, "1px")).unwrap(),
+        CssLengthPercentageCalculation::try_from_components(
+            math(functions, "1px"),
+            Default::default(),
+        )
+        .unwrap(),
     )
     .unwrap()
 }
 
 fn nnlp(functions: usize) -> CssSpecifiedNonNegativeLengthPercentage {
     CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(
-        CssLengthPercentageCalculation::try_from_components(math(functions, "1px")).unwrap(),
+        CssLengthPercentageCalculation::try_from_components(
+            math(functions, "1px"),
+            Default::default(),
+        )
+        .unwrap(),
     )
     .unwrap()
 }
@@ -135,7 +143,11 @@ fn numeric_gradient(functions: usize, role: NumericRole, repeating: bool) -> Css
     let gradient = match role {
         NumericRole::Direction => {
             let angle = CssAngleValue::try_from_calculation(
-                CssAngleCalculation::try_from_components(math(functions, "1deg")).unwrap(),
+                CssAngleCalculation::try_from_components(
+                    math(functions, "1deg"),
+                    Default::default(),
+                )
+                .unwrap(),
             )
             .unwrap();
             CssGradient::Linear(CssLinearGradient::new(
@@ -166,7 +178,11 @@ fn numeric_gradient(functions: usize, role: NumericRole, repeating: bool) -> Css
         }
         NumericRole::Circle => {
             let radius = CssSpecifiedNonNegativeLength::try_from_calculation(
-                CssLengthCalculation::try_from_components(math(functions, "1px")).unwrap(),
+                CssLengthCalculation::try_from_components(
+                    math(functions, "1px"),
+                    Default::default(),
+                )
+                .unwrap(),
             )
             .unwrap();
             CssGradient::Radial(
@@ -301,8 +317,11 @@ fn numeric_provider_control_retains_the_complete_256_level_original_components()
         let components = math(256, leaf);
         let before = components.clone();
         if leaf == "1px" {
-            let length =
-                CssLengthPercentageCalculation::try_from_components(components.clone()).unwrap();
+            let length = CssLengthPercentageCalculation::try_from_components(
+                components.clone(),
+                Default::default(),
+            )
+            .unwrap();
             assert_eq!(length.components(), &before);
             assert_eq!(
                 CssSpecifiedLengthPercentage::try_from_calculation(length)
@@ -313,7 +332,9 @@ fn numeric_provider_control_retains_the_complete_256_level_original_components()
                 &before
             );
         } else {
-            let angle = CssAngleCalculation::try_from_components(components.clone()).unwrap();
+            let angle =
+                CssAngleCalculation::try_from_components(components.clone(), Default::default())
+                    .unwrap();
             assert_eq!(angle.components(), &before);
             assert_eq!(
                 CssAngleValue::try_from_calculation(angle)
@@ -381,15 +402,17 @@ fn mixed_source_numeric_components_survive_admission_and_failed_enclosing_compos
     let parsed_before = parsed.clone();
     let mut components = parsed.clone();
     for _ in 0..256 {
-        components = CssComponentValues::try_new(vec![
-            CssComponentValue::try_function("calc", components).unwrap(),
-        ])
+        components = CssComponentValues::try_new(
+            vec![CssComponentValue::try_function("calc", components).unwrap()],
+            Default::default(),
+        )
         .unwrap();
     }
     assert_eq!(components.nesting_depth(), 256);
     let before = components.clone();
     let calculation =
-        CssLengthPercentageCalculation::try_from_components(components.clone()).unwrap();
+        CssLengthPercentageCalculation::try_from_components(components.clone(), Default::default())
+            .unwrap();
     assert_eq!(calculation.components(), &before);
     let position = CssSpecifiedLengthPercentage::try_from_calculation(calculation).unwrap();
     let invalid = CssImageValue::Gradient(CssGradient::Linear(CssLinearGradient::new(

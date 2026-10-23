@@ -32,8 +32,12 @@ fn root_matched_blocks_remain_pending_in_every_descriptor() {
                 kind.css_name()
             );
             let components = parse_component_values(value).unwrap();
-            let constructed =
-                CssFontPaletteDescriptorValue::try_new(kind, components.clone()).unwrap();
+            let constructed = CssFontPaletteDescriptorValue::try_new(
+                kind,
+                components.clone(),
+                Default::default(),
+            )
+            .unwrap();
             assert_eq!(constructed.components(), &components);
             for admitted in [
                 rule.descriptors()[1].value(),
@@ -46,7 +50,12 @@ fn root_matched_blocks_remain_pending_in_every_descriptor() {
                     CssFontPaletteDescriptorValueRef::Pending(_)
                 ));
                 assert_eq!(
-                    admitted.components().serialize().unwrap().as_css().trim(),
+                    admitted
+                        .components()
+                        .serialize_tokens(Default::default())
+                        .unwrap()
+                        .as_css()
+                        .trim(),
                     value
                 );
             }
@@ -70,14 +79,24 @@ fn nested_fallback_blocks_remain_pending_across_descriptor_entry_points() {
             let parsed = rule.descriptors()[1].value();
             let fragment = parse_font_palette_descriptor_value(value, kind);
             assert!(fragment.is_clean());
-            let constructed =
-                CssFontPaletteDescriptorValue::try_new(kind, parsed.components().clone()).unwrap();
+            let constructed = CssFontPaletteDescriptorValue::try_new(
+                kind,
+                parsed.components().clone(),
+                Default::default(),
+            )
+            .unwrap();
             for checked in [parsed, fragment.syntax().as_ref().unwrap(), &constructed] {
                 assert!(matches!(
                     checked.view(),
                     CssFontPaletteDescriptorValueRef::Pending(_)
                 ));
-                assert_eq!(checked.to_specified_css().unwrap().trim(), value);
+                assert_eq!(
+                    checked
+                        .serialize_specified(Default::default())
+                        .unwrap()
+                        .trim(),
+                    value
+                );
             }
         }
     }

@@ -174,8 +174,11 @@ fn box_sizing_checked_construction_preserves_programmatic_origins_and_keyword_me
         ("content-box", CssBoxSizing::ContentBox),
         ("BORDER-BOX", CssBoxSizing::BorderBox),
     ] {
-        let components =
-            CssComponentValues::try_new(vec![CssComponentValue::try_token(text).unwrap()]).unwrap();
+        let components = CssComponentValues::try_new(
+            vec![CssComponentValue::try_token(text).unwrap()],
+            Default::default(),
+        )
+        .unwrap();
         let source = parse_property_value(
             CssPropertyNameRef::Known(CssKnownProperty::BoxSizing),
             components.clone(),
@@ -225,37 +228,39 @@ fn box_sizing_specified_serialization_is_canonical_and_resource_bounded() {
         };
         assert_eq!(authored.value(), &expected);
         assert_eq!(authored.as_css(), source_text);
-        assert_eq!(authored.value().serialize_specified().unwrap(), canonical);
-        assert_eq!(expected.serialize_specified().unwrap(), canonical);
+        assert_eq!(
+            authored
+                .value()
+                .serialize_specified(Default::default())
+                .unwrap(),
+            canonical
+        );
+        assert_eq!(
+            expected.serialize_specified(Default::default()).unwrap(),
+            canonical
+        );
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(0, 1, canonical.len()),
+                CssSerializationLimits::new(0, 1, canonical.len()),
                 K::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 0, canonical.len()),
+                CssSerializationLimits::new(1, 0, canonical.len()),
                 K::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 1, canonical.len() - 1),
+                CssSerializationLimits::new(1, 1, canonical.len() - 1),
                 K::ByteLimit,
             ),
         ] {
             assert_eq!(
-                expected
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                expected.serialize_specified(limits).unwrap_err().kind(),
                 kind
             );
         }
         assert_eq!(
             expected
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    1,
-                    1,
-                    canonical.len()
-                ))
+                .serialize_specified(CssSerializationLimits::new(1, 1, canonical.len()))
                 .unwrap(),
             canonical
         );

@@ -229,7 +229,8 @@ pub struct CssColorFacts<'a> {
     pub(crate) device: CssDeviceColorFact<'a>,
 }
 impl<'a> CssColorFacts<'a> {
-    /// Borrows explicit facts without allocating, scanning, guessing palette entries or resolving them.
+    /// Borrows explicit facts without allocating, scanning, guessing palette entries or resolving
+    /// them.
     #[must_use]
     pub const fn new(
         identity: CssColorFactIdentity,

@@ -2,8 +2,8 @@ use surgeist_css::{
     CssGridTemplateAreaCell as Cell, CssGridTemplateAreaError as AreaError,
     CssGridTemplateAreaName as Name, CssGridTemplateAreaRow as Row, CssGridTemplateAreas as Areas,
     CssInitialValueRef, CssKnownProperty, CssKnownPropertyValueRef, CssLonghandValueRef,
-    CssPropertyKindRef, CssSpecifiedValueSerializationErrorKind as SerializationError,
-    CssSpecifiedValueSerializationLimits as Limits, parse_style_attribute,
+    CssPropertyKindRef, CssSerializationLimits as Limits,
+    CssSpecifiedValueSerializationErrorKind as SerializationError, parse_style_attribute,
 };
 
 fn named(value: &str) -> Cell {
@@ -38,7 +38,10 @@ fn parsed_current_and_authored_text_remain_distinct_and_initial_is_none() {
     .unwrap();
     assert_eq!(wrapper.value(), &expected);
     assert_eq!(
-        wrapper.value().serialize_specified().unwrap(),
+        wrapper
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "\"1st . auto A b\""
     );
 
@@ -63,7 +66,10 @@ fn parsed_current_and_authored_text_remain_distinct_and_initial_is_none() {
             &Areas::try_rows(vec![row(vec![named(decoded)])]).unwrap()
         );
         assert_eq!(
-            wrapper.value().serialize_specified().unwrap(),
+            wrapper
+                .value()
+                .serialize_specified(Default::default())
+                .unwrap(),
             format!("\"{decoded}\"")
         );
     }
@@ -123,7 +129,10 @@ fn lexer_replacement_of_null_remains_an_ident_code_point() {
             &Areas::try_rows(vec![row(vec![named("a\u{fffd}b")])]).unwrap()
         );
         assert_eq!(
-            wrapper.value().serialize_specified().unwrap(),
+            wrapper
+                .value()
+                .serialize_specified(Default::default())
+                .unwrap(),
             "\"a\u{fffd}b\""
         );
     }
@@ -187,16 +196,25 @@ fn checked_rows_enforce_nonempty_equal_width_and_rectangles() {
 
 #[test]
 fn canonical_serialization_uses_one_cell_separator_and_bounded_css_strings() {
-    assert_eq!(Areas::None.serialize_specified().unwrap(), "none");
+    assert_eq!(
+        Areas::None.serialize_specified(Default::default()).unwrap(),
+        "none"
+    );
     let areas = Areas::try_rows(vec![
         row(vec![named("a"), Cell::Empty, named("B")]),
         row(vec![named("auto"), named("a\u{a0}b"), named("a\u{85}b")]),
     ])
     .unwrap();
     let expected = "\"a . B\" \"auto a\u{a0}b a\u{85}b\"";
-    assert_eq!(areas.serialize_specified().unwrap(), expected);
+    assert_eq!(
+        areas.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     let ordinary = Areas::try_rows(vec![row(vec![named("A"), Cell::Empty, named("b")])]).unwrap();
-    assert_eq!(ordinary.serialize_specified().unwrap(), "\"A . b\"");
+    assert_eq!(
+        ordinary.serialize_specified(Default::default()).unwrap(),
+        "\"A . b\""
+    );
 }
 
 #[test]
@@ -205,9 +223,7 @@ fn specified_serialization_charges_each_node_and_exact_output_bytes() {
     let css = "\"a . b\"";
     assert_eq!(css.len(), 7);
     assert_eq!(
-        areas
-            .serialize_specified_with_limits(Limits::new(5, 5, 7))
-            .unwrap(),
+        areas.serialize_specified(Limits::new(5, 5, 7)).unwrap(),
         css
     );
     for (limits, expected) in [
@@ -219,22 +235,19 @@ fn specified_serialization_charges_each_node_and_exact_output_bytes() {
         (Limits::new(5, 5, 6), SerializationError::ByteLimit),
     ] {
         assert_eq!(
-            areas
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            areas.serialize_specified(limits).unwrap_err().kind(),
             expected
         );
     }
     assert_eq!(
         Areas::None
-            .serialize_specified_with_limits(Limits::new(1, 1, 4))
+            .serialize_specified(Limits::new(1, 1, 4))
             .unwrap(),
         "none"
     );
     assert_eq!(
         Areas::None
-            .serialize_specified_with_limits(Limits::new(0, 1, 4))
+            .serialize_specified(Limits::new(0, 1, 4))
             .unwrap_err()
             .kind(),
         SerializationError::InputNodeLimit

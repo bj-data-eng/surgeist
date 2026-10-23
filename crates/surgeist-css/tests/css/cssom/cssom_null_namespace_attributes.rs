@@ -10,8 +10,14 @@ fn literal_null_attribute_separator_is_omitted_without_changing_authored_identit
     assert!(report.is_clean(), "{report:?}");
     let before = report.clone();
     let value = report.syntax().as_ref().unwrap();
-    assert_eq!(value.to_specified_css().unwrap(), "[|a] { }");
-    assert_eq!(value.serialize_cssom().unwrap(), "[a] { }");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "[|a] { }"
+    );
+    assert_eq!(
+        value.serialize_cssom(Default::default()).unwrap(),
+        "[a] { }"
+    );
     assert_eq!(report, before);
 }
 
@@ -21,11 +27,14 @@ fn null_attribute_names_inside_logical_arguments_keep_wildcard_and_flags_distinc
     assert!(report.is_clean(), "{report:?}");
     let before = report.clone();
     assert_eq!(
-        report.syntax().to_specified_css().unwrap(),
+        report
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "[|a=\"é\" s]:is([|b], [*|c]) { }"
     );
     assert_eq!(
-        report.syntax().serialize_cssom().unwrap(),
+        report.syntax().serialize_cssom(Default::default()).unwrap(),
         "[a=\"é\" s]:is([b], [*|c]) { }"
     );
     assert_eq!(report, before);
@@ -40,7 +49,13 @@ fn unprefixed_attributes_do_not_inherit_default_namespace_and_any_remains_raw() 
         panic!("style")
     };
     let value = &report.syntax().rules()[1];
-    assert_eq!(value.to_specified_css().unwrap(), "[|a][a][*|a] { }");
-    assert_eq!(value.serialize_cssom().unwrap(), "[a][a][*|a] { }");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "[|a][a][*|a] { }"
+    );
+    assert_eq!(
+        value.serialize_cssom(Default::default()).unwrap(),
+        "[a][a][*|a] { }"
+    );
     assert_eq!(report, before);
 }

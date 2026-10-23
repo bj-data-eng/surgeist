@@ -6,7 +6,7 @@
 use super::*;
 use crate::{
     CssParsedColorAlphaRef, CssProfileColorExpression, CssProfileColorExpressionRef,
-    CssSpecifiedValueSerializationError as Error, CssSpecifiedValueSerializationErrorKind,
+    CssSerializationError as Error, CssSpecifiedValueSerializationErrorKind,
     exact_decimal::LexicalDecimal, specified_serialization::SpecifiedSerializationContext,
 };
 
@@ -525,13 +525,11 @@ mod tests {
         let right = color("rgba(1, 2, 3, 100%)");
         // One color frame, three channel comparisons and one parsed-alpha
         // comparison. Borrowed scalar/default equality allocates no digits.
-        let mut context = SpecifiedSerializationContext::new(
-            crate::CssSpecifiedValueSerializationLimits::new(0, 5, 0),
-        );
+        let mut context =
+            SpecifiedSerializationContext::new(crate::CssSerializationLimits::new(0, 5, 0));
         assert!(left.specified_inverse_eq(&right, &mut context).unwrap());
-        let mut context = SpecifiedSerializationContext::new(
-            crate::CssSpecifiedValueSerializationLimits::new(0, 4, 0),
-        );
+        let mut context =
+            SpecifiedSerializationContext::new(crate::CssSerializationLimits::new(0, 4, 0));
         assert_eq!(
             left.specified_inverse_eq(&right, &mut context)
                 .unwrap_err()
@@ -560,9 +558,8 @@ mod tests {
                 "color-mix(red calc(50%), blue calc(50%))",
             ),
         ] {
-            let mut context = SpecifiedSerializationContext::new(
-                crate::CssSpecifiedValueSerializationLimits::default(),
-            );
+            let mut context =
+                SpecifiedSerializationContext::new(crate::CssSerializationLimits::default());
             assert!(
                 !color(left)
                     .specified_inverse_eq(&color(right), &mut context)
@@ -578,13 +575,11 @@ mod tests {
         // Color frame + three channels + alpha = P5. Exact numeric graph
         // comparison schedules Calc, Sum and two leaves into four real work
         // slots, another P4. No value projection, I/B, or rounded text is used.
-        let mut context = SpecifiedSerializationContext::new(
-            crate::CssSpecifiedValueSerializationLimits::new(0, 9, 0),
-        );
+        let mut context =
+            SpecifiedSerializationContext::new(crate::CssSerializationLimits::new(0, 9, 0));
         assert!(left.specified_inverse_eq(&right, &mut context).unwrap());
-        let mut context = SpecifiedSerializationContext::new(
-            crate::CssSpecifiedValueSerializationLimits::new(0, 8, 0),
-        );
+        let mut context =
+            SpecifiedSerializationContext::new(crate::CssSerializationLimits::new(0, 8, 0));
         assert_eq!(
             left.specified_inverse_eq(&right, &mut context)
                 .unwrap_err()

@@ -6,42 +6,18 @@
 //! omitted. Punctuation costs bytes only. Rotation's synthesized components cost
 //! projection nodes in its owner. Six-place formatting never selects omission.
 
+use crate::specified_rule_serialization::SpecifiedProvider as _;
 use crate::{
     CssAngleOrZero, CssComponentValue, CssComponentValueRef, CssPerspective, CssScale,
-    CssSpecifiedLengthPercentage, CssSpecifiedPercentage, CssSpecifiedValueSerializationError,
-    CssSpecifiedValueSerializationLimits, CssTransform, CssTransformFunction, CssTransformOrigin,
-    CssTransformPerspective, CssTransformScaleComponent, CssTranslate, CssValueTokenRef,
+    CssSerializationError, CssSpecifiedLengthPercentage, CssSpecifiedPercentage, CssTransform,
+    CssTransformFunction, CssTransformOrigin, CssTransformPerspective, CssTransformScaleComponent,
+    CssTranslate, CssValueTokenRef,
     exact_decimal::LexicalDecimal,
     numeric::{NumericProjectionScale, capture_specified_scaled},
     specified_rule_serialization::SpecifiedRuleWriter,
 };
 
-type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
-
-macro_rules! specified_methods {
-    () => {
-        /// Emits canonical specified syntax from retained typed operands.
-        /// Exact ordinary defaults may be omitted; authored fields and origins
-        /// remain unchanged. Percentages and calculations retain their owning
-        /// specified policy without resolving reference boxes or matrices.
-        pub fn serialize_specified(&self) -> Result<String> {
-            self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-        }
-
-        /// Uses one cumulative input, projection and UTF-8 byte context.
-        /// Numeric output retains six-place formatting. Failure returns no
-        /// partial CSS and preserves the authored value. General rotate3d axes
-        /// share the Rotate owner's approximation and representability policy.
-        pub fn serialize_specified_with_limits(
-            &self,
-            limits: CssSpecifiedValueSerializationLimits,
-        ) -> Result<String> {
-            let mut writer = SpecifiedRuleWriter::new(limits);
-            self.append_to_rule_writer(&mut writer)?;
-            Ok(writer.css)
-        }
-    };
-}
+type Result<T> = std::result::Result<T, CssSerializationError>;
 
 fn ordinary_zero(component: &CssComponentValue, allow_percentage: bool) -> bool {
     let number = match component.view() {
@@ -90,9 +66,9 @@ fn scale_factors_equal(
     }
 }
 
-impl CssPerspective {
-    specified_methods!();
-    pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+crate::specified_rule_serialization::specified_serialization!(CssPerspective);
+impl crate::specified_rule_serialization::SpecifiedProvider for CssPerspective {
+    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         match self {
             Self::None => writer.keyword("none"),
             Self::Length(value) => {
@@ -112,10 +88,9 @@ fn zero_angle(value: &CssAngleOrZero) -> bool {
     }
 }
 
-impl CssTransformOrigin {
-    specified_methods!();
-
-    pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+crate::specified_rule_serialization::specified_serialization!(CssTransformOrigin);
+impl crate::specified_rule_serialization::SpecifiedProvider for CssTransformOrigin {
+    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         writer.node()?;
         self.append_planar_to_rule_writer(writer)?;
         if let Some(z) = self.z() {
@@ -126,10 +101,9 @@ impl CssTransformOrigin {
     }
 }
 
-impl CssTranslate {
-    specified_methods!();
-
-    pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+crate::specified_rule_serialization::specified_serialization!(CssTranslate);
+impl crate::specified_rule_serialization::SpecifiedProvider for CssTranslate {
+    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         writer.node()?;
         let Self::Values(values) = self else {
             return writer.append("none");
@@ -159,10 +133,9 @@ impl CssTranslate {
     }
 }
 
-impl CssScale {
-    specified_methods!();
-
-    pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+crate::specified_rule_serialization::specified_serialization!(CssScale);
+impl crate::specified_rule_serialization::SpecifiedProvider for CssScale {
+    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         writer.node()?;
         let Self::Values(values) = self else {
             return writer.append("none");
@@ -191,10 +164,9 @@ impl CssScale {
     }
 }
 
-impl CssTransform {
-    specified_methods!();
-
-    pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+crate::specified_rule_serialization::specified_serialization!(CssTransform);
+impl crate::specified_rule_serialization::SpecifiedProvider for CssTransform {
+    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         // The enum is the list's semantic carrier, without another node charge.
         writer.node()?;
         let Self::Functions(functions) = self else {
@@ -391,7 +363,7 @@ fn append_percentage_as_number(
 mod tests {
     use super::*;
     use crate::{CssKnownPropertyValueRef, CssSpecifiedValueSerializationErrorKind as K};
-    type L = CssSpecifiedValueSerializationLimits;
+    type L = crate::CssSerializationLimits;
 
     fn transform(source: &str) -> CssTransform {
         let report = crate::parse_style_attribute(&format!("transform:{source}"));
@@ -587,6 +559,7 @@ mod tests {
             crate::CssSpecifiedNonNegativeLength::try_from_calculation(
                 crate::CssLengthCalculation::try_from_components(
                     crate::parse_component_values("calc(1px - 2px)").unwrap(),
+                    Default::default(),
                 )
                 .unwrap(),
             )
@@ -625,6 +598,7 @@ mod tests {
         let symbolic = CssTransformScaleComponent::HintedNumberCalculation(
             crate::CssHintedNumberCalculation::try_from_components(
                 crate::parse_component_values("calc((1px + 1%) / 1px)").unwrap(),
+                Default::default(),
             )
             .unwrap(),
         );

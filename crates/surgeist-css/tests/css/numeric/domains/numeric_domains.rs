@@ -94,7 +94,7 @@ fn checked_numeric_constructors_reject_non_finite_values_and_preserve_finite_bou
     );
     assert!(matches!(
         adjust,
-        CssFontSizeAdjust::Number(value) if value.serialize_specified().unwrap() == max_spelling
+        CssFontSizeAdjust::Number(value) if value.serialize_specified(Default::default()).unwrap() == max_spelling
     ));
     assert_eq!(
         surgeist_css::CssOpacityScalar::try_from_component(
@@ -110,7 +110,7 @@ fn checked_numeric_constructors_reject_non_finite_values_and_preserve_finite_bou
     )
     .unwrap();
     assert_eq!(
-        factor.serialize_specified().unwrap(),
+        factor.serialize_specified(Default::default()).unwrap(),
         "340282346638528859811704183484516925440"
     );
     for invalid in ["-1", "-0.00000000000000001"] {
@@ -134,14 +134,14 @@ fn checked_numeric_constructors_reject_non_finite_values_and_preserve_finite_bou
     assert_eq!(
         CssFontWeightNumber::try_from_component(CssComponentValue::try_number("1").unwrap())
             .unwrap()
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "1"
     );
     assert_eq!(
         CssFontWeightNumber::try_from_component(CssComponentValue::try_number("1000").unwrap())
             .unwrap()
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "1000"
     );

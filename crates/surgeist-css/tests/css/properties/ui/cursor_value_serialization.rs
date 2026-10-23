@@ -5,8 +5,8 @@
 //! Selection and clamping are downstream. New APIs have functional tests, not
 //! a missing-symbol RED; the unchanged admission contract owns prior executable RED.
 
+use CssSerializationLimits as Limits;
 use CssSpecifiedValueSerializationErrorKind as Kind;
-use CssSpecifiedValueSerializationLimits as Limits;
 use surgeist_css::*;
 
 fn number(value: &str) -> CssSpecifiedNumber {
@@ -115,7 +115,7 @@ fn programmatic_pair_is_complete_signed_and_unclamped_with_ordinary_url_semantic
     let before = value.clone();
     assert_eq!(
         value
-            .serialize_specified_with_limits(Limits::new(7, 7, 30))
+            .serialize_specified(Limits::new(7, 7, 30))
             .unwrap_err()
             .kind(),
         Kind::ByteLimit
@@ -140,7 +140,7 @@ fn parsed_hotspots_retain_exact_coefficients_and_original_positions_after_emissi
     let before = value.clone();
     let components = declaration.value_components().clone();
     assert_eq!(
-        value.serialize_specified().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         "url(\"cursor.cur\") 30 -0.25, pointer"
     );
     assert_eq!(value, before);
@@ -155,7 +155,7 @@ fn number_math_hotspots_remain_math_in_the_model_and_use_shared_specified_projec
     assert!(pair[1].calculation().is_some());
     let before = value.clone();
     assert_eq!(
-        value.serialize_specified().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         "url(\"cursor.cur\") calc(3) calc(-0.25), auto"
     );
     assert_eq!(value, before);
@@ -168,11 +168,11 @@ fn omission_and_explicit_zero_hotspots_remain_distinct_in_model_and_output() {
     assert!(images(&omitted).images()[0].hotspot().is_none());
     assert!(images(&explicit).images()[0].hotspot().is_some());
     assert_eq!(
-        omitted.serialize_specified().unwrap(),
+        omitted.serialize_specified(Default::default()).unwrap(),
         "url(\"cursor.cur\"), auto"
     );
     assert_eq!(
-        explicit.serialize_specified().unwrap(),
+        explicit.serialize_specified(Default::default()).unwrap(),
         "url(\"cursor.cur\") 0 0, auto"
     );
 }
@@ -209,7 +209,7 @@ fn ordered_url_and_string_candidates_keep_authored_forms_and_descriptor_order() 
     let before = value.clone();
     let components = declaration.value_components().clone();
     assert_eq!(
-        value.serialize_specified().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         "image-set(\"first.png\" 1dppx type(\"image/png\"), url(\"second.png\") 2dppx), pointer"
     );
     assert_eq!(value, before);
@@ -222,7 +222,7 @@ fn omitted_resolution_is_preserved_and_explicit_one_is_not_discarded() {
     assert!(set(&value).options()[0].resolution().is_none());
     assert!(set(&value).options()[1].resolution().is_some());
     assert_eq!(
-        value.serialize_specified().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         "image-set(url(\"first.png\"), url(\"second.png\") 1dppx), auto"
     );
 }
@@ -245,7 +245,10 @@ fn type_only_arbitrary_mime_and_duplicate_resolution_candidates_all_survive_emis
     ] {
         let (_, value) = parsed(source);
         let before = value.clone();
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_eq!(value, before);
     }
 }
@@ -272,7 +275,7 @@ fn negative_resolution_math_remains_unclamped_while_zero_literal_uses_ordinary_p
     );
     let before = value.clone();
     assert_eq!(
-        value.serialize_specified().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         "image-set(url(\"a.png\") 0dppx, url(\"b.png\") calc(-1dppx)), auto"
     );
     assert_eq!(value, before);
@@ -283,7 +286,7 @@ fn standard_alias_emits_canonical_function_without_rewriting_original_components
     let (declaration, value) = parsed("-WEBKIT-IMAGE-SET(\"cursor.png\" 1x), POINTER");
     let before = declaration.value_components().clone();
     assert_eq!(
-        value.serialize_specified().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         "image-set(\"cursor.png\" 1dppx), pointer"
     );
     assert_eq!(declaration.value_components(), &before);
@@ -328,7 +331,7 @@ fn checked_value_construction_keeps_supplied_numeric_origins_and_no_fabricated_d
         "96.000dpi",
     );
     assert_eq!(
-        value.serialize_specified().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         "image-set(url(\"cursor.png\") 1dppx type(\"image/png\")) -3.5 4.25, auto"
     );
     assert_eq!(declaration.value_components(), &supplied);
@@ -348,7 +351,7 @@ fn escaped_string_reference_and_type_use_css_string_emission() {
     )
     .unwrap();
     assert_eq!(
-        value.serialize_specified().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         "image-set(\"a\\\"b\\\\c\" type(\"x\\\"y\\\\z\")), auto"
     );
 }
@@ -396,27 +399,27 @@ fn every_selected_keyword_has_canonical_specified_output_and_one_node_cost() {
         let (_, value) = parsed(&name.to_ascii_uppercase());
         assert_eq!(
             value
-                .serialize_specified_with_limits(Limits::new(1, 1, name.len()))
+                .serialize_specified(Limits::new(1, 1, name.len()))
                 .unwrap(),
             name
         );
         assert_eq!(
             value
-                .serialize_specified_with_limits(Limits::new(0, 1, name.len()))
+                .serialize_specified(Limits::new(0, 1, name.len()))
                 .unwrap_err()
                 .kind(),
             Kind::InputNodeLimit
         );
         assert_eq!(
             value
-                .serialize_specified_with_limits(Limits::new(1, 0, name.len()))
+                .serialize_specified(Limits::new(1, 0, name.len()))
                 .unwrap_err()
                 .kind(),
             Kind::ProjectionNodeLimit
         );
         assert_eq!(
             value
-                .serialize_specified_with_limits(Limits::new(1, 1, name.len() - 1))
+                .serialize_specified(Limits::new(1, 1, name.len() - 1))
                 .unwrap_err()
                 .kind(),
             Kind::ByteLimit
@@ -448,7 +451,7 @@ fn exact_public_node_projection_and_byte_boundaries_follow_the_documented_model_
         let components = declaration.value_components().clone();
         assert_eq!(
             value
-                .serialize_specified_with_limits(Limits::new(nodes, nodes, expected.len()))
+                .serialize_specified(Limits::new(nodes, nodes, expected.len()))
                 .unwrap(),
             expected
         );
@@ -466,13 +469,7 @@ fn exact_public_node_projection_and_byte_boundaries_follow_the_documented_model_
                 Kind::ByteLimit,
             ),
         ] {
-            assert_eq!(
-                value
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
-                kind
-            );
+            assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
         }
         assert_eq!(value, before);
         assert_eq!(declaration.value_components(), &components);

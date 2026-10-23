@@ -115,16 +115,34 @@ fn targets(property: CssKnownProperty) -> &'static [CssKnownProperty] {
 fn specified(item: &CssLonghandContribution) -> String {
     let value = item.ordinary_value().expect("ordinary terminal");
     match value.view() {
-        CssLonghandValueRef::AlignContent(value) => value.serialize_specified().unwrap(),
-        CssLonghandValueRef::AlignItems(value) => value.serialize_specified().unwrap(),
-        CssLonghandValueRef::AlignSelf(value) => value.serialize_specified().unwrap(),
-        CssLonghandValueRef::FlexBasis(value) => value.serialize_specified().unwrap(),
-        CssLonghandValueRef::FlexDirection(value) => value.serialize_specified().unwrap(),
-        CssLonghandValueRef::FlexGrow(value) => value.serialize_specified().unwrap(),
-        CssLonghandValueRef::FlexShrink(value) => value.serialize_specified().unwrap(),
-        CssLonghandValueRef::FlexWrap(value) => value.serialize_specified().unwrap(),
-        CssLonghandValueRef::JustifyContent(value) => value.serialize_specified().unwrap(),
-        CssLonghandValueRef::Order(value) => value.serialize_specified().unwrap(),
+        CssLonghandValueRef::AlignContent(value) => {
+            value.serialize_specified(Default::default()).unwrap()
+        }
+        CssLonghandValueRef::AlignItems(value) => {
+            value.serialize_specified(Default::default()).unwrap()
+        }
+        CssLonghandValueRef::AlignSelf(value) => {
+            value.serialize_specified(Default::default()).unwrap()
+        }
+        CssLonghandValueRef::FlexBasis(value) => {
+            value.serialize_specified(Default::default()).unwrap()
+        }
+        CssLonghandValueRef::FlexDirection(value) => {
+            value.serialize_specified(Default::default()).unwrap()
+        }
+        CssLonghandValueRef::FlexGrow(value) => {
+            value.serialize_specified(Default::default()).unwrap()
+        }
+        CssLonghandValueRef::FlexShrink(value) => {
+            value.serialize_specified(Default::default()).unwrap()
+        }
+        CssLonghandValueRef::FlexWrap(value) => {
+            value.serialize_specified(Default::default()).unwrap()
+        }
+        CssLonghandValueRef::JustifyContent(value) => {
+            value.serialize_specified(Default::default()).unwrap()
+        }
+        CssLonghandValueRef::Order(value) => value.serialize_specified(Default::default()).unwrap(),
         _ => panic!("unexpected Appendix B terminal"),
     }
 }

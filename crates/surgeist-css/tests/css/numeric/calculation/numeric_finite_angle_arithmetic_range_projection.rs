@@ -14,7 +14,7 @@ use crate::css::support::value_assertions::assert_calculated_number as assert_nu
 use crate::css::support::value_assertions::calculated_number as number;
 use surgeist_css::*;
 
-type Limits = CssSpecifiedValueSerializationLimits;
+type Limits = CssSerializationLimits;
 type Kind = CssSpecifiedValueSerializationErrorKind;
 
 #[test]
@@ -115,7 +115,7 @@ fn finite_angle_arithmetic_replacements_obey_exact_limits_and_atomic_failures() 
         (Limits::new(4, 3, expected.len()), Kind::ProjectionNodeLimit),
         (Limits::new(4, 4, expected.len() - 1), Kind::ByteLimit),
     ] {
-        let error = value.serialize_specified_with_limits(limits).unwrap_err();
+        let error = value.serialize_specified(limits).unwrap_err();
         assert_eq!(error.kind(), kind, "{limits:?}");
         assert_eq!(value, before);
         assert_eq!(value.origin(), before.origin());
@@ -124,7 +124,7 @@ fn finite_angle_arithmetic_replacements_obey_exact_limits_and_atomic_failures() 
             before.calculation().unwrap().components()
         );
     }
-    let result = value.serialize_specified_with_limits(Limits::new(4, 4, expected.len()));
+    let result = value.serialize_specified(Limits::new(4, 4, expected.len()));
     assert_eq!(value, before);
     assert_eq!(result.unwrap(), expected);
 }

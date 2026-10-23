@@ -6,8 +6,8 @@ use surgeist_css::*;
 use surgeist_css::{CssColorProfileRule, CssCustomMediaRule, CssRule};
 use surgeist_cssom::*;
 
-fn limits() -> CssSpecifiedValueSerializationLimits {
-    CssSpecifiedValueSerializationLimits::default()
+fn limits() -> CssSerializationLimits {
+    CssSerializationLimits::default()
 }
 fn batch(store: &CssomStore) -> CssomBatch {
     store
@@ -176,7 +176,10 @@ fn query_collection_keeps_identity_current_recovery_and_historical_provenance() 
         panic!("ordinary")
     };
     assert_eq!(
-        native.serialize_cssom().unwrap_err().kind(),
+        native
+            .serialize_cssom(Default::default())
+            .unwrap_err()
+            .kind(),
         CssRuleCssomSerializationErrorKind::FormatUnavailable(CssRuleCssomFormat::CustomMedia)
     );
 
@@ -188,7 +191,13 @@ fn query_collection_keeps_identity_current_recovery_and_historical_provenance() 
     let CssCustomMediaBody::Media(original_query) = original.body() else {
         panic!("authored original list")
     };
-    assert_eq!(original_query.serialize_cssom().unwrap().as_css(), "print");
+    assert_eq!(
+        original_query
+            .serialize_cssom(Default::default())
+            .unwrap()
+            .as_css(),
+        "print"
+    );
     let CssValueOrigin::Parsed(origin) = original.name().origin() else {
         panic!("original source occurrence")
     };
@@ -215,7 +224,7 @@ fn query_collection_keeps_identity_current_recovery_and_historical_provenance() 
     assert_eq!(
         list_capture(&store, &empty, &id)
             .unwrap()
-            .item(0, CssSpecifiedValueSerializationLimits::new(0, 0, 0))
+            .item(0, CssSerializationLimits::new(0, 0, 0))
             .unwrap(),
         None
     );
@@ -282,7 +291,7 @@ fn profile_getters_serialize_effective_values_and_distinguish_absence_from_empty
         assert_eq!(
             getter(
                 &profile_capture(&store, &snapshot, &ids[1]).unwrap(),
-                CssSpecifiedValueSerializationLimits::new(0, 0, 0)
+                CssSerializationLimits::new(0, 0, 0)
             )
             .unwrap(),
             ""
@@ -298,7 +307,10 @@ fn profile_getters_serialize_effective_values_and_distinguish_absence_from_empty
         panic!("ordinary source")
     };
     assert_eq!(
-        original.serialize_cssom().unwrap_err().kind(),
+        original
+            .serialize_cssom(Default::default())
+            .unwrap_err()
+            .kind(),
         CssRuleCssomSerializationErrorKind::FormatUnavailable(CssRuleCssomFormat::ColorProfile)
     );
 }
@@ -404,6 +416,7 @@ fn scoped_and_programmatic_checked_payloads_use_the_same_facets() {
             CssCustomMediaRule::try_new(
                 CssCustomMediaName::try_new("--Made").unwrap(),
                 CssCustomMediaBody::True,
+                Default::default(),
             )
             .unwrap(),
         ),
@@ -476,7 +489,7 @@ fn owner_kind_missing_capture_and_output_limits_return_typed_errors_without_muta
         Err(CssomError::ForeignOwner)
     ));
     let expected = r"A, a\+b";
-    let exact = CssSpecifiedValueSerializationLimits::new(2, 2, expected.len());
+    let exact = CssSerializationLimits::new(2, 2, expected.len());
     assert_eq!(
         profile_capture(&store, &snapshot, &ids[1])
             .and_then(|value| value.components(exact))
@@ -485,15 +498,15 @@ fn owner_kind_missing_capture_and_output_limits_return_typed_errors_without_muta
     );
     for (policy, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(1, 2, 99),
+            CssSerializationLimits::new(1, 2, 99),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(2, 1, 99),
+            CssSerializationLimits::new(2, 1, 99),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(2, 2, expected.len() - 1),
+            CssSerializationLimits::new(2, 2, expected.len() - 1),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
@@ -502,13 +515,13 @@ fn owner_kind_missing_capture_and_output_limits_return_typed_errors_without_muta
         );
     }
     assert!(
-        matches!(profile_capture(&store, &snapshot, &ids[1]).and_then(|value| value.name(CssSpecifiedValueSerializationLimits::new(0,1,99))), Err(CssomError::Value(error)) if error.kind() == CssSpecifiedValueSerializationErrorKind::InputNodeLimit)
+        matches!(profile_capture(&store, &snapshot, &ids[1]).and_then(|value| value.name(CssSerializationLimits::new(0,1,99))), Err(CssomError::Value(error)) if error.kind() == CssSpecifiedValueSerializationErrorKind::InputNodeLimit)
     );
     let media = media(&store, &snapshot, &ids[0]);
     assert!(matches!(
         list_capture(&store, &snapshot, &media)
             .unwrap()
-            .media_text(CssSpecifiedValueSerializationLimits::new(99, 99, 0)),
+            .media_text(CssSerializationLimits::new(99, 99, 0)),
         Err(CssomError::Media(_))
     ));
     assert_eq!(

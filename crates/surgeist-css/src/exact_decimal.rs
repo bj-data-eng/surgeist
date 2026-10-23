@@ -166,9 +166,9 @@ impl<'a> LexicalDecimal<'a> {
         left: ExactFactor,
         right: ExactFactor,
         context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-    ) -> Result<bool, crate::CssSpecifiedValueSerializationError> {
+    ) -> Result<bool, crate::CssSerializationError> {
         let overflow = || {
-            crate::CssSpecifiedValueSerializationError::new(
+            crate::CssSerializationError::new(
                 crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
             )
         };
@@ -301,19 +301,19 @@ impl BigCoefficient {
     fn from_lexical(
         value: &LexicalDecimal<'_>,
         context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-    ) -> Result<Self, crate::CssSpecifiedValueSerializationError> {
+    ) -> Result<Self, crate::CssSerializationError> {
         if value.len == 0 {
             return Ok(Self::zero());
         }
         let limb_count = Self::limb_count_for_digits(value.len).ok_or_else(|| {
-            crate::CssSpecifiedValueSerializationError::new(
+            crate::CssSerializationError::new(
                 crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
             )
         })?;
         context.charge_generated_projection(limb_count)?;
         let mut limbs = Vec::new();
         limbs.try_reserve_exact(limb_count).map_err(|_| {
-            crate::CssSpecifiedValueSerializationError::new(
+            crate::CssSerializationError::new(
                 crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
             )
         })?;
@@ -342,7 +342,7 @@ impl BigCoefficient {
     fn from_u64(
         mut value: u64,
         context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-    ) -> Result<Self, crate::CssSpecifiedValueSerializationError> {
+    ) -> Result<Self, crate::CssSerializationError> {
         if value == 0 {
             return Ok(Self::zero());
         }
@@ -350,7 +350,7 @@ impl BigCoefficient {
         context.charge_generated_projection(limb_count)?;
         let mut limbs = Vec::new();
         limbs.try_reserve_exact(limb_count).map_err(|_| {
-            crate::CssSpecifiedValueSerializationError::new(
+            crate::CssSerializationError::new(
                 crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
             )
         })?;
@@ -364,19 +364,19 @@ impl BigCoefficient {
     fn from_decimal_digit_slice(
         digits: &[u8],
         context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-    ) -> Result<Self, crate::CssSpecifiedValueSerializationError> {
+    ) -> Result<Self, crate::CssSerializationError> {
         if digits.is_empty() {
             return Ok(Self::zero());
         }
         let limb_count = Self::limb_count_for_digits(digits.len()).ok_or_else(|| {
-            crate::CssSpecifiedValueSerializationError::new(
+            crate::CssSerializationError::new(
                 crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
             )
         })?;
         context.charge_generated_projection(limb_count)?;
         let mut limbs = Vec::new();
         limbs.try_reserve_exact(limb_count).map_err(|_| {
-            crate::CssSpecifiedValueSerializationError::new(
+            crate::CssSerializationError::new(
                 crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
             )
         })?;
@@ -409,20 +409,17 @@ impl BigCoefficient {
         (self.limbs.len() - 1) * DECIMAL_LIMB_DIGITS + high.ilog10() as usize + 1
     }
 
-    fn decimal_string(
-        &self,
-        limit: usize,
-    ) -> Result<String, crate::CssSpecifiedValueSerializationError> {
+    fn decimal_string(&self, limit: usize) -> Result<String, crate::CssSerializationError> {
         use std::fmt::Write as _;
         let length = self.decimal_len();
         if length > limit {
-            return Err(crate::CssSpecifiedValueSerializationError::new(
+            return Err(crate::CssSerializationError::new(
                 crate::CssSpecifiedValueSerializationErrorKind::ByteLimit,
             ));
         }
         let mut output = String::new();
         output.try_reserve_exact(length).map_err(|_| {
-            crate::CssSpecifiedValueSerializationError::new(
+            crate::CssSerializationError::new(
                 crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
             )
         })?;
@@ -443,7 +440,7 @@ impl BigCoefficient {
         &self,
         factor: u64,
         context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-    ) -> Result<Self, crate::CssSpecifiedValueSerializationError> {
+    ) -> Result<Self, crate::CssSerializationError> {
         if self.is_zero() || factor == 0 {
             return Ok(Self::zero());
         }
@@ -458,14 +455,14 @@ impl BigCoefficient {
             carry /= u128::from(DECIMAL_LIMB_BASE);
         }
         let length = self.limbs.len().checked_add(extra).ok_or_else(|| {
-            crate::CssSpecifiedValueSerializationError::new(
+            crate::CssSerializationError::new(
                 crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
             )
         })?;
         context.charge_generated_projection(length)?;
         let mut limbs = Vec::new();
         limbs.try_reserve_exact(length).map_err(|_| {
-            crate::CssSpecifiedValueSerializationError::new(
+            crate::CssSerializationError::new(
                 crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
             )
         })?;
@@ -486,7 +483,7 @@ impl BigCoefficient {
         &self,
         power: usize,
         context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-    ) -> Result<Self, crate::CssSpecifiedValueSerializationError> {
+    ) -> Result<Self, crate::CssSerializationError> {
         if self.is_zero() {
             return Ok(Self::zero());
         }
@@ -499,14 +496,14 @@ impl BigCoefficient {
             self.mul_small(factor, context)?
         };
         let length = multiplied.limbs.len().checked_add(whole).ok_or_else(|| {
-            crate::CssSpecifiedValueSerializationError::new(
+            crate::CssSerializationError::new(
                 crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
             )
         })?;
         context.charge_generated_projection(length)?;
         let mut limbs = Vec::new();
         limbs.try_reserve_exact(length).map_err(|_| {
-            crate::CssSpecifiedValueSerializationError::new(
+            crate::CssSerializationError::new(
                 crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
             )
         })?;
@@ -518,11 +515,11 @@ impl BigCoefficient {
     fn clone_with_budget(
         &self,
         context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-    ) -> Result<Self, crate::CssSpecifiedValueSerializationError> {
+    ) -> Result<Self, crate::CssSerializationError> {
         context.charge_generated_projection(self.limbs.len())?;
         let mut limbs = Vec::new();
         limbs.try_reserve_exact(self.limbs.len()).map_err(|_| {
-            crate::CssSpecifiedValueSerializationError::new(
+            crate::CssSerializationError::new(
                 crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
             )
         })?;
@@ -534,7 +531,7 @@ impl BigCoefficient {
         &self,
         denominator: u64,
         context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-    ) -> Result<(Self, u64), crate::CssSpecifiedValueSerializationError> {
+    ) -> Result<(Self, u64), crate::CssSerializationError> {
         debug_assert_ne!(denominator, 0);
         if self.is_zero() {
             return Ok((Self::zero(), 0));
@@ -542,7 +539,7 @@ impl BigCoefficient {
         context.charge_generated_projection(self.limbs.len())?;
         let mut quotient = Vec::new();
         quotient.try_reserve_exact(self.limbs.len()).map_err(|_| {
-            crate::CssSpecifiedValueSerializationError::new(
+            crate::CssSerializationError::new(
                 crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
             )
         })?;
@@ -562,7 +559,7 @@ impl BigCoefficient {
         &self,
         power: usize,
         context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-    ) -> Result<(Self, Self), crate::CssSpecifiedValueSerializationError> {
+    ) -> Result<(Self, Self), crate::CssSerializationError> {
         if self.is_zero() || power == 0 {
             return Ok((self.clone_with_budget(context)?, Self::zero()));
         }
@@ -575,7 +572,7 @@ impl BigCoefficient {
         context.charge_generated_projection(upper_len)?;
         let mut upper = Vec::new();
         upper.try_reserve_exact(upper_len).map_err(|_| {
-            crate::CssSpecifiedValueSerializationError::new(
+            crate::CssSerializationError::new(
                 crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
             )
         })?;
@@ -590,7 +587,7 @@ impl BigCoefficient {
         context.charge_generated_projection(lower_len)?;
         let mut lower = Vec::new();
         lower.try_reserve_exact(lower_len).map_err(|_| {
-            crate::CssSpecifiedValueSerializationError::new(
+            crate::CssSerializationError::new(
                 crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
             )
         })?;
@@ -621,21 +618,21 @@ impl BigCoefficient {
         &self,
         other: &Self,
         context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-    ) -> Result<Self, crate::CssSpecifiedValueSerializationError> {
+    ) -> Result<Self, crate::CssSerializationError> {
         let capacity = self
             .limbs
             .len()
             .max(other.limbs.len())
             .checked_add(1)
             .ok_or_else(|| {
-                crate::CssSpecifiedValueSerializationError::new(
+                crate::CssSerializationError::new(
                     crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
                 )
             })?;
         context.charge_generated_projection(capacity)?;
         let mut limbs = Vec::new();
         limbs.try_reserve_exact(capacity).map_err(|_| {
-            crate::CssSpecifiedValueSerializationError::new(
+            crate::CssSerializationError::new(
                 crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
             )
         })?;
@@ -657,12 +654,12 @@ impl BigCoefficient {
         &self,
         other: &Self,
         context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-    ) -> Result<Self, crate::CssSpecifiedValueSerializationError> {
+    ) -> Result<Self, crate::CssSerializationError> {
         debug_assert!(self.cmp(other) != std::cmp::Ordering::Less);
         context.charge_generated_projection(self.limbs.len())?;
         let mut limbs = Vec::new();
         limbs.try_reserve_exact(self.limbs.len()).map_err(|_| {
-            crate::CssSpecifiedValueSerializationError::new(
+            crate::CssSerializationError::new(
                 crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
             )
         })?;
@@ -688,7 +685,7 @@ impl BigCoefficient {
     fn increment(
         &mut self,
         context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-    ) -> Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> Result<(), crate::CssSerializationError> {
         for limb in &mut self.limbs {
             if *limb + 1 < DECIMAL_LIMB_BASE as u32 {
                 *limb += 1;
@@ -698,7 +695,7 @@ impl BigCoefficient {
         }
         context.charge_generated_projection(1)?;
         self.limbs.try_reserve(1).map_err(|_| {
-            crate::CssSpecifiedValueSerializationError::new(
+            crate::CssSerializationError::new(
                 crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
             )
         })?;
@@ -710,13 +707,13 @@ impl BigCoefficient {
         &mut self,
         mut value: u64,
         context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-    ) -> Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> Result<(), crate::CssSerializationError> {
         let mut index = 0usize;
         while value != 0 {
             if index == self.limbs.len() {
                 context.charge_generated_projection(1)?;
                 self.limbs.try_reserve(1).map_err(|_| {
-                    crate::CssSpecifiedValueSerializationError::new(
+                    crate::CssSerializationError::new(
                         crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
                     )
                 })?;
@@ -725,7 +722,7 @@ impl BigCoefficient {
             let sum = u64::from(self.limbs[index])
                 .checked_add(value)
                 .ok_or_else(|| {
-                    crate::CssSpecifiedValueSerializationError::new(
+                    crate::CssSerializationError::new(
                         crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
                     )
                 })?;
@@ -763,7 +760,7 @@ fn compare_decimal_tail(
     numerator: u128,
     denominator: u128,
     context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-) -> Result<std::cmp::Ordering, crate::CssSpecifiedValueSerializationError> {
+) -> Result<std::cmp::Ordering, crate::CssSerializationError> {
     use std::cmp::Ordering;
     if numerator >= denominator {
         return Ok(Ordering::Less); // the finite tail is strictly below one
@@ -801,7 +798,7 @@ impl ExactRational {
         &self,
         value: u64,
         context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-    ) -> Result<std::cmp::Ordering, crate::CssSpecifiedValueSerializationError> {
+    ) -> Result<std::cmp::Ordering, crate::CssSerializationError> {
         let other = Self::integer(value, context)?;
         self.compare(&other, context)
     }
@@ -809,7 +806,7 @@ impl ExactRational {
     fn reduce_fraction(
         mut self,
         context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-    ) -> Result<Self, crate::CssSpecifiedValueSerializationError> {
+    ) -> Result<Self, crate::CssSerializationError> {
         if self.coefficient.is_zero() {
             self.negative = false;
             self.exponent = 0;
@@ -832,7 +829,7 @@ impl ExactRational {
     pub(crate) fn integer(
         value: u64,
         context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-    ) -> Result<Self, crate::CssSpecifiedValueSerializationError> {
+    ) -> Result<Self, crate::CssSerializationError> {
         Ok(Self {
             coefficient: BigCoefficient::from_u64(value, context)?,
             exponent: 0,
@@ -847,19 +844,19 @@ impl ExactRational {
         target_exponent: i128,
         denominator_factor: u64,
         context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-    ) -> Result<BigCoefficient, crate::CssSpecifiedValueSerializationError> {
+    ) -> Result<BigCoefficient, crate::CssSerializationError> {
         if self.unbounded_tiny {
-            return Err(crate::CssSpecifiedValueSerializationError::new(
+            return Err(crate::CssSerializationError::new(
                 crate::CssSpecifiedValueSerializationErrorKind::ByteLimit,
             ));
         }
         let shift = self.exponent.checked_sub(target_exponent).ok_or_else(|| {
-            crate::CssSpecifiedValueSerializationError::new(
+            crate::CssSerializationError::new(
                 crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
             )
         })?;
         let shift = usize::try_from(shift).map_err(|_| {
-            crate::CssSpecifiedValueSerializationError::new(
+            crate::CssSerializationError::new(
                 crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
             )
         })?;
@@ -875,7 +872,7 @@ impl ExactRational {
     pub(crate) fn clone_with_budget(
         &self,
         context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-    ) -> Result<Self, crate::CssSpecifiedValueSerializationError> {
+    ) -> Result<Self, crate::CssSerializationError> {
         Ok(Self {
             coefficient: self.coefficient.clone_with_budget(context)?,
             exponent: self.exponent,
@@ -889,7 +886,7 @@ impl ExactRational {
         &self,
         other: &Self,
         context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-    ) -> Result<std::cmp::Ordering, crate::CssSpecifiedValueSerializationError> {
+    ) -> Result<std::cmp::Ordering, crate::CssSerializationError> {
         match (self.is_zero(), other.is_zero()) {
             (true, true) => return Ok(std::cmp::Ordering::Equal),
             (true, false) => {
@@ -922,7 +919,7 @@ impl ExactRational {
                 (false, true) if self.is_zero() => Ok(std::cmp::Ordering::Less),
                 (true, false) => Ok(std::cmp::Ordering::Less),
                 (false, true) => Ok(std::cmp::Ordering::Greater),
-                _ => Err(crate::CssSpecifiedValueSerializationError::new(
+                _ => Err(crate::CssSerializationError::new(
                     crate::CssSpecifiedValueSerializationErrorKind::ByteLimit,
                 )),
             };
@@ -933,7 +930,7 @@ impl ExactRational {
             .ok()
             .and_then(|digits| digits.checked_add(self.exponent))
             .ok_or_else(|| {
-                crate::CssSpecifiedValueSerializationError::new(
+                crate::CssSerializationError::new(
                     crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
                 )
             })?;
@@ -941,7 +938,7 @@ impl ExactRational {
             .ok()
             .and_then(|digits| digits.checked_add(other.exponent))
             .ok_or_else(|| {
-                crate::CssSpecifiedValueSerializationError::new(
+                crate::CssSerializationError::new(
                     crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
                 )
             })?;
@@ -949,12 +946,12 @@ impl ExactRational {
             std::cmp::Ordering::Equal => {
                 let exponent = self.exponent.min(other.exponent);
                 let left_shift = usize::try_from(self.exponent - exponent).map_err(|_| {
-                    crate::CssSpecifiedValueSerializationError::new(
+                    crate::CssSerializationError::new(
                         crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
                     )
                 })?;
                 let right_shift = usize::try_from(other.exponent - exponent).map_err(|_| {
-                    crate::CssSpecifiedValueSerializationError::new(
+                    crate::CssSerializationError::new(
                         crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
                     )
                 })?;
@@ -973,7 +970,7 @@ impl ExactRational {
     fn compare_with_one(
         &self,
         context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-    ) -> Result<std::cmp::Ordering, crate::CssSpecifiedValueSerializationError> {
+    ) -> Result<std::cmp::Ordering, crate::CssSerializationError> {
         if self.negative {
             return Ok(std::cmp::Ordering::Less);
         }
@@ -1023,9 +1020,9 @@ impl ExactRational {
         numerator: u64,
         denominator: u64,
         context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-    ) -> Result<bool, crate::CssSpecifiedValueSerializationError> {
+    ) -> Result<bool, crate::CssSerializationError> {
         if denominator == 0 {
-            return Err(crate::CssSpecifiedValueSerializationError::new(
+            return Err(crate::CssSerializationError::new(
                 crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
             ));
         }
@@ -1051,7 +1048,7 @@ impl ExactRational {
     pub(crate) fn clamp_unit(
         self,
         context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-    ) -> Result<Self, crate::CssSpecifiedValueSerializationError> {
+    ) -> Result<Self, crate::CssSerializationError> {
         if self.negative || self.is_zero() {
             return Self::integer(0, context);
         }
@@ -1066,14 +1063,14 @@ impl ExactRational {
         &self,
         other: &Self,
         context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-    ) -> Result<Self, crate::CssSpecifiedValueSerializationError> {
+    ) -> Result<Self, crate::CssSerializationError> {
         debug_assert!(!self.negative && !other.negative);
         let exponent = self.exponent.min(other.exponent);
         let denominator = self
             .denominator
             .checked_mul(other.denominator)
             .ok_or_else(|| {
-                crate::CssSpecifiedValueSerializationError::new(
+                crate::CssSerializationError::new(
                     crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
                 )
             })?;
@@ -1092,7 +1089,7 @@ impl ExactRational {
         self,
         maximum: u64,
         context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-    ) -> Result<Self, crate::CssSpecifiedValueSerializationError> {
+    ) -> Result<Self, crate::CssSerializationError> {
         debug_assert!(!self.negative);
         let maximum = Self::integer(maximum, context)?;
         if self.compare(&maximum, context)? == std::cmp::Ordering::Greater {
@@ -1106,7 +1103,7 @@ impl ExactRational {
         &self,
         minuend: u64,
         context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-    ) -> Result<Self, crate::CssSpecifiedValueSerializationError> {
+    ) -> Result<Self, crate::CssSerializationError> {
         debug_assert!(!self.negative);
         let upper = Self::integer(minuend, context)?;
         let exponent = self.exponent.min(0);
@@ -1125,24 +1122,24 @@ impl ExactRational {
     pub(crate) fn divide_by(
         mut self,
         divisor: usize,
-    ) -> Result<Self, crate::CssSpecifiedValueSerializationError> {
+    ) -> Result<Self, crate::CssSerializationError> {
         if self.unbounded_tiny {
-            return Err(crate::CssSpecifiedValueSerializationError::new(
+            return Err(crate::CssSerializationError::new(
                 crate::CssSpecifiedValueSerializationErrorKind::ByteLimit,
             ));
         }
         let divisor = u64::try_from(divisor).map_err(|_| {
-            crate::CssSpecifiedValueSerializationError::new(
+            crate::CssSerializationError::new(
                 crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
             )
         })?;
         if divisor == 0 {
-            return Err(crate::CssSpecifiedValueSerializationError::new(
+            return Err(crate::CssSerializationError::new(
                 crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
             ));
         }
         self.denominator = self.denominator.checked_mul(divisor).ok_or_else(|| {
-            crate::CssSpecifiedValueSerializationError::new(
+            crate::CssSerializationError::new(
                 crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
             )
         })?;
@@ -1152,9 +1149,9 @@ impl ExactRational {
     fn into_terminating(
         mut self,
         context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-    ) -> Result<Self, crate::CssSpecifiedValueSerializationError> {
+    ) -> Result<Self, crate::CssSerializationError> {
         if self.unbounded_tiny {
-            return Err(crate::CssSpecifiedValueSerializationError::new(
+            return Err(crate::CssSerializationError::new(
                 crate::CssSpecifiedValueSerializationErrorKind::ByteLimit,
             ));
         }
@@ -1186,7 +1183,7 @@ impl ExactRational {
             fives += 1;
         }
         if denominator != 1 {
-            return Err(crate::CssSpecifiedValueSerializationError::new(
+            return Err(crate::CssSerializationError::new(
                 crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
             ));
         }
@@ -1201,7 +1198,7 @@ impl ExactRational {
             .checked_sub(twos.max(fives) as i128)
             .and_then(|value| value.checked_add(self.coefficient.strip_decimal_zeros()))
             .ok_or_else(|| {
-                crate::CssSpecifiedValueSerializationError::new(
+                crate::CssSerializationError::new(
                     crate::CssSpecifiedValueSerializationErrorKind::ByteLimit,
                 )
             })?;
@@ -1213,9 +1210,9 @@ impl ExactRational {
         self,
         modulus: u64,
         context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-    ) -> Result<Self, crate::CssSpecifiedValueSerializationError> {
+    ) -> Result<Self, crate::CssSerializationError> {
         if modulus == 0 {
-            return Err(crate::CssSpecifiedValueSerializationError::new(
+            return Err(crate::CssSerializationError::new(
                 crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
             ));
         }
@@ -1225,7 +1222,7 @@ impl ExactRational {
         }
         if value.exponent >= 0 {
             let exponent = u128::try_from(value.exponent).map_err(|_| {
-                crate::CssSpecifiedValueSerializationError::new(
+                crate::CssSerializationError::new(
                     crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
                 )
             })?;
@@ -1240,12 +1237,12 @@ impl ExactRational {
             return Self::integer(residue, context);
         }
         let power = usize::try_from(value.exponent.checked_neg().ok_or_else(|| {
-            crate::CssSpecifiedValueSerializationError::new(
+            crate::CssSerializationError::new(
                 crate::CssSpecifiedValueSerializationErrorKind::ByteLimit,
             )
         })?)
         .map_err(|_| {
-            crate::CssSpecifiedValueSerializationError::new(
+            crate::CssSerializationError::new(
                 crate::CssSpecifiedValueSerializationErrorKind::ByteLimit,
             )
         })?;
@@ -1281,15 +1278,15 @@ impl ExactRational {
         text: &str,
         factor: ExactFactor,
         context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-    ) -> Result<Self, crate::CssSpecifiedValueSerializationError> {
+    ) -> Result<Self, crate::CssSerializationError> {
         if factor.denominator == 0 {
-            return Err(crate::CssSpecifiedValueSerializationError::new(
+            return Err(crate::CssSerializationError::new(
                 crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
             ));
         }
         let lexical = LexicalDecimal::new(text);
         let exponent = lexical.exponent.ok_or_else(|| {
-            crate::CssSpecifiedValueSerializationError::new(
+            crate::CssSerializationError::new(
                 crate::CssSpecifiedValueSerializationErrorKind::ByteLimit,
             )
         })?;
@@ -1308,9 +1305,9 @@ impl ExactRational {
         text: &str,
         factor: ExactFactor,
         context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-    ) -> Result<Self, crate::CssSpecifiedValueSerializationError> {
+    ) -> Result<Self, crate::CssSerializationError> {
         if factor.denominator == 0 {
-            return Err(crate::CssSpecifiedValueSerializationError::new(
+            return Err(crate::CssSerializationError::new(
                 crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
             ));
         }
@@ -1339,9 +1336,9 @@ impl ExactRational {
         value: f32,
         factor: ExactFactor,
         context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-    ) -> Result<Self, crate::CssSpecifiedValueSerializationError> {
+    ) -> Result<Self, crate::CssSerializationError> {
         if !value.is_finite() || factor.denominator == 0 {
-            return Err(crate::CssSpecifiedValueSerializationError::new(
+            return Err(crate::CssSerializationError::new(
                 crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
             ));
         }
@@ -1363,9 +1360,9 @@ impl ExactRational {
         factor: ExactFactor,
         modulus: u64,
         context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-    ) -> Result<Self, crate::CssSpecifiedValueSerializationError> {
+    ) -> Result<Self, crate::CssSerializationError> {
         if factor.denominator == 0 || modulus == 0 {
-            return Err(crate::CssSpecifiedValueSerializationError::new(
+            return Err(crate::CssSerializationError::new(
                 crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
             ));
         }
@@ -1384,7 +1381,7 @@ impl ExactRational {
             // than the cumulative output budget can contain. Report that
             // actual serialization limit rather than treating magnitude as a
             // machine-capacity failure.
-            return Err(crate::CssSpecifiedValueSerializationError::new(
+            return Err(crate::CssSerializationError::new(
                 crate::CssSpecifiedValueSerializationErrorKind::ByteLimit,
             ));
         }
@@ -1412,17 +1409,17 @@ impl ExactRational {
             .checked_mul(2u64.pow(twos - cancelled_twos))
             .and_then(|value| value.checked_mul(5u64.pow(fives - cancelled_fives)))
             .ok_or_else(|| {
-                crate::CssSpecifiedValueSerializationError::new(
+                crate::CssSerializationError::new(
                     crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
                 )
             })?;
         let ring = modulus.checked_mul(denominator).ok_or_else(|| {
-            crate::CssSpecifiedValueSerializationError::new(
+            crate::CssSerializationError::new(
                 crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
             )
         })?;
         let work_limbs = BigCoefficient::limb_count_for_digits(lexical.len).ok_or_else(|| {
-            crate::CssSpecifiedValueSerializationError::new(
+            crate::CssSerializationError::new(
                 crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
             )
         })?;
@@ -1456,7 +1453,7 @@ impl ExactRational {
         places: usize,
         byte_limit: usize,
         context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-    ) -> Result<String, crate::CssSpecifiedValueSerializationError> {
+    ) -> Result<String, crate::CssSerializationError> {
         let value = self.reduce_fraction(context)?;
         let mut denominator = value.denominator;
         while denominator.is_multiple_of(2) {
@@ -1476,7 +1473,7 @@ impl ExactRational {
         self,
         byte_limit: usize,
         context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-    ) -> Result<String, crate::CssSpecifiedValueSerializationError> {
+    ) -> Result<String, crate::CssSerializationError> {
         let self_ = self.into_terminating(context)?;
         // Retain the checked rational conversion and its work/errors, but do
         // not allocate decimal or expanded CSS text for a discarded value.
@@ -1504,8 +1501,8 @@ impl ExactRational {
         factor: ExactFactor,
         byte_limit: usize,
         context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-    ) -> Result<String, crate::CssSpecifiedValueSerializationError> {
-        use crate::CssSpecifiedValueSerializationError as Error;
+    ) -> Result<String, crate::CssSerializationError> {
+        use crate::CssSerializationError as Error;
         use crate::CssSpecifiedValueSerializationErrorKind::{ByteLimit, CapacityOverflow};
         if factor.denominator == 0 {
             return Err(Error::new(CapacityOverflow));
@@ -1697,7 +1694,7 @@ impl ExactRational {
         places: usize,
         byte_limit: usize,
         context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-    ) -> Result<String, crate::CssSpecifiedValueSerializationError> {
+    ) -> Result<String, crate::CssSerializationError> {
         let suppressed = context.output_suppressed();
         if self.unbounded_tiny {
             if suppressed {
@@ -1712,12 +1709,12 @@ impl ExactRational {
             return crate::numeric_formatting::emit(std::iter::empty(), 0, 0, false, byte_limit);
         }
         let places_i128 = i128::try_from(places).map_err(|_| {
-            crate::CssSpecifiedValueSerializationError::new(
+            crate::CssSerializationError::new(
                 crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
             )
         })?;
         let shift = self.exponent.checked_add(places_i128).ok_or_else(|| {
-            crate::CssSpecifiedValueSerializationError::new(
+            crate::CssSerializationError::new(
                 crate::CssSpecifiedValueSerializationErrorKind::ByteLimit,
             )
         })?;
@@ -1727,17 +1724,17 @@ impl ExactRational {
                 .ok()
                 .and_then(|limit| limit.checked_add(denominator_digits))
                 .ok_or_else(|| {
-                    crate::CssSpecifiedValueSerializationError::new(
+                    crate::CssSerializationError::new(
                         crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
                     )
                 })?;
             if !suppressed && shift > maximum_materialized_shift {
-                return Err(crate::CssSpecifiedValueSerializationError::new(
+                return Err(crate::CssSerializationError::new(
                     crate::CssSpecifiedValueSerializationErrorKind::ByteLimit,
                 ));
             }
             let power = usize::try_from(shift).map_err(|_| {
-                crate::CssSpecifiedValueSerializationError::new(
+                crate::CssSerializationError::new(
                     crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
                 )
             })?;
@@ -1749,7 +1746,7 @@ impl ExactRational {
             )
         } else {
             let power = shift.checked_neg().ok_or_else(|| {
-                crate::CssSpecifiedValueSerializationError::new(
+                crate::CssSerializationError::new(
                     crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
                 )
             })?;
@@ -1757,7 +1754,7 @@ impl ExactRational {
                 (BigCoefficient::zero(), std::cmp::Ordering::Less)
             } else {
                 let power = usize::try_from(power).map_err(|_| {
-                    crate::CssSpecifiedValueSerializationError::new(
+                    crate::CssSerializationError::new(
                         crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
                     )
                 })?;
@@ -1769,7 +1766,7 @@ impl ExactRational {
                     .mul_small(2, context)?;
                 residual.add_small(
                     denominator_remainder.checked_mul(2).ok_or_else(|| {
-                        crate::CssSpecifiedValueSerializationError::new(
+                        crate::CssSerializationError::new(
                             crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
                         )
                     })?,
@@ -1777,7 +1774,7 @@ impl ExactRational {
                 )?;
                 let denominator_digits = self.denominator.ilog10() as usize + 1;
                 let comparison_len = denominator_digits.checked_add(power).ok_or_else(|| {
-                    crate::CssSpecifiedValueSerializationError::new(
+                    crate::CssSerializationError::new(
                         crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
                     )
                 })?;
@@ -1808,11 +1805,11 @@ impl ExactRational {
         places: i128,
         negative: bool,
         byte_limit: usize,
-    ) -> Result<String, crate::CssSpecifiedValueSerializationError> {
+    ) -> Result<String, crate::CssSerializationError> {
         let exponent = (-places)
             .checked_add(rounded.strip_decimal_zeros())
             .ok_or_else(|| {
-                crate::CssSpecifiedValueSerializationError::new(
+                crate::CssSerializationError::new(
                     crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
                 )
             })?;
@@ -1835,34 +1832,34 @@ impl LexicalDecimal<'_> {
         subtract: u32,
         modulus: u64,
         context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-    ) -> Result<u64, crate::CssSpecifiedValueSerializationError> {
+    ) -> Result<u64, crate::CssSerializationError> {
         if let Some(exponent) = self.exponent {
             let exponent = u128::try_from(exponent).map_err(|_| {
-                crate::CssSpecifiedValueSerializationError::new(
+                crate::CssSerializationError::new(
                     crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
                 )
             })?;
             let exponent = exponent.checked_sub(u128::from(subtract)).ok_or_else(|| {
-                crate::CssSpecifiedValueSerializationError::new(
+                crate::CssSerializationError::new(
                     crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
                 )
             })?;
             return Ok(pow_mod(base, exponent, modulus));
         }
         if self.exponent_negative {
-            return Err(crate::CssSpecifiedValueSerializationError::new(
+            return Err(crate::CssSerializationError::new(
                 crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
             ));
         }
         let work_digits = self.exponent_digits.len().checked_add(1).ok_or_else(|| {
-            crate::CssSpecifiedValueSerializationError::new(
+            crate::CssSerializationError::new(
                 crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
             )
         })?;
         context.charge_generated_projection(work_digits)?;
         let mut digits = Vec::new();
         digits.try_reserve_exact(work_digits).map_err(|_| {
-            crate::CssSpecifiedValueSerializationError::new(
+            crate::CssSerializationError::new(
                 crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
             )
         })?;
@@ -1871,7 +1868,7 @@ impl LexicalDecimal<'_> {
             .exponent_adjustment
             .checked_sub(i128::from(subtract))
             .ok_or_else(|| {
-                crate::CssSpecifiedValueSerializationError::new(
+                crate::CssSerializationError::new(
                     crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
                 )
             })?;
@@ -1913,12 +1910,12 @@ fn greatest_common_divisor(mut left: u64, mut right: u64) -> u64 {
 fn decimal_digits_sub_small(
     digits: &mut Vec<u8>,
     mut value: u128,
-) -> Result<(), crate::CssSpecifiedValueSerializationError> {
+) -> Result<(), crate::CssSerializationError> {
     let mut index = digits.len();
     let mut borrow = 0u8;
     while value != 0 || borrow != 0 {
         if index == 0 {
-            return Err(crate::CssSpecifiedValueSerializationError::new(
+            return Err(crate::CssSerializationError::new(
                 crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
             ));
         }
@@ -1944,7 +1941,7 @@ fn decimal_digits_sub_small(
 fn decimal_digits_add_small(
     digits: &mut Vec<u8>,
     mut value: u128,
-) -> Result<(), crate::CssSpecifiedValueSerializationError> {
+) -> Result<(), crate::CssSerializationError> {
     let mut index = digits.len();
     let mut carry = 0u8;
     while value != 0 || carry != 0 {
@@ -2070,8 +2067,7 @@ pub(crate) fn exact_binary32_value(text: &str) -> Option<f32> {
 mod tests {
     use super::{ExactFactor, ExactRational, LexicalDecimal, exact_binary32_value};
     use crate::{
-        CssSpecifiedValueSerializationErrorKind as ErrorKind,
-        CssSpecifiedValueSerializationLimits as Limits,
+        CssSerializationLimits as Limits, CssSpecifiedValueSerializationErrorKind as ErrorKind,
         specified_serialization::SpecifiedSerializationContext,
     };
 
@@ -2727,8 +2723,7 @@ mod suppressed_format_tests {
     use super::*;
     use crate::specified_serialization::SpecifiedSerializationContext;
     use crate::{
-        CssSpecifiedValueSerializationErrorKind as Kind,
-        CssSpecifiedValueSerializationLimits as Limits,
+        CssSerializationLimits as Limits, CssSpecifiedValueSerializationErrorKind as Kind,
     };
 
     const UNIT: ExactFactor = ExactFactor {

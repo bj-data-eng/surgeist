@@ -19,7 +19,11 @@ fn wrapper(declaration: &CssDeclaration) -> &CssOpacityPropertyValue {
 fn assert_token(declaration: &CssDeclaration, text: &str, percentage: bool) {
     assert_eq!(wrapper(declaration).as_css(), text);
     assert_eq!(
-        declaration.value_components().serialize().unwrap().as_css(),
+        declaration
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         text
     );
     let [component] = declaration.value_components().items() else {
@@ -52,8 +56,11 @@ fn assert_parsed(text: &str, percentage: bool) {
 }
 
 fn assert_constructed(text: &str, percentage: bool) {
-    let components =
-        CssComponentValues::try_new(vec![CssComponentValue::try_token(text).unwrap()]).unwrap();
+    let components = CssComponentValues::try_new(
+        vec![CssComponentValue::try_token(text).unwrap()],
+        Default::default(),
+    )
+    .unwrap();
     let declaration = parse_property_value(
         CssPropertyNameRef::Known(CssKnownProperty::Opacity),
         components.clone(),

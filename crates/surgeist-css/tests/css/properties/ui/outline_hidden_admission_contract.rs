@@ -178,7 +178,8 @@ fn original_hidden_origin(property: CssKnownProperty) {
         let source = format!("/* 🦀 */ {spelling}");
         let components = parse_component_values(&source).unwrap();
         let hidden = components.items().iter().find(|component| matches!(component.view(), CssComponentValueRef::Token(CssValueTokenRef::Ident(ident)) if ident.eq_ignore_ascii_case("hidden"))).expect("decoded hidden identifier");
-        let supplied = CssComponentValues::try_new(vec![hidden.clone()]).unwrap();
+        let supplied =
+            CssComponentValues::try_new(vec![hidden.clone()], Default::default()).unwrap();
         for grammar in [false, true] {
             let error = checked_components_rejects(property, supplied.clone(), grammar);
             let origin = match error.origin() {

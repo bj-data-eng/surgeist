@@ -3,14 +3,17 @@
 use crate::specified_serialization::SpecifiedSerializationContext;
 use crate::{
     CssComponentValue, CssComponentValueRef, CssNumberCalculation, CssNumericConstructionError,
-    CssNumericConstructionErrorKind, CssSpecifiedValueSerializationError,
-    CssSpecifiedValueSerializationLimits, CssValueOrigin, CssValueTokenRef,
+    CssNumericConstructionErrorKind, CssSerializationError, CssValueOrigin, CssValueTokenRef,
 };
 
 type ConstructionResult<T> = Result<T, CssNumericConstructionError>;
-type SerializationResult<T> = Result<T, CssSpecifiedValueSerializationError>;
+type SerializationResult<T> = Result<T, CssSerializationError>;
 
 /// An exact authored CSS Fonts 4 `<number [1,1000]>`.
+///
+/// # Specified serialization
+///
+/// Serializes without resolving symbolic number math.
 #[derive(Clone, Debug)]
 pub struct CssFontWeightNumber {
     value: FontWeightNumberValue,
@@ -99,32 +102,6 @@ impl CssFontWeightNumber {
         }
     }
 
-    /// Serializes without resolving symbolic number math.
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes atomically with cumulative resource limits.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        let context = &mut writer.context;
-        let captured = self.capture_specified(context)?;
-        let output = &mut writer.css;
-        context.append(output, &captured)?;
-        Ok(())
-    }
-
     fn capture_specified(
         &self,
         context: &mut SpecifiedSerializationContext,
@@ -140,8 +117,25 @@ impl CssFontWeightNumber {
         }
     }
 }
+impl crate::specified_rule_serialization::SpecifiedProvider for CssFontWeightNumber {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        let context = &mut writer.context;
+        let captured = self.capture_specified(context)?;
+        let output = &mut writer.css;
+        context.append(output, &captured)?;
+        Ok(())
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(CssFontWeightNumber);
 
 /// A common absolute weight accepted by the property and font-face descriptor.
+///
+/// # Specified serialization
+///
+/// Serializes the authored keyword or number without matching a font.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssAbsoluteFontWeight {
@@ -151,6 +145,10 @@ pub enum CssAbsoluteFontWeight {
 }
 
 /// An authored `font-weight` property value.
+///
+/// # Specified serialization
+///
+/// Serializes the authored absolute or relative weight.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontWeight {
@@ -160,6 +158,10 @@ pub enum CssFontWeight {
 }
 
 /// An authored `@font-face` weight descriptor before computed range ordering.
+///
+/// # Specified serialization
+///
+/// Serializes `auto` or the exact authored one/two-value range.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontFaceWeight {
@@ -171,31 +173,6 @@ pub enum CssFontFaceWeight {
 }
 
 impl CssAbsoluteFontWeight {
-    /// Serializes the authored keyword or number without matching a font.
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes under cumulative resource limits.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        let context = &mut writer.context;
-        let output = &mut writer.css;
-        self.append_specified(context, output)?;
-        Ok(())
-    }
-
     fn append_specified(
         &self,
         context: &mut SpecifiedSerializationContext,
@@ -203,8 +180,7 @@ impl CssAbsoluteFontWeight {
     ) -> SerializationResult<()> {
         match self {
             Self::Normal | Self::Bold => {
-                context.charge_input(1)?;
-                context.charge_projection(1)?;
+                context.charge_nodes(1)?;
                 context.append(
                     output,
                     if matches!(self, Self::Normal) {
@@ -221,33 +197,20 @@ impl CssAbsoluteFontWeight {
         }
     }
 }
-
-impl CssFontWeight {
-    /// Serializes the authored absolute or relative weight.
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes atomically under cumulative resource limits.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssAbsoluteFontWeight {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         let context = &mut writer.context;
         let output = &mut writer.css;
         self.append_specified(context, output)?;
         Ok(())
     }
+}
+crate::specified_rule_serialization::specified_serialization!(CssAbsoluteFontWeight);
 
+impl CssFontWeight {
     pub(crate) fn append_specified(
         &self,
         context: &mut SpecifiedSerializationContext,
@@ -256,8 +219,7 @@ impl CssFontWeight {
         match self {
             Self::Absolute(absolute) => absolute.append_specified(context, output)?,
             Self::Bolder | Self::Lighter => {
-                context.charge_input(1)?;
-                context.charge_projection(1)?;
+                context.charge_nodes(1)?;
                 context.append(
                     output,
                     if matches!(self, Self::Bolder) {
@@ -271,40 +233,26 @@ impl CssFontWeight {
         Ok(())
     }
 }
-
-impl CssFontFaceWeight {
-    /// Serializes `auto` or the exact authored one/two-value range.
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Charges one descriptor node and every explicitly authored endpoint.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssFontWeight {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         let context = &mut writer.context;
         let output = &mut writer.css;
         self.append_specified(context, output)?;
         Ok(())
     }
+}
+crate::specified_rule_serialization::specified_serialization!(CssFontWeight);
 
+impl CssFontFaceWeight {
     pub(crate) fn append_specified(
         &self,
         context: &mut SpecifiedSerializationContext,
         output: &mut String,
     ) -> SerializationResult<()> {
-        context.charge_input(1)?;
-        context.charge_projection(1)?;
+        context.charge_nodes(1)?;
         match self {
             Self::Auto => context.append(output, "auto")?,
             Self::Range { start, end } => {
@@ -325,6 +273,18 @@ impl CssFontFaceWeight {
         Ok(())
     }
 }
+impl crate::specified_rule_serialization::SpecifiedProvider for CssFontFaceWeight {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        let context = &mut writer.context;
+        let output = &mut writer.css;
+        self.append_specified(context, output)?;
+        Ok(())
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(CssFontFaceWeight);
 
 impl CssAbsoluteFontWeight {
     fn specified_semantically_eq(

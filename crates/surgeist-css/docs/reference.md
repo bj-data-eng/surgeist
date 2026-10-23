@@ -340,7 +340,7 @@ context. Every supplied member is checked, preserving order and duplicates.
 Invalid typed members are rejected atomically rather than silently filtered.
 
 The three `try_new_with_limits` methods use the existing
-`CssSpecifiedValueSerializationLimits` cumulatively over a list aggregate and all
+`CssSerializationLimits` cumulatively over a list aggregate and all
 members. A relative additionally charges its leading carrier. Construction runs
 the same iterative, context-aware specified writer, discards its bounded output,
 and returns the unchanged value. The typed error distinguishes `EmptyList` from
@@ -929,13 +929,13 @@ specified serialization deliberately produces rounded text.
 
 ```rust
 use surgeist_css::{
-    CssComponentValue, CssSpecifiedNumber, CssSpecifiedValueSerializationLimits,
+    CssComponentValue, CssSpecifiedNumber, CssSerializationLimits,
 };
 
 let component = CssComponentValue::try_number("0.9999996")?;
 let number = CssSpecifiedNumber::try_from_component(component.clone())?;
 assert_eq!(
-    number.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(1, 1, 1))?,
+    number.serialize_specified_with_limits(CssSerializationLimits::new(1, 1, 1))?,
     "1",
 );
 assert_eq!(number.literal_component(), Some(&component));
@@ -1118,7 +1118,7 @@ size changes its result; [sign operates on the resolved magnitude](https://www.w
 
 ```rust
 use surgeist_css::{
-    CssNumberCalculation, CssSpecifiedNumber, CssSpecifiedValueSerializationLimits,
+    CssNumberCalculation, CssSpecifiedNumber, CssSerializationLimits,
     parse_component_values,
 };
 
@@ -1127,7 +1127,7 @@ let calculation = CssNumberCalculation::try_from_components(
 )?;
 let number = CssSpecifiedNumber::try_from_calculation(calculation.clone())?;
 assert_eq!(
-    number.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(4, 4, 14))?,
+    number.serialize_specified_with_limits(CssSerializationLimits::new(4, 4, 14))?,
     "calc(0.333333)",
 );
 assert_eq!(calculation.serialize()?.as_css(), "calc(1 / 3)");
@@ -1370,7 +1370,7 @@ Determinate math retains a `calc()` wrapper under the shared numeric specified
 serialization policy, including folded `min()`, `max()`, and `clamp()` values.
 `serialize_specified_with_limits()` applies one cumulative input-node,
 projection-node, and output-byte budget, returning a typed
-`CssSpecifiedValueSerializationError` without partial public output or input
+`CssSerializationError` without partial public output or input
 mutation. A keyword or literal costs one input and one projection node;
 calculations use the scalar owner's existing costs.
 
@@ -2943,7 +2943,7 @@ Drop shadows cannot contain inset or spread. Filter lists preserve URL/function
 order and typed function-specific operands.
 
 All four shadow models provide `serialize_specified()` and
-`serialize_specified_with_limits(CssSpecifiedValueSerializationLimits)`.
+`serialize_specified_with_limits(CssSerializationLimits)`.
 A bare shadow emits `[color] x y [blur [spread]] [inset]`; a list separates
 members with comma-space, `None` emits `none`, and a drop shadow emits the full
 `drop-shadow([color] x y [standard_deviation])` function. Authored omissions
@@ -2962,7 +2962,7 @@ aggregate plus every member; `CssBoxShadow::Shadows` delegates transparently.
 explicit default, uses its existing numeric or color provider's charges.
 Wrappers and separators cost bytes only. One cumulative context owns the entire
 call: dropping a child math arena does not refund work. Limit failures use
-`CssSpecifiedValueSerializationError` and return no partial text or input
+`CssSerializationError` and return no partial text or input
 mutation.
 
 `CssFilterHueRotate::new(angle)` retains an explicit shared angle.
@@ -3370,7 +3370,7 @@ preserving the internal decoded SVG text, whitespace and numeric spelling.
 ```rust
 use surgeist_css::{
     CssBasicShape, CssBoxEdgeKeyword, CssCircleRadius, CssCircleShape,
-    CssClipPath, CssClipPathShape, CssSpecifiedValueSerializationLimits,
+    CssClipPath, CssClipPathShape, CssSerializationLimits,
 };
 
 let circle = CssCircleShape::new(CssCircleRadius::Default, None);
@@ -3380,14 +3380,14 @@ let shape = CssClipPathShape::new(
 assert_eq!(shape.reference_box(), Some(CssBoxEdgeKeyword::BorderBox));
 let clip = CssClipPath::BasicShape(shape);
 let expected = "circle() border-box";
-let limits = CssSpecifiedValueSerializationLimits::new(3, 3, expected.len());
+let limits = CssSerializationLimits::new(3, 3, expected.len());
 assert_eq!(clip.serialize_specified_with_limits(limits).unwrap(), expected);
 ```
 
 ```rust
 use surgeist_css::{
     CssComponentValue, CssRectShape, CssRectShapeEdge,
-    CssSpecifiedLengthPercentage, CssSpecifiedValueSerializationLimits,
+    CssSpecifiedLengthPercentage, CssSerializationLimits,
 };
 
 fn edge(css: &str) -> CssRectShapeEdge {
@@ -3403,19 +3403,19 @@ let rect = CssRectShape::new(
 assert_eq!(rect.top(), &CssRectShapeEdge::Auto);
 assert!(rect.round().is_none());
 let expected = "rect(auto 1px 2% 0)";
-let limits = CssSpecifiedValueSerializationLimits::new(5, 5, expected.len());
+let limits = CssSerializationLimits::new(5, 5, expected.len());
 assert_eq!(rect.serialize_specified_with_limits(limits).unwrap(), expected);
 ```
 
 ```rust
-use surgeist_css::{CssPathData, CssPathShape, CssSpecifiedValueSerializationLimits};
+use surgeist_css::{CssPathData, CssPathShape, CssSerializationLimits};
 
 let data = CssPathData::try_new("M0 0L1 2").unwrap();
 let path = CssPathShape::new(None, data);
 assert!(path.fill_rule().is_none());
 assert_eq!(path.data().as_str(), "M0 0L1 2");
 let expected = "path(\"M0 0L1 2\")";
-let limits = CssSpecifiedValueSerializationLimits::new(2, 2, expected.len());
+let limits = CssSerializationLimits::new(2, 2, expected.len());
 assert_eq!(path.serialize_specified_with_limits(limits).unwrap(), expected);
 ```
 
@@ -3447,7 +3447,7 @@ separators cost bytes only.
 
 All siblings share one cumulative input, projection and UTF-8 byte budget,
 including numeric math arenas, positions and border radii. Limit failure returns
-`CssSpecifiedValueSerializationError`, no partial CSS and no input or provenance
+`CssSerializationError`, no partial CSS and no input or provenance
 mutation. `clip-path` is a noninherited terminal with intrinsic `None` initial;
 central expansion, pending substitution reentry and normalization retain
 importance, order, source occurrence and replacement provenance.
@@ -4053,7 +4053,7 @@ math roots. Authored transport does not clamp opacity.
 `serialize_specified_with_limits()` supplies independent input-node, cumulative
 projection-node, and output-byte limits. Defaults are 65,536, 262,144, and
 1,048,576 respectively; zero limits are valid. Failures return a typed
-`CssSpecifiedValueSerializationError` without partial text or input mutation.
+`CssSerializationError` without partial text or input mutation.
 These logical bounds do not guarantee allocator availability.
 
 Ordinary scalars use their exact retained magnitude. Percentages divide by 100
@@ -7847,7 +7847,7 @@ boundary, and substitution reentry validates the original grammar atomically
 while retaining source occurrence, importance and replacement origins.
 
 Both models provide `serialize_specified()` and
-`serialize_specified_with_limits(CssSpecifiedValueSerializationLimits)`. Times
+`serialize_specified_with_limits(CssSerializationLimits)`. Times
 use the existing canonical seconds provider and its six-place rounding policy.
 Following [CSSOM value serialization](https://www.w3.org/TR/2021/WD-cssom-1-20210826/#serialize-a-css-value),
 pair output omits a demonstrably equivalent second component without discarding
@@ -9941,7 +9941,7 @@ reparsed. Failure preserves the original body and all supplied occurrences.
 specified policy. They compose current bodies under ordinary rendering ancestors
 through one final native graph writer. Standard parsed SupportsCondition CSSOM
 serialization retains its source-qualified FormatUnavailable result.
-`serialize_cssom_with_graph_limits` takes `CssRuleGraphSerializationLimits` with
+`serialize_cssom_with_graph_limits` takes `CssRuleSerializationLimits` with
 public `values` and `max_depth` fields. The values budget owns the complete input,
 projection and UTF-8 output allowance, without per-child resets or concatenated
 separately formatted strings. Failure returns no partial CSS and permits an

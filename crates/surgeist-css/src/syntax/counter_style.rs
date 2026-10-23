@@ -10,6 +10,11 @@ use crate::source::{CssParsedOrigin, CssSourcePosition};
 /// The private fields couple a checked name, a valid effective descriptor
 /// combination, and the authored at-keyword position. This authored model does
 /// not register, resolve, inherit, or evaluate a counter style.
+///
+/// # Specified serialization
+///
+/// Serializes present effective descriptors without resolving or executing the style. Output
+/// follows the selected Counter Styles descriptor section order.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssCounterStyleRule {
     name: CssCounterStyleName,

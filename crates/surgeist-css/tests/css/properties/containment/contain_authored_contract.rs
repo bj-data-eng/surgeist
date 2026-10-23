@@ -207,7 +207,12 @@ fn escaped_style_tokens_preserve_original_components_source_coordinates_and_impo
         )
         .unwrap();
         assert_eq!(source.value_components(), &components);
-        assert_eq!(containment(&source).serialize_specified().unwrap(), "style");
+        assert_eq!(
+            containment(&source)
+                .serialize_specified(Default::default())
+                .unwrap(),
+            "style"
+        );
     }
 }
 
@@ -298,8 +303,8 @@ fn normalization_counts_one_terminal_per_occurrence_and_preserves_order_importan
 
 #[test]
 fn every_specified_state_keeps_exact_aggregate_leaf_and_declaration_byte_costs_with_atomic_reuse() {
+    use CssSerializationLimits as Limits;
     use CssSpecifiedValueSerializationErrorKind as Kind;
-    use CssSpecifiedValueSerializationLimits as Limits;
     for canonical in STATES {
         let source = ParserFront::CheckedGrammar.valid(PROPERTY, canonical, canonical);
         let before = source.clone();
@@ -311,10 +316,7 @@ fn every_specified_state_keeps_exact_aggregate_leaf_and_declaration_byte_costs_w
         };
         let value = containment(&source);
         let exact = Limits::new(primitive_nodes, primitive_nodes, canonical.len());
-        assert_eq!(
-            value.serialize_specified_with_limits(exact).unwrap(),
-            canonical
-        );
+        assert_eq!(value.serialize_specified(exact).unwrap(), canonical);
         for (limits, kind) in [
             (
                 Limits::new(primitive_nodes - 1, primitive_nodes, canonical.len()),
@@ -330,21 +332,12 @@ fn every_specified_state_keeps_exact_aggregate_leaf_and_declaration_byte_costs_w
             ),
         ] {
             for _ in 0..2 {
-                assert_eq!(
-                    value
-                        .serialize_specified_with_limits(limits)
-                        .unwrap_err()
-                        .kind(),
-                    kind
-                );
+                assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
             }
         }
         let nodes = primitive_nodes + 2;
         let exact = Limits::new(nodes, nodes, expected.len());
-        assert_eq!(
-            source.to_specified_css_with_limits(exact).unwrap(),
-            expected
-        );
+        assert_eq!(source.serialize_specified(exact).unwrap(), expected);
         for (limits, kind) in [
             (
                 Limits::new(nodes - 1, nodes, expected.len()),
@@ -360,19 +353,10 @@ fn every_specified_state_keeps_exact_aggregate_leaf_and_declaration_byte_costs_w
             ),
         ] {
             for _ in 0..2 {
-                assert_eq!(
-                    source
-                        .to_specified_css_with_limits(limits)
-                        .unwrap_err()
-                        .kind(),
-                    kind
-                );
+                assert_eq!(source.serialize_specified(limits).unwrap_err().kind(), kind);
             }
         }
-        assert_eq!(
-            source.to_specified_css_with_limits(exact).unwrap(),
-            expected
-        );
+        assert_eq!(source.serialize_specified(exact).unwrap(), expected);
         assert_eq!(source, before);
     }
 }
@@ -385,18 +369,15 @@ fn sibling_sheet_output_shares_a_cumulative_byte_budget_and_remains_reusable_aft
     let report = parse_sheet(input);
     assert!(report.is_clean());
     let before = report.clone();
-    let limits = CssSpecifiedValueSerializationLimits::new(usize::MAX, usize::MAX, expected.len());
+    let limits = CssSerializationLimits::new(usize::MAX, usize::MAX, expected.len());
     assert_eq!(
-        report
-            .syntax()
-            .to_specified_css_with_limits(limits)
-            .unwrap(),
+        report.syntax().serialize_specified(limits).unwrap(),
         expected
     );
     for _ in 0..2 {
         let error = report
             .syntax()
-            .to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::new(
+            .serialize_specified(CssSerializationLimits::new(
                 usize::MAX,
                 usize::MAX,
                 expected.len() - 1,
@@ -404,18 +385,13 @@ fn sibling_sheet_output_shares_a_cumulative_byte_budget_and_remains_reusable_aft
             .unwrap_err();
         assert_eq!(
             error.kind(),
-            CssSpecifiedRuleSerializationErrorKind::Resource(
-                CssSpecifiedValueSerializationErrorKind::ByteLimit
-            )
+            CssSpecifiedValueSerializationErrorKind::ByteLimit
         );
         assert_eq!(error.rule_index(), Some(0));
         assert_eq!(report, before);
     }
     assert_eq!(
-        report
-            .syntax()
-            .to_specified_css_with_limits(limits)
-            .unwrap(),
+        report.syntax().serialize_specified(limits).unwrap(),
         expected
     );
 }

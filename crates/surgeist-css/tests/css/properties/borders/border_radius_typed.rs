@@ -5,7 +5,8 @@ fn scalar(text: &str) -> CssSpecifiedNonNegativeLengthPercentage {
     let components = parse_component_values(text).unwrap();
     if text.starts_with("calc(") {
         CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(
-            CssLengthPercentageCalculation::try_from_components(components).unwrap(),
+            CssLengthPercentageCalculation::try_from_components(components, Default::default())
+                .unwrap(),
         )
         .unwrap()
     } else {
@@ -52,11 +53,25 @@ fn checked_corner_preserves_omission_axes_origins_and_exact_literals() {
         CssValueOrigin::Parsed(_)
     ));
     assert_eq!(
-        programmatic.horizontal().serialize_specified().unwrap(),
+        programmatic
+            .horizontal()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "1px"
     );
-    assert_eq!(programmatic.vertical().serialize_specified().unwrap(), "2%");
-    assert_eq!(programmatic.serialize_specified().unwrap(), "1px 2%");
+    assert_eq!(
+        programmatic
+            .vertical()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "2%"
+    );
+    assert_eq!(
+        programmatic
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "1px 2%"
+    );
     let omitted = CssCornerRadiusValue::new(scalar("1px"), None);
     assert_eq!(omitted.horizontal(), omitted.vertical());
     assert!(omitted.authored_vertical().is_none());
@@ -96,16 +111,25 @@ fn every_logical_name_keeps_horizontal_then_vertical_without_mapping() {
     ] {
         let value = corner(name, "1px 2%");
         assert_eq!(
-            value.horizontal().serialize_specified().unwrap(),
+            value
+                .horizontal()
+                .serialize_specified(Default::default())
+                .unwrap(),
             "1px",
             "{name}"
         );
         assert_eq!(
-            value.vertical().serialize_specified().unwrap(),
+            value
+                .vertical()
+                .serialize_specified(Default::default())
+                .unwrap(),
             "2%",
             "{name}"
         );
-        assert_eq!(value.serialize_specified().unwrap(), "1px 2%");
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            "1px 2%"
+        );
     }
 }
 
@@ -142,7 +166,7 @@ fn shorthand_retains_lists_slash_and_corner_assignment_for_every_arity() {
                 value.bottom_right(),
                 value.bottom_left(),
             ]
-            .map(|corner| corner.serialize_specified().unwrap()),
+            .map(|corner| corner.serialize_specified(Default::default()).unwrap()),
             expected
         );
     }
@@ -160,10 +184,13 @@ fn shorthand_retains_lists_slash_and_corner_assignment_for_every_arity() {
             value.bottom_right(),
             value.bottom_left(),
         ]
-        .map(|corner| corner.serialize_specified().unwrap()),
+        .map(|corner| corner.serialize_specified(Default::default()).unwrap()),
         ["1px 4%", "2px 5%", "3px 4%", "2px 5%"]
     );
-    assert_eq!(value.serialize_specified().unwrap(), "1px 2px 3px / 4% 5%");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "1px 2px 3px / 4% 5%"
+    );
     assert_ne!(
         CssBorderRadiusShorthand::try_new(vec![scalar("1px")], None).unwrap(),
         CssBorderRadiusShorthand::try_new(vec![scalar("1px")], Some(vec![scalar("1px")])).unwrap()
@@ -175,31 +202,25 @@ fn specified_serialization_charges_one_aggregate_and_every_authored_child() {
     let corner = CssCornerRadiusValue::new(scalar("1px"), Some(scalar("2%")));
     assert_eq!(
         corner
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(3, 3, 6))
+            .serialize_specified(CssSerializationLimits::new(3, 3, 6))
             .unwrap(),
         "1px 2%"
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(2, 3, 6),
+            CssSerializationLimits::new(2, 3, 6),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(3, 2, 6),
+            CssSerializationLimits::new(3, 2, 6),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(3, 3, 5),
+            CssSerializationLimits::new(3, 3, 5),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
-        assert_eq!(
-            corner
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            kind
-        );
+        assert_eq!(corner.serialize_specified(limits).unwrap_err().kind(), kind);
     }
     let shorthand = CssBorderRadiusShorthand::try_new(
         vec![scalar("1px"), scalar("2px")],
@@ -208,29 +229,26 @@ fn specified_serialization_charges_one_aggregate_and_every_authored_child() {
     .unwrap();
     assert_eq!(
         shorthand
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(5, 5, 15))
+            .serialize_specified(CssSerializationLimits::new(5, 5, 15))
             .unwrap(),
         "1px 2px / 3% 4%"
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(4, 5, 15),
+            CssSerializationLimits::new(4, 5, 15),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(5, 4, 15),
+            CssSerializationLimits::new(5, 4, 15),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(5, 5, 14),
+            CssSerializationLimits::new(5, 5, 14),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
         assert_eq!(
-            shorthand
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            shorthand.serialize_specified(limits).unwrap_err().kind(),
             kind
         );
     }
@@ -241,7 +259,10 @@ fn symbolic_math_remains_typed_and_shares_aggregate_limits() {
     let math = scalar("calc(1px + 2%)");
     let original = math.calculation().unwrap().clone();
     let value = CssCornerRadiusValue::new(math, Some(scalar("3px")));
-    assert_eq!(value.serialize_specified().unwrap(), "calc(2% + 1px) 3px");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "calc(2% + 1px) 3px"
+    );
     assert_eq!(
         value.horizontal().calculation().unwrap().components(),
         original.components()
@@ -255,35 +276,25 @@ fn symbolic_math_remains_typed_and_shares_aggregate_limits() {
     // additionally charges its aggregate and second authored literal.
     assert_eq!(
         value
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                6,
-                7,
-                rendered.len()
-            ))
+            .serialize_specified(CssSerializationLimits::new(6, 7, rendered.len()))
             .unwrap(),
         rendered
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(5, 7, rendered.len()),
+            CssSerializationLimits::new(5, 7, rendered.len()),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(6, 6, rendered.len()),
+            CssSerializationLimits::new(6, 6, rendered.len()),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(6, 7, rendered.len() - 1),
+            CssSerializationLimits::new(6, 7, rendered.len() - 1),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
-        assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            kind
-        );
+        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
     }
 }
 
@@ -359,7 +370,7 @@ fn physical_corners_preserve_exact_magnitudes_and_math_type() {
             .value()
             .top_left()
             .horizontal()
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         format!("1{}px", "0".repeat(100))
     );

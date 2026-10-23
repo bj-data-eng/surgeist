@@ -35,7 +35,7 @@ fn simple_bounds(scope: &CssScopeRule, root_nesting: usize, root_scope: bool) {
     assert_eq!(
         child.declarations()[0]
             .value_components()
-            .serialize()
+            .serialize_tokens(Default::default())
             .unwrap()
             .as_css()
             .trim(),

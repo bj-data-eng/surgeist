@@ -31,6 +31,25 @@ pub mod value_assertions;
 
 use surgeist_css::*;
 
+/// Whether `error` is the serialization failure of a recovered media member:
+/// an unserializable boundary without a lexical component cause.
+pub fn is_recovered_media_failure(error: &CssSerializationError) -> bool {
+    error.kind() == CssSpecifiedValueSerializationErrorKind::UnserializableBoundary
+        && std::error::Error::source(error).is_none()
+}
+
+/// Component limits that bound only the serialized byte length, for
+/// `serialize_tokens`; the structural limits keep their defaults.
+pub fn byte_limits(max_css_bytes: usize) -> CssComponentValueLimits {
+    let defaults = CssComponentValueLimits::default();
+    CssComponentValueLimits::try_new(
+        defaults.max_nesting_depth(),
+        defaults.max_components(),
+        max_css_bytes,
+    )
+    .expect("the default nesting depth is valid")
+}
+
 /// The sole declaration of the clean style attribute `css`.
 #[track_caller]
 pub fn sole_declaration(css: &str) -> CssDeclaration {
@@ -77,7 +96,11 @@ pub fn validated_important_declaration(name: &str, value: &str) -> CssDeclaratio
     assert_eq!(source.known().unwrap().property().canonical_name(), name);
     assert_eq!(source.importance(), CssImportance::Important);
     assert_eq!(
-        source.value_components().serialize().unwrap().as_css(),
+        source
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         value
     );
     source

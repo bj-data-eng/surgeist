@@ -92,7 +92,10 @@ fn nul_is_retained_in_identity_and_identifier_output_replaces_it_only_on_output(
     assert_eq!(declaration.custom().unwrap().name(), &name);
     assert!(declaration.position().is_none());
     assert!(declaration.parsed_name().is_none());
-    assert_eq!(declaration.to_specified_css().unwrap(), "--a�Z: RAW;");
+    assert_eq!(
+        declaration.serialize_specified(Default::default()).unwrap(),
+        "--a�Z: RAW;"
+    );
     assert_eq!(
         declaration.custom().unwrap().name().as_str().as_bytes(),
         b"--a\0Z"
@@ -120,7 +123,7 @@ fn owned_semantic_names_compose_real_value_origins_and_parsed_name_equality_afte
         "MiXeD"
     );
     assert_eq!(
-        declaration.to_specified_css().unwrap(),
+        declaration.serialize_specified(Default::default()).unwrap(),
         "--bad\\ name: MiXeD !important;"
     );
     let parsed = {

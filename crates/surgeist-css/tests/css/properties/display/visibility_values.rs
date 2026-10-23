@@ -22,8 +22,11 @@ fn visibility_initial_and_constructed_values_have_exact_typed_payloads() {
         ("HIDDEN", CssVisibility::Hidden, "hidden"),
         (r"c\6f llapse", CssVisibility::Collapse, "collapse"),
     ] {
-        let components =
-            CssComponentValues::try_new(vec![CssComponentValue::try_token(text).unwrap()]).unwrap();
+        let components = CssComponentValues::try_new(
+            vec![CssComponentValue::try_token(text).unwrap()],
+            Default::default(),
+        )
+        .unwrap();
         let checked = parse_property_value(
             CssPropertyNameRef::Known(CssKnownProperty::Visibility),
             components.clone(),
@@ -42,13 +45,17 @@ fn visibility_initial_and_constructed_values_have_exact_typed_payloads() {
             assert_eq!(value.value(), &expected);
             assert_eq!(value.value(), &expected);
             assert_eq!(value.as_css(), text);
-            assert_eq!(value.value().serialize_specified().unwrap(), canonical);
             assert_eq!(
                 value
                     .value()
-                    .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                        1, 1, 0
-                    ))
+                    .serialize_specified(Default::default())
+                    .unwrap(),
+                canonical
+            );
+            assert_eq!(
+                value
+                    .value()
+                    .serialize_specified(CssSerializationLimits::new(1, 1, 0))
                     .unwrap_err()
                     .kind(),
                 CssSpecifiedValueSerializationErrorKind::ByteLimit
@@ -81,37 +88,31 @@ fn visibility_canonical_keywords_obey_exact_limits_without_mutation() {
         (CssVisibility::Hidden, "hidden"),
         (CssVisibility::Collapse, "collapse"),
     ] {
-        assert_eq!(value.serialize_specified().unwrap(), expected);
-        let exact = CssSpecifiedValueSerializationLimits::new(1, 1, expected.len());
         assert_eq!(
-            value.serialize_specified_with_limits(exact).unwrap(),
+            value.serialize_specified(Default::default()).unwrap(),
             expected
         );
+        let exact = CssSerializationLimits::new(1, 1, expected.len());
+        assert_eq!(value.serialize_specified(exact).unwrap(), expected);
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(0, 0, 0),
+                CssSerializationLimits::new(0, 0, 0),
                 CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 0, 0),
+                CssSerializationLimits::new(1, 0, 0),
                 CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 1, expected.len() - 1),
+                CssSerializationLimits::new(1, 1, expected.len() - 1),
                 CssSpecifiedValueSerializationErrorKind::ByteLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 1, 0),
+                CssSerializationLimits::new(1, 1, 0),
                 CssSpecifiedValueSerializationErrorKind::ByteLimit,
             ),
         ] {
-            assert_eq!(
-                value
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
-                kind
-            );
+            assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
         }
         let report = parse_style_attribute(&format!("visibility:{expected}"));
         assert!(report.is_clean());
@@ -124,7 +125,13 @@ fn visibility_canonical_keywords_obey_exact_limits_without_mutation() {
             panic!("visibility")
         };
         assert_eq!(parsed.value(), &value);
-        assert_eq!(parsed.value().serialize_specified().unwrap(), expected);
+        assert_eq!(
+            parsed
+                .value()
+                .serialize_specified(Default::default())
+                .unwrap(),
+            expected
+        );
         assert_eq!(parsed.as_css(), expected);
     }
 }

@@ -7,9 +7,9 @@ use surgeist_css::{
     CssGridTrackList, CssGridTrackRepeatComponent, CssGridTrackRepeatContent, CssGridTrackSize,
     CssGridTrackSizeList, CssKnownPropertyValueRef, CssLengthPercentageCalculation,
     CssNumericConstructionErrorKind, CssNumericDimension, CssPositiveIntegerLiteral,
-    CssSpecifiedNonNegativeFlex, CssSpecifiedNonNegativeLengthPercentage,
-    CssSpecifiedValueSerializationErrorKind, CssSpecifiedValueSerializationLimits, CssValueOrigin,
-    CssValueTokenRef, parse_component_values, parse_style_attribute,
+    CssSerializationLimits, CssSpecifiedNonNegativeFlex, CssSpecifiedNonNegativeLengthPercentage,
+    CssSpecifiedValueSerializationErrorKind, CssValueOrigin, CssValueTokenRef,
+    parse_component_values, parse_style_attribute,
 };
 
 fn flex(text: &str) -> CssSpecifiedNonNegativeFlex {
@@ -45,9 +45,15 @@ fn exact_flex_scalar_has_checked_programmatic_origin() {
         } else {
             "0fr".to_owned()
         };
-        assert_eq!(scalar.serialize_specified().unwrap(), canonical);
+        assert_eq!(
+            scalar.serialize_specified(Default::default()).unwrap(),
+            canonical
+        );
         let breadth = CssGridTrackBreadth::from_flex(scalar);
-        assert_eq!(breadth.serialize_specified().unwrap(), canonical);
+        assert_eq!(
+            breadth.serialize_specified(Default::default()).unwrap(),
+            canonical
+        );
         assert!(breadth.flex().is_some());
     }
     let error = CssSpecifiedNonNegativeFlex::try_from_component(
@@ -57,8 +63,11 @@ fn exact_flex_scalar_has_checked_programmatic_origin() {
     assert_eq!(error.kind(), &CssNumericConstructionErrorKind::OutOfRange);
     assert!(matches!(error.origin(), Some(CssValueOrigin::Programmatic)));
 
-    let bare_negative =
-        CssFlexCalculation::try_from_components(parse_component_values("-1fr").unwrap()).unwrap();
+    let bare_negative = CssFlexCalculation::try_from_components(
+        parse_component_values("-1fr").unwrap(),
+        Default::default(),
+    )
+    .unwrap();
     assert_eq!(
         CssSpecifiedNonNegativeFlex::try_from_calculation(bare_negative)
             .unwrap_err()
@@ -66,29 +75,34 @@ fn exact_flex_scalar_has_checked_programmatic_origin() {
         &CssNumericConstructionErrorKind::OutOfRange,
     );
     let deferred_negative = CssSpecifiedNonNegativeFlex::try_from_calculation(
-        CssFlexCalculation::try_from_components(parse_component_values("calc(-1fr)").unwrap())
-            .unwrap(),
+        CssFlexCalculation::try_from_components(
+            parse_component_values("calc(-1fr)").unwrap(),
+            Default::default(),
+        )
+        .unwrap(),
     )
     .unwrap();
     assert!(deferred_negative.calculation().is_some());
     assert_eq!(
-        deferred_negative.serialize_specified().unwrap(),
+        deferred_negative
+            .serialize_specified(Default::default())
+            .unwrap(),
         "calc(-1fr)"
     );
 
     let zero = CssGridTrackBreadth::from_flex(flex("-0"));
-    assert_eq!(zero.serialize_specified().unwrap(), "0fr");
+    assert_eq!(zero.serialize_specified(Default::default()).unwrap(), "0fr");
 
     let scalar = flex("2");
     assert_eq!(
         scalar
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(1, 1, 3))
+            .serialize_specified(CssSerializationLimits::new(1, 1, 3))
             .unwrap(),
         "2fr",
     );
     assert_eq!(
         scalar
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(1, 0, 3))
+            .serialize_specified(CssSerializationLimits::new(1, 0, 3))
             .unwrap_err()
             .kind(),
         CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
@@ -99,6 +113,7 @@ fn exact_flex_scalar_has_checked_programmatic_origin() {
 fn flex_calculation_keeps_its_unhinted_type_and_function_tree() {
     let calculation = CssFlexCalculation::try_from_components(
         parse_component_values("calc(1fr * (1% / 1%))").unwrap(),
+        Default::default(),
     )
     .unwrap();
     assert_eq!(calculation.result_type(), CssCalculationType::Flex);
@@ -114,11 +129,13 @@ fn flex_calculation_keeps_its_unhinted_type_and_function_tree() {
     assert!(scalar.literal_component().is_none());
     assert!(scalar.calculation().is_some());
     let breadth = CssGridTrackBreadth::from_flex(scalar);
-    let canonical = breadth.serialize_specified().unwrap();
+    let canonical = breadth.serialize_specified(Default::default()).unwrap();
     assert_eq!(canonical, "calc(1fr)");
-    let reparsed =
-        CssFlexCalculation::try_from_components(parse_component_values(&canonical).unwrap())
-            .unwrap();
+    let reparsed = CssFlexCalculation::try_from_components(
+        parse_component_values(&canonical).unwrap(),
+        Default::default(),
+    )
+    .unwrap();
     assert_eq!(reparsed.result_type(), CssCalculationType::Flex);
     assert_eq!(reparsed.numeric_type().percent_hint(), None);
 }
@@ -127,6 +144,7 @@ fn flex_calculation_keeps_its_unhinted_type_and_function_tree() {
 fn length_percentage_math_retains_its_percentage_child_and_hint() {
     let calculation = CssLengthPercentageCalculation::try_from_components(
         parse_component_values("calc(10px + 5%)").unwrap(),
+        Default::default(),
     )
     .unwrap();
     assert_eq!(
@@ -169,14 +187,22 @@ fn checked_track_sizes_reject_flexible_minima_and_preserve_exact_lengths() {
         CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit })
             if number.representation() == "1e-50" && unit == "px"
     ));
-    assert_eq!(short_length.serialize_specified().unwrap(), "0px");
+    assert_eq!(
+        short_length
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "0px"
+    );
     assert!(CssGridTrackSize::try_minmax(flex.clone(), short_length.clone()).is_none());
     let size = CssGridTrackSize::try_minmax(short_length, flex).unwrap();
-    assert_eq!(size.serialize_specified().unwrap(), "minmax(0px, 1fr)");
+    assert_eq!(
+        size.serialize_specified(Default::default()).unwrap(),
+        "minmax(0px, 1fr)"
+    );
     assert!(CssGridFixedSize::try_new(size).is_some());
     let fit = CssGridTrackSize::from_fit_content(length("1e50"));
     assert_eq!(
-        fit.serialize_specified().unwrap(),
+        fit.serialize_specified(Default::default()).unwrap(),
         format!("fit-content({})", canonical_large("px"))
     );
     assert!(CssGridFixedSize::try_new(fit).is_none());
@@ -215,7 +241,10 @@ fn checked_lists_reject_empty_tracks_and_repeat_cross_products() {
         CssGridGeneralTrackList::try_new(vec![CssGridGeneralTrackComponent::Repeat(repeat)])
             .unwrap(),
     );
-    assert_eq!(general.serialize_specified().unwrap(), "repeat(2, 2fr)");
+    assert_eq!(
+        general.serialize_specified(Default::default()).unwrap(),
+        "repeat(2, 2fr)"
+    );
     let auto = CssGridAutoRepeat::new(CssGridAutoRepeatKind::AutoFit, content);
     assert!(
         CssGridAutoTrackList::try_new(vec![
@@ -228,7 +257,7 @@ fn checked_lists_reject_empty_tracks_and_repeat_cross_products() {
         CssGridAutoTrackList::try_new(vec![CssGridAutoTrackComponent::AutoRepeat(auto)]).unwrap(),
     );
     assert_eq!(
-        automatic.serialize_specified().unwrap(),
+        automatic.serialize_specified(Default::default()).unwrap(),
         "repeat(auto-fit, 2fr)"
     );
     assert!(CssGridFixedSize::try_new(size).is_none());
@@ -299,23 +328,19 @@ fn parsed_track_graph_serializes_with_one_cumulative_budget() {
             if number.representation() == "1e-50" && unit == "px"
     ));
     assert_eq!(
-        list.serialize_specified().unwrap(),
+        list.serialize_specified(Default::default()).unwrap(),
         format!("{} fit-content(0px)", canonical_large("fr"))
     );
     assert_eq!(
-        list.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-            1, 100, 100
-        ))
-        .unwrap_err()
-        .kind(),
+        list.serialize_specified(CssSerializationLimits::new(1, 100, 100))
+            .unwrap_err()
+            .kind(),
         CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
     );
     assert_eq!(
-        list.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-            100, 100, 6
-        ))
-        .unwrap_err()
-        .kind(),
+        list.serialize_specified(CssSerializationLimits::new(100, 100, 6))
+            .unwrap_err()
+            .kind(),
         CssSpecifiedValueSerializationErrorKind::ByteLimit,
     );
 }

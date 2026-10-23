@@ -701,6 +701,7 @@ fn wpt_nested_selector_text_absolutizes_relative_selectors() {
         match inner.selectors().serialize_cssom(
             &CssNamespaceContext::default(),
             CssStyleSelectorContext::Nested,
+            Default::default(),
         ) {
             Ok(actual) if actual == expected => {}
             actual => failures.push(format!(
@@ -790,7 +791,7 @@ fn wpt_font_face_src_tech_keyword_sets_survive_serialization() {
             continue;
         };
         let result = src
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .map_err(|error| format!("{error:?}"))
             .and_then(|serialized| {
                 same_tech(&serialized, &row.src).map_err(|why| format!("{serialized:?}: {why}"))

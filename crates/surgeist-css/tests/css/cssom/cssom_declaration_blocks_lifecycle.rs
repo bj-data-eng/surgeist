@@ -111,7 +111,7 @@ fn known_names_are_insensitive_and_custom_names_retain_case_and_components() {
     assert_eq!(
         declarations[1]
             .value_components()
-            .serialize()
+            .serialize_tokens(Default::default())
             .unwrap()
             .as_css(),
         "Mixed"
@@ -205,7 +205,7 @@ fn owning_pair_serializer_shortens_redundancy_and_reenters_its_grammar() {
     };
     let retained = value.value().clone();
     assert!(retained.authored_after().is_some());
-    let canonical = retained.serialize_specified().unwrap();
+    let canonical = retained.serialize_specified(Default::default()).unwrap();
     assert_eq!(canonical, "1s");
     assert_eq!(value.value(), &retained);
     let reparsed = parse_property_value_text(
@@ -232,10 +232,10 @@ fn owning_pair_serializer_shortens_redundancy_and_reenters_its_grammar() {
             assert_eq!(contribution.source().importance(), CssImportance::Important);
             match contribution.ordinary_value().unwrap().view() {
                 CssLonghandValueRef::PauseBefore(value) => {
-                    assert_eq!(value.serialize_specified().unwrap(), "1s")
+                    assert_eq!(value.serialize_specified(Default::default()).unwrap(), "1s")
                 }
                 CssLonghandValueRef::PauseAfter(value) => {
-                    assert_eq!(value.serialize_specified().unwrap(), "1s")
+                    assert_eq!(value.serialize_specified(Default::default()).unwrap(), "1s")
                 }
                 _ => panic!("pause longhand owner"),
             }

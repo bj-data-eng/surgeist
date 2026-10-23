@@ -45,7 +45,9 @@ impl<'a> CalculationComponents<'a> {
         value: Cow<'a, CssComponentValue>,
     ) -> std::result::Result<Self, CssComponentValueError> {
         match value {
-            Cow::Owned(value) => CssComponentValues::try_new(vec![value]).map(Self::Owned),
+            Cow::Owned(value) => {
+                CssComponentValues::try_new(vec![value], Default::default()).map(Self::Owned)
+            }
             Cow::Borrowed(value) => Ok(Self::Borrowed(std::slice::from_ref(value))),
         }
     }
@@ -1199,7 +1201,7 @@ impl CssCalculationExpression {
         &self,
         other: &Self,
         context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-    ) -> std::result::Result<bool, crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<bool, crate::CssSerializationError> {
         Self::structural_eq_with(
             false,
             vec![(self, other)],
@@ -1218,10 +1220,9 @@ impl CssCalculationExpression {
         &self,
         other: &Self,
         context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-    ) -> std::result::Result<bool, crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<bool, crate::CssSerializationError> {
         use crate::{
-            CssSpecifiedValueSerializationError as Error,
-            CssSpecifiedValueSerializationErrorKind as Kind,
+            CssSerializationError as Error, CssSpecifiedValueSerializationErrorKind as Kind,
         };
         context.charge_generated_projection(1)?;
         let mut pending = Vec::new();
@@ -2684,9 +2685,11 @@ mod grid_track_math_tests {
             &CssNumericConstructionErrorKind::ResourceLimit
         );
 
-        let programmatic =
-            CssComponentValues::try_new(vec![CssComponentValue::try_dimension("1", "s").unwrap()])
-                .unwrap();
+        let programmatic = CssComponentValues::try_new(
+            vec![CssComponentValue::try_dimension("1", "s").unwrap()],
+            Default::default(),
+        )
+        .unwrap();
         let error = construct_grid_track_math(
             programmatic,
             CssComponentValueLimits::default(),
@@ -2765,10 +2768,7 @@ macro_rules! root {
             pub(crate) expression: Box<CssCalculationExpression>,
         }
         impl $name {
-            pub fn try_from_components(values: CssComponentValues) -> Result<Self> {
-                Self::try_from_components_with_limits(values, CssComponentValueLimits::default())
-            }
-            pub fn try_from_components_with_limits(
+            pub fn try_from_components(
                 values: CssComponentValues,
                 limits: CssComponentValueLimits,
             ) -> Result<Self> {
@@ -2803,12 +2803,28 @@ macro_rules! root {
             pub fn origin(&self) -> &CssValueOrigin {
                 &self.expression.origin
             }
-            pub fn serialize(
+            /// Serializes the retained calculation as canonical tokens with their
+            /// origins. `limits.max_css_bytes()` caps the output; the other
+            /// component limits do not apply.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`CssComponentValueError`] when the output exceeds the byte
+            /// limit; no partial output is returned.
+            pub fn serialize_tokens(
                 &self,
+                limits: crate::CssComponentValueLimits,
             ) -> std::result::Result<CssSerializedValue, CssComponentValueError> {
                 let mut tokens = Vec::new();
                 self.expression.canonical_tokens(&mut tokens);
-                CssSerializedValue::from_numeric_tokens(tokens)
+                let value = CssSerializedValue::from_numeric_tokens(tokens)?;
+                if value.as_css().len() > limits.max_css_bytes() {
+                    return Err(CssComponentValueError::new(
+                        crate::CssComponentValueErrorKind::ByteLimit,
+                        self.origin().clone(),
+                    ));
+                }
+                Ok(value)
             }
         }
     };
@@ -2874,14 +2890,14 @@ impl CssHintedNumberCalculation {
         &self,
         context: &mut crate::specified_serialization::SpecifiedSerializationContext,
         output: &mut String,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         project_specified_into(&self.expression, context, output).map(|_| ())
     }
 
     pub(crate) fn capture_specified(
         &self,
         context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-    ) -> std::result::Result<String, crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<String, crate::CssSerializationError> {
         capture_specified(&self.expression, context).map(|(text, _)| text)
     }
 }
@@ -2907,7 +2923,7 @@ impl CssIntegerCalculation {
         &self,
         context: &mut crate::specified_serialization::SpecifiedSerializationContext,
         output: &mut String,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         project_specified_into(&self.expression, context, output).map(|_| ())
     }
 }
@@ -2918,10 +2934,12 @@ impl CssIntegerCalculation {
     }
     pub fn literal(value: i32) -> Self {
         Self::try_from_components(
-            CssComponentValues::try_new(vec![
-                CssComponentValue::try_number(&value.to_string()).expect("integer spelling"),
-            ])
+            CssComponentValues::try_new(
+                vec![CssComponentValue::try_number(&value.to_string()).expect("integer spelling")],
+                Default::default(),
+            )
             .expect("single component"),
+            Default::default(),
         )
         .expect("integer literal")
     }
@@ -2930,14 +2948,15 @@ fn programmatic_number(value: f32) -> Option<CssComponentValues> {
     if !value.is_finite() {
         return None;
     }
-    CssComponentValues::try_new(vec![
-        CssComponentValue::try_number(&value.to_string()).ok()?,
-    ])
+    CssComponentValues::try_new(
+        vec![CssComponentValue::try_number(&value.to_string()).ok()?],
+        Default::default(),
+    )
     .ok()
 }
 impl CssNumberCalculation {
     pub fn try_literal(value: f32) -> Option<Self> {
-        Self::try_from_components(programmatic_number(value)?).ok()
+        Self::try_from_components(programmatic_number(value)?, Default::default()).ok()
     }
 }
 impl CssPercentageCalculation {
@@ -2946,10 +2965,12 @@ impl CssPercentageCalculation {
             return None;
         }
         Self::try_from_components(
-            CssComponentValues::try_new(vec![
-                CssComponentValue::try_token(&format!("{value}%")).ok()?,
-            ])
+            CssComponentValues::try_new(
+                vec![CssComponentValue::try_token(&format!("{value}%")).ok()?],
+                Default::default(),
+            )
             .ok()?,
+            Default::default(),
         )
         .ok()
     }
@@ -2960,10 +2981,12 @@ impl CssLengthCalculation {
             return None;
         }
         Self::try_from_components(
-            CssComponentValues::try_new(vec![
-                CssComponentValue::try_dimension(&value.to_string(), unit.as_css_str()).ok()?,
-            ])
+            CssComponentValues::try_new(
+                vec![CssComponentValue::try_dimension(&value.to_string(), unit.as_css_str()).ok()?],
+                Default::default(),
+            )
             .ok()?,
+            Default::default(),
         )
         .ok()
     }
@@ -2972,9 +2995,10 @@ fn programmatic_dimension(value: f32, unit: &str) -> Option<CssComponentValues> 
     if !value.is_finite() {
         return None;
     }
-    CssComponentValues::try_new(vec![
-        CssComponentValue::try_dimension(&value.to_string(), unit).ok()?,
-    ])
+    CssComponentValues::try_new(
+        vec![CssComponentValue::try_dimension(&value.to_string(), unit).ok()?],
+        Default::default(),
+    )
     .ok()
 }
 /// Resource accounting for assembling already admitted roots. No child graph is
@@ -3141,13 +3165,7 @@ impl CssLengthPercentageCalculation {
     /// The first operand has no binary operator. Even a single operand receives
     /// a programmatic `calc()` wrapper. Root-only unitless zero is rechecked as
     /// an arithmetic operand and can fail ordinary numeric type admission.
-    pub fn try_sum(
-        first: Self,
-        rest: impl IntoIterator<Item = (CssCalculationSumOperator, Self)>,
-    ) -> Result<Self> {
-        Self::try_sum_with_limits(first, rest, CssComponentValueLimits::default())
-    }
-
+    ///
     /// Assembles a sum under aggregate component, nesting and output-byte limits.
     ///
     /// Limits include inserted punctuation and whitespace. Admission stops
@@ -3155,7 +3173,7 @@ impl CssLengthPercentageCalculation {
     /// Unlimited count and byte limits do not bound an arbitrary input iterator.
     /// Already admitted recovery origins remain intact; the public component
     /// constructor continues to reject recovered input.
-    pub fn try_sum_with_limits(
+    pub fn try_sum(
         first: Self,
         rest: impl IntoIterator<Item = (CssCalculationSumOperator, Self)>,
         limits: CssComponentValueLimits,
@@ -3188,11 +3206,11 @@ impl CssLengthPercentageCalculation {
             }
             components.extend(value.components().items().iter().cloned());
         }
-        let children = CssComponentValues::try_new(components)
+        let children = CssComponentValues::try_new(components, Default::default())
             .map_err(CssNumericConstructionError::component)?;
         let function = CssComponentValue::try_function("calc", children)
             .map_err(CssNumericConstructionError::component)?;
-        let values = CssComponentValues::try_new(vec![function])
+        let values = CssComponentValues::try_new(vec![function], Default::default())
             .map_err(CssNumericConstructionError::component)?;
         construct_with_policy(
             values,
@@ -3204,13 +3222,18 @@ impl CssLengthPercentageCalculation {
     }
 
     pub fn try_dimension(value: f32, unit: CssLengthUnit) -> Option<Self> {
-        Self::try_from_components(programmatic_dimension(value, unit.as_css_str())?).ok()
+        Self::try_from_components(
+            programmatic_dimension(value, unit.as_css_str())?,
+            Default::default(),
+        )
+        .ok()
     }
     pub fn try_percentage(value: f32) -> Option<Self> {
         Self::try_from_components(
             CssPercentageCalculation::try_literal(value)?
                 .components()
                 .clone(),
+            Default::default(),
         )
         .ok()
     }
@@ -3220,9 +3243,9 @@ impl CssAngleCalculation {
     pub fn try_literal(number: &str, unit: crate::CssAngleUnit) -> Result<Self> {
         let component = CssComponentValue::try_dimension(number, crate::angle::suffix(unit))
             .map_err(CssNumericConstructionError::component)?;
-        let values = CssComponentValues::try_new(vec![component])
+        let values = CssComponentValues::try_new(vec![component], Default::default())
             .map_err(CssNumericConstructionError::component)?;
-        Self::try_from_components(values)
+        Self::try_from_components(values, Default::default())
     }
 }
 
@@ -3231,9 +3254,10 @@ impl CssTimeCalculation {
     pub fn try_literal(number: &str, unit: crate::CssTimeUnit) -> Result<Self> {
         let literal = crate::CssTimeLiteral::try_new(number, unit)
             .map_err(CssNumericConstructionError::component)?;
-        let values = CssComponentValues::try_new(vec![literal.component().clone()])
-            .map_err(CssNumericConstructionError::component)?;
-        Self::try_from_components(values)
+        let values =
+            CssComponentValues::try_new(vec![literal.component().clone()], Default::default())
+                .map_err(CssNumericConstructionError::component)?;
+        Self::try_from_components(values, Default::default())
     }
 }
 impl CssFrequencyCalculation {
@@ -3241,9 +3265,10 @@ impl CssFrequencyCalculation {
     pub fn try_literal(number: &str, unit: crate::CssFrequencyUnit) -> Result<Self> {
         let literal = crate::CssFrequencyLiteral::try_new(number, unit)
             .map_err(CssNumericConstructionError::component)?;
-        let values = CssComponentValues::try_new(vec![literal.component().clone()])
-            .map_err(CssNumericConstructionError::component)?;
-        Self::try_from_components(values)
+        let values =
+            CssComponentValues::try_new(vec![literal.component().clone()], Default::default())
+                .map_err(CssNumericConstructionError::component)?;
+        Self::try_from_components(values, Default::default())
     }
 }
 
@@ -3289,7 +3314,7 @@ pub(crate) fn project_calculation_specified_into(
     calculation: SpecifiedCalculationRef<'_>,
     context: &mut crate::specified_serialization::SpecifiedSerializationContext,
     output: &mut String,
-) -> std::result::Result<NumericProjectionOutcome, crate::CssSpecifiedValueSerializationError> {
+) -> std::result::Result<NumericProjectionOutcome, crate::CssSerializationError> {
     project_specified_into(calculation.expression(), context, output)
 }
 
@@ -3308,8 +3333,7 @@ impl<'a> SpecifiedCalculationRef<'a> {
 pub(crate) fn prepare_calculation_specified<'a>(
     calculation: SpecifiedCalculationRef<'a>,
     context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-) -> std::result::Result<DeferredNumericProjection<'a>, crate::CssSpecifiedValueSerializationError>
-{
+) -> std::result::Result<DeferredNumericProjection<'a>, crate::CssSerializationError> {
     prepare_specified(calculation.expression(), context)
 }
 
@@ -3337,10 +3361,7 @@ pub(crate) fn capture_retained_color_calculation(
     calculation: ColorCalculationRef<'_>,
     scale: NumericProjectionScale,
     context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-) -> std::result::Result<
-    (String, NumericProjectionOutcome),
-    crate::CssSpecifiedValueSerializationError,
-> {
+) -> std::result::Result<(String, NumericProjectionOutcome), crate::CssSerializationError> {
     capture_specified_scaled(calculation.expression(), scale, context)
 }
 
@@ -3350,10 +3371,7 @@ pub(crate) fn capture_color_component_calculation(
     calculation: ColorCalculationRef<'_>,
     scale: NumericProjectionScale,
     context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-) -> std::result::Result<
-    (String, NumericProjectionOutcome),
-    crate::CssSpecifiedValueSerializationError,
-> {
+) -> std::result::Result<(String, NumericProjectionOutcome), crate::CssSerializationError> {
     projection::capture_color_component_specified_scaled(calculation.expression(), scale, context)
 }
 
@@ -3363,10 +3381,7 @@ fn capture_numeric_color_calculation(
     calculation: ColorCalculationRef<'_>,
     scale: NumericProjectionScale,
     context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-) -> std::result::Result<
-    (String, NumericProjectionOutcome),
-    crate::CssSpecifiedValueSerializationError,
-> {
+) -> std::result::Result<(String, NumericProjectionOutcome), crate::CssSerializationError> {
     projection::capture_color_specified_scaled(calculation.expression(), scale, context)
 }
 
@@ -3386,7 +3401,7 @@ impl CapturedNumericComponent {
     pub(crate) fn capture_calculation(
         expression: &CssCalculationExpression,
         context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-    ) -> std::result::Result<Self, crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<Self, crate::CssSerializationError> {
         capture_specified_for_comparison(expression, context)
             .map(|(capture, _)| Self::Projected(capture))
     }
@@ -3428,8 +3443,7 @@ pub(crate) fn length_components_equal(
 mod color_component_calculation_tests {
     use super::*;
     use crate::{
-        CssSpecifiedValueSerializationErrorKind as Kind,
-        CssSpecifiedValueSerializationLimits as Limits,
+        CssSerializationLimits as Limits, CssSpecifiedValueSerializationErrorKind as Kind,
         specified_serialization::SpecifiedSerializationContext as Context,
     };
 
@@ -3501,7 +3515,9 @@ mod color_component_calculation_tests {
                 None,
             ),
         ] {
-            let value = CssNumberCalculation::try_from_components(components(source)).unwrap();
+            let value =
+                CssNumberCalculation::try_from_components(components(source), Default::default())
+                    .unwrap();
             let before = value.clone();
             let outcome = assert_capture(
                 ColorCalculationRef::Number(&value),
@@ -3512,8 +3528,11 @@ mod color_component_calculation_tests {
             assert_eq!(outcome.scalar_value.map(f64::to_bits), scalar);
             assert_eq!(value, before);
         }
-        let value =
-            CssNumberCalculation::try_from_components(components("calc(NaN + 1em / 1px)")).unwrap();
+        let value = CssNumberCalculation::try_from_components(
+            components("calc(NaN + 1em / 1px)"),
+            Default::default(),
+        )
+        .unwrap();
         let outcome = assert_capture(
             ColorCalculationRef::Number(&value),
             NumericProjectionScale::Identity,
@@ -3525,9 +3544,11 @@ mod color_component_calculation_tests {
 
     #[test]
     fn component_capture_retains_scale_dimensions_and_canonical_angles() {
-        let number =
-            CssNumberCalculation::try_from_components(components("calc(.0078125 * 1em / 1px)"))
-                .unwrap();
+        let number = CssNumberCalculation::try_from_components(
+            components("calc(.0078125 * 1em / 1px)"),
+            Default::default(),
+        )
+        .unwrap();
         assert_capture(
             ColorCalculationRef::Number(&number),
             NumericProjectionScale::NumberToPercentage {
@@ -3537,9 +3558,10 @@ mod color_component_calculation_tests {
             "calc(0.007813 * 1% * 1em / 1px)",
             true,
         );
-        let percentage = CssPercentageCalculation::try_from_components(components(
-            "calc(.0078125% * 1em / 1px)",
-        ))
+        let percentage = CssPercentageCalculation::try_from_components(
+            components("calc(.0078125% * 1em / 1px)"),
+            Default::default(),
+        )
         .unwrap();
         assert_capture(
             ColorCalculationRef::Percentage(&percentage),
@@ -3550,9 +3572,10 @@ mod color_component_calculation_tests {
             "calc(0.007813% * 1em / 1px / 100%)",
             true,
         );
-        let angle = CssAngleCalculation::try_from_components(components(
-            "calc(.0000001turn + 1deg * 1em / 1px)",
-        ))
+        let angle = CssAngleCalculation::try_from_components(
+            components("calc(.0000001turn + 1deg * 1em / 1px)"),
+            Default::default(),
+        )
         .unwrap();
         assert_capture(
             ColorCalculationRef::Angle(&angle),
@@ -3564,9 +3587,11 @@ mod color_component_calculation_tests {
 
     #[test]
     fn component_capture_uses_rounded_contextual_scratch_and_shared_work() {
-        let value =
-            CssNumberCalculation::try_from_components(components("calc(5e-324 * 1em / 1px)"))
-                .unwrap();
+        let value = CssNumberCalculation::try_from_components(
+            components("calc(5e-324 * 1em / 1px)"),
+            Default::default(),
+        )
+        .unwrap();
         let calculation = ColorCalculationRef::Number(&value);
         let scale = NumericProjectionScale::Number {
             numerator: 1,
@@ -3617,8 +3642,7 @@ mod color_component_calculation_tests {
 mod origin_color_calculation_tests {
     use super::*;
     use crate::{
-        CssSpecifiedValueSerializationErrorKind as Kind,
-        CssSpecifiedValueSerializationLimits as Limits,
+        CssSerializationLimits as Limits, CssSpecifiedValueSerializationErrorKind as Kind,
         specified_serialization::SpecifiedSerializationContext as Context,
     };
 
@@ -3660,25 +3684,37 @@ mod origin_color_calculation_tests {
             ("calc(1 / (0 * -1))", "calc(-infinity)"),
             ("calc(0 * -1 + 1em / 1px)", "calc((0 * -1) + (1em / 1px))"),
         ] {
-            let value = CssNumberCalculation::try_from_components(components(source)).unwrap();
+            let value =
+                CssNumberCalculation::try_from_components(components(source), Default::default())
+                    .unwrap();
             let before = value.clone();
             assert_capture(ColorCalculationRef::Number(&value), text);
             assert_eq!(value, before);
         }
-        let percentage =
-            CssPercentageCalculation::try_from_components(components("calc(.78125%)")).unwrap();
+        let percentage = CssPercentageCalculation::try_from_components(
+            components("calc(.78125%)"),
+            Default::default(),
+        )
+        .unwrap();
         assert_capture(
             ColorCalculationRef::Percentage(&percentage),
             "calc(0.78125%)",
         );
-        let angle =
-            CssAngleCalculation::try_from_components(components("calc(.0000001turn)")).unwrap();
+        let angle = CssAngleCalculation::try_from_components(
+            components("calc(.0000001turn)"),
+            Default::default(),
+        )
+        .unwrap();
         assert_capture(ColorCalculationRef::Angle(&angle), "calc(0.000036deg)");
     }
 
     #[test]
     fn origin_capture_uses_rounded_scratch_without_changing_standalone_scratch() {
-        let value = CssNumberCalculation::try_from_components(components("calc(1 / 128)")).unwrap();
+        let value = CssNumberCalculation::try_from_components(
+            components("calc(1 / 128)"),
+            Default::default(),
+        )
+        .unwrap();
         let calculation = ColorCalculationRef::Number(&value);
         let mut context = Context::new(Limits::new(usize::MAX, usize::MAX, 14));
         assert_eq!(
@@ -3724,7 +3760,11 @@ mod origin_color_calculation_tests {
 
     #[test]
     fn origin_capture_spends_the_callers_cumulative_work_and_remaining_bytes() {
-        let value = CssNumberCalculation::try_from_components(components("calc(1 / 128)")).unwrap();
+        let value = CssNumberCalculation::try_from_components(
+            components("calc(1 / 128)"),
+            Default::default(),
+        )
+        .unwrap();
         let calculation = ColorCalculationRef::Number(&value);
         // Inputs visit the wrapper, product and two leaves. Projection work
         // visits the two leaves, inverse and product: four of each per capture.
@@ -3803,8 +3843,7 @@ mod origin_color_calculation_tests {
 mod retained_color_calculation_tests {
     use super::*;
     use crate::{
-        CssSpecifiedValueSerializationErrorKind as Kind,
-        CssSpecifiedValueSerializationLimits as Limits,
+        CssSerializationLimits as Limits, CssSpecifiedValueSerializationErrorKind as Kind,
         specified_serialization::SpecifiedSerializationContext as Context,
     };
 
@@ -3838,6 +3877,7 @@ mod retained_color_calculation_tests {
         ] {
             let value = CssPercentageCalculation::try_from_components(
                 crate::parse_component_values(source).unwrap(),
+                Default::default(),
             )
             .unwrap();
             let before = value.clone();
@@ -3866,6 +3906,7 @@ mod retained_color_calculation_tests {
     fn retained_scaled_alpha_uses_shared_work_and_remaining_scratch() {
         let value = CssPercentageCalculation::try_from_components(
             crate::parse_component_values("calc(.78125%)").unwrap(),
+            Default::default(),
         )
         .unwrap();
         let calculation = ColorCalculationRef::Percentage(&value);
@@ -3918,6 +3959,7 @@ mod structural_comparison_tests {
     fn checked(source: &str) -> CssLengthPercentageCalculation {
         CssLengthPercentageCalculation::try_from_components(
             crate::parse_component_values(source).unwrap(),
+            Default::default(),
         )
         .unwrap()
     }
@@ -3944,8 +3986,7 @@ mod structural_comparison_tests {
 #[cfg(test)]
 mod specified_helpers_tests {
     use crate::{
-        CssSpecifiedValueSerializationErrorKind as ErrorKind,
-        CssSpecifiedValueSerializationLimits as Limits,
+        CssSerializationLimits as Limits, CssSpecifiedValueSerializationErrorKind as ErrorKind,
         specified_serialization::SpecifiedSerializationContext,
     };
 
@@ -3983,7 +4024,7 @@ mod media_helpers_tests {
             "calc(1fr)",
         ] {
             let values = crate::parse_component_values(source).unwrap();
-            let serialized = values.serialize().unwrap();
+            let serialized = values.serialize_tokens(Default::default()).unwrap();
             let context = NumericInputContext::components(&values, &serialized);
             let expression = context
                 .admit_with_limits(
@@ -4098,7 +4139,7 @@ mod container_context_tests {
             let cloned = expression.clone();
             assert_eq!(expression, cloned);
             let number = CssNumberCalculation::from_expression(cloned);
-            let serialized = number.serialize().unwrap();
+            let serialized = number.serialize_tokens(Default::default()).unwrap();
             assert_eq!(serialized.as_css(), canonical);
             assert_eq!(
                 serialized.value_origin_at(0),
@@ -4120,13 +4161,13 @@ mod container_context_tests {
             .unwrap();
             assert_eq!(
                 CssNumberCalculation::from_expression(roundtrip)
-                    .serialize()
+                    .serialize_tokens(Default::default())
                     .unwrap()
                     .as_css(),
                 canonical
             );
             assert_eq!(
-                CssNumberCalculation::try_from_components(components)
+                CssNumberCalculation::try_from_components(components, Default::default())
                     .unwrap_err()
                     .kind(),
                 &CssNumericConstructionErrorKind::UnknownFunction
@@ -4150,13 +4191,13 @@ mod container_context_tests {
             assert_eq!(expression.result_type(), CssCalculationType::Length);
             assert_eq!(
                 CssLengthCalculation::from_expression(expression)
-                    .serialize()
+                    .serialize_tokens(Default::default())
                     .unwrap()
                     .as_css(),
                 source
             );
             assert_eq!(
-                CssLengthCalculation::try_from_components(components)
+                CssLengthCalculation::try_from_components(components, Default::default())
                     .unwrap_err()
                     .kind(),
                 &CssNumericConstructionErrorKind::UnknownFunction
@@ -4212,7 +4253,7 @@ mod container_context_tests {
             panic!("function")
         };
         let serialized = CssNumberCalculation::from_expression(expression)
-            .serialize()
+            .serialize_tokens(Default::default())
             .unwrap();
         assert_eq!(
             serialized.value_origin_at(14),
@@ -4247,7 +4288,7 @@ fn exact_numeric_leaf_identity(
     a: &CssComponentValue,
     b: &CssComponentValue,
     context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-) -> std::result::Result<bool, crate::CssSpecifiedValueSerializationError> {
+) -> std::result::Result<bool, crate::CssSerializationError> {
     let coefficients = match (a.view(), b.view()) {
         (
             CssComponentValueRef::Token(CssValueTokenRef::Number(a)),
@@ -4276,7 +4317,7 @@ pub(crate) fn exact_dimension_identity(
     a: Option<&CssComponentValue>,
     b: Option<&CssComponentValue>,
     context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-) -> std::result::Result<Option<bool>, crate::CssSpecifiedValueSerializationError> {
+) -> std::result::Result<Option<bool>, crate::CssSerializationError> {
     let (Some(a), Some(b)) = (a, b) else {
         return Ok(None);
     };

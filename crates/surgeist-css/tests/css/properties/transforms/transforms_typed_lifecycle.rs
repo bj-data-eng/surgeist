@@ -21,8 +21,11 @@ fn percentage(text: &str) -> CssTransformScaleComponent {
 fn number_math(text: &str) -> CssTransformScaleComponent {
     CssTransformScaleComponent::Number(
         CssSpecifiedNumber::try_from_calculation(
-            CssNumberCalculation::try_from_components(parse_component_values(text).unwrap())
-                .unwrap(),
+            CssNumberCalculation::try_from_components(
+                parse_component_values(text).unwrap(),
+                Default::default(),
+            )
+            .unwrap(),
         )
         .unwrap(),
     )
@@ -30,16 +33,22 @@ fn number_math(text: &str) -> CssTransformScaleComponent {
 fn percentage_math(text: &str) -> CssTransformScaleComponent {
     CssTransformScaleComponent::Percentage(
         CssSpecifiedPercentage::try_from_calculation(
-            CssPercentageCalculation::try_from_components(parse_component_values(text).unwrap())
-                .unwrap(),
+            CssPercentageCalculation::try_from_components(
+                parse_component_values(text).unwrap(),
+                Default::default(),
+            )
+            .unwrap(),
         )
         .unwrap(),
     )
 }
 fn hinted(text: &str) -> CssTransformScaleComponent {
     CssTransformScaleComponent::HintedNumberCalculation(
-        CssHintedNumberCalculation::try_from_components(parse_component_values(text).unwrap())
-            .unwrap(),
+        CssHintedNumberCalculation::try_from_components(
+            parse_component_values(text).unwrap(),
+            Default::default(),
+        )
+        .unwrap(),
     )
 }
 fn scale(values: Vec<CssTransformScaleComponent>) -> CssScale {
@@ -55,9 +64,12 @@ macro_rules! check {
     ($value:expr, $input:expr, $projection:expr, $expected:expr) => {{
         let value = $value;
         let before = snapshot(&value);
-        assert_eq!(value.serialize_specified().unwrap(), $expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            $expected
+        );
         budget($expected, $input, $projection, |limits| {
-            value.serialize_specified_with_limits(limits)
+            value.serialize_specified(limits)
         });
         assert_eq!(value, before);
     }};
@@ -92,6 +104,7 @@ fn new_3d_types_have_closed_domains_and_public_cumulative_providers() {
     }
     let math = CssLengthCalculation::try_from_components(
         parse_component_values("calc(1px - 2px)").unwrap(),
+        Default::default(),
     )
     .unwrap();
     let original = math.components().clone();
@@ -165,7 +178,7 @@ fn perspective_origin_uses_the_physical_position_owner_and_origin_fields() {
         "perspective-origin: right 2px bottom 3% !important;",
         7,
         7,
-        |limits| source.to_specified_css_with_limits(limits),
+        |limits| source.serialize_specified(limits),
     );
 }
 
@@ -266,14 +279,18 @@ fn structural_symbolic_equality_ignores_origins_but_preserves_distinct_authored_
     let programmatic = CssTransformScaleComponent::Number(
         CssSpecifiedNumber::try_from_calculation(
             CssNumberCalculation::try_from_components(
-                CssComponentValues::try_new(vec![
-                    CssComponentValue::try_function(
-                        "calc",
-                        parse_component_values("1 + 2").unwrap(),
-                    )
-                    .unwrap(),
-                ])
+                CssComponentValues::try_new(
+                    vec![
+                        CssComponentValue::try_function(
+                            "calc",
+                            parse_component_values("1 + 2").unwrap(),
+                        )
+                        .unwrap(),
+                    ],
+                    Default::default(),
+                )
                 .unwrap(),
+                Default::default(),
             )
             .unwrap(),
         )
@@ -324,7 +341,11 @@ fn hinted_number_factors_keep_the_unresolved_basis_and_original_source_after_fai
         Some(CssNumericDimension::Length)
     );
     assert_eq!(
-        value.components().serialize().unwrap().as_css(),
+        value
+            .components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         "calc((1px + 1%) / 1px)"
     );
     let CssValueOrigin::Parsed(origin) = value.origin() else {
@@ -337,7 +358,7 @@ fn hinted_number_factors_keep_the_unresolved_basis_and_original_source_after_fai
     );
     check!(wrapper.value(), 8, 9, "calc((1% + 1px) / 1px)");
     budget("scale: calc((1% + 1px) / 1px);", 10, 11, |limits| {
-        source.to_specified_css_with_limits(limits)
+        source.serialize_specified(limits)
     });
     assert_eq!(source, before);
     let same = hinted("calc((1px + 1%) / 1px)");

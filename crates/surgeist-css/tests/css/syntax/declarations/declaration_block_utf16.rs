@@ -225,7 +225,9 @@ fn actual_parser_mode_and_independent_svg_choice_select_the_owning_grammar() {
     assert_eq!(names(&report), ["color", "width"]);
     assert!(report.report().is_clean(), "{report:?}");
     assert_eq!(
-        report.report().syntax()[0].to_specified_css().unwrap(),
+        report.report().syntax()[0]
+            .serialize_specified(Default::default())
+            .unwrap(),
         "color: rgb(170, 187, 204);"
     );
     let svg = quirks.with_svg_glyph_orientation_vertical();

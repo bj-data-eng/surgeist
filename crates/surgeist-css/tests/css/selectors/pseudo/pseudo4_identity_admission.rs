@@ -78,12 +78,18 @@ fn admitted(cases: &[(&str, &str)]) -> Vec<CssSelector> {
         );
         let value = selector.syntax().as_ref().unwrap();
         assert!(value.has_pseudo_elements(), "{source}");
-        assert_eq!(value.to_specified_css().unwrap(), *expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            *expected
+        );
         let [CssRule::Style(rule)] = sheet.syntax().rules() else {
             unreachable!()
         };
         let sheet_value = rule.selectors().selectors()[0].selector();
-        assert_eq!(sheet_value.to_specified_css().unwrap(), *expected);
+        assert_eq!(
+            sheet_value.serialize_specified(Default::default()).unwrap(),
+            *expected
+        );
         same_semantics(
             value,
             source,
@@ -94,7 +100,12 @@ fn admitted(cases: &[(&str, &str)]) -> Vec<CssSelector> {
         let replay = parse_selector(expected, &CssNamespaceContext::default());
         assert!(replay.is_clean(), "{expected}: {replay:?}");
         let replay_value = replay.syntax().as_ref().unwrap();
-        assert_eq!(replay_value.to_specified_css().unwrap(), *expected);
+        assert_eq!(
+            replay_value
+                .serialize_specified(Default::default())
+                .unwrap(),
+            *expected
+        );
         same_semantics(value, source, replay_value, expected);
     }
     reports

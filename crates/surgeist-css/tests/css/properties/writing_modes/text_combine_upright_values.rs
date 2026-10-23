@@ -16,21 +16,25 @@ fn parsed(text: &str) -> CssTextCombineUpright {
 }
 fn output(value: &CssTextCombineUpright, expected: &str) {
     let before = value.clone();
-    assert_eq!(value.serialize_specified().unwrap(), expected);
-    assert_eq!(parsed(expected).serialize_specified().unwrap(), expected);
     assert_eq!(
-        value
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                65_536,
-                262_144,
-                expected.len()
-            ))
+        value.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
+    assert_eq!(
+        parsed(expected)
+            .serialize_specified(Default::default())
             .unwrap(),
         expected
     );
     assert_eq!(
         value
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
+            .serialize_specified(CssSerializationLimits::new(65_536, 262_144, expected.len()))
+            .unwrap(),
+        expected
+    );
+    assert_eq!(
+        value
+            .serialize_specified(CssSerializationLimits::new(
                 65_536,
                 262_144,
                 expected.len() - 1
@@ -79,7 +83,9 @@ fn integer_calculation_counts_remain_unrounded_unclamped_and_owned() {
         ("calc(1px / 1em)", "digits calc(1px / 1em)"),
     ] {
         let components = parse_component_values(input).unwrap();
-        let calculation = CssIntegerCalculation::try_from_components(components.clone()).unwrap();
+        let calculation =
+            CssIntegerCalculation::try_from_components(components.clone(), Default::default())
+                .unwrap();
         let count = CssTextCombineDigitCount::from_calculation(calculation.clone());
         assert!(count.literal().is_none());
         assert_eq!(count.calculation().unwrap(), &calculation);
@@ -123,7 +129,7 @@ fn keyword_and_literal_budgets_charge_outer_and_child_nodes_atomically() {
         let before = value.clone();
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
+                .serialize_specified(CssSerializationLimits::new(
                     input_nodes,
                     projection_nodes,
                     text.len()
@@ -133,45 +139,27 @@ fn keyword_and_literal_budgets_charge_outer_and_child_nodes_atomically() {
         );
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(
-                    input_nodes - 1,
-                    projection_nodes,
-                    text.len(),
-                ),
+                CssSerializationLimits::new(input_nodes - 1, projection_nodes, text.len()),
                 CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(
-                    input_nodes,
-                    projection_nodes - 1,
-                    text.len(),
-                ),
+                CssSerializationLimits::new(input_nodes, projection_nodes - 1, text.len()),
                 CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(
-                    input_nodes,
-                    projection_nodes,
-                    text.len() - 1,
-                ),
+                CssSerializationLimits::new(input_nodes, projection_nodes, text.len() - 1),
                 CssSpecifiedValueSerializationErrorKind::ByteLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(0, 0, 0),
+                CssSerializationLimits::new(0, 0, 0),
                 CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 0, 0),
+                CssSerializationLimits::new(1, 0, 0),
                 CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
             ),
         ] {
-            assert_eq!(
-                value
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
-                kind
-            );
+            assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
         }
         assert_eq!(value, before);
     }
@@ -180,7 +168,7 @@ fn keyword_and_literal_budgets_charge_outer_and_child_nodes_atomically() {
     // The outer prefix is checked before entering the child's residual budgets.
     assert_eq!(
         value
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(1, 1, 6))
+            .serialize_specified(CssSerializationLimits::new(1, 1, 6))
             .unwrap_err()
             .kind(),
         CssSpecifiedValueSerializationErrorKind::ByteLimit
@@ -244,39 +232,29 @@ fn calculation_leaf_budgets_include_outer_nodes_and_prefix_bytes() {
     let text = "digits calc(1)";
     assert_eq!(
         value
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                2,
-                2,
-                text.len()
-            ))
+            .serialize_specified(CssSerializationLimits::new(2, 2, text.len()))
             .unwrap(),
         text
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(1, 2, text.len()),
+            CssSerializationLimits::new(1, 2, text.len()),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(2, 1, text.len()),
+            CssSerializationLimits::new(2, 1, text.len()),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(2, 2, text.len() - 1),
+            CssSerializationLimits::new(2, 2, text.len() - 1),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(1, 1, 6),
+            CssSerializationLimits::new(1, 1, 6),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
-        assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            kind
-        );
+        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
     }
     assert_eq!(value, before);
 }

@@ -26,7 +26,10 @@ fn specified_spacing(authored: &str) -> String {
     else {
         panic!("typed border-spacing: {source}");
     };
-    value.spacing().serialize_specified().unwrap()
+    value
+        .spacing()
+        .serialize_specified(Default::default())
+        .unwrap()
 }
 
 fn assert_spacing_rejected(authored: &str) {

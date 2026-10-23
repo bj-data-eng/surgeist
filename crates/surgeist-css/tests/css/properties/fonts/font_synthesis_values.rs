@@ -8,23 +8,23 @@ const CAPABILITIES: [&str; 4] = ["weight", "style", "small-caps", "position"];
 
 fn specified(
     declaration: &CssDeclaration,
-    limits: CssSpecifiedValueSerializationLimits,
-) -> Result<String, CssSpecifiedValueSerializationError> {
+    limits: CssSerializationLimits,
+) -> Result<String, CssSerializationError> {
     match declaration.known().unwrap().property_value().unwrap() {
         CssKnownPropertyValueRef::FontSynthesis(value) => {
-            value.synthesis().serialize_specified_with_limits(limits)
+            value.synthesis().serialize_specified(limits)
         }
         CssKnownPropertyValueRef::FontSynthesisWeight(value) => {
-            value.weight().serialize_specified_with_limits(limits)
+            value.weight().serialize_specified(limits)
         }
         CssKnownPropertyValueRef::FontSynthesisStyle(value) => {
-            value.style().serialize_specified_with_limits(limits)
+            value.style().serialize_specified(limits)
         }
         CssKnownPropertyValueRef::FontSynthesisSmallCaps(value) => {
-            value.small_caps().serialize_specified_with_limits(limits)
+            value.small_caps().serialize_specified(limits)
         }
         CssKnownPropertyValueRef::FontSynthesisPosition(value) => {
-            value.position().serialize_specified_with_limits(limits)
+            value.position().serialize_specified(limits)
         }
         _ => panic!("synthesis family"),
     }
@@ -34,7 +34,9 @@ fn specified(
 fn checked_four_member_sets_reject_empty_and_emit_every_semantic_combination() {
     assert!(CssFontSynthesisValues::try_new(false, false, false, false).is_none());
     assert_eq!(
-        CssFontSynthesis::None.serialize_specified().unwrap(),
+        CssFontSynthesis::None
+            .serialize_specified(Default::default())
+            .unwrap(),
         "none"
     );
     for mask in 1u8..16 {
@@ -57,7 +59,10 @@ fn checked_four_member_sets_reject_empty_and_emit_every_semantic_combination() {
             .collect::<Vec<_>>()
             .join(" ");
         let value = CssFontSynthesis::Values(values);
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         // A reversed authored order must normalize to the independent grammar order.
         let reversed = expected
             .split_whitespace()
@@ -71,7 +76,13 @@ fn checked_four_member_sets_reject_empty_and_emit_every_semantic_combination() {
             panic!("synthesis")
         };
         assert_eq!(parsed.synthesis(), &value);
-        assert_eq!(parsed.synthesis().serialize_specified().unwrap(), expected);
+        assert_eq!(
+            parsed
+                .synthesis()
+                .serialize_specified(Default::default())
+                .unwrap(),
+            expected
+        );
         let reparsed = declaration("font-synthesis", &expected);
         let CssKnownPropertyValueRef::FontSynthesis(roundtrip) =
             reparsed.known().unwrap().property_value().unwrap()
@@ -85,48 +96,56 @@ fn checked_four_member_sets_reject_empty_and_emit_every_semantic_combination() {
 #[test]
 fn longhand_payloads_preserve_distinct_choices_and_emit_canonical_keywords() {
     assert_eq!(
-        CssFontSynthesisWeight::Auto.serialize_specified().unwrap(),
+        CssFontSynthesisWeight::Auto
+            .serialize_specified(Default::default())
+            .unwrap(),
         "auto"
     );
     assert_eq!(
-        CssFontSynthesisWeight::None.serialize_specified().unwrap(),
+        CssFontSynthesisWeight::None
+            .serialize_specified(Default::default())
+            .unwrap(),
         "none"
     );
     assert_eq!(
-        CssFontSynthesisStyle::Auto.serialize_specified().unwrap(),
+        CssFontSynthesisStyle::Auto
+            .serialize_specified(Default::default())
+            .unwrap(),
         "auto"
     );
     assert_eq!(
-        CssFontSynthesisStyle::None.serialize_specified().unwrap(),
+        CssFontSynthesisStyle::None
+            .serialize_specified(Default::default())
+            .unwrap(),
         "none"
     );
     assert_eq!(
         CssFontSynthesisStyle::ObliqueOnly
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "oblique-only"
     );
     assert_eq!(
         CssFontSynthesisSmallCaps::Auto
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "auto"
     );
     assert_eq!(
         CssFontSynthesisSmallCaps::None
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "none"
     );
     assert_eq!(
         CssFontSynthesisPosition::Auto
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "auto"
     );
     assert_eq!(
         CssFontSynthesisPosition::None
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "none"
     );
@@ -143,7 +162,7 @@ fn longhand_payloads_preserve_distinct_choices_and_emit_canonical_keywords() {
         ("font-synthesis-position", "NoNe", "none"),
     ] {
         let source = declaration(name, text);
-        let output = specified(&source, CssSpecifiedValueSerializationLimits::default()).unwrap();
+        let output = specified(&source, CssSerializationLimits::default()).unwrap();
         assert_eq!(output, expected);
         let reparsed = declaration(name, &output);
         let CssExpansion::Contributions(CssContributions::Longhands(before)) =
@@ -184,7 +203,7 @@ fn escaped_keywords_decode_without_replacing_authored_origins() {
             name.len() + 1 + text.len()
         );
         assert_eq!(
-            specified(&source, CssSpecifiedValueSerializationLimits::default()).unwrap(),
+            specified(&source, CssSerializationLimits::default()).unwrap(),
             expected
         );
     }
@@ -213,31 +232,31 @@ fn exact_input_projection_and_byte_budgets_are_cumulative_and_failure_is_atomic(
     ] {
         let source = declaration(name, text);
         let before = source.clone();
-        let exact = CssSpecifiedValueSerializationLimits::new(nodes, nodes, expected.len());
+        let exact = CssSerializationLimits::new(nodes, nodes, expected.len());
         assert_eq!(specified(&source, exact).unwrap(), expected);
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(nodes - 1, nodes, expected.len()),
+                CssSerializationLimits::new(nodes - 1, nodes, expected.len()),
                 CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(nodes, nodes - 1, expected.len()),
+                CssSerializationLimits::new(nodes, nodes - 1, expected.len()),
                 CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(nodes, nodes, expected.len() - 1),
+                CssSerializationLimits::new(nodes, nodes, expected.len() - 1),
                 CssSpecifiedValueSerializationErrorKind::ByteLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(0, nodes, expected.len()),
+                CssSerializationLimits::new(0, nodes, expected.len()),
                 CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(nodes, 0, expected.len()),
+                CssSerializationLimits::new(nodes, 0, expected.len()),
                 CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(nodes, nodes, 0),
+                CssSerializationLimits::new(nodes, nodes, 0),
                 CssSpecifiedValueSerializationErrorKind::ByteLimit,
             ),
         ] {

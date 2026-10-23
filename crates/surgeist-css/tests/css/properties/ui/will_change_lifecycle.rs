@@ -74,9 +74,11 @@ fn checked_construction_admits_the_same_grammar_and_preserves_input_origins() {
                 assert_eq!(source.known().unwrap().property(), property);
             }
         }
-        let components =
-            CssComponentValues::try_new(vec![CssComponentValue::try_ident(valid[0]).unwrap()])
-                .unwrap();
+        let components = CssComponentValues::try_new(
+            vec![CssComponentValue::try_ident(valid[0]).unwrap()],
+            Default::default(),
+        )
+        .unwrap();
         let source = parse_property_value(
             CssPropertyNameRef::Known(property),
             components.clone(),
@@ -89,9 +91,11 @@ fn checked_construction_admits_the_same_grammar_and_preserves_input_origins() {
             CssValueOrigin::Programmatic
         ));
         // Unknown future identifiers are valid; excluded keyword "none" supplies the failure oracle.
-        let invalid =
-            CssComponentValues::try_new(vec![CssComponentValue::try_ident("none").unwrap()])
-                .unwrap();
+        let invalid = CssComponentValues::try_new(
+            vec![CssComponentValue::try_ident("none").unwrap()],
+            Default::default(),
+        )
+        .unwrap();
         let error = parse_property_value(
             CssPropertyNameRef::Known(property),
             invalid,
@@ -165,7 +169,7 @@ fn invalid_recovery_control_preserves_neighbors_and_the_original_snapshot() {
             assert_eq!(
                 report.syntax()[0]
                     .value_components()
-                    .serialize()
+                    .serialize_tokens(Default::default())
                     .unwrap()
                     .as_css(),
                 "red"
@@ -173,7 +177,7 @@ fn invalid_recovery_control_preserves_neighbors_and_the_original_snapshot() {
             assert_eq!(
                 report.syntax()[1]
                     .value_components()
-                    .serialize()
+                    .serialize_tokens(Default::default())
                     .unwrap()
                     .as_css(),
                 "2px"

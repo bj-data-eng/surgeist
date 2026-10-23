@@ -105,7 +105,10 @@ fn speech_keywords_use_decoded_case_insensitive_identifiers_and_preserve_tokens(
         };
         assert_eq!(parsed.known().unwrap().property(), property(canonical));
         assert_eq!(parsed.importance(), CssImportance::Important);
-        let serialized = parsed.value_components().serialize().unwrap();
+        let serialized = parsed
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap();
         assert_eq!(serialized.as_css(), value);
         let checked = parse_property_value(
             CssPropertyNameRef::Known(property(canonical)),

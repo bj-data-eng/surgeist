@@ -1,10 +1,8 @@
 //! Authored font-synthesis values, intrinsic projection, and specified emission.
 //! Font matching and the execution of synthesis belong to downstream owners.
 
+use crate::CssSerializationError as Error;
 use crate::specified_rule_serialization::SpecifiedRuleWriter;
-use crate::{
-    CssSpecifiedValueSerializationError as Error, CssSpecifiedValueSerializationLimits as Limits,
-};
 
 type Result<T> = std::result::Result<T, Error>;
 
@@ -154,8 +152,7 @@ impl CssFontSynthesis {
 }
 
 fn word(writer: &mut SpecifiedRuleWriter, start: usize, value: &str) -> Result<()> {
-    writer.context.charge_input(1)?;
-    writer.context.charge_projection(1)?;
+    writer.node()?;
     if writer.css.len() != start {
         writer.append(" ")?;
     }
@@ -179,29 +176,17 @@ keyword_writer!(CssFontSynthesisPosition, Auto => "auto", None => "none");
 
 macro_rules! public_serializer {
     ($value:ty) => {
-        impl $value {
-            /// Canonical specified CSS for this checked authored value.
-            pub fn serialize_specified(&self) -> Result<String> {
-                self.serialize_specified_with_limits(Limits::default())
-            }
-
-            /// Serializes under a cumulative input, projection, and output budget.
-            pub fn serialize_specified_with_limits(&self, limits: Limits) -> Result<String> {
-                let mut writer =
-                    crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-                self.append_to_rule_writer(&mut writer)?;
-                Ok(writer.css)
-            }
-
-            pub(crate) fn append_to_rule_writer(
+        impl crate::specified_rule_serialization::SpecifiedProvider for $value {
+            fn append_to_rule_writer(
                 &self,
                 writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-            ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+            ) -> std::result::Result<(), crate::CssSerializationError> {
                 let start = writer.css.len();
                 self.write(writer, start)?;
                 Ok(())
             }
         }
+        crate::specified_rule_serialization::specified_serialization!($value);
     };
 }
 

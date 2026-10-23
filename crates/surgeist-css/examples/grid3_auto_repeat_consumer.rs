@@ -102,7 +102,7 @@ fn intrinsic_body_and_fixed_surroundings_remain_distinct() {
             .unwrap()
             .length_percentage()
             .unwrap()
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "10px"
     );
@@ -118,7 +118,7 @@ fn intrinsic_body_and_fixed_surroundings_remain_distinct() {
             .unwrap()
             .length_percentage()
             .unwrap()
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "5px"
     );
@@ -141,19 +141,29 @@ fn intrinsic_body_and_fixed_surroundings_remain_distinct() {
     assert_keyword(track(body, 5), BreadthKind::MaxContent);
     let flex = track(body, 7).breadth().unwrap();
     assert_eq!(flex.kind(), BreadthKind::Fraction);
-    assert_eq!(flex.flex().unwrap().serialize_specified().unwrap(), "1fr");
+    assert_eq!(
+        flex.flex()
+            .unwrap()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "1fr"
+    );
     let (minimum, maximum) = track(body, 9).minmax().unwrap();
     assert_eq!(minimum.kind(), BreadthKind::Auto);
     assert_eq!(maximum.kind(), BreadthKind::Fraction);
     assert_eq!(
-        maximum.flex().unwrap().serialize_specified().unwrap(),
+        maximum
+            .flex()
+            .unwrap()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "1fr"
     );
     assert_eq!(
         track(body, 11)
             .fit_content()
             .unwrap()
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "20%"
     );
@@ -221,8 +231,11 @@ fn checked_components_preserve_general_body_values_and_origins() {
     assert!(declaration.position().is_none());
     assert!(declaration.parsed_name().is_none());
     assert!(declaration.parsed_value().is_none());
-    let original_tokens = components.serialize().unwrap();
-    let retained_tokens = declaration.value_components().serialize().unwrap();
+    let original_tokens = components.serialize_tokens(Default::default()).unwrap();
+    let retained_tokens = declaration
+        .value_components()
+        .serialize_tokens(Default::default())
+        .unwrap();
     assert_eq!(retained_tokens.as_css(), original_tokens.as_css());
     assert_eq!(retained_tokens.segments(), original_tokens.segments());
     assert_eq!(
@@ -250,7 +263,11 @@ fn checked_components_preserve_general_body_values_and_origins() {
     assert_eq!(minimum.kind(), BreadthKind::MinContent);
     assert_eq!(maximum.kind(), BreadthKind::Fraction);
     assert_eq!(
-        maximum.flex().unwrap().serialize_specified().unwrap(),
+        maximum
+            .flex()
+            .unwrap()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "2fr"
     );
     println!("checked component grammar and preserved origins: ok");
@@ -283,7 +300,7 @@ fn shorthand_axes_keep_their_explicit_and_implicit_roles() {
             .unwrap()
             .flex()
             .unwrap()
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "1fr"
     );
@@ -306,7 +323,7 @@ fn shorthand_axes_keep_their_explicit_and_implicit_roles() {
             .unwrap()
             .length_percentage()
             .unwrap()
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "12px"
     );
@@ -318,7 +335,7 @@ fn shorthand_axes_keep_their_explicit_and_implicit_roles() {
         track(body, 0)
             .fit_content()
             .unwrap()
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "20%"
     );

@@ -674,7 +674,7 @@ impl<'a> MediaInput<'a> {
                     .collect()
             }
         };
-        CssComponentValues::try_new(items)
+        CssComponentValues::try_new(items, Default::default())
             .map_err(|e| crate::error::invalid_component_value(input.current_source_location(), e))
     }
 }
@@ -787,7 +787,7 @@ fn construct_media(
             origin: origin.clone(),
         });
     }
-    let serialized = values.serialize_with_limit(limits.max_css_bytes())?;
+    let serialized = values.serialize_tokens(limits)?;
     let source = serialized.as_css();
     let numeric = NumericInputContext::components(&values, &serialized);
     let context = MediaInput {
@@ -825,10 +825,10 @@ fn construct_media(
     })?;
     crate::media::check_canonical_limit(&query, limits.max_css_bytes()).map_err(
         |error| match error {
-            CssMediaSerializationError::Component(error) => {
+            crate::media::MediaSerializationFailure::Component(error) => {
                 CssMediaConstructionError::Component(error)
             }
-            CssMediaSerializationError::RecoveredNever { origin } => {
+            crate::media::MediaSerializationFailure::RecoveredNever { origin } => {
                 CssMediaConstructionError::RecoveredInput { origin }
             }
         },

@@ -13,7 +13,11 @@ fn both(text: &str) -> [CssDeclaration; 2] {
     };
     assert_eq!(parsed.importance(), CssImportance::Important);
     assert_eq!(
-        parsed.value_components().serialize().unwrap().as_css(),
+        parsed
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         text
     );
     let CssValueOrigin::Parsed(origin) = parsed.value_components().items()[0].origin() else {
@@ -120,7 +124,7 @@ fn predefined_none_math_and_exact_channel_remain_distinct() {
         assert_eq!(value.color_space(), PredefinedColorSpace::DisplayP3Linear);
         assert!(matches!(value.channels()[0], CssColorComponent::None));
         assert!(
-            matches!(&value.channels()[1], CssColorComponent::NumberCalculation(calc) if calc.components().serialize().unwrap().as_css() == "calc(0.5)")
+            matches!(&value.channels()[1], CssColorComponent::NumberCalculation(calc) if calc.components().serialize_tokens(Default::default()).unwrap().as_css() == "calc(0.5)")
         );
         number(&value.channels()[2], "1e100");
     }

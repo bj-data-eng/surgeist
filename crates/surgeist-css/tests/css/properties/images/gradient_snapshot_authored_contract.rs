@@ -19,8 +19,8 @@
 use crate::css::support::authored_property;
 use crate::css::support::authored_property::parsed;
 use surgeist_css::{
-    CssKnownProperty as P, CssSpecifiedValueSerializationErrorKind as K,
-    CssSpecifiedValueSerializationLimits as L, *,
+    CssKnownProperty as P, CssSerializationLimits as L,
+    CssSpecifiedValueSerializationErrorKind as K, *,
 };
 
 const LINEAR: [&str; 2] = ["linear-gradient", "repeating-linear-gradient"];
@@ -58,15 +58,27 @@ fn round_trip(value: &str) {
         let before = declaration.clone();
         assert!(matches!(image(&declaration), CssImageValue::Gradient(_)));
         let checked_image = CssImage::try_new(image(&declaration).clone()).unwrap();
-        let specified = checked_image.serialize_specified().unwrap();
+        let specified = checked_image
+            .serialize_specified(Default::default())
+            .unwrap();
         let reparsed = parsed(P::BackgroundImage, &specified);
         // Intrinsic normalization may collapse standard aliases/default spellings;
         // its output must retain meaning and have a stable semantic reparse.
-        assert_eq!(image(&reparsed).serialize_specified().unwrap(), specified);
-        let output = declaration.to_specified_css().unwrap();
+        assert_eq!(
+            image(&reparsed)
+                .serialize_specified(Default::default())
+                .unwrap(),
+            specified
+        );
+        let output = declaration.serialize_specified(Default::default()).unwrap();
         let report = parse_style_attribute(&output);
         assert!(report.is_clean(), "{output}: {:?}", report.diagnostics());
-        assert_eq!(report.syntax()[0].to_specified_css().unwrap(), output);
+        assert_eq!(
+            report.syntax()[0]
+                .serialize_specified(Default::default())
+                .unwrap(),
+            output
+        );
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
             expand_declaration(&declaration).unwrap()
         else {
@@ -92,8 +104,14 @@ fn rejects(value: &str) {
     let [first, last] = report.syntax().as_slice() else {
         panic!("two neighbors: {source}")
     };
-    assert_eq!(first.to_specified_css().unwrap(), "color: red;");
-    assert_eq!(last.to_specified_css().unwrap(), "color: blue !important;");
+    assert_eq!(
+        first.serialize_specified(Default::default()).unwrap(),
+        "color: red;"
+    );
+    assert_eq!(
+        last.serialize_specified(Default::default()).unwrap(),
+        "color: blue !important;"
+    );
     let [diagnostic] = report.diagnostics() else {
         panic!("one rejection: {source}")
     };
@@ -498,7 +516,7 @@ fn checked_singleton_stop_list_and_image_construction_accept_one_real_stop() {
     let gradient = CssLinearGradient::new(None, list);
     let image = CssImage::try_new(CssImageValue::Gradient(CssGradient::Linear(gradient))).unwrap();
     assert_eq!(
-        image.serialize_specified().unwrap(),
+        image.serialize_specified(Default::default()).unwrap(),
         "linear-gradient(currentcolor)"
     );
 }
@@ -558,14 +576,19 @@ fn selected_gradients_compose_through_actual_image_consumers_and_nested_images()
                         .iter()
                         .all(|item| item.source().same_occurrence(&declaration))
                 );
-                let output = declaration.to_specified_css().unwrap();
+                let output = declaration.serialize_specified(Default::default()).unwrap();
                 let reparsed = parse_style_attribute(&output);
                 assert!(
                     reparsed.is_clean(),
                     "{output}: {:?}",
                     reparsed.diagnostics()
                 );
-                assert_eq!(reparsed.syntax()[0].to_specified_css().unwrap(), output);
+                assert_eq!(
+                    reparsed.syntax()[0]
+                        .serialize_specified(Default::default())
+                        .unwrap(),
+                    output
+                );
             }
         }
         for nested in [
@@ -574,10 +597,10 @@ fn selected_gradients_compose_through_actual_image_consumers_and_nested_images()
         ] {
             let declaration = parsed(P::BackgroundImage, &nested);
             assert!(CssImage::try_new(image(&declaration).clone()).is_ok());
-            let output = declaration.to_specified_css().unwrap();
+            let output = declaration.serialize_specified(Default::default()).unwrap();
             assert_eq!(
                 parse_style_attribute(&output).syntax()[0]
-                    .to_specified_css()
+                    .serialize_specified(Default::default())
                     .unwrap(),
                 output
             );
@@ -723,11 +746,11 @@ fn selected_gradient_serialization_limits_are_atomic_reusable_and_cumulative() {
         "conic-gradient(from 45deg at left 10px top 20% in lab, red 0 25%, 50%, blue 75% 1turn)",
     );
     let before = source.clone();
-    let specified = source.to_specified_css().unwrap();
+    let specified = source.serialize_specified(Default::default()).unwrap();
     let unlimited = usize::MAX;
     assert_eq!(
         source
-            .to_specified_css_with_limits(L::new(unlimited, unlimited, specified.len()))
+            .serialize_specified(L::new(unlimited, unlimited, specified.len()))
             .unwrap(),
         specified
     );
@@ -740,18 +763,17 @@ fn selected_gradient_serialization_limits_are_atomic_reusable_and_cumulative() {
         ),
     ] {
         for _ in 0..2 {
-            assert_eq!(
-                source
-                    .to_specified_css_with_limits(limit)
-                    .unwrap_err()
-                    .kind(),
-                kind
-            );
+            assert_eq!(source.serialize_specified(limit).unwrap_err().kind(), kind);
         }
-        assert_eq!(source.to_specified_css().unwrap(), specified);
+        assert_eq!(
+            source.serialize_specified(Default::default()).unwrap(),
+            specified
+        );
         assert_eq!(source, before);
     }
-    let single = image(&source).serialize_specified().unwrap();
+    let single = image(&source)
+        .serialize_specified(Default::default())
+        .unwrap();
     let CssKnownPropertyValueRef::BackgroundImage(authored) =
         source.known().unwrap().property_value().unwrap()
     else {
@@ -763,24 +785,24 @@ fn selected_gradient_serialization_limits_are_atomic_reusable_and_cumulative() {
     ])
     .unwrap();
     assert_eq!(
-        repeated.serialize_specified().unwrap(),
+        repeated.serialize_specified(Default::default()).unwrap(),
         format!("{single}, {single}")
     );
     // Each child's output fits separately; the composed list fails the total cap.
     assert!(
         image(&source)
-            .serialize_specified_with_limits(L::new(unlimited, unlimited, single.len()))
+            .serialize_specified(L::new(unlimited, unlimited, single.len()))
             .is_ok()
     );
     assert_eq!(
         repeated
-            .serialize_specified_with_limits(L::new(unlimited, unlimited, single.len()))
+            .serialize_specified(L::new(unlimited, unlimited, single.len()))
             .unwrap_err()
             .kind(),
         K::ByteLimit
     );
     assert_eq!(
-        repeated.serialize_specified().unwrap(),
+        repeated.serialize_specified(Default::default()).unwrap(),
         format!("{single}, {single}")
     );
 }
@@ -851,7 +873,12 @@ fn checked_interpolation_admission_reuses_the_real_property_parser() {
             CssImportance::Normal,
         )
         .expect("Images4 explicit interpolation is valid at checked boundary");
-        assert_eq!(image(&checked).serialize_specified().unwrap(), text);
+        assert_eq!(
+            image(&checked)
+                .serialize_specified(Default::default())
+                .unwrap(),
+            text
+        );
     }
 }
 
@@ -865,7 +892,12 @@ fn checked_radial_at_admission_uses_the_full_imported_position_owner() {
             CssImportance::Normal,
         )
         .expect("specific Values5 at-position import permits named flow axes");
-        assert_eq!(image(&checked).serialize_specified().unwrap(), text);
+        assert_eq!(
+            image(&checked)
+                .serialize_specified(Default::default())
+                .unwrap(),
+            text
+        );
     }
 }
 
@@ -881,9 +913,14 @@ fn specified_output_keeps_both_positions_and_nondefault_interpolation_semantics(
         };
         let expected = format!("{function}(in lab, {stops})");
         for declaration in fronts(P::BackgroundImage, &expected) {
-            assert_eq!(image(&declaration).serialize_specified().unwrap(), expected);
             assert_eq!(
-                declaration.to_specified_css().unwrap(),
+                image(&declaration)
+                    .serialize_specified(Default::default())
+                    .unwrap(),
+                expected
+            );
+            assert_eq!(
+                declaration.serialize_specified(Default::default()).unwrap(),
                 format!("background-image: {expected} !important;")
             );
         }
@@ -908,7 +945,9 @@ fn named_and_relative_flow_positions_keep_the_adopted_symbolic_output() {
                 &format!("{function}(at {input}, red, blue)"),
             );
             assert_eq!(
-                image(&declaration).serialize_specified().unwrap(),
+                image(&declaration)
+                    .serialize_specified(Default::default())
+                    .unwrap(),
                 format!("{function}(at {canonical}, red, blue)")
             );
         }
@@ -922,7 +961,9 @@ fn line_stop_calculations_remain_symbolic_without_geometry() {
             P::BackgroundImage,
             &format!("{function}(red calc(10px + 5%) calc(20px + 10%), calc(30px + 15%), blue)"),
         ) {
-            let output = image(&declaration).serialize_specified().unwrap();
+            let output = image(&declaration)
+                .serialize_specified(Default::default())
+                .unwrap();
             assert_eq!(
                 output,
                 format!("{function}(red calc(5% + 10px) calc(10% + 20px), calc(15% + 30px), blue)")
@@ -949,8 +990,19 @@ fn double_stop_payload_keeps_original_first_position_hint_and_color_occurrences(
     else {
         panic!("authored double-position stops must not be expanded or fixed up")
     };
-    assert_eq!(first.color().to_specified_css().unwrap(), "red");
-    assert_eq!(last.color().to_specified_css().unwrap(), "blue");
+    assert_eq!(
+        first
+            .color()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "red"
+    );
+    assert_eq!(
+        last.color()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "blue"
+    );
     for (value, text) in [
         (first.position().unwrap(), "-10px"),
         (hint, "40%"),
@@ -987,7 +1039,7 @@ fn singleton_gradient_lists_share_exact_graph_work_caps_across_siblings() {
     let list = CssImageValueList::try_new(vec![single.clone(), single]).unwrap();
     let expected = "linear-gradient(red), linear-gradient(red)";
     assert_eq!(
-        list.serialize_specified_with_limits(L::new(9, 9, expected.len()))
+        list.serialize_specified(L::new(9, 9, expected.len()))
             .unwrap(),
         expected
     );
@@ -997,22 +1049,20 @@ fn singleton_gradient_lists_share_exact_graph_work_caps_across_siblings() {
         (L::new(9, 9, expected.len() - 1), K::ByteLimit),
     ] {
         for _ in 0..2 {
-            assert_eq!(
-                list.serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
-                kind
-            );
+            assert_eq!(list.serialize_specified(limits).unwrap_err().kind(), kind);
         }
-        assert_eq!(list.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            list.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
     assert!(
         image(&source)
-            .serialize_specified_with_limits(L::new(4, 4, "linear-gradient(red)".len()))
+            .serialize_specified(L::new(4, 4, "linear-gradient(red)".len()))
             .is_ok()
     );
     assert_eq!(
-        list.serialize_specified_with_limits(L::new(4, 9, expected.len()))
+        list.serialize_specified(L::new(4, 9, expected.len()))
             .unwrap_err()
             .kind(),
         K::InputNodeLimit

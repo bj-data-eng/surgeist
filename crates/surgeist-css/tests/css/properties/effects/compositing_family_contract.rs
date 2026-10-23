@@ -301,7 +301,10 @@ fn sixteen_selected_modes_have_parsed_checked_and_keyword_identity() {
             Some(expected)
         );
         assert_eq!(expected.as_css_str(), css);
-        assert_eq!(expected.serialize_specified().unwrap(), css);
+        assert_eq!(
+            expected.serialize_specified(Default::default()).unwrap(),
+            css
+        );
         for source in [
             parsed(&format!("mix-blend-mode:{}", css.to_ascii_uppercase())),
             checked(P::MixBlendMode, css),
@@ -343,7 +346,10 @@ fn sixteen_selected_modes_have_parsed_checked_and_keyword_identity() {
             };
             assert_eq!(*wrapper.isolation(), expected);
         }
-        assert_eq!(expected.serialize_specified().unwrap(), css);
+        assert_eq!(
+            expected.serialize_specified(Default::default()).unwrap(),
+            css
+        );
     }
 }
 
@@ -358,7 +364,10 @@ fn background_list_keeps_decoded_case_duplicates_and_constructed_order() {
     let expected = [CssBlendMode::Hue, CssBlendMode::Normal, CssBlendMode::Hue];
     assert_eq!(wrapper.modes().modes(), &expected);
     assert_eq!(
-        wrapper.modes().serialize_specified().unwrap(),
+        wrapper
+            .modes()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "hue, normal, hue"
     );
     assert_eq!(
@@ -421,7 +430,7 @@ fn invalid_compositing_values_recover_atomically_and_keep_color_control() {
 }
 
 fn recovered_origin(components: &CssComponentValues) -> CssValueOrigin {
-    let serialized = components.serialize().unwrap();
+    let serialized = components.serialize_tokens(Default::default()).unwrap();
     (0..serialized.as_css().len())
         .find_map(|offset| match serialized.origin_at(offset) {
             Some(CssSerializedOrigin::Token(origin @ CssValueOrigin::ImplicitClosure { .. })) => {
@@ -837,8 +846,8 @@ fn recovered_browser_comments_keep_diagnostics_through_report_normalization() {
 
 #[test]
 fn blend_list_and_primitive_output_obey_independent_text_and_cumulative_limits() {
+    use CssSerializationLimits as Limits;
     use CssSpecifiedValueSerializationErrorKind as Kind;
-    use CssSpecifiedValueSerializationLimits as Limits;
     let list = CssBlendModeList::try_new(vec![
         CssBlendMode::Hue,
         CssBlendMode::Normal,
@@ -849,7 +858,7 @@ fn blend_list_and_primitive_output_obey_independent_text_and_cumulative_limits()
     let expected = "hue, normal, hue";
     // Public list contract: one aggregate plus three primitive visits.
     assert_eq!(
-        list.serialize_specified_with_limits(Limits::new(4, 4, expected.len()))
+        list.serialize_specified(Limits::new(4, 4, expected.len()))
             .unwrap(),
         expected
     );
@@ -858,24 +867,22 @@ fn blend_list_and_primitive_output_obey_independent_text_and_cumulative_limits()
         (Limits::new(4, 3, expected.len()), Kind::ProjectionNodeLimit),
         (Limits::new(4, 4, expected.len() - 1), Kind::ByteLimit),
     ] {
-        assert_eq!(
-            list.serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            kind
-        );
+        assert_eq!(list.serialize_specified(limits).unwrap_err().kind(), kind);
         assert_eq!(list, before);
     }
-    assert_eq!(list.serialize_specified().unwrap(), expected);
+    assert_eq!(
+        list.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     assert_eq!(
         CssBlendMode::Multiply
-            .serialize_specified_with_limits(Limits::new(1, 1, 8))
+            .serialize_specified(Limits::new(1, 1, 8))
             .unwrap(),
         "multiply"
     );
     assert_eq!(
         CssIsolation::Isolate
-            .serialize_specified_with_limits(Limits::new(1, 1, 7))
+            .serialize_specified(Limits::new(1, 1, 7))
             .unwrap(),
         "isolate"
     );
@@ -895,14 +902,14 @@ fn blend_list_and_primitive_output_obey_independent_text_and_cumulative_limits()
     ] {
         assert_eq!(
             CssBlendMode::Multiply
-                .serialize_specified_with_limits(limits)
+                .serialize_specified(limits)
                 .unwrap_err()
                 .kind(),
             kind
         );
         assert_eq!(
             CssIsolation::Isolate
-                .serialize_specified_with_limits(limits)
+                .serialize_specified(limits)
                 .unwrap_err()
                 .kind(),
             kind
@@ -912,15 +919,15 @@ fn blend_list_and_primitive_output_obey_independent_text_and_cumulative_limits()
 
 #[test]
 fn declaration_output_preserves_explicit_list_importance_and_full_provider_budget() {
+    use CssSerializationLimits as Limits;
     use CssSpecifiedValueSerializationErrorKind as Kind;
-    use CssSpecifiedValueSerializationLimits as Limits;
     let source = parsed("BACKGROUND-BLEND-MODE:HUE,NORMAL,HUE!important");
     let expected = "background-blend-mode: hue, normal, hue !important;";
     let before = source.clone();
     // Declaration + name + list + three keywords, per existing public contracts.
     assert_eq!(
         source
-            .to_specified_css_with_limits(Limits::new(6, 6, expected.len()))
+            .serialize_specified(Limits::new(6, 6, expected.len()))
             .unwrap(),
         expected
     );
@@ -929,20 +936,17 @@ fn declaration_output_preserves_explicit_list_importance_and_full_provider_budge
         (Limits::new(6, 5, expected.len()), Kind::ProjectionNodeLimit),
         (Limits::new(6, 6, expected.len() - 1), Kind::ByteLimit),
     ] {
-        assert_eq!(
-            source
-                .to_specified_css_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            kind
-        );
+        assert_eq!(source.serialize_specified(limits).unwrap_err().kind(), kind);
         assert_eq!(source, before);
     }
-    assert_eq!(source.to_specified_css().unwrap(), expected);
+    assert_eq!(
+        source.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     for (property, css, _) in FAMILY {
         let source = checked(property, css);
         assert_eq!(
-            source.to_specified_css().unwrap(),
+            source.serialize_specified(Default::default()).unwrap(),
             format!("{}: {css} !important;", property.canonical_name())
         );
     }
@@ -950,9 +954,8 @@ fn declaration_output_preserves_explicit_list_importance_and_full_provider_budge
 
 #[test]
 fn sibling_rule_output_shares_final_byte_budget_and_preserves_original_sheet() {
-    use CssSpecifiedRuleSerializationErrorKind as RuleError;
+    use CssSerializationLimits as Limits;
     use CssSpecifiedValueSerializationErrorKind as Kind;
-    use CssSpecifiedValueSerializationLimits as Limits;
     let report = parse_sheet(
         ".a{background-blend-mode:hue,normal,hue!important;isolation:isolate}.b{mix-blend-mode:multiply}",
     );
@@ -960,21 +963,24 @@ fn sibling_rule_output_shares_final_byte_budget_and_preserves_original_sheet() {
     let expected = ".a { background-blend-mode: hue, normal, hue !important; isolation: isolate; }\n.b { mix-blend-mode: multiply; }";
     let sheet = report.syntax();
     let before = sheet.clone();
-    assert_eq!(sheet.to_specified_css().unwrap(), expected);
+    assert_eq!(
+        sheet.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     let short = Limits::new(usize::MAX, usize::MAX, expected.len() - 1);
     assert!(
         sheet
             .rules()
             .iter()
-            .all(|rule| rule.to_specified_css_with_limits(short).is_ok())
+            .all(|rule| rule.serialize_specified(short).is_ok())
     );
-    let error = sheet.to_specified_css_with_limits(short).unwrap_err();
-    assert_eq!(error.kind(), RuleError::Resource(Kind::ByteLimit));
+    let error = sheet.serialize_specified(short).unwrap_err();
+    assert_eq!(error.kind(), Kind::ByteLimit);
     assert_eq!(error.rule_index(), Some(1));
     assert_eq!(sheet, &before);
     assert_eq!(
         sheet
-            .to_specified_css_with_limits(Limits::new(usize::MAX, usize::MAX, expected.len()))
+            .serialize_specified(Limits::new(usize::MAX, usize::MAX, expected.len()))
             .unwrap(),
         expected
     );

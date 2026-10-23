@@ -186,8 +186,8 @@ impl CssNavigationId {
     }
     pub fn try_new(decoded: &str) -> Result<Self, CssComponentValueError> {
         let ident = CssComponentValue::try_ident(decoded)?;
-        let values = crate::CssComponentValues::try_new(vec![ident])?;
-        let css = values.serialize()?;
+        let values = crate::CssComponentValues::try_new(vec![ident], Default::default())?;
+        let css = values.serialize_tokens(Default::default())?;
         Self::try_from_component(CssComponentValue::try_token(&format!("#{}", css.as_css()))?)
     }
     pub fn as_str(&self) -> &str {

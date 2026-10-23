@@ -15,9 +15,11 @@ use surgeist_css::{
 
 fn container_number(expression: &str) -> CssNumberCalculation {
     let source = format!("(aspect-ratio: {expression})");
-    let condition =
-        CssContainerCondition::try_from_components(parse_component_values(&source).unwrap())
-            .expect("tree-counting remains valid in its selected container context");
+    let condition = CssContainerCondition::try_from_components(
+        parse_component_values(&source).unwrap(),
+        Default::default(),
+    )
+    .expect("tree-counting remains valid in its selected container context");
     let CssContainerConditionKind::Feature(CssContainerFeatureQuery::AspectRatio(range)) =
         condition.kind()
     else {
@@ -62,9 +64,12 @@ fn rgb_constructor_rejects_container_tree_counting_calculations() {
     ] {
         let calculation = container_number(expression);
         assert_eq!(
-            CssNumberCalculation::try_from_components(parse_component_values(expression).unwrap())
-                .unwrap_err()
-                .kind(),
+            CssNumberCalculation::try_from_components(
+                parse_component_values(expression).unwrap(),
+                Default::default()
+            )
+            .unwrap_err()
+            .kind(),
             &CssNumericConstructionErrorKind::UnknownFunction,
             "the pure number boundary must retain its context restriction: {expression}"
         );
@@ -81,9 +86,11 @@ fn rgb_constructor_rejects_container_tree_counting_calculations() {
 #[test]
 fn rgb_constructor_accepts_pure_number_calculations() {
     for expression in ["calc(1 + 2)", "max(1, 2)"] {
-        let calculation =
-            CssNumberCalculation::try_from_components(parse_component_values(expression).unwrap())
-                .expect("a pure number calculation is valid outside container context");
+        let calculation = CssNumberCalculation::try_from_components(
+            parse_component_values(expression).unwrap(),
+            Default::default(),
+        )
+        .expect("a pure number calculation is valid outside container context");
         assert!(
             rgb_with_calculation(calculation).is_ok(),
             "pure calculation must remain valid in RGB: {expression}"

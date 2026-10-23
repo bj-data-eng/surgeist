@@ -14,13 +14,13 @@ use crate::css::support::{
     component_values as components, declaration_color,
 };
 use surgeist_css::*;
-type Limits = CssSpecifiedValueSerializationLimits;
+type Limits = CssSerializationLimits;
 type Kind = CssSpecifiedValueSerializationErrorKind;
 
 fn assert_value(value: &CssColor, expected: &str) {
     let before = value.clone();
-    let result = value.to_specified_css();
-    assert_eq!(result, value.to_specified_css());
+    let result = value.serialize_specified(Default::default());
+    assert_eq!(result, value.serialize_specified(Default::default()));
     assert_eq!(value, &before);
     assert_eq!(result.unwrap(), expected);
     // Grammar reentry complements the explicit scalar oracle above.
@@ -39,7 +39,11 @@ fn assert_text(source: &str, expected: &str) {
         let before = value.clone();
         assert_eq!(value.importance(), CssImportance::Important);
         assert_eq!(
-            value.value_components().serialize().unwrap().as_css(),
+            value
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             source
         );
         let CssValueOrigin::Parsed(origin) = value.value_components().items()[0].origin() else {
@@ -650,8 +654,8 @@ fn maximum_finite_hsl_lightness_keeps_every_whole_digit() {
 
 fn assert_limited(value: &CssColor, limits: Limits, expected: &str) {
     let before = value.clone();
-    let result = value.to_specified_css_with_limits(limits);
-    assert_eq!(result, value.to_specified_css_with_limits(limits));
+    let result = value.serialize_specified(limits);
+    assert_eq!(result, value.serialize_specified(limits));
     assert_eq!(value, &before);
     assert_eq!(result.unwrap(), expected);
     declaration(expected);
@@ -778,13 +782,13 @@ fn sibling_numeric_colors_share_visits_and_output_atomically() {
         (Limits::new(13, 16, usize::MAX), Kind::ProjectionNodeLimit),
         (Limits::new(13, 17, expected.len() - 1), Kind::ByteLimit),
     ] {
-        let result = pair.serialize_specified_with_limits(limits);
-        assert_eq!(result, pair.serialize_specified_with_limits(limits));
+        let result = pair.serialize_specified(limits);
+        assert_eq!(result, pair.serialize_specified(limits));
         assert_eq!(pair, before);
         assert_eq!(result.unwrap_err().kind(), kind);
     }
     assert_eq!(
-        pair.serialize_specified_with_limits(Limits::new(13, 17, expected.len()))
+        pair.serialize_specified(Limits::new(13, 17, expected.len()))
             .unwrap(),
         expected
     );
@@ -803,17 +807,13 @@ fn utf8_prefix_spends_bytes_before_shrinking_hsl_scratch() {
     assert_eq!(prefix.len(), 14);
     assert_eq!(expected.len(), 30);
     let limits = Limits::new(usize::MAX, usize::MAX, prefix.len() + 18);
-    let result = pair.serialize_specified_with_limits(limits);
-    assert_eq!(result, pair.serialize_specified_with_limits(limits));
+    let result = pair.serialize_specified(limits);
+    assert_eq!(result, pair.serialize_specified(limits));
     assert_eq!(pair, before);
     assert_eq!(result.unwrap_err().kind(), Kind::ByteLimit);
     assert_eq!(
-        pair.serialize_specified_with_limits(Limits::new(
-            usize::MAX,
-            usize::MAX,
-            prefix.len() + 19
-        ))
-        .unwrap(),
+        pair.serialize_specified(Limits::new(usize::MAX, usize::MAX, prefix.len() + 19))
+            .unwrap(),
         expected
     );
     assert_eq!(pair, before);
@@ -830,13 +830,13 @@ fn number(value: &str, programmatic: bool) -> CssColorComponent {
 fn number_calc(value: &str, programmatic: bool) -> CssNumberCalculation {
     let raw = if programmatic {
         let leaf = CssComponentValue::try_number(value).unwrap();
-        let args = CssComponentValues::try_new(vec![leaf]).unwrap();
+        let args = CssComponentValues::try_new(vec![leaf], Default::default()).unwrap();
         let function = CssComponentValue::try_function("calc", args).unwrap();
-        CssComponentValues::try_new(vec![function]).unwrap()
+        CssComponentValues::try_new(vec![function], Default::default()).unwrap()
     } else {
         components(&format!("calc({value})"))
     };
-    CssNumberCalculation::try_from_components(raw).unwrap()
+    CssNumberCalculation::try_from_components(raw, Default::default()).unwrap()
 }
 /// All-zero limits fail on input nodes first, a zero projection limit fails
 /// on projection nodes, and a one-byte limit fails on bytes.
@@ -879,7 +879,10 @@ fn checked_rgb_graph(programmatic: bool) {
         CssColorComponent::NumberCalculation(calculation)
     );
     assert_eq!(raw, raw_before);
-    assert_eq!(raw.serialize().unwrap().as_css(), "calc(127.5)");
+    assert_eq!(
+        raw.serialize_tokens(Default::default()).unwrap().as_css(),
+        "calc(127.5)"
+    );
     assert_value(&value, "color(srgb none 0.5 0)");
 }
 fn checked_hsl_graph(programmatic: bool) {
@@ -948,16 +951,22 @@ fn composition_text(property: CssKnownProperty, source: &str) -> String {
     let before = declaration.clone();
     let value = declaration.known().unwrap().property_value().unwrap();
     let text = match value {
-        CssKnownPropertyValueRef::BackgroundImage(value) => {
-            value.images().serialize_specified().unwrap()
-        }
-        CssKnownPropertyValueRef::Background(value) => {
-            value.background().serialize_specified().unwrap()
-        }
-        CssKnownPropertyValueRef::BorderColor(value) => {
-            value.value().serialize_specified().unwrap()
-        }
-        CssKnownPropertyValueRef::BoxShadow(value) => value.value().serialize_specified().unwrap(),
+        CssKnownPropertyValueRef::BackgroundImage(value) => value
+            .images()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        CssKnownPropertyValueRef::Background(value) => value
+            .background()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        CssKnownPropertyValueRef::BorderColor(value) => value
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        CssKnownPropertyValueRef::BoxShadow(value) => value
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
         _ => panic!("selected composition front door"),
     };
     assert_eq!(declaration, before);

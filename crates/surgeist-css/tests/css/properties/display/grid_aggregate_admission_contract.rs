@@ -64,7 +64,10 @@ fn assert_flow(
     match (value.auto_tracks(), auto_size) {
         (None, None) => {}
         (Some(tracks), Some(expected)) => {
-            assert_eq!(tracks.serialize_specified().unwrap(), expected);
+            assert_eq!(
+                tracks.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
         }
         _ => panic!("retain optional auto sizing"),
     }
@@ -72,7 +75,7 @@ fn assert_flow(
         value
             .explicit_tracks()
             .unwrap()
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         explicit_size
     );
@@ -243,9 +246,20 @@ flow_contract!(
 fn keyword_tracks(declaration: &CssDeclaration) {
     let value = template(declaration);
     assert!(!value.is_none());
-    assert_eq!(value.rows().unwrap().serialize_specified().unwrap(), "auto");
     assert_eq!(
-        value.columns().unwrap().serialize_specified().unwrap(),
+        value
+            .rows()
+            .unwrap()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "auto"
+    );
+    assert_eq!(
+        value
+            .columns()
+            .unwrap()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "min-content"
     );
 }
@@ -304,11 +318,19 @@ fn none_and_explicit_rows_columns_controls_pass_all_front_doors() {
                 } else {
                     assert!(!aggregate.is_none());
                     assert_eq!(
-                        aggregate.rows().unwrap().serialize_specified().unwrap(),
+                        aggregate
+                            .rows()
+                            .unwrap()
+                            .serialize_specified(Default::default())
+                            .unwrap(),
                         "10px"
                     );
                     assert_eq!(
-                        aggregate.columns().unwrap().serialize_specified().unwrap(),
+                        aggregate
+                            .columns()
+                            .unwrap()
+                            .serialize_specified(Default::default())
+                            .unwrap(),
                         "20px"
                     );
                 }

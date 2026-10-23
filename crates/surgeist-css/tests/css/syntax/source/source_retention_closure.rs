@@ -16,12 +16,15 @@ fn parsed_terminator_is_retained_by_constructed_supports_declaration() {
     let source = origin.source().clone();
     let mut components = programmatic("x : y");
     components.push(semicolon);
-    let body =
-        CssSupportsTestBody::try_from_components(CssComponentValues::try_new(components).unwrap())
-            .unwrap();
+    let body = CssSupportsTestBody::try_from_components(
+        CssComponentValues::try_new(components, Default::default()).unwrap(),
+        Default::default(),
+    )
+    .unwrap();
     let rule = CssSupportsConditionRule::try_new(
         CssSupportsConditionName::try_new("--test").unwrap(),
         body,
+        Default::default(),
     )
     .unwrap();
     let sheet = CssSheet::try_from_rules(vec![CssRule::SupportsCondition(rule)]).unwrap();
@@ -41,15 +44,16 @@ fn selected_supports_subcondition_retains_its_whole_lexical_root() {
     let mut components = vec![
         CssComponentValue::try_block(
             CssBlockKind::Parenthesis,
-            CssComponentValues::try_new(programmatic("x : y")).unwrap(),
+            CssComponentValues::try_new(programmatic("x : y"), Default::default()).unwrap(),
         )
         .unwrap(),
     ];
     components.extend(programmatic("and"));
     components.push(parsed.items().last().unwrap().clone());
     let parent = CssSupportsCondition::try_from_components(
-        CssComponentValues::try_new(components).unwrap(),
+        CssComponentValues::try_new(components, Default::default()).unwrap(),
         &CssNamespaceContext::default(),
+        Default::default(),
     )
     .unwrap();
     let CssSupportsConditionKind::And(list) = parent.kind() else {
@@ -71,13 +75,16 @@ fn selected_supports_subcondition_retains_its_whole_lexical_root() {
 fn completed_specified_entry_retains_independently_parsed_replacement() {
     let variable = CssComponentValue::try_function(
         "var",
-        CssComponentValues::try_new(vec![CssComponentValue::try_ident("--width").unwrap()])
-            .unwrap(),
+        CssComponentValues::try_new(
+            vec![CssComponentValue::try_ident("--width").unwrap()],
+            Default::default(),
+        )
+        .unwrap(),
     )
     .unwrap();
     let declaration = parse_property_value(
         CssPropertyNameRef::Known(CssKnownProperty::Width),
-        CssComponentValues::try_new(vec![variable]).unwrap(),
+        CssComponentValues::try_new(vec![variable], Default::default()).unwrap(),
         CssImportance::Normal,
     )
     .unwrap();
@@ -86,9 +93,10 @@ fn completed_specified_entry_retains_independently_parsed_replacement() {
     };
     let replacement = parse_component_values("/* independent backing */1px").unwrap();
     let completed = pending.reenter(replacement).unwrap();
-    let block = CssSpecifiedDeclarationBlock::try_from_expansions(&[CssExpansion::Contributions(
-        completed,
-    )])
+    let block = CssSpecifiedDeclarationBlock::try_from_expansions(
+        &[CssExpansion::Contributions(completed)],
+        Default::default(),
+    )
     .unwrap();
     let mut sources = CssSourceRetention::new(0, 100_000, 100);
     assert_eq!(
@@ -107,15 +115,17 @@ fn selected_when_subcondition_retains_its_whole_lexical_root() {
     let parsed = parse_component_values("/* hidden sibling */media(height)").unwrap();
     let first = CssComponentValue::try_function(
         "media",
-        CssComponentValues::try_new(programmatic("width")).unwrap(),
+        CssComponentValues::try_new(programmatic("width"), Default::default()).unwrap(),
     )
     .unwrap();
     let mut components = vec![first];
     components.extend(programmatic("and"));
     components.push(parsed.items().last().unwrap().clone());
-    let parent =
-        CssWhenCondition::try_from_components(CssComponentValues::try_new(components).unwrap())
-            .unwrap();
+    let parent = CssWhenCondition::try_from_components(
+        CssComponentValues::try_new(components, Default::default()).unwrap(),
+        Default::default(),
+    )
+    .unwrap();
     let CssWhenConditionKind::And(list) = parent.kind() else {
         panic!("and");
     };
@@ -139,15 +149,18 @@ fn universal_and_independent_svg_entries_retain_completed_replacement_contexts()
     ] {
         let variable = CssComponentValue::try_function(
             "var",
-            CssComponentValues::try_new(vec![CssComponentValue::try_ident("--value").unwrap()])
-                .unwrap(),
+            CssComponentValues::try_new(
+                vec![CssComponentValue::try_ident("--value").unwrap()],
+                Default::default(),
+            )
+            .unwrap(),
         )
         .unwrap();
         let declaration = CssParserContext::default()
             .with_svg_glyph_orientation_vertical()
             .parse_property_value(
                 property,
-                CssComponentValues::try_new(vec![variable]).unwrap(),
+                CssComponentValues::try_new(vec![variable], Default::default()).unwrap(),
                 CssImportance::Normal,
             )
             .unwrap();
@@ -157,11 +170,11 @@ fn universal_and_independent_svg_entries_retain_completed_replacement_contexts()
         let completed = pending
             .reenter(parse_component_values(replacement).unwrap())
             .unwrap();
-        let block =
-            CssSpecifiedDeclarationBlock::try_from_expansions(&[CssExpansion::Contributions(
-                completed,
-            )])
-            .unwrap();
+        let block = CssSpecifiedDeclarationBlock::try_from_expansions(
+            &[CssExpansion::Contributions(completed)],
+            Default::default(),
+        )
+        .unwrap();
         assert!(!block.entries().is_empty());
         for entry in block.entries() {
             let mut sources = CssSourceRetention::new(0, 100_000, 100);

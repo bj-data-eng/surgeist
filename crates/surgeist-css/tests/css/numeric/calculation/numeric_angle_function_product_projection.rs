@@ -16,7 +16,7 @@ use crate::css::support::value_assertions::assert_calculated_number as assert_nu
 use crate::css::support::value_assertions::calculated_number as number;
 use surgeist_css::*;
 
-type Limits = CssSpecifiedValueSerializationLimits;
+type Limits = CssSerializationLimits;
 type Kind = CssSpecifiedValueSerializationErrorKind;
 
 #[test]
@@ -75,7 +75,7 @@ fn grouped_angle_results_and_ordinary_finite_functions_keep_their_behavior() {
 /// Its digits depend on binary64 radian conversion and are not prescribed.
 fn assert_finite_cosine(source: &str) {
     let value = number(source);
-    let result = value.serialize_specified().unwrap();
+    let result = value.serialize_specified(Default::default()).unwrap();
     let coefficient: f64 = result
         .strip_prefix("calc(")
         .and_then(|rest| rest.strip_suffix(')'))
@@ -171,7 +171,7 @@ fn merged_number_product_replacements_obey_exact_limits_and_atomic_failures() {
         (Limits::new(5, 5, expected.len()), Kind::ProjectionNodeLimit),
         (Limits::new(5, 6, expected.len() - 1), Kind::ByteLimit),
     ] {
-        let error = value.serialize_specified_with_limits(limits).unwrap_err();
+        let error = value.serialize_specified(limits).unwrap_err();
         assert_eq!(error.kind(), kind, "{limits:?}");
         assert_eq!(value, before);
         assert_eq!(value.origin(), before.origin());
@@ -180,7 +180,7 @@ fn merged_number_product_replacements_obey_exact_limits_and_atomic_failures() {
             before.calculation().unwrap().components()
         );
     }
-    let result = value.serialize_specified_with_limits(Limits::new(5, 6, expected.len()));
+    let result = value.serialize_specified(Limits::new(5, 6, expected.len()));
     assert_eq!(value, before);
     assert_eq!(result.unwrap(), expected);
 }
@@ -200,7 +200,7 @@ fn function_and_product_siblings_keep_one_cumulative_budget() {
         ),
         (Limits::new(11, 11, expected.len() - 1), Kind::ByteLimit),
     ] {
-        let error = value.serialize_specified_with_limits(limits).unwrap_err();
+        let error = value.serialize_specified(limits).unwrap_err();
         assert_eq!(error.kind(), kind, "{limits:?}");
         assert_eq!(value, before);
         assert_eq!(value.origin(), before.origin());
@@ -209,7 +209,7 @@ fn function_and_product_siblings_keep_one_cumulative_budget() {
             before.calculation().unwrap().components()
         );
     }
-    let result = value.serialize_specified_with_limits(Limits::new(11, 11, expected.len()));
+    let result = value.serialize_specified(Limits::new(11, 11, expected.len()));
     assert_eq!(value, before);
     assert_eq!(result.unwrap(), expected);
 }

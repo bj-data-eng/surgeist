@@ -16,12 +16,21 @@ fn pair_construction_preserves_omission_and_width_height_order() {
     let single = CssSizePair::new(width.clone(), None);
     assert_eq!(single.width(), single.height());
     assert!(single.authored_height().is_none());
-    assert_eq!(single.serialize_specified().unwrap(), "1.5px");
+    assert_eq!(
+        single.serialize_specified(Default::default()).unwrap(),
+        "1.5px"
+    );
     let explicit = CssSizePair::new(width.clone(), Some(width.clone()));
     assert_ne!(single, explicit);
-    assert_eq!(explicit.serialize_specified().unwrap(), "1.5px 1.5px");
+    assert_eq!(
+        explicit.serialize_specified(Default::default()).unwrap(),
+        "1.5px 1.5px"
+    );
     let pair = CssSizePair::new(width, Some(CssSizeValue::Auto));
-    assert_eq!(pair.serialize_specified().unwrap(), "1.5px auto");
+    assert_eq!(
+        pair.serialize_specified(Default::default()).unwrap(),
+        "1.5px auto"
+    );
     let source = parsed("size", "1.5px auto");
     let CssKnownPropertyValueRef::Size(value) = source.known().unwrap().property_value().unwrap()
     else {
@@ -46,7 +55,10 @@ fn pair_construction_preserves_omission_and_width_height_order() {
             .unwrap(),
         ),
     );
-    assert_eq!(maximum.serialize_specified().unwrap(), "none 2.5%");
+    assert_eq!(
+        maximum.serialize_specified(Default::default()).unwrap(),
+        "none 2.5%"
+    );
     let source = parsed("max-size", "none 2.5%");
     let CssKnownPropertyValueRef::MaxSize(value) =
         source.known().unwrap().property_value().unwrap()
@@ -62,39 +74,27 @@ fn pair_construction_preserves_omission_and_width_height_order() {
 fn exact_and_symbolic_values_share_a_pair_budget() {
     let literal = programmatic_size("1e999", "px");
     let pair = CssSizePair::new(literal, Some(CssSizeValue::Auto));
-    let text = pair.serialize_specified().unwrap();
+    let text = pair.serialize_specified(Default::default()).unwrap();
     assert_eq!(text.len(), 1007); // 1 + 999 zeros + px + space + auto.
     assert!(text.starts_with('1') && text.ends_with("px auto"));
-    let exactly = CssSpecifiedValueSerializationLimits::new(2, 2, text.len());
-    assert_eq!(pair.serialize_specified_with_limits(exactly).unwrap(), text);
+    let exactly = CssSerializationLimits::new(2, 2, text.len());
+    assert_eq!(pair.serialize_specified(exactly).unwrap(), text);
     assert_eq!(
-        pair.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-            1,
-            2,
-            text.len()
-        ))
-        .unwrap_err()
-        .kind(),
+        pair.serialize_specified(CssSerializationLimits::new(1, 2, text.len()))
+            .unwrap_err()
+            .kind(),
         CssSpecifiedValueSerializationErrorKind::InputNodeLimit
     );
     assert_eq!(
-        pair.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-            2,
-            1,
-            text.len()
-        ))
-        .unwrap_err()
-        .kind(),
+        pair.serialize_specified(CssSerializationLimits::new(2, 1, text.len()))
+            .unwrap_err()
+            .kind(),
         CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
     );
     assert_eq!(
-        pair.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-            2,
-            2,
-            text.len() - 1
-        ))
-        .unwrap_err()
-        .kind(),
+        pair.serialize_specified(CssSerializationLimits::new(2, 2, text.len() - 1))
+            .unwrap_err()
+            .kind(),
         CssSpecifiedValueSerializationErrorKind::ByteLimit
     );
 
@@ -102,6 +102,7 @@ fn exact_and_symbolic_values_share_a_pair_budget() {
         CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(
             CssLengthPercentageCalculation::try_from_components(
                 parse_component_values("calc(1px + 2%)").unwrap(),
+                Default::default(),
             )
             .unwrap(),
         )
@@ -109,7 +110,7 @@ fn exact_and_symbolic_values_share_a_pair_budget() {
     ));
     let raw_pair = CssSizePair::new(raw_math, Some(CssSizeValue::Auto));
     assert_eq!(
-        raw_pair.serialize_specified().unwrap(),
+        raw_pair.serialize_specified(Default::default()).unwrap(),
         "calc(2% + 1px) auto"
     );
 
@@ -119,30 +120,23 @@ fn exact_and_symbolic_values_share_a_pair_budget() {
             parse_component_values("min-content, size + 1px").unwrap(),
         )
         .unwrap(),
+        Default::default(),
     )
     .unwrap();
     let maximum =
         CssMaxSizeValue::try_box_size(CssBoxSize::CalcSize(calc.try_into().unwrap())).unwrap();
     let pair = CssMaxSizePair::new(CssMaxSizeValue::NONE, Some(maximum));
     let text = "none calc-size(min-content, 1px + size)";
-    assert_eq!(pair.serialize_specified().unwrap(), text);
+    assert_eq!(pair.serialize_specified(Default::default()).unwrap(), text);
     assert_eq!(
-        pair.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-            100,
-            100,
-            text.len()
-        ))
-        .unwrap(),
+        pair.serialize_specified(CssSerializationLimits::new(100, 100, text.len()))
+            .unwrap(),
         text
     );
     assert_eq!(
-        pair.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-            100,
-            100,
-            text.len() - 1
-        ))
-        .unwrap_err()
-        .kind(),
+        pair.serialize_specified(CssSerializationLimits::new(100, 100, text.len() - 1))
+            .unwrap_err()
+            .kind(),
         CssSpecifiedValueSerializationErrorKind::ByteLimit
     );
     // One `none`, one calc-size root, one basis keyword, and three numeric
@@ -150,32 +144,20 @@ fn exact_and_symbolic_values_share_a_pair_budget() {
     // Projection allocates the size and length leaves, a combined scalar,
     // and their sum; with the keyword and `none`, that is six nodes.
     assert_eq!(
-        pair.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-            6,
-            6,
-            text.len()
-        ))
-        .unwrap(),
+        pair.serialize_specified(CssSerializationLimits::new(6, 6, text.len()))
+            .unwrap(),
         text
     );
     assert_eq!(
-        pair.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-            5,
-            6,
-            text.len()
-        ))
-        .unwrap_err()
-        .kind(),
+        pair.serialize_specified(CssSerializationLimits::new(5, 6, text.len()))
+            .unwrap_err()
+            .kind(),
         CssSpecifiedValueSerializationErrorKind::InputNodeLimit
     );
     assert_eq!(
-        pair.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-            6,
-            5,
-            text.len()
-        ))
-        .unwrap_err()
-        .kind(),
+        pair.serialize_specified(CssSerializationLimits::new(6, 5, text.len()))
+            .unwrap_err()
+            .kind(),
         CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
     );
     let source = parsed("max-size", "none calc-size(min-content, size + 1px)");
@@ -211,24 +193,19 @@ fn finite_controls_have_canonical_keyword_sequences_and_limits() {
         (CssFrameSizing::ContentBlockSize, "content-block-size"),
         (CssFrameSizing::ContentInlineSize, "content-inline-size"),
     ] {
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    1,
-                    1,
-                    expected.len()
-                ))
+                .serialize_specified(CssSerializationLimits::new(1, 1, expected.len()))
                 .unwrap(),
             expected
         );
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    1,
-                    1,
-                    expected.len() - 1
-                ))
+                .serialize_specified(CssSerializationLimits::new(1, 1, expected.len() - 1))
                 .unwrap_err()
                 .kind(),
             CssSpecifiedValueSerializationErrorKind::ByteLimit
@@ -248,20 +225,19 @@ fn finite_controls_have_canonical_keyword_sequences_and_limits() {
             2,
         ),
     ] {
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    nodes,
-                    nodes,
-                    expected.len()
-                ))
+                .serialize_specified(CssSerializationLimits::new(nodes, nodes, expected.len()))
                 .unwrap(),
             expected
         );
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
+                .serialize_specified(CssSerializationLimits::new(
                     nodes,
                     nodes,
                     expected.len() - 1
@@ -287,7 +263,10 @@ fn finite_controls_have_canonical_keyword_sequences_and_limits() {
         );
         assert_eq!(value.as_css(), authored);
         assert_eq!(
-            value.value().serialize_specified().unwrap(),
+            value
+                .value()
+                .serialize_specified(Default::default())
+                .unwrap(),
             "zero-if-scroll zero-if-extrinsic"
         );
     }

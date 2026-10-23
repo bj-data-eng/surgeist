@@ -812,9 +812,8 @@ mod linear_equality_tests {
         // Each independent calc comparison schedules root, Sum and two leaves.
         // Authored stop/list carriers and exact literal comparisons add no slots.
         for projections in [8, 7, 8] {
-            let mut context = SpecifiedSerializationContext::new(
-                CssSpecifiedValueSerializationLimits::new(0, projections, 0),
-            );
+            let mut context =
+                SpecifiedSerializationContext::new(CssSerializationLimits::new(0, projections, 0));
             let result = left.bounded_eq(&right, &mut context);
             if projections == 8 {
                 assert!(result.unwrap());
@@ -829,8 +828,7 @@ mod linear_equality_tests {
 
     #[test]
     fn linear_ordinary_comparison_uses_exact_values_without_math_work() {
-        let mut context =
-            SpecifiedSerializationContext::new(CssSpecifiedValueSerializationLimits::new(0, 0, 0));
+        let mut context = SpecifiedSerializationContext::new(CssSerializationLimits::new(0, 0, 0));
         assert!(
             easing("linear(+000.0 20e0%, 1e0)")
                 .bounded_eq(&easing("linear(0 20%, 1)"), &mut context)
@@ -850,8 +848,7 @@ mod linear_equality_tests {
 
     #[test]
     fn linear_shape_differences_stop_before_unreached_math() {
-        let mut context =
-            SpecifiedSerializationContext::new(CssSpecifiedValueSerializationLimits::new(0, 0, 0));
+        let mut context = SpecifiedSerializationContext::new(CssSerializationLimits::new(0, 0, 0));
         assert!(
             !easing("linear(0, calc(1 + 2))")
                 .bounded_eq(&easing("linear(0, 1, calc(1 + 2))"), &mut context)

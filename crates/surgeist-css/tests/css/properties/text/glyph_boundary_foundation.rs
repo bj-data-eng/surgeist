@@ -120,9 +120,11 @@ fn five_explicit_alias_mappings_retain_authored_tokens_and_one_target() {
             CssImportance::Important,
         )
         .unwrap();
-        let programmatic_components =
-            CssComponentValues::try_new(vec![CssComponentValue::try_token(authored).unwrap()])
-                .unwrap();
+        let programmatic_components = CssComponentValues::try_new(
+            vec![CssComponentValue::try_token(authored).unwrap()],
+            Default::default(),
+        )
+        .unwrap();
         let programmatic = parse_property_value_for_grammar(
             selected_grammar(ALIAS),
             programmatic_components.clone(),
@@ -132,7 +134,11 @@ fn five_explicit_alias_mappings_retain_authored_tokens_and_one_target() {
         for declaration in [&parsed, &checked, &programmatic] {
             assert_eq!(declaration.importance(), CssImportance::Important);
             assert_eq!(
-                declaration.value_components().serialize().unwrap().as_css(),
+                declaration
+                    .value_components()
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
                 authored
             );
             mapped(declaration, orientation, authored);

@@ -29,7 +29,7 @@ fn assert_argument(argument: &str, expected: (i32, i32), canonical: &str) {
     let selector = parsed(&source);
     assert_eq!(nth_pair(&selector), expected, "{source}");
     let before = selector.clone();
-    let output = selector.to_specified_css().unwrap();
+    let output = selector.serialize_specified(Default::default()).unwrap();
     assert_eq!(output, format!(":nth-child({canonical})"), "{source}");
     assert_eq!(selector, before);
     assert_eq!(nth_pair(&parsed(&output)), expected, "{source}");
@@ -98,7 +98,7 @@ fn every_nth_wrapper_preserves_the_corrected_pair_and_argument_end() {
         let source = format!(":{name}(-2n-/**/0002147483648)");
         let selector = parsed(&source);
         assert_eq!(nth_pair(&selector), (-2, i32::MIN), "{source}");
-        let output = selector.to_specified_css().unwrap();
+        let output = selector.serialize_specified(Default::default()).unwrap();
         assert_eq!(output, format!(":{name}(-2n-2147483648)"));
         assert_eq!(nth_pair(&parsed(&output)), (-2, i32::MIN));
     }
@@ -133,7 +133,7 @@ fn consumed_offset_leaves_of_members_and_following_pseudo_class_intact() {
         assert_eq!(first, &CssSelector::Class("first".into()));
         assert_eq!(last, &CssSelector::Key("last".into()));
         assert_eq!(
-            selector.to_specified_css().unwrap(),
+            selector.serialize_specified(Default::default()).unwrap(),
             format!(":{name}(2n-2147483648 of .first, #last):hover")
         );
     }

@@ -3,41 +3,25 @@
 use crate::specified_rule_serialization::SpecifiedRuleWriter;
 use crate::{
     CssBackfaceVisibility, CssBlendMode, CssColorInterpolationFilters, CssImageRendering,
-    CssIsolation, CssLineBreak, CssObjectFit, CssPointerEvents, CssResize,
-    CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits,
+    CssIsolation, CssLineBreak, CssObjectFit, CssPointerEvents, CssResize, CssSerializationError,
     CssTextDecorationStyle, CssTextTransform, CssTextTransformCase, CssTextWrap, CssTextWrapMode,
     CssTextWrapStyle, CssTransformBox, CssTransformStyle, CssUserSelect, CssWhiteSpace,
     CssWhiteSpaceCollapse, CssWhiteSpaceKeyword, CssWhiteSpaceTrim, CssWordBreak,
     CssWordSpaceTransform, CssWrapBoundary, CssWrapInside,
 };
 
-type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
+type Result<T> = std::result::Result<T, CssSerializationError>;
 
 macro_rules! specified_provider {
     ($ty:ty, $value:ident, $writer:ident => $body:expr) => {
-        impl $ty {
-            /// Emits canonical authored keywords without resolving contextual values.
-            pub fn serialize_specified(&self) -> Result<String> {
-                self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-            }
-
-            /// Emits atomically, charging each emitted keyword once for input and
-            /// projection work, plus the final UTF-8 bytes. Carriers add no work.
-            pub fn serialize_specified_with_limits(
-                &self,
-                limits: CssSpecifiedValueSerializationLimits,
-            ) -> Result<String> {
-                let mut writer = SpecifiedRuleWriter::new(limits);
-                self.append_to_rule_writer(&mut writer)?;
-                Ok(writer.css)
-            }
-
-            pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+        impl crate::specified_rule_serialization::SpecifiedProvider for $ty {
+            fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
                 let $value = self;
                 let $writer = writer;
                 $body
             }
         }
+        crate::specified_rule_serialization::specified_serialization!($ty);
     };
 }
 macro_rules! keyword_provider {
@@ -190,8 +174,9 @@ keyword_provider!(CssBlendMode, value => value.as_css_str());
 mod tests {
     use super::*;
     use crate::CssBoxEdgeKeyword;
+    use crate::CssSerializationLimits as Limits;
     use crate::CssSpecifiedValueSerializationErrorKind as Kind;
-    use CssSpecifiedValueSerializationLimits as Limits;
+    use crate::specified_rule_serialization::SpecifiedProvider as _;
 
     fn compose(writer: &mut SpecifiedRuleWriter) -> Result<()> {
         writer.append("prefix ")?;

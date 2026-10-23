@@ -101,13 +101,14 @@ impl Space {
 
 fn expression(value: CssComponentValue, space: Space, alpha: bool) -> CssRelativeColorExpression {
     CssRelativeColorExpression::try_from_components(
-        CssComponentValues::try_new(vec![value]).unwrap(),
+        CssComponentValues::try_new(vec![value], Default::default()).unwrap(),
         space.environment(),
         if alpha {
             CssRelativeColorResultDomain::Alpha
         } else {
             CssRelativeColorResultDomain::NumberPercentage
         },
+        Default::default(),
     )
     .unwrap()
 }
@@ -126,6 +127,7 @@ fn math(
             .into_iter()
             .map(|token| CssComponentValue::try_token(token).unwrap())
             .collect(),
+        Default::default(),
     )
     .unwrap();
     expression(
@@ -172,7 +174,10 @@ fn signature(color: &CssColor, space: Space) -> &CssRelativeColor {
 }
 fn projection_unchanged(color: &CssColor, expected: &str) {
     let before = color.clone();
-    assert_eq!(color.to_specified_css().unwrap(), expected);
+    assert_eq!(
+        color.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     assert_eq!(color, &before);
 }
 fn channel(value: &CssRelativeColorExpression, expected: CssRelativeColorChannel) {
@@ -335,7 +340,12 @@ fn reference_math_retains_number_and_percentage_result_types_in_every_space() {
             }
             let before = color.clone();
             // The selected specified phase retains unresolved reference math.
-            assert!(color.to_specified_css().unwrap().contains("calc("));
+            assert!(
+                color
+                    .serialize_specified(Default::default())
+                    .unwrap()
+                    .contains("calc(")
+            );
             assert_eq!(color, before);
         }
     }
@@ -547,10 +557,14 @@ fn checked_payloads_reject_environment_and_result_slot_mismatches() {
         for token in ["1deg", "1px", "1s"] {
             assert!(
                 CssRelativeColorExpression::try_from_components(
-                    CssComponentValues::try_new(vec![CssComponentValue::try_token(token).unwrap()])
-                        .unwrap(),
+                    CssComponentValues::try_new(
+                        vec![CssComponentValue::try_token(token).unwrap()],
+                        Default::default()
+                    )
+                    .unwrap(),
                     space.environment(),
-                    CssRelativeColorResultDomain::NumberPercentage
+                    CssRelativeColorResultDomain::NumberPercentage,
+                    Default::default(),
                 )
                 .is_err()
             );

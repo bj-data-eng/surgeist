@@ -26,7 +26,10 @@ fn main() {
     else {
         panic!("ordinary ascent percentage")
     };
-    assert_eq!(ascent.serialize_specified().unwrap(), "125%");
+    assert_eq!(
+        ascent.serialize_specified(Default::default()).unwrap(),
+        "125%"
+    );
     let Authored::Pending(gap) = face
         .descriptors()
         .effective(Kind::LineGapOverride)
@@ -36,10 +39,13 @@ fn main() {
         panic!("whole-descriptor environment value")
     };
     let Value::LineGapOverride(CssFontMetricOverride::Percentage(gap)) = gap
-        .reparse_after_substitution(parse_component_values("0%").unwrap())
+        .reparse_after_substitution(parse_component_values("0%").unwrap(), Default::default())
         .unwrap()
     else {
         panic!("strict ordinary replacement")
     };
-    println!("line-gap-override: {}", gap.serialize_specified().unwrap());
+    println!(
+        "line-gap-override: {}",
+        gap.serialize_specified(Default::default()).unwrap()
+    );
 }

@@ -26,14 +26,16 @@ fn math(depth: usize, leaf: &str) -> CssComponentValues {
 
 fn length_percentage(depth: usize) -> CssSpecifiedLengthPercentage {
     CssSpecifiedLengthPercentage::try_from_calculation(
-        CssLengthPercentageCalculation::try_from_components(math(depth, "1px")).unwrap(),
+        CssLengthPercentageCalculation::try_from_components(math(depth, "1px"), Default::default())
+            .unwrap(),
     )
     .unwrap()
 }
 
 fn nonnegative_length_percentage(depth: usize) -> CssSpecifiedNonNegativeLengthPercentage {
     CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(
-        CssLengthPercentageCalculation::try_from_components(math(depth, "1px")).unwrap(),
+        CssLengthPercentageCalculation::try_from_components(math(depth, "1px"), Default::default())
+            .unwrap(),
     )
     .unwrap()
 }
@@ -68,7 +70,7 @@ fn checked_color_pair_accessors_preserve_independently_constructed_children() {
     assert_eq!(value.light_dark_value(), Some(&pair));
     assert!(light.light_dark_value().is_none());
     assert_eq!(
-        value.to_specified_css().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         "light-dark(red, currentcolor)"
     );
     assert_eq!(
@@ -86,14 +88,14 @@ fn checked_image_pairs_preserve_url_none_identity_and_are_real_images() {
     assert_eq!(pair.dark(), &CssImageValue::None);
     assert_eq!(
         CssImageValue::LightDark(Box::new(pair))
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "light-dark(url(\"a.svg\"), none)"
     );
     let pair = CssLightDarkImage::try_new(CssImageValue::None, CssImageValue::None).unwrap();
     let image = CssImage::try_new(CssImageValue::LightDark(Box::new(pair))).unwrap();
     assert_eq!(
-        image.serialize_specified().unwrap(),
+        image.serialize_specified(Default::default()).unwrap(),
         "light-dark(none, none)"
     );
     assert_eq!(
@@ -156,7 +158,8 @@ fn checked_image_depth_includes_all_gradient_numeric_component_roles() {
     for depth in [254, 255] {
         let direction = CssLinearGradientDirection::Angle(CssAngleOrZero::Angle(
             CssAngleValue::try_from_calculation(
-                CssAngleCalculation::try_from_components(math(depth, "1deg")).unwrap(),
+                CssAngleCalculation::try_from_components(math(depth, "1deg"), Default::default())
+                    .unwrap(),
             )
             .unwrap(),
         ));
@@ -185,7 +188,8 @@ fn checked_image_depth_includes_all_gradient_numeric_component_roles() {
         )));
         let circle = CssRadialSize::Circle(
             CssSpecifiedNonNegativeLength::try_from_calculation(
-                CssLengthCalculation::try_from_components(math(depth, "1px")).unwrap(),
+                CssLengthCalculation::try_from_components(math(depth, "1px"), Default::default())
+                    .unwrap(),
             )
             .unwrap(),
         );

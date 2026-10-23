@@ -32,15 +32,29 @@ fn mixed_number_tree_owned_lifecycle_completes_at_supported_depth() {
         "css::numeric::calculation::numeric_lifecycle_stack::mixed_number_tree_owned_lifecycle_completes_at_supported_depth",
         || {
             let source = format!("{}1{}", "calc(1 + 2 * ".repeat(256), ")".repeat(256));
-            let value =
-                CssNumberCalculation::try_from_components(parse_component_values(&source).unwrap())
-                    .unwrap();
+            let value = CssNumberCalculation::try_from_components(
+                parse_component_values(&source).unwrap(),
+                Default::default(),
+            )
+            .unwrap();
             let cloned = value.clone();
             assert_eq!(cloned, value);
             exercise_debug(&value);
-            assert_eq!(cloned.serialize().unwrap().as_css(), source);
+            assert_eq!(
+                cloned
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
+                source
+            );
             drop(value);
-            assert_eq!(cloned.serialize().unwrap().as_css(), source);
+            assert_eq!(
+                cloned
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
+                source
+            );
             drop(cloned);
         },
     );
@@ -54,14 +68,27 @@ fn mixed_length_tree_owned_lifecycle_completes_at_supported_depth() {
             let source = format!("{}1px{}", "calc(1px + 2 * ".repeat(256), ")".repeat(256));
             let value = CssLengthPercentageCalculation::try_from_components(
                 parse_component_values(&source).unwrap(),
+                Default::default(),
             )
             .unwrap();
             let cloned = value.clone();
             assert_eq!(cloned, value);
             exercise_debug(&value);
-            assert_eq!(cloned.serialize().unwrap().as_css(), source);
+            assert_eq!(
+                cloned
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
+                source
+            );
             drop(value);
-            assert_eq!(cloned.serialize().unwrap().as_css(), source);
+            assert_eq!(
+                cloned
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
+                source
+            );
             drop(cloned);
         },
     );
@@ -74,7 +101,9 @@ fn tighter_limits_reject_and_release_deep_inputs_without_aborting_the_caller() {
         || {
             let source = format!("{}1{}", "calc(1 + 2 * ".repeat(256), ")".repeat(256));
             let components = parse_component_values(&source).unwrap();
-            let admitted = CssNumberCalculation::try_from_components(components.clone()).unwrap();
+            let admitted =
+                CssNumberCalculation::try_from_components(components.clone(), Default::default())
+                    .unwrap();
             for (limits, expected) in [
                 (
                     CssComponentValueLimits::try_new(255, usize::MAX, usize::MAX).unwrap(),
@@ -89,11 +118,8 @@ fn tighter_limits_reject_and_release_deep_inputs_without_aborting_the_caller() {
                     CssComponentValueErrorKind::ByteLimit,
                 ),
             ] {
-                let error = CssNumberCalculation::try_from_components_with_limits(
-                    components.clone(),
-                    limits,
-                )
-                .unwrap_err();
+                let error = CssNumberCalculation::try_from_components(components.clone(), limits)
+                    .unwrap_err();
                 assert_eq!(
                     error.kind(),
                     &CssNumericConstructionErrorKind::ResourceLimit
@@ -105,7 +131,13 @@ fn tighter_limits_reject_and_release_deep_inputs_without_aborting_the_caller() {
                 assert!(error.origin().is_some());
                 drop(error);
             }
-            assert_eq!(admitted.serialize().unwrap().as_css(), source);
+            assert_eq!(
+                admitted
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
+                source
+            );
             drop(admitted);
             drop(components);
         },

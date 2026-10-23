@@ -53,7 +53,11 @@ fn three_keywords_and_string_pairs_parse_as_distinct_authored_values() {
         };
         assert_eq!(value.as_css(), keyword);
         assert_eq!(
-            source.value_components().serialize().unwrap().as_css(),
+            source
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             keyword
         );
         let item = expansion(&source);

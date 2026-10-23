@@ -217,7 +217,8 @@ impl CssFontFeatureValueDefinition {
         self
     }
 }
-/// An ordered context-validated block. Empty blocks and duplicate definitions remain authored syntax.
+/// An ordered context-validated block. Empty blocks and duplicate definitions remain authored
+/// syntax.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssFontFeatureValueBlock {
     kind: CssFontFeatureValueKind,
@@ -389,20 +390,21 @@ impl CssFontFeatureValuesFamilyList {
     pub fn family_origin(&self, index: usize) -> Option<&CssParsedOrigin> {
         self.family_origins.get(index)
     }
-    /// Emits the literal list with one cumulative default budget.
-    pub fn serialize_specified(
+}
+impl crate::specified_rule_serialization::SpecifiedProvider for CssFontFeatureValuesFamilyList {
+    /// Emits the literal comma-separated family list.
+    fn append_to_rule_writer(
         &self,
-    ) -> Result<String, crate::CssSpecifiedValueSerializationError> {
-        crate::serialize_font_face_family_list(&self.families)
-    }
-    /// Emits atomically with one cumulative budget across every family and separator.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: crate::CssSpecifiedValueSerializationLimits,
-    ) -> Result<String, crate::CssSpecifiedValueSerializationError> {
-        crate::serialize_font_face_family_list_with_limits(&self.families, limits)
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> Result<(), crate::CssSerializationError> {
+        writer.comma_separated(&self.families, |writer, family| {
+            crate::specified_rule_serialization::SpecifiedProvider::append_to_rule_writer(
+                family, writer,
+            )
+        })
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssFontFeatureValuesFamilyList);
 
 #[cfg(test)]
 mod tests {

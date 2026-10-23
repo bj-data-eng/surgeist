@@ -58,9 +58,7 @@ impl State {
         let selected_font_face = if let CssomBlockData::FontFace(authored) = &data {
             let entries = font_winners(authored.occurrences().cloned().collect());
             Some(
-                match CssSpecifiedFontFaceDeclarationBlock::try_from_entries_with_limits(
-                    &entries, limits.css,
-                ) {
+                match CssSpecifiedFontFaceDeclarationBlock::try_from_entries(&entries, limits.css) {
                     Ok(selected) => CssomProjection::Available(selected),
                     Err(CssFontFaceDeclarationBlockError::Serialization(error))
                         if resource_kind(error.kind()) =>
@@ -97,12 +95,10 @@ impl State {
         limits: &CssomLimits,
     ) -> Result<CssomBlockId, CssomError> {
         check_declarations(declarations.iter(), limits)?;
-        let selected = projection(
-            CssSpecifiedDeclarationBlock::try_from_declarations_with_limits(
-                declarations,
-                limits.css,
-            ),
-        )?;
+        let selected = projection(CssSpecifiedDeclarationBlock::try_from_declarations(
+            declarations,
+            limits.css,
+        ))?;
         self.block_record(
             CssomBlockData::Properties {
                 domain: CssomPropertyDomain::Ordinary,
@@ -176,7 +172,7 @@ impl State {
             CssomAuthoredRule::Keyframe(v) => {
                 check_declarations(v.declarations().iter().map(|v| v.source()), limits)?;
                 let selected = projection(
-                    CssSpecifiedDeclarationBlock::try_from_keyframe_declarations_with_limits(
+                    CssSpecifiedDeclarationBlock::try_from_keyframe_declarations(
                         v.declarations(),
                         limits.css,
                     ),
@@ -204,10 +200,7 @@ impl State {
             CssomAuthoredRule::SupportsTestChild(v) => CssomRuleData::SupportsTestChild(v.clone()),
             CssomAuthoredRule::Margin(v) => {
                 check_declarations(v.declarations().properties().iter(), limits)?;
-                let selected = projection(
-                    v.declarations()
-                        .try_specified_properties_with_limits(limits.css),
-                )?;
+                let selected = projection(v.declarations().try_specified_properties(limits.css))?;
                 let block = self.block_record(
                     CssomBlockData::Properties {
                         domain: CssomPropertyDomain::Margin,
@@ -248,7 +241,7 @@ impl State {
         limits: &CssomLimits,
     ) -> Result<CssomRuleData, CssomError> {
         check_declarations(v.declarations().properties().iter(), limits)?;
-        let selected = match v.declarations().try_specified_with_limits(limits.css) {
+        let selected = match v.declarations().try_specified(limits.css) {
             Ok(v) => CssomProjection::Available(v),
             Err(e) if page_resource(&e) => return Err(CssomError::Page(e)),
             Err(e) => CssomProjection::Unavailable(e),
@@ -589,6 +582,17 @@ pub(crate) fn projection(
         Err(e) => Ok(CssomProjection::Unavailable(e)),
     }
 }
+/// Component limits that bound only the output bytes of `serialize_tokens`;
+/// the structural limits keep their defaults.
+pub(crate) fn token_byte_limits(max_bytes: usize) -> CssComponentValueLimits {
+    let defaults = CssComponentValueLimits::default();
+    CssComponentValueLimits::try_new(
+        defaults.max_nesting_depth(),
+        defaults.max_components(),
+        max_bytes,
+    )
+    .expect("the default nesting depth is valid")
+}
 pub(crate) fn check_declarations<'a>(
     declarations: impl IntoIterator<Item = &'a CssDeclaration>,
     limits: &CssomLimits,
@@ -614,7 +618,7 @@ pub(crate) fn check_declarations<'a>(
         }
         // Charge raw component output even when symbolic expansion cannot select
         // a footprint. No semantic wrapper or parse round trip is involved.
-        if let Err(e) = values.serialize_with_limit(limits.max_input_bytes)
+        if let Err(e) = values.serialize_tokens(token_byte_limits(limits.max_input_bytes))
             && matches!(
                 e.kind(),
                 CssComponentValueErrorKind::NestingLimit

@@ -8,15 +8,15 @@ use crate::css::support::{
     component_values as components, declaration_color,
 };
 use surgeist_css::*;
-type Limits = CssSpecifiedValueSerializationLimits;
+type Limits = CssSerializationLimits;
 type Kind = CssSpecifiedValueSerializationErrorKind;
 fn assert_text(source: &str, expected: &str) {
     let d = declaration(source);
     let before = d.clone();
     assert_eq!(d.value_components(), &components(source));
     let c = declaration_color(&d);
-    let first = c.to_specified_css();
-    assert_eq!(first, c.to_specified_css());
+    let first = c.serialize_specified(Default::default());
+    assert_eq!(first, c.serialize_specified(Default::default()));
     assert_eq!(d, before);
     assert_eq!(first.unwrap(), expected, "{source}");
 }
@@ -450,7 +450,7 @@ fn contextual_scratch_reaches_sibling_input_limit() {
     // Rounded calc(0 * 1em / 1px) needs 19 bytes. A 24-byte scratch bound
     // allows it, then the seventh input (none) exceeds the six-slot budget.
     assert_eq!(
-        c.to_specified_css_with_limits(Limits::new(6, usize::MAX, 24))
+        c.serialize_specified(Limits::new(6, usize::MAX, 24))
             .unwrap_err()
             .kind(),
         Kind::InputNodeLimit
@@ -462,7 +462,7 @@ fn contextual_scratch_reaches_sibling_projection_limit() {
     let c = color("color(--P calc(5e-324 * 1em / 1px) none)");
     // Color root + first pass 5 + scale 3 spend nine before the none sibling.
     assert_eq!(
-        c.to_specified_css_with_limits(Limits::new(usize::MAX, 9, 24))
+        c.serialize_specified(Limits::new(usize::MAX, 9, 24))
             .unwrap_err()
             .kind(),
         Kind::ProjectionNodeLimit
@@ -473,12 +473,12 @@ fn numeric_discarded_scratch_control() {
     let c = color("rgb(calc(10000000000) 0 0)");
     let before = c.clone();
     assert_eq!(
-        c.to_specified_css_with_limits(Limits::new(usize::MAX, usize::MAX, 17))
+        c.serialize_specified(Limits::new(usize::MAX, usize::MAX, 17))
             .unwrap(),
         "rgb(255, 0, 0)"
     );
     assert_eq!(
-        c.to_specified_css_with_limits(Limits::new(usize::MAX, usize::MAX, 16))
+        c.serialize_specified(Limits::new(usize::MAX, usize::MAX, 16))
             .unwrap_err()
             .kind(),
         Kind::ByteLimit
@@ -491,10 +491,7 @@ macro_rules! error_case {
         fn $name() {
             let c = color("color(--P calc(.0078125 * 1em / 1px))");
             let before = c.clone();
-            assert_eq!(
-                c.to_specified_css_with_limits($limits).unwrap_err().kind(),
-                $kind
-            );
+            assert_eq!(c.serialize_specified($limits).unwrap_err().kind(), $kind);
             assert_eq!(c, before);
         }
     };
@@ -532,7 +529,7 @@ error_case!(
 #[test]
 fn checked_graph_preserves_parsed_components_and_provenance() {
     let raw = components("calc(.0078125 * 1em / 1px)");
-    let calc = CssNumberCalculation::try_from_components(raw.clone()).unwrap();
+    let calc = CssNumberCalculation::try_from_components(raw.clone(), Default::default()).unwrap();
     assert_eq!(calc.components(), &raw);
     assert_eq!(calc.result_type(), CssCalculationType::Number);
     assert_eq!(calc.expression().origin(), raw.items()[0].origin());
@@ -557,8 +554,8 @@ fn checked_graph_preserves_parsed_components_and_provenance() {
         CssColorComponent::NumberCalculation(calc)
     );
     let before = source.clone();
-    let result = source.to_specified_css();
-    assert_eq!(result, source.to_specified_css());
+    let result = source.serialize_specified(Default::default());
+    assert_eq!(result, source.serialize_specified(Default::default()));
     assert_eq!(source, before);
     assert_eq!(raw, components("calc(.0078125 * 1em / 1px)"));
     assert_eq!(result.unwrap(), "rgb(calc(0.007813 * 1em / 1px) 0 0)");
@@ -580,10 +577,13 @@ fn clean_validation_retains_graph_and_siblings() {
     let d = &r.syntax()[0];
     assert_eq!(d.importance(), CssImportance::Important);
     assert_eq!(
-        d.value_components().serialize().unwrap().as_css(),
+        d.value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         " hsl(calc(1 / 128 + 1em / 1px) 50% 50%) "
     );
-    let result = declaration_color(d).to_specified_css();
+    let result = declaration_color(d).serialize_specified(Default::default());
     assert_eq!(r.syntax(), &before);
     assert_eq!(result.unwrap(), "hsl(calc(0.007813 + (1em / 1px)) 50% 50%)");
 }
@@ -608,8 +608,11 @@ fn substitution_stays_pending_control() {
         expand_declaration(&d).unwrap(),
         CssExpansion::Pending(_)
     ));
-    let e = CssNumberCalculation::try_from_components(components("calc(var(--n) + 1em / 1px)"))
-        .unwrap_err();
+    let e = CssNumberCalculation::try_from_components(
+        components("calc(var(--n) + 1em / 1px)"),
+        Default::default(),
+    )
+    .unwrap_err();
     assert_eq!(
         e.kind(),
         &CssNumericConstructionErrorKind::SubstitutionRequired
@@ -630,7 +633,8 @@ text_case!(
 #[test]
 fn checked_percentage_graph_retains_scale_inputs_and_provenance() {
     let raw = components("calc(.0078125% * 1em / 1px)");
-    let calc = CssPercentageCalculation::try_from_components(raw.clone()).unwrap();
+    let calc =
+        CssPercentageCalculation::try_from_components(raw.clone(), Default::default()).unwrap();
     assert_eq!(calc.result_type(), CssCalculationType::Percentage);
     assert_eq!(calc.components(), &raw);
     assert_eq!(calc.expression().origin(), raw.items()[0].origin());
@@ -651,11 +655,11 @@ fn checked_percentage_graph_retains_scale_inputs_and_provenance() {
         CssColorComponent::PercentageCalculation(calc)
     );
     let before = value.clone();
-    let result = value.to_specified_css();
-    assert_eq!(result, value.to_specified_css());
+    let result = value.serialize_specified(Default::default());
+    assert_eq!(result, value.serialize_specified(Default::default()));
     assert_eq!(value, before);
     assert_eq!(
-        raw.serialize().unwrap().as_css(),
+        raw.serialize_tokens(Default::default()).unwrap().as_css(),
         "calc(.0078125% * 1em / 1px)"
     );
     assert_eq!(
@@ -669,10 +673,10 @@ fn mixed_programmatic_and_parsed_graph_preserves_each_actual_origin() {
     let leaf = CssComponentValue::try_number(".0078125").unwrap();
     let mut items = args.items().to_vec();
     items[0] = leaf.clone();
-    let mixed = CssComponentValues::try_new(items).unwrap();
+    let mixed = CssComponentValues::try_new(items, Default::default()).unwrap();
     let function = CssComponentValue::try_function("calc", mixed.clone()).unwrap();
-    let raw = CssComponentValues::try_new(vec![function]).unwrap();
-    let calc = CssNumberCalculation::try_from_components(raw.clone()).unwrap();
+    let raw = CssComponentValues::try_new(vec![function], Default::default()).unwrap();
+    let calc = CssNumberCalculation::try_from_components(raw.clone(), Default::default()).unwrap();
     assert_eq!(calc.expression().origin(), &CssValueOrigin::Programmatic);
     assert_eq!(calc.components(), &raw);
     assert_eq!(mixed.items()[0].origin(), &CssValueOrigin::Programmatic);
@@ -694,11 +698,11 @@ fn mixed_programmatic_and_parsed_graph_preserves_each_actual_origin() {
         .unwrap(),
     );
     let before = value.clone();
-    let result = value.to_specified_css();
-    assert_eq!(result, value.to_specified_css());
+    let result = value.serialize_specified(Default::default());
+    assert_eq!(result, value.serialize_specified(Default::default()));
     assert_eq!(value, before);
     assert_eq!(
-        raw.serialize().unwrap().as_css(),
+        raw.serialize_tokens(Default::default()).unwrap().as_css(),
         "calc(.0078125 * 1em / 1px)"
     );
     assert_eq!(mixed.items()[0], leaf);
@@ -715,13 +719,7 @@ fn discarded_numeric_capture_error_precedence_control() {
         (Limits::new(3, 3, 16), Kind::ProjectionNodeLimit),
         (Limits::new(3, 4, 16), Kind::ByteLimit),
     ] {
-        assert_eq!(
-            value
-                .to_specified_css_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            kind
-        );
+        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
         assert_eq!(value, before);
     }
 }

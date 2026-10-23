@@ -59,7 +59,10 @@ fn inner_logic_and_unknowns_expose_independent_original_regions() {
         panic!("custom name")
     };
     assert_eq!(name.as_str(), "--Theme");
-    assert_eq!(value.serialize().unwrap().as_css(), " dark");
+    assert_eq!(
+        value.serialize_tokens(Default::default()).unwrap().as_css(),
+        " dark"
+    );
     let CssContainerStyleQueryKind::GeneralEnclosed(opaque) = unknown.kind() else {
         panic!("opaque")
     };
@@ -74,8 +77,21 @@ fn inner_logic_and_unknowns_expose_independent_original_regions() {
     }
     let detached = feature.as_ref().clone();
     drop(condition);
-    assert_eq!(detached.serialize().unwrap().as_css(), "--Theme: dark");
-    assert_eq!(plain(&detached).1.serialize().unwrap().as_css(), " dark");
+    assert_eq!(
+        detached
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        "--Theme: dark"
+    );
+    assert_eq!(
+        plain(&detached)
+            .1
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        " dark"
+    );
 }
 
 #[test]
@@ -90,7 +106,10 @@ fn ordinary_name_keeps_its_grammar_while_plain_custom_names_remain_literal_value
     );
     assert_eq!(grammar.name(), "glyph-orientation-vertical");
     assert_eq!(grammar.target_property(), CssKnownProperty::TextOrientation);
-    assert_eq!(value.serialize().unwrap().as_css(), " --Angle");
+    assert_eq!(
+        value.serialize_tokens(Default::default()).unwrap().as_css(),
+        " --Angle"
+    );
     assert!(matches!(
         value.components().last().unwrap().view(),
         CssComponentValueRef::Token(CssValueTokenRef::Ident("--Angle"))
@@ -116,14 +135,34 @@ fn directional_ranges_expose_all_three_operands_and_exact_comparisons() {
         left.view(),
         CssContainerStyleRangeOperandRef::Value(_)
     ));
-    assert_eq!(left.value().serialize().unwrap().as_css(), "1px ");
+    assert_eq!(
+        left.value()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        "1px "
+    );
     assert_eq!(reference(middle), "--Size");
-    assert_eq!(middle.value().serialize().unwrap().as_css(), r" --\53 ize ");
+    assert_eq!(
+        middle
+            .value()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        r" --\53 ize "
+    );
     assert!(matches!(
         right.view(),
         CssContainerStyleRangeOperandRef::Value(_)
     ));
-    assert_eq!(right.value().serialize().unwrap().as_css(), " var(--max,)");
+    assert_eq!(
+        right
+            .value()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        " var(--max,)"
+    );
 
     let condition = construct("style(--max >= --current > --min)");
     let CssContainerStyleRangeRef::Descending {
@@ -169,7 +208,13 @@ fn generic_range_values_do_not_become_numeric_or_custom_reference_nodes() {
             right.view(),
             CssContainerStyleRangeOperandRef::Value(_)
         ));
-        assert_eq!(left.value().serialize().unwrap().as_css(), left_expected);
+        assert_eq!(
+            left.value()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            left_expected
+        );
         assert_eq!(
             comparison,
             if source.contains('>') {
@@ -186,7 +231,10 @@ fn whitespace_only_value_and_range_operands_keep_parsed_origins() {
     let source = "style(--x: )";
     let condition = construct(source);
     let (_, value) = plain(style(&condition));
-    assert_eq!(value.serialize().unwrap().as_css(), " ");
+    assert_eq!(
+        value.serialize_tokens(Default::default()).unwrap().as_css(),
+        " "
+    );
     assert_eq!(value.components().len(), 1);
     assert!(matches!(
         value.components()[0].view(),
@@ -203,7 +251,14 @@ fn whitespace_only_value_and_range_operands_keep_parsed_origins() {
     else {
         panic!("whitespace middle")
     };
-    assert_eq!(middle.value().serialize().unwrap().as_css(), " ");
+    assert_eq!(
+        middle
+            .value()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        " "
+    );
     assert_eq!(middle.value().position().unwrap().byte_offset().value(), 10);
     assert!(matches!(
         middle.view(),
@@ -215,20 +270,27 @@ fn whitespace_only_value_and_range_operands_keep_parsed_origins() {
 fn programmatic_operand_boundaries_and_mixed_origins_remain_inspectable() {
     let parsed = parse_component_values("/*source*/1").unwrap();
     let number = parsed.items().last().unwrap().clone();
-    let argument = CssComponentValues::try_new(vec![
-        CssComponentValue::try_ident("--x").unwrap(),
-        CssComponentValue::try_token(":").unwrap(),
-        number,
-        CssComponentValue::try_ident("e2").unwrap(),
-    ])
+    let argument = CssComponentValues::try_new(
+        vec![
+            CssComponentValue::try_ident("--x").unwrap(),
+            CssComponentValue::try_token(":").unwrap(),
+            number,
+            CssComponentValue::try_ident("e2").unwrap(),
+        ],
+        Default::default(),
+    )
     .unwrap();
     let function = CssComponentValue::try_function("style", argument).unwrap();
     let condition = CssContainerCondition::try_from_components(
-        CssComponentValues::try_new(vec![function]).unwrap(),
+        CssComponentValues::try_new(vec![function], Default::default()).unwrap(),
+        Default::default(),
     )
     .unwrap();
     let (_, value) = plain(style(&condition));
-    assert_eq!(value.serialize().unwrap().as_css(), "1/**/e2");
+    assert_eq!(
+        value.serialize_tokens(Default::default()).unwrap().as_css(),
+        "1/**/e2"
+    );
     assert_eq!(value.components().len(), 2);
     assert!(matches!(
         value.components()[0].origin(),
@@ -260,14 +322,14 @@ fn style_limits_apply_before_admission_and_recovered_groups_keep_closure_origins
         ),
     ] {
         let Err(CssContainerConstructionError::Component(error)) =
-            CssContainerCondition::try_from_components_with_limits(values.clone(), limits)
+            CssContainerCondition::try_from_components(values.clone(), limits)
         else {
             panic!("component limit")
         };
         assert_eq!(error.kind(), expected);
     }
     let condition = construct("style((--x");
-    let serialized = condition.serialize().unwrap();
+    let serialized = condition.serialize_tokens(Default::default()).unwrap();
     assert_eq!(serialized.as_css(), "style((--x))");
     for offset in [10, 11] {
         assert!(matches!(
@@ -285,7 +347,10 @@ fn style_limits_apply_before_admission_and_recovered_groups_keep_closure_origins
         CssContainerStyleQueryKind::Feature(CssContainerStyleFeature::Boolean(_))
     ));
     assert_eq!(
-        child.serialize_with_limit(2).unwrap_err().kind(),
+        child
+            .serialize_tokens(crate::css::support::byte_limits(2))
+            .unwrap_err()
+            .kind(),
         CssComponentValueErrorKind::ByteLimit
     );
 }
@@ -312,9 +377,21 @@ fn maximum_style_depth_supports_detached_clone_and_drop_on_an_ordinary_stack() {
                     drop(original);
                     let cloned = detached.clone();
                     assert_eq!(detached, cloned);
-                    assert_eq!(detached.serialize().unwrap().as_css(), inner);
+                    assert_eq!(
+                        detached
+                            .serialize_tokens(Default::default())
+                            .unwrap()
+                            .as_css(),
+                        inner
+                    );
                     drop(detached);
-                    assert_eq!(cloned.serialize().unwrap().as_css(), inner);
+                    assert_eq!(
+                        cloned
+                            .serialize_tokens(Default::default())
+                            .unwrap()
+                            .as_css(),
+                        inner
+                    );
                     drop(cloned);
                 }
             })

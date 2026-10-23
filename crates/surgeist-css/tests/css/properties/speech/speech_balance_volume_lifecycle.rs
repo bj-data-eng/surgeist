@@ -69,7 +69,7 @@ fn balance_admits_exact_unbounded_numbers_and_number_math_without_specified_clam
         assert_eq!(
             declaration("voice-balance", text)
                 .value_components()
-                .serialize()
+                .serialize_tokens(Default::default())
                 .unwrap()
                 .as_css(),
             text
@@ -131,7 +131,7 @@ fn volume_admits_signed_exact_decibel_literals_and_both_level_offset_orders() {
     assert_eq!(
         declaration("voice-volume", "medium 0db")
             .value_components()
-            .serialize()
+            .serialize_tokens(Default::default())
             .unwrap()
             .as_css(),
         "medium 0db"
@@ -374,19 +374,25 @@ fn mixing_case_escapes_comments_exact_coefficients_and_raw_byte_limits_preserve_
         let components = source.value_components();
         assert_eq!(
             components
-                .serialize_with_limit(text.len())
+                .serialize_tokens(crate::css::support::byte_limits(text.len()))
                 .unwrap()
                 .as_css(),
             text
         );
         assert_eq!(
             components
-                .serialize_with_limit(text.len() - 1)
+                .serialize_tokens(crate::css::support::byte_limits(text.len() - 1))
                 .unwrap_err()
                 .kind(),
             CssComponentValueErrorKind::ByteLimit
         );
-        assert_eq!(components.serialize().unwrap().as_css(), text);
+        assert_eq!(
+            components
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            text
+        );
         let checked = parse_property_value(
             CssPropertyNameRef::Known(property(canonical)),
             components.clone(),

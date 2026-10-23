@@ -15,7 +15,7 @@ fn declarations(source: &str) -> CssDeclarationList {
 fn custom_read(block: &CssSpecifiedDeclarationBlock, name: &str) -> Option<String> {
     let name = CssCustomPropertyName::try_new(name).unwrap();
     block
-        .property_value(CssPropertyNameRef::Custom(&name))
+        .property_value(CssPropertyNameRef::Custom(&name), Default::default())
         .unwrap()
 }
 
@@ -37,7 +37,8 @@ fn a_complete_original_pending_shorthand_has_empty_members_and_exact_retained_va
     const SOURCE: &str = "pause: \t/*Head*/ VaR(--P) /*Tail*/!important";
     const VALUE: &str = "/*Head*/ VaR(--P) /*Tail*/";
     let list = declarations(SOURCE);
-    let block = CssSpecifiedDeclarationBlock::try_from_declarations(&list).unwrap();
+    let block =
+        CssSpecifiedDeclarationBlock::try_from_declarations(&list, Default::default()).unwrap();
     assert_eq!(
         read(&block, CssKnownProperty::Pause).as_deref(),
         Some(VALUE)
@@ -51,7 +52,7 @@ fn a_complete_original_pending_shorthand_has_empty_members_and_exact_retained_va
         Some("")
     );
     assert_eq!(
-        block.serialize_cssom().unwrap(),
+        block.serialize_cssom(Default::default()).unwrap(),
         "pause: /*Head*/ VaR(--P) /*Tail*/ !important;"
     );
     for entry in block.entries() {
@@ -94,7 +95,8 @@ fn incomplete_or_mixed_pending_members_make_only_the_requested_shorthand_unrepre
     ] {
         let list = declarations(source);
         let original_list = list.clone();
-        let block = CssSpecifiedDeclarationBlock::try_from_declarations(&list).unwrap();
+        let block =
+            CssSpecifiedDeclarationBlock::try_from_declarations(&list, Default::default()).unwrap();
         assert_eq!(read(&block, CssKnownProperty::Pause), None, "{source}");
         assert_eq!(
             read(&block, CssKnownProperty::PauseBefore).as_deref(),
@@ -106,7 +108,11 @@ fn incomplete_or_mixed_pending_members_make_only_the_requested_shorthand_unrepre
             after,
             "{source}"
         );
-        assert_eq!(block.serialize_cssom().unwrap(), css, "{source}");
+        assert_eq!(
+            block.serialize_cssom(Default::default()).unwrap(),
+            css,
+            "{source}"
+        );
         assert_eq!(list, original_list);
     }
 }
@@ -116,13 +122,14 @@ fn priority_winners_reconstruct_from_the_selected_original_occurrence() {
     const SOURCE: &str = "pause:var(--Old)!important;pause:var(--New)";
     let list = declarations(SOURCE);
     assert!(!list[0].same_occurrence(&list[1]));
-    let block = CssSpecifiedDeclarationBlock::try_from_declarations(&list).unwrap();
+    let block =
+        CssSpecifiedDeclarationBlock::try_from_declarations(&list, Default::default()).unwrap();
     assert_eq!(
         read(&block, CssKnownProperty::Pause).as_deref(),
         Some("var(--Old)")
     );
     assert_eq!(
-        block.serialize_cssom().unwrap(),
+        block.serialize_cssom(Default::default()).unwrap(),
         "pause: var(--Old) !important;"
     );
     for entry in block.entries() {
@@ -137,9 +144,12 @@ fn priority_winners_reconstruct_from_the_selected_original_occurrence() {
     assert_eq!(changed.parsed_name(), list[0].parsed_name());
     assert_eq!(changed.parsed_value(), list[0].parsed_value());
     assert_eq!(changed.parser_context(), list[0].parser_context());
-    assert_eq!(changed.to_specified_css().unwrap(), "pause: var(--Old);");
     assert_eq!(
-        list[0].to_specified_css().unwrap(),
+        changed.serialize_specified(Default::default()).unwrap(),
+        "pause: var(--Old);"
+    );
+    assert_eq!(
+        list[0].serialize_specified(Default::default()).unwrap(),
         "pause: var(--Old) !important;"
     );
 }
@@ -150,12 +160,13 @@ fn exact_custom_names_and_token_spelling_survive_priority_selection() {
     const VALUE: &str = "/*H*/01.00PX  A/**/B/*T*/";
     let list = declarations(SOURCE);
     assert!(list.iter().all(CssDeclaration::is_name_case_sensitive));
-    let block = CssSpecifiedDeclarationBlock::try_from_declarations(&list).unwrap();
+    let block =
+        CssSpecifiedDeclarationBlock::try_from_declarations(&list, Default::default()).unwrap();
     assert_eq!(custom_read(&block, "--Case").as_deref(), Some(VALUE));
     assert_eq!(custom_read(&block, "--case").as_deref(), Some("C"));
     assert_eq!(custom_read(&block, "--CASE"), None);
     assert_eq!(
-        block.serialize_cssom().unwrap(),
+        block.serialize_cssom(Default::default()).unwrap(),
         "--Case: /*H*/01.00PX  A/**/B/*T*/ !important; --case: C;"
     );
     let [upper, lower] = block.entries() else {
@@ -186,12 +197,13 @@ fn valid_empty_custom_text_is_distinct_from_absence_and_symbolic_initial() {
     assert_eq!(empty.global(), None);
     assert_eq!(reset.global(), Some(CssGlobalKeyword::Initial));
     assert!(reset.value().is_none());
-    let block = CssSpecifiedDeclarationBlock::try_from_declarations(&list).unwrap();
+    let block =
+        CssSpecifiedDeclarationBlock::try_from_declarations(&list, Default::default()).unwrap();
     assert_eq!(custom_read(&block, "--Empty").as_deref(), Some(""));
     assert_eq!(custom_read(&block, "--Absent"), None);
     assert_eq!(custom_read(&block, "--Reset").as_deref(), Some("INITIAL"));
     assert_eq!(
-        block.serialize_cssom().unwrap(),
+        block.serialize_cssom(Default::default()).unwrap(),
         "--Empty: ; --Reset: INITIAL;"
     );
 }
@@ -202,18 +214,19 @@ fn a_bounded_requested_pending_value_can_retry_without_changing_its_source() {
     const VALUE: &str = "var(--P)";
     let list = declarations(SOURCE);
     let original_source = list[0].clone();
-    let block = CssSpecifiedDeclarationBlock::try_from_declarations(&list).unwrap();
-    let exact = CssSpecifiedValueSerializationLimits::new(10000, 10000, VALUE.len());
+    let block =
+        CssSpecifiedDeclarationBlock::try_from_declarations(&list, Default::default()).unwrap();
+    let exact = CssSerializationLimits::new(10000, 10000, VALUE.len());
     assert_eq!(
         block
-            .property_value_with_limits(CssPropertyNameRef::Known(CssKnownProperty::Pause), exact)
+            .property_value(CssPropertyNameRef::Known(CssKnownProperty::Pause), exact)
             .unwrap()
             .as_deref(),
         Some(VALUE)
     );
-    let short = CssSpecifiedValueSerializationLimits::new(10000, 10000, VALUE.len() - 1);
+    let short = CssSerializationLimits::new(10000, 10000, VALUE.len() - 1);
     let error = block
-        .property_value_with_limits(CssPropertyNameRef::Known(CssKnownProperty::Pause), short)
+        .property_value(CssPropertyNameRef::Known(CssKnownProperty::Pause), short)
         .unwrap_err();
     let CssDeclarationBlockErrorKind::Serialization(cause) = error.kind() else {
         panic!("a typed specified byte bound")
@@ -224,7 +237,7 @@ fn a_bounded_requested_pending_value_can_retry_without_changing_its_source() {
     );
     assert_eq!(
         block
-            .property_value_with_limits(CssPropertyNameRef::Known(CssKnownProperty::Pause), exact)
+            .property_value(CssPropertyNameRef::Known(CssKnownProperty::Pause), exact)
             .unwrap()
             .as_deref(),
         Some(VALUE)

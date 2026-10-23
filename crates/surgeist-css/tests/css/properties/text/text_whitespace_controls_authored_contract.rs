@@ -252,7 +252,9 @@ fn decoded_keyword_case_escapes_and_dimension_units_keep_source_and_canonical_ou
         property("tab-size")
     );
     assert_eq!(
-        report.syntax()[0].to_specified_css().unwrap(),
+        report.syntax()[0]
+            .serialize_specified(Default::default())
+            .unwrap(),
         "tab-size: 8 !important;"
     );
 }
@@ -289,7 +291,7 @@ fn programmatic_component_construction_preserves_origins_and_importance() {
         ),
     ];
     for (name, items, expected) in states {
-        let components = CssComponentValues::try_new(items).unwrap();
+        let components = CssComponentValues::try_new(items, Default::default()).unwrap();
         let before = components.clone();
         for grammar in [false, true] {
             let source = checked_components(name, components.clone(), grammar).unwrap();
@@ -303,7 +305,7 @@ fn programmatic_component_construction_preserves_origins_and_importance() {
             );
             assert_eq!(source.importance(), CssImportance::Important);
             assert_eq!(
-                source.to_specified_css().unwrap(),
+                source.serialize_specified(Default::default()).unwrap(),
                 format!("{name}: {expected} !important;")
             );
             assert!(source.position().is_none());
@@ -333,14 +335,14 @@ fn none_and_number_eight_initials_are_inherited_ordinary_longhands() {
         };
         let source = checked_components(
             name,
-            CssComponentValues::try_new(vec![component]).unwrap(),
+            CssComponentValues::try_new(vec![component], Default::default()).unwrap(),
             false,
         )
         .unwrap();
         let ordinary = completed(&source);
         assert_eq!(ordinary.items()[0].ordinary_value(), Some(initial));
         assert_eq!(
-            source.to_specified_css().unwrap(),
+            source.serialize_specified(Default::default()).unwrap(),
             format!("{name}: {} !important;", initial_text(name))
         );
     }
@@ -357,7 +359,7 @@ fn var_env_attr_reentry_admits_every_ordinary_state_and_keeps_original_and_repla
                 assert!(handle.source().same_occurrence(&source));
                 assert_eq!(handle.source().importance(), CssImportance::Important);
                 assert_eq!(
-                    source.to_specified_css().unwrap(),
+                    source.serialize_specified(Default::default()).unwrap(),
                     format!("{name}: {pending} !important;")
                 );
                 for text in values(name) {
@@ -392,7 +394,7 @@ fn var_env_attr_reentry_admits_every_ordinary_state_and_keeps_original_and_repla
                     }
                     let ordinary = checked_components(name, replacement.clone(), true).unwrap();
                     assert_eq!(
-                        ordinary.to_specified_css().unwrap(),
+                        ordinary.serialize_specified(Default::default()).unwrap(),
                         format!("{name}: {text} !important;")
                     );
                     let ordinary_values = completed(&ordinary);
@@ -498,7 +500,7 @@ fn implicit_origin(components: &CssComponentValues) -> CssValueOrigin {
             return origin.clone();
         }
     }
-    let serialized = components.serialize().unwrap();
+    let serialized = components.serialize_tokens(Default::default()).unwrap();
     (0..serialized.as_css().len())
         .find_map(|offset| match serialized.origin_at(offset) {
             Some(CssSerializedOrigin::Token(origin @ CssValueOrigin::ImplicitClosure { .. })) => {
@@ -638,7 +640,7 @@ fn checked_value_annotations_map_to_original_tokens_and_authored_importance_is_v
     for name in FAMILY {
         let text = format!("/*😀*/{}!important", initial_text(name));
         let components = parse_component_values(&text).unwrap();
-        let serialized = components.serialize().unwrap();
+        let serialized = components.serialize_tokens(Default::default()).unwrap();
         let origin = serialized
             .origin_at(serialized.as_css().find('!').unwrap())
             .unwrap();
@@ -861,7 +863,10 @@ fn scalar_and_composed_controls_execute_without_whitespace_property_lookup() {
             CssComponentValue::try_number(input).unwrap(),
         )
         .unwrap();
-        assert_eq!(number.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            number.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
     for input in ["-1", "-1e-999"] {
         assert!(
@@ -875,7 +880,10 @@ fn scalar_and_composed_controls_execute_without_whitespace_property_lookup() {
         CssComponentValue::try_dimension("0", "px").unwrap(),
     )
     .unwrap();
-    assert_eq!(length.serialize_specified().unwrap(), "0px");
+    assert_eq!(
+        length.serialize_specified(Default::default()).unwrap(),
+        "0px"
+    );
     for (name, input, expected, count) in [
         (
             "flow-tolerance",
@@ -896,7 +904,10 @@ fn scalar_and_composed_controls_execute_without_whitespace_property_lookup() {
         let report = parse_style_attribute(&format!("{name}:{input}"));
         assert!(report.is_clean());
         for source in report.syntax().iter() {
-            assert_eq!(source.to_specified_css().unwrap(), expected);
+            assert_eq!(
+                source.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
             let CssExpansion::Contributions(CssContributions::Longhands(values)) =
                 expand_declaration(source).unwrap()
             else {
@@ -912,8 +923,8 @@ fn scalar_and_composed_controls_execute_without_whitespace_property_lookup() {
 
 #[test]
 fn canonical_declared_values_share_exact_literal_keyword_and_numeric_work_prices() {
+    use CssSerializationLimits as Limits;
     use CssSpecifiedValueSerializationErrorKind as Kind;
-    use CssSpecifiedValueSerializationLimits as Limits;
     // Existing shared math contract: calc(1px + 2em) child4input/5projection;
     // new transparent Tab delegates it, then declaration/name add2.
     for (name, input, canonical, input_nodes, projection_nodes) in [
@@ -944,10 +955,7 @@ fn canonical_declared_values_share_exact_literal_keyword_and_numeric_work_prices
             let before = source.clone();
             let expected = format!("{name}: {canonical} !important;");
             let exact = Limits::new(input_nodes, projection_nodes, expected.len());
-            assert_eq!(
-                source.to_specified_css_with_limits(exact).unwrap(),
-                expected
-            );
+            assert_eq!(source.serialize_specified(exact).unwrap(), expected);
             for (limits, kind) in [
                 (
                     Limits::new(input_nodes - 1, projection_nodes, expected.len()),
@@ -963,20 +971,11 @@ fn canonical_declared_values_share_exact_literal_keyword_and_numeric_work_prices
                 ),
             ] {
                 for _ in 0..2 {
-                    assert_eq!(
-                        source
-                            .to_specified_css_with_limits(limits)
-                            .unwrap_err()
-                            .kind(),
-                        kind
-                    );
+                    assert_eq!(source.serialize_specified(limits).unwrap_err().kind(), kind);
                     assert_eq!(source, before);
                 }
             }
-            assert_eq!(
-                source.to_specified_css_with_limits(exact).unwrap(),
-                expected
-            );
+            assert_eq!(source.serialize_specified(exact).unwrap(), expected);
         }
     }
     let digits = format!("1{}", "0".repeat(999));
@@ -988,23 +987,26 @@ fn canonical_declared_values_share_exact_literal_keyword_and_numeric_work_prices
         let expected = format!("tab-size: {output} !important;");
         assert_eq!(
             source
-                .to_specified_css_with_limits(Limits::new(3, 3, expected.len()))
+                .serialize_specified(Limits::new(3, 3, expected.len()))
                 .unwrap(),
             expected
         );
         assert_eq!(
             source
-                .to_specified_css_with_limits(Limits::new(3, 3, expected.len() - 1))
+                .serialize_specified(Limits::new(3, 3, expected.len() - 1))
                 .unwrap_err()
                 .kind(),
             Kind::ByteLimit
         );
-        assert_eq!(source.to_specified_css().unwrap(), expected);
+        assert_eq!(
+            source.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
 }
 #[test]
 fn sheet_siblings_share_final_canonical_bytes_with_atomic_retry_at_the_public_sheet_boundary() {
-    use CssSpecifiedValueSerializationLimits as Limits;
+    use CssSerializationLimits as Limits;
     let report = parse_sheet(
         ".a{word-space-transform:auto-phrase space!important}.b{tab-size:calc(1px + 2em)}",
     );
@@ -1016,23 +1018,21 @@ fn sheet_siblings_share_final_canonical_bytes_with_atomic_retry_at_the_public_sh
     // independently determined sibling byte accounting is constrained here.
     let exact = Limits::new(usize::MAX, usize::MAX, expected.len());
     let short = Limits::new(usize::MAX, usize::MAX, expected.len() - 1);
-    assert_eq!(sheet.to_specified_css_with_limits(exact).unwrap(), expected);
+    assert_eq!(sheet.serialize_specified(exact).unwrap(), expected);
     assert!(
         sheet
             .rules()
             .iter()
-            .all(|rule| rule.to_specified_css_with_limits(short).is_ok())
+            .all(|rule| rule.serialize_specified(short).is_ok())
     );
     for _ in 0..2 {
-        let error = sheet.to_specified_css_with_limits(short).unwrap_err();
+        let error = sheet.serialize_specified(short).unwrap_err();
         assert_eq!(
             error.kind(),
-            CssSpecifiedRuleSerializationErrorKind::Resource(
-                CssSpecifiedValueSerializationErrorKind::ByteLimit
-            )
+            CssSpecifiedValueSerializationErrorKind::ByteLimit
         );
         assert_eq!(error.rule_index(), Some(1));
         assert_eq!(sheet, &before);
     }
-    assert_eq!(sheet.to_specified_css_with_limits(exact).unwrap(), expected);
+    assert_eq!(sheet.serialize_specified(exact).unwrap(), expected);
 }

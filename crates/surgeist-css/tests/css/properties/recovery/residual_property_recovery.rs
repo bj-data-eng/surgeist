@@ -194,7 +194,7 @@ fn text_four_percentage_word_spacing_keeps_original_neighbors() {
     assert_eq!(
         report.syntax()[1]
             .value_components()
-            .serialize()
+            .serialize_tokens(Default::default())
             .unwrap()
             .as_css(),
         " 10%"

@@ -1,10 +1,7 @@
 //! Current authored Display3 and Containment2 visibility values, plus the
 //! selected standalone Grid3 extensions.
 
-use crate::{
-    CssContentVisibility, CssSpecifiedValueSerializationError,
-    CssSpecifiedValueSerializationLimits, CssVisibility,
-};
+use crate::{CssContentVisibility, CssVisibility};
 
 /// The outer display type of an ordinary display value.
 #[non_exhaustive]
@@ -76,6 +73,10 @@ pub enum CssDisplayLegacy {
 /// Missing grammar components are stored with their intrinsic defaults. Legacy
 /// keywords retain distinct specified identities. Original spelling and source
 /// provenance remain on the authored property wrapper.
+///
+/// # Specified serialization
+///
+/// Serializes the specified value without computed-value transformations.
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CssDisplayValue {
@@ -95,29 +96,6 @@ pub enum CssDisplayValue {
 }
 
 impl CssDisplayValue {
-    /// Serializes the specified value without computed-value transformations.
-    pub fn serialize_specified(&self) -> Result<String, CssSpecifiedValueSerializationError> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes atomically, charging one input node, one projection node,
-    /// and the exact output byte count. Authored input is never modified.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String, CssSpecifiedValueSerializationError> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        writer.keyword(self.specified_keyword_sequence())
-    }
-
     fn specified_keyword_sequence(self) -> &'static str {
         use CssDisplayOutside::{Block, Inline, RunIn};
         match self {
@@ -240,29 +218,21 @@ impl CssDisplayValue {
         }
     }
 }
-
-impl CssVisibility {
-    /// Serializes the specified visibility keyword without applying inheritance
-    /// or changing box rendering and layout.
-    pub fn serialize_specified(&self) -> Result<String, CssSpecifiedValueSerializationError> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes atomically, charging one input node, one projection node,
-    /// and the exact output byte count. Authored input is never modified.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String, CssSpecifiedValueSerializationError> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssDisplayValue {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        writer.keyword(self.specified_keyword_sequence())
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(CssDisplayValue);
+
+impl crate::specified_rule_serialization::SpecifiedProvider for CssVisibility {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         let text = match self {
             Self::Visible => "visible",
             Self::Hidden => "hidden",
@@ -271,29 +241,13 @@ impl CssVisibility {
         writer.keyword(text)
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssVisibility);
 
-impl CssContentVisibility {
-    /// Serializes the specified content-visibility keyword without deciding
-    /// whether contents are skipped or which containment applies at use time.
-    pub fn serialize_specified(&self) -> Result<String, CssSpecifiedValueSerializationError> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    /// Serializes atomically, charging one input node, one projection node,
-    /// and the exact output byte count. Authored input is never modified.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String, CssSpecifiedValueSerializationError> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+impl crate::specified_rule_serialization::SpecifiedProvider for CssContentVisibility {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         let text = match self {
             Self::Visible => "visible",
             Self::Hidden => "hidden",
@@ -302,3 +256,4 @@ impl CssContentVisibility {
         writer.keyword(text)
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssContentVisibility);

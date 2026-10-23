@@ -864,7 +864,13 @@ fn opacity_preserves_finite_authored_number_and_percentage_branches() {
     assert!(
         matches!(value.value(), CssOpacityValue::Scalar(value) if value.numeric().representation() == "0.5")
     );
-    assert_eq!(value.value().serialize_specified().unwrap(), "0.5");
+    assert_eq!(
+        value
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "0.5"
+    );
 
     for input in ["-0.5", "1.5"] {
         let value = opacity.next().unwrap();

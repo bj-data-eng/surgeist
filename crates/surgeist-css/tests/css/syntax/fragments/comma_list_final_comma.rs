@@ -134,7 +134,11 @@ fn font_source_lists_add_no_failure_for_a_final_comma() {
 fn checked_media_lists_share_the_final_comma_boundary() {
     let namespaces = CssNamespaceContext::default();
     let import = |source: &str| {
-        CssImportRule::try_from_components(parse_component_values(source).unwrap(), &namespaces)
+        CssImportRule::try_from_components(
+            parse_component_values(source).unwrap(),
+            &namespaces,
+            Default::default(),
+        )
     };
     for source in ["@import 'x.css' screen,;", "@import 'x.css' screen,/**/;"] {
         let rule = import(source).unwrap();
@@ -154,7 +158,10 @@ fn checked_media_lists_share_the_final_comma_boundary() {
     }
 
     let custom = |source: &str| {
-        CssCustomMediaRule::try_from_components(parse_component_values(source).unwrap())
+        CssCustomMediaRule::try_from_components(
+            parse_component_values(source).unwrap(),
+            Default::default(),
+        )
     };
     let rule = custom("--narrow screen,").unwrap();
     let CssCustomMediaBody::Media(list) = rule.body() else {

@@ -3,7 +3,7 @@
 //! policy. Work formulas visit retained semantic nodes, including shortened edges.
 use crate::css::support::serialization_limits::assert_limits as bounds;
 use surgeist_css::*;
-type Limits = CssSpecifiedValueSerializationLimits;
+type Limits = CssSerializationLimits;
 type Kind = CssSpecifiedValueSerializationErrorKind;
 
 fn number(text: &str) -> CssSpecifiedNonNegativeNumber {
@@ -79,17 +79,17 @@ fn narrowed_mask_boxes_and_layer_slots_are_intrinsically_checked() {
     let before = value.clone();
     // list + layer + none + box group/two slots + operator + mode.
     bounds("none padding-box no-clip exclude alpha", 8, 8, |limits| {
-        value.serialize_specified_with_limits(limits)
+        value.serialize_specified(limits)
     });
     assert_eq!(value, before);
     bounds("content-box", 2, 2, |limits| {
-        one.serialize_specified_with_limits(limits)
+        one.serialize_specified(limits)
     });
     bounds("padding-box no-clip", 3, 3, |limits| {
-        pair.serialize_specified_with_limits(limits)
+        pair.serialize_specified(limits)
     });
     bounds("no-clip", 2, 2, |limits| {
-        CssMaskLayerBoxes::NoClip.serialize_specified_with_limits(limits)
+        CssMaskLayerBoxes::NoClip.serialize_specified(limits)
     });
     let explicit_pair = CssMaskLayerBoxes::Pair {
         origin: CssMaskBox::ContentBox,
@@ -97,7 +97,7 @@ fn narrowed_mask_boxes_and_layer_slots_are_intrinsically_checked() {
     };
     assert_ne!(one, explicit_pair);
     bounds("content-box content-box", 3, 3, |limits| {
-        explicit_pair.serialize_specified_with_limits(limits)
+        explicit_pair.serialize_specified(limits)
     });
 }
 
@@ -113,7 +113,7 @@ fn nonempty_longhand_lists_preserve_independent_arity_and_exact_work() {
         &[CssMaskBox::ContentBox, CssMaskBox::ViewBox]
     );
     bounds("content-box, view-box", 3, 3, |limits| {
-        boxes.serialize_specified_with_limits(limits)
+        boxes.serialize_specified(limits)
     });
     let clips = CssMaskClipList::try_new(vec![
         CssMaskClip::NoClip,
@@ -125,7 +125,7 @@ fn nonempty_longhand_lists_preserve_independent_arity_and_exact_work() {
         &[CssMaskClip::NoClip, CssMaskClip::Box(CssMaskBox::StrokeBox)]
     );
     bounds("no-clip, stroke-box", 3, 3, |limits| {
-        clips.serialize_specified_with_limits(limits)
+        clips.serialize_specified(limits)
     });
     let modes = CssMaskModeList::try_new(vec![
         CssMaskMode::Alpha,
@@ -135,7 +135,7 @@ fn nonempty_longhand_lists_preserve_independent_arity_and_exact_work() {
     .unwrap();
     assert_eq!(modes.modes().len(), 3);
     bounds("alpha, luminance, match-source", 4, 4, |limits| {
-        modes.serialize_specified_with_limits(limits)
+        modes.serialize_specified(limits)
     });
     let operators = CssMaskCompositeList::try_new(vec![
         CssMaskComposite::Add,
@@ -146,19 +146,19 @@ fn nonempty_longhand_lists_preserve_independent_arity_and_exact_work() {
     .unwrap();
     assert_eq!(operators.operators().len(), 4);
     bounds("add, subtract, intersect, exclude", 5, 5, |limits| {
-        operators.serialize_specified_with_limits(limits)
+        operators.serialize_specified(limits)
     });
     bounds("evenodd", 1, 1, |limits| {
-        CssClipRule::Evenodd.serialize_specified_with_limits(limits)
+        CssClipRule::Evenodd.serialize_specified(limits)
     });
     bounds("nonzero", 1, 1, |limits| {
-        CssClipRule::Nonzero.serialize_specified_with_limits(limits)
+        CssClipRule::Nonzero.serialize_specified(limits)
     });
     bounds("luminance", 1, 1, |limits| {
-        CssMaskType::Luminance.serialize_specified_with_limits(limits)
+        CssMaskType::Luminance.serialize_specified(limits)
     });
     bounds("alpha", 1, 1, |limits| {
-        CssMaskType::Alpha.serialize_specified_with_limits(limits)
+        CssMaskType::Alpha.serialize_specified(limits)
     });
 }
 
@@ -215,23 +215,23 @@ fn border_constructor_reuses_checked_edges_and_rejects_impossible_slash_groups()
         "none 10 fill / auto / 2 round space luminance",
         30,
         30,
-        |limits| value.serialize_specified_with_limits(limits),
+        |limits| value.serialize_specified(limits),
     );
     assert_eq!(value, before);
     let only_source =
         CssMaskBorder::try_new(Some(CssImageValue::None), None, None, None, None, None).unwrap();
     bounds("none", 2, 2, |limits| {
-        only_source.serialize_specified_with_limits(limits)
+        only_source.serialize_specified(limits)
     });
     let only_mode =
         CssMaskBorder::try_new(None, None, None, None, None, Some(CssMaskType::Alpha)).unwrap();
     bounds("alpha", 2, 2, |limits| {
-        only_mode.serialize_specified_with_limits(limits)
+        only_mode.serialize_specified(limits)
     });
     let skipped_width =
         CssMaskBorder::try_new(None, Some(slice()), None, Some(outset()), None, None).unwrap();
     bounds("10 fill / / 2", 20, 20, |limits| {
-        skipped_width.serialize_specified_with_limits(limits)
+        skipped_width.serialize_specified(limits)
     });
 }
 
@@ -260,14 +260,14 @@ fn parsed_border_children_retain_span_and_origin_through_failure_and_retry() {
     assert_eq!(origin.span().end().byte_offset().value(), start + 2);
     assert_eq!(
         value
-            .serialize_specified_with_limits(Limits::new(100, 100, 1))
+            .serialize_specified(Limits::new(100, 100, 1))
             .unwrap_err()
             .kind(),
         Kind::ByteLimit
     );
     assert_eq!(value, &before);
     assert_eq!(
-        value.serialize_specified().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         "10 20% fill / auto / 2 round luminance"
     );
     assert_eq!(top.origin(), &CssValueOrigin::Parsed(origin.clone()));
@@ -292,7 +292,7 @@ fn source_retained_size_only_projection_and_all_new_children_compose() {
         "0% 0% / contain view-box intersect match-source",
         7,
         9,
-        |limits| value.serialize_specified_with_limits(limits),
+        |limits| value.serialize_specified(limits),
     );
     assert!(value.layers()[0].position().is_none());
     assert_eq!(value, before);
@@ -309,7 +309,10 @@ fn source_retained_size_only_projection_and_all_new_children_compose() {
     assert!(wrapper.value().layers()[0].position().is_some());
     assert_ne!(*wrapper.value(), value);
     assert_eq!(
-        wrapper.value().serialize_specified().unwrap(),
+        wrapper
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "0% 0% / contain view-box intersect match-source"
     );
 }
@@ -317,7 +320,9 @@ fn source_retained_size_only_projection_and_all_new_children_compose() {
 #[test]
 fn mask_border_math_retains_hinted_and_dimensioned_domains_with_shared_projection() {
     let components = parse_component_values("calc((1px + 1%) / 1px)").unwrap();
-    let hinted = CssHintedNumberCalculation::try_from_components(components.clone()).unwrap();
+    let hinted =
+        CssHintedNumberCalculation::try_from_components(components.clone(), Default::default())
+            .unwrap();
     assert_eq!(hinted.origin(), components.items()[0].origin());
     assert!(hinted.position().is_some());
     assert_eq!(hinted.components(), &components);
@@ -346,12 +351,12 @@ fn mask_border_math_retains_hinted_and_dimensioned_domains_with_shared_projectio
     // Values 4 orders Percentage before dimensioned terms; cancellation leaves
     // a hinted Number without evaluating a contextual percentage basis.
     assert_eq!(
-        value.serialize_specified().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         "calc((1% + 1px) / 1px) / calc((1% + 1px) / 1px) alpha"
     );
     assert_eq!(
         value
-            .serialize_specified_with_limits(Limits::new(100, 100, 1))
+            .serialize_specified(Limits::new(100, 100, 1))
             .unwrap_err()
             .kind(),
         Kind::ByteLimit
@@ -384,7 +389,10 @@ fn mask_border_math_retains_hinted_and_dimensioned_domains_with_shared_projectio
         matches!(&wrapper.value().outset().unwrap().values()[0],CssBorderImageOutsetComponent::Length(v) if v.calculation().is_some())
     );
     assert_eq!(
-        wrapper.value().serialize_specified().unwrap(),
+        wrapper
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "calc((1% + 1px) / 1px) / calc(2% + 1px) / calc(1em + 2px)"
     );
 }

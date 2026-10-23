@@ -394,7 +394,7 @@ fn valid_placement_conflicts_remain_authored_for_later_resolution() {
             assert_eq!(
                 source
                     .value_components()
-                    .serialize()
+                    .serialize_tokens(Default::default())
                     .unwrap()
                     .as_css()
                     .trim(),
@@ -412,7 +412,7 @@ fn grid_line_identifiers_preserve_case_and_decoded_escapes() {
         assert_eq!(
             source
                 .value_components()
-                .serialize()
+                .serialize_tokens(Default::default())
                 .unwrap()
                 .as_css()
                 .trim(),
@@ -440,7 +440,13 @@ fn authored_placement_preserves_omission_and_full_line_forms() {
         panic!("grid row")
     };
     assert!(value.value().authored_end().is_none());
-    assert_eq!(value.value().serialize_specified().unwrap(), "hero");
+    assert_eq!(
+        value
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "hero"
+    );
     let explicit = declaration("grid-row", "hero / auto");
     let CssKnownPropertyValueRef::GridRow(value) =
         explicit.known().unwrap().property_value().unwrap()
@@ -468,15 +474,18 @@ fn authored_placement_preserves_omission_and_full_line_forms() {
         let source = declaration(name, authored);
         let value = source.known().unwrap().property_value().unwrap();
         let serialized = match value {
-            CssKnownPropertyValueRef::GridRowStart(value) => {
-                value.value().serialize_specified().unwrap()
-            }
-            CssKnownPropertyValueRef::GridRow(value) => {
-                value.value().serialize_specified().unwrap()
-            }
-            CssKnownPropertyValueRef::GridArea(value) => {
-                value.value().serialize_specified().unwrap()
-            }
+            CssKnownPropertyValueRef::GridRowStart(value) => value
+                .value()
+                .serialize_specified(Default::default())
+                .unwrap(),
+            CssKnownPropertyValueRef::GridRow(value) => value
+                .value()
+                .serialize_specified(Default::default())
+                .unwrap(),
+            CssKnownPropertyValueRef::GridArea(value) => value
+                .value()
+                .serialize_specified(Default::default())
+                .unwrap(),
             _ => panic!("selected placement wrapper"),
         };
         assert_eq!(serialized, expected, "{name}: {authored}");

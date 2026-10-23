@@ -1,13 +1,13 @@
 //! Checked specified flex components before contextual flex layout.
 
+use crate::specified_rule_serialization::SpecifiedProvider as _;
 use crate::specified_serialization::SpecifiedSerializationContext;
 use crate::{
-    CssBoxSize, CssCalcSize, CssSizeValue, CssSpecifiedNonNegativeLengthPercentage,
-    CssSpecifiedNonNegativeNumber, CssSpecifiedValueSerializationError,
-    CssSpecifiedValueSerializationLimits,
+    CssBoxSize, CssCalcSize, CssSerializationError, CssSizeValue,
+    CssSpecifiedNonNegativeLengthPercentage, CssSpecifiedNonNegativeNumber,
 };
 
-type SerializationResult<T> = Result<T, CssSpecifiedValueSerializationError>;
+type SerializationResult<T> = Result<T, CssSerializationError>;
 
 /// Main-axis direction of an authored flex container.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -29,37 +29,26 @@ impl CssFlexDirection {
         }
     }
 
-    pub fn serialize_specified(self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    pub fn serialize_specified_with_limits(
-        self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        let context = &mut writer.context;
-        let output = &mut writer.css;
-        self.serialize_specified_into(context, output)?;
-        Ok(())
-    }
-
     fn serialize_specified_into(
         self,
         context: &mut SpecifiedSerializationContext,
         output: &mut String,
     ) -> SerializationResult<()> {
-        append_keyword(context, output, self.keyword())
+        context.keyword(output, self.keyword())
     }
 }
+impl crate::specified_rule_serialization::SpecifiedProvider for CssFlexDirection {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        let context = &mut writer.context;
+        let output = &mut writer.css;
+        self.serialize_specified_into(context, output)?;
+        Ok(())
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(CssFlexDirection);
 
 /// Cross-axis wrapping of an authored flex container.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -79,37 +68,26 @@ impl CssFlexWrap {
         }
     }
 
-    pub fn serialize_specified(self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    pub fn serialize_specified_with_limits(
-        self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        let context = &mut writer.context;
-        let output = &mut writer.css;
-        self.serialize_specified_into(context, output)?;
-        Ok(())
-    }
-
     fn serialize_specified_into(
         self,
         context: &mut SpecifiedSerializationContext,
         output: &mut String,
     ) -> SerializationResult<()> {
-        append_keyword(context, output, self.keyword())
+        context.keyword(output, self.keyword())
     }
 }
+impl crate::specified_rule_serialization::SpecifiedProvider for CssFlexWrap {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        let context = &mut writer.context;
+        let output = &mut writer.css;
+        self.serialize_specified_into(context, output)?;
+        Ok(())
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(CssFlexWrap);
 
 /// The specified direction and wrapping of `flex-flow`.
 ///
@@ -163,24 +141,12 @@ impl CssFlexFlow {
     pub const fn wrap(&self) -> CssFlexWrap {
         self.wrap
     }
-
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
+}
+impl crate::specified_rule_serialization::SpecifiedProvider for CssFlexFlow {
+    fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+    ) -> std::result::Result<(), crate::CssSerializationError> {
         let context = &mut writer.context;
         let output = &mut writer.css;
         self.direction.serialize_specified_into(context, output)?;
@@ -189,6 +155,7 @@ impl CssFlexFlow {
         Ok(())
     }
 }
+crate::specified_rule_serialization::specified_serialization!(CssFlexFlow);
 
 #[derive(Clone, Debug)]
 enum Basis {
@@ -223,29 +190,6 @@ impl CssFlexBasisValue {
         }
     }
 
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        let context = &mut writer.context;
-        let output = &mut writer.css;
-        self.serialize_specified_into(context, output)?;
-        Ok(())
-    }
-
     pub(crate) fn serialize_specified_into(
         &self,
         context: &mut SpecifiedSerializationContext,
@@ -253,8 +197,7 @@ impl CssFlexBasisValue {
     ) -> SerializationResult<()> {
         match &self.0 {
             Basis::Content => {
-                context.charge_input(1)?;
-                context.charge_projection(1)?;
+                context.charge_nodes(1)?;
                 context.append(output, "content")
             }
             Basis::Size(value) => value.serialize_specified_into(context, output),
@@ -262,6 +205,18 @@ impl CssFlexBasisValue {
         }
     }
 }
+impl crate::specified_rule_serialization::SpecifiedProvider for CssFlexBasisValue {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        let context = &mut writer.context;
+        let output = &mut writer.css;
+        self.serialize_specified_into(context, output)?;
+        Ok(())
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(CssFlexBasisValue);
 
 impl PartialEq for CssFlexBasisValue {
     fn eq(&self, other: &Self) -> bool {
@@ -373,61 +328,50 @@ impl CssFlexValue {
         Ok(())
     }
 
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
-
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
-
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        let context = &mut writer.context;
-        let output = &mut writer.css;
-        self.serialize_specified_into(context, output)?;
-        Ok(())
-    }
-
     pub(crate) fn serialize_specified_into(
         &self,
         context: &mut SpecifiedSerializationContext,
         output: &mut String,
     ) -> SerializationResult<()> {
         match self {
-            Self::None => append_keyword(context, output, "none"),
-            Self::Auto => append_keyword(context, output, "auto"),
+            Self::None => context.keyword(output, "none"),
+            Self::Auto => context.keyword(output, "auto"),
             Self::Components(components) => {
                 if let Some(grow) = &components.grow {
                     let captured = grow.capture_specified(context)?;
                     context.append(output, &captured)?;
                 } else {
-                    append_keyword(context, output, "1")?;
+                    context.keyword(output, "1")?;
                 }
                 context.append(output, " ")?;
                 if let Some(shrink) = &components.shrink {
                     let captured = shrink.capture_specified(context)?;
                     context.append(output, &captured)?;
                 } else {
-                    append_keyword(context, output, "1")?;
+                    context.keyword(output, "1")?;
                 }
                 context.append(output, " ")?;
                 if let Some(basis) = &components.basis {
                     basis.serialize_specified_into(context, output)
                 } else {
-                    append_keyword(context, output, "0")
+                    context.keyword(output, "0")
                 }
             }
         }
     }
 }
+impl crate::specified_rule_serialization::SpecifiedProvider for CssFlexValue {
+    fn append_to_rule_writer(
+        &self,
+        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> std::result::Result<(), crate::CssSerializationError> {
+        let context = &mut writer.context;
+        let output = &mut writer.css;
+        self.serialize_specified_into(context, output)?;
+        Ok(())
+    }
+}
+crate::specified_rule_serialization::specified_serialization!(CssFlexValue);
 
 fn factor(value: &str) -> CssSpecifiedNonNegativeNumber {
     let component = crate::CssComponentValue::try_number(value).expect("fixed flex factor token");
@@ -493,16 +437,6 @@ pub(crate) fn effective_basis(value: &CssFlexValue) -> Option<CssFlexBasisValue>
         CssFlexValue::None | CssFlexValue::Auto => CssFlexBasisValue::from(CssSizeValue::Auto),
         CssFlexValue::Components(value) => value.basis.clone().unwrap_or_else(default_basis),
     })
-}
-
-fn append_keyword(
-    context: &mut SpecifiedSerializationContext,
-    output: &mut String,
-    keyword: &'static str,
-) -> SerializationResult<()> {
-    context.charge_input(1)?;
-    context.charge_projection(1)?;
-    context.append(output, keyword)
 }
 
 pub(crate) fn ordinary_factor(value: &CssSpecifiedNonNegativeNumber, expected: &str) -> bool {
