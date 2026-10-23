@@ -176,6 +176,8 @@ pub(crate) enum PresentationUnitKind {
 #[derive(Clone, Debug)]
 pub(crate) struct RetainedAssignment {
     pub(crate) atoms: IndexRange<usize>,
+    /// Exact atom interval in the retained base or alternative capture.
+    pub(crate) captured_atoms: IndexRange<usize>,
     pub(crate) alternative: Option<usize>,
     pub(crate) run: usize,
 }
@@ -1345,11 +1347,14 @@ pub(crate) fn select_presentation(
             && previous.run == run
             && previous.alternative == alternative
             && previous.atoms.end == selected_atom
+            && previous.captured_atoms.end == original_atom
         {
             previous.atoms.end += 1;
+            previous.captured_atoms.end += 1;
         } else {
             assignments.push(RetainedAssignment {
                 atoms: selected_atom..selected_atom + 1,
+                captured_atoms: original_atom..original_atom + 1,
                 alternative,
                 run,
             });

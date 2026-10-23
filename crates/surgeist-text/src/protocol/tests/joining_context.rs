@@ -102,3 +102,490 @@ fn standalone_metric_policies_keep_unforced_arabic_joining() {
         ]
     );
 }
+
+fn native_input(source: Source) -> ParagraphInput {
+    let length = source.text().len();
+    ParagraphInput {
+        source: source.clone(),
+        base_style: breaking_style(),
+        segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+        base_direction: ParagraphBaseDirection::RightToLeft,
+        paragraph_strut: ParagraphStrut::DefaultFont,
+        origins: vec![paragraph::ParagraphOrigin {
+            source,
+            local: Range::new(0, length),
+            aggregate: Range::new(0, length),
+            kind: paragraph::ParagraphOriginKind::Authored,
+        }],
+        connections: vec![],
+        controls: vec![],
+        boundary_policies: vec![],
+        replacements: vec![],
+        anchor_order: vec![],
+    }
+}
+fn native_prepare(system: &mut System, input: ParagraphInput) -> PreparedText {
+    system
+        .prepare(
+            &AnalyzedSource::from_paragraph(input).unwrap(),
+            PreparationOptions::default(),
+        )
+        .unwrap()
+}
+fn ending(prepared: &PreparedText, kind: PreparedBreakKind, before: usize) -> PreparedOpportunity {
+    prepared
+        .opportunity_views()
+        .find(|offer| {
+            offer.kind() == kind && offer.boundary().view().source_before().get() == before
+        })
+        .unwrap()
+        .handle()
+}
+fn selected_line(
+    prepared: &PreparedText,
+    start: PreparedBoundary,
+    ending: PreparedOpportunity,
+) -> crate::Result<FinalizedLine> {
+    let mut value = request(prepared);
+    value.start = start;
+    value.end = ending.view().boundary();
+    let from = value.start.view().participant_offset();
+    let to = value.end.view().participant_offset();
+    value.participants = prepared.participants().skip(from).take(to - from).collect();
+    value.controls = value
+        .participants
+        .iter()
+        .filter_map(|participant| match participant {
+            PreparedParticipant::Control(control) => Some(ControlAllocation {
+                occurrence: control.clone(),
+                strut: None,
+            }),
+            _ => None,
+        })
+        .collect();
+    value.atomics = value
+        .participants
+        .iter()
+        .filter_map(|participant| match participant {
+            PreparedParticipant::Atomic(atomic) => Some(AtomicAllocation {
+                occurrence: atomic.clone(),
+                allocation: AtomicLineAllocation::OutOfFlow,
+            }),
+            _ => None,
+        })
+        .collect();
+    value.context.base_direction = ParagraphBaseDirection::RightToLeft;
+    value.context.start = if from == 0 {
+        LineStart::Paragraph
+    } else {
+        LineStart::Continuation
+    };
+    value.context.end = match ending.view().kind() {
+        PreparedBreakKind::Allowed | PreparedBreakKind::Discretionary => LineEnd::Soft,
+        PreparedBreakKind::Forced => LineEnd::Forced,
+        PreparedBreakKind::ParagraphEnd => LineEnd::Paragraph,
+    };
+    value.termination = ending;
+    prepared.select(value)?.finalize(SpacingAllocations::None)
+}
+fn source_glyphs(line: &FinalizedLine, fixture: &[u8]) -> Vec<(Range, u32, f32)> {
+    let mut result = Vec::new();
+    for run in line.run_views() {
+        assert_eq!(run.face().bytes(), fixture);
+        let instance = run.effective_instance().unwrap();
+        assert!(instance.face().is_same_face(&run.face()));
+        let metrics = instance
+            .metrics(line.prepared_text().font_catalogue_identity())
+            .unwrap();
+        assert_eq!(metrics.ascent(), f64::from(run.font_size()) * 0.8);
+        assert_eq!(metrics.descent(), -f64::from(run.font_size()) * 0.2);
+        result.extend(
+            run.glyphs()
+                .map(|glyph| (glyph.range(), glyph.id(), run.font_size())),
+        );
+    }
+    result.sort_by_key(|(range, _, _)| (range.start, range.end));
+    result
+}
+fn beh_forms(line: &FinalizedLine) -> Vec<(Range, u32, f32)> {
+    let prepared = line.prepared_text();
+    let source = prepared.analyzed_source();
+    source_glyphs(line, &crate::shaping_test_fonts::arabic_ahem())
+        .into_iter()
+        .filter(|(range, _, _)| {
+            source.source().text().code_units().get(range.start) == Some(&0x628)
+        })
+        .collect()
+}
+#[test]
+fn joining_context_crosses_effective_instance_boundaries() {
+    let mut source = Source::new("\u{628}\u{628}\u{628}");
+    source.span(
+        Range::new(1, 2),
+        Style {
+            size: 30.0,
+            ..breaking_style()
+        },
+    );
+    let mut system = arabic_system();
+    let prepared = native_prepare(&mut system, native_input(source));
+    drop(system);
+    let first = selected_line(
+        &prepared,
+        prepared.boundary_views().next().unwrap().handle(),
+        ending(&prepared, PreparedBreakKind::Allowed, 1),
+    )
+    .unwrap();
+    let continuation = selected_line(
+        &prepared,
+        first.selected_line().request().end.clone(),
+        ending(&prepared, PreparedBreakKind::ParagraphEnd, 3),
+    )
+    .unwrap();
+    assert_eq!(beh_forms(&first), [(Range::new(0, 1), 100, 20.0)]);
+    assert_eq!(
+        beh_forms(&continuation),
+        [(Range::new(1, 2), 277, 30.0), (Range::new(2, 3), 82, 20.0)]
+    );
+}
+#[test]
+fn actual_forced_and_disconnected_boundaries_stop_joining_context() {
+    let mut system = arabic_system();
+    let mut input = native_input(Source::new("\u{628}\u{628}"));
+    input.controls.push(paragraph::ParagraphControl {
+        at: 1,
+        kind: paragraph::ParagraphControlKind::ForcedBreak,
+    });
+    input.anchor_order.push(paragraph::ParagraphAnchor {
+        item: paragraph::ParagraphAnchorItem::Control(0),
+        affinity: crate::Affinity::After,
+    });
+    let prepared = native_prepare(&mut system, input);
+    let first = selected_line(
+        &prepared,
+        prepared.boundary_views().next().unwrap().handle(),
+        ending(&prepared, PreparedBreakKind::Forced, 1),
+    )
+    .unwrap();
+    let second = selected_line(
+        &prepared,
+        first.selected_line().request().end.clone(),
+        ending(&prepared, PreparedBreakKind::ParagraphEnd, 2),
+    )
+    .unwrap();
+    assert_eq!(beh_forms(&first), [(Range::new(0, 1), 35, 20.0)]);
+    assert_eq!(beh_forms(&second), [(Range::new(1, 2), 35, 20.0)]);
+    let mut input = native_input(Source::new("\u{628}\u{628}"));
+    input.origins[0].local = Range::new(0, 1);
+    input.origins[0].aggregate = Range::new(0, 1);
+    input.origins.push(paragraph::ParagraphOrigin {
+        source: input.source.clone(),
+        local: Range::new(1, 2),
+        aggregate: Range::new(1, 2),
+        kind: paragraph::ParagraphOriginKind::Authored,
+    });
+    input.connections.push(paragraph::ParagraphConnection {
+        at: 1,
+        kind: paragraph::ParagraphConnectionKind::Disconnected,
+    });
+    let prepared = native_prepare(&mut system, input);
+    let whole = selected_line(
+        &prepared,
+        prepared.boundary_views().next().unwrap().handle(),
+        ending(&prepared, PreparedBreakKind::ParagraphEnd, 2),
+    )
+    .unwrap();
+    assert_eq!(
+        beh_forms(&whole),
+        [(Range::new(0, 1), 35, 20.0), (Range::new(1, 2), 35, 20.0)]
+    );
+    let prepared = native_prepare(&mut system, native_input(Source::new("\u{628}\n\u{628}")));
+    let first = selected_line(
+        &prepared,
+        prepared.boundary_views().next().unwrap().handle(),
+        ending(&prepared, PreparedBreakKind::Forced, 2),
+    )
+    .unwrap();
+    let second = selected_line(
+        &prepared,
+        first.selected_line().request().end.clone(),
+        ending(&prepared, PreparedBreakKind::ParagraphEnd, 3),
+    )
+    .unwrap();
+    assert_eq!(beh_forms(&first), [(Range::new(0, 1), 35, 20.0)]);
+    assert_eq!(beh_forms(&second), [(Range::new(2, 3), 35, 20.0)]);
+}
+#[test]
+fn optional_ligature_cut_shapes_only_actual_selected_atoms() {
+    let fixture = crate::shaping_test_fonts::ligature_ahem();
+    let mut system = System::new(SystemOptions {
+        font_catalogue: FontCatalogueMode::RegisteredOnly,
+    })
+    .unwrap();
+    system.register_fonts(fixture.clone()).unwrap();
+    let prepared = native_prepare(&mut system, native_input(Source::new("AA")));
+    let whole = selected_line(
+        &prepared,
+        prepared.boundary_views().next().unwrap().handle(),
+        ending(&prepared, PreparedBreakKind::ParagraphEnd, 2),
+    )
+    .unwrap();
+    assert_eq!(
+        source_glyphs(&whole, &fixture),
+        [(Range::new(0, 2), 58, 20.0)]
+    );
+    assert_eq!(whole.feedback().advance, 20.0);
+    let first = selected_line(
+        &prepared,
+        prepared.boundary_views().next().unwrap().handle(),
+        ending(&prepared, PreparedBreakKind::Allowed, 1),
+    )
+    .unwrap();
+    let second = selected_line(
+        &prepared,
+        first.selected_line().request().end.clone(),
+        ending(&prepared, PreparedBreakKind::ParagraphEnd, 2),
+    )
+    .unwrap();
+    assert_eq!(
+        source_glyphs(&first, &fixture),
+        [(Range::new(0, 1), 35, 20.0)]
+    );
+    assert_eq!(
+        source_glyphs(&second, &fixture),
+        [(Range::new(1, 2), 35, 20.0)]
+    );
+    assert_eq!(
+        (first.feedback().advance, second.feedback().advance),
+        (20.0, 20.0)
+    );
+}
+#[test]
+fn full_captured_context_reports_real_context_limit_without_mutating_prior_results() {
+    let mut system = arabic_system();
+    // Six genuine transparent Arabic Letter Marks exceed the provider's five
+    // pre-context cells; supplying all context must preserve its actual refusal.
+    let source = Source::new(format!("\u{628}{}\u{628}", "\u{61c}".repeat(6)));
+    let mut input = native_input(source.clone());
+    input.controls.push(paragraph::ParagraphControl {
+        at: 1,
+        kind: paragraph::ParagraphControlKind::OptionalBreak {
+            wrap: crate::Wrap::Word,
+        },
+    });
+    input.anchor_order.push(paragraph::ParagraphAnchor {
+        item: paragraph::ParagraphAnchorItem::Control(0),
+        affinity: crate::Affinity::After,
+    });
+    let prepared = native_prepare(&mut system, input);
+    let before = system.stats();
+    let catalogue = system.font_catalogue_identity().clone();
+    let whole = selected_line(
+        &prepared,
+        prepared.boundary_views().next().unwrap().handle(),
+        ending(&prepared, PreparedBreakKind::ParagraphEnd, 8),
+    )
+    .unwrap();
+    let original = beh_forms(&whole);
+    assert_eq!(
+        original,
+        [(Range::new(0, 1), 100, 20.0), (Range::new(7, 8), 82, 20.0)]
+    );
+    let soft = ending(&prepared, PreparedBreakKind::Allowed, 7);
+    let error = selected_line(
+        &prepared,
+        soft.view().boundary(),
+        ending(&prepared, PreparedBreakKind::ParagraphEnd, 8),
+    )
+    .unwrap_err();
+    assert_eq!(
+        error.detail(),
+        Some(&crate::ErrorDetail::ShapingRefused {
+            reason: crate::ShapingRefusalReason::ContextLimit
+        })
+    );
+    let post_error = selected_line(
+        &prepared,
+        prepared.boundary_views().next().unwrap().handle(),
+        ending(&prepared, PreparedBreakKind::Allowed, 1),
+    )
+    .unwrap_err();
+    assert_eq!(
+        post_error.detail(),
+        Some(&crate::ErrorDetail::ShapingRefused {
+            reason: crate::ShapingRefusalReason::ContextLimit,
+        })
+    );
+    assert_eq!(prepared.analyzed_source().source(), &source);
+    assert_eq!(beh_forms(&whole), original);
+    assert_eq!(system.stats(), before);
+    assert_eq!(system.font_catalogue_identity(), &catalogue);
+    let retry = selected_line(
+        &prepared,
+        prepared.boundary_views().next().unwrap().handle(),
+        ending(&prepared, PreparedBreakKind::ParagraphEnd, 8),
+    )
+    .unwrap();
+    assert_eq!(beh_forms(&retry), original);
+}
+
+#[test]
+fn deleted_source_text_does_not_reenter_processed_joining_context() {
+    let mut input = native_input(Source::new("\u{628} \u{628}"));
+    input.base_style.white_space = WhiteSpace::Discard;
+    let mut system = arabic_system();
+    let prepared = native_prepare(&mut system, input);
+    let first = selected_line(
+        &prepared,
+        prepared.boundary_views().next().unwrap().handle(),
+        ending(&prepared, PreparedBreakKind::Allowed, 1),
+    )
+    .unwrap();
+    let second = selected_line(
+        &prepared,
+        first.selected_line().request().end.clone(),
+        ending(&prepared, PreparedBreakKind::ParagraphEnd, 3),
+    )
+    .unwrap();
+    assert_eq!(beh_forms(&first), [(Range::new(0, 1), 100, 20.0)]);
+    assert_eq!(beh_forms(&second), [(Range::new(2, 3), 82, 20.0)]);
+    assert_eq!(
+        prepared
+            .analyzed_source()
+            .processed_source()
+            .processed_text()
+            .code_units(),
+        &[0x628, 0x628]
+    );
+    assert_eq!(
+        prepared.analyzed_source().source().text().code_units(),
+        &[0x628, 0x20, 0x628]
+    );
+}
+#[test]
+fn child_domain_hole_is_excluded_from_parent_joining_context() {
+    use crate::{
+        Affinity, ContextualSourceInput, DocumentSegmentBreaks, Id, InlineBox, InlineBoxKind,
+        ParagraphBoundaryDefinition, ParagraphBoundaryPolicy, ParagraphConnectionKind,
+        ParagraphOrigin, ParagraphOriginKind, Size, SourceProcessingConnection,
+        SourceProcessingEnvelope, SourceProcessingEvent, SourceProcessingParagraph,
+        SourceProcessingScope, WhiteSpaceTrim, Wrap, process_contextual_source,
+    };
+    let mut source = Source::new("\u{628}I\u{628}");
+    source.inline_box(InlineBox::new(
+        Id::from_u64(1),
+        InlineBoxKind::OutOfFlow,
+        1,
+        Size::new(5.0, 10.0),
+    ));
+    let capture = ContextualSourceInput {
+        source: source.clone(),
+        segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
+        envelope: SourceProcessingEnvelope::Complete,
+        origins: (0..3)
+            .map(|i| ParagraphOrigin {
+                source: source.clone(),
+                local: Range::new(i, i + 1),
+                aggregate: Range::new(i, i + 1),
+                kind: ParagraphOriginKind::Authored,
+            })
+            .collect(),
+        connections: vec![SourceProcessingConnection {
+            before_origin: 0,
+            after_origin: 2,
+            kind: ParagraphConnectionKind::Continuous,
+        }],
+        controls: vec![],
+        replacements: vec![],
+        boundary_policies: vec![ParagraphBoundaryPolicy {
+            definition: ParagraphBoundaryDefinition::Connection(0),
+            preceding_wrap: Wrap::Word,
+            following_wrap: Wrap::Word,
+            ancestor_wrap: Wrap::Word,
+        }],
+        scopes: vec![
+            SourceProcessingScope::Block {
+                trim: WhiteSpaceTrim::default(),
+                base_style: breaking_style(),
+            },
+            SourceProcessingScope::OutOfFlowBlock {
+                trim: WhiteSpaceTrim::default(),
+                base_style: style(),
+                atomic: 0,
+            },
+        ],
+        paragraphs: vec![
+            SourceProcessingParagraph {
+                base_direction: ParagraphBaseDirection::RightToLeft,
+                paragraph_strut: ParagraphStrut::DefaultFont
+            };
+            2
+        ],
+        events: vec![
+            SourceProcessingEvent::EnterScope(0),
+            SourceProcessingEvent::EnterParagraph(0),
+            SourceProcessingEvent::Origin {
+                origin: 0,
+                affinity: Affinity::After,
+            },
+            SourceProcessingEvent::Atomic {
+                atomic: 0,
+                affinity: Affinity::After,
+            },
+            SourceProcessingEvent::EnterScope(1),
+            SourceProcessingEvent::EnterParagraph(1),
+            SourceProcessingEvent::Origin {
+                origin: 1,
+                affinity: Affinity::After,
+            },
+            SourceProcessingEvent::ExitParagraph(1),
+            SourceProcessingEvent::ExitScope(1),
+            SourceProcessingEvent::Connection(0),
+            SourceProcessingEvent::Origin {
+                origin: 2,
+                affinity: Affinity::After,
+            },
+            SourceProcessingEvent::ExitParagraph(0),
+            SourceProcessingEvent::ExitScope(0),
+        ],
+    };
+    let processed = std::sync::Arc::new(process_contextual_source(capture).unwrap());
+    let parent =
+        AnalyzedSource::from_processed_paragraph(processed.paragraphs().next().unwrap()).unwrap();
+    let mut system = arabic_system();
+    let prepared = system
+        .prepare(&parent, PreparationOptions::default())
+        .unwrap();
+    let soft = prepared
+        .opportunity_views()
+        .find(|offer| {
+            offer.kind() == PreparedBreakKind::Allowed
+                && offer.boundary().view().source_before().get() == 1
+                && offer.boundary().view().source_after().get() == 2
+        })
+        .unwrap()
+        .handle();
+    let first = selected_line(
+        &prepared,
+        prepared.boundary_views().next().unwrap().handle(),
+        soft,
+    )
+    .unwrap();
+    let second = selected_line(
+        &prepared,
+        first.selected_line().request().end.clone(),
+        ending(&prepared, PreparedBreakKind::ParagraphEnd, 3),
+    )
+    .unwrap();
+    assert_eq!(beh_forms(&first), [(Range::new(0, 1), 100, 20.0)]);
+    assert_eq!(beh_forms(&second), [(Range::new(2, 3), 82, 20.0)]);
+    assert_eq!(
+        source_glyphs(&first, &crate::shaping_test_fonts::arabic_ahem()).len(),
+        1
+    );
+    assert_eq!(
+        source_glyphs(&second, &crate::shaping_test_fonts::arabic_ahem()).len(),
+        1
+    );
+    assert_eq!(prepared.analyzed_source().source(), &source);
+}

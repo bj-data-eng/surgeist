@@ -274,24 +274,37 @@ pub(crate) fn finalize(
             });
         }
     } else {
-        let barriers: BTreeSet<_> = input
-            .projection
+        // Base-source cuts retain joining context from the actual processed
+        // capture, including continuation lines. A replacement owns a distinct
+        // selected projection; unbroken hyphenation context is a separate operation.
+        let captured_base = selected.request.alternative.is_none();
+        let context_projection = if captured_base {
+            &prepared.analyzed.projection
+        } else {
+            input.projection
+        };
+        let barriers: BTreeSet<_> = context_projection
             .barriers
             .iter()
             .map(|at| {
-                input
-                    .projection
+                context_projection
                     .atoms
                     .partition_point(|atom| atom.source.end <= *at)
             })
             .collect();
-        let allowed = 0..input.projection.atoms.len();
+        let allowed = 0..context_projection.atoms.len();
         for assignment in &presentation.assignments {
             let captured = assignment.alternative.map_or(&prepared.shaped, |index| {
                 &prepared.alternative_shapes[index].shaped
             });
             let run = &captured.runs[assignment.run];
-            let context = bounded_context(assignment.atoms.clone(), allowed.clone(), &barriers);
+            let context_atoms = if captured_base {
+                assignment.captured_atoms.clone()
+            } else {
+                assignment.atoms.clone()
+            };
+            let extent = bounded_context(context_atoms.clone(), allowed.clone(), &barriers);
+            let context = RunContext::new(context_projection, context_atoms, extent);
             append_retained_run(
                 &input,
                 assignment.atoms.clone(),
@@ -536,6 +549,27 @@ fn install_mixed_order(data: &mut ShapedData, input: &ShapingInput<'_>) {
     });
 }
 
+/// Borrowed pre/post strings from one genuine projection/context domain. The
+/// shaper sees every bounded character and reports its own context limits.
+struct RunContext<'a> {
+    before: &'a str,
+    after: &'a str,
+}
+impl<'a> RunContext<'a> {
+    fn new(
+        projection: &'a crate::projection::SourceProjection,
+        atoms: IndexRange<usize>,
+        context: IndexRange<usize>,
+    ) -> Self {
+        let bytes = atom_bytes(projection, atoms);
+        let extent = atom_bytes(projection, context);
+        Self {
+            before: &projection.text[extent.start..bytes.start],
+            after: &projection.text[bytes.end..extent.end],
+        }
+    }
+}
+
 struct RunRequest<'a, 'input> {
     input: &'a ShapingInput<'input>,
     atoms: IndexRange<usize>,
@@ -547,7 +581,7 @@ struct RunRequest<'a, 'input> {
     synthesis: FontSynthesis,
     suggested_variations: Vec<(harfrust::Tag, f32)>,
     retained_coords: Option<&'a [i16]>,
-    context: IndexRange<usize>,
+    context: RunContext<'a>,
 }
 
 struct SelectedSegment {
@@ -579,7 +613,7 @@ fn append_selected(
     append_request(
         RunRequest {
             input,
-            atoms: segment.atoms,
+            atoms: segment.atoms.clone(),
             style: segment.style,
             script: segment.script,
             level: segment.level,
@@ -588,7 +622,7 @@ fn append_selected(
             synthesis,
             suggested_variations: selected.font.synthesis.variation_settings().to_vec(),
             retained_coords: None,
-            context: segment.context,
+            context: RunContext::new(input.projection, segment.atoms.clone(), segment.context),
         },
         scratch,
         output,
@@ -600,7 +634,7 @@ fn append_retained_run(
     atoms: IndexRange<usize>,
     run: &PreparedRun,
     script: Script,
-    context: IndexRange<usize>,
+    context: RunContext<'_>,
     scratch: &mut ShapeContext,
     output: &mut ShapedData,
 ) -> Result<()> {
@@ -762,14 +796,8 @@ fn append_request(
             u32::try_from(local).expect("local provider index was admitted"),
         );
     }
-    let bytes = atom_bytes(request.input, request.atoms.clone());
-    let context = context_bytes(
-        request.input,
-        request.context.clone(),
-        request.atoms.clone(),
-    );
-    buffer.set_pre_context(&request.input.projection.text[context.start..bytes.start]);
-    buffer.set_post_context(&request.input.projection.text[bytes.end..context.end]);
+    buffer.set_pre_context(request.context.before);
+    buffer.set_post_context(request.context.after);
     buffer.set_direction(direction);
     buffer.set_script(script);
     if let Some(language) = language {
@@ -787,12 +815,14 @@ fn append_request(
     result
 }
 
-fn atom_bytes(input: &ShapingInput<'_>, atoms: IndexRange<usize>) -> IndexRange<usize> {
+fn atom_bytes(
+    projection: &crate::projection::SourceProjection,
+    atoms: IndexRange<usize>,
+) -> IndexRange<usize> {
     if atoms.is_empty() {
         return 0..0;
     }
-    input.projection.atoms[atoms.start].glyph_bytes.start
-        ..input.projection.atoms[atoms.end - 1].glyph_bytes.end
+    projection.atoms[atoms.start].glyph_bytes.start..projection.atoms[atoms.end - 1].glyph_bytes.end
 }
 
 fn bounded_context(
@@ -810,14 +840,6 @@ fn bounded_context(
         allowed.end = allowed.end.min(anchor);
     }
     allowed
-}
-
-fn context_bytes(
-    input: &ShapingInput<'_>,
-    context: IndexRange<usize>,
-    _run: IndexRange<usize>,
-) -> IndexRange<usize> {
-    atom_bytes(input, context)
 }
 
 fn extract_run(
