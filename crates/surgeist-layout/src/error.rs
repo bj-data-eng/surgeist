@@ -179,6 +179,8 @@ pub enum LayoutMissingContext {
     RequiredBasis,
     FloatExclusionProvider,
     TextCapture,
+    /// The selected hyphenation needs an owning completed-block continuation.
+    TextBlockTail,
     TextOutOfFlowGeometry,
     AnonymousGeneratingBlock,
 }

@@ -152,6 +152,7 @@ impl VisibleInlineRunTransition {
         let InlineRunTransitionState {
             indent_state,
             hyphenation_state,
+            tail_ledger,
             cursor_block,
             content_size,
             scroll_content_size,
@@ -172,7 +173,7 @@ impl VisibleInlineRunTransition {
         *is_collapsing_first_margin = false;
         context.cursor_block = *cursor_block;
         let constants = context.constants;
-        let placement = layout_inline_run_children(
+        let mut placement = layout_inline_run_children(
             tree,
             node,
             &children[self.start..self.end],
@@ -181,6 +182,9 @@ impl VisibleInlineRunTransition {
             contributions,
         )?;
 
+        if !placement.lines.is_empty() {
+            tail_ledger.run(core::mem::take(&mut placement.lines));
+        }
         *hyphenation_state = placement.hyphenation_state;
         if let Some(committed) = placement.indent_state {
             *indent_state = Some(committed);
@@ -229,6 +233,7 @@ impl VisibleInlineRunTransition {
 pub(super) struct InlineRunTransitionState<'a, Node, S: LayoutScalar> {
     pub(super) indent_state: &'a mut Option<crate::text_indent::IndentLineState>,
     pub(super) hyphenation_state: &'a mut crate::hyphenation::LineHyphenationState,
+    pub(super) tail_ledger: &'a mut crate::hyphenation::BlockTailLedger,
     pub(super) cursor_block: &'a mut S,
     pub(super) content_size: &'a mut LogicalSizeOf<S>,
     pub(super) scroll_content_size: &'a mut LogicalSizeOf<S>,
@@ -247,6 +252,7 @@ pub(super) struct InlineRunTransitionState<'a, Node, S: LayoutScalar> {
 }
 
 struct InlineRunPlacement<Node, S: LayoutScalar> {
+    lines: Vec<crate::hyphenation::CommittedInlineLine>,
     floats: Vec<PendingFloat<Node, S>>,
     owned_float_block_end: S,
     indent_state: Option<crate::text_indent::IndentLineState>,
@@ -268,6 +274,7 @@ impl<Node, S: LayoutScalar> InlineRunPlacement<Node, S> {
 }
 
 pub(super) struct InlineRunContext<'a, S: LayoutScalar> {
+    pub(super) tail: crate::text_layout::fit::TailContext,
     pub(super) indent_state: crate::text_indent::IndentLineState,
     pub(super) hyphenation_state: crate::hyphenation::LineHyphenationState,
     pub(super) source_index_start: usize,
@@ -345,6 +352,7 @@ where
     let InlineRunContext {
         indent_state,
         hyphenation_state,
+        tail,
         source_index_start,
         cursor_block,
         owned_float_block_end,
@@ -723,6 +731,7 @@ where
             indent_state,
             hyphenation_state,
             hyphenate_limit_zone: constants.hyphenate_limit_zone,
+            tail,
         };
         let text_controls = binding
             .controls
@@ -790,6 +799,8 @@ where
             } else {
                 super::floats::FloatInlineSpace::Finite
             },
+            tail == crate::text_layout::fit::TailContext::CompleteBlock
+                && matches!(available, AvailableOf::Definite(_)),
         ));
         let result = crate::text_layout::run::layout(
             binding,
@@ -798,7 +809,14 @@ where
             context,
             &reusable,
             crate::text_layout::run::LineEnvironment {
-                reset: || encounters.borrow_mut().reset_candidate(),
+                reset: |mode| match mode {
+                    crate::text_layout::fit::EncounterReset::Candidate => {
+                        encounters.borrow_mut().reset_candidate()
+                    }
+                    crate::text_layout::fit::EncounterReset::Sequence => {
+                        encounters.borrow_mut().restart_sequence()
+                    }
+                },
                 band: |block_start, block_end| {
                     let block_start = crate::text_layout::run::number::<S>(block_start)?;
                     let block_end = crate::text_layout::run::number::<S>(block_end)?;
@@ -896,6 +914,7 @@ where
     } else {
         layout_mixed_inline_run_with_band_source(
             MixedInlineRunInputOf {
+                observe_tail: tail != crate::text_layout::fit::TailContext::Unrestricted,
                 available_inline_extent,
                 flow_axes: constants.flow_axes,
                 text_align: constants.text_align,
@@ -1220,6 +1239,7 @@ where
         })
         .fold(owned_float_block_end, |a, b| a.max(b));
     Ok(InlineRunPlacement {
+        lines: report.lines,
         floats: encounter_plans,
         owned_float_block_end: float_end,
         indent_state: (!report.line_bands.is_empty()).then_some(report.indent_state),
@@ -1343,6 +1363,9 @@ pub(super) fn text_run_error<Node: Copy, S: LayoutScalar, M>(
         crate::text_layout::fit::FitError::InvalidGeometry => LayoutErrorKindOf::InternalInvariant(
             crate::LayoutInternalInvariant::InvalidRoundedInlineFragmentGeometry,
         ),
+        crate::text_layout::fit::FitError::MissingBlockTail => {
+            LayoutErrorKindOf::MissingContext(crate::LayoutMissingContext::TextBlockTail)
+        }
         crate::text_layout::fit::FitError::MissingZoneBasis => {
             LayoutErrorKindOf::MissingContext(crate::LayoutMissingContext::RequiredBasis)
         }

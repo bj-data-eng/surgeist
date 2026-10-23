@@ -60,6 +60,7 @@ pub(super) enum MixedInlineParticipantOf<S: LayoutScalar = DefaultScalar> {
 
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct MixedInlineRunInputOf<S: LayoutScalar = DefaultScalar> {
+    pub observe_tail: bool,
     pub available_inline_extent: AvailableOf<S>,
     pub flow_axes: FlowAxes,
     pub text_align: TextAlign,
@@ -114,6 +115,7 @@ pub(super) struct InlineControlSourceOf<S: LayoutScalar = DefaultScalar> {
 
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct MixedInlineRunReportOf<S: LayoutScalar = DefaultScalar> {
+    pub lines: Vec<crate::hyphenation::CommittedInlineLine>,
     pub hyphenation_state: crate::hyphenation::LineHyphenationState,
     pub indent_state: crate::text_indent::IndentLineState,
     pub inline_extent: S,
@@ -224,6 +226,7 @@ struct SelectedInlineUnitOf<S: LayoutScalar> {
 
 #[derive(Clone)]
 struct SelectedInlineLineOf<S: LayoutScalar> {
+    ending: surgeist_text::LineEnd,
     alignment: TextAlign,
     indent: S,
     units: Vec<SelectedInlineUnitOf<S>>,
@@ -527,6 +530,7 @@ fn select_inline_line<S: LayoutScalar>(
         .collect();
 
     SelectedInlineLineOf {
+        ending: surgeist_text::LineEnd::Paragraph,
         alignment: TextAlign::Start,
         indent: S::ZERO,
         units,
@@ -1141,6 +1145,11 @@ where
         if line.alignment == TextAlign::Justify {
             line.alignment = input.text_align.unexpandable(input.text_align_last);
         }
+        line.ending = match selected.end {
+            SelectedInlineLineEnd::Soft => surgeist_text::LineEnd::Soft,
+            SelectedInlineLineEnd::Forced => surgeist_text::LineEnd::Forced,
+            SelectedInlineLineEnd::Paragraph => surgeist_text::LineEnd::Paragraph,
+        };
         indent_state.commit(selected.end == SelectedInlineLineEnd::Forced);
         pending_strut = selected.pending_strut;
         let line_block_end = block_cursor + line.baseline + line.after_baseline;
@@ -1172,7 +1181,18 @@ where
     let mut controls = Vec::new();
     let mut post_line_clear_intents = Vec::new();
     let mut line_bands = Vec::new();
+    let mut lines = Vec::new();
     for (line_index, line) in selected_lines.into_iter().enumerate() {
+        if input.observe_tail {
+            lines.push(crate::hyphenation::CommittedInlineLine {
+                end: line.ending,
+                content: line.units.iter().any(|unit| {
+                    !unit.discarded
+                        && matches!(unit.participant, MixedInlineParticipantOf::Atomic { .. })
+                }),
+                hyphenated: false,
+            });
+        }
         let block_start = line.band.block_start;
         let line_baseline = block_start + line.baseline;
         first_baseline.get_or_insert(line_baseline);
@@ -1264,6 +1284,7 @@ where
     }
 
     MixedInlineRunReportOf {
+        lines,
         hyphenation_state: crate::hyphenation::LineHyphenationState::default(),
         indent_state,
         inline_extent,
@@ -1613,6 +1634,7 @@ pub(super) fn layout_inline_run<S: LayoutScalar>(input: InlineRunInput<S>) -> In
         })
         .collect();
     let report = layout_mixed_inline_run(MixedInlineRunInputOf {
+        observe_tail: false,
         available_inline_extent: input.available_width,
         flow_axes,
         text_align: TextAlign::Start,

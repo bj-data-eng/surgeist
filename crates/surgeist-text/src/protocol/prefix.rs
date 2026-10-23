@@ -182,6 +182,7 @@ struct OriginSpan {
 #[derive(Clone, Debug, Default)]
 pub(crate) struct PrefixData {
     receipts: Vec<f64>,
+    pub(super) has_in_flow_content: bool,
     groups: Vec<SharedUnit>,
     unit_cuts: Vec<Indices<usize>>,
     retained_prefix: Vec<bool>,
@@ -292,6 +293,13 @@ impl PrefixData {
                     }
                     _ => false,
                 },
+            };
+            result.has_in_flow_content |= match *item {
+                ShapedItem::TextCluster(index) => {
+                    retained && shaped.clusters[index].whitespace != Whitespace::Newline
+                }
+                ShapedItem::InlineBox { .. } => retained,
+                ShapedItem::Anchor { .. } => false,
             };
             result
                 .retained_prefix

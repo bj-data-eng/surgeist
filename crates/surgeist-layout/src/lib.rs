@@ -221,7 +221,7 @@ mod output;
 #[cfg(test)]
 #[path = "../tests/layout/browser_parity/pinned_font.rs"]
 mod pinned_font;
-pub use hyphenation::HyphenateLimitLines;
+pub use hyphenation::{HyphenateLimitLast, HyphenateLimitLines};
 mod text_indent;
 mod text_layout;
 pub use text_layout::{

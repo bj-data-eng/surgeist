@@ -59,6 +59,18 @@ impl SpacingSlot {
 }
 
 impl FinalizedLine {
+    /// Whether this exact selected line retains actual in-flow content.
+    ///
+    /// Retained original or computed text counts even at zero or signed advance,
+    /// as do genuine in-flow atomics with zero geometry. Hard separators,
+    /// boundary/control struts, discarded text, empty anchors and out-of-flow
+    /// roles do not independently count. This is neither visibility nor the
+    /// prefix API's broader retained-flow participation observation.
+    #[must_use]
+    pub fn has_in_flow_content(&self) -> bool {
+        self.inner.data.prefix.has_in_flow_content
+    }
+
     /// Actual feedback for every issued selected slot, in that same order.
     /// Discarded slots remain present with zero advance. Iteration clones only
     /// the issued slot capability; it does not allocate an inventory or glyphs.

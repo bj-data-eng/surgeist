@@ -42,6 +42,14 @@ pub enum ConditionalDisposition {
     },
     /// Actual ordinary variant trial; finite fit exhaustion remains consumer-owned.
     AutoFitExhausted(FinalizedLine),
+    /// A finite consumer policy has rejected this exact hyphenated ordinary
+    /// trial in its current sequence branch. The receipt authenticates the
+    /// preparation, unchanged start, variant and actual trial context; Text does
+    /// not certify the consumer's completed-tail policy decision. Source,
+    /// Control and Automatic alternatives are eligible. Meaningful None,
+    /// Forced and Paragraph variants remain barriers. This never advances the
+    /// phantom frontier and cannot be reused for an intrinsic query.
+    ConsumerHyphenationPolicy(FinalizedLine),
     /// Intrinsic automatic refinement, independent of finite fit failures.
     AutoIntrinsicRefinement(super::PreparedAlternative),
 }
@@ -52,6 +60,7 @@ struct DispositionIdentity {
     alternative: Option<usize>,
     portion: Option<super::PreparedWordPortion>,
     line_limit: Option<usize>,
+    policy_context: Vec<u64>,
     controls: Vec<(usize, bool)>,
     atomics: Vec<(usize, bool)>,
 }
@@ -60,6 +69,7 @@ impl ConditionalDisposition {
         match self {
             Self::Phantom(line)
             | Self::AutoFitExhausted(line)
+            | Self::ConsumerHyphenationPolicy(line)
             | Self::AutoManualPriority { portion: line, .. } => Some(line),
             Self::AutoIntrinsicRefinement(_) | Self::AutoLineLimit { .. } => None,
         }
@@ -231,7 +241,11 @@ impl PreparedText {
     ///
     /// Cuts retain distinct occurrence custody. Semantic equality includes the
     /// query, purpose and normalized variant/partition/participation identities,
-    /// independently of receipt allocation and numerical trial widths.
+    /// independently of receipt allocation. Ordinary automatic dispositions do
+    /// not identify numerical trial widths. A finite `ConsumerHyphenationPolicy`
+    /// discharge additionally retains its actual trial context, including the
+    /// available-inline width and supplied allocation geometry, in that semantic
+    /// identity; it is a consumer policy decision for that branch/context.
     ///
     /// Raw source analysis has its separately characterized ordinary inventory
     /// and receives no additional cuts from this native operation. Common owner,
@@ -355,6 +369,7 @@ fn validate_frontier(
                 alternative: variant,
                 portion: None,
                 line_limit: None,
+                policy_context: Vec::new(),
                 controls: Vec::new(),
                 atomics: Vec::new(),
             };
@@ -393,7 +408,8 @@ fn validate_frontier(
             }
             match disposition {
                 ConditionalDisposition::Phantom(receipt)
-                | ConditionalDisposition::AutoFitExhausted(receipt) => {
+                | ConditionalDisposition::AutoFitExhausted(receipt)
+                | ConditionalDisposition::ConsumerHyphenationPolicy(receipt) => {
                     let selected = receipt.selected_line();
                     let request = selected.request();
                     if request.start != *start
@@ -416,10 +432,27 @@ fn validate_frontier(
                             }));
                         }
                     } else {
-                        if automatic.is_none() || purpose != ConditionalPurpose::Overflow {
+                        if purpose != ConditionalPurpose::Overflow
+                            || if matches!(
+                                disposition,
+                                ConditionalDisposition::ConsumerHyphenationPolicy(_)
+                            ) {
+                                variant.is_none()
+                            } else {
+                                automatic.is_none()
+                            }
+                        {
                             return Err(invalid());
                         }
-                        identity.kind = 2;
+                        if matches!(
+                            disposition,
+                            ConditionalDisposition::ConsumerHyphenationPolicy(_)
+                        ) {
+                            identity.kind = 5;
+                            identity.policy_context = policy_context(receipt);
+                        } else {
+                            identity.kind = 2;
+                        }
                         all_phantom = false;
                     }
                 }
@@ -491,4 +524,91 @@ fn validate_frontier(
         }));
     }
     Ok((frontier, identities))
+}
+
+// Retain the actual finite trial's semantic geometry and participation, not its
+// receipt allocation. All these numbers crossed successful finalization and are
+// finite; canonical signed zero has the same semantic identity.
+fn policy_context(line: &FinalizedLine) -> Vec<u64> {
+    fn number(values: &mut Vec<u64>, value: f64) {
+        values.push(if value == 0.0 { 0 } else { value.to_bits() });
+    }
+    let selected = line.selected_line();
+    let request = selected.request();
+    let context = &request.context;
+    let mut values = vec![
+        context.base_direction as u64,
+        context.orientation as u64,
+        context.start as u64,
+        context.end as u64,
+        context.alignment as u64,
+        context.spacing as u64,
+    ];
+    number(
+        &mut values,
+        context.available_inline.expect("finite policy receipt"),
+    );
+    number(&mut values, context.indent);
+    match context.tabs {
+        super::TabContext::NoTabs => values.push(0),
+        super::TabContext::FontAdvance => values.push(1),
+        super::TabContext::CssStops { origin } => {
+            values.push(if origin.is_some() { 3 } else { 2 });
+            if let Some(origin) = origin {
+                number(&mut values, origin);
+            }
+        }
+    }
+    values.push(request.atomics.len() as u64);
+    for allocation in &request.atomics {
+        values.push(allocation.occurrence.index as u64);
+        match allocation.allocation {
+            super::AtomicLineAllocation::OutOfFlow => values.push(0),
+            super::AtomicLineAllocation::InFlow {
+                flow,
+                box_geometry,
+                alignment,
+            } => {
+                values.extend([1, alignment as u64]);
+                for value in [
+                    flow.advance,
+                    flow.before_baseline,
+                    flow.after_baseline,
+                    flow.occupied_start,
+                    flow.occupied_end,
+                    box_geometry.border.origin.x,
+                    box_geometry.border.origin.y,
+                    box_geometry.border.size.width,
+                    box_geometry.border.size.height,
+                    box_geometry.content.origin.x,
+                    box_geometry.content.origin.y,
+                    box_geometry.content.size.width,
+                    box_geometry.content.size.height,
+                    box_geometry.baseline,
+                ] {
+                    number(&mut values, value);
+                }
+            }
+        }
+    }
+    values.push(request.controls.len() as u64);
+    for allocation in &request.controls {
+        values.push(allocation.occurrence.index as u64);
+        values.push(u64::from(allocation.strut.is_some()));
+        if let Some(strut) = allocation.strut {
+            values.push(strut.alignment as u64);
+            number(&mut values, strut.baseline);
+            number(&mut values, strut.line_extent);
+        }
+    }
+    values.push(u64::from(request.line_strut.is_some()));
+    if let Some(strut) = request.line_strut {
+        number(&mut values, strut.baseline);
+        number(&mut values, strut.line_extent);
+    }
+    number(&mut values, line.feedback().advance);
+    for slot in line.spacing_slots() {
+        number(&mut values, slot.advance);
+    }
+    values
 }

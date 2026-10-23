@@ -55,6 +55,7 @@ pub(crate) struct Context<S: LayoutScalar> {
     pub indent_state: crate::text_indent::IndentLineState,
     pub hyphenation_state: crate::hyphenation::LineHyphenationState,
     pub hyphenate_limit_zone: crate::LengthPercentageOf<S>,
+    pub tail: fit::TailContext,
 }
 
 impl<S: LayoutScalar> Context<S> {
@@ -106,7 +107,7 @@ pub(crate) fn layout<Node: Copy + Eq, S: LayoutScalar>(
         impl FnMut(f64, &surgeist_text::LineSelectionRequest) -> Result<Option<f64>, FitError>,
         impl FnMut(&FinalizedLine, fit::EncounterReplay) -> Result<Vec<fit::EncounterBasis>, FitError>,
         impl FnMut() -> Result<(), FitError>,
-        impl FnMut(),
+        impl FnMut(fit::EncounterReset),
     >,
 ) -> Result<Output<Node, S>, FitError> {
     let LineEnvironment {
@@ -178,6 +179,7 @@ pub(crate) fn layout<Node: Copy + Eq, S: LayoutScalar>(
             indent: context.indent.widened(),
             indent_state: context.indent_state,
             hyphenation_state: context.hyphenation_state,
+            tail: context.tail,
             hyphenate_limit_zone: crate::LengthPercentageOf::from_coefficients(
                 context.hyphenate_limit_zone.absolute_px().to_f64(),
                 context.hyphenate_limit_zone.percent_fraction().to_f64(),
@@ -516,6 +518,7 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
     lines: Vec<FittedLine>,
 ) -> Result<Output<Node, S>, FitError> {
     let mut report = MixedInlineRunReportOf {
+        lines: Vec::new(),
         hyphenation_state: context.hyphenation_state,
         indent_state: context.indent_state,
         inline_extent: S::ZERO,
@@ -540,6 +543,16 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
     let mut static_positions = Vec::new();
     let mut outflows = Vec::new();
     for (line_index, line) in lines.into_iter().enumerate() {
+        if context.tail != fit::TailContext::Unrestricted
+            && matches!(context.available, AvailableOf::Definite(_))
+        {
+            let selected = line.finalized.selected_line();
+            report.lines.push(crate::hyphenation::CommittedInlineLine {
+                end: selected.request().context.end,
+                content: line.finalized.has_in_flow_content(),
+                hyphenated: selected.request().alternative.is_some(),
+            });
+        }
         report.hyphenation_state = line.hyphenation_end;
         let feedback = line.finalized.feedback();
         let contribution = match context.available {
@@ -796,6 +809,7 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
             indent_end,
             hyphenation_start: context.hyphenation_state,
             hyphenation_end,
+            tail: context.tail,
         },
     })
 }

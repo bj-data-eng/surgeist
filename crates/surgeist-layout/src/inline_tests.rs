@@ -41,6 +41,7 @@ fn mr02_input<S: LayoutScalar>(
     participants: Vec<MixedInlineParticipantOf<S>>,
 ) -> MixedInlineRunInputOf<S> {
     MixedInlineRunInputOf {
+        observe_tail: false,
         available_inline_extent,
         flow_axes: FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
         text_align: TextAlign::Start,
@@ -675,6 +676,7 @@ fn fri06_c03_strut_private_builder_retains_control_baselines_and_post_line_inten
             InlineMetricsOf::from_line_height_and_baseline(S::from_f64(20.0), S::from_f64(15.0))
                 .unwrap();
         let report = layout_mixed_inline_run(MixedInlineRunInputOf {
+            observe_tail: false,
             available_inline_extent: AvailableOf::MAX_CONTENT,
             flow_axes,
             text_align: TextAlign::Start,
@@ -727,6 +729,7 @@ fn fri06_c04_line_band_private_callback_retries_transition_and_reselects_same_cu
         let mut queries = Vec::new();
         let report = layout_mixed_inline_run_with_band_source(
             MixedInlineRunInputOf {
+                observe_tail: false,
                 available_inline_extent: AvailableOf::definite(S::from_f64(100.0)),
                 flow_axes,
                 text_align: TextAlign::Start,
@@ -2092,4 +2095,57 @@ fn numeric_mandatory_atomic_end_uses_last_alignment_before_more_source_f32() {
 #[test]
 fn numeric_mandatory_atomic_end_uses_last_alignment_before_more_source_f64() {
     assert_numeric_mandatory_atomic_last_alignment::<f64>();
+}
+
+#[test]
+fn last_tail_observations_keep_actual_numeric_endings_and_zero_atomic_content() {
+    fn check<S: LayoutScalar>() {
+        let observe = |mut input: MixedInlineRunInputOf<S>| {
+            input.observe_tail = true;
+            layout_mixed_inline_run(input)
+        };
+        let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+        let metrics =
+            InlineMetricsOf::from_ascent_descent(S::from_f64(8.0), S::from_f64(2.0)).unwrap();
+        let report = observe(mr02_input(
+            AvailableOf::MaxContent,
+            vec![
+                mixed_boundary(0, flow, metrics),
+                mixed_forced_line_break(1, flow, metrics, Clear::None),
+            ],
+        ));
+        assert_eq!(
+            report
+                .lines
+                .iter()
+                .map(|line| (line.end, line.content, line.hyphenated))
+                .collect::<Vec<_>>(),
+            [
+                (surgeist_text::LineEnd::Forced, false, false),
+                (surgeist_text::LineEnd::Paragraph, false, false)
+            ]
+        );
+        assert_eq!(report.line_bands.len(), 2);
+        let report = observe(mr02_input(
+            AvailableOf::definite(S::ZERO),
+            vec![
+                mr02_atomic(0, 0.0, 0.0, 0.0, 0, InlineBreakOpportunity::Mandatory),
+                mr02_atomic(1, 0.0, 0.0, 0.0, 0, InlineBreakOpportunity::Prohibited),
+            ],
+        ));
+        assert_eq!(
+            report
+                .lines
+                .iter()
+                .map(|line| (line.end, line.content, line.hyphenated))
+                .collect::<Vec<_>>(),
+            [
+                (surgeist_text::LineEnd::Forced, true, false),
+                (surgeist_text::LineEnd::Paragraph, true, false)
+            ]
+        );
+        assert_eq!(report.atomics.len(), 2);
+    }
+    check::<f32>();
+    check::<f64>();
 }

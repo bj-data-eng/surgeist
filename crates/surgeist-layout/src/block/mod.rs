@@ -359,6 +359,7 @@ struct Constants<S: LayoutScalar> {
     direction: Direction,
     text_indent: crate::TextIndentOf<S>,
     hyphenate_limit_lines: crate::HyphenateLimitLines,
+    hyphenate_limit_last: crate::HyphenateLimitLast,
     hyphenate_limit_zone: crate::LengthPercentageOf<S>,
     first_formatted: bool,
     text_align: TextAlign,
@@ -635,6 +636,7 @@ impl<S: LayoutScalar> Constants<S> {
         Ok(Self {
             text_indent: style.text_indent,
             hyphenate_limit_lines: style.hyphenate_limit_lines,
+            hyphenate_limit_last: style.hyphenate_limit_last,
             hyphenate_limit_zone: style.hyphenate_limit_zone,
             first_formatted,
             flow_axes,

@@ -434,6 +434,7 @@ fn zero_tab_is_fontless_but_still_needs_actual_line_metrics() {
         .unwrap()
         .finalize(SpacingAllocations::None)
         .unwrap();
+    assert!(line.has_in_flow_content());
     assert_eq!(line.feedback().advance, 0.0);
     assert_eq!(line.feedback().baseline, 7.0);
     assert_eq!(line.run_views().count(), 0);

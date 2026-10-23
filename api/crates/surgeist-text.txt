@@ -33,6 +33,7 @@ pub surgeist_text::ConditionalDisposition::AutoLineLimit::limit: usize
 pub surgeist_text::ConditionalDisposition::AutoManualPriority
 pub surgeist_text::ConditionalDisposition::AutoManualPriority::alternative: surgeist_text::PreparedAlternative
 pub surgeist_text::ConditionalDisposition::AutoManualPriority::portion: surgeist_text::FinalizedLine
+pub surgeist_text::ConditionalDisposition::ConsumerHyphenationPolicy(surgeist_text::FinalizedLine)
 pub surgeist_text::ConditionalDisposition::Phantom(surgeist_text::FinalizedLine)
 pub enum surgeist_text::ConditionalPurpose
 pub surgeist_text::ConditionalPurpose::MinContent
@@ -1156,11 +1157,12 @@ pub fn surgeist_text::FinalizedLine::mapping_views(&self) -> impl core::iter::tr
 pub fn surgeist_text::FinalizedLine::outline_ink(&self) -> surgeist_text::Result<surgeist_text::LineOutlineInk>
 pub fn surgeist_text::FinalizedLine::run_views(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::FinalizedRunView<'_>>
 impl surgeist_text::FinalizedLine
+pub fn surgeist_text::FinalizedLine::has_in_flow_content(&self) -> bool
+pub fn surgeist_text::FinalizedLine::spacing_slots(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::SpacingSlotFeedback> + '_
+impl surgeist_text::FinalizedLine
 pub fn surgeist_text::FinalizedLine::prefix_at(&self, seam: &surgeist_text::TextSeam) -> surgeist_text::Result<surgeist_text::FinalizedPrefixView<'_>>
 impl surgeist_text::FinalizedLine
 pub fn surgeist_text::FinalizedLine::prepared_text(&self) -> surgeist_text::PreparedText
-impl surgeist_text::FinalizedLine
-pub fn surgeist_text::FinalizedLine::spacing_slots(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::SpacingSlotFeedback> + '_
 impl core::cmp::Eq for surgeist_text::FinalizedLine
 impl core::cmp::PartialEq for surgeist_text::FinalizedLine
 pub fn surgeist_text::FinalizedLine::eq(&self, other: &Self) -> bool

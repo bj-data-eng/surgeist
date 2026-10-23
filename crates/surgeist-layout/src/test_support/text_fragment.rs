@@ -27,6 +27,7 @@ pub(crate) fn fragment_for(
             indent_state: crate::text_indent::IndentLineState::default(),
             hyphenation_state: crate::hyphenation::LineHyphenationState::default(),
             hyphenate_limit_zone: crate::LengthPercentageOf::ZERO,
+            tail: crate::text_layout::fit::TailContext::Unrestricted,
             orientation: surgeist_text::LineOrientation::Horizontal,
             atomics: &[],
             controls: &[],
@@ -58,7 +59,7 @@ pub(crate) fn fragment_for(
             replay: |_: &surgeist_text::FinalizedLine,
                      _: crate::text_layout::fit::EncounterReplay| Ok(Vec::new()),
             accept: || Ok(()),
-            reset: || {},
+            reset: |_| {},
         },
     )
     .unwrap_or_else(|_| panic!("registered Ahem paragraph finalizes"));

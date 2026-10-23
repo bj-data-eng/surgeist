@@ -244,10 +244,11 @@ fn intrinsic(
             indent_state: crate::text_indent::IndentLineState::default(),
             hyphenation_state: crate::hyphenation::LineHyphenationState::default(),
             hyphenate_limit_zone: crate::LengthPercentageOf::ZERO,
+            tail: crate::text_layout::fit::TailContext::Unrestricted,
         },
         &[],
         super::super::run::LineEnvironment {
-            reset: || {},
+            reset: |_| {},
             band: |_, _| {
                 Ok(super::super::fit::Band {
                     start: 0.0,

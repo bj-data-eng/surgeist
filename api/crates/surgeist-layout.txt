@@ -194,6 +194,9 @@ pub surgeist_layout::GridFlowToleranceOf::Normal::font_size: S
 pub surgeist_layout::GridFlowToleranceOf::Percent(S)
 impl<S: surgeist_layout::LayoutScalar> core::default::Default for surgeist_layout::GridFlowToleranceOf<S>
 pub fn surgeist_layout::GridFlowToleranceOf<S>::default() -> Self
+pub enum surgeist_layout::HyphenateLimitLast
+pub surgeist_layout::HyphenateLimitLast::Always
+pub surgeist_layout::HyphenateLimitLast::None
 pub enum surgeist_layout::HyphenateLimitLines
 pub surgeist_layout::HyphenateLimitLines::Count(usize)
 pub surgeist_layout::HyphenateLimitLines::NoLimit
@@ -326,6 +329,7 @@ pub surgeist_layout::LayoutInvalidInputOf::TreeTopologyCycle
 pub surgeist_layout::LayoutMissingContext::AnonymousGeneratingBlock
 pub surgeist_layout::LayoutMissingContext::FloatExclusionProvider
 pub surgeist_layout::LayoutMissingContext::RequiredBasis
+pub surgeist_layout::LayoutMissingContext::TextBlockTail
 pub surgeist_layout::LayoutMissingContext::TextCapture
 pub surgeist_layout::LayoutMissingContext::TextOutOfFlowGeometry
 pub enum surgeist_layout::LayoutOperation
@@ -1284,6 +1288,7 @@ pub surgeist_layout::NodeInputOf::grid_row: surgeist_layout::GridPlacement
 pub surgeist_layout::NodeInputOf::grid_template_areas: surgeist_layout::GridTemplateAreas
 pub surgeist_layout::NodeInputOf::grid_template_columns: alloc::vec::Vec<surgeist_layout::TrackComponentOf<S>>
 pub surgeist_layout::NodeInputOf::grid_template_rows: alloc::vec::Vec<surgeist_layout::TrackComponentOf<S>>
+pub surgeist_layout::NodeInputOf::hyphenate_limit_last: surgeist_layout::HyphenateLimitLast
 pub surgeist_layout::NodeInputOf::hyphenate_limit_lines: surgeist_layout::HyphenateLimitLines
 pub surgeist_layout::NodeInputOf::hyphenate_limit_zone: surgeist_layout::LengthPercentageOf<S>
 pub surgeist_layout::NodeInputOf::inset: surgeist_layout::Edges<surgeist_layout::LengthAutoOf<S>>

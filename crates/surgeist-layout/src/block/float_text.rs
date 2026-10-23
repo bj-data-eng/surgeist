@@ -134,6 +134,7 @@ pub(super) struct EncounterOutput<Node, S: LayoutScalar> {
 
 pub(super) struct Encounters<Node, S: LayoutScalar> {
     pub events: Vec<FloatEvent<Node, S>>,
+    incoming: Option<FloatExclusions<S, Node>>,
     base: FloatExclusions<S, Node>,
     current: FloatExclusions<S, Node>,
     accepted: Vec<Option<PendingFloat<Node, S>>>,
@@ -148,10 +149,12 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
         base: FloatExclusions<S, Node>,
         cursor: S,
         inline_space: FloatInlineSpace,
+        reselect_tail: bool,
     ) -> Self {
         let count = events.len();
         Self {
             events,
+            incoming: reselect_tail.then(|| base.clone()),
             current: base.clone(),
             base,
             accepted: vec![None; count],
@@ -160,8 +163,19 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
             inline_space,
         }
     }
-    /// Discard only provisional encounter state; accepted placements and the
-    /// earlier-source base ledger stay intact for every candidate.
+    /// Roll back the entire unpublished branch to this run's incoming ledger.
+    /// Only finite complete-tail search retains the additional snapshot.
+    pub fn restart_sequence(&mut self) {
+        let Some(incoming) = &self.incoming else {
+            self.reset_candidate();
+            return;
+        };
+        self.base = incoming.clone();
+        self.current = incoming.clone();
+        self.accepted.fill(None);
+        self.tentative.fill(None);
+    }
+    /// Discard provisional state while retaining the accepted line prefix.
     pub fn reset_candidate(&mut self) {
         self.current = self.base.clone();
         self.tentative = self.accepted.clone();

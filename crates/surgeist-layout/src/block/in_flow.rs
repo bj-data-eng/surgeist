@@ -180,6 +180,17 @@ where
     let mut inline_indent_state = None;
     let mut hyphenation_state =
         crate::hyphenation::LineHyphenationState::new(constants.hyphenate_limit_lines);
+    let tail_active = constants.hyphenate_limit_last == crate::HyphenateLimitLast::Always
+        && matches!(
+            inner_inline.map(AvailableOf::definite).unwrap_or(
+                constants
+                    .flow_axes
+                    .logical_size(constants.available_content)
+                    .inline
+            ),
+            AvailableOf::Definite(_)
+        );
+    let mut tail_ledger = crate::hyphenation::BlockTailLedger::default();
     while index < children.len() {
         let source_index = index;
         let child = children[index];
@@ -288,6 +299,23 @@ where
                     node,
                     children,
                     InlineRunContext {
+                        tail: if !tail_active {
+                            crate::text_layout::fit::TailContext::Unrestricted
+                        } else if children[transition.end..].iter().all(|&node| {
+                            match InlineParticipantProjection::lookup::<Tree, M>(tree, node).kind()
+                            {
+                                InlineParticipantKindOf::Box(style) => {
+                                    style.display == crate::Display::None
+                                        || style.common.position == Position::Absolute
+                                        || !style.float.is_none()
+                                }
+                                _ => false,
+                            }
+                        }) {
+                            crate::text_layout::fit::TailContext::CompleteBlock
+                        } else {
+                            crate::text_layout::fit::TailContext::Unresolved
+                        },
                         hyphenation_state,
                         source_index_start: transition.start,
                         cursor_block,
@@ -305,6 +333,7 @@ where
                     InlineRunTransitionState {
                         indent_state: &mut inline_indent_state,
                         hyphenation_state: &mut hyphenation_state,
+                        tail_ledger: &mut tail_ledger,
                         cursor_block: &mut cursor_block,
                         content_size: &mut content_size,
                         scroll_content_size: &mut scroll_content_size,
@@ -335,6 +364,9 @@ where
             first_formatted: first_in_flow && constants.first_formatted,
         };
         if child_style.float.is_none() {
+            if tail_active {
+                tail_ledger.child_block();
+            }
             first_in_flow = false;
             inline_indent_state = None;
         }
@@ -828,6 +860,12 @@ where
         index += 1;
     }
 
+    if tail_active && tail_ledger.needs_continuation() {
+        return Err(super::inline_run::text_run_error(
+            node,
+            crate::text_layout::fit::FitError::MissingBlockTail,
+        ));
+    }
     Ok(InFlowResult {
         content_size,
         scroll_content_size,

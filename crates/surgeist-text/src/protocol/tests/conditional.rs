@@ -1666,3 +1666,218 @@ fn phantom_dispositions(lines: &[FinalizedLine]) -> Vec<crate::ConditionalDispos
         .map(crate::ConditionalDisposition::Phantom)
         .collect()
 }
+
+#[test]
+fn finite_consumer_policy_discharge_reaches_a_real_manual_later_ceiling() {
+    let mut system = system();
+    let mut value = input("as\u{ad}sociate", OverflowWrap::Anywhere);
+    value.base_style.size = 10.0;
+    value.base_style.hyphens = crate::Hyphens::Manual;
+    value.base_style.hyphenate_character =
+        crate::HyphenateCharacter::String(crate::Text::from("A"));
+    let p = prepare(&mut system, value);
+    let start = p.boundary_views().next().unwrap().handle();
+    let manual = p
+        .opportunity_views()
+        .find(|offer| offer.kind() == PreparedBreakKind::Discretionary)
+        .unwrap();
+    assert_eq!(manual.boundary().view().source_before().get(), 3);
+    let mut trial = request(&p);
+    trial.end = manual.boundary();
+    trial.termination = PreparedTermination::Ordinary(manual.handle());
+    trial.alternative = Some(manual.alternatives().next().unwrap().handle());
+    trial.participants = p
+        .participants()
+        .take(trial.end.view().participant_offset())
+        .collect();
+    trial.context.end = LineEnd::Soft;
+    trial.context.available_inline = Some(70.0);
+    let first = p
+        .select(trial.clone())
+        .unwrap()
+        .finalize(SpacingAllocations::None)
+        .unwrap();
+    assert_eq!(first.feedback().advance, 30.0);
+    assert!(first.has_in_flow_content());
+    let ceiling = p
+        .opportunity_views()
+        .find(|offer| offer.kind() == PreparedBreakKind::ParagraphEnd)
+        .unwrap()
+        .handle();
+    assert!(
+        p.conditional_opportunities(&start, &ceiling, ConditionalPurpose::Overflow, &[])
+            .is_err()
+    );
+    let disposition = ConditionalDisposition::ConsumerHyphenationPolicy(first);
+    let cuts = p
+        .conditional_opportunities(
+            &start,
+            &ceiling,
+            ConditionalPurpose::Overflow,
+            std::slice::from_ref(&disposition),
+        )
+        .unwrap();
+    assert!(
+        sources(&cuts).contains(&1),
+        "policy discharge cannot advance the phantom frontier"
+    );
+    let cut = cuts
+        .iter()
+        .find(|cut| cut.boundary().view().source_before().get() == 8)
+        .unwrap();
+    let mut selected = selection(&p, cut);
+    selected.context.available_inline = Some(70.0);
+    let line = p
+        .select(selected)
+        .unwrap()
+        .finalize(SpacingAllocations::None)
+        .unwrap();
+    assert_eq!(line.feedback().advance, 70.0);
+    assert!(line.selected_line().request().alternative.is_none());
+    let second = p
+        .select(trial)
+        .unwrap()
+        .finalize(SpacingAllocations::None)
+        .unwrap();
+    assert_eq!(
+        cuts,
+        p.conditional_opportunities(
+            &start,
+            &ceiling,
+            ConditionalPurpose::Overflow,
+            &[ConditionalDisposition::ConsumerHyphenationPolicy(second)]
+        )
+        .unwrap()
+    );
+    assert!(
+        p.conditional_opportunities(
+            &start,
+            &ceiling,
+            ConditionalPurpose::MinContent,
+            std::slice::from_ref(&disposition)
+        )
+        .is_err()
+    );
+    assert!(
+        p.conditional_opportunities(
+            &start,
+            &ceiling,
+            ConditionalPurpose::Overflow,
+            &[disposition.clone(), disposition]
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn finite_consumer_policy_receipts_preserve_barriers_start_and_context_identity() {
+    let mut system = system();
+    let mut value = input("as\u{ad}sociate", OverflowWrap::Anywhere);
+    value.base_style.size = 10.0;
+    value.base_style.hyphens = crate::Hyphens::Manual;
+    value.base_style.hyphenate_character =
+        crate::HyphenateCharacter::String(crate::Text::from("A"));
+    let p = prepare(&mut system, value.clone());
+    let foreign = prepare(&mut system, value);
+    let start = p.boundary_views().next().unwrap().handle();
+    let ceiling = p
+        .opportunity_views()
+        .find(|o| o.kind() == PreparedBreakKind::ParagraphEnd)
+        .unwrap()
+        .handle();
+    let make = |p: &PreparedText, width: f64, start_at: usize| {
+        let manual = p
+            .opportunity_views()
+            .find(|o| o.kind() == PreparedBreakKind::Discretionary)
+            .unwrap();
+        let mut r = request(p);
+        r.start = p
+            .boundary_views()
+            .find(|b| b.source_after().get() == start_at)
+            .unwrap()
+            .handle();
+        r.end = manual.boundary();
+        r.termination = PreparedTermination::Ordinary(manual.handle());
+        r.alternative = Some(manual.alternatives().next().unwrap().handle());
+        r.participants = p
+            .participants()
+            .skip(r.start.view().participant_offset())
+            .take(r.end.view().participant_offset() - r.start.view().participant_offset())
+            .collect();
+        r.context.start = if start_at == 0 {
+            LineStart::Paragraph
+        } else {
+            LineStart::Continuation
+        };
+        r.context.end = LineEnd::Soft;
+        r.context.available_inline = Some(width);
+        p.select(r)
+            .unwrap()
+            .finalize(SpacingAllocations::None)
+            .unwrap()
+    };
+    let query = |line| {
+        p.conditional_opportunities(
+            &start,
+            &ceiling,
+            ConditionalPurpose::Overflow,
+            &[ConditionalDisposition::ConsumerHyphenationPolicy(line)],
+        )
+    };
+    assert!(query(make(&foreign, 70.0, 0)).is_err());
+    assert!(query(make(&p, 70.0, 1)).is_err());
+    let a = query(make(&p, 70.0, 0)).unwrap();
+    let b = query(make(&p, 71.0, 0)).unwrap();
+    assert_ne!(
+        a, b,
+        "a changed finite policy trial is a changed capability context"
+    );
+    let mut ordinary = request(&p);
+    ordinary.context.available_inline = Some(70.0);
+    let ordinary = p
+        .select(ordinary)
+        .unwrap()
+        .finalize(SpacingAllocations::None)
+        .unwrap();
+    assert!(
+        query(ordinary).is_err(),
+        "Paragraph/None cannot be discharged by hyphenation policy"
+    );
+    let plain = prepare(&mut system, input("X Y", OverflowWrap::Anywhere));
+    let begin = plain.boundary_views().next().unwrap().handle();
+    let offer = plain
+        .opportunity_views()
+        .find(|o| o.kind() == PreparedBreakKind::Allowed)
+        .unwrap();
+    let mut r = request(&plain);
+    r.end = offer.boundary();
+    r.termination = PreparedTermination::Ordinary(offer.handle());
+    r.participants = plain
+        .participants()
+        .take(r.end.view().participant_offset())
+        .collect();
+    r.context.end = LineEnd::Soft;
+    r.context.available_inline = Some(70.0);
+    let line = plain
+        .select(r)
+        .unwrap()
+        .finalize(SpacingAllocations::None)
+        .unwrap();
+    assert!(line.has_in_flow_content());
+    let end = plain
+        .opportunity_views()
+        .find(|o| o.kind() == PreparedBreakKind::ParagraphEnd)
+        .unwrap()
+        .handle();
+    assert!(
+        plain
+            .conditional_opportunities(
+                &begin,
+                &end,
+                ConditionalPurpose::Overflow,
+                &[ConditionalDisposition::ConsumerHyphenationPolicy(line)]
+            )
+            .is_err(),
+        "meaningful ordinary None remains a genuine barrier"
+    );
+}

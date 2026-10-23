@@ -870,3 +870,80 @@ fn finalized_original_prefix_source_replacement_keeps_its_defining_source_bundle
             .has_retained_flow_participation()
     );
 }
+
+#[test]
+fn finalized_content_is_distinct_from_separator_and_strut_flow_participation() {
+    for (text, white_space, spacing, expected) in [
+        ("", WhiteSpace::Collapse, 0.0, false),
+        (" ", WhiteSpace::Collapse, 0.0, false),
+        ("\u{1680}", WhiteSpace::Collapse, 0.0, false),
+        ("X", WhiteSpace::Collapse, -12.5, true),
+        ("X", WhiteSpace::Collapse, -15.0, true),
+        (" ", WhiteSpace::Preserve, -12.5, true),
+        ("\u{61c}", WhiteSpace::Preserve, 0.0, true),
+    ] {
+        let mut input = style();
+        input.white_space = white_space;
+        input.letter_spacing = spacing;
+        let prepared = native(text, input, vec![], vec![]);
+        let line = whole(&prepared);
+        assert_eq!(line.has_in_flow_content(), expected, "{text:?}");
+        assert_eq!(line.prepared_text(), prepared);
+        assert_eq!(
+            line.prepared_text()
+                .analyzed_source()
+                .source()
+                .text()
+                .code_units(),
+            text.encode_utf16().collect::<Vec<_>>()
+        );
+    }
+    let mut input = style();
+    input.white_space = WhiteSpace::Preserve;
+    let prepared = native("\n", input, vec![], vec![]);
+    let forced = prepared
+        .opportunity_views()
+        .find(|v| v.kind() == PreparedBreakKind::Forced)
+        .unwrap()
+        .handle();
+    let line = selected_end(&prepared, forced, None)
+        .finalize(SpacingAllocations::None)
+        .unwrap();
+    assert!(!line.has_in_flow_content());
+    assert!(
+        line.prefix_at(&seam(&prepared, 1))
+            .unwrap()
+            .has_retained_flow_participation()
+    );
+    assert!(line.feedback().line_height > 0.0);
+
+    let prepared = native(
+        "",
+        style(),
+        vec![ParagraphControl {
+            at: 0,
+            kind: ParagraphControlKind::InlineBoundaryStart,
+        }],
+        vec![],
+    );
+    let selected = whole(&prepared).selected_line();
+    let mut request = selected.request().clone();
+    request.controls[0].strut = Some(ControlStrut {
+        baseline: 5.0,
+        line_extent: 10.0,
+        alignment: LineBoxAlignment::Baseline,
+    });
+    let line = prepared
+        .select(request)
+        .unwrap()
+        .finalize(SpacingAllocations::None)
+        .unwrap();
+    assert!(!line.has_in_flow_content());
+    let participant =
+        PreparedParticipant::Control(prepared.control_views().next().unwrap().handle());
+    assert!(
+        line.prefix_at(&TextSeam::AfterParticipant(participant))
+            .unwrap()
+            .has_retained_flow_participation()
+    );
+}

@@ -1954,3 +1954,6 @@ mod line_limit_retry;
 
 #[path = "zone_cache.rs"]
 mod zone_cache;
+
+#[path = "last_tail_retry.rs"]
+mod last_tail_retry;

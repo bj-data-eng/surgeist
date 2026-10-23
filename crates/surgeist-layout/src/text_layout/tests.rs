@@ -1,3 +1,7 @@
+#[path = "tests/last_tail.rs"]
+mod last_tail;
+#[path = "tests/last_tail_composition.rs"]
+mod last_tail_composition;
 use super::*;
 use crate::test_support::layout_tree::PublicLayoutTreeOf;
 use crate::test_support::text::{ParagraphPart, PreparedParagraph, ahem_style};
@@ -223,10 +227,11 @@ fn assert_intrinsic_line_box<S: LayoutScalar>() {
             indent_state: crate::text_indent::IndentLineState::default(),
             hyphenation_state: crate::hyphenation::LineHyphenationState::default(),
             hyphenate_limit_zone: crate::LengthPercentageOf::ZERO,
+            tail: crate::text_layout::fit::TailContext::Unrestricted,
         },
         &[],
         super::run::LineEnvironment {
-            reset: || {},
+            reset: |_| {},
             band: |_, _| {
                 Ok(super::fit::Band {
                     start: 0.0,

@@ -248,3 +248,16 @@ Other whitespace modes, styled boundary barriers and vertical orientation remain
 outside this contribution.
 See the [owning contract](../../../docs/text-layout-contract.md) for phase ownership
 and coherent placement policy, and [reference](reference.md) for supported styles.
+
+`FinalizedLine::has_in_flow_content()` observes retained actual text/presentation
+and in-flow atomics, including zero or signed contributions. Hard-separator-only
+rows, control/default struts, discarded text and out-of-flow roles do not add
+content. This differs from prefix retained-flow participation, which also
+observes separator and allocated-control roles; neither predicate proves block
+completion. Layout owns the completed unfragmented terminal-tail policy.
+
+For finite branch-local reselection, `ConditionalDisposition::ConsumerHyphenationPolicy`
+can discharge an exact rejected hyphenated ordinary trial. Text authenticates the
+trial's preparation, unchanged start, alternative and context, not the consumer's
+policy verdict. Meaningful no-alternative, Forced and Paragraph variants remain
+barriers; these receipts neither advance phantom source nor admit intrinsic use.

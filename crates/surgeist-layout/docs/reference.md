@@ -440,3 +440,23 @@ Setting `CARGO_NET_OFFLINE=true` keeps Cargo dependency resolution offline.
 Clippy recipes use `-F unsafe-code -D warnings`; Cargo check, test, and Clippy
 recipes use `--locked`. Browser commands and environment variables are described
 in the [browser parity guide](../tests/layout/browser_parity/README.md).
+
+### Unfragmented element-terminal hyphenation
+
+`NodeInputOf::hyphenate_limit_last` selects `HyphenateLimitLast::None` (the
+initial unrestricted operation) or `Always`. For finite layout, `Always` retains
+trailing empty line geometry and prohibits selected Source, Control or Automatic
+hyphenation, including empty indications, on the immediate Soft predecessor of
+the owning completed block's last content line. Real Forced segments remain
+separate. Intrinsic queries build no virtual terminal tail.
+
+The supported producer authenticates a complete actual inline-flow sequence,
+including Text, in-flow atomics, controls and transparent out-of-flow tails.
+Branch-local reselection uses the same finalizer and float/indent/count owners;
+rejected sequences publish nothing. Numeric runs retain their actual ending and
+content observations. A cross-run or child-block interruption without necessary
+continuation custody returns `LayoutMissingContext::TextBlockTail` when selected
+hyphenation makes that missing relation material. Child-owned lines are not
+flattened into the parent, and ParagraphEnd alone is not block completion.
+Column, page and spread fragmentation remain unavailable. See the
+[canonical unfragmented-tail contract](../../../docs/text-layout-contract.md#unfragmented-element-tail-hyphenation-restriction).
