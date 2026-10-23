@@ -160,6 +160,49 @@ glyph/source/caret mapping and exercise actual deferral, legal-break reshaping,
 replay, repeated-state refusal and rollback. The policy does not itself qualify
 the general float algorithm or resolve live Style/DOM producer authentication.
 
+### Conditional wrapping around captured floats
+
+For native horizontal finite fitting, establish the highest legal encountered-float
+assignment first, including mandatory clearance or downward movement needed for
+the float itself to fit. Exhaust ordinary endpoints and alternatives in that
+assignment, with each candidate's actual shaping, allocations, encounter replay,
+canonical placement and height-qualified bands converged. A later ordinary fit
+wins over a conditional cut.
+
+If no ordinary candidate fits, try eligible Text-issued conditional cuts before
+optionally deferring an encountered float below the same ordinary line. Replay
+each changed cut from the accepted checkpoint using its own finalized prefix
+and legal placement; reshaping may change which float positions are legal. A
+fitting conditional cut wins over the optional deferral. If
+neither kind fits, try the permitted deferral and restart ordinary-first search
+for the changed assignment. Moving the line through an existing float's bands
+is a separate subsequent fallback. Disabled or unsuccessful conditional wrapping
+does not remove the ordinary deferral behavior.
+
+With Ahem advances of 10px, `A | float(8px × 4px) | X` in a 20px block with
+`overflow-wrap:anywhere` selects `A` beside the higher float in the 12px band,
+then `X`. The Soft endpoint includes the tied non-interior float encounter;
+replay must retain that float rather than obtain a fit by dropping it. A Forced
+endpoint excludes the equality event. A float seam itself creates no break.
+
+This is Surgeist's explicit ordering determination, inferred from the pinned
+[float reflow and higher-placement rules](../references/css2--visuren.html--3f334c530cf4.md#floats)
+and [overflow-wrap conditions](../references/css-text-4--WD-css-text-4-20260814--106c5cd086ab.md#overflow-wrap-property).
+The corresponding [CSS2.2 rules](https://www.w3.org/TR/CSS22/visuren.html#floats)
+and [current Text4 clause](https://drafts.csswg.org/css-text-4/#overflow-wrap-property)
+do not explicitly order these competing assignments. This is not a claim of a
+universal CSSWG resolution or exact browser-test agreement. The conditional
+operation remains required work; the existing float adapter alone does not
+establish its implementation.
+
+The finite-fit precondition does not gate `anywhere` min-content opportunities
+on failure of an unconstrained ordinary trial. Min-content selects its eligible
+pieces independently; `break-word` adds no such intrinsic cuts, and max-content
+adds neither kind. Qualification includes the 8px example, a later ordinary fit,
+absent conditional permission, mandatory deferral of a float that cannot itself
+fit beside its prefix, no fitting conditional candidate, Soft/Forced seam ties,
+and rollback into a changed assignment.
+
 ### Canonical boxes and coherent line placement
 
 For composed horizontal lines, Layout settles its canonical boxes, available spans, float bands and atomic allocations before accepting Text's finalized geometry. This includes the selected Layout pixel-rounding policy wherever it affects those facts. Pixel snapping is distinct from scalar conversion and canonical provider precision. If final ancestor placement changes the rounding phase and thereby changes a dimension, relative baseline or float intersection, Layout reevaluates the affected candidate and its feedback before placement. A final rounding pass cannot silently change an accepted line's inputs. This replaces independent rounding of text-fragment origins, ends and baselines for the composed protocol.
