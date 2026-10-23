@@ -1248,6 +1248,35 @@ automatic opportunity resources and supported language/script conventions need
 their own evidence. This bounded determination does not establish implementation
 completion or all-language behavior.
 
+## Preserved CSS tab stops
+
+The [Text/Layout contract](../docs/text-layout-contract.md#preserved-css-tab-stops)
+selects the native preserved-tab operation. Normative authority remains the
+selected [Text 4 Phase II](css-text-4--WD-css-text-4-20260814--106c5cd086ab.md#white-space-phase-2),
+[tab-size](css-text-4--WD-css-text-4-20260814--106c5cd086ab.md#tab-size-property)
+and [ordering](css-text-4--WD-css-text-4-20260814--106c5cd086ab.md#order),
+[Writing Modes 4 inline direction](css-writing-modes-4--CR-css-writing-modes-4-20190730--30a59de49343.md#inline-base-direction),
+[Values 4 ch](css-values-4--WD-css-values-4-20240312--7b6b68c34d00.md#ch)
+and the [UAX #9 revision 52 metadata](uax9--18.0.0--rev52-metadata.md).
+The horizontal ch fallback is 0.5em, so its half-ch threshold is 0.25em.
+
+Source-only inspection at WebKit `73aa6c89e2cb77c46184a81aec944e4ab99d114d`
+covered `FontCascadeInlines.h`, `TabSize.h`, `WidthIterator.cpp` and `TextRun.h`.
+Their tab helper and line-relative position do not establish a clamp for a
+negative spacing-derived interval. `IntrinsicWidthHandler.cpp` (lines 284–350)
+and `InlineLineBuilder.cpp` (lines 1050–1103) show intrinsic measurement modes,
+not a specified solver for an unknown opposite block edge. No implementation
+excerpts are retained or browser equivalence claimed.
+
+Source-only WPT inspection at `69f2bba61ce7e9469ccbce53de4644a89f6b7dff`
+covered `css/css-text/white-space/tab-bidi-001.html` and
+`css/css-text/tab-size/tab-size-spacing-002.html` / `003.html`. These cover bidi
+embeddings/overrides and positive spacing; they do not establish plaintext
+direction mismatch or negative-interval behavior. No browser execution is claimed.
+The signed grid beyond block edges is an explicit native policy. Negative
+intervals and unresolved opposite-edge intrinsic phases remain bounded capability
+limitations, not invalid CSS or completed positive acceptance.
+
 ## Nonempty formatting-unit Range geometry
 
 The [Blink Range witness](blink-formatting-unit-range--daf70f9ddee4.md) identifies

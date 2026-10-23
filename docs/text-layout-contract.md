@@ -163,7 +163,83 @@ A native empty origin retains a zero-width, zero-height source-fragment anchor a
 
 The standalone `System::layout` convenience path retains the currently supported wrapping/alignment behavior by choosing lines through the same preparation/finalization machinery. Its simple paragraph chooser is private to text; layout’s composed CSS formatter does not use it as a second formatter. Unsupported style combinations remain explicit errors until the owning standards issue implements them.
 
-The explicit native `TabContext::FontAdvance` policy uses the selected font's actual U+0009 glyph advance, preserving the standalone policy through the same finalizer. It does not approximate a tab with a space or implement CSS tab stops. `NoTabs` validates actual absence; requested `Stops` remains a precise unsupported capability until implemented. A taken discretionary opportunity requires its actual issued alternative, including an explicitly computed empty replacement; a natural paragraph end does not select a hyphen merely because the preceding source contains SHY. A source-defined replacement validates its real defining source occurrence. A control-defined replacement retains its exact control/opportunity/alternative owner and may have no text origin; incidental source-anchor provenance must be supplied and validated, never guessed from the numeric offset.
+The explicit native `TabContext::FontAdvance` policy uses the selected font's actual U+0009 glyph advance, preserving the standalone policy through the same finalizer. It does not approximate a tab with a space or implement CSS tab stops. `NoTabs` validates actual absence. The [CSS tab contract](#preserved-css-tab-stops) below selects the replacement for the currently unsupported arbitrary-stop request; selection does not establish implementation support. A taken discretionary opportunity requires its actual issued alternative, including an explicitly computed empty replacement; a natural paragraph end does not select a hyphen merely because the preceding source contains SHY. A source-defined replacement validates its real defining source occurrence. A control-defined replacement retains its exact control/opportunity/alternative owner and may have no text origin; incidental source-anchor provenance must be supplied and validated, never guessed from the numeric offset.
+
+### Preserved CSS tab stops
+
+Text owns preserved-tab advances and source custody; Layout owns the actual block
+edge, line span and placement supplied to finalization. This contract selects the
+CSS operation under #64/#72, independently of native font-advance tabs. It follows
+the pinned [Phase II](../references/css-text-4--WD-css-text-4-20260814--106c5cd086ab.md#white-space-phase-2),
+[tab-size](../references/css-text-4--WD-css-text-4-20260814--106c5cd086ab.md#tab-size-property)
+and [operation order](../references/css-text-4--WD-css-text-4-20260814--106c5cd086ab.md#order).
+The [source determination](../references/SOURCE-EDITIONS.md#preserved-css-tab-stops)
+separates normative requirements from the native policies below.
+
+Capture the actual nearest block's style and explicit used direction separately
+from the paragraph's base style and bidi direction. Contextual inputs reuse their
+real block-domain style; flat inputs supply that reference explicitly. Preparation
+chooses either font-advance or CSS-stop demand independently of the capture.
+Resolve every selectable original and replacement TAB under the chosen demand
+before publishing the preparation. Missing required facts or resources fail
+atomically. A later request must match that prepared capability; `NoTabs` instead
+checks actual selected absence. Retain every consumed font instance and include
+the capture, style and demand in their owning cache identities.
+
+A checked tab size is either a finite nonnegative number or absolute length,
+initially eight spaces. A number multiplies the nearest block's hypothetical
+SPACE advance including that block's letter- and word-spacing. A length bypasses
+that measurement. A positive interval uses half of the hypothetical ZERO advance
+under the tab's own style for its threshold. Resolve these metrics through their
+actual font-selection authorities, without fabricated authored characters or
+neighboring-font substitution. The pinned [ch definition](../references/css-values-4--WD-css-values-4-20240312--7b6b68c34d00.md#ch)
+supplies the horizontal 0.5em fallback when measurement is impossible; half-ch
+then means 0.25em. Retain measured-versus-fallback provenance. Scale style lengths
+and spacing once under the existing preparation coordinate contract.
+
+Authored zero suppresses advance and paint without SPACE, ZERO or TAB probes.
+A spacing-derived zero may consume SPACE to establish zero, then needs no
+threshold metric. Preserve original source, caret endpoints and selection custody
+even at zero extent. A negative resolved interval currently requires a precise
+unsupported capability: it is not invalid CSS and must not be clamped, made
+positive or recomputed without spacing. Nonfinite arithmetic, overflow and
+nonzero numeric collapse are distinct numeric failures, never semantic zero.
+Negative-interval execution remains required work for full #64/#72 acceptance.
+
+Use physical +x coordinates temporarily, with unaligned paragraph progression
+start defined as zero. The initial pen is +indent for LTR and -indent for RTL.
+Layout supplies the actual block content-start minus actual paragraph-start
+displacement in this frame, recomputed for each float band and retry. Direction
+alone does not prove that displacement. With block origin O and positive period T,
+the grid is O+k*T for signed integer k. Paragraph progression selects the closest
+strictly ahead stop, followed by exactly one additional stop if the distance is
+below half-ch. Extending this grid beyond the block edges is an explicit Surgeist
+policy, not an established browser or CSSWG resolution. For example, block RTL
+origin 100, paragraph LTR pen zero and period 40 select stop 20 when half-ch is at
+most 20; a larger threshold selects 60.
+
+Resolve after canonical line bidi ordering, using actual ordered text, atomics
+and supplied spacing. A CSS tab has source-owned, glyph-free cluster content;
+it does not acquire a dummy font run, provider TAB width or extra tab spacing.
+RTL traverses reversed canonical visual progression toward negative x. Retain
+only resolved cluster advances, not that temporary signed pen, in logical prefix
+receipts. Existing positive-x visual emission and later alignment/placement use
+those same rows. Indentation influences tab distance and ordinary placement once;
+alignment does not reevaluate the grid. Actual struts or supplied allocations
+provide line metrics; font-dependent observations of genuinely fontless content
+require their own precise missing-metric result.
+
+Changed spacing allocations require tab recomputation: expansion before a tab
+may be absorbed by a shorter tab advance. Layout uses actual finalized feedback
+for fit, floats, intrinsic sizing and justification, retaining request identity
+and cycle detection. Unknown block extent remains unknown. A positive preserved
+tab whose intrinsic phase depends on an unknown opposite edge requires a precise
+unresolved-intrinsic-tab-phase capability; zero or removed tabs do not demand that
+edge. A known placement frame does not redefine an unconstrained intrinsic query.
+No zero-origin substitution or self-consistency solver is selected. This case
+also remains required work for full acceptance. Qualification must cover actual
+Text and Layout operations, source/interaction geometry, original and replacement
+tabs, metric resources, numeric failures and retry purity before support is claimed.
 
 For selected discretionary replacements, preserve original characters' joining
 decisions from the authentic unbroken processed source and its actual context
