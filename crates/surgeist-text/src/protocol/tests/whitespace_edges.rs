@@ -3,6 +3,8 @@ use super::*;
 use crate::{Affinity, Cursor, Range};
 use skrifa::MetadataProvider;
 
+mod additional_edges;
+
 const AHEM: &[u8] = include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf");
 
 fn prepare(system: &mut System, text: &str, whitespace: WhiteSpace) -> PreparedText {

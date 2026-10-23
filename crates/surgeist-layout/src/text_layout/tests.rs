@@ -16,6 +16,8 @@ mod indent;
 mod line_policy;
 #[path = "tests/tab_stops.rs"]
 mod tab_stops;
+#[path = "tests/whitespace_edges.rs"]
+mod whitespace_edges;
 
 fn assert_native_invalidation_source_order<S: LayoutScalar>() {
     let style = ahem_style(10.0, 10.0);
