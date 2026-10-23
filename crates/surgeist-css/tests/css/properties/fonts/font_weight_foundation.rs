@@ -117,19 +117,18 @@ fn inherited_normal_weight_has_one_intrinsic_contribution_and_pending_reentry() 
     assert_eq!(item.property(), property);
     assert!(item.source().same_occurrence(&symbolic));
     assert_eq!(item.replacement_components(), Some(&replacement));
-    assert!(matches!(
+    assert!(
         pending
             .reenter(parse_component_values("0").unwrap())
             .unwrap_err()
-            .kind(),
-        CssExpansionErrorKind::InvalidReplacement(_)
-    ));
-    assert_eq!(
+            .replacement_error()
+            .is_some()
+    );
+    assert!(
         pending
             .reenter(parse_component_values("var(--again)").unwrap())
             .unwrap_err()
-            .kind(),
-        &CssExpansionErrorKind::ResidualSubstitution
+            .is_residual_substitution()
     );
 }
 

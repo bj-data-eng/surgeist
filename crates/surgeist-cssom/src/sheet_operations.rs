@@ -121,15 +121,16 @@ fn processing_diagnostic_backing<E>(
     diagnostics: &Vec<CssRecoveryDiagnostic>,
     mut admit: impl FnMut() -> Result<(), E>,
 ) -> Result<usize, CssRetainedPayloadError<E>> {
-    use CssRetainedPayloadError::{Admission, CapacityOverflow};
-    admit().map_err(Admission)?;
+    admit().map_err(CssRetainedPayloadError::admission)?;
     let mut bytes = diagnostics
         .capacity()
         .checked_mul(std::mem::size_of::<CssRecoveryDiagnostic>())
-        .ok_or(CapacityOverflow)?;
+        .ok_or_else(CssRetainedPayloadError::capacity_overflow)?;
     for diagnostic in diagnostics {
         let backing = diagnostic.retained_backing_bytes_with(&mut admit)?;
-        bytes = bytes.checked_add(backing).ok_or(CapacityOverflow)?;
+        bytes = bytes
+            .checked_add(backing)
+            .ok_or_else(CssRetainedPayloadError::capacity_overflow)?;
     }
     Ok(bytes)
 }
@@ -472,7 +473,7 @@ impl CssomBatch {
     ) -> Result<i32, CssomError> {
         // Product handle validation precedes reading the list default. Source
         // Security/NotAllowed and syntax guards belong to insert_sheet_rule.
-        let (source, index) = self.apply(|this| {
+        let (source, index) = self.apply(|this| -> Result<_, CssomError> {
             let current = this.staged.sheet(sheet)?;
             let index = index.unwrap_or_else(|| this.staged.lists[&current.rules].len());
             let selector = selector.unwrap_or("undefined");

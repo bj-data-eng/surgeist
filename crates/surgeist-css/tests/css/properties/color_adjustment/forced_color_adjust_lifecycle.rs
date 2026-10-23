@@ -114,15 +114,12 @@ fn checked_construction_admits_the_same_grammar_and_preserves_input_origins() {
             CssImportance::Normal,
         )
         .unwrap_err();
-        assert!(matches!(
-            error.kind(),
-            CssPropertyValueErrorKind::Grammar(_)
-        ));
+        assert!(error.code().is_some());
         let responsible = match error.origin() {
             CssSerializedOrigin::Token(origin) | CssSerializedOrigin::End(Some(origin)) => origin,
             other => panic!("invalid checked value lost its original component origin: {other:?}"),
         };
-        assert_eq!(responsible, &CssValueOrigin::Programmatic);
+        assert_eq!(responsible, CssValueOrigin::Programmatic);
     }
 }
 
@@ -168,7 +165,7 @@ fn invalid_recovery_control_preserves_neighbors_and_the_original_snapshot() {
                 panic!("one dropped invalid occurrence: {text}")
             };
             assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-            assert_invalid_value(diagnostic.error().kind(), known_property(name), token);
+            assert_invalid_value(diagnostic.error(), known_property(name), token);
             let error_offset = diagnostic.error().position().byte_offset().value();
             let property_start = "color:red;".len();
             let value_end = property_start + name.len() + 1 + value.len();

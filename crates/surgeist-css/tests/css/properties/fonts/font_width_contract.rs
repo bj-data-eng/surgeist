@@ -1,5 +1,9 @@
 //! Exact authored font-width contracts from CSS Fonts 4 WD 2026-09-07 §§2.3, 2.7.
 
+use crate::css::support::failure_classes::NumericFailure;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::numeric_failure;
+use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::*;
 
 fn scalar(text: &str) -> CssSpecifiedNonNegativePercentage {
@@ -121,11 +125,11 @@ fn percentage_constructor_preserves_exact_literals_and_rejects_invalid_roots() {
     // A number or length is outside the <percentage> root; a negative
     // percentage is outside [0,inf].
     for (text, kind) in [
-        ("0", CssNumericConstructionErrorKind::RootDomainMismatch),
-        ("1", CssNumericConstructionErrorKind::RootDomainMismatch),
-        ("1px", CssNumericConstructionErrorKind::RootDomainMismatch),
-        ("-1%", CssNumericConstructionErrorKind::OutOfRange),
-        ("-1e-999%", CssNumericConstructionErrorKind::OutOfRange),
+        ("0", NumericFailure::RootDomainMismatch),
+        ("1", NumericFailure::RootDomainMismatch),
+        ("1px", NumericFailure::RootDomainMismatch),
+        ("-1%", NumericFailure::OutOfRange),
+        ("-1e-999%", NumericFailure::OutOfRange),
     ] {
         let values = parse_component_values(text).unwrap();
         let [component] = values.items() else {
@@ -133,7 +137,7 @@ fn percentage_constructor_preserves_exact_literals_and_rejects_invalid_roots() {
         };
         let error =
             CssSpecifiedNonNegativePercentage::try_from_component(component.clone()).unwrap_err();
-        assert_eq!(error.kind(), &kind, "{text}");
+        assert_eq!(numeric_failure(&error), kind, "{text}");
         assert_eq!(error.origin(), Some(component.origin()), "{text}");
     }
     for text in ["1e999%", "1e-999%"] {
@@ -159,11 +163,10 @@ fn bare_percentage_calculation_roots_reenter_exact_range_admission() {
             Default::default(),
         )
         .expect("negative percentage is in the percentage calculation domain");
-        assert_eq!(
+        assert!(
             CssSpecifiedNonNegativePercentage::try_from_calculation(typed)
                 .unwrap_err()
-                .kind(),
-            &CssNumericConstructionErrorKind::OutOfRange,
+                .is_out_of_range(),
             "{text}"
         );
     }
@@ -255,18 +258,21 @@ fn scalar_and_width_serialization_enforce_input_projection_and_byte_budgets() {
     for (limits, kind) in [
         (
             CssSerializationLimits::new(0, 1, 3),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(1, 0, 3),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(1, 1, 2),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
-        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+            kind
+        );
     }
     let scalar = scalar("75%");
     assert_eq!(
@@ -275,11 +281,10 @@ fn scalar_and_width_serialization_enforce_input_projection_and_byte_budgets() {
             .unwrap(),
         "75%"
     );
-    assert_eq!(
+    assert!(
         scalar
             .serialize_specified(CssSerializationLimits::new(1, 1, 2))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
 }

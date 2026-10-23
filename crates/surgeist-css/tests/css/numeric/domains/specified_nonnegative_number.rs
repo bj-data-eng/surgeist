@@ -1,9 +1,11 @@
 //! Checked authored nonnegative numbers retain exact syntax and provenance.
 
+use crate::css::support::failure_classes::NumericFailure;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::{
-    CssComponentValue, CssComponentValueRef, CssNumberCalculation, CssNumericConstructionErrorKind,
-    CssSerializationLimits, CssSpecifiedNonNegativeNumber, CssSpecifiedValueSerializationErrorKind,
-    CssValueOrigin, CssValueTokenRef, parse_component_values,
+    CssComponentValue, CssComponentValueRef, CssNumberCalculation, CssSerializationLimits,
+    CssSpecifiedNonNegativeNumber, CssValueOrigin, CssValueTokenRef, parse_component_values,
 };
 
 fn literal(text: &str) -> CssSpecifiedNonNegativeNumber {
@@ -48,7 +50,7 @@ fn exact_negative_and_wrong_domain_errors_retain_component_origin() {
             CssComponentValue::try_token(text).unwrap(),
         )
         .unwrap_err();
-        assert_eq!(error.kind(), &CssNumericConstructionErrorKind::OutOfRange);
+        assert!(error.is_out_of_range(), "{error:?}");
         assert_eq!(error.origin(), Some(&CssValueOrigin::Programmatic));
     }
     for text in ["1px", "1%", "1deg", "auto"] {
@@ -56,10 +58,7 @@ fn exact_negative_and_wrong_domain_errors_retain_component_origin() {
             CssComponentValue::try_token(text).unwrap(),
         )
         .unwrap_err();
-        assert_eq!(
-            error.kind(),
-            &CssNumericConstructionErrorKind::RootDomainMismatch
-        );
+        assert!(error.is_root_domain_mismatch(), "{error:?}");
     }
     let parsed = parse_component_values("  -1e-999").unwrap();
     let error = CssSpecifiedNonNegativeNumber::try_from_component(
@@ -93,10 +92,7 @@ fn bare_calculation_roots_reenter_literals_and_actual_math_stays_symbolic() {
         .unwrap();
         let result = CssSpecifiedNonNegativeNumber::try_from_calculation(calculation);
         if text.starts_with('-') {
-            assert_eq!(
-                result.unwrap_err().kind(),
-                &CssNumericConstructionErrorKind::OutOfRange
-            );
+            assert!(result.unwrap_err().is_out_of_range());
         } else {
             let value = result.unwrap();
             assert!(value.literal_component().is_some());
@@ -122,7 +118,7 @@ fn bare_calculation_roots_reenter_literals_and_actual_math_stays_symbolic() {
             parse_component_values("calc(1 + 2%)").unwrap(),
             Default::default(),
         ),
-        Some(surgeist_css::CssNumericConstructionErrorKind::IncompatibleTypes),
+        Some(NumericFailure::IncompatibleTypes),
     );
 }
 
@@ -147,19 +143,19 @@ fn shared_scalar_equality_retains_provenance_and_budgets_are_atomic() {
     for (limits, expected) in [
         (
             CssSerializationLimits::new(0, 10, 10),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(10, 0, 10),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(10, 10, 3),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            value.serialize_specified(limits).unwrap_err().kind(),
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
             expected
         );
         assert_eq!(

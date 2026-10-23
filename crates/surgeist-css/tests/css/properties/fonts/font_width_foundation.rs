@@ -165,20 +165,19 @@ fn inherited_normal_width_expands_once_and_pending_reentry_uses_same_grammar() {
         panic!("substitution remains pending")
     };
     assert!(pending.source().same_occurrence(&source));
-    assert_eq!(
+    assert!(
         pending
             .reenter(parse_component_values("var(--again)").unwrap())
             .unwrap_err()
-            .kind(),
-        &CssExpansionErrorKind::ResidualSubstitution
+            .is_residual_substitution()
     );
-    assert!(matches!(
+    assert!(
         pending
             .reenter(parse_component_values("-1%").unwrap())
             .unwrap_err()
-            .kind(),
-        CssExpansionErrorKind::InvalidReplacement(_)
-    ));
+            .replacement_error()
+            .is_some()
+    );
     let replacement = parse_component_values("75%").unwrap();
     let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap() else {
         panic!("strict replacement completes")

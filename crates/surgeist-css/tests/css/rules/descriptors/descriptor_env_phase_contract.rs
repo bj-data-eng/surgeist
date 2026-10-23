@@ -3,24 +3,27 @@
 //! selected Counter Styles3 §3 and Fonts4 §6.9 with adopted completed-index
 //! cardinalities. No environment lookup, computed value or author store is modeled.
 
+use crate::css::support::failure_classes::ComponentFailure;
+use crate::css::support::failure_classes::SerializationFailure as EmitFailure;
+use crate::css::support::failure_classes::component_failure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::rules::assert_origin_bytes as point;
 use surgeist_css::{
-    CssComponentValue, CssComponentValueErrorKind as ComponentFailure, CssComponentValueLimits,
-    CssComponentValueRef, CssComponentValues, CssCounterStyleDescriptorKind as CounterKind,
+    CssComponentValue, CssComponentValueLimits, CssComponentValueRef, CssComponentValues,
+    CssCounterStyleDescriptorKind as CounterKind,
     CssCounterStyleDescriptorRef as CounterOccurrence, CssCounterStyleDescriptorValue as Counter,
-    CssCounterStyleDescriptorValueRef as CounterView, CssCounterStyleValueError,
-    CssCounterStyleValueErrorKind as CounterFailure, CssCounterSymbol, CssFontDisplay,
-    CssFontFeatureDisplayOccurrence, CssFontFeatureDisplayValue as Display,
+    CssCounterStyleDescriptorValueRef as CounterView, CssCounterStyleValueError, CssCounterSymbol,
+    CssFontDisplay, CssFontFeatureDisplayOccurrence, CssFontFeatureDisplayValue as Display,
     CssFontFeatureDisplayValueRef as DisplayView, CssFontFeatureValue as Feature,
-    CssFontFeatureValueBlock, CssFontFeatureValueDefinition, CssFontFeatureValueError,
-    CssFontFeatureValueErrorKind as FontFailure, CssFontFeatureValueKind as FeatureKind,
-    CssFontFeatureValueName, CssFontFeatureValueRef as FeatureView, CssFontFeatureValuesErrorKind,
+    CssFontFeatureValueBlock, CssFontFeatureValueDefinition,
+    CssFontFeatureValueKind as FeatureKind, CssFontFeatureValueName,
+    CssFontFeatureValueRef as FeatureView, CssFontFeatureValuesError,
     CssFontFeatureValuesItem as Item, CssNormalizedItem, CssParsedOrigin, CssRule,
     CssRuleContextKindRef, CssSerializationLimits as EmitLimits, CssSerializedOrigin,
-    CssSpecifiedValueSerializationErrorKind as EmitFailure, CssValueOrigin, CssValueTokenRef,
-    normalize_report, parse_component_values, parse_counter_style_block,
-    parse_counter_style_descriptor_value, parse_font_feature_display_value,
-    parse_font_feature_value, parse_font_feature_values_block, parse_sheet,
+    CssValueOrigin, CssValueTokenRef, normalize_report, parse_component_values,
+    parse_counter_style_block, parse_counter_style_descriptor_value,
+    parse_font_feature_display_value, parse_font_feature_value, parse_font_feature_values_block,
+    parse_sheet,
 };
 
 fn components(source: &str) -> CssComponentValues {
@@ -36,13 +39,10 @@ fn feature(kind: FeatureKind, source: &str) -> Feature {
     Feature::try_from_components(kind, components(source), Default::default()).unwrap()
 }
 fn counter_grammar(error: CssCounterStyleValueError) {
-    assert!(
-        matches!(error.kind(), CounterFailure::Grammar(_)),
-        "{error:?}"
-    );
+    assert!(error.diagnostic().is_some(), "{error:?}");
 }
-fn font_grammar(error: CssFontFeatureValueError) {
-    assert!(matches!(error.kind(), FontFailure::Grammar(_)), "{error:?}");
+fn font_grammar(error: CssFontFeatureValuesError) {
+    assert!(error.diagnostic().is_some(), "{error:?}");
 }
 
 const COUNTER_ORDINARY: [(CounterKind, &str); 10] = [
@@ -394,10 +394,10 @@ fn strict_checked_admission_and_reentry_reject_original_implicit_closures() {
         let b = Display::try_from_components(supplied.clone(), Default::default()).unwrap_err();
         let c = Feature::try_from_components(FeatureKind::Styleset, supplied, Default::default())
             .unwrap_err();
-        assert_eq!(a.kind(), &CounterFailure::RecoveredComponent);
-        assert_eq!(b.kind(), &FontFailure::RecoveredComponent);
-        assert_eq!(c.kind(), &FontFailure::RecoveredComponent);
-        for origin in [a.origin(), b.origin(), c.origin()] {
+        assert!(a.is_recovered_component(), "{a:?}");
+        assert!(b.is_recovered_component(), "{b:?}");
+        assert!(c.is_recovered_component(), "{c:?}");
+        for origin in [a.origin(), b.origin().unwrap(), c.origin().unwrap()] {
             assert!(matches!(
                 origin,
                 CssSerializedOrigin::Token(CssValueOrigin::ImplicitClosure { .. })
@@ -413,10 +413,10 @@ fn strict_checked_admission_and_reentry_reject_original_implicit_closures() {
     let c = feature(FeatureKind::Styleset, "env(x)")
         .reparse_after_substitution(components("1/*"), Default::default())
         .unwrap_err();
-    assert_eq!(a.kind(), &CounterFailure::RecoveredComponent);
-    assert_eq!(b.kind(), &FontFailure::RecoveredComponent);
-    assert_eq!(c.kind(), &FontFailure::RecoveredComponent);
-    for origin in [a.origin(), b.origin(), c.origin()] {
+    assert!(a.is_recovered_component(), "{a:?}");
+    assert!(b.is_recovered_component(), "{b:?}");
+    assert!(c.is_recovered_component(), "{c:?}");
+    for origin in [a.origin(), b.origin().unwrap(), c.origin().unwrap()] {
         assert!(matches!(
             origin,
             CssSerializedOrigin::Token(CssValueOrigin::ImplicitClosure { .. })
@@ -446,16 +446,16 @@ fn checked_limits_are_cumulative_and_fail_before_pending_admission() {
         // origin, rather than manufacture source for a resource failure.
         let component_error =
             CssComponentValues::try_new(supplied.items().to_vec(), limits).unwrap_err();
-        assert_eq!(component_error.kind(), expected);
+        assert_eq!(component_failure(&component_error), expected);
         let a = Counter::try_from_components(CounterKind::Prefix, supplied.clone(), limits)
             .unwrap_err();
         let b = Display::try_from_components(supplied.clone(), limits).unwrap_err();
         let c = Feature::try_from_components(FeatureKind::Styleset, supplied.clone(), limits)
             .unwrap_err();
-        assert_eq!(a.kind(), &CounterFailure::Component(expected));
-        assert_eq!(b.kind(), &FontFailure::Component(expected));
-        assert_eq!(c.kind(), &FontFailure::Component(expected));
-        for origin in [a.origin(), b.origin(), c.origin()] {
+        assert_eq!(a.component_error().map(component_failure), Some(expected));
+        assert_eq!(b.component_error().map(component_failure), Some(expected));
+        assert_eq!(c.component_error().map(component_failure), Some(expected));
+        for origin in [a.origin(), b.origin().unwrap(), c.origin().unwrap()] {
             assert_eq!(
                 origin,
                 &CssSerializedOrigin::Token(component_error.origin().clone())
@@ -470,9 +470,11 @@ fn checked_limits_are_cumulative_and_fail_before_pending_admission() {
         CssComponentValueLimits::try_new(256, 2, usize::MAX).unwrap(),
     )
     .unwrap_err();
-    assert_eq!(
-        error.kind(),
-        &FontFailure::Component(ComponentFailure::ComponentLimit)
+    assert!(
+        error
+            .component_error()
+            .is_some_and(|error| error.is_component_limit()),
+        "{error:?}"
     );
     assert!(
         Feature::try_from_components(FeatureKind::Styleset, supplied, Default::default()).is_ok()
@@ -497,20 +499,23 @@ fn reentry_limits_are_atomic_and_failed_attempts_leave_the_receiver_reusable() {
         assert_eq!(
             a.reparse_after_substitution(components("\"x\""), limits)
                 .unwrap_err()
-                .kind(),
-            &CounterFailure::Component(expected)
+                .component_error()
+                .map(component_failure),
+            Some(expected)
         );
         assert_eq!(
             b.reparse_after_substitution(components("swap"), limits)
                 .unwrap_err()
-                .kind(),
-            &FontFailure::Component(expected)
+                .component_error()
+                .map(component_failure),
+            Some(expected)
         );
         assert_eq!(
             c.reparse_after_substitution(components("1"), limits)
                 .unwrap_err()
-                .kind(),
-            &FontFailure::Component(expected)
+                .component_error()
+                .map(component_failure),
+            Some(expected)
         );
     }
     let leaf_only = CssComponentValueLimits::try_new(0, usize::MAX, usize::MAX).unwrap();
@@ -543,10 +548,10 @@ fn ordinary_receivers_reject_reentry_before_replacement_limits_without_a_false_o
     let c = feature(FeatureKind::Styleset, "1")
         .reparse_after_substitution(components("env(x)"), none)
         .unwrap_err();
-    assert_eq!(a.kind(), &CounterFailure::NotPending);
-    assert_eq!(b.kind(), &FontFailure::NotPending);
-    assert_eq!(c.kind(), &FontFailure::NotPending);
-    for origin in [a.origin(), b.origin(), c.origin()] {
+    assert!(a.is_not_pending(), "{a:?}");
+    assert!(b.is_not_pending(), "{b:?}");
+    assert!(c.is_not_pending(), "{c:?}");
+    for origin in [a.origin(), b.origin().unwrap(), c.origin().unwrap()] {
         assert_eq!(origin, &CssSerializedOrigin::End(None));
     }
 }
@@ -563,10 +568,10 @@ fn nested_residual_var_and_env_reject_before_ordinary_grammar_with_opener_origin
         let c = feature(FeatureKind::Styleset, "env(x)")
             .reparse_after_substitution(components(source), Default::default())
             .unwrap_err();
-        assert_eq!(a.kind(), &CounterFailure::ResidualSubstitution);
-        assert_eq!(b.kind(), &FontFailure::ResidualSubstitution);
-        assert_eq!(c.kind(), &FontFailure::ResidualSubstitution);
-        for origin in [a.origin(), b.origin(), c.origin()] {
+        assert!(a.is_residual_substitution(), "{a:?}");
+        assert!(b.is_residual_substitution(), "{b:?}");
+        assert!(c.is_residual_substitution(), "{c:?}");
+        for origin in [a.origin(), b.origin().unwrap(), c.origin().unwrap()] {
             let CssSerializedOrigin::Token(CssValueOrigin::Parsed(origin)) = origin else {
                 panic!("actual residual opener")
             };
@@ -591,10 +596,10 @@ fn nested_residual_var_and_env_reject_before_ordinary_grammar_with_opener_origin
     let error = display("env(x)")
         .reparse_after_substitution(replacement, Default::default())
         .unwrap_err();
-    assert_eq!(error.kind(), &FontFailure::ResidualSubstitution);
+    assert!(error.is_residual_substitution(), "{error:?}");
     assert_eq!(
         error.origin(),
-        &CssSerializedOrigin::Token(CssValueOrigin::Programmatic)
+        Some(&CssSerializedOrigin::Token(CssValueOrigin::Programmatic))
     );
     // attr is not a universal residual-family classifier in these descriptors;
     // the selected ordinary display/index grammar owns its rejection.
@@ -618,13 +623,13 @@ fn grammar_errors_keep_parsed_or_programmatic_responsible_tokens_and_empty_has_n
     let c =
         Feature::try_from_components(FeatureKind::Styleset, components("1.0"), Default::default())
             .unwrap_err();
-    assert!(matches!(a.kind(), CounterFailure::Grammar(_)));
-    assert!(matches!(b.kind(), FontFailure::Grammar(_)));
-    assert!(matches!(c.kind(), FontFailure::Grammar(_)));
+    assert!(a.diagnostic().is_some());
+    assert!(b.diagnostic().is_some());
+    assert!(c.diagnostic().is_some());
     for (origin, source, end) in [
         (a.origin(), "1", 1),
-        (b.origin(), "banana", 6),
-        (c.origin(), "1.0", 3),
+        (b.origin().unwrap(), "banana", 6),
+        (c.origin().unwrap(), "1.0", 3),
     ] {
         let CssSerializedOrigin::Token(CssValueOrigin::Parsed(origin)) = origin else {
             panic!("responsible parsed token")
@@ -660,7 +665,7 @@ fn grammar_errors_keep_parsed_or_programmatic_responsible_tokens_and_empty_has_n
         Default::default(),
     )
     .unwrap_err();
-    for origin in [a.origin(), b.origin(), c.origin()] {
+    for origin in [a.origin(), b.origin().unwrap(), c.origin().unwrap()] {
         assert_eq!(
             origin,
             &CssSerializedOrigin::Token(CssValueOrigin::Programmatic)
@@ -674,7 +679,7 @@ fn grammar_errors_keep_parsed_or_programmatic_responsible_tokens_and_empty_has_n
     let b = Display::try_from_components(components(""), Default::default()).unwrap_err();
     let c = Feature::try_from_components(FeatureKind::Styleset, components(""), Default::default())
         .unwrap_err();
-    for origin in [a.origin(), b.origin(), c.origin()] {
+    for origin in [a.origin(), b.origin().unwrap(), c.origin().unwrap()] {
         assert_eq!(origin, &CssSerializedOrigin::End(None));
     }
     counter_grammar(a);
@@ -772,7 +777,7 @@ fn definitions_and_display_occurrences_use_checked_values_without_manufactured_n
         feature(FeatureKind::Styleset, "env(x)"),
     );
     let error = CssFontFeatureValueBlock::try_new(FeatureKind::Swash, vec![mismatch]).unwrap_err();
-    assert_eq!(error.kind(), CssFontFeatureValuesErrorKind::KindMismatch);
+    assert!(error.is_kind_mismatch(), "{error:?}");
     assert_eq!(error.block(), Some(FeatureKind::Swash));
     assert_eq!(error.definition_index(), Some(0));
 }
@@ -875,9 +880,18 @@ fn value_output_uses_cumulative_byte_and_node_limits_without_mutating_phase() {
             EmitFailure::ByteLimit,
         ),
     ] {
-        assert_eq!(a.serialize_specified(limits).unwrap_err().kind(), expected);
-        assert_eq!(b.serialize_specified(limits).unwrap_err().kind(), expected);
-        assert_eq!(c.serialize_specified(limits).unwrap_err().kind(), expected);
+        assert_eq!(
+            serialization_failure(&a.serialize_specified(limits).unwrap_err()),
+            expected
+        );
+        assert_eq!(
+            serialization_failure(&b.serialize_specified(limits).unwrap_err()),
+            expected
+        );
+        assert_eq!(
+            serialization_failure(&c.serialize_specified(limits).unwrap_err()),
+            expected
+        );
     }
     let exact = EmitLimits::new(usize::MAX, usize::MAX, 6);
     assert_eq!(a.serialize_specified(exact).unwrap(), "env(x)");
@@ -925,9 +939,11 @@ fn suppressed_pending_occurrences_consume_complete_work_even_when_only_later_val
             "\"ok\""
         );
         assert_eq!(
-            rule.descriptor_specified_css(CounterKind::Prefix, limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(
+                &rule
+                    .descriptor_specified_css(CounterKind::Prefix, limits)
+                    .unwrap_err()
+            ),
             expected
         );
         let simple = parse_sheet("@font-feature-values Demo{@styleset{Pick:1}}");
@@ -946,7 +962,7 @@ fn suppressed_pending_occurrences_consume_complete_work_even_when_only_later_val
             "@font-feature-values Demo { @styleset { Pick: 1; } }"
         );
         assert_eq!(
-            rule.serialize_specified(limits).unwrap_err().kind(),
+            serialization_failure(&rule.serialize_specified(limits).unwrap_err()),
             expected
         );
     }

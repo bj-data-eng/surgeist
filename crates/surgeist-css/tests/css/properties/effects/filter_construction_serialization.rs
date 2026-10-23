@@ -553,12 +553,11 @@ fn repeated_pending_reentry_preserves_replacement_child_origins_after_failure() 
             };
             assert_eq!(origin.source().as_str(), css);
             let before = filter.clone();
-            assert_eq!(
+            assert!(
                 filter
                     .serialize_specified(L::new(100, 100, 1))
                     .unwrap_err()
-                    .kind(),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit
+                    .is_byte_limit()
             );
             assert_eq!(filter, &before);
             if let Some(CssAngleOrZero::Angle(angle)) = hue.authored_angle()

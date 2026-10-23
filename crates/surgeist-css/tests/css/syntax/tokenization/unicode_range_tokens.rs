@@ -80,10 +80,12 @@ fn invalid_unicode_ranges_point_to_the_responsible_original_token() {
         let expected = value_start + value.find(responsible).unwrap();
         let position = diagnostic.error().position();
         assert_eq!(position.byte_offset().value(), expected, "{value:?}");
-        let surgeist_css::ErrorKind::InvalidDescriptorValue(detail) = diagnostic.error().kind()
-        else {
-            panic!("descriptor error");
-        };
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidDescriptorValue,
+            "descriptor error"
+        );
         assert_eq!(
             detail.encountered().unwrap().authored(),
             spelling,

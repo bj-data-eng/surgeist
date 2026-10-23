@@ -89,16 +89,30 @@ impl Default for CssNormalizationLimits {
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CssNormalizationResource {
+    /// Rule nesting depth.
     RuleDepth,
+    /// Admitted rules.
     Rules,
+    /// Emitted declarations.
     Declarations,
+    /// Expanded longhand contributions.
     Contributions,
 }
 
+impl CssNormalizationResource {
+    const fn description(self) -> &'static str {
+        match self {
+            Self::RuleDepth => "rule depth",
+            Self::Rules => "rule",
+            Self::Declarations => "declaration",
+            Self::Contributions => "contribution",
+        }
+    }
+}
+
 /// An atomic normalization failure, distinct from parser recovery diagnostics.
-#[non_exhaustive]
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum CssNormalizationErrorKind {
+enum CssNormalizationErrorKind {
     /// An emitted declaration requires intrinsic expansion that is not implemented.
     UnsupportedDeclaration(CssExpansionError),
     /// A traversal/output budget failed before admitting the responsible unit.
@@ -129,10 +143,23 @@ struct NormalizationFailure {
 }
 
 impl CssNormalizationError {
-    /// Returns the typed capability or resource failure.
+    /// Returns the exhausted traversal or output resource and its budget.
     #[must_use]
-    pub fn kind(&self) -> &CssNormalizationErrorKind {
-        &self.failure.kind
+    pub fn exhausted_limit(&self) -> Option<(CssNormalizationResource, usize)> {
+        match self.failure.kind {
+            CssNormalizationErrorKind::LimitExceeded { resource, limit } => Some((resource, limit)),
+            CssNormalizationErrorKind::UnsupportedDeclaration(_) => None,
+        }
+    }
+
+    /// Returns the expansion failure of an emitted declaration whose intrinsic expansion
+    /// is not implemented.
+    #[must_use]
+    pub fn expansion(&self) -> Option<&CssExpansionError> {
+        match &self.failure.kind {
+            CssNormalizationErrorKind::UnsupportedDeclaration(error) => Some(error),
+            CssNormalizationErrorKind::LimitExceeded { .. } => None,
+        }
     }
 
     /// Returns the responsible authored position, when one exists.
@@ -179,14 +206,15 @@ impl CssNormalizationError {
 
 impl fmt::Display for CssNormalizationError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.kind() {
+        match &self.failure.kind {
             CssNormalizationErrorKind::UnsupportedDeclaration(error) => {
                 write!(formatter, "stylesheet normalization failed: {error}")
             }
             CssNormalizationErrorKind::LimitExceeded { resource, limit } => {
                 write!(
                     formatter,
-                    "stylesheet normalization exceeded {resource:?} budget {limit}"
+                    "stylesheet normalization exceeded its {} budget of {limit}",
+                    resource.description()
                 )
             }
         }
@@ -195,7 +223,7 @@ impl fmt::Display for CssNormalizationError {
 
 impl std::error::Error for CssNormalizationError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self.kind() {
+        match &self.failure.kind {
             CssNormalizationErrorKind::UnsupportedDeclaration(error) => Some(error),
             CssNormalizationErrorKind::LimitExceeded { .. } => None,
         }

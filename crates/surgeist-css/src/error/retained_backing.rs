@@ -8,13 +8,13 @@ struct DiagnosticBacking<'a, F> {
 }
 impl<E, F: FnMut() -> Result<(), E>> DiagnosticBacking<'_, F> {
     fn step(&mut self) -> Result<(), CssRetainedPayloadError<E>> {
-        (self.admit)().map_err(CssRetainedPayloadError::Admission)
+        (self.admit)().map_err(CssRetainedPayloadError::admission)
     }
     fn add(&mut self, bytes: usize) -> Result<(), CssRetainedPayloadError<E>> {
         self.bytes = self
             .bytes
             .checked_add(bytes)
-            .ok_or(CssRetainedPayloadError::CapacityOverflow)?;
+            .ok_or_else(CssRetainedPayloadError::capacity_overflow)?;
         Ok(())
     }
     fn string(&mut self, value: &String) -> Result<(), CssRetainedPayloadError<E>> {
@@ -33,7 +33,8 @@ impl<E, F: FnMut() -> Result<(), E>> DiagnosticBacking<'_, F> {
         match kind {
             ErrorKind::EscapeParseError(_)
             | ErrorKind::UnexpectedEnd(_)
-            | ErrorKind::NestingLimit(_) => Ok(()),
+            | ErrorKind::NestingLimit(_)
+            | ErrorKind::ParserUnavailable(_) => Ok(()),
             ErrorKind::UnexpectedToken(value) => self.string(&value.encountered.authored),
             ErrorKind::InvalidAtRulePlacement(value) => self.string(&value.name.0),
             ErrorKind::InvalidAtRulePrelude(value) | ErrorKind::InvalidAtRuleBody(value) => {
@@ -114,7 +115,7 @@ impl<E, F: FnMut() -> Result<(), E>> DiagnosticBacking<'_, F> {
                         .conflicting
                         .capacity()
                         .checked_mul(std::mem::size_of::<CssDescriptorName>())
-                        .ok_or(CssRetainedPayloadError::CapacityOverflow)?,
+                        .ok_or_else(CssRetainedPayloadError::capacity_overflow)?,
                 )?;
                 for name in &value.conflicting {
                     self.string(&name.0)?;
@@ -131,7 +132,7 @@ impl<E, F: FnMut() -> Result<(), E>> DiagnosticBacking<'_, F> {
         }
     }
 }
-impl Error {
+impl CssError {
     pub(crate) fn retained_backing_bytes_with<E>(
         &self,
         admit: &mut impl FnMut() -> Result<(), E>,

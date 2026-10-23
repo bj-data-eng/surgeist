@@ -266,7 +266,7 @@ use variables::{
 
 use crate::component_values::CssComponentValues;
 use crate::error::{
-    CssFeatureId, Error, basic, from_parse_error, from_rule_parse_error, invalid_at_rule_block,
+    CssError, CssFeatureId, basic, from_parse_error, from_rule_parse_error, invalid_at_rule_block,
     invalid_at_rule_body, invalid_at_rule_placement, invalid_custom_declaration_annotation,
     invalid_descriptor_annotation, invalid_known_declaration_annotation, invalid_syntax,
     property_name_error, with_at_rule_prelude_context, with_media_query_context,
@@ -625,8 +625,9 @@ fn parse_all_property<'i, 't>(
 /// levels are retained, and the first level
 /// beyond that drops its smallest enclosing recovery unit. Input deeper than 128
 /// levels is parsed on a bounded larger-stack thread; if the platform cannot
-/// start it, the report retains no rules and carries a `NestingLimit` refusal
-/// (limit 128, action `StopAtNestingLimit`), followed only by any tokenizer EOF
+/// start it, the report retains no rules and carries a
+/// [`CssErrorCode::ParserUnavailable`](crate::CssErrorCode::ParserUnavailable)
+/// refusal (limit 128, action `StopAtNestingLimit`), followed only by any tokenizer EOF
 /// or escape diagnostics, rather than recursing on the caller's stack. Recovery does not
 /// apply cascade, substitution, selector matching, contextual resolution, or
 /// resource loading.
@@ -706,7 +707,8 @@ fn parse_sheet_snapshot_inner(
 /// and other non-declaration input never produce a rule node from this front door.
 /// Input deeper than 128 levels needs a bounded larger-stack thread; if the
 /// platform cannot start it, the report retains no declarations and carries a
-/// `NestingLimit` refusal (limit 128), followed only by any tokenizer EOF or escape
+/// [`CssErrorCode::ParserUnavailable`](crate::CssErrorCode::ParserUnavailable)
+/// refusal (limit 128), followed only by any tokenizer EOF or escape
 /// diagnostics, instead of recursing on the caller's stack.
 ///
 /// ```
@@ -773,7 +775,7 @@ fn parse_context_inner(
         RecoveryState,
     ) -> std::result::Result<
         Recovered<Vec<CssRule>>,
-        ParseError<'i, Error>,
+        ParseError<'i, CssError>,
     >,
 ) -> crate::CssParseReport<CssSheet> {
     let working_source = crate::tokenization::prepare(source);
@@ -878,7 +880,7 @@ pub(super) struct Recovered<T> {
 
 pub(super) fn block_item_diagnostic(
     source: &str,
-    error: ParseError<'_, Error>,
+    error: ParseError<'_, CssError>,
     failed_unit: &str,
     unit_end: usize,
     action: crate::CssRecoveryAction,
@@ -889,7 +891,7 @@ pub(super) fn block_item_diagnostic(
 
 pub(super) fn block_item_diagnostic_from_start(
     source: &str,
-    error: ParseError<'_, Error>,
+    error: ParseError<'_, CssError>,
     unit_start: usize,
     unit_end: usize,
     action: crate::CssRecoveryAction,
@@ -923,7 +925,7 @@ pub(super) fn consume_failed_rule_block<'i, 't>(
     failed: bool,
     recovery: &RecoveryState,
     enclosing_production: &'static str,
-) -> (bool, Option<ParseError<'i, Error>>) {
+) -> (bool, Option<ParseError<'i, CssError>>) {
     let position = input.position().byte_index();
     let failed_at_block = failed
         && position > 0
@@ -943,7 +945,7 @@ pub(super) fn consume_failed_rule_block<'i, 't>(
 /// A dropped unit's diagnostic, spanning exactly that unit.
 pub(super) fn structural_rule_diagnostic(
     source: &str,
-    error: ParseError<'_, Error>,
+    error: ParseError<'_, CssError>,
     failed_unit: &str,
     unit_start: usize,
     unit_end: usize,
@@ -980,7 +982,7 @@ pub(super) fn structural_recovery_production(failed_unit: &str) -> &'static str 
 pub(super) fn top_level_only_at_rule_placement<'i>(
     location: cssparser::SourceLocation,
     name: &str,
-) -> ParseError<'i, Error> {
+) -> ParseError<'i, CssError> {
     invalid_at_rule_placement(location, name, "the stylesheet top level")
 }
 
@@ -1134,14 +1136,14 @@ fn parse_container_prelude<'i, 't>(
     source: &str,
     input: &mut Parser<'i, 't>,
     recovery: &RecoveryState,
-) -> std::result::Result<CssContainerPrelude, ParseError<'i, Error>> {
+) -> std::result::Result<CssContainerPrelude, ParseError<'i, CssError>> {
     let (values, implicit) = collect_container_components(source, input, recovery)?;
     let prelude = container_prelude_from_components(values, input.current_source_location())?;
     recovery.retain_component_closures(implicit);
     Ok(prelude)
 }
 
-fn with_container_prelude_context<'i>(error: ParseError<'i, Error>) -> ParseError<'i, Error> {
+fn with_container_prelude_context<'i>(error: ParseError<'i, CssError>) -> ParseError<'i, CssError> {
     if queries::media_terminal_error(&error) {
         error
     } else {
@@ -1158,7 +1160,7 @@ fn parse_nested_group_rules<'i, 't>(
     source: &'i str,
     input: &mut Parser<'i, 't>,
     recovery: RecoveryState,
-) -> std::result::Result<Recovered<Vec<CssRule>>, ParseError<'i, Error>> {
+) -> std::result::Result<Recovered<Vec<CssRule>>, ParseError<'i, CssError>> {
     let units = RuleListUnits::select_block_contents(source, input, &recovery)?;
     let mut grammar = RuleParser::group(source, recovery);
     let mut sink = GroupSink(Vec::new());
@@ -1173,7 +1175,7 @@ fn parse_page_prelude<'i, 't>(
     source: &'i str,
     input: &mut Parser<'i, 't>,
     snapshot: &CssSourceSnapshot,
-) -> std::result::Result<CssPageSelectorList, ParseError<'i, Error>> {
+) -> std::result::Result<CssPageSelectorList, ParseError<'i, CssError>> {
     let selector = parse_page_selector(input, snapshot).map_err(|error| {
         with_at_rule_prelude_context(
             error,
@@ -1203,7 +1205,7 @@ fn parse_scoped_rule_list<'i, 't>(
     recovery: RecoveryState,
     has_style_ancestor: bool,
     body: ScopedBodyKind,
-) -> std::result::Result<Recovered<CssScopedRuleList>, ParseError<'i, Error>> {
+) -> std::result::Result<Recovered<CssScopedRuleList>, ParseError<'i, CssError>> {
     if has_style_ancestor {
         recovery.record_style_context(input.position().byte_index());
     }
@@ -1226,7 +1228,7 @@ fn parse_scoped_rule_list<'i, 't>(
 
 fn parse_namespace_prelude<'i, 't>(
     input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssNamespacePrelude, ParseError<'i, Error>> {
+) -> std::result::Result<CssNamespacePrelude, ParseError<'i, CssError>> {
     let prefix = input
         .try_parse(Parser::expect_ident_cloned)
         .ok()
@@ -1242,7 +1244,7 @@ fn parse_namespace_prelude<'i, 't>(
 
 fn parse_layer_prelude<'i, 't>(
     input: &mut Parser<'i, 't>,
-) -> std::result::Result<Vec<CssLayerName>, ParseError<'i, Error>> {
+) -> std::result::Result<Vec<CssLayerName>, ParseError<'i, CssError>> {
     if input.is_exhausted() {
         return Ok(Vec::new());
     }
@@ -1268,7 +1270,7 @@ fn parse_layer_prelude<'i, 't>(
 
 fn parse_layer_name<'i, 't>(
     input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssLayerName, ParseError<'i, Error>> {
+) -> std::result::Result<CssLayerName, ParseError<'i, CssError>> {
     let mut locations = vec![input.current_source_location()];
     let mut components = vec![input.expect_ident_cloned().map_err(basic)?.to_string()];
 
@@ -1307,7 +1309,7 @@ fn parse_scope_prelude<'i, 't>(
     state: &RecoveryState,
     root_anchors: selectors::SelectorAnchorMode,
     relative_root: bool,
-) -> std::result::Result<CssScopePrelude, ParseError<'i, Error>> {
+) -> std::result::Result<CssScopePrelude, ParseError<'i, CssError>> {
     let root = if input.try_parse(Parser::expect_parenthesis_block).is_ok() {
         let _boundary_depth = state.enter_component_block(source, input, "baseline.rule.scope")?;
         Some(input.parse_nested_block(|input| {
@@ -1344,7 +1346,7 @@ fn parse_scope_prelude<'i, 't>(
     Ok(CssScopePrelude { root, limit })
 }
 
-fn with_scope_prelude_context(error: ParseError<'_, Error>) -> ParseError<'_, Error> {
+fn with_scope_prelude_context(error: ParseError<'_, CssError>) -> ParseError<'_, CssError> {
     if crate::error::is_nesting_limit_error(&error) {
         error
     } else {
@@ -1361,7 +1363,7 @@ fn parse_counter_style_prelude<'i, 't>(
     source: &'i str,
     input: &mut Parser<'i, 't>,
     source_snapshot: &CssSourceSnapshot,
-) -> Result<CounterStylePrelude, ParseError<'i, Error>> {
+) -> Result<CounterStylePrelude, ParseError<'i, CssError>> {
     let name = parse_counter_style_name(input, source_snapshot).map_err(|error| {
         with_at_rule_prelude_context(
             error,
@@ -1387,7 +1389,7 @@ fn parse_counter_style_prelude<'i, 't>(
 
 fn parse_font_face_prelude<'i, 't>(
     input: &mut Parser<'i, 't>,
-) -> Result<(), ParseError<'i, Error>> {
+) -> Result<(), ParseError<'i, CssError>> {
     if !input.is_exhausted() {
         return Err(with_at_rule_prelude_context(
             invalid_syntax(input.current_source_location()),
@@ -1401,7 +1403,7 @@ fn parse_font_face_prelude<'i, 't>(
 
 fn parse_keyframes_prelude<'i, 't>(
     input: &mut Parser<'i, 't>,
-) -> Result<CssKeyframesName, ParseError<'i, Error>> {
+) -> Result<CssKeyframesName, ParseError<'i, CssError>> {
     let name = parse_keyframes_name(input).map_err(|error| {
         with_at_rule_prelude_context(
             error,
@@ -1458,7 +1460,7 @@ impl<'s> ScopedRuleParser<'s> {
         &mut self,
         input: &mut Parser<'s, 't>,
         body: ScopedBodyKind,
-    ) -> Result<CssScopedRuleList, ParseError<'s, Error>> {
+    ) -> Result<CssScopedRuleList, ParseError<'s, CssError>> {
         let recovered = parse_scoped_rule_list(
             self.source,
             input,
@@ -1486,7 +1488,7 @@ impl<'i> RuleListGrammar<'i, ScopedBlockItem> for ScopedRuleParser<'i> {
 impl<'i> AtRuleParser<'i> for ScopedRuleParser<'i> {
     type Prelude = AtRulePrelude;
     type AtRule = ScopedBlockItem;
-    type Error = Error;
+    type Error = CssError;
 
     fn parse_prelude<'t>(
         &mut self,
@@ -1657,7 +1659,7 @@ impl<'i> AtRuleParser<'i> for ScopedRuleParser<'i> {
 impl<'i> QualifiedRuleParser<'i> for ScopedRuleParser<'i> {
     type Prelude = CssScopedStyleSelectorList;
     type QualifiedRule = ScopedBlockItem;
-    type Error = Error;
+    type Error = CssError;
 
     fn parse_prelude<'t>(
         &mut self,
@@ -1701,7 +1703,7 @@ impl<'i> QualifiedRuleParser<'i> for ScopedRuleParser<'i> {
 
 impl<'i> DeclarationParser<'i> for ScopedRuleParser<'i> {
     type Declaration = ScopedBlockItem;
-    type Error = Error;
+    type Error = CssError;
 
     fn parse_value<'t>(
         &mut self,
@@ -1716,7 +1718,7 @@ impl<'i> DeclarationParser<'i> for ScopedRuleParser<'i> {
     }
 }
 
-impl<'i> RuleBodyItemParser<'i, ScopedBlockItem, Error> for ScopedRuleParser<'i> {
+impl<'i> RuleBodyItemParser<'i, ScopedBlockItem, CssError> for ScopedRuleParser<'i> {
     fn parse_declarations(&self) -> bool {
         self.has_style_ancestor
     }
@@ -1824,16 +1826,16 @@ impl<'s> StrictDeclarationParser<'s> {
 impl<'i> AtRuleParser<'i> for StrictDeclarationParser<'i> {
     type Prelude = ();
     type AtRule = CssDeclaration;
-    type Error = Error;
+    type Error = CssError;
 }
 
 impl<'i> QualifiedRuleParser<'i> for StrictDeclarationParser<'i> {
     type Prelude = ();
     type QualifiedRule = CssDeclaration;
-    type Error = Error;
+    type Error = CssError;
 }
 
-impl<'i> RuleBodyItemParser<'i, CssDeclaration, Error> for StrictDeclarationParser<'i> {
+impl<'i> RuleBodyItemParser<'i, CssDeclaration, CssError> for StrictDeclarationParser<'i> {
     fn parse_declarations(&self) -> bool {
         true
     }
@@ -1845,7 +1847,7 @@ impl<'i> RuleBodyItemParser<'i, CssDeclaration, Error> for StrictDeclarationPars
 
 impl<'i> DeclarationParser<'i> for StrictDeclarationParser<'i> {
     type Declaration = CssDeclaration;
-    type Error = Error;
+    type Error = CssError;
 
     fn parse_value<'t>(
         &mut self,
@@ -1945,7 +1947,7 @@ pub(super) fn parse_declaration_core<'i, 't>(
     declaration_start: &ParserState,
     source_snapshot: &CssSourceSnapshot,
     parser_context: crate::CssParserContext,
-) -> std::result::Result<ParsedDeclaration, ParseError<'i, Error>> {
+) -> std::result::Result<ParsedDeclaration, ParseError<'i, CssError>> {
     // Revisit only the name token. The original snapshot is shared even when
     // this parser reads a same-length masked structural chunk.
     let value_start = input.state();
@@ -2044,8 +2046,8 @@ pub(super) fn parse_declaration_core<'i, 't>(
 pub(super) fn collect_declaration_value<'i, 't, T>(
     input: &mut Parser<'i, 't>,
     source_snapshot: &CssSourceSnapshot,
-    parse_value: impl FnOnce(&mut Parser<'i, 't>) -> std::result::Result<T, ParseError<'i, Error>>,
-) -> std::result::Result<(T, CssComponentValues, CssParsedOrigin), ParseError<'i, Error>> {
+    parse_value: impl FnOnce(&mut Parser<'i, 't>) -> std::result::Result<T, ParseError<'i, CssError>>,
+) -> std::result::Result<(T, CssComponentValues, CssParsedOrigin), ParseError<'i, CssError>> {
     let start = input.state();
     let value = parse_value(input)?;
     input.reset(&start);
@@ -2068,7 +2070,7 @@ pub(crate) fn parse_color_scheme_value_controlled(
     parser_context: crate::CssParserContext,
     source: &CssSourceSnapshot,
     control: &crate::utf16_value::Control<'_>,
-) -> Result<Result<CssDeclarationBody, crate::CssPropertyValueParseError>, ()> {
+) -> Result<Result<CssDeclarationBody, crate::CssPropertyValueError>, ()> {
     control.step()?;
     let mut document = match crate::syntax_consumption::normalize_checked_controlled(
         components.items(),
@@ -2081,8 +2083,8 @@ pub(crate) fn parse_color_scheme_value_controlled(
             if control.failure().is_some() {
                 return Err(());
             }
-            control.component_resource(error.kind())?;
-            return crate::CssPropertyValueParseError::from_component_controlled(error, control)
+            control.component_resource(error.kind)?;
+            return crate::CssPropertyValueError::from_component_controlled(error, control)
                 .map(Err);
         }
     };
@@ -2097,7 +2099,7 @@ pub(crate) fn parse_color_scheme_value_controlled(
             unreachable!("controlled checked component")
         };
         if let Some(origin) = component.implicit_termination_origin() {
-            return crate::CssPropertyValueParseError::from_direct_grammar_controlled(
+            return crate::CssPropertyValueError::from_direct_grammar_controlled(
                 crate::error::property::implicit_eof_kind(),
                 crate::CssSerializedOrigin::End(Some(origin.clone())),
                 control,
@@ -2119,7 +2121,7 @@ pub(crate) fn parse_color_scheme_value_controlled(
         Ok(body) => Ok(Ok(body)),
         Err(error) => {
             let (kind, origin) = error.into_parts_controlled(control)?;
-            crate::CssPropertyValueParseError::from_direct_grammar_controlled(kind, origin, control)
+            crate::CssPropertyValueError::from_direct_grammar_controlled(kind, origin, control)
                 .map(Err)
         }
     }
@@ -2129,7 +2131,7 @@ pub(crate) fn parse_property_value_body(
     property: CssPropertyNameRef<'_>,
     components: &CssComponentValues,
     parser_context: crate::CssParserContext,
-) -> Result<CssDeclarationBody, crate::CssPropertyValueParseError> {
+) -> Result<CssDeclarationBody, crate::CssPropertyValueError> {
     let grammar = match property {
         CssPropertyNameRef::Known(property) => PropertyValueGrammar::Known(property.grammar()),
         CssPropertyNameRef::Custom(name) => PropertyValueGrammar::Custom(name),
@@ -2144,7 +2146,7 @@ pub(crate) fn parse_property_value_body_for_grammar(
     grammar: CssPropertyGrammar,
     components: &CssComponentValues,
     parser_context: crate::CssParserContext,
-) -> Result<CssDeclarationBody, crate::CssPropertyValueParseError> {
+) -> Result<CssDeclarationBody, crate::CssPropertyValueError> {
     parse_property_value_body_selected(
         PropertyValueGrammar::Known(grammar),
         components,
@@ -2163,7 +2165,7 @@ fn parse_property_value_body_selected(
     grammar: PropertyValueGrammar<'_>,
     components: &CssComponentValues,
     parser_context: crate::CssParserContext,
-) -> Result<CssDeclarationBody, crate::CssPropertyValueParseError> {
+) -> Result<CssDeclarationBody, crate::CssPropertyValueError> {
     parse_property_value_slice_selected(
         grammar,
         components.items(),
@@ -2177,15 +2179,15 @@ fn parse_property_value_slice_selected(
     components: &[crate::CssComponentValue],
     depth: u32,
     parser_context: crate::CssParserContext,
-) -> Result<CssDeclarationBody, crate::CssPropertyValueParseError> {
-    let refused = crate::CssPropertyValueParseError::from_component;
+) -> Result<CssDeclarationBody, crate::CssPropertyValueError> {
+    let refused = crate::CssPropertyValueError::from_component;
     bounded_execution::components(components, depth, refused, || {
         let document = crate::syntax_consumption::normalize(
             crate::syntax_consumption::SyntaxInput::CheckedComponents(components),
             crate::syntax_consumption::SyntaxInputLimits::default(),
             0,
         )
-        .map_err(crate::CssPropertyValueParseError::from_component)?;
+        .map_err(crate::CssPropertyValueError::from_component)?;
         let mut parser = property_input::Parser::new(&document);
         parse_property_value_from_parser(
             grammar,
@@ -2195,7 +2197,7 @@ fn parse_property_value_slice_selected(
         )
         .map_err(|error| {
             let (kind, origin) = error.into_parts();
-            crate::CssPropertyValueParseError::from_direct_grammar(kind, origin)
+            crate::CssPropertyValueError::from_direct_grammar(kind, origin)
         })
     })
 }
@@ -2292,7 +2294,7 @@ fn parse_property_declaration_source<'i>(
     input: &mut Parser<'i, '_>,
     numeric: &crate::numeric::NumericInputContext<'_>,
     parser_context: crate::CssParserContext,
-) -> Result<CssDeclarationBody, ParseError<'i, Error>> {
+) -> Result<CssDeclarationBody, ParseError<'i, CssError>> {
     let crate::numeric::NumericInputContext::Parsed(snapshot) = numeric.ordinary() else {
         unreachable!("native property adapters receive source input")
     };
@@ -2336,7 +2338,7 @@ fn parse_known_declaration_body<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
     parser_context: crate::CssParserContext,
-) -> Result<CssDeclarationBody, ParseError<'i, Error>> {
+) -> Result<CssDeclarationBody, ParseError<'i, CssError>> {
     parse_property_declaration_source(
         PropertyValueGrammar::Known(CssPropertyGrammar::from_resolved(resolved_property)),
         input,
@@ -2349,7 +2351,7 @@ fn parse_svg_glyph_declaration_body<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
     admission: crate::svg_glyph::SvgGlyphAdmission,
-) -> Result<CssDeclarationBody, ParseError<'i, Error>> {
+) -> Result<CssDeclarationBody, ParseError<'i, CssError>> {
     parse_property_declaration_source(
         PropertyValueGrammar::SvgGlyph(admission),
         input,
@@ -2660,7 +2662,7 @@ pub(crate) fn parse_svg_glyph_value_body(
     admission: crate::svg_glyph::SvgGlyphAdmission,
     components: &CssComponentValues,
     context: crate::CssParserContext,
-) -> Result<CssDeclarationBody, crate::CssPropertyValueParseError> {
+) -> Result<CssDeclarationBody, crate::CssPropertyValueError> {
     parse_property_value_body_selected(
         PropertyValueGrammar::SvgGlyph(admission),
         components,
@@ -2726,11 +2728,11 @@ pub(super) fn parse_importance_boundary<'i, 't, T>(
     invalid: impl FnOnce(
         cssparser::SourceLocation,
         Option<cssparser::BasicParseError<'i>>,
-    ) -> ParseError<'i, Error>,
+    ) -> ParseError<'i, CssError>,
     parse_value: impl for<'tt> FnOnce(
         &mut Parser<'i, 'tt>,
-    ) -> std::result::Result<T, ParseError<'i, Error>>,
-) -> std::result::Result<(T, CssImportance), ParseError<'i, Error>> {
+    ) -> std::result::Result<T, ParseError<'i, CssError>>,
+) -> std::result::Result<(T, CssImportance), ParseError<'i, CssError>> {
     let value = input.parse_until_before(Delimiter::Bang, parse_value)?;
     if input.is_exhausted() {
         return Ok((value, CssImportance::Normal));
@@ -2752,8 +2754,8 @@ fn parse_declaration_boundary<'i, 't, T>(
     context: &DeclarationBoundaryContext<'_>,
     parse_value: impl for<'tt> FnOnce(
         &mut Parser<'i, 'tt>,
-    ) -> std::result::Result<T, ParseError<'i, Error>>,
-) -> std::result::Result<(T, CssImportance), ParseError<'i, Error>> {
+    ) -> std::result::Result<T, ParseError<'i, CssError>>,
+) -> std::result::Result<(T, CssImportance), ParseError<'i, CssError>> {
     let ordinary = matches!(
         context,
         DeclarationBoundaryContext::OrdinaryKnown(_)
@@ -2771,7 +2773,7 @@ fn parse_declaration_boundary<'i, 't, T>(
 fn invalid_annotation_for_context<'i>(
     location: cssparser::SourceLocation,
     context: &DeclarationBoundaryContext<'_>,
-) -> ParseError<'i, Error> {
+) -> ParseError<'i, CssError> {
     match context {
         DeclarationBoundaryContext::OrdinarySvgGlyph
         | DeclarationBoundaryContext::KeyframeSvgGlyph => {
@@ -2805,8 +2807,8 @@ pub(super) fn parse_descriptor_boundary<'i, 't, T>(
     descriptor: &str,
     parse_value: impl for<'tt> FnOnce(
         &mut Parser<'i, 'tt>,
-    ) -> std::result::Result<T, ParseError<'i, Error>>,
-) -> std::result::Result<T, ParseError<'i, Error>> {
+    ) -> std::result::Result<T, ParseError<'i, CssError>>,
+) -> std::result::Result<T, ParseError<'i, CssError>> {
     let context = DeclarationBoundaryContext::Descriptor {
         at_rule,
         descriptor,
@@ -2826,7 +2828,7 @@ fn parse_custom_media_prelude<'i>(
     source: &str,
     input: &mut Parser<'i, '_>,
     recovery: &RecoveryState,
-) -> Result<CustomMediaPrelude, ParseError<'i, Error>> {
+) -> Result<CustomMediaPrelude, ParseError<'i, CssError>> {
     input.skip_whitespace();
     let location = input.current_source_location();
     let component =
@@ -2847,7 +2849,7 @@ fn parse_custom_media_prelude<'i>(
             let boolean = crate::custom_media::boolean_keyword(&name)
                 .ok_or_else(|| invalid_syntax(p.current_source_location()))?;
             p.expect_exhausted().map_err(basic)?;
-            Ok::<_, ParseError<'i, Error>>(boolean)
+            Ok::<_, ParseError<'i, CssError>>(boolean)
         })
         .ok();
     input.reset(&body_start);

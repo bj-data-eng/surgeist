@@ -23,41 +23,93 @@ pub struct CssSpecifiedPageDeclarationBlock {
     entries: Vec<CssSpecifiedPageDeclarationEntry>,
     properties: CssSpecifiedDeclarationBlock,
 }
-#[derive(Clone, Debug)]
-#[non_exhaustive]
-pub enum CssPageProjectionError {
+/// Why selected Page state or its specified text cannot be completed.
+///
+/// A property-block or serialization failure is exposed by its accessor and is the
+/// error's source; [`Self::is_resource_limit`] groups the resource refusals.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CssPageProjectionError {
+    kind: PageProjectionKind,
+}
+#[derive(Clone, Debug, PartialEq)]
+enum PageProjectionKind {
     Properties(CssDeclarationBlockError),
     DuplicateDescriptor { kind: CssPageDescriptorKind },
     Resource(CssSerializationError),
 }
+impl CssPageProjectionError {
+    pub(crate) const fn duplicate(kind: CssPageDescriptorKind) -> Self {
+        Self {
+            kind: PageProjectionKind::DuplicateDescriptor { kind },
+        }
+    }
+    /// Returns the selected property block's failure.
+    #[must_use]
+    pub const fn properties(&self) -> Option<&CssDeclarationBlockError> {
+        match &self.kind {
+            PageProjectionKind::Properties(error) => Some(error),
+            _ => None,
+        }
+    }
+    /// Returns the descriptor kind that occurs more than once in the selected state.
+    #[must_use]
+    pub const fn duplicate_descriptor(&self) -> Option<CssPageDescriptorKind> {
+        match self.kind {
+            PageProjectionKind::DuplicateDescriptor { kind } => Some(kind),
+            _ => None,
+        }
+    }
+    /// Returns the descriptor or punctuation serialization failure.
+    #[must_use]
+    pub const fn resource(&self) -> Option<&CssSerializationError> {
+        match &self.kind {
+            PageProjectionKind::Resource(error) => Some(error),
+            _ => None,
+        }
+    }
+    /// Returns whether a resource limit refused the projection: a serialization resource
+    /// limit, or a property block whose serialization cause is one.
+    #[must_use]
+    pub fn is_resource_limit(&self) -> bool {
+        match &self.kind {
+            PageProjectionKind::Resource(error) => error.is_resource_limit(),
+            PageProjectionKind::Properties(error) => error.is_resource_limit(),
+            PageProjectionKind::DuplicateDescriptor { .. } => false,
+        }
+    }
+}
 impl std::fmt::Display for CssPageProjectionError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Properties(v) => v.fmt(f),
-            Self::DuplicateDescriptor { kind } => {
+        match &self.kind {
+            PageProjectionKind::Properties(v) => v.fmt(f),
+            PageProjectionKind::DuplicateDescriptor { kind } => {
                 write!(f, "duplicate selected {} descriptor", kind.css_name())
             }
-            Self::Resource(v) => v.fmt(f),
+            PageProjectionKind::Resource(v) => v.fmt(f),
         }
     }
 }
 impl std::error::Error for CssPageProjectionError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::Properties(v) => Some(v),
-            Self::Resource(v) => Some(v),
-            Self::DuplicateDescriptor { .. } => None,
+        match &self.kind {
+            PageProjectionKind::Properties(v) => Some(v),
+            PageProjectionKind::Resource(v) => Some(v),
+            PageProjectionKind::DuplicateDescriptor { .. } => None,
         }
     }
 }
 impl From<CssDeclarationBlockError> for CssPageProjectionError {
     fn from(v: CssDeclarationBlockError) -> Self {
-        Self::Properties(v)
+        Self {
+            kind: PageProjectionKind::Properties(v),
+        }
     }
 }
 impl From<CssSerializationError> for CssPageProjectionError {
     fn from(v: CssSerializationError) -> Self {
-        Self::Resource(v)
+        Self {
+            kind: PageProjectionKind::Resource(v),
+        }
     }
 }
 fn reserve<T>(items: &mut Vec<T>, count: usize) -> Result<(), CssSerializationError> {
@@ -89,7 +141,7 @@ impl CssSpecifiedPageDeclarationBlock {
                     writer.node()?;
                     let kind = v.value().kind();
                     if kinds.contains(&kind) {
-                        return Err(CssPageProjectionError::DuplicateDescriptor { kind });
+                        return Err(CssPageProjectionError::duplicate(kind));
                     }
                     reserve(&mut kinds, 1)?;
                     kinds.push(kind);
@@ -270,10 +322,10 @@ impl SpecifiedRuleWriter {
     ) -> Result<bool, RuleCssomSource> {
         // Validate selected semantic/source state cumulatively without source expansion.
         let checked = CssSpecifiedPageDeclarationBlock::from_entries(&block.entries, self)
-            .map_err(|v| match v {
-                CssPageProjectionError::Properties(v) => RuleCssomSource::DeclarationBlock(v),
-                CssPageProjectionError::Resource(v) => RuleCssomSource::from(v),
-                CssPageProjectionError::DuplicateDescriptor { .. } => {
+            .map_err(|v| match v.kind {
+                PageProjectionKind::Properties(v) => RuleCssomSource::DeclarationBlock(v),
+                PageProjectionKind::Resource(v) => RuleCssomSource::from(v),
+                PageProjectionKind::DuplicateDescriptor { .. } => {
                     unreachable!("private checked Page state")
                 }
             })?;

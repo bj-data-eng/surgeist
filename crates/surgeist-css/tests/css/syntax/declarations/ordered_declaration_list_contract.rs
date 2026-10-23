@@ -7,10 +7,12 @@
 use crate::css::support::authored_syntax::{
     grammar_checked_declaration as checked, parsed_declaration as parsed,
 };
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::*;
 
 type Limits = CssSerializationLimits;
-type Kind = CssSpecifiedValueSerializationErrorKind;
+type Kind = SerializationFailure;
 
 fn custom(name: &str, values: CssComponentValues, importance: CssImportance) -> CssDeclaration {
     let name = CssCustomPropertyName::try_new(name).unwrap();
@@ -116,12 +118,13 @@ fn empty_membership_has_one_aggregate_charge_and_no_output_bytes() {
         (Limits::new(1, 0, 0), Kind::ProjectionNodeLimit),
     ] {
         assert_eq!(
-            CssDeclarationList::try_new(Vec::new(), limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&CssDeclarationList::try_new(Vec::new(), limits).unwrap_err()),
             kind
         );
-        assert_eq!(list.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&list.serialize_specified(limits).unwrap_err()),
+            kind
+        );
         assert!(list.is_empty());
         assert_eq!(list.serialize_specified(Limits::new(1, 1, 0)).unwrap(), "");
     }
@@ -155,12 +158,15 @@ fn duplicate_properties_retain_order_and_priority_under_exact_aggregate_limits()
         (Limits::new(7, 7, 0), Kind::ByteLimit),
     ] {
         assert_eq!(
-            CssDeclarationList::try_new(originals.clone(), limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(
+                &CssDeclarationList::try_new(originals.clone(), limits).unwrap_err()
+            ),
             kind
         );
-        assert_eq!(list.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&list.serialize_specified(limits).unwrap_err()),
+            kind
+        );
         unchanged(&list, &originals);
         assert_eq!(list.serialize_specified(exact).unwrap(), EXPECTED);
     }
@@ -190,11 +196,10 @@ fn repeated_handles_are_repeated_work_and_limits_belong_to_each_request() {
         "color: purple;"
     );
     // Three individually affordable occurrences still share one aggregate budget.
-    assert_eq!(
+    assert!(
         CssDeclarationList::try_new(originals.clone(), Limits::new(3, 3, 44))
             .unwrap_err()
-            .kind(),
-        Kind::InputNodeLimit
+            .is_input_node_limit()
     );
     let list = CssDeclarationList::try_new(originals.clone(), Limits::new(100, 100, 100)).unwrap();
     for (limits, kind) in [
@@ -202,7 +207,10 @@ fn repeated_handles_are_repeated_work_and_limits_belong_to_each_request() {
         (Limits::new(10, 9, 44), Kind::ProjectionNodeLimit),
         (Limits::new(10, 10, 43), Kind::ByteLimit),
     ] {
-        assert_eq!(list.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&list.serialize_specified(limits).unwrap_err()),
+            kind
+        );
         unchanged(&list, &originals);
     }
     assert!(list[0].same_occurrence(&list[1]));
@@ -377,12 +385,15 @@ fn complete_admission_charges_utf8_and_inserted_boundaries_after_edge_trimming()
         (Limits::new(8, 8, 12), Kind::ByteLimit),
     ] {
         assert_eq!(
-            CssDeclarationList::try_new(originals.clone(), limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(
+                &CssDeclarationList::try_new(originals.clone(), limits).unwrap_err()
+            ),
             kind
         );
-        assert_eq!(list.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&list.serialize_specified(limits).unwrap_err()),
+            kind
+        );
         unchanged(&list, &originals);
         assert_eq!(
             declaration.serialize_specified(Default::default()).unwrap(),
@@ -459,17 +470,15 @@ fn later_real_provider_failure_returns_neither_an_admitted_list_nor_partial_text
     let values = unsupported.value_components().clone();
     // Ownership consumes each submitted Vec; retry uses independently retained handles.
     for _ in 0..2 {
-        assert_eq!(
+        assert!(
             CssDeclarationList::try_new(retained.clone(), Default::default())
                 .unwrap_err()
-                .kind(),
-            Kind::UnrepresentableValue
+                .is_unrepresentable_value()
         );
-        assert_eq!(
+        assert!(
             CssDeclarationList::try_new(retained.clone(), Limits::new(1000, 1000, 1000))
                 .unwrap_err()
-                .kind(),
-            Kind::UnrepresentableValue
+                .is_unrepresentable_value()
         );
         assert!(retained[0].same_occurrence(&valid));
         assert!(retained[1].same_occurrence(&unsupported));
@@ -478,12 +487,11 @@ fn later_real_provider_failure_returns_neither_an_admitted_list_nor_partial_text
             valid.serialize_specified(Default::default()).unwrap(),
             "color: purple;"
         );
-        assert_eq!(
+        assert!(
             unsupported
                 .serialize_specified(Default::default())
                 .unwrap_err()
-                .kind(),
-            Kind::UnrepresentableValue
+                .is_unrepresentable_value()
         );
     }
     // Parsing admits authored grammar; it does not promise every provider can emit it.
@@ -492,21 +500,19 @@ fn later_real_provider_failure_returns_neither_an_admitted_list_nor_partial_text
     assert_eq!(report.syntax().len(), 2);
     let parsed_originals = report.syntax().as_slice().to_vec();
     for _ in 0..2 {
-        assert_eq!(
+        assert!(
             report
                 .syntax()
                 .serialize_specified(Default::default())
                 .unwrap_err()
-                .kind(),
-            Kind::UnrepresentableValue
+                .is_unrepresentable_value()
         );
-        assert_eq!(
+        assert!(
             report
                 .syntax()
                 .serialize_specified(Limits::new(1000, 1000, 1000))
                 .unwrap_err()
-                .kind(),
-            Kind::UnrepresentableValue
+                .is_unrepresentable_value()
         );
         unchanged(report.syntax(), &parsed_originals);
     }

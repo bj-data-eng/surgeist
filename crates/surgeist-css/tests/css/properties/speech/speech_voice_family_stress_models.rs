@@ -2,6 +2,8 @@
 //! come from the pinned Speech grammar, borrowed Fonts family-name syntax and
 //! CSSOM serialization: quoted/identifier form and optional variant identity
 //! remain authored; ordinary positive indices have no machine magnitude bound.
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::*;
 
 fn parsed(text: &str) -> CssVoiceFamily {
@@ -185,7 +187,7 @@ fn checked_generic_constructor_validates_bare_calculation_literals_and_retains_m
             )),
         )
         .unwrap_err();
-        assert_eq!(error.kind(), &CssNumericConstructionErrorKind::OutOfRange);
+        assert!(error.is_out_of_range(), "{error:?}");
     }
     let literal = CssGenericVoice::try_new(
         None,
@@ -257,23 +259,26 @@ fn voice_family_serialization_has_cumulative_atomic_limits() {
     for (limits, kind) in [
         (
             CssSerializationLimits::new(0, usize::MAX, usize::MAX),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(usize::MAX, 0, usize::MAX),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(usize::MAX, usize::MAX, css.len() - 1),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
         // The first entry fits by itself, but all entries share one budget.
         (
             CssSerializationLimits::new(3, usize::MAX, usize::MAX),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
     ] {
-        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+            kind
+        );
         assert_eq!(value, original);
     }
     assert_eq!(
@@ -304,12 +309,11 @@ fn voice_stress_models_serialize_all_five_symbolic_modes() {
                 .unwrap(),
             css
         );
-        assert_eq!(
+        assert!(
             value
                 .serialize_specified(CssSerializationLimits::new(1, 1, css.len() - 1))
                 .unwrap_err()
-                .kind(),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit
+                .is_byte_limit()
         );
         let report = parse_style_attribute(&format!("voice-stress:{css}"));
         let CssKnownPropertyValueRef::VoiceStress(wrapper) = report.syntax()[0]
@@ -350,10 +354,9 @@ fn checked_generic_construction_rejects_original_recovered_variant_calculations(
         generic.variant(),
         Some(CssPositiveIntegerValue::Calculation(_))
     ));
-    assert_eq!(
+    assert!(
         CssGenericVoice::try_new(generic.age(), generic.gender(), generic.variant().cloned())
             .unwrap_err()
-            .kind(),
-        &CssNumericConstructionErrorKind::RecoveredComponent
+            .is_recovered_component()
     );
 }

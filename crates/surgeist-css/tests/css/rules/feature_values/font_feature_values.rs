@@ -2,7 +2,7 @@ use crate::css::support::descriptor_phases;
 use descriptor_phases::*;
 
 use crate::css::support::rules::{ExpectedRejection, invalid_descriptor, rejected_bang};
-use surgeist_css::{CssNamespaceContext, parse_rule, parse_sheet, validate_sheet};
+use surgeist_css::{CssError, CssNamespaceContext, parse_rule, parse_sheet, validate_sheet};
 
 // Fonts 4 (7 September 2026), section 6.9.2 and frozen WebKit select the
 // authored index policy; section 6.9.1's contradictory ranges remain unresolved.
@@ -63,8 +63,7 @@ use surgeist_css::{
     CssErrorCode, CssFontDisplay, CssFontFaceFamily, CssFontFeatureDisplayOccurrence,
     CssFontFeatureValueBlock as Block, CssFontFeatureValueDefinition as Definition,
     CssFontFeatureValueIndex as Index, CssFontFeatureValueKind as Kind,
-    CssFontFeatureValueName as Name, CssFontFeatureValuesErrorKind as ConstructionError,
-    CssFontFeatureValuesItem, CssFontFeatureValuesRule, CssNormalizationErrorKind,
+    CssFontFeatureValueName as Name, CssFontFeatureValuesItem, CssFontFeatureValuesRule,
     CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem, CssRule,
     CssRuleContextKindRef, normalize_sheet, normalize_sheet_with_limits,
 };
@@ -205,36 +204,35 @@ fn checked_construction_normalizes_decimal_syntax_without_inventing_source() {
         assert!(index.origin().is_none());
     }
     for input in ["", "+", "-", " 1", "1 ", "1.0", "1e2", "1,2", "++1", "١"] {
-        assert_eq!(
-            Index::try_from_decimal(input).unwrap_err().kind(),
-            ConstructionError::InvalidIntegerSyntax,
+        assert!(
+            Index::try_from_decimal(input)
+                .unwrap_err()
+                .is_invalid_integer_syntax(),
             "{input}"
         );
     }
-    assert_eq!(
-        Index::try_from_decimal("-1").unwrap_err().kind(),
-        ConstructionError::NegativeIndex
+    assert!(
+        Index::try_from_decimal("-1")
+            .unwrap_err()
+            .is_negative_index()
     );
     for input in ["a+b", "inherit", "initial", "unset", "revert", "default"] {
         assert_eq!(Name::try_new(input).unwrap().as_str(), input);
     }
     for input in ["", "a\0b"] {
-        assert_eq!(
-            Name::try_new(input).unwrap_err().kind(),
-            ConstructionError::InvalidIdentifier
-        );
+        assert!(Name::try_new(input).unwrap_err().is_invalid_identifier());
     }
-    assert!(matches!(
-        checked_feature_value(Kind::Swash, &[]).unwrap_err().kind(),
-        surgeist_css::CssFontFeatureValueErrorKind::Grammar(
-            surgeist_css::ErrorKind::UnexpectedEnd(_)
-        )
-    ));
-    assert_eq!(
+    assert!(
+        checked_feature_value(Kind::Swash, &[])
+            .unwrap_err()
+            .diagnostic()
+            .map(CssError::code)
+            == Some(CssErrorCode::UnexpectedEnd)
+    );
+    assert!(
         CssFontFeatureValuesRule::try_new(vec![], vec![])
             .unwrap_err()
-            .kind(),
-        ConstructionError::EmptyFamilies
+            .is_empty_families()
     );
     let definition = definition(Kind::Swash, &[1]);
     assert!(definition.position().is_none());
@@ -279,14 +277,13 @@ fn character_variant_accepts_one_or_two_indexes_and_rejects_three() {
         )
         .is_ok()
     );
-    assert!(matches!(
+    assert!(
         checked_feature_value(Kind::CharacterVariant, &["1", "2", "3"])
             .unwrap_err()
-            .kind(),
-        surgeist_css::CssFontFeatureValueErrorKind::Grammar(
-            surgeist_css::ErrorKind::UnexpectedToken(_)
-        )
-    ));
+            .diagnostic()
+            .map(CssError::code)
+            == Some(CssErrorCode::UnexpectedToken)
+    );
 }
 #[test]
 fn character_variant_first_index_has_no_font_feature_upper_bound() {
@@ -379,12 +376,13 @@ fn invalid_values_recover_only_the_definition() {
         Kind::Ornaments,
         Kind::Annotation,
     ] {
-        assert!(matches!(
-            checked_feature_value(kind, &["1", "2"]).unwrap_err().kind(),
-            surgeist_css::CssFontFeatureValueErrorKind::Grammar(
-                surgeist_css::ErrorKind::UnexpectedToken(_)
-            )
-        ));
+        assert!(
+            checked_feature_value(kind, &["1", "2"])
+                .unwrap_err()
+                .diagnostic()
+                .map(CssError::code)
+                == Some(CssErrorCode::UnexpectedToken)
+        );
     }
 }
 #[test]
@@ -514,11 +512,8 @@ fn normalization_counts_one_opaque_font_rule_and_fails_atomically_at_rule_limit(
             CssNormalizationLimits::try_new(0, 0, 0, 0).unwrap()
         )
         .unwrap_err()
-        .kind(),
-        &CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Rules,
-            limit: 0
-        }
+        .exhausted_limit(),
+        Some((CssNormalizationResource::Rules, 0))
     );
 }
 #[test]

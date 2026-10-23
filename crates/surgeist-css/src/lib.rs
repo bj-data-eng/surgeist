@@ -1315,7 +1315,7 @@
 //!
 //! # Diagnostics and coordinates
 //!
-//! Each [`CssRecoveryDiagnostic`] exposes a typed [`ErrorKind`] and stable
+//! Each [`CssRecoveryDiagnostic`] exposes a typed [`CssError`] and stable
 //! [`CssErrorCode`], the first responsible [`CssSourcePosition`], the complete
 //! [`CssSourceSpan`] of the recovery unit, and the [`CssRecoveryAction`] taken.
 //! Byte offsets index the original UTF-8 input. Lines and columns are zero-based,
@@ -1690,8 +1690,7 @@ mod stylesheet_input;
 mod syntax_consumption;
 pub use descriptor_values::{
     CssCounterStyleDescriptorValue, CssCounterStyleDescriptorValueRef, CssCounterStyleValueError,
-    CssCounterStyleValueErrorKind, CssFontFeatureDisplayValue, CssFontFeatureDisplayValueRef,
-    CssFontFeatureValue, CssFontFeatureValueError, CssFontFeatureValueErrorKind,
+    CssFontFeatureDisplayValue, CssFontFeatureDisplayValueRef, CssFontFeatureValue,
     CssFontFeatureValueRef,
 };
 mod cursor_serialization;
@@ -1783,7 +1782,7 @@ mod shadow_serialization;
 mod specified_provider_composition_tests;
 mod specified_rule_graph;
 mod specified_rule_serialization;
-pub use rule_construction::{CssRuleConstructionError, CssRuleConstructionErrorKind};
+pub use rule_construction::CssRuleConstructionError;
 mod url_serialization;
 pub use media::*;
 mod media_features;
@@ -1806,22 +1805,22 @@ mod utf16_value;
 pub use color::{
     CssAuthoredColorOrdinaryLimits, CssAuthoredColorOutcome, CssAuthoredColorResult,
     CssAuthoredColorStandardFailure, CssColorActionLayout, CssColorBank, CssColorComponentPath,
-    CssColorCompute, CssColorError, CssColorFactError, CssColorFactIdentity, CssColorFactRead,
+    CssColorCompute, CssColorError, CssColorFactDefect, CssColorFactIdentity, CssColorFactRead,
     CssColorFacts, CssColorFailureCheckpoint, CssColorGrammarRequest, CssColorInitializationLayout,
     CssColorInput, CssColorInputKind, CssColorInputRange, CssColorKernel, CssColorOperationOwner,
-    CssColorOrdinaryError, CssColorOrdinaryLimits, CssColorOrdinaryOutcome,
-    CssColorOrdinaryResource, CssColorOrdinaryResult, CssColorPaletteEntry, CssColorParse,
-    CssColorParseAction, CssColorParseOutcome, CssColorParseStep, CssColorPathStep,
-    CssColorProfileAvailability, CssColorProfileBinding, CssColorProfileConversion,
-    CssColorProfileConversionRecord, CssColorPropertyFacts, CssColorReadFact, CssColorReadInput,
-    CssColorReadSlot, CssColorSchemeFact, CssColorSlot, CssColorSlotReceipt,
+    CssColorOrdinaryLimits, CssColorOrdinaryOutcome, CssColorOrdinaryResource,
+    CssColorOrdinaryResult, CssColorPaletteEntry, CssColorParse, CssColorParseAction,
+    CssColorParseOutcome, CssColorParseStep, CssColorPathStep, CssColorProfileAvailability,
+    CssColorProfileBinding, CssColorProfileConversion, CssColorProfileConversionRecord,
+    CssColorPropertyFacts, CssColorReadFact, CssColorReadInput, CssColorReadSlot,
+    CssColorResolveError, CssColorSchemeFact, CssColorSlot, CssColorSlotReceipt,
     CssColorSourceDescriptor, CssColorStandardFailure, CssColorStandardFailureKind,
     CssColorTransform, CssColorUnavailable, CssColorUnsupported, CssColorWriteSlot,
     CssDeviceColorFact, CssUsedColorCheckpoint, parse_used_color, resolve_authored_color,
 };
 pub use utf16_value::{
-    CssColorSchemeParseReport, CssPropertyValueSyntaxError, CssUtf16PropertyValueLimits,
-    CssUtf16ValueAdmission, CssUtf16ValueStorage,
+    CssColorSchemeParseReport, CssUtf16PropertyValueLimits, CssUtf16ValueAdmission,
+    CssUtf16ValueStorage,
 };
 mod color_alpha;
 mod color_scalar;
@@ -1884,9 +1883,7 @@ pub use box_spacing::{
 };
 pub use calc_size::{CssBoxCalcSize, CssCalcSize, CssCalcSizeBasisRef, CssIntrinsicSizeKeyword};
 pub use color_alpha::{CssColorAlphaScalarRef, CssParsedColorAlphaRef};
-pub use color_scalar::{
-    CssColorNumberLiteral, CssColorPercentageLiteral, CssColorScalarError, CssColorScalarErrorKind,
-};
+pub use color_scalar::{CssColorNumberLiteral, CssColorPercentageLiteral};
 pub use contain_intrinsic_size::{
     CssContainIntrinsicSize, CssContainIntrinsicSizeFallback, CssContainIntrinsicSizeValue,
 };
@@ -1959,8 +1956,8 @@ pub use scrollbar::CssScrollbarColor;
 pub use sizing::{CssBoxSize, CssMaxSizeValue, CssSizeValue};
 pub use sizing_controls::{CssFrameSizing, CssMaxSizePair, CssMinIntrinsicSizing, CssSizePair};
 pub use text_alignment::{
-    CssCharacterAlignment, CssCharacterAlignmentError, CssCharacterAlignmentErrorKind,
-    CssTextAlignAllValue, CssTextAlignLastValue, CssTextAlignPosition, CssTextAlignValue,
+    CssCharacterAlignment, CssTextAlignAllValue, CssTextAlignLastValue, CssTextAlignPosition,
+    CssTextAlignValue, CssTextConstructionError,
 };
 pub use text_spacing::CssTextSpacingAdjustment;
 pub use will_change::{
@@ -1980,9 +1977,8 @@ pub use specified_numeric::{
     CssSpecifiedNonNegativeLengthPercentage, CssSpecifiedNonNegativeNumber,
     CssSpecifiedNonNegativePercentage, CssSpecifiedNumber, CssSpecifiedPercentage,
 };
-pub use specified_serialization::{
-    CssSerializationError, CssSerializationLimits, CssSpecifiedValueSerializationErrorKind,
-};
+pub(crate) use specified_serialization::CssSpecifiedValueSerializationErrorKind;
+pub use specified_serialization::{CssSerializationError, CssSerializationLimits};
 mod parser;
 mod parser_context;
 mod svg_glyph;
@@ -2014,11 +2010,10 @@ pub use numeric::{
     CssCalculationUnaryRef, CssCalculationValueRef, CssCalculationVariableRef, CssFlexCalculation,
     CssFrequencyCalculation, CssFrequencyPercentageCalculation, CssHintedNumberCalculation,
     CssIntegerCalculation, CssLengthCalculation, CssLengthPercentageCalculation, CssMathFunction,
-    CssNumberCalculation, CssNumericConstant, CssNumericConstructionError,
-    CssNumericConstructionErrorKind, CssNumericDimension, CssNumericLiteralRef, CssNumericType,
-    CssNumericUnit, CssPercentageCalculation, CssProfileColorCalculation,
-    CssProfileColorExpression, CssProfileColorExpressionRef, CssResolutionCalculation,
-    CssRoundingStrategy, CssTimeCalculation, CssTreeCountingFunction,
+    CssNumberCalculation, CssNumericConstant, CssNumericConstructionError, CssNumericDimension,
+    CssNumericLiteralRef, CssNumericType, CssNumericUnit, CssPercentageCalculation,
+    CssProfileColorCalculation, CssProfileColorExpression, CssProfileColorExpressionRef,
+    CssResolutionCalculation, CssRoundingStrategy, CssTimeCalculation, CssTreeCountingFunction,
 };
 #[cfg(test)]
 mod test_support;
@@ -2029,12 +2024,12 @@ pub use common_serialization::{
     serialize_css_comma_separated_list, serialize_css_identifier, serialize_css_string,
     serialize_css_whitespace_separated_list,
 };
+pub(crate) use component_values::CssComponentValueErrorKind;
 pub use component_values::{
-    CssBlockKind, CssComponentValue, CssComponentValueError, CssComponentValueErrorKind,
-    CssComponentValueLimits, CssComponentValueRef, CssComponentValues, CssFunctionValue,
-    CssHashFlag, CssNumericTokenKind, CssNumericTokenRef, CssSerializedOrigin,
-    CssSerializedOriginSegment, CssSerializedValue, CssSimpleBlock, CssValueOrigin,
-    CssValueTokenRef, parse_comma_separated_component_values,
+    CssBlockKind, CssComponentValue, CssComponentValueError, CssComponentValueLimits,
+    CssComponentValueRef, CssComponentValues, CssFunctionValue, CssHashFlag, CssNumericTokenKind,
+    CssNumericTokenRef, CssSerializedOrigin, CssSerializedOriginSegment, CssSerializedValue,
+    CssSimpleBlock, CssValueOrigin, CssValueTokenRef, parse_comma_separated_component_values,
     parse_comma_separated_component_values_with_limits, parse_component_value,
     parse_component_value_with_limits, parse_component_values, parse_component_values_with_limits,
 };
@@ -2042,19 +2037,18 @@ pub use conformance::*;
 pub use content_values::*;
 pub use counter_changes::{CssCounterChangeValue, CssCounterChangesValue, CssCounterProperty};
 pub use cssom_rule_serialization::{
-    CssRuleCssomFormat, CssRuleCssomKind, CssRuleCssomSerializationErrorKind,
-    CssRuleSerializationError,
+    CssRuleCssomFormat, CssRuleCssomKind, CssRuleSerializationError,
 };
 pub use cursor_values::*;
 pub use error::*;
 pub use expansion::{
     CssContributionValueRef, CssContributions, CssCustomPropertyContribution, CssExpansion,
-    CssExpansionError, CssExpansionErrorKind, CssFourSideShorthandMetadata, CssInitialValueRef,
-    CssLonghandContribution, CssLonghandContributions, CssLonghandInitialValue,
-    CssLonghandMetadata, CssLonghandProperty, CssLonghandValue, CssLonghandValueRef,
-    CssPendingSubstitution, CssPropertyKindRef, CssPropertyMetadata, CssPropertyMetadataError,
-    CssShorthandMetadata, CssSvgGlyphOrientationVerticalContribution, CssUniversalReset,
-    CssUniversalResetMetadata, CssUserAgentInitial, expand_declaration,
+    CssExpansionError, CssFourSideShorthandMetadata, CssInitialValueRef, CssLonghandContribution,
+    CssLonghandContributions, CssLonghandInitialValue, CssLonghandMetadata, CssLonghandProperty,
+    CssLonghandValue, CssLonghandValueRef, CssPendingSubstitution, CssPropertyKindRef,
+    CssPropertyMetadata, CssPropertyMetadataError, CssShorthandMetadata,
+    CssSvgGlyphOrientationVerticalContribution, CssUniversalReset, CssUniversalResetMetadata,
+    CssUserAgentInitial, expand_declaration,
 };
 pub use font_face_values::{
     CssFontMetricOverride, CssFontNamedInstance, CssFontNamedInstanceString,
@@ -2067,11 +2061,11 @@ pub use font_synthesis::*;
 pub use font_variant::*;
 pub use list_styles::{CssListStyleTypeValue, CssListStyleValue, CssMarkerSide};
 pub use normalization::{
-    CssNormalizationError, CssNormalizationErrorKind, CssNormalizationLimits,
-    CssNormalizationResource, CssNormalizedDeclaration, CssNormalizedItem, CssNormalizedReport,
-    CssNormalizedSelector, CssNormalizedSheet, CssRuleContext, CssRuleContextKindRef,
-    CssSelectorBinding, CssSelectorContext, normalize_report, normalize_report_with_limits,
-    normalize_sheet, normalize_sheet_with_limits,
+    CssNormalizationError, CssNormalizationLimits, CssNormalizationResource,
+    CssNormalizedDeclaration, CssNormalizedItem, CssNormalizedReport, CssNormalizedSelector,
+    CssNormalizedSheet, CssRuleContext, CssRuleContextKindRef, CssSelectorBinding,
+    CssSelectorContext, normalize_report, normalize_report_with_limits, normalize_sheet,
+    normalize_sheet_with_limits,
 };
 pub use parser::{
     CssAdmittedRule, CssAdmittedStyleSelectors, CssNamespaceContext, CssParsedKeyframeRule,
@@ -2100,14 +2094,14 @@ pub use parser::{
 };
 pub use properties::*;
 pub use property_value::{
-    CssPropertyValueErrorKind, CssPropertyValueParseError, parse_margin_property_value,
-    parse_page_property_value, parse_property_value, parse_property_value_for_grammar,
+    CssPropertyValueError, parse_margin_property_value, parse_page_property_value,
+    parse_property_value, parse_property_value_for_grammar,
 };
 pub use report::*;
 pub use source::*;
 pub use specified_declaration_block::{
-    CssDeclarationBlockError, CssDeclarationBlockErrorKind, CssInvalidKeyframeSourceReason,
-    CssSpecifiedDeclarationBlock, CssSpecifiedDeclarationEntry, CssSpecifiedDeclarationValueRef,
+    CssDeclarationBlockError, CssInvalidKeyframeSourceReason, CssSpecifiedDeclarationBlock,
+    CssSpecifiedDeclarationEntry, CssSpecifiedDeclarationValueRef,
 };
 pub use stylesheet_input::*;
 pub use syntax::*;

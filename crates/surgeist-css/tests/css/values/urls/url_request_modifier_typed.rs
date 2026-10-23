@@ -4,10 +4,10 @@
 //! applying Fetch operations or cryptographic interpretation.
 use crate::css::support::value_assertions::background_image_url as parsed;
 use surgeist_css::{
-    CssComponentValue, CssComponentValueErrorKind, CssComponentValueRef, CssComponentValues,
-    CssIdent, CssRequestUrlModifierRef as Request, CssUrl, CssUrlCrossOrigin as CrossOrigin,
-    CssUrlFunction, CssUrlModifier, CssUrlModifierFunction, CssUrlReferrerPolicy as Policy,
-    CssValueOrigin, CssValueTokenRef, parse_component_values,
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssIdent,
+    CssRequestUrlModifierRef as Request, CssUrl, CssUrlCrossOrigin as CrossOrigin, CssUrlFunction,
+    CssUrlModifier, CssUrlModifierFunction, CssUrlReferrerPolicy as Policy, CssValueOrigin,
+    CssValueTokenRef, parse_component_values,
 };
 
 fn function(name: &str, text: &str) -> CssUrlModifierFunction {
@@ -144,11 +144,7 @@ fn checked_constructor_rejects_all_known_argument_arity_and_category_failures() 
             parse_component_values(arguments).unwrap(),
         )
         .unwrap_err();
-        assert_eq!(
-            error.kind(),
-            CssComponentValueErrorKind::InvalidFunction,
-            "{name}({arguments})"
-        );
+        assert!(error.is_invalid_function(), "{name}({arguments})");
     }
 }
 
@@ -158,7 +154,7 @@ fn checked_invalid_argument_errors_preserve_original_and_programmatic_origins() 
     let extra_origin = arguments.items()[2].origin().clone();
     let error = CssUrlModifierFunction::try_new(CssIdent::try_new("integrity").unwrap(), arguments)
         .unwrap_err();
-    assert_eq!(error.kind(), CssComponentValueErrorKind::InvalidFunction);
+    assert!(error.is_invalid_function(), "{error:?}");
     assert_eq!(error.origin(), &extra_origin);
     let error = CssUrlModifierFunction::try_new(
         CssIdent::try_new("crossorigin").unwrap(),
@@ -169,7 +165,7 @@ fn checked_invalid_argument_errors_preserve_original_and_programmatic_origins() 
         .unwrap(),
     )
     .unwrap_err();
-    assert_eq!(error.kind(), CssComponentValueErrorKind::InvalidFunction);
+    assert!(error.is_invalid_function(), "{error:?}");
     assert!(matches!(error.origin(), CssValueOrigin::Programmatic));
 }
 
@@ -236,13 +232,12 @@ fn request_metadata_qualifies_authored_grammar_and_downstream_execution() {
         function("referrerpolicy", "origin").request_modifier(),
         Some(Request::ReferrerPolicy(Policy::Origin))
     );
-    assert_eq!(
+    assert!(
         CssUrlModifierFunction::try_new(
             CssIdent::try_new("referrerpolicy").unwrap(),
             parse_component_values("default").unwrap()
         )
         .unwrap_err()
-        .kind(),
-        CssComponentValueErrorKind::InvalidFunction
+        .is_invalid_function()
     );
 }

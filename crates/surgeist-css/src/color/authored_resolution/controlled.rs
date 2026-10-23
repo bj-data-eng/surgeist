@@ -211,7 +211,10 @@ impl<'path, 'css, 'authored: 'css, 'facts>
         path: &'path mut CssColorPathBuffer,
     ) -> Result<Self, AuthoredError> {
         if facts.identity() != expected {
-            return Err(CssColorError::Facts(CssColorFactError::Foreign).into());
+            return Err(CssColorError::from(crate::color::ColorErrorKind::Facts(
+                CssColorFactDefect::Foreign,
+            ))
+            .into());
         }
         let path = PathState::initialize(owner, path)?;
         let work = Work::Feed(Lowering::start(path.owner(), path.phase(), root));

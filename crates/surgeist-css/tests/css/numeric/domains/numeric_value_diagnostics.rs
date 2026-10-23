@@ -2,11 +2,11 @@
 //! accept. Every public front reports `InvalidPropertyValue`, names that token
 //! as encountered and positions the error at it.
 
+use crate::css::support::property_admission::GrammarFacts;
 use surgeist_css::{
-    CssImportance, CssKnownProperty, CssParserContext, CssPropertyNameRef,
-    CssPropertyValueErrorKind, CssSerializedOrigin, CssTokenKind, CssValueOrigin, ErrorKind,
-    parse_component_values, parse_property_value, parse_property_value_for_grammar,
-    parse_style_attribute, validate_sheet,
+    CssErrorCode, CssImportance, CssKnownProperty, CssParserContext, CssPropertyNameRef,
+    CssSerializedOrigin, CssTokenKind, CssValueOrigin, parse_component_values,
+    parse_property_value, parse_property_value_for_grammar, parse_style_attribute, validate_sheet,
 };
 
 /// The responsible token: its kind, authored spelling and offset in the value.
@@ -18,15 +18,17 @@ struct Responsible {
 
 fn assert_detail(
     property: CssKnownProperty,
-    kind: &ErrorKind,
+    error: &dyn GrammarFacts,
     expected: &Responsible,
     front: &str,
 ) {
-    let ErrorKind::InvalidPropertyValue(detail) = kind else {
-        panic!("{front}: expected InvalidPropertyValue, got {kind:?}")
-    };
-    assert_eq!(detail.property(), property, "{front}");
-    let encountered = detail.encountered().expect("responsible token");
+    assert_eq!(
+        error.grammar_code(),
+        Some(CssErrorCode::InvalidPropertyValue),
+        "{front}: expected InvalidPropertyValue, got {error:?}"
+    );
+    assert_eq!(error.rejecting_property(), Some(property), "{front}");
+    let encountered = error.responsible_token().expect("responsible token");
     assert_eq!(encountered.kind(), expected.kind, "{front}");
     assert_eq!(encountered.authored(), expected.authored, "{front}");
 }
@@ -42,7 +44,7 @@ fn assert_every_front(name: &str, value: &str, expected: Responsible) {
         panic!("{declaration}: one diagnostic")
     };
     let front = format!("attribute {declaration}");
-    assert_detail(property, diagnostic.error().kind(), &expected, &front);
+    assert_detail(property, diagnostic.error(), &expected, &front);
     assert_eq!(
         diagnostic.error().position().byte_offset().value(),
         value_offset + expected.offset,
@@ -55,7 +57,7 @@ fn assert_every_front(name: &str, value: &str, expected: Responsible) {
         panic!("{sheet}: one diagnostic")
     };
     let front = format!("sheet {sheet}");
-    assert_detail(property, diagnostic.error().kind(), &expected, &front);
+    assert_detail(property, diagnostic.error(), &expected, &front);
     assert_eq!(
         diagnostic.error().position().byte_offset().value(),
         3 + value_offset + expected.offset,
@@ -83,10 +85,8 @@ fn assert_every_front(name: &str, value: &str, expected: Responsible) {
     ] {
         let front = format!("{front} {declaration}");
         let error = result.unwrap_err();
-        let CssPropertyValueErrorKind::Grammar(kind) = error.kind() else {
-            panic!("{front}: grammar error")
-        };
-        assert_detail(property, kind, &expected, &front);
+        assert!(error.code().is_some(), "{front}: grammar error");
+        assert_detail(property, &error, &expected, &front);
         let CssSerializedOrigin::Token(CssValueOrigin::Parsed(origin)) = error.origin() else {
             panic!("{front}: parsed token origin")
         };
@@ -106,7 +106,7 @@ fn assert_every_front(name: &str, value: &str, expected: Responsible) {
         panic!("{declaration}: one raw-text diagnostic")
     };
     let front = format!("text {declaration}");
-    assert_detail(property, diagnostic.error().kind(), &expected, &front);
+    assert_detail(property, diagnostic.error(), &expected, &front);
     assert_eq!(
         diagnostic.error().position().byte_offset().value(),
         expected.offset,

@@ -3,7 +3,9 @@ use super::boolean_condition::{
 };
 use super::recovery::{RecoveryState, StyleContextCaptures};
 use super::selectors::{SelectorRecovery, parse_rule_selector};
-use crate::error::{Error, invalid_syntax, is_nesting_limit_error, with_at_rule_prelude_context};
+use crate::error::{
+    CssError, invalid_syntax, is_nesting_limit_error, with_at_rule_prelude_context,
+};
 use crate::supports::{SupportsLexical, trivia};
 use crate::*;
 use cssparser::{ParseError, Parser};
@@ -19,7 +21,7 @@ pub(super) static IMPLEMENTED_SHARED_VALUES: &[crate::CssFeatureId] = &[
 pub(super) static IMPLEMENTED_SELECTORS: &[crate::CssFeatureId] =
     &[crate::CssFeatureId::new("ext.supports.selector")];
 
-fn terminal_error(error: &ParseError<'_, Error>) -> bool {
+fn terminal_error(error: &ParseError<'_, CssError>) -> bool {
     is_nesting_limit_error(error)
         || matches!(&error.kind, cssparser::ParseErrorKind::Custom(error)
             if matches!(error.kind(), crate::ErrorKind::InvalidComponentValue(_)))
@@ -28,8 +30,8 @@ fn terminal_error(error: &ParseError<'_, Error>) -> bool {
 /// Only a grammar mismatch permits another supports interpretation. A lexical
 /// or resource failure cannot become valid by selecting an opaque fallback.
 pub(super) fn grammar_probe<'i, T>(
-    result: Result<T, ParseError<'i, Error>>,
-) -> Result<Option<T>, ParseError<'i, Error>> {
+    result: Result<T, ParseError<'i, CssError>>,
+) -> Result<Option<T>, ParseError<'i, CssError>> {
     match result {
         Ok(value) => Ok(Some(value)),
         Err(error) if terminal_error(&error) => Err(error),
@@ -38,8 +40,8 @@ pub(super) fn grammar_probe<'i, T>(
 }
 
 pub(super) fn with_supports_prelude_context<'i>(
-    error: ParseError<'i, Error>,
-) -> ParseError<'i, Error> {
+    error: ParseError<'i, CssError>,
+) -> ParseError<'i, CssError> {
     if terminal_error(&error) {
         error
     } else {
@@ -57,7 +59,7 @@ pub(super) fn parse_supports_condition<'i, 't>(
     input: &mut Parser<'i, 't>,
     _diagnostics: &mut Vec<CssRecoveryDiagnostic>,
     recovery: &RecoveryState,
-) -> Result<CssSupportsCondition, ParseError<'i, Error>> {
+) -> Result<CssSupportsCondition, ParseError<'i, CssError>> {
     let implicit =
         recovery.check_specialized_components(source, input, "baseline.rule.supports")?;
     let start = input.current_source_location();
@@ -77,7 +79,7 @@ pub(super) fn parse_supports_declaration<'i, 't>(
     input: &mut Parser<'i, 't>,
     source: &CssSourceSnapshot,
     parser_context: crate::CssParserContext,
-) -> Result<CssSupportsDeclaration, ParseError<'i, Error>> {
+) -> Result<CssSupportsDeclaration, ParseError<'i, CssError>> {
     let start = input.current_source_location();
     let values = CssComponentValues::collect_from_parser(input, source)
         .map_err(|e| crate::error::invalid_component_value(start, e))?;
@@ -92,15 +94,15 @@ pub(super) fn parse_supports_declaration<'i, 't>(
 fn parser_error<'i>(
     error: CssSupportsConstructionError,
     fallback: cssparser::SourceLocation,
-) -> ParseError<'i, Error> {
+) -> ParseError<'i, CssError> {
     let location = crate::media::parsed_position(error.origin()).map_or(fallback, |p| {
         cssparser::SourceLocation {
             line: p.line().value(),
             column: p.column().value() + 1,
         }
     });
-    match error {
-        CssSupportsConstructionError::Component(e) => {
+    match error.into_kind() {
+        crate::supports::SupportsConstructionKind::Component(e) => {
             crate::error::invalid_component_value(location, e)
         }
         _ => invalid_syntax(location),
@@ -112,9 +114,11 @@ fn validate(
 ) -> Result<(), CssSupportsConstructionError> {
     values.validate_with_limits(limits)?;
     if let Some(origin) = values.first_implicit_origin() {
-        return Err(CssSupportsConstructionError::RecoveredInput {
-            origin: origin.clone(),
-        });
+        return Err(CssSupportsConstructionError::from(
+            crate::supports::SupportsConstructionKind::RecoveredInput {
+                origin: origin.clone(),
+            },
+        ));
     }
     Ok(())
 }
@@ -167,19 +171,22 @@ pub(crate) fn construct_supports_declaration_with_context(
     Ok(value)
 }
 fn invalid_condition(origin: &CssValueOrigin) -> CssSupportsConstructionError {
-    CssSupportsConstructionError::InvalidConditionGrammar {
-        origin: origin.clone(),
-    }
+    CssSupportsConstructionError::from(
+        crate::supports::SupportsConstructionKind::InvalidConditionGrammar {
+            origin: origin.clone(),
+        },
+    )
 }
 fn grammar<T>(
     result: Result<T, CssSupportsConstructionError>,
 ) -> Result<Option<T>, CssSupportsConstructionError> {
     match result {
         Ok(value) => Ok(Some(value)),
-        Err(
-            CssSupportsConstructionError::InvalidConditionGrammar { .. }
-            | CssSupportsConstructionError::InvalidDeclarationGrammar { .. },
-        ) => Ok(None),
+        Err(error)
+            if error.is_invalid_condition_grammar() || error.is_invalid_declaration_grammar() =>
+        {
+            Ok(None)
+        }
         Err(error) => Err(error),
     }
 }
@@ -365,7 +372,7 @@ fn operand(
                     Err(error) if terminal_error(&error) => {
                         let kind = match &error.kind {
                             cssparser::ParseErrorKind::Custom(error) => match error.kind() {
-                                ErrorKind::InvalidComponentValue(component) => component.kind(),
+                                ErrorKind::InvalidComponentValue(component) => component.kind,
                                 _ => CssComponentValueErrorKind::NestingLimit,
                             },
                             _ => CssComponentValueErrorKind::NestingLimit,
@@ -375,8 +382,10 @@ fn operand(
                             .value_origin_at(position.byte_offset().value())
                             .unwrap_or(value.origin())
                             .clone();
-                        return Err(CssSupportsConstructionError::Component(
-                            CssComponentValueError::new(kind, origin),
+                        return Err(CssSupportsConstructionError::from(
+                            crate::supports::SupportsConstructionKind::Component(
+                                CssComponentValueError::new(kind, origin),
+                            ),
                         ));
                     }
                     _ => enclosed(value)?,
@@ -443,8 +452,12 @@ pub(super) fn declaration(
     limits: CssComponentValueLimits,
     parser_context: crate::CssParserContext,
 ) -> Result<CssSupportsDeclaration, CssSupportsConstructionError> {
-    let invalid = || CssSupportsConstructionError::InvalidDeclarationGrammar {
-        origin: lexical.first_origin().clone(),
+    let invalid = || {
+        CssSupportsConstructionError::from(
+            crate::supports::SupportsConstructionKind::InvalidDeclarationGrammar {
+                origin: lexical.first_origin().clone(),
+            },
+        )
     };
     let items = lexical.items();
     let significant: Vec<_> = items
@@ -514,25 +527,24 @@ pub(super) fn declaration(
                 | CssDeclarationBody::SvgGlyphOrientationVertical(_)),
             ) => Some(body),
             Err(error) => {
-                let component_kind = match error.kind() {
-                    CssPropertyValueErrorKind::Component(kind) => Some(*kind),
-                    CssPropertyValueErrorKind::Grammar(ErrorKind::InvalidComponentValue(
-                        component,
-                    )) => Some(component.kind()),
-                    CssPropertyValueErrorKind::Grammar(ErrorKind::NestingLimit(_)) => {
+                let component_kind = match error.component_error() {
+                    Some(component) => Some(component.kind),
+                    None if error.code() == Some(crate::CssErrorCode::NestingLimit) => {
                         Some(CssComponentValueErrorKind::NestingLimit)
                     }
-                    _ => None,
+                    None => None,
                 };
                 if let Some(kind) = component_kind {
                     let origin = match error.origin() {
                         CssSerializedOrigin::Token(origin)
-                        | CssSerializedOrigin::End(Some(origin)) => origin.clone(),
-                        CssSerializedOrigin::Separator { after, .. } => after.clone(),
+                        | CssSerializedOrigin::End(Some(origin)) => origin,
+                        CssSerializedOrigin::Separator { after, .. } => after,
                         CssSerializedOrigin::End(None) => CssValueOrigin::Programmatic,
                     };
-                    return Err(CssSupportsConstructionError::Component(
-                        CssComponentValueError::new(kind, origin),
+                    return Err(CssSupportsConstructionError::from(
+                        crate::supports::SupportsConstructionKind::Component(
+                            CssComponentValueError::new(kind, origin),
+                        ),
                     ));
                 }
                 None
@@ -623,7 +635,9 @@ fn parsed_admitted(
         Err(error) if crate::error::property::is_resource_parse_error(&error) => {
             let (kind, origin) = error.into_parts();
             if let ErrorKind::InvalidComponentValue(component) = kind {
-                return Err(CssSupportsConstructionError::Component(*component));
+                return Err(CssSupportsConstructionError::from(
+                    crate::supports::SupportsConstructionKind::Component(*component),
+                ));
             }
             let origin = match origin {
                 CssSerializedOrigin::Token(origin) | CssSerializedOrigin::End(Some(origin)) => {
@@ -632,8 +646,11 @@ fn parsed_admitted(
                 CssSerializedOrigin::Separator { after, .. } => after,
                 CssSerializedOrigin::End(None) => values[0].origin().clone(),
             };
-            Err(CssSupportsConstructionError::Component(
-                CssComponentValueError::new(CssComponentValueErrorKind::NestingLimit, origin),
+            Err(CssSupportsConstructionError::from(
+                crate::supports::SupportsConstructionKind::Component(CssComponentValueError::new(
+                    CssComponentValueErrorKind::NestingLimit,
+                    origin,
+                )),
             ))
         }
         _ => Ok(None),
@@ -681,10 +698,10 @@ mod generated_selector_tests {
             CssComponentValueLimits::default(),
         )
         .unwrap_err();
-        let CssSupportsConstructionError::Component(error) = error else {
+        let Some(error) = error.component_error() else {
             panic!("terminal resource failure")
         };
-        assert_eq!(error.kind(), CssComponentValueErrorKind::NestingLimit);
+        assert_eq!(error.kind, CssComponentValueErrorKind::NestingLimit);
         assert_eq!(error.origin(), &expected);
         let crate::CssValueOrigin::Parsed(origin) = error.origin() else {
             panic!("original origin")

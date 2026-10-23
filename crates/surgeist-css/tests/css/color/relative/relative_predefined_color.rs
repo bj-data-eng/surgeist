@@ -543,15 +543,15 @@ fn checked_payloads_reject_environment_and_result_slot_mismatches() {
             (channels.clone(), Some(direct("0", space, false))),
             (channels, Some(direct("0", other, true))),
         ] {
-            assert_eq!(
+            assert!(
                 CssRelativeColor::try_new(
                     CssRelativeColorFunction::Color(space.value),
                     CssColor::current_color(),
                     channels,
                     alpha
                 )
-                .unwrap_err(),
-                CssColorConstructionError::InvalidExpressionEnvironment
+                .unwrap_err()
+                .is_invalid_expression_environment()
             );
         }
         for token in ["1deg", "1px", "1s"] {

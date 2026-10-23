@@ -3,8 +3,9 @@
 //! per-grammar canonical order. Quarter-turn rounding belongs to computed values.
 //! Ordinary numeric formatting and math projection retain the shared Values/CSSOM owner.
 
+use crate::css::support::failure_classes::SerializationFailure as Kind;
+use crate::css::support::failure_classes::serialization_failure;
 use CssSerializationLimits as Limits;
-use CssSpecifiedValueSerializationErrorKind as Kind;
 use surgeist_css::*;
 
 fn angle(coefficient: &str, unit: CssAngleUnit) -> CssAngleValue {
@@ -196,12 +197,11 @@ fn angle_calculations_use_the_numeric_projection_without_orientation_rounding() 
                 .unwrap(),
             expected
         );
-        assert_eq!(
+        assert!(
             value
                 .serialize_specified(Limits::new(100, 100, expected.len() - 1))
                 .unwrap_err()
-                .kind(),
-            Kind::ByteLimit
+                .is_byte_limit()
         );
         assert_eq!(
             child(&value).calculation().unwrap().components(),
@@ -248,7 +248,10 @@ fn carrier_transparent_keyword_and_literal_node_budgets_have_exact_boundaries() 
                 Kind::ByteLimit,
             ),
         ] {
-            assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+            assert_eq!(
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+                kind
+            );
         }
     }
 }
@@ -265,7 +268,10 @@ fn failure_after_angle_or_separator_is_atomic_and_preserves_exact_input_and_orig
         (Limits::new(2, 2, 6), Kind::ByteLimit),
         (Limits::new(2, 2, 9), Kind::ByteLimit),
     ] {
-        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+            kind
+        );
         assert_eq!(value, before);
         assert_eq!(child(&value).origin(), &origin);
         assert_eq!(declaration.value_components(), &components);

@@ -4,8 +4,8 @@
 //! https://drafts.csswg.org/css-conditional-5/#supports-condition-rule
 
 use surgeist_css::{
-    CssErrorCode, CssNamespaceContext, CssNamespacePrefix, CssRecoveryAction, CssRule,
-    CssRuleConstructionErrorKind, CssSheet, CssValueOrigin, parse_sheet,
+    CssErrorCode, CssNamespaceContext, CssNamespacePrefix, CssRecoveryAction, CssRule, CssSheet,
+    CssValueOrigin, parse_sheet,
 };
 
 fn clean_rules(source: &str) -> Vec<CssRule> {
@@ -146,10 +146,7 @@ fn named_definition_does_not_reopen_imports_after_a_namespace() {
     let position = import.position();
     rules.extend(late);
     let error = CssSheet::try_from_rules(rules).unwrap_err();
-    assert_eq!(
-        error.kind(),
-        CssRuleConstructionErrorKind::InvalidPreludeOrder
-    );
+    assert!(error.is_invalid_prelude_order(), "{error:?}");
     assert_eq!(error.path(), &[2]);
     assert_eq!(error.position(), position);
 }
@@ -179,10 +176,7 @@ fn named_definition_does_not_reopen_imports_or_namespaces_after_ordinary_body() 
         let mut rules = clean_rules(prefix);
         rules.extend(clean_rules(late));
         let error = CssSheet::try_from_rules(rules).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            CssRuleConstructionErrorKind::InvalidPreludeOrder
-        );
+        assert!(error.is_invalid_prelude_order(), "{error:?}");
         assert_eq!(error.path(), &[2]);
     }
 }
@@ -193,9 +187,6 @@ fn named_prefix_preserves_absent_namespace_prefix_rejection() {
     let body = clean_rules("@namespace m 'urn:m';m|item {}");
     rules.push(body[1].clone());
     let error = CssSheet::try_from_rules(rules).unwrap_err();
-    assert_eq!(
-        error.kind(),
-        CssRuleConstructionErrorKind::NamespaceMismatch
-    );
+    assert!(error.is_namespace_mismatch(), "{error:?}");
     assert_eq!(error.path(), &[2]);
 }

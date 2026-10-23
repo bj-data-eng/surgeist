@@ -4,8 +4,8 @@ use property_expectations::{
     BoundaryOutcome, CASES, CatalogExpectation, KNOWN_SERIALIZATION_DEFECTS,
 };
 use surgeist_css::{
-    CssErrorCode, CssFeatureKind, CssSupportStatus, ErrorKind, feature_metadata,
-    parse_style_attribute, property_support_metadata,
+    CssErrorCode, CssFeatureKind, CssSupportStatus, feature_metadata, parse_style_attribute,
+    property_support_metadata,
 };
 
 const CSS_WIDE_KEYWORDS: &[&str] = &["inherit", "initial", "unset", "revert", "revert-layer"];
@@ -273,12 +273,16 @@ fn authored_property_cases_exercise_public_parser_behavior() {
             "{} negative diagnostic root",
             feature_id
         );
-        let ErrorKind::InvalidPropertyValue(detail) = error.kind() else {
-            panic!("{} negative returned {error:?}", feature_id);
-        };
-        assert_eq!(detail.property(), case.property);
-        assert_eq!(detail.property().canonical_name(), case.name);
-        assert_eq!(detail.property().stable_id(), *feature_id);
+        let detail = &error;
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidPropertyValue,
+            "{} negative returned {error:?}",
+            feature_id
+        );
+        assert_eq!(detail.known_property().unwrap(), case.property);
+        assert_eq!(detail.known_property().unwrap().canonical_name(), case.name);
+        assert_eq!(detail.known_property().unwrap().stable_id(), *feature_id);
     }
     assert!(
         serialization_mismatches.is_empty(),

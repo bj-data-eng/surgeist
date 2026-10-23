@@ -9,11 +9,13 @@
 //! magnitudeComparable and fullyResolved. Same-unit contextual dimensions
 //! remain comparable coefficients without resolving their actual magnitudes.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::serialization_limits::LimitLadder;
 use surgeist_css::*;
 
 type Limits = CssSerializationLimits;
-type Kind = CssSpecifiedValueSerializationErrorKind;
+type Kind = SerializationFailure;
 
 fn length_percentage(source: &str) -> CssSpecifiedLengthPercentage {
     let components = parse_component_values(source).unwrap();
@@ -180,7 +182,7 @@ fn assert_numeric_limits(source: &str, expected: &str, inputs: usize, projection
         (Limits::new(inputs, 0, 0), Kind::ProjectionNodeLimit),
     ] {
         let error = value.serialize_specified(limits).unwrap_err();
-        assert_eq!(error.kind(), kind, "{source}: {limits:?}");
+        assert_eq!(serialization_failure(&error), kind, "{source}: {limits:?}");
         unchanged();
     }
 }
@@ -221,7 +223,7 @@ fn sibling_hinted_comparisons_keep_one_cumulative_enclosing_budget() {
         (Limits::new(8, 8, expected.len() - 1), Kind::ByteLimit),
     ] {
         let error = shape.serialize_specified(limits).unwrap_err();
-        assert_eq!(error.kind(), kind, "{limits:?}");
+        assert_eq!(serialization_failure(&error), kind, "{limits:?}");
         assert_eq!(shape, before);
         for (value, original) in shape
             .offsets()

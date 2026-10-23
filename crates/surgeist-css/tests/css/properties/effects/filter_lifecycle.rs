@@ -304,18 +304,14 @@ fn assert_reentry(property: CssKnownProperty) {
             let error = pending
                 .reenter(parse_component_values(invalid).unwrap())
                 .unwrap_err();
-            assert!(
-                matches!(error.kind(), CssExpansionErrorKind::InvalidReplacement(_)),
-                "{invalid}: {error:?}"
-            );
+            assert!(error.replacement_error().is_some(), "{invalid}: {error:?}");
         }
         for residual in ["var(--again)", "blur(env(radius))", "attr(effect)"] {
-            assert_eq!(
+            assert!(
                 pending
                     .reenter(parse_component_values(residual).unwrap())
                     .unwrap_err()
-                    .kind(),
-                &CssExpansionErrorKind::ResidualSubstitution
+                    .is_residual_substitution()
             );
         }
         for valid in ["none", "blur() hue-rotate()", "inherit"] {
@@ -430,10 +426,7 @@ fn assert_normalization(property: CssKnownProperty) {
         ),
     ] {
         let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            &CssNormalizationErrorKind::LimitExceeded { resource, limit: 3 }
-        );
+        assert_eq!(error.exhausted_limit(), Some((resource, 3)));
         assert_eq!(error.declaration_order(), Some(3));
         assert!(
             error

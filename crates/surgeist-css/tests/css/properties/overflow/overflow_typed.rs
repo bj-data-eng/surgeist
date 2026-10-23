@@ -1,5 +1,7 @@
 //! Authored Overflow 3 keywords and the Cascade 5 overlay alias.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::named_property::longhand_contributions;
 use crate::css::support::normal_declaration as parsed;
 use surgeist_css::*;
@@ -31,18 +33,21 @@ fn every_keyword_serializes_canonically_with_one_node_and_exact_bytes() {
         for (limits, kind) in [
             (
                 CssSerializationLimits::new(0, 1, text.len()),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                SerializationFailure::InputNodeLimit,
             ),
             (
                 CssSerializationLimits::new(1, 0, text.len()),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
                 CssSerializationLimits::new(1, 1, text.len() - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                SerializationFailure::ByteLimit,
             ),
         ] {
-            assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+            assert_eq!(
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+                kind
+            );
         }
     }
 }
@@ -89,18 +94,21 @@ fn shorthand_retains_authored_arity_and_charges_outer_and_child_nodes() {
     for (limits, kind) in [
         (
             CssSerializationLimits::new(2, 3, 12),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(3, 2, 12),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(3, 3, 11),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
-        assert_eq!(pair.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&pair.serialize_specified(limits).unwrap_err()),
+            kind
+        );
     }
 }
 

@@ -1,4 +1,6 @@
 use crate::css::support::authored_syntax::assert_diagnostics;
+use crate::css::support::failure_classes::ComponentFailure;
+use crate::css::support::failure_classes::component_failure;
 use surgeist_css::{
     CssErrorCode, CssMediaQuery, CssRecoveryAction, parse_media_query, parse_media_query_list,
 };
@@ -103,24 +105,18 @@ fn nested_commas_do_not_split_query_members() {
 
 #[test]
 fn invalid_any_value_tokens_recover_without_losing_the_next_member() {
-    use surgeist_css::{CssComponentValueErrorKind, CssErrorCode, CssValueOrigin, ErrorKind};
+    use surgeist_css::{CssErrorCode, CssValueOrigin};
     for (source, kind) in [
         (
             "future(]), print",
-            CssComponentValueErrorKind::UnmatchedClosingDelimiter,
+            ComponentFailure::UnmatchedClosingDelimiter,
         ),
         (
             "future(}), print",
-            CssComponentValueErrorKind::UnmatchedClosingDelimiter,
+            ComponentFailure::UnmatchedClosingDelimiter,
         ),
-        (
-            "future(url(a b)), print",
-            CssComponentValueErrorKind::BadUrl,
-        ),
-        (
-            "future(\"x\n), print",
-            CssComponentValueErrorKind::BadString,
-        ),
+        ("future(url(a b)), print", ComponentFailure::BadUrl),
+        ("future(\"x\n), print", ComponentFailure::BadString),
     ] {
         let report = parse_media_query_list(source);
         assert!(!report.is_clean(), "{source}");
@@ -139,10 +135,10 @@ fn invalid_any_value_tokens_recover_without_losing_the_next_member() {
             diagnostic.error().code(),
             CssErrorCode::InvalidComponentValue
         );
-        let ErrorKind::InvalidComponentValue(component) = diagnostic.error().kind() else {
+        let Some(component) = diagnostic.error().component_error() else {
             panic!("original component error");
         };
-        assert_eq!(component.kind(), kind);
+        assert_eq!(component_failure(component), kind);
         let CssValueOrigin::Parsed(origin) = component.origin() else {
             panic!("original lexical origin");
         };

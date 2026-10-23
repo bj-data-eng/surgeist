@@ -87,18 +87,14 @@ fn pending_color_reentry_is_strict_reusable_and_retains_replacement_origins() {
         let error = pending
             .reenter(parse_component_values(invalid).unwrap())
             .unwrap_err();
-        assert!(matches!(
-            error.kind(),
-            CssExpansionErrorKind::InvalidReplacement(_)
-        ));
+        assert!(error.replacement_error().is_some());
     }
     for residual in ["var(--again)", "env(paint)", "attr(paint)"] {
-        assert_eq!(
+        assert!(
             pending
                 .reenter(parse_component_values(residual).unwrap())
                 .unwrap_err()
-                .kind(),
-            &CssExpansionErrorKind::ResidualSubstitution
+                .is_residual_substitution()
         );
     }
     let parsed = parse_component_values("red").unwrap();
@@ -203,11 +199,8 @@ fn normalization_keeps_ordered_occurrences_and_counts_one_unit_each() {
     let limits = CssNormalizationLimits::try_new(256, usize::MAX, usize::MAX, 2).unwrap();
     let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
     assert_eq!(
-        error.kind(),
-        &CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: 2,
-        }
+        error.exhausted_limit(),
+        Some((CssNormalizationResource::Contributions, 2))
     );
     assert_eq!(error.declaration_order(), Some(2));
     assert_eq!(
@@ -257,11 +250,15 @@ fn invalid_colors_drop_only_the_declaration_with_structured_diagnostics() {
         };
         assert_eq!(diagnostic.error().code(), expected_code);
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-        match diagnostic.error().kind() {
-            ErrorKind::InvalidPropertyValue(detail) => {
-                assert_eq!(detail.property(), CssKnownProperty::BackgroundColor);
+        match diagnostic.error().code() {
+            CssErrorCode::InvalidPropertyValue => {
+                let detail = diagnostic.error();
+                assert_eq!(
+                    detail.known_property().unwrap(),
+                    CssKnownProperty::BackgroundColor
+                );
             }
-            ErrorKind::InvalidColorSyntax(_) => {}
+            CssErrorCode::InvalidColorSyntax => {}
             _ => panic!("structured property or color diagnostic"),
         }
         let [sibling] = report.syntax().as_slice() else {

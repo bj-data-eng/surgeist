@@ -2,13 +2,15 @@
 //! 2021-08-26 generic numbers. Decimal ties use the adopted FIXED policy:
 //! nearest, ties away from zero. Expectations use exact authored decimals,
 //! destination percentage factors, and conversion before six-place rounding.
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::{
     checked_color as color, checked_color_declaration as declaration,
     component_values as components, declaration_color,
 };
 use surgeist_css::*;
 type Limits = CssSerializationLimits;
-type Kind = CssSpecifiedValueSerializationErrorKind;
+type Kind = SerializationFailure;
 fn assert_text(source: &str, expected: &str) {
     let d = declaration(source);
     let before = d.clone();
@@ -621,12 +623,11 @@ fn assert_bytes(source: &str, expected: &str) {
     let value = color(source);
     let before = value.clone();
     let n = expected.len();
-    assert_eq!(
+    assert!(
         value
             .serialize_specified(Limits::new(usize::MAX, usize::MAX, n - 1))
             .unwrap_err()
-            .kind(),
-        Kind::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(value, before);
     assert_eq!(
@@ -696,12 +697,11 @@ byte_case!(
 fn huge_positive_output_is_bounded_and_atomic() {
     let value = color("rgb(from red 1e1000000000% g b)");
     let before = value.clone();
-    assert_eq!(
+    assert!(
         value
             .serialize_specified(Limits::new(10000, 10000, 128))
             .unwrap_err()
-            .kind(),
-        Kind::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(value, before);
 }
@@ -719,19 +719,17 @@ fn symbolic_routes_have_independent_exact_cumulative_counts() {
             .unwrap(),
         text
     );
-    assert_eq!(
+    assert!(
         value
             .serialize_specified(Limits::new(4, usize::MAX, usize::MAX))
             .unwrap_err()
-            .kind(),
-        Kind::InputNodeLimit
+            .is_input_node_limit()
     );
-    assert_eq!(
+    assert!(
         value
             .serialize_specified(Limits::new(usize::MAX, 4, usize::MAX))
             .unwrap_err()
-            .kind(),
-        Kind::ProjectionNodeLimit
+            .is_projection_node_limit()
     );
     assert_eq!(value, before);
 }
@@ -747,19 +745,17 @@ fn nested_roots_and_references_share_cumulative_counts() {
             .unwrap(),
         text
     );
-    assert_eq!(
+    assert!(
         value
             .serialize_specified(Limits::new(8, usize::MAX, usize::MAX))
             .unwrap_err()
-            .kind(),
-        Kind::InputNodeLimit
+            .is_input_node_limit()
     );
-    assert_eq!(
+    assert!(
         value
             .serialize_specified(Limits::new(usize::MAX, 8, usize::MAX))
             .unwrap_err()
-            .kind(),
-        Kind::ProjectionNodeLimit
+            .is_projection_node_limit()
     );
 }
 
@@ -769,12 +765,11 @@ fn literal_input_visits_are_charged_once() {
     let value = color("rgb(from red .1234567 .1234567 b)");
     let before = value.clone();
     let text = "rgb(from red 0.123457 0.123457 b)";
-    assert_eq!(
+    assert!(
         value
             .serialize_specified(Limits::new(4, usize::MAX, usize::MAX))
             .unwrap_err()
-            .kind(),
-        Kind::InputNodeLimit
+            .is_input_node_limit()
     );
     assert_eq!(
         value
@@ -792,7 +787,7 @@ macro_rules! zero_limit_case {
             let value = color("rgb(from red .1234567 g b)");
             let before = value.clone();
             assert_eq!(
-                value.serialize_specified($limits).unwrap_err().kind(),
+                serialization_failure(&value.serialize_specified($limits).unwrap_err()),
                 $kind
             );
             assert_eq!(value, before);
@@ -968,10 +963,7 @@ fn substitutions_remain_pending_and_checked_construction_reports_origin() {
         Default::default(),
     )
     .unwrap_err();
-    assert_eq!(
-        error.kind(),
-        &CssNumericConstructionErrorKind::SubstitutionRequired
-    );
+    assert!(error.is_substitution_required(), "{error:?}");
     assert!(error.origin().is_some());
     assert_eq!(before, components("var(--n)"));
 }

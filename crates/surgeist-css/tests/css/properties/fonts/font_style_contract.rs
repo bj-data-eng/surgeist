@@ -4,12 +4,11 @@ use crate::css::support::named_property::assert_programmatic_rejection;
 use crate::css::support::named_property::normal_grammar_components;
 use surgeist_css::{
     CssAngleCalculation, CssComponentValue, CssComponentValueRef, CssComponentValues,
-    CssContributions, CssExpansion, CssExpansionErrorKind, CssFontObliqueAngle, CssFontStyle,
-    CssFontStyleKeyword, CssFontValue, CssImportance, CssInitialValueRef, CssKnownProperty,
-    CssKnownPropertyValueRef, CssLonghandValueRef, CssNumericConstructionErrorKind,
-    CssPropertyKindRef, CssPropertyValueErrorKind, CssRecoveryAction, CssSerializationLimits,
-    CssSerializedOrigin, CssSpecifiedValueSerializationErrorKind, CssValueOrigin, CssValueTokenRef,
-    expand_declaration, parse_component_values, parse_style_attribute,
+    CssContributions, CssExpansion, CssFontObliqueAngle, CssFontStyle, CssFontStyleKeyword,
+    CssFontValue, CssImportance, CssInitialValueRef, CssKnownProperty, CssKnownPropertyValueRef,
+    CssLonghandValueRef, CssPropertyKindRef, CssRecoveryAction, CssSerializationLimits,
+    CssSerializedOrigin, CssValueOrigin, CssValueTokenRef, expand_declaration,
+    parse_component_values, parse_style_attribute,
 };
 
 fn angle(text: &str) -> CssFontObliqueAngle {
@@ -133,11 +132,7 @@ fn exact_lexical_bounds_and_radian_precision_retain_original_components() {
         let error =
             CssFontObliqueAngle::try_from_component(CssComponentValue::try_token(text).unwrap())
                 .unwrap_err();
-        assert_eq!(
-            error.kind(),
-            &CssNumericConstructionErrorKind::OutOfRange,
-            "{text}"
-        );
+        assert!(error.is_out_of_range(), "{text}");
     }
     let rad = angle("1.5707963267948966rad");
     let component = rad.literal_component().unwrap();
@@ -234,11 +229,7 @@ fn oblique_angles_compare_their_exact_decimal_with_the_quarter_turn_bound() {
         let error =
             CssFontObliqueAngle::try_from_component(CssComponentValue::try_token(text).unwrap())
                 .unwrap_err();
-        assert_eq!(
-            error.kind(),
-            &CssNumericConstructionErrorKind::OutOfRange,
-            "{text}"
-        );
+        assert!(error.is_out_of_range(), "{text}");
         let report = parse_style_attribute(&format!("font-style:oblique {text}"));
         assert!(!report.is_clean(), "{text}");
     }
@@ -250,11 +241,7 @@ fn wrong_domains_and_bare_math_roots_cannot_enter_the_angle_model() {
         let error =
             CssFontObliqueAngle::try_from_component(CssComponentValue::try_token(text).unwrap())
                 .unwrap_err();
-        assert_eq!(
-            error.kind(),
-            &CssNumericConstructionErrorKind::RootDomainMismatch,
-            "{text}"
-        );
+        assert!(error.is_root_domain_mismatch(), "{text}");
     }
     for text in ["0deg", "91deg"] {
         let calculation = CssAngleCalculation::try_from_components(
@@ -323,10 +310,7 @@ fn recovered_math_requires_parser_admission_before_typed_transfer() {
         Default::default(),
     )
     .unwrap_err();
-    assert_eq!(
-        error.kind(),
-        &CssNumericConstructionErrorKind::RecoveredComponent
-    );
+    assert!(error.is_recovered_component(), "{error:?}");
     let transferred = CssFontObliqueAngle::try_from_calculation(calculation.clone()).unwrap();
     assert_eq!(transferred.origin(), admitted.origin());
     assert_eq!(
@@ -391,13 +375,10 @@ fn checked_values_and_pending_reentry_preserve_real_origins_and_importance() {
         .unwrap(),
     )
     .unwrap_err();
-    assert!(matches!(
-        invalid.kind(),
-        CssPropertyValueErrorKind::Grammar(_)
-    ));
+    assert!(invalid.code().is_some());
     assert_eq!(
         invalid.origin(),
-        &CssSerializedOrigin::Token(CssValueOrigin::Programmatic)
+        CssSerializedOrigin::Token(CssValueOrigin::Programmatic)
     );
     let adjacent = CssComponentValues::try_new(
         vec![
@@ -456,16 +437,13 @@ fn checked_values_and_pending_reentry_preserve_real_origins_and_importance() {
             .unwrap(),
         )
         .unwrap_err();
-    let CssExpansionErrorKind::InvalidReplacement(mapped) = error.kind() else {
+    let Some(mapped) = error.replacement_error() else {
         panic!("invalid angle replacement")
     };
-    assert!(matches!(
-        mapped.kind(),
-        CssPropertyValueErrorKind::Grammar(_)
-    ));
+    assert!(mapped.code().is_some());
     assert_eq!(
         mapped.origin(),
-        &CssSerializedOrigin::Token(CssValueOrigin::Programmatic)
+        CssSerializedOrigin::Token(CssValueOrigin::Programmatic)
     );
 }
 
@@ -535,12 +513,11 @@ fn scalar_and_property_serialization_charge_budgets_atomically() {
         value.serialize_specified(Default::default()).unwrap(),
         "oblique 10deg"
     );
-    assert_eq!(
+    assert!(
         value
             .serialize_specified(CssSerializationLimits::new(8, 8, 4))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(
         value.serialize_specified(Default::default()).unwrap(),
@@ -551,11 +528,10 @@ fn scalar_and_property_serialization_charge_budgets_atomically() {
         value.serialize_specified(Default::default()).unwrap(),
         "-10grad"
     );
-    assert_eq!(
+    assert!(
         value
             .serialize_specified(CssSerializationLimits::new(8, 8, 3))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
 }

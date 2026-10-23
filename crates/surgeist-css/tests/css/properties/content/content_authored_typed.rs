@@ -1,9 +1,11 @@
 //! Functional new API expectations from Content 3 WD 2025-12-04's selected
 //! property tables and the bounded named-string disposition recorded in #680.
 
+use crate::css::support::failure_classes::SerializationFailure as K;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::property_admission::assert_checked_closure_rejected;
 use crate::css::support::sole_declaration;
-use surgeist_css::{CssSerializationLimits as L, CssSpecifiedValueSerializationErrorKind as K, *};
+use surgeist_css::{CssSerializationLimits as L, *};
 
 fn name(value: &str) -> CssContentName {
     CssContentName::try_new(CssIdent::try_new(value).unwrap()).unwrap()
@@ -103,7 +105,10 @@ fn string_set_direct_writer_charges_all_assignments_and_recovers_after_failure()
         (L::new(8, 7, expected.len()), K::ProjectionNodeLimit),
         (L::new(8, 8, expected.len() - 1), K::ByteLimit),
     ] {
-        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+            kind
+        );
         assert_eq!(value, before);
         assert_eq!(
             value.serialize_specified(Default::default()).unwrap(),
@@ -177,12 +182,11 @@ fn bookmark_level_retains_exact_large_integer_and_parsed_numeric_origin() {
             .unwrap(),
         digits
     );
-    assert_eq!(
+    assert!(
         copied
             .serialize_specified(L::new(0, 1, digits.len()))
             .unwrap_err()
-            .kind(),
-        K::InputNodeLimit
+            .is_input_node_limit()
     );
 }
 
@@ -258,12 +262,11 @@ fn explicit_content_text_omission_keeps_work_tariff_and_argument_view() {
         explicit.serialize_specified(L::new(3, 3, 9)).unwrap(),
         "content()"
     );
-    assert_eq!(
+    assert!(
         explicit
             .serialize_specified(L::new(2, 3, 9))
             .unwrap_err()
-            .kind(),
-        K::InputNodeLimit
+            .is_input_node_limit()
     );
     assert_eq!(
         implicit.serialize_specified(L::new(2, 2, 9)).unwrap(),
@@ -296,11 +299,10 @@ fn explicit_counter_and_named_string_defaults_cost_nodes_even_when_suppressed() 
             .unwrap(),
         expected
     );
-    assert_eq!(
+    assert!(
         list.serialize_specified(L::new(7, 6, expected.len()))
             .unwrap_err()
-            .kind(),
-        K::ProjectionNodeLimit
+            .is_projection_node_limit()
     );
 }
 
@@ -354,19 +356,17 @@ fn bookmark_state_direct_writer_has_only_keyword_tariff() {
                 .unwrap(),
             expected
         );
-        assert_eq!(
+        assert!(
             state
                 .serialize_specified(L::new(1, 1, expected.len() - 1))
                 .unwrap_err()
-                .kind(),
-            K::ByteLimit
+                .is_byte_limit()
         );
-        assert_eq!(
+        assert!(
             state
                 .serialize_specified(L::new(0, 1, expected.len()))
                 .unwrap_err()
-                .kind(),
-            K::InputNodeLimit
+                .is_input_node_limit()
         );
         assert_eq!(
             state.serialize_specified(Default::default()).unwrap(),
@@ -466,7 +466,7 @@ fn checked_content_image(
     property: CssKnownProperty,
     values: CssComponentValues,
     grammar: bool,
-) -> Result<CssDeclaration, CssPropertyValueParseError> {
+) -> Result<CssDeclaration, CssPropertyValueError> {
     if grammar {
         parse_property_value_for_grammar(property.grammar(), values, CssImportance::Important)
     } else {
@@ -514,22 +514,25 @@ fn bookmark_label_inherits_checked_image_resource_origin_and_pending_retry() {
             for grammar in [false, true] {
                 assert!(checked_content_image(property, valid.clone(), grammar).is_ok());
                 let error = checked_content_image(property, invalid.clone(), grammar).unwrap_err();
-                assert_eq!(
-                    error.kind(),
-                    &CssPropertyValueErrorKind::Component(CssComponentValueErrorKind::NestingLimit),
+                assert!(
+                    error
+                        .component_error()
+                        .is_some_and(|error| error.is_nesting_limit()),
                     "{name} image resource failure survives grammar alternatives"
                 );
-                assert_eq!(error.origin(), &CssSerializedOrigin::Token(opener.clone()));
+                assert_eq!(error.origin(), CssSerializedOrigin::Token(opener.clone()));
             }
             let error = handle.reenter(invalid.clone()).unwrap_err();
-            let CssExpansionErrorKind::InvalidReplacement(error) = error.kind() else {
+            let Some(error) = error.replacement_error() else {
                 panic!("typed image replacement failure")
             };
-            assert_eq!(
-                error.kind(),
-                &CssPropertyValueErrorKind::Component(CssComponentValueErrorKind::NestingLimit)
+            assert!(
+                error
+                    .component_error()
+                    .is_some_and(|error| error.is_nesting_limit()),
+                "{error:?}"
             );
-            assert_eq!(error.origin(), &CssSerializedOrigin::Token(opener.clone()));
+            assert_eq!(error.origin(), CssSerializedOrigin::Token(opener.clone()));
             assert!(handle.reenter(valid.clone()).is_ok());
             assert!(handle.source().same_occurrence(&pending));
             assert_eq!(handle.source().importance(), CssImportance::Important);

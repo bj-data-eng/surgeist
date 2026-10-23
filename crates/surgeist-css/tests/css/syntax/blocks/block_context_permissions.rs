@@ -14,7 +14,7 @@ use surgeist_css::{
     CssDeclarationContextRef, CssDeclarationList, CssErrorCode, CssFontDisplay,
     CssFontFaceDescriptorKind, CssFontFeatureValueKind, CssFontFeatureValuesItem, CssImportance,
     CssKeyframeSelector, CssKnownProperty, CssNamespaceContext, CssRecoveryAction, CssRule,
-    ErrorKind, parse_declaration_list_text, parse_sheet, parse_style_block,
+    parse_declaration_list_text, parse_sheet, parse_style_block,
 };
 
 fn ordered_style_contents(declarations: &CssDeclarationList, rules: &[CssRule]) {
@@ -180,22 +180,26 @@ fn terminal_priority_is_admitted_for_cascade_properties_and_recovered_locally_fo
             "!"
         );
     }
-    let ErrorKind::InvalidDeclarationAnnotation(keyframe) = keyframe_diagnostic.error().kind()
-    else {
-        panic!("keyframe annotation error")
-    };
+    let keyframe = keyframe_diagnostic.error();
+    assert_eq!(
+        keyframe.code(),
+        CssErrorCode::InvalidDeclarationAnnotation,
+        "keyframe annotation error"
+    );
     assert!(matches!(
-        keyframe.context(),
+        keyframe.declaration_context().unwrap(),
         CssDeclarationContextRef::Keyframe(_)
     ));
-    let ErrorKind::InvalidDeclarationAnnotation(descriptor) = descriptor_diagnostic.error().kind()
-    else {
-        panic!("descriptor annotation error")
-    };
-    let CssDeclarationContextRef::Descriptor {
+    let descriptor = descriptor_diagnostic.error();
+    assert_eq!(
+        descriptor.code(),
+        CssErrorCode::InvalidDeclarationAnnotation,
+        "descriptor annotation error"
+    );
+    let Some(CssDeclarationContextRef::Descriptor {
         at_rule,
         descriptor,
-    } = descriptor.context()
+    }) = descriptor.declaration_context()
     else {
         panic!("font descriptor context")
     };

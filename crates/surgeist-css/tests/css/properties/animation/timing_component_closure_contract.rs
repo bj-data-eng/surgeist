@@ -45,10 +45,8 @@ fn rejection_failures(property: CssKnownProperty, source: &str) -> Vec<String> {
     ] {
         match result {
             Err(error)
-                if matches!(
-                    error.kind(),
-                    CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
-                ) && error.origin() == &CssSerializedOrigin::End(Some(origin.clone())) => {}
+                if error.code() == Some(CssErrorCode::UnexpectedEnd)
+                    && error.origin() == CssSerializedOrigin::End(Some(origin.clone())) => {}
             Err(error) => failures.push(format!(
                 "{front}/{source}: expected original implicit EOF; actual {error:?}"
             )),

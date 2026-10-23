@@ -2,6 +2,8 @@
 //! canonical text follows CSSOM's meaning-preserving shorthand rule and the
 //! pinned list-style parsing cases, including keyword/custom-name ambiguity.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::named_property::normal_property_declaration as parsed;
 use surgeist_css::*;
 
@@ -222,19 +224,19 @@ fn shorthand_charges_present_defaults_and_inserted_disambiguators() {
     for (limits, kind) in [
         (
             CssSerializationLimits::new(3, 4, 7),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(4, 3, 7),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(4, 4, 6),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            initial.serialize_specified(limits).unwrap_err().kind(),
+            serialization_failure(&initial.serialize_specified(limits).unwrap_err()),
             kind
         );
     }
@@ -251,12 +253,11 @@ fn shorthand_charges_present_defaults_and_inserted_disambiguators() {
             .unwrap(),
         expected
     );
-    assert_eq!(
+    assert!(
         disambiguated
             .serialize_specified(CssSerializationLimits::new(2, 2, expected.len(),))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
+            .is_projection_node_limit()
     );
     assert_eq!(
         disambiguated
@@ -298,22 +299,25 @@ fn nested_symbols_images_share_the_shorthand_budget_and_original_source() {
     for (limits, kind) in [
         (
             CssSerializationLimits::new(0, 6, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(5, 6, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(6, 5, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(6, 6, expected.len() - 1),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
-        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+            kind
+        );
     }
 
     let authored = "symbols(linear-gradient(red calc(1px + 2%), blue) url(\"#star\" policy(flag)))";

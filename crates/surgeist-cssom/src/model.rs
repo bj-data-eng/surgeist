@@ -831,9 +831,7 @@ impl CssomSnapshot {
             return Ok(String::new());
         }
         match selected {
-            CssomProjection::Available(v) => {
-                v.serialize_cssom(limits).map_err(CssomError::Declaration)
-            }
+            CssomProjection::Available(v) => Ok(v.serialize_cssom(limits)?),
             CssomProjection::Unavailable(e) => Err(CssomError::Declaration(e.clone())),
         }
     }
@@ -939,7 +937,7 @@ pub enum CssomError {
     QueryMatch(CssomQueryMatchError),
     Keyframe(CssKeyframeRuleViewError),
     KeyframeComparison(CssKeyframeSelectorComparisonError),
-    NamedSupports(CssNamedSupportsConstructionError),
+    NamedSupports(CssSupportsConstructionError),
 }
 impl fmt::Display for CssomError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -967,4 +965,29 @@ impl std::error::Error for CssomError {
             _ => None,
         }
     }
+}
+/// Converts each CSS error that exactly one variant carries. The three variants
+/// carrying [`CssSerializationError`] name the operation that failed, so that
+/// error has no conversion.
+macro_rules! cssom_error_from {
+    ($($error:ty => $variant:ident),+ $(,)?) => {
+        $(impl From<$error> for CssomError {
+            fn from(error: $error) -> Self {
+                Self::$variant(error)
+            }
+        })+
+    };
+}
+cssom_error_from! {
+    CssPropertyMetadataError => Metadata,
+    CssExpansionError => Expansion,
+    CssPageBlockError => PageBlock,
+    CssFontFaceDeclarationBlockError => FontFace,
+    CssDeclarationBlockError => Declaration,
+    CssPageProjectionError => Page,
+    CssComponentValueError => Component,
+    CssRuleSerializationError => Format,
+    CssKeyframeRuleViewError => Keyframe,
+    CssKeyframeSelectorComparisonError => KeyframeComparison,
+    CssSupportsConstructionError => NamedSupports,
 }

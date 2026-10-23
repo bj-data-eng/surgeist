@@ -1,4 +1,5 @@
 //! Values4 Appendix C: retained Number tokens have a distinct pixel interpretation.
+use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::known_property;
 use crate::css::support::value_assertions::{
     assert_component_rejected, assert_first_property_diagnostic, assert_property_rejected,
@@ -44,7 +45,7 @@ fn contextual_length_owners_keep_original_number_tokens_and_distinguish_pixels()
             assert_component_rejected(
                 CssSpecifiedLengthPercentage::try_from_component,
                 original.clone(),
-                CssNumericConstructionErrorKind::RootDomainMismatch,
+                NumericFailure::RootDomainMismatch,
             );
 
             let padding = declaration(CssKnownProperty::PaddingTop, values.clone());
@@ -65,7 +66,7 @@ fn contextual_length_owners_keep_original_number_tokens_and_distinguish_pixels()
             assert_component_rejected(
                 CssSpecifiedNonNegativeLengthPercentage::try_from_component,
                 original.clone(),
-                CssNumericConstructionErrorKind::RootDomainMismatch,
+                NumericFailure::RootDomainMismatch,
             );
 
             let border = declaration(CssKnownProperty::BorderTopWidth, values.clone());
@@ -88,7 +89,7 @@ fn contextual_length_owners_keep_original_number_tokens_and_distinguish_pixels()
             assert_component_rejected(
                 CssSpecifiedNonNegativeLength::try_from_component,
                 original.clone(),
-                CssNumericConstructionErrorKind::RootDomainMismatch,
+                NumericFailure::RootDomainMismatch,
             );
 
             // The sole function exception retains the same inner Number, even
@@ -136,7 +137,7 @@ fn contextual_length_owners_keep_original_number_tokens_and_distinguish_pixels()
             assert_component_rejected(
                 CssSpecifiedLength::try_from_component,
                 original.clone(),
-                CssNumericConstructionErrorKind::RootDomainMismatch,
+                NumericFailure::RootDomainMismatch,
             );
         }
     }
@@ -324,12 +325,11 @@ fn checked_pixel_lengths_compose_without_granting_number_syntax_to_composite_pro
                 layer.serialize_specified(Default::default()).unwrap(),
                 "10px 10px 10px 10px"
             );
-            assert_eq!(
+            assert!(
                 layer
                     .serialize_specified(CssSerializationLimits::new(100, 100, 18))
                     .unwrap_err()
-                    .kind(),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit
+                    .is_byte_limit()
             );
             assert_eq!(layer, before);
             assert_eq!(
@@ -387,22 +387,22 @@ fn checked_pixel_lengths_compose_without_granting_number_syntax_to_composite_pro
         assert_component_rejected(
             CssSpecifiedLength::try_from_component,
             original.clone(),
-            CssNumericConstructionErrorKind::RootDomainMismatch,
+            NumericFailure::RootDomainMismatch,
         );
         assert_component_rejected(
             CssSpecifiedNonNegativeLength::try_from_component,
             original.clone(),
-            CssNumericConstructionErrorKind::RootDomainMismatch,
+            NumericFailure::RootDomainMismatch,
         );
         assert_component_rejected(
             CssSpecifiedLengthPercentage::try_from_component,
             original.clone(),
-            CssNumericConstructionErrorKind::RootDomainMismatch,
+            NumericFailure::RootDomainMismatch,
         );
         assert_component_rejected(
             CssSpecifiedNonNegativeLengthPercentage::try_from_component,
             original.clone(),
-            CssNumericConstructionErrorKind::RootDomainMismatch,
+            NumericFailure::RootDomainMismatch,
         );
     }
 }

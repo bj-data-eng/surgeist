@@ -2,12 +2,14 @@
 //! unordered Number/contiguous Percentage-group grammar. These new API tests
 //! preserve authored inputs before contextual creation or computed serialization.
 
+use crate::css::support::failure_classes::NumericFailure::{
+    RecoveredComponent, RootDomainMismatch,
+};
 use crate::css::support::property_admission::{
     assert_checked_closure_rejected, assert_component_rejected, assert_implicit_closure,
     assert_numeric_rejected,
 };
 use crate::css::support::serialization_limits::LimitLadder;
-use surgeist_css::CssNumericConstructionErrorKind::{RecoveredComponent, RootDomainMismatch};
 use surgeist_css::*;
 
 fn number(source: &str) -> CssSpecifiedNumber {
@@ -250,17 +252,15 @@ fn function_stops_and_numeric_children_share_exact_cumulative_budgets() {
             .unwrap(),
         expected
     );
-    assert_eq!(
+    assert!(
         list.serialize_specified(CssSerializationLimits::new(12, 13, expected.len()))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+            .is_input_node_limit()
     );
-    assert_eq!(
+    assert!(
         list.serialize_specified(CssSerializationLimits::new(13, 12, expected.len()))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
+            .is_projection_node_limit()
     );
     assert_eq!(
         list.serialize_specified(Default::default()).unwrap(),
@@ -272,17 +272,15 @@ fn function_stops_and_numeric_children_share_exact_cumulative_budgets() {
             .unwrap(),
         "-2 150%"
     );
-    assert_eq!(
+    assert!(
         stop.serialize_specified(CssSerializationLimits::new(2, 3, 7))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+            .is_input_node_limit()
     );
-    assert_eq!(
+    assert!(
         stop.serialize_specified(CssSerializationLimits::new(3, 2, 7))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
+            .is_projection_node_limit()
     );
 }
 

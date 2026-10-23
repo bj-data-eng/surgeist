@@ -1176,7 +1176,7 @@ pub(crate) fn adapt_native<'s, 'n, T, F>(
     numeric: &crate::numeric::NumericInputContext<'n>,
     range: NativeValueRange,
     parse: F,
-) -> Result<T, cssparser::ParseError<'s, crate::Error>>
+) -> Result<T, cssparser::ParseError<'s, crate::CssError>>
 where
     F: for<'i, 't> FnOnce(
         &mut Parser<'i, 't>,

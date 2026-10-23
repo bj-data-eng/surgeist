@@ -2,10 +2,10 @@
 //! one aggregate resource budget to its rule shell and generic test body.
 
 use surgeist_css::{
-    CssComponentValue, CssComponentValueErrorKind, CssComponentValueLimits, CssComponentValueRef,
-    CssComponentValues, CssImportance, CssNamedSupportsConstructionError, CssRule,
-    CssSerializedOrigin, CssSupportsConditionName, CssSupportsConditionRule, CssSupportsTestBody,
-    CssSupportsTestItem, CssValueOrigin, CssValueTokenRef, parse_component_values, parse_sheet,
+    CssComponentValue, CssComponentValueLimits, CssComponentValueRef, CssComponentValues,
+    CssImportance, CssRule, CssSerializedOrigin, CssSupportsConditionName,
+    CssSupportsConditionRule, CssSupportsTestBody, CssSupportsTestItem, CssValueOrigin,
+    CssValueTokenRef, parse_component_values, parse_sheet,
 };
 
 #[test]
@@ -18,20 +18,21 @@ fn extension_names_use_decoded_case_sensitive_identifiers_and_original_origin() 
     }
     // `<extension-name>` is a dashed ident; the empty string is no ident.
     for rejected in ["x", "-x"] {
-        assert_eq!(
-            CssSupportsConditionName::try_new(rejected),
-            Err(CssNamedSupportsConstructionError::InvalidName {
-                origin: CssValueOrigin::Programmatic
-            }),
+        assert!(
+            CssSupportsConditionName::try_new(rejected)
+                .as_ref()
+                .is_err_and(|error| error.is_invalid_name()
+                    && error.origin() == &CssValueOrigin::Programmatic),
             "{rejected:?}"
         );
     }
-    let Err(CssNamedSupportsConstructionError::Component(error)) =
-        CssSupportsConditionName::try_new("")
-    else {
+    let Err(outer) = CssSupportsConditionName::try_new("") else {
         panic!("empty name")
     };
-    assert_eq!(error.kind(), CssComponentValueErrorKind::InvalidIdentifier);
+    let Some(error) = outer.component_error() else {
+        panic!("empty name")
+    };
+    assert!(error.is_invalid_identifier(), "{error:?}");
     assert_eq!(error.origin(), &CssValueOrigin::Programmatic);
     let source = "@supports-condition --\\54 heme{}";
     let report = parse_sheet(source);
@@ -60,15 +61,17 @@ fn checked_body_rejects_invalid_grammar_without_property_support_filtering() {
     let body = CssSupportsTestBody::try_from_components(unknown, Default::default()).unwrap();
     assert_eq!(body.items().len(), 2);
     let invalid = parse_component_values("missing-colon;").unwrap();
-    assert!(matches!(
-        CssSupportsTestBody::try_from_components(invalid, Default::default()),
-        Err(CssNamedSupportsConstructionError::InvalidBodyGrammar { .. })
-    ));
+    assert!(
+        CssSupportsTestBody::try_from_components(invalid, Default::default())
+            .as_ref()
+            .is_err_and(|error| error.is_invalid_body_grammar())
+    );
     let recovered = parse_component_values("future:fn(").unwrap();
-    assert!(matches!(
-        CssSupportsTestBody::try_from_components(recovered, Default::default()),
-        Err(CssNamedSupportsConstructionError::RecoveredInput { .. })
-    ));
+    assert!(
+        CssSupportsTestBody::try_from_components(recovered, Default::default())
+            .as_ref()
+            .is_err_and(|error| error.is_recovered_input())
+    );
 }
 
 #[test]
@@ -82,7 +85,9 @@ fn strict_rule_budget_counts_name_shell_body_and_nested_structural_depth() {
     let too_few = CssComponentValueLimits::try_new(256, 7, usize::MAX).unwrap();
     let error = CssSupportsConditionRule::try_new(name.clone(), body.clone(), too_few).unwrap_err();
     assert!(
-        matches!(error, CssNamedSupportsConstructionError::Component(ref detail) if detail.kind() == CssComponentValueErrorKind::ComponentLimit)
+        error
+            .component_error()
+            .is_some_and(|detail| detail.is_component_limit())
     );
     assert!(
         matches!(error.origin(), CssValueOrigin::Parsed(origin) if origin.span().start().byte_offset().value() == 3)
@@ -108,7 +113,9 @@ fn strict_rule_budget_counts_name_shell_body_and_nested_structural_depth() {
     let too_shallow = CssComponentValueLimits::try_new(1, usize::MAX, usize::MAX).unwrap();
     let error = CssSupportsConditionRule::try_new(name, nested, too_shallow).unwrap_err();
     assert!(
-        matches!(error, CssNamedSupportsConstructionError::Component(ref detail) if detail.kind() == CssComponentValueErrorKind::NestingLimit)
+        error
+            .component_error()
+            .is_some_and(|detail| detail.is_nesting_limit())
     );
 }
 
@@ -118,7 +125,9 @@ fn checked_body_counts_generated_semicolon_and_boundary_comment() {
     let too_few = CssComponentValueLimits::try_new(256, 3, usize::MAX).unwrap();
     let error = CssSupportsTestBody::try_from_components(input.clone(), too_few).unwrap_err();
     assert!(
-        matches!(error, CssNamedSupportsConstructionError::Component(ref detail) if detail.kind() == CssComponentValueErrorKind::ComponentLimit)
+        error
+            .component_error()
+            .is_some_and(|detail| detail.is_component_limit())
     );
     assert!(matches!(error.origin(), CssValueOrigin::Programmatic));
     let enough = CssComponentValueLimits::try_new(256, 4, usize::MAX).unwrap();
@@ -139,10 +148,13 @@ fn checked_body_counts_generated_semicolon_and_boundary_comment() {
             .any(|segment| matches!(segment.origin(), CssSerializedOrigin::Separator { .. }))
     );
     let too_few = CssComponentValueLimits::try_new(256, 5, usize::MAX).unwrap();
-    assert!(matches!(
-        CssSupportsTestBody::try_from_components(adjacent.clone(), too_few),
-        Err(CssNamedSupportsConstructionError::Component(ref detail)) if detail.kind() == CssComponentValueErrorKind::ComponentLimit
-    ));
+    assert!(
+        CssSupportsTestBody::try_from_components(adjacent.clone(), too_few)
+            .as_ref()
+            .is_err_and(|error| error
+                .component_error()
+                .is_some_and(|detail| detail.is_component_limit()))
+    );
     let enough = CssComponentValueLimits::try_new(256, 6, usize::MAX).unwrap();
     CssSupportsTestBody::try_from_components(adjacent, enough).unwrap();
 }
@@ -210,12 +222,13 @@ fn lexical_serialization_maps_supplied_tokens_and_generated_delimiters() {
             .as_str(),
         "--x"
     );
-    assert_eq!(
+    assert!(
         CssSupportsConditionName::try_from_component(
             CssComponentValue::try_ident("plain").unwrap()
-        ),
-        Err(CssNamedSupportsConstructionError::InvalidName {
-            origin: CssValueOrigin::Programmatic
-        })
+        )
+        .as_ref()
+        .is_err_and(
+            |error| error.is_invalid_name() && error.origin() == &CssValueOrigin::Programmatic
+        )
     );
 }

@@ -1,8 +1,7 @@
 use crate::css::support::rules::page_pseudo;
 use surgeist_css::{
     CssErrorCode, CssImportance, CssKnownProperty, CssKnownPropertyValueRef, CssMarginValue,
-    CssPagePseudo, CssRecoveryAction, CssRule, CssSupportStatus, ErrorKind, feature_metadata,
-    parse_sheet,
+    CssPagePseudo, CssRecoveryAction, CssRule, CssSupportStatus, feature_metadata, parse_sheet,
 };
 
 #[test]
@@ -215,19 +214,25 @@ fn page_context_distinguishes_known_non_margin_unknown_and_invalid_margin_declar
             ),
         ]
     );
-    assert!(matches!(
-        report.diagnostics()[0].error().kind(),
-        ErrorKind::InvalidPropertyValue(detail) if detail.property() == CssKnownProperty::Opacity
-    ));
-    assert!(matches!(
-        report.diagnostics()[1].error().kind(),
-        ErrorKind::UnknownProperty(detail) if detail.name().as_str() == "mystery"
-    ));
-    assert!(matches!(
-        report.diagnostics()[2].error().kind(),
-        ErrorKind::InvalidPropertyValue(detail)
-            if detail.property() == CssKnownProperty::MarginTop
-    ));
+    assert!(
+        (report.diagnostics()[0].error().code() == CssErrorCode::InvalidPropertyValue
+            && report.diagnostics()[0].error().known_property().unwrap()
+                == CssKnownProperty::Opacity)
+    );
+    assert!(
+        (report.diagnostics()[1].error().code() == CssErrorCode::UnknownProperty
+            && report.diagnostics()[1]
+                .error()
+                .property_name()
+                .unwrap()
+                .as_str()
+                == "mystery")
+    );
+    assert!(
+        (report.diagnostics()[2].error().code() == CssErrorCode::InvalidPropertyValue
+            && report.diagnostics()[2].error().known_property().unwrap()
+                == CssKnownProperty::MarginTop)
+    );
 }
 
 #[test]

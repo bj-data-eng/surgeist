@@ -58,7 +58,7 @@ fn media_eof(diagnostic: &CssRecoveryDiagnostic, start: usize, end: usize, line:
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropAtRule);
     assert_eq!(diagnostic.error().code(), CssErrorCode::UnexpectedEnd);
     assert!(
-        matches!(diagnostic.error().kind(), ErrorKind::UnexpectedEnd(_)),
+        diagnostic.error().code() == CssErrorCode::UnexpectedEnd,
         "a bounded production EOF supplies no authored semicolon: {diagnostic:?}"
     );
     position(diagnostic, end, line, column);
@@ -71,10 +71,7 @@ fn closure(diagnostic: &CssRecoveryDiagnostic, eof: usize) {
         CssRecoveryAction::RetainWithImplicitClosure
     );
     assert_eq!(diagnostic.error().code(), CssErrorCode::UnexpectedEnd);
-    assert!(matches!(
-        diagnostic.error().kind(),
-        ErrorKind::UnexpectedEnd(_)
-    ));
+    assert!(diagnostic.error().code() == CssErrorCode::UnexpectedEnd);
     position(diagnostic, eof, 0, eof as u32);
     span(diagnostic.span(), eof, eof);
 }
@@ -339,11 +336,14 @@ fn actual_media_semicolon_has_missing_body_contract_and_local_following_runs() {
         };
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropAtRule);
         assert_eq!(diagnostic.error().code(), CssErrorCode::InvalidAtRuleBody);
-        let ErrorKind::InvalidAtRuleBody(detail) = diagnostic.error().kind() else {
-            panic!("media body owner")
-        };
-        assert_eq!(detail.name().as_str(), "media");
-        assert_eq!(detail.production().as_str(), "baseline.rule.media");
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidAtRuleBody,
+            "media body owner"
+        );
+        assert_eq!(detail.at_rule().unwrap().as_str(), "media");
+        assert_eq!(detail.production().unwrap().as_str(), "baseline.rule.media");
         assert!(detail.encountered().is_none());
         position(diagnostic, end, 0, end as u32);
         span(diagnostic.span(), start, end);
@@ -421,11 +421,10 @@ fn legal_layer_statement_eof_is_retained_at_native_style_and_scoped_bounds() {
             CssRecoveryAction::RetainNonconformingRule
         );
         assert_eq!(diagnostic.error().code(), CssErrorCode::UnexpectedEnd);
-        let ErrorKind::UnexpectedEnd(detail) = diagnostic.error().kind() else {
-            panic!("statement EOF")
-        };
+        let detail = diagnostic.error();
+        assert_eq!(detail.code(), CssErrorCode::UnexpectedEnd, "statement EOF");
         assert_eq!(
-            detail.expectation().as_str(),
+            detail.expectation().unwrap().as_str(),
             "a semicolon or block terminating an at-rule"
         );
         position(diagnostic, end, 0, end as u32);
@@ -478,11 +477,17 @@ fn invalid_layer_prelude_precedes_missing_body_in_both_native_contexts() {
             diagnostic.error().code(),
             CssErrorCode::InvalidAtRulePrelude
         );
-        let ErrorKind::InvalidAtRulePrelude(detail) = diagnostic.error().kind() else {
-            panic!("layer prelude")
-        };
-        assert_eq!(detail.name().as_str(), "layer");
-        assert_eq!(detail.production().as_str(), "baseline.rule.layer-block");
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidAtRulePrelude,
+            "layer prelude"
+        );
+        assert_eq!(detail.at_rule().unwrap().as_str(), "layer");
+        assert_eq!(
+            detail.production().unwrap().as_str(),
+            "baseline.rule.layer-block"
+        );
         let token = detail
             .encountered()
             .expect("actual invalid layer-name dimension");
@@ -518,11 +523,14 @@ fn contextual_when_body_keeps_owned_missing_token_category_at_native_eof() {
     };
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropAtRule);
     assert_eq!(diagnostic.error().code(), CssErrorCode::InvalidAtRuleBody);
-    let ErrorKind::InvalidAtRuleBody(detail) = diagnostic.error().kind() else {
-        panic!("when body owner")
-    };
-    assert_eq!(detail.name().as_str(), "when");
-    assert_eq!(detail.production().as_str(), "ext.rule.when");
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidAtRuleBody,
+        "when body owner"
+    );
+    assert_eq!(detail.at_rule().unwrap().as_str(), "when");
+    assert_eq!(detail.production().unwrap().as_str(), "ext.rule.when");
     assert!(detail.encountered().is_none());
     position(diagnostic, 31, 0, 31);
     span(diagnostic.span(), 13, 31);

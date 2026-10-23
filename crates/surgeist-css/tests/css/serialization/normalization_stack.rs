@@ -192,11 +192,8 @@ fn colliding_depth_and_rule_budgets_report_depth_without_consuming_source() {
             let error = normalize_sheet_with_limits(report.syntax(), limits)
                 .expect_err("the next group exceeds both budgets");
             assert_eq!(
-                error.kind(),
-                &CssNormalizationErrorKind::LimitExceeded {
-                    resource: CssNormalizationResource::RuleDepth,
-                    limit: 240,
-                }
+                error.exhausted_limit(),
+                Some((CssNormalizationResource::RuleDepth, 240))
             );
             assert_eq!(
                 error.position().unwrap().byte_offset().value(),

@@ -2,8 +2,7 @@
 
 use surgeist_css::{
     CssComponentValue, CssLengthCalculation, CssLengthPercentageCalculation,
-    CssNumericConstructionErrorKind, CssSerializationLimits, CssSpecifiedLength,
-    CssSpecifiedNonNegativeLengthPercentage, CssSpecifiedValueSerializationErrorKind,
+    CssSerializationLimits, CssSpecifiedLength, CssSpecifiedNonNegativeLengthPercentage,
     CssValueOrigin, parse_component_values,
 };
 
@@ -37,11 +36,7 @@ fn signed_length_accepts_only_exact_length_literals_and_unitless_zero() {
     }
     for text in ["1", "1e-999", "10%", "auto", "2deg", "2future"] {
         let error = CssSpecifiedLength::try_from_component(component(text)).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            &CssNumericConstructionErrorKind::RootDomainMismatch,
-            "{text}"
-        );
+        assert!(error.is_root_domain_mismatch(), "{text}");
     }
     let initial = CssSpecifiedLength::zero();
     assert!(matches!(initial.origin(), CssValueOrigin::Programmatic));
@@ -74,21 +69,13 @@ fn nonnegative_length_percentage_checks_exact_ordinary_sign_and_domain() {
     for text in ["-1px", "-1e-999px", "-1e-999%"] {
         let error = CssSpecifiedNonNegativeLengthPercentage::try_from_component(component(text))
             .unwrap_err();
-        assert_eq!(
-            error.kind(),
-            &CssNumericConstructionErrorKind::OutOfRange,
-            "{text}"
-        );
+        assert!(error.is_out_of_range(), "{text}");
         assert_eq!(error.origin(), Some(component(text).origin()));
     }
     for text in ["1", "1e-999", "auto", "2deg", "2future"] {
         let error = CssSpecifiedNonNegativeLengthPercentage::try_from_component(component(text))
             .unwrap_err();
-        assert_eq!(
-            error.kind(),
-            &CssNumericConstructionErrorKind::RootDomainMismatch,
-            "{text}"
-        );
+        assert!(error.is_root_domain_mismatch(), "{text}");
     }
 }
 
@@ -126,9 +113,10 @@ fn extreme_ordinary_magnitudes_keep_exact_digits_and_bounded_serialization() {
         assert!(huge.serialize_specified(limits).is_err());
     }
     let one_byte_short = CssSerializationLimits::new(1, 1, expected_huge.len() - 1);
-    assert_eq!(
-        huge.serialize_specified(one_byte_short).unwrap_err().kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+    assert!(
+        huge.serialize_specified(one_byte_short)
+            .unwrap_err()
+            .is_byte_limit()
     );
 }
 
@@ -152,11 +140,10 @@ fn checked_calculation_entry_rechecks_bare_roots_and_defers_function_math() {
         Default::default(),
     )
     .unwrap();
-    assert_eq!(
+    assert!(
         CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(forbidden_bare)
             .unwrap_err()
-            .kind(),
-        &CssNumericConstructionErrorKind::OutOfRange
+            .is_out_of_range()
     );
     let allowed_bare = CssLengthPercentageCalculation::try_from_components(
         parse_component_values("1e999%").unwrap(),

@@ -599,10 +599,13 @@ fn parsed_rejects(value: &str) {
         diagnostic.error().code(),
         CssErrorCode::InvalidPropertyValue
     );
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("typed cursor property grammar diagnostic")
-    };
-    assert_eq!(detail.property(), CssKnownProperty::Cursor);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "typed cursor property grammar diagnostic"
+    );
+    assert_eq!(detail.known_property().unwrap(), CssKnownProperty::Cursor);
     let start = source.find("cursor:").unwrap();
     let end = start + source[start..].find(';').unwrap() + 1;
     position(diagnostic.span().start(), &source, start);
@@ -630,11 +633,13 @@ fn checked_rejects(value: &str, grammar: bool) {
     let error = result.expect_err(
         "cursor grammar must reject malformed tuples, missing fallbacks or non-URL sets",
     );
-    let CssPropertyValueErrorKind::Grammar(ErrorKind::InvalidPropertyValue(detail)) = error.kind()
-    else {
-        panic!("typed checked cursor property grammar failure: {error:?}")
-    };
-    assert_eq!(detail.property(), CssKnownProperty::Cursor);
+    let detail = &error;
+    assert_eq!(
+        detail.code(),
+        Some(CssErrorCode::InvalidPropertyValue),
+        "typed checked cursor property grammar failure: {error:?}"
+    );
+    assert_eq!(detail.known_property().unwrap(), CssKnownProperty::Cursor);
 }
 
 #[test]

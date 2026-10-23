@@ -5,12 +5,13 @@
 //! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-comments
 
 use surgeist_css::{
-    CssCustomMediaBody, CssFontFaceDescriptorKind, CssImportance, CssKnownProperty, CssMediaQuery,
-    CssNamespaceContext, CssParseReport, CssPropertyGrammar, CssPropertyNameRef, CssRecoveryAction,
-    CssRule, ErrorKind, parse_declaration, parse_font_face_descriptor_value, parse_media_query,
-    parse_media_query_list, parse_property_value_text, parse_property_value_text_for_grammar,
-    parse_rule, parse_selector, parse_selector_list, parse_sheet, parse_style_attribute,
-    parse_style_block, validate_sheet, validate_style_attribute,
+    CssCustomMediaBody, CssErrorCode, CssFontFaceDescriptorKind, CssImportance, CssKnownProperty,
+    CssMediaQuery, CssNamespaceContext, CssParseReport, CssPropertyGrammar, CssPropertyNameRef,
+    CssRecoveryAction, CssRule, parse_declaration, parse_font_face_descriptor_value,
+    parse_media_query, parse_media_query_list, parse_property_value_text,
+    parse_property_value_text_for_grammar, parse_rule, parse_selector, parse_selector_list,
+    parse_sheet, parse_style_attribute, parse_style_block, validate_sheet,
+    validate_style_attribute,
 };
 
 fn assert_comment<T>(source: &str, report: &CssParseReport<T>, opening: usize) {
@@ -18,7 +19,7 @@ fn assert_comment<T>(source: &str, report: &CssParseReport<T>, opening: usize) {
         .diagnostics()
         .iter()
         .filter(|diagnostic| {
-            matches!(diagnostic.error().kind(), ErrorKind::UnexpectedEnd(_))
+            diagnostic.error().code() == CssErrorCode::UnexpectedEnd
                 && diagnostic.span().start().byte_offset().value() == opening
         })
         .collect::<Vec<_>>();
@@ -170,11 +171,14 @@ fn custom_media_boolean_and_empty_query_definitions_survive_comment_eof() {
             .iter()
             .find(|diagnostic| diagnostic.action() == CssRecoveryAction::RetainNonconformingRule)
             .expect("distinct statement EOF diagnostic");
-        let ErrorKind::UnexpectedEnd(detail) = statement.error().kind() else {
-            panic!("typed statement EOF");
-        };
+        let detail = statement.error();
         assert_eq!(
-            detail.expectation().as_str(),
+            detail.code(),
+            CssErrorCode::UnexpectedEnd,
+            "typed statement EOF"
+        );
+        assert_eq!(
+            detail.expectation().unwrap().as_str(),
             "a semicolon or block terminating an at-rule"
         );
         assert_eq!(
@@ -295,7 +299,7 @@ fn bad_url_and_bad_string_payloads_do_not_create_comment_diagnostics() {
             report
                 .diagnostics()
                 .iter()
-                .all(|d| !matches!(d.error().kind(), ErrorKind::UnexpectedEnd(_))),
+                .all(|d| d.error().code() != CssErrorCode::UnexpectedEnd),
             "payload is not an EOF comment: {source}: {report:?}"
         );
     }

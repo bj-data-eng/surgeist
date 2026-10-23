@@ -112,10 +112,10 @@ pub(crate) fn import_error(error: ImportSerializationFailure) -> CssSerializatio
         }
     }
 }
-/// A complete import construction failure located in the original input.
+/// A complete import construction failure located in the original input, read
+/// through [`CssRuleConstructionError`].
 #[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssImportConstructionError {
+pub(crate) enum ImportConstructionKind {
     InvalidRuleGrammar { origin: CssValueOrigin },
     RecoveredInput { origin: CssValueOrigin },
     Component(CssComponentValueError),
@@ -124,8 +124,8 @@ pub enum CssImportConstructionError {
     Serialization(CssSerializationError),
     WorkerUnavailable { origin: CssValueOrigin },
 }
-impl CssImportConstructionError {
-    pub fn origin(&self) -> &CssValueOrigin {
+impl ImportConstructionKind {
+    pub(crate) fn origin(&self) -> &CssValueOrigin {
         match self {
             Self::InvalidRuleGrammar { origin }
             | Self::RecoveredInput { origin }
@@ -136,14 +136,19 @@ impl CssImportConstructionError {
             Self::Serialization(error) => error.origin().unwrap_or(&CssValueOrigin::Programmatic),
         }
     }
-}
-impl fmt::Display for CssImportConstructionError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "invalid authored import construction: {self:?}")
+    pub(crate) fn describe(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("invalid authored import construction: ")?;
+        f.write_str(match self {
+            Self::InvalidRuleGrammar { .. } => "the components do not form an @import rule",
+            Self::RecoveredInput { .. } => "an implicitly closed component is not admitted",
+            Self::Component(_) => "a component is invalid",
+            Self::Supports(_) => "the supports condition is invalid",
+            Self::Media(_) => "the media query list is invalid",
+            Self::Serialization(_) => "the rule cannot be serialized",
+            Self::WorkerUnavailable { .. } => "the construction thread could not be started",
+        })
     }
-}
-impl std::error::Error for CssImportConstructionError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+    pub(crate) fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Component(error) => Some(error),
             Self::Supports(error) => Some(error),
@@ -153,24 +158,24 @@ impl std::error::Error for CssImportConstructionError {
         }
     }
 }
-impl From<CssComponentValueError> for CssImportConstructionError {
+impl From<CssComponentValueError> for CssRuleConstructionError {
     fn from(error: CssComponentValueError) -> Self {
-        Self::Component(error)
+        ImportConstructionKind::Component(error).into()
     }
 }
-impl From<CssSupportsConstructionError> for CssImportConstructionError {
+impl From<CssSupportsConstructionError> for CssRuleConstructionError {
     fn from(error: CssSupportsConstructionError) -> Self {
-        Self::Supports(error)
+        ImportConstructionKind::Supports(error).into()
     }
 }
-impl From<CssMediaConstructionError> for CssImportConstructionError {
+impl From<CssMediaConstructionError> for CssRuleConstructionError {
     fn from(error: CssMediaConstructionError) -> Self {
-        Self::Media(error)
+        ImportConstructionKind::Media(error).into()
     }
 }
-impl From<CssSerializationError> for CssImportConstructionError {
+impl From<CssSerializationError> for CssRuleConstructionError {
     fn from(error: CssSerializationError) -> Self {
-        Self::Serialization(error)
+        ImportConstructionKind::Serialization(error).into()
     }
 }
 
@@ -184,7 +189,7 @@ impl CssImportRule {
         values: CssComponentValues,
         context: &CssNamespaceContext,
         limits: CssComponentValueLimits,
-    ) -> Result<Self, CssImportConstructionError> {
+    ) -> Result<Self, CssRuleConstructionError> {
         if values.nesting_depth() < 32 {
             return crate::parser::construct_import(values, context, limits);
         }
@@ -200,8 +205,10 @@ impl CssImportRule {
                         limits,
                     )
                 })
-                .map_err(|_| CssImportConstructionError::WorkerUnavailable {
-                    origin: CssValueOrigin::Programmatic,
+                .map_err(|_| {
+                    CssRuleConstructionError::from(ImportConstructionKind::WorkerUnavailable {
+                        origin: CssValueOrigin::Programmatic,
+                    })
                 })?;
             match worker.join() {
                 Ok(result) => result,

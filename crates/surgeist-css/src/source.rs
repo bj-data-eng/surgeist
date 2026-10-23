@@ -710,28 +710,32 @@ impl CssSourceSnapshot {
         other_bytes: usize,
         control: &mut crate::utf16_input::Preparation<'_, E>,
     ) -> Result<Self, crate::CssUtf16InputError<E>> {
-        use crate::CssUtf16InputError::CapacityOverflow;
         let backing = |capacity: usize| {
             other_bytes
                 .checked_add(source.capacity())?
                 .checked_add(capacity.checked_mul(std::mem::size_of::<CssSourcePosition>())?)
         };
-        crate::utf16_input::check(1, limits.max_checkpoints, "source checkpoints")?;
         crate::utf16_input::check(
-            backing(1).ok_or(CapacityOverflow)?,
+            1,
+            limits.max_checkpoints,
+            crate::CssUtf16Resource::Checkpoints,
+        )?;
+        crate::utf16_input::check(
+            backing(1).ok_or_else(crate::CssUtf16InputError::capacity_overflow)?,
             limits.max_retained_bytes,
-            "retained source bytes",
+            crate::CssUtf16Resource::RetainedBytes,
         )?;
         control.grow_vec(&mut checkpoints, 1)?;
         crate::utf16_input::check(
             checkpoints.capacity(),
             limits.max_checkpoints,
-            "source checkpoints",
+            crate::CssUtf16Resource::Checkpoints,
         )?;
         crate::utf16_input::check(
-            backing(checkpoints.capacity()).ok_or(CapacityOverflow)?,
+            backing(checkpoints.capacity())
+                .ok_or_else(crate::CssUtf16InputError::capacity_overflow)?,
             limits.max_retained_bytes,
-            "retained source bytes",
+            crate::CssUtf16Resource::RetainedBytes,
         )?;
         checkpoints.push(position);
         let mut start = 0;
@@ -741,9 +745,12 @@ impl CssSourceSnapshot {
             if end - start >= 64 {
                 position = position.advanced_by(&source[start..end]);
                 crate::utf16_input::check(
-                    checkpoints.len().checked_add(1).ok_or(CapacityOverflow)?,
+                    checkpoints
+                        .len()
+                        .checked_add(1)
+                        .ok_or_else(crate::CssUtf16InputError::capacity_overflow)?,
                     limits.max_checkpoints,
-                    "source checkpoints",
+                    crate::CssUtf16Resource::Checkpoints,
                 )?;
                 if checkpoints.len() == checkpoints.capacity() {
                     let capacity = checkpoints
@@ -752,20 +759,22 @@ impl CssSourceSnapshot {
                         .max(1)
                         .min(limits.max_checkpoints);
                     crate::utf16_input::check(
-                        backing(capacity).ok_or(CapacityOverflow)?,
+                        backing(capacity)
+                            .ok_or_else(crate::CssUtf16InputError::capacity_overflow)?,
                         limits.max_retained_bytes,
-                        "retained source bytes",
+                        crate::CssUtf16Resource::RetainedBytes,
                     )?;
                     control.grow_vec(&mut checkpoints, capacity)?;
                     crate::utf16_input::check(
                         checkpoints.capacity(),
                         limits.max_checkpoints,
-                        "source checkpoints",
+                        crate::CssUtf16Resource::Checkpoints,
                     )?;
                     crate::utf16_input::check(
-                        backing(checkpoints.capacity()).ok_or(CapacityOverflow)?,
+                        backing(checkpoints.capacity())
+                            .ok_or_else(crate::CssUtf16InputError::capacity_overflow)?,
                         limits.max_retained_bytes,
-                        "retained source bytes",
+                        crate::CssUtf16Resource::RetainedBytes,
                     )?;
                 }
                 checkpoints.push(position);
@@ -778,10 +787,14 @@ impl CssSourceSnapshot {
                 checkpoints
                     .capacity()
                     .checked_mul(std::mem::size_of::<CssSourcePosition>())
-                    .ok_or(CapacityOverflow)?,
+                    .ok_or_else(crate::CssUtf16InputError::capacity_overflow)?,
             )
-            .ok_or(CapacityOverflow)?;
-        crate::utf16_input::check(bytes, limits.max_retained_bytes, "retained source bytes")?;
+            .ok_or_else(crate::CssUtf16InputError::capacity_overflow)?;
+        crate::utf16_input::check(
+            bytes,
+            limits.max_retained_bytes,
+            crate::CssUtf16Resource::RetainedBytes,
+        )?;
         // Admit the actual immutable source payload before forming its owner;
         // the old String/checkpoint headers remain owned until this move.
         control.add(std::mem::size_of::<SourceSnapshotData>())?;
@@ -866,7 +879,7 @@ impl CssParsedOrigin {
 #[cfg(test)]
 mod utf16_admission_tests {
     use super::*;
-    use crate::{CssParserContext, CssUtf16InputError, CssUtf16InputLimits};
+    use crate::{CssParserContext, CssUtf16InputLimits};
 
     #[test]
     fn actual_preparation_backing_and_work_accept_exact_and_refuse_one_short() {
@@ -904,54 +917,54 @@ mod utf16_admission_tests {
                     max_input_units: exact.max_input_units - 1,
                     ..exact
                 },
-                "original UTF16 units",
+                crate::CssUtf16Resource::InputUnits,
             ),
             (
                 CssUtf16InputLimits {
                     max_output_bytes: exact.max_output_bytes - 1,
                     ..exact
                 },
-                "normalized UTF8 bytes",
+                crate::CssUtf16Resource::OutputBytes,
             ),
             (
                 CssUtf16InputLimits {
                     max_map_entries: exact.max_map_entries - 1,
                     ..exact
                 },
-                "source map entries",
+                crate::CssUtf16Resource::MapEntries,
             ),
             (
                 CssUtf16InputLimits {
                     max_checkpoints: exact.max_checkpoints - 1,
                     ..exact
                 },
-                "source checkpoints",
+                crate::CssUtf16Resource::Checkpoints,
             ),
             (
                 CssUtf16InputLimits {
                     max_scratch_bytes: exact.max_scratch_bytes - 1,
                     ..exact
                 },
-                "preparation scratch bytes",
+                crate::CssUtf16Resource::ScratchBytes,
             ),
             (
                 CssUtf16InputLimits {
                     max_retained_bytes: exact.max_retained_bytes - 1,
                     ..exact
                 },
-                "retained source bytes",
+                crate::CssUtf16Resource::RetainedBytes,
             ),
             (
                 CssUtf16InputLimits {
                     max_work: exact.max_work - 1,
                     ..exact
                 },
-                "preparation work",
+                crate::CssUtf16Resource::Work,
             ),
         ] {
             assert!(
-                matches!(CssParserContext::default().parse_sheet_utf16_with_limits(original.clone(), limits, || Ok::<_, ()>(())), Err(CssUtf16InputError::Limit(actual)) if actual == cause),
-                "{cause}"
+                matches!(CssParserContext::default().parse_sheet_utf16_with_limits(original.clone(), limits, || Ok::<_, ()>(())), Err(error) if error.exhausted_limit() == Some(cause)),
+                "{cause:?}"
             );
         }
     }
@@ -981,7 +994,7 @@ mod utf16_admission_tests {
                 if calls == total { Err(calls) } else { Ok(()) }
             },
         );
-        assert!(matches!(result, Err(CssUtf16InputError::Interrupted(actual)) if actual == total));
+        assert!(matches!(result, Err(error) if error.interruption() == Some(&total)));
         assert_eq!(calls, total);
         assert_eq!(Arc::strong_count(&original), 1);
     }
@@ -1115,7 +1128,7 @@ mod secondary_admission_tests {
         assert!(CssSourceSnapshot::try_from_decoded_utf8(&text, &control).is_err());
         assert_eq!(
             control.failure(),
-            Some(Failure::Limit("property input live bytes"))
+            Some(Failure::Limit(crate::CssUtf16Resource::PropertyLiveBytes))
         );
         assert_eq!(control.live().bytes(), 0);
         assert_eq!(released.get(), Some(0));

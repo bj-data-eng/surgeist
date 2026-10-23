@@ -69,10 +69,7 @@ fn rejects(text: &str, responsible: Option<(&str, usize)>) {
             assert_color_value_rejected_at(checked, CssKnownProperty::Color, text, token, at)
         }
         None => assert!(
-            matches!(
-                checked.unwrap_err().kind(),
-                CssPropertyValueErrorKind::Grammar(ErrorKind::InvalidColorSyntax(_))
-            ),
+            checked.unwrap_err().code() == Some(CssErrorCode::InvalidColorSyntax),
             "{text}"
         ),
     }
@@ -388,12 +385,11 @@ fn substitutions_remain_pending_and_strict_reentry_rejects_residuals() {
                 "color(--P var(--channels))",
                 "alpha(from red / env(opacity))",
             ] {
-                assert_eq!(
+                assert!(
                     pending
                         .reenter(parse_component_values(residual).unwrap())
                         .unwrap_err()
-                        .kind(),
-                    &CssExpansionErrorKind::ResidualSubstitution
+                        .is_residual_substitution()
                 );
             }
             assert!(

@@ -20,18 +20,14 @@ fn display_pending_reentry_is_complete_atomic_and_preserves_both_origins() {
         let error = handle
             .reenter(parse_component_values(input).unwrap())
             .unwrap_err();
-        assert!(
-            matches!(error.kind(), CssExpansionErrorKind::InvalidReplacement(_)),
-            "{input}: {error:?}"
-        );
+        assert!(error.replacement_error().is_some(), "{input}: {error:?}");
         assert!(handle.source().same_occurrence(&source));
     }
-    assert_eq!(
+    assert!(
         handle
             .reenter(parse_component_values("var(--again)").unwrap())
             .unwrap_err()
-            .kind(),
-        &CssExpansionErrorKind::ResidualSubstitution
+            .is_residual_substitution()
     );
     for input in [
         "list-item flow-root inline",
@@ -107,7 +103,7 @@ fn recovered_display_declaration_keeps_order_and_exact_normalization_budgets() {
         CssRecoveryAction::DropDeclaration
     );
     assert_invalid_value(
-        report.diagnostics()[0].error().kind(),
+        report.diagnostics()[0].error(),
         CssKnownProperty::Display,
         Some("grid-lanes"),
     );
@@ -135,8 +131,8 @@ fn recovered_display_declaration_keeps_order_and_exact_normalization_budgets() {
         assert_eq!(
             normalize_sheet_with_limits(report.syntax(), limits)
                 .unwrap_err()
-                .kind(),
-            &CssNormalizationErrorKind::LimitExceeded { resource, limit }
+                .exhausted_limit(),
+            Some((resource, limit))
         );
     }
     let sheet = normalize_sheet_with_limits(

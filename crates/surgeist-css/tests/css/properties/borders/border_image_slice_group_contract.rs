@@ -6,6 +6,9 @@
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#component-combinators
 
 use crate::css::support::check_property_text as checked;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
+use crate::css::support::property_admission::property_value_facts;
 use crate::css::support::property_admission::{
     assert_checked_rejected, assert_style_attribute_rejected,
 };
@@ -124,10 +127,10 @@ fn pending_reentry_rejects_split_groups_atomically_and_remains_reusable() {
                         .reenter(replacement)
                         .expect_err("pending split group rejection");
                     let direct = checked(property, text).expect_err("checked group rejection");
-                    let CssExpansionErrorKind::InvalidReplacement(actual) = error.kind() else {
+                    let Some(actual) = error.replacement_error() else {
                         panic!("intrinsic grammar error: {error:?}")
                     };
-                    assert_eq!(actual.kind(), direct.kind());
+                    assert_eq!(property_value_facts(actual), property_value_facts(&direct));
                     assert_eq!(actual.origin(), direct.origin());
                 }
                 let replacement = parse_component_values("fill 1 2 3 4").unwrap();
@@ -168,10 +171,7 @@ fn pending_reentry_rejects_split_groups_atomically_and_remains_reusable() {
                 let error = handle
                     .reenter(parse_component_values("var(--remaining)").unwrap())
                     .unwrap_err();
-                assert!(matches!(
-                    error.kind(),
-                    CssExpansionErrorKind::ResidualSubstitution
-                ));
+                assert!(error.is_residual_substitution());
             }
         }
     }
@@ -376,7 +376,7 @@ fn slice_serialization_budgets_charge_the_complete_group_and_fill_atomically() {
     let value = slice(&values);
     let expected = "1 2% 3 4% fill";
     type Limits = CssSerializationLimits;
-    type Kind = CssSpecifiedValueSerializationErrorKind;
+    type Kind = SerializationFailure;
     assert_eq!(
         value
             .serialize_specified(Limits::new(10, 10, expected.len()))
@@ -391,7 +391,10 @@ fn slice_serialization_budgets_charge_the_complete_group_and_fill_atomically() {
         ),
         (Limits::new(10, 10, expected.len() - 1), Kind::ByteLimit),
     ] {
-        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+            kind
+        );
         assert_eq!(
             value.serialize_specified(Default::default()).unwrap(),
             expected

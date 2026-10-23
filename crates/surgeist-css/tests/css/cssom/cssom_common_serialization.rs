@@ -162,27 +162,27 @@ fn empty_results_admit_zero_bytes_and_visit_the_primitive_or_container() {
         serialize_css_whitespace_separated_list(&[], empty_limits).unwrap(),
         ""
     );
-    assert_eq!(
-        serialize_css_string("", empty_limits).unwrap_err().kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+    assert!(
+        serialize_css_string("", empty_limits)
+            .unwrap_err()
+            .is_byte_limit()
     );
     let zero = CssSerializationLimits::new(0, 0, 0);
-    assert_eq!(
-        serialize_css_identifier("", zero).unwrap_err().kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+    assert!(
+        serialize_css_identifier("", zero)
+            .unwrap_err()
+            .is_input_node_limit()
     );
-    assert_eq!(
+    assert!(
         serialize_css_comma_separated_list(&[], zero)
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+            .is_input_node_limit()
     );
     // An empty retained item is a child visit despite emitting no bytes.
-    assert_eq!(
+    assert!(
         serialize_css_comma_separated_list(&[""], empty_limits)
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+            .is_input_node_limit()
     );
     assert_eq!(
         serialize_css_whitespace_separated_list(&[""], CssSerializationLimits::new(2, 2, 0))
@@ -193,13 +193,15 @@ fn empty_results_admit_zero_bytes_and_visit_the_primitive_or_container() {
 
 #[test]
 fn common_idioms_do_not_weaken_strict_identifier_construction() {
-    assert_eq!(
-        CssIdent::try_new(String::new()).unwrap_err().kind(),
-        CssComponentValueErrorKind::InvalidIdentifier
+    assert!(
+        CssIdent::try_new(String::new())
+            .unwrap_err()
+            .is_invalid_identifier()
     );
-    assert_eq!(
-        CssIdent::try_new("\0".to_owned()).unwrap_err().kind(),
-        CssComponentValueErrorKind::InvalidIdentifier
+    assert!(
+        CssIdent::try_new("\0".to_owned())
+            .unwrap_err()
+            .is_invalid_identifier()
     );
     assert_eq!(
         serialize_css_identifier("", Default::default()).unwrap(),

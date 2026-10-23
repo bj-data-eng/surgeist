@@ -177,17 +177,7 @@ pub(crate) fn component_limits(limits: &CssomLimits) -> CssComponentValueLimits 
 fn preflight_components(source: &str, limits: &CssomLimits) -> Result<(), CssomError> {
     match parse_component_values_with_limits(source, component_limits(limits)) {
         Ok(_) => Ok(()),
-        Err(error)
-            if matches!(
-                error.kind(),
-                CssComponentValueErrorKind::NestingLimit
-                    | CssComponentValueErrorKind::ComponentLimit
-                    | CssComponentValueErrorKind::ByteLimit
-                    | CssComponentValueErrorKind::CapacityOverflow
-            ) =>
-        {
-            Err(CssomError::Component(error))
-        }
+        Err(error) if error.is_resource_limit() => Err(CssomError::Component(error)),
         // Feature grammar owns syntax rejection and inner declaration recovery;
         // a whole-input component error is not itself its retention decision.
         Err(_) => Ok(()),
@@ -971,10 +961,10 @@ impl CssomSnapshot {
             CssomRuleData::Group {
                 prelude: CssomGroupPrelude::Supports(condition),
                 ..
-            } => condition
-                .serialize_tokens(crate::css_adapter::token_byte_limits(max_bytes))
-                .map(|value| value.as_css().to_owned())
-                .map_err(CssomError::Component),
+            } => Ok(condition
+                .serialize_tokens(crate::css_adapter::token_byte_limits(max_bytes))?
+                .as_css()
+                .to_owned()),
             _ => Err(CssomError::WrongKind),
         }
     }
@@ -1174,8 +1164,7 @@ impl State {
         };
         // One query and one monotonic native normalization/comparison budget for
         // the complete reverse-last search. No authored equality or text keys.
-        let mut matcher = CssKeyframeSelectorMatcher::try_new(query.selectors(), limits.css)
-            .map_err(CssomError::KeyframeComparison)?;
+        let mut matcher = CssKeyframeSelectorMatcher::try_new(query.selectors(), limits.css)?;
         let children = self.lists.get(list).expect("owned Keyframes list");
         for (visited, (index, child)) in children.iter().enumerate().rev().enumerate() {
             if visited >= limits.max_entries {
@@ -1187,10 +1176,7 @@ impl State {
             let CssomRuleData::Keyframe { selectors, .. } = self.rule(child)?.data() else {
                 return Err(CssomError::WrongKind);
             };
-            if matcher
-                .matches(selectors)
-                .map_err(CssomError::KeyframeComparison)?
-            {
+            if matcher.matches(selectors)? {
                 return Ok(Some(index));
             }
         }

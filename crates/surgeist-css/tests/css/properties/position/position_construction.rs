@@ -25,31 +25,31 @@ fn generic_position_checks_edge_pairing_and_keeps_offset_origins() {
     assert!(
         matches!(paired.vertical(), V::TopOffset(v) if exact_percentage(v.literal_component(), "20"))
     );
-    assert_eq!(
+    assert!(
         CssPhysicalPosition::try_new(H::LeftOffset(signed_length_percentage("10px")), V::Top)
-            .unwrap_err(),
-        CssPositionConstructionError::UnpairedEdgeOffsets
+            .unwrap_err()
+            .is_unpaired_edge_offsets()
     );
-    assert_eq!(
+    assert!(
         CssPhysicalPosition::try_new(H::Right, V::BottomOffset(signed_length_percentage("20px")))
-            .unwrap_err(),
-        CssPositionConstructionError::UnpairedEdgeOffsets
+            .unwrap_err()
+            .is_unpaired_edge_offsets()
     );
-    assert_eq!(
+    assert!(
         CssPhysicalPosition::try_new(
             H::LeftOffset(signed_length_percentage("10px")),
             V::Offset(signed_length_percentage("20px"))
         )
-        .unwrap_err(),
-        CssPositionConstructionError::UnpairedEdgeOffsets
+        .unwrap_err()
+        .is_unpaired_edge_offsets()
     );
-    assert_eq!(
+    assert!(
         CssPhysicalPosition::try_new(
             H::Offset(signed_length_percentage("10px")),
             V::BottomOffset(signed_length_percentage("20px"))
         )
-        .unwrap_err(),
-        CssPositionConstructionError::UnpairedEdgeOffsets
+        .unwrap_err()
+        .is_unpaired_edge_offsets()
     );
 }
 

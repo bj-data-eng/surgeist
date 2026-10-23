@@ -3,6 +3,8 @@
 use crate::css::support::authored_syntax::{
     checked_container_condition as construct, component_list as values, component_token as token,
 };
+use crate::css::support::failure_classes::ComponentFailure;
+use crate::css::support::failure_classes::component_failure;
 use surgeist_css::*;
 
 fn width() -> CssComponentValue {
@@ -147,12 +149,12 @@ fn checked_programmatic_boolean_grammar_cannot_construct_ungrouped_mixtures() {
             width(),
         ],
     ] {
-        assert!(matches!(
-            CssContainerCondition::try_from_components(values(invalid), Default::default()),
-            Err(CssContainerConstructionError::InvalidConditionGrammar {
-                origin: CssValueOrigin::Programmatic
-            })
-        ));
+        assert!(
+            CssContainerCondition::try_from_components(values(invalid), Default::default())
+                .as_ref()
+                .is_err_and(|error| error.is_invalid_condition_grammar()
+                    && matches!(error.origin(), CssValueOrigin::Programmatic))
+        );
     }
 }
 
@@ -250,23 +252,25 @@ fn checked_resource_limits_apply_before_recognized_and_opaque_classification() {
         for (limits, expected) in [
             (
                 CssComponentValueLimits::try_new(0, usize::MAX, usize::MAX).unwrap(),
-                CssComponentValueErrorKind::NestingLimit,
+                ComponentFailure::NestingLimit,
             ),
             (
                 CssComponentValueLimits::try_new(256, 0, usize::MAX).unwrap(),
-                CssComponentValueErrorKind::ComponentLimit,
+                ComponentFailure::ComponentLimit,
             ),
             (
                 CssComponentValueLimits::try_new(256, usize::MAX, source.len() - 1).unwrap(),
-                CssComponentValueErrorKind::ByteLimit,
+                ComponentFailure::ByteLimit,
             ),
         ] {
-            let Err(CssContainerConstructionError::Component(error)) =
-                CssContainerCondition::try_from_components(components.clone(), limits)
+            let Err(outer) = CssContainerCondition::try_from_components(components.clone(), limits)
             else {
                 panic!("typed component limit")
             };
-            assert_eq!(error.kind(), expected);
+            let Some(error) = outer.component_error() else {
+                panic!("typed component limit")
+            };
+            assert_eq!(component_failure(error), expected);
             assert!(matches!(error.origin(), CssValueOrigin::Parsed(_)));
         }
         let condition = construct(source);
@@ -277,12 +281,11 @@ fn checked_resource_limits_apply_before_recognized_and_opaque_classification() {
                 .as_css(),
             source
         );
-        assert_eq!(
+        assert!(
             condition
                 .serialize_tokens(crate::css::support::byte_limits(source.len() - 1))
                 .unwrap_err()
-                .kind(),
-            CssComponentValueErrorKind::ByteLimit
+                .is_byte_limit()
         );
     }
 }

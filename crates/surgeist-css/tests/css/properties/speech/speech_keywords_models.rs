@@ -2,6 +2,8 @@
 //! These tests accompany functional new APIs; preimplementation parser RED is
 //! retained separately in speech_keywords_lifecycle.rs.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::*;
 
 fn speak_as(text: &str) -> CssSpeakAs {
@@ -209,19 +211,19 @@ fn speech_specified_serialization_obeys_exact_leaf_and_byte_limits_atomically() 
     for (limits, kind) in [
         (
             CssSerializationLimits::new(0, 1, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(1, 0, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(1, 1, expected.len() - 1),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            compound.serialize_specified(limits).unwrap_err().kind(),
+            serialization_failure(&compound.serialize_specified(limits).unwrap_err()),
             kind
         );
     }
@@ -240,12 +242,11 @@ fn speech_specified_serialization_obeys_exact_leaf_and_byte_limits_atomically() 
                 .unwrap(),
             css
         );
-        assert_eq!(
+        assert!(
             value
                 .serialize_specified(CssSerializationLimits::new(1, 1, css.len() - 1))
                 .unwrap_err()
-                .kind(),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit
+                .is_byte_limit()
         );
     }
 }

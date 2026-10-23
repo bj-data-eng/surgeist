@@ -290,7 +290,6 @@ fn authentic_busy_poisoned_and_forgotten_editors_preserve_pending_qualification(
 
 #[test]
 fn original_control_refuses_the_actual_final_css_postgrammar_poll_then_raised_retry_succeeds() {
-    use surgeist_css::CssUtf16InputError;
     let (mut dom, document, id) = ready();
     let cap = root(document);
     let stamp = dom.snapshot().stamp();
@@ -328,8 +327,8 @@ fn original_control_refuses_the_actual_final_css_postgrammar_poll_then_raised_re
             })
             .unwrap_err();
         assert!(matches!(
-            error,
-            CssUtf16InputError::Interrupted(DomError::WorkLimit {
+            error.interruption(),
+            Some(DomError::WorkLimit {
                 resource: DomResource::ParsedAssociationProcessingWork,
                 ..
             })

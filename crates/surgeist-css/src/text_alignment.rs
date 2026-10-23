@@ -6,8 +6,8 @@ use unicode_segmentation::UnicodeSegmentation;
 
 use crate::specified_serialization::SpecifiedSerializationContext;
 use crate::{
-    CssComponentValue, CssComponentValueErrorKind, CssComponentValueRef, CssSerializationError,
-    CssTextAlign, CssValueOrigin, CssValueTokenRef,
+    CssComponentValue, CssComponentValueError, CssComponentValueErrorKind, CssComponentValueRef,
+    CssSerializationError, CssTextAlign, CssValueOrigin, CssValueTokenRef,
 };
 
 type SerializationResult<T> = std::result::Result<T, CssSerializationError>;
@@ -34,45 +34,74 @@ impl CssTextAlignPosition {
     }
 }
 
-#[non_exhaustive]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum CssCharacterAlignmentErrorKind {
-    InvalidCharacter,
-    Component(CssComponentValueErrorKind),
+/// A rejected checked text value: a character-based alignment string that is not exactly
+/// one extended grapheme cluster, or whose component is not a representable string.
+///
+/// A rejected component is exposed by [`Self::component_error`] and is the error's source.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CssTextConstructionError {
+    kind: TextConstructionKind,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssCharacterAlignmentError {
-    kind: CssCharacterAlignmentErrorKind,
-    origin: CssValueOrigin,
+enum TextConstructionKind {
+    InvalidCharacter(CssValueOrigin),
+    Component(CssComponentValueError),
 }
 
-impl CssCharacterAlignmentError {
+impl CssTextConstructionError {
+    /// Returns whether an alignment string is not exactly one extended grapheme cluster.
     #[must_use]
-    pub const fn kind(&self) -> CssCharacterAlignmentErrorKind {
-        self.kind
+    pub const fn is_invalid_character(&self) -> bool {
+        matches!(self.kind, TextConstructionKind::InvalidCharacter(_))
     }
 
+    /// Returns the rejected string component.
+    #[must_use]
+    pub const fn component_error(&self) -> Option<&CssComponentValueError> {
+        match &self.kind {
+            TextConstructionKind::Component(error) => Some(error),
+            TextConstructionKind::InvalidCharacter(_) => None,
+        }
+    }
+
+    /// Returns the origin of the rejected component.
     #[must_use]
     pub const fn origin(&self) -> &CssValueOrigin {
-        &self.origin
+        match &self.kind {
+            TextConstructionKind::InvalidCharacter(origin) => origin,
+            TextConstructionKind::Component(error) => error.origin(),
+        }
     }
 }
 
-impl fmt::Display for CssCharacterAlignmentError {
+impl From<CssComponentValueError> for CssTextConstructionError {
+    fn from(error: CssComponentValueError) -> Self {
+        Self {
+            kind: TextConstructionKind::Component(error),
+        }
+    }
+}
+
+impl fmt::Display for CssTextConstructionError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.kind {
-            CssCharacterAlignmentErrorKind::InvalidCharacter => {
+            TextConstructionKind::InvalidCharacter(_) => {
                 formatter.write_str("text alignment requires exactly one extended grapheme cluster")
             }
-            CssCharacterAlignmentErrorKind::Component(_) => {
+            TextConstructionKind::Component(_) => {
                 formatter.write_str("invalid text alignment string component")
             }
         }
     }
 }
 
-impl std::error::Error for CssCharacterAlignmentError {}
+impl std::error::Error for CssTextConstructionError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.component_error()
+            .map(|error| error as &(dyn std::error::Error + 'static))
+    }
+}
 
 /// One decoded default extended grapheme cluster and its authored fallback.
 ///
@@ -88,32 +117,26 @@ impl CssCharacterAlignment {
     pub fn try_new(
         decoded: impl Into<String>,
         authored_fallback: Option<CssTextAlignPosition>,
-    ) -> Result<Self, CssCharacterAlignmentError> {
-        let component =
-            CssComponentValue::try_string(decoded).map_err(|error| CssCharacterAlignmentError {
-                kind: CssCharacterAlignmentErrorKind::Component(error.kind()),
-                origin: error.origin().clone(),
-            })?;
+    ) -> Result<Self, CssTextConstructionError> {
+        let component = CssComponentValue::try_string(decoded)?;
         Self::try_from_component(component, authored_fallback)
     }
 
     pub fn try_from_component(
         component: CssComponentValue,
         authored_fallback: Option<CssTextAlignPosition>,
-    ) -> Result<Self, CssCharacterAlignmentError> {
+    ) -> Result<Self, CssTextConstructionError> {
         let CssComponentValueRef::Token(CssValueTokenRef::String(decoded)) = component.view()
         else {
-            return Err(CssCharacterAlignmentError {
-                kind: CssCharacterAlignmentErrorKind::Component(
-                    CssComponentValueErrorKind::InvalidString,
-                ),
-                origin: component.origin().clone(),
-            });
+            return Err(CssComponentValueError::new(
+                CssComponentValueErrorKind::InvalidString,
+                component.origin().clone(),
+            )
+            .into());
         };
         if UnicodeSegmentation::graphemes(decoded, true).count() != 1 {
-            return Err(CssCharacterAlignmentError {
-                kind: CssCharacterAlignmentErrorKind::InvalidCharacter,
-                origin: component.origin().clone(),
+            return Err(CssTextConstructionError {
+                kind: TextConstructionKind::InvalidCharacter(component.origin().clone()),
             });
         }
         Ok(Self {

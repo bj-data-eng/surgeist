@@ -2,6 +2,8 @@
 //! https://www.w3.org/TR/2025/WD-css-content-3-20251204/#propdef-quotes
 //! Locale selection for `auto` and parent resolution for `match-parent` occur later.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::normal_declaration;
 use surgeist_css::*;
 
@@ -64,18 +66,21 @@ fn all_symbolic_keywords_serialize_without_context() {
         for (limits, kind) in [
             (
                 CssSerializationLimits::new(0, 1, expected.len()),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                SerializationFailure::InputNodeLimit,
             ),
             (
                 CssSerializationLimits::new(1, 0, expected.len()),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
                 CssSerializationLimits::new(1, 1, expected.len() - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                SerializationFailure::ByteLimit,
             ),
         ] {
-            assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+            assert_eq!(
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+                kind
+            );
         }
     }
 }
@@ -140,12 +145,11 @@ fn string_escaping_is_canonical_and_preserves_decoded_unicode_and_controls() {
                 .unwrap(),
             expected
         );
-        assert_eq!(
+        assert!(
             value
                 .serialize_specified(CssSerializationLimits::new(3, 3, bytes - 1,))
                 .unwrap_err()
-                .kind(),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit
+                .is_byte_limit()
         );
     }
 
@@ -225,19 +229,25 @@ fn pair_list_and_enum_share_cumulative_input_projection_and_byte_budgets() {
     for (limits, kind) in [
         (
             CssSerializationLimits::new(4, 5, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(5, 4, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(5, 5, expected.len() - 1),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
-        assert_eq!(quoted.serialize_specified(limits).unwrap_err().kind(), kind);
-        assert_eq!(pairs.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&quoted.serialize_specified(limits).unwrap_err()),
+            kind
+        );
+        assert_eq!(
+            serialization_failure(&pairs.serialize_specified(limits).unwrap_err()),
+            kind
+        );
     }
     assert_eq!(
         quoted.serialize_specified(Default::default()).unwrap(),

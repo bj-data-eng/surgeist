@@ -9,7 +9,7 @@ use crate::css::support::sheet_cases::*;
 /// The condition of a lone `@container <source> {}` prelude, parsed by the
 /// public stylesheet parser (Conditional Rules 5 §3.1), or its first
 /// diagnostic.
-fn container_condition(source: &str) -> Result<CssContainerCondition, Error> {
+fn container_condition(source: &str) -> Result<CssContainerCondition, CssError> {
     let report = parse_sheet(&format!("@container {source} {{}}"));
     if let Some(diagnostic) = report.diagnostics().first() {
         return Err(diagnostic.error().clone());

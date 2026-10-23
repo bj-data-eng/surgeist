@@ -1,6 +1,6 @@
 use surgeist_css::{
     CssErrorCode, CssImageValue, CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef,
-    CssRecoveryAction, CssRule, ErrorKind, parse_sheet, parse_style_attribute,
+    CssRecoveryAction, CssRule, parse_sheet, parse_style_attribute,
 };
 
 #[derive(Clone, Copy)]
@@ -481,11 +481,13 @@ fn assert_invalid_case(case: InvalidDeclaration) {
         case.record,
     );
     assert!(
-        matches!(
-            diagnostic.error().kind(),
-            ErrorKind::InvalidPropertyValue(detail)
-                if detail.property().canonical_name() == case.property
-        ),
+        (diagnostic.error().code() == CssErrorCode::InvalidPropertyValue
+            && diagnostic
+                .error()
+                .known_property()
+                .unwrap()
+                .canonical_name()
+                == case.property),
         "{}: {diagnostic:#?}",
         case.record
     );
@@ -525,10 +527,10 @@ fn background_border_and_image_recovery_preserves_siblings_and_boundaries() {
             CssErrorCode::InvalidPropertyValue
         );
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-        assert!(matches!(
-            diagnostic.error().kind(),
-            ErrorKind::InvalidPropertyValue(detail) if detail.property() == property
-        ));
+        assert!(
+            (diagnostic.error().code() == CssErrorCode::InvalidPropertyValue
+                && diagnostic.error().known_property().unwrap() == property)
+        );
     }
 
     let nested = concat!(

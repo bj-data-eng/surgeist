@@ -10,13 +10,15 @@
 use crate::css::support::color_and_selector_fixtures::{
     assert_color_limits, background_images as images, expanded_longhands as expanded,
 };
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::{
     color_property::color_property_value, parsed_color as color, sole_declaration as declaration,
 };
 use surgeist_css::*;
 
 type Limits = CssSerializationLimits;
-type Kind = CssSpecifiedValueSerializationErrorKind;
+type Kind = SerializationFailure;
 
 fn assert_text(source: &str, expected: &str) {
     let supplied = parse_component_values(source).unwrap();
@@ -215,8 +217,10 @@ fn admitted_device_colors_are_rejected_by_absolute_only_palette_boundaries() {
         "color-mix(red, device-cmyk(0 0 0 1))",
     ] {
         assert_eq!(
-            CssFontPaletteOverride::try_new(index.clone(), color(source)).unwrap_err(),
-            CssFontPaletteConstructionError::ContextualColor(CssAbsoluteColorExclusion::DeviceCmyk)
+            CssFontPaletteOverride::try_new(index.clone(), color(source))
+                .unwrap_err()
+                .contextual_color(),
+            Some(CssAbsoluteColorExclusion::DeviceCmyk)
         );
         let report = parse_sheet(&format!(
             "@font-palette-values --p {{ font-family: Demo; override-colors: 0 {source}; base-palette: light; }}"
@@ -283,16 +287,16 @@ fn malformed_grammar_drops_only_its_declaration_and_validation_rejects_it() {
         );
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
         assert!(validate_style_attribute(&source).is_err());
-        assert!(matches!(
+        assert!(
             parse_property_value(
                 CssPropertyNameRef::Known(CssKnownProperty::Color),
                 parse_component_values(invalid).unwrap(),
                 CssImportance::Normal
             )
             .unwrap_err()
-            .kind(),
-            CssPropertyValueErrorKind::Grammar(ErrorKind::InvalidColorSyntax(_))
-        ));
+            .code()
+                == Some(CssErrorCode::InvalidColorSyntax)
+        );
     }
 }
 
@@ -517,20 +521,19 @@ fn pending_reentry_is_strict_repeatable_and_preserves_replacement_provenance() {
             panic!("pending")
         };
         for invalid in ["device-cmyk()", "device-cmyk(0, 0, 0)", "device-cmyk(none)"] {
-            assert!(matches!(
+            assert!(
                 pending
                     .reenter(parse_component_values(invalid).unwrap())
                     .unwrap_err()
-                    .kind(),
-                CssExpansionErrorKind::InvalidReplacement(_)
-            ));
+                    .replacement_error()
+                    .is_some()
+            );
         }
-        assert_eq!(
+        assert!(
             pending
                 .reenter(parse_component_values("var(--again)").unwrap())
                 .unwrap_err()
-                .kind(),
-            &CssExpansionErrorKind::ResidualSubstitution
+                .is_residual_substitution()
         );
         let replacement = parse_component_values(replacement).unwrap();
         for _ in 0..2 {
@@ -603,7 +606,7 @@ fn assert_limit_error(value: &CssColor, limits: Limits, expected: Kind) {
     let before = value.clone();
     for _ in 0..3 {
         assert_eq!(
-            value.serialize_specified(limits).unwrap_err().kind(),
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
             expected
         );
         assert_eq!(value, &before);
@@ -696,11 +699,10 @@ fn utf8_sibling_and_caller_prefix_share_exact_bytes_with_device_alpha() {
                 .unwrap(),
             expected
         );
-        assert_eq!(
+        assert!(
             pair.serialize_specified(Limits::new(usize::MAX, usize::MAX, expected.len() - 1))
                 .unwrap_err()
-                .kind(),
-            Kind::ByteLimit
+                .is_byte_limit()
         );
         assert_eq!(pair, before);
     }
@@ -719,12 +721,11 @@ fn utf8_sibling_and_caller_prefix_share_exact_bytes_with_device_alpha() {
             .unwrap(),
         expected
     );
-    assert_eq!(
+    assert!(
         value
             .serialize_specified(Limits::new(usize::MAX, usize::MAX, expected.len() - 1))
             .unwrap_err()
-            .kind(),
-        Kind::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(value, &before);
 }
@@ -743,12 +744,11 @@ fn image_wrappers_and_gradient_siblings_share_one_complete_byte_budget() {
                 .unwrap(),
             expected
         );
-        assert_eq!(
+        assert!(
             value
                 .serialize_specified(Limits::new(usize::MAX, usize::MAX, expected.len() - 1))
                 .unwrap_err()
-                .kind(),
-            Kind::ByteLimit
+                .is_byte_limit()
         );
         assert_eq!(value, before);
     }

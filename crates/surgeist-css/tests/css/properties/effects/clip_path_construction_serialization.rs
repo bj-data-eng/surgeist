@@ -3,6 +3,7 @@
 //! independently by Masking 1 §5.1, the adopted Shapes 1 ellipse/polygon decisions,
 //! and the authored resource contract. No used geometry or defaults are inferred.
 
+use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::normal_declaration;
 use crate::css::support::property_admission::assert_component_rejected;
 use crate::css::support::serialization_limits::assert_limits as budget;
@@ -199,8 +200,8 @@ fn checked_shapes_retain_signed_rounding_offsets_point_lists_and_radius_arity() 
         polygon.serialize_specified(limits)
     });
     for (invalid, kind) in [
-        ("10%", CssNumericConstructionErrorKind::RootDomainMismatch),
-        ("1", CssNumericConstructionErrorKind::RootDomainMismatch),
+        ("10%", NumericFailure::RootDomainMismatch),
+        ("1", NumericFailure::RootDomainMismatch),
     ] {
         assert_component_rejected(
             CssSpecifiedLength::try_from_component,
@@ -211,7 +212,7 @@ fn checked_shapes_retain_signed_rounding_offsets_point_lists_and_radius_arity() 
     assert_component_rejected(
         CssSpecifiedNonNegativeLengthPercentage::try_from_component,
         CssComponentValue::try_token("-1e-999px").unwrap(),
-        CssNumericConstructionErrorKind::OutOfRange,
+        NumericFailure::OutOfRange,
     );
 }
 

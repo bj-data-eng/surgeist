@@ -1,8 +1,6 @@
 //! Publication admission policy for native recovered parser resource failures.
 use crate::{CssomError, CssomLimits};
-use surgeist_css::{
-    CssComponentValueErrorKind, CssParseSource, CssParserContext, CssRecoveryDiagnostic, ErrorKind,
-};
+use surgeist_css::{CssParseSource, CssParserContext, CssRecoveryDiagnostic};
 
 pub(crate) fn check_parsed_source(
     source: Option<&CssParseSource>,
@@ -25,24 +23,13 @@ pub(crate) fn check_parsed_source(
     check_resource_diagnostics(diagnostics)
 }
 
-fn component_resource(kind: CssComponentValueErrorKind) -> bool {
-    matches!(
-        kind,
-        CssComponentValueErrorKind::NestingLimit
-            | CssComponentValueErrorKind::ComponentLimit
-            | CssComponentValueErrorKind::ByteLimit
-            | CssComponentValueErrorKind::CapacityOverflow
-    )
-}
-
+/// Refuses publication of a parse that a nesting limit, an unavailable parser
+/// thread or a component resource limit left incomplete.
 pub(crate) fn check_resource_diagnostics(
     diagnostics: &[CssRecoveryDiagnostic],
 ) -> Result<(), CssomError> {
     for diagnostic in diagnostics {
-        if matches!(diagnostic.error().kind(), ErrorKind::NestingLimit(_))
-            || matches!(diagnostic.error().kind(), ErrorKind::InvalidComponentValue(error)
-                if component_resource(error.kind()))
-        {
+        if diagnostic.error().is_resource_refusal() {
             return Err(CssomError::ParseResource(Box::new(diagnostic.clone())));
         }
     }
@@ -52,61 +39,42 @@ pub(crate) fn check_resource_diagnostics(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use surgeist_css::{CssComponentValueLimits, CssParserContext};
-
-    #[test]
-    fn resource_causes_abort_but_syntax_and_representation_causes_do_not() {
-        use CssComponentValueErrorKind::*;
-        for kind in [NestingLimit, ComponentLimit, ByteLimit, CapacityOverflow] {
-            assert!(component_resource(kind), "{kind:?}");
-        }
-        for kind in [
-            BadString,
-            BadUrl,
-            UnmatchedClosingDelimiter,
-            EmptyInput,
-            TrailingInput,
-            InvalidToken,
-            InvalidIdentifier,
-            InvalidNumber,
-            InvalidDimension,
-            InvalidFunction,
-            InvalidString,
-            UnserializableBoundary,
-        ] {
-            assert!(!component_resource(kind), "{kind:?}");
-        }
-    }
+    use surgeist_css::{
+        CssComponentValueError, CssComponentValueLimits, CssErrorCode, CssParserContext,
+    };
 
     #[test]
     fn native_component_diagnostics_return_the_first_original_resource() {
         let context = CssParserContext::default();
         let mut resources = Vec::new();
-        for (source, limits, expected) in [
+        type Case = (
+            &'static str,
+            CssComponentValueLimits,
+            fn(&CssComponentValueError) -> bool,
+        );
+        let cases: [Case; 3] = [
             (
                 "width:f(f(1px));",
                 CssComponentValueLimits::try_new(1, 100, 100).unwrap(),
-                CssComponentValueErrorKind::NestingLimit,
+                CssComponentValueError::is_nesting_limit,
             ),
             (
                 "width:1px;",
                 CssComponentValueLimits::try_new(10, 0, 100).unwrap(),
-                CssComponentValueErrorKind::ComponentLimit,
+                CssComponentValueError::is_component_limit,
             ),
             (
                 "width:1px;",
                 CssComponentValueLimits::try_new(10, 100, 0).unwrap(),
-                CssComponentValueErrorKind::ByteLimit,
+                CssComponentValueError::is_byte_limit,
             ),
-        ] {
+        ];
+        for (source, limits, expected) in cases {
             let report = context.parse_declaration_block_contents_with_limits(source, limits);
             let diagnostic = report
                 .diagnostics()
                 .iter()
-                .find(|diagnostic| {
-                    matches!(diagnostic.error().kind(), ErrorKind::InvalidComponentValue(error)
-                        if error.kind() == expected)
-                })
+                .find(|diagnostic| diagnostic.error().component_error().is_some_and(expected))
                 .expect("native driver reports the selected resource cause")
                 .clone();
             resources.push(diagnostic);
@@ -142,7 +110,7 @@ mod tests {
         let diagnostic = report
             .diagnostics()
             .iter()
-            .find(|diagnostic| matches!(diagnostic.error().kind(), ErrorKind::NestingLimit(_)))
+            .find(|diagnostic| diagnostic.error().code() == CssErrorCode::NestingLimit)
             .expect("nested rendering groups reach the native grammar depth bound");
         let Err(CssomError::ParseResource(first)) =
             check_resource_diagnostics(std::slice::from_ref(diagnostic))

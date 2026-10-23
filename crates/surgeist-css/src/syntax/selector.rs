@@ -359,8 +359,7 @@ pub enum CssSelectorCombinator {
 
 /// Why checked authored selector construction could not return a complete value.
 #[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssSelectorConstructionErrorKind {
+pub(crate) enum CssSelectorConstructionErrorKind {
     /// A compound must contain at least one simple member.
     EmptyCompound,
     /// A strict selector list must contain at least one member.
@@ -379,9 +378,15 @@ pub enum CssSelectorConstructionErrorKind {
     InvalidUnknownWebkitPseudoElementName,
     /// Intrinsic grammar or cumulative specified-output admission failed.
     Specified(crate::CssSerializationError),
+    /// A checked qualified name refers to an undeclared named prefix.
+    UndeclaredNamespacePrefix(CssNamespacePrefix),
 }
 
-/// Atomic construction failure, with no invented parsed-source coordinates.
+/// Atomic selector or qualified-name construction failure, with no invented
+/// parsed-source coordinates.
+///
+/// The cause is read through the predicates and accessors; a rejected attribute value
+/// or specified-output admission failure is also the error's source.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssSelectorConstructionError {
     kind: CssSelectorConstructionErrorKind,
@@ -403,10 +408,70 @@ impl CssSelectorConstructionError {
         }
     }
 
-    /// Returns the complete typed construction cause.
+    crate::error::kind_predicates! { kind;
+        /// Returns whether a compound has no simple member.
+        is_empty_compound => CssSelectorConstructionErrorKind::EmptyCompound,
+        /// Returns whether a strict selector list has no member.
+        is_empty_list => CssSelectorConstructionErrorKind::EmptyList,
+        /// Returns whether a complex selector has no relationship and following compound.
+        is_empty_complex_rest => CssSelectorConstructionErrorKind::EmptyComplexRest,
+        /// Returns whether an attribute modifier was supplied without an attribute value.
+        is_modifier_without_value => CssSelectorConstructionErrorKind::ModifierWithoutValue,
+        /// Returns whether an unknown WebKit pseudo-element name is not a genuine identifier
+        /// beginning with `-webkit-`.
+        is_invalid_unknown_webkit_pseudo_element_name =>
+            CssSelectorConstructionErrorKind::InvalidUnknownWebkitPseudoElementName,
+    }
+
+    /// Returns the index of a pseudo-element-bearing compound that precedes the final
+    /// compound.
     #[must_use]
-    pub const fn kind(&self) -> &CssSelectorConstructionErrorKind {
-        &self.kind
+    pub const fn non_terminal_pseudo_element(&self) -> Option<usize> {
+        match self.kind {
+            CssSelectorConstructionErrorKind::NonTerminalPseudoElement { compound_index } => {
+                Some(compound_index)
+            }
+            _ => None,
+        }
+    }
+
+    /// Returns the index of a type or universal selector that is duplicated or follows
+    /// another member.
+    #[must_use]
+    pub const fn invalid_type_position(&self) -> Option<usize> {
+        match self.kind {
+            CssSelectorConstructionErrorKind::InvalidTypePosition { member_index } => {
+                Some(member_index)
+            }
+            _ => None,
+        }
+    }
+
+    /// Returns why a decoded attribute operand cannot preserve its string identity.
+    #[must_use]
+    pub const fn attribute_value_error(&self) -> Option<&crate::CssComponentValueError> {
+        match &self.kind {
+            CssSelectorConstructionErrorKind::InvalidAttributeValue(error) => Some(error),
+            _ => None,
+        }
+    }
+
+    /// Returns the intrinsic grammar or cumulative specified-output admission failure.
+    #[must_use]
+    pub const fn serialization_error(&self) -> Option<&crate::CssSerializationError> {
+        match &self.kind {
+            CssSelectorConstructionErrorKind::Specified(error) => Some(error),
+            _ => None,
+        }
+    }
+
+    /// Returns the undeclared named prefix a checked qualified name refers to.
+    #[must_use]
+    pub const fn undeclared_namespace_prefix(&self) -> Option<&CssNamespacePrefix> {
+        match &self.kind {
+            CssSelectorConstructionErrorKind::UndeclaredNamespacePrefix(prefix) => Some(prefix),
+            _ => None,
+        }
     }
 }
 
@@ -445,6 +510,11 @@ impl std::fmt::Display for CssSelectorConstructionError {
                 .write_str(
                     "an unknown WebKit pseudo-element requires a valid decoded -webkit- identifier",
                 ),
+            CssSelectorConstructionErrorKind::UndeclaredNamespacePrefix(prefix) => write!(
+                formatter,
+                "undeclared namespace prefix `{}`",
+                prefix.as_str()
+            ),
         }
     }
 }
@@ -458,7 +528,8 @@ impl std::error::Error for CssSelectorConstructionError {
             | CssSelectorConstructionErrorKind::NonTerminalPseudoElement { .. }
             | CssSelectorConstructionErrorKind::InvalidTypePosition { .. }
             | CssSelectorConstructionErrorKind::ModifierWithoutValue
-            | CssSelectorConstructionErrorKind::InvalidUnknownWebkitPseudoElementName => None,
+            | CssSelectorConstructionErrorKind::InvalidUnknownWebkitPseudoElementName
+            | CssSelectorConstructionErrorKind::UndeclaredNamespacePrefix(_) => None,
             CssSelectorConstructionErrorKind::InvalidAttributeValue(error) => Some(error),
             CssSelectorConstructionErrorKind::Specified(error) => Some(error),
         }
@@ -1685,27 +1756,6 @@ pub enum CssQualifiedNamePrefix {
     Named(CssNamespacePrefix),
 }
 
-/// A checked qualified name cannot refer to an undeclared named prefix.
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssQualifiedNameError {
-    UndeclaredNamespacePrefix(CssNamespacePrefix),
-}
-
-impl std::fmt::Display for CssQualifiedNameError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::UndeclaredNamespacePrefix(prefix) => write!(
-                formatter,
-                "undeclared namespace prefix `{}`",
-                prefix.as_str()
-            ),
-        }
-    }
-}
-
-impl std::error::Error for CssQualifiedNameError {}
-
 impl CssQualifiedNamePrefix {
     fn admits_constraint(&self, namespace: &CssNamespaceConstraint, apply_default: bool) -> bool {
         match (self, namespace) {
@@ -1724,7 +1774,7 @@ impl CssQualifiedNamePrefix {
         &self,
         context: &crate::CssNamespaceContext,
         apply_default: bool,
-    ) -> Result<CssNamespaceConstraint, CssQualifiedNameError> {
+    ) -> Result<CssNamespaceConstraint, CssSelectorConstructionError> {
         Ok(match self {
             Self::Unqualified if !apply_default => CssNamespaceConstraint::ExplicitNone,
             Self::Unqualified if context.default_namespace().is_some() => {
@@ -1734,8 +1784,8 @@ impl CssQualifiedNamePrefix {
             Self::ExplicitNone => CssNamespaceConstraint::ExplicitNone,
             Self::Named(prefix) => {
                 if context.named_namespace(prefix).is_none() {
-                    return Err(CssQualifiedNameError::UndeclaredNamespacePrefix(
-                        prefix.clone(),
+                    return Err(CssSelectorConstructionError::new(
+                        CssSelectorConstructionErrorKind::UndeclaredNamespacePrefix(prefix.clone()),
                     ));
                 }
                 CssNamespaceConstraint::Named(prefix.clone())
@@ -1791,7 +1841,7 @@ impl CssQualifiedSelectorName {
         prefix: CssQualifiedNamePrefix,
         local_name: super::CssIdent,
         context: &crate::CssNamespaceContext,
-    ) -> Result<Self, CssQualifiedNameError> {
+    ) -> Result<Self, CssSelectorConstructionError> {
         let namespace = prefix.namespace(context, true)?;
         Ok(Self::new(namespace, prefix, local_name))
     }
@@ -1800,7 +1850,7 @@ impl CssQualifiedSelectorName {
     pub fn try_universal(
         prefix: CssQualifiedNamePrefix,
         context: &crate::CssNamespaceContext,
-    ) -> Result<Self, CssQualifiedNameError> {
+    ) -> Result<Self, CssSelectorConstructionError> {
         let namespace = prefix.namespace(context, true)?;
         Ok(Self::universal(namespace, prefix))
     }
@@ -1884,7 +1934,7 @@ impl CssQualifiedAttributeName {
         prefix: CssQualifiedNamePrefix,
         local_name: CssAttributeName,
         context: &crate::CssNamespaceContext,
-    ) -> Result<Self, CssQualifiedNameError> {
+    ) -> Result<Self, CssSelectorConstructionError> {
         let namespace = prefix.namespace(context, false)?;
         Ok(Self::new(namespace, prefix, local_name))
     }

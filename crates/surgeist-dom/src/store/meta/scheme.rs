@@ -11,17 +11,25 @@ pub(super) struct Candidate {
     pub formation: Option<source::formation::Formation>,
 }
 pub(super) fn payload_error(error: CssRetainedPayloadError<DomError>) -> DomError {
-    match error {
-        CssRetainedPayloadError::Admission(error) => error,
-        CssRetainedPayloadError::CapacityOverflow => DomError::RepresentationExhausted,
+    match error.into_admission() {
+        Ok(error) => error,
+        // The measurement's only other refusal is a capacity overflow.
+        Err(_) => DomError::RepresentationExhausted,
     }
 }
 fn input_error(error: CssUtf16InputError<DomError>) -> DomError {
-    match error {
-        CssUtf16InputError::Interrupted(error) => error,
-        CssUtf16InputError::Limit(resource) => DomError::Meta(Failure::ColorSchemeLimit(resource)),
-        CssUtf16InputError::Allocation => DomError::AllocationFailed,
-        CssUtf16InputError::CapacityOverflow => DomError::RepresentationExhausted,
+    match error.into_interruption() {
+        Ok(error) => error,
+        Err(refusal) => {
+            if let Some(resource) = refusal.exhausted_limit() {
+                DomError::Meta(Failure::ColorSchemeLimit(resource))
+            } else if refusal.is_allocation_failure() {
+                DomError::AllocationFailed
+            } else {
+                // A capacity overflow.
+                DomError::RepresentationExhausted
+            }
+        }
     }
 }
 pub(super) fn parse(

@@ -405,17 +405,11 @@ fn assert_pending(
     let error = pending
         .reenter(parse_component_values("var(--still-pending)").unwrap())
         .unwrap_err();
-    assert!(matches!(
-        error.kind(),
-        CssExpansionErrorKind::ResidualSubstitution
-    ));
+    assert!(error.is_residual_substitution());
     let error = pending
         .reenter(parse_component_values(invalid).unwrap())
         .unwrap_err();
-    assert!(matches!(
-        error.kind(),
-        CssExpansionErrorKind::InvalidReplacement(_)
-    ));
+    assert!(error.replacement_error().is_some());
     let replacement = parse_component_values(replacement).unwrap();
     let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap() else {
         panic!("completed replacement")

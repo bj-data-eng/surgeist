@@ -2,8 +2,8 @@
 //! The public diagnostic contract uses original UTF-8 offsets and UTF-16 columns.
 
 use surgeist_css::{
-    CssErrorCode, CssKnownProperty, CssRecoveryAction, CssRule, CssTokenKind, ErrorKind,
-    parse_sheet, parse_style_attribute, validate_style_attribute,
+    CssErrorCode, CssKnownProperty, CssRecoveryAction, CssRule, CssTokenKind, parse_sheet,
+    parse_style_attribute, validate_style_attribute,
 };
 
 fn assert_failure(source: &str, diagnostic: &surgeist_css::CssRecoveryDiagnostic) {
@@ -37,10 +37,16 @@ fn assert_failure(source: &str, diagnostic: &surgeist_css::CssRecoveryDiagnostic
     let end = start + source[start..].find(';').unwrap() + 1;
     assert_eq!(diagnostic.span().start().byte_offset().value(), start);
     assert_eq!(diagnostic.span().end().byte_offset().value(), end);
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("expected typed property-value rejection");
-    };
-    assert_eq!(detail.property(), CssKnownProperty::BackgroundImage);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "expected typed property-value rejection"
+    );
+    assert_eq!(
+        detail.known_property().unwrap(),
+        CssKnownProperty::BackgroundImage
+    );
     let encountered = detail.encountered().expect("responsible function opener");
     assert_eq!(encountered.kind(), CssTokenKind::Function);
     assert_eq!(encountered.authored(), "calc(");

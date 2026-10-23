@@ -3,6 +3,8 @@
 //! selected frozen WebKit FIXED policy: nearest, ties away from zero.
 //! Goldens below count decimal places directly; no host float is an oracle.
 
+use crate::css::support::failure_classes::NumericFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::value_assertions::assert_numeric_kind;
 use surgeist_css::*;
 
@@ -147,12 +149,11 @@ fn enormous_negative_exponent_rounds_to_zero_with_a_one_byte_budget() {
             "0"
         );
         assert_eq!(value, before);
-        assert_eq!(
+        assert!(
             value
                 .serialize_specified(CssSerializationLimits::new(1, 1, 0))
                 .unwrap_err()
-                .kind(),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit
+                .is_byte_limit()
         );
         assert_eq!(value, before);
     }
@@ -160,8 +161,8 @@ fn enormous_negative_exponent_rounds_to_zero_with_a_one_byte_budget() {
 
 #[test]
 fn budgets_charge_actual_rounded_output_and_preserve_input_on_every_failure() {
+    use crate::css::support::failure_classes::SerializationFailure as K;
     use CssSerializationLimits as L;
-    use CssSpecifiedValueSerializationErrorKind as K;
     for (source, expected, bytes) in [("0.12345649", "0.123456", 8), ("0.9999996", "1", 1)] {
         let value = number(source);
         let before = value.clone();
@@ -175,7 +176,10 @@ fn budgets_charge_actual_rounded_output_and_preserve_input_on_every_failure() {
             (L::new(1, 0, bytes), K::ProjectionNodeLimit),
             (L::new(1, 1, bytes - 1), K::ByteLimit),
         ] {
-            assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+            assert_eq!(
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+                kind
+            );
             assert_eq!(value, before);
             assert_eq!(value.literal_component(), before.literal_component());
             assert_eq!(value.origin(), before.origin());
@@ -198,12 +202,11 @@ fn suffix_bytes_follow_rounded_length_without_changing_the_raw_component() {
             expected
         );
         assert_eq!(value, before);
-        assert_eq!(
+        assert!(
             value
                 .serialize_specified(L::new(1, 1, bytes - 1))
                 .unwrap_err()
-                .kind(),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit
+                .is_byte_limit()
         );
         assert_eq!(value, before);
         assert_eq!(value.literal_component(), Some(&raw));
@@ -230,12 +233,11 @@ fn rounded_carry_fits_one_byte_without_budgeting_unrounded_text() {
         "1"
     );
     assert_eq!(value, before);
-    assert_eq!(
+    assert!(
         value
             .serialize_specified(CssSerializationLimits::new(1, 1, 0))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(value, before);
 }
@@ -253,12 +255,11 @@ fn tiny_milliseconds_round_to_seconds_zero_with_its_two_byte_suffix_budget() {
     assert_eq!(value, before);
     assert_eq!(value.numeric().representation(), "0.0001");
     assert_eq!(value.unit(), CssTimeUnit::Milliseconds);
-    assert_eq!(
+    assert!(
         value
             .serialize_specified(CssSerializationLimits::new(1, 1, 1))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(value, before);
 }
@@ -283,12 +284,11 @@ fn unit_normalization_precedes_rounding_and_keeps_authored_coefficients_and_unit
         assert_eq!(value.numeric().representation(), coefficient);
         assert_eq!(value.unit(), CssTimeUnit::Milliseconds);
         assert_eq!(value.origin(), before.origin());
-        assert_eq!(
+        assert!(
             value
                 .serialize_specified(CssSerializationLimits::new(1, 1, expected.len() - 1))
                 .unwrap_err()
-                .kind(),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit
+                .is_byte_limit()
         );
         assert_eq!(value, before);
     }
@@ -319,7 +319,7 @@ fn exact_admission_precedes_lossy_text_and_huge_positive_output_fails_atomically
         let before = raw.clone();
         let error =
             CssSpecifiedNonNegativeLengthPercentage::try_from_component(raw.clone()).unwrap_err();
-        assert_eq!(error.kind(), &CssNumericConstructionErrorKind::OutOfRange);
+        assert!(error.is_out_of_range(), "{error:?}");
         assert_eq!(error.origin(), Some(raw.origin()));
         assert_eq!(raw, before);
     }
@@ -327,17 +327,16 @@ fn exact_admission_precedes_lossy_text_and_huge_positive_output_fails_atomically
         CssDuration::try_new(CssTimeValue::from_literal(
             CssTimeLiteral::try_new("-1e-999", CssTimeUnit::Seconds).unwrap(),
         )),
-        surgeist_css::CssNumericConstructionErrorKind::OutOfRange,
+        NumericFailure::OutOfRange,
     );
     for source in ["1e999", "1e999999999999999999999999999999999999999999"] {
         let value = number(source);
         let before = value.clone();
-        assert_eq!(
+        assert!(
             value
                 .serialize_specified(CssSerializationLimits::new(1, 1, 1))
                 .unwrap_err()
-                .kind(),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit
+                .is_byte_limit()
         );
         assert_eq!(value, before);
     }
@@ -345,8 +344,8 @@ fn exact_admission_precedes_lossy_text_and_huge_positive_output_fails_atomically
 
 #[test]
 fn calculation_text_keeps_its_node_and_byte_budgets() {
+    use crate::css::support::failure_classes::SerializationFailure as K;
     use CssSerializationLimits as L;
-    use CssSpecifiedValueSerializationErrorKind as K;
     let calculation = CssFrequencyCalculation::try_from_components(
         parse_component_values("calc(1hz + 2hz)").unwrap(),
         Default::default(),
@@ -364,7 +363,10 @@ fn calculation_text_keeps_its_node_and_byte_budgets() {
         (L::new(4, 2, 9), K::ProjectionNodeLimit),
         (L::new(4, 3, 8), K::ByteLimit),
     ] {
-        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+            kind
+        );
         assert_eq!(value, before);
         assert_eq!(
             value
@@ -442,8 +444,8 @@ fn integer_color_and_signed_media_keep_their_distinct_public_text_contracts() {
 // Canonical ordinary output through composed specified-value writers.
 mod composed_ordinary_values {
     use super::*;
+    use crate::css::support::failure_classes::SerializationFailure as K;
     use CssSerializationLimits as L;
-    use CssSpecifiedValueSerializationErrorKind as K;
 
     fn declaration(property: CssKnownProperty, authored: &str) -> CssDeclaration {
         let report = parse_style_attribute(&format!(
@@ -595,7 +597,10 @@ mod composed_ordinary_values {
             (L::new(2, 2, expected.len() - 1), K::ByteLimit),
         ] {
             let before = ratio.clone();
-            assert_eq!(ratio.serialize_specified(limits).unwrap_err().kind(), kind);
+            assert_eq!(
+                serialization_failure(&ratio.serialize_specified(limits).unwrap_err()),
+                kind
+            );
             assert_eq!(ratio, before);
         }
         let source = declaration(
@@ -622,7 +627,10 @@ mod composed_ordinary_values {
             (L::new(5, 5, expected.len() - 1), K::ByteLimit),
         ] {
             let before = filter.clone();
-            assert_eq!(filter.serialize_specified(limits).unwrap_err().kind(), kind);
+            assert_eq!(
+                serialization_failure(&filter.serialize_specified(limits).unwrap_err()),
+                kind
+            );
             assert_eq!(filter, &before);
         }
     }

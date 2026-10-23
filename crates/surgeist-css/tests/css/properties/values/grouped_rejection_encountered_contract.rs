@@ -4,14 +4,17 @@
 //! when a list ends after it (the last authored token, reference "Source
 //! coordinates and diagnostics").
 
+use crate::css::support::property_admission::GrammarFacts;
 use surgeist_css::*;
 
-fn encountered(kind: &ErrorKind) -> Option<String> {
-    let ErrorKind::InvalidPropertyValue(detail) = kind else {
-        panic!("property-mapped grammar diagnostic, got {kind:?}")
-    };
-    detail
-        .encountered()
+fn encountered(error: &dyn GrammarFacts) -> Option<String> {
+    assert_eq!(
+        error.grammar_code(),
+        Some(CssErrorCode::InvalidPropertyValue),
+        "property-mapped grammar diagnostic, got {error:?}"
+    );
+    error
+        .responsible_token()
         .map(|token| token.authored().to_owned())
 }
 
@@ -27,7 +30,7 @@ fn assert_encountered(name: &str, value: &str, expected: Option<&str>) {
         )
     };
     assert_eq!(
-        encountered(diagnostic.error().kind()),
+        encountered(diagnostic.error()),
         expected,
         "{name}: {value} (style)"
     );
@@ -36,7 +39,7 @@ fn assert_encountered(name: &str, value: &str, expected: Option<&str>) {
         panic!("{name}: {value}: one sheet diagnostic")
     };
     assert_eq!(
-        encountered(diagnostic.error().kind()),
+        encountered(diagnostic.error()),
         expected,
         "{name}: {value} (sheet)"
     );
@@ -49,7 +52,7 @@ fn assert_encountered(name: &str, value: &str, expected: Option<&str>) {
         panic!("{name}: {value}: one text diagnostic")
     };
     assert_eq!(
-        encountered(diagnostic.error().kind()),
+        encountered(diagnostic.error()),
         expected,
         "{name}: {value} (text)"
     );
@@ -65,11 +68,12 @@ fn assert_encountered(name: &str, value: &str, expected: Option<&str>) {
             )
         }
         .unwrap_err();
-        let CssPropertyValueErrorKind::Grammar(kind) = error.kind() else {
-            panic!("{name}: {value}: grammar error, got {error:?}")
-        };
+        assert!(
+            error.code().is_some(),
+            "{name}: {value}: grammar error, got {error:?}"
+        );
         assert_eq!(
-            encountered(kind),
+            encountered(&error),
             expected,
             "{name}: {value} (checked, grammar {grammar})"
         );

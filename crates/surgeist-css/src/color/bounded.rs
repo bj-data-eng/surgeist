@@ -51,31 +51,63 @@ pub struct CssColorInputRange {
     pub end: usize,
 }
 /// A reached unavailable fact differs from a standard-invalid color.
+///
+/// The fact names what the consumer's envelope did not supply; it is read through
+/// [`CssColorError::unavailable`].
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum CssColorUnavailable {
+    /// `currentcolor` was reached without a current color.
     CurrentColor,
+    /// A system color was reached without its palette entry.
     Palette(crate::CssSystemColor),
+    /// `light-dark()` was reached without a used color scheme.
     Scheme,
+    /// A custom color profile was reached without its binding.
     Profile,
+    /// A profile conversion was reached without its conversion fact.
     ProfileConversion,
+    /// `device-cmyk()` was reached without a device fact.
     Device,
 }
 /// Reached capabilities not representable by the concrete fact carrier.
+///
+/// Read through [`CssColorError::unsupported`].
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum CssColorUnsupported {
+    /// The supplied profile conversion cannot be carried out.
     ProfileConversion,
+    /// A conversion back into a custom profile is unsupported.
     ReverseProfile,
+    /// Interpolation in a custom color space is unsupported.
     CustomInterpolation,
+    /// A calculation needs the context of this contextual unit.
     ContextualUnit(crate::CssNumericUnit),
 }
-/// Malformed/ambiguous supplied facts never mint a standard-failure fallback.
+/// A defect of the supplied fact envelope; it never mints a standard-failure fallback.
+///
+/// This is a fact about the consumer's input, not an error type of its own; it is
+/// read through [`CssColorError::fact_defect`].
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum CssColorFactError {
+#[non_exhaustive]
+pub enum CssColorFactDefect {
+    /// The facts are not the envelope the parse was started with.
     Foreign,
+    /// The palette supplies this system color more than once.
     DuplicatePalette(crate::CssSystemColor),
-    DuplicateProfile { first: usize, second: usize },
+    /// Two profile bindings, by ordinal, share one profile name.
+    DuplicateProfile {
+        /// The ordinal of the first binding.
+        first: usize,
+        /// The ordinal of the repeating binding.
+        second: usize,
+    },
+    /// Profile metadata is malformed.
     InvalidProfileMetadata,
+    /// One profile conversion is supplied more than once.
     DuplicateConversion,
+    /// The device facts are malformed or do not match the conversion.
     InvalidDevice,
 }
 /// A reached semantic failure of one color parse.
@@ -83,28 +115,120 @@ pub enum CssColorFactError {
 /// Resource refusal and cancellation stay with the consumer's controller and
 /// are not reconstructed as this error. Colour numerics are total, so no
 /// numerical failure exists, and protocol misuse is static or a documented
-/// panic, so no protocol failure exists either.
-#[derive(Debug, Eq, PartialEq)]
-pub enum CssColorError {
+/// panic, so no protocol failure exists either. Exactly one accessor returns
+/// a value.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CssColorError {
+    kind: ColorErrorKind,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ColorErrorKind {
     Unavailable(CssColorUnavailable),
     Unsupported(CssColorUnsupported),
-    Facts(CssColorFactError),
-    /// The original input is malformed for its declared encoding. `offset`
-    /// is the original unit whose observation proved it, or the input length
-    /// when the input ends inside a multi-unit sequence.
-    MalformedInput {
-        offset: usize,
-    },
+    Facts(CssColorFactDefect),
+    MalformedInput { offset: usize },
+}
+impl From<ColorErrorKind> for CssColorError {
+    fn from(kind: ColorErrorKind) -> Self {
+        Self { kind }
+    }
+}
+impl CssColorError {
+    /// Returns the fact the envelope did not supply.
+    #[must_use]
+    pub const fn unavailable(&self) -> Option<CssColorUnavailable> {
+        match self.kind {
+            ColorErrorKind::Unavailable(fact) => Some(fact),
+            _ => None,
+        }
+    }
+    /// Returns the reached capability the fact carrier cannot represent.
+    #[must_use]
+    pub const fn unsupported(&self) -> Option<CssColorUnsupported> {
+        match self.kind {
+            ColorErrorKind::Unsupported(capability) => Some(capability),
+            _ => None,
+        }
+    }
+    /// Returns the defect of the supplied fact envelope.
+    #[must_use]
+    pub const fn fact_defect(&self) -> Option<CssColorFactDefect> {
+        match self.kind {
+            ColorErrorKind::Facts(defect) => Some(defect),
+            _ => None,
+        }
+    }
+    /// Returns the original unit offset that proved the input malformed for its
+    /// declared encoding, or the input length when the input ends inside a
+    /// multi-unit sequence.
+    #[must_use]
+    pub const fn malformed_input_offset(&self) -> Option<usize> {
+        match self.kind {
+            ColorErrorKind::MalformedInput { offset } => Some(offset),
+            _ => None,
+        }
+    }
 }
 impl std::fmt::Display for CssColorError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Unavailable(fact) => write!(f, "reached color fact is unavailable: {fact:?}"),
-            Self::Unsupported(capability) => {
-                write!(f, "reached color capability is unsupported: {capability:?}")
+        use crate::syntax::color::serialization::authored_system_name as system;
+        match self.kind {
+            ColorErrorKind::Unavailable(fact) => {
+                f.write_str("the reached color needs ")?;
+                match fact {
+                    CssColorUnavailable::CurrentColor => f.write_str("the current color"),
+                    CssColorUnavailable::Palette(keyword) => {
+                        write!(f, "the system color {}", system(keyword))
+                    }
+                    CssColorUnavailable::Scheme => f.write_str("a used color scheme"),
+                    CssColorUnavailable::Profile => f.write_str("a color profile binding"),
+                    CssColorUnavailable::ProfileConversion => {
+                        f.write_str("a color profile conversion")
+                    }
+                    CssColorUnavailable::Device => f.write_str("a device color fact"),
+                }?;
+                f.write_str(", which the facts do not supply")
             }
-            Self::Facts(error) => write!(f, "invalid color fact envelope: {error:?}"),
-            Self::MalformedInput { offset } => write!(
+            ColorErrorKind::Unsupported(capability) => match capability {
+                CssColorUnsupported::ProfileConversion => {
+                    f.write_str("the supplied color profile conversion is unsupported")
+                }
+                CssColorUnsupported::ReverseProfile => {
+                    f.write_str("conversion into a custom color profile is unsupported")
+                }
+                CssColorUnsupported::CustomInterpolation => {
+                    f.write_str("interpolation in a custom color space is unsupported")
+                }
+                CssColorUnsupported::ContextualUnit(unit) => write!(
+                    f,
+                    "a color calculation needs the context of the unit `{}`",
+                    crate::numeric::units::suffix(unit)
+                ),
+            },
+            ColorErrorKind::Facts(defect) => {
+                f.write_str("invalid color fact envelope: ")?;
+                match defect {
+                    CssColorFactDefect::Foreign => {
+                        f.write_str("the facts are not the envelope the parse started with")
+                    }
+                    CssColorFactDefect::DuplicatePalette(keyword) => {
+                        write!(f, "the system color {} is supplied twice", system(keyword))
+                    }
+                    CssColorFactDefect::DuplicateProfile { first, second } => {
+                        write!(f, "profile bindings {first} and {second} share a name")
+                    }
+                    CssColorFactDefect::InvalidProfileMetadata => {
+                        f.write_str("the profile metadata is malformed")
+                    }
+                    CssColorFactDefect::DuplicateConversion => {
+                        f.write_str("a profile conversion is supplied twice")
+                    }
+                    CssColorFactDefect::InvalidDevice => {
+                        f.write_str("the device facts are malformed")
+                    }
+                }
+            }
+            ColorErrorKind::MalformedInput { offset } => write!(
                 f,
                 "color input is malformed for its declared encoding at unit {offset}"
             ),
@@ -116,6 +240,10 @@ impl std::error::Error for CssColorError {}
 /// Classifies a canonical-core failure as a reached semantic failure, or
 /// returns the protocol inconsistency that a defect in the driver produced.
 pub(super) fn classify(error: core::Error) -> Result<CssColorError, ColorProtocolError> {
+    classify_kind(error).map(CssColorError::from)
+}
+
+fn classify_kind(error: core::Error) -> Result<ColorErrorKind, ColorProtocolError> {
     use super::{
         component_value::Error as V,
         device::DeviceError as D,
@@ -127,7 +255,7 @@ pub(super) fn classify(error: core::Error) -> Result<CssColorError, ColorProtoco
     };
     match error {
         core::Error::Protocol(ColorProtocolError::Malformed { offset }) => {
-            Ok(CssColorError::MalformedInput { offset })
+            Ok(ColorErrorKind::MalformedInput { offset })
         }
         core::Error::Protocol(error) => Err(error),
         core::Error::Resolution(error) => Ok(match error {
@@ -136,54 +264,54 @@ pub(super) fn classify(error: core::Error) -> Result<CssColorError, ColorProtoco
             | R::Profile(H::Protocol(error))
             | R::ProfileComponent(N::Protocol(error))
             | R::Conversion(C::Protocol(error)) => return Err(error),
-            R::MissingScheme => CssColorError::Unavailable(CssColorUnavailable::Scheme),
+            R::MissingScheme => ColorErrorKind::Unavailable(CssColorUnavailable::Scheme),
             R::ForeignFacts
             | R::Palette(P::ForeignFacts)
             | R::Profile(H::ForeignFacts)
             | R::ProfileComponent(N::ForeignFacts)
             | R::Conversion(C::ForeignFacts)
-            | R::Device(D::ForeignFacts) => CssColorError::Facts(CssColorFactError::Foreign),
+            | R::Device(D::ForeignFacts) => ColorErrorKind::Facts(CssColorFactDefect::Foreign),
             R::Palette(P::MissingCurrent) => {
-                CssColorError::Unavailable(CssColorUnavailable::CurrentColor)
+                ColorErrorKind::Unavailable(CssColorUnavailable::CurrentColor)
             }
             R::Palette(P::MissingPalette(keyword)) => {
-                CssColorError::Unavailable(CssColorUnavailable::Palette(keyword))
+                ColorErrorKind::Unavailable(CssColorUnavailable::Palette(keyword))
             }
             R::Palette(P::Duplicate(keyword)) => {
-                CssColorError::Facts(CssColorFactError::DuplicatePalette(keyword))
+                ColorErrorKind::Facts(CssColorFactDefect::DuplicatePalette(keyword))
             }
             R::Profile(H::Missing) | R::ProfileComponent(N::Unavailable) => {
-                CssColorError::Unavailable(CssColorUnavailable::Profile)
+                ColorErrorKind::Unavailable(CssColorUnavailable::Profile)
             }
             R::Profile(H::Duplicate { first, second }) => {
-                CssColorError::Facts(CssColorFactError::DuplicateProfile { first, second })
+                ColorErrorKind::Facts(CssColorFactDefect::DuplicateProfile { first, second })
             }
             R::Profile(H::InvalidMetadata)
             | R::ProfileComponent(N::InvalidMetadata)
             | R::Conversion(C::InvalidMetadata) => {
-                CssColorError::Facts(CssColorFactError::InvalidProfileMetadata)
+                ColorErrorKind::Facts(CssColorFactDefect::InvalidProfileMetadata)
             }
             R::Conversion(C::Unavailable) => {
-                CssColorError::Unavailable(CssColorUnavailable::ProfileConversion)
+                ColorErrorKind::Unavailable(CssColorUnavailable::ProfileConversion)
             }
             R::Conversion(C::Unsupported) => {
-                CssColorError::Unsupported(CssColorUnsupported::ProfileConversion)
+                ColorErrorKind::Unsupported(CssColorUnsupported::ProfileConversion)
             }
             R::ReverseProfileUnsupported | R::Component(V::ReverseCustomOrigin { .. }) => {
-                CssColorError::Unsupported(CssColorUnsupported::ReverseProfile)
+                ColorErrorKind::Unsupported(CssColorUnsupported::ReverseProfile)
             }
             R::Conversion(C::DuplicateConversion) => {
-                CssColorError::Facts(CssColorFactError::DuplicateConversion)
+                ColorErrorKind::Facts(CssColorFactDefect::DuplicateConversion)
             }
-            R::Device(D::Unavailable) => CssColorError::Unavailable(CssColorUnavailable::Device),
+            R::Device(D::Unavailable) => ColorErrorKind::Unavailable(CssColorUnavailable::Device),
             R::Device(D::ConversionMismatch | D::InvalidFacts) => {
-                CssColorError::Facts(CssColorFactError::InvalidDevice)
+                ColorErrorKind::Facts(CssColorFactDefect::InvalidDevice)
             }
             R::CustomInterpolationUnsupported => {
-                CssColorError::Unsupported(CssColorUnsupported::CustomInterpolation)
+                ColorErrorKind::Unsupported(CssColorUnsupported::CustomInterpolation)
             }
             R::Component(V::UnitBasis { unit, .. }) => {
-                CssColorError::Unsupported(CssColorUnsupported::ContextualUnit(unit))
+                ColorErrorKind::Unsupported(CssColorUnsupported::ContextualUnit(unit))
             }
             // The canonical core converts these standard-invalid branches
             // into a standard-failure outcome before any error leaves it.
@@ -680,7 +808,7 @@ impl<'owner, 'facts> CssColorParse<'owner, 'facts> {
     ///
     /// # Errors
     ///
-    /// [`CssColorFactError::Foreign`] when `facts` is not the envelope named
+    /// [`CssColorFactDefect::Foreign`] when `facts` is not the envelope named
     /// by `expected`.
     ///
     /// # Panics
@@ -696,7 +824,7 @@ impl<'owner, 'facts> CssColorParse<'owner, 'facts> {
         expected: CssColorFactIdentity,
     ) -> Result<Self, CssColorError> {
         if facts.identity != expected {
-            return Err(CssColorError::Facts(CssColorFactError::Foreign));
+            return Err(ColorErrorKind::Facts(CssColorFactDefect::Foreign).into());
         }
         match core::ColorOperation::start(
             owner,
@@ -872,7 +1000,7 @@ impl<'owner, 'facts> CssColorReadInput<'owner, 'facts> {
     ///
     /// # Errors
     ///
-    /// [`CssColorError::MalformedInput`] when the unit proves the input
+    /// A [`CssColorError::malformed_input_offset`] error when the unit proves the input
     /// malformed for its declared encoding.
     pub fn read(self, unit: u16) -> Result<CssColorParse<'owner, 'facts>, CssColorError> {
         let mut parse = self.parse;
@@ -1565,7 +1693,7 @@ mod tests {
             let error = parse(&mut owner, input, &facts)
                 .err()
                 .expect("actual reached capability");
-            assert_eq!(error, CssColorError::Unsupported(expected), "{input}");
+            assert_eq!(error.unsupported(), Some(expected), "{input}");
         }
         let unknown = [CssColorProfileBinding::new(
             &name,
@@ -1585,12 +1713,12 @@ mod tests {
             CssDeviceColorFact::Unknown,
         );
         let mut owner = CssColorOperationOwner::new();
-        assert!(matches!(
-            parse(&mut owner, "color-mix(in --p, red, blue)", &facts),
-            Err(CssColorError::Unavailable(
-                CssColorUnavailable::ProfileConversion
-            ))
-        ));
+        assert_eq!(
+            parse(&mut owner, "color-mix(in --p, red, blue)", &facts)
+                .err()
+                .and_then(|error| error.unavailable()),
+            Some(CssColorUnavailable::ProfileConversion)
+        );
     }
     #[test]
     fn refused_storage_waits_at_the_same_write_and_records_name_their_bank() {
@@ -1663,8 +1791,8 @@ mod tests {
         )
         .err();
         assert_eq!(
-            refused,
-            Some(CssColorError::Facts(CssColorFactError::Foreign))
+            refused.and_then(|error| error.fact_defect()),
+            Some(CssColorFactDefect::Foreign)
         );
         assert_eq!(owner.current_phase(), 0);
         let parse = start(&mut owner, CssColorInputKind::Utf16, 3, &facts);

@@ -1,4 +1,6 @@
 //! Display3 visibility is inherited, initially visible, with three keywords.
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::property_admission::assert_invalid_value;
 use surgeist_css::*;
 
@@ -52,13 +54,12 @@ fn visibility_initial_and_constructed_values_have_exact_typed_payloads() {
                     .unwrap(),
                 canonical
             );
-            assert_eq!(
+            assert!(
                 value
                     .value()
                     .serialize_specified(CssSerializationLimits::new(1, 1, 0))
                     .unwrap_err()
-                    .kind(),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit
+                    .is_byte_limit()
             );
             assert_eq!(value.as_css(), text);
             let CssExpansion::Contributions(CssContributions::Longhands(values)) =
@@ -97,22 +98,25 @@ fn visibility_canonical_keywords_obey_exact_limits_without_mutation() {
         for (limits, kind) in [
             (
                 CssSerializationLimits::new(0, 0, 0),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                SerializationFailure::InputNodeLimit,
             ),
             (
                 CssSerializationLimits::new(1, 0, 0),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
                 CssSerializationLimits::new(1, 1, expected.len() - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                SerializationFailure::ByteLimit,
             ),
             (
                 CssSerializationLimits::new(1, 1, 0),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                SerializationFailure::ByteLimit,
             ),
         ] {
-            assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+            assert_eq!(
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+                kind
+            );
         }
         let report = parse_style_attribute(&format!("visibility:{expected}"));
         assert!(report.is_clean());
@@ -146,7 +150,7 @@ fn recovered_visibility_normalization_preserves_occurrences_and_exact_budgets() 
         CssRecoveryAction::DropDeclaration
     );
     assert_invalid_value(
-        report.diagnostics()[0].error().kind(),
+        report.diagnostics()[0].error(),
         CssKnownProperty::Visibility,
         Some("auto"),
     );
@@ -174,8 +178,8 @@ fn recovered_visibility_normalization_preserves_occurrences_and_exact_budgets() 
         assert_eq!(
             normalize_sheet_with_limits(report.syntax(), limits)
                 .unwrap_err()
-                .kind(),
-            &CssNormalizationErrorKind::LimitExceeded { resource, limit }
+                .exhausted_limit(),
+            Some((resource, limit))
         );
     }
     let sheet = normalize_sheet_with_limits(

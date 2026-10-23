@@ -12,12 +12,14 @@
 //! their finite overflow converts to the closest finite Number (#1297). An
 //! Angle ancestor does not reconstruct their earlier magnitudes.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::value_assertions::assert_calculated_number as assert_number;
 use crate::css::support::value_assertions::calculated_number as number;
 use surgeist_css::*;
 
 type Limits = CssSerializationLimits;
-type Kind = CssSpecifiedValueSerializationErrorKind;
+type Kind = SerializationFailure;
 
 #[test]
 fn finite_hypot_angle_results_obey_the_supported_angle_range() {
@@ -172,7 +174,7 @@ fn merged_number_product_replacements_obey_exact_limits_and_atomic_failures() {
         (Limits::new(5, 6, expected.len() - 1), Kind::ByteLimit),
     ] {
         let error = value.serialize_specified(limits).unwrap_err();
-        assert_eq!(error.kind(), kind, "{limits:?}");
+        assert_eq!(serialization_failure(&error), kind, "{limits:?}");
         assert_eq!(value, before);
         assert_eq!(value.origin(), before.origin());
         assert_eq!(
@@ -201,7 +203,7 @@ fn function_and_product_siblings_keep_one_cumulative_budget() {
         (Limits::new(11, 11, expected.len() - 1), Kind::ByteLimit),
     ] {
         let error = value.serialize_specified(limits).unwrap_err();
-        assert_eq!(error.kind(), kind, "{limits:?}");
+        assert_eq!(serialization_failure(&error), kind, "{limits:?}");
         assert_eq!(value, before);
         assert_eq!(value.origin(), before.origin());
         assert_eq!(

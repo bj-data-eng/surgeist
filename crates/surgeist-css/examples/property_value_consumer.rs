@@ -12,10 +12,10 @@
 
 use surgeist_css::{
     CssAuthoredDeclarationValue, CssComponentValue, CssComponentValueRef, CssComponentValues,
-    CssCustomPropertyName, CssDeclaration, CssGlobalKeyword, CssImportance, CssKnownProperty,
-    CssKnownPropertyValueRef, CssMarginShorthand, CssMarginValue, CssParsedOrigin,
-    CssPropertyNameRef, CssPropertyValueErrorKind, CssRule, CssSerializedOrigin, CssValueOrigin,
-    CssValueTokenRef, ErrorKind, parse_component_values, parse_property_value, parse_sheet,
+    CssCustomPropertyName, CssDeclaration, CssErrorCode, CssGlobalKeyword, CssImportance,
+    CssKnownProperty, CssKnownPropertyValueRef, CssMarginShorthand, CssMarginValue,
+    CssParsedOrigin, CssPropertyNameRef, CssRule, CssSerializedOrigin, CssValueOrigin,
+    CssValueTokenRef, parse_component_values, parse_property_value, parse_sheet,
     parse_style_attribute, validate_sheet,
 };
 
@@ -131,13 +131,14 @@ fn checked_construction() {
         CssImportance::Normal,
     )
     .expect_err("negative padding is not valid property syntax");
-    let CssPropertyValueErrorKind::Grammar(ErrorKind::InvalidPropertyValue(detail)) = error.kind()
-    else {
-        panic!("expected a structured padding grammar error: {error:?}");
-    };
-    assert_eq!(detail.property(), CssKnownProperty::Padding);
+    assert_eq!(
+        error.code(),
+        Some(CssErrorCode::InvalidPropertyValue),
+        "expected a structured padding grammar error: {error:?}"
+    );
+    assert_eq!(error.known_property(), Some(CssKnownProperty::Padding));
     assert!(matches!(
-        responsible(error.origin()),
+        responsible(&error.origin()),
         CssValueOrigin::Programmatic
     ));
     println!("checked construction: ok");
@@ -218,11 +219,8 @@ fn value_boundaries_and_error_origins() {
             CssImportance::Normal,
         )
         .expect_err("one value cannot smuggle an annotation, declaration or extra grammar token");
-        assert!(matches!(
-            error.kind(),
-            CssPropertyValueErrorKind::Grammar(_)
-        ));
-        assert_source_span(parsed(responsible(error.origin())), value, invalid_token);
+        assert!(error.code().is_some(), "{error:?}");
+        assert_source_span(parsed(responsible(&error.origin())), value, invalid_token);
     }
 
     let left = parse_component_values("1px").unwrap();

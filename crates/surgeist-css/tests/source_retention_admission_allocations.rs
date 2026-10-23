@@ -49,7 +49,7 @@ fn refused_requested_or_actual_replacement_disposes_only_new_backing_before_retu
         watching.set(true);
         let result = collector.source(&second);
         let after = region.change();
-        assert_eq!(result, Err(CssSourceRetentionError::CallerAdmission));
+        assert_eq!(result, Err(CssSourceRetentionError::caller_admission()));
         assert_eq!(collector.usage(), original);
         assert_eq!(at_refusal_deallocations.get(), before.deallocations);
         assert_eq!(at_refusal_allocations.get() - before.allocations, stop - 1);

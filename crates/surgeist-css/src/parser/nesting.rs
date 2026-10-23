@@ -3,7 +3,7 @@ use cssparser::{ParseError, Parser};
 use super::Recovered;
 use super::recovery::RecoveryState;
 use super::rule_list::{RuleListUnits, RuleParser, StyleSink, recover_rule_list};
-use crate::error::{CssFeatureId, Error};
+use crate::error::{CssError, CssFeatureId};
 use crate::syntax::*;
 
 pub(super) static IMPLEMENTED_SELECTORS: &[CssFeatureId] =
@@ -15,7 +15,7 @@ pub(super) fn parse_style_rule_block<'i, 't>(
     position: crate::CssSourcePosition,
     input: &mut Parser<'i, 't>,
     recovery: RecoveryState,
-) -> std::result::Result<Recovered<Vec<CssRule>>, ParseError<'i, Error>> {
+) -> std::result::Result<Recovered<Vec<CssRule>>, ParseError<'i, CssError>> {
     recovery.record_style_context(input.position().byte_index());
     let recovered = parse_style_contents(source, input, recovery)?;
     Ok(Recovered {
@@ -33,7 +33,7 @@ pub(super) fn parse_style_contents<'i, 't>(
     source: &'i str,
     input: &mut Parser<'i, 't>,
     recovery: RecoveryState,
-) -> std::result::Result<Recovered<StyleContents>, ParseError<'i, Error>> {
+) -> std::result::Result<Recovered<StyleContents>, ParseError<'i, CssError>> {
     recovery.record_style_context(input.position().byte_index());
     let mut grammar = RuleParser::style(source, recovery);
     let mut sink = StyleSink::new();
@@ -74,7 +74,7 @@ pub(super) fn admit_detached<'i, 't>(
     recovery: RecoveryState,
     envelope: &super::rule_candidate::RuleEnvelope,
 ) -> (
-    Result<super::CssAdmittedRule, ParseError<'i, Error>>,
+    Result<super::CssAdmittedRule, ParseError<'i, CssError>>,
     Vec<crate::CssRecoveryDiagnostic>,
 ) {
     recovery.record_style_context(0);

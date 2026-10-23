@@ -1,7 +1,6 @@
 use surgeist_css::{
     CssErrorCode, CssFlexDirection, CssFlexWrap, CssGlobalKeyword, CssKnownDeclaredValueRef,
-    CssKnownProperty, CssKnownPropertyValueRef, CssRecoveryAction, ErrorKind,
-    parse_style_attribute,
+    CssKnownProperty, CssKnownPropertyValueRef, CssRecoveryAction, parse_style_attribute,
 };
 
 #[test]
@@ -125,11 +124,10 @@ fn flex_flow_mutations_drop_exact_declaration_and_retain_siblings() {
             source[..responsible].encode_utf16().count(),
             "{source}",
         );
-        assert!(matches!(
-            diagnostic.error().kind(),
-            ErrorKind::InvalidPropertyValue(detail)
-                if detail.property() == CssKnownProperty::FlexFlow
-        ));
+        assert!(
+            (diagnostic.error().code() == CssErrorCode::InvalidPropertyValue
+                && diagnostic.error().known_property().unwrap() == CssKnownProperty::FlexFlow)
+        );
 
         assert_eq!(
             surgeist_css::validate_style_attribute(&source)

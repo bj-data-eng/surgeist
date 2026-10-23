@@ -9,6 +9,8 @@
 //! https://www.w3.org/TR/2022/CR-css-cascade-5-20220113/#at-import
 //! https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax
 
+use crate::css::support::failure_classes::ComponentFailure;
+use crate::css::support::failure_classes::component_failure;
 use surgeist_css::{
     CssImportLayer, CssImportRule, CssImportance, CssMediaConditionKind, CssMediaQuery,
     CssRecoveryAction, CssRule, CssSupportsCondition, CssSupportsConditionKind, parse_sheet,
@@ -201,15 +203,11 @@ fn supports_bad_url_and_bad_string_tokens_cannot_be_declarations_or_opaque_fallb
 
 #[test]
 fn supports_lexical_failures_preserve_typed_errors_and_original_token_positions() {
-    use surgeist_css::{CssComponentValueErrorKind, CssValueOrigin, ErrorKind};
+    use surgeist_css::CssValueOrigin;
 
     for (payload, token, kind) in [
-        ("url(a b)", "url(", CssComponentValueErrorKind::BadUrl),
-        (
-            "\"broken\n",
-            "\"broken",
-            CssComponentValueErrorKind::BadString,
-        ),
+        ("url(a b)", "url(", ComponentFailure::BadUrl),
+        ("\"broken\n", "\"broken", ComponentFailure::BadString),
     ] {
         for prelude in [
             format!("@supports ((mystery:future([{payload}])))"),
@@ -231,10 +229,10 @@ fn supports_lexical_failures_preserve_typed_errors_and_original_token_positions(
             let [diagnostic] = report.diagnostics() else {
                 panic!("one terminal lexical failure: {source}: {report:?}");
             };
-            let ErrorKind::InvalidComponentValue(detail) = diagnostic.error().kind() else {
+            let Some(detail) = diagnostic.error().component_error() else {
                 panic!("typed lexical failure survives grammar probes: {source}: {diagnostic:?}");
             };
-            assert_eq!(detail.kind(), kind);
+            assert_eq!(component_failure(detail), kind);
             let CssValueOrigin::Parsed(origin) = detail.origin() else {
                 panic!("original bad-token origin");
             };

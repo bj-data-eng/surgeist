@@ -192,22 +192,21 @@ fn checked_pending_env_math_reentry_is_reusable_and_rejects_residual_var_and_env
                 Default::default(),
             )
             .unwrap_err();
-        let CssCounterStyleValueErrorKind::Grammar(detail) = error.kind() else {
+        let Some(detail) = error.diagnostic() else {
             panic!("grammar failure: {error:?}")
         };
         crate::css::support::rules::invalid_descriptor("counter-style", "additive-symbols")
             .at("2")
             .assert_kind(detail);
         for residual in ["calc(var(--weight)) X", "calc(env(weight)) X"] {
-            assert_eq!(
+            assert!(
                 pending
                     .reparse_after_substitution(
                         parse_component_values(residual).unwrap(),
                         Default::default()
                     )
                     .unwrap_err()
-                    .kind(),
-                &CssCounterStyleValueErrorKind::ResidualSubstitution,
+                    .is_residual_substitution(),
                 "{residual}"
             );
         }
@@ -280,9 +279,11 @@ fn suppressed_duplicate_math_spends_cumulative_input_budget_without_emitting_byt
     let expected = "@counter-style x { system: fixed; }";
     let limits = CssSerializationLimits::new(10, 1000, expected.len());
     assert_eq!(effective.serialize_specified(limits).unwrap(), expected);
-    assert_eq!(
-        duplicated.serialize_specified(limits).unwrap_err().kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+    assert!(
+        duplicated
+            .serialize_specified(limits)
+            .unwrap_err()
+            .is_input_node_limit()
     );
     assert_eq!(
         duplicated.serialize_specified(Default::default()).unwrap(),
@@ -302,12 +303,12 @@ fn checked_math_depth_failure_keeps_the_original_pending_descriptor() {
     let components = parse_component_values(source).unwrap();
     let limits = CssComponentValueLimits::try_new(2, 1000, 10000).unwrap();
     let before = pending.clone();
-    assert_eq!(
+    assert!(
         pending
             .reparse_after_substitution(components.clone(), limits)
             .unwrap_err()
-            .kind(),
-        &CssCounterStyleValueErrorKind::Component(CssComponentValueErrorKind::NestingLimit)
+            .component_error()
+            .is_some_and(|error| error.is_nesting_limit())
     );
     let completed = pending
         .reparse_after_substitution(components, Default::default())

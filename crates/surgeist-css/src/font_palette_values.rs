@@ -4,32 +4,147 @@ use std::fmt;
 
 use crate::{
     CssAbsoluteColorEligibility, CssAbsoluteColorExclusion, CssColor, CssComponentValue,
-    CssComponentValueError, CssComponentValueErrorKind, CssComponentValueLimits,
-    CssComponentValues, CssFontFaceFamily, CssIntegerValue, CssSerializedOrigin,
-    CssSerializedValue, CssSourcePosition, CssSubstitutionDependentValue, CssValueOrigin, Error,
-    ErrorKind,
+    CssComponentValueError, CssComponentValueLimits, CssComponentValues, CssError,
+    CssFontFaceFamily, CssIntegerValue, CssSerializedOrigin, CssSerializedValue, CssSourcePosition,
+    CssSubstitutionDependentValue, CssValueOrigin,
 };
 
-/// A rejected semantic palette component or rule.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssFontPaletteConstructionError {
+/// A rejected semantic palette component or rule, or a checked component-native palette
+/// descriptor failure.
+///
+/// Semantic failures are read through the `is_*` predicates and
+/// [`Self::contextual_color`]. A descriptor-value failure exposes [`Self::origin`] and,
+/// when the components were not admitted or the grammar rejected them,
+/// [`Self::component_error`] or [`Self::diagnostic`], which is the error's source.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CssFontPaletteValuesError {
+    kind: FontPaletteValuesKind,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum FontPaletteValuesKind {
     InvalidName,
     NegativeIndex,
     ContextualColor(CssAbsoluteColorExclusion),
     MissingFontFamily,
+    Value(crate::descriptor_values::DescriptorValueFailure),
 }
 
-impl fmt::Display for CssFontPaletteConstructionError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            formatter,
-            "invalid font-palette-values construction: {self:?}"
-        )
+impl CssFontPaletteValuesError {
+    const fn new(kind: FontPaletteValuesKind) -> Self {
+        Self { kind }
+    }
+
+    fn from_component(error: CssComponentValueError) -> Self {
+        crate::descriptor_values::DescriptorValueFailure::component(error).into()
+    }
+
+    fn from_grammar(error: CssError, serialized: &CssSerializedValue) -> Self {
+        crate::descriptor_values::DescriptorValueFailure::grammar(error, serialized).into()
+    }
+
+    fn residual(origin: CssValueOrigin) -> Self {
+        crate::descriptor_values::DescriptorValueFailure::residual(origin).into()
+    }
+
+    fn not_pending() -> Self {
+        crate::descriptor_values::DescriptorValueFailure::not_pending().into()
+    }
+
+    const fn value(&self) -> Option<&crate::descriptor_values::DescriptorValueFailure> {
+        match &self.kind {
+            FontPaletteValuesKind::Value(failure) => Some(failure),
+            _ => None,
+        }
+    }
+
+    crate::error::kind_predicates! { kind;
+        /// Returns whether a palette name is not a decoded `<dashed-ident>`.
+        is_invalid_name => FontPaletteValuesKind::InvalidName,
+        /// Returns whether a palette index is negative.
+        is_negative_index => FontPaletteValuesKind::NegativeIndex,
+        /// Returns whether a palette rule has no `font-family` descriptor.
+        is_missing_font_family => FontPaletteValuesKind::MissingFontFamily,
+    }
+
+    /// Returns why an override color is not an absolute color.
+    #[must_use]
+    pub const fn contextual_color(&self) -> Option<CssAbsoluteColorExclusion> {
+        match self.kind {
+            FontPaletteValuesKind::ContextualColor(reason) => Some(reason),
+            _ => None,
+        }
+    }
+
+    /// Returns the responsible input origin of a descriptor-value failure.
+    #[must_use]
+    pub fn origin(&self) -> Option<&CssSerializedOrigin> {
+        self.value()
+            .map(crate::descriptor_values::DescriptorValueFailure::origin)
+    }
+
+    /// Returns the component failure when the supplied components were not admitted.
+    #[must_use]
+    pub fn component_error(&self) -> Option<&CssComponentValueError> {
+        self.value()?.component_error()
+    }
+
+    /// Returns the grammar diagnostic when the descriptor grammar rejected the components.
+    /// Its position indexes the serialized component input; [`Self::origin`] locates the
+    /// responsible supplied component.
+    #[must_use]
+    pub fn diagnostic(&self) -> Option<&CssError> {
+        self.value()?.diagnostic()
+    }
+
+    /// Returns whether strict reentry still contains a substitution function.
+    #[must_use]
+    pub fn is_residual_substitution(&self) -> bool {
+        self.value()
+            .is_some_and(crate::descriptor_values::DescriptorValueFailure::is_residual_substitution)
+    }
+
+    /// Returns whether reentry was requested for a value that is not pending substitution.
+    #[must_use]
+    pub fn is_not_pending(&self) -> bool {
+        self.value()
+            .is_some_and(crate::descriptor_values::DescriptorValueFailure::is_not_pending)
     }
 }
 
-impl std::error::Error for CssFontPaletteConstructionError {}
+impl From<crate::descriptor_values::DescriptorValueFailure> for CssFontPaletteValuesError {
+    fn from(failure: crate::descriptor_values::DescriptorValueFailure) -> Self {
+        Self::new(FontPaletteValuesKind::Value(failure))
+    }
+}
+
+impl fmt::Display for CssFontPaletteValuesError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match &self.kind {
+            FontPaletteValuesKind::Value(failure) => {
+                return failure.describe("font-palette-values", formatter);
+            }
+            FontPaletteValuesKind::InvalidName => {
+                "invalid font-palette-values construction: the name is not a dashed identifier"
+            }
+            FontPaletteValuesKind::NegativeIndex => {
+                "invalid font-palette-values construction: a palette index is negative"
+            }
+            FontPaletteValuesKind::ContextualColor(_) => {
+                "invalid font-palette-values construction: an override color is not absolute"
+            }
+            FontPaletteValuesKind::MissingFontFamily => {
+                "invalid font-palette-values construction: the font-family descriptor is missing"
+            }
+        })
+    }
+}
+
+impl std::error::Error for CssFontPaletteValuesError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.value()?.source()
+    }
+}
 
 /// A decoded, case-sensitive `<dashed-ident>` palette name.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -37,9 +152,11 @@ pub struct CssFontPaletteName(Box<str>);
 
 impl CssFontPaletteName {
     /// Checks the decoded identifier, including the valid bare `--` spelling.
-    pub fn try_new(value: &str) -> Result<Self, CssFontPaletteConstructionError> {
+    pub fn try_new(value: &str) -> Result<Self, CssFontPaletteValuesError> {
         if !value.starts_with("--") || CssComponentValue::try_ident(value).is_err() {
-            return Err(CssFontPaletteConstructionError::InvalidName);
+            return Err(CssFontPaletteValuesError::new(
+                FontPaletteValuesKind::InvalidName,
+            ));
         }
         Ok(Self(value.into()))
     }
@@ -83,13 +200,15 @@ pub struct CssFontPaletteIndex {
 }
 
 impl CssFontPaletteIndex {
-    pub fn try_new(value: CssIntegerValue) -> Result<Self, CssFontPaletteConstructionError> {
+    pub fn try_new(value: CssIntegerValue) -> Result<Self, CssFontPaletteValuesError> {
         let negative = match &value {
             CssIntegerValue::Literal(value) => value.is_negative(),
             CssIntegerValue::Calculation(_) => false,
         };
         if negative {
-            return Err(CssFontPaletteConstructionError::NegativeIndex);
+            return Err(CssFontPaletteValuesError::new(
+                FontPaletteValuesKind::NegativeIndex,
+            ));
         }
         Ok(Self { value })
     }
@@ -120,9 +239,11 @@ impl CssFontPaletteOverride {
     pub fn try_new(
         index: CssFontPaletteIndex,
         color: CssColor,
-    ) -> Result<Self, CssFontPaletteConstructionError> {
+    ) -> Result<Self, CssFontPaletteValuesError> {
         if let CssAbsoluteColorEligibility::Contextual(reason) = color.absolute_eligibility() {
-            return Err(CssFontPaletteConstructionError::ContextualColor(reason));
+            return Err(CssFontPaletteValuesError::new(
+                FontPaletteValuesKind::ContextualColor(reason),
+            ));
         }
         Ok(Self { index, color })
     }
@@ -135,94 +256,6 @@ impl CssFontPaletteOverride {
     #[must_use]
     pub const fn color(&self) -> &CssColor {
         &self.color
-    }
-}
-
-/// A checked component-native descriptor construction or reentry failure.
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssFontPaletteValueErrorKind {
-    Component(CssComponentValueErrorKind),
-    Grammar(ErrorKind),
-    ResidualSubstitution,
-    NotPending,
-}
-
-/// A failure mapped to the supplied component origins, never fabricated source text.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssFontPaletteValueError {
-    kind: Box<CssFontPaletteValueErrorKind>,
-    origin: Box<CssSerializedOrigin>,
-    source: Option<Box<PaletteValueErrorSource>>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-enum PaletteValueErrorSource {
-    Component(CssComponentValueError),
-    Grammar(Error),
-}
-
-impl CssFontPaletteValueError {
-    #[must_use]
-    pub fn kind(&self) -> &CssFontPaletteValueErrorKind {
-        &self.kind
-    }
-
-    #[must_use]
-    pub fn origin(&self) -> &CssSerializedOrigin {
-        &self.origin
-    }
-
-    fn from_component(error: CssComponentValueError) -> Self {
-        Self {
-            kind: Box::new(CssFontPaletteValueErrorKind::Component(error.kind())),
-            origin: Box::new(CssSerializedOrigin::Token(error.origin().clone())),
-            source: Some(Box::new(PaletteValueErrorSource::Component(error))),
-        }
-    }
-
-    fn from_grammar(error: Error, serialized: &CssSerializedValue) -> Self {
-        let origin = error.component_input_origin(serialized);
-        Self {
-            kind: Box::new(CssFontPaletteValueErrorKind::Grammar(error.kind().clone())),
-            origin: Box::new(origin),
-            source: Some(Box::new(PaletteValueErrorSource::Grammar(error))),
-        }
-    }
-
-    fn residual(origin: CssValueOrigin) -> Self {
-        Self {
-            kind: Box::new(CssFontPaletteValueErrorKind::ResidualSubstitution),
-            origin: Box::new(CssSerializedOrigin::Token(origin)),
-            source: None,
-        }
-    }
-
-    fn not_pending() -> Self {
-        Self {
-            kind: Box::new(CssFontPaletteValueErrorKind::NotPending),
-            origin: Box::new(CssSerializedOrigin::End(None)),
-            source: None,
-        }
-    }
-}
-
-impl fmt::Display for CssFontPaletteValueError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            formatter,
-            "invalid font-palette descriptor value: {:?}",
-            self.kind
-        )
-    }
-}
-
-impl std::error::Error for CssFontPaletteValueError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self.source.as_deref()? {
-            PaletteValueErrorSource::Component(error) => Some(error),
-            PaletteValueErrorSource::Grammar(error) => Some(error),
-        }
     }
 }
 
@@ -264,19 +297,19 @@ impl CssFontPaletteDescriptorValue {
         kind: CssFontPaletteDescriptorKind,
         components: CssComponentValues,
         limits: CssComponentValueLimits,
-    ) -> Result<Self, CssFontPaletteValueError> {
+    ) -> Result<Self, CssFontPaletteValuesError> {
         components
             .validate_with_limits(limits)
-            .map_err(CssFontPaletteValueError::from_component)?;
+            .map_err(CssFontPaletteValuesError::from_component)?;
         let serialized = components
             .serialize_tokens(limits)
-            .map_err(CssFontPaletteValueError::from_component)?;
+            .map_err(CssFontPaletteValuesError::from_component)?;
         let data = crate::parser::font_palette_values::construct_descriptor_value(
             kind,
             &components,
             &serialized,
         )
-        .map_err(|error| CssFontPaletteValueError::from_grammar(error, &serialized))?;
+        .map_err(|error| CssFontPaletteValuesError::from_grammar(error, &serialized))?;
         Ok(Self {
             kind,
             components,
@@ -290,15 +323,15 @@ impl CssFontPaletteDescriptorValue {
         &self,
         replacement: CssComponentValues,
         limits: CssComponentValueLimits,
-    ) -> Result<Self, CssFontPaletteValueError> {
+    ) -> Result<Self, CssFontPaletteValuesError> {
         if !matches!(self.data, CssFontPaletteDescriptorData::Pending(_)) {
-            return Err(CssFontPaletteValueError::not_pending());
+            return Err(CssFontPaletteValuesError::not_pending());
         }
         replacement
             .validate_with_limits(limits)
-            .map_err(CssFontPaletteValueError::from_component)?;
+            .map_err(CssFontPaletteValuesError::from_component)?;
         if let Some(origin) = crate::parser::first_substitution_origin(&replacement) {
-            return Err(CssFontPaletteValueError::residual(origin));
+            return Err(CssFontPaletteValuesError::residual(origin));
         }
         Self::try_new(self.kind, replacement, limits)
     }
@@ -405,7 +438,7 @@ impl CssFontPaletteValuesRule {
     pub fn try_new(
         name: CssFontPaletteName,
         descriptors: Vec<CssFontPaletteDescriptor>,
-    ) -> Result<Self, CssFontPaletteConstructionError> {
+    ) -> Result<Self, CssFontPaletteValuesError> {
         validate_descriptors(&descriptors)?;
         Ok(Self {
             name,
@@ -437,13 +470,15 @@ impl CssFontPaletteValuesRule {
 
 pub(crate) fn validate_descriptors(
     descriptors: &[CssFontPaletteDescriptor],
-) -> Result<(), CssFontPaletteConstructionError> {
+) -> Result<(), CssFontPaletteValuesError> {
     if descriptors
         .iter()
         .any(|descriptor| descriptor.value.kind() == CssFontPaletteDescriptorKind::FontFamily)
     {
         Ok(())
     } else {
-        Err(CssFontPaletteConstructionError::MissingFontFamily)
+        Err(CssFontPaletteValuesError::new(
+            FontPaletteValuesKind::MissingFontFamily,
+        ))
     }
 }

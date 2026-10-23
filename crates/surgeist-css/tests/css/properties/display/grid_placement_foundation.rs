@@ -2,6 +2,7 @@
 //! CSS Values 4 (2024-03-12) §4.2 identifier exclusions and math range timing.
 //! Grid 3 (2026-01-21) §4.1 reuses these properties on its grid axis.
 
+use crate::css::support::property_admission::assert_same_grammar_facts;
 use surgeist_css::*;
 
 const LONGHANDS: [&str; 4] = [
@@ -223,16 +224,15 @@ fn placement_rejects_zero_noninteger_and_duplicate_components_without_losing_nei
                 report.diagnostics(),
                 "{source}"
             );
-            assert_eq!(
-                parse_property_value_for_grammar(
+            assert_same_grammar_facts(
+                &parse_property_value_for_grammar(
                     grammar(name),
                     parse_component_values(value).unwrap(),
-                    CssImportance::Normal
+                    CssImportance::Normal,
                 )
-                .unwrap_err()
-                .kind(),
-                &CssPropertyValueErrorKind::Grammar(report.diagnostics()[0].error().kind().clone()),
-                "checked accepted {name}: {value}"
+                .unwrap_err(),
+                report.diagnostics()[0].error(),
+                "checked accepted {name}: {value}",
             );
         }
     }
@@ -264,16 +264,15 @@ fn default_and_reserved_keywords_cannot_serve_as_grid_line_names() {
                 CssRecoveryAction::DropDeclaration,
                 "{source}"
             );
-            assert_eq!(
-                parse_property_value_for_grammar(
+            assert_same_grammar_facts(
+                &parse_property_value_for_grammar(
                     grammar(name),
                     parse_component_values(value).unwrap(),
-                    CssImportance::Normal
+                    CssImportance::Normal,
                 )
-                .unwrap_err()
-                .kind(),
-                &CssPropertyValueErrorKind::Grammar(report.diagnostics()[0].error().kind().clone()),
-                "checked accepted {source}"
+                .unwrap_err(),
+                report.diagnostics()[0].error(),
+                "checked accepted {source}",
             );
         }
         for value in [
@@ -356,16 +355,15 @@ fn placement_shorthands_reject_extra_or_empty_slash_members() {
                 CssRecoveryAction::DropDeclaration,
                 "{source}"
             );
-            assert_eq!(
-                parse_property_value_for_grammar(
+            assert_same_grammar_facts(
+                &parse_property_value_for_grammar(
                     grammar(name),
                     parse_component_values(value).unwrap(),
-                    CssImportance::Normal
+                    CssImportance::Normal,
                 )
-                .unwrap_err()
-                .kind(),
-                &CssPropertyValueErrorKind::Grammar(report.diagnostics()[0].error().kind().clone()),
-                "checked accepted {source}"
+                .unwrap_err(),
+                report.diagnostics()[0].error(),
+                "checked accepted {source}",
             );
         }
     }
@@ -529,19 +527,18 @@ fn globals_and_pending_reentry_keep_placement_members_and_source() {
             panic!("{name} remains pending")
         };
         assert!(pending.source().same_occurrence(&source));
-        assert!(matches!(
+        assert!(
             pending
                 .reenter(parse_component_values("0").unwrap())
                 .unwrap_err()
-                .kind(),
-            CssExpansionErrorKind::InvalidReplacement(_)
-        ));
-        assert_eq!(
+                .replacement_error()
+                .is_some()
+        );
+        assert!(
             pending
                 .reenter(parse_component_values("var(--again)").unwrap())
                 .unwrap_err()
-                .kind(),
-            &CssExpansionErrorKind::ResidualSubstitution
+                .is_residual_substitution()
         );
         let replacement = parse_component_values("hero").unwrap();
         let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap()
@@ -567,13 +564,7 @@ fn area_expansion_counts_four_members_before_normalization_allocates() {
         Ok(_) => panic!("four area contributions exceed a limit of three"),
         Err(error) => error,
     };
-    assert!(matches!(
-        error.kind(),
-        CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: 3,
-        }
-    ));
+    assert!(error.exhausted_limit() == Some((CssNormalizationResource::Contributions, 3)));
     assert_eq!(
         report.syntax(),
         &original,

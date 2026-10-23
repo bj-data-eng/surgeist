@@ -7,6 +7,7 @@
 //! Transform/orientation have no public specified serializer at this source
 //! basis: existing aggregate identity expresses their literal fidelity instead.
 
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::retained_checked_declaration as checked;
 use crate::css::support::value_assertions::filter_value as filter;
 use crate::css::support::value_assertions::validated_declaration;
@@ -267,10 +268,7 @@ fn reject(property: CssKnownProperty, value: &str) {
         CssImportance::Normal,
     )
     .unwrap_err();
-    assert!(
-        matches!(error.kind(), CssPropertyValueErrorKind::Grammar(_)),
-        "{error:?}"
-    );
+    assert!(error.code().is_some(), "{error:?}");
 }
 
 #[test]
@@ -554,12 +552,11 @@ fn pending_angle_reentry_retains_exact_literals_importance_and_replacement_sourc
         let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
             panic!("pending filter")
         };
-        assert_eq!(
+        assert!(
             pending
                 .reenter(parse_component_values("hue-rotate(var(--again))").unwrap())
                 .unwrap_err()
-                .kind(),
-            &CssExpansionErrorKind::ResidualSubstitution
+                .is_residual_substitution()
         );
         for invalid in [
             "hue-rotate(1e-999)",
@@ -569,10 +566,7 @@ fn pending_angle_reentry_retains_exact_literals_importance_and_replacement_sourc
             let Err(error) = pending.reenter(parse_component_values(invalid).unwrap()) else {
                 panic!("invalid replacement: {invalid}")
             };
-            assert!(matches!(
-                error.kind(),
-                CssExpansionErrorKind::InvalidReplacement(_)
-            ));
+            assert!(error.replacement_error().is_some());
         }
         let replacement = parse_component_values("hue-rotate(0.10000000000000000001deg)").unwrap();
         for _ in 0..2 {
@@ -684,8 +678,8 @@ fn normalization_retains_exact_angle_literals_in_surviving_source_order() {
 
 #[test]
 fn exact_literal_provider_failures_are_atomic_and_do_not_mutate_source_or_refund_work() {
+    use crate::css::support::failure_classes::SerializationFailure as K;
     use CssSerializationLimits as L;
-    use CssSpecifiedValueSerializationErrorKind as K;
     let source = validated_declaration(
         CssKnownProperty::Filter,
         "hue-rotate(0.10000000000000000001deg)",
@@ -712,7 +706,7 @@ fn exact_literal_provider_failures_are_atomic_and_do_not_mutate_source_or_refund
         (L::new(2, 2, expected.len() - 1), K::ByteLimit),
     ] {
         assert_eq!(
-            function.serialize_specified(limits).unwrap_err().kind(),
+            serialization_failure(&function.serialize_specified(limits).unwrap_err()),
             kind
         );
     }
@@ -727,20 +721,19 @@ fn exact_literal_provider_failures_are_atomic_and_do_not_mutate_source_or_refund
         CssImportance::Important,
     );
     let before = huge.clone();
-    assert_eq!(
+    assert!(
         filter(&huge)
             .serialize_specified(L::new(3, 3, 64))
             .unwrap_err()
-            .kind(),
-        K::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(huge, before);
 }
 
 #[test]
 fn suppressed_exact_gradient_default_consumes_its_scalar_budget_without_output_bytes() {
+    use crate::css::support::failure_classes::SerializationFailure as K;
     use CssSerializationLimits as L;
-    use CssSpecifiedValueSerializationErrorKind as K;
     let source = validated_declaration(
         CssKnownProperty::BackgroundImage,
         "linear-gradient(+1.80e2deg, red, blue)",
@@ -761,7 +754,10 @@ fn suppressed_exact_gradient_default_consumes_its_scalar_budget_without_output_b
         (L::new(8, 7, expected.len()), K::ProjectionNodeLimit),
         (L::new(8, 8, expected.len() - 1), K::ByteLimit),
     ] {
-        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+            kind
+        );
     }
     assert_eq!(source, before);
 }
@@ -777,10 +773,7 @@ fn pending_filter_reentry_rejects_recovered_angle_math_roots() {
         let Err(error) = pending.reenter(replacement) else {
             panic!("recovered angle math must not reenter")
         };
-        assert!(matches!(
-            error.kind(),
-            CssExpansionErrorKind::InvalidReplacement(_)
-        ));
+        assert!(error.replacement_error().is_some());
     }
 }
 
@@ -807,6 +800,9 @@ fn ordinary_gradient_outer_recovery_retains_its_complete_angle_calculation() {
 
 // Checked construction of angle literals and calculations.
 mod checked_construction {
+    use crate::css::support::failure_classes::ComponentFailure;
+    use crate::css::support::failure_classes::NumericFailure;
+    use crate::css::support::failure_classes::serialization_failure;
     use std::error::Error as _;
     use surgeist_css::*;
 
@@ -876,27 +872,24 @@ mod checked_construction {
         for text in ["0", "25%", "1px", "calc(1deg)", "auto"] {
             let supplied = component(text);
             let error = CssAngleLiteral::try_from_component(supplied.clone()).unwrap_err();
-            assert_eq!(error.kind(), CssComponentValueErrorKind::InvalidToken);
+            assert!(error.is_invalid_token(), "{error:?}");
             assert_eq!(error.origin(), supplied.origin());
         }
         for text in ["1e-999", "-1e-999", "0deg", "0%", "calc(0)"] {
             let supplied = component(text);
             let error = CssZeroLiteral::try_from_component(supplied.clone()).unwrap_err();
-            assert_eq!(error.kind(), CssComponentValueErrorKind::InvalidToken);
+            assert!(error.is_invalid_token(), "{error:?}");
             assert_eq!(error.origin(), supplied.origin());
         }
         for number in ["NaN", "infinity", "1 2", ""] {
-            assert_eq!(
+            assert!(
                 CssAngleLiteral::try_new(number, CssAngleUnit::Degrees)
                     .unwrap_err()
-                    .kind(),
-                surgeist_css::CssComponentValueErrorKind::InvalidDimension
+                    .is_invalid_dimension()
             );
             crate::css::support::value_assertions::assert_numeric_kind(
                 CssAngleCalculation::try_literal(number, CssAngleUnit::Degrees),
-                surgeist_css::CssNumericConstructionErrorKind::Component(
-                    surgeist_css::CssComponentValueErrorKind::InvalidDimension,
-                ),
+                NumericFailure::Component(ComponentFailure::InvalidDimension),
             );
         }
     }
@@ -987,10 +980,7 @@ mod checked_construction {
             panic!("math")
         };
         let error = CssAngleValue::try_from_calculation(calculation.clone()).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            &CssNumericConstructionErrorKind::RecoveredComponent
-        );
+        assert!(error.is_recovered_component(), "{error:?}");
         assert_eq!(error.origin(), Some(function.closing_origin()));
         assert!(error.path().is_none());
         assert!(error.source().is_none());
@@ -1048,8 +1038,8 @@ mod checked_construction {
             CssFilterFunctionList::try_new(vec![hue(literal(".5turn")), hue(literal("25grad"))])
                 .unwrap();
         let expected = "hue-rotate(0.5turn) hue-rotate(25grad)";
+        use crate::css::support::failure_classes::SerializationFailure as K;
         use CssSerializationLimits as L;
-        use CssSpecifiedValueSerializationErrorKind as K;
         assert_eq!(
             list.serialize_specified(L::new(5, 5, expected.len()))
                 .unwrap(),
@@ -1060,14 +1050,16 @@ mod checked_construction {
             (L::new(5, 4, expected.len()), K::ProjectionNodeLimit),
             (L::new(5, 5, expected.len() - 1), K::ByteLimit),
         ] {
-            assert_eq!(list.serialize_specified(limits).unwrap_err().kind(), kind);
+            assert_eq!(
+                serialization_failure(&list.serialize_specified(limits).unwrap_err()),
+                kind
+            );
         }
         let huge = hue(literal("1e999999999999999999999999999999deg"));
-        assert_eq!(
+        assert!(
             huge.serialize_specified(L::new(2, 2, 64))
                 .unwrap_err()
-                .kind(),
-            K::ByteLimit
+                .is_byte_limit()
         );
     }
 }

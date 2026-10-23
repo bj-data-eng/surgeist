@@ -157,7 +157,7 @@ fn reject_with_style_ancestor<'i>(
     context: RuleListContext,
     input: &Parser<'i, '_>,
     name: &str,
-) -> Result<(), ParseError<'i, Error>> {
+) -> Result<(), ParseError<'i, CssError>> {
     if context.style_ancestor() {
         Err(invalid_at_rule_placement(
             input.current_source_location(),
@@ -184,7 +184,7 @@ pub(super) fn parse_at_rule_prelude<'i>(
     input: &mut Parser<'i, '_>,
     diagnostics: &mut Vec<crate::CssRecoveryDiagnostic>,
     recovery: &RecoveryState,
-) -> Result<AtRulePrelude, ParseError<'i, Error>> {
+) -> Result<AtRulePrelude, ParseError<'i, CssError>> {
     match_ignore_ascii_case! { &name,
         "import" => {
             let Some(phase) = phase else {
@@ -360,10 +360,10 @@ pub(super) struct UnitState<'i> {
     pub(super) boundary: nesting::StyleRuleBoundary,
     /// A typed resource failure from a qualified-rule attempt, which a native
     /// declaration fallback would otherwise discard.
-    pub(super) qualified_resource_error: Option<ParseError<'i, Error>>,
+    pub(super) qualified_resource_error: Option<ParseError<'i, CssError>>,
     /// The prelude failure of a nested qualified-rule attempt (Syntax 3 (2026
     /// CRD) §5.5.5 reparses a failed declaration as a qualified rule).
-    pub(super) qualified_prelude_error: Option<ParseError<'i, Error>>,
+    pub(super) qualified_prelude_error: Option<ParseError<'i, CssError>>,
     pub(super) rejected_at_rule_start: Option<usize>,
 }
 
@@ -381,7 +381,7 @@ impl<'i> UnitState<'i> {
     /// prelude or block, or any other failure of its prelude.
     pub(super) fn record_qualified_failure<T>(
         &mut self,
-        result: &Result<T, ParseError<'i, Error>>,
+        result: &Result<T, ParseError<'i, CssError>>,
         prelude: bool,
     ) {
         if let Err(error) = result {
@@ -396,10 +396,10 @@ impl<'i> UnitState<'i> {
 
 /// A rule-list grammar: native callbacks plus the unit state its recovery reads.
 pub(super) trait RuleListGrammar<'i, I>:
-    RuleBodyItemParser<'i, I, Error>
-    + AtRuleParser<'i, AtRule = I, Error = Error>
-    + QualifiedRuleParser<'i, QualifiedRule = I, Error = Error>
-    + DeclarationParser<'i, Declaration = I, Error = Error>
+    RuleBodyItemParser<'i, I, CssError>
+    + AtRuleParser<'i, AtRule = I, Error = CssError>
+    + QualifiedRuleParser<'i, QualifiedRule = I, Error = CssError>
+    + DeclarationParser<'i, Declaration = I, Error = CssError>
 {
     fn unit(&mut self) -> &mut UnitState<'i>;
     fn recovery(&self) -> &RecoveryState;
@@ -448,7 +448,7 @@ impl RuleListUnits {
         source: &str,
         input: &Parser<'i, '_>,
         recovery: &RecoveryState,
-    ) -> Result<Self, ParseError<'i, Error>> {
+    ) -> Result<Self, ParseError<'i, CssError>> {
         Self::select(source, input, recovery, RuleListSyntax::BlockContents).map_err(|error| {
             crate::error::invalid_component_value(input.current_source_location(), error)
         })
@@ -548,7 +548,7 @@ fn recover_unit<'i, I, G, S>(
     input: &mut Parser<'i, '_>,
     grammar: &mut G,
     sink: &mut S,
-    item: Result<I, (Box<ParseError<'i, Error>>, &'i str)>,
+    item: Result<I, (Box<ParseError<'i, CssError>>, &'i str)>,
     unit: UnitState<'i>,
     unit_start: usize,
     progress: RecoveryProgress,
@@ -680,7 +680,7 @@ pub(super) fn parse_leaf_block<'i>(
     input: &mut Parser<'i, '_>,
     diagnostics: &mut Vec<crate::CssRecoveryDiagnostic>,
     recovery: &RecoveryState,
-) -> Result<Result<LeafRule, AtRulePrelude>, ParseError<'i, Error>> {
+) -> Result<Result<LeafRule, AtRulePrelude>, ParseError<'i, CssError>> {
     let rule = match prelude {
         AtRulePrelude::CustomMedia(_) => {
             return Err(invalid_at_rule_block(
@@ -886,7 +886,7 @@ impl<'s> RuleParser<'s> {
     fn group_body<'i>(
         &mut self,
         input: &mut Parser<'s, 'i>,
-    ) -> Result<Vec<CssRule>, ParseError<'s, Error>> {
+    ) -> Result<Vec<CssRule>, ParseError<'s, CssError>> {
         if self.style {
             let recovered = parse_style_contents(self.source, input, self.recovery.clone())?;
             self.diagnostics.extend(recovered.diagnostics);
@@ -902,7 +902,7 @@ impl<'s> RuleParser<'s> {
     fn scope_body<'i>(
         &mut self,
         input: &mut Parser<'s, 'i>,
-    ) -> Result<CssScopedRuleList, ParseError<'s, Error>> {
+    ) -> Result<CssScopedRuleList, ParseError<'s, CssError>> {
         let recovered = parse_scoped_rule_list(
             self.source,
             input,
@@ -930,7 +930,7 @@ impl<'i> RuleListGrammar<'i, RuleListItem> for RuleParser<'i> {
 impl<'i> AtRuleParser<'i> for RuleParser<'i> {
     type Prelude = AtRulePrelude;
     type AtRule = RuleListItem;
-    type Error = Error;
+    type Error = CssError;
 
     fn parse_prelude<'t>(
         &mut self,
@@ -1138,7 +1138,7 @@ impl<'i> AtRuleParser<'i> for RuleParser<'i> {
 impl<'i> QualifiedRuleParser<'i> for RuleParser<'i> {
     type Prelude = CssStyleSelectorList;
     type QualifiedRule = RuleListItem;
-    type Error = Error;
+    type Error = CssError;
 
     fn parse_prelude<'t>(
         &mut self,
@@ -1189,7 +1189,7 @@ impl<'i> QualifiedRuleParser<'i> for RuleParser<'i> {
 
 impl<'i> DeclarationParser<'i> for RuleParser<'i> {
     type Declaration = RuleListItem;
-    type Error = Error;
+    type Error = CssError;
 
     fn parse_value<'t>(
         &mut self,
@@ -1204,7 +1204,7 @@ impl<'i> DeclarationParser<'i> for RuleParser<'i> {
     }
 }
 
-impl<'i> RuleBodyItemParser<'i, RuleListItem, Error> for RuleParser<'i> {
+impl<'i> RuleBodyItemParser<'i, RuleListItem, CssError> for RuleParser<'i> {
     fn parse_declarations(&self) -> bool {
         self.style
     }

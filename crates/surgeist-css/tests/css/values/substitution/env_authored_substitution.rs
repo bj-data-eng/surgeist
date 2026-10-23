@@ -269,12 +269,11 @@ fn env_in_replacement_is_residual_before_any_replacement_grammar_check() {
         panic!("existing var pending")
     };
     for text in ["env(foo)", "env()", "f([ENV(foo,)])", "var(x)"] {
-        assert_eq!(
+        assert!(
             pending
                 .reenter(parse_component_values(text).unwrap())
                 .unwrap_err()
-                .kind(),
-            &CssExpansionErrorKind::ResidualSubstitution,
+                .is_residual_substitution(),
             "{text}"
         );
     }

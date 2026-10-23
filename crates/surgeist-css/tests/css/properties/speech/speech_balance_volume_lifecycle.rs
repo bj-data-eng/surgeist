@@ -332,16 +332,15 @@ fn mixing_substitution_reentry_rechecks_grammar_and_retains_original_and_replace
                 .reenter(parse_component_values(text).unwrap())
                 .unwrap_err();
             assert!(
-                matches!(error.kind(), CssExpansionErrorKind::InvalidReplacement(_)),
+                error.replacement_error().is_some(),
                 "{name}:{text}: {error:?}"
             );
         }
-        assert_eq!(
+        assert!(
             handle
                 .reenter(parse_component_values("var(--again)").unwrap())
                 .unwrap_err()
-                .kind(),
-            &CssExpansionErrorKind::ResidualSubstitution
+                .is_residual_substitution()
         );
         assert!(
             handle
@@ -379,12 +378,11 @@ fn mixing_case_escapes_comments_exact_coefficients_and_raw_byte_limits_preserve_
                 .as_css(),
             text
         );
-        assert_eq!(
+        assert!(
             components
                 .serialize_tokens(crate::css::support::byte_limits(text.len() - 1))
                 .unwrap_err()
-                .kind(),
-            CssComponentValueErrorKind::ByteLimit
+                .is_byte_limit()
         );
         assert_eq!(
             components
@@ -459,7 +457,7 @@ fn silent_companion_diagnostics_preserve_crlf_non_bmp_positions_and_original_com
     .unwrap_err();
     assert_eq!(
         error.origin(),
-        &CssSerializedOrigin::Token(token.origin().clone())
+        CssSerializedOrigin::Token(token.origin().clone())
     );
     let sheet_source = format!(".a{{{source}}}");
     let sheet = parse_sheet(&sheet_source);

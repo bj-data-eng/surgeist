@@ -69,11 +69,17 @@ fn stray_curly(
     position(diagnostic.error().position(), start);
     position(diagnostic.span().start(), start);
     position(diagnostic.span().end(), end);
-    let ErrorKind::UnexpectedToken(detail) = diagnostic.error().kind() else {
-        panic!("a real stray root token");
-    };
-    assert_eq!(detail.encountered().kind(), CssTokenKind::CloseCurlyBracket);
-    assert_eq!(detail.encountered().authored(), "}");
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::UnexpectedToken,
+        "a real stray root token"
+    );
+    assert_eq!(
+        detail.encountered().unwrap().kind(),
+        CssTokenKind::CloseCurlyBracket
+    );
+    assert_eq!(detail.encountered().unwrap().authored(), "}");
 }
 
 #[test]
@@ -180,10 +186,13 @@ fn curly_inside_a_value_rejects_its_complete_declaration_instead_of_repairing_it
     position(diagnostic.error().position(), (6, 0, 6));
     position(diagnostic.span().start(), (0, 0, 0));
     position(diagnostic.span().end(), (11, 0, 11));
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("the ordinary property's value boundary owns this closer");
-    };
-    assert_eq!(detail.property(), CssKnownProperty::Color);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "the ordinary property's value boundary owns this closer"
+    );
+    assert_eq!(detail.known_property().unwrap(), CssKnownProperty::Color);
     assert_eq!(
         detail.encountered().unwrap().kind(),
         CssTokenKind::CloseCurlyBracket
@@ -245,11 +254,14 @@ fn a_closed_depth257_value_has_local_resource_recovery_and_keeps_the_later_width
     position(diagnostic.error().position(), (520, 0, 520));
     position(diagnostic.span().start(), (0, 0, 0));
     position(diagnostic.span().end(), (781, 0, 781));
-    let ErrorKind::NestingLimit(detail) = diagnostic.error().kind() else {
-        panic!("the structural resource owner supplies the typed failure");
-    };
-    assert_eq!(detail.limit(), 256);
-    assert_eq!(detail.enclosing_production().as_str(), "css.declaration");
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::NestingLimit,
+        "the structural resource owner supplies the typed failure"
+    );
+    assert_eq!(detail.nesting_limit().unwrap(), 256);
+    assert_eq!(detail.production().unwrap().as_str(), "css.declaration");
     assert_declaration(
         width,
         &source,

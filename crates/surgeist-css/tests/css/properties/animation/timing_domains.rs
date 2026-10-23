@@ -1,3 +1,4 @@
+use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::math_depth::MathDepthBoundary;
 use crate::css::support::property_admission::{assert_component_rejected, assert_numeric_rejected};
 use surgeist_css::{
@@ -6,9 +7,8 @@ use surgeist_css::{
     CssCalculationExpressionRef, CssCalculationType, CssDelayList, CssDuration, CssDurationList,
     CssEasing, CssEasingKeyword, CssErrorCode, CssKnownProperty, CssKnownPropertyValueRef,
     CssPositiveIntegerValue, CssRecoveryAction, CssSourcePosition, CssStepPosition, CssTimeUnit,
-    CssTokenKind, CssTransitionProperty, ErrorKind, parse_style_attribute,
+    CssTokenKind, CssTransitionProperty, parse_style_attribute,
 };
-use surgeist_css::{CssComponentValueErrorKind, CssNumericConstructionErrorKind};
 use surgeist_css::{CssTimeLiteral, CssTimeValue};
 
 fn for_each_permutation(
@@ -80,12 +80,21 @@ fn assert_invalid_timing_case(case: &InvalidTimingCase) {
     assert_ascii_position(diagnostic.error().position(), case.position);
     assert_ascii_position(diagnostic.span().start(), 0);
     assert_ascii_position(diagnostic.span().end(), case.span_end);
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("{}: expected typed property-value detail", case.source);
-    };
-    assert_eq!(detail.property(), case.property, "{}", case.source);
+    let detail = diagnostic.error();
     assert_eq!(
-        detail.expectation().as_str(),
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "{}: expected typed property-value detail",
+        case.source
+    );
+    assert_eq!(
+        detail.known_property().unwrap(),
+        case.property,
+        "{}",
+        case.source
+    );
+    assert_eq!(
+        detail.expectation().unwrap().as_str(),
         "a value accepted by the property's grammar",
         "{}",
         case.source,
@@ -124,7 +133,7 @@ fn duration_and_delay_literals_enforce_distinct_exact_sign_domains() {
         CssDuration::try_new(CssTimeValue::from_literal(
             CssTimeLiteral::try_new("-0.25", CssTimeUnit::Seconds).unwrap(),
         )),
-        CssNumericConstructionErrorKind::OutOfRange,
+        NumericFailure::OutOfRange,
     );
 
     let delay =
@@ -134,11 +143,7 @@ fn duration_and_delay_literals_enforce_distinct_exact_sign_domains() {
 
     for value in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
         let error = CssTimeLiteral::try_new(&value.to_string(), CssTimeUnit::Seconds).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            CssComponentValueErrorKind::InvalidDimension,
-            "{value}"
-        );
+        assert!(error.is_invalid_dimension(), "{value}");
     }
 
     assert!(CssDurationList::try_new(Vec::new()).is_none());
@@ -167,7 +172,7 @@ fn iteration_values_check_literals_and_keep_infinite_and_calculation_branches() 
         assert_component_rejected(
             surgeist_css::CssSpecifiedNonNegativeNumber::try_from_component,
             surgeist_css::CssComponentValue::try_number(text).unwrap(),
-            CssNumericConstructionErrorKind::OutOfRange,
+            NumericFailure::OutOfRange,
         );
     }
     let number = surgeist_css::CssSpecifiedNonNegativeNumber::try_from_component(
@@ -798,11 +803,10 @@ fn repeated_timing_failures_and_depth_255_256_257_have_exact_recovery_behavior()
             assert_ascii_position(diagnostic.error().position(), 1_301);
             assert_ascii_position(diagnostic.span().start(), 0);
             assert_ascii_position(diagnostic.span().end(), 1_566);
-            let ErrorKind::NestingLimit(detail) = diagnostic.error().kind() else {
-                panic!("depth 257 must expose typed nesting-limit detail");
-            };
-            assert_eq!(detail.limit(), 256);
-            assert_eq!(detail.enclosing_production().as_str(), "css.declaration");
+            let detail = diagnostic.error();
+            assert_eq!(detail.code(), CssErrorCode::NestingLimit, "depth 257 must expose typed nesting-limit detail");
+            assert_eq!(detail.nesting_limit().unwrap(), 256);
+            assert_eq!(detail.production().unwrap().as_str(), "css.declaration");
         },
     );
 }

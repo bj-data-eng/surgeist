@@ -8,7 +8,7 @@ use crate::css::support::color_and_selector_fixtures::{
 use surgeist_css::{
     CssErrorCode, CssNamespaceContext, CssPseudoClass, CssPseudoSelectorListItem,
     CssRecoveryAction, CssRule, CssSelector, CssSelectorCombinator, CssStyleSelector, CssTokenKind,
-    ErrorKind, parse_relative_selector_list, parse_selector, parse_selector_list, parse_sheet,
+    parse_relative_selector_list, parse_selector, parse_selector_list, parse_sheet,
 };
 
 fn retained(source: &str, literal: &str) {
@@ -216,9 +216,12 @@ fn preserved_item_keeps_original_unicode_source_error_identity_and_member_span()
     assert_eq!(diagnostic.span().start().byte_offset().value(), 14);
     assert_eq!(diagnostic.span().end().byte_offset().value(), 28);
     assert_eq!(&source[14..28], ":NoPe(/*Ω*/&)");
-    let ErrorKind::InvalidSelector(detail) = diagnostic.error().kind() else {
-        panic!("typed invalid selector");
-    };
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidSelector,
+        "typed invalid selector"
+    );
     assert_eq!(
         detail.production().unwrap().as_str(),
         "baseline.selector.complex"

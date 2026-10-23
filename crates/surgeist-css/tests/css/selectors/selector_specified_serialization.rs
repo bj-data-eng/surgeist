@@ -1,8 +1,9 @@
 //! Independent authored selector-provider expectations. Rule traversal is separate.
+use crate::css::support::failure_classes::SerializationFailure as Kind;
+use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::{
     CssNamespaceContext, CssPseudoClass, CssPseudoSelectorList, CssRule, CssSelector,
-    CssSerializationLimits as Limits, CssSpecifiedValueSerializationErrorKind as Kind,
-    CssStyleSelector, parse_selector, parse_sheet,
+    CssSerializationLimits as Limits, CssStyleSelector, parse_selector, parse_sheet,
 };
 fn parsed(source: &str) -> CssSelector {
     let report = parse_sheet(&format!("{source} {{ }}"));
@@ -127,7 +128,7 @@ fn limits_count_final_utf8_and_leave_the_graph_available_for_retry() {
         (Limits::new(1, 1, expected.len() - 1), Kind::ByteLimit),
     ] {
         assert_eq!(
-            selector.serialize_specified(limits).unwrap_err().kind(),
+            serialization_failure(&selector.serialize_specified(limits).unwrap_err()),
             kind
         );
         assert_eq!(selector, before);
@@ -150,12 +151,11 @@ fn finite_deep_and_wide_lists_use_incremental_checked_work() {
         selector.serialize_specified(Default::default()).unwrap(),
         expected
     );
-    assert_eq!(
+    assert!(
         selector
             .serialize_specified(Limits::new(10, usize::MAX, usize::MAX))
             .unwrap_err()
-            .kind(),
-        Kind::InputNodeLimit
+            .is_input_node_limit()
     );
     let wide = CssSelector::PseudoClass(CssPseudoClass::Is(
         CssPseudoSelectorList::try_new(
@@ -164,11 +164,10 @@ fn finite_deep_and_wide_lists_use_incremental_checked_work() {
         )
         .unwrap(),
     ));
-    assert_eq!(
+    assert!(
         wide.serialize_specified(Limits::new(2, usize::MAX, usize::MAX))
             .unwrap_err()
-            .kind(),
-        Kind::InputNodeLimit
+            .is_input_node_limit()
     );
 }
 
@@ -179,12 +178,11 @@ fn unchecked_scalar_names_cannot_silently_change_identity() {
         CssSelector::Key("a\0b".into()),
         CssSelector::Tag(String::new()),
     ] {
-        assert_eq!(
+        assert!(
             selector
                 .serialize_specified(Default::default())
                 .unwrap_err()
-                .kind(),
-            Kind::UnrepresentableValue
+                .is_unrepresentable_value()
         );
     }
 }
@@ -217,7 +215,7 @@ fn compound_attribute_and_logical_children_share_exact_semantic_node_budget() {
         (Limits::new(7, 7, expected.len() - 1), Kind::ByteLimit),
     ] {
         assert_eq!(
-            selector.serialize_specified(limits).unwrap_err().kind(),
+            serialization_failure(&selector.serialize_specified(limits).unwrap_err()),
             kind
         );
         assert_eq!(selector, before);

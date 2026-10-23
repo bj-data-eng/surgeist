@@ -330,19 +330,18 @@ fn pending_shorthands_reenter_strictly_and_keep_authored_occurrence() {
             panic!("{name} remains pending")
         };
         assert!(pending.source().same_occurrence(&source));
-        assert!(matches!(
+        assert!(
             pending
                 .reenter(parse_component_values(invalid).unwrap())
                 .unwrap_err()
-                .kind(),
-            CssExpansionErrorKind::InvalidReplacement(_)
-        ));
-        assert_eq!(
+                .replacement_error()
+                .is_some()
+        );
+        assert!(
             pending
                 .reenter(parse_component_values("var(--again)").unwrap())
                 .unwrap_err()
-                .kind(),
-            &CssExpansionErrorKind::ResidualSubstitution
+                .is_residual_substitution()
         );
         let replacement = parse_component_values(valid).unwrap();
         for _ in 0..2 {
@@ -416,11 +415,8 @@ fn normalization_preserves_mixed_alignment_order_and_fails_at_pair_budget() {
     let limits = CssNormalizationLimits::try_new(0, 1, 1, 1).unwrap();
     let error = normalize_sheet_with_limits(one.syntax(), limits).unwrap_err();
     assert_eq!(
-        error.kind(),
-        &CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: 1,
-        }
+        error.exhausted_limit(),
+        Some((CssNormalizationResource::Contributions, 1))
     );
     assert_eq!(error.declaration_order(), Some(0));
     assert_eq!(

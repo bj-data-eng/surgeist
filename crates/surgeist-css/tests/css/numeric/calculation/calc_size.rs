@@ -1,8 +1,7 @@
 use surgeist_css::{
-    CssCalcSize, CssCalcSizeBasisRef, CssCalculationExpressionRef, CssComponentValueErrorKind,
-    CssComponentValueLimits, CssIntrinsicSizeKeyword, CssLengthPercentageCalculation,
-    CssNumericConstructionErrorKind, CssSerializationLimits,
-    CssSpecifiedValueSerializationErrorKind, parse_component_values,
+    CssCalcSize, CssCalcSizeBasisRef, CssCalculationExpressionRef, CssComponentValueLimits,
+    CssIntrinsicSizeKeyword, CssLengthPercentageCalculation, CssSerializationLimits,
+    parse_component_values,
 };
 
 fn checked(text: &str) -> CssCalcSize {
@@ -107,26 +106,23 @@ fn origins_retain_authored_nested_basis_site() {
 #[test]
 fn specified_serialization_uses_one_budget_across_nested_children() {
     let value = checked("calc-size(calc-size(min-content, size), size + 1px)");
-    assert_eq!(
+    assert!(
         value
             .serialize_specified(CssSerializationLimits::new(3, 100, 100))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+            .is_input_node_limit()
     );
-    assert_eq!(
+    assert!(
         value
             .serialize_specified(CssSerializationLimits::new(100, 2, 100))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
+            .is_projection_node_limit()
     );
-    assert_eq!(
+    assert!(
         value
             .serialize_specified(CssSerializationLimits::new(100, 100, 12))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
 }
 
@@ -158,10 +154,7 @@ fn entire_component_graph_is_bounded_before_nested_admission() {
         CssComponentValueLimits::try_new(256, 1_000, source.len() - 1).unwrap(),
     ] {
         let error = CssCalcSize::try_from_component(component.clone(), limits).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            &CssNumericConstructionErrorKind::ResourceLimit
-        );
+        assert!(error.is_resource_limit(), "{error:?}");
     }
 }
 
@@ -187,9 +180,10 @@ fn deep_checked_graph_clones_and_projects_within_the_hard_ceiling() {
         "calc(".repeat(256),
         ")".repeat(256)
     );
-    assert_eq!(
-        parse_component_values(&over_limit).unwrap_err().kind(),
-        CssComponentValueErrorKind::NestingLimit
+    assert!(
+        parse_component_values(&over_limit)
+            .unwrap_err()
+            .is_nesting_limit()
     );
 }
 
@@ -220,9 +214,10 @@ fn nested_calc_size_bases_reach_the_hard_ceiling_without_recursion_overflow() {
     );
 
     let over_limit = format!("calc-size({source}, size)");
-    assert_eq!(
-        parse_component_values(&over_limit).unwrap_err().kind(),
-        CssComponentValueErrorKind::NestingLimit
+    assert!(
+        parse_component_values(&over_limit)
+            .unwrap_err()
+            .is_nesting_limit()
     );
 }
 

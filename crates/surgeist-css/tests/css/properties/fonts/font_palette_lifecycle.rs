@@ -7,6 +7,8 @@
 //! specified-output APIs require functional tests alongside implementation.
 //! Palette lookup, computed simplification and mixing are downstream work.
 
+use crate::css::support::failure_classes::ComponentFailure;
+use crate::css::support::failure_classes::component_failure;
 use crate::css::support::named_property::important_property_declaration;
 use surgeist_css::*;
 
@@ -294,10 +296,7 @@ fn invalid_values_drop_only_the_palette_declaration_and_report_known_grammar_fai
             CssImportance::Normal,
         )
         .unwrap_err();
-        assert!(
-            matches!(error.kind(), CssPropertyValueErrorKind::Grammar(_)),
-            "{value}"
-        );
+        assert!(error.code().is_some(), "{value}");
         assert!(matches!(
             error.origin(),
             CssSerializedOrigin::Token(CssValueOrigin::Parsed(_)) | CssSerializedOrigin::End(_)
@@ -320,16 +319,16 @@ fn checked_failures_map_to_supplied_tokens_and_reject_declaration_annotations() 
     assert_eq!(origin.span().start().byte_offset().value(), 0);
     assert_eq!(origin.span().end().byte_offset().value(), 4);
     for value in ["normal!important", "dark;", "normal {}"] {
-        assert!(matches!(
+        assert!(
             parse_property_value_for_grammar(
                 grammar(),
                 parse_component_values(value).unwrap(),
                 CssImportance::Normal,
             )
             .unwrap_err()
-            .kind(),
-            CssPropertyValueErrorKind::Grammar(_)
-        ));
+            .code()
+            .is_some()
+        );
     }
 }
 
@@ -433,25 +432,24 @@ fn whole_pending_values_reenter_strictly_without_changing_source_or_replacement_
                 "dark;",
                 "{} dark",
             ] {
-                assert!(matches!(
+                assert!(
                     pending
                         .reenter(parse_component_values(invalid).unwrap())
                         .unwrap_err()
-                        .kind(),
-                    CssExpansionErrorKind::InvalidReplacement(_)
-                ));
+                        .replacement_error()
+                        .is_some()
+                );
             }
             for residual in [
                 "var(--again)",
                 "env(again)",
                 "palette-mix(var(--again), dark)",
             ] {
-                assert_eq!(
+                assert!(
                     pending
                         .reenter(parse_component_values(residual).unwrap())
                         .unwrap_err()
-                        .kind(),
-                    &CssExpansionErrorKind::ResidualSubstitution
+                        .is_residual_substitution()
                 );
             }
             assert_eq!(source, before);
@@ -610,21 +608,19 @@ fn shared_component_limits_preserve_exact_mix_source_and_fail_at_each_boundary()
     for (limits, kind) in [
         (
             CssComponentValueLimits::try_new(0, 2, 17).unwrap(),
-            CssComponentValueErrorKind::NestingLimit,
+            ComponentFailure::NestingLimit,
         ),
         (
             CssComponentValueLimits::try_new(1, 1, 17).unwrap(),
-            CssComponentValueErrorKind::ComponentLimit,
+            ComponentFailure::ComponentLimit,
         ),
         (
             CssComponentValueLimits::try_new(1, 2, 16).unwrap(),
-            CssComponentValueErrorKind::ByteLimit,
+            ComponentFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            parse_component_values_with_limits(text, limits)
-                .unwrap_err()
-                .kind(),
+            component_failure(&parse_component_values_with_limits(text, limits).unwrap_err()),
             kind
         );
     }

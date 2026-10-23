@@ -8,9 +8,8 @@
 
 use crate::css::support::authored_syntax::assert_strict_rejection;
 use surgeist_css::{
-    CssComponentValueErrorKind, CssComponentValueRef, CssDeclarationList, CssHashFlag,
-    CssValueOrigin, CssValueTokenRef, parse_component_values, parse_style_attribute,
-    validate_style_attribute,
+    CssComponentValueRef, CssDeclarationList, CssHashFlag, CssValueOrigin, CssValueTokenRef,
+    parse_component_values, parse_style_attribute, validate_style_attribute,
 };
 
 #[derive(Debug)]
@@ -347,7 +346,7 @@ fn bad_url_remnants_skip_escaped_closers_and_preserve_following_declaration() {
         assert!(validate_style_attribute(&source).is_err());
         let failure =
             parse_component_values(bad_url).expect_err("post-whitespace URL payload is bad");
-        assert_eq!(failure.kind(), CssComponentValueErrorKind::BadUrl);
+        assert!(failure.is_bad_url(), "{failure:?}");
         let CssValueOrigin::Parsed(origin) = failure.origin() else {
             panic!("authored bad URL origin");
         };
@@ -362,9 +361,8 @@ fn bad_url_remnants_skip_escaped_closers_and_preserve_following_declaration() {
         "url(a\\\nb)",
         "url(a b",
     ] {
-        assert_eq!(
-            parse_component_values(bad_url).unwrap_err().kind(),
-            CssComponentValueErrorKind::BadUrl,
+        assert!(
+            parse_component_values(bad_url).unwrap_err().is_bad_url(),
             "{bad_url:?}"
         );
     }
@@ -376,7 +374,7 @@ fn raw_string_newlines_are_bad_strings_and_leave_a_surviving_sibling() {
         let value = format!("\"a{newline}");
         let failure =
             parse_component_values(&value).expect_err("raw newline terminates a bad string");
-        assert_eq!(failure.kind(), CssComponentValueErrorKind::BadString);
+        assert!(failure.is_bad_string(), "{failure:?}");
         let CssValueOrigin::Parsed(origin) = failure.origin() else {
             panic!("authored bad string origin");
         };

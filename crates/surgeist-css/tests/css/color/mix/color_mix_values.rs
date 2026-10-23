@@ -2,6 +2,8 @@
 use crate::css::support::color_components::token as component;
 use crate::css::support::color_declaration as parsed;
 use crate::css::support::color_property::color_property_value as wrapper;
+use crate::css::support::failure_classes::ComponentFailure;
+use crate::css::support::failure_classes::component_failure;
 use surgeist_color::{ColorSpace, HueInterpolation, PredefinedColorSpace};
 use surgeist_css::*;
 
@@ -121,15 +123,15 @@ fn bare_percentage_roots_cannot_masquerade_as_calculated_mix_weights() {
         ] {
             let origin = root.components().items()[0].origin().clone();
             let error = CssColorMixWeight::try_calculation(root).unwrap_err();
-            assert_eq!(error.kind(), CssComponentValueErrorKind::InvalidToken);
+            assert!(error.is_invalid_token(), "{error:?}");
             assert_eq!(error.origin(), &origin);
         }
     }
     for text in ["-5%", "120%", "100.0000000000000000000001%"] {
         let supplied = component(text);
         let error = CssColorMixPercentage::try_from_component(supplied.clone()).unwrap_err();
-        assert_eq!(error.kind(), CssColorScalarErrorKind::OutOfRange);
-        assert_eq!(error.origin(), supplied.origin());
+        assert!(error.is_out_of_range(), "{error:?}");
+        assert_eq!(error.origin(), Some(supplied.origin()));
     }
     let literal = CssColorMixWeight::literal(
         CssColorMixPercentage::try_from_component(component("25%")).unwrap(),
@@ -207,18 +209,21 @@ fn genuine_calculations_preserve_the_graph_origins_and_specified_range() {
 
 #[test]
 fn checked_list_and_interpolation_constructors_enforce_their_domains() {
-    assert_eq!(
-        CssColorMix::try_new(None, vec![]).unwrap_err(),
-        CssColorMixConstructionError::EmptyComponents
+    assert!(
+        CssColorMix::try_new(None, vec![])
+            .unwrap_err()
+            .is_empty_components()
     );
     for space in [
         ColorSpace::Oklab,
         ColorSpace::Lab,
         ColorSpace::Predefined(PredefinedColorSpace::Srgb),
     ] {
-        assert_eq!(
-            CssColorInterpolationMethod::try_new(space, Some(HueInterpolation::Longer)),
-            Err(CssColorInterpolationMethodConstructionError::HueRequiresPolarSpace)
+        assert!(
+            CssColorInterpolationMethod::try_new(space, Some(HueInterpolation::Longer))
+                .as_ref()
+                .unwrap_err()
+                .is_hue_requires_polar_space()
         );
     }
     for space in [
@@ -304,10 +309,7 @@ fn enclosing_mix_counts_calculation_depth_in_its_composed_graph() {
         if succeeds {
             assert_eq!(result.unwrap().components().len(), 1);
         } else {
-            assert_eq!(
-                result.unwrap_err(),
-                CssColorMixConstructionError::NestingLimit
-            );
+            assert!(result.unwrap_err().is_nesting_limit());
         }
     }
 }
@@ -393,9 +395,10 @@ fn mixed_nary_relative_graphs_obey_the_shared_boundary_and_drop_normally() {
         }
     }
     let source = nested_list(257);
-    assert_eq!(
-        parse_component_values(&source).unwrap_err().kind(),
-        CssComponentValueErrorKind::NestingLimit
+    assert!(
+        parse_component_values(&source)
+            .unwrap_err()
+            .is_nesting_limit()
     );
     let report = parse_style_attribute(&format!("color:{source};opacity:.5"));
     assert_eq!(report.diagnostics().len(), 1);
@@ -409,9 +412,10 @@ fn mixed_nary_relative_graphs_obey_the_shared_boundary_and_drop_normally() {
         CssKnownProperty::Opacity
     );
     let child = color(&nested_list(256));
-    assert_eq!(
-        CssColorMix::try_new(None, vec![CssColorMixComponent::new(child, None)]).unwrap_err(),
-        CssColorMixConstructionError::NestingLimit
+    assert!(
+        CssColorMix::try_new(None, vec![CssColorMixComponent::new(child, None)])
+            .unwrap_err()
+            .is_nesting_limit()
     );
 }
 
@@ -432,28 +436,18 @@ fn moderately_wide_lists_charge_component_and_byte_budgets_cumulatively() {
             .all(|item| item.color().named().unwrap().name() == "red" && item.weight().is_none())
     );
     for (components, bytes, expected) in [
-        (
-            count - 1,
-            source.len(),
-            CssComponentValueErrorKind::ComponentLimit,
-        ),
-        (
-            count,
-            source.len() - 1,
-            CssComponentValueErrorKind::ByteLimit,
-        ),
+        (count - 1, source.len(), ComponentFailure::ComponentLimit),
+        (count, source.len() - 1, ComponentFailure::ByteLimit),
     ] {
         let limits = CssComponentValueLimits::try_new(256, components, bytes).unwrap();
         assert_eq!(
-            parse_component_values_with_limits(&source, limits)
-                .unwrap_err()
-                .kind(),
+            component_failure(&parse_component_values_with_limits(&source, limits).unwrap_err()),
             expected
         );
         assert_eq!(
-            CssComponentValues::try_new(graph.items().to_vec(), limits)
-                .unwrap_err()
-                .kind(),
+            component_failure(
+                &CssComponentValues::try_new(graph.items().to_vec(), limits).unwrap_err()
+            ),
             expected
         );
     }
@@ -476,10 +470,7 @@ fn enclosing_mix_counts_absolute_and_relative_channel_math_depth() {
                 if succeeds {
                     assert_eq!(result.unwrap().components().len(), 1);
                 } else {
-                    assert_eq!(
-                        result.unwrap_err(),
-                        CssColorMixConstructionError::NestingLimit
-                    );
+                    assert!(result.unwrap_err().is_nesting_limit());
                 }
             }
         }

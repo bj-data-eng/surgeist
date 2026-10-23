@@ -3,6 +3,8 @@
 //! These specified-value contracts preserve omissions and symbolic inputs;
 //! creation/fixup and computed serialization require the later numeric phase.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::property_admission::Responsible::{self, At};
 use crate::css::support::property_admission::{
     assert_checked_closure_rejected, assert_checked_rejected, assert_reentry_rejected,
@@ -315,10 +317,7 @@ fn implicit_linear_closure_is_retained_in_browser_parsing_but_checked_reentry_re
             ),
         ] {
             let error = result.unwrap_err();
-            assert!(matches!(
-                error.kind(),
-                CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
-            ));
+            assert!(error.code() == Some(CssErrorCode::UnexpectedEnd));
             let CssSerializedOrigin::End(Some(CssValueOrigin::ImplicitClosure { at, .. })) =
                 error.origin()
             else {
@@ -371,14 +370,15 @@ fn pending_linear_reentry_is_strict_repeatable_and_preserves_replacement_origins
         // responsible in every consumer.
         assert_reentry_rejected(reenter("linear(0)"), property, At(")"));
         let error = reenter("linear(0, 1").unwrap_err();
-        let CssExpansionErrorKind::InvalidReplacement(error) = error.kind() else {
+        let Some(error) = error.replacement_error() else {
             panic!("an unclosed replacement is invalid: {error:?}")
         };
         assert_checked_closure_rejected(Err(error.clone()));
-        assert!(matches!(
-            reenter("linear(0, var(--again))").unwrap_err().kind(),
-            CssExpansionErrorKind::ResidualSubstitution
-        ));
+        assert!(
+            reenter("linear(0, var(--again))")
+                .unwrap_err()
+                .is_residual_substitution()
+        );
         let replacement = parse_component_values(&body(property, "linear(0 20% 40%, 1)")).unwrap();
         for _ in 0..2 {
             let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap()
@@ -505,23 +505,26 @@ fn multiple_linear_functions_share_atomic_numeric_and_byte_budgets() {
         for (limits, kind) in [
             (
                 CssSerializationLimits::new(1, usize::MAX, usize::MAX),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                SerializationFailure::InputNodeLimit,
             ),
             (
                 CssSerializationLimits::new(usize::MAX, 1, usize::MAX),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
                 CssSerializationLimits::new(usize::MAX, usize::MAX, expected.len() - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                SerializationFailure::ByteLimit,
             ),
             // Each individual function fits, but the combined list does not.
             (
                 CssSerializationLimits::new(usize::MAX, usize::MAX, "linear(1 20% 40%, 0)".len()),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                SerializationFailure::ByteLimit,
             ),
         ] {
-            assert_eq!(list.serialize_specified(limits).unwrap_err().kind(), kind);
+            assert_eq!(
+                serialization_failure(&list.serialize_specified(limits).unwrap_err()),
+                kind
+            );
             assert_eq!(list, &original);
             assert_eq!(
                 list.serialize_specified(Default::default()).unwrap(),

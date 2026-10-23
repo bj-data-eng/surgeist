@@ -1075,13 +1075,11 @@ fn components_then(
     }
 }
 
-fn checked_declaration(result: Result<CssDeclaration, CssPropertyValueParseError>) -> Observation {
+fn checked_declaration(result: Result<CssDeclaration, CssPropertyValueError>) -> Observation {
     checked(result, declaration)
 }
 
-fn checked_declaration_ref(
-    result: &Result<CssDeclaration, CssPropertyValueSyntaxError>,
-) -> Observation {
+fn checked_declaration_ref(result: &Result<CssDeclaration, CssPropertyValueError>) -> Observation {
     match result {
         Ok(value) => {
             let mut observation = Observation::shaped("ok");

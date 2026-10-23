@@ -31,7 +31,7 @@ fn first_step_refusal_prevents_visitor_entry_and_keeps_typed_caller_error() {
     let mut collector = CssSourceRetention::with_admission(4096, 10, 10, &mut admit).unwrap();
     assert_eq!(
         collector.visit(&Reads(&reads)),
-        Err(CssSourceRetentionError::CallerAdmission)
+        Err(CssSourceRetentionError::caller_admission())
     );
     assert_eq!(reads.get(), 0);
     assert_eq!(collector.steps(), 0);
@@ -48,7 +48,7 @@ fn initial_metadata_refusal_does_not_form_a_usable_collector() {
     };
     assert!(matches!(
         CssSourceRetention::with_admission(0, 0, 0, &mut admit),
-        Err(CssSourceRetentionError::CallerAdmission)
+        Err(error) if error.is_caller_admission()
     ));
     assert_eq!(
         observed,
@@ -80,28 +80,28 @@ fn swallowed_refusal_stays_terminal_without_later_callbacks_or_visitor_work() {
     let mut collector = CssSourceRetention::with_admission(4096, 10, 10, &mut admit).unwrap();
     assert_eq!(
         collector.visit(&Swallows),
-        Err(CssSourceRetentionError::CallerAdmission)
+        Err(CssSourceRetentionError::caller_admission())
     );
     assert_eq!(calls.get(), 3);
     assert_eq!(
         collector.visit(&Reads(&reads)),
-        Err(CssSourceRetentionError::CallerAdmission)
+        Err(CssSourceRetentionError::caller_admission())
     );
     assert_eq!(
         collector.charge_step(),
-        Err(CssSourceRetentionError::CallerAdmission)
+        Err(CssSourceRetentionError::caller_admission())
     );
     assert_eq!(
         collector.at_depth(0, |_| {
             reads.set(1);
             Ok(())
         }),
-        Err(CssSourceRetentionError::CallerAdmission)
+        Err(CssSourceRetentionError::caller_admission())
     );
     assert_eq!(
         collector.complete_payload_bytes_admitted(),
-        Err(CssRetainedPayloadError::Admission(
-            CssSourceRetentionError::CallerAdmission
+        Err(CssRetainedPayloadError::admission(
+            CssSourceRetentionError::caller_admission()
         ))
     );
     assert_eq!(calls.get(), 3);
@@ -138,7 +138,7 @@ fn comparison_refusal_stops_before_duplicate_or_distinct_source_decision() {
             .unwrap();
         assert_eq!(
             collector.source(candidate),
-            Err(CssSourceRetentionError::CallerAdmission)
+            Err(CssSourceRetentionError::caller_admission())
         );
         assert_eq!(collector.sources.len(), 1);
         assert_eq!(collector.steps(), 2);
@@ -173,7 +173,9 @@ fn admitted_collector_keeps_identity_visit_depth_and_payload_policies() {
     assert_eq!(collector.steps(), 5);
     assert_eq!(
         collector.source(&first),
-        Err(CssSourceRetentionError::Limit("source visits"))
+        Err(CssSourceRetentionError::limit(
+            crate::CssSourceRetentionResource::Visits
+        ))
     );
     assert_eq!(collector.steps(), 5);
     let reads = Cell::new(0);
@@ -181,7 +183,9 @@ fn admitted_collector_keeps_identity_visit_depth_and_payload_policies() {
     let mut depth = CssSourceRetention::with_admission(4096, 10, 1, &mut depth_admit).unwrap();
     assert_eq!(
         depth.at_depth(1, |collector| collector.visit(&Reads(&reads))),
-        Err(CssSourceRetentionError::Limit("source depth"))
+        Err(CssSourceRetentionError::limit(
+            crate::CssSourceRetentionResource::Depth
+        ))
     );
     depth.visit(&Reads(&reads)).unwrap();
     assert_eq!(reads.get(), 1);
@@ -209,15 +213,15 @@ fn stored_predicate_prepays_payload_observations_without_spending_traversal_step
     enabled.set(false);
     assert_eq!(
         collector.complete_payload_bytes_admitted(),
-        Err(CssRetainedPayloadError::Admission(
-            CssSourceRetentionError::CallerAdmission
+        Err(CssRetainedPayloadError::admission(
+            CssSourceRetentionError::caller_admission()
         ))
     );
     let refused = calls.get();
     assert_eq!(
         collector.complete_payload_bytes_admitted(),
-        Err(CssRetainedPayloadError::Admission(
-            CssSourceRetentionError::CallerAdmission
+        Err(CssRetainedPayloadError::admission(
+            CssSourceRetentionError::caller_admission()
         ))
     );
     assert_eq!(calls.get(), refused);
@@ -255,7 +259,7 @@ fn recursive_css_uses_the_same_tariff_and_stops_at_each_refused_action() {
             );
             assert_eq!(steps.get(), expected_steps);
         } else {
-            assert_eq!(result, Err(CssSourceRetentionError::CallerAdmission));
+            assert_eq!(result, Err(CssSourceRetentionError::caller_admission()));
             assert_eq!(steps.get(), allowance + 1);
         }
         assert_eq!(collector.steps(), allowance);

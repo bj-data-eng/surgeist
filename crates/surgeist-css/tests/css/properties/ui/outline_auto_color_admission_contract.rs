@@ -5,6 +5,7 @@
 //! auto controls therefore assert admission and provenance only, not the future
 //! model's required both-style-and-color-auto interpretation or initial value.
 
+use crate::css::support::property_admission::GrammarFacts;
 use surgeist_css::*;
 
 const AUTO_SPELLINGS: &[&str] = &["auto", "AuTo", r"\61 uto"];
@@ -58,16 +59,16 @@ fn assert_ordinary(declaration: &CssDeclaration, property: CssKnownProperty) {
     assert_eq!(declaration.importance(), CssImportance::Important);
 }
 
-fn rejection_code(kind: &ErrorKind, property: CssKnownProperty) -> CssErrorCode {
-    match kind {
-        ErrorKind::InvalidPropertyValue(detail) => {
-            assert_eq!(detail.property(), property);
+fn rejection_code(error: &dyn GrammarFacts, property: CssKnownProperty) -> CssErrorCode {
+    match error.grammar_code() {
+        Some(CssErrorCode::InvalidPropertyValue) => {
+            assert_eq!(error.rejecting_property(), Some(property));
             CssErrorCode::InvalidPropertyValue
         }
-        ErrorKind::InvalidColorSyntax(_) if property == CssKnownProperty::OutlineColor => {
+        Some(CssErrorCode::InvalidColorSyntax) if property == CssKnownProperty::OutlineColor => {
             CssErrorCode::InvalidColorSyntax
         }
-        _ => panic!("expected owning outline grammar rejection: {kind:?}"),
+        _ => panic!("expected owning outline grammar rejection: {error:?}"),
     }
 }
 
@@ -314,7 +315,7 @@ fn duplicate_and_exclusive_outline_components_drop_only_the_invalid_declaration(
         };
         assert_eq!(
             diagnostic.error().code(),
-            rejection_code(diagnostic.error().kind(), property)
+            rejection_code(diagnostic.error(), property)
         );
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
         let start = source.find(&format!("{}:", name(property))).unwrap();
@@ -345,10 +346,11 @@ fn duplicate_and_exclusive_outline_components_drop_only_the_invalid_declaration(
                 )
             }
             .expect_err("exclusive or duplicate outline components");
-            let CssPropertyValueErrorKind::Grammar(kind) = error.kind() else {
-                panic!("typed known-property grammar failure: {error:?}")
-            };
-            rejection_code(kind, property);
+            assert!(
+                error.code().is_some(),
+                "typed known-property grammar failure: {error:?}"
+            );
+            rejection_code(&error, property);
         }
     }
 }

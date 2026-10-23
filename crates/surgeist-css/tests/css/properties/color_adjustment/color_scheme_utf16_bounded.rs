@@ -77,7 +77,11 @@ fn work_refusal_and_final_output_refusal_release_original_custody_before_zero() 
                 }
             },
         );
-        assert!(matches!(result, Err(CssUtf16InputError::Limit(_))));
+        assert!(
+            result
+                .as_ref()
+                .is_err_and(|error| error.exhausted_limit().is_some())
+        );
         assert!(zero.get());
     }
     let input = Arc::new("light".encode_utf16().collect::<Vec<_>>());
@@ -97,7 +101,11 @@ fn work_refusal_and_final_output_refusal_release_original_custody_before_zero() 
             }
         },
     );
-    assert!(matches!(result, Err(CssUtf16InputError::Limit(_))));
+    assert!(
+        result
+            .as_ref()
+            .is_err_and(|error| error.exhausted_limit().is_some())
+    );
     assert!(zero.get());
 }
 
@@ -116,10 +124,11 @@ fn initial_admission_refusal_drops_the_real_input_before_infallible_release() {
             releases.set(releases.get() + 1);
         },
     );
-    assert!(matches!(
-        result,
-        Err(CssUtf16InputError::Interrupted("first real refusal"))
-    ));
+    assert!(
+        result
+            .as_ref()
+            .is_err_and(|error| error.interruption() == Some(&"first real refusal"))
+    );
     assert_eq!(releases.get(), 1);
 }
 
@@ -149,7 +158,9 @@ fn equivalence_uses_logical_content_not_spare_capacity_and_remains_interruptible
             calls.set(index + 1);
             if index == stop { Err(index) } else { Ok(()) }
         });
-        assert!(matches!(result, Err(CssRetainedPayloadError::Admission(index)) if index == stop));
+        assert!(
+            matches!(result.map_err(CssRetainedPayloadError::into_admission), Err(Ok(index)) if index == stop)
+        );
         assert_eq!(calls.get(), stop + 1);
         assert_eq!(
             (first.retained_storage(), second.retained_storage()),
@@ -205,7 +216,9 @@ fn component_resource_limits_are_not_misreported_as_invalid_authored_css() {
             |_| {},
         );
         assert!(
-            matches!(result, Err(CssUtf16InputError::Limit(_))),
+            result
+                .as_ref()
+                .is_err_and(|error| error.exhausted_limit().is_some()),
             "{text}"
         );
     }

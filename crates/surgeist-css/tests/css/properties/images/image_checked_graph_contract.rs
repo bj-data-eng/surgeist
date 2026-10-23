@@ -92,9 +92,10 @@ fn preserves_rejection_and_retry(invalid: CssImageValue, valid: CssImageValue) {
     for _ in 0..2 {
         // The graph-rejection expectation is unchanged from the published RED.
         // Typed admission now distinguishes structural failure from non-image None.
-        assert_eq!(
-            CssImage::try_new(invalid.clone()).unwrap_err(),
-            CssImageConstructionError::NestingLimit,
+        assert!(
+            CssImage::try_new(invalid.clone())
+                .unwrap_err()
+                .is_nesting_limit(),
             "whole graph exceeds 256 retained function levels"
         );
         assert_eq!(invalid, invalid_before);
@@ -298,13 +299,15 @@ fn color_provider_control_admits_256_and_refuses_257_before_image_composition() 
     let value = color_chain(256);
     let before = value.clone();
     for _ in 0..2 {
-        assert_eq!(
-            CssLightDarkColor::try_new(value.clone(), named("blue")).unwrap_err(),
-            CssColorConstructionError::NestingLimit
+        assert!(
+            CssLightDarkColor::try_new(value.clone(), named("blue"))
+                .unwrap_err()
+                .is_nesting_limit()
         );
-        assert_eq!(
-            CssLightDarkColor::try_new(named("blue"), value.clone()).unwrap_err(),
-            CssColorConstructionError::NestingLimit
+        assert!(
+            CssLightDarkColor::try_new(named("blue"), value.clone())
+                .unwrap_err()
+                .is_nesting_limit()
         );
         assert_eq!(value, before);
         assert!(CssLightDarkColor::try_new(color_chain(255), named("blue")).is_ok());
@@ -360,30 +363,34 @@ fn image_pair_provider_control_counts_its_own_enclosing_function_and_cached_chil
     let before = image.clone();
     preserves_acceptance(&image); // CssImage itself adds no CSS function level.
     for _ in 0..2 {
-        assert_eq!(
-            CssLightDarkImage::try_new(image.clone(), CssImageValue::None).unwrap_err(),
-            CssImageConstructionError::NestingLimit
+        assert!(
+            CssLightDarkImage::try_new(image.clone(), CssImageValue::None)
+                .unwrap_err()
+                .is_nesting_limit()
         );
-        assert_eq!(
-            CssLightDarkImage::try_new(CssImageValue::None, image.clone()).unwrap_err(),
-            CssImageConstructionError::NestingLimit
+        assert!(
+            CssLightDarkImage::try_new(CssImageValue::None, image.clone())
+                .unwrap_err()
+                .is_nesting_limit()
         );
         assert_eq!(image, before);
     }
     // Gradient1 + color254 + pair1 = 256. Increasing color by one rejects.
     assert!(CssLightDarkImage::try_new(color_gradient(254, 0), CssImageValue::None).is_ok());
-    assert_eq!(
-        CssLightDarkImage::try_new(color_gradient(255, 0), CssImageValue::None).unwrap_err(),
-        CssImageConstructionError::NestingLimit
+    assert!(
+        CssLightDarkImage::try_new(color_gradient(255, 0), CssImageValue::None)
+            .unwrap_err()
+            .is_nesting_limit()
     );
 }
 
 #[test]
 fn none_and_low_depth_image_controls_preserve_every_family_and_payload() {
     for _ in 0..2 {
-        assert_eq!(
-            CssImage::try_new(CssImageValue::None).unwrap_err(),
-            CssImageConstructionError::NotImage
+        assert!(
+            CssImage::try_new(CssImageValue::None)
+                .unwrap_err()
+                .is_not_image()
         );
     }
     preserves_acceptance(&CssImageValue::Url(CssUrl::new("a.svg")));
@@ -419,10 +426,7 @@ fn mixed_source_numeric_components_survive_admission_and_failed_enclosing_compos
         None,
         stops(named("red"), Some(position.clone())),
     )));
-    assert_eq!(
-        CssImage::try_new(invalid).unwrap_err(),
-        CssImageConstructionError::NestingLimit
-    );
+    assert!(CssImage::try_new(invalid).unwrap_err().is_nesting_limit());
     assert_eq!(position.calculation().unwrap().components(), &before);
     assert_eq!(components, before);
     assert_eq!(parsed, parsed_before);
@@ -447,10 +451,7 @@ fn cursor_fronts(text: &str, admitted: bool) {
             assert_eq!(source.value_components(), &before);
             assert_eq!(source.importance(), CssImportance::Important);
         } else {
-            assert!(matches!(
-                result.unwrap_err().kind(),
-                CssPropertyValueErrorKind::Grammar(_)
-            ));
+            assert!(result.unwrap_err().code().is_some());
         }
     }
     for report in [

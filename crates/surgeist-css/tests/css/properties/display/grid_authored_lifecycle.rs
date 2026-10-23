@@ -5,6 +5,9 @@
 //! contracts; these tests do not impose used repetition or layout behavior.
 
 use crate::css::support::authored_property::{checked, parsed};
+use crate::css::support::failure_classes::NumericFailure;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::property_admission::{
     assert_checked_closure_rejected, assert_numeric_rejected,
 };
@@ -12,7 +15,7 @@ use surgeist_css::CssKnownProperty as P;
 use surgeist_css::*;
 
 type Limits = CssSerializationLimits;
-type Kind = CssSpecifiedValueSerializationErrorKind;
+type Kind = SerializationFailure;
 
 const EXPLICIT: [P; 3] = [
     P::GridTemplateRows,
@@ -344,16 +347,10 @@ fn counted_repeat_constructors_normalize_bare_roots_without_evaluating_functions
         }
     }
     for (text, kind) in [
-        ("1.5", CssNumericConstructionErrorKind::RootDomainMismatch),
-        (
-            "calc(1px)",
-            CssNumericConstructionErrorKind::RootDomainMismatch,
-        ),
-        (
-            "calc(1 +)",
-            CssNumericConstructionErrorKind::MalformedExpression,
-        ),
-        ("1 2", CssNumericConstructionErrorKind::MultipleValues),
+        ("1.5", NumericFailure::RootDomainMismatch),
+        ("calc(1px)", NumericFailure::RootDomainMismatch),
+        ("calc(1 +)", NumericFailure::MalformedExpression),
+        ("1 2", NumericFailure::MultipleValues),
     ] {
         assert_numeric_rejected(
             CssIntegerCalculation::try_from_components(
@@ -595,25 +592,29 @@ fn area_constructors_validate_the_matrix_and_preserve_authored_optional_fields()
         CssGrid::template(value.clone()).template_value(),
         Some(&value)
     );
-    assert_eq!(
-        CssGridTemplate::try_areas(vec![], None).unwrap_err(),
-        CssGridTemplateAreaError::MissingRows
+    assert!(
+        CssGridTemplate::try_areas(vec![], None)
+            .unwrap_err()
+            .is_missing_rows()
     );
     let inconsistent = vec![
         CssGridTemplateAreaTrack::new(row(&["a", "a"]), None, None, None),
         CssGridTemplateAreaTrack::new(row(&["b"]), None, None, None),
     ];
-    assert_eq!(
-        CssGridTemplate::try_areas(inconsistent, None).unwrap_err(),
-        CssGridTemplateAreaError::InconsistentWidths
+    assert!(
+        CssGridTemplate::try_areas(inconsistent, None)
+            .unwrap_err()
+            .is_inconsistent_widths()
     );
     let diagonal = vec![
         CssGridTemplateAreaTrack::new(row(&["a", "."]), None, None, None),
         CssGridTemplateAreaTrack::new(row(&[".", "a"]), None, None, None),
     ];
     assert_eq!(
-        CssGridTemplate::try_areas(diagonal, None).unwrap_err(),
-        CssGridTemplateAreaError::NonRectangular("a".to_owned())
+        CssGridTemplate::try_areas(diagonal, None)
+            .unwrap_err()
+            .non_rectangular_area(),
+        Some("a")
     );
 }
 
@@ -904,15 +905,9 @@ fn pending_retries_keep_new_borrowed_payloads_and_original_replacement_identity(
                     let before = components.clone();
                     let error = handle.reenter(components.clone()).unwrap_err();
                     if invalid.starts_with("var") {
-                        assert!(matches!(
-                            error.kind(),
-                            CssExpansionErrorKind::ResidualSubstitution
-                        ));
+                        assert!(error.is_residual_substitution());
                     } else {
-                        assert!(matches!(
-                            error.kind(),
-                            CssExpansionErrorKind::InvalidReplacement(_)
-                        ));
+                        assert!(error.replacement_error().is_some());
                     }
                     assert_eq!(components, before);
                     assert!(handle.source().same_occurrence(&source));
@@ -967,14 +962,13 @@ fn pending_retries_keep_new_borrowed_payloads_and_original_replacement_identity(
                 "calc(2px)"
             };
             for _ in 0..2 {
-                assert_eq!(
+                assert!(
                     output(
                         ordinary.view(),
                         Limits::new(usize::MAX, usize::MAX, expected.len() - 1)
                     )
                     .unwrap_err()
-                    .kind(),
-                    Kind::ByteLimit
+                    .is_byte_limit()
                 );
             }
             assert_eq!(
@@ -1047,12 +1041,11 @@ fn new_branch_provider_limits_are_exact_atomic_and_cumulative_at_declaration_bou
                 ),
             ] {
                 for _ in 0..2 {
-                    assert_eq!(serialize(limits).unwrap_err().kind(), kind);
+                    assert_eq!(serialization_failure(&serialize(limits).unwrap_err()), kind);
                     assert_eq!(
-                        source
-                            .serialize_specified(declaration_limits)
-                            .unwrap_err()
-                            .kind(),
+                        serialization_failure(
+                            &source.serialize_specified(declaration_limits).unwrap_err()
+                        ),
                         kind
                     );
                     assert_eq!(source, before);
@@ -1083,7 +1076,7 @@ fn area_and_subgrid_siblings_share_sheet_byte_budget_and_normalization_terminals
             .syntax()
             .serialize_specified(Limits::new(usize::MAX, usize::MAX, expected.len() - 1))
             .unwrap_err();
-        assert_eq!(error.kind(), Kind::ByteLimit);
+        assert!(error.is_byte_limit(), "{error:?}");
         assert_eq!(error.rule_index(), Some(1));
     }
     // 6+3+1+one whole pending+6 = 17 terminal work units, five declarations.
@@ -1135,11 +1128,8 @@ fn area_and_subgrid_siblings_share_sheet_byte_budget_and_normalization_terminals
         )
         .unwrap_err();
         assert_eq!(
-            error.kind(),
-            &CssNormalizationErrorKind::LimitExceeded {
-                resource: CssNormalizationResource::Contributions,
-                limit: 16
-            }
+            error.exhausted_limit(),
+            Some((CssNormalizationResource::Contributions, 16))
         );
         assert_eq!(error.declaration_order(), Some(4));
         assert!(

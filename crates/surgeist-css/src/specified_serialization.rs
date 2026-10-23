@@ -49,10 +49,10 @@ impl Default for CssSerializationLimits {
     }
 }
 
-/// An exhausted resource or a value that cannot be faithfully represented.
-#[non_exhaustive]
+/// An exhausted resource or a value that cannot be faithfully represented, read through
+/// the predicates of [`CssSerializationError`].
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum CssSpecifiedValueSerializationErrorKind {
+pub(crate) enum CssSpecifiedValueSerializationErrorKind {
     InputNodeLimit,
     ProjectionNodeLimit,
     ByteLimit,
@@ -72,11 +72,13 @@ pub enum CssSpecifiedValueSerializationErrorKind {
 /// Why a specified, CSSOM or lexical serialization returned no text.
 ///
 /// Failure is atomic: no partial CSS is returned and the serialized value is
-/// unchanged. [`kind`](Self::kind) classifies the failure; a lexical component
-/// failure is also available as the [`source`](std::error::Error::source).
+/// unchanged. The `is_*` predicates classify the failure and
+/// [`Self::is_resource_limit`] groups the resource refusals; a lexical component
+/// failure is also available as [`Self::component_error`], which is the
+/// [`source`](std::error::Error::source).
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssSerializationError {
-    kind: CssSpecifiedValueSerializationErrorKind,
+    pub(crate) kind: CssSpecifiedValueSerializationErrorKind,
     detail: Option<Box<SerializationDetail>>,
 }
 
@@ -159,9 +161,39 @@ impl CssSerializationError {
         }
         self
     }
-    #[must_use]
-    pub const fn kind(&self) -> CssSpecifiedValueSerializationErrorKind {
+    /// The private classification, for in-crate tests.
+    #[cfg(test)]
+    pub(crate) const fn kind(&self) -> CssSpecifiedValueSerializationErrorKind {
         self.kind
+    }
+    crate::error::kind_predicates! { kind;
+        /// Returns whether the input node limit was exceeded.
+        is_input_node_limit => CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+        /// Returns whether the projection node limit was exceeded.
+        is_projection_node_limit => CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+        /// Returns whether the CSS byte limit was exceeded.
+        is_byte_limit => CssSpecifiedValueSerializationErrorKind::ByteLimit,
+        /// Returns whether an explicitly depth-bounded graph operation exceeded its
+        /// structural depth.
+        is_depth_limit => CssSpecifiedValueSerializationErrorKind::DepthLimit,
+        /// Returns whether a capacity calculation overflowed.
+        is_capacity_overflow => CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
+        /// Returns whether retained component boundaries cannot be emitted without changing
+        /// tokens.
+        is_unserializable_boundary => CssSpecifiedValueSerializationErrorKind::UnserializableBoundary,
+        /// Returns whether the owning serializer cannot represent the value within its
+        /// selected capability or precision policy.
+        is_unrepresentable_value => CssSpecifiedValueSerializationErrorKind::UnrepresentableValue,
+        /// Returns whether an explicitly supplied selector context lacks a required namespace
+        /// binding.
+        is_namespace_binding_unavailable =>
+            CssSpecifiedValueSerializationErrorKind::NamespaceBindingUnavailable,
+        /// Returns whether a resource limit refused the serialization: the input node,
+        /// projection node or byte limit, or a capacity overflow.
+        is_resource_limit => CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+            | CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
+            | CssSpecifiedValueSerializationErrorKind::ByteLimit
+            | CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
     }
     /// Zero-based stylesheet rule index when a sheet's rule caused the failure.
     #[must_use]
@@ -174,8 +206,9 @@ impl CssSerializationError {
         }
         self
     }
-    /// The lexical component failure, for retained-source traversal.
-    pub(crate) fn component_error(&self) -> Option<&crate::CssComponentValueError> {
+    /// Returns the lexical component failure behind the kind.
+    #[must_use]
+    pub fn component_error(&self) -> Option<&crate::CssComponentValueError> {
         match self.cause() {
             Some(SerializationCause::Component(error)) => Some(error),
             _ => None,

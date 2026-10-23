@@ -14,6 +14,8 @@ fn extends_symbol_conflict_remains_inspectable_authored_syntax() {
     assert!(rule.descriptors().symbols().is_some());
 }
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::{
     CssCounterStyleAlgorithm as Algorithm, CssCounterStyleDefinitionIssue as Issue,
     CssCounterStyleDefinitionStatus as Status, CssCounterStyleDescriptorCollection as Collection,
@@ -158,26 +160,23 @@ fn prospective_collection_limits_are_cumulative_and_retry_is_unchanged() {
     let a = value("numeric", K::System);
     let b = value("a b", K::Symbols);
     let entries = vec![Entry::from_value(&a), Entry::from_value(&b)];
-    assert_eq!(
+    assert!(
         Collection::try_new(entries.clone(), Limits::new(100, 100, 7))
             .unwrap_err()
-            .kind(),
-        surgeist_css::CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
     for (limits, kind) in [
         (
             Limits::new(1, 100, 100),
-            surgeist_css::CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             Limits::new(100, 1, 100),
-            surgeist_css::CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
     ] {
         assert_eq!(
-            Collection::try_new(entries.clone(), limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&Collection::try_new(entries.clone(), limits).unwrap_err()),
             kind
         );
         assert_eq!(

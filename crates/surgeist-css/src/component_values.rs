@@ -90,11 +90,12 @@ pub(crate) fn specified_component_kind(
 ) -> crate::CssSpecifiedValueSerializationErrorKind {
     use crate::CssSpecifiedValueSerializationErrorKind as Kind;
     use CssComponentValueErrorKind as Component;
-    match error.kind() {
+    match error.kind {
         Component::ByteLimit => Kind::ByteLimit,
-        Component::NestingLimit | Component::ComponentLimit | Component::CapacityOverflow => {
-            Kind::CapacityOverflow
-        }
+        Component::NestingLimit
+        | Component::ParserUnavailable
+        | Component::ComponentLimit
+        | Component::CapacityOverflow => Kind::CapacityOverflow,
         Component::UnserializableBoundary
         | Component::BadString
         | Component::BadUrl
@@ -214,10 +215,10 @@ pub enum CssValueOrigin {
     },
 }
 
-/// A typed component-construction or serialization failure category.
-#[non_exhaustive]
+/// A typed component-construction or serialization failure category, read through
+/// the predicates of [`CssComponentValueError`].
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum CssComponentValueErrorKind {
+pub(crate) enum CssComponentValueErrorKind {
     /// A tokenizer-level bad string was encountered.
     BadString,
     /// A tokenizer-level bad URL was encountered.
@@ -250,19 +251,38 @@ pub enum CssComponentValueErrorKind {
     ByteLimit,
     /// A size calculation could not be represented by the platform.
     CapacityOverflow,
+    /// Components nested deeper than the caller's stack is trusted with were refused
+    /// because the bounded parser thread could not be started.
+    ParserUnavailable,
 }
 
 /// A typed failure located in original source or explicitly programmatic syntax.
+///
+/// The violated invariant is read through the `is_*` predicates; resource refusals,
+/// including a refused deep parse, are grouped by [`Self::is_resource_limit`].
+///
+/// ```
+/// let error = surgeist_css::parse_component_values(")").unwrap_err();
+/// assert!(error.is_unmatched_closing_delimiter());
+/// assert!(!error.is_resource_limit());
+/// ```
+///
+/// The kind behind the predicates is private, so it cannot be matched (CF27):
+///
+/// ```compile_fail,E0599
+/// let error = surgeist_css::parse_component_values(")").unwrap_err();
+/// let _ = error.kind();
+/// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssComponentValueError {
-    kind: CssComponentValueErrorKind,
+    pub(crate) kind: CssComponentValueErrorKind,
     origin: CssValueOrigin,
 }
 
 impl CssComponentValueError {
-    /// Returns the violated syntax or resource invariant.
-    #[must_use]
-    pub const fn kind(&self) -> CssComponentValueErrorKind {
+    /// The private classification, for in-crate tests.
+    #[cfg(test)]
+    pub(crate) const fn kind(&self) -> CssComponentValueErrorKind {
         self.kind
     }
 
@@ -272,6 +292,51 @@ impl CssComponentValueError {
         &self.origin
     }
 
+    crate::error::kind_predicates! { kind;
+        /// Returns whether the tokenizer produced a bad string.
+        is_bad_string => CssComponentValueErrorKind::BadString,
+        /// Returns whether the tokenizer produced a bad URL.
+        is_bad_url => CssComponentValueErrorKind::BadUrl,
+        /// Returns whether a closing delimiter had no matching opener in the component stream.
+        is_unmatched_closing_delimiter => CssComponentValueErrorKind::UnmatchedClosingDelimiter,
+        /// Returns whether a single-component entry had no nontrivia component before EOF.
+        is_empty_input => CssComponentValueErrorKind::EmptyInput,
+        /// Returns whether a single-component entry had an extra nontrivia component.
+        is_trailing_input => CssComponentValueErrorKind::TrailingInput,
+        /// Returns whether the spelling did not represent exactly the required token.
+        is_invalid_token => CssComponentValueErrorKind::InvalidToken,
+        /// Returns whether the decoded identifier cannot keep its identity through tokenization.
+        is_invalid_identifier => CssComponentValueErrorKind::InvalidIdentifier,
+        /// Returns whether the spelling was not exactly one CSS number token.
+        is_invalid_number => CssComponentValueErrorKind::InvalidNumber,
+        /// Returns whether the numeric representation or unit cannot form the dimension.
+        is_invalid_dimension => CssComponentValueErrorKind::InvalidDimension,
+        /// Returns whether the function cannot be represented with these children.
+        is_invalid_function => CssComponentValueErrorKind::InvalidFunction,
+        /// Returns whether a string or URL contains a code point tokenization would replace.
+        is_invalid_string => CssComponentValueErrorKind::InvalidString,
+        /// Returns whether a token boundary cannot be serialized without changing whitespace.
+        is_unserializable_boundary => CssComponentValueErrorKind::UnserializableBoundary,
+        /// Returns whether a nested component exceeded the selected structural limit.
+        is_nesting_limit => CssComponentValueErrorKind::NestingLimit,
+        /// Returns whether the selected maximum component count was exceeded.
+        is_component_limit => CssComponentValueErrorKind::ComponentLimit,
+        /// Returns whether source or serialized output exceeded the selected byte limit.
+        is_byte_limit => CssComponentValueErrorKind::ByteLimit,
+        /// Returns whether a size calculation could not be represented by the platform.
+        is_capacity_overflow => CssComponentValueErrorKind::CapacityOverflow,
+        /// Returns whether deep components were refused because the bounded parser thread
+        /// could not be started.
+        is_parser_unavailable => CssComponentValueErrorKind::ParserUnavailable,
+        /// Returns whether a resource, rather than the syntax, refused the components: a
+        /// nesting, component-count or byte limit, a capacity overflow, or a refused deep parse.
+        is_resource_limit => CssComponentValueErrorKind::NestingLimit
+            | CssComponentValueErrorKind::ComponentLimit
+            | CssComponentValueErrorKind::ByteLimit
+            | CssComponentValueErrorKind::CapacityOverflow
+            | CssComponentValueErrorKind::ParserUnavailable,
+    }
+
     pub(crate) fn new(kind: CssComponentValueErrorKind, origin: CssValueOrigin) -> Self {
         Self { kind, origin }
     }
@@ -279,11 +344,40 @@ impl CssComponentValueError {
     fn programmatic(kind: CssComponentValueErrorKind) -> Self {
         Self::new(kind, CssValueOrigin::Programmatic)
     }
+
+    /// One summary phrase for the violated invariant, without a position.
+    pub(crate) fn describe(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use CssComponentValueErrorKind as Kind;
+        formatter.write_str(match self.kind {
+            Kind::BadString => "a bad string token",
+            Kind::BadUrl => "a bad URL token",
+            Kind::UnmatchedClosingDelimiter => "a closing delimiter without an opener",
+            Kind::EmptyInput => "no component before the end of input",
+            Kind::TrailingInput => "more than one component",
+            Kind::InvalidToken => "the spelling is not the required token",
+            Kind::InvalidIdentifier => "the identifier cannot keep its identity as a CSS token",
+            Kind::InvalidNumber => "the spelling is not one CSS number",
+            Kind::InvalidDimension => "the number and unit cannot form the dimension",
+            Kind::InvalidFunction => "the function cannot hold these components",
+            Kind::InvalidString => "the string contains a code point tokenization replaces",
+            Kind::UnserializableBoundary => {
+                "a token boundary cannot be serialized without changing whitespace"
+            }
+            Kind::NestingLimit => "components nest deeper than the selected limit",
+            Kind::ComponentLimit => "the components exceed the selected count limit",
+            Kind::ByteLimit => "the components exceed the selected byte limit",
+            Kind::CapacityOverflow => "a component size overflows the platform",
+            Kind::ParserUnavailable => {
+                "deep components were refused because the CSS parser thread is unavailable"
+            }
+        })
+    }
 }
 
 impl fmt::Display for CssComponentValueError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(formatter, "CSS component value {:?}", self.kind)?;
+        formatter.write_str("invalid CSS component value: ")?;
+        self.describe(formatter)?;
         if let CssValueOrigin::Parsed(origin) = &self.origin {
             write!(formatter, " at {}", origin.span().start())?;
         }
@@ -1546,6 +1640,44 @@ pub fn parse_component_values_with_limits(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Publishing consumers abort on a resource refusal but keep recovering
+    /// from a syntax or representation failure.
+    #[test]
+    fn resource_limits_are_exactly_the_resource_refusals() {
+        use CssComponentValueErrorKind::*;
+        for kind in [
+            NestingLimit,
+            ComponentLimit,
+            ByteLimit,
+            CapacityOverflow,
+            ParserUnavailable,
+        ] {
+            assert!(
+                CssComponentValueError::programmatic(kind).is_resource_limit(),
+                "{kind:?}"
+            );
+        }
+        for kind in [
+            BadString,
+            BadUrl,
+            UnmatchedClosingDelimiter,
+            EmptyInput,
+            TrailingInput,
+            InvalidToken,
+            InvalidIdentifier,
+            InvalidNumber,
+            InvalidDimension,
+            InvalidFunction,
+            InvalidString,
+            UnserializableBoundary,
+        ] {
+            assert!(
+                !CssComponentValueError::programmatic(kind).is_resource_limit(),
+                "{kind:?}"
+            );
+        }
+    }
 
     #[test]
     fn oversized_input_reports_its_byte_length_without_a_parsed_origin() {

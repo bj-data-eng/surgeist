@@ -565,9 +565,9 @@ fn pending_contract(p: P, value: &str, expected: &[(&str, &str)], invalid_values
                 if *bad == "var(--again)/*" {
                     // Residual detection precedes replacement grammar, even
                     // when direct checked admission rejects original closure.
-                    assert_eq!(error.kind(), &CssExpansionErrorKind::ResidualSubstitution);
+                    assert!(error.is_residual_substitution(), "{error:?}");
                 } else {
-                    let CssExpansionErrorKind::InvalidReplacement(actual) = error.kind() else {
+                    let Some(actual) = error.replacement_error() else {
                         panic!("original grammar failure")
                     };
                     assert_eq!(actual, &expected_error);
@@ -580,12 +580,11 @@ fn pending_contract(p: P, value: &str, expected: &[(&str, &str)], invalid_values
                 assert_payloads(&values, expected);
             }
             for residual in ["var(--again)", "env(other)", "attr(data-other)"] {
-                assert_eq!(
+                assert!(
                     handle
                         .reenter(parse_component_values(residual).unwrap())
                         .unwrap_err()
-                        .kind(),
-                    &CssExpansionErrorKind::ResidualSubstitution
+                        .is_residual_substitution()
                 );
                 let CssContributions::Longhands(values) =
                     handle.reenter(replacement.clone()).unwrap()
@@ -760,10 +759,8 @@ fn strict_closure(p: P, ordinary: &str) {
         ] {
             match result {
                 Err(error)
-                    if matches!(
-                        error.kind(),
-                        CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
-                    ) && error.origin() == &CssSerializedOrigin::End(Some(origin.clone())) => {}
+                    if error.code() == Some(CssErrorCode::UnexpectedEnd)
+                        && error.origin() == CssSerializedOrigin::End(Some(origin.clone())) => {}
                 actual => failures.push(format!(
                     "{front}/{text}: expected original implicit EOF, actual {actual:?}"
                 )),
@@ -901,10 +898,7 @@ fn normalization_preserves_duplicate_order_contexts_and_two_three_one_terminal_w
     ] {
         for _ in 0..2 {
             let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
-            assert_eq!(
-                error.kind(),
-                &CssNormalizationErrorKind::LimitExceeded { resource, limit }
-            );
+            assert_eq!(error.exhausted_limit(), Some((resource, limit)));
             assert_eq!(error.declaration_order(), Some(5));
             assert!(
                 error
@@ -1021,7 +1015,7 @@ fn new_word_break_keywords_keep_single_keyword_work_and_exact_bytes() {
 #[test]
 fn sibling_text_rules_share_final_sheet_bytes_and_atomic_reusable_output() {
     use CssSerializationLimits as Limits;
-    use CssSpecifiedValueSerializationErrorKind as Kind;
+
     let report =
         parse_sheet(".a{text-wrap:balance nowrap!important}.b{white-space:discard-after preserve}");
     assert!(report.is_clean());
@@ -1040,7 +1034,7 @@ fn sibling_text_rules_share_final_sheet_bytes_and_atomic_reusable_output() {
     );
     for _ in 0..2 {
         let error = sheet.serialize_specified(short).unwrap_err();
-        assert_eq!(error.kind(), Kind::ByteLimit);
+        assert!(error.is_byte_limit(), "{error:?}");
         assert_eq!(error.rule_index(), Some(1));
         assert_eq!(sheet, &before);
     }

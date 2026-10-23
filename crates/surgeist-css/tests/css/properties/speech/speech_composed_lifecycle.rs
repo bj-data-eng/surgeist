@@ -373,9 +373,10 @@ fn every_speech_property_crosses_strict_construction_and_owning_bounded_canonica
             limits.max_projection_nodes(),
             case.canonical.len() - 1,
         );
-        assert_eq!(
-            specified(&constructed, too_small).unwrap_err().kind(),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit
+        assert!(
+            specified(&constructed, too_small)
+                .unwrap_err()
+                .is_byte_limit()
         );
         assert_eq!(constructed.value_components(), &components);
         assert_eq!(specified(&constructed, exact).unwrap(), case.canonical);
@@ -534,23 +535,20 @@ fn all_properties_reenter_ordinary_and_global_values_atomically_with_both_occurr
             format!("{};color:red", case.authored),
         ] {
             assert!(
-                matches!(
-                    handle
-                        .reenter(parse_component_values(&invalid).unwrap())
-                        .unwrap_err()
-                        .kind(),
-                    CssExpansionErrorKind::InvalidReplacement(_)
-                ),
+                handle
+                    .reenter(parse_component_values(&invalid).unwrap())
+                    .unwrap_err()
+                    .replacement_error()
+                    .is_some(),
                 "{}:{invalid}",
                 case.name
             );
         }
-        assert_eq!(
+        assert!(
             handle
                 .reenter(parse_component_values("var(--again)").unwrap())
                 .unwrap_err()
-                .kind(),
-            &CssExpansionErrorKind::ResidualSubstitution
+                .is_residual_substitution()
         );
         assert!(handle.reenter(replacement).is_ok());
         assert_eq!(

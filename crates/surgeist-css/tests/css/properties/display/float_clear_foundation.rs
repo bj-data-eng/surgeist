@@ -189,31 +189,28 @@ fn pending_reentry_checks_full_keyword_grammar_and_preserves_original_occurrence
             assert!(handle.source().same_occurrence(&source));
             for invalid in ["start", "center", "inline-start left"] {
                 assert!(
-                    matches!(
-                        handle
-                            .reenter(parse_component_values(invalid).unwrap())
-                            .unwrap_err()
-                            .kind(),
-                        CssExpansionErrorKind::InvalidReplacement(_)
-                    ),
+                    handle
+                        .reenter(parse_component_values(invalid).unwrap())
+                        .unwrap_err()
+                        .replacement_error()
+                        .is_some(),
                     "{name}:{invalid}"
                 );
             }
             if name == "float" {
-                assert!(matches!(
+                assert!(
                     handle
                         .reenter(parse_component_values("both").unwrap())
                         .unwrap_err()
-                        .kind(),
-                    CssExpansionErrorKind::InvalidReplacement(_)
-                ));
+                        .replacement_error()
+                        .is_some()
+                );
             }
-            assert_eq!(
+            assert!(
                 handle
                     .reenter(parse_component_values("var(--again)").unwrap())
                     .unwrap_err()
-                    .kind(),
-                &CssExpansionErrorKind::ResidualSubstitution
+                    .is_residual_substitution()
             );
             let replacement = parse_component_values("inline-end").unwrap();
             let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap()

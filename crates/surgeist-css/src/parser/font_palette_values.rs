@@ -7,17 +7,17 @@ use super::parse_descriptor_boundary;
 use super::property_input::{NativeValueRange, adapt_native};
 use super::recovery::RecoveryState;
 use crate::error::{
-    CssFeatureId, Error, basic, descriptor_name_error, from_parse_error, invalid_component_value,
-    invalid_syntax, unexpected_at, with_at_rule_prelude_context, with_descriptor_context,
+    CssError, CssFeatureId, basic, descriptor_name_error, from_parse_error,
+    invalid_component_value, invalid_syntax, unexpected_at, with_at_rule_prelude_context,
+    with_descriptor_context,
 };
 use crate::font_palette_values::CssFontPaletteDescriptorData;
 use crate::numeric::NumericInputContext;
 use crate::{
     CssAuthoredDeclarationValue, CssComponentValues, CssFontFaceFamily, CssFontPaletteBase,
-    CssFontPaletteConstructionError, CssFontPaletteDescriptor, CssFontPaletteDescriptorKind,
-    CssFontPaletteDescriptorValue, CssFontPaletteIndex, CssFontPaletteName, CssFontPaletteOverride,
-    CssFontPaletteValuesRule, CssRecoveryDiagnostic, CssSerializedValue, CssSourcePosition,
-    CssSubstitutionDependentValue,
+    CssFontPaletteDescriptor, CssFontPaletteDescriptorKind, CssFontPaletteDescriptorValue,
+    CssFontPaletteIndex, CssFontPaletteName, CssFontPaletteOverride, CssFontPaletteValuesRule,
+    CssRecoveryDiagnostic, CssSerializedValue, CssSourcePosition, CssSubstitutionDependentValue,
 };
 
 pub(super) static IMPLEMENTED_RULES: &[CssFeatureId] =
@@ -32,7 +32,7 @@ pub(super) fn parse_name<'i>(
     source: &'i str,
     input: &mut Parser<'i, '_>,
     recovery: &RecoveryState,
-) -> Result<CssFontPaletteName, ParseError<'i, Error>> {
+) -> Result<CssFontPaletteName, ParseError<'i, CssError>> {
     recovery.check_specialized_components(source, input, "later.rule.font-palette-values")?;
     (|| {
         let location = input.current_source_location();
@@ -57,7 +57,7 @@ pub(super) fn parse_rule<'i>(
     start: &ParserState,
     diagnostics: &mut Vec<CssRecoveryDiagnostic>,
     recovery: RecoveryState,
-) -> Result<CssFontPaletteValuesRule, ParseError<'i, Error>> {
+) -> Result<CssFontPaletteValuesRule, ParseError<'i, CssError>> {
     let descriptors = parse_body(source, input, diagnostics, recovery);
     CssFontPaletteValuesRule::try_new(name, descriptors)
         .map(|rule| rule.with_position(position(start)))
@@ -104,16 +104,16 @@ impl<'i> super::descriptor_body::Receiver<'i, CssFontPaletteDescriptor> for Body
 impl<'i> AtRuleParser<'i> for BodyParser<'i> {
     type Prelude = ();
     type AtRule = CssFontPaletteDescriptor;
-    type Error = Error;
+    type Error = CssError;
 }
 
 impl<'i> QualifiedRuleParser<'i> for BodyParser<'i> {
     type Prelude = ();
     type QualifiedRule = CssFontPaletteDescriptor;
-    type Error = Error;
+    type Error = CssError;
 }
 
-impl<'i> RuleBodyItemParser<'i, CssFontPaletteDescriptor, Error> for BodyParser<'i> {
+impl<'i> RuleBodyItemParser<'i, CssFontPaletteDescriptor, CssError> for BodyParser<'i> {
     fn parse_declarations(&self) -> bool {
         true
     }
@@ -127,14 +127,14 @@ impl<'i> RuleBodyItemParser<'i, CssFontPaletteDescriptor, Error> for BodyParser<
 
 impl<'i> DeclarationParser<'i> for BodyParser<'i> {
     type Declaration = CssFontPaletteDescriptor;
-    type Error = Error;
+    type Error = CssError;
 
     fn parse_value<'t>(
         &mut self,
         name: CowRcStr<'i>,
         input: &mut Parser<'i, 't>,
         start: &ParserState,
-    ) -> Result<Self::Declaration, ParseError<'i, Error>> {
+    ) -> Result<Self::Declaration, ParseError<'i, CssError>> {
         let implicit =
             self.recovery
                 .check_component_values(self.source, input, "css.descriptor")?;
@@ -152,7 +152,7 @@ pub(super) fn parse_descriptor_value_from_parser<'i>(
     input: &mut Parser<'i, '_>,
     kind: CssFontPaletteDescriptorKind,
     recovery: &RecoveryState,
-) -> Result<CssFontPaletteDescriptorValue, ParseError<'i, Error>> {
+) -> Result<CssFontPaletteDescriptorValue, ParseError<'i, CssError>> {
     super::descriptor_values::validate_root(input, "font-palette-values", kind.css_name())?;
     let numeric = NumericInputContext::parsed(recovery.source_snapshot());
     parse_descriptor_boundary(input, "font-palette-values", kind.css_name(), |input| {
@@ -173,7 +173,7 @@ pub(crate) fn construct_descriptor_value(
     kind: CssFontPaletteDescriptorKind,
     components: &CssComponentValues,
     serialized: &CssSerializedValue,
-) -> Result<CssFontPaletteDescriptorData, Error> {
+) -> Result<CssFontPaletteDescriptorData, CssError> {
     let working_source = crate::tokenization::prepare(serialized.as_css());
     let mut parser_input = cssparser::ParserInput::new(&working_source);
     let mut input = Parser::new(&mut parser_input);
@@ -212,7 +212,7 @@ fn parse_value_data<'i>(
     kind: CssFontPaletteDescriptorKind,
     components: &CssComponentValues,
     numeric: &NumericInputContext<'_>,
-) -> Result<CssFontPaletteDescriptorData, ParseError<'i, Error>> {
+) -> Result<CssFontPaletteDescriptorData, ParseError<'i, CssError>> {
     let qualifying =
         super::variables::descriptor_substitution_qualifies(components.items(), numeric)
             .map_err(|error| invalid_component_value(input.current_source_location(), error))?;
@@ -241,7 +241,7 @@ fn parse_value_data<'i>(
 fn parse_families<'i>(
     input: &mut Parser<'i, '_>,
     numeric: &NumericInputContext<'_>,
-) -> Result<Vec<CssFontFaceFamily>, ParseError<'i, Error>> {
+) -> Result<Vec<CssFontFaceFamily>, ParseError<'i, CssError>> {
     input.parse_comma_separated(|input| {
         let family = adapt_native(input, numeric, NativeValueRange::Remaining, |input, _| {
             super::typography::parse_non_generic_font_family_name(input)
@@ -255,7 +255,7 @@ fn parse_families<'i>(
 fn parse_base<'i>(
     input: &mut Parser<'i, '_>,
     numeric: &NumericInputContext<'_>,
-) -> Result<CssFontPaletteBase, ParseError<'i, Error>> {
+) -> Result<CssFontPaletteBase, ParseError<'i, CssError>> {
     let state = input.state();
     if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
         if ident.eq_ignore_ascii_case("light") {
@@ -272,7 +272,7 @@ fn parse_base<'i>(
 fn parse_overrides<'i>(
     input: &mut Parser<'i, '_>,
     numeric: &NumericInputContext<'_>,
-) -> Result<Vec<CssFontPaletteOverride>, ParseError<'i, Error>> {
+) -> Result<Vec<CssFontPaletteOverride>, ParseError<'i, CssError>> {
     input.parse_comma_separated(|input| {
         let index = parse_index(input, numeric)?;
         let location = input.current_source_location();
@@ -282,9 +282,12 @@ fn parse_overrides<'i>(
             NativeValueRange::Component,
             super::color::parse_color,
         )?;
-        let pair = CssFontPaletteOverride::try_new(index, color).map_err(|error| match error {
-            CssFontPaletteConstructionError::ContextualColor(_) => unexpected_at(location),
-            _ => invalid_syntax(location),
+        let pair = CssFontPaletteOverride::try_new(index, color).map_err(|error| {
+            if error.contextual_color().is_some() {
+                unexpected_at(location)
+            } else {
+                invalid_syntax(location)
+            }
         })?;
         input.expect_exhausted().map_err(basic)?;
         Ok(pair)
@@ -294,7 +297,7 @@ fn parse_overrides<'i>(
 fn parse_index<'i>(
     input: &mut Parser<'i, '_>,
     numeric: &NumericInputContext<'_>,
-) -> Result<CssFontPaletteIndex, ParseError<'i, Error>> {
+) -> Result<CssFontPaletteIndex, ParseError<'i, CssError>> {
     let location = input.current_source_location();
     let value = adapt_native(
         input,

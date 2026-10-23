@@ -14,7 +14,7 @@ use super::{
     parse_declaration_core, structural_recovery_production, structural_rule_diagnostic,
 };
 use crate::error::{
-    CssFeatureId, Error, basic, invalid_at_rule_placement, invalid_syntax, unexpected_at,
+    CssError, CssFeatureId, basic, invalid_at_rule_placement, invalid_syntax, unexpected_at,
 };
 use crate::syntax::*;
 
@@ -23,7 +23,7 @@ pub(super) static IMPLEMENTED_RULES: &[CssFeatureId] =
 
 pub(super) fn parse_keyframes_name<'i, 't>(
     input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssKeyframesName, ParseError<'i, Error>> {
+) -> std::result::Result<CssKeyframesName, ParseError<'i, CssError>> {
     let location = input.current_source_location();
     if let Ok(name) = input.try_parse(Parser::expect_ident_cloned) {
         return parse_custom_ident_from_str_at_source(name.as_ref(), location)
@@ -46,7 +46,7 @@ pub(super) fn parse_keyframes_rule<'i, 't>(
     start: &ParserState,
     diagnostics: &mut Vec<crate::CssRecoveryDiagnostic>,
     recovery: RecoveryState,
-) -> std::result::Result<CssKeyframesRule, ParseError<'i, Error>> {
+) -> std::result::Result<CssKeyframesRule, ParseError<'i, CssError>> {
     let blocks = parse_body(source, input, diagnostics, recovery)?;
     Ok(CssKeyframesRule::new(
         name,
@@ -63,7 +63,7 @@ pub(super) fn parse_body<'i>(
     input: &mut Parser<'i, '_>,
     diagnostics: &mut Vec<crate::CssRecoveryDiagnostic>,
     recovery: RecoveryState,
-) -> Result<Vec<CssKeyframeBlock>, ParseError<'i, Error>> {
+) -> Result<Vec<CssKeyframeBlock>, ParseError<'i, CssError>> {
     let mut parser = KeyframeBlockParser {
         source,
         diagnostics: Vec::new(),
@@ -133,7 +133,7 @@ pub(super) fn parse_declarations<'i>(
     input: &mut Parser<'i, '_>,
     diagnostics: &mut Vec<crate::CssRecoveryDiagnostic>,
     recovery: RecoveryState,
-) -> Result<CssKeyframeDeclarationList, ParseError<'i, Error>> {
+) -> Result<CssKeyframeDeclarationList, ParseError<'i, CssError>> {
     let mut declarations = Vec::new();
     let mut declaration_parser = KeyframeDeclarationParser { source, recovery };
     let mut items = RuleBodyParser::new(input, &mut declaration_parser);
@@ -194,7 +194,7 @@ pub(super) fn parse_detached_rule<'i>(
     source: &'i str,
     input: &mut Parser<'i, '_>,
     recovery: RecoveryState,
-) -> Result<(CssKeyframeBlock, Vec<crate::CssRecoveryDiagnostic>), ParseError<'i, Error>> {
+) -> Result<(CssKeyframeBlock, Vec<crate::CssRecoveryDiagnostic>), ParseError<'i, CssError>> {
     let mut parser = KeyframeBlockParser {
         source,
         diagnostics: Vec::new(),
@@ -213,13 +213,13 @@ struct KeyframeBlockParser<'s> {
 impl<'i> AtRuleParser<'i> for KeyframeBlockParser<'i> {
     type Prelude = ();
     type AtRule = CssKeyframeBlock;
-    type Error = Error;
+    type Error = CssError;
 }
 
 impl<'i> QualifiedRuleParser<'i> for KeyframeBlockParser<'i> {
     type Prelude = CssKeyframeSelectorList;
     type QualifiedRule = CssKeyframeBlock;
-    type Error = Error;
+    type Error = CssError;
 
     fn parse_prelude<'t>(
         &mut self,
@@ -263,7 +263,7 @@ impl<'i> QualifiedRuleParser<'i> for KeyframeBlockParser<'i> {
 pub(super) fn parse_keyframe_selector_list<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssKeyframeSelectorList, ParseError<'i, Error>> {
+) -> std::result::Result<CssKeyframeSelectorList, ParseError<'i, CssError>> {
     let selectors = super::combinators::parse_native_comma_list(
         input,
         |input| parse_keyframe_selector(input, numeric),
@@ -276,7 +276,7 @@ pub(super) fn parse_keyframe_selector_list<'i, 't>(
 fn parse_keyframe_selector<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssKeyframeSelector, ParseError<'i, Error>> {
+) -> std::result::Result<CssKeyframeSelector, ParseError<'i, CssError>> {
     input.skip_whitespace();
     let location = input.current_source_location();
     let start = input.state();
@@ -311,7 +311,7 @@ fn parse_keyframe_selector<'i, 't>(
             .map(CssKeyframeSelector::Percent)
             .ok_or_else(|| invalid_syntax(location))
         }
-        token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
+        token => Err(location.new_unexpected_token_error::<CssError>(token.clone())),
     }
 }
 
@@ -323,7 +323,7 @@ struct KeyframeDeclarationParser<'s> {
 impl<'i> AtRuleParser<'i> for KeyframeDeclarationParser<'i> {
     type Prelude = ();
     type AtRule = CssKeyframeDeclaration;
-    type Error = Error;
+    type Error = CssError;
 
     fn parse_prelude<'t>(
         &mut self,
@@ -341,10 +341,12 @@ impl<'i> AtRuleParser<'i> for KeyframeDeclarationParser<'i> {
 impl<'i> QualifiedRuleParser<'i> for KeyframeDeclarationParser<'i> {
     type Prelude = ();
     type QualifiedRule = CssKeyframeDeclaration;
-    type Error = Error;
+    type Error = CssError;
 }
 
-impl<'i> RuleBodyItemParser<'i, CssKeyframeDeclaration, Error> for KeyframeDeclarationParser<'i> {
+impl<'i> RuleBodyItemParser<'i, CssKeyframeDeclaration, CssError>
+    for KeyframeDeclarationParser<'i>
+{
     fn parse_declarations(&self) -> bool {
         true
     }
@@ -358,7 +360,7 @@ impl<'i> RuleBodyItemParser<'i, CssKeyframeDeclaration, Error> for KeyframeDecla
 
 impl<'i> DeclarationParser<'i> for KeyframeDeclarationParser<'i> {
     type Declaration = CssKeyframeDeclaration;
-    type Error = Error;
+    type Error = CssError;
 
     fn parse_value<'t>(
         &mut self,

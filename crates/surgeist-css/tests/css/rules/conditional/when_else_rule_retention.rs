@@ -10,8 +10,8 @@ use crate::css::support::rules::normalized_declarations as declarations;
 use crate::css::support::rules::rule_at;
 use surgeist_css::{
     CssErrorCode, CssNormalizedDeclaration, CssNormalizedSheet, CssRecoveryAction, CssRule,
-    CssRuleContextKindRef, CssSelector, CssSelectorBinding, CssTokenKind, ErrorKind,
-    normalize_sheet, parse_sheet, validate_sheet,
+    CssRuleContextKindRef, CssSelector, CssSelectorBinding, CssTokenKind, normalize_sheet,
+    parse_sheet, validate_sheet,
 };
 
 fn assert_declarations<'a>(
@@ -312,9 +312,12 @@ fn root_semicolon_keeps_else_in_one_failed_qualified_unit_without_body_promotion
         diagnostic.span().end().byte_offset().value(),
         prefix.len() + failed.len()
     );
-    let ErrorKind::InvalidSelector(detail) = diagnostic.error().kind() else {
-        panic!("selector grammar owns the semicolon-prefixed qualified prelude")
-    };
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidSelector,
+        "selector grammar owns the semicolon-prefixed qualified prelude"
+    );
     let encountered = detail.encountered().unwrap();
     assert_eq!(encountered.kind(), CssTokenKind::Semicolon);
     assert_eq!(encountered.authored(), ";");

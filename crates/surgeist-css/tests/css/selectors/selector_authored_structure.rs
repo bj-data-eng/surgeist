@@ -1386,12 +1386,12 @@ fn practical_pseudo_class_matrix_accepts_supported_and_rejects_unsupported_forms
 fn selector_parse_failure_has_typed_error_kind() {
     let error = parse_sheet("??? { width: 10px; }").expect_err("rejected parse report");
 
-    assert!(matches!(error.kind(), ErrorKind::InvalidSelector(_)));
+    assert!(error.code() == CssErrorCode::InvalidSelector);
 }
 
 #[test]
 fn selector_missing_class_name_has_typed_error_kind() {
     let error = parse_sheet(". { width: 10px; }").expect_err("rejected parse report");
 
-    assert!(matches!(error.kind(), ErrorKind::InvalidSelector(_)));
+    assert!(error.code() == CssErrorCode::InvalidSelector);
 }

@@ -175,10 +175,7 @@ fn wrong_outer_components_report_the_supplied_origin() {
         let component = values.items()[0].clone();
         let origin = component.origin().clone();
         let error = surgeist_css::CssGeneralEnclosed::try_from_component(component).unwrap_err();
-        assert!(matches!(
-            error,
-            surgeist_css::CssGeneralEnclosedError::WrongOuterComponent { .. }
-        ));
+        assert!(error.is_wrong_outer_component());
         assert_eq!(error.origin(), &origin);
     }
     let error = surgeist_css::CssGeneralEnclosed::try_from_component(
@@ -192,13 +189,10 @@ fn wrong_outer_components_report_the_supplied_origin() {
 fn constructor_errors_preserve_component_syntax_and_depth_failures() {
     let empty = CssComponentValues::try_new(vec![], Default::default()).unwrap();
     let error = surgeist_css::CssGeneralEnclosed::try_function("url", empty).unwrap_err();
-    let surgeist_css::CssGeneralEnclosedError::Component(component) = error else {
+    let Some(component) = error.component_error() else {
         panic!("expected a component construction error");
     };
-    assert_eq!(
-        component.kind(),
-        surgeist_css::CssComponentValueErrorKind::InvalidFunction
-    );
+    assert!(component.is_invalid_function(), "{component:?}");
     assert_eq!(component.origin(), &CssValueOrigin::Programmatic);
     let mut children = CssComponentValues::try_new(
         vec![CssComponentValue::try_ident("x").unwrap()],
@@ -211,13 +205,10 @@ fn constructor_errors_preserve_component_syntax_and_depth_failures() {
         children = CssComponentValues::try_new(vec![block], Default::default()).unwrap();
     }
     let error = surgeist_css::CssGeneralEnclosed::try_parenthesized(children).unwrap_err();
-    let surgeist_css::CssGeneralEnclosedError::Component(component) = error else {
+    let Some(component) = error.component_error() else {
         panic!("expected the component depth limit");
     };
-    assert_eq!(
-        component.kind(),
-        surgeist_css::CssComponentValueErrorKind::NestingLimit
-    );
+    assert!(component.is_nesting_limit(), "{component:?}");
     assert_eq!(component.origin(), &CssValueOrigin::Programmatic);
 }
 

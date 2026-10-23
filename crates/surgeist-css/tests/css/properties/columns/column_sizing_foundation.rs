@@ -325,19 +325,18 @@ fn pending_reentry_and_normalization_preserve_columns_and_neighbor_order() {
             };
             assert!(handle.source().same_occurrence(&source));
             let bad = if name == "column-count" { "0" } else { "1fr" };
-            assert!(matches!(
+            assert!(
                 handle
                     .reenter(parse_component_values(bad).unwrap())
                     .unwrap_err()
-                    .kind(),
-                CssExpansionErrorKind::InvalidReplacement(_)
-            ));
-            assert_eq!(
+                    .replacement_error()
+                    .is_some()
+            );
+            assert!(
                 handle
                     .reenter(parse_component_values("var(--again)").unwrap())
                     .unwrap_err()
-                    .kind(),
-                &CssExpansionErrorKind::ResidualSubstitution
+                    .is_residual_substitution()
             );
             let replacement_text = match name {
                 "column-count" => "2147483648",

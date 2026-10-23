@@ -6,8 +6,11 @@ use std::{error::Error, fmt};
 
 /// A rejected intrinsic Motion construction, before any contextual evaluation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssMotionConstructionError {
+pub struct CssMotionConstructionError {
+    kind: MotionConstructionKind,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum MotionConstructionKind {
     /// The imported Box 3 coord-box grammar excludes this geometry box.
     InvalidCoordBox,
     /// A rotation requires a modifier, an angle, or both.
@@ -17,13 +20,32 @@ pub enum CssMotionConstructionError {
     /// Distance and rotation require an explicitly authored path property.
     MissingPath,
 }
+impl From<MotionConstructionKind> for CssMotionConstructionError {
+    fn from(kind: MotionConstructionKind) -> Self {
+        Self { kind }
+    }
+}
+impl CssMotionConstructionError {
+    crate::error::kind_predicates! { kind;
+        /// Returns whether the imported Box 3 coord-box grammar excludes this geometry box.
+        is_invalid_coord_box => MotionConstructionKind::InvalidCoordBox,
+        /// Returns whether a rotation requires a modifier, an angle, or both.
+        is_empty_rotate => MotionConstructionKind::EmptyRotate,
+        /// Returns whether the shorthand requires a position or a path before its optional anchor.
+        is_empty_offset => MotionConstructionKind::EmptyOffset,
+        /// Returns whether distance and rotation require an explicitly authored path property.
+        is_missing_path => MotionConstructionKind::MissingPath,
+    }
+}
 impl fmt::Display for CssMotionConstructionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            Self::InvalidCoordBox => "box is outside the Motion coord-box grammar",
-            Self::EmptyRotate => "offset rotation requires a modifier or angle",
-            Self::EmptyOffset => "offset requires a position or path",
-            Self::MissingPath => "offset distance and rotation require a path",
+        f.write_str(match &self.kind {
+            MotionConstructionKind::InvalidCoordBox => {
+                "box is outside the Motion coord-box grammar"
+            }
+            MotionConstructionKind::EmptyRotate => "offset rotation requires a modifier or angle",
+            MotionConstructionKind::EmptyOffset => "offset requires a position or path",
+            MotionConstructionKind::MissingPath => "offset distance and rotation require a path",
         })
     }
 }
@@ -77,7 +99,11 @@ impl TryFrom<CssBoxEdgeKeyword> for CssCoordBox {
             Some(crate::CssMaskBox::FillBox) => Self::FillBox,
             Some(crate::CssMaskBox::StrokeBox) => Self::StrokeBox,
             Some(crate::CssMaskBox::ViewBox) => Self::ViewBox,
-            None => return Err(CssMotionConstructionError::InvalidCoordBox),
+            None => {
+                return Err(CssMotionConstructionError::from(
+                    MotionConstructionKind::InvalidCoordBox,
+                ));
+            }
         })
     }
 }
@@ -310,7 +336,9 @@ impl CssOffsetRotate {
         angle: Option<CssAngleValue>,
     ) -> Result<Self, CssMotionConstructionError> {
         if modifier.is_none() && angle.is_none() {
-            return Err(CssMotionConstructionError::EmptyRotate);
+            return Err(CssMotionConstructionError::from(
+                MotionConstructionKind::EmptyRotate,
+            ));
         }
         Ok(Self { modifier, angle })
     }
@@ -355,10 +383,14 @@ impl CssOffset {
         anchor: Option<CssOffsetAnchor>,
     ) -> Result<Self, CssMotionConstructionError> {
         if position.is_none() && path.is_none() {
-            return Err(CssMotionConstructionError::EmptyOffset);
+            return Err(CssMotionConstructionError::from(
+                MotionConstructionKind::EmptyOffset,
+            ));
         }
         if path.is_none() && (distance.is_some() || rotate.is_some()) {
-            return Err(CssMotionConstructionError::MissingPath);
+            return Err(CssMotionConstructionError::from(
+                MotionConstructionKind::MissingPath,
+            ));
         }
         Ok(Self {
             position,

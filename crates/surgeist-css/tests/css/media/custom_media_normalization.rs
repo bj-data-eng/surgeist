@@ -1,9 +1,9 @@
 //! Authored custom-media definitions remain ordered payloads, not evaluated aliases.
 use crate::css::support::authored_syntax::{assert_diagnostics, parsed_origin};
 use surgeist_css::{
-    CssCustomMediaBody, CssErrorCode, CssNormalizationErrorKind, CssNormalizationLimits,
-    CssNormalizationResource, CssNormalizedItem, CssRecoveryAction, CssRule, CssRuleContextKindRef,
-    normalize_report, normalize_sheet, normalize_sheet_with_limits, parse_sheet,
+    CssCustomMediaBody, CssErrorCode, CssNormalizationLimits, CssNormalizationResource,
+    CssNormalizedItem, CssRecoveryAction, CssRule, CssRuleContextKindRef, normalize_report,
+    normalize_sheet, normalize_sheet_with_limits, parse_sheet,
 };
 
 #[test]
@@ -133,13 +133,7 @@ fn definition_occurrences_consume_rule_budget_without_partial_output() {
     let before = report.syntax().clone();
     let limits = CssNormalizationLimits::try_new(0, 1, 0, 0).unwrap();
     let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
-    assert!(matches!(
-        error.kind(),
-        CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Rules,
-            limit: 1,
-        }
-    ));
+    assert!(error.exhausted_limit() == Some((CssNormalizationResource::Rules, 1)));
     assert_eq!(
         error.position().unwrap().byte_offset().value(),
         source.find("@custom-media --b").unwrap()

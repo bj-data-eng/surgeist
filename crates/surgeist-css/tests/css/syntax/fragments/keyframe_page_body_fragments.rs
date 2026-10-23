@@ -708,10 +708,13 @@ fn nesting<T: Clone + std::fmt::Debug>(
 ) {
     let diagnostic = recovered(report, CssRecoveryAction::StopAtNestingLimit);
     assert_eq!(diagnostic.error().code(), CssErrorCode::NestingLimit);
-    let ErrorKind::NestingLimit(detail) = diagnostic.error().kind() else {
-        panic!("native resource identity")
-    };
-    assert_eq!(detail.limit(), 256);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::NestingLimit,
+        "native resource identity"
+    );
+    assert_eq!(detail.nesting_limit().unwrap(), 256);
     let expected = value_start + 2 * function_index;
     point(diagnostic.error().position(), expected, 0, expected as u32);
     assert_eq!(diagnostic.span().start().byte_offset().value(), unit_start);

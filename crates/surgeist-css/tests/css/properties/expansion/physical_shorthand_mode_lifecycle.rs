@@ -486,20 +486,19 @@ fn invalid_and_residual_reentry_are_atomic_and_keep_pending_source_usable() {
             "initial 1px",
             "logical logical 1px",
         ] {
-            assert!(matches!(
+            assert!(
                 handle
                     .reenter(parse_component_values(invalid).unwrap())
                     .unwrap_err()
-                    .kind(),
-                CssExpansionErrorKind::InvalidReplacement(_)
-            ));
+                    .replacement_error()
+                    .is_some()
+            );
         }
-        assert_eq!(
+        assert!(
             handle
                 .reenter(parse_component_values("var(--again)").unwrap())
                 .unwrap_err()
-                .kind(),
-            &CssExpansionErrorKind::ResidualSubstitution
+                .is_residual_substitution()
         );
         assert!(handle.source().same_occurrence(&source));
         assert_eq!(
@@ -641,10 +640,7 @@ fn normalization_preserves_mode_interleaving_importance_sources_and_cumulative_l
                     .unwrap(),
             )
             .unwrap_err();
-            assert_eq!(
-                error.kind(),
-                &CssNormalizationErrorKind::LimitExceeded { resource, limit }
-            );
+            assert_eq!(error.exhausted_limit(), Some((resource, limit)));
             assert_eq!(error.declaration_order(), Some(order));
             assert!(
                 error
@@ -680,14 +676,13 @@ fn standalone_quad_writers_keep_mode_output_and_atomic_byte_limits() {
                     .unwrap(),
                     text
                 );
-                assert_eq!(
+                assert!(
                     canonical_with_limits(
                         &source,
                         CssSerializationLimits::new(256, usize::MAX, text.len() - 1)
                     )
                     .unwrap_err()
-                    .kind(),
-                    CssSpecifiedValueSerializationErrorKind::ByteLimit
+                    .is_byte_limit()
                 );
                 assert_eq!(source.value_components(), &preserved);
             }

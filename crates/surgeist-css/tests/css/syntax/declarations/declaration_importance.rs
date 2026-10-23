@@ -4,7 +4,7 @@ use common::CssParseReportTestExt;
 
 use surgeist_css::{
     CssDeclarationContextRef, CssErrorCode, CssImportance, CssPropertyNameRef, CssRule,
-    CssTokenKind, ErrorKind, parse_sheet,
+    CssTokenKind, parse_sheet,
 };
 
 fn style_declarations(source: &str) -> surgeist_css::CssDeclarationList {
@@ -74,12 +74,15 @@ fn declaration_importance_malformed_annotations_report_first_bang() {
             "{source}"
         );
         assert_eq!(error.position().byte_offset().value(), bang, "{source}");
-        let ErrorKind::InvalidDeclarationAnnotation(detail) = error.kind() else {
-            panic!("expected annotation detail for {source}");
-        };
-        assert_eq!(detail.encountered().kind(), CssTokenKind::Delim);
-        assert_eq!(detail.encountered().authored(), "!");
-        match detail.context() {
+        let detail = &error;
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidDeclarationAnnotation,
+            "expected annotation detail for {source}"
+        );
+        assert_eq!(detail.encountered().unwrap().kind(), CssTokenKind::Delim);
+        assert_eq!(detail.encountered().unwrap().authored(), "!");
+        match detail.declaration_context().unwrap() {
             CssDeclarationContextRef::KnownProperty(_) if !source.contains("--custom") => {}
             CssDeclarationContextRef::CustomProperty(name) => {
                 assert_eq!(name.as_str(), "--custom");
@@ -131,11 +134,14 @@ fn declaration_importance_keyframes_use_distinct_unimportant_declarations() {
         error.position().byte_offset().value(),
         source.find('!').expect("bang")
     );
-    let ErrorKind::InvalidDeclarationAnnotation(detail) = error.kind() else {
-        panic!("expected annotation detail");
-    };
+    let detail = &error;
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidDeclarationAnnotation,
+        "expected annotation detail"
+    );
     assert!(matches!(
-        detail.context(),
+        detail.declaration_context().unwrap(),
         CssDeclarationContextRef::Keyframe(_)
     ));
 
@@ -149,10 +155,15 @@ fn declaration_importance_keyframes_use_distinct_unimportant_declarations() {
         panic!("invalid custom importance must produce one diagnostic");
     };
     let error = diagnostic.error();
-    let ErrorKind::InvalidDeclarationAnnotation(detail) = error.kind() else {
-        panic!("expected custom keyframe annotation detail");
-    };
-    let CssDeclarationContextRef::KeyframeCustomProperty(name) = detail.context() else {
+    let detail = &error;
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidDeclarationAnnotation,
+        "expected custom keyframe annotation detail"
+    );
+    let CssDeclarationContextRef::KeyframeCustomProperty(name) =
+        detail.declaration_context().unwrap()
+    else {
         panic!("expected custom keyframe context");
     };
     assert_eq!(name.as_str(), "--phase");
@@ -222,13 +233,16 @@ fn declaration_importance_font_face_occurrences_retain_positions_and_reject_anno
             CssErrorCode::InvalidDeclarationAnnotation,
             "{source}"
         );
-        let ErrorKind::InvalidDeclarationAnnotation(detail) = error.kind() else {
-            panic!("expected annotation detail");
-        };
+        let detail = &error;
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidDeclarationAnnotation,
+            "expected annotation detail"
+        );
         let CssDeclarationContextRef::Descriptor {
             at_rule,
             descriptor: actual,
-        } = detail.context()
+        } = detail.declaration_context().unwrap()
         else {
             panic!("expected descriptor context");
         };
@@ -237,7 +251,7 @@ fn declaration_importance_font_face_occurrences_retain_positions_and_reject_anno
             actual.as_str(),
             descriptor.split(':').next().expect("descriptor name")
         );
-        assert_eq!(detail.encountered().authored(), "!");
+        assert_eq!(detail.encountered().unwrap().authored(), "!");
         assert_eq!(
             error.position().byte_offset().value(),
             source.find('!').expect("bang")
@@ -253,13 +267,16 @@ fn declaration_importance_font_face_occurrences_retain_positions_and_reject_anno
         let source = format!("@font-face {{ font-family: Inter; src: url(i); {authored}; }}");
         let error = parse_sheet(&source).expect_err("descriptor annotation must fail");
         assert_eq!(error.code(), CssErrorCode::InvalidDeclarationAnnotation);
-        let ErrorKind::InvalidDeclarationAnnotation(detail) = error.kind() else {
-            panic!("expected descriptor annotation detail");
-        };
+        let detail = &error;
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidDeclarationAnnotation,
+            "expected descriptor annotation detail"
+        );
         let CssDeclarationContextRef::Descriptor {
             at_rule,
             descriptor,
-        } = detail.context()
+        } = detail.declaration_context().unwrap()
         else {
             panic!("expected descriptor context");
         };

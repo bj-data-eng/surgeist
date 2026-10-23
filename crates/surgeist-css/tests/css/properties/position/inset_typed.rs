@@ -52,12 +52,11 @@ fn position_keywords_serialize_canonically_with_exact_limits() {
                 .unwrap(),
             keyword
         );
-        assert_eq!(
+        assert!(
             value
                 .serialize_specified(CssSerializationLimits::new(1, 1, keyword.len() - 1))
                 .unwrap_err()
-                .kind(),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit
+                .is_byte_limit()
         );
     }
 }
@@ -189,23 +188,20 @@ fn aggregate_serialization_limits_include_each_authored_component() {
             .unwrap(),
         "1px auto"
     );
-    assert_eq!(
+    assert!(
         pair.serialize_specified(CssSerializationLimits::new(1, 2, 8))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+            .is_input_node_limit()
     );
-    assert_eq!(
+    assert!(
         pair.serialize_specified(CssSerializationLimits::new(2, 1, 8))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
+            .is_projection_node_limit()
     );
-    assert_eq!(
+    assert!(
         pair.serialize_specified(CssSerializationLimits::new(2, 2, 7))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
     let four =
         CssInsetShorthand::try_new(CssBoxSideKind::Logical, vec![inset("auto"), inset("1px")])
@@ -215,19 +211,17 @@ fn aggregate_serialization_limits_include_each_authored_component() {
             .unwrap(),
         "logical auto 1px"
     );
-    assert_eq!(
+    assert!(
         four.serialize_specified(CssSerializationLimits::new(2, 3, 16))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+            .is_input_node_limit()
     );
     let math = inset("calc(1px + 2%)");
     // `calc(1px + 2%)` has more than one authored input node.
-    assert_eq!(
+    assert!(
         math.serialize_specified(CssSerializationLimits::new(1, 1, 100))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+            .is_input_node_limit()
     );
 }
 

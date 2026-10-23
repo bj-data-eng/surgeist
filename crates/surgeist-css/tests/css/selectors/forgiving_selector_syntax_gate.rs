@@ -7,7 +7,7 @@
 use crate::css::support::color_and_selector_fixtures::assert_strict_validation_rejects;
 use surgeist_css::{
     CssErrorCode, CssNamespaceContext, CssPseudoClass, CssPseudoSelectorListItem,
-    CssRecoveryAction, CssSelector, CssTokenKind, ErrorKind, parse_selector,
+    CssRecoveryAction, CssSelector, CssTokenKind, parse_selector,
 };
 
 fn assert_rejected(source: &str) {
@@ -157,9 +157,12 @@ fn bad_tokens_are_not_forgiven_and_the_responsible_unicode_source_position_is_re
             .find(|diagnostic| diagnostic.action() == CssRecoveryAction::RejectInput)
             .expect("whole selector rejection");
         assert_eq!(diagnostic.error().code(), CssErrorCode::InvalidSelector);
-        let ErrorKind::InvalidSelector(detail) = diagnostic.error().kind() else {
-            panic!("selector diagnostic")
-        };
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidSelector,
+            "selector diagnostic"
+        );
         assert_eq!(detail.encountered().unwrap().kind(), kind);
         let expected_offset = source.find(offending).unwrap();
         assert_eq!(

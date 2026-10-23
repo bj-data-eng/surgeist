@@ -312,14 +312,14 @@ fn speech_substitution_reentry_checks_the_original_grammar_and_retains_replaceme
                 .reenter(parse_component_values(text).unwrap())
                 .unwrap_err();
             assert!(
-                matches!(error.kind(), CssExpansionErrorKind::InvalidReplacement(_)),
+                error.replacement_error().is_some(),
                 "{name}:{text}: {error:?}"
             );
         }
         let error = handle
             .reenter(parse_component_values("var(--again)").unwrap())
             .unwrap_err();
-        assert_eq!(error.kind(), &CssExpansionErrorKind::ResidualSubstitution);
+        assert!(error.is_residual_substitution(), "{error:?}");
         // Failure does not consume the source or prevent a subsequent valid reentry.
         assert!(
             handle
@@ -378,7 +378,7 @@ fn conflicting_speech_keyword_diagnostics_identify_the_authored_token_and_whole_
     .unwrap_err();
     assert_eq!(
         error.origin(),
-        &CssSerializedOrigin::Token(token.origin().clone())
+        CssSerializedOrigin::Token(token.origin().clone())
     );
     let sheet_source = format!(".a{{{source}}}");
     let sheet = parse_sheet(&sheet_source);

@@ -234,21 +234,20 @@ fn expansion_states(property: P, reentry_keyword: &str) {
             globals.items()[0].value(),
             CssContributionValueRef::Global(CssGlobalKeyword::Inherit)
         );
-        assert_eq!(
+        assert!(
             pending
                 .reenter(parse_component_values("var(--again)").unwrap())
                 .unwrap_err()
-                .kind(),
-            &CssExpansionErrorKind::ResidualSubstitution
+                .is_residual_substitution()
         );
         for invalid in ["unknown", "inherit extra", "rtl; color:red"] {
-            assert!(matches!(
+            assert!(
                 pending
                     .reenter(parse_component_values(invalid).unwrap())
                     .unwrap_err()
-                    .kind(),
-                CssExpansionErrorKind::InvalidReplacement(_)
-            ));
+                    .replacement_error()
+                    .is_some()
+            );
         }
     }
 }

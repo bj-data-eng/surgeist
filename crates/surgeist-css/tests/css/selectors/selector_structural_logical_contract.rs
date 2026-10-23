@@ -7,6 +7,8 @@ use crate::css::support::color_and_selector_fixtures::assert_strict_validation_r
 use crate::css::support::color_and_selector_fixtures::{
     assert_empty_list_construction, assert_selector_item_dropped, namespace_context as context,
 };
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::{validated_selector as parsed, validated_selector_in as parsed_in};
 use surgeist_css::*;
 
@@ -115,10 +117,7 @@ fn invalid_graph(selector: CssSelector) {
     let before = selector.clone();
     let result = selector.serialize_specified(Default::default());
     assert!(result.is_err(), "invalid public graph emitted: {result:?}");
-    assert_eq!(
-        result.unwrap_err().kind(),
-        CssSpecifiedValueSerializationErrorKind::UnrepresentableValue
-    );
+    assert!(result.unwrap_err().is_unrepresentable_value());
     assert_eq!(
         selector, before,
         "rejected emission must not mutate its input"
@@ -500,29 +499,38 @@ fn checked_qualified_names_reject_undeclared_prefixes_and_preserve_decoded_names
         "svg|Data"
     );
     let missing = CssNamespacePrefix::try_new("SVG").unwrap();
-    let expected = CssQualifiedNameError::UndeclaredNamespacePrefix(missing.clone());
+    let expected = missing.clone();
     assert_eq!(
         CssQualifiedSelectorName::try_new(
             CssQualifiedNamePrefix::Named(missing.clone()),
             CssIdent::try_new("Leaf").unwrap(),
             &context
-        ),
-        Err(expected.clone())
+        )
+        .unwrap_err()
+        .undeclared_namespace_prefix()
+        .cloned(),
+        Some(expected.clone())
     );
     assert_eq!(
         CssQualifiedSelectorName::try_universal(
             CssQualifiedNamePrefix::Named(missing.clone()),
             &context
-        ),
-        Err(expected.clone())
+        )
+        .unwrap_err()
+        .undeclared_namespace_prefix()
+        .cloned(),
+        Some(expected.clone())
     );
     assert_eq!(
         CssQualifiedAttributeName::try_new(
             CssQualifiedNamePrefix::Named(missing),
             CssAttributeName::try_new("Data").unwrap(),
             &context
-        ),
-        Err(expected)
+        )
+        .unwrap_err()
+        .undeclared_namespace_prefix()
+        .cloned(),
+        Some(expected)
     );
 }
 
@@ -671,11 +679,10 @@ fn checked_complex_and_list_construction_preserve_nonempty_order() {
             .unwrap(),
         "A > B"
     );
-    assert_eq!(
+    assert!(
         CssComplexSelector::try_new(value.first().clone(), Vec::new(), Default::default())
             .unwrap_err()
-            .kind(),
-        &CssSelectorConstructionErrorKind::EmptyComplexRest
+            .is_empty_complex_rest()
     );
     // Selectors 4 §3.6: a pseudo-element belongs only to the last compound.
     let pseudo = parsed("A::before");
@@ -686,8 +693,8 @@ fn checked_complex_and_list_construction_preserve_nonempty_order() {
             Default::default()
         )
         .unwrap_err()
-        .kind(),
-        &CssSelectorConstructionErrorKind::NonTerminalPseudoElement { compound_index: 0 }
+        .non_terminal_pseudo_element(),
+        Some(0)
     );
     let checked = CssSelectorList::try_new(
         vec![
@@ -1268,12 +1275,12 @@ fn public_nth_last_child_graph_cannot_emit_a_pseudo_element_of_member() {
 fn assert_rejects_pseudo_element_list() {
     let error =
         CssPseudoSelectorList::try_new(vec![parsed("::before")], Default::default()).unwrap_err();
-    let CssSelectorConstructionErrorKind::Specified(cause) = error.kind() else {
+    let Some(cause) = error.serialization_error() else {
         panic!("intrinsic pseudo-list cause: {error:?}")
     };
     assert_eq!(
-        cause.kind(),
-        CssSpecifiedValueSerializationErrorKind::UnrepresentableValue
+        serialization_failure(cause),
+        SerializationFailure::UnrepresentableValue
     );
 }
 
@@ -1390,9 +1397,12 @@ fn lexical_bad_token_keeps_original_unicode_byte_and_utf16_coordinates() {
         position.column().value(),
         u32::try_from(source[line..expected].encode_utf16().count()).unwrap()
     );
-    let ErrorKind::InvalidSelector(detail) = diagnostic.error().kind() else {
-        panic!("selector error")
-    };
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidSelector,
+        "selector error"
+    );
     let encountered = detail.encountered().unwrap();
     assert_eq!(encountered.kind(), CssTokenKind::CloseSquareBracket);
     assert_eq!(encountered.authored(), "]");
@@ -1416,19 +1426,19 @@ fn compound_children_share_cumulative_node_and_utf8_byte_limits_atomically() {
     for (limits, kind) in [
         (
             CssSerializationLimits::new(7, 8, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(8, 7, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(8, 8, expected.len() - 1),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            selector.serialize_specified(limits).unwrap_err().kind(),
+            serialization_failure(&selector.serialize_specified(limits).unwrap_err()),
             kind
         );
         assert_eq!(selector, before);
@@ -1444,12 +1454,11 @@ fn compound_children_share_cumulative_node_and_utf8_byte_limits_atomically() {
             .unwrap(),
         ".日本"
     );
-    assert_eq!(
+    assert!(
         selector
             .serialize_specified(CssSerializationLimits::new(1, 1, 6))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
 }
 
@@ -1464,12 +1473,11 @@ fn relative_children_share_one_cumulative_budget() {
             .unwrap(),
         expected
     );
-    assert_eq!(
+    assert!(
         selector
             .serialize_specified(CssSerializationLimits::new(4, 5, expected.len()))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+            .is_input_node_limit()
     );
     assert_eq!(
         selector.serialize_specified(Default::default()).unwrap(),
@@ -1516,12 +1524,15 @@ fn deep_logical_parse_clone_emit_and_limit_recovery_work_on_an_ordinary_stack() 
             assert_eq!(limit.error().position().byte_offset().value(), 1025);
             assert_eq!(limit.span().start().byte_offset().value(), 0);
             assert_eq!(limit.span().end().byte_offset().value(), source.len());
-            let ErrorKind::NestingLimit(detail) = limit.error().kind() else {
-                panic!("typed nesting limit")
-            };
-            assert_eq!(detail.limit(), 256);
+            let detail = limit.error();
             assert_eq!(
-                detail.enclosing_production().as_str(),
+                detail.code(),
+                CssErrorCode::NestingLimit,
+                "typed nesting limit"
+            );
+            assert_eq!(detail.nesting_limit().unwrap(), 256);
+            assert_eq!(
+                detail.production().unwrap().as_str(),
                 "baseline.selector.complex"
             );
             assert_strict_validation_rejects(report);

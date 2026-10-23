@@ -4,6 +4,8 @@
 //! Motion1 WD20241105 §2.1.1; CSSOM WD20210826 §2.1 and the public
 //! immutable provenance/resource/whole-production contracts supply the oracles.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::value_assertions::assert_parsed_span as original;
 use crate::css::support::value_assertions::property_rejection;
 use surgeist_css::*;
@@ -50,7 +52,7 @@ fn atomic_bytes(declaration: &CssDeclaration, expected: &str) {
     let components = declaration.value_components().clone();
     let exact = CssSerializationLimits::new(10_000, 10_000, expected.len());
     assert_eq!(declaration.serialize_specified(exact).unwrap(), expected);
-    assert_eq!(
+    assert!(
         declaration
             .serialize_specified(CssSerializationLimits::new(
                 10_000,
@@ -58,8 +60,7 @@ fn atomic_bytes(declaration: &CssDeclaration, expected: &str) {
                 expected.len() - 1,
             ))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            .is_byte_limit()
     );
     assert_eq!(declaration, &before);
     assert!(declaration.same_occurrence(&before));
@@ -143,18 +144,21 @@ fn twenty_family_repetitions_keep_order_and_use_one_atomic_output_budget() {
         for (limits, kind) in [
             (
                 CssSerializationLimits::new(39, 40, 98),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                SerializationFailure::InputNodeLimit,
             ),
             (
                 CssSerializationLimits::new(40, 39, 98),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
                 CssSerializationLimits::new(40, 40, 97),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                SerializationFailure::ByteLimit,
             ),
         ] {
-            assert_eq!(values.serialize_specified(limits).unwrap_err().kind(), kind);
+            assert_eq!(
+                serialization_failure(&values.serialize_specified(limits).unwrap_err()),
+                kind
+            );
             assert_eq!(
                 values.serialize_specified(Default::default()).unwrap(),
                 TWENTY_CSS
@@ -206,11 +210,14 @@ fn a_resource_denied_tail_discards_the_whole_twenty_member_declaration_locally()
     assert_eq!(diagnostic.error().position().byte_offset().value(), 614);
     assert_eq!(diagnostic.span().start().byte_offset().value(), 10);
     assert_eq!(diagnostic.span().end().byte_offset().value(), 875);
-    let ErrorKind::NestingLimit(detail) = diagnostic.error().kind() else {
-        panic!("the structural owner reports its resource fault");
-    };
-    assert_eq!(detail.limit(), 256);
-    assert_eq!(detail.enclosing_production().as_str(), "css.declaration");
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::NestingLimit,
+        "the structural owner reports its resource fault"
+    );
+    assert_eq!(detail.nesting_limit().unwrap(), 256);
+    assert_eq!(detail.production().unwrap().as_str(), "css.declaration");
 }
 
 #[test]
@@ -336,11 +343,10 @@ fn checked_exact_numeric_origins_survive_whole_declaration_output_failure_and_re
         );
     }
     let negative = CssComponentValue::try_dimension("-1e-999", "px").unwrap();
-    assert_eq!(
+    assert!(
         CssSpecifiedNonNegativeLengthPercentage::try_from_component(negative.clone())
             .unwrap_err()
-            .kind(),
-        &CssNumericConstructionErrorKind::OutOfRange,
+            .is_out_of_range()
     );
     property_rejection(
         parse_property_value(

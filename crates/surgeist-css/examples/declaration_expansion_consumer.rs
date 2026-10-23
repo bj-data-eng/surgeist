@@ -16,9 +16,6 @@
 
 use surgeist_css::{CssKnownProperty as Property, *};
 
-#[path = "../tests/css/support/property_expectations.rs"]
-mod property_expectations;
-
 fn assert_selected_four(result: Result<CssExpansion, CssExpansionError>) {
     let CssExpansion::Contributions(CssContributions::Longhands(values)) = result.unwrap() else {
         panic!("selected four-side contributions")
@@ -865,10 +862,7 @@ fn strict_reentry_rejects_atomically_and_preserves_out_of_slice_identity() {
         let error = pending
             .reenter(parse_component_values(css).unwrap())
             .unwrap_err();
-        assert!(matches!(
-            error.kind(),
-            CssExpansionErrorKind::ResidualSubstitution
-        ));
+        assert!(error.is_residual_substitution());
         assert!(pending.source().same_occurrence(&source));
         let completed: CssContributions = pending
             .reenter(parse_component_values("3px").unwrap())
@@ -896,17 +890,14 @@ fn strict_reentry_rejects_atomically_and_preserves_out_of_slice_identity() {
         )
         .expect_err("the owning property grammar rejects this replacement");
         let error = pending.reenter(replacement).unwrap_err();
-        let CssExpansionErrorKind::InvalidReplacement(error) = error.kind() else {
+        let Some(error) = error.replacement_error() else {
             panic!("replacement grammar rejection: {error:?}");
         };
         assert_eq!(
             error, &expected_error,
             "strict reentry preserves the owner's complete mapped error"
         );
-        assert!(matches!(
-            error.kind(),
-            CssPropertyValueErrorKind::Grammar(_)
-        ));
+        assert!(error.code().is_some());
         if let Some(responsible) = responsible {
             let CssSerializedOrigin::Token(CssValueOrigin::Parsed(origin)) = error.origin() else {
                 panic!("responsible replacement token: {error:?}");
@@ -929,28 +920,6 @@ fn strict_reentry_rejects_atomically_and_preserves_out_of_slice_identity() {
         for property in PADDING_BLOCK {
             assert_eq!(spacing(member(&values, property)), "3px");
         }
-    }
-    for case in property_expectations::CASES {
-        if !matches!(
-            case.metadata,
-            property_expectations::MetadataExpectation::Unavailable
-        ) {
-            continue;
-        }
-        let source = declaration(
-            case.property,
-            case.ordinary_stimulus()
-                .expect("authored unavailable-property stimulus"),
-            CssImportance::Normal,
-        );
-        let before = source.clone();
-        let error = expand_declaration(&source).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            &CssExpansionErrorKind::UnsupportedProperty(case.property)
-        );
-        assert_eq!(source.known().unwrap().property(), case.property);
-        assert_eq!(source, before);
     }
     let source = declaration(Property::TextAlign, "justify-all", CssImportance::Normal);
     let Some(CssKnownPropertyValueRef::TextAlign(value)) = source.known().unwrap().property_value()

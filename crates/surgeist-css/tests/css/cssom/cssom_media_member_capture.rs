@@ -1,9 +1,7 @@
 //! Ordered captures for the selected CSSOM MediaList byte-comparison algorithm.
+use crate::css::support::failure_classes::SerializationFailure as Kind;
 use crate::css::support::value_assertions::media_resource_kind;
-use surgeist_css::{
-    CssSerializationLimits as Limits, CssSerializedOrigin,
-    CssSpecifiedValueSerializationErrorKind as Kind, parse_media_query_list,
-};
+use surgeist_css::{CssSerializationLimits as Limits, CssSerializedOrigin, parse_media_query_list};
 
 #[test]
 fn ordered_captures_keep_duplicates_recovery_and_owned_input_origins() {

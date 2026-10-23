@@ -7,12 +7,11 @@
 
 use crate::css::support::check_property_components as checked;
 use crate::css::support::property_admission::assert_checked_matches_diagnostic;
+use crate::css::support::property_admission::assert_same_grammar_facts;
 use crate::css::support::property_admission::implicit_closure_origin as implicit_origin;
+use crate::css::support::property_admission::property_value_facts;
 use crate::css::support::serialization_limits::LimitLadder;
-use surgeist_css::{
-    CssKnownProperty as P, CssSerializationLimits as L,
-    CssSpecifiedValueSerializationErrorKind as K, *,
-};
+use surgeist_css::{CssKnownProperty as P, CssSerializationLimits as L, *};
 
 const GLOBALS: [(&str, CssGlobalKeyword); 5] = [
     ("inherit", CssGlobalKeyword::Inherit),
@@ -84,12 +83,11 @@ fn canonical(p: P, text: &str, value: &str) {
     for source in fronts(p, text) {
         let before = source.clone();
         for _ in 0..2 {
-            assert_eq!(
+            assert!(
                 source
                     .serialize_specified(L::new(65_536, 262_144, expected.len() - 1))
                     .unwrap_err()
-                    .kind(),
-                K::ByteLimit
+                    .is_byte_limit()
             );
             assert_eq!(source, before);
             assert_eq!(
@@ -132,10 +130,10 @@ fn invalid(p: P, text: &str) {
     let before = values.clone();
     assert_checked_matches_diagnostic(p, text, diagnostic);
     for grammar in [false, true] {
-        assert_eq!(
-            checked(p, values.clone(), grammar).unwrap_err().kind(),
-            &CssPropertyValueErrorKind::Grammar(diagnostic.error().kind().clone()),
-            "{text}"
+        assert_same_grammar_facts(
+            &checked(p, values.clone(), grammar).unwrap_err(),
+            diagnostic.error(),
+            "{text}",
         );
     }
     for report in [
@@ -460,18 +458,17 @@ fn pending_reentry_is_strict_reusable_and_keeps_occurrence_and_replacement() {
                     let direct =
                         checked(P::BackgroundImage, replacement.clone(), false).unwrap_err();
                     let error = handle.reenter(replacement).unwrap_err();
-                    let CssExpansionErrorKind::InvalidReplacement(actual) = error.kind() else {
+                    let Some(actual) = error.replacement_error() else {
                         panic!("strict replacement")
                     };
-                    assert_eq!(actual.kind(), direct.kind());
+                    assert_eq!(property_value_facts(actual), property_value_facts(&direct));
                     assert_eq!(actual.origin(), direct.origin());
                 }
-                assert_eq!(
+                assert!(
                     handle
                         .reenter(parse_component_values("filter(var(--again),blur())").unwrap())
                         .unwrap_err()
-                        .kind(),
-                    &CssExpansionErrorKind::ResidualSubstitution
+                        .is_residual_substitution()
                 );
                 for good in ["/*😀*/filter('a',blur())", "inherit"] {
                     let replacement = parse_component_values(good).unwrap();
@@ -514,13 +511,10 @@ fn checked_original_image_and_pending_closures_are_not_repaired() {
         let origin = implicit_origin(&values);
         for grammar in [false, true] {
             let error = checked(P::BackgroundImage, values.clone(), grammar).unwrap_err();
-            assert!(matches!(
-                error.kind(),
-                CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
-            ));
+            assert!(error.code() == Some(CssErrorCode::UnexpectedEnd));
             assert_eq!(
                 error.origin(),
-                &CssSerializedOrigin::End(Some(origin.clone()))
+                CssSerializedOrigin::End(Some(origin.clone()))
             );
         }
         assert_eq!(values, before);
@@ -536,20 +530,16 @@ fn replacement_original_closure_is_checked_after_residual_substitution() {
     let values = parse_component_values("filter('a',blur()").unwrap();
     let origin = implicit_origin(&values);
     let error = handle.reenter(values).unwrap_err();
-    let CssExpansionErrorKind::InvalidReplacement(actual) = error.kind() else {
+    let Some(actual) = error.replacement_error() else {
         panic!("original closure")
     };
-    assert_eq!(actual.origin(), &CssSerializedOrigin::End(Some(origin)));
-    assert!(matches!(
-        actual.kind(),
-        CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
-    ));
-    assert_eq!(
+    assert_eq!(actual.origin(), CssSerializedOrigin::End(Some(origin)));
+    assert!(actual.code() == Some(CssErrorCode::UnexpectedEnd));
+    assert!(
         handle
             .reenter(parse_component_values("filter(var(--again),blur()").unwrap())
             .unwrap_err()
-            .kind(),
-        &CssExpansionErrorKind::ResidualSubstitution
+            .is_residual_substitution()
     );
     assert!(
         handle
@@ -615,10 +605,7 @@ fn normalization_keeps_duplicate_order_context_importance_and_pending_values() {
         ),
     ] {
         let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            &CssNormalizationErrorKind::LimitExceeded { resource, limit: 3 }
-        );
+        assert_eq!(error.exhausted_limit(), Some((resource, 3)));
         assert_eq!(error.declaration_order(), Some(3));
         assert!(
             error
@@ -729,9 +716,10 @@ fn nested_filter_parser_boundary_counts_actual_retained_function_depth() {
     );
     assert!(!report.is_clean());
     assert!(report.syntax().is_none());
-    assert_eq!(
-        parse_component_values(&invalid).unwrap_err().kind(),
-        CssComponentValueErrorKind::NestingLimit
+    assert!(
+        parse_component_values(&invalid)
+            .unwrap_err()
+            .is_nesting_limit()
     );
 }
 

@@ -6,7 +6,7 @@ use common::CssParseReportTestExt;
 use surgeist_css::{
     CssByteOffset, CssErrorCode, CssKnownProperty, CssLineIndex, CssMediaConditionKind,
     CssMediaQuery, CssMediaType, CssRecoveryAction, CssRule, CssSourcePosition, CssSourceSpan,
-    CssSupportsConditionKind, CssTokenKind, CssUtf16ColumnIndex, ErrorKind, parse_sheet,
+    CssSupportsConditionKind, CssTokenKind, CssUtf16ColumnIndex, parse_sheet,
     parse_style_attribute,
 };
 
@@ -167,10 +167,13 @@ fn font_error_after_non_bmp_text_has_exact_utf16_coordinates_and_span() {
     assert_position(diagnostic.error().position(), 17, 0, 15);
     assert_position(diagnostic.span().start(), 11, 0, 9);
     assert_position(diagnostic.span().end(), 28, 0, 26);
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("expected font property error");
-    };
-    assert_eq!(detail.property(), CssKnownProperty::Font);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "expected font property error"
+    );
+    assert_eq!(detail.known_property().unwrap(), CssKnownProperty::Font);
     assert_eq!(detail.encountered().unwrap().kind(), CssTokenKind::Ident);
     assert_eq!(detail.encountered().unwrap().authored(), "menu");
 
@@ -223,10 +226,16 @@ fn opentype_tag_error_has_exact_utf16_coordinates_and_full_declaration_span() {
         u32::try_from(source[..declaration_end].encode_utf16().count())
             .expect("UTF-16 declaration end"),
     );
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("expected font feature property error");
-    };
-    assert_eq!(detail.property(), CssKnownProperty::FontFeatureSettings);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "expected font feature property error"
+    );
+    assert_eq!(
+        detail.known_property().unwrap(),
+        CssKnownProperty::FontFeatureSettings
+    );
     let encountered = detail.encountered().expect("responsible tag token");
     assert_eq!(encountered.kind(), CssTokenKind::String);
     assert_eq!(encountered.authored(), "\"😀abc\"");
@@ -318,10 +327,16 @@ fn size_adjust_error_after_non_bmp_text_has_exact_utf16_coordinates_and_span() {
         0,
         u32::try_from(source[..declaration_end].encode_utf16().count()).unwrap(),
     );
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("expected font-size-adjust property error");
-    };
-    assert_eq!(detail.property(), CssKnownProperty::FontSizeAdjust);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "expected font-size-adjust property error"
+    );
+    assert_eq!(
+        detail.known_property().unwrap(),
+        CssKnownProperty::FontSizeAdjust
+    );
     let encountered = detail.encountered().expect("responsible negative number");
     assert_eq!(encountered.kind(), CssTokenKind::Number);
     assert_eq!(encountered.authored(), "-1");
@@ -371,10 +386,16 @@ fn font_variant_conflict_after_non_bmp_text_has_exact_utf16_coordinates_and_span
         0,
         u32::try_from(source[..declaration_end].encode_utf16().count()).unwrap(),
     );
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("expected font-variant property error");
-    };
-    assert_eq!(detail.property(), CssKnownProperty::FontVariant);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "expected font-variant property error"
+    );
+    assert_eq!(
+        detail.known_property().unwrap(),
+        CssKnownProperty::FontVariant
+    );
     let encountered = detail
         .encountered()
         .expect("responsible conflicting keyword");
@@ -432,10 +453,13 @@ fn font_source_error_after_non_bmp_text_has_exact_utf16_coordinates_and_span() {
         0,
         u32::try_from(source[..descriptor_end].encode_utf16().count()).unwrap(),
     );
-    let ErrorKind::InvalidDescriptorValue(detail) = diagnostic.error().kind() else {
-        panic!("expected font source descriptor error");
-    };
-    assert_eq!(detail.descriptor().as_str(), "src");
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidDescriptorValue,
+        "expected font source descriptor error"
+    );
+    assert_eq!(detail.descriptor().unwrap().as_str(), "src");
     assert_eq!(detail.encountered().unwrap().authored(), "woff3");
 
     {
@@ -461,10 +485,16 @@ fn timing_type_error_after_non_bmp_text_has_exact_utf16_coordinates_and_span() {
     assert_position(diagnostic.error().position(), 32, 0, 30);
     assert_position(diagnostic.span().start(), 11, 0, 9);
     assert_position(diagnostic.span().end(), 48, 0, 46);
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("expected structured timing property error");
-    };
-    assert_eq!(detail.property(), CssKnownProperty::TransitionDuration);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "expected structured timing property error"
+    );
+    assert_eq!(
+        detail.known_property().unwrap(),
+        CssKnownProperty::TransitionDuration
+    );
     let encountered = detail.encountered().expect("responsible calculation root");
     assert_eq!(encountered.kind(), CssTokenKind::Function);
     assert_eq!(encountered.authored(), "calc(");
@@ -492,10 +522,13 @@ fn opacity_domain_error_after_non_bmp_text_has_exact_coordinates_and_span() {
     assert_position(diagnostic.error().position(), 20, 0, 18);
     assert_position(diagnostic.span().start(), 11, 0, 9);
     assert_position(diagnostic.span().end(), 24, 0, 22);
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("expected structured opacity property error");
-    };
-    assert_eq!(detail.property(), CssKnownProperty::Opacity);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "expected structured opacity property error"
+    );
+    assert_eq!(detail.known_property().unwrap(), CssKnownProperty::Opacity);
     let encountered = detail.encountered().expect("responsible dimension token");
     assert_eq!(encountered.kind(), CssTokenKind::Dimension);
     assert_eq!(encountered.authored(), "1px");
@@ -541,10 +574,16 @@ fn grid_repeat_error_after_non_bmp_text_has_exact_coordinates_and_span() {
         0,
         u32::try_from(source[..declaration_end].encode_utf16().count()).unwrap(),
     );
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("expected Grid property error");
-    };
-    assert_eq!(detail.property(), CssKnownProperty::GridTemplateColumns);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "expected Grid property error"
+    );
+    assert_eq!(
+        detail.known_property().unwrap(),
+        CssKnownProperty::GridTemplateColumns
+    );
     assert_eq!(
         detail.encountered().unwrap().kind(),
         CssTokenKind::Dimension
@@ -594,11 +633,14 @@ fn color_component_error_after_non_bmp_text_has_exact_coordinates_and_span() {
         0,
         u32::try_from(declaration_end - 2).expect("UTF-16 column"),
     );
-    let ErrorKind::InvalidColorSyntax(detail) = diagnostic.error().kind() else {
-        panic!("expected structured color error");
-    };
+    let detail = diagnostic.error();
     assert_eq!(
-        detail.component().map(|value| value.as_str()),
+        detail.code(),
+        CssErrorCode::InvalidColorSyntax,
+        "expected structured color error"
+    );
+    assert_eq!(
+        detail.color_component().map(|value| value.as_str()),
         Some("component")
     );
     assert_eq!(
@@ -649,11 +691,14 @@ fn perceptual_color_error_after_non_bmp_text_has_exact_coordinates_and_span() {
         0,
         u32::try_from(source[..declaration_end].encode_utf16().count()).expect("UTF-16 column"),
     );
-    let ErrorKind::InvalidColorSyntax(detail) = diagnostic.error().kind() else {
-        panic!("expected structured color error");
-    };
+    let detail = diagnostic.error();
     assert_eq!(
-        detail.component().map(|value| value.as_str()),
+        detail.code(),
+        CssErrorCode::InvalidColorSyntax,
+        "expected structured color error"
+    );
+    assert_eq!(
+        detail.color_component().map(|value| value.as_str()),
         Some("component")
     );
     let encountered = detail.encountered().expect("responsible Lab component");
@@ -702,11 +747,14 @@ fn relative_color_error_after_non_bmp_text_has_exact_coordinates_span_and_strict
         0,
         u32::try_from(source[..declaration_end].encode_utf16().count()).expect("UTF-16 column"),
     );
-    let ErrorKind::InvalidColorSyntax(detail) = diagnostic.error().kind() else {
-        panic!("expected structured relative-color detail");
-    };
+    let detail = diagnostic.error();
     assert_eq!(
-        detail.component().map(|component| component.as_str()),
+        detail.code(),
+        CssErrorCode::InvalidColorSyntax,
+        "expected structured relative-color detail"
+    );
+    assert_eq!(
+        detail.color_component().map(|component| component.as_str()),
         Some("relative channel")
     );
     let encountered = detail.encountered().expect("responsible foreign channel");
@@ -755,11 +803,14 @@ fn color_mix_error_after_non_bmp_text_has_exact_coordinates_span_and_strict_pari
         0,
         u32::try_from(source[..declaration_end].encode_utf16().count()).expect("UTF-16 column"),
     );
-    let ErrorKind::InvalidColorSyntax(detail) = diagnostic.error().kind() else {
-        panic!("expected structured color-mix detail");
-    };
+    let detail = diagnostic.error();
     assert_eq!(
-        detail.component().map(|component| component.as_str()),
+        detail.code(),
+        CssErrorCode::InvalidColorSyntax,
+        "expected structured color-mix detail"
+    );
+    assert_eq!(
+        detail.color_component().map(|component| component.as_str()),
         Some("hue interpolation"),
     );
     let encountered = detail.encountered().expect("responsible hue method");
@@ -797,11 +848,14 @@ fn legacy_rgb_mixed_domain_reports_the_later_component_and_retains_its_sibling()
         0,
         u32::try_from(source[..responsible].encode_utf16().count()).expect("UTF-16 column"),
     );
-    let ErrorKind::InvalidColorSyntax(detail) = diagnostic.error().kind() else {
-        panic!("expected structured color error");
-    };
+    let detail = diagnostic.error();
     assert_eq!(
-        detail.component().map(|value| value.as_str()),
+        detail.code(),
+        CssErrorCode::InvalidColorSyntax,
+        "expected structured color error"
+    );
+    assert_eq!(
+        detail.color_component().map(|value| value.as_str()),
         Some("component")
     );
     let encountered = detail.encountered().expect("responsible percentage token");
@@ -856,11 +910,14 @@ fn easing_count_error_after_non_bmp_text_has_exact_utf16_coordinates_and_span() 
         0,
         u32::try_from(declaration_end - 2).expect("UTF-16 column"),
     );
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("expected structured easing property error");
-    };
+    let detail = diagnostic.error();
     assert_eq!(
-        detail.property(),
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "expected structured easing property error"
+    );
+    assert_eq!(
+        detail.known_property().unwrap(),
         CssKnownProperty::TransitionTimingFunction
     );
     let encountered = detail.encountered().expect("responsible step position");
@@ -890,10 +947,16 @@ fn generic_position_error_after_non_bmp_text_has_exact_utf16_coordinates_and_spa
     assert_position(diagnostic.error().position(), 30, 0, 28);
     assert_position(diagnostic.span().start(), 11, 0, 9);
     assert_position(diagnostic.span().end(), 35, 0, 33);
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("expected structured position property error");
-    };
-    assert_eq!(detail.property(), CssKnownProperty::MaskPosition);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "expected structured position property error"
+    );
+    assert_eq!(
+        detail.known_property().unwrap(),
+        CssKnownProperty::MaskPosition
+    );
     let encountered = detail
         .encountered()
         .expect("responsible horizontal keyword");
@@ -945,10 +1008,16 @@ fn object_position_error_after_non_bmp_text_has_exact_utf16_coordinates_and_span
         0,
         u32::try_from(declaration_end - 2).expect("UTF-16 column"),
     );
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("expected structured object-position property error");
-    };
-    assert_eq!(detail.property(), CssKnownProperty::ObjectPosition);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "expected structured object-position property error"
+    );
+    assert_eq!(
+        detail.known_property().unwrap(),
+        CssKnownProperty::ObjectPosition
+    );
     let encountered = detail.encountered().expect("responsible third component");
     assert_eq!(encountered.kind(), CssTokenKind::Dimension);
     assert_eq!(encountered.authored(), "10px");
@@ -998,10 +1067,16 @@ fn transform_domain_error_after_non_bmp_text_has_exact_utf16_coordinates_and_spa
         0,
         u32::try_from(declaration_end - 2).expect("UTF-16 column"),
     );
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("expected structured transform property error");
-    };
-    assert_eq!(detail.property(), CssKnownProperty::Transform);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "expected structured transform property error"
+    );
+    assert_eq!(
+        detail.known_property().unwrap(),
+        CssKnownProperty::Transform
+    );
     let encountered = detail.encountered().expect("responsible z percentage");
     assert_eq!(encountered.kind(), CssTokenKind::Percentage);
     assert_eq!(encountered.authored(), "3%");
@@ -1051,10 +1126,13 @@ fn filter_domain_error_after_non_bmp_text_has_exact_utf16_coordinates_and_span()
         0,
         u32::try_from(declaration_end - 2).expect("UTF-16 column"),
     );
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("expected structured filter property error");
-    };
-    assert_eq!(detail.property(), CssKnownProperty::Filter);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "expected structured filter property error"
+    );
+    assert_eq!(detail.known_property().unwrap(), CssKnownProperty::Filter);
     let encountered = detail.encountered().expect("responsible filter number");
     assert_eq!(encountered.kind(), CssTokenKind::Number);
     assert_eq!(encountered.authored(), "-1");
@@ -1100,10 +1178,13 @@ fn basic_shape_error_after_non_bmp_text_has_exact_utf16_coordinates_and_span() {
         0,
         u32::try_from(declaration_end - 2).unwrap(),
     );
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("expected structured clip-path property error");
-    };
-    assert_eq!(detail.property(), CssKnownProperty::ClipPath);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "expected structured clip-path property error"
+    );
+    assert_eq!(detail.known_property().unwrap(), CssKnownProperty::ClipPath);
     let encountered = detail.encountered().expect("responsible polygon radius");
     assert_eq!(encountered.kind(), CssTokenKind::Percentage);
     assert_eq!(encountered.authored(), "10%");

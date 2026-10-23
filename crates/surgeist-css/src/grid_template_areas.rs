@@ -6,8 +6,11 @@ use crate::CssSerializationError;
 
 /// A semantic failure in a decoded template-area name or row matrix.
 #[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssGridTemplateAreaError {
+pub struct CssGridTemplateAreaError {
+    kind: GridTemplateAreaKind,
+}
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum GridTemplateAreaKind {
     InvalidName,
     TrashCharacter(char),
     MissingRows,
@@ -15,6 +18,62 @@ pub enum CssGridTemplateAreaError {
     InconsistentWidths,
     NonRectangular(String),
 }
+impl From<GridTemplateAreaKind> for CssGridTemplateAreaError {
+    fn from(kind: GridTemplateAreaKind) -> Self {
+        Self { kind }
+    }
+}
+impl CssGridTemplateAreaError {
+    crate::error::kind_predicates! { kind;
+        /// Returns whether an area name contains a code point outside CSS ident code points.
+        is_invalid_name => GridTemplateAreaKind::InvalidName,
+        /// Returns whether the template has no rows.
+        is_missing_rows => GridTemplateAreaKind::MissingRows,
+        /// Returns whether a row has no cells.
+        is_empty_row => GridTemplateAreaKind::EmptyRow,
+        /// Returns whether the rows have different numbers of columns.
+        is_inconsistent_widths => GridTemplateAreaKind::InconsistentWidths,
+    }
+    /// Returns the code point that is neither a name, a null cell nor whitespace.
+    #[must_use]
+    pub const fn trash_character(&self) -> Option<char> {
+        match self.kind {
+            GridTemplateAreaKind::TrashCharacter(character) => Some(character),
+            _ => None,
+        }
+    }
+    /// Returns the name of an area whose cells do not form one rectangle.
+    #[must_use]
+    pub fn non_rectangular_area(&self) -> Option<&str> {
+        match &self.kind {
+            GridTemplateAreaKind::NonRectangular(name) => Some(name),
+            _ => None,
+        }
+    }
+}
+impl std::fmt::Display for CssGridTemplateAreaError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.kind {
+            GridTemplateAreaKind::InvalidName => {
+                f.write_str("grid area name contains a non-ident code point")
+            }
+            GridTemplateAreaKind::TrashCharacter(character) => write!(
+                f,
+                "grid template areas contain the invalid code point U+{:04X}",
+                u32::from(*character)
+            ),
+            GridTemplateAreaKind::MissingRows => f.write_str("grid template areas have no rows"),
+            GridTemplateAreaKind::EmptyRow => f.write_str("a grid template area row is empty"),
+            GridTemplateAreaKind::InconsistentWidths => {
+                f.write_str("grid template area rows have different numbers of columns")
+            }
+            GridTemplateAreaKind::NonRectangular(name) => {
+                write!(f, "grid area `{name}` is not rectangular")
+            }
+        }
+    }
+}
+impl std::error::Error for CssGridTemplateAreaError {}
 
 fn is_ident_code_point(character: char) -> bool {
     character.is_ascii_alphanumeric()
@@ -39,7 +98,9 @@ impl CssGridTemplateAreaName {
     pub fn try_new(value: impl Into<String>) -> Result<Self, CssGridTemplateAreaError> {
         let value = value.into();
         if value.is_empty() || !value.chars().all(is_ident_code_point) {
-            return Err(CssGridTemplateAreaError::InvalidName);
+            return Err(CssGridTemplateAreaError::from(
+                GridTemplateAreaKind::InvalidName,
+            ));
         }
         Ok(Self { value })
     }
@@ -67,7 +128,9 @@ pub struct CssGridTemplateAreaRow {
 impl CssGridTemplateAreaRow {
     pub fn try_new(cells: Vec<CssGridTemplateAreaCell>) -> Result<Self, CssGridTemplateAreaError> {
         if cells.is_empty() {
-            Err(CssGridTemplateAreaError::EmptyRow)
+            Err(CssGridTemplateAreaError::from(
+                GridTemplateAreaKind::EmptyRow,
+            ))
         } else {
             Ok(Self { cells })
         }
@@ -193,7 +256,9 @@ pub(crate) fn parse_decoded_row(
                 CssGridTemplateAreaName::try_new(name)?,
             ));
         } else {
-            return Err(CssGridTemplateAreaError::TrashCharacter(next));
+            return Err(CssGridTemplateAreaError::from(
+                GridTemplateAreaKind::TrashCharacter(next),
+            ));
         }
     }
     CssGridTemplateAreaRow::try_new(cells)
@@ -215,14 +280,20 @@ pub(crate) fn validate_area_matrix<R, C>(
     name: impl Fn(&C) -> Option<&str>,
 ) -> Result<(), CssGridTemplateAreaError> {
     let Some(first) = rows.first() else {
-        return Err(CssGridTemplateAreaError::MissingRows);
+        return Err(CssGridTemplateAreaError::from(
+            GridTemplateAreaKind::MissingRows,
+        ));
     };
     let width = cells(first).len();
     if width == 0 {
-        return Err(CssGridTemplateAreaError::EmptyRow);
+        return Err(CssGridTemplateAreaError::from(
+            GridTemplateAreaKind::EmptyRow,
+        ));
     }
     if rows.iter().any(|row| cells(row).len() != width) {
-        return Err(CssGridTemplateAreaError::InconsistentWidths);
+        return Err(CssGridTemplateAreaError::from(
+            GridTemplateAreaKind::InconsistentWidths,
+        ));
     }
     let mut bounds = BTreeMap::<String, AreaBounds>::new();
     for (row_index, row) in rows.iter().enumerate() {
@@ -251,7 +322,9 @@ pub(crate) fn validate_area_matrix<R, C>(
             .checked_mul(bounds.max_column - bounds.min_column + 1)
             != Some(bounds.count)
         {
-            return Err(CssGridTemplateAreaError::NonRectangular(name));
+            return Err(CssGridTemplateAreaError::from(
+                GridTemplateAreaKind::NonRectangular(name),
+            ));
         }
     }
     Ok(())

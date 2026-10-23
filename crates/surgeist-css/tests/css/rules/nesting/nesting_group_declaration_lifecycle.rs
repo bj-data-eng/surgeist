@@ -708,20 +708,14 @@ fn checked_reuse_requires_actual_style_ancestry_and_run_output_coalesces_only_on
     let context = CssNamespaceContext::default();
     let detached =
         CssMediaRule::try_new(media.query().clone(), media.rules().to_vec(), &context).unwrap_err();
-    assert_eq!(
-        detached.kind(),
-        CssRuleConstructionErrorKind::InvalidPlacement
-    );
+    assert!(detached.is_invalid_placement(), "{detached:?}");
     assert_eq!(detached.path(), &[0]);
     assert_eq!(
         detached.position().unwrap().byte_offset().value(),
         source.find("width:1px").unwrap()
     );
     let detached_sheet = CssSheet::try_from_rules(vec![CssRule::Media(media.clone())]).unwrap_err();
-    assert_eq!(
-        detached_sheet.kind(),
-        CssRuleConstructionErrorKind::InvalidPlacement
-    );
+    assert!(detached_sheet.is_invalid_placement(), "{detached_sheet:?}");
     assert_eq!(detached_sheet.path(), &[0, 0]);
     let wrapper = CssMediaRule::try_new(
         media.query().clone(),
@@ -776,9 +770,9 @@ fn checked_reuse_requires_actual_style_ancestry_and_run_output_coalesces_only_on
         expected
     );
     let detached_fragment = CssSheet::try_from_rules(vec![CssRule::When(fragment)]).unwrap_err();
-    assert_eq!(
-        detached_fragment.kind(),
-        CssRuleConstructionErrorKind::InvalidPlacement
+    assert!(
+        detached_fragment.is_invalid_placement(),
+        "{detached_fragment:?}"
     );
     assert_eq!(detached_fragment.path(), &[0, 0]);
     let emitted = format!(".P,.P::before{{{expected}}}");

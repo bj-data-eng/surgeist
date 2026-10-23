@@ -1,6 +1,8 @@
 //! Consumer oracles for exact unbraced CSSOM replacement inputs (#1084).
 //! These are new public boundaries; no preimplementation RED is claimed.
 use crate::css::support::authored_syntax::{assert_diagnostics, offset_of};
+use crate::css::support::failure_classes::ComponentFailure;
+use crate::css::support::failure_classes::component_failure;
 use surgeist_css::*;
 
 fn page_names(block: &CssPageDeclarationBlock) -> Vec<&str> {
@@ -21,10 +23,12 @@ fn page_names(block: &CssPageDeclarationBlock) -> Vec<&str> {
 fn face_kinds(block: &CssFontFaceDescriptors) -> Vec<CssFontFaceDescriptorKind> {
     block.occurrences().map(|d| d.value().kind()).collect()
 }
-fn resource(diagnostics: &[CssRecoveryDiagnostic], kind: CssComponentValueErrorKind) {
+fn resource(diagnostics: &[CssRecoveryDiagnostic], kind: ComponentFailure) {
     assert!(
-        diagnostics.iter().any(|d| matches!(d.error().kind(),
-        ErrorKind::InvalidComponentValue(error) if error.kind() == kind)),
+        diagnostics.iter().any(|d| d
+            .error()
+            .component_error()
+            .is_some_and(|error| component_failure(error) == kind)),
         "{diagnostics:?}"
     );
 }
@@ -317,22 +321,22 @@ fn empty_recovered_contents_are_successful_and_resource_failures_are_not_clearin
     for (source, kind, limits) in [
         (
             "size:A4; margin:2px",
-            CssComponentValueErrorKind::ByteLimit,
+            ComponentFailure::ByteLimit,
             CssComponentValueLimits::try_new(32, 100, 8).unwrap(),
         ),
         (
             "size:A4; margin:2px",
-            CssComponentValueErrorKind::ComponentLimit,
+            ComponentFailure::ComponentLimit,
             CssComponentValueLimits::try_new(32, 7, 100).unwrap(),
         ),
         (
             "size:A4; --x:f(g(1))",
-            CssComponentValueErrorKind::NestingLimit,
+            ComponentFailure::NestingLimit,
             CssComponentValueLimits::try_new(1, 100, 100).unwrap(),
         ),
         (
             "size:A4} /*charged trailing source*/",
-            CssComponentValueErrorKind::ByteLimit,
+            ComponentFailure::ByteLimit,
             CssComponentValueLimits::try_new(32, 100, 8).unwrap(),
         ),
     ] {
@@ -346,22 +350,22 @@ fn empty_recovered_contents_are_successful_and_resource_failures_are_not_clearin
     for (source, kind, limits) in [
         (
             "font-display:swap; src:local(A)",
-            CssComponentValueErrorKind::ByteLimit,
+            ComponentFailure::ByteLimit,
             CssComponentValueLimits::try_new(32, 100, 17).unwrap(),
         ),
         (
             "font-display:swap; src:local(A)",
-            CssComponentValueErrorKind::ComponentLimit,
+            ComponentFailure::ComponentLimit,
             CssComponentValueLimits::try_new(32, 8, 100).unwrap(),
         ),
         (
             "font-display:swap; src:env(x, f(g(1)))",
-            CssComponentValueErrorKind::NestingLimit,
+            ComponentFailure::NestingLimit,
             CssComponentValueLimits::try_new(1, 100, 100).unwrap(),
         ),
         (
             "font-display:swap} /*charged trailing source*/",
-            CssComponentValueErrorKind::ByteLimit,
+            ComponentFailure::ByteLimit,
             CssComponentValueLimits::try_new(32, 100, 17).unwrap(),
         ),
     ] {
@@ -390,10 +394,7 @@ fn exact_component_allowances_admit_the_full_block_and_one_less_rejects_atomical
         CssComponentValueLimits::try_new(0, 7, source.len()).unwrap(),
     );
     assert!(failed.syntax().is_none());
-    resource(
-        failed.diagnostics(),
-        CssComponentValueErrorKind::ComponentLimit,
-    );
+    resource(failed.diagnostics(), ComponentFailure::ComponentLimit);
 
     let source = "font-display:swap; src:local(A)";
     // The second descriptor's function and its child both consume allowance.
@@ -412,10 +413,7 @@ fn exact_component_allowances_admit_the_full_block_and_one_less_rejects_atomical
         CssComponentValueLimits::try_new(1, 8, source.len()).unwrap(),
     );
     assert!(failed.syntax().is_none());
-    resource(
-        failed.diagnostics(),
-        CssComponentValueErrorKind::ComponentLimit,
-    );
+    resource(failed.diagnostics(), ComponentFailure::ComponentLimit);
 }
 
 #[test]

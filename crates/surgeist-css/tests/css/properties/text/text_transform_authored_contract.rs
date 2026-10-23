@@ -7,6 +7,7 @@
 use crate::css::support::authored_property;
 use authored_property::{ParserFront, assert_source, checked, checked_components, invalid, parsed};
 
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::named_property::sole_completed_contributions as completed;
 use crate::css::support::serialization_limits::LimitLadder;
 use surgeist_css::CssKnownProperty as P;
@@ -318,10 +319,7 @@ fn normalization_counts_terminals_and_occurrences_cumulatively_preserving_order_
     ] {
         for _ in 0..2 {
             let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
-            assert_eq!(
-                error.kind(),
-                &CssNormalizationErrorKind::LimitExceeded { resource, limit: 4 }
-            );
+            assert_eq!(error.exhausted_limit(), Some((resource, 4)));
             assert_eq!(error.declaration_order(), Some(4));
             assert!(
                 error
@@ -340,8 +338,8 @@ fn assert_primitive_limits(value: &CssTextTransform, expected: &str, nodes: usiz
 }
 #[test]
 fn primitive_and_declaration_resources_charge_only_emitted_keywords_and_retry_atomically() {
+    use crate::css::support::failure_classes::SerializationFailure as Kind;
     use CssSerializationLimits as Limits;
-    use CssSpecifiedValueSerializationErrorKind as Kind;
     for text in STATES {
         let source = checked(PROPERTY, text, true);
         // This is the adopted semantic tariff: one per keyword. Counting the
@@ -367,7 +365,10 @@ fn primitive_and_declaration_resources_charge_only_emitted_keywords_and_retry_at
             ),
         ] {
             for _ in 0..2 {
-                assert_eq!(source.serialize_specified(limits).unwrap_err().kind(), kind);
+                assert_eq!(
+                    serialization_failure(&source.serialize_specified(limits).unwrap_err()),
+                    kind
+                );
                 assert_eq!(source, before);
             }
         }
@@ -387,7 +388,10 @@ fn primitive_and_declaration_resources_charge_only_emitted_keywords_and_retry_at
             (Limits::new(3, 2, expected.len()), Kind::ProjectionNodeLimit),
             (Limits::new(3, 3, expected.len() - 1), Kind::ByteLimit),
         ] {
-            assert_eq!(source.serialize_specified(limits).unwrap_err().kind(), kind);
+            assert_eq!(
+                serialization_failure(&source.serialize_specified(limits).unwrap_err()),
+                kind
+            );
         }
         assert_eq!(
             source
@@ -418,10 +422,7 @@ fn whole_sheet_siblings_share_exact_utf8_bytes_and_failed_attempts_leave_reusabl
     );
     for _ in 0..2 {
         let error = sheet.serialize_specified(short).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit
-        );
+        assert!(error.is_byte_limit(), "{error:?}");
         assert_eq!(error.rule_index(), Some(1));
         assert_eq!(sheet, &before);
     }

@@ -182,21 +182,20 @@ fn pending_box_shadow_reentry_is_strict_and_reusable() {
         panic!("pending box-shadow")
     };
     for invalid in ["", "1px red 2px", "1px 2px -3px", "none,1px 2px"] {
-        assert!(matches!(
+        assert!(
             pending
                 .reenter(parse_component_values(invalid).unwrap())
                 .unwrap_err()
-                .kind(),
-            CssExpansionErrorKind::InvalidReplacement(_)
-        ));
+                .replacement_error()
+                .is_some()
+        );
     }
     for residual in ["var(--again)", "env(shadow)", "attr(shadow)"] {
-        assert_eq!(
+        assert!(
             pending
                 .reenter(parse_component_values(residual).unwrap())
                 .unwrap_err()
-                .kind(),
-            &CssExpansionErrorKind::ResidualSubstitution
+                .is_residual_substitution()
         );
     }
     for text in ["none", "red 1px 2px", "initial"] {

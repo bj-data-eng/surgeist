@@ -150,7 +150,7 @@ fn assert_admitted_url(url: &CssUrl, function: &str, modifier: &str) {
 fn checked_property(
     property: CssKnownProperty,
     input: CssComponentValues,
-) -> Result<CssDeclaration, CssPropertyValueParseError> {
+) -> Result<CssDeclaration, CssPropertyValueError> {
     parse_property_value(
         CssPropertyNameRef::Known(property),
         input,
@@ -251,11 +251,8 @@ fn detached_property_rejections_retain_the_contextual_modifier_origin() {
             let (source, input) = detached(&url);
             let error =
                 checked_property(CssKnownProperty::BackgroundImage, input.clone()).unwrap_err();
-            assert!(matches!(
-                error.kind(),
-                CssPropertyValueErrorKind::Grammar(_)
-            ));
-            serialized_argument(error.origin(), &input, &source, opening);
+            assert!(error.code().is_some());
+            serialized_argument(&error.origin(), &input, &source, opening);
         }
     }
 }
@@ -271,10 +268,7 @@ fn detached_profile_rejections_return_typed_errors_with_original_argument_origin
                 Default::default(),
             )
             .unwrap_err();
-            assert!(matches!(
-                error.kind(),
-                CssColorProfileValueErrorKind::Grammar(_)
-            ));
+            assert!(error.diagnostic().is_some());
             serialized_argument(error.origin(), &input, &source, argument);
         }
     }
@@ -291,10 +285,7 @@ fn detached_font_rejections_retain_the_contextual_modifier_origin() {
                 Default::default(),
             )
             .unwrap_err();
-            assert!(matches!(
-                error.kind(),
-                CssFontFaceValueErrorKind::Grammar(_)
-            ));
+            assert!(error.diagnostic().is_some());
             serialized_argument(error.origin(), &input, &source, opening);
         }
     }
@@ -311,11 +302,13 @@ fn detached_import_rejections_retain_the_target_grammar_origin() {
                 Default::default(),
             )
             .unwrap_err();
-            assert!(matches!(
-                &error,
-                CssImportConstructionError::InvalidRuleGrammar { .. }
-            ));
-            original_argument(error.origin(), &input, &source, &format!("{function}("));
+            assert!(&error.is_invalid_rule_grammar());
+            original_argument(
+                error.origin().unwrap(),
+                &input,
+                &source,
+                &format!("{function}("),
+            );
         }
     }
 }
@@ -333,10 +326,7 @@ fn detached_counter_rejections_return_typed_errors_with_original_argument_origin
                     Default::default(),
                 )
                 .unwrap_err();
-                assert!(matches!(
-                    error.kind(),
-                    CssCounterStyleValueErrorKind::Grammar(_)
-                ));
+                assert!(error.diagnostic().is_some());
                 serialized_argument(error.origin(), &input, &source, argument);
             }
         }
@@ -356,10 +346,10 @@ fn detached_property_reentry_rejects_with_original_origin_and_allows_valid_retry
     for (modifier, _, opening) in INVALID {
         let (source, input) = detached(&format!("src(\"#asset\" {modifier})"));
         let error = pending.reenter(input.clone()).unwrap_err();
-        let CssExpansionErrorKind::InvalidReplacement(error) = error.kind() else {
+        let Some(error) = error.replacement_error() else {
             panic!("typed rejected replacement: {error:?}")
         };
-        serialized_argument(error.origin(), &input, &source, opening);
+        serialized_argument(&error.origin(), &input, &source, opening);
         assert!(pending.source().same_occurrence(&authored));
     }
     let (source, valid) = detached("src(\"#asset\" integrity(\"hash\"))");
@@ -397,10 +387,7 @@ fn detached_profile_reentry_rejects_with_original_origin_and_allows_valid_retry(
         let error = pending
             .reparse_after_substitution(input.clone(), Default::default())
             .unwrap_err();
-        assert!(matches!(
-            error.kind(),
-            CssColorProfileValueErrorKind::Grammar(_)
-        ));
+        assert!(error.diagnostic().is_some());
         serialized_argument(error.origin(), &input, &source, argument);
         assert!(matches!(
             pending.view(),
@@ -433,10 +420,7 @@ fn detached_font_reentry_rejects_with_original_origin_and_allows_valid_retry() {
         let error = pending
             .reparse_after_substitution(input.clone(), Default::default())
             .unwrap_err();
-        assert!(matches!(
-            error.kind(),
-            CssFontFaceValueErrorKind::Grammar(_)
-        ));
+        assert!(error.diagnostic().is_some());
         serialized_argument(error.origin(), &input, &source, opening);
     }
     let (source, valid) = detached("src(\"#asset\" integrity(\"hash\"))");
@@ -465,10 +449,7 @@ fn detached_counter_reentry_rejects_with_original_origin_and_allows_valid_retry(
         let error = pending
             .reparse_after_substitution(input.clone(), Default::default())
             .unwrap_err();
-        assert!(matches!(
-            error.kind(),
-            CssCounterStyleValueErrorKind::Grammar(_)
-        ));
+        assert!(error.diagnostic().is_some());
         serialized_argument(error.origin(), &input, &source, argument);
         assert!(matches!(
             pending.view(),

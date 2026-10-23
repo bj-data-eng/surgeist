@@ -3,13 +3,14 @@
 //! URL (#1327).
 //! Locations remain decoded authored values; resolution and loading are external.
 
+use crate::css::support::failure_classes::SerializationFailure as Resource;
+use crate::css::support::serialization_limits::LimitFailure;
 use crate::css::support::value_assertions::assert_first_diagnostic;
 use crate::css::support::value_assertions::clean_rule as rule;
 use std::error::Error;
 use surgeist_css::{
-    CssImportTarget, CssRule, CssRuleCssomSerializationErrorKind, CssSerializationError,
-    CssSerializationLimits as Limits, CssSerializedOrigin,
-    CssSpecifiedValueSerializationErrorKind as Resource, CssValueOrigin, parse_sheet,
+    CssImportTarget, CssRule, CssSerializationError, CssSerializationLimits as Limits,
+    CssSerializedOrigin, CssValueOrigin, parse_sheet,
 };
 
 fn exact_location(target: &str, decoded: &str, expected: &str) {
@@ -271,10 +272,7 @@ fn literal_url_bytes_and_retained_nodes_share_rule_budgets_atomically() {
         (Limits::new(2, 2, expected.len() - 1), Resource::ByteLimit),
     ] {
         let error = value.serialize_cssom(limits).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            CssRuleCssomSerializationErrorKind::Resource(kind)
-        );
+        assert_eq!(error.limit_kind(), Some(kind));
         assert_eq!(error.rule_path(), &[] as &[usize]);
         assert_eq!(value, before);
     }
@@ -301,10 +299,7 @@ fn literal_import_sheet_charges_cumulative_nodes_separator_and_url_bytes() {
         (Limits::new(5, 5, expected.len() - 1), Resource::ByteLimit),
     ] {
         let error = report.syntax().serialize_cssom(limits).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            CssRuleCssomSerializationErrorKind::Resource(kind)
-        );
+        assert_eq!(error.limit_kind(), Some(kind));
         assert_eq!(error.rule_path(), &[1]);
         assert_eq!(report, before);
     }
@@ -338,9 +333,12 @@ fn recovered_media_keeps_provider_failure_origin_and_retry_without_mutation() {
     // Rule1 + target1 + list1 + typed query1 + type token1 + Never1;
     // the recovered query's `not all` adds two projection nodes.
     let error = value.serialize_cssom(Limits::new(6, 7, 128)).unwrap_err();
-    assert_eq!(
-        error.kind(),
-        CssRuleCssomSerializationErrorKind::Resource(Resource::ProjectionNodeLimit)
+    assert!(
+        error.is_resource_limit()
+            && error
+                .serialization_error()
+                .is_some_and(|error| error.is_projection_node_limit()),
+        "{error:?}"
     );
     assert_eq!(error.rule_path(), &[] as &[usize]);
     let provider = error

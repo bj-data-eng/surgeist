@@ -1,8 +1,8 @@
 use super::{
     CssAngleCalculation, CssAngleLiteral, CssAuthoredDeclarationValue, CssCalculationExpression,
     CssCalculationExpressionRef, CssCalculationType, CssColorNumberLiteral,
-    CssColorPercentageLiteral, CssColorScalarError, CssHintedNumberCalculation,
-    CssNumberCalculation, CssPercentageCalculation,
+    CssColorPercentageLiteral, CssHintedNumberCalculation, CssNumberCalculation,
+    CssPercentageCalculation,
 };
 use surgeist_color::{ColorSpace, HueInterpolation, PredefinedColorSpace};
 
@@ -94,7 +94,9 @@ impl CssDeviceCmykColor {
                     )
                 }))
         {
-            return Err(CssColorConstructionError::InvalidSyntax);
+            return Err(CssColorConstructionError::new(
+                ColorConstructionKind::InvalidSyntax,
+            ));
         }
         check_components_depth(channels.iter().chain(alpha.iter()))?;
         Ok(Self {
@@ -155,9 +157,13 @@ impl CssLightDarkColor {
         let nesting_depth = authored_color_depth(&light)?
             .max(authored_color_depth(&dark)?)
             .checked_add(1)
-            .ok_or(CssColorConstructionError::CapacityOverflow)?;
+            .ok_or(CssColorConstructionError::new(
+                ColorConstructionKind::CapacityOverflow,
+            ))?;
         if nesting_depth > crate::STRUCTURAL_NESTING_LIMIT {
-            return Err(CssColorConstructionError::NestingLimit);
+            return Err(CssColorConstructionError::new(
+                ColorConstructionKind::NestingLimit,
+            ));
         }
         Ok(Self {
             light,
@@ -812,7 +818,9 @@ impl CssRgbColor {
                 || alpha.as_ref().is_some_and(CssColorComponent::is_none)
                 || channels.iter().any(|v| v.domain() != channels[0].domain()))
         {
-            return Err(CssColorConstructionError::InvalidSyntax);
+            return Err(CssColorConstructionError::new(
+                ColorConstructionKind::InvalidSyntax,
+            ));
         }
         check_components_depth(channels.iter().chain(alpha.iter()))?;
         Ok(Self {
@@ -877,7 +885,9 @@ impl CssHslColor {
                 || !matches!(lightness.domain(), Some(CssCalculationType::Percentage))
                 || alpha.as_ref().is_some_and(CssColorComponent::is_none))
         {
-            return Err(CssColorConstructionError::InvalidSyntax);
+            return Err(CssColorConstructionError::new(
+                ColorConstructionKind::InvalidSyntax,
+            ));
         }
         check_color_depth(
             color_hue_depth(&hue)
@@ -1179,36 +1189,129 @@ impl CssColorProfileComponentName {
         &self.0
     }
 }
-/// Intrinsic failures while composing an authored color graph.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssColorConstructionError {
+/// Intrinsic failure while composing an authored color graph, a `color-mix()`,
+/// an interpolation method or a checked colour scalar.
+///
+/// The violated invariant is read through the `is_*` predicates; a scalar
+/// failure also exposes its [`Self::origin`] and, when a component was
+/// malformed, its [`Self::component_error`], which is the error's source.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CssColorConstructionError {
+    kind: ColorConstructionKind,
+}
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum ColorConstructionKind {
     EmptyComponents,
+    EmptyMixComponents,
     InvalidSyntax,
-    InvalidComponent,
     NestingLimit,
     CapacityOverflow,
     InvalidExpressionEnvironment,
+    HueRequiresPolarSpace,
+    Scalar(Box<ColorScalarFailure>),
+}
+/// A checked colour scalar outside its range, or a malformed scalar component.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct ColorScalarFailure {
+    origin: crate::CssValueOrigin,
+    component: Option<crate::CssComponentValueError>,
+}
+impl CssColorConstructionError {
+    pub(crate) const fn new(kind: ColorConstructionKind) -> Self {
+        Self { kind }
+    }
+    pub(crate) fn scalar_out_of_range(origin: crate::CssValueOrigin) -> Self {
+        Self::new(ColorConstructionKind::Scalar(Box::new(
+            ColorScalarFailure {
+                origin,
+                component: None,
+            },
+        )))
+    }
+    crate::error::kind_predicates! { kind;
+        /// Returns whether a color or `color-mix()` was given no components.
+        is_empty_components => ColorConstructionKind::EmptyComponents
+            | ColorConstructionKind::EmptyMixComponents,
+        /// Returns whether the syntax and component combination is invalid.
+        is_invalid_syntax => ColorConstructionKind::InvalidSyntax,
+        /// Returns whether the composed color exceeds the structural nesting limit.
+        is_nesting_limit => ColorConstructionKind::NestingLimit,
+        /// Returns whether a structural size calculation overflowed.
+        is_capacity_overflow => ColorConstructionKind::CapacityOverflow,
+        /// Returns whether an expression's environment does not match its color.
+        is_invalid_expression_environment => ColorConstructionKind::InvalidExpressionEnvironment,
+        /// Returns whether an explicit hue strategy was given a non-polar color space.
+        is_hue_requires_polar_space => ColorConstructionKind::HueRequiresPolarSpace,
+    }
+    /// Returns whether a checked colour scalar lies outside its range.
+    #[must_use]
+    pub fn is_out_of_range(&self) -> bool {
+        matches!(&self.kind, ColorConstructionKind::Scalar(failure) if failure.component.is_none())
+    }
+    /// Returns the supplied origin of a rejected colour scalar.
+    #[must_use]
+    pub fn origin(&self) -> Option<&crate::CssValueOrigin> {
+        match &self.kind {
+            ColorConstructionKind::Scalar(failure) => Some(&failure.origin),
+            _ => None,
+        }
+    }
+    /// Returns the component failure of a malformed colour scalar.
+    #[must_use]
+    pub fn component_error(&self) -> Option<&crate::CssComponentValueError> {
+        match &self.kind {
+            ColorConstructionKind::Scalar(failure) => failure.component.as_ref(),
+            _ => None,
+        }
+    }
+}
+impl From<crate::CssComponentValueError> for CssColorConstructionError {
+    fn from(source: crate::CssComponentValueError) -> Self {
+        Self::new(ColorConstructionKind::Scalar(Box::new(
+            ColorScalarFailure {
+                origin: source.origin().clone(),
+                component: Some(source),
+            },
+        )))
+    }
 }
 impl std::fmt::Display for CssColorConstructionError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            Self::EmptyComponents => "color requires at least one component",
-            Self::InvalidSyntax => "invalid color syntax and component combination",
-            Self::InvalidComponent => "invalid color component domain",
-            Self::NestingLimit => "color nesting limit exceeded",
-            Self::CapacityOverflow => "color capacity overflow",
-            Self::InvalidExpressionEnvironment => "color expression environment mismatch",
+        f.write_str(match &self.kind {
+            ColorConstructionKind::EmptyComponents => "color requires at least one component",
+            ColorConstructionKind::EmptyMixComponents => {
+                "color-mix requires at least one component"
+            }
+            ColorConstructionKind::InvalidSyntax => {
+                "invalid color syntax and component combination"
+            }
+            ColorConstructionKind::NestingLimit => "color nesting limit exceeded",
+            ColorConstructionKind::CapacityOverflow => "color capacity overflow",
+            ColorConstructionKind::InvalidExpressionEnvironment => {
+                "color expression environment mismatch"
+            }
+            ColorConstructionKind::HueRequiresPolarSpace => {
+                "hue interpolation requires a polar color space"
+            }
+            ColorConstructionKind::Scalar(failure) if failure.component.is_some() => {
+                "invalid color scalar: the component is not a color scalar"
+            }
+            ColorConstructionKind::Scalar(_) => "invalid color scalar: the value is out of range",
         })
     }
 }
-impl std::error::Error for CssColorConstructionError {}
+impl std::error::Error for CssColorConstructionError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.component_error()
+            .map(|error| error as &(dyn std::error::Error + 'static))
+    }
+}
 impl From<ColorGraphDepthError> for CssColorConstructionError {
     fn from(value: ColorGraphDepthError) -> Self {
-        match value {
-            ColorGraphDepthError::NestingLimit => Self::NestingLimit,
-            ColorGraphDepthError::CapacityOverflow => Self::CapacityOverflow,
-        }
+        Self::new(match value {
+            ColorGraphDepthError::NestingLimit => ColorConstructionKind::NestingLimit,
+            ColorGraphDepthError::CapacityOverflow => ColorConstructionKind::CapacityOverflow,
+        })
     }
 }
 fn check_color_depth(child_depth: u32) -> Result<(), CssColorConstructionError> {
@@ -1231,7 +1334,9 @@ fn check_color_context(admits_pure_context: bool) -> Result<(), CssColorConstruc
     if admits_pure_context {
         Ok(())
     } else {
-        Err(CssColorConstructionError::InvalidExpressionEnvironment)
+        Err(CssColorConstructionError::new(
+            ColorConstructionKind::InvalidExpressionEnvironment,
+        ))
     }
 }
 fn color_component_admits_pure_context(value: &CssColorComponent) -> bool {
@@ -1252,9 +1357,13 @@ fn color_hue_admits_pure_context(value: &CssColorHue) -> bool {
 fn composed_color_depth(child_depth: u32) -> Result<u32, CssColorConstructionError> {
     let depth = child_depth
         .checked_add(1)
-        .ok_or(CssColorConstructionError::CapacityOverflow)?;
+        .ok_or(CssColorConstructionError::new(
+            ColorConstructionKind::CapacityOverflow,
+        ))?;
     if depth > crate::STRUCTURAL_NESTING_LIMIT {
-        return Err(CssColorConstructionError::NestingLimit);
+        return Err(CssColorConstructionError::new(
+            ColorConstructionKind::NestingLimit,
+        ));
     }
     Ok(depth)
 }
@@ -1273,7 +1382,9 @@ impl CssCustomColor {
         alpha: Option<CssColorComponent>,
     ) -> Result<Self, CssColorConstructionError> {
         if channels.is_empty() {
-            return Err(CssColorConstructionError::EmptyComponents);
+            return Err(CssColorConstructionError::new(
+                ColorConstructionKind::EmptyComponents,
+            ));
         }
         let nesting_depth = check_components_depth(channels.iter().chain(alpha.iter()))?;
         Ok(Self {
@@ -1310,7 +1421,9 @@ impl CssRelativeCustomColor {
         alpha: Option<crate::CssProfileColorExpression>,
     ) -> Result<Self, CssColorConstructionError> {
         if channels.is_empty() {
-            return Err(CssColorConstructionError::EmptyComponents);
+            return Err(CssColorConstructionError::new(
+                ColorConstructionKind::EmptyComponents,
+            ));
         }
         let expressions = channels
             .iter()
@@ -1356,7 +1469,9 @@ impl CssAlphaColor {
             v.environment() != CssRelativeColorEnvironment::Alpha
                 || v.result_domain() != CssRelativeColorResultDomain::Alpha
         }) {
-            return Err(CssColorConstructionError::InvalidExpressionEnvironment);
+            return Err(CssColorConstructionError::new(
+                ColorConstructionKind::InvalidExpressionEnvironment,
+            ));
         }
         let expression_depth = match alpha.as_ref().map(CssRelativeColorExpression::value) {
             Some(CssRelativeColorExpressionValue::Calculation(v)) => {
@@ -1639,14 +1754,18 @@ impl CssRelativeColor {
         let (environment, domains) = function.signature();
         for (value, domain) in channels.iter().zip(domains) {
             if value.environment() != environment || value.result_domain() != domain {
-                return Err(CssColorConstructionError::InvalidExpressionEnvironment);
+                return Err(CssColorConstructionError::new(
+                    ColorConstructionKind::InvalidExpressionEnvironment,
+                ));
             }
         }
         if alpha.as_ref().is_some_and(|value| {
             value.environment() != environment
                 || value.result_domain() != CssRelativeColorResultDomain::Alpha
         }) {
-            return Err(CssColorConstructionError::InvalidExpressionEnvironment);
+            return Err(CssColorConstructionError::new(
+                ColorConstructionKind::InvalidExpressionEnvironment,
+            ));
         }
         let expression_depth = channels
             .iter()
@@ -1750,12 +1869,14 @@ impl CssColorMixPercentage {
     /// Checks the exact literal coefficient against the inclusive 0..100 range.
     pub fn try_from_component(
         component: crate::CssComponentValue,
-    ) -> Result<Self, CssColorScalarError> {
+    ) -> Result<Self, CssColorConstructionError> {
         let literal = CssColorPercentageLiteral::try_from_component(component)?;
         if !crate::exact_decimal::LexicalDecimal::new(literal.numeric().representation())
             .in_percentage_range()
         {
-            return Err(CssColorScalarError::out_of_range(literal.origin().clone()));
+            return Err(CssColorConstructionError::scalar_out_of_range(
+                literal.origin().clone(),
+            ));
         }
         Ok(Self { literal })
     }
@@ -1891,25 +2012,6 @@ impl CssColorMixComponent {
     }
 }
 
-/// A rejected authored mix graph, without invented source coordinates.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssColorMixConstructionError {
-    EmptyComponents,
-    NestingLimit,
-    CapacityOverflow,
-}
-impl std::fmt::Display for CssColorMixConstructionError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            Self::EmptyComponents => "color-mix requires at least one component",
-            Self::NestingLimit => "color-mix exceeds the structural nesting limit",
-            Self::CapacityOverflow => "color-mix structural capacity overflow",
-        })
-    }
-}
-impl std::error::Error for CssColorMixConstructionError {}
-
 /// A nonempty ordered authored mix with optional explicit interpolation.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssColorMix {
@@ -1921,9 +2023,11 @@ impl CssColorMix {
     pub fn try_new(
         interpolation: Option<CssColorInterpolation>,
         components: Vec<CssColorMixComponent>,
-    ) -> Result<Self, CssColorMixConstructionError> {
+    ) -> Result<Self, CssColorConstructionError> {
         if components.is_empty() {
-            return Err(CssColorMixConstructionError::EmptyComponents);
+            return Err(CssColorConstructionError::new(
+                ColorConstructionKind::EmptyMixComponents,
+            ));
         }
         let nesting_depth = color_mix_depth(&components)?;
         Ok(Self {
@@ -1946,14 +2050,6 @@ impl CssColorMix {
 enum ColorGraphDepthError {
     NestingLimit,
     CapacityOverflow,
-}
-impl From<ColorGraphDepthError> for CssColorMixConstructionError {
-    fn from(value: ColorGraphDepthError) -> Self {
-        match value {
-            ColorGraphDepthError::NestingLimit => Self::NestingLimit,
-            ColorGraphDepthError::CapacityOverflow => Self::CapacityOverflow,
-        }
-    }
 }
 
 fn color_mix_depth(components: &[CssColorMixComponent]) -> Result<u32, ColorGraphDepthError> {
@@ -2096,9 +2192,11 @@ impl CssColorInterpolationMethod {
     pub const fn try_new(
         space: ColorSpace,
         hue: Option<HueInterpolation>,
-    ) -> Result<Self, CssColorInterpolationMethodConstructionError> {
+    ) -> Result<Self, CssColorConstructionError> {
         if hue.is_some() && !space.is_polar() {
-            return Err(CssColorInterpolationMethodConstructionError::HueRequiresPolarSpace);
+            return Err(CssColorConstructionError::new(
+                ColorConstructionKind::HueRequiresPolarSpace,
+            ));
         }
         Ok(Self { space, hue })
     }
@@ -2129,33 +2227,6 @@ impl CssColorInterpolationMethod {
         }
     }
 }
-
-/// A rejected authored predefined interpolation-method combination.
-///
-/// ```compile_fail
-/// use surgeist_css::CssColorInterpolationMethodConstructionError;
-/// fn exhaustive(error: CssColorInterpolationMethodConstructionError) {
-///     match error {
-///         CssColorInterpolationMethodConstructionError::HueRequiresPolarSpace => (),
-///     }
-/// }
-/// ```
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssColorInterpolationMethodConstructionError {
-    /// An explicit hue strategy requires a polar interpolation color space.
-    HueRequiresPolarSpace,
-}
-
-impl std::fmt::Display for CssColorInterpolationMethodConstructionError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            Self::HueRequiresPolarSpace => "hue interpolation requires a polar color space",
-        })
-    }
-}
-
-impl std::error::Error for CssColorInterpolationMethodConstructionError {}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]

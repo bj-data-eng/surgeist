@@ -5,10 +5,9 @@ use crate::css::support::authored_syntax::{
     checked_import_rule as checked_import, checked_supports_condition as checked_condition,
 };
 use surgeist_css::{
-    CssComponentValue, CssComponentValues, CssImportConstructionError, CssImportRule,
-    CssNamespaceContext, CssRule, CssSerializedOrigin, CssSupportsCondition,
-    CssSupportsConditionKind, CssSupportsConstructionError, CssValueOrigin, parse_component_values,
-    parse_sheet,
+    CssComponentValue, CssComponentValues, CssImportRule, CssNamespaceContext, CssRule,
+    CssSerializedOrigin, CssSupportsCondition, CssSupportsConditionKind, CssValueOrigin,
+    parse_component_values, parse_sheet,
 };
 
 fn assert_same_parsed_origin(actual: &CssValueOrigin, expected: &CssValueOrigin) {
@@ -226,10 +225,7 @@ fn checked_named_references_reject_eof_recovery_before_grammar() {
         Default::default(),
     )
     .unwrap_err();
-    assert!(matches!(
-        error,
-        CssSupportsConstructionError::RecoveredInput { .. }
-    ));
+    assert!(error.is_recovered_input());
     assert!(matches!(
         error.origin(),
         CssValueOrigin::ImplicitClosure { .. }
@@ -250,12 +246,9 @@ fn checked_named_references_reject_eof_recovery_before_grammar() {
         Default::default(),
     )
     .unwrap_err();
-    assert!(matches!(
-        error,
-        CssImportConstructionError::RecoveredInput { .. }
-    ));
+    assert!(error.is_recovered_input());
     assert!(matches!(
         error.origin(),
-        CssValueOrigin::ImplicitClosure { .. }
+        Some(CssValueOrigin::ImplicitClosure { .. })
     ));
 }

@@ -1,6 +1,5 @@
 use surgeist_css::{
-    CssErrorCode, CssKnownProperty, CssRecoveryAction, CssTokenKind, ErrorKind,
-    parse_style_attribute,
+    CssErrorCode, CssKnownProperty, CssRecoveryAction, CssTokenKind, parse_style_attribute,
 };
 
 struct InvalidEasingCase {
@@ -66,12 +65,21 @@ fn assert_invalid_easing_is_dropped(case: &InvalidEasingCase) {
         "{}",
         case.source,
     );
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("{}: expected typed property-value detail", case.source);
-    };
-    assert_eq!(detail.property(), case.property, "{}", case.source);
+    let detail = diagnostic.error();
     assert_eq!(
-        detail.expectation().as_str(),
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "{}: expected typed property-value detail",
+        case.source
+    );
+    assert_eq!(
+        detail.known_property().unwrap(),
+        case.property,
+        "{}",
+        case.source
+    );
+    assert_eq!(
+        detail.expectation().unwrap().as_str(),
         "a value accepted by the property's grammar",
         "{}",
         case.source,

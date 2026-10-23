@@ -1,5 +1,7 @@
 //! Domain and arity expectations from CSS Values 4 §10. Type checking does not
 //! evaluate the real-number result or reject deferred arithmetic singularities.
+use crate::css::support::failure_classes::NumericFailure;
+use crate::css::support::failure_classes::NumericFailure as N;
 use crate::css::support::value_assertions::assert_calculation_rejected;
 use surgeist_css::{
     CssAngleCalculation, CssLengthCalculation, CssLengthPercentageCalculation,
@@ -68,7 +70,6 @@ fn numeric_functions_enforce_argument_domains_and_arity() {
         // argument outside the function's accepted types an argument-type
         // failure, and arguments whose types cannot be made consistent are
         // incompatible. The remaining cases admit more than one reading.
-        use surgeist_css::CssNumericConstructionErrorKind as N;
         let kind = match source {
             "min()" | "max()" | "clamp(1, 2)" | "round()" | "mod(1)" | "rem(1, 2, 3)"
             | "abs(1, 2)" | "sign()" | "log(1, 2, 3)" => Some(N::Arity),
@@ -114,7 +115,6 @@ fn inverse_trigonometry_returns_angles_and_checks_argument_types() {
     ] {
         // Values 4 §10.5: asin/acos/atan take a <number>; atan2 takes two
         // consistent arguments.
-        use surgeist_css::CssNumericConstructionErrorKind as N;
         let kind = match source {
             "atan2(1px, 1s)" => N::IncompatibleTypes,
             "atan2(1)" => N::Arity,
@@ -136,7 +136,7 @@ fn percentage_resolution_depends_on_the_explicit_root_context() {
         let values = parse_component_values(source).unwrap();
         assert_calculation_rejected(
             CssLengthCalculation::try_from_components(values.clone(), Default::default()),
-            Some(surgeist_css::CssNumericConstructionErrorKind::RootDomainMismatch),
+            Some(NumericFailure::RootDomainMismatch),
         );
         assert!(
             CssLengthPercentageCalculation::try_from_components(values, Default::default()).is_ok(),
@@ -176,7 +176,7 @@ fn only_actual_whitespace_satisfies_binary_sum_separators() {
                 parse_component_values(source).unwrap(),
                 Default::default(),
             ),
-            Some(surgeist_css::CssNumericConstructionErrorKind::MalformedExpression),
+            Some(NumericFailure::MalformedExpression),
         );
     }
     for source in ["calc(1\t+\n2)", "calc(1 /*a*/+ /*b*/2)", "calc(-1 + +2)"] {

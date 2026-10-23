@@ -1,15 +1,17 @@
 //! Public consumer tests for the selected Surgeist #644 inert-child policy.
 use crate::css::support::authored_syntax::{assert_diagnostics, assert_strict_rejection};
+use crate::css::support::failure_classes::ComponentFailure;
+use crate::css::support::failure_classes::SerializationFailure as Resource;
+use crate::css::support::failure_classes::component_failure;
+use crate::css::support::serialization_limits::LimitFailure;
 use surgeist_css::{
-    CssComponentValueErrorKind, CssComponentValueLimits, CssEditedGroupPreludeRef, CssErrorCode,
-    CssNamedSupportsConstructionError, CssNamespaceContext, CssRecoveryAction, CssRule,
-    CssRuleCssomFormat, CssRuleCssomSerializationErrorKind, CssRuleGraphInput,
-    CssRuleSerializationLimits, CssSerializationLimits,
-    CssSpecifiedValueSerializationErrorKind as Resource, CssStyleAncestor,
-    CssSupportsConditionName, CssSupportsTestChild as Child, CssSupportsTestChildRef as Ref,
-    CssSupportsTestItem, CssValueOrigin, ErrorKind, parse_component_values, parse_media_query_list,
-    parse_sheet, parse_supports_test_child, parse_supports_test_child_with_limits,
-    parse_supports_test_contents, parse_supports_test_contents_with_limits,
+    CssComponentValueLimits, CssEditedGroupPreludeRef, CssErrorCode, CssNamespaceContext,
+    CssRecoveryAction, CssRule, CssRuleCssomFormat, CssRuleGraphInput, CssRuleSerializationLimits,
+    CssSerializationLimits, CssStyleAncestor, CssSupportsConditionName,
+    CssSupportsTestChild as Child, CssSupportsTestChildRef as Ref, CssSupportsTestItem,
+    CssValueOrigin, parse_component_values, parse_media_query_list, parse_sheet,
+    parse_supports_test_child, parse_supports_test_child_with_limits, parse_supports_test_contents,
+    parse_supports_test_contents_with_limits,
 };
 
 fn child(source: &str) -> Child {
@@ -109,10 +111,10 @@ fn strict_child_admits_recursive_empty_semicolons_and_nonrendering_candidates() 
         let [diagnostic] = empty.diagnostics() else {
             panic!("one empty-input rejection: {input:?}: {empty:?}")
         };
-        let ErrorKind::InvalidComponentValue(error) = diagnostic.error().kind() else {
+        let Some(error) = diagnostic.error().component_error() else {
             panic!("empty input: {input:?}: {diagnostic:?}")
         };
-        assert_eq!(error.kind(), CssComponentValueErrorKind::EmptyInput);
+        assert!(error.is_empty_input(), "{error:?}");
         assert_strict_rejection(empty.clone().into_validation_result(), empty.diagnostics());
     }
     for input in [
@@ -163,20 +165,26 @@ fn raw_empty_and_recovered_empty_are_distinct_from_typed_preparation_failure() {
     for (bound, kind) in [
         (
             CssComponentValueLimits::try_new(256, 0, 100).unwrap(),
-            CssComponentValueErrorKind::ComponentLimit,
+            ComponentFailure::ComponentLimit,
         ),
         (
             CssComponentValueLimits::try_new(256, 100, 1).unwrap(),
-            CssComponentValueErrorKind::ByteLimit,
+            ComponentFailure::ByteLimit,
         ),
         (
             CssComponentValueLimits::try_new(0, 100, 100).unwrap(),
-            CssComponentValueErrorKind::NestingLimit,
+            ComponentFailure::NestingLimit,
         ),
     ] {
         let report = parse_supports_test_contents_with_limits("& { color:red; }", bound);
         assert!(report.syntax().is_none());
-        assert!(report.diagnostics().iter().any(|d| matches!(d.error().kind(), ErrorKind::InvalidComponentValue(e) if e.kind() == kind)), "{report:?}");
+        assert!(
+            report.diagnostics().iter().any(|d| d
+                .error()
+                .component_error()
+                .is_some_and(|e| component_failure(e) == kind)),
+            "{report:?}"
+        );
         let one = parse_supports_test_child_with_limits("& { color:red; }", bound);
         assert!(one.syntax().is_none());
         assert_eq!(one.diagnostics(), report.diagnostics());
@@ -196,7 +204,10 @@ fn raw_resource_budget_charges_discarded_units_and_trailing_input() {
         "no retained prefix after whole input budget failure"
     );
     assert!(
-        matches!(report.diagnostics()[0].error().kind(), ErrorKind::InvalidComponentValue(e) if e.kind() == CssComponentValueErrorKind::ComponentLimit)
+        report.diagnostics()[0]
+            .error()
+            .component_error()
+            .is_some_and(|e| e.is_component_limit())
     );
     let retry = parse_supports_test_contents(input);
     assert!(retry.syntax().is_some());
@@ -309,11 +320,11 @@ fn borrowed_composition_shares_one_component_byte_depth_budget_and_retries() {
     for (budget, exceeded) in [
         (
             CssComponentValueLimits::try_new(256, 7, 100).unwrap(),
-            CssComponentValueErrorKind::ComponentLimit,
+            ComponentFailure::ComponentLimit,
         ),
         (
             CssComponentValueLimits::try_new(256, 100, 8).unwrap(),
-            CssComponentValueErrorKind::ByteLimit,
+            ComponentFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
@@ -322,21 +333,25 @@ fn borrowed_composition_shares_one_component_byte_depth_budget_and_retries() {
                 .recompose_children(&[refs[0]], Default::default())
                 .unwrap()
         );
-        let Err(CssNamedSupportsConstructionError::Component(error)) =
-            empty.recompose_children(&refs, budget)
-        else {
+        let Err(outer) = empty.recompose_children(&refs, budget) else {
             panic!("{budget:?}")
         };
-        assert_eq!(error.kind(), exceeded);
+        let Some(error) = outer.component_error() else {
+            panic!("{budget:?}")
+        };
+        assert_eq!(component_failure(error), exceeded);
     }
     let nested = child("& { a:fn(x); }");
-    let Err(CssNamedSupportsConstructionError::Component(error)) = empty.recompose_children(
+    let Err(outer) = empty.recompose_children(
         &[nested.as_ref()],
         CssComponentValueLimits::try_new(1, 100, 100).unwrap(),
     ) else {
         panic!("nested child exceeds one nesting level")
     };
-    assert_eq!(error.kind(), CssComponentValueErrorKind::NestingLimit);
+    let Some(error) = outer.component_error() else {
+        panic!("nested child exceeds one nesting level")
+    };
+    assert!(error.is_nesting_limit(), "{error:?}");
     assert_eq!(
         empty
             .recompose_children(&[nested.as_ref()], Default::default())
@@ -362,15 +377,13 @@ fn current_named_graph_opt_in_keeps_standard_unavailable_and_original_unchanged(
     let CssRule::SupportsCondition(original) = &report.syntax().rules()[0] else {
         panic!()
     };
-    assert!(matches!(
+    assert!(
         report.syntax().rules()[0]
             .serialize_cssom(Default::default())
             .unwrap_err()
-            .kind(),
-        CssRuleCssomSerializationErrorKind::FormatUnavailable(
-            CssRuleCssomFormat::SupportsCondition
-        )
-    ));
+            .unavailable_format()
+            == Some(CssRuleCssomFormat::SupportsCondition)
+    );
     let replacement = child("new:yes;");
     let current = original
         .body()
@@ -416,9 +429,14 @@ fn graph_zero_exact_and_under_depth_include_opaque_candidates_and_components() {
         graph(selected, limits(usize::MAX)).unwrap()
     );
     for depth in [0, 1, 2] {
-        assert_eq!(
-            graph(selected, limits(depth)).unwrap_err().kind(),
-            CssRuleCssomSerializationErrorKind::Resource(Resource::DepthLimit)
+        assert!(
+            graph(selected, limits(depth))
+                .unwrap_err()
+                .is_resource_limit()
+                && graph(selected, limits(depth))
+                    .unwrap_err()
+                    .serialization_error()
+                    .is_some_and(|error| error.is_depth_limit())
         );
     }
     // Standalone specified output has no structural depth bound: a body the
@@ -451,9 +469,12 @@ fn ordinary_ancestor_and_current_named_payload_share_depth_and_output_budget() {
     let expected = "@media screen {\n  @supports-condition --feature { & { color: fn(x); } }\n}";
     assert_eq!(graph(root, limits(4)).unwrap(), expected);
     let error = graph(root, limits(3)).unwrap_err();
-    assert_eq!(
-        error.kind(),
-        CssRuleCssomSerializationErrorKind::Resource(Resource::DepthLimit)
+    assert!(
+        error.is_resource_limit()
+            && error
+                .serialization_error()
+                .is_some_and(|error| error.is_depth_limit()),
+        "{error:?}"
     );
     assert_eq!(error.rule_path(), &[0]);
     let cause = std::error::Error::source(&error)
@@ -468,9 +489,12 @@ fn ordinary_ancestor_and_current_named_payload_share_depth_and_output_budget() {
     assert_eq!(origin.span().start().byte_offset().value(), 10);
     let mut bounded = limits(4);
     bounded.values = CssSerializationLimits::new(1000, 1000, expected.len() - 1);
-    assert_eq!(
-        graph(root, bounded).unwrap_err().kind(),
-        CssRuleCssomSerializationErrorKind::Resource(Resource::ByteLimit)
+    assert!(
+        graph(root, bounded).unwrap_err().is_resource_limit()
+            && graph(root, bounded)
+                .unwrap_err()
+                .serialization_error()
+                .is_some_and(|error| error.is_byte_limit())
     );
     assert_eq!(graph(root, limits(4)).unwrap(), expected);
 }
@@ -489,8 +513,18 @@ fn whole_named_graph_node_and_projection_work_is_not_reset_per_child() {
         (false, Resource::ProjectionNodeLimit),
     ] {
         let found = (1..100).find(|n| {
-            let l = CssRuleSerializationLimits { values: CssSerializationLimits::new(if input_quota { *n } else { 1000 },if input_quota { 1000 } else { *n },1000), max_depth:10 };
-            children.iter().all(|child| graph(CssRuleGraphInput::supports_test_child(*child), l).is_ok()) && matches!(graph(input,l),Err(e) if e.kind() == CssRuleCssomSerializationErrorKind::Resource(expected_kind))
+            let l = CssRuleSerializationLimits {
+                values: CssSerializationLimits::new(
+                    if input_quota { *n } else { 1000 },
+                    if input_quota { 1000 } else { *n },
+                    1000,
+                ),
+                max_depth: 10,
+            };
+            children
+                .iter()
+                .all(|child| graph(CssRuleGraphInput::supports_test_child(*child), l).is_ok())
+                && graph(input, l).is_err_and(|e| e.limit_kind() == Some(expected_kind))
         });
         assert!(found.is_some());
     }
@@ -508,17 +542,26 @@ fn native_component_work_is_admitted_before_depth_inspection() {
         max_depth: 0,
     };
     let error = graph(CssRuleGraphInput::supports_test_child(leaf.as_ref()), bound).unwrap_err();
-    assert_eq!(
-        error.kind(),
-        CssRuleCssomSerializationErrorKind::Resource(Resource::InputNodeLimit)
+    assert!(
+        error.is_resource_limit()
+            && error
+                .serialization_error()
+                .is_some_and(|error| error.is_input_node_limit()),
+        "{error:?}"
     );
-    assert_eq!(
+    assert!(
         graph(
             CssRuleGraphInput::supports_test_child(leaf.as_ref()),
             limits(0)
         )
         .unwrap_err()
-        .kind(),
-        CssRuleCssomSerializationErrorKind::Resource(Resource::DepthLimit)
+        .is_resource_limit()
+            && graph(
+                CssRuleGraphInput::supports_test_child(leaf.as_ref()),
+                limits(0)
+            )
+            .unwrap_err()
+            .serialization_error()
+            .is_some_and(|error| error.is_depth_limit())
     );
 }

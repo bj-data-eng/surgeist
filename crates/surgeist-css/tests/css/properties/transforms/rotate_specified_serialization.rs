@@ -3,10 +3,12 @@
 //! existed; these are functional tests alongside the new API, not regression RED.
 //! #1298 revises #554's identity folding: Transforms2 §5's computed value is an
 //! angle with an axis, so full turns and zero axes keep their authored form.
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::*;
 
 type Limits = CssSerializationLimits;
-type Kind = CssSpecifiedValueSerializationErrorKind;
+type Kind = SerializationFailure;
 
 fn parsed(text: &str) -> CssRotate {
     let source = format!("rotate:{text}");
@@ -240,12 +242,11 @@ fn exact_full_turn_literals_keep_their_coefficient_and_unit() {
             CssAngleUnit::Turns,
         ),
     ] {
-        assert_eq!(
+        assert!(
             ordinary(coefficient, unit, None)
                 .serialize_specified(Limits::new(2, 3, 4))
                 .unwrap_err()
-                .kind(),
-            Kind::ByteLimit
+                .is_byte_limit()
         );
     }
     output("360.000001deg", "360.000001deg");
@@ -272,41 +273,37 @@ fn general_vector_rejects_only_proved_nonzero_components_that_round_to_zero() {
         ["1e-400", "2e-400", "0"],
     ] {
         let value = vector("30", axis);
-        assert_eq!(
+        assert!(
             value
                 .serialize_specified(Default::default())
                 .unwrap_err()
-                .kind(),
-            Kind::UnrepresentableValue
+                .is_unrepresentable_value()
         );
     }
     for input in ["calc(.00000001) 1 0 30deg", "1 calc(-.00000001) 0 30deg"] {
-        assert_eq!(
+        assert!(
             parsed(input)
                 .serialize_specified(Default::default())
                 .unwrap_err()
-                .kind(),
-            Kind::UnrepresentableValue
+                .is_unrepresentable_value()
         );
     }
-    assert_eq!(
+    assert!(
         parsed("calc(1 / 2097152) 1 0 30deg")
             .serialize_specified(Default::default())
             .unwrap_err()
-            .kind(),
-        Kind::UnrepresentableValue
+            .is_unrepresentable_value()
     );
     output("calc(1 / 1048576) 1 0 30deg", "calc(0.000001) 1 0 30deg");
     // The surviving components are still rounded independently, not normalized.
     output("1.23456789 2.34567891 0 30deg", "1.234568 2.345679 0 30deg");
     output(".0000005 1 0 30deg", "0.000001 1 0 30deg");
     output("-.0000005 1 0 30deg", "-0.000001 1 0 30deg");
-    assert_eq!(
+    assert!(
         vector("30", ["1e400", "1", "0"])
             .serialize_specified(Limits::new(6, 6, 20))
             .unwrap_err()
-            .kind(),
-        Kind::ByteLimit
+            .is_byte_limit()
     );
 }
 
@@ -329,19 +326,17 @@ fn symbolic_and_nonfinite_axis_math_is_retained_without_parallel_axis_guesses() 
     output("calc(1e-400) 0 0 30deg", "x 30deg");
     output("calc(1e-400 * 1) 0 0 30deg", "calc(0) 0 0 30deg");
     output("calc(5e-7) 1 0 30deg", "calc(0.000001) 1 0 30deg");
-    assert_eq!(
+    assert!(
         parsed("calc(5e-7 * 1) 1 0 30deg")
             .serialize_specified(Default::default())
             .unwrap_err()
-            .kind(),
-        Kind::UnrepresentableValue
+            .is_unrepresentable_value()
     );
-    assert_eq!(
+    assert!(
         parsed("calc(4e-7) 1 0 30deg")
             .serialize_specified(Default::default())
             .unwrap_err()
-            .kind(),
-        Kind::UnrepresentableValue
+            .is_unrepresentable_value()
     );
 }
 
@@ -368,7 +363,7 @@ fn limits_charge_authored_children_and_derived_sign_work() {
         (Limits::new(6, 6, 6), Kind::ByteLimit),
     ] {
         assert_eq!(
-            positive.serialize_specified(limits).unwrap_err().kind(),
+            serialization_failure(&positive.serialize_specified(limits).unwrap_err()),
             kind
         );
     }
@@ -377,12 +372,11 @@ fn limits_charge_authored_children_and_derived_sign_work() {
         negative.serialize_specified(Limits::new(6, 7, 8)).unwrap(),
         "x -45deg"
     );
-    assert_eq!(
+    assert!(
         negative
             .serialize_specified(Limits::new(6, 6, 8))
             .unwrap_err()
-            .kind(),
-        Kind::ProjectionNodeLimit
+            .is_projection_node_limit()
     );
     // A zero axis emits its authored children; no identity replacement is derived.
     let zero_axis = vector("45", ["0", "0", "0"]);
@@ -398,7 +392,7 @@ fn limits_charge_authored_children_and_derived_sign_work() {
         (Limits::new(6, 6, 10), Kind::ByteLimit),
     ] {
         assert_eq!(
-            zero_axis.serialize_specified(limits).unwrap_err().kind(),
+            serialization_failure(&zero_axis.serialize_specified(limits).unwrap_err()),
             kind
         );
     }
@@ -424,7 +418,10 @@ fn zero_axis_children_are_emitted_with_their_ordinary_work_and_bytes() {
         (Limits::new(9, 7, 17), Kind::ProjectionNodeLimit),
         (Limits::new(9, 8, 16), Kind::ByteLimit),
     ] {
-        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+            kind
+        );
     }
     let huge = format!("0 0 0 1{}deg", "0".repeat(400));
     assert_eq!(
@@ -433,12 +430,11 @@ fn zero_axis_children_are_emitted_with_their_ordinary_work_and_bytes() {
             .unwrap(),
         huge
     );
-    assert_eq!(
+    assert!(
         vector("1e400", ["0", "0", "0"])
             .serialize_specified(Limits::new(6, 6, huge.len() - 1))
             .unwrap_err()
-            .kind(),
-        Kind::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(
         parsed("z 45deg")
@@ -446,12 +442,11 @@ fn zero_axis_children_are_emitted_with_their_ordinary_work_and_bytes() {
             .unwrap(),
         "45deg"
     );
-    assert_eq!(
+    assert!(
         parsed("z 45deg")
             .serialize_specified(Limits::new(2, 3, 5))
             .unwrap_err()
-            .kind(),
-        Kind::InputNodeLimit
+            .is_input_node_limit()
     );
 }
 
@@ -535,12 +530,11 @@ fn success_and_failure_preserve_non_ascii_source_origins_and_operands() {
         value.serialize_specified(Default::default()).unwrap(),
         "calc(-30deg)"
     );
-    assert_eq!(
+    assert!(
         value
             .serialize_specified(Limits::new(1, 1, 1))
             .unwrap_err()
-            .kind(),
-        Kind::InputNodeLimit
+            .is_input_node_limit()
     );
     assert_eq!(values.angle().origin(), &origin);
     assert_eq!(format!("{value:?}"), before);

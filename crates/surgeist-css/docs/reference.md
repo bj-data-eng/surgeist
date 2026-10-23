@@ -37,7 +37,7 @@ subset; it does not establish complete support for all CSS syntax.
 | `parse_component_values(&str)` | Default features | `Result<CssComponentValues, CssComponentValueError>` |
 | `parse_property_value_text(source, name, importance)` | Default features | `CssParseReport<Option<CssDeclaration>>` |
 | `parse_property_value_text_for_grammar(source, grammar, importance)` | Default features | `CssParseReport<Option<CssDeclaration>>` |
-| `parse_property_value(name, components, importance)` | Default features | `Result<CssDeclaration, CssPropertyValueParseError>` |
+| `parse_property_value(name, components, importance)` | Default features | `Result<CssDeclaration, CssPropertyValueError>` |
 | `expand_declaration(&declaration)` | Default features | `Result<CssExpansion, CssExpansionError>` |
 
 The [manifest](../Cargo.toml) declares package `surgeist-css`, library
@@ -247,8 +247,8 @@ keyframe domain applies its existing animation-property exclusion.
 
 Unresolved pending inset, margin, padding, border-width, border-style,
 border-color, scroll-padding and scroll-margin substitutions may select either
-physical or logical members. Their projection returns
-`CssDeclarationBlockErrorKind::PendingFootprintUndetermined` atomically until
+physical or logical members. Their projection atomically returns a
+`CssDeclarationBlockError` whose `pending_footprint_property()` names the member until
 strict reentry establishes the selected footprint. Fixed-footprint pending
 members emit empty terminal values and reconstruct their original shorthand
 only with complete uniform-priority coverage from that same original occurrence.
@@ -343,9 +343,9 @@ The three `try_new_with_limits` methods use the existing
 `CssSerializationLimits` cumulatively over a list aggregate and all
 members. A relative additionally charges its leading carrier. Construction runs
 the same iterative, context-aware specified writer, discards its bounded output,
-and returns the unchanged value. The typed error distinguishes `EmptyList` from
-`Specified`, which preserves the original grammar/resource error and exposes it
-through `Error::source()`. `CssSelectorList` and `CssRelativeSelectorList` expose
+and returns the unchanged value. The typed error distinguishes `is_empty_list()`
+from `serialization_error()`, which preserves the original grammar/resource error
+and is also its `Error::source()`. `CssSelectorList` and `CssRelativeSelectorList` expose
 `to_specified_css` and `to_specified_css_with_limits`; later output is an independent
 atomic operation with its own cumulative budget. Parser assembly keeps its actual
 grammar checks, recovery/provenance and parse limits separately.
@@ -454,16 +454,17 @@ so ordinary callers need not allocate a larger stack. Stylesheets and style
 attributes deeper than 128 levels, and fragments or checked components 64 or
 more levels deep, need that thread. If the platform cannot start it, deep input
 is never parsed on the caller's stack: the parse is refused with a typed
-`NestingLimit` resource failure whose limit is the caller-stack depth (128 or 63),
-located at the first deeper opening and spanning the whole source; the front
-door may still append its tokenizer EOF and escape diagnostics. The refused
-report retains no syntax, or a `Never` query for media front doors; checked
-components report a component `NestingLimit` at that function or block.
+`ParserUnavailable` resource refusal whose `nesting_limit()` is the caller-stack
+depth (128 or 63), located at the first deeper opening and spanning the whole
+source; the front door may still append its tokenizer EOF and escape
+diagnostics. The refused report retains no syntax, or a `Never` query for media
+front doors; checked components report a component `ParserUnavailable` error at
+that function or block.
 Media condition depth also counts `not` and grouping levels, so
 `parse_cssom_media_query` can need the thread for shallow source; it then
 returns `None` with the same refusal at the deep query. Media construction and
-serialization, custom-media and `@import` media output instead fail with their
-existing component `NestingLimit` error at the responsible component or query.
+serialization, custom-media and `@import` media output instead fail with a
+component `ParserUnavailable` error at the responsible component or query.
 Accepted EOF closures
 appear as recovery diagnostics; clean
 validation therefore rejects a report that needed them. Functions inside
@@ -532,7 +533,8 @@ comments. Structural EOF closures retain their separate diagnostics. Comment-lik
 bytes inside strings and URL tokens are payload and do not create comment errors.
 
 Backslash-newline and identifier-like EOF escapes produce `EscapeParseError`
-diagnostics with `CssEscapeError::Newline` or `EndOfInput`, respectively, and
+diagnostics whose `escape_failure()` is `CssEscapeFailure::Newline` or
+`EndOfInput`, respectively, and
 `RecoverEscape`. Newline recovery leaves a backslash delimiter and preserves the
 newline; EOF escape recovery retains U+FFFD. The error position is the backslash
 for newline recovery and the EOF cursor for an EOF escape. Both recovery spans
@@ -756,16 +758,16 @@ arbitrary-token contract.
 
 Factory-created declarations have no parsed property-name position. Their
 `value_components()` preserve the supplied token origins, including components
-combined from separate parsed inputs. `CssPropertyValueParseError` carries a typed
-grammar or component error and a `CssSerializedOrigin`; generated parsing offsets
+combined from separate parsed inputs. `CssPropertyValueError` carries a typed
+grammar or component failure and a `CssSerializedOrigin`; generated parsing offsets
 are mapped back to those original tokens or to programmatic provenance.
 
 For checked `parse_property_value` construction, a nested resource failure with
-`NestingLimit`, `ComponentLimit`, `ByteLimit`, or `CapacityOverflow` remains
-`CssPropertyValueErrorKind::Component` with the offending original token origin.
-Ordinary property-grammar rejection remains `CssPropertyValueErrorKind::Grammar`.
-This preserves the typed resource exception through the known-property parser;
-callers migrating from a generic invalid-property error can inspect `kind()` and
+`NestingLimit`, `ComponentLimit`, `ByteLimit`, or `CapacityOverflow` remains a
+component failure, read through `component_error()`, with the offending original
+token origin. Ordinary property-grammar rejection reports its `code()` and grammar
+facts instead. This preserves the typed resource exception through the
+known-property parser; callers can inspect `code()`, `component_error()` and
 `origin()` without treating generated serialization coordinates as authored ones.
 
 Declarations read by `parse_sheet` and `parse_style_attribute` expose
@@ -1966,8 +1968,8 @@ includes grammar identity. Occurrence identity and clone behavior are unchanged.
 
 `grammar.metadata()` and `CssKnownProperty::metadata()` return intrinsic metadata
 for schema-annotated longhands and canonical shorthands, `all`, and the legacy
-glyph shorthand. An unannotated recognized property returns
-`CssPropertyMetadataError::Unavailable`; the support catalog remains independently
+glyph shorthand. An unannotated recognized property returns a
+`CssPropertyMetadataError` naming its grammar; the support catalog remains independently
 available through `property_support_metadata`. Metadata kind is always meaningful:
 a longhand, shorthand, or universal reset. Shorthand members are terminal IDs in
 settable-then-reset-only order. Legacy grammars are listed by
@@ -2581,7 +2583,7 @@ offsets from nonphysical keywords supplied to a physical-only constructor.
 use surgeist_css::{
     CssBlockPosition, CssCircleRadius, CssCircleShape, CssHorizontalPosition,
     CssInlinePosition, CssPhysicalPosition, CssPosition,
-    CssPositionConstructionError, CssPositionRef, CssVerticalPosition,
+    CssPositionRef, CssVerticalPosition,
 };
 
 let position = CssPosition::try_from_named_axes(
@@ -2594,11 +2596,12 @@ assert_eq!(flow.block(), &CssBlockPosition::Start);
 assert_eq!(flow.inline(), &CssInlinePosition::End);
 let circle = CssCircleShape::new(CssCircleRadius::Default, Some(position));
 assert_eq!(circle.serialize_specified().unwrap(), "circle(at block-start inline-end)");
-assert_eq!(
+assert!(
     CssPhysicalPosition::try_new(
         CssHorizontalPosition::XStart, CssVerticalPosition::Bottom,
-    ).unwrap_err(),
-    CssPositionConstructionError::NonPhysicalKeyword,
+    )
+    .unwrap_err()
+    .is_non_physical_keyword(),
 );
 ```
 
@@ -3012,7 +3015,7 @@ programmatic provenance; `try_from_component(token)` requires a complete
 quoted-string token and retains its exact spelling and original origin.
 `as_str()`, `component()` and `origin()` borrow that information, including empty
 Strings, escapes and Unicode. Wrong tokens or implicitly recovered terminations
-return `CssComponentValueErrorKind::InvalidToken` at their supplied token or EOF
+return a `CssComponentValueError` with `is_invalid_token()` at their supplied token or EOF
 origin; NUL construction uses the shared `InvalidString` failure.
 `CssFilterImageInput::from_string` preserves this branch, `from_image` takes a
 checked `CssImage`, and `try_from_image` admits an image value through the canonical
@@ -3148,8 +3151,8 @@ spelling. It imports the direct Box 4 visual-box production plus margin-box.
 The broader SVG boxes used by clipping are excluded from this Shapes boundary.
 The image branch uses the shared Images 3/selected Images 4 provider, including URL, gradients
 and the adopted symbolic `light-dark()` image/none branches. `CssImage::try_new`
-checks the complete retained graph and returns `CssImageConstructionError::NotImage`
-for a bare image `none`, which belongs to the outside keyword branch.
+checks the complete retained graph and returns a `CssImageConstructionError` for which
+`is_not_image()` holds for a bare image `none`, which belongs to the outside keyword branch.
 
 `CssShapeOutsideShape::new(shape, reference_box)` composes the existing eight
 basic-shape functions with an optional narrow box. `shape()` and `reference_box()`
@@ -3261,8 +3264,9 @@ corroborated by the pinned WebKit SVG path consumer. Arc flags remain single ASC
 requirements within the pinned SVG publication without taking absolute radii,
 converting arcs or importing drawing-prefix recovery. Geometry remains downstream.
 
-`CssPathDataConstructionError` distinguishes `ExpectedString`, `RecoveredInput`,
-`EmptyPath` and `InvalidPathData`. Grammar failures report a decoded-byte offset,
+`CssShapeConstructionError` distinguishes `is_expected_string()`,
+`is_recovered_input()`, `is_empty_path()` and `is_invalid_path_data()`. Grammar
+failures report a `decoded_byte_offset()`,
 including decoded length for an incomplete suffix; that offset is separate from
 the original CSS token's source coordinates. There is no path-specific constructor
 byte or command-count cap. Component parsing and output retain their existing
@@ -4016,8 +4020,8 @@ symbolic percentage math root. `CssColorMixComponent::new` takes a color and
 optional weight; `CssColorMix::try_new` checks the list and composed depth.
 `CssColorInterpolationMethod::try_new(space, hue)` checks predefined methods:
 an explicit hue strategy requires HSL, HWB, LCH or Oklch. Rectangular spaces
-accept an omitted hue; rejected combinations return
-`CssColorInterpolationMethodConstructionError::HueRequiresPolarSpace`.
+accept an omitted hue; rejected combinations return a
+`CssColorConstructionError` with `is_hue_requires_polar_space()`.
 `CssColorInterpolation::from_predefined(method)` wraps a checked method.
 The method's `space()` and `hue()` preserve authored identity, including omitted
 hue versus explicit `Shorter`. `effective_hue()` supplies the
@@ -6894,7 +6898,7 @@ selected source defines a literal When/Else CSSOM algorithm. Evaluation belongs
 downstream.
 
 `parse_when_condition` and `parse_when_condition_with_limits` return a checked
-`CssWhenCondition` or `CssWhenConstructionError`; the matching parser-context
+`CssWhenCondition` or `CssConditionConstructionError`; the matching parser-context
 methods preserve the selected property context. `try_from_components` and
 `try_from_components_with_limits` validate the actual complete components. The
 private condition owns its lexical spelling and origin; inspecting or constructing
@@ -7196,7 +7200,7 @@ definition. Parseable implicit EOF closures remain retained with diagnostics.
 `CssSupportsTestBody::recovery_origin()` identifies recovered input, distinct
 from whether a feature is supported. Strict body and rule construction reject
 recovered input and enforce aggregate component limits. The typed
-`CssNamedSupportsConstructionError` separates invalid names, invalid body
+`CssSupportsConstructionError` separates invalid names, invalid body
 grammar, recovered input, and component failures. This authored recovery policy
 reconciles the selected generic Syntax block consumer with Conditional 5's
 feature-test purpose; the specification does not specify each malformed-item
@@ -7888,7 +7892,8 @@ diagnostics, and enclosing rule source positions.
 
 The checked qualified-name constructors take typed decoded local names and an
 explicit `CssNamespaceContext`. Missing or case-mismatched named bindings return
-`CssQualifiedNameError::UndeclaredNamespacePrefix`. An empty named namespace is
+a `CssSelectorConstructionError` whose `undeclared_namespace_prefix()` names the
+prefix. An empty named namespace is
 still a binding. Unqualified types and universals use the active default when
 present; unqualified attributes always have no namespace. `CssIdent` and
 `CssAttributeName` share the component identifier owner, preserving escaped
@@ -8100,7 +8105,7 @@ All serializers share cumulative input, projection and byte limits with existing
 time/frequency/percentage owners. Ordinary frequency output retains its selected
 unit and rounds to at most six fractional places under the shared precision policy.
 Consequently, a positive `1e-999Hz absolute` model retains its exact admitted input
-but returns `CssSpecifiedValueSerializationErrorKind::UnrepresentableValue` rather
+but returns a `CssSerializationError` with `is_unrepresentable_value()` rather
 than emitting invalid ordinary `0hz absolute`. This is Surgeist's fail-closed
 emission policy. The pinned sources leave the reconciliation between
 [Values 4 supported precision](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#numeric-types)
@@ -9145,8 +9150,8 @@ grammar. `CssStripe::try_new` checks the original color component and thickness;
 `CssStripes::try_new` checks nonemptiness, all retained children and aggregate
 depth. Parsed stripes retain the original function (including any recovered
 closure), color components and exact origins. Checked construction cannot
-certify recovered components as clean. `CssImage1DConstructionError` keeps
-component, numeric, grammar, recovered-origin and list/depth failures distinct.
+certify recovered components as clean. `CssImageConstructionError` keeps
+component, grammar, recovered-origin and list/depth failures distinct.
 
 Canonical output uses color/thickness order and comma spacing. Omitted thickness
 means 1fr; an explicit exact ordinary 1fr is omitted only in output and still
@@ -9583,7 +9588,7 @@ Selector output applies intrinsic grammar restrictions as part of its iterative
 traversal. Public logical lists cannot emit pseudo-element members; `:not()` and
 an nth `of` list must be nonempty, and a `:has()` argument cannot contain another
 `:has()` through logical, nth or shadow arguments. Invalid constructed graphs
-return `CssSpecifiedValueSerializationErrorKind::UnrepresentableValue` atomically.
+return a `CssSerializationError` with `is_unrepresentable_value()` atomically.
 Logical arguments inherit compound and pseudo-element suffix restrictions.
 Selected shadow functions keep compound outer arguments and independent relative
 `:has()` arguments. Grammar checks share the syntax owner used by checked

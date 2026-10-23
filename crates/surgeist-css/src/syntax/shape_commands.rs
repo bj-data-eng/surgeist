@@ -2,15 +2,112 @@
 use super::*;
 use std::fmt;
 
-/// Failure to construct an ordered authored shape command list.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssShapeConstructionError {
+/// Failure to construct an ordered authored shape command list or checked SVG path data.
+///
+/// A path-data failure also retains its input [`Self::origin`] and, when the decoded
+/// string was scanned, its [`Self::decoded_byte_offset`].
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CssShapeConstructionError {
+    kind: ShapeConstructionKind,
+}
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum ShapeConstructionKind {
     EmptyCommands,
+    PathData(Box<PathDataRejection>),
+}
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct PathDataRejection {
+    failure: path_data::PathDataFailure,
+    origin: crate::CssValueOrigin,
+    decoded_byte_offset: Option<usize>,
+}
+impl From<ShapeConstructionKind> for CssShapeConstructionError {
+    fn from(kind: ShapeConstructionKind) -> Self {
+        Self { kind }
+    }
+}
+impl CssShapeConstructionError {
+    pub(crate) fn path_data(
+        failure: path_data::PathDataFailure,
+        origin: crate::CssValueOrigin,
+        decoded_byte_offset: Option<usize>,
+    ) -> Self {
+        Self {
+            kind: ShapeConstructionKind::PathData(Box::new(PathDataRejection {
+                failure,
+                origin,
+                decoded_byte_offset,
+            })),
+        }
+    }
+    const fn path(&self) -> Option<&PathDataRejection> {
+        match &self.kind {
+            ShapeConstructionKind::PathData(rejection) => Some(rejection),
+            ShapeConstructionKind::EmptyCommands => None,
+        }
+    }
+    fn path_failure(&self) -> Option<path_data::PathDataFailure> {
+        self.path().map(|rejection| rejection.failure)
+    }
+    crate::error::kind_predicates! { kind;
+        /// Returns whether the command list is empty.
+        is_empty_commands => ShapeConstructionKind::EmptyCommands,
+    }
+    /// Returns whether the path-data component is not a quoted string.
+    #[must_use]
+    pub fn is_expected_string(&self) -> bool {
+        self.path_failure() == Some(path_data::PathDataFailure::ExpectedString)
+    }
+    /// Returns whether the path-data string has an implicitly recovered termination.
+    #[must_use]
+    pub fn is_recovered_input(&self) -> bool {
+        self.path_failure() == Some(path_data::PathDataFailure::RecoveredInput)
+    }
+    /// Returns whether the decoded path data is empty or contains only SVG whitespace.
+    #[must_use]
+    pub fn is_empty_path(&self) -> bool {
+        self.path_failure() == Some(path_data::PathDataFailure::EmptyPath)
+    }
+    /// Returns whether the decoded string does not satisfy the complete SVG path grammar.
+    #[must_use]
+    pub fn is_invalid_path_data(&self) -> bool {
+        self.path_failure() == Some(path_data::PathDataFailure::InvalidPathData)
+    }
+    /// Returns the original component or programmatic origin of rejected path data.
+    #[must_use]
+    pub const fn origin(&self) -> Option<&crate::CssValueOrigin> {
+        match self.path() {
+            Some(rejection) => Some(&rejection.origin),
+            None => None,
+        }
+    }
+    /// Returns the first invalid decoded byte, or decoded length for incomplete path data.
+    /// This offset is independent of CSS escaping and is not a CSS source coordinate.
+    #[must_use]
+    pub const fn decoded_byte_offset(&self) -> Option<usize> {
+        match self.path() {
+            Some(rejection) => rejection.decoded_byte_offset,
+            None => None,
+        }
+    }
 }
 impl fmt::Display for CssShapeConstructionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("shape command list is empty")
+        let Some(rejection) = self.path() else {
+            return f.write_str("shape command list is empty");
+        };
+        f.write_str(match rejection.failure {
+            path_data::PathDataFailure::ExpectedString => "SVG path data requires a quoted string",
+            path_data::PathDataFailure::RecoveredInput => {
+                "SVG path data string is implicitly closed"
+            }
+            path_data::PathDataFailure::EmptyPath => "SVG path data is empty",
+            path_data::PathDataFailure::InvalidPathData => "invalid SVG path data",
+        })?;
+        if let Some(offset) = rejection.decoded_byte_offset {
+            write!(f, " at decoded byte {offset}")?;
+        }
+        Ok(())
     }
 }
 impl std::error::Error for CssShapeConstructionError {}
@@ -23,7 +120,9 @@ pub struct CssShapeCommandList {
 impl CssShapeCommandList {
     pub fn try_new(commands: Vec<CssShapeCommand>) -> Result<Self, CssShapeConstructionError> {
         if commands.is_empty() {
-            Err(CssShapeConstructionError::EmptyCommands)
+            Err(CssShapeConstructionError::from(
+                ShapeConstructionKind::EmptyCommands,
+            ))
         } else {
             Ok(Self { commands })
         }

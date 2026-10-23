@@ -1,3 +1,6 @@
+use crate::css::support::failure_classes::NumericFailure;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::property_admission::assert_component_rejected;
 use surgeist_css::*;
 
@@ -68,7 +71,7 @@ fn checked_widths_preserve_exact_literals_and_origin_blind_structure() {
     assert_component_rejected(
         CssSpecifiedNonNegativeLength::try_from_component,
         CssComponentValue::try_dimension("-1e-100", "px").unwrap(),
-        CssNumericConstructionErrorKind::OutOfRange,
+        NumericFailure::OutOfRange,
     );
     assert_eq!(
         length("-0", "px")
@@ -107,18 +110,21 @@ fn pair_and_four_side_keep_arity_roles_and_cumulative_budgets() {
     for (limit, kind) in [
         (
             CssSerializationLimits::new(2, 3, 10),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(3, 2, 10),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(3, 3, 9),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
-        assert_eq!(pair.serialize_specified(limit).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&pair.serialize_specified(limit).unwrap_err()),
+            kind
+        );
     }
     let one = CssBorderWidthPair::new(CssBorderWidth::Thin, None);
     assert_eq!(one.authored_end(), None);
@@ -191,19 +197,19 @@ fn pair_and_four_side_keep_arity_roles_and_cumulative_budgets() {
     for (limit, kind) in [
         (
             CssSerializationLimits::new(4, 5, 27),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(5, 4, 27),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(5, 5, 26),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            shorthand.serialize_specified(limit).unwrap_err().kind(),
+            serialization_failure(&shorthand.serialize_specified(limit).unwrap_err()),
             kind
         );
     }
@@ -249,18 +255,21 @@ fn border_triple_retains_omissions_and_exact_shared_budget() {
     for (limit, kind) in [
         (
             CssSerializationLimits::new(3, 4, 14),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(4, 3, 14),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(4, 4, 13),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
-        assert_eq!(value.serialize_specified(limit).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&value.serialize_specified(limit).unwrap_err()),
+            kind
+        );
     }
     let reordered = parse_style_attribute("border:red solid thin");
     assert!(reordered.is_clean());
@@ -376,17 +385,20 @@ fn symbolic_border_triple_shares_one_numeric_and_color_budget() {
     for (limits, kind) in [
         (
             CssSerializationLimits::new(6, 8, 25),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(7, 7, 25),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(7, 8, 24),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
-        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+            kind
+        );
     }
 }

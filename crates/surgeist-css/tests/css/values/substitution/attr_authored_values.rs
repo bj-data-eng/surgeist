@@ -135,9 +135,10 @@ fn attribute_functions_keep_property_and_query_contexts_separate() {
 #[test]
 fn nested_decoded_syntax_reports_the_original_outer_string_origin() {
     let decoded = format!("{}x{}", "(".repeat(257), ")".repeat(257));
-    assert_eq!(
-        parse_component_values(&decoded).unwrap_err().kind(),
-        CssComponentValueErrorKind::NestingLimit
+    assert!(
+        parse_component_values(&decoded)
+            .unwrap_err()
+            .is_nesting_limit()
     );
     let source = format!("display:attr(foo \"{decoded}\");color:red");
     let report = parse_style_attribute(&source);
@@ -178,9 +179,11 @@ fn nested_decoded_syntax_reports_the_original_outer_string_origin() {
         CssImportance::Normal,
     )
     .unwrap_err();
-    assert_eq!(
-        error.kind(),
-        &CssPropertyValueErrorKind::Component(CssComponentValueErrorKind::NestingLimit)
+    assert!(
+        error
+            .component_error()
+            .is_some_and(|error| error.is_nesting_limit()),
+        "{error:?}"
     );
-    assert_eq!(error.origin(), &CssSerializedOrigin::Token(outer_origin));
+    assert_eq!(error.origin(), CssSerializedOrigin::Token(outer_origin));
 }

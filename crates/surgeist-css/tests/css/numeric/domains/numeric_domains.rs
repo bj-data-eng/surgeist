@@ -1,3 +1,5 @@
+use crate::css::support::failure_classes::ComponentFailure;
+use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::value_assertions::{assert_component_rejected, assert_numeric_kind};
 use surgeist_css::*;
 
@@ -10,15 +12,12 @@ fn checked_numeric_constructors_reject_non_finite_values_and_preserve_finite_bou
 
         assert_numeric_kind(
             CssResolutionLiteral::try_new(&value.to_string(), CssResolutionUnit::Dppx),
-            surgeist_css::CssNumericConstructionErrorKind::Component(
-                surgeist_css::CssComponentValueErrorKind::InvalidDimension,
-            ),
+            NumericFailure::Component(ComponentFailure::InvalidDimension),
         );
-        assert_eq!(
+        assert!(
             CssTimeLiteral::try_new(&value.to_string(), CssTimeUnit::Seconds)
                 .unwrap_err()
-                .kind(),
-            surgeist_css::CssComponentValueErrorKind::InvalidDimension
+                .is_invalid_dimension()
         );
     }
 
@@ -27,18 +26,16 @@ fn checked_numeric_constructors_reject_non_finite_values_and_preserve_finite_bou
     }
 
     for invalid in ["NaN", "infinity", "-infinity"] {
-        assert_eq!(
+        assert!(
             CssComponentValue::try_dimension(invalid, "rem")
                 .unwrap_err()
-                .kind(),
-            CssComponentValueErrorKind::InvalidDimension
+                .is_invalid_dimension()
         );
         // `NaN%` tokenizes as an identifier and a `%` delimiter, not one token.
-        assert_eq!(
+        assert!(
             CssComponentValue::try_token(&format!("{invalid}%"))
                 .unwrap_err()
-                .kind(),
-            CssComponentValueErrorKind::InvalidToken
+                .is_invalid_token()
         );
     }
 
@@ -47,28 +44,19 @@ fn checked_numeric_constructors_reject_non_finite_values_and_preserve_finite_bou
         assert_component_rejected(
             CssSpecifiedNonNegativeNumber::try_from_component,
             component.clone(),
-            surgeist_css::CssNumericConstructionErrorKind::RootDomainMismatch,
+            NumericFailure::RootDomainMismatch,
         );
         assert_component_rejected(
             CssRatioOperand::try_from_component,
             component,
-            surgeist_css::CssNumericConstructionErrorKind::RootDomainMismatch,
+            NumericFailure::RootDomainMismatch,
         );
     }
 
     for (invalid, kind) in [
-        (
-            "-90.1deg",
-            surgeist_css::CssNumericConstructionErrorKind::OutOfRange,
-        ),
-        (
-            "90.1deg",
-            surgeist_css::CssNumericConstructionErrorKind::OutOfRange,
-        ),
-        (
-            "0",
-            surgeist_css::CssNumericConstructionErrorKind::RootDomainMismatch,
-        ),
+        ("-90.1deg", NumericFailure::OutOfRange),
+        ("90.1deg", NumericFailure::OutOfRange),
+        ("0", NumericFailure::RootDomainMismatch),
     ] {
         assert_component_rejected(
             CssFontObliqueAngle::try_from_component,
@@ -117,7 +105,7 @@ fn checked_numeric_constructors_reject_non_finite_values_and_preserve_finite_bou
         assert_component_rejected(
             CssSpecifiedNonNegativeNumber::try_from_component,
             CssComponentValue::try_number(invalid).unwrap(),
-            surgeist_css::CssNumericConstructionErrorKind::OutOfRange,
+            NumericFailure::OutOfRange,
         );
     }
     assert_eq!(
@@ -216,10 +204,17 @@ fn opacity_rejects_bare_non_finite_keywords_and_unrelated_numeric_domains() {
             "{source}",
         );
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-        let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-            panic!("{source}: expected opacity property-value detail");
-        };
-        assert_eq!(detail.property(), CssKnownProperty::Opacity, "{source}");
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidPropertyValue,
+            "{source}: expected opacity property-value detail"
+        );
+        assert_eq!(
+            detail.known_property().unwrap(),
+            CssKnownProperty::Opacity,
+            "{source}"
+        );
         let encountered = detail.encountered().expect("responsible numeric token");
         assert_eq!(encountered.kind(), token_kind, "{source}");
         assert_eq!(encountered.authored(), responsible, "{source}");
@@ -392,9 +387,10 @@ fn flow_tolerance_nonzero_unitless_value_drops_declaration_and_retains_siblings(
             diagnostic.span().end().byte_offset().value(),
             declaration_start + invalid.len()
         );
-        match diagnostic.error().kind() {
-            ErrorKind::InvalidPropertyValue(detail) => {
-                assert_eq!(detail.property(), expected_property);
+        match diagnostic.error().code() {
+            CssErrorCode::InvalidPropertyValue => {
+                let detail = diagnostic.error();
+                assert_eq!(detail.known_property().unwrap(), expected_property);
                 let encountered = detail.encountered().expect("nonzero unitless token");
                 assert_eq!(encountered.kind(), CssTokenKind::Number);
                 assert_eq!(encountered.authored(), "3.5e38");

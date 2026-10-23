@@ -23,8 +23,8 @@ use surgeist_css::{
     CssNamespaceConstraint, CssNamespaceContext, CssNamespaceName, CssNamespacePrefix,
     CssParseReport, CssPseudoClass, CssPseudoSelectorListItem, CssRecoveryAction,
     CssRecoveryDiagnostic, CssSelector, CssSelectorCombinator, CssSourcePosition, CssStyleSelector,
-    CssStyleSelectorList, CssTokenKind, ErrorKind, parse_media_query, parse_media_query_list,
-    parse_selector, parse_selector_list, parse_sheet,
+    CssStyleSelectorList, CssTokenKind, parse_media_query, parse_media_query_list, parse_selector,
+    parse_selector_list, parse_sheet,
 };
 
 fn assert_position(actual: CssSourcePosition, expected: (usize, u32, u32)) {
@@ -295,9 +295,12 @@ fn selector_admission_and_semantics() {
         assert_eq!(diagnostic.action(), CssRecoveryAction::RejectInput);
         assert_span(diagnostic, 0, source.len());
         assert_position(diagnostic.error().position(), (offset, 0, offset as u32));
-        let ErrorKind::InvalidSelector(detail) = diagnostic.error().kind() else {
-            panic!("typed selector error")
-        };
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidSelector,
+            "typed selector error"
+        );
         let encountered = detail.encountered().expect("responsible authored token");
         assert_eq!(encountered.kind(), kind);
         assert_eq!(encountered.authored(), spelling);
@@ -314,9 +317,12 @@ fn selector_admission_and_semantics() {
     // wrapper token is injected at EOF.
     assert_position(diagnostic.error().position(), (2, 0, 2));
     assert_span(diagnostic, 0, 3);
-    let ErrorKind::InvalidSelector(detail) = diagnostic.error().kind() else {
-        panic!("typed missing selector")
-    };
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidSelector,
+        "typed missing selector"
+    );
     let encountered = detail.encountered().expect("the final comma");
     assert_eq!(
         (encountered.kind(), encountered.authored()),
@@ -347,10 +353,7 @@ fn assert_eof_closures<T>(report: &CssParseReport<T>, count: usize, eof: (usize,
         assert_position(diagnostic.error().position(), eof);
         assert_position(diagnostic.span().start(), eof);
         assert_position(diagnostic.span().end(), eof);
-        assert!(matches!(
-            diagnostic.error().kind(),
-            ErrorKind::UnexpectedEnd(_)
-        ));
+        assert_eq!(diagnostic.error().code(), CssErrorCode::UnexpectedEnd);
     }
 }
 
@@ -442,9 +445,12 @@ fn selector_recovery_eof_and_coordinates() {
     assert_eq!(diagnostic.action(), CssRecoveryAction::RejectInput);
     assert_span(diagnostic, 0, 21);
     assert_position(diagnostic.error().position(), (17, 1, 6));
-    let ErrorKind::InvalidSelector(detail) = diagnostic.error().kind() else {
-        panic!("typed selector error")
-    };
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidSelector,
+        "typed selector error"
+    );
     let token = detail.encountered().unwrap();
     assert_eq!(token.kind(), CssTokenKind::Ident);
     assert_eq!(token.authored(), "test");
@@ -623,9 +629,12 @@ fn media_admission_and_recovery() {
     );
     assert_span(diagnostic, 0, 12);
     assert_position(diagnostic.error().position(), (6, 0, 6));
-    let ErrorKind::InvalidMediaQuery(detail) = diagnostic.error().kind() else {
-        panic!("typed query error")
-    };
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidMediaQuery,
+        "typed query error"
+    );
     let token = detail.encountered().unwrap();
     assert_eq!(token.kind(), CssTokenKind::Comma);
     assert_eq!(token.authored(), ",");
@@ -760,9 +769,12 @@ fn media_actual_eof_and_coordinates() {
     };
     assert_span(diagnostic, 0, 19);
     assert_position(diagnostic.error().position(), (16, 1, 5));
-    let ErrorKind::InvalidMediaQuery(detail) = diagnostic.error().kind() else {
-        panic!("typed media error")
-    };
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidMediaQuery,
+        "typed media error"
+    );
     assert_eq!(detail.encountered().unwrap().kind(), CssTokenKind::Delim);
     assert_eq!(detail.encountered().unwrap().authored(), "?");
     assert_validation_parity(&report);
@@ -832,11 +844,14 @@ fn assert_limit(
     assert_eq!(diagnostic.error().code(), CssErrorCode::NestingLimit);
     assert_position(diagnostic.error().position(), (offset, 0, offset as u32));
     assert_span(diagnostic, start, end);
-    let ErrorKind::NestingLimit(detail) = diagnostic.error().kind() else {
-        panic!("typed limit details")
-    };
-    assert_eq!(detail.limit(), 256);
-    assert_eq!(detail.enclosing_production().as_str(), production);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::NestingLimit,
+        "typed limit details"
+    );
+    assert_eq!(detail.nesting_limit().unwrap(), 256);
+    assert_eq!(detail.production().unwrap().as_str(), production);
 }
 
 fn exact_depth_and_eof_on_an_ordinary_thread() {

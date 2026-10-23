@@ -1033,7 +1033,7 @@ mod transform_tests {
 
     use super::*;
 
-    fn parse(value: &str) -> Result<CssTransform, crate::error::Error> {
+    fn parse(value: &str) -> Result<CssTransform, crate::error::CssError> {
         let snapshot = crate::CssSourceSnapshot::new(value);
         let numeric = crate::numeric::NumericInputContext::parsed(&snapshot);
         let document = crate::syntax_consumption::source_document(value, &snapshot, 0)

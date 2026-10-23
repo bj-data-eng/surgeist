@@ -315,20 +315,19 @@ fn pending_shorthand_reentry_is_strict_atomic_and_preserves_source_identity() {
         "inside outside square",
         "linear-gradient(red,)",
     ] {
-        assert!(matches!(
+        assert!(
             pending
                 .reenter(parse_component_values(invalid).unwrap())
                 .unwrap_err()
-                .kind(),
-            CssExpansionErrorKind::InvalidReplacement(_)
-        ));
+                .replacement_error()
+                .is_some()
+        );
     }
-    assert_eq!(
+    assert!(
         pending
             .reenter(parse_component_values("var(--again)").unwrap())
             .unwrap_err()
-            .kind(),
-        &CssExpansionErrorKind::ResidualSubstitution
+            .is_residual_substitution()
     );
     for replacement_css in [
         "inside outside",
@@ -369,23 +368,22 @@ fn pending_list_style_longhands_reenter_their_own_grammar_without_losing_source(
             "env(safe-area-inset-top)",
             "attr(data-marker)",
         ] {
-            assert_eq!(
+            assert!(
                 pending
                     .reenter(parse_component_values(residual).unwrap())
                     .unwrap_err()
-                    .kind(),
-                &CssExpansionErrorKind::ResidualSubstitution,
+                    .is_residual_substitution(),
                 "{property:?}: {residual}"
             );
         }
         for rejected in [invalid, ""] {
-            assert!(matches!(
+            assert!(
                 pending
                     .reenter(parse_component_values(rejected).unwrap())
                     .unwrap_err()
-                    .kind(),
-                CssExpansionErrorKind::InvalidReplacement(_)
-            ));
+                    .replacement_error()
+                    .is_some()
+            );
         }
 
         for replacement_css in valid_values.iter().copied().chain(["inherit"]) {
@@ -484,11 +482,8 @@ fn normalization_preserves_mixed_declaration_order_and_fails_at_member_limit() {
     let limits = CssNormalizationLimits::try_new(256, usize::MAX, usize::MAX, 4).unwrap();
     let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
     assert_eq!(
-        error.kind(),
-        &CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: 4,
-        }
+        error.exhausted_limit(),
+        Some((CssNormalizationResource::Contributions, 4))
     );
     assert_eq!(error.declaration_order(), Some(2));
     assert_eq!(

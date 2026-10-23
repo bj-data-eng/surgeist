@@ -56,19 +56,19 @@ fn wrong_literal_domains_report_the_original_invalid_token() {
     for text in ["1%", "1deg", "red", "calc(1)"] {
         let supplied = component(text);
         let error = CssColorNumberLiteral::try_from_component(supplied.clone()).unwrap_err();
-        assert_eq!(error.kind(), CssComponentValueErrorKind::InvalidToken);
+        assert!(error.is_invalid_token(), "{error:?}");
         assert_eq!(error.origin(), supplied.origin());
     }
     for text in ["1", "1deg", "none"] {
         let supplied = component(text);
         let error = CssColorPercentageLiteral::try_from_component(supplied.clone()).unwrap_err();
-        assert_eq!(error.kind(), CssComponentValueErrorKind::InvalidToken);
+        assert!(error.is_invalid_token(), "{error:?}");
         assert_eq!(error.origin(), supplied.origin());
     }
     for text in ["1", "1%", "1px"] {
         let supplied = component(text);
         let error = CssAngleLiteral::try_from_component(supplied.clone()).unwrap_err();
-        assert_eq!(error.kind(), CssComponentValueErrorKind::InvalidToken);
+        assert!(error.is_invalid_token(), "{error:?}");
         assert_eq!(error.origin(), supplied.origin());
     }
 }
@@ -254,14 +254,14 @@ fn mix_weights_distinguish_exact_range_errors_from_component_errors() {
     ] {
         let supplied = component(&text);
         let error = CssColorMixPercentage::try_from_component(supplied.clone()).unwrap_err();
-        assert_eq!(error.kind(), CssColorScalarErrorKind::OutOfRange);
-        assert_eq!(error.origin(), supplied.origin());
+        assert!(error.is_out_of_range(), "{error:?}");
+        assert_eq!(error.origin(), Some(supplied.origin()));
         assert!(error.source().is_none());
     }
     let supplied = CssComponentValue::try_number("25").unwrap();
     let error = CssColorMixPercentage::try_from_component(supplied).unwrap_err();
-    assert_eq!(error.kind(), CssColorScalarErrorKind::InvalidComponent);
-    assert_eq!(error.origin(), &CssValueOrigin::Programmatic);
+    assert!(error.component_error().is_some(), "{error:?}");
+    assert_eq!(error.origin(), Some(&CssValueOrigin::Programmatic));
     assert!(error.source().is_some());
 }
 
@@ -472,7 +472,7 @@ fn decimal_proof_capacity_does_not_limit_exact_literal_admission() {
     let source = "rgb(1e100 0 0)";
     let limits = CssComponentValueLimits::try_new(256, usize::MAX, source.len() - 1).unwrap();
     let error = parse_component_values_with_limits(source, limits).unwrap_err();
-    assert_eq!(error.kind(), CssComponentValueErrorKind::ByteLimit);
+    assert!(error.is_byte_limit(), "{error:?}");
     let limits = CssComponentValueLimits::try_new(256, usize::MAX, source.len()).unwrap();
     let values = parse_component_values_with_limits(source, limits).unwrap();
     let declaration = parse_property_value(
@@ -591,8 +591,9 @@ fn deep_mixed_color_graph_retains_exact_leaf_at_the_shared_depth_boundary() {
         CssKnownProperty::Opacity
     );
     // Checked property input cannot bypass the component graph's same ceiling.
-    assert_eq!(
-        parse_component_values(&text).unwrap_err().kind(),
-        CssComponentValueErrorKind::NestingLimit
+    assert!(
+        parse_component_values(&text)
+            .unwrap_err()
+            .is_nesting_limit()
     );
 }

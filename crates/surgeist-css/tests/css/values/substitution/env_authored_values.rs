@@ -1,4 +1,6 @@
 //! Authored environment substitution preserves token identity and boundary policy.
+use crate::css::support::failure_classes::ComponentFailure;
+use crate::css::support::failure_classes::component_failure;
 use surgeist_css::*;
 
 fn display(values: CssComponentValues) -> CssDeclaration {
@@ -116,23 +118,24 @@ fn style_env_components_obey_explicit_enclosing_resource_limits() {
     for (limits, kind) in [
         (
             CssComponentValueLimits::try_new(1, usize::MAX, usize::MAX).unwrap(),
-            CssComponentValueErrorKind::NestingLimit,
+            ComponentFailure::NestingLimit,
         ),
         (
             CssComponentValueLimits::try_new(256, 1, usize::MAX).unwrap(),
-            CssComponentValueErrorKind::ComponentLimit,
+            ComponentFailure::ComponentLimit,
         ),
         (
             CssComponentValueLimits::try_new(256, usize::MAX, 1).unwrap(),
-            CssComponentValueErrorKind::ByteLimit,
+            ComponentFailure::ByteLimit,
         ),
     ] {
-        let Err(CssContainerConstructionError::Component(error)) =
-            CssContainerCondition::try_from_components(values.clone(), limits)
-        else {
+        let Err(outer) = CssContainerCondition::try_from_components(values.clone(), limits) else {
             panic!("resource failure must not become opaque success")
         };
-        assert_eq!(error.kind(), kind);
+        let Some(error) = outer.component_error() else {
+            panic!("resource failure must not become opaque success")
+        };
+        assert_eq!(component_failure(error), kind);
     }
     let accepted =
         CssContainerCondition::try_from_components(values.clone(), Default::default()).unwrap();
@@ -212,11 +215,8 @@ fn recovered_neighbor_and_pending_normalization_keep_occurrence_order() {
     )
     .unwrap_err();
     assert_eq!(
-        error.kind(),
-        &CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Declarations,
-            limit: 1,
-        }
+        error.exhausted_limit(),
+        Some((CssNormalizationResource::Declarations, 1))
     );
     assert_eq!(
         error

@@ -2,6 +2,8 @@
 //! https://www.w3.org/TR/2026/WD-css-text-4-20260814/#propdef-word-spacing
 //! https://www.w3.org/TR/2026/WD-css-text-4-20260814/#propdef-letter-spacing
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::named_property::sole_longhand_contribution;
 use surgeist_css::*;
 
@@ -245,18 +247,21 @@ fn serialization_limits_fail_atomically_without_changing_value() {
     for (limits, kind) in [
         (
             CssSerializationLimits::new(0, 1, 6),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(1, 0, 6),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(1, 1, 5),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
-        assert_eq!(normal.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&normal.serialize_specified(limits).unwrap_err()),
+            kind
+        );
     }
     let math = adjustment("calc(1px + 2%)");
     assert_eq!(
@@ -264,11 +269,10 @@ fn serialization_limits_fail_atomically_without_changing_value() {
         "calc(2% + 1px)"
     );
     let bytes = "calc(2% + 1px)".len();
-    assert_eq!(
+    assert!(
         math.serialize_specified(CssSerializationLimits::new(128, 128, bytes - 1))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(
         math.serialize_specified(Default::default()).unwrap(),

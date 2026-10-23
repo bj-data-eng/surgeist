@@ -2,10 +2,11 @@
 //! even when every function contains both a sum and a product expression node.
 use crate::css::support::isolated_stack;
 
+use crate::css::support::failure_classes::ComponentFailure;
+use crate::css::support::failure_classes::component_failure;
 use surgeist_css::{
-    CssComponentValueError, CssComponentValueErrorKind, CssComponentValueLimits,
-    CssLengthPercentageCalculation, CssNumberCalculation, CssNumericConstructionErrorKind,
-    parse_component_values,
+    CssComponentValueError, CssComponentValueLimits, CssLengthPercentageCalculation,
+    CssNumberCalculation, parse_component_values,
 };
 
 #[derive(Default)]
@@ -107,27 +108,24 @@ fn tighter_limits_reject_and_release_deep_inputs_without_aborting_the_caller() {
             for (limits, expected) in [
                 (
                     CssComponentValueLimits::try_new(255, usize::MAX, usize::MAX).unwrap(),
-                    CssComponentValueErrorKind::NestingLimit,
+                    ComponentFailure::NestingLimit,
                 ),
                 (
                     CssComponentValueLimits::try_new(256, 1, usize::MAX).unwrap(),
-                    CssComponentValueErrorKind::ComponentLimit,
+                    ComponentFailure::ComponentLimit,
                 ),
                 (
                     CssComponentValueLimits::try_new(256, usize::MAX, source.len() - 1).unwrap(),
-                    CssComponentValueErrorKind::ByteLimit,
+                    ComponentFailure::ByteLimit,
                 ),
             ] {
                 let error = CssNumberCalculation::try_from_components(components.clone(), limits)
                     .unwrap_err();
-                assert_eq!(
-                    error.kind(),
-                    &CssNumericConstructionErrorKind::ResourceLimit
-                );
+                assert!(error.is_resource_limit(), "{error:?}");
                 let component = std::error::Error::source(&error)
                     .and_then(|source| source.downcast_ref::<CssComponentValueError>())
                     .expect("original typed component resource failure");
-                assert_eq!(component.kind(), expected);
+                assert_eq!(component_failure(component), expected);
                 assert!(error.origin().is_some());
                 drop(error);
             }

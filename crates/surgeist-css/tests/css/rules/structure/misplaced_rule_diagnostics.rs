@@ -58,11 +58,18 @@ fn each_misplaced_rule_reports_one_placement_diagnostic_naming_its_context() {
             CssErrorCode::InvalidAtRulePlacement,
             "{source:?}"
         );
-        let ErrorKind::InvalidAtRulePlacement(detail) = diagnostic.error().kind() else {
-            panic!("{source:?}: placement owns the rejection");
-        };
-        assert_eq!(detail.name().as_str(), name, "{source:?}");
-        assert_eq!(detail.expected_context().as_str(), context, "{source:?}");
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidAtRulePlacement,
+            "{source:?}: placement owns the rejection"
+        );
+        assert_eq!(detail.at_rule().unwrap().as_str(), name, "{source:?}");
+        assert_eq!(
+            detail.expectation().unwrap().as_str(),
+            context,
+            "{source:?}"
+        );
         assert_eq!(
             diagnostic.span().start().byte_offset().value(),
             source.find(rule).unwrap(),

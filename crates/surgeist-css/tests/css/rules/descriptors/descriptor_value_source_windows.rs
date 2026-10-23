@@ -100,10 +100,13 @@ fn depth<T: Debug>(report: CssParseReport<Option<T>>, exceeded: bool) {
             .iter()
             .find(|d| d.action() == CssRecoveryAction::StopAtNestingLimit)
             .expect("typed source depth stop");
-        let ErrorKind::NestingLimit(detail) = diagnostic.error().kind() else {
-            panic!("resource error must not become descriptor grammar failure");
-        };
-        assert_eq!(detail.limit(), 256);
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::NestingLimit,
+            "resource error must not become descriptor grammar failure"
+        );
+        assert_eq!(detail.nesting_limit().unwrap(), 256);
         point(diagnostic.error().position(), (512, 0, 512));
         assert!(
             !report

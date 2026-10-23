@@ -1,15 +1,16 @@
 //! Whole-rule checked import contracts: Cascade optional-clause interpretation,
 //! exact component provenance, and strict admission independent of loading.
+use crate::css::support::failure_classes::ComponentFailure;
+use crate::css::support::failure_classes::component_failure;
 use crate::css::support::rules::import_from_components as construct;
 use surgeist_css::{
     CssCalculationExpressionRef, CssComponentValue, CssComponentValueError,
-    CssComponentValueErrorKind, CssComponentValueLimits, CssComponentValueRef, CssComponentValues,
-    CssImportConstructionError, CssImportLayer, CssImportRule, CssImportTarget,
-    CssKnownPropertyValueRef, CssMediaConditionKind, CssMediaConstructionError,
-    CssMediaFeatureQuery, CssMediaQuery, CssMediaRangeRef, CssMediaType, CssNamespaceConstraint,
-    CssNamespaceContext, CssOpacityValue, CssRule, CssSelector, CssSerializationError,
-    CssSerializedOrigin, CssSpecifiedValueSerializationErrorKind, CssSupportsConditionKind,
-    CssValueOrigin, parse_component_values, parse_sheet,
+    CssComponentValueLimits, CssComponentValueRef, CssComponentValues, CssImportLayer,
+    CssImportRule, CssImportTarget, CssKnownPropertyValueRef, CssMediaConditionKind,
+    CssMediaConstructionError, CssMediaFeatureQuery, CssMediaQuery, CssMediaRangeRef, CssMediaType,
+    CssNamespaceConstraint, CssNamespaceContext, CssOpacityValue, CssRule, CssSelector,
+    CssSerializationError, CssSerializedOrigin, CssSupportsConditionKind, CssValueOrigin,
+    parse_component_values, parse_sheet,
 };
 
 fn values(items: Vec<CssComponentValue>) -> CssComponentValues {
@@ -85,14 +86,13 @@ fn whole_rule_admission_requires_one_import_and_an_explicit_terminator() {
         "@import 'x'; @import 'y';",
     ] {
         assert!(
-            matches!(
-                CssImportRule::try_from_components(
-                    parse_component_values(source).unwrap(),
-                    &CssNamespaceContext::default(),
-                    Default::default(),
-                ),
-                Err(CssImportConstructionError::InvalidRuleGrammar { .. })
-            ),
+            CssImportRule::try_from_components(
+                parse_component_values(source).unwrap(),
+                &CssNamespaceContext::default(),
+                Default::default(),
+            )
+            .as_ref()
+            .is_err_and(|error| error.is_invalid_rule_grammar()),
             "{source:?}"
         );
     }
@@ -243,12 +243,9 @@ fn malformed_media_rejects_the_whole_import_instead_of_retaining_never_members()
         )
         .unwrap_err();
         assert!(
-            matches!(
-                error,
-                CssImportConstructionError::Media(
-                    CssMediaConstructionError::InvalidQueryGrammar { .. }
-                )
-            ),
+            error
+                .media_error()
+                .is_some_and(CssMediaConstructionError::is_invalid_query_grammar),
             "{source}: {error:?}"
         );
     }
@@ -460,28 +457,28 @@ fn recovered_components_reject_before_invalid_envelope_and_preserve_eof_provenan
         Default::default(),
     )
     .unwrap_err();
-    assert!(matches!(
-        error,
-        CssImportConstructionError::RecoveredInput { .. }
-    ));
-    assert_eq!(error.origin(), &expected);
+    assert!(error.is_recovered_input());
+    assert_eq!(error.origin(), Some(&expected));
     let mut components = vec![token("@import"), token(" "), token("'x'"), token(" ")];
     components.extend_from_slice(recovered.items());
     components.push(token(";"));
-    assert!(matches!(
+    assert!(
         CssImportRule::try_from_components(
             values(components),
             &CssNamespaceContext::default(),
             Default::default()
-        ),
-        Err(CssImportConstructionError::RecoveredInput { .. })
-    ));
+        )
+        .as_ref()
+        .is_err_and(|error| error.is_recovered_input())
+    );
     let zero = CssComponentValueLimits::try_new(256, 0, usize::MAX).unwrap();
     let error =
         CssImportRule::try_from_components(recovered, &CssNamespaceContext::default(), zero)
             .unwrap_err();
     assert!(
-        matches!(error, CssImportConstructionError::Component(ref error) if error.kind() == CssComponentValueErrorKind::ComponentLimit)
+        error
+            .component_error()
+            .is_some_and(|error| error.is_component_limit())
     );
 }
 
@@ -496,10 +493,10 @@ fn all_input_trivia_counts_toward_limits_before_canonical_trivia_is_omitted() {
         limits,
     )
     .unwrap_err();
-    let CssImportConstructionError::Component(error) = error else {
+    let Some(error) = error.component_error() else {
         panic!("whole input byte budget")
     };
-    assert_eq!(error.kind(), CssComponentValueErrorKind::ByteLimit);
+    assert!(error.is_byte_limit(), "{error:?}");
     original(error.origin(), components.items().last().unwrap().origin());
     let limits =
         CssComponentValueLimits::try_new(0, components.items().len(), source.len()).unwrap();
@@ -518,12 +515,20 @@ fn all_input_trivia_counts_toward_limits_before_canonical_trivia_is_omitted() {
     let limits =
         CssComponentValueLimits::try_new(0, components.items().len() - 1, source.len()).unwrap();
     assert!(
-        matches!(CssImportRule::try_from_components(components, &CssNamespaceContext::default(), limits), Err(CssImportConstructionError::Component(error)) if error.kind() == CssComponentValueErrorKind::ComponentLimit)
+        CssImportRule::try_from_components(components, &CssNamespaceContext::default(), limits)
+            .as_ref()
+            .is_err_and(|error| error
+                .component_error()
+                .is_some_and(|error| error.is_component_limit()))
     );
     let components = parse_component_values("@import 'x' future();").unwrap();
     let limits = CssComponentValueLimits::try_new(0, usize::MAX, usize::MAX).unwrap();
     assert!(
-        matches!(CssImportRule::try_from_components(components, &CssNamespaceContext::default(), limits), Err(CssImportConstructionError::Component(error)) if error.kind() == CssComponentValueErrorKind::NestingLimit)
+        CssImportRule::try_from_components(components, &CssNamespaceContext::default(), limits)
+            .as_ref()
+            .is_err_and(|error| error
+                .component_error()
+                .is_some_and(|error| error.is_nesting_limit()))
     );
 }
 
@@ -540,7 +545,9 @@ fn byte_limits_include_canonical_media_expansion_and_the_output_terminator() {
     )
     .unwrap_err();
     assert!(
-        matches!(error, CssImportConstructionError::Serialization(ref error) if error.kind() == CssSpecifiedValueSerializationErrorKind::ByteLimit),
+        error
+            .serialization_error()
+            .is_some_and(|error| error.is_byte_limit()),
         "{error:?}"
     );
     let exact = CssComponentValueLimits::try_new(256, usize::MAX, expected.len()).unwrap();
@@ -557,10 +564,7 @@ fn byte_limits_include_canonical_media_expansion_and_the_output_terminator() {
     let error = import
         .serialize_tokens(crate::css::support::byte_limits(expected.len() - 1))
         .unwrap_err();
-    assert!(
-        error.kind() == CssSpecifiedValueSerializationErrorKind::ByteLimit
-            && component_kind(&error) == Some(CssComponentValueErrorKind::ByteLimit)
-    );
+    assert!(error.is_byte_limit() && component_kind(&error) == Some(ComponentFailure::ByteLimit));
     let Some(CssValueOrigin::Parsed(origin)) = error.origin() else {
         panic!("original terminator")
     };
@@ -576,14 +580,8 @@ fn complete_output_byte_budget_identifies_the_first_overflowing_rule_token() {
     let error = rule
         .serialize_tokens(crate::css::support::byte_limits(0))
         .unwrap_err();
-    assert_eq!(
-        error.kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
-    );
-    assert_eq!(
-        component_kind(&error),
-        Some(CssComponentValueErrorKind::ByteLimit)
-    );
+    assert!(error.is_byte_limit(), "{error:?}");
+    assert_eq!(component_kind(&error), Some(ComponentFailure::ByteLimit));
     // The complete output starts with @import. A speculative tail's whitespace
     // or media token is not the first token overflowing the whole-rule budget.
     original(
@@ -593,10 +591,10 @@ fn complete_output_byte_budget_identifies_the_first_overflowing_rule_token() {
 }
 
 /// The lexical component failure behind a serialization failure, if any.
-fn component_kind(error: &CssSerializationError) -> Option<CssComponentValueErrorKind> {
+fn component_kind(error: &CssSerializationError) -> Option<ComponentFailure> {
     std::error::Error::source(error)
         .and_then(|source| source.downcast_ref::<CssComponentValueError>())
-        .map(CssComponentValueError::kind)
+        .map(component_failure)
 }
 
 #[test]

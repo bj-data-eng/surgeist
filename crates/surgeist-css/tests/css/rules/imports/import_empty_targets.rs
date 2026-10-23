@@ -203,11 +203,14 @@ fn an_empty_string_import_at_eof_gets_a_programmatic_semicolon_with_statement_re
     );
     assert_eq!(statement.span().start().byte_offset().value(), 0);
     assert_eq!(statement.span().end().byte_offset().value(), source.len());
-    let surgeist_css::ErrorKind::UnexpectedEnd(detail) = statement.error().kind() else {
-        panic!("typed statement EOF");
-    };
+    let detail = statement.error();
     assert_eq!(
-        detail.expectation().as_str(),
+        detail.code(),
+        CssErrorCode::UnexpectedEnd,
+        "typed statement EOF"
+    );
+    assert_eq!(
+        detail.expectation().unwrap().as_str(),
         "a semicolon or block terminating an at-rule"
     );
     assert_eq!(
@@ -256,11 +259,14 @@ fn eof_unclosed_empty_urls_retain_targets_with_implicit_closure_diagnostics() {
         );
         assert_eq!(statement.span().start().byte_offset().value(), 0);
         assert_eq!(statement.span().end().byte_offset().value(), source.len());
-        let surgeist_css::ErrorKind::UnexpectedEnd(detail) = statement.error().kind() else {
-            panic!("typed statement EOF");
-        };
+        let detail = statement.error();
         assert_eq!(
-            detail.expectation().as_str(),
+            detail.code(),
+            CssErrorCode::UnexpectedEnd,
+            "typed statement EOF"
+        );
+        assert_eq!(
+            detail.expectation().unwrap().as_str(),
             "a semicolon or block terminating an at-rule"
         );
         assert_eq!(

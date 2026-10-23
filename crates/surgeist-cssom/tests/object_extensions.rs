@@ -1,5 +1,5 @@
 //! Concrete extension operations preserve their native owner contracts.
-use surgeist_css::{CssSerializationLimits, CssSpecifiedValueSerializationErrorKind};
+use surgeist_css::CssSerializationLimits;
 use surgeist_cssom::*;
 
 fn create(source: &str, limits: CssomLimits) -> (CssomStore, CssomSheetId, Vec<CssomRuleId>) {
@@ -326,7 +326,7 @@ fn palette_and_profile_getters_remain_available_independently_of_wrapper_capabil
     }
     assert_eq!(empty.name(Default::default()).unwrap(), "device-cmyk");
     assert!(
-        matches!(capture.components(CssSerializationLimits::new(2,2,6)), Err(CssomError::Value(error)) if error.kind()==CssSpecifiedValueSerializationErrorKind::ByteLimit)
+        matches!(capture.components(CssSerializationLimits::new(2,2,6)), Err(CssomError::Value(error)) if error.is_byte_limit())
     );
     drop(store);
     assert_eq!(capture.src(Default::default()).unwrap(), "url(\"\")");

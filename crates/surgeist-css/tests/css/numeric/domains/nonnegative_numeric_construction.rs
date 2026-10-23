@@ -5,6 +5,9 @@
 //! https://www.w3.org/TR/2018/WD-filter-effects-1-20181218/#supported-filter-functions
 //! https://www.w3.org/TR/2023/WD-css-animations-1-20230302/#animation-iteration-count
 
+use crate::css::support::failure_classes::NumericFailure;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::value_assertions::assert_component_rejected;
 use crate::css::support::value_assertions::first_token as token;
 use surgeist_css::*;
@@ -99,37 +102,35 @@ fn ordinary_tiny_negatives_and_wrong_domains_return_exact_errors_with_origins() 
         let input = token(&format!("  {text}"));
         let origin = input.origin().clone();
         let error = CssSpecifiedNonNegativeNumber::try_from_component(input).unwrap_err();
-        assert_eq!(error.kind(), &CssNumericConstructionErrorKind::OutOfRange);
+        assert!(error.is_out_of_range(), "{error:?}");
         assert_eq!(error.origin(), Some(&origin));
         let input = token(&format!("  {text}%"));
         let origin = input.origin().clone();
         let error = CssSpecifiedNonNegativePercentage::try_from_component(input).unwrap_err();
-        assert_eq!(error.kind(), &CssNumericConstructionErrorKind::OutOfRange);
+        assert!(error.is_out_of_range(), "{error:?}");
         assert_eq!(error.origin(), Some(&origin));
     }
     for text in ["1px", "1deg", "auto"] {
-        assert_eq!(
+        assert!(
             CssSpecifiedNonNegativeNumber::try_from_component(token(text))
                 .unwrap_err()
-                .kind(),
-            &CssNumericConstructionErrorKind::RootDomainMismatch
+                .is_root_domain_mismatch()
         );
-        assert_eq!(
+        assert!(
             CssSpecifiedNonNegativePercentage::try_from_component(token(text))
                 .unwrap_err()
-                .kind(),
-            &CssNumericConstructionErrorKind::RootDomainMismatch
+                .is_root_domain_mismatch()
         );
     }
     assert_component_rejected(
         CssSpecifiedNonNegativeNumber::try_from_component,
         token("1%"),
-        surgeist_css::CssNumericConstructionErrorKind::RootDomainMismatch,
+        NumericFailure::RootDomainMismatch,
     );
     assert_component_rejected(
         CssSpecifiedNonNegativePercentage::try_from_component,
         token("0"),
-        surgeist_css::CssNumericConstructionErrorKind::RootDomainMismatch,
+        NumericFailure::RootDomainMismatch,
     );
 }
 
@@ -144,22 +145,20 @@ fn bare_nonnegative_roots_recheck_range_and_actual_math_remains_symbolic() {
         Default::default(),
     )
     .unwrap();
-    assert_eq!(
+    assert!(
         CssSpecifiedNonNegativeNumber::try_from_calculation(number_root)
             .unwrap_err()
-            .kind(),
-        &CssNumericConstructionErrorKind::OutOfRange
+            .is_out_of_range()
     );
     let percentage_root = CssPercentageCalculation::try_from_components(
         parse_component_values("-1e-999%").unwrap(),
         Default::default(),
     )
     .unwrap();
-    assert_eq!(
+    assert!(
         CssSpecifiedNonNegativePercentage::try_from_calculation(percentage_root)
             .unwrap_err()
-            .kind(),
-        &CssNumericConstructionErrorKind::OutOfRange
+            .is_out_of_range()
     );
     let n = number_math("calc(-1)");
     let p = percentage_math("calc(-1%)");
@@ -850,30 +849,22 @@ fn shared_nonnegative_projection_limits_are_atomic_and_percentage_ranges_share_b
         "12.5%"
     );
     for (input, projection, bytes, kind) in [
-        (
-            0,
-            1,
-            10,
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
-        ),
-        (
-            1,
-            0,
-            10,
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
-        ),
-        (1, 1, 3, CssSpecifiedValueSerializationErrorKind::ByteLimit),
+        (0, 1, 10, SerializationFailure::InputNodeLimit),
+        (1, 0, 10, SerializationFailure::ProjectionNodeLimit),
+        (1, 1, 3, SerializationFailure::ByteLimit),
     ] {
         assert_eq!(
-            n.serialize_specified(CssSerializationLimits::new(input, projection, bytes))
-                .unwrap_err()
-                .kind(),
+            serialization_failure(
+                &n.serialize_specified(CssSerializationLimits::new(input, projection, bytes))
+                    .unwrap_err()
+            ),
             kind
         );
         assert_eq!(
-            p.serialize_specified(CssSerializationLimits::new(input, projection, bytes))
-                .unwrap_err()
-                .kind(),
+            serialization_failure(
+                &p.serialize_specified(CssSerializationLimits::new(input, projection, bytes))
+                    .unwrap_err()
+            ),
             kind
         );
     }
@@ -890,25 +881,16 @@ fn shared_nonnegative_projection_limits_are_atomic_and_percentage_ranges_share_b
         "75% 125%"
     );
     for (input, projection, bytes, kind) in [
-        (
-            2,
-            3,
-            8,
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
-        ),
-        (
-            3,
-            2,
-            8,
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
-        ),
-        (3, 3, 7, CssSpecifiedValueSerializationErrorKind::ByteLimit),
+        (2, 3, 8, SerializationFailure::InputNodeLimit),
+        (3, 2, 8, SerializationFailure::ProjectionNodeLimit),
+        (3, 3, 7, SerializationFailure::ByteLimit),
     ] {
         assert_eq!(
-            range
-                .serialize_specified(CssSerializationLimits::new(input, projection, bytes))
-                .unwrap_err()
-                .kind(),
+            serialization_failure(
+                &range
+                    .serialize_specified(CssSerializationLimits::new(input, projection, bytes))
+                    .unwrap_err()
+            ),
             kind
         );
     }

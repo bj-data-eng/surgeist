@@ -1,6 +1,8 @@
 //! Functional new-API evidence for #642 and the adopted #647 grammar profile.
 //! Diagnostics and compact output follow the adopted CSS-owned model contract;
 //! matching, truth and literal browser when/else output are not inferred.
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::rules::declaration_text;
 use crate::css::support::rules::normalized_declarations as declarations;
 use crate::css::support::rules::rule_at;
@@ -90,12 +92,15 @@ fn recognized_invalid_preludes_report_exact_production_token_and_whole_unit() {
                 diagnostic.error().code(),
                 CssErrorCode::InvalidAtRulePrelude
             );
-            let ErrorKind::InvalidAtRulePrelude(detail) = diagnostic.error().kind() else {
-                panic!("recognized condition grammar failure");
-            };
-            assert_eq!(detail.name().as_str(), name);
+            let detail = diagnostic.error();
             assert_eq!(
-                detail.production().as_str(),
+                detail.code(),
+                CssErrorCode::InvalidAtRulePrelude,
+                "recognized condition grammar failure"
+            );
+            assert_eq!(detail.at_rule().unwrap().as_str(), name);
+            assert_eq!(
+                detail.production().unwrap().as_str(),
                 if name == "when" {
                     "ext.rule.when"
                 } else {
@@ -103,7 +108,7 @@ fn recognized_invalid_preludes_report_exact_production_token_and_whole_unit() {
                 }
             );
             assert_eq!(
-                detail.expectation().as_str(),
+                detail.expectation().unwrap().as_str(),
                 "a condition in the adopted when grammar"
             );
             let token = detail.encountered().unwrap();
@@ -131,11 +136,14 @@ fn decoded_at_keyword_and_non_bmp_prefix_keep_original_utf16_diagnostic_coordina
     let [diagnostic] = report.diagnostics() else {
         panic!("one invalid when prelude");
     };
-    let ErrorKind::InvalidAtRulePrelude(detail) = diagnostic.error().kind() else {
-        panic!("decoded recognized when");
-    };
-    assert_eq!(detail.name().as_str(), "when");
-    assert_eq!(detail.production().as_str(), "ext.rule.when");
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidAtRulePrelude,
+        "decoded recognized when"
+    );
+    assert_eq!(detail.at_rule().unwrap().as_str(), "when");
+    assert_eq!(detail.production().unwrap().as_str(), "ext.rule.when");
     let byte = source.find("and{").unwrap();
     assert_eq!(diagnostic.error().position().byte_offset().value(), byte);
     assert_eq!(
@@ -164,13 +172,16 @@ fn free_else_placement_is_distinct_from_intrinsic_grammar_and_isolated_rule_reje
         diagnostic.error().code(),
         CssErrorCode::InvalidAtRulePlacement
     );
-    let ErrorKind::InvalidAtRulePlacement(detail) = diagnostic.error().kind() else {
-        panic!("free else placement");
-    };
-    assert_eq!(detail.name().as_str(), "else");
-    assert_eq!(detail.production().as_str(), "ext.rule.else");
+    let detail = diagnostic.error();
     assert_eq!(
-        detail.expected_context().as_str(),
+        detail.code(),
+        CssErrorCode::InvalidAtRulePlacement,
+        "free else placement"
+    );
+    assert_eq!(detail.at_rule().unwrap().as_str(), "else");
+    assert_eq!(detail.production().unwrap().as_str(), "ext.rule.else");
+    assert_eq!(
+        detail.expectation().unwrap().as_str(),
         "after a conditional group separated only by whitespace or comments"
     );
     assert_eq!(diagnostic.error().position().byte_offset().value(), 0);
@@ -204,10 +215,13 @@ fn missing_when_block_and_terminal_components_keep_owned_failure_categories() {
         panic!("one missing block");
     };
     assert_eq!(diagnostic.error().code(), CssErrorCode::InvalidAtRuleBody);
-    let ErrorKind::InvalidAtRuleBody(detail) = diagnostic.error().kind() else {
-        panic!("required when block");
-    };
-    assert_eq!(detail.production().as_str(), "ext.rule.when");
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidAtRuleBody,
+        "required when block"
+    );
+    assert_eq!(detail.production().unwrap().as_str(), "ext.rule.when");
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropAtRule);
     for prelude in ["future(\"bad\n)", "future(url(a b))", "future(])"] {
         let source = format!("@when {prelude}{{.Lost{{color:red}}}}.After{{color:blue}}");
@@ -619,25 +633,21 @@ fn checked_new_composition_reuses_source_mixed_members_and_rejects_free_else_ato
         matches!(normalized.items()[1], CssNormalizedItem::Rule(ref rule) if matches!(rule.kind(), CssRuleContextKindRef::Else(Some(_))))
     );
     let alone = CssSheet::try_from_rules(vec![CssRule::Else(otherwise.clone())]).unwrap_err();
-    assert_eq!(alone.kind(), CssRuleConstructionErrorKind::InvalidPlacement);
+    assert!(alone.is_invalid_placement(), "{alone:?}");
     assert_eq!(alone.path(), &[0]);
     assert_eq!(alone.position(), otherwise.position());
     let style = parse_sheet(".Intervening{}").syntax().rules()[0].clone();
     let broken = CssSheet::try_from_rules(vec![starter, style, CssRule::Else(otherwise.clone())])
         .unwrap_err();
-    assert_eq!(
-        broken.kind(),
-        CssRuleConstructionErrorKind::InvalidPlacement
-    );
+    assert!(broken.is_invalid_placement(), "{broken:?}");
     assert_eq!(broken.path(), &[2]);
     assert_eq!(otherwise, &before);
     let detached = CssElseRule::try_new(None, Vec::new(), &CssNamespaceContext::default()).unwrap();
     assert!(detached.condition().is_none() && detached.position().is_none());
-    assert_eq!(
+    assert!(
         CssSheet::try_from_rules(vec![CssRule::Else(detached)])
             .unwrap_err()
-            .kind(),
-        CssRuleConstructionErrorKind::InvalidPlacement
+            .is_invalid_placement()
     );
 }
 
@@ -694,18 +704,16 @@ fn style_fragment_constructor_claim_is_rechecked_by_actual_enclosing_assembly() 
     };
     let run = run.clone();
     let condition = parse_when_condition("media(width)").unwrap();
-    assert_eq!(
+    assert!(
         CssWhenRule::try_new(condition.clone(), vec![run.clone()], &context)
             .unwrap_err()
-            .kind(),
-        CssRuleConstructionErrorKind::InvalidPlacement
+            .is_invalid_placement()
     );
     let fragment = CssWhenRule::try_new_in_style(condition, vec![run], &context).unwrap();
-    assert_eq!(
+    assert!(
         CssSheet::try_from_rules(vec![CssRule::When(fragment.clone())])
             .unwrap_err()
-            .kind(),
-        CssRuleConstructionErrorKind::InvalidPlacement
+            .is_invalid_placement()
     );
     assert_eq!(fragment.rules().len(), 1);
     // Existing public style rules are parser-produced. Positive style assembly
@@ -773,19 +781,19 @@ fn complete_specified_graph_shares_declared_provider_work_and_fails_atomically()
     for (limits, kind) in [
         (
             CssSerializationLimits::new(5, 6, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(6, 5, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(6, 6, expected.len() - 1),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
         let error = sheet.serialize_specified(limits).unwrap_err();
-        assert_eq!(error.kind(), kind);
+        assert_eq!(serialization_failure(&error), kind);
         assert_eq!(error.rule_index(), Some(1));
         assert_eq!(sheet, before);
         assert_eq!(sheet.serialize_specified(exact).unwrap(), expected);
@@ -820,10 +828,7 @@ fn literal_when_else_cssom_is_source_undefined_at_real_ordinary_paths() {
             .syntax()
             .serialize_cssom(Default::default())
             .unwrap_err();
-        assert_eq!(
-            error.kind(),
-            CssRuleCssomSerializationErrorKind::SourceUndefined(kind)
-        );
+        assert_eq!(error.undefined_source(), Some(kind));
         assert_eq!(error.rule_path(), path);
         assert!(std::error::Error::source(&error).is_none());
         assert!(
@@ -852,10 +857,7 @@ fn scoped_literal_cssom_reports_the_unavailable_scope_format_before_descendants(
             .syntax()
             .serialize_cssom(Default::default())
             .unwrap_err();
-        assert_eq!(
-            error.kind(),
-            CssRuleCssomSerializationErrorKind::FormatUnavailable(CssRuleCssomFormat::Scope)
-        );
+        assert_eq!(error.unavailable_format(), Some(CssRuleCssomFormat::Scope));
         assert_eq!(error.rule_path(), path);
         assert!(
             report
@@ -906,10 +908,13 @@ fn rejected_outer_else_does_not_advance_retained_stylesheet_prelude_phase() {
         diagnostic.error().code(),
         CssErrorCode::InvalidAtRulePlacement
     );
-    let ErrorKind::InvalidAtRulePlacement(detail) = diagnostic.error().kind() else {
-        panic!("free Else owning placement diagnostic");
-    };
-    assert_eq!(detail.name().as_str(), "else");
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidAtRulePlacement,
+        "free Else owning placement diagnostic"
+    );
+    assert_eq!(detail.at_rule().unwrap().as_str(), "else");
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropAtRule);
     assert_eq!(diagnostic.span().start().byte_offset().value(), 0);
     assert_eq!(
@@ -936,12 +941,15 @@ fn valid_when_else_preludes_require_a_body_at_original_eof_or_statement_boundary
                 panic!("only the missing outer body: {:?}", report.diagnostics());
             };
             assert_eq!(diagnostic.error().code(), CssErrorCode::InvalidAtRuleBody);
-            let ErrorKind::InvalidAtRuleBody(detail) = diagnostic.error().kind() else {
-                panic!("recognized required body");
-            };
-            assert_eq!(detail.name().as_str(), name);
+            let detail = diagnostic.error();
             assert_eq!(
-                detail.production().as_str(),
+                detail.code(),
+                CssErrorCode::InvalidAtRuleBody,
+                "recognized required body"
+            );
+            assert_eq!(detail.at_rule().unwrap().as_str(), name);
+            assert_eq!(
+                detail.production().unwrap().as_str(),
                 if name == "when" {
                     "ext.rule.when"
                 } else {
@@ -985,11 +993,12 @@ fn intrinsic_prelude_and_terminal_url_failures_precede_missing_block_retagging()
                 panic!("one intrinsic outer failure: {:?}", report.diagnostics());
             };
             assert_eq!(diagnostic.error().code(), expected);
-            match diagnostic.error().kind() {
-                ErrorKind::InvalidAtRulePrelude(detail) => {
-                    assert_eq!(detail.name().as_str(), name);
+            match diagnostic.error().code() {
+                CssErrorCode::InvalidAtRulePrelude => {
+                    let detail = diagnostic.error();
+                    assert_eq!(detail.at_rule().unwrap().as_str(), name);
                     assert_eq!(
-                        detail.production().as_str(),
+                        detail.production().unwrap().as_str(),
                         if name == "when" {
                             "ext.rule.when"
                         } else {
@@ -1002,8 +1011,9 @@ fn intrinsic_prelude_and_terminal_url_failures_precede_missing_block_retagging()
                         source.find("and;").unwrap()
                     );
                 }
-                ErrorKind::InvalidComponentValue(component) => {
-                    assert_eq!(component.kind(), CssComponentValueErrorKind::BadUrl);
+                CssErrorCode::InvalidComponentValue => {
+                    let component = diagnostic.error().component_error().unwrap();
+                    assert!(component.is_bad_url(), "{component:?}");
                     let CssValueOrigin::Parsed(origin) = component.origin() else {
                         panic!("original bad URL origin");
                     };
@@ -1042,12 +1052,15 @@ fn discarded_incomplete_prelude_does_not_claim_a_retained_component_closure() {
             );
         };
         assert_eq!(diagnostic.error().code(), CssErrorCode::InvalidAtRuleBody);
-        let ErrorKind::InvalidAtRuleBody(detail) = diagnostic.error().kind() else {
-            panic!("missing body after an authored recoverable prelude");
-        };
-        assert_eq!(detail.name().as_str(), name);
+        let detail = diagnostic.error();
         assert_eq!(
-            detail.production().as_str(),
+            detail.code(),
+            CssErrorCode::InvalidAtRuleBody,
+            "missing body after an authored recoverable prelude"
+        );
+        assert_eq!(detail.at_rule().unwrap().as_str(), name);
+        assert_eq!(
+            detail.production().unwrap().as_str(),
             if name == "when" {
                 "ext.rule.when"
             } else {
@@ -1086,13 +1099,16 @@ fn decoded_authored_case_survives_when_else_prelude_diagnostics() {
                 diagnostic.error().code(),
                 CssErrorCode::InvalidAtRulePrelude
             );
-            let ErrorKind::InvalidAtRulePrelude(detail) = diagnostic.error().kind() else {
-                panic!("recognized authored prelude error");
-            };
-            assert_eq!(detail.name().as_str(), decoded);
-            assert_eq!(detail.production().as_str(), production);
+            let detail = diagnostic.error();
             assert_eq!(
-                detail.expectation().as_str(),
+                detail.code(),
+                CssErrorCode::InvalidAtRulePrelude,
+                "recognized authored prelude error"
+            );
+            assert_eq!(detail.at_rule().unwrap().as_str(), decoded);
+            assert_eq!(detail.production().unwrap().as_str(), production);
+            assert_eq!(
+                detail.expectation().unwrap().as_str(),
                 "a condition in the adopted when grammar"
             );
             let token = detail.encountered().unwrap();
@@ -1175,13 +1191,16 @@ fn decoded_authored_case_survives_free_else_placement_diagnostics() {
                     diagnostic.error().code(),
                     CssErrorCode::InvalidAtRulePlacement
                 );
-                let ErrorKind::InvalidAtRulePlacement(detail) = diagnostic.error().kind() else {
-                    panic!("free authored Else placement");
-                };
-                assert_eq!(detail.name().as_str(), "ELSE");
-                assert_eq!(detail.production().as_str(), "ext.rule.else");
+                let detail = diagnostic.error();
                 assert_eq!(
-                    detail.expected_context().as_str(),
+                    detail.code(),
+                    CssErrorCode::InvalidAtRulePlacement,
+                    "free authored Else placement"
+                );
+                assert_eq!(detail.at_rule().unwrap().as_str(), "ELSE");
+                assert_eq!(detail.production().unwrap().as_str(), "ext.rule.else");
+                assert_eq!(
+                    detail.expectation().unwrap().as_str(),
                     "after a conditional group separated only by whitespace or comments"
                 );
                 assert_eq!(diagnostic.error().position().byte_offset().value(), start);

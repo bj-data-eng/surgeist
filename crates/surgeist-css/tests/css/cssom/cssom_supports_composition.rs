@@ -2,17 +2,19 @@
 //! Work tariffs below derive from the retained component and rule contracts;
 //! punctuation contributes bytes and no fabricated semantic nodes.
 
+use crate::css::support::failure_classes::SerializationFailure as Resource;
+use crate::css::support::failure_classes::serialization_failure;
+use crate::css::support::serialization_limits::LimitFailure;
 use std::error::Error;
 use surgeist_css::{
     CssEditedGroupPreludeRef as Prelude, CssEditedRuleView as View, CssKeyframeRuleView,
     CssKeyframesName, CssKeyframesRuleView, CssKeyframesString, CssKnownProperty as K,
     CssMarginBox, CssMarginRuleView, CssNamespaceContext, CssPageRuleView, CssPropertyNameRef,
-    CssRule, CssRuleCssomFormat, CssRuleCssomSerializationErrorKind as Kind, CssSerializationError,
-    CssSerializationLimits as Limits, CssSpecifiedDeclarationBlock as Block,
-    CssSpecifiedDeclarationEntry as Entry, CssSpecifiedPageDeclarationBlock as PageBlock,
-    CssSpecifiedPageDeclarationEntry as PageEntry,
-    CssSpecifiedValueSerializationErrorKind as Resource, CssValueOrigin,
-    parse_keyframe_selector_list, parse_page_selector_list, parse_rule, parse_sheet,
+    CssRule, CssRuleCssomFormat, CssSerializationError, CssSerializationLimits as Limits,
+    CssSpecifiedDeclarationBlock as Block, CssSpecifiedDeclarationEntry as Entry,
+    CssSpecifiedPageDeclarationBlock as PageBlock, CssSpecifiedPageDeclarationEntry as PageEntry,
+    CssValueOrigin, parse_keyframe_selector_list, parse_page_selector_list, parse_rule,
+    parse_sheet,
 };
 
 fn property(block: &Block, name: K) -> &Entry {
@@ -75,14 +77,14 @@ fn parsed_supports_condition_and_child_share_exact_limits_and_retry_atomically()
         ),
     ] {
         let error = rule.serialize_cssom(limits).unwrap_err();
-        assert_eq!(error.kind(), Kind::Resource(kind));
+        assert_eq!(error.limit_kind(), Some(kind));
         assert_eq!(error.rule_path(), path);
         // Declaration admission can own the resource failure; preserve its
         // real wrapper while following the public chain to the typed cause.
         let mut source = error.source().unwrap();
         loop {
             if let Some(value) = source.downcast_ref::<CssSerializationError>() {
-                assert_eq!(value.kind(), kind);
+                assert_eq!(serialization_failure(value), kind);
                 break;
             }
             source = source.source().expect("typed resource provider");
@@ -141,7 +143,7 @@ fn omitted_empty_children_consume_work_and_preserve_the_next_child_failure_index
         ),
     ] {
         let error = group.serialize_cssom(limits).unwrap_err();
-        assert_eq!(error.kind(), Kind::Resource(kind));
+        assert_eq!(error.limit_kind(), Some(kind));
         assert_eq!(error.rule_path(), path);
         assert_eq!(group.serialize_cssom(exact).unwrap(), expected);
         assert_eq!(children[0].serialize_cssom(Default::default()).unwrap(), "");
@@ -180,8 +182,8 @@ fn all_empty_children_have_exact_bytes_but_retain_their_own_work_tariffs() {
         (Limits::new(10, 10, expected.len() - 1), Resource::ByteLimit),
     ] {
         assert_eq!(
-            group.serialize_cssom(limits).unwrap_err().kind(),
-            Kind::Resource(kind)
+            group.serialize_cssom(limits).unwrap_err().limit_kind(),
+            Some(kind)
         );
         assert_eq!(group.serialize_cssom(Default::default()).unwrap(), expected);
     }
@@ -208,8 +210,8 @@ fn unavailable_descendants_keep_their_typed_cause_and_index_after_an_empty_child
     for _ in 0..2 {
         let error = group.serialize_cssom(Default::default()).unwrap_err();
         assert_eq!(
-            error.kind(),
-            Kind::FormatUnavailable(CssRuleCssomFormat::Container)
+            error.unavailable_format(),
+            Some(CssRuleCssomFormat::Container)
         );
         assert_eq!(error.rule_path(), &[1]);
         assert!(error.source().is_none());
@@ -351,12 +353,16 @@ fn supports_composes_current_page_margin_and_keyframe_edits_without_source_recon
             .unwrap(),
         expected
     );
-    assert_eq!(
+    assert!(
         group
             .serialize_cssom(Limits::new(10000, 100000, expected.len() - 1))
             .unwrap_err()
-            .kind(),
-        Kind::Resource(Resource::ByteLimit)
+            .is_resource_limit()
+            && group
+                .serialize_cssom(Limits::new(10000, 100000, expected.len() - 1))
+                .unwrap_err()
+                .serialization_error()
+                .is_some_and(|error| error.is_byte_limit())
     );
     assert_eq!(group.serialize_cssom(Default::default()).unwrap(), expected);
     assert!(

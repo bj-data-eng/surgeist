@@ -1,5 +1,7 @@
 //! Logical1 WD20251204 §§2–3; source-authored page selector goldens.
 //! Authored page selectors retain their logical classification until progression is known.
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::rules::ExpectedRejection;
 use crate::css::support::rules::normalized_pages as pages;
 use surgeist_css::*;
@@ -430,20 +432,20 @@ fn logical_page_output_and_normalization_share_atomic_cumulative_limits() {
     for (limits, kind) in [
         (
             CssSerializationLimits::new(6, usize::MAX, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(usize::MAX, 6, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(usize::MAX, usize::MAX, expected.len() - 1),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
         for _ in 0..2 {
             let error = report.syntax().serialize_specified(limits).unwrap_err();
-            assert_eq!(error.kind(), kind);
+            assert_eq!(serialization_failure(&error), kind);
             assert_eq!(report, before);
         }
     }
@@ -462,11 +464,8 @@ fn logical_page_output_and_normalization_share_atomic_cumulative_limits() {
     )
     .unwrap_err();
     assert_eq!(
-        error.kind(),
-        &CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Rules,
-            limit: 1
-        }
+        error.exhausted_limit(),
+        Some((CssNormalizationResource::Rules, 1))
     );
     assert_eq!(report, before);
     assert!(normalize_sheet_with_limits(report.syntax(), exact).is_ok());

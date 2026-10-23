@@ -139,18 +139,14 @@ fn pending_lists_reenter_strictly_repeatably_with_replacement_origins() {
             let error = pending
                 .reenter(parse_component_values(invalid).unwrap())
                 .unwrap_err();
-            assert!(matches!(
-                error.kind(),
-                CssExpansionErrorKind::InvalidReplacement(_)
-            ));
+            assert!(error.replacement_error().is_some());
         }
         for residual in ["var(--again)", "env(layer)", "attr(layer)"] {
-            assert_eq!(
+            assert!(
                 pending
                     .reenter(parse_component_values(residual).unwrap())
                     .unwrap_err()
-                    .kind(),
-                &CssExpansionErrorKind::ResidualSubstitution
+                    .is_residual_substitution()
             );
         }
         let parsed = parse_component_values(case.replacement).unwrap();
@@ -250,11 +246,8 @@ fn normalization_preserves_ordered_runs_and_one_unit_per_longhand_or_pending_gro
     let limits = CssNormalizationLimits::try_new(256, usize::MAX, usize::MAX, 5).unwrap();
     let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
     assert_eq!(
-        error.kind(),
-        &CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: 5,
-        }
+        error.exhausted_limit(),
+        Some((CssNormalizationResource::Contributions, 5))
     );
     assert_eq!(error.declaration_order(), Some(5));
     assert_eq!(
@@ -360,10 +353,13 @@ fn invalid_lists_drop_only_the_declaration_with_structured_property_diagnostics(
                 CssErrorCode::InvalidPropertyValue
             );
             assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-            let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-                panic!("structured property diagnostic")
-            };
-            assert_eq!(detail.property(), case.property);
+            let detail = diagnostic.error();
+            assert_eq!(
+                detail.code(),
+                CssErrorCode::InvalidPropertyValue,
+                "structured property diagnostic"
+            );
+            assert_eq!(detail.known_property().unwrap(), case.property);
             let [sibling] = report.syntax().as_slice() else {
                 panic!("only valid sibling retained")
             };

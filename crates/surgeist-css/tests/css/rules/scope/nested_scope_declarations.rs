@@ -515,10 +515,7 @@ fn retained_scoped_run_consumes_exact_normalization_resources_atomically() {
     ] {
         let error = normalize_sheet_with_limits(report.syntax(), limits)
             .expect_err("retained run must consume its budget");
-        assert_eq!(
-            error.kind(),
-            &CssNormalizationErrorKind::LimitExceeded { resource, limit }
-        );
+        assert_eq!(error.exhausted_limit(), Some((resource, limit)));
         assert_eq!(
             error.position().unwrap().byte_offset().value(),
             source.find("color").unwrap()

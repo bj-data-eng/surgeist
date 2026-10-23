@@ -10,10 +10,14 @@
 
 use crate::css::support::authored_property;
 use crate::css::support::component_values as components;
+use crate::css::support::failure_classes::NumericFailure;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::numeric_failure;
+use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::*;
 
 type Limits = CssSerializationLimits;
-type Kind = CssSpecifiedValueSerializationErrorKind;
+type Kind = SerializationFailure;
 
 fn component(source: &str) -> CssComponentValue {
     let values = components(source);
@@ -153,12 +157,11 @@ fn rounded_zero_and_carry_use_actual_short_output() {
                 .unwrap(),
             expected
         );
-        assert_eq!(
+        assert!(
             value
                 .serialize_specified(Limits::new(2, 1, expected.len() - 1))
                 .unwrap_err()
-                .kind(),
-            Kind::ByteLimit
+                .is_byte_limit()
         );
     }
 }
@@ -213,7 +216,10 @@ fn generic_byte_limits_keep_tree_visits_failure_order_and_input_identity() {
         (Limits::new(4, 3, 14), Kind::ProjectionNodeLimit),
         (Limits::new(4, 4, 13), Kind::ByteLimit),
     ] {
-        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+            kind
+        );
         assert_eq!(value, before);
     }
     assert_eq!(
@@ -240,7 +246,7 @@ fn ordinary_roots_retain_exact_decimal_admission_and_authored_identity() {
     for source in ["-1e-999px", "-0.0000004px"] {
         let raw = component(source);
         let error = CssSpecifiedNonNegativeLength::try_from_component(raw.clone()).unwrap_err();
-        assert_eq!(error.kind(), &CssNumericConstructionErrorKind::OutOfRange);
+        assert!(error.is_out_of_range(), "{error:?}");
         assert_eq!(error.origin(), Some(raw.origin()));
     }
     assert_ne!(number("calc(1 / 2)"), number("calc(.5)"));
@@ -249,20 +255,14 @@ fn ordinary_roots_retain_exact_decimal_admission_and_authored_identity() {
 #[test]
 fn original_recovery_and_substitution_errors_precede_projection() {
     for (source, kind) in [
-        (
-            "calc(1",
-            CssNumericConstructionErrorKind::RecoveredComponent,
-        ),
-        (
-            "calc(var(--n))",
-            CssNumericConstructionErrorKind::SubstitutionRequired,
-        ),
+        ("calc(1", NumericFailure::RecoveredComponent),
+        ("calc(var(--n))", NumericFailure::SubstitutionRequired),
     ] {
         let original = components(source);
         let before = original.clone();
         let error = CssNumberCalculation::try_from_components(original.clone(), Default::default())
             .unwrap_err();
-        assert_eq!(error.kind(), &kind);
+        assert_eq!(numeric_failure(&error), kind);
         assert!(error.origin().is_some());
         assert_eq!(original, before);
     }
@@ -473,7 +473,10 @@ fn border_collision_limits_charge_all_four_captures_before_selection() {
         (Limits::new(13, 8, 59), Kind::ProjectionNodeLimit),
         (Limits::new(13, 9, 58), Kind::ByteLimit),
     ] {
-        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+            kind
+        );
         assert_eq!(value, before);
     }
     assert_eq!(
@@ -495,7 +498,10 @@ fn equal_projected_border_edges_keep_canonical_compression_and_scratch_limits() 
         (Limits::new(17, 14, 9), Kind::ProjectionNodeLimit),
         (Limits::new(17, 15, 8), Kind::ByteLimit),
     ] {
-        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+            kind
+        );
     }
     // A captured scalar tree needs fourteen bytes even when selected to one edge.
     let equal = slice(&["calc(0.12345641)"]);
@@ -503,12 +509,11 @@ fn equal_projected_border_edges_keep_canonical_compression_and_scratch_limits() 
         equal.serialize_specified(Limits::new(13, 9, 14)).unwrap(),
         "calc(0.123456)"
     );
-    assert_eq!(
+    assert!(
         equal
             .serialize_specified(Limits::new(13, 9, 13))
             .unwrap_err()
-            .kind(),
-        Kind::ByteLimit
+            .is_byte_limit()
     );
 }
 
@@ -694,7 +699,10 @@ fn scroll_authored_roles_keep_marker_arity_and_exact_cumulative_capture_visits()
                     Kind::ByteLimit,
                 ),
             ] {
-                assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), error);
+                assert_eq!(
+                    serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+                    error
+                );
             }
             let padded = CssScrollPaddingShorthand::try_new(
                 kind,
@@ -716,11 +724,10 @@ fn canonical_scroll_equivalence_keeps_authored_capture_work_and_order() {
         pair.serialize_specified(Limits::new(4, 2, 10)).unwrap(),
         "calc(96px)"
     );
-    assert_eq!(
+    assert!(
         pair.serialize_specified(Limits::new(3, 2, 10))
             .unwrap_err()
-            .kind(),
-        Kind::InputNodeLimit
+            .is_input_node_limit()
     );
     let symbolic =
         CssScrollMarginPair::new(length("calc(1em + 2px)"), Some(length("calc(2px + 1em)")));
@@ -733,19 +740,17 @@ fn canonical_scroll_equivalence_keeps_authored_capture_work_and_order() {
     // Eager capture: a failed first scratch precedes work on the next sibling.
     let first = CssScrollMarginPair::new(length("calc(1em + 2px)"), Some(length("calc(1px)")));
     let second = CssScrollMarginPair::new(length("calc(1px)"), Some(length("calc(1em + 2px)")));
-    assert_eq!(
+    assert!(
         first
             .serialize_specified(Limits::new(4, 5, 14))
             .unwrap_err()
-            .kind(),
-        Kind::ByteLimit
+            .is_byte_limit()
     );
-    assert_eq!(
+    assert!(
         second
             .serialize_specified(Limits::new(4, 5, 14))
             .unwrap_err()
-            .kind(),
-        Kind::InputNodeLimit
+            .is_input_node_limit()
     );
 }
 
@@ -780,11 +785,10 @@ fn calc_size_and_fit_content_round_shared_children_without_erasing_symbols() {
             .unwrap(),
         expected
     );
-    assert_eq!(
+    assert!(
         fit.serialize_specified(Limits::new(3, 2, expected.len() - 1))
             .unwrap_err()
-            .kind(),
-        Kind::ByteLimit
+            .is_byte_limit()
     );
 }
 
@@ -961,12 +965,11 @@ fn calculated_alpha_finalizes_ordinary_slots_and_retains_relative_overrides() {
                 .unwrap(),
             expected
         );
-        assert_eq!(
+        assert!(
             value
                 .serialize_specified(Limits::new(usize::MAX, usize::MAX, expected.len() - 1))
                 .unwrap_err()
-                .kind(),
-            Kind::ByteLimit
+                .is_byte_limit()
         );
         assert_eq!(value, before);
     }

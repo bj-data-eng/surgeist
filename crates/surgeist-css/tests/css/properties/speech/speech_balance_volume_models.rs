@@ -2,6 +2,8 @@
 //! inherited adjustments, user calibration and synthesis stay downstream.
 //! Existing-public RED is preserved in speech_balance_volume_lifecycle.rs.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::important_declaration as declaration;
 use surgeist_css::*;
 
@@ -160,10 +162,7 @@ fn balance_recovered_math_is_retained_with_diagnostics_but_checked_construction_
     let value = balance(declaration);
     let numeric = value.number().unwrap();
     let error = CssVoiceBalance::try_number(numeric.clone()).unwrap_err();
-    assert_eq!(
-        error.kind(),
-        &CssNumericConstructionErrorKind::RecoveredComponent
-    );
+    assert!(error.is_recovered_component(), "{error:?}");
     assert!(matches!(
         error.origin(),
         Some(CssValueOrigin::ImplicitClosure { .. })
@@ -181,10 +180,13 @@ fn balance_recovered_math_is_retained_with_diagnostics_but_checked_construction_
     let CssExpansion::Pending(handle) = expand_declaration(&pending).unwrap() else {
         panic!("pending")
     };
-    assert!(matches!(
-        handle.reenter(components).unwrap_err().kind(),
-        CssExpansionErrorKind::InvalidReplacement(_)
-    ));
+    assert!(
+        handle
+            .reenter(components)
+            .unwrap_err()
+            .replacement_error()
+            .is_some()
+    );
     assert!(
         handle
             .reenter(parse_component_values("101").unwrap())
@@ -323,18 +325,21 @@ fn mixing_specified_limits_charge_omitted_children_and_fail_atomically() {
     for (limits, kind) in [
         (
             CssSerializationLimits::new(2, 3, 6),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(3, 2, 6),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(3, 3, 5),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
-        assert_eq!(zero.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&zero.serialize_specified(limits).unwrap_err()),
+            kind
+        );
         assert_eq!(zero, retained);
         assert_eq!(
             zero.serialize_specified(Default::default()).unwrap(),
@@ -370,18 +375,21 @@ fn mixing_specified_limits_charge_omitted_children_and_fail_atomically() {
         for (limits, kind) in [
             (
                 CssSerializationLimits::new(0, 1, expected.len()),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                SerializationFailure::InputNodeLimit,
             ),
             (
                 CssSerializationLimits::new(1, 0, expected.len()),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
                 CssSerializationLimits::new(1, 1, expected.len() - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                SerializationFailure::ByteLimit,
             ),
         ] {
-            assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+            assert_eq!(
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+                kind
+            );
             assert_eq!(value, retained);
         }
     }
@@ -395,18 +403,21 @@ fn balance_math_resource_limits_use_the_number_owner_and_preserve_authored_graph
     for (limits, kind) in [
         (
             CssSerializationLimits::new(0, 100, 100),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(100, 0, 100),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(100, 100, 0),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
-        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+            kind
+        );
         assert_eq!(value, &retained);
     }
     assert_eq!(

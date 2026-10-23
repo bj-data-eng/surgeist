@@ -1,35 +1,38 @@
 //! Fonts 4 §9.2 authored palette definitions, not font lookup or evaluation.
 //! https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-palette-values
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::rules::{ExpectedRejection, invalid_descriptor};
 use surgeist_css::{
-    CssComponentValue, CssComponentValueErrorKind, CssComponentValueLimits, CssComponentValueRef,
-    CssComponentValues, CssErrorCode, CssFontPaletteBase, CssFontPaletteConstructionError,
-    CssFontPaletteDescriptor, CssFontPaletteDescriptorKind as Kind, CssFontPaletteDescriptorValue,
+    CssComponentValue, CssComponentValueLimits, CssComponentValueRef, CssComponentValues,
+    CssErrorCode, CssFontPaletteBase, CssFontPaletteDescriptor,
+    CssFontPaletteDescriptorKind as Kind, CssFontPaletteDescriptorValue,
     CssFontPaletteDescriptorValueRef, CssFontPaletteIndex, CssFontPaletteName,
-    CssFontPaletteValueErrorKind, CssFontPaletteValuesRule, CssIntegerValue, CssNamespaceContext,
-    CssNormalizedItem, CssRecoveryAction, CssRule, CssRuleContextKindRef, CssSerializationLimits,
-    CssSpecifiedValueSerializationErrorKind, CssValueOrigin, normalize_sheet,
-    parse_component_values, parse_font_palette_descriptor_value, parse_rule, parse_sheet,
+    CssFontPaletteValuesRule, CssIntegerValue, CssNamespaceContext, CssNormalizedItem,
+    CssRecoveryAction, CssRule, CssRuleContextKindRef, CssSerializationLimits, CssValueOrigin,
+    normalize_sheet, parse_component_values, parse_font_palette_descriptor_value, parse_rule,
+    parse_sheet,
 };
 
 #[test]
 fn checked_construction_rejects_missing_family_negative_index_and_tight_component_budget() {
-    assert_eq!(
-        CssFontPaletteName::try_new("brand").unwrap_err(),
-        CssFontPaletteConstructionError::InvalidName
+    assert!(
+        CssFontPaletteName::try_new("brand")
+            .unwrap_err()
+            .is_invalid_name()
     );
-    assert_eq!(
+    assert!(
         CssFontPaletteIndex::try_new(CssIntegerValue::Literal(
             surgeist_css::CssIntegerLiteral::from_i32(-1)
         ))
-        .unwrap_err(),
-        CssFontPaletteConstructionError::NegativeIndex
+        .unwrap_err()
+        .is_negative_index()
     );
-    assert_eq!(
+    assert!(
         CssFontPaletteValuesRule::try_new(CssFontPaletteName::try_new("--brand").unwrap(), vec![])
-            .unwrap_err(),
-        CssFontPaletteConstructionError::MissingFontFamily
+            .unwrap_err()
+            .is_missing_font_family()
     );
 
     let components = parse_component_values("dark").unwrap();
@@ -39,9 +42,10 @@ fn checked_construction_rejects_missing_family_negative_index_and_tight_componen
         CssComponentValueLimits::try_new(256, 10, 3).unwrap(),
     )
     .unwrap_err();
-    assert_eq!(
-        err.kind(),
-        &CssFontPaletteValueErrorKind::Component(CssComponentValueErrorKind::ByteLimit)
+    assert!(
+        err.component_error()
+            .is_some_and(|error| error.is_byte_limit()),
+        "{err:?}"
     );
     assert!(std::error::Error::source(&err).is_some());
 }
@@ -162,10 +166,7 @@ fn recovered_raw_closure_is_distinct_from_strict_reentry() {
             Default::default(),
         )
         .unwrap_err();
-    assert_eq!(
-        error.kind(),
-        &CssFontPaletteValueErrorKind::ResidualSubstitution
-    );
+    assert!(error.is_residual_substitution(), "{error:?}");
 }
 
 #[test]
@@ -670,10 +671,7 @@ fn strict_reentry_rejects_residual_functions_before_grammar() {
             Default::default(),
         )
         .unwrap_err();
-    assert_eq!(
-        residual.kind(),
-        &CssFontPaletteValueErrorKind::ResidualSubstitution
-    );
+    assert!(residual.is_residual_substitution(), "{residual:?}");
 
     let checked = pending
         .reparse_after_substitution(parse_component_values("12").unwrap(), Default::default())
@@ -702,12 +700,11 @@ fn strict_reentry_rejects_residual_functions_before_grammar() {
             .unwrap(),
         "12"
     );
-    assert_eq!(
+    assert!(
         checked
             .reparse_after_substitution(parse_component_values("13").unwrap(), Default::default())
             .unwrap_err()
-            .kind(),
-        &CssFontPaletteValueErrorKind::NotPending
+            .is_not_pending()
     );
 }
 
@@ -789,10 +786,7 @@ fn whole_rule_and_sheet_share_limits_with_a_style_sibling() {
         .syntax()
         .serialize_specified(CssSerializationLimits::new(1000, 1000, whole.len() - 1))
         .unwrap_err();
-    assert_eq!(
-        err.kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
-    );
+    assert!(err.is_byte_limit(), "{err:?}");
     assert_eq!(err.rule_index(), Some(1));
 
     let simple = parse_sheet(
@@ -806,17 +800,17 @@ fn whole_rule_and_sheet_share_limits_with_a_style_sibling() {
     for (limits, expected) in [
         (
             CssSerializationLimits::new(4, 100, 1000),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(100, 4, 1000),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
     ] {
         assert!(first_simple.serialize_specified(limits).is_ok());
         assert!(second_simple.serialize_specified(limits).is_ok());
         let err = simple.syntax().serialize_specified(limits).unwrap_err();
-        assert_eq!(err.kind(), expected);
+        assert_eq!(serialization_failure(&err), expected);
         assert_eq!(err.rule_index(), Some(1));
     }
 

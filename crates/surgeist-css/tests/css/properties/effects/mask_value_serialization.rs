@@ -5,7 +5,6 @@ use crate::css::support::normal_declaration;
 use crate::css::support::serialization_limits::LimitLadder;
 use surgeist_css::*;
 type Limits = CssSerializationLimits;
-type Kind = CssSpecifiedValueSerializationErrorKind;
 
 fn mask_list(css: &str) -> CssMaskList {
     let declaration = normal_declaration("mask", css);
@@ -220,12 +219,11 @@ fn symbolic_math_keeps_source_graph_and_non_bmp_origin_after_failure_and_retry()
         source.find("calc(").unwrap()
     );
     let expected = "calc(1em + 10px) top / contain";
-    assert_eq!(
+    assert!(
         value
             .serialize_specified(Limits::new(100, 100, 1))
             .unwrap_err()
-            .kind(),
-        Kind::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(
         value.serialize_specified(Default::default()).unwrap(),
@@ -240,12 +238,11 @@ fn failure_after_first_layer_or_separator_is_atomic_and_retryable() {
     let value = mask_list("none, none");
     let before = value.clone();
     for bytes in [4, 5, 6, 9] {
-        assert_eq!(
+        assert!(
             value
                 .serialize_specified(Limits::new(5, 5, bytes))
                 .unwrap_err()
-                .kind(),
-            Kind::ByteLimit
+                .is_byte_limit()
         );
         assert_eq!(value, before);
     }

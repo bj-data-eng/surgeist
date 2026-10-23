@@ -1,5 +1,6 @@
 //! Pure length consumers re-admit authored math in their own percentage context.
 //! Values 4 numeric typing permits percentage units to cancel without a basis.
+use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::known_property;
 use crate::css::support::value_assertions::{
     assert_calculation_rejected, assert_first_property_rejection,
@@ -99,7 +100,7 @@ fn pure_consumers_reject_uncancelled_percentage_context_even_inside_a_sum() {
                 value.components().clone(),
                 Default::default(),
             ),
-            Some(surgeist_css::CssNumericConstructionErrorKind::RootDomainMismatch),
+            Some(NumericFailure::RootDomainMismatch),
         );
         let sum = CssLengthPercentageCalculation::try_sum(value, [], Default::default()).unwrap();
         assert!(pure(sum).is_err(), "{source}");

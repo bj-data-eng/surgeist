@@ -345,19 +345,18 @@ fn pending_aliases_reenter_canonical_grammars_strictly_with_original_provenance(
             panic!("pending alias")
         };
         assert!(pending.source().same_occurrence(&source));
-        assert!(matches!(
+        assert!(
             pending
                 .reenter(parse_component_values(invalid).unwrap())
                 .unwrap_err()
-                .kind(),
-            CssExpansionErrorKind::InvalidReplacement(_)
-        ));
-        assert_eq!(
+                .replacement_error()
+                .is_some()
+        );
+        assert!(
             pending
                 .reenter(parse_component_values("var(--again)").unwrap())
                 .unwrap_err()
-                .kind(),
-            &CssExpansionErrorKind::ResidualSubstitution
+                .is_residual_substitution()
         );
         let replacement = parse_component_values(valid).unwrap();
         for _ in 0..2 {

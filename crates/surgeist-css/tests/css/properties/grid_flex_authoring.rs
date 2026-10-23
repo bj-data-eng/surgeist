@@ -367,7 +367,7 @@ fn invalid_parser_custom_ident_errors_keep_source_location() {
     let error = parse_sheet(".panel {\n  grid-template-columns: [auto] 1fr;\n}")
         .expect_err("rejected parse report");
 
-    assert!(matches!(error.kind(), ErrorKind::InvalidPropertyValue(_)));
+    assert!(error.code() == CssErrorCode::InvalidPropertyValue);
     assert_eq!(error.position().line().value(), 1);
     assert_ne!(error.position().column().value(), 0);
 }
@@ -377,5 +377,5 @@ fn rejects_inconsistent_grid_template_area_row_widths() {
     let error = parse_sheet(".panel { grid-template-areas: \"a a\" \"b\"; }")
         .expect_err("rejected parse report");
 
-    assert!(matches!(error.kind(), ErrorKind::InvalidPropertyValue(_)));
+    assert!(error.code() == CssErrorCode::InvalidPropertyValue);
 }

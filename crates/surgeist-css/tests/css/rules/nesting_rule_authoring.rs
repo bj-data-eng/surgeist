@@ -318,7 +318,7 @@ fn nesting_rejects_unsupported_nested_selector_forms() {
     ] {
         let error = parse_sheet(css).expect_err(css);
         assert!(
-            matches!(error.kind(), ErrorKind::InvalidSelector { .. }),
+            error.code() == CssErrorCode::InvalidSelector,
             "{css} should reject as an invalid selector, got {error:?}"
         );
     }

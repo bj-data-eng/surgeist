@@ -1,5 +1,7 @@
 //! Independent checked authored-value cases for the selected Overflow 3 controls.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::*;
 
 fn length(number: &str, unit: &str) -> CssSpecifiedNonNegativeLength {
@@ -132,12 +134,11 @@ fn keyword_controls_serialize_exactly_and_reject_one_below_limits() {
                 .unwrap(),
             text
         );
-        assert_eq!(
+        assert!(
             value
                 .serialize_specified(CssSerializationLimits::new(1, 1, text.len() - 1))
                 .unwrap_err()
-                .kind(),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit
+                .is_byte_limit()
         );
     }
     for (value, text) in [
@@ -169,32 +170,35 @@ fn keyword_controls_serialize_exactly_and_reject_one_below_limits() {
     for (limits, kind) in [
         (
             CssSerializationLimits::new(0, 1, 99),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(1, 0, 99),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
     ] {
         assert_eq!(
-            CssScrollBehavior::Auto
-                .serialize_specified(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(
+                &CssScrollBehavior::Auto
+                    .serialize_specified(limits)
+                    .unwrap_err()
+            ),
             kind
         );
         assert_eq!(
-            CssScrollbarGutter::Stable
-                .serialize_specified(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(
+                &CssScrollbarGutter::Stable
+                    .serialize_specified(limits)
+                    .unwrap_err()
+            ),
             kind
         );
         assert_eq!(
-            CssTextOverflow::Clip
-                .serialize_specified(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(
+                &CssTextOverflow::Clip
+                    .serialize_specified(limits)
+                    .unwrap_err()
+            ),
             kind
         );
     }
@@ -273,18 +277,21 @@ fn clip_margin_serialization_uses_one_budget_for_outer_box_offset_and_math() {
     for (limits, kind) in [
         (
             CssSerializationLimits::new(2, 3, 15),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(3, 2, 15),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(3, 3, 14),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
-        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+            kind
+        );
     }
 
     let math = parsed_clip_margin("border-box calc(1px + 2em)");
@@ -297,22 +304,19 @@ fn clip_margin_serialization_uses_one_budget_for_outer_box_offset_and_math() {
     );
     assert_eq!(math.authored_box_edge(), Some(CssBoxEdgeKeyword::BorderBox));
     assert!(math.authored_offset().unwrap().calculation().is_some());
-    assert_eq!(
+    assert!(
         math.serialize_specified(CssSerializationLimits::new(2, 256, 256))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+            .is_input_node_limit()
     );
-    assert_eq!(
+    assert!(
         math.serialize_specified(CssSerializationLimits::new(256, 2, 256))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
+            .is_projection_node_limit()
     );
-    assert_eq!(
+    assert!(
         math.serialize_specified(CssSerializationLimits::new(256, 256, serialized.len() - 1))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
 }

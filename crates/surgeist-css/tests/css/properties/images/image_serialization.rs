@@ -1,5 +1,7 @@
 //! Images 3 specified serialization: https://www.w3.org/TR/2023/CRD-css-images-3-20231218/#serialization
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::*;
 
 fn images(css: &str) -> CssImageValueList {
@@ -34,11 +36,8 @@ fn color(css: &str) -> CssColor {
     value.value().clone()
 }
 
-fn kind(
-    value: &CssImageValueList,
-    limits: CssSerializationLimits,
-) -> CssSpecifiedValueSerializationErrorKind {
-    value.serialize_specified(limits).unwrap_err().kind()
+fn kind(value: &CssImageValueList, limits: CssSerializationLimits) -> SerializationFailure {
+    serialization_failure(&value.serialize_specified(limits).unwrap_err())
 }
 
 #[test]
@@ -199,9 +198,10 @@ fn image_list_url_src_none_and_transparent_image_dispatch() {
             image.serialize_specified(Default::default()).unwrap()
         );
     }
-    assert_eq!(
-        CssImage::try_new(CssImageValue::None).unwrap_err(),
-        CssImageConstructionError::NotImage
+    assert!(
+        CssImage::try_new(CssImageValue::None)
+            .unwrap_err()
+            .is_not_image()
     );
 }
 
@@ -217,15 +217,15 @@ fn list_and_gradient_node_budgets_are_cumulative_even_for_omitted_defaults() {
     );
     assert_eq!(
         kind(&list, CssSerializationLimits::new(11, 12, 100)),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+        SerializationFailure::InputNodeLimit
     );
     assert_eq!(
         kind(&list, CssSerializationLimits::new(12, 11, 100)),
-        CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
+        SerializationFailure::ProjectionNodeLimit
     );
     assert_eq!(
         kind(&list, CssSerializationLimits::new(12, 12, 31)),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+        SerializationFailure::ByteLimit
     );
     assert_eq!(
         list.serialize_specified(Default::default()).unwrap(),
@@ -246,11 +246,11 @@ fn nested_numeric_and_color_work_share_limits_with_sibling_images() {
     );
     assert_eq!(
         kind(&list, CssSerializationLimits::new(0, 100, 200)),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+        SerializationFailure::InputNodeLimit
     );
     assert_eq!(
         kind(&list, CssSerializationLimits::new(100, 0, 200)),
-        CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
+        SerializationFailure::ProjectionNodeLimit
     );
     assert_eq!(
         list.serialize_specified(CssSerializationLimits::new(100, 100, expected.len()))
@@ -262,7 +262,7 @@ fn nested_numeric_and_color_work_share_limits_with_sibling_images() {
             &list,
             CssSerializationLimits::new(100, 100, expected.len() - 1)
         ),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+        SerializationFailure::ByteLimit
     );
 }
 
@@ -279,19 +279,17 @@ fn radial_omissions_charge_shape_size_and_each_center_axis() {
             .unwrap(),
         expected
     );
-    assert_eq!(
+    assert!(
         value
             .serialize_specified(CssSerializationLimits::new(13, 14, 100))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+            .is_input_node_limit()
     );
-    assert_eq!(
+    assert!(
         value
             .serialize_specified(CssSerializationLimits::new(14, 13, 100))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
+            .is_projection_node_limit()
     );
 }
 
@@ -305,10 +303,10 @@ fn two_calculation_graphs_share_one_image_list_budget() {
     assert!(single.serialize_specified(limits).is_ok());
     assert_eq!(
         kind(&pair, CssSerializationLimits::new(20, 100, 200)),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+        SerializationFailure::InputNodeLimit
     );
     assert_eq!(
         kind(&pair, CssSerializationLimits::new(100, 20, 200)),
-        CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
+        SerializationFailure::ProjectionNodeLimit
     );
 }

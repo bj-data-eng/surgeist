@@ -77,10 +77,7 @@ fn projection_budget_never_relaxes_color_rounding() {
     for budget in [50, 100, 150, 200, 300, 500, 1000, 10000] {
         match value.serialize_specified(CssSerializationLimits::new(10000, budget, 10000)) {
             Ok(output) => assert_eq!(output, expected, "budget {budget}"),
-            Err(error) => assert_eq!(
-                error.kind(),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
-            ),
+            Err(error) => assert!(error.is_projection_node_limit(), "{error:?}"),
         }
     }
 }

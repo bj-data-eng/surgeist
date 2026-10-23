@@ -4,6 +4,7 @@
 
 use crate::css::support::property_expectations;
 
+use crate::css::support::property_admission::GrammarFacts;
 use property_expectations::{BoundaryOutcome, CatalogExpectation};
 use surgeist_css::*;
 
@@ -178,16 +179,19 @@ fn rejected_checked_values_keep_the_responsible_token_summary() {
             CssImportance::Normal,
         )
         .expect_err("the identifier is outside the selected value grammar");
-        let CssPropertyValueErrorKind::Grammar(checked) = checked.kind() else {
-            panic!("a grammar rejection");
-        };
-        for kind in [source.diagnostics()[0].error().kind(), checked] {
-            let encountered = match kind {
-                ErrorKind::InvalidPropertyValue(detail) => detail.encountered(),
-                ErrorKind::InvalidColorSyntax(detail) => detail.encountered(),
-                _ => panic!("property or color grammar owns this rejection: {kind:?}"),
-            }
-            .expect("the responsible actual token qualifies the grammar error");
+        assert!(checked.code().is_some(), "a grammar rejection: {checked:?}");
+        let rejections: [&dyn GrammarFacts; 2] = [source.diagnostics()[0].error(), &checked];
+        for kind in rejections {
+            assert!(
+                matches!(
+                    kind.grammar_code(),
+                    Some(CssErrorCode::InvalidPropertyValue | CssErrorCode::InvalidColorSyntax)
+                ),
+                "property or color grammar owns this rejection: {kind:?}"
+            );
+            let encountered = kind
+                .responsible_token()
+                .expect("the responsible actual token qualifies the grammar error");
             assert_eq!(encountered.kind(), CssTokenKind::Ident);
             assert_eq!(encountered.authored(), text);
         }
@@ -220,15 +224,16 @@ fn checked_error_summaries_keep_programmatic_and_escaped_mixed_origins() {
             CssImportance::Normal,
         )
         .expect_err("a rejected identifier retains its own diagnostic identity");
-        let CssPropertyValueErrorKind::Grammar(ErrorKind::InvalidPropertyValue(detail)) =
-            error.kind()
-        else {
-            panic!("the width grammar owns this rejection: {error:?}");
-        };
+        let detail = &error;
+        assert_eq!(
+            detail.code(),
+            Some(CssErrorCode::InvalidPropertyValue),
+            "the width grammar owns this rejection: {error:?}"
+        );
         let encountered = detail.encountered().expect("responsible identifier");
         assert_eq!(encountered.kind(), CssTokenKind::Ident);
         assert_eq!(encountered.authored(), expected);
-        assert_eq!(error.origin(), &CssSerializedOrigin::Token(origin.clone()));
+        assert_eq!(error.origin(), CssSerializedOrigin::Token(origin.clone()));
         if let CssValueOrigin::Parsed(expected) = origin {
             let CssSerializedOrigin::Token(CssValueOrigin::Parsed(actual)) = error.origin() else {
                 panic!("the real identifier snapshot survives input destruction");
@@ -258,14 +263,16 @@ fn trivia_does_not_replace_the_responsible_token_in_checked_errors() {
         CssImportance::Normal,
     )
     .expect_err("display requires its keyword grammar");
-    let CssPropertyValueErrorKind::Grammar(ErrorKind::InvalidPropertyValue(detail)) = error.kind()
-    else {
-        panic!("display grammar rejection: {error:?}");
-    };
+    let detail = &error;
+    assert_eq!(
+        detail.code(),
+        Some(CssErrorCode::InvalidPropertyValue),
+        "display grammar rejection: {error:?}"
+    );
     let encountered = detail.encountered().expect("the actual numeric token");
     assert_eq!(encountered.kind(), CssTokenKind::Number);
     assert_eq!(encountered.authored(), spelling);
-    assert_eq!(error.origin(), &CssSerializedOrigin::Token(expected));
+    assert_eq!(error.origin(), CssSerializedOrigin::Token(expected));
 }
 
 #[test]
@@ -283,11 +290,14 @@ fn raw_root_delimiters_keep_precedence_over_unadmitted_bad_url_tokens() {
         let [diagnostic] = report.diagnostics() else {
             panic!("one raw input failure: {report:?}");
         };
-        let ErrorKind::UnexpectedToken(detail) = diagnostic.error().kind() else {
-            panic!("root boundary owns rejection: {diagnostic:?}");
-        };
-        assert_eq!(detail.encountered().kind(), kind);
-        assert_eq!(detail.encountered().authored(), responsible);
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::UnexpectedToken,
+            "root boundary owns rejection: {diagnostic:?}"
+        );
+        assert_eq!(detail.encountered().unwrap().kind(), kind);
+        assert_eq!(detail.encountered().unwrap().authored(), responsible);
         assert_eq!(diagnostic.error().position().byte_offset().value(), offset);
         assert_eq!(diagnostic.action(), CssRecoveryAction::RejectInput);
         assert_eq!(diagnostic.span().start().byte_offset().value(), 0);
@@ -309,10 +319,13 @@ fn source_bad_url_keeps_property_error_context_and_later_independent_declaration
     let [diagnostic] = report.diagnostics() else {
         panic!("one invalid width declaration: {report:?}");
     };
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("the property grammar owns lexical rejection: {diagnostic:?}");
-    };
-    assert_eq!(detail.property(), CssKnownProperty::Width);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "the property grammar owns lexical rejection: {diagnostic:?}"
+    );
+    assert_eq!(detail.known_property().unwrap(), CssKnownProperty::Width);
     assert_eq!(detail.encountered().unwrap().kind(), CssTokenKind::BadUrl);
     assert_eq!(diagnostic.error().position().byte_offset().value(), 10);
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
@@ -341,10 +354,16 @@ fn source_name_and_keyframe_policy_rejections_precede_payload_grammar() {
     let [diagnostic] = report.diagnostics() else {
         panic!("one forbidden keyframe property: {report:?}");
     };
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("keyframe property policy owns rejection: {diagnostic:?}");
-    };
-    assert_eq!(detail.property(), CssKnownProperty::AnimationName);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "keyframe property policy owns rejection: {diagnostic:?}"
+    );
+    assert_eq!(
+        detail.known_property().unwrap(),
+        CssKnownProperty::AnimationName
+    );
     // Source diagnostics qualify an inferred property rejection with the real
     // name token; the later malformed value does not acquire ownership.
     let encountered = detail.encountered().expect("responsible property name");
@@ -375,12 +394,11 @@ fn separately_owned_tokens_keep_their_lexical_boundaries_and_original_snapshots(
             CssImportance::Normal,
         )
         .expect_err("two independently supplied tokens must not become 1px or auto");
-        assert!(matches!(
-            error.kind(),
-            CssPropertyValueErrorKind::Grammar(ErrorKind::InvalidPropertyValue(detail))
-                if detail.property() == CssKnownProperty::Width
-        ));
-        assert_eq!(error.origin(), &CssSerializedOrigin::Token(first_origin));
+        assert!(
+            (error.code() == Some(CssErrorCode::InvalidPropertyValue)
+                && error.known_property().unwrap() == CssKnownProperty::Width)
+        );
+        assert_eq!(error.origin(), CssSerializedOrigin::Token(first_origin));
     }
     let values = {
         let left = parse_component_values("1px").unwrap();

@@ -13,9 +13,9 @@ use surgeist_css::{
     CssCounterStyleDescriptorValue as CounterValue,
     CssCounterStyleDescriptorValueRef as CounterRef, CssCounterStyleRange,
     CssCounterStyleRangeBound, CssCounterStyleSpeakAs, CssCounterStyleSystem, CssCounterSymbol,
-    CssErrorCode, CssEscapeError, CssFontDisplay, CssFontFeatureValueKind as FeatureKind,
+    CssErrorCode, CssEscapeFailure, CssFontDisplay, CssFontFeatureValueKind as FeatureKind,
     CssFontFeatureValuesItem, CssImageValue, CssNumericTokenKind, CssParseReport, CssParsedOrigin,
-    CssRecoveryAction, CssRule, CssValueOrigin, CssValueTokenRef, ErrorKind,
+    CssRecoveryAction, CssRule, CssValueOrigin, CssValueTokenRef,
     parse_counter_style_descriptor_value, parse_font_feature_display_value,
     parse_font_feature_value, parse_sheet,
 };
@@ -663,10 +663,13 @@ fn surplus_indexes_reject_at_the_first_authored_token_beyond_the_kind_cardinalit
             .find(|d| d.action() == CssRecoveryAction::RejectInput)
             .unwrap();
         position(diagnostic.error().position(), offset, 0, offset as u32);
-        let ErrorKind::UnexpectedToken(detail) = diagnostic.error().kind() else {
-            panic!("authored surplus index token")
-        };
-        assert_eq!(detail.encountered().authored(), token);
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::UnexpectedToken,
+            "authored surplus index token"
+        );
+        assert_eq!(detail.encountered().unwrap().authored(), token);
         rejected(report, source);
     }
 }
@@ -867,10 +870,7 @@ fn every_required_value_rejects_empty_source_and_trivia_without_inventing_empty_
                 .iter()
                 .find(|d| d.action() == CssRecoveryAction::RejectInput)
                 .unwrap();
-            assert!(matches!(
-                diagnostic.error().kind(),
-                ErrorKind::UnexpectedEnd(_)
-            ));
+            assert!(diagnostic.error().code() == CssErrorCode::UnexpectedEnd);
             empty(report, source);
         }
     }
@@ -912,10 +912,7 @@ fn boundary<T: std::fmt::Debug>(
         .unwrap();
     position(diagnostic.error().position(), offset, 0, offset as u32);
     if annotation {
-        assert!(matches!(
-            diagnostic.error().kind(),
-            ErrorKind::InvalidDeclarationAnnotation(_)
-        ));
+        assert!(diagnostic.error().code() == CssErrorCode::InvalidDeclarationAnnotation);
     }
     rejected(report, source);
 }
@@ -946,10 +943,13 @@ fn root_delimiters_and_importance_reject_the_complete_value_at_the_actual_bounda
                 .find(|d| d.action() == CssRecoveryAction::RejectInput)
                 .unwrap();
             position(diagnostic.error().position(), 1, 0, 1);
-            let ErrorKind::UnexpectedToken(detail) = diagnostic.error().kind() else {
-                panic!("name-free index annotation token")
-            };
-            assert_eq!(detail.encountered().authored(), "!");
+            let detail = diagnostic.error();
+            assert_eq!(
+                detail.code(),
+                CssErrorCode::UnexpectedToken,
+                "name-free index annotation token"
+            );
+            assert_eq!(detail.encountered().unwrap().authored(), "!");
             rejected(report, &source);
         } else {
             boundary(report, &source, 1, false);
@@ -978,11 +978,14 @@ fn invalid_tokens_have_literal_unicode_positions_and_family_diagnostics() {
         .find(|d| d.action() == CssRecoveryAction::RejectInput)
         .unwrap();
     position(diagnostic.error().position(), 14, 1, 5);
-    let ErrorKind::InvalidDescriptorValue(detail) = diagnostic.error().kind() else {
-        panic!("display grammar diagnostic")
-    };
-    assert_eq!(detail.at_rule().as_str(), "font-feature-values");
-    assert_eq!(detail.descriptor().as_str(), "font-display");
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidDescriptorValue,
+        "display grammar diagnostic"
+    );
+    assert_eq!(detail.at_rule().unwrap().as_str(), "font-feature-values");
+    assert_eq!(detail.descriptor().unwrap().as_str(), "font-display");
     assert_eq!(detail.encountered().unwrap().authored(), "extra");
     rejected(report, source);
 
@@ -994,10 +997,13 @@ fn invalid_tokens_have_literal_unicode_positions_and_family_diagnostics() {
         .find(|d| d.action() == CssRecoveryAction::RejectInput)
         .unwrap();
     position(diagnostic.error().position(), 9, 1, 0);
-    let ErrorKind::UnexpectedToken(detail) = diagnostic.error().kind() else {
-        panic!("name-free index grammar diagnostic")
-    };
-    assert_eq!(detail.encountered().authored(), "1.0");
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::UnexpectedToken,
+        "name-free index grammar diagnostic"
+    );
+    assert_eq!(detail.encountered().unwrap().authored(), "1.0");
     rejected(report, source);
 
     let source = " /*é*/\r\nx y";
@@ -1008,11 +1014,14 @@ fn invalid_tokens_have_literal_unicode_positions_and_family_diagnostics() {
         .find(|d| d.action() == CssRecoveryAction::RejectInput)
         .unwrap();
     position(diagnostic.error().position(), 11, 1, 2);
-    let ErrorKind::InvalidDescriptorValue(detail) = diagnostic.error().kind() else {
-        panic!("counter grammar diagnostic")
-    };
-    assert_eq!(detail.at_rule().as_str(), "counter-style");
-    assert_eq!(detail.descriptor().as_str(), "prefix");
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidDescriptorValue,
+        "counter grammar diagnostic"
+    );
+    assert_eq!(detail.at_rule().unwrap().as_str(), "counter-style");
+    assert_eq!(detail.descriptor().unwrap().as_str(), "prefix");
     assert_eq!(detail.encountered().unwrap().authored(), "y");
     rejected(report, source);
 }
@@ -1105,12 +1114,7 @@ fn eof_escape<T: std::fmt::Debug>(report: CssParseReport<Option<T>>, offset: usi
     let diagnostic = report
         .diagnostics()
         .iter()
-        .find(|d| {
-            matches!(
-                d.error().kind(),
-                ErrorKind::EscapeParseError(CssEscapeError::EndOfInput)
-            )
-        })
+        .find(|d| d.error().escape_failure() == Some(CssEscapeFailure::EndOfInput))
         .unwrap();
     assert_eq!(diagnostic.action(), CssRecoveryAction::RecoverEscape);
     position(diagnostic.error().position(), offset, 0, offset as u32);
@@ -1145,10 +1149,13 @@ fn depth<T: std::fmt::Debug>(report: CssParseReport<Option<T>>, exceeded: bool) 
             .iter()
             .find(|d| d.action() == CssRecoveryAction::StopAtNestingLimit)
             .unwrap();
-        let ErrorKind::NestingLimit(detail) = diagnostic.error().kind() else {
-            panic!("typed resource stop")
-        };
-        assert_eq!(detail.limit(), 256);
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::NestingLimit,
+            "typed resource stop"
+        );
+        assert_eq!(detail.nesting_limit().unwrap(), 256);
         position(diagnostic.error().position(), 512, 0, 512);
         assert!(
             !report

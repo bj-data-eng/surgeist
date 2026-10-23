@@ -5,11 +5,9 @@ use crate::css::support::named_property::assert_programmatic_rejection;
 use crate::css::support::named_property::normal_grammar_components;
 use surgeist_css::{
     CssAbsoluteFontWeight as Absolute, CssComponentValue, CssComponentValues, CssContributions,
-    CssExpansion, CssExpansionErrorKind, CssFontStyle, CssFontValue, CssFontWeight,
-    CssFontWeightNumber, CssImportance, CssInitialValueRef, CssKnownProperty,
-    CssKnownPropertyValueRef, CssLonghandValueRef, CssNumberCalculation,
-    CssNumericConstructionErrorKind, CssPropertyKindRef, CssPropertyValueErrorKind,
-    CssSerializationLimits, CssSerializedOrigin, CssSpecifiedValueSerializationErrorKind,
+    CssExpansion, CssFontStyle, CssFontValue, CssFontWeight, CssFontWeightNumber, CssImportance,
+    CssInitialValueRef, CssKnownProperty, CssKnownPropertyValueRef, CssLonghandValueRef,
+    CssNumberCalculation, CssPropertyKindRef, CssSerializationLimits, CssSerializedOrigin,
     CssValueOrigin, expand_declaration, parse_component_values, parse_style_attribute,
 };
 
@@ -77,11 +75,7 @@ fn exact_fractional_and_exponent_bounds_ignore_float_rounding() {
     ] {
         let component = CssComponentValue::try_number(text).unwrap();
         let error = CssFontWeightNumber::try_from_component(component).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            &CssNumericConstructionErrorKind::OutOfRange,
-            "{text}"
-        );
+        assert!(error.is_out_of_range(), "{text}");
         let report = parse_style_attribute(&format!("font-weight:{text}"));
         assert!(!report.is_clean(), "{text}");
         assert!(report.syntax().is_empty(), "{text}");
@@ -94,10 +88,7 @@ fn wrong_domain_and_bare_math_roots_cannot_bypass_literal_bounds() {
         let error =
             CssFontWeightNumber::try_from_component(CssComponentValue::try_token(text).unwrap())
                 .unwrap_err();
-        assert_eq!(
-            error.kind(),
-            &CssNumericConstructionErrorKind::RootDomainMismatch
-        );
+        assert!(error.is_root_domain_mismatch(), "{error:?}");
         assert_eq!(error.origin(), Some(&CssValueOrigin::Programmatic));
     }
     for text in ["0", "1001"] {
@@ -107,11 +98,7 @@ fn wrong_domain_and_bare_math_roots_cannot_bypass_literal_bounds() {
         )
         .unwrap();
         let error = CssFontWeightNumber::try_from_calculation(calculation).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            &CssNumericConstructionErrorKind::OutOfRange,
-            "{text}"
-        );
+        assert!(error.is_out_of_range(), "{text}");
     }
     let calculation = CssNumberCalculation::try_from_components(
         parse_component_values("calc(0)").unwrap(),
@@ -213,13 +200,10 @@ fn checked_and_pending_property_numeric_origins_remain_exact() {
     )
     .unwrap();
     let error = normal_grammar_components("font-weight", invalid).unwrap_err();
-    assert!(matches!(
-        error.kind(),
-        CssPropertyValueErrorKind::Grammar(_)
-    ));
+    assert!(error.code().is_some());
     assert_eq!(
         error.origin(),
-        &CssSerializedOrigin::Token(CssValueOrigin::Programmatic)
+        CssSerializedOrigin::Token(CssValueOrigin::Programmatic)
     );
 
     let report = parse_style_attribute("font-weight:env(weight)!important");
@@ -266,16 +250,13 @@ fn checked_and_pending_property_numeric_origins_remain_exact() {
     )
     .unwrap();
     let error = handle.reenter(invalid).unwrap_err();
-    let CssExpansionErrorKind::InvalidReplacement(mapped) = error.kind() else {
+    let Some(mapped) = error.replacement_error() else {
         panic!("invalid pending replacement")
     };
-    assert!(matches!(
-        mapped.kind(),
-        CssPropertyValueErrorKind::Grammar(_)
-    ));
+    assert!(mapped.code().is_some());
     assert_eq!(
         mapped.origin(),
-        &CssSerializedOrigin::Token(CssValueOrigin::Programmatic)
+        CssSerializedOrigin::Token(CssValueOrigin::Programmatic)
     );
 }
 
@@ -297,10 +278,13 @@ fn adjacent_programmatic_number_components_do_not_merge_into_one_weight() {
     let CssExpansion::Pending(handle) = expand_declaration(&report.syntax()[0]).unwrap() else {
         panic!("pending weight")
     };
-    assert!(matches!(
-        handle.reenter(components).unwrap_err().kind(),
-        CssExpansionErrorKind::InvalidReplacement(_)
-    ));
+    assert!(
+        handle
+            .reenter(components)
+            .unwrap_err()
+            .replacement_error()
+            .is_some()
+    );
 }
 
 #[test]
@@ -370,10 +354,7 @@ fn specified_serialization_limits_are_atomic() {
     let error = value
         .serialize_specified(CssSerializationLimits::new(8, 8, 3))
         .unwrap_err();
-    assert_eq!(
-        error.kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
-    );
+    assert!(error.is_byte_limit(), "{error:?}");
     assert_eq!(
         value.serialize_specified(Default::default()).unwrap(),
         "725.25"

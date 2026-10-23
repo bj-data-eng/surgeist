@@ -10,10 +10,10 @@ use std::ops::Range;
 use crate::css::support::authored_syntax::parsed_origin as parsed;
 use surgeist_css::{
     CssAttributeCaseSensitivity, CssAttributeMatcher, CssBlockKind, CssComponentValue,
-    CssComponentValueErrorKind, CssComponentValueLimits, CssComponentValueRef, CssComponentValues,
-    CssErrorCode, CssNamespaceContext, CssRecoveryAction, CssSelector, CssSerializedOrigin,
-    CssTokenKind, CssValueOrigin, CssValueTokenRef, ErrorKind, parse_component_values,
-    parse_component_values_with_limits, parse_selector,
+    CssComponentValueLimits, CssComponentValueRef, CssComponentValues, CssErrorCode,
+    CssNamespaceContext, CssRecoveryAction, CssSelector, CssSerializedOrigin, CssTokenKind,
+    CssValueOrigin, CssValueTokenRef, parse_component_values, parse_component_values_with_limits,
+    parse_selector,
 };
 
 const OPERATORS: [(char, &str); 5] = [
@@ -144,11 +144,7 @@ source_operator_test!(adjacent_asterisk_equals_keeps_two_delimiters, '*', "*=");
 fn exact_one_token_constructor_rejects_operator_pairs_but_admits_each_delimiter() {
     for (prefix, operator) in OPERATORS {
         let failure = CssComponentValue::try_token(operator).unwrap_err();
-        assert_eq!(
-            failure.kind(),
-            CssComponentValueErrorKind::InvalidToken,
-            "{operator}"
-        );
+        assert!(failure.is_invalid_token(), "{operator}");
         assert_eq!(failure.origin(), &CssValueOrigin::Programmatic);
         for character in [prefix, '='] {
             let token = CssComponentValue::try_token(&character.to_string()).unwrap();
@@ -171,14 +167,14 @@ fn component_and_input_byte_limits_distinguish_second_delimiter_from_whole_input
             CssComponentValueLimits::try_new(0, 1, 2).unwrap(),
         )
         .unwrap_err();
-        assert_eq!(failure.kind(), CssComponentValueErrorKind::ComponentLimit);
+        assert!(failure.is_component_limit(), "{failure:?}");
         assert_span(failure.origin(), operator, 1..2);
         let failure = parse_component_values_with_limits(
             operator,
             CssComponentValueLimits::try_new(0, 2, 1).unwrap(),
         )
         .unwrap_err();
-        assert_eq!(failure.kind(), CssComponentValueErrorKind::ByteLimit);
+        assert!(failure.is_byte_limit(), "{failure:?}");
         assert_eq!(
             failure.origin(),
             &CssValueOrigin::UnretainedInput { byte_length: 2 }
@@ -219,7 +215,7 @@ fn assert_pair_output(values: &CssComponentValues, operator: &str) {
     let failure = values
         .serialize_tokens(crate::css::support::byte_limits(1))
         .unwrap_err();
-    assert_eq!(failure.kind(), CssComponentValueErrorKind::ByteLimit);
+    assert!(failure.is_byte_limit(), "{failure:?}");
     assert_eq!(failure.origin(), values.items()[1].origin());
     assert_eq!(
         values, &before,
@@ -312,9 +308,12 @@ fn rejected_operator_selector_identifies_its_first_actual_delimiter() {
         assert_eq!(diagnostic.error().position().byte_offset().value(), 0);
         assert_eq!(diagnostic.span().start().byte_offset().value(), 0);
         assert_eq!(diagnostic.span().end().byte_offset().value(), 2);
-        let ErrorKind::InvalidSelector(detail) = diagnostic.error().kind() else {
-            panic!("selector-domain failure")
-        };
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidSelector,
+            "selector-domain failure"
+        );
         let token = detail
             .encountered()
             .expect("actual first delimiter, rather than missing input");

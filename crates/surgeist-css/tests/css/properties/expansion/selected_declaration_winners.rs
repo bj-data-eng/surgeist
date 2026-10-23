@@ -2,6 +2,8 @@
 //! survivor occurrence order. Expectations come from the declaration winner
 //! contract, independently of authored-list construction or serialization.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::*;
 
 fn entries(source: &str) -> Vec<CssSpecifiedDeclarationEntry> {
@@ -39,11 +41,11 @@ fn same_entry(actual: &CssSpecifiedDeclarationEntry, expected: &CssSpecifiedDecl
     assert_eq!(actual.source().position(), expected.source().position());
 }
 
-fn resource(error: &CssDeclarationBlockError) -> CssSpecifiedValueSerializationErrorKind {
-    let CssDeclarationBlockErrorKind::Serialization(cause) = error.kind() else {
+fn resource(error: &CssDeclarationBlockError) -> SerializationFailure {
+    let Some(cause) = error.serialization() else {
         panic!("expected native resource cause: {error:?}");
     };
-    cause.kind()
+    serialization_failure(cause)
 }
 
 #[test]
@@ -273,41 +275,35 @@ fn symbolic_longhands_and_selected_svg_priority_keep_their_original_alternatives
 fn selection_does_not_certify_domains_or_relax_strict_duplicate_validation() {
     let source = entries("opacity:.5!important;animation-name:k");
     let duplicate = vec![source[0].clone(), source[0].clone()];
-    assert!(matches!(
+    assert!(
         CssSpecifiedDeclarationBlock::try_from_entries(&duplicate, Default::default())
             .unwrap_err()
-            .kind(),
-        CssDeclarationBlockErrorKind::DuplicateTerminal
-    ));
+            .is_duplicate_terminal()
+    );
     let selected = select(duplicate);
     assert_eq!(selected.len(), 1);
-    assert!(matches!(
+    assert!(
         CssSpecifiedDeclarationBlock::try_from_keyframe_entries(&selected, Default::default())
             .unwrap_err()
-            .kind(),
-        CssDeclarationBlockErrorKind::InvalidKeyframeSource {
-            reason: CssInvalidKeyframeSourceReason::Importance
-        }
-    ));
+            .invalid_keyframe_source()
+            == Some(CssInvalidKeyframeSourceReason::Importance)
+    );
     let selected = select(vec![source[1].clone()]);
-    assert!(matches!(
+    assert!(
         CssSpecifiedDeclarationBlock::try_from_keyframe_entries(&selected, Default::default())
             .unwrap_err()
-            .kind(),
-        CssDeclarationBlockErrorKind::InvalidKeyframeSource {
-            reason: CssInvalidKeyframeSourceReason::Property
-        }
-    ));
+            .invalid_keyframe_source()
+            == Some(CssInvalidKeyframeSourceReason::Property)
+    );
     for constructor in [
         CssSpecifiedDeclarationBlock::try_from_page_entries,
         CssSpecifiedDeclarationBlock::try_from_margin_entries,
     ] {
-        assert!(matches!(
+        assert!(
             constructor(&selected, Default::default())
                 .unwrap_err()
-                .kind(),
-            CssDeclarationBlockErrorKind::InvalidPageSource
-        ));
+                .is_invalid_page_source()
+        );
     }
     same_entry(&selected[0], &source[1]);
 }
@@ -323,11 +319,11 @@ fn empty_selection_admits_only_aggregate_work_and_emits_no_bytes() {
     for (limits, kind) in [
         (
             CssSerializationLimits::new(0, 1, 0),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(1, 0, 0),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
     ] {
         let error =
@@ -350,11 +346,11 @@ fn losing_candidates_consume_the_whole_budget_with_real_entry_attribution_and_re
     for (limits, kind) in [
         (
             CssSerializationLimits::new(18, 10, 0),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(19, 9, 0),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
     ] {
         let error =

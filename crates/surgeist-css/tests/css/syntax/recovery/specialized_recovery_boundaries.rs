@@ -1,4 +1,4 @@
-use surgeist_css::{CssErrorCode, CssRecoveryAction, CssRule, ErrorKind, parse_sheet};
+use surgeist_css::{CssErrorCode, CssRecoveryAction, CssRule, parse_sheet};
 
 fn actions(source: &str) -> Vec<CssRecoveryAction> {
     parse_sheet(source)
@@ -28,10 +28,13 @@ fn assert_implicit_closures(source: &str, expected: usize) {
         assert_eq!(diagnostic.error().position().byte_offset().value(), eof);
         assert_eq!(diagnostic.span().start().byte_offset().value(), eof);
         assert_eq!(diagnostic.span().end().byte_offset().value(), eof);
-        let ErrorKind::UnexpectedEnd(detail) = diagnostic.error().kind() else {
-            panic!("expected typed unexpected-end detail")
-        };
-        assert_eq!(detail.expectation().as_str(), "valid CSS syntax");
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::UnexpectedEnd,
+            "expected typed unexpected-end detail"
+        );
+        assert_eq!(detail.expectation().unwrap().as_str(), "valid CSS syntax");
     }
 }
 
@@ -338,12 +341,15 @@ fn specialized_boundary_selector_depth_is_exact_at_255_256_and_257() {
         diagnostic.error().position().byte_offset().value(),
         ":is(".len() * 256 + 1
     );
-    let ErrorKind::NestingLimit(detail) = diagnostic.error().kind() else {
-        panic!("expected typed nesting-limit detail")
-    };
-    assert_eq!(detail.limit(), 256);
+    let detail = diagnostic.error();
     assert_eq!(
-        detail.enclosing_production().as_str(),
+        detail.code(),
+        CssErrorCode::NestingLimit,
+        "expected typed nesting-limit detail"
+    );
+    assert_eq!(detail.nesting_limit().unwrap(), 256);
+    assert_eq!(
+        detail.production().unwrap().as_str(),
         "baseline.selector.complex"
     );
 }
@@ -419,12 +425,15 @@ fn specialized_boundary_media_depth_is_exact_at_255_256_and_257() {
         diagnostic.error().position().byte_offset().value(),
         "@media ".len() + 256
     );
-    let ErrorKind::NestingLimit(detail) = diagnostic.error().kind() else {
-        panic!("expected typed nesting-limit detail")
-    };
-    assert_eq!(detail.limit(), 256);
+    let detail = diagnostic.error();
     assert_eq!(
-        detail.enclosing_production().as_str(),
+        detail.code(),
+        CssErrorCode::NestingLimit,
+        "expected typed nesting-limit detail"
+    );
+    assert_eq!(detail.nesting_limit().unwrap(), 256);
+    assert_eq!(
+        detail.production().unwrap().as_str(),
         "official.media.query-list-core"
     );
 }
@@ -450,12 +459,15 @@ fn specialized_boundary_supports_depth_is_exact_at_255_256_and_257() {
     };
     assert_eq!(diagnostic.error().code(), CssErrorCode::NestingLimit);
     assert_eq!(diagnostic.action(), CssRecoveryAction::StopAtNestingLimit);
-    let ErrorKind::NestingLimit(detail) = diagnostic.error().kind() else {
-        panic!("expected typed nesting-limit detail")
-    };
-    assert_eq!(detail.limit(), 256);
+    let detail = diagnostic.error();
     assert_eq!(
-        detail.enclosing_production().as_str(),
+        detail.code(),
+        CssErrorCode::NestingLimit,
+        "expected typed nesting-limit detail"
+    );
+    assert_eq!(detail.nesting_limit().unwrap(), 256);
+    assert_eq!(
+        detail.production().unwrap().as_str(),
         "baseline.rule.supports"
     );
 }

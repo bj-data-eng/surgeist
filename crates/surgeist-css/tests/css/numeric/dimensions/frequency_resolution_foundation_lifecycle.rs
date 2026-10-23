@@ -1,4 +1,7 @@
 //! Ordinary resolution ranges and signed authored calculation/media domains.
+use crate::css::support::failure_classes::ComponentFailure;
+use crate::css::support::failure_classes::NumericFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::value_assertions::assert_numeric_kind;
 use surgeist_css::*;
 
@@ -29,11 +32,9 @@ fn ordinary_resolution_preserves_positive_units_and_rejects_negative_nonfinite_v
             f32::NEG_INFINITY,
         ] {
             let kind = if number.is_finite() {
-                surgeist_css::CssNumericConstructionErrorKind::OutOfRange
+                NumericFailure::OutOfRange
             } else {
-                surgeist_css::CssNumericConstructionErrorKind::Component(
-                    surgeist_css::CssComponentValueErrorKind::InvalidDimension,
-                )
+                NumericFailure::Component(ComponentFailure::InvalidDimension)
             };
             assert_numeric_kind(
                 CssResolutionLiteral::try_new(&number.to_string(), unit),
@@ -67,9 +68,7 @@ fn frequency_calculation_convenience_preserves_signed_finite_units() {
         for number in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
             assert_numeric_kind(
                 CssFrequencyCalculation::try_literal(&number.to_string(), unit),
-                surgeist_css::CssNumericConstructionErrorKind::Component(
-                    surgeist_css::CssComponentValueErrorKind::InvalidDimension,
-                ),
+                NumericFailure::Component(ComponentFailure::InvalidDimension),
             );
         }
     }
@@ -238,9 +237,8 @@ fn media_resolution_keeps_infinite_and_chained_source_order() {
 // Functional new-API evidence; the existing zero test above supplies RED ancestry.
 mod construction {
     use super::*;
-    use CssNumericConstructionErrorKind as N;
+    use crate::css::support::failure_classes::SerializationFailure as S;
     use CssSerializationLimits as L;
-    use CssSpecifiedValueSerializationErrorKind as S;
     use std::error::Error;
 
     fn token(source: &str) -> CssComponentValue {
@@ -332,7 +330,7 @@ mod construction {
             }
             for number in ["-1", "-1e999", "-1e-999", "-0.00000000000000000000001"] {
                 let error = CssResolutionLiteral::try_new(number, unit).unwrap_err();
-                assert_eq!(error.kind(), &N::OutOfRange);
+                assert!(error.is_out_of_range(), "{error:?}");
                 assert!(matches!(error.origin(), Some(CssValueOrigin::Programmatic)));
                 assert!(error.source().is_none());
                 assert_eq!(error.path(), None);
@@ -379,7 +377,7 @@ mod construction {
         for source in ["0", "1%", "1s", "infinity", "NaN", "\"1hz\"", "calc(1hz)"] {
             let component = token(source);
             let error = CssFrequencyLiteral::try_from_component(component.clone()).unwrap_err();
-            assert_eq!(error.kind(), CssComponentValueErrorKind::InvalidToken);
+            assert!(error.is_invalid_token(), "{error:?}");
             assert_eq!(error.origin(), component.origin());
             assert!(error.source().is_none());
         }
@@ -394,9 +392,11 @@ mod construction {
         ] {
             let component = token(source);
             let error = CssResolutionLiteral::try_from_component(component.clone()).unwrap_err();
-            assert_eq!(
-                error.kind(),
-                &N::Component(CssComponentValueErrorKind::InvalidToken)
+            assert!(
+                error
+                    .component_error()
+                    .is_some_and(|error| error.is_invalid_token()),
+                "{error:?}"
             );
             assert_eq!(error.origin(), Some(component.origin()));
             assert_eq!(error.path(), None);
@@ -405,26 +405,27 @@ mod construction {
                 .unwrap()
                 .downcast_ref::<CssComponentValueError>()
                 .unwrap();
-            assert_eq!(source.kind(), CssComponentValueErrorKind::InvalidToken);
+            assert!(source.is_invalid_token(), "{source:?}");
             assert_eq!(source.origin(), component.origin());
         }
         let component = token("/* independently parsed 😀 */\n-1e-999DPCM");
         let error = CssResolutionLiteral::try_from_component(component.clone()).unwrap_err();
-        assert_eq!(error.kind(), &N::OutOfRange);
+        assert!(error.is_out_of_range(), "{error:?}");
         assert_eq!(error.origin(), Some(component.origin()));
         assert!(error.source().is_none());
         assert_eq!(error.path(), None);
         for number in ["", " ", "1 2", "1e", "NaN", "infinity", "-inf", "1.", "1hz"] {
-            assert_eq!(
+            assert!(
                 CssFrequencyLiteral::try_new(number, CssFrequencyUnit::Hertz)
                     .unwrap_err()
-                    .kind(),
-                surgeist_css::CssComponentValueErrorKind::InvalidDimension
+                    .is_invalid_dimension()
             );
             let error = CssResolutionLiteral::try_new(number, CssResolutionUnit::Dpi).unwrap_err();
-            assert_eq!(
-                error.kind(),
-                &N::Component(CssComponentValueErrorKind::InvalidDimension)
+            assert!(
+                error
+                    .component_error()
+                    .is_some_and(|error| error.is_invalid_dimension()),
+                "{error:?}"
             );
             assert!(error.source().is_some());
             assert_eq!(error.path(), None);
@@ -461,7 +462,7 @@ mod construction {
         .unwrap();
         let original = calculation.clone();
         let error = CssResolutionValue::try_from_calculation(calculation.clone()).unwrap_err();
-        assert_eq!(error.kind(), &N::OutOfRange);
+        assert!(error.is_out_of_range(), "{error:?}");
         assert_eq!(error.origin(), Some(input.origin()));
         assert_eq!(error.path(), None);
         assert!(error.source().is_none());
@@ -514,7 +515,7 @@ mod construction {
                 Default::default(),
             )
             .unwrap_err();
-            assert_eq!(error.kind(), &N::RootDomainMismatch);
+            assert!(error.is_root_domain_mismatch(), "{error:?}");
             assert_eq!(error.path(), Some(&[0][..]));
             assert!(error.source().is_none());
         }
@@ -524,7 +525,7 @@ mod construction {
                 Default::default(),
             )
             .unwrap_err();
-            assert_eq!(error.kind(), &N::RootDomainMismatch);
+            assert!(error.is_root_domain_mismatch(), "{error:?}");
             assert_eq!(error.path(), Some(&[0][..]));
         }
     }
@@ -548,9 +549,11 @@ mod construction {
         }
         let error =
             CssFrequencyCalculation::try_literal("NaN", CssFrequencyUnit::Hertz).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            &N::Component(CssComponentValueErrorKind::InvalidDimension)
+        assert!(
+            error
+                .component_error()
+                .is_some_and(|error| error.is_invalid_dimension()),
+            "{error:?}"
         );
         assert!(error.source().is_some());
         assert_eq!(error.path(), None);
@@ -564,13 +567,13 @@ mod construction {
             } else {
                 CssResolutionCalculation::try_from_components(components, limits).unwrap_err()
             };
-            assert_eq!(error.kind(), &N::ResourceLimit);
+            assert!(error.is_resource_limit(), "{error:?}");
             let source = error
                 .source()
                 .unwrap()
                 .downcast_ref::<CssComponentValueError>()
                 .unwrap();
-            assert_eq!(source.kind(), CssComponentValueErrorKind::ByteLimit);
+            assert!(source.is_byte_limit(), "{source:?}");
         }
     }
 
@@ -582,7 +585,7 @@ mod construction {
                 Default::default(),
             )
             .unwrap_err();
-            assert_eq!(error.kind(), &N::RecoveredComponent);
+            assert!(error.is_recovered_component(), "{error:?}");
             assert!(error.source().is_none());
         }
         for source in ["calc(-1dppx", "calc(min(-1dppx, 2dppx"] {
@@ -591,26 +594,24 @@ mod construction {
                 Default::default(),
             )
             .unwrap_err();
-            assert_eq!(error.kind(), &N::RecoveredComponent);
+            assert!(error.is_recovered_component(), "{error:?}");
             assert!(error.source().is_none());
         }
-        assert_eq!(
+        assert!(
             CssFrequencyCalculation::try_from_components(
                 parse_component_values("1hz 2hz").unwrap(),
                 Default::default()
             )
             .unwrap_err()
-            .kind(),
-            &N::MultipleValues
+            .is_multiple_values()
         );
-        assert_eq!(
+        assert!(
             CssResolutionCalculation::try_from_components(
                 parse_component_values("1dpi 2dpi").unwrap(),
                 Default::default()
             )
             .unwrap_err()
-            .kind(),
-            &N::MultipleValues
+            .is_multiple_values()
         );
     }
 
@@ -818,21 +819,23 @@ mod construction {
                 (L::new(1, 1, expected.len() - 1), S::ByteLimit),
             ] {
                 let error = literal.serialize_specified(limit).unwrap_err();
-                assert_eq!(error.kind(), kind);
+                assert_eq!(serialization_failure(&error), kind);
                 assert!(error.source().is_none());
-                assert_eq!(value.serialize_specified(limit).unwrap_err().kind(), kind);
+                assert_eq!(
+                    serialization_failure(&value.serialize_specified(limit).unwrap_err()),
+                    kind
+                );
                 assert_eq!(literal, original_literal);
                 assert_eq!(value, original_value);
             }
         }
         let literal = CssFrequencyLiteral::try_new("1e999999", CssFrequencyUnit::Hertz).unwrap();
         let original = literal.clone();
-        assert_eq!(
+        assert!(
             literal
                 .serialize_specified(L::new(1, 1, 16))
                 .unwrap_err()
-                .kind(),
-            S::ByteLimit
+                .is_byte_limit()
         );
         assert_eq!(literal, original);
         assert_eq!(L::default(), L::new(65_536, 262_144, 1_048_576));
@@ -860,7 +863,10 @@ mod construction {
             (L::new(4, 2, 9), S::ProjectionNodeLimit),
             (L::new(4, 3, 8), S::ByteLimit),
         ] {
-            assert_eq!(value.serialize_specified(limit).unwrap_err().kind(), kind);
+            assert_eq!(
+                serialization_failure(&value.serialize_specified(limit).unwrap_err()),
+                kind
+            );
             assert_eq!(value, original);
         }
         for (source, expected) in [

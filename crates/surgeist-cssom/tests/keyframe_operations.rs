@@ -304,10 +304,7 @@ fn a_whole_reverse_search_shares_native_work_and_resource_failure_rolls_back_bat
     else {
         panic!("whole search quota");
     };
-    assert_eq!(
-        error.cause().kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
-    );
+    assert!(error.cause().is_input_node_limit(), "{error:?}");
     assert_eq!(
         error.stage(),
         CssKeyframeSelectorComparisonStage::RightNormalization

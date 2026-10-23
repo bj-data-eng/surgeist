@@ -162,20 +162,19 @@ fn pending_reentry_is_strict_repeatable_and_preserves_source_and_replacement() {
     };
     assert!(pending.source().same_occurrence(&source));
     for invalid in ["outside", "match-parent match-self", ""] {
-        assert!(matches!(
+        assert!(
             pending
                 .reenter(parse_component_values(invalid).unwrap())
                 .unwrap_err()
-                .kind(),
-            CssExpansionErrorKind::InvalidReplacement(_)
-        ));
+                .replacement_error()
+                .is_some()
+        );
     }
-    assert_eq!(
+    assert!(
         pending
             .reenter(parse_component_values("var(--again)").unwrap())
             .unwrap_err()
-            .kind(),
-        &CssExpansionErrorKind::ResidualSubstitution
+            .is_residual_substitution()
     );
     for value in ["match-self", "match-parent", "inherit"] {
         let replacement = parse_component_values(value).unwrap();
@@ -232,11 +231,8 @@ fn normalization_preserves_order_and_reports_an_atomic_contribution_limit() {
     let limits = CssNormalizationLimits::try_new(256, usize::MAX, usize::MAX, 2).unwrap();
     let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
     assert_eq!(
-        error.kind(),
-        &CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: 2,
-        }
+        error.exhausted_limit(),
+        Some((CssNormalizationResource::Contributions, 2))
     );
     assert_eq!(error.declaration_order(), Some(2));
     assert_eq!(

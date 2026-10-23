@@ -452,15 +452,12 @@ fn mixed_containment_normalization_and_pending_retry_preserve_each_independent_o
                 let error = handle
                     .reenter(parse_component_values(invalid).unwrap())
                     .unwrap_err();
-                assert!(matches!(
-                    error.kind(),
-                    CssExpansionErrorKind::InvalidReplacement(_)
-                ));
+                assert!(error.replacement_error().is_some());
             }
             let error = handle
                 .reenter(parse_component_values("var(--again").unwrap())
                 .unwrap_err();
-            assert_eq!(error.kind(), &CssExpansionErrorKind::ResidualSubstitution);
+            assert!(error.is_residual_substitution(), "{error:?}");
             let replacement = parse_component_values(if index == 2 {
                 "paint style size"
             } else {
@@ -591,10 +588,7 @@ fn mixed_containment_normalization_and_pending_retry_preserve_each_independent_o
     ] {
         for _ in 0..2 {
             let error = normalize_report_with_limits(&report, limits).unwrap_err();
-            assert_eq!(
-                error.kind(),
-                &CssNormalizationErrorKind::LimitExceeded { resource, limit }
-            );
+            assert_eq!(error.exhausted_limit(), Some((resource, limit)));
             assert_eq!(error.declaration_order(), Some(7));
             assert_eq!(report, before);
         }
@@ -614,10 +608,7 @@ fn mixed_containment_normalization_and_pending_retry_preserve_each_independent_o
                 expected.len() - 1,
             ))
             .unwrap_err();
-        assert_eq!(
-            error.kind(),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit
-        );
+        assert!(error.is_byte_limit(), "{error:?}");
         assert_eq!(report, before);
     }
     assert_eq!(

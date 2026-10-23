@@ -1,18 +1,18 @@
 //! Color 5 WD 2026-09-08 §5.3 and Env 1 WD 2025-09-23 §3.
 //! Construction checks the same authored grammar; callers supply replacements.
+use crate::css::support::failure_classes::SerializationFailure as EmitFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::rules::{ExpectedRejection, descriptor_rejected_at, invalid_descriptor};
 use surgeist_css::{
     CssColorProfileDescriptor, CssColorProfileDescriptorKind as Kind,
     CssColorProfileDescriptorValue as Value, CssColorProfileDescriptorValueRef as View,
     CssColorProfileName, CssColorProfileRenderingIntent as Intent, CssColorProfileRule,
-    CssColorProfileRuleName as Name, CssColorProfileValueErrorKind as Failure, CssComponentValue,
-    CssComponentValueErrorKind, CssComponentValueLimits, CssComponentValueRef, CssComponentValues,
-    CssErrorCode, CssNormalizedItem, CssRecoveryAction, CssRule, CssRuleContextKindRef,
-    CssSerializationLimits as EmitLimits, CssSerializedOrigin,
-    CssSpecifiedValueSerializationErrorKind as EmitFailure, CssSupportStatus, CssUrlFunction,
-    CssValueOrigin, CssValueTokenRef, feature_metadata, normalize_report,
-    parse_color_profile_descriptor_value as fragment, parse_component_values, parse_sheet,
-    validate_sheet,
+    CssColorProfileRuleName as Name, CssComponentValue, CssComponentValueLimits,
+    CssComponentValueRef, CssComponentValues, CssErrorCode, CssNormalizedItem, CssRecoveryAction,
+    CssRule, CssRuleContextKindRef, CssSerializationLimits as EmitLimits, CssSerializedOrigin,
+    CssSupportStatus, CssUrlFunction, CssValueOrigin, CssValueTokenRef, feature_metadata,
+    normalize_report, parse_color_profile_descriptor_value as fragment, parse_component_values,
+    parse_sheet, validate_sheet,
 };
 
 fn value(kind: Kind, source: &str) -> Value {
@@ -139,16 +139,16 @@ fn ordinary_components_exclude_only_none_and_keep_order_and_duplicates() {
             fragment(invalid, Kind::Components).syntax().is_none(),
             "{invalid}"
         );
-        assert!(matches!(
+        assert!(
             Value::try_new(
                 Kind::Components,
                 parse_component_values(invalid).unwrap(),
                 Default::default()
             )
             .unwrap_err()
-            .kind(),
-            Failure::Grammar(_)
-        ));
+            .diagnostic()
+            .is_some()
+        );
     }
 }
 
@@ -219,7 +219,7 @@ fn environment_only_admission_defers_whole_grammar_without_a_var_veto() {
                 Default::default(),
             )
             .unwrap_err();
-            let Failure::Grammar(detail) = error.kind() else {
+            let Some(detail) = error.diagnostic() else {
                 panic!("{kind:?}: {invalid}: grammar failure: {error:?}")
             };
             expected.assert_kind(detail);
@@ -236,7 +236,7 @@ fn url_strings_and_escaped_names_do_not_confuse_data_with_substitution() {
         let error = pending(Kind::Src)
             .reparse_after_substitution(parse_component_values(source).unwrap(), Default::default())
             .unwrap_err();
-        assert_eq!(error.kind(), &Failure::ResidualSubstitution);
+        assert!(error.is_residual_substitution(), "{error:?}");
     }
 }
 
@@ -261,15 +261,14 @@ fn replacement_reentry_returns_ordinary_values_or_typed_errors_never_pending() {
                 .serialize_specified(Default::default())
                 .unwrap()
         );
-        assert_eq!(
+        assert!(
             checked
                 .reparse_after_substitution(
                     parse_component_values(replacement).unwrap(),
                     Default::default()
                 )
                 .unwrap_err()
-                .kind(),
-            &Failure::NotPending
+                .is_not_pending()
         );
     }
     for invalid in [
@@ -290,7 +289,7 @@ fn replacement_reentry_returns_ordinary_values_or_typed_errors_never_pending() {
         // function left anywhere in the replacement.
         match invalid {
             "auto" | "perceptual saturation" => {
-                let Failure::Grammar(detail) = error.kind() else {
+                let Some(detail) = error.diagnostic() else {
                     panic!("{invalid}: grammar failure: {error:?}")
                 };
                 let token = if invalid == "auto" {
@@ -302,7 +301,7 @@ fn replacement_reentry_returns_ordinary_values_or_typed_errors_never_pending() {
                     .at(token)
                     .assert_kind(detail);
             }
-            _ => assert_eq!(error.kind(), &Failure::ResidualSubstitution, "{invalid}"),
+            _ => assert!(error.is_residual_substitution(), "{invalid}"),
         }
     }
 }
@@ -333,7 +332,7 @@ fn strict_construction_and_reentry_reject_recovered_closures_with_original_origi
                 .reparse_after_substitution(parsed.components().clone(), Default::default())
                 .unwrap_err(),
         ] {
-            assert_eq!(error.kind(), &Failure::RecoveredComponent);
+            assert!(error.is_recovered_component(), "{error:?}");
             let CssSerializedOrigin::Token(CssValueOrigin::ImplicitClosure { at, opening }) =
                 error.origin()
             else {
@@ -370,7 +369,7 @@ fn mixed_components_and_replacement_errors_keep_original_token_identity() {
         Default::default(),
     )
     .unwrap_err();
-    assert!(matches!(error.kind(), Failure::Grammar(_)));
+    assert!(error.diagnostic().is_some());
     assert_eq!(
         error.origin(),
         &CssSerializedOrigin::Token(CssValueOrigin::Programmatic)
@@ -390,7 +389,7 @@ fn separately_constructed_adjacent_tokens_do_not_merge_into_an_identifier() {
     .unwrap();
     // Color 5 §5.3 components: <ident>#; the second identifier needs a comma.
     let error = Value::try_new(Kind::Components, components, Default::default()).unwrap_err();
-    let Failure::Grammar(detail) = error.kind() else {
+    let Some(detail) = error.diagnostic() else {
         panic!("grammar failure: {error:?}")
     };
     invalid_descriptor("color-profile", "components")
@@ -431,7 +430,7 @@ fn root_annotations_fail_before_environment_deferral() {
             rejected(token).assert_first(&report);
             if let Ok(components) = parse_component_values(source) {
                 let error = Value::try_new(kind, components, Default::default()).unwrap_err();
-                let Failure::Grammar(detail) = error.kind() else {
+                let Some(detail) = error.diagnostic() else {
                     panic!("{source}: grammar failure: {error:?}")
                 };
                 rejected(token).assert_kind(detail);
@@ -536,9 +535,11 @@ fn descriptor_and_component_limits_are_checked_at_construction_and_emission() {
         CssComponentValueLimits::try_new(10, 0, 100).unwrap(),
     )
     .unwrap_err();
-    assert_eq!(
-        error.kind(),
-        &Failure::Component(CssComponentValueErrorKind::ComponentLimit)
+    assert!(
+        error
+            .component_error()
+            .is_some_and(|error| error.is_component_limit()),
+        "{error:?}"
     );
     let error = pending(Kind::Components)
         .reparse_after_substitution(
@@ -546,9 +547,11 @@ fn descriptor_and_component_limits_are_checked_at_construction_and_emission() {
             CssComponentValueLimits::try_new(10, 100, 1).unwrap(),
         )
         .unwrap_err();
-    assert_eq!(
-        error.kind(),
-        &Failure::Component(CssComponentValueErrorKind::ByteLimit)
+    assert!(
+        error
+            .component_error()
+            .is_some_and(|error| error.is_byte_limit()),
+        "{error:?}"
     );
     let checked = value(Kind::Components, "red, green");
     for (limits, expected) in [
@@ -560,7 +563,7 @@ fn descriptor_and_component_limits_are_checked_at_construction_and_emission() {
         (EmitLimits::new(100, 100, 9), EmitFailure::ByteLimit),
     ] {
         assert_eq!(
-            checked.serialize_specified(limits).unwrap_err().kind(),
+            serialization_failure(&checked.serialize_specified(limits).unwrap_err()),
             expected
         );
     }

@@ -4,6 +4,7 @@
 //! Occurrence identity, strict immutable reentry and normalization budgets are
 //! Surgeist public contracts exercised through existing public APIs.
 
+use crate::css::support::property_admission::property_value_facts;
 use crate::css::support::property_admission::{assert_checked_rejected, assert_invalid_value};
 use surgeist_css::*;
 
@@ -426,10 +427,10 @@ fn border_image_pending_reentry_rejects_atomically_and_retries_with_mixed_origin
                 )
                 .unwrap_err();
                 let error = pending.reenter(components).unwrap_err();
-                let CssExpansionErrorKind::InvalidReplacement(actual) = error.kind() else {
+                let Some(actual) = error.replacement_error() else {
                     panic!("strict grammar failure: {error:?}");
                 };
-                assert_eq!(actual.kind(), direct.kind());
+                assert_eq!(property_value_facts(actual), property_value_facts(&direct));
                 assert_eq!(actual.origin(), direct.origin());
             }
             for residual in [
@@ -441,10 +442,7 @@ fn border_image_pending_reentry_rejects_atomically_and_retries_with_mixed_origin
                 let error = pending
                     .reenter(parse_component_values(residual).unwrap())
                     .unwrap_err();
-                assert!(matches!(
-                    error.kind(),
-                    CssExpansionErrorKind::ResidualSubstitution
-                ));
+                assert!(error.is_residual_substitution());
             }
             assert!(pending.source().same_occurrence(&source));
             assert_eq!(
@@ -565,7 +563,7 @@ fn border_image_normalization_counts_five_completed_members_and_one_pending_occu
             )
             .unwrap_err();
             assert!(
-                matches!(error.kind(), CssNormalizationErrorKind::LimitExceeded { resource: CssNormalizationResource::Contributions, limit: actual } if *actual == limit)
+                error.exhausted_limit() == Some((CssNormalizationResource::Contributions, limit))
             );
             assert_eq!(error.declaration_order(), Some(ordinal));
             assert!(
@@ -646,11 +644,7 @@ fn border_image_invalid_slash_and_duplicate_controls_drop_only_the_responsible_d
             CssErrorCode::InvalidPropertyValue
         );
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-        assert_invalid_value(
-            diagnostic.error().kind(),
-            CssKnownProperty::BorderImage,
-            token,
-        );
+        assert_invalid_value(diagnostic.error(), CssKnownProperty::BorderImage, token);
         assert_checked_rejected(
             parse_property_value(
                 CssPropertyNameRef::Known(CssKnownProperty::BorderImage),

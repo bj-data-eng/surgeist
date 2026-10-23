@@ -5,9 +5,9 @@
 //! the 256-level structural contract never depends on the caller's stack size.
 //! When that thread cannot be started (resource pressure, or a target without
 //! threads), deep recursion never falls back to the caller's stack and never
-//! panics: the input is refused with a typed `NestingLimit` outcome whose limit
-//! is the depth trusted on the caller's stack, located at the first opening
-//! beyond it. Refused syntax is empty, `None` or the front door's documented
+//! panics: the input is refused with a typed `ParserUnavailable` outcome whose
+//! limit is the depth trusted on the caller's stack, located at the first
+//! opening beyond it (#1277). Refused syntax is empty, `None` or the front door's documented
 //! replacement. The refusal is a resource failure for every consumer; a front
 //! door may still append its tokenizer EOF and escape diagnostics after it.
 //! Media construction and serialization, whose depth is a model walk rather
@@ -99,7 +99,7 @@ pub(super) fn report<T: Send>(
 }
 
 /// Parses checked components nested `depth` levels deep, refusing deep input
-/// with a component nesting-limit error when the parser thread is unavailable.
+/// with a component `ParserUnavailable` error when the parser thread is unavailable.
 pub(super) fn components<T: Send, E: Send>(
     components: &[CssComponentValue],
     depth: u32,
@@ -108,7 +108,7 @@ pub(super) fn components<T: Send, E: Send>(
 ) -> Result<T, E> {
     execute(StackProfile::Fragment, depth, parse).unwrap_or_else(|unavailable| {
         Err(refused(CssComponentValueError::new(
-            CssComponentValueErrorKind::NestingLimit,
+            CssComponentValueErrorKind::ParserUnavailable,
             unavailable.responsible_component(components),
         )))
     })
@@ -127,15 +127,18 @@ pub(crate) fn run_deep<T: Send>(
 }
 
 /// Media construction or serialization whose caller measured its model as
-/// deep. Without the parser thread the operation fails with the API's
-/// existing component `NestingLimit` error at `origin`.
+/// deep. Without the parser thread the operation fails with a component
+/// `ParserUnavailable` error at `origin`.
 pub(crate) fn media<T: Send, E: Send + From<CssComponentValueError>>(
     deep: bool,
     origin: impl FnOnce() -> CssValueOrigin,
     action: impl FnOnce() -> Result<T, E> + Send,
 ) -> Result<T, E> {
     run_deep(deep, action).unwrap_or_else(|_| {
-        Err(CssComponentValueError::new(CssComponentValueErrorKind::NestingLimit, origin()).into())
+        Err(
+            CssComponentValueError::new(CssComponentValueErrorKind::ParserUnavailable, origin())
+                .into(),
+        )
     })
 }
 
@@ -159,7 +162,12 @@ impl ParserThreadUnavailable {
     pub(crate) fn diagnostic_at(&self, source: &str, opening: usize) -> CssRecoveryDiagnostic {
         let error = crate::error::from_parse_error(
             source,
-            crate::error::nesting_limit(source, opening, self.direct_depth, REFUSED_PRODUCTION),
+            crate::error::parser_unavailable(
+                source,
+                opening,
+                self.direct_depth,
+                REFUSED_PRODUCTION,
+            ),
         );
         let span = CssSourceSpan::new(
             CssSourcePosition::from_byte_offset_in(source, 0),
@@ -235,13 +243,14 @@ fn with_parser_thread_unavailable<R>(action: impl FnOnce() -> R) -> R {
 mod tests {
     //! The crate's structural contract retains up to 256 nested levels. Input
     //! deeper than the caller-stack depth needs the larger parser stack; when
-    //! that thread cannot start, the parse is refused with a typed nesting
-    //! limit at the first opening the caller's stack is not trusted with.
+    //! that thread cannot start, the parse is refused with a typed
+    //! `ParserUnavailable` outcome at the first opening the caller's stack is
+    //! not trusted with (#1277).
     use super::with_parser_thread_unavailable;
     use crate::{
-        CssComponentValueErrorKind, CssImportance, CssKnownProperty, CssMediaQuery,
-        CssPropertyNameRef, CssPropertyValueErrorKind, CssRecoveryAction, CssRecoveryDiagnostic,
-        CssSerializedOrigin, CssValueOrigin, ErrorKind,
+        CssComponentValueErrorKind, CssErrorCode, CssImportance, CssKnownProperty, CssMediaQuery,
+        CssPropertyNameRef, CssRecoveryAction, CssRecoveryDiagnostic, CssSerializedOrigin,
+        CssValueOrigin,
     };
 
     /// Structural sheet and style-attribute recursion runs directly to 128 levels.
@@ -258,12 +267,20 @@ mod tests {
         let [diagnostic] = diagnostics else {
             panic!("one refusal diagnostic: {diagnostics:?}")
         };
-        let ErrorKind::NestingLimit(error) = diagnostic.error().kind() else {
-            panic!("typed nesting refusal: {diagnostic:?}")
-        };
-        assert_eq!(error.limit(), limit);
+        let error = diagnostic.error();
+        assert_eq!(
+            error.code(),
+            CssErrorCode::ParserUnavailable,
+            "{diagnostic:?}"
+        );
+        assert_eq!(error.nesting_limit(), Some(limit));
+        assert_eq!(
+            error.production().map(|value| value.as_str()),
+            Some("css.block")
+        );
+        assert!(error.is_resource_refusal());
         assert_eq!(diagnostic.action(), CssRecoveryAction::StopAtNestingLimit);
-        assert_eq!(diagnostic.error().position().byte_offset().value(), opening);
+        assert_eq!(error.position().byte_offset().value(), opening);
         assert_eq!(diagnostic.span().start().byte_offset().value(), 0);
         assert_eq!(diagnostic.span().end().byte_offset().value(), source.len());
     }
@@ -284,6 +301,83 @@ mod tests {
         let available = crate::parse_sheet(&source);
         assert!(available.is_clean(), "{:?}", available.diagnostics());
         assert_eq!(available.syntax().rules().len(), 1);
+    }
+
+    /// #1277: an unavailable parser thread is a refusal of its own, so its
+    /// diagnostic code differs from the 256-level structural nesting limit
+    /// that the same input reaches when it is genuinely too deep.
+    #[test]
+    fn parser_thread_refusal_is_not_reported_as_the_nesting_limit() {
+        let refused = with_parser_thread_unavailable(|| crate::parse_sheet(&nested_rules(150)));
+        let excessive = crate::parse_sheet(&nested_rules(300));
+        let nesting = excessive
+            .diagnostics()
+            .iter()
+            .find(|diagnostic| diagnostic.action() == CssRecoveryAction::StopAtNestingLimit)
+            .expect("300 levels exceed the structural nesting limit");
+        let [refusal] = refused.diagnostics() else {
+            panic!("one refusal diagnostic: {:?}", refused.diagnostics())
+        };
+        assert_eq!(refusal.action(), CssRecoveryAction::StopAtNestingLimit);
+        assert_ne!(refusal.error().code(), nesting.error().code());
+        // Both remain resource refusals, so publishing consumers abort on both.
+        assert_eq!(refusal.error().code(), CssErrorCode::ParserUnavailable);
+        assert_eq!(nesting.error().code(), CssErrorCode::NestingLimit);
+        assert!(refusal.error().is_resource_refusal());
+        assert!(nesting.error().is_resource_refusal());
+    }
+
+    /// #1277 at the component level: the refusal of deep checked components
+    /// differs from a component nesting limit set by the caller's limits.
+    #[test]
+    fn component_parser_thread_refusal_is_not_reported_as_the_nesting_limit() {
+        let source = format!("{}color{}", "(".repeat(70), ")".repeat(70));
+        let components = crate::parse_component_values(&source).unwrap();
+        let refused = with_parser_thread_unavailable(|| {
+            CssMediaQuery::try_from_components(components.clone(), Default::default())
+        })
+        .expect_err("refused without the parser thread");
+        let refused = refused
+            .component_error()
+            .expect("component refusal")
+            .clone();
+        let limited = crate::parse_component_values_with_limits(
+            &source,
+            crate::CssComponentValueLimits::try_new(1, usize::MAX, usize::MAX).unwrap(),
+        )
+        .expect_err("the caller's depth limit refuses the nesting");
+        assert_eq!(limited.kind(), CssComponentValueErrorKind::NestingLimit);
+        assert_ne!(refused.kind(), limited.kind());
+        // Both remain resource limits, so publishing consumers abort on both.
+        assert!(refused.is_parser_unavailable() && !refused.is_nesting_limit());
+        assert!(refused.is_resource_limit());
+        assert!(limited.is_resource_limit());
+    }
+
+    /// A diagnostic that carries the component refusal is a resource refusal too,
+    /// the grouping CSSOM's publication admission reads.
+    #[test]
+    fn component_parser_thread_refusal_in_a_diagnostic_is_a_resource_refusal() {
+        let source = format!("{}color{}", "(".repeat(70), ")".repeat(70));
+        let components = crate::parse_component_values(&source).unwrap();
+        let refused = with_parser_thread_unavailable(|| {
+            CssMediaQuery::try_from_components(components, Default::default())
+        })
+        .expect_err("refused without the parser thread");
+        let component = refused
+            .component_error()
+            .expect("component refusal")
+            .clone();
+        let error = crate::error::from_parse_error(
+            &source,
+            crate::error::invalid_component_value(
+                cssparser::SourceLocation { line: 0, column: 1 },
+                component,
+            ),
+        );
+        assert_eq!(error.code(), CssErrorCode::InvalidComponentValue);
+        assert!(error.component_error().unwrap().is_parser_unavailable());
+        assert!(error.is_resource_refusal());
     }
 
     #[test]
@@ -349,10 +443,13 @@ mod tests {
             )
         })
         .expect_err("refused without the parser thread");
+        let component = error.component_error().expect("component refusal");
         assert_eq!(
-            error.kind(),
-            &CssPropertyValueErrorKind::Component(CssComponentValueErrorKind::NestingLimit)
+            component.kind(),
+            CssComponentValueErrorKind::ParserUnavailable
         );
+        assert!(component.is_resource_limit());
+        assert_eq!(error.code(), None);
         let CssSerializedOrigin::Token(CssValueOrigin::Parsed(origin)) = error.origin() else {
             panic!("parsed responsible component: {error:?}")
         };
@@ -383,15 +480,13 @@ mod tests {
         let refusals = report
             .diagnostics()
             .iter()
-            .filter(|diagnostic| matches!(diagnostic.error().kind(), ErrorKind::NestingLimit(_)))
+            .filter(|diagnostic| diagnostic.error().code() == CssErrorCode::ParserUnavailable)
             .collect::<Vec<_>>();
         let [refusal] = refusals.as_slice() else {
             panic!("one refusal: {:?}", report.diagnostics())
         };
-        let ErrorKind::NestingLimit(error) = refusal.error().kind() else {
-            unreachable!()
-        };
-        assert_eq!(error.limit(), FRAGMENT_DIRECT_DEPTH);
+        assert_eq!(refusal.error().nesting_limit(), Some(FRAGMENT_DIRECT_DEPTH));
+        assert!(refusal.error().is_resource_refusal());
         assert_eq!(refusal.action(), CssRecoveryAction::StopAtNestingLimit);
 
         let available = crate::parse_cssom_media_query(&source);
@@ -400,7 +495,8 @@ mod tests {
     }
 
     fn assert_media_component_refusal(error: &crate::CssComponentValueError, offset: usize) {
-        assert_eq!(error.kind(), CssComponentValueErrorKind::NestingLimit);
+        assert_eq!(error.kind(), CssComponentValueErrorKind::ParserUnavailable);
+        assert!(error.is_resource_limit());
         let CssValueOrigin::Parsed(origin) = error.origin() else {
             panic!("parsed responsible component: {error:?}")
         };
@@ -415,7 +511,7 @@ mod tests {
             CssMediaQuery::try_from_components(components.clone(), Default::default())
         })
         .expect_err("refused without the parser thread");
-        let crate::CssMediaConstructionError::Component(error) = &error else {
+        let Some(error) = error.component_error() else {
             panic!("component refusal: {error:?}")
         };
         // The block with 63 enclosing blocks opens at byte 63.
@@ -434,10 +530,7 @@ mod tests {
         let Some(component) = error.component_error() else {
             panic!("component refusal: {error:?}")
         };
-        assert_eq!(
-            error.kind(),
-            crate::CssSpecifiedValueSerializationErrorKind::UnserializableBoundary
-        );
+        assert!(error.is_unserializable_boundary(), "{error:?}");
         assert_media_component_refusal(component, 0);
         assert!(query.serialize_tokens(Default::default()).is_ok());
     }

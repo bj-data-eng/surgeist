@@ -1,6 +1,8 @@
 //! Functional tests for new typed fronts; no executable RED preceded these APIs.
 //! Filter1 WD20181218 §§9.13,10,11.5 supplies identities and intrinsic initials;
 //! Values4/CSSOM and the selected exact Color/opacity owners supply projection.
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::property_admission::assert_reentry_rejected;
 use crate::css::support::retained_checked_declaration as declaration;
 use surgeist_css::*;
@@ -65,18 +67,21 @@ fn interpolation_typed_choices_keep_auto_distinct_and_emit_lowercase_keywords() 
         for (limits, kind) in [
             (
                 CssSerializationLimits::new(0, 1, canonical.len()),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                SerializationFailure::InputNodeLimit,
             ),
             (
                 CssSerializationLimits::new(1, 0, canonical.len()),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
                 CssSerializationLimits::new(1, 1, canonical.len() - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                SerializationFailure::ByteLimit,
             ),
         ] {
-            assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+            assert_eq!(
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+                kind
+            );
             assert_eq!(value, before);
             assert_eq!(
                 value.serialize_specified(Default::default()).unwrap(),

@@ -6,12 +6,15 @@
 //! Authored URL targets and relative units stay context-free. These controls
 //! do not resolve URLs, fonts, colors, layout, inheritance or used values.
 
+use crate::css::support::failure_classes::NumericFailure;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::important_declaration as declaration;
 use crate::css::support::value_assertions::assert_component_rejected;
 use surgeist_css::*;
 
 type Limits = CssSerializationLimits;
-type Kind = CssSpecifiedValueSerializationErrorKind;
+type Kind = SerializationFailure;
 
 fn component(text: &str) -> CssComponentValue {
     let values = parse_component_values(text).unwrap();
@@ -129,16 +132,15 @@ fn scalar_outputs_compose_without_losing_exact_authored_components() {
         "1.234568"
     );
     // Syntax 3 §4.3.3: an exponent makes a <number-token> of type "number".
-    assert_eq!(
+    assert!(
         CssIntegerLiteral::try_from_component(component("1e0"))
             .unwrap_err()
-            .kind(),
-        CssComponentValueErrorKind::InvalidToken
+            .is_invalid_token()
     );
     assert_component_rejected(
         CssSpecifiedLength::try_from_component,
         component("2hz"),
-        surgeist_css::CssNumericConstructionErrorKind::RootDomainMismatch,
+        NumericFailure::RootDomainMismatch,
     );
 }
 
@@ -262,9 +264,7 @@ fn common_escaping_and_authored_wrappers_compose_already_serialized_items() {
         (Limits::new(6, 6, expected.len() - 1), Kind::ByteLimit),
     ] {
         assert_eq!(
-            serialize_css_comma_separated_list(&items, limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&serialize_css_comma_separated_list(&items, limits).unwrap_err()),
             kind
         );
         assert_eq!(items[2], "url(\"../é😀.woff2#face\")");
@@ -305,7 +305,10 @@ fn local_and_url_source_children_share_one_atomic_resource_budget() {
             (Limits::new(6, 5, expected.len()), Kind::ProjectionNodeLimit),
             (Limits::new(6, 6, expected.len() - 1), Kind::ByteLimit),
         ] {
-            assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+            assert_eq!(
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+                kind
+            );
             assert_eq!(value, &before);
         }
         assert_eq!(
@@ -350,7 +353,10 @@ fn rectangle_edges_share_cumulative_limits_and_keep_their_authored_origins() {
         (Limits::new(5, 4, expected.len()), Kind::ProjectionNodeLimit),
         (Limits::new(5, 5, expected.len() - 1), Kind::ByteLimit),
     ] {
-        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+            kind
+        );
         assert_eq!(value, &before);
         assert!(source.same_occurrence(&source.clone()));
         for (edge, original) in [rect.top(), rect.bottom(), rect.left()]
@@ -467,12 +473,11 @@ fn every_byte_alpha_has_an_independent_cssom_witness_and_atomic_byte_limit() {
             expected,
             "{text}"
         );
-        assert_eq!(
+        assert!(
             value
                 .serialize_specified(Limits::new(1, 1, expected.len() - 1))
                 .unwrap_err()
-                .kind(),
-            Kind::ByteLimit
+                .is_byte_limit()
         );
         assert_eq!(value, before);
         assert_eq!(

@@ -1,6 +1,8 @@
 //! Public construction and bounded specified serialization for Flexbox 1
 //! §§5.1–5.3. The direction and wrap keywords stay symbolic until layout.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::sole_declaration as declaration;
 use surgeist_css::*;
 
@@ -176,18 +178,21 @@ fn individual_keywords_respect_exact_input_projection_and_byte_limits() {
     for (limits, kind) in [
         (
             CssSerializationLimits::new(0, 1, 3),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(1, 0, 3),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(1, 1, 2),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
-        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+            kind
+        );
     }
     assert_eq!(
         CssFlexWrap::WrapReverse
@@ -208,18 +213,21 @@ fn flow_uses_one_cumulative_budget_for_both_component_keywords() {
     for (limits, kind) in [
         (
             CssSerializationLimits::new(1, 2, 8),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(2, 1, 8),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(2, 2, 7),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
-        assert_eq!(flow.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&flow.serialize_specified(limits).unwrap_err()),
+            kind
+        );
     }
     assert_eq!(
         flow.serialize_specified(Default::default()).unwrap(),

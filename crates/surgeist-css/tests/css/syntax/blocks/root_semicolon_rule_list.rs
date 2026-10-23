@@ -6,7 +6,7 @@
 //! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-block-contents
 use surgeist_css::{
     CssErrorCode, CssRecoveryAction, CssRecoveryDiagnostic, CssRule, CssSelector, CssTokenKind,
-    ErrorKind, parse_sheet, validate_sheet,
+    parse_sheet, validate_sheet,
 };
 
 fn assert_style(rule: &CssRule, source: &str, class: &str, value: &str) {
@@ -72,9 +72,12 @@ fn assert_punctuation_unit(
             .encode_utf16()
             .count()
     );
-    let ErrorKind::InvalidSelector(detail) = diagnostic.error().kind() else {
-        panic!("typed style selector context")
-    };
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidSelector,
+        "typed style selector context"
+    );
     assert_eq!(
         detail.production().unwrap().as_str(),
         "baseline.selector.complex"

@@ -126,12 +126,11 @@ fn pending_digits_reentry_preserves_property_and_replacement_occurrence() {
             PROPERTY
         );
     }
-    assert_eq!(
+    assert!(
         pending
             .reenter(parse_component_values("var(--again)").unwrap())
             .unwrap_err()
-            .kind(),
-        &CssExpansionErrorKind::ResidualSubstitution
+            .is_residual_substitution()
     );
     for text in [
         "digits 1",
@@ -140,13 +139,13 @@ fn pending_digits_reentry_preserves_property_and_replacement_occurrence() {
         "digits 2 extra",
         "inherit extra",
     ] {
-        assert!(matches!(
+        assert!(
             pending
                 .reenter(parse_component_values(text).unwrap())
                 .unwrap_err()
-                .kind(),
-            CssExpansionErrorKind::InvalidReplacement(_)
-        ));
+                .replacement_error()
+                .is_some()
+        );
     }
 }
 

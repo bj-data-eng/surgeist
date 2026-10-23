@@ -21,15 +21,17 @@ type Result<T> = std::result::Result<T, CssDeclarationBlockError>;
 
 /// Why an input expansion is not admitted by the keyframe grammar.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum CssInvalidKeyframeSourceReason {
+    /// A keyframe cannot hold an `!important` declaration.
     Importance,
+    /// A keyframe cannot hold this property.
     Property,
 }
 
 /// An atomic declaration-block failure, distinct from parser recovery.
-#[derive(Clone, Debug)]
-#[non_exhaustive]
-pub enum CssDeclarationBlockErrorKind {
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum CssDeclarationBlockErrorKind {
     Serialization(CssSerializationError),
     Expansion(CssExpansionError),
     /// A selected state must contain each terminal identity at most once.
@@ -50,18 +52,79 @@ pub enum CssDeclarationBlockErrorKind {
 }
 
 /// Typed cause and genuine original source; no partial block or text is returned.
-#[derive(Clone, Debug)]
+///
+/// The cause is read through the predicates and accessors; a serialization or
+/// expansion cause is also the error's source.
+#[derive(Clone, Debug, PartialEq)]
 pub struct CssDeclarationBlockError {
-    kind: CssDeclarationBlockErrorKind,
+    pub(crate) kind: CssDeclarationBlockErrorKind,
     declaration: Option<CssDeclaration>,
     authored_ordinal: Option<usize>,
     member_ordinal: Option<usize>,
 }
 
 impl CssDeclarationBlockError {
+    /// Returns the serialization failure that refused the block.
     #[must_use]
-    pub const fn kind(&self) -> &CssDeclarationBlockErrorKind {
-        &self.kind
+    pub const fn serialization(&self) -> Option<&CssSerializationError> {
+        match &self.kind {
+            CssDeclarationBlockErrorKind::Serialization(error) => Some(error),
+            _ => None,
+        }
+    }
+    /// Returns the expansion failure that refused the block.
+    #[must_use]
+    pub const fn expansion(&self) -> Option<&CssExpansionError> {
+        match &self.kind {
+            CssDeclarationBlockErrorKind::Expansion(error) => Some(error),
+            _ => None,
+        }
+    }
+    crate::error::kind_predicates! { kind;
+        /// Returns whether a selected state contains one terminal identity more than once.
+        is_duplicate_terminal => CssDeclarationBlockErrorKind::DuplicateTerminal,
+        /// Returns whether a selected source or terminal is outside Page/margin property
+        /// grammar.
+        is_invalid_page_source => CssDeclarationBlockErrorKind::InvalidPageSource,
+        /// Returns whether a source is outside the grammar of its keyframe or Page/margin
+        /// domain.
+        is_invalid_source => CssDeclarationBlockErrorKind::InvalidKeyframeSource { .. }
+            | CssDeclarationBlockErrorKind::InvalidPageSource,
+    }
+    /// Returns why an expansion is not admitted by the keyframe grammar.
+    #[must_use]
+    pub const fn invalid_keyframe_source(&self) -> Option<CssInvalidKeyframeSourceReason> {
+        match self.kind {
+            CssDeclarationBlockErrorKind::InvalidKeyframeSource { reason } => Some(reason),
+            _ => None,
+        }
+    }
+    /// Returns the substitution-dependent Logical 1 mode-switch property whose physical or
+    /// logical footprint is undetermined.
+    #[must_use]
+    pub const fn pending_footprint_property(&self) -> Option<CssKnownProperty> {
+        match self.kind {
+            CssDeclarationBlockErrorKind::PendingFootprintUndetermined { property } => {
+                Some(property)
+            }
+            _ => None,
+        }
+    }
+    /// Returns the property whose surviving authored environment requirement has no
+    /// standalone specified value.
+    #[must_use]
+    pub const fn unresolved_environment_property(&self) -> Option<CssKnownProperty> {
+        match self.kind {
+            CssDeclarationBlockErrorKind::UnresolvedEnvironment { property } => Some(property),
+            _ => None,
+        }
+    }
+    /// Returns whether a resource limit refused the block: a serialization cause that
+    /// is a resource limit.
+    #[must_use]
+    pub fn is_resource_limit(&self) -> bool {
+        self.serialization()
+            .is_some_and(CssSerializationError::is_resource_limit)
     }
     #[must_use]
     pub const fn declaration(&self) -> Option<&CssDeclaration> {
@@ -121,7 +184,15 @@ impl fmt::Display for CssDeclarationBlockError {
                 property.canonical_name()
             ),
             CssDeclarationBlockErrorKind::InvalidKeyframeSource { reason } => {
-                write!(f, "keyframe source is not admitted: {reason:?}")
+                f.write_str(match reason {
+                    CssInvalidKeyframeSourceReason::Importance => {
+                        "keyframe source is not admitted: a keyframe cannot hold an `!important` \
+                         declaration"
+                    }
+                    CssInvalidKeyframeSourceReason::Property => {
+                        "keyframe source is not admitted: a keyframe cannot hold this property"
+                    }
+                })
             }
             CssDeclarationBlockErrorKind::UnresolvedEnvironment { property } => write!(
                 f,

@@ -1,14 +1,15 @@
 //! Ordinary Fonts 4 font-face style descriptor and checked range contracts.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::rules::invalid_descriptor;
 use crate::css::support::rules::ordinary_font_face_descriptor;
 use surgeist_css::{
     CssAuthoredFontFaceDescriptorValue as Authored, CssComponentValue, CssComponentValues,
     CssFontFaceDescriptorKind as Kind, CssFontFaceDescriptorValue as Ordinary,
-    CssFontFaceObliqueRange, CssFontFaceStyle, CssFontFaceValueErrorKind, CssFontObliqueAngle,
-    CssFontStyleKeyword, CssRecoveryAction, CssRule, CssSerializationLimits, CssSerializedOrigin,
-    CssSpecifiedValueSerializationErrorKind, CssValueOrigin, parse_component_values,
-    parse_font_face_descriptor_value, parse_sheet,
+    CssFontFaceObliqueRange, CssFontFaceStyle, CssFontObliqueAngle, CssFontStyleKeyword,
+    CssRecoveryAction, CssRule, CssSerializationLimits, CssSerializedOrigin, CssValueOrigin,
+    parse_component_values, parse_font_face_descriptor_value, parse_sheet,
 };
 
 fn angle(text: &str) -> CssFontObliqueAngle {
@@ -233,15 +234,14 @@ fn duplicate_pending_and_mixed_origin_reentry_select_last_admitted_style() {
         "-20grad"
     );
     for text in ["env(style)", "var(--style)"] {
-        assert_eq!(
+        assert!(
             pending
                 .reparse_after_substitution(
                     parse_component_values(text).unwrap(),
                     Default::default()
                 )
                 .unwrap_err()
-                .kind(),
-            &CssFontFaceValueErrorKind::ResidualSubstitution,
+                .is_residual_substitution(),
             "{text}"
         );
     }
@@ -252,7 +252,7 @@ fn duplicate_pending_and_mixed_origin_reentry_select_last_admitted_style() {
             Default::default(),
         )
         .unwrap_err();
-    let CssFontFaceValueErrorKind::Grammar(detail) = error.kind() else {
+    let Some(detail) = error.diagnostic() else {
         panic!("grammar failure: {error:?}")
     };
     invalid_descriptor("font-face", "font-style")
@@ -272,10 +272,7 @@ fn strict_checked_construction_rejects_invalid_and_adjacent_tokens_with_real_ori
     .unwrap();
     let error =
         Authored::try_from_components(Kind::FontStyle, invalid, Default::default()).unwrap_err();
-    assert!(matches!(
-        error.kind(),
-        CssFontFaceValueErrorKind::Grammar(_)
-    ));
+    assert!(error.diagnostic().is_some());
     assert_eq!(
         error.origin(),
         &CssSerializedOrigin::Token(CssValueOrigin::Programmatic)
@@ -293,7 +290,7 @@ fn strict_checked_construction_rejects_invalid_and_adjacent_tokens_with_real_ori
     // Fonts 4 §4.2: oblique takes <angle>{0,2}; `1` is a <number>.
     let error =
         Authored::try_from_components(Kind::FontStyle, adjacent, Default::default()).unwrap_err();
-    let CssFontFaceValueErrorKind::Grammar(detail) = error.kind() else {
+    let Some(detail) = error.diagnostic() else {
         panic!("grammar failure: {error:?}")
     };
     invalid_descriptor("font-face", "font-style")
@@ -317,19 +314,19 @@ fn descriptor_and_range_serialization_enforce_aggregate_budgets_atomically() {
     for (limits, expected) in [
         (
             CssSerializationLimits::new(1, 2, 11),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(2, 1, 11),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(2, 2, 10),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            range.serialize_specified(limits).unwrap_err().kind(),
+            serialization_failure(&range.serialize_specified(limits).unwrap_err()),
             expected
         );
     }
@@ -347,24 +344,23 @@ fn descriptor_and_range_serialization_enforce_aggregate_budgets_atomically() {
     for (limits, expected) in [
         (
             CssSerializationLimits::new(2, 3, 19),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(3, 2, 19),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
     ] {
         assert_eq!(
-            value.serialize_specified(limits).unwrap_err().kind(),
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
             expected
         );
     }
-    assert_eq!(
+    assert!(
         value
             .serialize_specified(CssSerializationLimits::new(8, 8, 10))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(
         value.serialize_specified(Default::default()).unwrap(),

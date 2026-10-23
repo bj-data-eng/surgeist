@@ -1,18 +1,18 @@
 //! Typed CSS 2.1 line-height and shared font slash contracts.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::named_property::normal_grammar_components;
 use crate::css::support::named_property::{
     assert_implicit_closure_rejection, assert_invalid_replacement_at, assert_property_grammar_error,
 };
 use surgeist_css::{
     CssComponentValue, CssComponentValues, CssContributionValueRef, CssContributions, CssExpansion,
-    CssExpansionErrorKind, CssFontValue, CssGlobalKeyword, CssImportance, CssInitialValueRef,
-    CssKnownProperty, CssKnownPropertyValueRef, CssLengthPercentageCalculation, CssLineHeight,
-    CssLonghandValueRef, CssNumberCalculation, CssNumericConstructionErrorKind, CssPropertyKindRef,
-    CssPropertyValueErrorKind, CssSerializationLimits, CssSerializedOrigin,
-    CssSpecifiedNonNegativeLengthPercentage, CssSpecifiedNonNegativeNumber,
-    CssSpecifiedValueSerializationErrorKind, CssValueOrigin, expand_declaration,
-    parse_component_values, parse_style_attribute,
+    CssFontValue, CssGlobalKeyword, CssImportance, CssInitialValueRef, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLengthPercentageCalculation, CssLineHeight, CssLonghandValueRef,
+    CssNumberCalculation, CssPropertyKindRef, CssSerializationLimits, CssSerializedOrigin,
+    CssSpecifiedNonNegativeLengthPercentage, CssSpecifiedNonNegativeNumber, CssValueOrigin,
+    expand_declaration, parse_component_values, parse_style_attribute,
 };
 
 fn property(text: &str) -> CssLineHeight {
@@ -139,13 +139,10 @@ fn parsed_and_programmatic_values_have_distinct_origins_but_semantic_equality() 
         .unwrap(),
     )
     .unwrap_err();
-    assert!(matches!(
-        invalid.kind(),
-        CssPropertyValueErrorKind::Grammar(_)
-    ));
+    assert!(invalid.code().is_some());
     assert_eq!(
         invalid.origin(),
-        &CssSerializedOrigin::Token(CssValueOrigin::Programmatic)
+        CssSerializedOrigin::Token(CssValueOrigin::Programmatic)
     );
     let invalid =
         normal_grammar_components("line-height", parse_component_values("  -1e-999").unwrap())
@@ -268,16 +265,13 @@ fn pending_reentry_and_shorthand_share_strict_authored_grammar() {
     )
     .unwrap();
     let error = handle.reenter(invalid).unwrap_err();
-    let CssExpansionErrorKind::InvalidReplacement(mapped) = error.kind() else {
+    let Some(mapped) = error.replacement_error() else {
         panic!("mapped invalid")
     };
-    assert!(matches!(
-        mapped.kind(),
-        CssPropertyValueErrorKind::Grammar(_)
-    ));
+    assert!(mapped.code().is_some());
     assert_eq!(
         mapped.origin(),
-        &CssSerializedOrigin::Token(CssValueOrigin::Programmatic)
+        CssSerializedOrigin::Token(CssValueOrigin::Programmatic)
     );
     for tokens in [("1", "0px"), ("1", ".2")] {
         let adjacent = CssComponentValues::try_new(
@@ -290,13 +284,13 @@ fn pending_reentry_and_shorthand_share_strict_authored_grammar() {
         .unwrap();
         // The second programmatic token cannot follow a complete line-height.
         let error = handle.reenter(adjacent).unwrap_err();
-        let CssExpansionErrorKind::InvalidReplacement(mapped) = error.kind() else {
+        let Some(mapped) = error.replacement_error() else {
             panic!("adjacent {tokens:?}: {error:?}")
         };
         assert_property_grammar_error(mapped, CssKnownProperty::LineHeight);
         assert_eq!(
             mapped.origin(),
-            &CssSerializedOrigin::Token(CssValueOrigin::Programmatic)
+            CssSerializedOrigin::Token(CssValueOrigin::Programmatic)
         );
     }
     // CSS 2.1 line-height: a negative number and a number-plus-percentage
@@ -313,11 +307,7 @@ fn pending_reentry_and_shorthand_share_strict_authored_grammar() {
             Some(rest) => {
                 assert_invalid_replacement_at(&error, CssKnownProperty::LineHeight, invalid, rest)
             }
-            None => assert_eq!(
-                error.kind(),
-                &CssExpansionErrorKind::ResidualSubstitution,
-                "{invalid}"
-            ),
+            None => assert!(error.is_residual_substitution(), "{invalid}"),
         }
     }
     // Values 4 §10.9: the number-plus-percentage sum stops type checking at
@@ -330,12 +320,11 @@ fn pending_reentry_and_shorthand_share_strict_authored_grammar() {
         "calc(1 + 2%)",
         "2%)",
     );
-    assert_eq!(
+    assert!(
         handle
             .reenter(parse_component_values("var(--still)").unwrap())
             .unwrap_err()
-            .kind(),
-        &CssExpansionErrorKind::ResidualSubstitution
+            .is_residual_substitution()
     );
     for (text, expected_number) in [
         ("16px/0 serif", true),
@@ -391,20 +380,18 @@ fn recovered_math_is_retained_by_raw_parse_but_rejected_by_strict_construction_a
         match value.line_height() {
             CssLineHeight::Number(admitted) if number => {
                 let calculation = admitted.calculation().expect("number math");
-                assert_eq!(
+                assert!(
                     CssNumberCalculation::try_from_components(
                         calculation.components().clone(),
                         Default::default()
                     )
                     .unwrap_err()
-                    .kind(),
-                    &CssNumericConstructionErrorKind::RecoveredComponent
+                    .is_recovered_component()
                 );
-                assert_eq!(
+                assert!(
                     CssSpecifiedNonNegativeNumber::try_from_calculation(calculation.clone())
                         .unwrap_err()
-                        .kind(),
-                    &CssNumericConstructionErrorKind::RecoveredComponent
+                        .is_recovered_component()
                 );
                 assert_eq!(
                     admitted.serialize_specified(Default::default()).unwrap(),
@@ -413,22 +400,20 @@ fn recovered_math_is_retained_by_raw_parse_but_rejected_by_strict_construction_a
             }
             CssLineHeight::LengthPercentage(admitted) if !number => {
                 let calculation = admitted.calculation().expect("length math");
-                assert_eq!(
+                assert!(
                     CssLengthPercentageCalculation::try_from_components(
                         calculation.components().clone(),
                         Default::default()
                     )
                     .unwrap_err()
-                    .kind(),
-                    &CssNumericConstructionErrorKind::RecoveredComponent
+                    .is_recovered_component()
                 );
-                assert_eq!(
+                assert!(
                     CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(
                         calculation.clone(),
                     )
                     .unwrap_err()
-                    .kind(),
-                    &CssNumericConstructionErrorKind::RecoveredComponent
+                    .is_recovered_component()
                 );
                 assert_eq!(
                     admitted.serialize_specified(Default::default()).unwrap(),
@@ -445,7 +430,7 @@ fn recovered_math_is_retained_by_raw_parse_but_rejected_by_strict_construction_a
         let error = handle
             .reenter(parse_component_values(text).unwrap())
             .unwrap_err();
-        let CssExpansionErrorKind::InvalidReplacement(error) = error.kind() else {
+        let Some(error) = error.replacement_error() else {
             panic!("{text}: {error:?}")
         };
         assert_implicit_closure_rejection(error, text);
@@ -460,19 +445,19 @@ fn bounded_serialization_fails_atomically_for_both_branches() {
         for (limits, expected) in [
             (
                 CssSerializationLimits::new(0, 10, 20),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                SerializationFailure::InputNodeLimit,
             ),
             (
                 CssSerializationLimits::new(10, 0, 20),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
                 CssSerializationLimits::new(10, 10, 3),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                SerializationFailure::ByteLimit,
             ),
         ] {
             assert_eq!(
-                value.serialize_specified(limits).unwrap_err().kind(),
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
                 expected
             );
         }
@@ -489,5 +474,5 @@ fn bounded_serialization_fails_atomically_for_both_branches() {
         CssComponentValue::try_number("-1e-999").unwrap(),
     )
     .unwrap_err();
-    assert_eq!(error.kind(), &CssNumericConstructionErrorKind::OutOfRange);
+    assert!(error.is_out_of_range(), "{error:?}");
 }

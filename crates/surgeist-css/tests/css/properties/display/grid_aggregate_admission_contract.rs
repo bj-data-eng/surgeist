@@ -113,7 +113,7 @@ fn reject_rows_style(property: CssKnownProperty) {
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
     // The rows-only prefix is viable until the value ends without the
     // required column slash, so its last token is responsible.
-    assert_invalid_value(diagnostic.error().kind(), property, Some("10px"));
+    assert_invalid_value(diagnostic.error(), property, Some("10px"));
 }
 
 fn reject_rows_validator(property: CssKnownProperty) {

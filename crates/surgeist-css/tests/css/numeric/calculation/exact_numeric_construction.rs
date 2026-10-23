@@ -1,7 +1,7 @@
 //! Checked construction preserves exact tokens and bounded public operations.
 use surgeist_css::{
     CssCalculationExpressionRef, CssComponentValue, CssComponentValues, CssNumberCalculation,
-    CssNumericConstructionErrorKind, parse_component_values,
+    parse_component_values,
 };
 
 #[test]
@@ -16,10 +16,7 @@ fn adjacent_programmatic_tokens_do_not_turn_into_an_exponent() {
     .unwrap();
     let error =
         CssNumberCalculation::try_from_components(components, Default::default()).unwrap_err();
-    assert_eq!(
-        error.kind(),
-        &CssNumericConstructionErrorKind::MultipleValues
-    );
+    assert!(error.is_multiple_values(), "{error:?}");
 }
 
 #[test]
@@ -29,15 +26,12 @@ fn empty_and_trailing_values_report_the_responsible_origin() {
         Default::default(),
     )
     .unwrap_err();
-    assert_eq!(empty.kind(), &CssNumericConstructionErrorKind::EmptyValue);
+    assert!(empty.is_empty_value(), "{empty:?}");
     assert_eq!(empty.origin(), None);
     let values = parse_component_values("1 2").unwrap();
     let extra = values.items()[2].origin().clone();
     let error = CssNumberCalculation::try_from_components(values, Default::default()).unwrap_err();
-    assert_eq!(
-        error.kind(),
-        &CssNumericConstructionErrorKind::MultipleValues
-    );
+    assert!(error.is_multiple_values(), "{error:?}");
     assert_eq!(error.origin(), Some(&extra));
 }
 
@@ -253,10 +247,7 @@ fn textual_numeric_eof_recovery_retains_the_value_but_checked_construction_rejec
         Default::default(),
     )
     .unwrap_err();
-    assert_eq!(
-        error.kind(),
-        &CssNumericConstructionErrorKind::RecoveredComponent
-    );
+    assert!(error.is_recovered_component(), "{error:?}");
 }
 
 #[test]
@@ -274,10 +265,7 @@ fn incompatible_sum_reports_the_original_right_operand() {
     .unwrap();
     let direct =
         CssLengthCalculation::try_from_components(values.clone(), Default::default()).unwrap_err();
-    assert_eq!(
-        direct.kind(),
-        &CssNumericConstructionErrorKind::IncompatibleTypes
-    );
+    assert!(direct.is_incompatible_types(), "{direct:?}");
     assert_eq!(direct.origin(), Some(&right));
     let property = parse_property_value(
         CssPropertyNameRef::Known(CssKnownProperty::Width),
@@ -285,7 +273,7 @@ fn incompatible_sum_reports_the_original_right_operand() {
         CssImportance::Normal,
     )
     .unwrap_err();
-    assert_eq!(property.origin(), &CssSerializedOrigin::Token(right));
+    assert_eq!(property.origin(), CssSerializedOrigin::Token(right));
 }
 
 #[test]
@@ -296,9 +284,6 @@ fn empty_function_opening_counts_toward_the_nesting_limit_before_grammar() {
     let origin = values.items()[0].origin().clone();
     let limits = CssComponentValueLimits::try_new(0, 8, 64).unwrap();
     let error = CssNumberCalculation::try_from_components(values, limits).unwrap_err();
-    assert_eq!(
-        error.kind(),
-        &CssNumericConstructionErrorKind::ResourceLimit
-    );
+    assert!(error.is_resource_limit(), "{error:?}");
     assert_eq!(error.origin(), Some(&origin));
 }

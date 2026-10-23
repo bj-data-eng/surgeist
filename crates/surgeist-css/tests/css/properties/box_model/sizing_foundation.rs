@@ -280,19 +280,18 @@ fn css_wide_keywords_remain_whole_values_and_pending_reentry_is_strict() {
         } else {
             "none"
         };
-        assert!(matches!(
+        assert!(
             handle
                 .reenter(parse_component_values(invalid_value).unwrap())
                 .unwrap_err()
-                .kind(),
-            CssExpansionErrorKind::InvalidReplacement(_)
-        ));
-        assert_eq!(
+                .replacement_error()
+                .is_some()
+        );
+        assert!(
             handle
                 .reenter(parse_component_values("var(--again)").unwrap())
                 .unwrap_err()
-                .kind(),
-            &CssExpansionErrorKind::ResidualSubstitution
+                .is_residual_substitution()
         );
         let replacement = parse_component_values("1px").unwrap();
         let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap()

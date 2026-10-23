@@ -340,9 +340,7 @@ fn foreign_creation_tickets_and_late_refusal_abort_the_entire_batch() {
     );
     assert!(matches!(
         result,
-        Err(CssomStyleAttributeError::Input(CssUtf16InputError::Limit(
-            "input units"
-        )))
+        Err(CssomStyleAttributeError::Input(error)) if error.exhausted_limit() == Some(CssUtf16Resource::InputUnits)
     ));
     assert!(matches!(store.commit(first), Err(CssomError::BatchAborted)));
     assert_eq!(store.snapshot().revision(), before.revision());
@@ -390,7 +388,7 @@ fn interruption_and_component_refusal_preserve_the_cause_and_poison_the_batch() 
                 },
             );
             assert!(
-                matches!(result, Err(CssomStyleAttributeError::Input(CssUtf16InputError::Interrupted(value))) if value == stop)
+                matches!(result, Err(CssomStyleAttributeError::Input(ref error)) if error.interruption() == Some(&stop))
             );
             assert_eq!(calls, stop);
             assert!(matches!(store.commit(edit), Err(CssomError::BatchAborted)));
@@ -412,8 +410,10 @@ fn interruption_and_component_refusal_preserve_the_cause_and_poison_the_batch() 
         panic!("component allowance must be a resource refusal")
     };
     assert!(
-        matches!(diagnostic.error().kind(), ErrorKind::InvalidComponentValue(error)
-        if error.kind() == CssComponentValueErrorKind::ComponentLimit)
+        diagnostic
+            .error()
+            .component_error()
+            .is_some_and(CssComponentValueError::is_component_limit)
     );
     assert!(matches!(store.commit(edit), Err(CssomError::BatchAborted)));
 }
@@ -639,9 +639,7 @@ fn preparation_request_and_state_limits_keep_their_own_atomic_refusals() {
     );
     assert!(matches!(
         result,
-        Err(CssomStyleAttributeError::Input(CssUtf16InputError::Limit(
-            "preparation work"
-        )))
+        Err(CssomStyleAttributeError::Input(error)) if error.exhausted_limit() == Some(CssUtf16Resource::Work)
     ));
     assert!(matches!(store.commit(edit), Err(CssomError::BatchAborted)));
     for (limits, resource) in [

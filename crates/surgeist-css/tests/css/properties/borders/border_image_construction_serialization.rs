@@ -6,7 +6,6 @@ use crate::css::support::serialization_limits::assert_limits as exact_limits;
 use surgeist_css::*;
 
 type Limits = CssSerializationLimits;
-type Kind = CssSpecifiedValueSerializationErrorKind;
 
 fn number(text: &str) -> CssSpecifiedNonNegativeNumber {
     if text.starts_with("calc(") {
@@ -541,12 +540,11 @@ fn huge_exact_literals_bound_expansion_and_preserve_input_after_failure() {
     let huge = format!("1e{}", "9".repeat(100));
     let value = slice(&[&huge], false);
     let before = value.clone();
-    assert_eq!(
+    assert!(
         value
             .serialize_specified(Limits::new(100, 100, 4))
             .unwrap_err()
-            .kind(),
-        Kind::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(value, before);
     let value = slice(&[&format!("-0e{}", "9".repeat(100))], false);
@@ -561,12 +559,11 @@ fn cumulative_source_prefix_and_later_groups_fail_atomically() {
         value.serialize_specified(limits)
     });
     let before = value.clone();
-    assert_eq!(
+    assert!(
         value
             .serialize_specified(Limits::new(33, 33, 20))
             .unwrap_err()
-            .kind(),
-        Kind::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(value, before);
     assert_eq!(

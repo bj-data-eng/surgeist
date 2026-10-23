@@ -556,11 +556,11 @@ impl CssColorSchemePropertyValue {
         &self,
         admit: &mut impl FnMut() -> Result<(), E>,
     ) -> Result<usize, crate::CssRetainedPayloadError<E>> {
-        admit().map_err(crate::CssRetainedPayloadError::Admission)?;
+        admit().map_err(crate::CssRetainedPayloadError::admission)?;
         self.authored
             .retained_backing_bytes()
             .checked_add(self.value.retained_backing_bytes_with(admit)?)
-            .ok_or(crate::CssRetainedPayloadError::CapacityOverflow)
+            .ok_or_else(crate::CssRetainedPayloadError::capacity_overflow)
     }
 }
 

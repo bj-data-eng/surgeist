@@ -2,8 +2,8 @@
 
 use crate::syntax::CssCounterStyleDescriptor;
 use crate::{
-    CssComponentValueError, CssComponentValueErrorKind, CssSerializedOrigin, CssSerializedValue,
-    CssValueOrigin, Error, ErrorKind,
+    CssComponentValueError, CssError, CssFontFeatureValuesError, CssSerializedOrigin,
+    CssSerializedValue, CssValueOrigin,
 };
 use crate::{
     CssComponentValueLimits, CssComponentValues, CssCounterAdditiveSymbols,
@@ -249,208 +249,226 @@ impl CssFontFeatureValue {
     }
 }
 
-fn reject_counterstyle_recovered(
-    components: &CssComponentValues,
-) -> Result<(), CssCounterStyleValueError> {
-    if let Some(origin) = components.first_implicit_origin() {
-        return Err(CssCounterStyleValueError {
-            kind: Box::new(CssCounterStyleValueErrorKind::RecoveredComponent),
-            origin: Box::new(CssSerializedOrigin::Token(origin.clone())),
-            source: None,
-        });
-    }
-    Ok(())
+/// The shared failure of one checked component-native descriptor construction or
+/// pending reentry, mapped to the supplied component origins and never to
+/// fabricated source text.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct DescriptorValueFailure {
+    kind: DescriptorFailureKind,
+    origin: Box<CssSerializedOrigin>,
 }
 
-/// A checked component-native descriptor construction or reentry failure.
 #[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssCounterStyleValueErrorKind {
-    Component(CssComponentValueErrorKind),
+enum DescriptorFailureKind {
+    Component(Box<CssComponentValueError>),
+    Grammar(Box<CssError>),
     RecoveredComponent,
-    Grammar(ErrorKind),
     ResidualSubstitution,
     NotPending,
 }
 
-/// A failure mapped to the supplied component origins, never fabricated source text.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssCounterStyleValueError {
-    kind: Box<CssCounterStyleValueErrorKind>,
-    origin: Box<CssSerializedOrigin>,
-    source: Option<Box<CounterStyleValueErrorSource>>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-enum CounterStyleValueErrorSource {
-    Component(CssComponentValueError),
-    Grammar(Error),
-}
-
-impl CssCounterStyleValueError {
-    #[must_use]
-    pub fn kind(&self) -> &CssCounterStyleValueErrorKind {
-        &self.kind
+impl DescriptorValueFailure {
+    pub(crate) fn component(error: CssComponentValueError) -> Self {
+        Self {
+            origin: Box::new(CssSerializedOrigin::Token(error.origin().clone())),
+            kind: DescriptorFailureKind::Component(Box::new(error)),
+        }
     }
 
-    #[must_use]
-    pub fn origin(&self) -> &CssSerializedOrigin {
+    pub(crate) fn grammar(error: CssError, serialized: &CssSerializedValue) -> Self {
+        Self {
+            origin: Box::new(error.component_input_origin(serialized)),
+            kind: DescriptorFailureKind::Grammar(Box::new(error)),
+        }
+    }
+
+    pub(crate) fn recovered(origin: CssValueOrigin) -> Self {
+        Self {
+            kind: DescriptorFailureKind::RecoveredComponent,
+            origin: Box::new(CssSerializedOrigin::Token(origin)),
+        }
+    }
+
+    pub(crate) fn residual(origin: CssValueOrigin) -> Self {
+        Self {
+            kind: DescriptorFailureKind::ResidualSubstitution,
+            origin: Box::new(CssSerializedOrigin::Token(origin)),
+        }
+    }
+
+    pub(crate) fn not_pending() -> Self {
+        Self {
+            kind: DescriptorFailureKind::NotPending,
+            origin: Box::new(CssSerializedOrigin::End(None)),
+        }
+    }
+
+    pub(crate) const fn origin(&self) -> &CssSerializedOrigin {
         &self.origin
     }
 
-    fn from_component(error: CssComponentValueError) -> Self {
-        Self {
-            kind: Box::new(CssCounterStyleValueErrorKind::Component(error.kind())),
-            origin: Box::new(CssSerializedOrigin::Token(error.origin().clone())),
-            source: Some(Box::new(CounterStyleValueErrorSource::Component(error))),
+    pub(crate) fn component_error(&self) -> Option<&CssComponentValueError> {
+        match &self.kind {
+            DescriptorFailureKind::Component(error) => Some(error),
+            _ => None,
         }
     }
 
-    fn from_grammar(error: Error, serialized: &CssSerializedValue) -> Self {
-        let origin = error.component_input_origin(serialized);
-        Self {
-            kind: Box::new(CssCounterStyleValueErrorKind::Grammar(error.kind().clone())),
-            origin: Box::new(origin),
-            source: Some(Box::new(CounterStyleValueErrorSource::Grammar(error))),
+    pub(crate) fn diagnostic(&self) -> Option<&CssError> {
+        match &self.kind {
+            DescriptorFailureKind::Grammar(error) => Some(error),
+            _ => None,
         }
+    }
+
+    pub(crate) const fn is_recovered_component(&self) -> bool {
+        matches!(self.kind, DescriptorFailureKind::RecoveredComponent)
+    }
+
+    pub(crate) const fn is_residual_substitution(&self) -> bool {
+        matches!(self.kind, DescriptorFailureKind::ResidualSubstitution)
+    }
+
+    pub(crate) const fn is_not_pending(&self) -> bool {
+        matches!(self.kind, DescriptorFailureKind::NotPending)
+    }
+
+    /// One summary sentence naming the owning rule, without the source's text.
+    pub(crate) fn describe(&self, rule: &str, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "invalid {rule} descriptor value: ")?;
+        formatter.write_str(match self.kind {
+            DescriptorFailureKind::Component(_) => "a supplied component is invalid",
+            DescriptorFailureKind::Grammar(_) => "the descriptor grammar rejected it",
+            DescriptorFailureKind::RecoveredComponent => {
+                "an implicitly closed component is not admitted"
+            }
+            DescriptorFailureKind::ResidualSubstitution => "it still contains a substitution",
+            DescriptorFailureKind::NotPending => "it is not pending substitution",
+        })
+    }
+
+    pub(crate) fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match &self.kind {
+            DescriptorFailureKind::Component(error) => Some(&**error),
+            DescriptorFailureKind::Grammar(error) => Some(&**error),
+            _ => None,
+        }
+    }
+}
+
+/// Generates the public accessors of a descriptor-value error that holds a
+/// [`DescriptorValueFailure`] in `failure`.
+macro_rules! descriptor_value_api {
+    ($ty:ident, $rule:literal) => {
+        impl $ty {
+            /// Returns the responsible input origin: a supplied token, a generated boundary or
+            /// EOF.
+            #[must_use]
+            pub fn origin(&self) -> &crate::CssSerializedOrigin {
+                self.failure.origin()
+            }
+
+            /// Returns the component failure when the supplied components were not admitted.
+            #[must_use]
+            pub fn component_error(&self) -> Option<&crate::CssComponentValueError> {
+                self.failure.component_error()
+            }
+
+            /// Returns the grammar diagnostic when the descriptor grammar rejected the
+            /// components. Its position indexes the serialized component input; [`Self::origin`]
+            /// locates the responsible supplied component.
+            #[must_use]
+            pub fn diagnostic(&self) -> Option<&crate::CssError> {
+                self.failure.diagnostic()
+            }
+
+            /// Returns whether an implicitly closed component was supplied.
+            #[must_use]
+            pub fn is_recovered_component(&self) -> bool {
+                self.failure.is_recovered_component()
+            }
+
+            /// Returns whether strict reentry still contains a substitution function.
+            #[must_use]
+            pub fn is_residual_substitution(&self) -> bool {
+                self.failure.is_residual_substitution()
+            }
+
+            /// Returns whether reentry was requested for a value that is not pending
+            /// substitution.
+            #[must_use]
+            pub fn is_not_pending(&self) -> bool {
+                self.failure.is_not_pending()
+            }
+        }
+
+        impl From<crate::descriptor_values::DescriptorValueFailure> for $ty {
+            fn from(failure: crate::descriptor_values::DescriptorValueFailure) -> Self {
+                Self { failure }
+            }
+        }
+
+        impl std::fmt::Display for $ty {
+            fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                self.failure.describe($rule, formatter)
+            }
+        }
+
+        impl std::error::Error for $ty {
+            fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+                self.failure.source()
+            }
+        }
+    };
+}
+pub(crate) use descriptor_value_api;
+
+fn reject_counterstyle_recovered(
+    components: &CssComponentValues,
+) -> Result<(), CssCounterStyleValueError> {
+    if let Some(origin) = components.first_implicit_origin() {
+        return Err(DescriptorValueFailure::recovered(origin.clone()).into());
+    }
+    Ok(())
+}
+
+/// A checked component-native `@counter-style` descriptor construction or reentry failure.
+///
+/// The supplied components were not admitted ([`Self::component_error`]), the descriptor
+/// grammar rejected them ([`Self::diagnostic`]), or reentry was refused; the component
+/// error or diagnostic is the error's source.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CssCounterStyleValueError {
+    failure: DescriptorValueFailure,
+}
+
+descriptor_value_api!(CssCounterStyleValueError, "counter-style");
+
+impl CssCounterStyleValueError {
+    fn from_component(error: CssComponentValueError) -> Self {
+        DescriptorValueFailure::component(error).into()
+    }
+
+    fn from_grammar(error: CssError, serialized: &CssSerializedValue) -> Self {
+        DescriptorValueFailure::grammar(error, serialized).into()
     }
 
     fn residual(origin: CssValueOrigin) -> Self {
-        Self {
-            kind: Box::new(CssCounterStyleValueErrorKind::ResidualSubstitution),
-            origin: Box::new(CssSerializedOrigin::Token(origin)),
-            source: None,
-        }
+        DescriptorValueFailure::residual(origin).into()
     }
 
     fn not_pending() -> Self {
-        Self {
-            kind: Box::new(CssCounterStyleValueErrorKind::NotPending),
-            origin: Box::new(CssSerializedOrigin::End(None)),
-            source: None,
-        }
-    }
-}
-
-impl fmt::Display for CssCounterStyleValueError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            formatter,
-            "invalid counterstyle descriptor value: {:?}",
-            self.kind
-        )
-    }
-}
-
-impl std::error::Error for CssCounterStyleValueError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self.source.as_deref()? {
-            CounterStyleValueErrorSource::Component(error) => Some(error),
-            CounterStyleValueErrorSource::Grammar(error) => Some(error),
-        }
+        DescriptorValueFailure::not_pending().into()
     }
 }
 
 fn reject_fontfeature_recovered(
     components: &CssComponentValues,
-) -> Result<(), CssFontFeatureValueError> {
+) -> Result<(), CssFontFeatureValuesError> {
     if let Some(origin) = components.first_implicit_origin() {
-        return Err(CssFontFeatureValueError {
-            kind: Box::new(CssFontFeatureValueErrorKind::RecoveredComponent),
-            origin: Box::new(CssSerializedOrigin::Token(origin.clone())),
-            source: None,
-        });
+        return Err(DescriptorValueFailure::recovered(origin.clone()).into());
     }
     Ok(())
-}
-
-/// A checked component-native descriptor construction or reentry failure.
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssFontFeatureValueErrorKind {
-    Component(CssComponentValueErrorKind),
-    RecoveredComponent,
-    Grammar(ErrorKind),
-    ResidualSubstitution,
-    NotPending,
-}
-
-/// A failure mapped to the supplied component origins, never fabricated source text.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssFontFeatureValueError {
-    kind: Box<CssFontFeatureValueErrorKind>,
-    origin: Box<CssSerializedOrigin>,
-    source: Option<Box<FontFeatureValueErrorSource>>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-enum FontFeatureValueErrorSource {
-    Component(CssComponentValueError),
-    Grammar(Error),
-}
-
-impl CssFontFeatureValueError {
-    #[must_use]
-    pub fn kind(&self) -> &CssFontFeatureValueErrorKind {
-        &self.kind
-    }
-
-    #[must_use]
-    pub fn origin(&self) -> &CssSerializedOrigin {
-        &self.origin
-    }
-
-    fn from_component(error: CssComponentValueError) -> Self {
-        Self {
-            kind: Box::new(CssFontFeatureValueErrorKind::Component(error.kind())),
-            origin: Box::new(CssSerializedOrigin::Token(error.origin().clone())),
-            source: Some(Box::new(FontFeatureValueErrorSource::Component(error))),
-        }
-    }
-
-    fn from_grammar(error: Error, serialized: &CssSerializedValue) -> Self {
-        let origin = error.component_input_origin(serialized);
-        Self {
-            kind: Box::new(CssFontFeatureValueErrorKind::Grammar(error.kind().clone())),
-            origin: Box::new(origin),
-            source: Some(Box::new(FontFeatureValueErrorSource::Grammar(error))),
-        }
-    }
-
-    fn residual(origin: CssValueOrigin) -> Self {
-        Self {
-            kind: Box::new(CssFontFeatureValueErrorKind::ResidualSubstitution),
-            origin: Box::new(CssSerializedOrigin::Token(origin)),
-            source: None,
-        }
-    }
-
-    fn not_pending() -> Self {
-        Self {
-            kind: Box::new(CssFontFeatureValueErrorKind::NotPending),
-            origin: Box::new(CssSerializedOrigin::End(None)),
-            source: None,
-        }
-    }
-}
-
-impl fmt::Display for CssFontFeatureValueError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            formatter,
-            "invalid fontfeature descriptor value: {:?}",
-            self.kind
-        )
-    }
-}
-
-impl std::error::Error for CssFontFeatureValueError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self.source.as_deref()? {
-            FontFeatureValueErrorSource::Component(error) => Some(error),
-            FontFeatureValueErrorSource::Grammar(error) => Some(error),
-        }
-    }
 }
 
 impl CssCounterStyleDescriptorValue {
@@ -518,23 +536,23 @@ impl CssFontFeatureDisplayValue {
     pub fn try_from_components(
         components: CssComponentValues,
         limits: CssComponentValueLimits,
-    ) -> Result<Self, CssFontFeatureValueError> {
+    ) -> Result<Self, CssFontFeatureValuesError> {
         components
             .validate_with_limits(limits)
-            .map_err(CssFontFeatureValueError::from_component)?;
+            .map_err(CssFontFeatureValuesError::from_component)?;
         reject_fontfeature_recovered(&components)?;
         Self::from_validated_components(components, limits)
     }
     fn from_validated_components(
         components: CssComponentValues,
         limits: CssComponentValueLimits,
-    ) -> Result<Self, CssFontFeatureValueError> {
+    ) -> Result<Self, CssFontFeatureValuesError> {
         let serialized = components
             .serialize_tokens(limits)
-            .map_err(CssFontFeatureValueError::from_component)?;
+            .map_err(CssFontFeatureValuesError::from_component)?;
         let data =
             crate::parser::font_feature_values::construct_display_value(&components, &serialized)
-                .map_err(|error| CssFontFeatureValueError::from_grammar(error, &serialized))?;
+                .map_err(|error| CssFontFeatureValuesError::from_grammar(error, &serialized))?;
         Ok(Self {
             data,
             components,
@@ -548,16 +566,16 @@ impl CssFontFeatureDisplayValue {
         &self,
         replacement: CssComponentValues,
         limits: CssComponentValueLimits,
-    ) -> Result<Self, CssFontFeatureValueError> {
+    ) -> Result<Self, CssFontFeatureValuesError> {
         if !matches!(self.data, FontFeatureDisplayData::Pending(_)) {
-            return Err(CssFontFeatureValueError::not_pending());
+            return Err(CssFontFeatureValuesError::not_pending());
         }
         replacement
             .validate_with_limits(limits)
-            .map_err(CssFontFeatureValueError::from_component)?;
+            .map_err(CssFontFeatureValuesError::from_component)?;
         reject_fontfeature_recovered(&replacement)?;
         if let Some(origin) = crate::parser::first_substitution_origin(&replacement) {
-            return Err(CssFontFeatureValueError::residual(origin));
+            return Err(CssFontFeatureValuesError::residual(origin));
         }
         Self::from_validated_components(replacement, limits)
     }
@@ -571,10 +589,10 @@ impl CssFontFeatureValue {
         kind: CssFontFeatureValueKind,
         components: CssComponentValues,
         limits: CssComponentValueLimits,
-    ) -> Result<Self, CssFontFeatureValueError> {
+    ) -> Result<Self, CssFontFeatureValuesError> {
         components
             .validate_with_limits(limits)
-            .map_err(CssFontFeatureValueError::from_component)?;
+            .map_err(CssFontFeatureValuesError::from_component)?;
         reject_fontfeature_recovered(&components)?;
         Self::from_validated_components(kind, components, limits)
     }
@@ -582,16 +600,16 @@ impl CssFontFeatureValue {
         kind: CssFontFeatureValueKind,
         components: CssComponentValues,
         limits: CssComponentValueLimits,
-    ) -> Result<Self, CssFontFeatureValueError> {
+    ) -> Result<Self, CssFontFeatureValuesError> {
         let serialized = components
             .serialize_tokens(limits)
-            .map_err(CssFontFeatureValueError::from_component)?;
+            .map_err(CssFontFeatureValuesError::from_component)?;
         let data = crate::parser::font_feature_values::construct_feature_value(
             kind,
             &components,
             &serialized,
         )
-        .map_err(|error| CssFontFeatureValueError::from_grammar(error, &serialized))?;
+        .map_err(|error| CssFontFeatureValuesError::from_grammar(error, &serialized))?;
         Ok(Self {
             kind,
             data,
@@ -606,16 +624,16 @@ impl CssFontFeatureValue {
         &self,
         replacement: CssComponentValues,
         limits: CssComponentValueLimits,
-    ) -> Result<Self, CssFontFeatureValueError> {
+    ) -> Result<Self, CssFontFeatureValuesError> {
         if !matches!(self.data, FontFeatureValueData::Pending(_)) {
-            return Err(CssFontFeatureValueError::not_pending());
+            return Err(CssFontFeatureValuesError::not_pending());
         }
         replacement
             .validate_with_limits(limits)
-            .map_err(CssFontFeatureValueError::from_component)?;
+            .map_err(CssFontFeatureValuesError::from_component)?;
         reject_fontfeature_recovered(&replacement)?;
         if let Some(origin) = crate::parser::first_substitution_origin(&replacement) {
-            return Err(CssFontFeatureValueError::residual(origin));
+            return Err(CssFontFeatureValuesError::residual(origin));
         }
         Self::from_validated_components(self.kind, replacement, limits)
     }

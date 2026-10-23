@@ -1,6 +1,8 @@
 //! Functional specified-value expectations from CSS Lists 3 (2020-11-17) §3.7.
 //! The keywords are symbolic; element or parent directionality is selected later.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::normal_declaration;
 use surgeist_css::*;
 
@@ -99,18 +101,21 @@ fn keyword_serialization_has_exact_independent_node_and_byte_limits() {
         for (limits, kind) in [
             (
                 CssSerializationLimits::new(0, 1, canonical.len()),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                SerializationFailure::InputNodeLimit,
             ),
             (
                 CssSerializationLimits::new(1, 0, canonical.len()),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
                 CssSerializationLimits::new(1, 1, canonical.len() - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                SerializationFailure::ByteLimit,
             ),
         ] {
-            assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+            assert_eq!(
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+                kind
+            );
             assert_eq!(
                 value.serialize_specified(Default::default()).unwrap(),
                 canonical

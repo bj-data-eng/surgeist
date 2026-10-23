@@ -251,38 +251,34 @@ fn malformed_predefined_forms_recover_only_the_color_declaration() {
 #[test]
 fn checked_component_front_doors_exclude_dimensions_not_in_the_grammar() {
     for text in ["1deg", "1px", "1s"] {
-        assert_eq!(
+        assert!(
             CssColorNumberLiteral::try_from_component(token(text))
                 .unwrap_err()
-                .kind(),
-            CssComponentValueErrorKind::InvalidToken
+                .is_invalid_token()
         );
-        assert_eq!(
+        assert!(
             CssColorPercentageLiteral::try_from_component(token(text))
                 .unwrap_err()
-                .kind(),
-            CssComponentValueErrorKind::InvalidToken
+                .is_invalid_token()
         );
     }
     for text in ["calc(1px)", "calc(1deg)", "calc(1s)"] {
-        assert_eq!(
+        assert!(
             CssNumberCalculation::try_from_components(
                 parse_component_values(text).unwrap(),
                 Default::default()
             )
             .unwrap_err()
-            .kind(),
-            &CssNumericConstructionErrorKind::RootDomainMismatch,
+            .is_root_domain_mismatch(),
             "{text}"
         );
-        assert_eq!(
+        assert!(
             CssPercentageCalculation::try_from_components(
                 parse_component_values(text).unwrap(),
                 Default::default()
             )
             .unwrap_err()
-            .kind(),
-            &CssNumericConstructionErrorKind::RootDomainMismatch,
+            .is_root_domain_mismatch(),
             "{text}"
         );
     }

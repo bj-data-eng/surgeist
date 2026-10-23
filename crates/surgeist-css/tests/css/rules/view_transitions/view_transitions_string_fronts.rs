@@ -101,16 +101,13 @@ fn substitution_values_keep_the_occurrence_and_strict_reentry() {
         let error = pending
             .reenter(parse_component_values("auto").unwrap())
             .unwrap_err();
-        let CssExpansionErrorKind::InvalidReplacement(replacement) = error.kind() else {
+        let Some(replacement) = error.replacement_error() else {
             panic!("{text}: invalid replacement: {error:?}")
-        };
-        let CssPropertyValueErrorKind::Grammar(detail) = replacement.kind() else {
-            panic!("{text}: grammar failure: {replacement:?}")
         };
         ExpectedRejection::new(CssErrorCode::InvalidPropertyValue)
             .named("view-transition-name")
             .at("auto")
-            .assert_kind(detail);
+            .assert_checked(replacement);
         let replacement = parse_component_values("Card").unwrap();
         let CssContributions::Longhands(items) = pending.reenter(replacement.clone()).unwrap()
         else {

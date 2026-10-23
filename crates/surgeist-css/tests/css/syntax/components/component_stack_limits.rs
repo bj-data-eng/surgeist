@@ -4,9 +4,7 @@
 
 use crate::css::support::isolated_stack;
 
-use surgeist_css::{
-    CssComponentValueErrorKind, CssComponentValueRef, CssValueOrigin, parse_component_values,
-};
+use surgeist_css::{CssComponentValueRef, CssValueOrigin, parse_component_values};
 
 fn isolated(test: &str, operation: fn()) {
     isolated_stack::run(
@@ -48,7 +46,7 @@ fn depth_257_reports_the_first_excess_opening_on_an_ordinary_stack() {
         || {
             let source = format!("{}x{}", "(".repeat(257), ")".repeat(257));
             let error = parse_component_values(&source).expect_err("257 levels exceed the limit");
-            assert_eq!(error.kind(), CssComponentValueErrorKind::NestingLimit);
+            assert!(error.is_nesting_limit(), "{error:?}");
             let CssValueOrigin::Parsed(origin) = error.origin() else {
                 panic!("the excess opening must retain its source origin");
             };
@@ -93,10 +91,7 @@ fn mixed_blocks_preserve_eof_closures_and_reject_mismatched_delimiters() {
     }
 
     let error = parse_component_values("f([x)").expect_err("a parenthesis cannot close a bracket");
-    assert_eq!(
-        error.kind(),
-        CssComponentValueErrorKind::UnmatchedClosingDelimiter
-    );
+    assert!(error.is_unmatched_closing_delimiter(), "{error:?}");
     let CssValueOrigin::Parsed(origin) = error.origin() else {
         panic!("the mismatched delimiter must retain its source origin");
     };

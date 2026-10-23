@@ -1,6 +1,10 @@
 //! Authored font reset dependencies from pinned CSS Fonts 4 WD 2026-09-07,
 //! §§2.6, 4.6, 6.3, 6.12, 6.13, 8.1 and 8.2.
 
+use crate::css::support::failure_classes::NumericFailure;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::numeric_failure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::important_declaration as declaration;
 use crate::css::support::selected_grammar as grammar;
 use surgeist_css::*;
@@ -112,18 +116,15 @@ fn feature_index_keeps_exact_integer_token_beyond_i32_and_rejects_wrong_roots() 
     // Fonts 4 §6.12: <integer [0,inf]>; `-1` is out of range and the other
     // tokens are not integers.
     for (text, kind) in [
-        ("-1", CssNumericConstructionErrorKind::OutOfRange),
-        (
-            "-1e-999",
-            CssNumericConstructionErrorKind::RootDomainMismatch,
-        ),
-        ("1.5", CssNumericConstructionErrorKind::RootDomainMismatch),
-        ("1e2", CssNumericConstructionErrorKind::RootDomainMismatch),
-        ("2%", CssNumericConstructionErrorKind::RootDomainMismatch),
+        ("-1", NumericFailure::OutOfRange),
+        ("-1e-999", NumericFailure::RootDomainMismatch),
+        ("1.5", NumericFailure::RootDomainMismatch),
+        ("1e2", NumericFailure::RootDomainMismatch),
+        ("2%", NumericFailure::RootDomainMismatch),
     ] {
         let component = parse_component_values(text).unwrap().items()[0].clone();
         let error = CssFontFeatureIndex::try_from_component(component.clone()).unwrap_err();
-        assert_eq!(error.kind(), &kind, "{text}");
+        assert_eq!(numeric_failure(&error), kind, "{text}");
         assert_eq!(error.origin(), Some(component.origin()), "{text}");
     }
     let math = CssIntegerCalculation::try_from_components(
@@ -316,13 +317,12 @@ fn scalar_number_and_size_adjust_keep_exact_sign_digits_origin_and_symbolic_math
         "0.000000000000000000000000000000000000001"
     );
     for negative in ["-1e-999", "-0.000000000000000000000000000000000000001"] {
-        assert_eq!(
+        assert!(
             CssSpecifiedNonNegativeNumber::try_from_component(
                 CssComponentValue::try_number(negative).unwrap()
             )
             .unwrap_err()
-            .kind(),
-            &CssNumericConstructionErrorKind::OutOfRange,
+            .is_out_of_range(),
             "{negative}"
         );
     }
@@ -489,13 +489,12 @@ fn six_longhands_have_exact_initials_and_preserve_globals_and_reentry_provenance
             assert!(item.source().same_occurrence(&source));
             assert_eq!(item.replacement_components(), Some(&replacement));
             for residual in ["var(--again)", "env(again)"] {
-                assert!(matches!(
+                assert!(
                     pending
                         .reenter(parse_component_values(residual).unwrap())
                         .unwrap_err()
-                        .kind(),
-                    CssExpansionErrorKind::ResidualSubstitution
-                ));
+                        .is_residual_substitution()
+                );
             }
         }
     }
@@ -541,11 +540,17 @@ fn descriptor_payloads_use_property_models_and_effective_last_admitted_order() {
         report.diagnostics()[0].error().code(),
         CssErrorCode::InvalidDescriptorValue
     );
-    let ErrorKind::InvalidDescriptorValue(detail) = report.diagnostics()[0].error().kind() else {
-        panic!("descriptor-mapped grammar error")
-    };
-    assert_eq!(detail.at_rule().as_str(), "font-face");
-    assert_eq!(detail.descriptor().as_str(), "font-variation-settings");
+    let detail = report.diagnostics()[0].error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidDescriptorValue,
+        "descriptor-mapped grammar error"
+    );
+    assert_eq!(detail.at_rule().unwrap().as_str(), "font-face");
+    assert_eq!(
+        detail.descriptor().unwrap().as_str(),
+        "font-variation-settings"
+    );
     let [CssRule::FontFace(face)] = report.syntax().rules() else {
         panic!("retained face")
     };
@@ -671,10 +676,7 @@ fn otherwise_valid_implicitly_closed_math_recovers_only_in_ordinary_parsing() {
             CssImportance::Normal,
         )
         .unwrap_err();
-        assert!(matches!(
-            checked_error.kind(),
-            CssPropertyValueErrorKind::Grammar(_)
-        ));
+        assert!(checked_error.code().is_some());
         let CssSerializedOrigin::End(Some(CssValueOrigin::ImplicitClosure { at, .. })) =
             checked_error.origin()
         else {
@@ -687,10 +689,13 @@ fn otherwise_valid_implicitly_closed_math_recovers_only_in_ordinary_parsing() {
         let CssExpansion::Pending(pending) = expand_declaration(&pending_source).unwrap() else {
             panic!("pending property: {property}")
         };
-        assert!(matches!(
-            pending.reenter(recovered).unwrap_err().kind(),
-            CssExpansionErrorKind::InvalidReplacement(_)
-        ));
+        assert!(
+            pending
+                .reenter(recovered)
+                .unwrap_err()
+                .replacement_error()
+                .is_some()
+        );
         declaration(property, complete);
         parse_property_value_for_grammar(
             grammar(property),
@@ -736,10 +741,7 @@ fn otherwise_valid_implicitly_closed_math_recovers_only_in_ordinary_parsing() {
             Default::default(),
         )
         .unwrap_err();
-        assert_eq!(
-            checked_error.kind(),
-            &CssFontFaceValueErrorKind::RecoveredComponent
-        );
+        assert!(checked_error.is_recovered_component(), "{checked_error:?}");
         let CssSerializedOrigin::Token(CssValueOrigin::ImplicitClosure { opening, at }) =
             checked_error.origin()
         else {
@@ -768,12 +770,11 @@ fn otherwise_valid_implicitly_closed_math_recovers_only_in_ordinary_parsing() {
         else {
             panic!("pending descriptor")
         };
-        assert_eq!(
+        assert!(
             pending
                 .reparse_after_substitution(recovered, Default::default())
                 .unwrap_err()
-                .kind(),
-            &CssFontFaceValueErrorKind::RecoveredComponent
+                .is_recovered_component()
         );
         descriptor(kind, complete);
     }
@@ -793,28 +794,30 @@ fn list_serialization_obeys_shared_atomic_input_projection_and_byte_limits() {
             .unwrap(),
         "\"cv01\" 2147483648"
     );
-    assert_eq!(
+    assert!(
         value
             .serialize_specified(CssSerializationLimits::new(2, 2, 100))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+            .is_input_node_limit()
     );
     for (limits, kind) in [
         (
             CssSerializationLimits::new(0, 1000, 1000),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(1000, 0, 1000),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(1000, 1000, expected.len() - 1),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
-        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+            kind
+        );
     }
     assert_eq!(
         value.serialize_specified(Default::default()).unwrap(),
@@ -829,17 +832,15 @@ fn list_serialization_obeys_shared_atomic_input_projection_and_byte_limits() {
             .unwrap(),
         "\"wght\" -1.25"
     );
-    assert_eq!(
+    assert!(
         axes.serialize_specified(CssSerializationLimits::new(2, 2, 100))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+            .is_input_node_limit()
     );
-    assert_eq!(
+    assert!(
         axes.serialize_specified(CssSerializationLimits::new(1000, 1000, exact.len() - 1))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(axes.serialize_specified(Default::default()).unwrap(), exact);
 }

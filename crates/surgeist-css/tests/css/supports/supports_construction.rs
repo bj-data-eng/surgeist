@@ -4,13 +4,14 @@ use crate::css::support::authored_syntax::{
     assert_same_parsed_origin as same_parsed_origin, checked_supports_condition as condition,
     checked_supports_declaration, component_list as values, component_token as token,
 };
+use crate::css::support::failure_classes::ComponentFailure;
+use crate::css::support::failure_classes::component_failure;
 use surgeist_css::{
-    CssBlockKind, CssCalculationExpressionRef, CssComponentValue, CssComponentValueErrorKind,
-    CssComponentValueLimits, CssComponentValueRef, CssGlobalKeyword, CssImportance,
-    CssKnownPropertyValueRef, CssNamespaceConstraint, CssNamespaceContext, CssOpacityValue,
-    CssRule, CssSelector, CssSerializedOrigin, CssSupportsCondition, CssSupportsConditionKind,
-    CssSupportsConstructionError, CssSupportsDeclaration, CssValueOrigin, CssValueTokenRef,
-    parse_component_values, parse_sheet,
+    CssBlockKind, CssCalculationExpressionRef, CssComponentValue, CssComponentValueLimits,
+    CssComponentValueRef, CssGlobalKeyword, CssImportance, CssKnownPropertyValueRef,
+    CssNamespaceConstraint, CssNamespaceContext, CssOpacityValue, CssRule, CssSelector,
+    CssSerializedOrigin, CssSupportsCondition, CssSupportsConditionKind, CssSupportsDeclaration,
+    CssValueOrigin, CssValueTokenRef, parse_component_values, parse_sheet,
 };
 
 #[test]
@@ -271,13 +272,12 @@ fn terminal_importance_is_excluded_from_the_value_but_preserved_in_serialization
         "",
     ] {
         assert!(
-            matches!(
-                CssSupportsDeclaration::try_from_components(
-                    parse_component_values(source).unwrap(),
-                    Default::default()
-                ),
-                Err(CssSupportsConstructionError::InvalidDeclarationGrammar { .. })
-            ),
+            CssSupportsDeclaration::try_from_components(
+                parse_component_values(source).unwrap(),
+                Default::default()
+            )
+            .as_ref()
+            .is_err_and(|error| error.is_invalid_declaration_grammar()),
             "{source:?}"
         );
     }
@@ -292,14 +292,13 @@ fn malformed_root_operators_are_rejected_while_general_enclosed_remains_opaque()
         "(width:1px) and (height:1px) or (color:red)",
     ] {
         assert!(
-            matches!(
-                CssSupportsCondition::try_from_components(
-                    parse_component_values(source).unwrap(),
-                    &CssNamespaceContext::default(),
-                    Default::default(),
-                ),
-                Err(CssSupportsConstructionError::InvalidConditionGrammar { .. })
-            ),
+            CssSupportsCondition::try_from_components(
+                parse_component_values(source).unwrap(),
+                &CssNamespaceContext::default(),
+                Default::default(),
+            )
+            .as_ref()
+            .is_err_and(|error| error.is_invalid_condition_grammar()),
             "{source}"
         );
     }
@@ -433,10 +432,7 @@ fn recovery_and_explicit_resource_limits_report_the_original_component_origin() 
         Default::default(),
     )
     .unwrap_err();
-    assert!(matches!(
-        error,
-        CssSupportsConstructionError::RecoveredInput { .. }
-    ));
+    assert!(error.is_recovered_input());
     let CssValueOrigin::ImplicitClosure { opening, at } = error.origin() else {
         panic!("honest EOF recovery origin")
     };
@@ -448,13 +444,14 @@ fn recovery_and_explicit_resource_limits_report_the_original_component_origin() 
     assert!(at.source().same_snapshot(expected.source()));
     assert_eq!(at.span().start(), at.span().end());
     assert_eq!(at.span().start().byte_offset().value(), "Future(".len());
-    assert!(matches!(
+    assert!(
         CssSupportsDeclaration::try_from_components(
             parse_component_values("width:calc(1px").unwrap(),
             Default::default()
-        ),
-        Err(CssSupportsConstructionError::RecoveredInput { .. })
-    ));
+        )
+        .as_ref()
+        .is_err_and(|error| error.is_recovered_input())
+    );
     let components = parse_component_values("future()").unwrap();
     let expected_origin = components.items()[0].origin().clone();
     let CssComponentValueRef::Function(function) = components.items()[0].view() else {
@@ -464,15 +461,15 @@ fn recovery_and_explicit_resource_limits_report_the_original_component_origin() 
     for (limits, expected) in [
         (
             CssComponentValueLimits::try_new(0, usize::MAX, usize::MAX).unwrap(),
-            CssComponentValueErrorKind::NestingLimit,
+            ComponentFailure::NestingLimit,
         ),
         (
             CssComponentValueLimits::try_new(256, 0, usize::MAX).unwrap(),
-            CssComponentValueErrorKind::ComponentLimit,
+            ComponentFailure::ComponentLimit,
         ),
         (
             CssComponentValueLimits::try_new(256, usize::MAX, 7).unwrap(),
-            CssComponentValueErrorKind::ByteLimit,
+            ComponentFailure::ByteLimit,
         ),
     ] {
         let error = CssSupportsCondition::try_from_components(
@@ -481,12 +478,12 @@ fn recovery_and_explicit_resource_limits_report_the_original_component_origin() 
             limits,
         )
         .unwrap_err();
-        let CssSupportsConstructionError::Component(error) = error else {
+        let Some(error) = error.component_error() else {
             panic!("component limit")
         };
-        assert_eq!(error.kind(), expected);
+        assert_eq!(component_failure(error), expected);
         // Seven bytes admit `future(`; the eighth byte is its original closer.
-        let origin = if expected == CssComponentValueErrorKind::ByteLimit {
+        let origin = if expected == ComponentFailure::ByteLimit {
             &closing_origin
         } else {
             &expected_origin
@@ -527,10 +524,7 @@ fn grammar_error_after_programmatic_tokens_identifies_the_original_parsed_offend
         Default::default(),
     )
     .unwrap_err();
-    assert!(matches!(
-        error,
-        CssSupportsConstructionError::InvalidConditionGrammar { .. }
-    ));
+    assert!(error.is_invalid_condition_grammar());
     same_parsed_origin(error.origin(), &origin);
 }
 
@@ -588,19 +582,19 @@ fn declaration_limits_count_original_components_and_exact_lexical_output() {
     for (limits, expected) in [
         (
             CssComponentValueLimits::try_new(256, 2, usize::MAX).unwrap(),
-            CssComponentValueErrorKind::ComponentLimit,
+            ComponentFailure::ComponentLimit,
         ),
         (
             CssComponentValueLimits::try_new(256, usize::MAX, 8).unwrap(),
-            CssComponentValueErrorKind::ByteLimit,
+            ComponentFailure::ByteLimit,
         ),
     ] {
         let error =
             CssSupportsDeclaration::try_from_components(components.clone(), limits).unwrap_err();
-        let CssSupportsConstructionError::Component(error) = error else {
+        let Some(error) = error.component_error() else {
             panic!("component limit")
         };
-        assert_eq!(error.kind(), expected);
+        assert_eq!(component_failure(error), expected);
         assert_eq!(error.origin(), &CssValueOrigin::Programmatic);
     }
     let exact = CssComponentValueLimits::try_new(0, 3, 9).unwrap();
@@ -682,14 +676,15 @@ fn parsed_eof_recovery_keeps_the_known_numeric_view_that_checked_construction_re
             .as_css(),
         "(width:calc(1px))"
     );
-    assert!(matches!(
+    assert!(
         CssSupportsCondition::try_from_components(
             values(condition.components().to_vec()),
             &CssNamespaceContext::default(),
             Default::default(),
-        ),
-        Err(CssSupportsConstructionError::RecoveredInput { .. })
-    ));
+        )
+        .as_ref()
+        .is_err_and(|error| error.is_recovered_input())
+    );
 }
 
 #[test]

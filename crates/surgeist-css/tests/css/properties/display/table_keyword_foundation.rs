@@ -5,6 +5,8 @@
 //! unselected left/right caption values. Their rejection below is specific to
 //! this selected profile, not a judgment that they are invalid in every CSS UA.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::property_admission::assert_checked_matches_diagnostic;
 use surgeist_css::*;
 
@@ -121,18 +123,21 @@ fn table_keywords_serialize_all_eight_values_with_atomic_resource_limits() {
         for (limits, expected) in [
             (
                 CssSerializationLimits::new(0, 1, text.len()),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                SerializationFailure::InputNodeLimit,
             ),
             (
                 CssSerializationLimits::new(1, 0, text.len()),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
                 CssSerializationLimits::new(1, 1, text.len() - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                SerializationFailure::ByteLimit,
             ),
         ] {
-            assert_eq!(value.serialize(limits).unwrap_err().kind(), expected);
+            assert_eq!(
+                serialization_failure(&value.serialize(limits).unwrap_err()),
+                expected
+            );
         }
     }
 }
@@ -375,16 +380,18 @@ fn table_keywords_keep_globals_symbolic_and_reenter_pending_values_strictly() {
         };
         assert!(handle.source().same_occurrence(&source));
         let invalid = parse_component_values(&format!("{valid} {valid}")).unwrap();
-        assert!(matches!(
-            handle.reenter(invalid).unwrap_err().kind(),
-            CssExpansionErrorKind::InvalidReplacement(_)
-        ));
-        assert_eq!(
+        assert!(
+            handle
+                .reenter(invalid)
+                .unwrap_err()
+                .replacement_error()
+                .is_some()
+        );
+        assert!(
             handle
                 .reenter(parse_component_values("var(--again)").unwrap())
                 .unwrap_err()
-                .kind(),
-            &CssExpansionErrorKind::ResidualSubstitution
+                .is_residual_substitution()
         );
         let replacement = parse_component_values(valid).unwrap();
         for _ in 0..2 {

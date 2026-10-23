@@ -309,9 +309,10 @@ impl ProcessingRef<'_> {
     }
 }
 fn payload_error(error: CssRetainedPayloadError<DomStyleRuntimeError>) -> DomStyleRuntimeError {
-    match error {
-        CssRetainedPayloadError::Admission(error) => error,
-        CssRetainedPayloadError::CapacityOverflow => DomStyleRuntimeError::Admission,
+    match error.into_admission() {
+        Ok(error) => error,
+        // The measurement's only other refusal is a capacity overflow.
+        Err(_) => DomStyleRuntimeError::Admission,
     }
 }
 struct StagedPublication {

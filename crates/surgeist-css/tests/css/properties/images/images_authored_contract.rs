@@ -11,13 +11,13 @@ use crate::css::support::authored_property;
 use crate::css::support::property_expectations;
 
 use crate::css::support::authored_property::parsed;
+use crate::css::support::failure_classes::SerializationFailure as K;
+use crate::css::support::failure_classes::serialization_failure;
+use crate::css::support::property_admission::property_value_facts;
 use crate::css::support::serialization_limits::LimitLadder;
 use crate::css::support::serialization_limits::assert_limits as primitive_budget;
 use authored_property::{ParserFront, assert_source, checked, invalid};
-use surgeist_css::{
-    CssKnownProperty as P, CssSerializationLimits as L,
-    CssSpecifiedValueSerializationErrorKind as K, *,
-};
+use surgeist_css::{CssKnownProperty as P, CssSerializationLimits as L, *};
 
 const FRONTS: [ParserFront; 5] = [
     ParserFront::StyleAttribute,
@@ -372,10 +372,13 @@ fn invalid_keyword_occurrences_keep_exact_recovery_span_and_adjacent_importance(
         let [diagnostic] = report.diagnostics() else {
             panic!("one grammar diagnostic")
         };
-        let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-            panic!("typed grammar failure")
-        };
-        assert_eq!(detail.property(), row.property);
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidPropertyValue,
+            "typed grammar failure"
+        );
+        assert_eq!(detail.known_property().unwrap(), row.property);
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
         let start = css.find(&declaration).unwrap();
         point(diagnostic.span().start(), &css, start);
@@ -483,12 +486,11 @@ fn pending(property: P, valid: &str, expected: &str, rejected: &str) {
                     .unwrap(),
                 expected_pending
             );
-            assert_eq!(
+            assert!(
                 source
                     .serialize_specified(L::new(usize::MAX, usize::MAX, expected_pending.len() - 1))
                     .unwrap_err()
-                    .kind(),
-                K::ByteLimit
+                    .is_byte_limit()
             );
             assert_eq!(source, before);
             assert!(source.known().unwrap().substitution_dependent().is_some());
@@ -507,10 +509,10 @@ fn pending(property: P, valid: &str, expected: &str, rejected: &str) {
                     )
                     .unwrap_err();
                     let error = handle.reenter(components).unwrap_err();
-                    let CssExpansionErrorKind::InvalidReplacement(actual) = error.kind() else {
+                    let Some(actual) = error.replacement_error() else {
                         panic!("typed strict grammar reentry")
                     };
-                    assert_eq!(actual.kind(), direct.kind());
+                    assert_eq!(property_value_facts(actual), property_value_facts(&direct));
                     assert_eq!(actual.origin(), direct.origin());
                 }
                 for residual in [
@@ -519,12 +521,11 @@ fn pending(property: P, valid: &str, expected: &str, rejected: &str) {
                     "f(attr(data-image))",
                     r"f(v\61 r(--again))",
                 ] {
-                    assert_eq!(
+                    assert!(
                         handle
                             .reenter(parse_component_values(residual).unwrap())
                             .unwrap_err()
-                            .kind(),
-                        &CssExpansionErrorKind::ResidualSubstitution,
+                            .is_residual_substitution(),
                         "residual must win over invalid grammar"
                     );
                 }
@@ -625,10 +626,7 @@ fn normalization(property: P, ordinary: &str) {
     ] {
         for _ in 0..2 {
             let error = normalize_sheet_with_limits(report.syntax(), limit).unwrap_err();
-            assert_eq!(
-                error.kind(),
-                &CssNormalizationErrorKind::LimitExceeded { resource, limit: 2 }
-            );
+            assert_eq!(error.exhausted_limit(), Some((resource, 2)));
             assert_eq!(error.declaration_order(), Some(2));
             assert!(
                 error
@@ -767,7 +765,7 @@ fn sibling_image_roles_share_sheet_work_and_final_output_bytes_atomically() {
         );
         for _ in 0..2 {
             let error = sheet.serialize_specified(limits).unwrap_err();
-            assert_eq!(error.kind(), kind);
+            assert_eq!(serialization_failure(&error), kind);
             assert_eq!(error.rule_index(), Some(1));
             assert_eq!(sheet, &before);
         }
@@ -819,23 +817,23 @@ fn typed_keyword_and_orientation_constructors_emit_independent_canonical_values(
 #[test]
 fn physical_position_checked_construction_rejects_unpaired_and_logical_edges_and_keeps_programmatic_origins()
  {
-    assert_eq!(
+    assert!(
         CssPhysicalPosition::try_new(
             CssHorizontalPosition::RightOffset(lp("1px")),
             CssVerticalPosition::Top
         )
-        .unwrap_err(),
-        CssPositionConstructionError::UnpairedEdgeOffsets
+        .unwrap_err()
+        .is_unpaired_edge_offsets()
     );
-    assert_eq!(
+    assert!(
         CssPhysicalPosition::try_new(CssHorizontalPosition::XStart, CssVerticalPosition::Top)
-            .unwrap_err(),
-        CssPositionConstructionError::NonPhysicalKeyword
+            .unwrap_err()
+            .is_non_physical_keyword()
     );
-    assert_eq!(
+    assert!(
         CssPhysicalPosition::try_new(CssHorizontalPosition::Left, CssVerticalPosition::YEnd)
-            .unwrap_err(),
-        CssPositionConstructionError::NonPhysicalKeyword
+            .unwrap_err()
+            .is_non_physical_keyword()
     );
     let position = CssPhysicalPosition::try_new(
         CssHorizontalPosition::RightOffset(lp("-1px")),
@@ -955,11 +953,8 @@ fn normalization_composes_all_four_image_roles_without_reordering_or_resolving_o
     )
     .unwrap_err();
     assert_eq!(
-        error.kind(),
-        &CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: 7
-        }
+        error.exhausted_limit(),
+        Some((CssNormalizationResource::Contributions, 7))
     );
     assert_eq!(error.declaration_order(), Some(7));
     assert!(
@@ -1023,11 +1018,9 @@ fn original_closure_coordinates(value: &CssValueOrigin, source: &str) {
     point(at.span().start(), source, source.len());
     point(at.span().end(), source, source.len());
 }
-fn is_original_closure(error: &CssPropertyValueParseError, origin: &CssValueOrigin) -> bool {
-    matches!(
-        error.kind(),
-        CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
-    ) && error.origin() == &CssSerializedOrigin::End(Some(origin.clone()))
+fn is_original_closure(error: &CssPropertyValueError, origin: &CssValueOrigin) -> bool {
+    error.code() == Some(CssErrorCode::UnexpectedEnd)
+        && error.origin() == CssSerializedOrigin::End(Some(origin.clone()))
 }
 fn strict_original_components(property: P, inputs: &[String]) {
     let mut failures = Vec::new();
@@ -1156,11 +1149,15 @@ fn recovered_images_report(property: P, ordinary: &str) {
         let report = parse_sheet(&css);
         assert!(!report.is_clean());
         let before = report.clone();
-        assert!(report.diagnostics().iter().any(|diagnostic| matches!(
-            diagnostic.error().kind(),
-            ErrorKind::UnexpectedEnd(_)
-        ) && diagnostic.action()
-            == CssRecoveryAction::RetainWithImplicitClosure));
+        assert!(
+            report
+                .diagnostics()
+                .iter()
+                .any(
+                    |diagnostic| diagnostic.error().code() == CssErrorCode::UnexpectedEnd
+                        && diagnostic.action() == CssRecoveryAction::RetainWithImplicitClosure
+                )
+        );
         assert_eq!(
             validate_sheet(&css).unwrap_err().diagnostics(),
             report.diagnostics()
@@ -1235,7 +1232,7 @@ fn closed_reentry(property: P, ordinary: &str) {
             original_closure_coordinates(&origin, &text);
             for _ in 0..2 {
                 let error = handle.reenter(components.clone()).unwrap_err();
-                let CssExpansionErrorKind::InvalidReplacement(error) = error.kind() else {
+                let Some(error) = error.replacement_error() else {
                     panic!("strict closure invalid replacement")
                 };
                 assert!(
@@ -1260,9 +1257,11 @@ fn closed_reentry(property: P, ordinary: &str) {
             let replacement = parse_component_values(text).unwrap();
             let old = replacement.clone();
             for _ in 0..2 {
-                assert_eq!(
-                    handle.reenter(replacement.clone()).unwrap_err().kind(),
-                    &CssExpansionErrorKind::ResidualSubstitution
+                assert!(
+                    handle
+                        .reenter(replacement.clone())
+                        .unwrap_err()
+                        .is_residual_substitution()
                 );
                 assert_eq!(replacement, old);
                 assert!(handle.source().same_occurrence(&source));

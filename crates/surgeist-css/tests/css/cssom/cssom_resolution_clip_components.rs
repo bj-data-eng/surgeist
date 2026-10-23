@@ -6,10 +6,12 @@
 //! Number halfway output follows the shared frozen WebKit FIXED policy;
 //! CSSOM's normative decimal-halfway question remains open.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::*;
 
 type Limits = CssSerializationLimits;
-type Kind = CssSpecifiedValueSerializationErrorKind;
+type Kind = SerializationFailure;
 
 fn literal(text: &str) -> CssResolutionLiteral {
     let values = parse_component_values(text).unwrap();
@@ -112,23 +114,21 @@ fn resolution_zero_tiny_and_huge_coefficients_remain_exact_authored_values() {
     ] {
         let value = literal(text);
         let original = value.clone();
-        assert_eq!(
+        assert!(
             value
                 .serialize_specified(Limits::new(1, 100, 16))
                 .unwrap_err()
-                .kind(),
-            Kind::ByteLimit
+                .is_byte_limit()
         );
         assert_eq!(value, original);
     }
     // Adding emission does not weaken ordinary negative-range admission.
     for text in ["-1dpi", "-1e-999999dpcm"] {
         let component = parse_component_values(text).unwrap().items()[0].clone();
-        assert_eq!(
+        assert!(
             CssResolutionLiteral::try_from_component(component)
                 .unwrap_err()
-                .kind(),
-            &CssNumericConstructionErrorKind::OutOfRange
+                .is_out_of_range()
         );
     }
 }
@@ -149,7 +149,10 @@ fn converted_resolution_bytes_and_shared_work_limits_fail_atomically() {
             Kind::ByteLimit,
         ),
     ] {
-        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+            kind
+        );
         assert_eq!(value, before);
     }
     assert_eq!(
@@ -159,12 +162,11 @@ fn converted_resolution_bytes_and_shared_work_limits_fail_atomically() {
         expected
     );
     let carry = literal("0.000048dpi");
-    assert_eq!(
+    assert!(
         carry
             .serialize_specified(Limits::new(1, usize::MAX, 11))
             .unwrap_err()
-            .kind(),
-        Kind::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(
         carry
@@ -238,12 +240,11 @@ fn resolution_calculations_share_the_numeric_projection_without_clamping_or_muta
                 .unwrap(),
             expected
         );
-        assert_eq!(
+        assert!(
             value
                 .serialize_specified(Limits::new(100, 100, expected.len() - 1))
                 .unwrap_err()
-                .kind(),
-            Kind::ByteLimit
+                .is_byte_limit()
         );
         assert_eq!(value, original);
     }
@@ -329,7 +330,10 @@ fn legacy_rect_children_spend_one_cumulative_budget_and_preserve_edge_origins() 
         (Limits::new(5, 4, expected.len()), Kind::ProjectionNodeLimit),
         (Limits::new(5, 100, expected.len() - 1), Kind::ByteLimit),
     ] {
-        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+            kind
+        );
         assert_eq!(value, before);
     }
     assert_eq!(

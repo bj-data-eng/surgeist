@@ -3,6 +3,7 @@
 //! https://www.w3.org/TR/2025/CRD-css-grid-2-20250326/#grid-template-areas-property
 //! This RED uses only the existing public parsing and expansion interfaces.
 
+use crate::css::support::property_admission::assert_same_grammar_facts;
 use surgeist_css::*;
 
 const PROPERTY: CssKnownProperty = CssKnownProperty::GridTemplateAreas;
@@ -89,16 +90,15 @@ fn invalid(value: &str) {
         validate_style_attribute(&source).unwrap_err().diagnostics(),
         report.diagnostics()
     );
-    assert_eq!(
-        parse_property_value_for_grammar(
+    assert_same_grammar_facts(
+        &parse_property_value_for_grammar(
             grammar(),
             parse_component_values(value).unwrap(),
-            CssImportance::Normal
+            CssImportance::Normal,
         )
-        .unwrap_err()
-        .kind(),
-        &CssPropertyValueErrorKind::Grammar(diagnostic.error().kind().clone()),
-        "checked construction accepted invalid area: {value}"
+        .unwrap_err(),
+        diagnostic.error(),
+        "checked construction accepted invalid area: {value}",
     );
 }
 
@@ -244,22 +244,19 @@ fn global_values_pending_reentry_and_initial_metadata_use_one_terminal() {
     assert!(pending.source().same_occurrence(&source));
     for invalid_value in ["\"a#b\"", "\"a a\" \"a .\""] {
         assert!(
-            matches!(
-                pending
-                    .reenter(parse_component_values(invalid_value).unwrap())
-                    .unwrap_err()
-                    .kind(),
-                CssExpansionErrorKind::InvalidReplacement(_)
-            ),
+            pending
+                .reenter(parse_component_values(invalid_value).unwrap())
+                .unwrap_err()
+                .replacement_error()
+                .is_some(),
             "strict reentry rejects {invalid_value}"
         );
     }
-    assert_eq!(
+    assert!(
         pending
             .reenter(parse_component_values("var(--again)").unwrap())
             .unwrap_err()
-            .kind(),
-        &CssExpansionErrorKind::ResidualSubstitution
+            .is_residual_substitution()
     );
     let replacement = parse_component_values("\"a.b\"").unwrap();
     for _ in 0..2 {
@@ -317,10 +314,7 @@ fn normalization_preserves_declaration_order_and_area_occurrences() {
     assert!(one.is_clean());
     let error = normalize_sheet_with_limits(one.syntax(), limits).unwrap_err();
     assert_eq!(
-        error.kind(),
-        &CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: 0,
-        }
+        error.exhausted_limit(),
+        Some((CssNormalizationResource::Contributions, 0))
     );
 }

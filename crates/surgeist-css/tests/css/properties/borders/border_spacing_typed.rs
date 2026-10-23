@@ -2,6 +2,9 @@
 //! `border-spacing` (selected 2011-06-07 Recommendation).
 //! https://www.w3.org/TR/2011/REC-CSS2-20110607/tables.html#propdef-border-spacing
 
+use crate::css::support::failure_classes::NumericFailure;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::property_admission::{
     assert_component_rejected, assert_style_attribute_rejected,
 };
@@ -80,10 +83,10 @@ fn checked_single_length_rejects_bare_negative_percent_and_keyword_values() {
         assert_eq!(value.serialize_specified(Default::default()).unwrap(), css);
     }
     for (css, kind) in [
-        ("-1px", CssNumericConstructionErrorKind::OutOfRange),
-        ("-2em", CssNumericConstructionErrorKind::OutOfRange),
-        ("1%", CssNumericConstructionErrorKind::RootDomainMismatch),
-        ("auto", CssNumericConstructionErrorKind::RootDomainMismatch),
+        ("-1px", NumericFailure::OutOfRange),
+        ("-2em", NumericFailure::OutOfRange),
+        ("1%", NumericFailure::RootDomainMismatch),
+        ("auto", NumericFailure::RootDomainMismatch),
     ] {
         assert_component_rejected(
             CssSpecifiedNonNegativeLength::try_from_component,
@@ -217,18 +220,21 @@ fn single_and_pair_serializers_enforce_exact_shared_resource_budgets() {
     for (limits, kind) in [
         (
             CssSerializationLimits::new(0, 1, 3),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(1, 0, 3),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(1, 1, 2),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
-        assert_eq!(single.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&single.serialize_specified(limits).unwrap_err()),
+            kind
+        );
     }
 
     let pair = CssBorderSpacing::new(nonnegative_length("2px"), nonnegative_length("3em"));
@@ -240,18 +246,21 @@ fn single_and_pair_serializers_enforce_exact_shared_resource_budgets() {
     for (limits, kind) in [
         (
             CssSerializationLimits::new(2, 3, 7),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(3, 2, 7),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(3, 3, 6),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
-        assert_eq!(pair.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&pair.serialize_specified(limits).unwrap_err()),
+            kind
+        );
     }
 }
 
@@ -265,17 +274,15 @@ fn two_typed_calculation_axes_share_one_streaming_serialization_budget() {
             axis.serialize_specified(CssSerializationLimits::new(1_000, 1_000, 15))
                 .is_ok()
         );
-        assert_eq!(
+        assert!(
             axis.serialize_specified(CssSerializationLimits::new(0, 1_000, 1_000))
                 .unwrap_err()
-                .kind(),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+                .is_input_node_limit()
         );
-        assert_eq!(
+        assert!(
             axis.serialize_specified(CssSerializationLimits::new(1_000, 0, 1_000))
                 .unwrap_err()
-                .kind(),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
+                .is_projection_node_limit()
         );
     }
     let pair = CssBorderSpacing::new(first, second);
@@ -284,11 +291,10 @@ fn two_typed_calculation_axes_share_one_streaming_serialization_budget() {
             .unwrap(),
         "calc(2em + 1px) calc(4em + 3px)"
     );
-    assert_eq!(
+    assert!(
         pair.serialize_specified(CssSerializationLimits::new(1_000, 1_000, 15))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
 }
 

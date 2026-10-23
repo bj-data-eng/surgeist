@@ -1,6 +1,8 @@
 //! Functional new-API qualification for the adopted #647 authored profile and
 //! #642's immutable lexical model. No missing-symbol or stub RED is claimed.
 //! https://github.com/bj-data-eng/surgeist/issues/647
+use crate::css::support::failure_classes::ComponentFailure;
+use crate::css::support::failure_classes::component_failure;
 use surgeist_css::*;
 
 fn feature(condition: &CssWhenCondition) -> &CssWhenMediaFeature {
@@ -195,13 +197,14 @@ fn broader_known_function_inputs_are_opaque_and_reject_on_leaf_only_admission() 
         );
         if source.starts_with("media") {
             let values = parse_component_values(source).unwrap();
-            assert!(matches!(
+            assert!(
                 CssWhenMediaFeature::try_from_component(
                     values.items()[0].clone(),
                     Default::default()
-                ),
-                Err(CssWhenConstructionError::InvalidMediaFeatureGrammar { .. })
-            ));
+                )
+                .as_ref()
+                .is_err_and(|error| error.is_invalid_media_feature_grammar())
+            );
         }
     }
 }
@@ -337,10 +340,9 @@ fn empty_and_failed_group_probes_are_opaque_while_outer_algebra_rejects() {
         "media (width)",
     ] {
         assert!(
-            matches!(
-                parse_when_condition(source),
-                Err(CssWhenConstructionError::InvalidConditionGrammar { .. })
-            ),
+            parse_when_condition(source)
+                .as_ref()
+                .is_err_and(|error| error.is_invalid_condition_grammar()),
             "{source}"
         );
     }
@@ -349,27 +351,19 @@ fn empty_and_failed_group_probes_are_opaque_while_outer_algebra_rejects() {
 #[test]
 fn lexical_failures_are_terminal_component_errors_with_original_origins() {
     for (source, kind, responsible) in [
-        (
-            "future(\"bad\n)",
-            CssComponentValueErrorKind::BadString,
-            "\"",
-        ),
-        (
-            "future(url(a b))",
-            CssComponentValueErrorKind::BadUrl,
-            "url(",
-        ),
+        ("future(\"bad\n)", ComponentFailure::BadString, "\""),
+        ("future(url(a b))", ComponentFailure::BadUrl, "url("),
         (
             "future(])",
-            CssComponentValueErrorKind::UnmatchedClosingDelimiter,
+            ComponentFailure::UnmatchedClosingDelimiter,
             "]",
         ),
     ] {
         let error = parse_when_condition(source).unwrap_err();
-        let CssWhenConstructionError::Component(component) = &error else {
+        let Some(component) = error.component_error() else {
             panic!("terminal component cause: {error:?}");
         };
-        assert_eq!(component.kind(), kind);
+        assert_eq!(component_failure(component), kind);
         let origin = parsed(component.origin());
         assert_eq!(origin.source().as_str(), source);
         assert_eq!(
@@ -383,16 +377,17 @@ fn lexical_failures_are_terminal_component_errors_with_original_origins() {
 #[test]
 fn checked_recovered_input_rejects_while_parsed_rule_retains_owned_eof_closures() {
     let values = parse_component_values("media(width").unwrap();
-    assert!(matches!(
-        CssWhenCondition::try_from_components(values.clone(), Default::default()),
-        Err(CssWhenConstructionError::RecoveredInput {
-            origin: CssValueOrigin::ImplicitClosure { .. }
-        })
-    ));
-    assert!(matches!(
-        CssWhenMediaFeature::try_from_component(values.items()[0].clone(), Default::default()),
-        Err(CssWhenConstructionError::RecoveredInput { .. })
-    ));
+    assert!(
+        CssWhenCondition::try_from_components(values.clone(), Default::default())
+            .as_ref()
+            .is_err_and(|error| error.is_recovered_input()
+                && matches!(error.origin(), CssValueOrigin::ImplicitClosure { .. }))
+    );
+    assert!(
+        CssWhenMediaFeature::try_from_component(values.items()[0].clone(), Default::default())
+            .as_ref()
+            .is_err_and(|error| error.is_recovered_input())
+    );
     let report = parse_sheet("@when media(width){.A{color:red");
     let [CssRule::When(rule)] = report.syntax().rules() else {
         panic!("retained when with EOF-recovered body");
@@ -504,22 +499,30 @@ fn independent_component_depth_count_and_byte_limits_fail_atomically() {
     for (limits, kind) in [
         (
             CssComponentValueLimits::try_new(0, 2, source.len()).unwrap(),
-            CssComponentValueErrorKind::NestingLimit,
+            ComponentFailure::NestingLimit,
         ),
         (
             CssComponentValueLimits::try_new(1, 1, source.len()).unwrap(),
-            CssComponentValueErrorKind::ComponentLimit,
+            ComponentFailure::ComponentLimit,
         ),
         (
             CssComponentValueLimits::try_new(1, 2, source.len() - 1).unwrap(),
-            CssComponentValueErrorKind::ByteLimit,
+            ComponentFailure::ByteLimit,
         ),
     ] {
         assert!(
-            matches!(parse_when_condition_with_limits(source, limits), Err(CssWhenConstructionError::Component(ref error)) if error.kind() == kind)
+            parse_when_condition_with_limits(source, limits)
+                .as_ref()
+                .is_err_and(|error| error
+                    .component_error()
+                    .is_some_and(|error| component_failure(error) == kind))
         );
         assert!(
-            matches!(CssWhenCondition::try_from_components(parse_component_values(source).unwrap(), limits), Err(CssWhenConstructionError::Component(ref error)) if error.kind() == kind)
+            CssWhenCondition::try_from_components(parse_component_values(source).unwrap(), limits)
+                .as_ref()
+                .is_err_and(|error| error
+                    .component_error()
+                    .is_some_and(|error| component_failure(error) == kind))
         );
     }
     assert_eq!(
@@ -529,12 +532,11 @@ fn independent_component_depth_count_and_byte_limits_fail_atomically() {
             .as_css(),
         source
     );
-    assert_eq!(
+    assert!(
         condition
             .serialize_tokens(crate::css::support::byte_limits(source.len() - 1))
             .unwrap_err()
-            .kind(),
-        CssComponentValueErrorKind::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(condition, before);
     assert_eq!(
@@ -587,7 +589,11 @@ fn supported_and_opaque_condition_depth_256_retain_identity_and_257_is_terminal(
             format!("{}media(width){}", "(".repeat(256), ")".repeat(256))
         };
         assert!(
-            matches!(parse_when_condition(&too_deep), Err(CssWhenConstructionError::Component(ref error)) if error.kind() == CssComponentValueErrorKind::NestingLimit)
+            parse_when_condition(&too_deep)
+                .as_ref()
+                .is_err_and(|error| error
+                    .component_error()
+                    .is_some_and(|error| error.is_nesting_limit()))
         );
     }
 }

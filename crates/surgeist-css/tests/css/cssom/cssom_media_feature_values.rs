@@ -2,6 +2,7 @@
 //! authored-value policy. MQ5 supplies the domains; Values4 supplies both ratio
 //! operands; numeric lexemes and slash spacing remain the selected media policy.
 
+use crate::css::support::failure_classes::SerializationFailure as ResourceKind;
 use crate::css::support::serialization_limits::LimitLadder;
 use crate::css::support::value_assertions::assert_parsed_span as parsed_span;
 use crate::css::support::value_assertions::clean_media_query as query;
@@ -9,8 +10,7 @@ use crate::css::support::value_assertions::media_resource_kind as resource_kind;
 use surgeist_css::{
     CssCalculationExpressionRef, CssMediaConditionKind, CssMediaFeatureQuery, CssMediaGridRef,
     CssMediaQuery, CssMediaRangeRef, CssMediaResolutionRef, CssQueryComparison, CssRecoveryAction,
-    CssSerializationLimits as Limits, CssSerializedOrigin,
-    CssSpecifiedValueSerializationErrorKind as ResourceKind, CssUnknownMediaFeatureReason,
+    CssSerializationLimits as Limits, CssSerializedOrigin, CssUnknownMediaFeatureReason,
     CssValueOrigin, parse_cssom_media_query, parse_media_query_list,
 };
 

@@ -1,6 +1,8 @@
 //! Selected Page3 property applicability composes with Cascade5 globals and Values3/4
 //! authored lengths. Page-local custom declarations use the approved bounded
 //! WebKit witness; variable lookup, fallback selection and cascade stay downstream.
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::rules::ExpectedRejection;
 use crate::css::support::rules::assert_clean_and_valid as clean;
 use crate::css::support::rules::page_pseudo;
@@ -196,10 +198,11 @@ fn pending(name: &str) {
                     let replacement = parse_component_values(invalid).unwrap();
                     let before = replacement.clone();
                     assert!(
-                        matches!(
-                            handle.reenter(replacement.clone()).unwrap_err().kind(),
-                            CssExpansionErrorKind::InvalidReplacement(_)
-                        ),
+                        handle
+                            .reenter(replacement.clone())
+                            .unwrap_err()
+                            .replacement_error()
+                            .is_some(),
                         "{name}: {invalid}"
                     );
                     assert_eq!(replacement, before);
@@ -210,12 +213,11 @@ fn pending(name: &str) {
                     "calc(1px + env(foo))",
                     "f(attr(data-m))",
                 ] {
-                    assert_eq!(
+                    assert!(
                         handle
                             .reenter(parse_component_values(residual).unwrap())
                             .unwrap_err()
-                            .kind(),
-                        &CssExpansionErrorKind::ResidualSubstitution
+                            .is_residual_substitution()
                     );
                 }
                 for valid in [
@@ -422,13 +424,10 @@ fn strict_pending_reentry_rejects_recovered_original_closures_with_original_prov
         let replacement = parse_component_values(invalid).unwrap();
         let before = replacement.clone();
         let error = handle.reenter(replacement.clone()).unwrap_err();
-        let CssExpansionErrorKind::InvalidReplacement(detail) = error.kind() else {
+        let Some(detail) = error.replacement_error() else {
             panic!("strict closure failure")
         };
-        assert!(matches!(
-            detail.kind(),
-            CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
-        ));
+        assert!(detail.code() == Some(CssErrorCode::UnexpectedEnd));
         assert!(matches!(
             detail.origin(),
             CssSerializedOrigin::End(Some(CssValueOrigin::ImplicitClosure { .. }))
@@ -494,13 +493,11 @@ fn strict_shorthand_reentry_checks_every_assigned_side_and_whole_arity() {
         "1px initial",
     ] {
         assert!(
-            matches!(
-                handle
-                    .reenter(parse_component_values(invalid).unwrap())
-                    .unwrap_err()
-                    .kind(),
-                CssExpansionErrorKind::InvalidReplacement(_)
-            ),
+            handle
+                .reenter(parse_component_values(invalid).unwrap())
+                .unwrap_err()
+                .replacement_error()
+                .is_some(),
             "{invalid}"
         );
     }
@@ -790,11 +787,8 @@ fn page_payload_normalization_retains_pending_custom_and_composed_occurrences() 
             CssNormalizationLimits::try_new(0, 0, 0, 0).unwrap()
         )
         .unwrap_err()
-        .kind(),
-        &CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Rules,
-            limit: 0
-        }
+        .exhausted_limit(),
+        Some((CssNormalizationResource::Rules, 0))
     );
 }
 
@@ -813,27 +807,26 @@ fn specified_output_and_checked_list_assembly_share_atomic_cumulative_limits() {
     let ample = CssSerializationLimits::new(1000, 1000, expected.len());
     assert_eq!(list.serialize_specified(ample).unwrap(), expected);
     let short = CssSerializationLimits::new(1000, 1000, expected.len() - 1);
-    assert_eq!(
-        list.serialize_specified(short).unwrap_err().kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
-    );
-    assert_eq!(
+    assert!(list.serialize_specified(short).unwrap_err().is_byte_limit());
+    assert!(
         CssDeclarationList::try_new(list.as_slice().to_vec(), short)
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
     for (limits, kind) in [
         (
             CssSerializationLimits::new(0, 1000, 1000),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(1000, 0, 1000),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
     ] {
-        assert_eq!(list.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&list.serialize_specified(limits).unwrap_err()),
+            kind
+        );
     }
     assert_eq!(list, before);
     let checked = CssDeclarationList::try_new(list.as_slice().to_vec(), ample).unwrap();
@@ -841,11 +834,10 @@ fn specified_output_and_checked_list_assembly_share_atomic_cumulative_limits() {
     let one_bytes = "margin-left: var(--m) !important;".len();
     let one_budget = CssSerializationLimits::new(1000, 1000, one_bytes);
     assert!(checked[1].serialize_specified(one_budget).is_ok());
-    assert_eq!(
+    assert!(
         CssDeclarationList::try_new(repeated, one_budget)
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
     let CssExpansion::Pending(handle) = expand_declaration(&checked[1]).unwrap() else {
         panic!("checked assembly preserves pending context")

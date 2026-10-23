@@ -42,10 +42,10 @@ pub(super) fn one<'i, 't, P, R>(
     input: &mut Parser<'i, 't>,
     parser: &mut P,
     recovery: &RecoveryState,
-) -> Result<R, ParseError<'i, Error>>
+) -> Result<R, ParseError<'i, CssError>>
 where
-    P: AtRuleParser<'i, AtRule = R, Error = Error>
-        + QualifiedRuleParser<'i, QualifiedRule = R, Error = Error>,
+    P: AtRuleParser<'i, AtRule = R, Error = CssError>
+        + QualifiedRuleParser<'i, QualifiedRule = R, Error = CssError>,
 {
     let document = recovery.syntax_document(source).map_err(|error| {
         crate::error::invalid_component_value(input.current_source_location(), error)
@@ -82,7 +82,7 @@ where
 
 // One selected unit's admission: its item, or its error with the original
 // source slice from the unit's start to the failure.
-type SelectedAdmission<'i, R> = Result<R, (Box<ParseError<'i, Error>>, &'i str)>;
+type SelectedAdmission<'i, R> = Result<R, (Box<ParseError<'i, CssError>>, &'i str)>;
 
 // This is the actual unit driver. Generic consumption chooses dispatch and
 // boundaries; native callbacks only admit the selected original source unit.
@@ -97,8 +97,8 @@ pub(super) fn parse_selected<'i, 't, P, R>(
     selected: &GenericRuleResult,
 ) -> (usize, SelectedAdmission<'i, R>)
 where
-    P: AtRuleParser<'i, AtRule = R, Error = Error>
-        + QualifiedRuleParser<'i, QualifiedRule = R, Error = Error>,
+    P: AtRuleParser<'i, AtRule = R, Error = CssError>
+        + QualifiedRuleParser<'i, QualifiedRule = R, Error = CssError>,
 {
     let range = match selected {
         Ok(GenericRule::At(rule)) => &rule.range,
@@ -132,10 +132,10 @@ pub(super) fn admit_envelope<'i, 't, P, R>(
     parser: &mut P,
     recovery: &RecoveryState,
     envelope: &super::rule_candidate::RuleEnvelope,
-) -> Result<R, ParseError<'i, Error>>
+) -> Result<R, ParseError<'i, CssError>>
 where
-    P: AtRuleParser<'i, AtRule = R, Error = Error>
-        + QualifiedRuleParser<'i, QualifiedRule = R, Error = Error>,
+    P: AtRuleParser<'i, AtRule = R, Error = CssError>
+        + QualifiedRuleParser<'i, QualifiedRule = R, Error = CssError>,
 {
     input.skip_whitespace();
     let start = input.state();
@@ -156,10 +156,10 @@ fn admit_selected<'i, 't, P, R>(
     recovery: &RecoveryState,
     start: &ParserState,
     selected: &GenericRuleResult,
-) -> Result<R, ParseError<'i, Error>>
+) -> Result<R, ParseError<'i, CssError>>
 where
-    P: AtRuleParser<'i, AtRule = R, Error = Error>
-        + QualifiedRuleParser<'i, QualifiedRule = R, Error = Error>,
+    P: AtRuleParser<'i, AtRule = R, Error = CssError>
+        + QualifiedRuleParser<'i, QualifiedRule = R, Error = CssError>,
 {
     match selected {
         Ok(GenericRule::At(rule)) => parse_at_selected(
@@ -205,7 +205,7 @@ fn reject_bounded_qualified<'i, R>(
     input: &mut Parser<'i, '_>,
     end: usize,
     kind: GenericFaultKind,
-) -> Result<R, ParseError<'i, Error>> {
+) -> Result<R, ParseError<'i, CssError>> {
     let location = input.current_source_location();
     while input.position().byte_index() < end {
         let Ok(token) = input.next_including_whitespace_and_comments() else {
@@ -244,9 +244,9 @@ fn parse_at_selected<'i, 't, P, R>(
     recovery: &RecoveryState,
     start: &ParserState,
     termination: RuleTermination,
-) -> Result<R, ParseError<'i, Error>>
+) -> Result<R, ParseError<'i, CssError>>
 where
-    P: AtRuleParser<'i, AtRule = R, Error = Error>,
+    P: AtRuleParser<'i, AtRule = R, Error = CssError>,
 {
     let name = match input.next_including_whitespace_and_comments()?.clone() {
         Token::AtKeyword(name) => name,
@@ -291,9 +291,9 @@ fn parse_qualified_selected<'i, 't, P, R>(
     recovery: &RecoveryState,
     start: &ParserState,
     end_of_input: bool,
-) -> Result<R, ParseError<'i, Error>>
+) -> Result<R, ParseError<'i, CssError>>
 where
-    P: QualifiedRuleParser<'i, QualifiedRule = R, Error = Error>,
+    P: QualifiedRuleParser<'i, QualifiedRule = R, Error = CssError>,
 {
     let prelude = input.parse_until_before(Delimiter::CurlyBracketBlock, |input| {
         QualifiedRuleParser::parse_prelude(parser, input)
@@ -361,8 +361,8 @@ pub(super) fn rejected_at_rule_error<'i>(
     source: &str,
     recovery: &RecoveryState,
     rejected_start: Option<usize>,
-    mut error: ParseError<'i, Error>,
-) -> ParseError<'i, Error> {
+    mut error: ParseError<'i, CssError>,
+) -> ParseError<'i, CssError> {
     if !matches!(
         &error.kind,
         cssparser::ParseErrorKind::Basic(cssparser::BasicParseErrorKind::UnexpectedToken(

@@ -6,47 +6,215 @@ use crate::{
 
 /// A semantic construction failure for font-feature-values.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssFontFeatureValuesErrorKind {
+enum CssFontFeatureValuesErrorKind {
     InvalidIdentifier,
     EmptyFamilies,
-    EmptyIndexes,
     InvalidIntegerSyntax,
     NegativeIndex,
     InvalidIndexCount,
     KindMismatch,
 }
-/// A checked-construction failure, with the affected block and member when known.
+/// A font-feature-values construction failure, with the affected block and member when
+/// known, or a checked component-native feature-value descriptor failure.
+///
+/// Semantic failures are read through the `is_*` predicates. A descriptor-value
+/// failure exposes [`Self::origin`] and, when the components were not admitted or the
+/// grammar rejected them, [`Self::component_error`] or [`Self::diagnostic`], which is
+/// the error's source.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssFontFeatureValuesError {
-    kind: CssFontFeatureValuesErrorKind,
-    block: Option<CssFontFeatureValueKind>,
-    definition_index: Option<usize>,
+    kind: FontFeatureValuesKind,
+}
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum FontFeatureValuesKind {
+    Construction {
+        kind: CssFontFeatureValuesErrorKind,
+        block: Option<CssFontFeatureValueKind>,
+        definition_index: Option<usize>,
+    },
+    Value(crate::descriptor_values::DescriptorValueFailure),
 }
 impl CssFontFeatureValuesError {
-    fn new(kind: CssFontFeatureValuesErrorKind) -> Self {
+    const fn new(kind: CssFontFeatureValuesErrorKind) -> Self {
         Self {
-            kind,
-            block: None,
-            definition_index: None,
+            kind: FontFeatureValuesKind::Construction {
+                kind,
+                block: None,
+                definition_index: None,
+            },
         }
     }
-    pub const fn kind(&self) -> CssFontFeatureValuesErrorKind {
-        self.kind
+    pub(crate) fn from_component(error: crate::CssComponentValueError) -> Self {
+        crate::descriptor_values::DescriptorValueFailure::component(error).into()
     }
+    pub(crate) fn from_grammar(
+        error: crate::CssError,
+        serialized: &crate::CssSerializedValue,
+    ) -> Self {
+        crate::descriptor_values::DescriptorValueFailure::grammar(error, serialized).into()
+    }
+    pub(crate) fn residual(origin: crate::CssValueOrigin) -> Self {
+        crate::descriptor_values::DescriptorValueFailure::residual(origin).into()
+    }
+    pub(crate) fn not_pending() -> Self {
+        crate::descriptor_values::DescriptorValueFailure::not_pending().into()
+    }
+    const fn construction(&self) -> Option<CssFontFeatureValuesErrorKind> {
+        match self.kind {
+            FontFeatureValuesKind::Construction { kind, .. } => Some(kind),
+            FontFeatureValuesKind::Value(_) => None,
+        }
+    }
+    const fn value(&self) -> Option<&crate::descriptor_values::DescriptorValueFailure> {
+        match &self.kind {
+            FontFeatureValuesKind::Value(failure) => Some(failure),
+            FontFeatureValuesKind::Construction { .. } => None,
+        }
+    }
+    /// Returns whether a feature-value name is not a representable identifier.
+    #[must_use]
+    pub const fn is_invalid_identifier(&self) -> bool {
+        matches!(
+            self.construction(),
+            Some(CssFontFeatureValuesErrorKind::InvalidIdentifier)
+        )
+    }
+    /// Returns whether the family list is empty.
+    #[must_use]
+    pub const fn is_empty_families(&self) -> bool {
+        matches!(
+            self.construction(),
+            Some(CssFontFeatureValuesErrorKind::EmptyFamilies)
+        )
+    }
+    /// Returns whether an index is not an optional sign followed by decimal digits.
+    #[must_use]
+    pub const fn is_invalid_integer_syntax(&self) -> bool {
+        matches!(
+            self.construction(),
+            Some(CssFontFeatureValuesErrorKind::InvalidIntegerSyntax)
+        )
+    }
+    /// Returns whether an index is negative.
+    #[must_use]
+    pub const fn is_negative_index(&self) -> bool {
+        matches!(
+            self.construction(),
+            Some(CssFontFeatureValuesErrorKind::NegativeIndex)
+        )
+    }
+    /// Returns whether a feature value has more indexes than its block admits.
+    #[must_use]
+    pub const fn is_invalid_index_count(&self) -> bool {
+        matches!(
+            self.construction(),
+            Some(CssFontFeatureValuesErrorKind::InvalidIndexCount)
+        )
+    }
+    /// Returns whether a definition belongs to a block of another kind.
+    #[must_use]
+    pub const fn is_kind_mismatch(&self) -> bool {
+        matches!(
+            self.construction(),
+            Some(CssFontFeatureValuesErrorKind::KindMismatch)
+        )
+    }
+    /// Returns the affected feature-value block, when known.
+    #[must_use]
     pub const fn block(&self) -> Option<CssFontFeatureValueKind> {
-        self.block
+        match self.kind {
+            FontFeatureValuesKind::Construction { block, .. } => block,
+            FontFeatureValuesKind::Value(_) => None,
+        }
     }
+    /// Returns the zero-based index of the affected definition, when known.
+    #[must_use]
     pub const fn definition_index(&self) -> Option<usize> {
-        self.definition_index
+        match self.kind {
+            FontFeatureValuesKind::Construction {
+                definition_index, ..
+            } => definition_index,
+            FontFeatureValuesKind::Value(_) => None,
+        }
+    }
+    /// Returns the responsible input origin of a descriptor-value failure.
+    #[must_use]
+    pub fn origin(&self) -> Option<&crate::CssSerializedOrigin> {
+        self.value()
+            .map(crate::descriptor_values::DescriptorValueFailure::origin)
+    }
+    /// Returns the component failure when the supplied components were not admitted.
+    #[must_use]
+    pub fn component_error(&self) -> Option<&crate::CssComponentValueError> {
+        self.value()?.component_error()
+    }
+    /// Returns the grammar diagnostic when the feature-value grammar rejected the
+    /// components. Its position indexes the serialized component input; [`Self::origin`]
+    /// locates the responsible supplied component.
+    #[must_use]
+    pub fn diagnostic(&self) -> Option<&crate::CssError> {
+        self.value()?.diagnostic()
+    }
+    /// Returns whether an implicitly closed component was supplied.
+    #[must_use]
+    pub fn is_recovered_component(&self) -> bool {
+        self.value()
+            .is_some_and(|value| value.is_recovered_component())
+    }
+    /// Returns whether strict reentry still contains a substitution function.
+    #[must_use]
+    pub fn is_residual_substitution(&self) -> bool {
+        self.value()
+            .is_some_and(|value| value.is_residual_substitution())
+    }
+    /// Returns whether reentry was requested for a value that is not pending substitution.
+    #[must_use]
+    pub fn is_not_pending(&self) -> bool {
+        self.value().is_some_and(|value| value.is_not_pending())
+    }
+}
+impl From<crate::descriptor_values::DescriptorValueFailure> for CssFontFeatureValuesError {
+    fn from(failure: crate::descriptor_values::DescriptorValueFailure) -> Self {
+        Self {
+            kind: FontFeatureValuesKind::Value(failure),
+        }
     }
 }
 impl std::fmt::Display for CssFontFeatureValuesError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "invalid font-feature-values: {:?}", self.kind)
+        let kind = match &self.kind {
+            FontFeatureValuesKind::Value(failure) => {
+                return failure.describe("font-feature-values", f);
+            }
+            FontFeatureValuesKind::Construction { kind, .. } => kind,
+        };
+        f.write_str(match kind {
+            CssFontFeatureValuesErrorKind::InvalidIdentifier => {
+                "invalid font-feature-values: a feature-value name is not an identifier"
+            }
+            CssFontFeatureValuesErrorKind::EmptyFamilies => {
+                "invalid font-feature-values: the family list is empty"
+            }
+            CssFontFeatureValuesErrorKind::InvalidIntegerSyntax => {
+                "invalid font-feature-values: an index is not a decimal integer"
+            }
+            CssFontFeatureValuesErrorKind::NegativeIndex => {
+                "invalid font-feature-values: an index is negative"
+            }
+            CssFontFeatureValuesErrorKind::InvalidIndexCount => {
+                "invalid font-feature-values: a feature value has too many indexes"
+            }
+            CssFontFeatureValuesErrorKind::KindMismatch => {
+                "invalid font-feature-values: a definition belongs to another block kind"
+            }
+        })
     }
 }
-impl std::error::Error for CssFontFeatureValuesError {}
+impl std::error::Error for CssFontFeatureValuesError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.value()?.source()
+    }
+}
 
 /// An exact nonnegative authored integer, without a machine-integer upper bound.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -171,10 +339,13 @@ impl CssFontFeatureValueKind {
         if valid_count {
             Ok(())
         } else {
-            let mut error =
-                CssFontFeatureValuesError::new(CssFontFeatureValuesErrorKind::InvalidIndexCount);
-            error.block = Some(self);
-            Err(error)
+            Err(CssFontFeatureValuesError {
+                kind: FontFeatureValuesKind::Construction {
+                    kind: CssFontFeatureValuesErrorKind::InvalidIndexCount,
+                    block: Some(self),
+                    definition_index: None,
+                },
+            })
         }
     }
 }
@@ -232,11 +403,13 @@ impl CssFontFeatureValueBlock {
     ) -> Result<Self, CssFontFeatureValuesError> {
         for (index, definition) in definitions.iter().enumerate() {
             if definition.value().kind() != kind {
-                let mut error =
-                    CssFontFeatureValuesError::new(CssFontFeatureValuesErrorKind::KindMismatch);
-                error.block = Some(kind);
-                error.definition_index = Some(index);
-                return Err(error);
+                return Err(CssFontFeatureValuesError {
+                    kind: FontFeatureValuesKind::Construction {
+                        kind: CssFontFeatureValuesErrorKind::KindMismatch,
+                        block: Some(kind),
+                        definition_index: Some(index),
+                    },
+                });
             }
         }
         Ok(Self {

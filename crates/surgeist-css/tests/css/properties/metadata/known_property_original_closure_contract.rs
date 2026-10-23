@@ -3,6 +3,8 @@
 
 use crate::css::support::property_expectations;
 
+use crate::css::support::failure_classes::ComponentFailure;
+use crate::css::support::failure_classes::component_failure;
 use property_expectations::{MetadataExpectation, PropertyExpectation};
 use std::collections::HashSet;
 use surgeist_css::*;
@@ -115,11 +117,9 @@ fn assert_original(origin: &CssValueOrigin, source: &str, start: usize, end: usi
     );
 }
 
-fn expected_error(error: &CssPropertyValueParseError, witness: &CssValueOrigin) -> bool {
-    matches!(
-        error.kind(),
-        CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
-    ) && error.origin() == &CssSerializedOrigin::End(Some(witness.clone()))
+fn expected_error(error: &CssPropertyValueError, witness: &CssValueOrigin) -> bool {
+    error.code() == Some(CssErrorCode::UnexpectedEnd)
+        && error.origin() == CssSerializedOrigin::End(Some(witness.clone()))
 }
 
 fn reject_fronts(
@@ -390,7 +390,7 @@ fn available_record_reentry_rejects_original_closure_is_residual_first_and_retri
                 let witness = comment_witness(&replacement, &input);
                 for repeat in 0..2 {
                     let actual = handle.reenter(replacement.clone());
-                    if !matches!(actual, Err(ref error) if matches!(error.kind(), CssExpansionErrorKind::InvalidReplacement(detail) if expected_error(detail, &witness)))
+                    if !matches!(actual, Err(ref error) if error.replacement_error().is_some_and(|detail| expected_error(detail, &witness)))
                     {
                         failures.push(format!("{}/{input}/reentry/{importance:?}/retry{repeat}: expected exact original EOF {witness:?}; actual {actual:?}", case.name));
                     }
@@ -402,7 +402,7 @@ fn available_record_reentry_rejects_original_closure_is_residual_first_and_retri
             let replacement = parse_component_values("/*😀*/future(value").unwrap();
             let witness = function_witness(&replacement, "/*😀*/future(value");
             let actual = handle.reenter(replacement.clone());
-            if !matches!(actual, Err(ref error) if matches!(error.kind(), CssExpansionErrorKind::InvalidReplacement(detail) if expected_error(detail, &witness)))
+            if !matches!(actual, Err(ref error) if error.replacement_error().is_some_and(|detail| expected_error(detail, &witness)))
             {
                 failures.push(format!("{}/future/reentry/{importance:?}: expected exact original EOF; actual {actual:?}", case.name));
             }
@@ -414,9 +414,11 @@ fn available_record_reentry_rejects_original_closure_is_residual_first_and_retri
             ] {
                 let replacement = parse_component_values(residual).unwrap();
                 let before = replacement.clone();
-                assert_eq!(
-                    handle.reenter(replacement.clone()).unwrap_err().kind(),
-                    &CssExpansionErrorKind::ResidualSubstitution,
+                assert!(
+                    handle
+                        .reenter(replacement.clone())
+                        .unwrap_err()
+                        .is_residual_substitution(),
                     "{}/{residual}",
                     case.name
                 );
@@ -566,19 +568,18 @@ fn independently_recorded_name_equivalent_aliases_share_strict_grammar_without_c
                     panic!("available alias pending")
                 };
                 let actual = handle.reenter(values.clone());
-                if !matches!(actual, Err(ref error) if matches!(error.kind(), CssExpansionErrorKind::InvalidReplacement(detail) if expected_error(detail, &witness)))
+                if !matches!(actual, Err(ref error) if error.replacement_error().is_some_and(|detail| expected_error(detail, &witness)))
                 {
                     failures.push(format!(
                         "{}/{alias}/reentry: expected original EOF; actual {actual:?}",
                         case.name
                     ));
                 }
-                assert_eq!(
+                assert!(
                     handle
                         .reenter(parse_component_values("var(--again").unwrap())
                         .unwrap_err()
-                        .kind(),
-                    &CssExpansionErrorKind::ResidualSubstitution
+                        .is_residual_substitution()
                 );
                 assert_global_retry(
                     handle.reenter(closed.clone()).unwrap(),
@@ -647,18 +648,17 @@ fn legacy(
     let values = parse_component_values("inherit/*unfinished").unwrap();
     let witness = comment_witness(&values, "inherit/*unfinished");
     let actual = handle.reenter(values.clone());
-    if !matches!(actual, Err(ref error) if matches!(error.kind(), CssExpansionErrorKind::InvalidReplacement(detail) if expected_error(detail, &witness)))
+    if !matches!(actual, Err(ref error) if error.replacement_error().is_some_and(|detail| expected_error(detail, &witness)))
     {
         failures.push(format!(
             "{grammar_name}/reentry: expected original EOF; actual {actual:?}"
         ));
     }
-    assert_eq!(
+    assert!(
         handle
             .reenter(parse_component_values("var(--again").unwrap())
             .unwrap_err()
-            .kind(),
-        &CssExpansionErrorKind::ResidualSubstitution
+            .is_residual_substitution()
     );
     for _ in 0..2 {
         let replacement = parse_component_values("inherit/**/").unwrap();
@@ -734,7 +734,7 @@ fn mixed_programmatic_known_keyword_and_parsed_comment_keep_actual_original_snap
                 panic!("available mixed-input pending")
             };
             let actual = handle.reenter(values.clone());
-            if !matches!(actual, Err(ref error) if matches!(error.kind(), CssExpansionErrorKind::InvalidReplacement(detail) if expected_error(detail, &witness)))
+            if !matches!(actual, Err(ref error) if error.replacement_error().is_some_and(|detail| expected_error(detail, &witness)))
             {
                 failures.push(format!(
                     "{}/mixed original snapshot/reentry: expected exact EOF; actual {actual:?}",
@@ -836,7 +836,7 @@ fn repaired_component_output_keeps_byte_failures_atomic_and_original_closure_ori
         let error = values
             .serialize_tokens(crate::css::support::byte_limits(10))
             .unwrap_err();
-        assert_eq!(error.kind(), CssComponentValueErrorKind::ByteLimit);
+        assert!(error.is_byte_limit(), "{error:?}");
         assert_eq!(error.origin(), &witness);
         assert_eq!(values, before);
         let output = values
@@ -855,21 +855,21 @@ fn repaired_component_output_keeps_byte_failures_atomic_and_original_closure_ori
     for (limits, kind) in [
         (
             CssComponentValueLimits::try_new(0, 2, 11).unwrap(),
-            CssComponentValueErrorKind::NestingLimit,
+            ComponentFailure::NestingLimit,
         ),
         (
             CssComponentValueLimits::try_new(1, 1, 11).unwrap(),
-            CssComponentValueErrorKind::ComponentLimit,
+            ComponentFailure::ComponentLimit,
         ),
         (
             CssComponentValueLimits::try_new(1, 2, 10).unwrap(),
-            CssComponentValueErrorKind::ByteLimit,
+            ComponentFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            CssComponentValues::try_new(values.items().to_vec(), limits)
-                .unwrap_err()
-                .kind(),
+            component_failure(
+                &CssComponentValues::try_new(values.items().to_vec(), limits).unwrap_err()
+            ),
             kind
         );
         assert_eq!(values, before);
@@ -882,11 +882,10 @@ fn repaired_component_output_keeps_byte_failures_atomic_and_original_closure_ori
             .as_css(),
         expected
     );
-    assert_eq!(
+    assert!(
         complete
             .serialize_tokens(crate::css::support::byte_limits(10))
             .unwrap_err()
-            .kind(),
-        CssComponentValueErrorKind::ByteLimit
+            .is_byte_limit()
     );
 }

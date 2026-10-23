@@ -2,7 +2,7 @@
 //! Existing string fronts only; supplied token/component consumers are separate.
 use surgeist_css::{
     CssErrorCode, CssImportTarget, CssImportance, CssNamespaceContext, CssRecoveryAction, CssRule,
-    CssSelector, CssSupportsConditionKind, CssTokenKind, ErrorKind, parse_rule, parse_sheet,
+    CssSelector, CssSupportsConditionKind, CssTokenKind, parse_rule, parse_sheet,
 };
 
 fn assert_style(rule: &CssRule, source: &str, class: &str, value: &str) {
@@ -187,9 +187,12 @@ fn semicolon_and_at_keyword_inside_qualified_prelude_do_not_restart_rule_consump
         assert_eq!(diagnostic.error().position().byte_offset().value(), 4);
         assert_eq!(diagnostic.span().start().byte_offset().value(), 0);
         assert_eq!(diagnostic.span().end().byte_offset().value(), failed.len());
-        let ErrorKind::InvalidSelector(detail) = diagnostic.error().kind() else {
-            panic!("selector owns invalid prelude")
-        };
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidSelector,
+            "selector owns invalid prelude"
+        );
         let token = detail.encountered().unwrap();
         assert_eq!(token.kind(), CssTokenKind::Semicolon);
         assert_eq!(token.authored(), ";");
@@ -239,9 +242,12 @@ fn qualified_eof_without_a_body_returns_no_rule_and_preserves_previous_sheet_sib
         );
         assert_eq!(diagnostic.span().start().byte_offset().value(), span_start);
         assert_eq!(diagnostic.span().end().byte_offset().value(), source.len());
-        let ErrorKind::InvalidQualifiedRule(detail) = diagnostic.error().kind() else {
-            panic!("missing required block")
-        };
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidQualifiedRule,
+            "missing required block"
+        );
         assert!(detail.encountered().is_none());
     }
 }
@@ -282,9 +288,12 @@ fn nested_html_tokens_keep_the_following_at_keyword_in_one_failed_qualified_unit
             diagnostic.span().end().byte_offset().value(),
             11 + unit.len()
         );
-        let ErrorKind::InvalidSelector(detail) = diagnostic.error().kind() else {
-            panic!("nested selector error")
-        };
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidSelector,
+            "nested selector error"
+        );
         assert_eq!(detail.encountered().unwrap().kind(), token);
         assert_eq!(detail.encountered().unwrap().authored(), html);
     }
@@ -317,10 +326,13 @@ fn same_source_retained_parent_has_equivalent_contextual_pruning_and_inner_diagn
         diagnostic.span().end().byte_offset().value(),
         start + failed.len()
     );
-    let ErrorKind::UnknownAtRule(detail) = diagnostic.error().kind() else {
-        panic!("unknown authored name")
-    };
-    assert_eq!(detail.name().as_str(), "UnKnOwN");
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::UnknownAtRule,
+        "unknown authored name"
+    );
+    assert_eq!(detail.at_rule().unwrap().as_str(), "UnKnOwN");
     assert!(sheet.into_validation_result().is_err());
     assert!(fragment.into_validation_result().is_err());
 }

@@ -3,22 +3,22 @@
 //! specify original UTF-8 bytes, zero-based lines and UTF-16 columns.
 
 use surgeist_css::{
-    CssErrorCode, CssEscapeError, CssRecoveryAction, CssRecoveryDiagnostic, ErrorKind,
-    parse_declaration, parse_sheet, parse_style_attribute, validate_style_attribute,
+    CssErrorCode, CssEscapeFailure, CssRecoveryAction, CssRecoveryDiagnostic, parse_declaration,
+    parse_sheet, parse_style_attribute, validate_style_attribute,
 };
 
 fn assert_escape(
     diagnostic: &CssRecoveryDiagnostic,
-    expected: CssEscapeError,
+    expected: CssEscapeFailure,
     position: (usize, u32, u32),
     span: std::ops::Range<usize>,
 ) {
     assert_eq!(diagnostic.action(), CssRecoveryAction::RecoverEscape);
     assert_eq!(diagnostic.error().code(), CssErrorCode::EscapeParseError);
-    let ErrorKind::EscapeParseError(actual) = diagnostic.error().kind() else {
+    let Some(actual) = diagnostic.error().escape_failure() else {
         panic!("typed escape error: {:?}", diagnostic.error());
     };
-    assert_eq!(*actual, expected);
+    assert_eq!(actual, expected);
     let actual = diagnostic.error().position();
     assert_eq!(actual.byte_offset().value(), position.0);
     assert_eq!(actual.line().value(), position.1);
@@ -35,7 +35,7 @@ fn newline_escape_diagnostic_owns_the_backslash_before_original_crlf() {
     let [diagnostic] = report.diagnostics() else {
         panic!("one lexical event: {report:?}");
     };
-    assert_escape(diagnostic, CssEscapeError::Newline, (8, 0, 6), 8..9);
+    assert_escape(diagnostic, CssEscapeFailure::Newline, (8, 0, 6), 8..9);
     assert_eq!(diagnostic.span().start().column().value(), 6);
     assert_eq!(diagnostic.span().end().column().value(), 7);
     assert_eq!(&source[8..9], "\\");
@@ -51,7 +51,7 @@ fn escaped_eof_diagnostic_owns_the_final_backslash_and_original_eof_cursor() {
     let [diagnostic] = report.diagnostics() else {
         panic!("one EOF escape event: {report:?}");
     };
-    assert_escape(diagnostic, CssEscapeError::EndOfInput, (10, 0, 8), 9..10);
+    assert_escape(diagnostic, CssEscapeFailure::EndOfInput, (10, 0, 8), 9..10);
     assert_eq!(diagnostic.span().start().column().value(), 7);
     assert_eq!(diagnostic.span().end().column().value(), 8);
     assert!(validate_style_attribute(source).is_err());
@@ -65,9 +65,9 @@ fn multiple_escape_events_are_published_once_in_original_source_order() {
     let [first, second, third] = report.diagnostics() else {
         panic!("exactly three lexical events: {report:?}");
     };
-    assert_escape(first, CssEscapeError::Newline, (4, 0, 4), 4..5);
-    assert_escape(second, CssEscapeError::Newline, (11, 1, 5), 11..12);
-    assert_escape(third, CssEscapeError::EndOfInput, (21, 2, 7), 20..21);
+    assert_escape(first, CssEscapeFailure::Newline, (4, 0, 4), 4..5);
+    assert_escape(second, CssEscapeFailure::Newline, (11, 1, 5), 11..12);
+    assert_escape(third, CssEscapeFailure::EndOfInput, (21, 2, 7), 20..21);
     assert!(validate_style_attribute(source).is_err());
 }
 
@@ -90,7 +90,7 @@ fn lexical_recovery_remains_observable_when_surrounding_grammar_drops_a_value() 
     let [diagnostic] = lexical.as_slice() else {
         panic!("one independently published lexical event");
     };
-    assert_escape(diagnostic, CssEscapeError::Newline, (6, 0, 6), 6..7);
+    assert_escape(diagnostic, CssEscapeFailure::Newline, (6, 0, 6), 6..7);
     assert!(
         report
             .diagnostics()
@@ -108,13 +108,13 @@ fn recursive_sheet_and_fragment_parsing_publish_each_escape_once() {
     let [diagnostic] = report.diagnostics() else {
         panic!("one public-entry lexical event: {report:?}");
     };
-    assert_escape(diagnostic, CssEscapeError::Newline, (10, 0, 10), 10..11);
+    assert_escape(diagnostic, CssEscapeFailure::Newline, (10, 0, 10), 10..11);
     let fragment = parse_declaration("--x:a\\");
     assert!(fragment.syntax().is_some());
     let [diagnostic] = fragment.diagnostics() else {
         panic!("one fragment lexical event");
     };
-    assert_escape(diagnostic, CssEscapeError::EndOfInput, (6, 0, 6), 5..6);
+    assert_escape(diagnostic, CssEscapeFailure::EndOfInput, (6, 0, 6), 5..6);
 }
 
 #[test]
@@ -161,5 +161,5 @@ fn escaped_backslash_pairs_and_hex_escape_whitespace_are_clean_controls() {
     let [diagnostic] = report.diagnostics() else {
         panic!("only the final unmatched backslash is invalid");
     };
-    assert_escape(diagnostic, CssEscapeError::Newline, (7, 0, 7), 7..8);
+    assert_escape(diagnostic, CssEscapeFailure::Newline, (7, 0, 7), 7..8);
 }

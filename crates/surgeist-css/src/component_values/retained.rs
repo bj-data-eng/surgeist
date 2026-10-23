@@ -9,13 +9,13 @@ use crate::CssRetainedPayloadError;
 use std::mem::size_of;
 
 fn observe<E>(admit: &mut impl FnMut() -> Result<(), E>) -> Result<(), CssRetainedPayloadError<E>> {
-    admit().map_err(CssRetainedPayloadError::Admission)
+    admit().map_err(CssRetainedPayloadError::admission)
 }
 
 fn add<E>(total: &mut usize, bytes: usize) -> Result<(), CssRetainedPayloadError<E>> {
     *total = total
         .checked_add(bytes)
-        .ok_or(CssRetainedPayloadError::CapacityOverflow)?;
+        .ok_or_else(CssRetainedPayloadError::capacity_overflow)?;
     Ok(())
 }
 
@@ -92,7 +92,7 @@ pub(crate) fn retained_backing_bytes_with<E>(
     let length = values.items.len();
     let mut total = length
         .checked_mul(size_of::<CssComponentValue>())
-        .ok_or(CssRetainedPayloadError::CapacityOverflow)?;
+        .ok_or_else(CssRetainedPayloadError::capacity_overflow)?;
     for index in 0..length {
         observe(admit)?;
         let value = &values.items[index];
@@ -493,7 +493,7 @@ mod tests {
                     Ok(())
                 }
             });
-            assert_eq!(result, Err(CssRetainedPayloadError::Admission(refusal)));
+            assert_eq!(result, Err(CssRetainedPayloadError::admission(refusal)));
             assert_eq!(a, a_before);
             assert_eq!(b, b_before);
         }
@@ -515,7 +515,7 @@ mod tests {
                         Ok(())
                     }
                 }),
-                Err(CssRetainedPayloadError::Admission(refusal))
+                Err(CssRetainedPayloadError::admission(refusal))
             );
             assert_eq!(a, a_before);
         }
@@ -526,7 +526,7 @@ mod tests {
         let mut total = usize::MAX;
         assert_eq!(
             add::<()>(&mut total, 1),
-            Err(CssRetainedPayloadError::CapacityOverflow)
+            Err(CssRetainedPayloadError::capacity_overflow())
         );
         assert_eq!(total, usize::MAX);
     }

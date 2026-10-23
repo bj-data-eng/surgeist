@@ -4,7 +4,7 @@
 use crate::css::support::{check_property_components, known_property};
 use surgeist_css::*;
 
-fn checked(value: &str, grammar: bool) -> Result<CssDeclaration, CssPropertyValueParseError> {
+fn checked(value: &str, grammar: bool) -> Result<CssDeclaration, CssPropertyValueError> {
     check_property_components(
         known_property("offset"),
         parse_component_values(value).unwrap(),
@@ -61,10 +61,7 @@ fn distance_cannot_split_the_quoted_rotation_constituent() {
                 let [diagnostic] = report.diagnostics() else {
                     panic!("one grammar diagnostic")
                 };
-                assert!(matches!(
-                    diagnostic.error().kind(),
-                    ErrorKind::InvalidPropertyValue(_)
-                ));
+                assert!(diagnostic.error().code() == CssErrorCode::InvalidPropertyValue);
                 assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
                 assert_eq!(
                     diagnostic.span().start().byte_offset().value(),
@@ -112,10 +109,7 @@ fn pending_grouping_failure_preserves_source_and_allows_whole_rotation_retry() {
         let replacement = parse_component_values(value).unwrap();
         let snapshot = replacement.clone();
         let error = handle.reenter(replacement.clone()).unwrap_err();
-        assert!(matches!(
-            error.kind(),
-            CssExpansionErrorKind::InvalidReplacement(_)
-        ));
+        assert!(error.replacement_error().is_some());
         assert_eq!(replacement, snapshot);
         assert!(handle.source().same_occurrence(&source));
         assert_eq!(handle.source(), &source);

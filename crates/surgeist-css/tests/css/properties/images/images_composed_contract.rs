@@ -421,13 +421,13 @@ fn image_reentry_keeps_nested_numeric_origins_and_retries_after_invalid_whole_re
         "light-dark(src(\"#art\"), repeating-radial-gradient(red,))",
         "light-dark(src(\"#art\"), repeating-radial-gradient(red, blue)) trailing",
     ] {
-        assert!(matches!(
+        assert!(
             pending
                 .reenter(parse_component_values(invalid).unwrap())
                 .unwrap_err()
-                .kind(),
-            CssExpansionErrorKind::InvalidReplacement(_)
-        ));
+                .replacement_error()
+                .is_some()
+        );
         let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap()
         else {
             panic!("valid retry produces one terminal")

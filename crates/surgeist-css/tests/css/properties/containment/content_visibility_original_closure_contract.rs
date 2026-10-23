@@ -61,11 +61,9 @@ fn original_points(origin: &CssValueOrigin, text: &str) {
         text.encode_utf16().count()
     );
 }
-fn expected(error: &CssPropertyValueParseError, origin: &CssValueOrigin) -> bool {
-    matches!(
-        error.kind(),
-        CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
-    ) && error.origin() == &CssSerializedOrigin::End(Some(origin.clone()))
+fn expected(error: &CssPropertyValueError, origin: &CssValueOrigin) -> bool {
+    error.code() == Some(CssErrorCode::UnexpectedEnd)
+        && error.origin() == CssSerializedOrigin::End(Some(origin.clone()))
 }
 fn reject_original(inputs: Vec<String>) {
     let mut failures = Vec::new();
@@ -156,7 +154,7 @@ fn pending_reentry_rejects_original_closure_but_remains_residual_first_and_retry
             original_points(&origin, &replacement_text);
             for _ in 0..2 {
                 if !matches!(handle.reenter(components.clone()), Err(ref error)
-                    if matches!(error.kind(), CssExpansionErrorKind::InvalidReplacement(value) if expected(value, &origin)))
+                    if error.replacement_error().is_some_and(|value| expected(value, &origin)))
                 {
                     failures.push(format!(
                         "{text}/{replacement_text}: strict original replacement EOF lost"
@@ -175,9 +173,11 @@ fn pending_reentry_rejects_original_closure_but_remains_residual_first_and_retry
         ] {
             let components = parse_component_values(replacement_text).unwrap();
             let before = components.clone();
-            assert_eq!(
-                handle.reenter(components.clone()).unwrap_err().kind(),
-                &CssExpansionErrorKind::ResidualSubstitution
+            assert!(
+                handle
+                    .reenter(components.clone())
+                    .unwrap_err()
+                    .is_residual_substitution()
             );
             assert_eq!(components, before);
         }
@@ -269,11 +269,8 @@ fn browser_recovery_retains_diagnostics_and_occurrences_through_normalization() 
         )
         .unwrap_err();
         assert_eq!(
-            error.kind(),
-            &CssNormalizationErrorKind::LimitExceeded {
-                resource: CssNormalizationResource::Contributions,
-                limit: 1,
-            }
+            error.exhausted_limit(),
+            Some((CssNormalizationResource::Contributions, 1))
         );
         assert_eq!(error.declaration_order(), Some(1));
         assert_eq!(report, before);

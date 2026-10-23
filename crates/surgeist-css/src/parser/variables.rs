@@ -165,7 +165,7 @@ pub(crate) fn collect_authored_declaration_value<'i, 't>(
                     let location = numeric.property_error_location(&error, location, offset);
                     if let Some(detail) = error.component_error() {
                         if matches!(
-                            detail.kind(),
+                            detail.kind,
                             CssComponentValueErrorKind::BadString
                                 | CssComponentValueErrorKind::BadUrl
                                 | CssComponentValueErrorKind::UnmatchedClosingDelimiter
@@ -192,7 +192,7 @@ pub(crate) fn collect_authored_declaration_value<'i, 't>(
             )
             .map_err(|error| {
                 if let Some(control) = input.control() {
-                    let _ = control.component_resource(error.kind());
+                    let _ = control.component_resource(error.kind);
                 }
                 invalid_component_value(
                     issue_location(numeric, error.origin(), &[], false, offset, location),

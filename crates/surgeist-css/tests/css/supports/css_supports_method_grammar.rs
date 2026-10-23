@@ -21,10 +21,7 @@ fn literal_property_arguments_reject_css_trivia_and_escape_processing() {
     ] {
         let error = parse_css_supports_declaration(property, "red").unwrap_err();
         assert!(
-            matches!(
-                error,
-                CssSupportsConstructionError::InvalidDeclarationGrammar { .. }
-            ),
+            error.is_invalid_declaration_grammar(),
             "{property:?}: {error:?}"
         );
         original(error.origin(), property);
@@ -39,10 +36,7 @@ fn two_argument_values_reject_root_importance_without_changing_rule_grammar() {
         "var(--x)!important",
     ] {
         let error = parse_css_supports_declaration("color", value).unwrap_err();
-        assert!(matches!(
-            error,
-            CssSupportsConstructionError::InvalidDeclarationGrammar { .. }
-        ));
+        assert!(error.is_invalid_declaration_grammar());
         original(error.origin(), value);
         let CssValueOrigin::Parsed(origin) = error.origin() else {
             unreachable!()
@@ -140,23 +134,20 @@ fn complete_conditions_remain_first_and_both_method_overloads_force_standards() 
 fn method_retry_preserves_component_and_recovered_errors_and_valid_retry() {
     for text in ["(color:rgb(1 2 3)", "color:red/*"] {
         let error = parse_css_supports_condition(text).unwrap_err();
-        assert!(matches!(
-            error,
-            CssSupportsConstructionError::RecoveredInput { .. }
-        ));
+        assert!(error.is_recovered_input());
         assert!(matches!(
             error.origin(),
             CssValueOrigin::ImplicitClosure { .. }
         ));
     }
     let error = parse_css_supports_condition("color:)").unwrap_err();
-    assert!(matches!(error, CssSupportsConstructionError::Component(_)));
+    assert!(error.component_error().is_some());
     let text = "(color:".to_owned() + &"f(".repeat(257) + "red" + &")".repeat(258);
     let error = parse_css_supports_condition(&text).unwrap_err();
-    let CssSupportsConstructionError::Component(error) = error else {
+    let Some(error) = error.component_error() else {
         panic!("original component resource failure")
     };
-    assert_eq!(error.kind(), CssComponentValueErrorKind::NestingLimit);
+    assert!(error.is_nesting_limit(), "{error:?}");
     assert!(
         declaration(&parse_css_supports_condition("color:red").unwrap())
             .known()

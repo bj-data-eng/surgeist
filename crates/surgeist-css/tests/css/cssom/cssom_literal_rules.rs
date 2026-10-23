@@ -1,13 +1,14 @@
 //! Independent literal CSSOM composition expectations; compact output stays separate.
+use crate::css::support::failure_classes::SerializationFailure as Resource;
+use crate::css::support::serialization_limits::LimitFailure;
 use crate::css::support::serialization_limits::LimitLadder;
 use crate::css::support::value_assertions::clean_rule as rule;
 use std::error::Error;
 use surgeist_css::{
-    CssDeclarationBlockError, CssDeclarationBlockErrorKind, CssImportance, CssKnownProperty,
-    CssNamespaceContext, CssParserContext, CssParserMode, CssRecoveryAction, CssRule,
-    CssRuleCssomFormat, CssRuleCssomSerializationErrorKind as RuleError, CssRuleSerializationError,
-    CssSerializationLimits as Limits, CssSpecifiedValueSerializationErrorKind as Resource,
-    parse_rule, parse_selector, parse_sheet,
+    CssDeclarationBlockError, CssImportance, CssKnownProperty, CssNamespaceContext,
+    CssParserContext, CssParserMode, CssRecoveryAction, CssRule, CssRuleCssomFormat,
+    CssRuleSerializationError, CssSerializationLimits as Limits, parse_rule, parse_selector,
+    parse_sheet,
 };
 
 fn exact(source: &str, expected: &str) {
@@ -443,18 +444,18 @@ fn pending(
     original: &surgeist_css::CssDeclaration,
     ordinal: usize,
 ) {
-    assert_eq!(error.kind(), RuleError::DeclarationBlock);
+    assert!(
+        error
+            .declaration_block_error()
+            .is_some_and(|error| error.serialization().is_none()),
+        "{error:?}"
+    );
     let cause = error
         .source()
         .unwrap()
         .downcast_ref::<CssDeclarationBlockError>()
         .unwrap();
-    assert!(matches!(
-        cause.kind(),
-        CssDeclarationBlockErrorKind::PendingFootprintUndetermined {
-            property: CssKnownProperty::Margin
-        }
-    ));
+    assert!(cause.pending_footprint_property() == Some(CssKnownProperty::Margin));
     assert!(cause.declaration().unwrap().same_occurrence(original));
     assert_eq!(cause.authored_ordinal(), Some(ordinal));
     assert_eq!(cause.member_ordinal(), None);
@@ -617,7 +618,7 @@ fn modern_unselected_whole_formats_keep_typed_limits_and_meaningful_compact_prov
         let value = rule(source);
         let before = value.clone();
         let error = value.serialize_cssom(Default::default()).unwrap_err();
-        assert_eq!(error.kind(), RuleError::FormatUnavailable(format));
+        assert_eq!(error.unavailable_format(), Some(format));
         assert_eq!(error.rule_path(), &[] as &[usize]);
         assert!(error.source().is_none());
         assert_eq!(
@@ -697,7 +698,7 @@ fn sheet_budget_is_cumulative_at_later_sibling_and_retry_preserves_the_tree() {
         (Limits::new(11, 11, expected.len() - 1), Resource::ByteLimit),
     ] {
         let failure = report.syntax().serialize_cssom(bound).unwrap_err();
-        assert_eq!(failure.kind(), RuleError::Resource(kind));
+        assert_eq!(failure.limit_kind(), Some(kind));
         assert_eq!(failure.rule_path(), &[1]);
         assert_eq!(report, before);
         assert_eq!(report.syntax().serialize_cssom(exact).unwrap(), expected);
@@ -715,7 +716,7 @@ fn sheet_budget_is_cumulative_at_later_sibling_and_retry_preserves_the_tree() {
         (Limits::new(1, 0, 0), Resource::ProjectionNodeLimit),
     ] {
         let failure = empty.syntax().serialize_cssom(bound).unwrap_err();
-        assert_eq!(failure.kind(), RuleError::Resource(kind));
+        assert_eq!(failure.limit_kind(), Some(kind));
         assert_eq!(failure.rule_path(), &[] as &[usize]);
     }
 }
@@ -731,9 +732,12 @@ fn block_resource_failure_keeps_the_actual_generated_member_and_source_occurrenc
     };
     let original = &style.declarations()[1];
     let failure = value.serialize_cssom(Limits::new(16, 7, 18)).unwrap_err();
-    assert_eq!(
-        failure.kind(),
-        RuleError::Resource(Resource::ProjectionNodeLimit)
+    assert!(
+        failure.is_resource_limit()
+            && failure
+                .serialization_error()
+                .is_some_and(|error| error.is_projection_node_limit()),
+        "{failure:?}"
     );
     assert_eq!(failure.rule_path(), &[] as &[usize]);
     assert_eq!(failure.keyframe_block_index(), None);
@@ -743,8 +747,9 @@ fn block_resource_failure_keeps_the_actual_generated_member_and_source_occurrenc
         .downcast_ref::<CssDeclarationBlockError>()
         .unwrap();
     assert!(
-        matches!(cause.kind(), CssDeclarationBlockErrorKind::Serialization(error)
-        if error.kind() == Resource::ProjectionNodeLimit)
+        cause
+            .serialization()
+            .is_some_and(|error| error.is_projection_node_limit())
     );
     assert!(cause.declaration().unwrap().same_occurrence(original));
     assert_eq!(cause.authored_ordinal(), Some(1));
@@ -768,9 +773,12 @@ fn block_resource_failure_keeps_the_actual_generated_member_and_source_occurrenc
     let failure = value
         .serialize_cssom(Limits::new(18, 13, expected.len()))
         .unwrap_err();
-    assert_eq!(
-        failure.kind(),
-        RuleError::Resource(Resource::ProjectionNodeLimit)
+    assert!(
+        failure.is_resource_limit()
+            && failure
+                .serialization_error()
+                .is_some_and(|error| error.is_projection_node_limit()),
+        "{failure:?}"
     );
     assert_eq!(failure.rule_path(), &[] as &[usize]);
     assert_eq!(failure.keyframe_block_index(), Some(0));
@@ -809,7 +817,7 @@ fn nested_media_sibling_resource_failure_keeps_child_path_and_atomic_retry() {
         (Limits::new(12, 12, 21), Resource::ByteLimit),
     ] {
         let failure = value.serialize_cssom(bound).unwrap_err();
-        assert_eq!(failure.kind(), RuleError::Resource(kind));
+        assert_eq!(failure.limit_kind(), Some(kind));
         assert_eq!(failure.rule_path(), &[1]);
         assert_eq!(failure.keyframe_block_index(), None);
         assert_eq!(value, before);
@@ -1132,10 +1140,7 @@ fn literal_universal_omission_protects_actual_nesting_and_scoped_anchor_payloads
     // reaches its scoped Style payload. This is genuine parsed retention,
     // rather than an artificial conversion into an ordinary rule.
     let error = value.serialize_cssom(Default::default()).unwrap_err();
-    assert_eq!(
-        error.kind(),
-        RuleError::FormatUnavailable(CssRuleCssomFormat::Scope)
-    );
+    assert_eq!(error.unavailable_format(), Some(CssRuleCssomFormat::Scope));
     assert_eq!(error.rule_path(), &[] as &[usize]);
     assert_eq!(value, before);
 }
@@ -1175,19 +1180,18 @@ fn literal_universal_omission_retains_input_projection_visits_and_saves_only_sta
         "*.a { }"
     );
     let compact_failure = value.serialize_specified(Limits::new(7, 7, 6)).unwrap_err();
-    assert_eq!(compact_failure.kind(), Resource::ByteLimit);
+    assert!(compact_failure.is_byte_limit(), "{compact_failure:?}");
     let selector_report = parse_selector("*.a", &CssNamespaceContext::default());
     let selector = selector_report.syntax().as_ref().unwrap();
     assert_eq!(
         selector.serialize_specified(Limits::new(3, 3, 3)).unwrap(),
         "*.a"
     );
-    assert_eq!(
+    assert!(
         selector
             .serialize_specified(Limits::new(3, 3, 2))
             .unwrap_err()
-            .kind(),
-        Resource::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(value, before);
 }
@@ -1217,7 +1221,7 @@ fn literal_universal_omission_sheet_budget_remains_cumulative_at_late_sibling() 
         (Limits::new(15, 15, 7), Resource::ByteLimit),
     ] {
         let error = report.syntax().serialize_cssom(bound).unwrap_err();
-        assert_eq!(error.kind(), RuleError::Resource(kind));
+        assert_eq!(error.limit_kind(), Some(kind));
         assert_eq!(error.rule_path(), &[1]);
         assert_eq!(report, before);
         assert_eq!(report.syntax().serialize_cssom(adequate).unwrap(), expected);

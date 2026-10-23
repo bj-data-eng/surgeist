@@ -914,10 +914,7 @@ fn unavailable_symbolic_projection_is_retained_but_resource_failures_abort() {
             ..
         } => {
             assert_eq!(raw.len(), 2);
-            assert!(matches!(
-                error.kind(),
-                CssDeclarationBlockErrorKind::PendingFootprintUndetermined { .. }
-            ));
+            assert!(error.pending_footprint_property().is_some(), "{error:?}");
             assert!(raw[0].parsed_value().is_some());
         }
         _ => panic!("unavailable projection retained"),

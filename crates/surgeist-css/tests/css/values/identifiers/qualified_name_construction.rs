@@ -2,10 +2,9 @@
 //! name serialization preserve decoded identifier identity.
 
 use surgeist_css::{
-    CssAttributeName, CssComponentValueErrorKind, CssIdent, CssNamespaceConstraint,
-    CssNamespaceContext, CssNamespaceName, CssNamespacePrefix, CssQualifiedAttributeName,
-    CssQualifiedNameError, CssQualifiedNamePrefix, CssQualifiedSelectorName, CssSelector,
-    CssSerializedOrigin, CssValueOrigin, parse_selector,
+    CssAttributeName, CssIdent, CssNamespaceConstraint, CssNamespaceContext, CssNamespaceName,
+    CssNamespacePrefix, CssQualifiedAttributeName, CssQualifiedNamePrefix,
+    CssQualifiedSelectorName, CssSelector, CssSerializedOrigin, CssValueOrigin, parse_selector,
 };
 
 fn context(default: Option<&str>) -> CssNamespaceContext {
@@ -89,27 +88,36 @@ fn named_construction_rejects_missing_and_case_mismatched_bindings_with_typed_er
     let context = context(None);
     for prefix in ["missing", "SVG"] {
         let prefix = CssNamespacePrefix::try_new(prefix).unwrap();
-        let expected = CssQualifiedNameError::UndeclaredNamespacePrefix(prefix.clone());
+        let expected = prefix.clone();
         let authored = CssQualifiedNamePrefix::Named(prefix);
         assert_eq!(
             CssQualifiedSelectorName::try_new(
                 authored.clone(),
                 CssIdent::try_new("leaf").unwrap(),
                 &context
-            ),
-            Err(expected.clone())
+            )
+            .unwrap_err()
+            .undeclared_namespace_prefix()
+            .cloned(),
+            Some(expected.clone())
         );
         assert_eq!(
-            CssQualifiedSelectorName::try_universal(authored.clone(), &context),
-            Err(expected.clone())
+            CssQualifiedSelectorName::try_universal(authored.clone(), &context)
+                .unwrap_err()
+                .undeclared_namespace_prefix()
+                .cloned(),
+            Some(expected.clone())
         );
         assert_eq!(
             CssQualifiedAttributeName::try_new(
                 authored,
                 CssAttributeName::try_new("href").unwrap(),
                 &context
-            ),
-            Err(expected)
+            )
+            .unwrap_err()
+            .undeclared_namespace_prefix()
+            .cloned(),
+            Some(expected)
         );
     }
     // A declared empty namespace name still establishes a named binding.
@@ -222,14 +230,13 @@ fn name_serialization_bounds_complete_escaped_output_without_fabricating_source_
                 let error = name
                     .serialize_tokens(crate::css::support::byte_limits(limit))
                     .unwrap_err();
-                assert_eq!(error.kind(), CssComponentValueErrorKind::ByteLimit);
+                assert!(error.is_byte_limit(), "{error:?}");
                 assert_eq!(error.origin(), &CssValueOrigin::Programmatic);
-                assert_eq!(
+                assert!(
                     attribute
                         .serialize_tokens(crate::css::support::byte_limits(limit))
                         .unwrap_err()
-                        .kind(),
-                    CssComponentValueErrorKind::ByteLimit
+                        .is_byte_limit()
                 );
             }
             for byte in 0..bytes {
@@ -277,9 +284,10 @@ fn literal_identifier_star_and_universal_remain_distinct() {
         "*|*"
     );
     for invalid in ["", "\0", "a\0b"] {
-        assert_eq!(
-            CssIdent::try_new(invalid).unwrap_err().kind(),
-            CssComponentValueErrorKind::InvalidIdentifier,
+        assert!(
+            CssIdent::try_new(invalid)
+                .unwrap_err()
+                .is_invalid_identifier(),
             "{invalid:?}"
         );
         assert!(CssAttributeName::try_new(invalid).is_none());

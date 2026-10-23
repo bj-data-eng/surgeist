@@ -1,10 +1,11 @@
 //! The standalone namespace API shares the rule/sheet CSSOM writer; construction
 //! keeps literal names and absent source positions independently of output.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::{
     CssNamespaceName, CssNamespacePrefix, CssNamespaceRule, CssNormalizedItem, CssRule,
-    CssRuleContextKindRef, CssSerializationLimits, CssSpecifiedValueSerializationErrorKind,
-    normalize_report, parse_sheet,
+    CssRuleContextKindRef, CssSerializationLimits, normalize_report, parse_sheet,
 };
 
 #[test]
@@ -81,26 +82,29 @@ fn standalone_namespace_limits_charge_the_rule_optional_prefix_and_literal_name(
         for (limits, kind) in [
             (
                 CssSerializationLimits::new(nodes - 1, nodes, expected.len()),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                SerializationFailure::InputNodeLimit,
             ),
             (
                 CssSerializationLimits::new(nodes, nodes - 1, expected.len()),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
                 CssSerializationLimits::new(nodes, nodes, expected.len() - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                SerializationFailure::ByteLimit,
             ),
             (
                 CssSerializationLimits::new(nodes, nodes, 0),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                SerializationFailure::ByteLimit,
             ),
         ] {
-            assert_eq!(rule.serialize_specified(limits).unwrap_err().kind(), kind);
+            assert_eq!(
+                serialization_failure(&rule.serialize_specified(limits).unwrap_err()),
+                kind
+            );
             let error = CssRule::Namespace(rule.clone())
                 .serialize_specified(limits)
                 .unwrap_err();
-            assert_eq!(error.kind(), kind);
+            assert_eq!(serialization_failure(&error), kind);
             assert_eq!(error.rule_index(), None);
             assert_eq!(rule, original);
         }
@@ -178,14 +182,8 @@ fn namespaces_compose_with_other_supported_rules_under_one_shared_budget() {
         expected
     );
     for (input, kind) in [
-        (
-            true,
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
-        ),
-        (
-            false,
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
-        ),
+        (true, SerializationFailure::InputNodeLimit),
+        (false, SerializationFailure::ProjectionNodeLimit),
     ] {
         let limits = |nodes| {
             CssSerializationLimits::new(
@@ -204,7 +202,9 @@ fn namespaces_compose_with_other_supported_rules_under_one_shared_budget() {
                     && report
                         .syntax()
                         .serialize_specified(limits(*nodes))
-                        .is_err_and(|error| error.kind() == kind && error.rule_index() == Some(1))
+                        .is_err_and(|error| {
+                            serialization_failure(&error) == kind && error.rule_index() == Some(1)
+                        })
             })
             .expect("shared budget exhausts at supported sibling");
         assert_eq!(

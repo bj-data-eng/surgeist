@@ -15,7 +15,6 @@ use surgeist_css::*;
 
 type Limits = CssSerializationLimits;
 type Error = CssSerializationError;
-type Kind = CssSpecifiedValueSerializationErrorKind;
 
 fn component(text: &str, parsed: bool) -> CssComponentValue {
     if parsed {
@@ -499,23 +498,20 @@ fn compressed_authored_counts_scratch_limits_and_failure_order_stay_exact() {
     exact_limits("0.123456px", 2, 10, |limits| {
         pair.serialize_specified(limits)
     });
-    assert_eq!(
+    assert!(
         pair.serialize_specified(Limits::new(0, 0, 0))
             .unwrap_err()
-            .kind(),
-        Kind::InputNodeLimit
+            .is_input_node_limit()
     );
-    assert_eq!(
+    assert!(
         pair.serialize_specified(Limits::new(1, 0, 0))
             .unwrap_err()
-            .kind(),
-        Kind::ProjectionNodeLimit
+            .is_projection_node_limit()
     );
-    assert_eq!(
+    assert!(
         pair.serialize_specified(Limits::new(2, 2, 9))
             .unwrap_err()
-            .kind(),
-        Kind::ByteLimit
+            .is_byte_limit()
     );
     let pair = CssScrollMarginPair::new(length("1px", false), Some(length("1px", false)));
     exact_limits("1px", 2, 3, |limits| pair.serialize_specified(limits));

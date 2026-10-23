@@ -7,7 +7,7 @@ use surgeist_css::{
     CssFontFaceFamily, CssFontFaceSource, CssFontFaceSourceList, CssFontFaceStyle,
     CssFontFaceWeight, CssFontFaceWidth, CssFontLocalName, CssFontWeightNumber, CssFontWidth,
     CssRecoveryAction, CssRule, CssSpecifiedNonNegativePercentage, CssUnicodeRange,
-    CssUnicodeRangeList, ErrorKind, parse_font_face_descriptor_value, parse_sheet,
+    CssUnicodeRangeList, parse_font_face_descriptor_value, parse_sheet,
 };
 
 fn local_x() -> CssFontFaceSourceList {
@@ -36,9 +36,12 @@ fn root_delimiters_after_font_functions_keep_their_own_token_origin() {
             offset,
             "{source}"
         );
-        let ErrorKind::InvalidDescriptorValue(detail) = diagnostic.error().kind() else {
-            panic!("descriptor error")
-        };
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidDescriptorValue,
+            "descriptor error"
+        );
         assert_eq!(detail.encountered().unwrap().authored(), token, "{source}");
     }
 }
@@ -160,9 +163,12 @@ fn incomplete_unicode_range_names_the_last_authored_raw_token() {
         assert_eq!(diagnostic.error().position().column().value(), column);
         assert_eq!(diagnostic.span().start().byte_offset().value(), 0);
         assert_eq!(diagnostic.span().end().byte_offset().value(), source.len());
-        let ErrorKind::InvalidDescriptorValue(detail) = diagnostic.error().kind() else {
-            panic!("typed descriptor error");
-        };
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidDescriptorValue,
+            "typed descriptor error"
+        );
         assert_eq!(
             detail
                 .encountered()
@@ -265,10 +271,7 @@ fn src_member_recovery_and_implicit_closures_commit_only_retained_components() {
         Default::default(),
     )
     .unwrap_err();
-    assert!(matches!(
-        error.kind(),
-        surgeist_css::CssFontFaceValueErrorKind::Grammar(_)
-    ));
+    assert!(error.diagnostic().is_some());
     let surgeist_css::CssSerializedOrigin::Token(surgeist_css::CssValueOrigin::Parsed(origin)) =
         error.origin()
     else {

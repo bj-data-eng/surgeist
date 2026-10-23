@@ -2,6 +2,8 @@
 //! Expectations follow the pinned 2021-12-09 CR §§2–3 and the selected Color 4/5
 //! specified serialization policy; platform scrollbar rendering remains downstream.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::sole_declaration as declaration;
 use surgeist_css::*;
 
@@ -130,26 +132,27 @@ fn width_keywords_and_auto_have_exact_root_resource_boundaries() {
         for (limits, kind) in [
             (
                 CssSerializationLimits::new(0, 1, 4),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                SerializationFailure::InputNodeLimit,
             ),
             (
                 CssSerializationLimits::new(1, 0, 4),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
                 CssSerializationLimits::new(1, 1, 3),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                SerializationFailure::ByteLimit,
             ),
         ] {
             assert_eq!(
-                keyword.serialize_specified(limits).unwrap_err().kind(),
+                serialization_failure(&keyword.serialize_specified(limits).unwrap_err()),
                 kind
             );
             assert_eq!(
-                CssScrollbarColor::auto()
-                    .serialize_specified(limits)
-                    .unwrap_err()
-                    .kind(),
+                serialization_failure(
+                    &CssScrollbarColor::auto()
+                        .serialize_specified(limits)
+                        .unwrap_err()
+                ),
                 kind
             );
         }
@@ -173,18 +176,21 @@ fn pair_serialization_limits_accumulate_through_the_track_and_fail_atomically() 
     for (limits, kind) in [
         (
             CssSerializationLimits::new(2, 3, 8),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(3, 2, 8),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(3, 3, 7),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
-        assert_eq!(pair.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&pair.serialize_specified(limits).unwrap_err()),
+            kind
+        );
         assert_eq!(pair, &snapshot);
         assert_eq!(source.value_components(), &original);
         assert_eq!(pair.serialize_specified(exact).unwrap(), "red blue");
@@ -203,18 +209,21 @@ fn nested_track_colors_share_the_whole_pair_node_budget() {
     for (limits, kind) in [
         (
             CssSerializationLimits::new(6, 7, 43),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(7, 6, 43),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(7, 7, 42),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
-        assert_eq!(pair.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&pair.serialize_specified(limits).unwrap_err()),
+            kind
+        );
         assert_eq!(
             pair.serialize_specified(Default::default()).unwrap(),
             expected
@@ -239,11 +248,8 @@ fn checked_invalid_track_reports_its_original_mixed_source_token() {
         CssImportance::Important,
     )
     .unwrap_err();
-    assert!(matches!(
-        error.kind(),
-        CssPropertyValueErrorKind::Grammar(_)
-    ));
-    assert_eq!(error.origin(), &CssSerializedOrigin::Token(original_track));
+    assert!(error.code().is_some());
+    assert_eq!(error.origin(), CssSerializedOrigin::Token(original_track));
     assert_eq!(components, snapshot);
     let valid = CssComponentValues::try_new(
         vec![

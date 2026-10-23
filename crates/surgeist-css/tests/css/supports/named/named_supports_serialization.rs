@@ -1,7 +1,8 @@
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::{
-    CssComponentValue, CssComponentValues, CssRule, CssSerializationLimits,
-    CssSpecifiedValueSerializationErrorKind, CssSupportsTestBody, CssSupportsTestItem,
-    CssValueTokenRef, parse_sheet,
+    CssComponentValue, CssComponentValues, CssRule, CssSerializationLimits, CssSupportsTestBody,
+    CssSupportsTestItem, CssValueTokenRef, parse_sheet,
 };
 
 fn definition(source: &str) -> String {
@@ -136,23 +137,12 @@ fn sheet_budget_is_monotonic_across_palette_and_definition() {
             expected.len() - 1,
         ))
         .unwrap_err();
-    assert_eq!(
-        error.kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
-    );
+    assert!(error.is_byte_limit(), "{error:?}");
     assert_eq!(error.rule_index(), Some(1));
 
     for (input, projection, expected_kind) in [
-        (
-            true,
-            false,
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
-        ),
-        (
-            false,
-            true,
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
-        ),
+        (true, false, SerializationFailure::InputNodeLimit),
+        (false, true, SerializationFailure::ProjectionNodeLimit),
     ] {
         let limit = (1..100).find(|limit| {
             let limits = CssSerializationLimits::new(
@@ -162,7 +152,7 @@ fn sheet_budget_is_monotonic_across_palette_and_definition() {
             );
             palette.serialize_specified(limits).is_ok()
                 && named.serialize_specified(limits).is_ok()
-                && matches!(report.syntax().serialize_specified(limits), Err(ref error) if error.kind() == expected_kind && error.rule_index() == Some(1))
+                && matches!(report.syntax().serialize_specified(limits), Err(ref error) if serialization_failure(error) == expected_kind && error.rule_index() == Some(1))
         });
         assert!(
             limit.is_some(),

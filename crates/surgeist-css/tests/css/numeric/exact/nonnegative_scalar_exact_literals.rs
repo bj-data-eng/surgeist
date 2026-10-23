@@ -18,7 +18,7 @@ use surgeist_css::{
     CssAnimationIterationCount, CssBorderImageRepeatKeyword, CssBorderImageSliceComponent,
     CssBorderImageWidthComponent, CssDeclaration, CssErrorCode, CssFilter, CssFilterAmount,
     CssFilterFunction, CssKnownProperty, CssKnownPropertyValueRef, CssRecoveryAction,
-    CssRecoveryDiagnostic, CssRule, ErrorKind, parse_sheet, parse_style_attribute,
+    CssRecoveryDiagnostic, CssRule, parse_sheet, parse_style_attribute,
 };
 
 const AMOUNT_FUNCTIONS: [&str; 7] = [
@@ -105,11 +105,14 @@ fn assert_declarations(
             CssRecoveryAction::DropDeclaration,
             "{source}"
         );
-        let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-            panic!("{source}: expected a property-value diagnostic");
-        };
+        let detail = diagnostic.error();
         assert_eq!(
-            detail.property(),
+            detail.code(),
+            CssErrorCode::InvalidPropertyValue,
+            "{source}: expected a property-value diagnostic"
+        );
+        assert_eq!(
+            detail.known_property().unwrap(),
             expected,
             "{source}: rejected the wrong property"
         );

@@ -49,52 +49,110 @@ fn at_keyword_name(component: &CssComponentValue) -> Option<&str> {
     }
 }
 
-/// A supports grammar, recovered-input, or resource construction failure.
+/// A supports condition, named supports definition or test body that failed checked
+/// construction through its grammar, recovered input or a resource.
+///
+/// The failure is read through the `is_*` predicates and located by [`Self::origin`]; a
+/// rejected component is exposed by [`Self::component_error`] and is the error's source.
 #[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssSupportsConstructionError {
-    InvalidConditionGrammar {
-        origin: CssValueOrigin,
-    },
-    InvalidDeclarationGrammar {
-        origin: CssValueOrigin,
-    },
-    RecoveredInput {
-        origin: CssValueOrigin,
-    },
+pub struct CssSupportsConstructionError {
+    kind: SupportsConstructionKind,
+}
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum SupportsConstructionKind {
+    InvalidConditionGrammar { origin: CssValueOrigin },
+    InvalidDeclarationGrammar { origin: CssValueOrigin },
+    InvalidName { origin: CssValueOrigin },
+    InvalidBodyGrammar { origin: CssValueOrigin },
+    RecoveredInput { origin: CssValueOrigin },
     Component(CssComponentValueError),
-    /// The bounded deep-construction worker could not be started.
-    WorkerUnavailable {
-        origin: CssValueOrigin,
-    },
+    WorkerUnavailable { origin: CssValueOrigin },
 }
 impl CssSupportsConstructionError {
-    pub fn origin(&self) -> &CssValueOrigin {
-        match self {
-            Self::InvalidConditionGrammar { origin }
-            | Self::InvalidDeclarationGrammar { origin }
-            | Self::RecoveredInput { origin }
-            | Self::WorkerUnavailable { origin } => origin,
-            Self::Component(error) => error.origin(),
+    crate::error::kind_predicates! { kind;
+        /// Returns whether the components do not form a supports condition.
+        is_invalid_condition_grammar => SupportsConstructionKind::InvalidConditionGrammar { .. },
+        /// Returns whether the components do not form a supports declaration.
+        is_invalid_declaration_grammar =>
+            SupportsConstructionKind::InvalidDeclarationGrammar { .. },
+        /// Returns whether a named supports condition name is invalid.
+        is_invalid_name => SupportsConstructionKind::InvalidName { .. },
+        /// Returns whether a named supports test body does not satisfy its grammar.
+        is_invalid_body_grammar => SupportsConstructionKind::InvalidBodyGrammar { .. },
+        /// Returns whether an implicitly closed component was supplied.
+        is_recovered_input => SupportsConstructionKind::RecoveredInput { .. },
+        /// Returns whether the bounded deep-construction worker could not be started.
+        is_worker_unavailable => SupportsConstructionKind::WorkerUnavailable { .. },
+    }
+    /// Returns the rejected component.
+    #[must_use]
+    pub const fn component_error(&self) -> Option<&CssComponentValueError> {
+        match &self.kind {
+            SupportsConstructionKind::Component(error) => Some(error),
+            _ => None,
         }
+    }
+    /// Returns the responsible original or programmatic origin.
+    #[must_use]
+    pub const fn origin(&self) -> &CssValueOrigin {
+        match &self.kind {
+            SupportsConstructionKind::InvalidConditionGrammar { origin }
+            | SupportsConstructionKind::InvalidDeclarationGrammar { origin }
+            | SupportsConstructionKind::InvalidName { origin }
+            | SupportsConstructionKind::InvalidBodyGrammar { origin }
+            | SupportsConstructionKind::RecoveredInput { origin }
+            | SupportsConstructionKind::WorkerUnavailable { origin } => origin,
+            SupportsConstructionKind::Component(error) => error.origin(),
+        }
+    }
+}
+impl CssSupportsConstructionError {
+    pub(crate) fn into_kind(self) -> SupportsConstructionKind {
+        self.kind
+    }
+}
+impl From<SupportsConstructionKind> for CssSupportsConstructionError {
+    fn from(kind: SupportsConstructionKind) -> Self {
+        Self { kind }
     }
 }
 impl fmt::Display for CssSupportsConstructionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "invalid authored supports construction: {self:?}")
+        f.write_str("invalid authored supports construction: ")?;
+        f.write_str(match &self.kind {
+            SupportsConstructionKind::InvalidConditionGrammar { .. } => {
+                "the components do not form a supports condition"
+            }
+            SupportsConstructionKind::InvalidDeclarationGrammar { .. } => {
+                "the components do not form a supports declaration"
+            }
+            SupportsConstructionKind::InvalidName { .. } => {
+                "the named supports condition name is invalid"
+            }
+            SupportsConstructionKind::InvalidBodyGrammar { .. } => {
+                "the named supports test body is invalid"
+            }
+            SupportsConstructionKind::RecoveredInput { .. } => {
+                "an implicitly closed component is not admitted"
+            }
+            SupportsConstructionKind::Component(_) => "a component is invalid",
+            SupportsConstructionKind::WorkerUnavailable { .. } => {
+                "the construction thread could not be started"
+            }
+        })
     }
 }
 impl std::error::Error for CssSupportsConstructionError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::Component(error) => Some(error),
-            _ => None,
-        }
+        self.component_error()
+            .map(|error| error as &(dyn std::error::Error + 'static))
     }
 }
 impl From<CssComponentValueError> for CssSupportsConstructionError {
     fn from(error: CssComponentValueError) -> Self {
-        Self::Component(error)
+        Self {
+            kind: SupportsConstructionKind::Component(error),
+        }
     }
 }
 
@@ -203,8 +261,12 @@ fn construct<T: Send>(
             .spawn_scoped(scope, || {
                 action(values.take().expect("single worker owns input"))
             })
-            .map_err(|_| CssSupportsConstructionError::WorkerUnavailable {
-                origin: CssValueOrigin::Programmatic,
+            .map_err(|_| {
+                CssSupportsConstructionError::from(
+                    crate::supports::SupportsConstructionKind::WorkerUnavailable {
+                        origin: CssValueOrigin::Programmatic,
+                    },
+                )
             })?;
         match worker.join() {
             Ok(result) => result,

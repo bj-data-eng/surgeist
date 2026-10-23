@@ -1,5 +1,5 @@
+use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::property_admission::assert_component_rejected;
-use surgeist_css::CssNumericConstructionErrorKind;
 use surgeist_css::{
     CssBoxSize, CssCalcSize, CssKnownPropertyValueRef, CssMaxSizeValue, CssSizeValue,
     CssSpecifiedNonNegativeLengthPercentage, parse_component_values, parse_style_attribute,
@@ -55,7 +55,7 @@ fn checked_literal_preserves_exact_lexeme_and_rejects_tiny_negative() {
     assert_component_rejected(
         CssSpecifiedNonNegativeLengthPercentage::try_from_component,
         component("-1e-999%"),
-        CssNumericConstructionErrorKind::OutOfRange,
+        NumericFailure::OutOfRange,
     );
 }
 
@@ -180,7 +180,7 @@ fn checked_maximum_reports_nested_auto_origin_after_programmatic_trivia() {
     .unwrap_err();
     assert_eq!(
         error.origin(),
-        &surgeist_css::CssSerializedOrigin::Token(expected_origin)
+        surgeist_css::CssSerializedOrigin::Token(expected_origin)
     );
 }
 

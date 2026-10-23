@@ -106,7 +106,7 @@ impl OrdinaryFeatureDisplay for CssFontFeatureDisplayValue {
 pub fn checked_feature_value(
     kind: CssFontFeatureValueKind,
     spellings: &[&str],
-) -> Result<CssFontFeatureValue, CssFontFeatureValueError> {
+) -> Result<CssFontFeatureValue, CssFontFeatureValuesError> {
     let mut components = Vec::new();
     for spelling in spellings {
         if !components.is_empty() {

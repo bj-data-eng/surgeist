@@ -302,10 +302,16 @@ fn parsed_rejects(value: &str) {
         panic!("one image-orientation grammar failure: {source}")
     };
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("typed property grammar diagnostic")
-    };
-    assert_eq!(detail.property(), CssKnownProperty::ImageOrientation);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "typed property grammar diagnostic"
+    );
+    assert_eq!(
+        detail.known_property().unwrap(),
+        CssKnownProperty::ImageOrientation
+    );
     let start = source.find("image-orientation").unwrap();
     let end = start + source[start..].find(';').unwrap() + 1;
     position(diagnostic.span().start(), &source, start);
@@ -328,11 +334,16 @@ fn checked_rejects(value: &str, grammar: bool) {
         )
     };
     let error = result.expect_err("duplicate or non-angle orientation must be rejected");
-    let CssPropertyValueErrorKind::Grammar(ErrorKind::InvalidPropertyValue(detail)) = error.kind()
-    else {
-        panic!("typed checked property grammar failure: {error:?}")
-    };
-    assert_eq!(detail.property(), CssKnownProperty::ImageOrientation);
+    let detail = &error;
+    assert_eq!(
+        detail.code(),
+        Some(CssErrorCode::InvalidPropertyValue),
+        "typed checked property grammar failure: {error:?}"
+    );
+    assert_eq!(
+        detail.known_property().unwrap(),
+        CssKnownProperty::ImageOrientation
+    );
 }
 
 #[test]

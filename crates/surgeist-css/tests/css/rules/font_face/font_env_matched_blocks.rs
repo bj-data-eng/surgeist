@@ -6,10 +6,9 @@
 use crate::css::support::rules::{ExpectedRejection, descriptor_rejected_at, invalid_descriptor};
 use surgeist_css::{
     CssAuthoredFontFaceDescriptorValue as FaceValue, CssComponentValues,
-    CssFontFaceDescriptorKind as FaceKind, CssFontFaceValueErrorKind,
-    CssFontPaletteDescriptorKind as PaletteKind, CssFontPaletteDescriptorValue as PaletteValue,
-    CssFontPaletteDescriptorValueRef, CssFontPaletteValueErrorKind, CssRecoveryAction, CssRule,
-    CssValueOrigin, parse_component_values, parse_font_face_block,
+    CssFontFaceDescriptorKind as FaceKind, CssFontPaletteDescriptorKind as PaletteKind,
+    CssFontPaletteDescriptorValue as PaletteValue, CssFontPaletteDescriptorValueRef,
+    CssRecoveryAction, CssRule, CssValueOrigin, parse_component_values, parse_font_face_block,
     parse_font_face_descriptor_value, parse_font_palette_descriptor_value,
     parse_font_palette_values_block, parse_sheet,
 };
@@ -219,7 +218,7 @@ fn malformed_env_and_ordinary_root_blocks_remain_invalid_in_raw_and_checked_fron
             Default::default(),
         )
         .unwrap_err();
-        let CssFontFaceValueErrorKind::Grammar(detail) = error.kind() else {
+        let Some(detail) = error.diagnostic() else {
             panic!("{value}: grammar failure: {error:?}")
         };
         face_rejection.assert_kind(detail);
@@ -235,7 +234,7 @@ fn malformed_env_and_ordinary_root_blocks_remain_invalid_in_raw_and_checked_fron
             palette_rejection.assert_first(&palette);
             let error =
                 PaletteValue::try_new(kind, components.clone(), Default::default()).unwrap_err();
-            let CssFontPaletteValueErrorKind::Grammar(detail) = error.kind() else {
+            let Some(detail) = error.diagnostic() else {
                 panic!("{}:{value}: grammar failure: {error:?}", kind.css_name())
             };
             palette_rejection.assert_kind(detail);
@@ -275,14 +274,14 @@ fn root_bangs_semicolons_and_unmatched_closers_are_not_rescued_by_valid_env() {
                 Default::default(),
             )
             .unwrap_err();
-            let CssFontFaceValueErrorKind::Grammar(detail) = error.kind() else {
+            let Some(detail) = error.diagnostic() else {
                 panic!("{value}: grammar failure: {error:?}")
             };
             face_rejection.assert_kind(detail);
             for kind in PALETTE_KINDS {
                 let error = PaletteValue::try_new(kind, components.clone(), Default::default())
                     .unwrap_err();
-                let CssFontPaletteValueErrorKind::Grammar(detail) = error.kind() else {
+                let Some(detail) = error.diagnostic() else {
                     panic!("{}:{value}: grammar failure: {error:?}", kind.css_name())
                 };
                 descriptor_rejected_at("font-palette-values", kind.css_name(), token)

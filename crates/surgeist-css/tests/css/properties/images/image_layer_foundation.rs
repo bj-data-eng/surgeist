@@ -5,6 +5,8 @@
 //! `mask-image`: `[ none | <image> | <mask-source> ]#`, initially `none`, noninherited.
 //! https://www.w3.org/TR/2021/CRD-css-masking-1-20210805/#propdef-mask-image
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::named_property::longhand_contributions;
 use crate::css::support::sole_declaration as declaration;
 use surgeist_css::*;
@@ -301,22 +303,19 @@ fn pending_image_list_reentry_is_strict_repeatable_and_provenanced() {
         "inherit none",
     ] {
         assert!(
-            matches!(
-                pending
-                    .reenter(parse_component_values(invalid).unwrap())
-                    .unwrap_err()
-                    .kind(),
-                CssExpansionErrorKind::InvalidReplacement(_)
-            ),
+            pending
+                .reenter(parse_component_values(invalid).unwrap())
+                .unwrap_err()
+                .replacement_error()
+                .is_some(),
             "{invalid}"
         );
     }
-    assert_eq!(
+    assert!(
         pending
             .reenter(parse_component_values("var(--again)").unwrap())
             .unwrap_err()
-            .kind(),
-        &CssExpansionErrorKind::ResidualSubstitution
+            .is_residual_substitution()
     );
     for replacement in [
         "url(\"ok.svg\"), none",
@@ -365,22 +364,19 @@ fn pending_mask_sources_reenter_strictly_and_retain_replacement_provenance() {
         "inherit none",
     ] {
         assert!(
-            matches!(
-                pending
-                    .reenter(parse_component_values(invalid).unwrap())
-                    .unwrap_err()
-                    .kind(),
-                CssExpansionErrorKind::InvalidReplacement(_)
-            ),
+            pending
+                .reenter(parse_component_values(invalid).unwrap())
+                .unwrap_err()
+                .replacement_error()
+                .is_some(),
             "{invalid}"
         );
     }
-    assert_eq!(
+    assert!(
         pending
             .reenter(parse_component_values("var(--again)").unwrap())
             .unwrap_err()
-            .kind(),
-        &CssExpansionErrorKind::ResidualSubstitution
+            .is_residual_substitution()
     );
     for replacement in [
         "url(\"#clip\"), src(\"#mask\"), none",
@@ -484,19 +480,19 @@ fn both_initial_image_lists_use_one_cumulative_serialization_budget() {
         for (limits, expected) in [
             (
                 CssSerializationLimits::new(1, 2, 4),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                SerializationFailure::InputNodeLimit,
             ),
             (
                 CssSerializationLimits::new(2, 1, 4),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
                 CssSerializationLimits::new(2, 2, 3),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                SerializationFailure::ByteLimit,
             ),
         ] {
             assert_eq!(
-                list.serialize_specified(limits).unwrap_err().kind(),
+                serialization_failure(&list.serialize_specified(limits).unwrap_err()),
                 expected
             );
         }
@@ -552,11 +548,8 @@ fn normalization_preserves_image_order_and_fails_atomically_on_contribution_limi
     let limits = CssNormalizationLimits::try_new(256, usize::MAX, usize::MAX, 2).unwrap();
     let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
     assert_eq!(
-        error.kind(),
-        &CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: 2,
-        }
+        error.exhausted_limit(),
+        Some((CssNormalizationResource::Contributions, 2))
     );
     assert_eq!(error.declaration_order(), Some(2));
     assert_eq!(
@@ -610,11 +603,8 @@ fn normalization_preserves_mask_image_order_and_exact_resource_failure() {
     let limits = CssNormalizationLimits::try_new(256, usize::MAX, usize::MAX, 2).unwrap();
     let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
     assert_eq!(
-        error.kind(),
-        &CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: 2,
-        }
+        error.exhausted_limit(),
+        Some((CssNormalizationResource::Contributions, 2))
     );
     assert_eq!(error.declaration_order(), Some(2));
     assert_eq!(

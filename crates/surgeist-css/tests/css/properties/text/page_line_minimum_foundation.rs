@@ -2,6 +2,10 @@
 //! lexical integers from Values 4 §5.2.
 
 use crate::css::support::checked_grammar_declaration as checked;
+use crate::css::support::failure_classes::NumericFailure;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::numeric_failure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::important_declaration as declaration;
 use crate::css::support::named_property::sole_longhand_contribution;
 use crate::css::support::selected_grammar as grammar;
@@ -148,19 +152,18 @@ fn pending_substitution_reenters_original_grammar_and_occurrence() {
                 panic!("pending {name} substitution")
             };
             assert!(handle.source().same_occurrence(&source));
-            assert!(matches!(
+            assert!(
                 handle
                     .reenter(parse_component_values("0").unwrap())
                     .unwrap_err()
-                    .kind(),
-                CssExpansionErrorKind::InvalidReplacement(_)
-            ));
-            assert_eq!(
+                    .replacement_error()
+                    .is_some()
+            );
+            assert!(
                 handle
                     .reenter(parse_component_values("var(--again)").unwrap())
                     .unwrap_err()
-                    .kind(),
-                &CssExpansionErrorKind::ResidualSubstitution
+                    .is_residual_substitution()
             );
             let replacement = parse_component_values("3").unwrap();
             let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap()
@@ -219,11 +222,11 @@ fn checked_construction_preserves_exact_tokens_and_origins() {
                 .unwrap_err();
         assert_eq!(error.origin(), Some(&CssValueOrigin::Programmatic));
         let expected = if text == "0" || text == "-1" {
-            CssNumericConstructionErrorKind::OutOfRange
+            NumericFailure::OutOfRange
         } else {
-            CssNumericConstructionErrorKind::RootDomainMismatch
+            NumericFailure::RootDomainMismatch
         };
-        assert_eq!(error.kind(), &expected);
+        assert_eq!(numeric_failure(&error), expected);
     }
 }
 
@@ -236,12 +239,12 @@ fn calculation_constructor_checks_bare_roots_and_retains_math() {
         )
         .unwrap();
         let error = CssPageLineMinimum::try_from_calculation(calculation).unwrap_err();
-        assert_eq!(error.kind(), &CssNumericConstructionErrorKind::OutOfRange);
+        assert!(error.is_out_of_range(), "{error:?}");
         assert!(matches!(error.origin(), Some(CssValueOrigin::Parsed(_))));
     }
     let error =
         CssPageLineMinimum::try_from_calculation(CssIntegerCalculation::literal(-1)).unwrap_err();
-    assert_eq!(error.kind(), &CssNumericConstructionErrorKind::OutOfRange);
+    assert!(error.is_out_of_range(), "{error:?}");
     assert_eq!(error.origin(), Some(&CssValueOrigin::Programmatic));
     let bare = CssIntegerCalculation::try_from_components(
         parse_component_values("2147483648").unwrap(),
@@ -284,19 +287,19 @@ fn specified_serialization_is_exact_and_resource_bounded() {
     for (limits, kind) in [
         (
             CssSerializationLimits::new(0, 8, 20),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(8, 0, 20),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(8, 8, 3),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
         let error = value.serialize_specified(limits).unwrap_err();
-        assert_eq!(error.kind(), kind);
+        assert_eq!(serialization_failure(&error), kind);
         assert_eq!(
             value.serialize_specified(Default::default()).unwrap(),
             "2147483648"
@@ -353,11 +356,8 @@ fn line_minimum_normalization_reports_cumulative_contribution_limit() {
     )
     .unwrap_err();
     assert_eq!(
-        error.kind(),
-        &CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: 1,
-        }
+        error.exhausted_limit(),
+        Some((CssNormalizationResource::Contributions, 1))
     );
     let normalized = normalize_sheet_with_limits(
         report.syntax(),

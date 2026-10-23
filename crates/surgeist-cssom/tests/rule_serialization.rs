@@ -61,7 +61,7 @@ fn edited_font_families_and_counter_name_keep_native_wrapper_limits() {
         ]) {
             assert!(matches!(
                 captured_rule(&store, snapshot, rule).css_text( &CssomRuleFormatLimits::default()),
-                Err(CssomError::Format(ref error)) if error.kind() == CssRuleCssomSerializationErrorKind::FormatUnavailable(kind)
+                Err(CssomError::Format(ref error)) if error.unavailable_format() == Some(kind)
             ));
         }
     }
@@ -383,17 +383,14 @@ fn unavailable_wrapper_is_lazy_and_reports_actual_path_without_preparing_descend
         ..CssomRuleFormatLimits::default()
     };
     assert!(
-        matches!(captured_rule(&store, &snapshot, &scope).css_text( &limits), Err(CssomError::Format(ref error)) if error.kind() == CssRuleCssomSerializationErrorKind::FormatUnavailable(CssRuleCssomFormat::Scope))
+        matches!(captured_rule(&store, &snapshot, &scope).css_text( &limits), Err(CssomError::Format(ref error)) if error.unavailable_format() == Some(CssRuleCssomFormat::Scope))
     );
     let Err(CssomError::Format(error)) =
         captured_rule(&store, &snapshot, &roots[0]).css_text(&CssomRuleFormatLimits::default())
     else {
         panic!("typed unavailable");
     };
-    assert_eq!(
-        error.kind(),
-        CssRuleCssomSerializationErrorKind::FormatUnavailable(CssRuleCssomFormat::Scope)
-    );
+    assert_eq!(error.unavailable_format(), Some(CssRuleCssomFormat::Scope));
     assert_eq!(error.rule_path(), &[0]);
     assert_eq!(
         store
@@ -622,7 +619,7 @@ fn custom_media_current_query_keeps_native_unavailable_wrapper_boundary() {
                 .css_text(&CssomRuleFormatLimits::default())
                 .unwrap_err();
             assert!(
-                matches!(error, CssomError::Format(ref error) if error.kind() == CssRuleCssomSerializationErrorKind::FormatUnavailable(CssRuleCssomFormat::CustomMedia))
+                matches!(error, CssomError::Format(ref error) if error.unavailable_format() == Some(CssRuleCssomFormat::CustomMedia))
             );
         }
     }

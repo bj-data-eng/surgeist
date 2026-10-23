@@ -233,10 +233,13 @@ fn rejects(text: &str) {
     let CssExpansion::Pending(handle) = expand_declaration(&pending).unwrap() else {
         panic!("pending")
     };
-    assert!(matches!(
-        handle.reenter(components(text)).unwrap_err().kind(),
-        CssExpansionErrorKind::InvalidReplacement(_)
-    ));
+    assert!(
+        handle
+            .reenter(components(text))
+            .unwrap_err()
+            .replacement_error()
+            .is_some()
+    );
 }
 
 #[test]
@@ -251,10 +254,7 @@ fn hue_does_not_gain_percentage_permission_from_neighboring_channels() {
             Default::default(),
         )
         .unwrap_err();
-        assert_eq!(
-            error.kind(),
-            &CssNumericConstructionErrorKind::RootDomainMismatch
-        );
+        assert!(error.is_root_domain_mismatch(), "{error:?}");
         assert!(error.origin().is_some());
         assert!(
             CssRelativeColorExpression::try_from_components(

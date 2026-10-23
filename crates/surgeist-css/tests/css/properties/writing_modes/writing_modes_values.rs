@@ -1,4 +1,6 @@
 //! Selected Writing Modes keyword values and intrinsic, context-free transport.
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::named_property::important_property_declaration as declaration;
 use surgeist_css::*;
 
@@ -120,22 +122,25 @@ fn all_sixteen_typed_keywords_serialize_canonically_with_atomic_limits() {
         for (limits, kind) in [
             (
                 CssSerializationLimits::new(0, 0, 0),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                SerializationFailure::InputNodeLimit,
             ),
             (
                 CssSerializationLimits::new(1, 0, 0),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
                 CssSerializationLimits::new(1, 1, text.len() - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                SerializationFailure::ByteLimit,
             ),
             (
                 CssSerializationLimits::new(1, 1, 0),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                SerializationFailure::ByteLimit,
             ),
         ] {
-            assert_eq!(value.serialize(limits).unwrap_err().kind(), kind);
+            assert_eq!(
+                serialization_failure(&value.serialize(limits).unwrap_err()),
+                kind
+            );
         }
         let source = declaration(value.property(), text);
         let CssExpansion::Contributions(CssContributions::Longhands(items)) =
@@ -311,7 +316,7 @@ fn parsed_wrapper_accessors_serialize_case_escapes_and_trivia_without_mutation()
                 let error = value
                     .serialize_specified(CssSerializationLimits::new(1, 1, 0))
                     .unwrap_err();
-                ($wrapper.as_css(), output, error.kind())
+                ($wrapper.as_css(), output, serialization_failure(&error))
             }};
         }
         let (raw, canonical, error) = match source.known().unwrap().property_value().unwrap() {
@@ -331,7 +336,7 @@ fn parsed_wrapper_accessors_serialize_case_escapes_and_trivia_without_mutation()
         };
         assert_eq!(raw, expected_raw);
         assert_eq!(canonical, expected);
-        assert_eq!(error, CssSpecifiedValueSerializationErrorKind::ByteLimit);
+        assert_eq!(error, SerializationFailure::ByteLimit);
         assert_eq!(source.value_components(), &components);
         assert_eq!(
             source
@@ -374,8 +379,8 @@ fn recovered_keyword_neighbor_preserves_four_occurrences_with_exact_budgets() {
         assert_eq!(
             normalize_sheet_with_limits(report.syntax(), limits)
                 .unwrap_err()
-                .kind(),
-            &CssNormalizationErrorKind::LimitExceeded { resource, limit }
+                .exhausted_limit(),
+            Some((resource, limit))
         );
     }
     let sheet = normalize_sheet_with_limits(

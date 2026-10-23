@@ -145,7 +145,7 @@ impl crate::CssParserContext {
 
 fn finish<T>(
     source: &str,
-    result: Result<T, ParseError<'_, Error>>,
+    result: Result<T, ParseError<'_, CssError>>,
     mut diagnostics: Vec<crate::CssRecoveryDiagnostic>,
     state: &RecoveryState,
 ) -> crate::CssParseReport<Option<T>> {

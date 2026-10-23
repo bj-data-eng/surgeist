@@ -673,10 +673,13 @@ fn nesting<T: Clone + std::fmt::Debug>(
 ) {
     let diagnostic = recovered(report, CssRecoveryAction::StopAtNestingLimit);
     assert_eq!(diagnostic.error().code(), CssErrorCode::NestingLimit);
-    let ErrorKind::NestingLimit(detail) = diagnostic.error().kind() else {
-        panic!("native typed nesting error")
-    };
-    assert_eq!(detail.limit(), 256);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::NestingLimit,
+        "native typed nesting error"
+    );
+    assert_eq!(detail.nesting_limit().unwrap(), 256);
     point(
         diagnostic.error().position(),
         value_start + first_excessive_function * 2,

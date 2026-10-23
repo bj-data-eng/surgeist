@@ -7,11 +7,15 @@
 //! crossproducts of all 21 recognized math functions.
 
 use crate::css::support::authored_property::{checked, parsed};
+use crate::css::support::failure_classes::NumericFailure;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::numeric_failure;
+use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::CssKnownProperty as P;
 use surgeist_css::*;
 
 type Limits = CssSerializationLimits;
-type Kind = CssSpecifiedValueSerializationErrorKind;
+type Kind = SerializationFailure;
 const TRACKS: [P; 4] = [
     P::GridTemplateRows,
     P::GridTemplateColumns,
@@ -112,10 +116,13 @@ fn invalid(property: P, text: &str) {
         panic!("one atomic failure: {css}")
     };
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("typed Grid property error")
-    };
-    assert_eq!(detail.property(), property);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "typed Grid property error"
+    );
+    assert_eq!(detail.known_property().unwrap(), property);
     assert_eq!(
         validate_style_attribute(&css).unwrap_err().diagnostics(),
         report.diagnostics()
@@ -135,10 +142,7 @@ fn invalid(property: P, text: &str) {
         ),
     ] {
         let error = result.unwrap_err();
-        assert!(matches!(
-            error.kind(),
-            CssPropertyValueErrorKind::Grammar(_)
-        ));
+        assert!(error.code().is_some());
     }
     assert_eq!(values, before);
 }
@@ -343,11 +347,10 @@ fn mathematical_negative_flex_stays_authored_while_bare_negative_literals_fail()
     assert!(CssGridTrackSize::try_minmax(breadth.clone(), CssGridTrackBreadth::auto()).is_none());
     assert!(CssGridTrackSize::try_minmax(CssGridTrackBreadth::auto(), breadth).is_some());
     let bare = CssComponentValue::try_dimension("-2", "fr").unwrap();
-    assert_eq!(
+    assert!(
         CssSpecifiedNonNegativeFlex::try_from_component(bare)
             .unwrap_err()
-            .kind(),
-        &CssNumericConstructionErrorKind::OutOfRange
+            .is_out_of_range()
     );
     // This negative scalar is independently known without resolving a Flex basis.
     // The remainder graph above retains its contextual operands and step.
@@ -384,40 +387,24 @@ fn mathematical_negative_flex_stays_authored_while_bare_negative_literals_fail()
 #[test]
 fn invalid_math_has_typed_numeric_errors_original_origins_and_atomic_property_recovery() {
     for (text, kind, responsible) in [
-        (
-            "round(1fr)",
-            CssNumericConstructionErrorKind::InvalidArgumentType,
-            "round",
-        ),
-        ("mod(1fr)", CssNumericConstructionErrorKind::Arity, "mod"),
-        ("hypot()", CssNumericConstructionErrorKind::Arity, "hypot"),
-        (
-            "abs(1fr, 2fr)",
-            CssNumericConstructionErrorKind::Arity,
-            "abs",
-        ),
+        ("round(1fr)", NumericFailure::InvalidArgumentType, "round"),
+        ("mod(1fr)", NumericFailure::Arity, "mod"),
+        ("hypot()", NumericFailure::Arity, "hypot"),
+        ("abs(1fr, 2fr)", NumericFailure::Arity, "abs"),
         (
             "calc(1fr + 10px)",
-            CssNumericConstructionErrorKind::IncompatibleTypes,
+            NumericFailure::IncompatibleTypes,
             "10px",
         ),
-        (
-            "calc(1fr + 1%)",
-            CssNumericConstructionErrorKind::RootDomainMismatch,
-            "calc",
-        ),
-        (
-            "sin(1fr)",
-            CssNumericConstructionErrorKind::InvalidArgumentType,
-            "sin",
-        ),
+        ("calc(1fr + 1%)", NumericFailure::RootDomainMismatch, "calc"),
+        ("sin(1fr)", NumericFailure::InvalidArgumentType, "sin"),
     ] {
         let values = parse_component_values(text).unwrap();
         let before = values.clone();
         for _ in 0..2 {
             let error = CssFlexCalculation::try_from_components(values.clone(), Default::default())
                 .unwrap_err();
-            assert_eq!(error.kind(), &kind, "{text}");
+            assert_eq!(numeric_failure(&error), kind, "{text}");
             let Some(CssValueOrigin::Parsed(origin)) = error.origin() else {
                 panic!("original failure origin")
             };
@@ -453,7 +440,7 @@ fn invalid_math_has_typed_numeric_errors_original_origins_and_atomic_property_re
                 CssImportance::Important,
             ),
         ] {
-            assert_eq!(result.unwrap_err().origin(), &expected);
+            assert_eq!(result.unwrap_err().origin(), expected);
         }
     }
 }
@@ -563,15 +550,9 @@ fn pending_math_reentry_preserves_occurrence_replacement_origins_and_retry_after
                     for _ in 0..2 {
                         let error = handle.reenter(invalid_values.clone()).unwrap_err();
                         if invalid_text.starts_with("var") {
-                            assert!(matches!(
-                                error.kind(),
-                                CssExpansionErrorKind::ResidualSubstitution
-                            ));
+                            assert!(error.is_residual_substitution());
                         } else {
-                            assert!(matches!(
-                                error.kind(),
-                                CssExpansionErrorKind::InvalidReplacement(_)
-                            ));
+                            assert!(error.replacement_error().is_some());
                         }
                         assert!(handle.source().same_occurrence(&source));
                     }
@@ -631,11 +612,10 @@ fn math_graph_and_sibling_serialization_limits_remain_cumulative_atomic_and_reus
     let before = values.clone();
     let short = CssComponentValueLimits::try_new(256, 1, 100).unwrap();
     for _ in 0..2 {
-        assert_eq!(
+        assert!(
             CssFlexCalculation::try_from_components(values.clone(), short)
                 .unwrap_err()
-                .kind(),
-            &CssNumericConstructionErrorKind::ResourceLimit
+                .is_resource_limit()
         );
         assert_eq!(values, before);
     }
@@ -658,10 +638,7 @@ fn math_graph_and_sibling_serialization_limits_remain_cumulative_atomic_and_reus
             .all(|size| size.serialize_specified(limits).is_ok())
     );
     for _ in 0..2 {
-        assert_eq!(
-            typed_output(&source, limits).unwrap_err().kind(),
-            Kind::ByteLimit
-        );
+        assert!(typed_output(&source, limits).unwrap_err().is_byte_limit());
         assert_eq!(source, before);
     }
     assert_eq!(
@@ -675,7 +652,10 @@ fn math_graph_and_sibling_serialization_limits_remain_cumulative_atomic_and_reus
             Kind::ProjectionNodeLimit,
         ),
     ] {
-        assert_eq!(typed_output(&source, limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&typed_output(&source, limits).unwrap_err()),
+            kind
+        );
         assert_eq!(source, before);
     }
     assert_eq!(typed_output(&source, Limits::default()).unwrap(), expected);
@@ -726,11 +706,8 @@ fn math_normalization_counts_three_and_six_terminals_without_changing_order_or_i
     for _ in 0..2 {
         let error = normalize_sheet_with_limits(report.syntax(), short).unwrap_err();
         assert_eq!(
-            error.kind(),
-            &CssNormalizationErrorKind::LimitExceeded {
-                resource: CssNormalizationResource::Contributions,
-                limit: 8
-            }
+            error.exhausted_limit(),
+            Some((CssNormalizationResource::Contributions, 8))
         );
         assert_eq!(error.declaration_order(), Some(1));
         assert!(
@@ -849,13 +826,10 @@ fn checked_math_closure_and_browser_recovery_remain_distinct_controls() {
             ),
         ] {
             let error = result.unwrap_err();
-            assert!(matches!(
-                error.kind(),
-                CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
-            ));
+            assert!(error.code() == Some(CssErrorCode::UnexpectedEnd));
             assert_eq!(
                 error.origin(),
-                &CssSerializedOrigin::End(Some(origin.clone()))
+                CssSerializedOrigin::End(Some(origin.clone()))
             );
         }
         let source = checked(property, "var(--grid)", true);
@@ -864,16 +838,13 @@ fn checked_math_closure_and_browser_recovery_remain_distinct_controls() {
         };
         for _ in 0..2 {
             let error = handle.reenter(values.clone()).unwrap_err();
-            let CssExpansionErrorKind::InvalidReplacement(inner) = error.kind() else {
+            let Some(inner) = error.replacement_error() else {
                 panic!("strict replacement")
             };
-            assert!(matches!(
-                inner.kind(),
-                CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
-            ));
+            assert!(inner.code() == Some(CssErrorCode::UnexpectedEnd));
             assert_eq!(
                 inner.origin(),
-                &CssSerializedOrigin::End(Some(origin.clone()))
+                CssSerializedOrigin::End(Some(origin.clone()))
             );
         }
         let closed = format!("{recovered})");

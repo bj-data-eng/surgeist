@@ -200,41 +200,37 @@ fn canonical_escaping_and_byte_limits_are_checked_after_escape_expansion() {
     let error = value
         .serialize_tokens(crate::css::support::byte_limits(text.len() - 1))
         .unwrap_err();
-    assert_eq!(error.kind(), CssComponentValueErrorKind::ByteLimit);
+    assert!(error.is_byte_limit(), "{error:?}");
     assert_eq!(error.origin(), &CssValueOrigin::Programmatic);
     let components = value
         .to_components(CssComponentValueLimits::try_new(0, 5, text.len()).unwrap())
         .unwrap();
     assert_programmatic(&components);
     assert_eq!(components.items().len(), 5);
-    assert_eq!(
+    assert!(
         value
             .to_components(CssComponentValueLimits::try_new(0, 4, text.len()).unwrap())
             .unwrap_err()
-            .kind(),
-        CssComponentValueErrorKind::ComponentLimit
+            .is_component_limit()
     );
-    assert_eq!(
+    assert!(
         value
             .to_components(CssComponentValueLimits::try_new(0, 5, text.len() - 1).unwrap())
             .unwrap_err()
-            .kind(),
-        CssComponentValueErrorKind::ByteLimit
+            .is_byte_limit()
     );
     // The lower bound catches obviously oversized names before canonical escaping.
-    assert_eq!(
+    assert!(
         names(&["oversized"])
             .serialize_tokens(crate::css::support::byte_limits(1))
             .unwrap_err()
-            .kind(),
-        CssComponentValueErrorKind::ByteLimit
+            .is_byte_limit()
     );
-    assert_eq!(
+    assert!(
         CssContainerType::Normal
             .serialize_tokens(crate::css::support::byte_limits(0))
             .unwrap_err()
-            .kind(),
-        CssComponentValueErrorKind::ByteLimit
+            .is_byte_limit()
     );
     let result = declaration(CssKnownProperty::ContainerName, components);
     let CssKnownPropertyValueRef::ContainerName(wrapper) =

@@ -39,7 +39,7 @@ fn negative_literal_box_sizes_reject_in_parsing_and_checked_construction() {
                 diagnostic.error().code(),
                 CssErrorCode::InvalidPropertyValue
             );
-            assert_invalid_value(diagnostic.error().kind(), property, Some(value));
+            assert_invalid_value(diagnostic.error(), property, Some(value));
             assert_checked_rejected(
                 parse_property_value(
                     CssPropertyNameRef::Known(property),

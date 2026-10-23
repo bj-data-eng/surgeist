@@ -3,6 +3,31 @@ pub(crate) mod property;
 mod retained_backing;
 mod source_resolution;
 
+/// Defines one documented `is_*` predicate per pattern of an error's private kind.
+///
+/// `field` names the kind field; `*field` names a boxed one.
+macro_rules! kind_predicates {
+    ($field:ident; $($(#[doc = $doc:expr])+ $name:ident => $pattern:pat,)+) => {
+        $(
+            $(#[doc = $doc])+
+            #[must_use]
+            pub const fn $name(&self) -> bool {
+                matches!(self.$field, $pattern)
+            }
+        )+
+    };
+    (*$field:ident; $($(#[doc = $doc:expr])+ $name:ident => $pattern:pat,)+) => {
+        $(
+            $(#[doc = $doc])+
+            #[must_use]
+            pub fn $name(&self) -> bool {
+                matches!(*self.$field, $pattern)
+            }
+        )+
+    };
+}
+pub(crate) use kind_predicates;
+
 use std::fmt;
 
 use cssparser::{
@@ -69,6 +94,9 @@ pub enum CssErrorCode {
     InvalidColorSyntax,
     /// Authored nesting exceeded the parser's configured structural limit.
     NestingLimit,
+    /// Input nested deeper than the caller's stack is trusted with was refused
+    /// because the bounded larger-stack parser thread could not be started.
+    ParserUnavailable,
 }
 
 /// A static diagnostic-metadata identifier for one CSS grammar production.
@@ -384,7 +412,7 @@ const SELECTOR_LIST: CssProductionId = CssProductionId::new("baseline.selector.c
 /// The stored expectation identifies the violated grammar invariant; this value does not insert
 /// missing syntax or perform browser-style recovery.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssUnexpectedEndError {
+pub(crate) struct CssUnexpectedEndError {
     expectation: CssGrammarExpectation,
 }
 
@@ -401,7 +429,7 @@ impl CssUnexpectedEndError {
 /// The expectation and exact encountered token identify the violation; this value does not skip,
 /// replace, or otherwise recover from the token.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssUnexpectedTokenError {
+pub(crate) struct CssUnexpectedTokenError {
     expectation: CssGrammarExpectation,
     encountered: CssTokenSummary,
 }
@@ -425,7 +453,7 @@ impl CssUnexpectedTokenError {
 /// The decoded name and expected context identify the placement invariant; this value does not
 /// move, drop, or recover the at-rule.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssAtRulePlacementError {
+pub(crate) struct CssAtRulePlacementError {
     name: CssAtRuleName,
     expected_context: CssGrammarExpectation,
 }
@@ -455,7 +483,7 @@ impl CssAtRulePlacementError {
 /// the rule, production, expectation, and responsible token. It does not recover or evaluate the
 /// at-rule.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssAtRuleSyntaxError {
+pub(crate) struct CssAtRuleSyntaxError {
     name: CssAtRuleName,
     production: CssProductionId,
     expectation: CssGrammarExpectation,
@@ -493,7 +521,7 @@ impl CssAtRuleSyntaxError {
 /// A missing prefix identifies the default binding. The last declaration remains
 /// effective, while the stylesheet is nonconforming even when the names agree.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssNamespaceRedeclarationError {
+pub(crate) struct CssNamespaceRedeclarationError {
     prefix: Option<crate::CssNamespacePrefix>,
     previous_position: CssSourcePosition,
 }
@@ -514,7 +542,7 @@ impl CssNamespaceRedeclarationError {
 
 /// A retained underscore-leading symbolic navigation target; execution remains downstream.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssLegacyNavigationTargetError {
+pub(crate) struct CssLegacyNavigationTargetError {
     target: String,
 }
 impl CssLegacyNavigationTargetError {
@@ -529,7 +557,7 @@ impl CssLegacyNavigationTargetError {
 /// The decoded name preserves authored identity; this value does not reinterpret the unknown rule
 /// or select a recovery action.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssUnknownAtRuleError {
+pub(crate) struct CssUnknownAtRuleError {
     name: CssAtRuleName,
 }
 
@@ -546,7 +574,7 @@ impl CssUnknownAtRuleError {
 /// The decoded name and catalog feature identity distinguish unsupported syntax from unknown
 /// syntax; this value does not enable, lower, or recover the rule.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssUnsupportedAtRuleError {
+pub(crate) struct CssUnsupportedAtRuleError {
     name: CssAtRuleName,
     feature: CssFeatureId,
 }
@@ -570,7 +598,7 @@ impl CssUnsupportedAtRuleError {
 /// The production, expectation, and optional responsible token identify the syntax invariant;
 /// this value does not discard or recover the rule.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssQualifiedRuleError {
+pub(crate) struct CssQualifiedRuleError {
     production: CssProductionId,
     expectation: CssGrammarExpectation,
     encountered: Option<CssTokenSummary>,
@@ -601,7 +629,7 @@ impl CssQualifiedRuleError {
 /// The optional production, expectation, and token preserve parse provenance; this value does not
 /// match selectors, recover forgiving selector lists, or evaluate document state.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssSelectorError {
+pub(crate) struct CssSelectorError {
     production: Option<CssProductionId>,
     expectation: CssGrammarExpectation,
     encountered: Option<CssTokenSummary>,
@@ -632,7 +660,7 @@ impl CssSelectorError {
 /// The optional feature name, expectation, and token preserve parse provenance; this value does
 /// not evaluate the query against an environment or select recovery policy.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssMediaQueryError {
+pub(crate) struct CssMediaQueryError {
     committed_context: bool,
     feature: Option<CssMediaFeatureName>,
     expectation: CssGrammarExpectation,
@@ -667,7 +695,7 @@ impl CssMediaQueryError {
 /// The decoded name preserves authored identity; this value does not reinterpret the declaration,
 /// apply cascade, or select recovery.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssUnknownPropertyError {
+pub(crate) struct CssUnknownPropertyError {
     name: CssPropertyName,
 }
 
@@ -684,7 +712,7 @@ impl CssUnknownPropertyError {
 /// The decoded name and catalog feature identity distinguish unsupported syntax from unknown
 /// syntax; this value does not enable, resolve, or apply the property.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssUnsupportedPropertyError {
+pub(crate) struct CssUnsupportedPropertyError {
     name: CssPropertyName,
     feature: CssFeatureId,
 }
@@ -708,13 +736,13 @@ impl CssUnsupportedPropertyError {
 /// The canonical property, expectation, and optional token identify the parse invariant; this
 /// value does not substitute variables, resolve context, compute cascade, or recover the value.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssPropertyValueError {
+pub(crate) struct PropertyValueRejection {
     property: CssKnownProperty,
     expectation: CssGrammarExpectation,
     encountered: Option<CssTokenSummary>,
 }
 
-impl CssPropertyValueError {
+impl PropertyValueRejection {
     #[must_use]
     /// Returns the canonical property whose value grammar rejected the authored syntax.
     pub const fn property(&self) -> CssKnownProperty {
@@ -803,7 +831,7 @@ impl CssDeclarationContext {
 /// The declaration context and exact token identify the strict grammar violation; this value does
 /// not apply importance, mutate the declaration, or recover it.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssDeclarationAnnotationError {
+pub(crate) struct CssDeclarationAnnotationError {
     context: CssDeclarationContext,
     encountered: CssTokenSummary,
 }
@@ -828,7 +856,7 @@ impl CssDeclarationAnnotationError {
 /// reinterpret,
 /// apply, or recover the descriptor.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssUnknownDescriptorError {
+pub(crate) struct CssUnknownDescriptorError {
     at_rule: CssAtRuleName,
     descriptor: CssDescriptorName,
 }
@@ -852,7 +880,7 @@ impl CssUnknownDescriptorError {
 /// The owning rule, descriptor, and catalog identity distinguish unsupported syntax from unknown
 /// syntax; this value does not enable, apply, or recover the descriptor.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssUnsupportedDescriptorError {
+pub(crate) struct CssUnsupportedDescriptorError {
     at_rule: CssAtRuleName,
     descriptor: CssDescriptorName,
     feature: CssFeatureId,
@@ -883,7 +911,7 @@ impl CssUnsupportedDescriptorError {
 /// The owning rule, descriptor, expectation, and optional token identify the parse invariant; this
 /// value does not resolve resources, apply descriptor effects, or recover the value.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssDescriptorValueError {
+pub(crate) struct CssDescriptorValueError {
     origin: DiagnosticOrigin,
     at_rule: CssAtRuleName,
     // Keep the largest error payload compact when retaining explicit origins.
@@ -930,7 +958,7 @@ impl CssDescriptorValueError {
 /// The owning rule, responsible descriptor, and conflict set identify the validation invariant;
 /// this value does not choose a descriptor, apply rule effects, or recover the block.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssDescriptorCombinationError {
+pub(crate) struct CssDescriptorCombinationError {
     at_rule: CssAtRuleName,
     responsible: CssDescriptorName,
     conflicting: Vec<CssDescriptorName>,
@@ -961,7 +989,7 @@ impl CssDescriptorCombinationError {
 /// The optional component, expectation, and token identify the color grammar violation; this value
 /// does not resolve system colors, evaluate relative channels, mix, convert, or recover colors.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssColorSyntaxError {
+pub(crate) struct CssColorSyntaxError {
     component: Option<CssColorComponentName>,
     expectation: CssGrammarExpectation,
     encountered: Option<CssTokenSummary>,
@@ -992,7 +1020,7 @@ impl CssColorSyntaxError {
 /// The configured limit and enclosing production identify the rejected parse invariant; this value
 /// does not flatten additional nesting, recover the construct, or perform selector matching.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssNestingLimitError {
+pub(crate) struct CssNestingLimitError {
     limit: u32,
     enclosing_production: CssProductionId,
 }
@@ -1001,10 +1029,9 @@ impl CssNestingLimitError {
     #[must_use]
     /// Returns the maximum nesting depth accepted by the strict parser.
     ///
-    /// This is ordinarily the 256-level structural limit. A limit of 128
-    /// (stylesheets and style attributes) or 63 (fragments) instead reports
-    /// that the bounded larger-stack parser thread could not be started, so
-    /// input deeper than the caller's stack can hold was refused.
+    /// For a nesting limit this is ordinarily the 256-level structural limit.
+    /// For a parser-thread refusal it is the depth trusted on the caller's
+    /// stack: 128 for stylesheets and style attributes, 63 for fragments.
     pub const fn limit(&self) -> u32 {
         self.limit
     }
@@ -1023,7 +1050,7 @@ impl CssNestingLimitError {
 /// escaped code point reports a parse error and returns U+FFFD (§4.3.7).
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum CssEscapeError {
+pub enum CssEscapeFailure {
     /// Backslash-newline is not a valid escape; recovery returns a backslash delimiter.
     Newline,
     /// An escape reached EOF; recovery returns the replacement character U+FFFD.
@@ -1033,13 +1060,12 @@ pub enum CssEscapeError {
 /// The structured diagnostic-phase detail for one CSS grammar or conformance violation.
 ///
 /// Every variant carries the payload required by its stable [`CssErrorCode`] and preserves authored
-/// provenance without a free-form catch-all. Matching a variant diagnoses authored syntax; it does
-/// not perform browser-style recovery, cascade, substitution, matching, or contextual resolution.
-#[non_exhaustive]
+/// provenance without a free-form catch-all. [`CssError`] exposes the payload through its fact
+/// accessors; the representation stays private to the crate.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum ErrorKind {
+pub(crate) enum ErrorKind {
     /// Tokenizer escape processing required lexical recovery.
-    EscapeParseError(CssEscapeError),
+    EscapeParseError(CssEscapeFailure),
     /// Strict parsing reached EOF before an expected production completed.
     UnexpectedEnd(CssUnexpectedEndError),
     /// Strict parsing encountered a token rejected by the active grammar.
@@ -1069,7 +1095,7 @@ pub enum ErrorKind {
     /// An authored property was recognized but unsupported.
     UnsupportedProperty(CssUnsupportedPropertyError),
     /// An authored property value was invalid.
-    InvalidPropertyValue(CssPropertyValueError),
+    InvalidPropertyValue(PropertyValueRejection),
     /// A retained declaration value could not form a checked component sequence.
     InvalidComponentValue(Box<crate::CssComponentValueError>),
     /// An authored declaration annotation was malformed or misplaced.
@@ -1077,29 +1103,64 @@ pub enum ErrorKind {
     /// An authored descriptor name was not recognized for its at-rule.
     UnknownDescriptor(CssUnknownDescriptorError),
     /// An authored descriptor was recognized but unsupported.
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "no descriptor grammar reports this public code yet; CssError keeps its facts"
+        )
+    )]
     UnsupportedDescriptor(CssUnsupportedDescriptorError),
     /// An authored descriptor value was invalid.
     InvalidDescriptorValue(CssDescriptorValueError),
     /// Authored descriptors formed an invalid combination.
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "no descriptor grammar reports this public code yet; CssError keeps its facts"
+        )
+    )]
     InvalidDescriptorCombination(CssDescriptorCombinationError),
     /// Authored color syntax was invalid or outside the supported grammar.
     InvalidColorSyntax(CssColorSyntaxError),
     /// Authored nesting exceeded the parser's configured structural limit.
     NestingLimit(CssNestingLimitError),
+    /// Deep input was refused because the bounded parser thread could not start.
+    /// The limit is the depth trusted on the caller's stack.
+    ParserUnavailable(CssNestingLimitError),
 }
 
 /// A structured grammar or conformance diagnostic at one semantic authored-source position.
 ///
-/// The kind and position jointly identify the violated authored invariant. This error reports the
-/// failure but does not perform browser-style recovery, cascade, substitution, selector matching,
+/// [`Self::code`] classifies the violated authored invariant and the fact accessors expose its
+/// payload; each accessor names the codes that populate it. Match on [`Self::code`] with a
+/// wildcard arm, since [`CssErrorCode`] is non-exhaustive. This error reports the failure but
+/// does not perform browser-style recovery, cascade, substitution, selector matching,
 /// contextual resolution, or resource loading.
+///
+/// ```
+/// use surgeist_css::{CssErrorCode, parse_style_attribute};
+///
+/// let report = parse_style_attribute("width: red");
+/// let error = report.diagnostics()[0].error();
+/// assert_eq!(error.code(), CssErrorCode::InvalidPropertyValue);
+/// assert_eq!(error.encountered().map(|token| token.authored()), Some("red"));
+/// assert!(!error.is_resource_refusal());
+/// ```
+///
+/// The structured kind behind the accessors is private (CF23):
+///
+/// ```compile_fail,E0603
+/// use surgeist_css::ErrorKind;
+/// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Error {
+pub struct CssError {
     kind: ErrorKind,
     position: CssSourcePosition,
 }
 
-impl Error {
+impl CssError {
     pub(crate) fn resolve_original_coordinates(&mut self, source: &str) {
         self.position =
             CssSourcePosition::from_byte_offset_in(source, self.position.byte_offset().value());
@@ -1117,51 +1178,210 @@ impl Error {
         Self { kind, position }
     }
 
-    #[must_use]
-    /// Returns the structured diagnostic detail for the parse failure.
-    pub const fn kind(&self) -> &ErrorKind {
+    /// The private structured detail behind the public fact accessors.
+    pub(crate) const fn kind(&self) -> &ErrorKind {
         &self.kind
     }
 
     #[must_use]
-    /// Returns the stable machine-readable root category corresponding to [`Self::kind`].
+    /// Returns the stable machine-readable category of the violated invariant.
     pub const fn code(&self) -> CssErrorCode {
-        match self.kind {
-            ErrorKind::EscapeParseError(_) => CssErrorCode::EscapeParseError,
-            ErrorKind::UnexpectedEnd(_) => CssErrorCode::UnexpectedEnd,
-            ErrorKind::UnexpectedToken(_) => CssErrorCode::UnexpectedToken,
-            ErrorKind::InvalidAtRulePlacement(_) => CssErrorCode::InvalidAtRulePlacement,
-            ErrorKind::InvalidAtRulePrelude(_) => CssErrorCode::InvalidAtRulePrelude,
-            ErrorKind::InvalidAtRuleBody(_) => CssErrorCode::InvalidAtRuleBody,
-            ErrorKind::NamespaceRedeclaration(_) => CssErrorCode::NamespaceRedeclaration,
-            ErrorKind::LegacyNavigationTarget(_) => CssErrorCode::LegacyNavigationTarget,
-            ErrorKind::UnknownAtRule(_) => CssErrorCode::UnknownAtRule,
-            ErrorKind::UnsupportedAtRule(_) => CssErrorCode::UnsupportedAtRule,
-            ErrorKind::InvalidQualifiedRule(_) => CssErrorCode::InvalidQualifiedRule,
-            ErrorKind::InvalidSelector(_) => CssErrorCode::InvalidSelector,
-            ErrorKind::InvalidMediaQuery(_) => CssErrorCode::InvalidMediaQuery,
-            ErrorKind::UnknownProperty(_) => CssErrorCode::UnknownProperty,
-            ErrorKind::UnsupportedProperty(_) => CssErrorCode::UnsupportedProperty,
-            ErrorKind::InvalidPropertyValue(_) => CssErrorCode::InvalidPropertyValue,
-            ErrorKind::InvalidComponentValue(_) => CssErrorCode::InvalidComponentValue,
-            ErrorKind::InvalidDeclarationAnnotation(_) => {
-                CssErrorCode::InvalidDeclarationAnnotation
-            }
-            ErrorKind::UnknownDescriptor(_) => CssErrorCode::UnknownDescriptor,
-            ErrorKind::UnsupportedDescriptor(_) => CssErrorCode::UnsupportedDescriptor,
-            ErrorKind::InvalidDescriptorValue(_) => CssErrorCode::InvalidDescriptorValue,
-            ErrorKind::InvalidDescriptorCombination(_) => {
-                CssErrorCode::InvalidDescriptorCombination
-            }
-            ErrorKind::InvalidColorSyntax(_) => CssErrorCode::InvalidColorSyntax,
-            ErrorKind::NestingLimit(_) => CssErrorCode::NestingLimit,
-        }
+        self.kind.code()
     }
 
     #[must_use]
     /// Returns the semantic authored-source position of the responsible token or missing token.
     pub const fn position(&self) -> CssSourcePosition {
         self.position
+    }
+
+    #[must_use]
+    /// Returns the grammar expectation that the authored syntax did not meet.
+    ///
+    /// Populated for `UnexpectedEnd`, `UnexpectedToken`, `InvalidAtRulePlacement` (the expected
+    /// context), `InvalidAtRulePrelude`, `InvalidAtRuleBody`, `InvalidQualifiedRule`,
+    /// `InvalidSelector`, `InvalidMediaQuery`, `InvalidPropertyValue`, `InvalidDescriptorValue`
+    /// and `InvalidColorSyntax`.
+    pub const fn expectation(&self) -> Option<CssGrammarExpectation> {
+        self.kind.expectation()
+    }
+
+    #[must_use]
+    /// Returns the responsible authored token, or `None` at EOF or for codes without one.
+    ///
+    /// Populated for `UnexpectedToken` and `InvalidDeclarationAnnotation`, and, when a token was
+    /// responsible, for `InvalidAtRulePrelude`, `InvalidAtRuleBody`, `InvalidQualifiedRule`,
+    /// `InvalidSelector`, `InvalidMediaQuery`, `InvalidPropertyValue`, `InvalidDescriptorValue`
+    /// and `InvalidColorSyntax`.
+    pub const fn encountered(&self) -> Option<&CssTokenSummary> {
+        self.kind.encountered()
+    }
+
+    #[must_use]
+    /// Returns the decoded authored at-rule name that owns the failure.
+    ///
+    /// Populated for `InvalidAtRulePlacement`, `InvalidAtRulePrelude`, `InvalidAtRuleBody`,
+    /// `UnknownAtRule`, `UnsupportedAtRule`, `UnknownDescriptor`, `UnsupportedDescriptor`,
+    /// `InvalidDescriptorValue` and `InvalidDescriptorCombination`.
+    pub fn at_rule(&self) -> Option<&CssAtRuleName> {
+        self.kind.at_rule()
+    }
+
+    #[must_use]
+    /// Returns the grammar production active at the failure.
+    ///
+    /// Populated for `InvalidAtRulePlacement`, `InvalidAtRulePrelude`, `InvalidAtRuleBody`,
+    /// `InvalidQualifiedRule`, `NestingLimit` and `ParserUnavailable` (the enclosing
+    /// production), and for `InvalidSelector` when a selector production is known.
+    pub fn production(&self) -> Option<CssProductionId> {
+        self.kind.production()
+    }
+
+    #[must_use]
+    /// Returns the repeated namespace prefix of a `NamespaceRedeclaration`.
+    ///
+    /// `None` both for a repeated default namespace and for every other code, so read it after
+    /// checking [`Self::code`].
+    pub const fn namespace_prefix(&self) -> Option<&crate::CssNamespacePrefix> {
+        match &self.kind {
+            ErrorKind::NamespaceRedeclaration(detail) => detail.prefix(),
+            _ => None,
+        }
+    }
+
+    #[must_use]
+    /// Returns the at-keyword position of the earlier declaration a `NamespaceRedeclaration`
+    /// repeats.
+    pub const fn previous_position(&self) -> Option<CssSourcePosition> {
+        match &self.kind {
+            ErrorKind::NamespaceRedeclaration(detail) => Some(detail.previous_position()),
+            _ => None,
+        }
+    }
+
+    #[must_use]
+    /// Returns the decoded underscore-leading target of a `LegacyNavigationTarget`, without
+    /// case folding or frame interpretation.
+    pub fn navigation_target(&self) -> Option<&str> {
+        match &self.kind {
+            ErrorKind::LegacyNavigationTarget(detail) => Some(detail.target()),
+            _ => None,
+        }
+    }
+
+    #[must_use]
+    /// Returns the support-catalog identity of recognized but unsupported syntax.
+    ///
+    /// Populated for `UnsupportedAtRule`, `UnsupportedProperty` and `UnsupportedDescriptor`.
+    pub const fn feature(&self) -> Option<CssFeatureId> {
+        match &self.kind {
+            ErrorKind::UnsupportedAtRule(detail) => Some(detail.feature()),
+            ErrorKind::UnsupportedProperty(detail) => Some(detail.feature()),
+            ErrorKind::UnsupportedDescriptor(detail) => Some(detail.feature()),
+            _ => None,
+        }
+    }
+
+    #[must_use]
+    /// Returns the decoded media-feature name that caused an `InvalidMediaQuery`, when known.
+    pub const fn media_feature(&self) -> Option<&CssMediaFeatureName> {
+        match &self.kind {
+            ErrorKind::InvalidMediaQuery(detail) => detail.feature(),
+            _ => None,
+        }
+    }
+
+    #[must_use]
+    /// Returns the decoded authored property name of an `UnknownProperty` or
+    /// `UnsupportedProperty`.
+    pub const fn property_name(&self) -> Option<&CssPropertyName> {
+        match &self.kind {
+            ErrorKind::UnknownProperty(detail) => Some(detail.name()),
+            ErrorKind::UnsupportedProperty(detail) => Some(detail.name()),
+            _ => None,
+        }
+    }
+
+    #[must_use]
+    /// Returns the canonical property whose value grammar rejected an `InvalidPropertyValue`.
+    pub const fn known_property(&self) -> Option<CssKnownProperty> {
+        self.kind.known_property()
+    }
+
+    #[must_use]
+    /// Returns the grammar context owning an `InvalidDeclarationAnnotation`.
+    pub const fn declaration_context(&self) -> Option<CssDeclarationContextRef<'_>> {
+        match &self.kind {
+            ErrorKind::InvalidDeclarationAnnotation(detail) => Some(detail.context()),
+            _ => None,
+        }
+    }
+
+    #[must_use]
+    /// Returns the decoded authored descriptor name.
+    ///
+    /// Populated for `UnknownDescriptor`, `UnsupportedDescriptor` and `InvalidDescriptorValue`,
+    /// and for `InvalidDescriptorCombination`, where it is the descriptor that made the
+    /// combination invalid.
+    pub fn descriptor(&self) -> Option<&CssDescriptorName> {
+        self.kind.descriptor()
+    }
+
+    #[must_use]
+    /// Returns the descriptors an `InvalidDescriptorCombination` conflicts with; empty for
+    /// other codes.
+    pub fn conflicting_descriptors(&self) -> &[CssDescriptorName] {
+        match &self.kind {
+            ErrorKind::InvalidDescriptorCombination(detail) => detail.conflicting(),
+            _ => &[],
+        }
+    }
+
+    #[must_use]
+    /// Returns the colour component responsible for an `InvalidColorSyntax`, when known.
+    pub const fn color_component(&self) -> Option<&CssColorComponentName> {
+        self.kind.color_component()
+    }
+
+    #[must_use]
+    /// Returns the depth limit of a `NestingLimit`, or the depth trusted on the caller's stack
+    /// for a `ParserUnavailable` refusal.
+    pub const fn nesting_limit(&self) -> Option<u32> {
+        match &self.kind {
+            ErrorKind::NestingLimit(detail) | ErrorKind::ParserUnavailable(detail) => {
+                Some(detail.limit())
+            }
+            _ => None,
+        }
+    }
+
+    #[must_use]
+    /// Returns the lexical escape failure of an `EscapeParseError`.
+    pub const fn escape_failure(&self) -> Option<CssEscapeFailure> {
+        match self.kind {
+            ErrorKind::EscapeParseError(failure) => Some(failure),
+            _ => None,
+        }
+    }
+
+    #[must_use]
+    /// Returns the component failure of an `InvalidComponentValue`.
+    pub fn component_error(&self) -> Option<&crate::CssComponentValueError> {
+        match &self.kind {
+            ErrorKind::InvalidComponentValue(detail) => Some(detail),
+            _ => None,
+        }
+    }
+
+    #[must_use]
+    /// Returns whether a parser or component resource refused the input, rather than the input
+    /// violating a grammar.
+    ///
+    /// True for `NestingLimit`, `ParserUnavailable`, and an `InvalidComponentValue` whose
+    /// component error is a resource limit ([`crate::CssComponentValueError::is_resource_limit`]).
+    /// A consumer that publishes only complete results aborts on these.
+    pub fn is_resource_refusal(&self) -> bool {
+        self.kind.is_resource_refusal()
     }
 
     /// Maps a checked grammar failure back to its supplied component input.
@@ -1183,20 +1403,296 @@ impl Error {
     }
 }
 
-impl fmt::Display for Error {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            formatter,
-            "CSS parse error {:?} at {}",
-            self.code(),
-            self.position
-        )
+impl ErrorKind {
+    pub(crate) const fn code(&self) -> CssErrorCode {
+        match self {
+            Self::EscapeParseError(_) => CssErrorCode::EscapeParseError,
+            Self::UnexpectedEnd(_) => CssErrorCode::UnexpectedEnd,
+            Self::UnexpectedToken(_) => CssErrorCode::UnexpectedToken,
+            Self::InvalidAtRulePlacement(_) => CssErrorCode::InvalidAtRulePlacement,
+            Self::InvalidAtRulePrelude(_) => CssErrorCode::InvalidAtRulePrelude,
+            Self::InvalidAtRuleBody(_) => CssErrorCode::InvalidAtRuleBody,
+            Self::NamespaceRedeclaration(_) => CssErrorCode::NamespaceRedeclaration,
+            Self::LegacyNavigationTarget(_) => CssErrorCode::LegacyNavigationTarget,
+            Self::UnknownAtRule(_) => CssErrorCode::UnknownAtRule,
+            Self::UnsupportedAtRule(_) => CssErrorCode::UnsupportedAtRule,
+            Self::InvalidQualifiedRule(_) => CssErrorCode::InvalidQualifiedRule,
+            Self::InvalidSelector(_) => CssErrorCode::InvalidSelector,
+            Self::InvalidMediaQuery(_) => CssErrorCode::InvalidMediaQuery,
+            Self::UnknownProperty(_) => CssErrorCode::UnknownProperty,
+            Self::UnsupportedProperty(_) => CssErrorCode::UnsupportedProperty,
+            Self::InvalidPropertyValue(_) => CssErrorCode::InvalidPropertyValue,
+            Self::InvalidComponentValue(_) => CssErrorCode::InvalidComponentValue,
+            Self::InvalidDeclarationAnnotation(_) => CssErrorCode::InvalidDeclarationAnnotation,
+            Self::UnknownDescriptor(_) => CssErrorCode::UnknownDescriptor,
+            Self::UnsupportedDescriptor(_) => CssErrorCode::UnsupportedDescriptor,
+            Self::InvalidDescriptorValue(_) => CssErrorCode::InvalidDescriptorValue,
+            Self::InvalidDescriptorCombination(_) => CssErrorCode::InvalidDescriptorCombination,
+            Self::InvalidColorSyntax(_) => CssErrorCode::InvalidColorSyntax,
+            Self::NestingLimit(_) => CssErrorCode::NestingLimit,
+            Self::ParserUnavailable(_) => CssErrorCode::ParserUnavailable,
+        }
+    }
+
+    pub(crate) const fn expectation(&self) -> Option<CssGrammarExpectation> {
+        match self {
+            Self::UnexpectedEnd(detail) => Some(detail.expectation()),
+            Self::UnexpectedToken(detail) => Some(detail.expectation()),
+            Self::InvalidAtRulePlacement(detail) => Some(detail.expected_context()),
+            Self::InvalidAtRulePrelude(detail) | Self::InvalidAtRuleBody(detail) => {
+                Some(detail.expectation())
+            }
+            Self::InvalidQualifiedRule(detail) => Some(detail.expectation()),
+            Self::InvalidSelector(detail) => Some(detail.expectation()),
+            Self::InvalidMediaQuery(detail) => Some(detail.expectation()),
+            Self::InvalidPropertyValue(detail) => Some(detail.expectation()),
+            Self::InvalidDescriptorValue(detail) => Some(detail.expectation()),
+            Self::InvalidColorSyntax(detail) => Some(detail.expectation()),
+            _ => None,
+        }
+    }
+
+    pub(crate) const fn encountered(&self) -> Option<&CssTokenSummary> {
+        match self {
+            Self::UnexpectedToken(detail) => Some(detail.encountered()),
+            Self::InvalidAtRulePrelude(detail) | Self::InvalidAtRuleBody(detail) => {
+                detail.encountered()
+            }
+            Self::InvalidQualifiedRule(detail) => detail.encountered(),
+            Self::InvalidSelector(detail) => detail.encountered(),
+            Self::InvalidMediaQuery(detail) => detail.encountered(),
+            Self::InvalidPropertyValue(detail) => detail.encountered(),
+            Self::InvalidDeclarationAnnotation(detail) => Some(detail.encountered()),
+            Self::InvalidDescriptorValue(detail) => detail.encountered(),
+            Self::InvalidColorSyntax(detail) => detail.encountered(),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn at_rule(&self) -> Option<&CssAtRuleName> {
+        match self {
+            Self::InvalidAtRulePlacement(detail) => Some(detail.name()),
+            Self::InvalidAtRulePrelude(detail) | Self::InvalidAtRuleBody(detail) => {
+                Some(detail.name())
+            }
+            Self::UnknownAtRule(detail) => Some(detail.name()),
+            Self::UnsupportedAtRule(detail) => Some(detail.name()),
+            Self::UnknownDescriptor(detail) => Some(detail.at_rule()),
+            Self::UnsupportedDescriptor(detail) => Some(detail.at_rule()),
+            Self::InvalidDescriptorValue(detail) => Some(detail.at_rule()),
+            Self::InvalidDescriptorCombination(detail) => Some(detail.at_rule()),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn production(&self) -> Option<CssProductionId> {
+        match self {
+            Self::InvalidAtRulePlacement(detail) => Some(detail.production()),
+            Self::InvalidAtRulePrelude(detail) | Self::InvalidAtRuleBody(detail) => {
+                Some(detail.production())
+            }
+            Self::InvalidQualifiedRule(detail) => Some(detail.production()),
+            Self::InvalidSelector(detail) => detail.production(),
+            Self::NestingLimit(detail) | Self::ParserUnavailable(detail) => {
+                Some(detail.enclosing_production())
+            }
+            _ => None,
+        }
+    }
+
+    pub(crate) const fn known_property(&self) -> Option<CssKnownProperty> {
+        match self {
+            Self::InvalidPropertyValue(detail) => Some(detail.property()),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn descriptor(&self) -> Option<&CssDescriptorName> {
+        match self {
+            Self::UnknownDescriptor(detail) => Some(detail.descriptor()),
+            Self::UnsupportedDescriptor(detail) => Some(detail.descriptor()),
+            Self::InvalidDescriptorValue(detail) => Some(detail.descriptor()),
+            Self::InvalidDescriptorCombination(detail) => Some(detail.responsible()),
+            _ => None,
+        }
+    }
+
+    pub(crate) const fn color_component(&self) -> Option<&CssColorComponentName> {
+        match self {
+            Self::InvalidColorSyntax(detail) => detail.component(),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn is_resource_refusal(&self) -> bool {
+        match self {
+            Self::NestingLimit(_) | Self::ParserUnavailable(_) => true,
+            Self::InvalidComponentValue(detail) => detail.is_resource_limit(),
+            _ => false,
+        }
+    }
+
+    /// One summary sentence built from the payload's facts, without a position.
+    pub(crate) fn describe(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::EscapeParseError(CssEscapeFailure::Newline) => {
+                formatter.write_str("invalid CSS escape: a backslash precedes a newline")
+            }
+            Self::EscapeParseError(CssEscapeFailure::EndOfInput) => {
+                formatter.write_str("invalid CSS escape: the input ends after a backslash")
+            }
+            Self::UnexpectedEnd(_) => formatter.write_str("unexpected end of CSS input"),
+            Self::UnexpectedToken(_) => formatter.write_str("unexpected CSS token"),
+            Self::InvalidAtRulePlacement(detail) => write!(
+                formatter,
+                "@{} appears outside its permitted context",
+                detail.name().as_str()
+            ),
+            Self::InvalidAtRulePrelude(detail) => {
+                write!(formatter, "invalid @{} prelude", detail.name().as_str())
+            }
+            Self::InvalidAtRuleBody(detail) => {
+                write!(formatter, "invalid @{} body", detail.name().as_str())
+            }
+            Self::NamespaceRedeclaration(detail) => match detail.prefix() {
+                Some(prefix) => write!(
+                    formatter,
+                    "namespace prefix `{}` is declared again",
+                    prefix.as_str()
+                ),
+                None => formatter.write_str("the default namespace is declared again"),
+            },
+            Self::LegacyNavigationTarget(detail) => write!(
+                formatter,
+                "navigation target `{}` begins with an underscore",
+                detail.target()
+            ),
+            Self::UnknownAtRule(detail) => {
+                write!(formatter, "unknown at-rule @{}", detail.name().as_str())
+            }
+            Self::UnsupportedAtRule(detail) => write!(
+                formatter,
+                "unsupported at-rule @{} ({})",
+                detail.name().as_str(),
+                detail.feature().as_str()
+            ),
+            Self::InvalidQualifiedRule(_) => formatter.write_str("invalid qualified rule"),
+            Self::InvalidSelector(_) => formatter.write_str("invalid selector"),
+            Self::InvalidMediaQuery(detail) => match detail.feature() {
+                Some(feature) => write!(
+                    formatter,
+                    "invalid media query at feature `{}`",
+                    feature.as_str()
+                ),
+                None => formatter.write_str("invalid media query"),
+            },
+            Self::UnknownProperty(detail) => {
+                write!(formatter, "unknown property `{}`", detail.name().as_str())
+            }
+            Self::UnsupportedProperty(detail) => write!(
+                formatter,
+                "unsupported property `{}` ({})",
+                detail.name().as_str(),
+                detail.feature().as_str()
+            ),
+            Self::InvalidPropertyValue(detail) => write!(
+                formatter,
+                "invalid value for property `{}`",
+                detail.property().canonical_name()
+            ),
+            Self::InvalidComponentValue(detail) => {
+                formatter.write_str("invalid component value: ")?;
+                detail.describe(formatter)
+            }
+            Self::InvalidDeclarationAnnotation(_) => {
+                formatter.write_str("invalid declaration annotation")
+            }
+            Self::UnknownDescriptor(detail) => write!(
+                formatter,
+                "unknown descriptor `{}` in @{}",
+                detail.descriptor().as_str(),
+                detail.at_rule().as_str()
+            ),
+            Self::UnsupportedDescriptor(detail) => write!(
+                formatter,
+                "unsupported descriptor `{}` in @{} ({})",
+                detail.descriptor().as_str(),
+                detail.at_rule().as_str(),
+                detail.feature().as_str()
+            ),
+            Self::InvalidDescriptorValue(detail) => write!(
+                formatter,
+                "invalid value for descriptor `{}` in @{}",
+                detail.descriptor().as_str(),
+                detail.at_rule().as_str()
+            ),
+            Self::InvalidDescriptorCombination(detail) => {
+                write!(
+                    formatter,
+                    "descriptor `{}` in @{} conflicts with",
+                    detail.responsible().as_str(),
+                    detail.at_rule().as_str()
+                )?;
+                for (index, conflicting) in detail.conflicting().iter().enumerate() {
+                    let separator = if index == 0 { " " } else { ", " };
+                    write!(formatter, "{separator}`{}`", conflicting.as_str())?;
+                }
+                Ok(())
+            }
+            Self::InvalidColorSyntax(detail) => match detail.component() {
+                Some(component) => write!(
+                    formatter,
+                    "invalid color syntax in component `{}`",
+                    component.as_str()
+                ),
+                None => formatter.write_str("invalid color syntax"),
+            },
+            Self::NestingLimit(detail) => write!(
+                formatter,
+                "CSS nesting exceeds the limit of {} levels",
+                detail.limit()
+            ),
+            Self::ParserUnavailable(detail) => write!(
+                formatter,
+                "input nested deeper than {} levels was refused because the CSS parser thread \
+                 is unavailable",
+                detail.limit()
+            ),
+        }?;
+        if let Some(expectation) = self.expectation()
+            && !matches!(self, Self::InvalidAtRulePlacement(_))
+        {
+            write!(formatter, "; expected {}", expectation.as_str())?;
+        }
+        if let Self::InvalidAtRulePlacement(detail) = self {
+            write!(
+                formatter,
+                "; permitted: {}",
+                detail.expected_context().as_str()
+            )?;
+        }
+        if let Some(token) = self.encountered() {
+            write!(formatter, ", found `{}`", token.authored())?;
+        }
+        Ok(())
     }
 }
 
-impl std::error::Error for Error {}
+impl fmt::Display for CssError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.kind.describe(formatter)?;
+        write!(formatter, " at {}", self.position)
+    }
+}
 
-pub(crate) fn from_parse_error(source: &str, error: ParseError<'_, Error>) -> Error {
+impl std::error::Error for CssError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.component_error()
+            .map(|error| error as &(dyn std::error::Error + 'static))
+    }
+}
+
+pub(crate) fn from_parse_error(source: &str, error: ParseError<'_, CssError>) -> CssError {
     match error.kind {
         ParseErrorKind::Custom(error) => error,
         ParseErrorKind::Basic(kind) => basic_error(error.location, kind),
@@ -1204,10 +1700,10 @@ pub(crate) fn from_parse_error(source: &str, error: ParseError<'_, Error>) -> Er
     .resolve_source(source)
 }
 
-pub(crate) fn is_nesting_limit_error(error: &ParseError<'_, Error>) -> bool {
+pub(crate) fn is_nesting_limit_error(error: &ParseError<'_, CssError>) -> bool {
     matches!(
         error.kind,
-        ParseErrorKind::Custom(Error {
+        ParseErrorKind::Custom(CssError {
             kind: ErrorKind::NestingLimit(_),
             ..
         })
@@ -1219,26 +1715,49 @@ pub(crate) fn nesting_limit<'i>(
     byte_offset: usize,
     limit: u32,
     enclosing_production: &'static str,
-) -> ParseError<'i, Error> {
+) -> ParseError<'i, CssError> {
+    depth_error(
+        source,
+        byte_offset,
+        ErrorKind::NestingLimit(CssNestingLimitError {
+            limit,
+            enclosing_production: CssProductionId::new(enclosing_production),
+        }),
+    )
+}
+
+/// The refusal of input deeper than `direct_depth` when the bounded parser
+/// thread cannot start (#1277), at the first opening beyond that depth.
+pub(crate) fn parser_unavailable<'i>(
+    source: &str,
+    byte_offset: usize,
+    direct_depth: u32,
+    enclosing_production: &'static str,
+) -> ParseError<'i, CssError> {
+    depth_error(
+        source,
+        byte_offset,
+        ErrorKind::ParserUnavailable(CssNestingLimitError {
+            limit: direct_depth,
+            enclosing_production: CssProductionId::new(enclosing_production),
+        }),
+    )
+}
+
+fn depth_error<'i>(source: &str, byte_offset: usize, kind: ErrorKind) -> ParseError<'i, CssError> {
     let position = CssSourcePosition::from_byte_offset_in(source, byte_offset);
     let location = cssparser::SourceLocation {
         line: position.line().value(),
         column: position.column().value().saturating_add(1),
     };
     ParseError {
-        kind: ParseErrorKind::Custom(Error {
-            kind: ErrorKind::NestingLimit(CssNestingLimitError {
-                limit,
-                enclosing_production: CssProductionId::new(enclosing_production),
-            }),
-            position,
-        }),
+        kind: ParseErrorKind::Custom(CssError { kind, position }),
         location,
     }
 }
 
-pub(crate) fn legacy_navigation_target(target: &str, position: CssSourcePosition) -> Error {
-    Error {
+pub(crate) fn legacy_navigation_target(target: &str, position: CssSourcePosition) -> CssError {
+    CssError {
         kind: ErrorKind::LegacyNavigationTarget(CssLegacyNavigationTargetError {
             target: target.to_owned(),
         }),
@@ -1250,8 +1769,8 @@ pub(crate) fn namespace_redeclaration(
     prefix: Option<crate::CssNamespacePrefix>,
     position: CssSourcePosition,
     previous_position: CssSourcePosition,
-) -> Error {
-    Error {
+) -> CssError {
+    CssError {
         kind: ErrorKind::NamespaceRedeclaration(CssNamespaceRedeclarationError {
             prefix,
             previous_position,
@@ -1260,8 +1779,8 @@ pub(crate) fn namespace_redeclaration(
     }
 }
 
-pub(crate) fn implicit_eof(source: &str) -> Error {
-    Error {
+pub(crate) fn implicit_eof(source: &str) -> CssError {
+    CssError {
         kind: ErrorKind::UnexpectedEnd(CssUnexpectedEndError {
             expectation: EXPECT_CSS_SYNTAX,
         }),
@@ -1269,8 +1788,8 @@ pub(crate) fn implicit_eof(source: &str) -> Error {
     }
 }
 
-pub(crate) fn unterminated_at_rule(source: &str, byte_offset: usize) -> Error {
-    Error {
+pub(crate) fn unterminated_at_rule(source: &str, byte_offset: usize) -> CssError {
+    CssError {
         kind: ErrorKind::UnexpectedEnd(CssUnexpectedEndError {
             expectation: CssGrammarExpectation::new("a semicolon or block terminating an at-rule"),
         }),
@@ -1281,9 +1800,9 @@ pub(crate) fn unterminated_at_rule(source: &str, byte_offset: usize) -> Error {
 pub(crate) fn escape_parse_error(
     source: &str,
     byte_offset: usize,
-    detail: CssEscapeError,
-) -> Error {
-    Error {
+    detail: CssEscapeFailure,
+) -> CssError {
+    CssError {
         kind: ErrorKind::EscapeParseError(detail),
         position: CssSourcePosition::from_byte_offset_in(source, byte_offset),
     }
@@ -1293,7 +1812,7 @@ pub(crate) fn escape_parse_error(
 pub(crate) fn unexpected_component_value<'i>(
     component: &crate::CssComponentValue,
     expectation: &'static str,
-) -> ParseError<'i, Error> {
+) -> ParseError<'i, CssError> {
     let crate::CssValueOrigin::Parsed(origin) = component.origin() else {
         unreachable!("source value grammar owns parsed component origins")
     };
@@ -1304,14 +1823,14 @@ pub(crate) fn unexpected_component_value_at<'i>(
     component: &crate::CssComponentValue,
     expectation: &'static str,
     position: CssSourcePosition,
-) -> ParseError<'i, Error> {
+) -> ParseError<'i, CssError> {
     let encountered = CssTokenSummary::from_component(component);
     ParseError {
         location: cssparser::SourceLocation {
             line: position.line().value(),
             column: position.column().value() + 1,
         },
-        kind: ParseErrorKind::Custom(Error {
+        kind: ParseErrorKind::Custom(CssError {
             position,
             kind: ErrorKind::UnexpectedToken(CssUnexpectedTokenError {
                 expectation: CssGrammarExpectation::new(expectation),
@@ -1324,7 +1843,7 @@ pub(crate) fn unexpected_component_value_at<'i>(
 pub(crate) fn unexpected_end_at<'i>(
     location: cssparser::SourceLocation,
     expectation: &'static str,
-) -> ParseError<'i, Error> {
+) -> ParseError<'i, CssError> {
     error_at(
         location,
         ErrorKind::UnexpectedEnd(CssUnexpectedEndError {
@@ -1336,8 +1855,8 @@ pub(crate) fn unexpected_end_at<'i>(
 pub(crate) fn from_rule_parse_error(
     source: &str,
     failed_unit: &str,
-    error: ParseError<'_, Error>,
-) -> Error {
+    error: ParseError<'_, CssError>,
+) -> CssError {
     let mut error = from_parse_error(source, error);
     let unit = failed_unit.trim_start();
     // The adopted conditional grammar owns its prelude and terminal component
@@ -1389,15 +1908,15 @@ pub(crate) fn from_rule_parse_error(
     error
 }
 
-fn basic_error(location: cssparser::SourceLocation, kind: BasicParseErrorKind<'_>) -> Error {
+fn basic_error(location: cssparser::SourceLocation, kind: BasicParseErrorKind<'_>) -> CssError {
     match kind {
-        BasicParseErrorKind::EndOfInput => Error::at(
+        BasicParseErrorKind::EndOfInput => CssError::at(
             location,
             ErrorKind::UnexpectedEnd(CssUnexpectedEndError {
                 expectation: EXPECT_CSS_SYNTAX,
             }),
         ),
-        BasicParseErrorKind::UnexpectedToken(token) => Error::at(
+        BasicParseErrorKind::UnexpectedToken(token) => CssError::at(
             location,
             ErrorKind::UnexpectedToken(CssUnexpectedTokenError {
                 expectation: EXPECT_CSS_SYNTAX,
@@ -1407,7 +1926,7 @@ fn basic_error(location: cssparser::SourceLocation, kind: BasicParseErrorKind<'_
         BasicParseErrorKind::AtRuleInvalid(name) => {
             let name = name.to_string();
             if let Some(feature) = unsupported_at_rule_feature(&name) {
-                Error::at(
+                CssError::at(
                     location,
                     ErrorKind::UnsupportedAtRule(CssUnsupportedAtRuleError {
                         name: CssAtRuleName::new(name),
@@ -1415,7 +1934,7 @@ fn basic_error(location: cssparser::SourceLocation, kind: BasicParseErrorKind<'_
                     }),
                 )
             } else {
-                Error::at(
+                CssError::at(
                     location,
                     ErrorKind::UnknownAtRule(CssUnknownAtRuleError {
                         name: CssAtRuleName::new(name),
@@ -1423,7 +1942,7 @@ fn basic_error(location: cssparser::SourceLocation, kind: BasicParseErrorKind<'_
                 )
             }
         }
-        BasicParseErrorKind::QualifiedRuleInvalid => Error::at(
+        BasicParseErrorKind::QualifiedRuleInvalid => CssError::at(
             location,
             ErrorKind::InvalidQualifiedRule(CssQualifiedRuleError {
                 production: QUALIFIED_RULE,
@@ -1431,7 +1950,7 @@ fn basic_error(location: cssparser::SourceLocation, kind: BasicParseErrorKind<'_
                 encountered: None,
             }),
         ),
-        BasicParseErrorKind::AtRuleBodyInvalid => Error::at(
+        BasicParseErrorKind::AtRuleBodyInvalid => CssError::at(
             location,
             ErrorKind::InvalidAtRuleBody(CssAtRuleSyntaxError {
                 name: CssAtRuleName::new("at-rule"),
@@ -1443,11 +1962,11 @@ fn basic_error(location: cssparser::SourceLocation, kind: BasicParseErrorKind<'_
     }
 }
 
-pub(crate) fn basic<'i>(error: BasicParseError<'i>) -> ParseError<'i, Error> {
+pub(crate) fn basic<'i>(error: BasicParseError<'i>) -> ParseError<'i, CssError> {
     error.into()
 }
 
-pub(crate) fn selector_basic<'i>(error: BasicParseError<'i>) -> ParseError<'i, Error> {
+pub(crate) fn selector_basic<'i>(error: BasicParseError<'i>) -> ParseError<'i, CssError> {
     let location = error.location;
     let encountered = match error.kind {
         BasicParseErrorKind::UnexpectedToken(token) => Some(CssTokenSummary::from_token(&token)),
@@ -1469,13 +1988,13 @@ pub(crate) fn selector_basic<'i>(error: BasicParseError<'i>) -> ParseError<'i, E
 pub(crate) fn selector_component_error<'i>(
     fallback: cssparser::SourceLocation,
     detail: crate::CssComponentValueError,
-) -> ParseError<'i, Error> {
+) -> ParseError<'i, CssError> {
     let crate::CssValueOrigin::Parsed(origin) = detail.origin() else {
         return invalid_component_value(fallback, detail);
     };
     let authored = &origin.source().as_str()
         [origin.span().start().byte_offset().value()..origin.span().end().byte_offset().value()];
-    let kind = match detail.kind() {
+    let kind = match detail.kind {
         crate::CssComponentValueErrorKind::BadString => CssTokenKind::BadString,
         crate::CssComponentValueErrorKind::BadUrl => CssTokenKind::BadUrl,
         crate::CssComponentValueErrorKind::UnmatchedClosingDelimiter => match authored {
@@ -1492,7 +2011,7 @@ pub(crate) fn selector_component_error<'i>(
             line: position.line().value(),
             column: position.column().value().saturating_add(1),
         },
-        kind: ParseErrorKind::Custom(Error {
+        kind: ParseErrorKind::Custom(CssError {
             position,
             kind: ErrorKind::InvalidSelector(CssSelectorError {
                 production: Some(SELECTOR_LIST),
@@ -1509,7 +2028,7 @@ pub(crate) fn selector_component_error<'i>(
 pub(crate) fn invalid_component_value<'i>(
     location: cssparser::SourceLocation,
     detail: crate::CssComponentValueError,
-) -> ParseError<'i, Error> {
+) -> ParseError<'i, CssError> {
     let position = match detail.origin() {
         crate::CssValueOrigin::Parsed(origin) => origin.span().start(),
         crate::CssValueOrigin::ImplicitClosure { opening, .. } => opening.span().start(),
@@ -1519,14 +2038,14 @@ pub(crate) fn invalid_component_value<'i>(
     };
     ParseError {
         location,
-        kind: ParseErrorKind::Custom(Error {
+        kind: ParseErrorKind::Custom(CssError {
             kind: ErrorKind::InvalidComponentValue(Box::new(detail)),
             position,
         }),
     }
 }
 
-pub(crate) fn invalid_syntax<'i>(location: cssparser::SourceLocation) -> ParseError<'i, Error> {
+pub(crate) fn invalid_syntax<'i>(location: cssparser::SourceLocation) -> ParseError<'i, CssError> {
     error_at(
         location,
         ErrorKind::InvalidQualifiedRule(CssQualifiedRuleError {
@@ -1541,14 +2060,14 @@ pub(crate) fn invalid_when_prelude<'i>(
     position: CssSourcePosition,
     name: &str,
     token: Option<&Token<'_>>,
-) -> ParseError<'i, Error> {
+) -> ParseError<'i, CssError> {
     let location = cssparser::SourceLocation {
         line: position.line().value(),
         column: position.column().value() + 1,
     };
     ParseError {
         location,
-        kind: ParseErrorKind::Custom(Error {
+        kind: ParseErrorKind::Custom(CssError {
             position,
             kind: ErrorKind::InvalidAtRulePrelude(CssAtRuleSyntaxError {
                 name: CssAtRuleName::new(name),
@@ -1559,14 +2078,14 @@ pub(crate) fn invalid_when_prelude<'i>(
         }),
     }
 }
-pub(crate) fn invalid_free_else(source: &str, position: CssSourcePosition) -> Error {
+pub(crate) fn invalid_free_else(source: &str, position: CssSourcePosition) -> CssError {
     let name = crate::tokenization::next_source_token(source, position.byte_offset().value())
         .and_then(|(_, _, token)| match token {
             Token::AtKeyword(name) => Some(name),
             _ => None,
         })
         .expect("parsed Else starts at its original at-keyword");
-    Error {
+    CssError {
         position,
         kind: ErrorKind::InvalidAtRulePlacement(CssAtRulePlacementError {
             name: CssAtRuleName::new(name.as_ref()),
@@ -1580,7 +2099,7 @@ pub(crate) fn invalid_at_rule_placement<'i>(
     location: cssparser::SourceLocation,
     name: &str,
     expected_context: &'static str,
-) -> ParseError<'i, Error> {
+) -> ParseError<'i, CssError> {
     error_at(
         location,
         ErrorKind::InvalidAtRulePlacement(CssAtRulePlacementError {
@@ -1591,20 +2110,20 @@ pub(crate) fn invalid_at_rule_placement<'i>(
 }
 
 pub(crate) fn with_at_rule_prelude_context<'i>(
-    mut error: ParseError<'i, Error>,
+    mut error: ParseError<'i, CssError>,
     name: &str,
     production: &'static str,
     expectation: &'static str,
-) -> ParseError<'i, Error> {
+) -> ParseError<'i, CssError> {
     let encountered = take_encountered(&mut error.kind);
     if !matches!(
         error.kind,
-        ParseErrorKind::Custom(Error {
+        ParseErrorKind::Custom(CssError {
             kind: ErrorKind::InvalidMediaQuery(_),
             ..
         })
     ) {
-        error.kind = ParseErrorKind::Custom(Error::at(
+        error.kind = ParseErrorKind::Custom(CssError::at(
             error.location,
             ErrorKind::InvalidAtRulePrelude(CssAtRuleSyntaxError {
                 name: CssAtRuleName::new(name),
@@ -1622,7 +2141,7 @@ pub(crate) fn invalid_at_rule_body<'i, 't>(
     name: &str,
     production: &'static str,
     expectation: &'static str,
-) -> ParseError<'i, Error> {
+) -> ParseError<'i, CssError> {
     invalid_at_rule_body_at(
         CssSourcePosition::from_cssparser(input.position(), input.current_source_location()),
         input.current_source_location(),
@@ -1637,7 +2156,7 @@ pub(crate) fn invalid_at_rule_block<'i, 't>(
     name: &str,
     production: &'static str,
     expectation: &'static str,
-) -> ParseError<'i, Error> {
+) -> ParseError<'i, CssError> {
     let position =
         CssSourcePosition::from_cssparser(input.position(), input.current_source_location())
             .previous_ascii_byte();
@@ -1652,9 +2171,9 @@ fn invalid_at_rule_body_at<'i>(
     name: &str,
     production: &'static str,
     expectation: &'static str,
-) -> ParseError<'i, Error> {
+) -> ParseError<'i, CssError> {
     ParseError {
-        kind: ParseErrorKind::Custom(Error::at_exact_nonzero_byte_offset(
+        kind: ParseErrorKind::Custom(CssError::at_exact_nonzero_byte_offset(
             position,
             ErrorKind::InvalidAtRuleBody(CssAtRuleSyntaxError {
                 name: CssAtRuleName::new(name),
@@ -1667,13 +2186,13 @@ fn invalid_at_rule_body_at<'i>(
     }
 }
 
-pub(crate) fn invalid_selector<'i, 't>(input: &Parser<'i, 't>) -> ParseError<'i, Error> {
+pub(crate) fn invalid_selector<'i, 't>(input: &Parser<'i, 't>) -> ParseError<'i, CssError> {
     invalid_selector_at(input.current_source_location())
 }
 
 pub(crate) fn invalid_selector_at<'i>(
     location: cssparser::SourceLocation,
-) -> ParseError<'i, Error> {
+) -> ParseError<'i, CssError> {
     error_at(
         location,
         ErrorKind::InvalidSelector(CssSelectorError {
@@ -1689,7 +2208,7 @@ pub(crate) fn invalid_selector_at<'i>(
 pub(crate) fn property_name_error<'i>(
     location: cssparser::SourceLocation,
     name: &str,
-) -> ParseError<'i, Error> {
+) -> ParseError<'i, CssError> {
     match property_for_supported_name(name) {
         Some(property) => error_at(
             location,
@@ -1711,7 +2230,7 @@ pub(crate) fn descriptor_name_error<'i>(
     location: cssparser::SourceLocation,
     at_rule: &str,
     name: &str,
-) -> ParseError<'i, Error> {
+) -> ParseError<'i, CssError> {
     error_at(
         location,
         ErrorKind::UnknownDescriptor(CssUnknownDescriptorError {
@@ -1730,12 +2249,12 @@ pub(crate) fn color_syntax_kind(component: Option<&str>) -> ErrorKind {
 }
 
 pub(crate) fn with_media_query_context<'i>(
-    mut error: ParseError<'i, Error>,
+    mut error: ParseError<'i, CssError>,
     feature: Option<&str>,
-) -> ParseError<'i, Error> {
+) -> ParseError<'i, CssError> {
     if matches!(
         error.kind,
-        ParseErrorKind::Custom(Error {
+        ParseErrorKind::Custom(CssError {
             kind: ErrorKind::InvalidMediaQuery(_),
             ..
         })
@@ -1743,7 +2262,7 @@ pub(crate) fn with_media_query_context<'i>(
         return error;
     }
     let encountered = take_encountered(&mut error.kind);
-    error.kind = ParseErrorKind::Custom(Error::at(
+    error.kind = ParseErrorKind::Custom(CssError::at(
         error.location,
         ErrorKind::InvalidMediaQuery(CssMediaQueryError {
             committed_context: false,
@@ -1758,9 +2277,9 @@ pub(crate) fn with_media_query_context<'i>(
 pub(crate) fn custom_media_context_error<'i>(
     location: cssparser::SourceLocation,
     name: &str,
-) -> ParseError<'i, Error> {
+) -> ParseError<'i, CssError> {
     let mut error = with_media_query_context(invalid_syntax(location), Some(name));
-    if let ParseErrorKind::Custom(Error {
+    if let ParseErrorKind::Custom(CssError {
         kind: ErrorKind::InvalidMediaQuery(detail),
         ..
     }) = &mut error.kind
@@ -1771,21 +2290,21 @@ pub(crate) fn custom_media_context_error<'i>(
 }
 
 pub(crate) fn with_property_context<'i>(
-    mut error: ParseError<'i, Error>,
+    mut error: ParseError<'i, CssError>,
     property: &str,
-) -> ParseError<'i, Error> {
+) -> ParseError<'i, CssError> {
     let Some(property) = property_for_supported_name(property) else {
         return error;
     };
     if matches!(
         &error.kind,
-        ParseErrorKind::Custom(Error {
+        ParseErrorKind::Custom(CssError {
             kind: ErrorKind::InvalidColorSyntax(_),
             ..
         })
     ) || matches!(
         &error.kind,
-        ParseErrorKind::Custom(Error {
+        ParseErrorKind::Custom(CssError {
             kind: ErrorKind::InvalidComponentValue(detail),
             ..
         }) if is_component_resource_error(detail)
@@ -1793,9 +2312,9 @@ pub(crate) fn with_property_context<'i>(
         return error;
     }
     let encountered = take_encountered(&mut error.kind);
-    error.kind = ParseErrorKind::Custom(Error::at(
+    error.kind = ParseErrorKind::Custom(CssError::at(
         error.location,
-        ErrorKind::InvalidPropertyValue(CssPropertyValueError {
+        ErrorKind::InvalidPropertyValue(PropertyValueRejection {
             property,
             expectation: EXPECT_PROPERTY_VALUE,
             encountered,
@@ -1807,21 +2326,15 @@ pub(crate) fn with_property_context<'i>(
 /// Resource failures are component invariants even when found during a
 /// property-specific preflight. Keep their typed kind and original token origin.
 pub(crate) fn is_component_resource_error(detail: &crate::CssComponentValueError) -> bool {
-    matches!(
-        detail.kind(),
-        crate::CssComponentValueErrorKind::NestingLimit
-            | crate::CssComponentValueErrorKind::ComponentLimit
-            | crate::CssComponentValueErrorKind::ByteLimit
-            | crate::CssComponentValueErrorKind::CapacityOverflow
-    )
+    detail.is_resource_limit()
 }
 
 /// A speculative grammar alternative must not erase resource failures.
-pub(crate) fn is_resource_parse_error(error: &ParseError<'_, Error>) -> bool {
+pub(crate) fn is_resource_parse_error(error: &ParseError<'_, CssError>) -> bool {
     is_nesting_limit_error(error)
         || matches!(
             &error.kind,
-            ParseErrorKind::Custom(Error { kind: ErrorKind::InvalidComponentValue(detail), .. })
+            ParseErrorKind::Custom(CssError { kind: ErrorKind::InvalidComponentValue(detail), .. })
                 if is_component_resource_error(detail)
         )
 }
@@ -1830,14 +2343,14 @@ pub(crate) fn is_resource_parse_error(error: &ParseError<'_, Error>) -> bool {
 /// grammar failure, as the enclosing rule body does. Resource and component
 /// failures keep their own kinds.
 pub(crate) fn with_descriptor_value_context<'i>(
-    error: ParseError<'i, Error>,
+    error: ParseError<'i, CssError>,
     at_rule: &str,
     descriptor: &str,
-) -> ParseError<'i, Error> {
+) -> ParseError<'i, CssError> {
     if is_resource_parse_error(&error)
         || matches!(
             &error.kind,
-            ParseErrorKind::Custom(Error {
+            ParseErrorKind::Custom(CssError {
                 kind: ErrorKind::InvalidComponentValue(_),
                 ..
             })
@@ -1850,13 +2363,13 @@ pub(crate) fn with_descriptor_value_context<'i>(
 }
 
 pub(crate) fn with_descriptor_context<'i>(
-    mut error: ParseError<'i, Error>,
+    mut error: ParseError<'i, CssError>,
     at_rule: &str,
     descriptor: &str,
-) -> ParseError<'i, Error> {
+) -> ParseError<'i, CssError> {
     if matches!(
         error.kind,
-        ParseErrorKind::Custom(Error {
+        ParseErrorKind::Custom(CssError {
             kind: ErrorKind::UnknownDescriptor(_)
                 | ErrorKind::UnsupportedDescriptor(_)
                 | ErrorKind::InvalidDeclarationAnnotation(_),
@@ -1866,14 +2379,14 @@ pub(crate) fn with_descriptor_context<'i>(
         return error;
     }
     let origin = match &error.kind {
-        ParseErrorKind::Custom(Error {
+        ParseErrorKind::Custom(CssError {
             kind: ErrorKind::InvalidDescriptorValue(detail),
             ..
         }) => detail.origin,
         _ => DiagnosticOrigin::Inferred,
     };
     let encountered = take_encountered(&mut error.kind);
-    let contextual = Error::at(
+    let contextual = CssError::at(
         error.location,
         ErrorKind::InvalidDescriptorValue(CssDescriptorValueError {
             origin,
@@ -1893,7 +2406,7 @@ pub(crate) fn invalid_descriptor_token_at<'i>(
     descriptor: &str,
     token: &Token<'_>,
     authored: &str,
-) -> ParseError<'i, Error> {
+) -> ParseError<'i, CssError> {
     explicit_descriptor_error(
         location,
         at_rule,
@@ -1907,7 +2420,7 @@ pub(crate) fn incomplete_descriptor_at<'i>(
     location: cssparser::SourceLocation,
     at_rule: &str,
     descriptor: &str,
-) -> ParseError<'i, Error> {
+) -> ParseError<'i, CssError> {
     explicit_descriptor_error(
         location,
         at_rule,
@@ -1923,8 +2436,8 @@ fn explicit_descriptor_error<'i>(
     descriptor: &str,
     encountered: Option<CssTokenSummary>,
     origin: DiagnosticOrigin,
-) -> ParseError<'i, Error> {
-    let error = Error::at(
+) -> ParseError<'i, CssError> {
+    let error = CssError::at(
         location,
         ErrorKind::InvalidDescriptorValue(CssDescriptorValueError {
             origin,
@@ -1943,7 +2456,7 @@ fn explicit_descriptor_error<'i>(
 pub(crate) fn invalid_svg_glyph_declaration_annotation<'i>(
     location: cssparser::SourceLocation,
     keyframe: bool,
-) -> ParseError<'i, Error> {
+) -> ParseError<'i, CssError> {
     error_at(
         location,
         ErrorKind::InvalidDeclarationAnnotation(CssDeclarationAnnotationError {
@@ -1961,7 +2474,7 @@ pub(crate) fn invalid_known_declaration_annotation<'i>(
     location: cssparser::SourceLocation,
     property: CssKnownProperty,
     keyframe: bool,
-) -> ParseError<'i, Error> {
+) -> ParseError<'i, CssError> {
     let context = if keyframe {
         CssDeclarationContext::Keyframe(property)
     } else {
@@ -1980,7 +2493,7 @@ pub(crate) fn invalid_custom_declaration_annotation<'i>(
     location: cssparser::SourceLocation,
     property: &CssCustomPropertyName,
     keyframe: bool,
-) -> ParseError<'i, Error> {
+) -> ParseError<'i, CssError> {
     let context = if keyframe {
         CssDeclarationContext::KeyframeCustom(property.clone())
     } else {
@@ -1999,7 +2512,7 @@ pub(crate) fn invalid_descriptor_annotation<'i>(
     location: cssparser::SourceLocation,
     at_rule: &str,
     descriptor: &str,
-) -> ParseError<'i, Error> {
+) -> ParseError<'i, CssError> {
     error_at(
         location,
         ErrorKind::InvalidDeclarationAnnotation(CssDeclarationAnnotationError {
@@ -2015,14 +2528,14 @@ pub(crate) fn invalid_descriptor_annotation<'i>(
 pub(crate) fn error_at<'i>(
     location: cssparser::SourceLocation,
     kind: ErrorKind,
-) -> ParseError<'i, Error> {
+) -> ParseError<'i, CssError> {
     ParseError {
-        kind: ParseErrorKind::Custom(Error::at(location, kind)),
+        kind: ParseErrorKind::Custom(CssError::at(location, kind)),
         location,
     }
 }
 
-pub(crate) fn unexpected_at<'i>(location: cssparser::SourceLocation) -> ParseError<'i, Error> {
+pub(crate) fn unexpected_at<'i>(location: cssparser::SourceLocation) -> ParseError<'i, CssError> {
     error_at(
         location,
         ErrorKind::UnexpectedEnd(CssUnexpectedEndError {
@@ -2031,7 +2544,7 @@ pub(crate) fn unexpected_at<'i>(location: cssparser::SourceLocation) -> ParseErr
     )
 }
 
-fn take_encountered(kind: &mut ParseErrorKind<'_, Error>) -> Option<CssTokenSummary> {
+fn take_encountered(kind: &mut ParseErrorKind<'_, CssError>) -> Option<CssTokenSummary> {
     match kind {
         ParseErrorKind::Basic(BasicParseErrorKind::UnexpectedToken(token)) => {
             Some(CssTokenSummary::from_token(token))
@@ -2338,7 +2851,7 @@ mod tests {
                 CssErrorCode::UnsupportedProperty,
             ),
             (
-                ErrorKind::InvalidPropertyValue(CssPropertyValueError {
+                ErrorKind::InvalidPropertyValue(PropertyValueRejection {
                     property: CssKnownProperty::Width,
                     expectation: EXPECT_PROPERTY_VALUE,
                     encountered: None,
@@ -2400,10 +2913,17 @@ mod tests {
                 }),
                 CssErrorCode::NestingLimit,
             ),
+            (
+                ErrorKind::ParserUnavailable(CssNestingLimitError {
+                    limit: 128,
+                    enclosing_production: QUALIFIED_RULE,
+                }),
+                CssErrorCode::ParserUnavailable,
+            ),
         ];
 
         for (kind, expected) in roots {
-            assert_eq!(Error::at(position(), kind).code(), expected);
+            assert_eq!(CssError::at(position(), kind).code(), expected);
         }
     }
 

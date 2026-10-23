@@ -1,3 +1,5 @@
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::*;
 
 fn exact_positive(text: &str) -> CssPositiveIntegerLiteral {
@@ -80,19 +82,19 @@ fn exact_count_and_columns_emit_all_effective_values_under_one_budget() {
     for (limits, kind) in [
         (
             CssSerializationLimits::new(2, 3, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(3, 2, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(3, 3, expected.len() - 1),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            columns.serialize_specified(limits).unwrap_err().kind(),
+            serialization_failure(&columns.serialize_specified(limits).unwrap_err()),
             kind
         );
     }
@@ -211,19 +213,19 @@ fn two_symbolic_children_share_projection_and_output_limits() {
     for (limits, kind) in [
         (
             CssSerializationLimits::new(8, 9, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(9, 8, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(9, 9, expected.len() - 1),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            columns.serialize_specified(limits).unwrap_err().kind(),
+            serialization_failure(&columns.serialize_specified(limits).unwrap_err()),
             kind
         );
     }

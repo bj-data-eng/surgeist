@@ -1,4 +1,5 @@
 //! Detached Page declaration construction through the checked Page front.
+use crate::css::support::property_admission::property_value_facts;
 use crate::css::support::rules::ExpectedRejection;
 use surgeist_css::*;
 
@@ -87,10 +88,11 @@ fn checked_page_restrictions_preserve_original_offending_component() {
                     )
                     .unwrap_err();
                 assert!(
-                    matches!(error.kind(), CssPropertyValueErrorKind::Grammar(ErrorKind::InvalidPropertyValue(detail)) if detail.property() == property),
+                    (error.code() == Some(CssErrorCode::InvalidPropertyValue)
+                        && error.known_property().unwrap() == property),
                     "{value}: {error:?}"
                 );
-                assert_eq!(error.origin(), &CssSerializedOrigin::Token(origin));
+                assert_eq!(error.origin(), CssSerializedOrigin::Token(origin));
                 assert_eq!(components, original);
             }
         }
@@ -117,10 +119,10 @@ fn page_reentry_maps_nested_invalid_unit_and_matches_direct_checked_grammar() {
         )
         .unwrap_err();
         let error = handle.reenter(replacement.clone()).unwrap_err();
-        let CssExpansionErrorKind::InvalidReplacement(actual) = error.kind() else {
+        let Some(actual) = error.replacement_error() else {
             panic!("typed Page replacement failure")
         };
-        assert_eq!(actual.kind(), direct.kind());
+        assert_eq!(property_value_facts(actual), property_value_facts(&direct));
         assert_eq!(actual.origin(), direct.origin());
         let CssSerializedOrigin::Token(CssValueOrigin::Parsed(origin)) = actual.origin() else {
             panic!("original dimension token")
@@ -183,16 +185,13 @@ fn checked_page_pending_context_survives_priority_clones_list_assembly_and_retri
                 let error = handle
                     .reenter(parse_component_values(invalid).unwrap())
                     .unwrap_err();
-                let CssExpansionErrorKind::InvalidReplacement(replacement) = error.kind() else {
+                let Some(replacement) = error.replacement_error() else {
                     panic!("{invalid}: invalid replacement: {error:?}")
-                };
-                let CssPropertyValueErrorKind::Grammar(detail) = replacement.kind() else {
-                    panic!("{invalid}: grammar failure: {replacement:?}")
                 };
                 ExpectedRejection::new(CssErrorCode::InvalidPropertyValue)
                     .named("margin")
                     .at(token)
-                    .assert_kind(detail);
+                    .assert_checked(replacement);
             }
             let replacement = parse_component_values("1Q 2ch 3rem calc(1cqmin + 2%)").unwrap();
             let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap()
@@ -270,10 +269,7 @@ fn checked_page_rejects_recovered_components_before_pending_or_intrinsic_grammar
             CssImportance::Normal,
         )
         .unwrap_err();
-        assert!(matches!(
-            error.kind(),
-            CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
-        ));
+        assert!(error.code() == Some(CssErrorCode::UnexpectedEnd));
         assert!(matches!(
             error.origin(),
             CssSerializedOrigin::End(Some(CssValueOrigin::ImplicitClosure { .. }))

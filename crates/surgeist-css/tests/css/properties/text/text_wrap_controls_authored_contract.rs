@@ -21,6 +21,7 @@ use surgeist_css::*;
 
 use crate::css::support::authored_property;
 use crate::css::support::check_named_components as checked_components;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::named_property::invalid_named_value as invalid;
 use crate::css::support::named_property::sole_completed_contributions as completed;
 use authored_property::assert_source;
@@ -213,10 +214,7 @@ fn normalization_preserves_order_contexts_importance_and_exact_cumulative_termin
     ] {
         for _ in 0..2 {
             let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
-            assert_eq!(
-                error.kind(),
-                &CssNormalizationErrorKind::LimitExceeded { resource, limit: 8 }
-            );
+            assert_eq!(error.exhausted_limit(), Some((resource, 8)));
             assert_eq!(error.declaration_order(), Some(8));
             assert!(
                 error
@@ -231,8 +229,8 @@ fn normalization_preserves_order_contexts_importance_and_exact_cumulative_termin
 }
 #[test]
 fn canonical_keyword_declarations_have_exact_node_byte_budgets_and_atomic_reusable_failures() {
+    use crate::css::support::failure_classes::SerializationFailure as Kind;
     use CssSerializationLimits as Limits;
-    use CssSpecifiedValueSerializationErrorKind as Kind;
     for name in FAMILY {
         for &text in keywords(name) {
             for source in [parsed(name, text), checked(name, text, true)] {
@@ -246,7 +244,10 @@ fn canonical_keyword_declarations_have_exact_node_byte_budgets_and_atomic_reusab
                     (Limits::new(3, 3, expected.len() - 1), Kind::ByteLimit),
                 ] {
                     for _ in 0..2 {
-                        assert_eq!(source.serialize_specified(limits).unwrap_err().kind(), kind);
+                        assert_eq!(
+                            serialization_failure(&source.serialize_specified(limits).unwrap_err()),
+                            kind
+                        );
                         assert_eq!(source, before);
                     }
                 }
@@ -276,10 +277,7 @@ fn sheet_siblings_share_exact_final_bytes_and_failed_output_leaves_the_input_reu
     );
     for _ in 0..2 {
         let error = sheet.serialize_specified(short).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit
-        );
+        assert!(error.is_byte_limit(), "{error:?}");
         assert_eq!(error.rule_index(), Some(3));
         assert_eq!(sheet, &before);
     }

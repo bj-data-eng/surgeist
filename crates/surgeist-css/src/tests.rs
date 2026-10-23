@@ -488,13 +488,10 @@ fn checked_part_and_complex_reject_invalid_private_compound_graphs() {
         )
         .unwrap_err();
         for error in [part_error, first_error, rest_error] {
-            let CssSelectorConstructionErrorKind::Specified(cause) = error.kind() else {
+            let Some(cause) = error.serialization_error() else {
                 panic!("complete graph admission error: {error:?}");
             };
-            assert_eq!(
-                cause.kind(),
-                CssSpecifiedValueSerializationErrorKind::UnrepresentableValue
-            );
+            assert!(cause.is_unrepresentable_value(), "{cause:?}");
         }
     }
     let part = CssComplexSelectorPart::try_new(
@@ -739,10 +736,7 @@ mod selector_list_admission_defenses {
             CssScopeNestingContext::None,
         )
         .unwrap_err();
-        assert_eq!(
-            error.kind(),
-            CssRuleConstructionErrorKind::InvalidSelectorIdentifier
-        );
+        assert!(error.is_invalid_selector_identifier(), "{error:?}");
         assert!(error.path().is_empty());
         assert_eq!(error.position(), None);
     }

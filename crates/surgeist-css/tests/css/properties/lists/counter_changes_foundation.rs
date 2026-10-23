@@ -269,20 +269,19 @@ fn pending_reentry_is_strict_and_reuses_the_original_occurrence() {
         };
         assert!(pending.source().same_occurrence(&source));
         for invalid in ["chapter 1px", "chapter, section", "reversed(chapter)"] {
-            assert!(matches!(
+            assert!(
                 pending
                     .reenter(parse_component_values(invalid).unwrap())
                     .unwrap_err()
-                    .kind(),
-                CssExpansionErrorKind::InvalidReplacement(_)
-            ));
+                    .replacement_error()
+                    .is_some()
+            );
         }
-        assert_eq!(
+        assert!(
             pending
                 .reenter(parse_component_values("var(--again)").unwrap())
                 .unwrap_err()
-                .kind(),
-            &CssExpansionErrorKind::ResidualSubstitution
+                .is_residual_substitution()
         );
         for replacement_css in ["none", "chapter -2 section", "chapter calc(2.5)", "inherit"] {
             let replacement = parse_component_values(replacement_css).unwrap();
@@ -339,11 +338,8 @@ fn normalization_keeps_three_counter_longhands_in_order_and_fails_atomically_at_
     let limits = CssNormalizationLimits::try_new(256, usize::MAX, usize::MAX, 3).unwrap();
     let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
     assert_eq!(
-        error.kind(),
-        &CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: 3,
-        }
+        error.exhausted_limit(),
+        Some((CssNormalizationResource::Contributions, 3))
     );
     assert_eq!(error.declaration_order(), Some(3));
     assert_eq!(

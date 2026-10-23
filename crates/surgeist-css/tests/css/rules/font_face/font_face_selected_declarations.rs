@@ -1,7 +1,8 @@
 //! Independent public consumer oracles for #1086; no preimplementation RED.
+use crate::css::support::failure_classes::SerializationFailure as E;
+use crate::css::support::failure_classes::serialization_failure;
 use CssFontFaceDescriptorKind as K;
 use CssSerializationLimits as L;
-use CssSpecifiedValueSerializationErrorKind as E;
 use surgeist_css::*;
 
 fn entries(source: &str) -> Vec<CssFontFaceDescriptor> {
@@ -14,10 +15,10 @@ fn entries(source: &str) -> Vec<CssFontFaceDescriptor> {
         .collect()
 }
 fn cause(error: CssFontFaceDeclarationBlockError, expected: E) {
-    let CssFontFaceDeclarationBlockError::Serialization(error) = error else {
+    let Some(error) = error.serialization() else {
         panic!("typed scalar error")
     };
-    assert_eq!(error.kind(), expected);
+    assert_eq!(serialization_failure(error), expected);
 }
 
 #[test]
@@ -124,8 +125,8 @@ fn selected_membership_rejects_raw_duplicates_and_alias_duplicates() {
     ] {
         let raw = entries(source);
         assert!(
-            matches!(CssSpecifiedFontFaceDeclarationBlock::try_from_entries(&raw, Default::default()),
-            Err(CssFontFaceDeclarationBlockError::DuplicateDescriptor { kind: found }) if found == kind)
+            CssSpecifiedFontFaceDeclarationBlock::try_from_entries(&raw, Default::default())
+                .is_err_and(|error| error.duplicate_descriptor() == Some(kind))
         );
         let selected =
             CssSpecifiedFontFaceDeclarationBlock::try_from_entries(&raw[1..], Default::default())
@@ -177,12 +178,11 @@ fn ordinary_and_supported_pending_scalars_keep_their_owned_grammar_and_text() {
         pending.serialize_specified(L::new(100, 100, 15)).unwrap(),
         "env(width, 75%)"
     );
-    assert_eq!(
+    assert!(
         pending
             .serialize_specified(L::new(100, 100, 14))
             .unwrap_err()
-            .kind(),
-        E::ByteLimit
+            .is_byte_limit()
     );
 }
 
@@ -278,26 +278,23 @@ fn selected_values_and_punctuation_share_exact_cumulative_allowances_and_retry()
         value.serialize_specified(L::new(3, 3, 11)).unwrap(),
         "env(weight)"
     );
-    assert_eq!(
+    assert!(
         value
             .serialize_specified(L::new(2, 3, 11))
             .unwrap_err()
-            .kind(),
-        E::InputNodeLimit
+            .is_input_node_limit()
     );
-    assert_eq!(
+    assert!(
         value
             .serialize_specified(L::new(3, 2, 11))
             .unwrap_err()
-            .kind(),
-        E::ProjectionNodeLimit
+            .is_projection_node_limit()
     );
-    assert_eq!(
+    assert!(
         value
             .serialize_specified(L::new(3, 3, 10))
             .unwrap_err()
-            .kind(),
-        E::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(
         value.serialize_specified(Default::default()).unwrap(),

@@ -4,6 +4,8 @@ use crate::css::support::color_and_selector_fixtures::{
     assert_selector_input_rejected, assert_strict_validation_rejects,
     assert_unrepresentable_construction,
 };
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::serialization_limits::LimitFailure;
 use surgeist_css::*;
 
@@ -40,12 +42,11 @@ fn has(selector: CssSelector) -> CssSelector {
 }
 fn unrepresentable(selector: &CssSelector) {
     let before = selector.clone();
-    assert_eq!(
+    assert!(
         selector
             .serialize_specified(Default::default())
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::UnrepresentableValue
+            .is_unrepresentable_value()
     );
     assert_eq!(*selector, before);
 }
@@ -405,19 +406,19 @@ fn retained_component_graph_and_closings_share_exact_cumulative_limits_and_atomi
     for (limits, kind) in [
         (
             CssSerializationLimits::new(8, 11, source.len()),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(9, 10, source.len()),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(9, 11, source.len() - 1),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            selector.serialize_specified(limits).unwrap_err().kind(),
+            serialization_failure(&selector.serialize_specified(limits).unwrap_err()),
             kind
         );
         assert_eq!(selector, before);
@@ -440,7 +441,7 @@ fn deep_unknown_components_are_charged_fully_and_parser_resource_errors_are_not_
     let projection = input + depth + 1;
     let limits = CssSerializationLimits::new(input, projection, source.len());
     assert_eq!(selector.serialize_specified(limits).unwrap(), source);
-    assert_eq!(
+    assert!(
         selector
             .serialize_specified(CssSerializationLimits::new(
                 input - 1,
@@ -448,8 +449,7 @@ fn deep_unknown_components_are_charged_fully_and_parser_resource_errors_are_not_
                 source.len()
             ))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+            .is_input_node_limit()
     );
     let source = format!(":is(:future({}&{}))", "x(".repeat(255), ")".repeat(255));
     let report = parse_selector(&source, &CssNamespaceContext::default());
@@ -571,12 +571,11 @@ fn trivia_unicode_bytes_and_real_rule_retry_are_cumulative() {
             .unwrap(),
         literal
     );
-    assert_eq!(
+    assert!(
         selector
             .serialize_specified(CssSerializationLimits::new(7, 8, literal.len() - 1))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
     let report = parse_sheet(":is(:future(/*Ω*/&),.A) {color:red;} .B {color:blue;}");
     let sheet = report.syntax();
@@ -591,7 +590,7 @@ fn trivia_unicode_bytes_and_real_rule_retry_are_cumulative() {
             ))
             .unwrap_err()
             .limit_kind(),
-        Some(CssSpecifiedValueSerializationErrorKind::ByteLimit)
+        Some(SerializationFailure::ByteLimit)
     );
     assert_eq!(*sheet, before);
     assert_eq!(sheet.serialize_specified(Default::default()).unwrap(), css);

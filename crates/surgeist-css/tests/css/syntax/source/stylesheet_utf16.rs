@@ -121,14 +121,12 @@ fn finite_preparation_rejects_zero_allowances_and_stops_at_first_interruption() 
             ..base
         },
     ] {
-        assert!(matches!(
-            CssParserContext::default().parse_sheet_utf16_with_limits(
-                original.clone(),
-                limits,
-                || Ok::<_, ()>(())
-            ),
-            Err(CssUtf16InputError::Limit(_))
-        ));
+        assert!(
+            CssParserContext::default()
+                .parse_sheet_utf16_with_limits(original.clone(), limits, || Ok::<_, ()>(()))
+                .as_ref()
+                .is_err_and(|error| error.exhausted_limit().is_some())
+        );
     }
     for stop in 1..=7 {
         let mut calls = 0;
@@ -140,7 +138,7 @@ fn finite_preparation_rejects_zero_allowances_and_stops_at_first_interruption() 
                 if calls == stop { Err(stop) } else { Ok(()) }
             },
         );
-        assert_eq!(result.unwrap_err(), CssUtf16InputError::Interrupted(stop));
+        assert_eq!(result.unwrap_err().interruption(), Some(&stop));
         assert_eq!(calls, stop);
     }
 }
@@ -153,13 +151,10 @@ fn actual_padded_original_backing_counts_independently_of_text_length() {
         max_retained_bytes: 8191,
         ..Default::default()
     };
-    assert!(matches!(
-        CssParserContext::default().parse_sheet_utf16_with_limits(Arc::new(raw), limits, || Ok::<
-            _,
-            (),
-        >(
-            ()
-        )),
-        Err(CssUtf16InputError::Limit("retained source bytes"))
-    ));
+    assert!(
+        CssParserContext::default()
+            .parse_sheet_utf16_with_limits(Arc::new(raw), limits, || Ok::<_, ()>(()))
+            .as_ref()
+            .is_err_and(|error| error.exhausted_limit() == Some(CssUtf16Resource::RetainedBytes))
+    );
 }

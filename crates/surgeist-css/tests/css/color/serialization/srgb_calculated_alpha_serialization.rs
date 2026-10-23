@@ -8,6 +8,7 @@ use crate::css::support::color_and_selector_fixtures::{
     assert_bounded_serialization, assert_color_limit_error as assert_error, assert_color_limits,
     assert_scratch_serialization,
 };
+use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::{
     checked_color as color, checked_color_declaration as declaration,
     component_values as components, declaration_color,
@@ -15,7 +16,7 @@ use crate::css::support::{
 use surgeist_css::*;
 
 type Limits = CssSerializationLimits;
-type Kind = CssSpecifiedValueSerializationErrorKind;
+type Kind = SerializationFailure;
 
 fn assert_value(value: &CssColor, expected: &str) {
     let before = value.clone();

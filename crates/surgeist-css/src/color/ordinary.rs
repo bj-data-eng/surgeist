@@ -49,17 +49,45 @@ pub struct CssColorOrdinaryLimits {
 }
 /// The actual exhausted ordinary resource, separate from CSS invalidity.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum CssColorOrdinaryResource {
+    /// Steps of the authored component path.
     PathSteps,
+    /// Original input units.
     InputUnits,
+    /// Records of the algorithm bank.
     AlgorithmRecords,
+    /// Records of the arithmetic bank.
     ArithmeticRecords,
+    /// Records of the evaluation bank.
     EvaluationRecords,
+    /// Serviced parse actions.
     Actions,
 }
-#[derive(Debug, Eq, PartialEq)]
-pub enum CssColorOrdinaryError {
-    Operation(CssColorError),
+impl CssColorOrdinaryResource {
+    const fn description(self) -> &'static str {
+        match self {
+            Self::PathSteps => "path steps",
+            Self::InputUnits => "input units",
+            Self::AlgorithmRecords => "algorithm records",
+            Self::ArithmeticRecords => "arithmetic records",
+            Self::EvaluationRecords => "evaluation records",
+            Self::Actions => "actions",
+        }
+    }
+}
+/// An ordinary colour resolution that reached no outcome: a resource ceiling or
+/// allocation refused it, or the colour parse failed semantically.
+///
+/// Exactly one accessor returns a value; [`std::error::Error::source`] is the
+/// colour error.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CssColorResolveError {
+    kind: ResolveErrorKind,
+}
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum ResolveErrorKind {
+    Color(CssColorError),
     Limit {
         resource: CssColorOrdinaryResource,
         required: usize,
@@ -69,33 +97,86 @@ pub enum CssColorOrdinaryError {
         resource: CssColorOrdinaryResource,
     },
 }
-impl std::fmt::Display for CssColorOrdinaryError {
+impl CssColorResolveError {
+    pub(crate) const fn limit(
+        resource: CssColorOrdinaryResource,
+        required: usize,
+        allowed: usize,
+    ) -> Self {
+        Self {
+            kind: ResolveErrorKind::Limit {
+                resource,
+                required,
+                allowed,
+            },
+        }
+    }
+    pub(crate) const fn allocation(resource: CssColorOrdinaryResource) -> Self {
+        Self {
+            kind: ResolveErrorKind::Allocation { resource },
+        }
+    }
+    /// Returns the exhausted resource with its allowed and required amounts.
+    #[must_use]
+    pub const fn exhausted_limit(&self) -> Option<(CssColorOrdinaryResource, usize, usize)> {
+        match self.kind {
+            ResolveErrorKind::Limit {
+                resource,
+                required,
+                allowed,
+            } => Some((resource, allowed, required)),
+            _ => None,
+        }
+    }
+    /// Returns the resource whose storage could not be allocated.
+    #[must_use]
+    pub const fn failed_allocation(&self) -> Option<CssColorOrdinaryResource> {
+        match self.kind {
+            ResolveErrorKind::Allocation { resource } => Some(resource),
+            _ => None,
+        }
+    }
+    /// Returns the semantic failure of the colour parse.
+    #[must_use]
+    pub const fn color_error(&self) -> Option<&CssColorError> {
+        match &self.kind {
+            ResolveErrorKind::Color(error) => Some(error),
+            _ => None,
+        }
+    }
+}
+impl std::fmt::Display for CssColorResolveError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Operation(error) => std::fmt::Display::fmt(error, f),
-            Self::Limit {
+        match &self.kind {
+            ResolveErrorKind::Color(error) => std::fmt::Display::fmt(error, f),
+            ResolveErrorKind::Limit {
                 resource,
                 required,
                 allowed,
             } => write!(
                 f,
-                "color {resource:?} requires {required}, exceeding {allowed}"
+                "color resolution needs {required} {}, exceeding the limit of {allowed}",
+                resource.description()
             ),
-            Self::Allocation { resource } => write!(f, "color {resource:?} allocation failed"),
+            ResolveErrorKind::Allocation { resource } => write!(
+                f,
+                "color resolution could not allocate {}",
+                resource.description()
+            ),
         }
     }
 }
-impl std::error::Error for CssColorOrdinaryError {
+impl std::error::Error for CssColorResolveError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::Operation(error) => Some(error),
-            _ => None,
-        }
+        self.color_error()
+            .map(|error| error as &(dyn std::error::Error + 'static))
     }
 }
-impl From<CssColorError> for CssColorOrdinaryError {
+impl From<CssColorError> for CssColorResolveError {
     fn from(error: CssColorError) -> Self {
-        Self::Operation(error)
+        Self {
+            kind: ResolveErrorKind::Color(error),
+        }
     }
 }
 /// A fixed source-qualified outcome after all ordinary scratch is retired.
@@ -155,18 +236,14 @@ fn admit(
     resource: CssColorOrdinaryResource,
     required: usize,
     allowed: usize,
-) -> Result<(), CssColorOrdinaryError> {
+) -> Result<(), CssColorResolveError> {
     if required <= allowed {
         Ok(())
     } else {
-        Err(CssColorOrdinaryError::Limit {
-            resource,
-            required,
-            allowed,
-        })
+        Err(CssColorResolveError::limit(resource, required, allowed))
     }
 }
-fn action_count(count: &mut usize, maximum: usize) -> Result<(), CssColorOrdinaryError> {
+fn action_count(count: &mut usize, maximum: usize) -> Result<(), CssColorResolveError> {
     let required = count
         .checked_add(1)
         .expect("an ordinary parse admits at most usize::MAX actions");
@@ -181,7 +258,7 @@ fn drive<'owner, 'facts>(
     input: CssColorInput<'_>,
     banks: &mut [Vec<CssColorSlot<'owner>>; 3],
     limits: CssColorOrdinaryLimits,
-) -> Result<CssColorParseOutcome<'facts>, CssColorOrdinaryError> {
+) -> Result<CssColorParseOutcome<'facts>, CssColorResolveError> {
     let mut actions = 0;
     loop {
         let action = match parse.step() {
@@ -214,9 +291,7 @@ fn drive<'owner, 'facts>(
                 admit(resource(bank), required, allowed(limits, bank))?;
                 target
                     .try_reserve(1)
-                    .map_err(|_| CssColorOrdinaryError::Allocation {
-                        resource: resource(bank),
-                    })?;
+                    .map_err(|_| CssColorResolveError::allocation(resource(bank)))?;
                 let (record, receipt) = write.record();
                 target.push(record);
                 receipt.stored(&target[index])
@@ -243,7 +318,7 @@ pub fn parse_used_color<'source, 'facts>(
     facts: &'facts CssColorFacts<'facts>,
     expected: CssColorFactIdentity,
     limits: CssColorOrdinaryLimits,
-) -> Result<CssColorOrdinaryResult<'source, 'facts>, CssColorOrdinaryError> {
+) -> Result<CssColorOrdinaryResult<'source, 'facts>, CssColorResolveError> {
     admit(
         CssColorOrdinaryResource::InputUnits,
         input.len(),
@@ -377,11 +452,8 @@ mod tests {
                 facts.identity,
                 limits
             ),
-            Err(CssColorOrdinaryError::Limit {
-                resource: CssColorOrdinaryResource::InputUnits,
-                required: 3,
-                allowed: 2
-            })
+            Err(ref error)
+                if error.exhausted_limit() == Some((CssColorOrdinaryResource::InputUnits, 2, 3))
         ));
         limits.input_units = 3;
         limits.algorithm_records = 0;
@@ -393,11 +465,8 @@ mod tests {
                 facts.identity,
                 limits
             ),
-            Err(CssColorOrdinaryError::Limit {
-                resource: CssColorOrdinaryResource::AlgorithmRecords,
-                required: 1,
-                allowed: 0
-            })
+            Err(ref error) if error.exhausted_limit()
+                == Some((CssColorOrdinaryResource::AlgorithmRecords, 0, 1))
         ));
         limits.algorithm_records = 32;
         limits.actions = 0;
@@ -409,11 +478,8 @@ mod tests {
                 facts.identity,
                 limits
             ),
-            Err(CssColorOrdinaryError::Limit {
-                resource: CssColorOrdinaryResource::Actions,
-                required: 1,
-                allowed: 0
-            })
+            Err(ref error)
+                if error.exhausted_limit() == Some((CssColorOrdinaryResource::Actions, 0, 1))
         ));
         limits.actions = 1000;
         let result = parse_used_color(

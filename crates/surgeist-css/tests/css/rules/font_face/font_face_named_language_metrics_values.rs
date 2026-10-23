@@ -1,6 +1,8 @@
 //! Independent Fonts 4 descriptor payload expectations, CSSOM string escaping,
 //! and Values 4 specified percentage/range semantics through public APIs.
 
+use crate::css::support::failure_classes::NumericFailure;
+use crate::css::support::failure_classes::numeric_failure;
 use crate::css::support::rules::ordinary_font_face_descriptor;
 use crate::css::support::serialization_limits::LimitLadder;
 use surgeist_css::*;
@@ -9,7 +11,6 @@ type Kind = CssFontFaceDescriptorKind;
 type Value = CssFontFaceDescriptorValue;
 type Limits = CssSerializationLimits;
 type Error = CssSerializationError;
-type ErrorKind = CssSpecifiedValueSerializationErrorKind;
 
 fn parsed(kind: Kind, text: &str) -> Value {
     ordinary_font_face_descriptor(text, kind)
@@ -60,19 +61,17 @@ fn named_instance_strings_keep_decoded_names_and_original_components() {
             .unwrap(),
         "\"Grotesque\""
     );
-    assert_eq!(
+    assert!(
         programmatic
             .serialize_specified(Limits::new(1, 1, 10))
             .unwrap_err()
-            .kind(),
-        ErrorKind::ByteLimit
+            .is_byte_limit()
     );
     // Syntax 3 §3.3 replaces U+0000, so the decoded string cannot round-trip.
-    assert_eq!(
+    assert!(
         CssFontNamedInstanceString::try_new("a\0b")
             .unwrap_err()
-            .kind(),
-        CssComponentValueErrorKind::InvalidString
+            .is_invalid_string()
     );
     for component in [
         CssComponentValue::try_ident("auto").unwrap(),
@@ -80,7 +79,7 @@ fn named_instance_strings_keep_decoded_names_and_original_components() {
         CssComponentValue::try_token("10%").unwrap(),
     ] {
         let error = CssFontNamedInstanceString::try_from_component(component).unwrap_err();
-        assert_eq!(error.kind(), CssComponentValueErrorKind::InvalidString);
+        assert!(error.is_invalid_string(), "{error:?}");
         assert_eq!(error.origin(), &CssValueOrigin::Programmatic);
     }
 }
@@ -168,11 +167,10 @@ fn three_metric_branches_share_exact_percentage_payloads_without_losing_identity
                 emit(&value, Limits::new(1, 1, expected.len())).unwrap(),
                 expected
             );
-            assert_eq!(
+            assert!(
                 emit(&value, Limits::new(1, 1, expected.len() - 1))
                     .unwrap_err()
-                    .kind(),
-                ErrorKind::ByteLimit
+                    .is_byte_limit()
             );
             assert_eq!(value, before);
         }
@@ -194,20 +192,18 @@ fn three_metric_branches_share_exact_percentage_payloads_without_losing_identity
     );
     // Fonts 4 §4.9: metric overrides are <percentage [0,∞]>.
     for (token, expected) in [
-        (
-            "-0.000000000000000000001%",
-            CssNumericConstructionErrorKind::OutOfRange,
-        ),
-        ("10px", CssNumericConstructionErrorKind::RootDomainMismatch),
-        ("0", CssNumericConstructionErrorKind::RootDomainMismatch),
+        ("-0.000000000000000000001%", NumericFailure::OutOfRange),
+        ("10px", NumericFailure::RootDomainMismatch),
+        ("0", NumericFailure::RootDomainMismatch),
     ] {
         assert_eq!(
-            CssSpecifiedNonNegativePercentage::try_from_component(
-                CssComponentValue::try_token(token).unwrap(),
-            )
-            .unwrap_err()
-            .kind(),
-            &expected,
+            numeric_failure(
+                &CssSpecifiedNonNegativePercentage::try_from_component(
+                    CssComponentValue::try_token(token).unwrap(),
+                )
+                .unwrap_err()
+            ),
+            expected,
             "{token}"
         );
     }
@@ -245,26 +241,23 @@ fn metric_calculations_preserve_authored_range_type_and_origins_on_atomic_failur
             assert_eq!(origin.source().as_str(), text);
             let before = value.clone();
             assert_eq!(emit(&value, Limits::default()).unwrap(), expected);
-            assert_eq!(
+            assert!(
                 emit(
                     &value,
                     Limits::new(usize::MAX, usize::MAX, expected.len() - 1)
                 )
                 .unwrap_err()
-                .kind(),
-                ErrorKind::ByteLimit
+                .is_byte_limit()
             );
-            assert_eq!(
+            assert!(
                 emit(&value, Limits::new(0, usize::MAX, usize::MAX))
                     .unwrap_err()
-                    .kind(),
-                ErrorKind::InputNodeLimit
+                    .is_input_node_limit()
             );
-            assert_eq!(
+            assert!(
                 emit(&value, Limits::new(usize::MAX, 0, usize::MAX))
                     .unwrap_err()
-                    .kind(),
-                ErrorKind::ProjectionNodeLimit
+                    .is_projection_node_limit()
             );
             assert_eq!(value, before);
             assert_eq!(

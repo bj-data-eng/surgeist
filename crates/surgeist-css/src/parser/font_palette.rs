@@ -7,10 +7,7 @@ use super::color::{
 };
 use crate::error::property::{Error, basic};
 use crate::numeric::NumericInputContext;
-use crate::{
-    CssFontPalette, CssFontPaletteMix, CssFontPaletteMixComponent,
-    CssFontPaletteMixConstructionError, CssFontPaletteName,
-};
+use crate::{CssFontPalette, CssFontPaletteMix, CssFontPaletteMixComponent, CssFontPaletteName};
 
 pub(super) fn parse_font_palette<'i, 't>(
     input: &mut Parser<'i, 't>,
@@ -55,16 +52,14 @@ fn parse_mix<'i, 't>(
         components.push(parse_component(input, numeric)?);
     }
     CssFontPaletteMix::try_new(interpolation, components).map_err(|error| {
-        let kind = match error {
-            CssFontPaletteMixConstructionError::NestingLimit => {
-                crate::CssComponentValueErrorKind::NestingLimit
-            }
-            CssFontPaletteMixConstructionError::CapacityOverflow => {
-                crate::CssComponentValueErrorKind::CapacityOverflow
-            }
-            CssFontPaletteMixConstructionError::EmptyComponents => {
-                unreachable!("parser admits one component before construction")
-            }
+        assert!(
+            !error.is_empty_components(),
+            "parser admits one component before construction"
+        );
+        let kind = if error.is_nesting_limit() {
+            crate::CssComponentValueErrorKind::NestingLimit
+        } else {
+            crate::CssComponentValueErrorKind::CapacityOverflow
         };
         crate::error::property::invalid_component_value(
             location,

@@ -12,12 +12,13 @@ use crate::css::support::descriptor_phases;
 use crate::css::support::rules::sole_counter_style;
 use descriptor_phases::*;
 
+use crate::css::support::failure_classes::SerializationFailure as SerializationError;
+use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::{
     CssCounterStyleDescriptorKind as Descriptor, CssCounterStyleRule, CssCounterStyleSpeakAs,
     CssCounterStyleSystem, CssCounterSymbol, CssErrorCode, CssNormalizedItem, CssRecoveryAction,
     CssRule, CssRuleContextKindRef, CssScopedRule, CssSerializationLimits as Limits,
-    CssSpecifiedValueSerializationErrorKind as SerializationError, normalize_report,
-    normalize_sheet, parse_sheet, validate_sheet,
+    normalize_report, normalize_sheet, parse_sheet, validate_sheet,
 };
 
 fn clean_rule(body: &str) -> CssCounterStyleRule {
@@ -46,11 +47,10 @@ fn assert_output(rule: &CssCounterStyleRule, descriptor: Descriptor, value: &str
             .unwrap(),
         expected,
     );
-    assert_eq!(
+    assert!(
         rule.serialize_specified(Limits::new(10_000, 10_000, expected.len() - 1))
             .unwrap_err()
-            .kind(),
-        SerializationError::ByteLimit,
+            .is_byte_limit()
     );
     assert_eq!(
         rule, &retained,
@@ -545,7 +545,10 @@ fn suppressed_gradient_children_share_the_complete_rule_node_budget() {
             SerializationError::ByteLimit,
         ),
     ] {
-        assert_eq!(rule.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&rule.serialize_specified(limits).unwrap_err()),
+            kind
+        );
     }
     assert_eq!(
         rule.serialize_specified(Limits::new(13, 13, expected.len()))

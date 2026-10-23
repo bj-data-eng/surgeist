@@ -3,6 +3,8 @@
 //! reset/set `0` and increment `1`. Values 4 defines exact integer tokens and
 //! symbolic integer-root math; expected text is sourced from those contracts.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::named_property::normal_property_declaration as parsed;
 use surgeist_css::*;
 
@@ -284,29 +286,30 @@ fn omitted_defaults_and_sibling_entries_share_exact_node_and_byte_budgets() {
     for (limits, kind) in [
         (
             CssSerializationLimits::new(0, 7, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(4, 7, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(5, 0, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(5, 6, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(5, 7, expected.len() - 1),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            two.serialize_specified(CssCounterProperty::Increment, limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(
+                &two.serialize_specified(CssCounterProperty::Increment, limits)
+                    .unwrap_err()
+            ),
             kind
         );
     }
@@ -368,17 +371,18 @@ fn two_symbolic_integers_share_the_css_byte_budget_without_resolution() {
     for (limits, kind) in [
         (
             CssSerializationLimits::new(8, 7, both.len()),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(9, 6, both.len()),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
     ] {
         assert_eq!(
-            two.serialize_specified(CssCounterProperty::Increment, limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(
+                &two.serialize_specified(CssCounterProperty::Increment, limits)
+                    .unwrap_err()
+            ),
             kind
         );
     }
@@ -390,14 +394,13 @@ fn two_symbolic_integers_share_the_css_byte_budget_without_resolution() {
         .unwrap(),
         both
     );
-    assert_eq!(
+    assert!(
         two.serialize_specified(
             CssCounterProperty::Increment,
             CssSerializationLimits::new(100, 100, single.len()),
         )
         .unwrap_err()
-        .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+        .is_byte_limit()
     );
     assert_eq!(
         two.serialize_specified(

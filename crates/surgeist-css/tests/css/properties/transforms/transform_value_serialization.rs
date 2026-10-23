@@ -5,7 +5,7 @@
 
 use crate::css::support::serialization_limits::assert_limits_with_zero as budget;
 use crate::css::support::sole_declaration as declaration;
-use surgeist_css::{CssSerializationLimits as L, CssSpecifiedValueSerializationErrorKind as K, *};
+use surgeist_css::{CssSerializationLimits as L, *};
 
 fn number(text: &str) -> CssSpecifiedNumber {
     CssSpecifiedNumber::try_from_component(CssComponentValue::try_number(text).unwrap()).unwrap()
@@ -360,12 +360,11 @@ fn rotate3d_general_vectors_approximate_survivors_and_fail_on_component_loss_ato
             Transform
         );
         let before = value.clone();
-        assert_eq!(
+        assert!(
             value
                 .serialize_specified(Default::default())
                 .unwrap_err()
-                .kind(),
-            K::UnrepresentableValue
+                .is_unrepresentable_value()
         );
         assert_eq!(value, before);
     }
@@ -500,12 +499,11 @@ fn rounded_output_and_atomic_byte_failure_preserve_exact_operands_and_origins() 
         value.serialize_specified(Default::default()).unwrap(),
         "2 2"
     );
-    assert_eq!(
+    assert!(
         value
             .serialize_specified(L::new(4, 4, 2))
             .unwrap_err()
-            .kind(),
-        K::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(value, before);
     let CssScale::Values(values) = &value else {
@@ -529,12 +527,11 @@ fn rounded_output_and_atomic_byte_failure_preserve_exact_operands_and_origins() 
 
     let value = transform(CssTransformFunction::TranslateX(lp("1e999px")));
     let before = value.clone();
-    assert_eq!(
+    assert!(
         value
             .serialize_specified(L::new(3, 3, 64))
             .unwrap_err()
-            .kind(),
-        K::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(value, before);
     let CssTransform::Functions(values) = value else {
@@ -560,38 +557,34 @@ fn list_order_large_incremental_limits_and_late_failure_preserve_input() {
     let value = parsed!(source, Transform);
     check!(&value, 8, 8, "translateX(1px) scale(2) rotate(30deg)");
     let before = value.clone();
-    assert_eq!(
+    assert!(
         value
             .serialize_specified(L::new(8, 8, 20))
             .unwrap_err()
-            .kind(),
-        K::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(value, before);
     let function = CssTransformFunction::TranslateX(lp("1px"));
     let value =
         CssTransform::Functions(CssTransformFunctionList::try_new(vec![function; 10_000]).unwrap());
     let before = value.clone();
-    assert_eq!(
+    assert!(
         value
             .serialize_specified(L::new(5, 20_001, 1_000_000))
             .unwrap_err()
-            .kind(),
-        K::InputNodeLimit
+            .is_input_node_limit()
     );
-    assert_eq!(
+    assert!(
         value
             .serialize_specified(L::new(20_001, 5, 1_000_000))
             .unwrap_err()
-            .kind(),
-        K::ProjectionNodeLimit
+            .is_projection_node_limit()
     );
-    assert_eq!(
+    assert!(
         value
             .serialize_specified(L::new(20_001, 20_001, 20))
             .unwrap_err()
-            .kind(),
-        K::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(value, before);
 }

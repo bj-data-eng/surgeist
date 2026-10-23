@@ -245,7 +245,7 @@ fn schedule_relative<'a>(
 ) -> Result<()> {
     debug_assert_eq!(mode, Mode::DeclaredRelative);
     reserve_work(work, work_slots(5, 2, value.channels().len())?)?;
-    let (name, space) = relative_function(value.function());
+    let (name, space) = relative_function(value.function())?;
     work.push(Work::Text(")"));
     if let Some(alpha) = value.alpha() {
         work.push(Work::Owned(serialize_relative_expression(
@@ -340,8 +340,10 @@ fn output_text(value: &str, context: &SpecifiedSerializationContext) -> String {
     }
 }
 
-fn relative_function(value: &CssRelativeColorFunction) -> (&'static str, Option<&'static str>) {
-    match value {
+fn relative_function(
+    value: &CssRelativeColorFunction,
+) -> Result<(&'static str, Option<&'static str>)> {
+    Ok(match value {
         CssRelativeColorFunction::Rgb => ("rgb", None),
         CssRelativeColorFunction::Hsl => ("hsl", None),
         CssRelativeColorFunction::Hwb => ("hwb", None),
@@ -349,12 +351,18 @@ fn relative_function(value: &CssRelativeColorFunction) -> (&'static str, Option<
         CssRelativeColorFunction::Lch => ("lch", None),
         CssRelativeColorFunction::Oklab => ("oklab", None),
         CssRelativeColorFunction::Oklch => ("oklch", None),
-        CssRelativeColorFunction::Color(space) => ("color", Some(predefined_name(*space))),
-    }
+        CssRelativeColorFunction::Color(space) => ("color", Some(predefined_name(*space)?)),
+    })
 }
 
-fn predefined_name(value: PredefinedColorSpace) -> &'static str {
-    match value {
+/// A space surgeist-color adds later has no CSS name yet, so it is
+/// unrepresentable rather than a bug.
+fn unknown_color_edition() -> Error {
+    Error::new(crate::CssSpecifiedValueSerializationErrorKind::UnrepresentableValue)
+}
+
+fn predefined_name(value: PredefinedColorSpace) -> Result<&'static str> {
+    Ok(match value {
         PredefinedColorSpace::Srgb => "srgb",
         PredefinedColorSpace::SrgbLinear => "srgb-linear",
         PredefinedColorSpace::DisplayP3 => "display-p3",
@@ -364,11 +372,11 @@ fn predefined_name(value: PredefinedColorSpace) -> &'static str {
         PredefinedColorSpace::Rec2020 => "rec2020",
         PredefinedColorSpace::XyzD50 => "xyz-d50",
         PredefinedColorSpace::XyzD65 => "xyz-d65",
-        _ => unreachable!("all spaces in the pinned numerical color edition are handled"),
-    }
+        _ => return Err(unknown_color_edition()),
+    })
 }
 
-fn authored_system_name(value: CssSystemColor) -> &'static str {
+pub(crate) fn authored_system_name(value: CssSystemColor) -> &'static str {
     match value {
         CssSystemColor::Canvas => "canvas",
         CssSystemColor::CanvasText => "canvastext",
@@ -2022,7 +2030,7 @@ fn serialize_predefined(
     if context.output_suppressed() {
         return Ok(String::new());
     }
-    let name = format!("color({}", predefined_name(value.color_space()));
+    let name = format!("color({}", predefined_name(value.color_space())?);
     modern_function(&name, &channels, alpha.as_deref(), context)
 }
 
@@ -2263,7 +2271,7 @@ pub(crate) fn serialize_interpolation(
         return Ok(String::new());
     }
     if let Some(value) = value.predefined() {
-        Ok(serialize_interpolation_method(&value))
+        serialize_interpolation_method(&value)
     } else {
         escaped_identifier(
             value
@@ -2275,16 +2283,16 @@ pub(crate) fn serialize_interpolation(
     }
 }
 
-fn serialize_interpolation_method(value: &CssColorInterpolationMethod) -> String {
+fn serialize_interpolation_method(value: &CssColorInterpolationMethod) -> Result<String> {
     let mut result = match value.space() {
-        ColorSpace::Predefined(value) => predefined_name(value).to_owned(),
+        ColorSpace::Predefined(value) => predefined_name(value)?.to_owned(),
         ColorSpace::Hsl => "hsl".into(),
         ColorSpace::Hwb => "hwb".into(),
         ColorSpace::Lab => "lab".into(),
         ColorSpace::Lch => "lch".into(),
         ColorSpace::Oklab => "oklab".into(),
         ColorSpace::Oklch => "oklch".into(),
-        _ => unreachable!("all spaces in the pinned numerical color edition are handled"),
+        _ => return Err(unknown_color_edition()),
     };
     if let Some(hue) = value.hue().filter(|hue| *hue != HueInterpolation::Shorter) {
         result.push(' ');
@@ -2293,10 +2301,10 @@ fn serialize_interpolation_method(value: &CssColorInterpolationMethod) -> String
             HueInterpolation::Longer => "longer hue",
             HueInterpolation::Increasing => "increasing hue",
             HueInterpolation::Decreasing => "decreasing hue",
-            _ => unreachable!("all hue methods in the pinned numerical color edition are handled"),
+            _ => return Err(unknown_color_edition()),
         });
     }
-    result
+    Ok(result)
 }
 
 pub(crate) fn mix_weight_texts<'a>(

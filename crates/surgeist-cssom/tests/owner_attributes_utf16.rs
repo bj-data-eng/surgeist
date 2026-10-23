@@ -456,7 +456,7 @@ fn recovered_media_diagnostics_keep_source_and_resource_failure_poisons() {
         report
             .diagnostics()
             .iter()
-            .any(|d| matches!(d.error().kind(), ErrorKind::NestingLimit(_)))
+            .any(|d| d.error().code() == CssErrorCode::NestingLimit)
     );
     let mut edit = batch(&owner);
     assert!(matches!(

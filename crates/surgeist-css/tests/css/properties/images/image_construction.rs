@@ -33,9 +33,10 @@ fn stops() -> CssColorStopList {
 
 #[test]
 fn image_only_boundary_rejects_property_none_and_retains_all_published_families() {
-    assert_eq!(
-        CssImage::try_new(CssImageValue::None).unwrap_err(),
-        CssImageConstructionError::NotImage
+    assert!(
+        CssImage::try_new(CssImageValue::None)
+            .unwrap_err()
+            .is_not_image()
     );
 
     let url = CssUrl::new("figure.svg");
@@ -279,21 +280,21 @@ fn radial_constructor_checks_shape_size_matrix_without_inventing_defaults() {
 
 #[test]
 fn generic_position_requires_edge_offsets_on_both_axes_or_neither() {
-    assert_eq!(
+    assert!(
         CssPhysicalPosition::try_new(
             CssHorizontalPosition::LeftOffset(signed_length_percentage("10px")),
             CssVerticalPosition::Center
         )
-        .unwrap_err(),
-        CssPositionConstructionError::UnpairedEdgeOffsets
+        .unwrap_err()
+        .is_unpaired_edge_offsets()
     );
-    assert_eq!(
+    assert!(
         CssPhysicalPosition::try_new(
             CssHorizontalPosition::Center,
             CssVerticalPosition::BottomOffset(signed_length_percentage("20px"))
         )
-        .unwrap_err(),
-        CssPositionConstructionError::UnpairedEdgeOffsets
+        .unwrap_err()
+        .is_unpaired_edge_offsets()
     );
 
     let paired = CssPhysicalPosition::try_new(

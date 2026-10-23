@@ -1,6 +1,8 @@
 //! Functional new-API contracts from Images 4 WD 2025-09-30 §§3.1–3.5,
 //! the specific Values 5 WD 2024-11-11 position import, and shared Color 4/5.
 //! New construction APIs have no executable preimplementation boundary.
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use surgeist_color::{ColorSpace, HueInterpolation, PredefinedColorSpace};
 use surgeist_css::*;
 
@@ -60,13 +62,15 @@ fn checked_stops_retain_zero_one_or_two_positions_and_reject_a_third() {
         assert_eq!(conic.positions().len(), count);
         assert_eq!(conic.color(), &named("red"));
     }
-    assert_eq!(
-        CssGradientColorStop::try_from_positions(named("red"), vec![lp("25%"); 3]).unwrap_err(),
-        CssGradientStopConstructionError::TooManyPositions
+    assert!(
+        CssGradientColorStop::try_from_positions(named("red"), vec![lp("25%"); 3])
+            .unwrap_err()
+            .is_too_many_positions()
     );
-    assert_eq!(
-        CssAngularColorStop::try_new(named("red"), vec![angular("25%"); 3]).unwrap_err(),
-        CssGradientStopConstructionError::TooManyPositions
+    assert!(
+        CssAngularColorStop::try_new(named("red"), vec![angular("25%"); 3])
+            .unwrap_err()
+            .is_too_many_positions()
     );
 }
 
@@ -239,18 +243,21 @@ fn constructed_conic_budget_counts_both_positions_and_remains_atomic_on_failure(
     for (limits, kind) in [
         (
             CssSerializationLimits::new(5, 6, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(6, 5, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(6, 6, expected.len() - 1),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
-        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+            kind
+        );
         assert_eq!(value, before);
         assert_eq!(
             value
@@ -292,9 +299,10 @@ fn check_depth(build: impl Fn(usize) -> CssImageValue) {
     let invalid = build(256);
     assert_eq!(CssImage::try_new(valid.clone()).unwrap().value(), &valid);
     for _ in 0..2 {
-        assert_eq!(
-            CssImage::try_new(invalid.clone()).unwrap_err(),
-            CssImageConstructionError::NestingLimit
+        assert!(
+            CssImage::try_new(invalid.clone())
+                .unwrap_err()
+                .is_nesting_limit()
         );
         assert_eq!(CssImage::try_new(valid.clone()).unwrap().value(), &valid);
     }
@@ -561,19 +569,17 @@ fn intrinsic_conic_geometry_defaults_are_omitted_with_all_authored_nodes_charged
                 .unwrap(),
             expected
         );
-        assert_eq!(
+        assert!(
             image
                 .serialize_specified(CssSerializationLimits::new(12, 13, expected.len()))
                 .unwrap_err()
-                .kind(),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+                .is_input_node_limit()
         );
-        assert_eq!(
+        assert!(
             image
                 .serialize_specified(CssSerializationLimits::new(13, 12, expected.len()))
                 .unwrap_err()
-                .kind(),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
+                .is_projection_node_limit()
         );
         assert!(gradient.from().is_some());
         assert!(gradient.position().is_some());
@@ -599,12 +605,11 @@ fn singleton_first_zero_is_omitted_but_its_last_hundred_position_remains_authore
                 .unwrap(),
             expected
         );
-        assert_eq!(
+        assert!(
             value
                 .serialize_specified(CssSerializationLimits::new(4, 5, expected.len()))
                 .unwrap_err()
-                .kind(),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+                .is_input_node_limit()
         );
     }
     for (position, expected) in [
@@ -657,26 +662,19 @@ fn matching_interpolation_omission_keeps_the_authored_node_budget() {
         expected
     );
     for (input, projection, cause) in [
-        (
-            6,
-            7,
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
-        ),
-        (
-            7,
-            6,
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
-        ),
+        (6, 7, SerializationFailure::InputNodeLimit),
+        (7, 6, SerializationFailure::ProjectionNodeLimit),
     ] {
         assert_eq!(
-            image
-                .serialize_specified(CssSerializationLimits::new(
-                    input,
-                    projection,
-                    expected.len()
-                ),)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(
+                &image
+                    .serialize_specified(CssSerializationLimits::new(
+                        input,
+                        projection,
+                        expected.len()
+                    ),)
+                    .unwrap_err()
+            ),
             cause
         );
         assert_eq!(
@@ -728,12 +726,11 @@ fn generated_default_preservation_does_not_invent_an_authored_input_node() {
             .unwrap(),
         expected
     );
-    assert_eq!(
+    assert!(
         image
             .serialize_specified(CssSerializationLimits::new(8, 1000, expected.len()),)
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+            .is_input_node_limit()
     );
     assert!(gradient.interpolation().is_none());
     assert_eq!(
@@ -752,12 +749,11 @@ fn generated_default_preservation_does_not_invent_an_authored_input_node() {
         )),
         stops,
     )));
-    assert_eq!(
+    assert!(
         authored
             .serialize_specified(CssSerializationLimits::new(9, 1000, expected.len()),)
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+            .is_input_node_limit()
     );
     assert_eq!(
         authored

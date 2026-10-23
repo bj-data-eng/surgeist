@@ -460,8 +460,8 @@ mod tests {
     fn foreign_fact_preflight_does_not_change_phase_epoch_or_capacity() {
         use super::super::AuthoredError;
         use crate::color::{
-            CssColorError, CssColorFactError, CssColorFactIdentity, CssColorFacts,
-            CssColorPropertyFacts, CssColorSchemeFact, CssDeviceColorFact,
+            CssColorFactDefect, CssColorFactIdentity, CssColorFacts, CssColorPropertyFacts,
+            CssColorSchemeFact, CssDeviceColorFact,
         };
         let mut owner = CssColorOperationOwner::new();
         let mut buffer = CssColorPathBuffer::new();
@@ -486,9 +486,8 @@ mod tests {
         );
         assert!(matches!(
             result,
-            Err(AuthoredError::Color(CssColorError::Facts(
-                CssColorFactError::Foreign
-            )))
+            Err(AuthoredError::Color(ref error))
+                if error.fact_defect() == Some(CssColorFactDefect::Foreign)
         ));
         drop(result);
         assert_eq!(owner.current_phase(), phase);

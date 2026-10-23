@@ -430,10 +430,7 @@ fn legacy_aliases_reject_none_in_each_channel_or_alpha_with_sibling_recovery() {
                 )
                 .map(CssColor::from_hsl)
             };
-            assert_eq!(
-                result.unwrap_err(),
-                CssColorConstructionError::InvalidSyntax
-            );
+            assert!(result.unwrap_err().is_invalid_syntax());
         }
     }
 }

@@ -1,5 +1,7 @@
 //! Authored @font-face font-width contracts from CSS Fonts 4 WD 2026-09-07 §4.4.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::*;
 
 fn percent(text: &str) -> CssFontWidth {
@@ -309,17 +311,20 @@ fn descriptor_serializer_charges_two_endpoints_under_one_budget() {
     for (limits, kind) in [
         (
             CssSerializationLimits::new(2, 3, 8),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(3, 2, 8),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(3, 3, 7),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
-        assert_eq!(range.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&range.serialize_specified(limits).unwrap_err()),
+            kind
+        );
     }
 }

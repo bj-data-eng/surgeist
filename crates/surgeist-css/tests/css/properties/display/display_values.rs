@@ -1,5 +1,6 @@
 //! Independent specified-value tables from Display 3 §2 and Grid 3 §2.2.
 //! Legacy spellings remain distinct from modern outside/inside pairs (§2.6).
+use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::*;
 
 fn declaration(input: &str) -> CssDeclaration {
@@ -201,13 +202,12 @@ fn defaults_permutations_case_and_comments_preserve_specified_meaning_and_raw_te
         );
         assert_eq!(value(&parsed).as_css(), input);
         assert_eq!(parsed, before);
-        assert_eq!(
+        assert!(
             value(&parsed)
                 .value()
                 .serialize_specified(CssSerializationLimits::new(1, 1, 0))
                 .unwrap_err()
-                .kind(),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit
+                .is_byte_limit()
         );
         assert_eq!(parsed, before);
         assert_eq!(value(&parsed).as_css(), input);
@@ -259,7 +259,7 @@ fn legacy_specified_identity_is_distinct_and_all_domains_are_preserved() {
 
 #[test]
 fn all_display_values_obey_atomic_projection_and_byte_limits() {
-    use CssSpecifiedValueSerializationErrorKind as K;
+    use crate::css::support::failure_classes::SerializationFailure as K;
     for (value, text) in cases() {
         let before = value;
         for (limits, kind) in [
@@ -271,7 +271,10 @@ fn all_display_values_obey_atomic_projection_and_byte_limits() {
                 K::ByteLimit,
             ),
         ] {
-            assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+            assert_eq!(
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+                kind
+            );
             assert_eq!(value, before);
         }
         assert_eq!(

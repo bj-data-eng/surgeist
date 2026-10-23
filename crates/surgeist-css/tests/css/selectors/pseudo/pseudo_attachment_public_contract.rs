@@ -8,6 +8,8 @@ use crate::css::support::color_and_selector_fixtures::{
     assert_selector_report_rejected, assert_unrepresentable_construction,
     originating_compound as compound,
 };
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::*;
 
 fn unknown(value: &CssSelector) -> &CssUnknownWebkitPseudoElement {
@@ -91,9 +93,9 @@ fn unknown_webkit_names_are_ascii_canonical_decoded_identifiers_not_function_tok
     }
     for invalid in ["", "webkit-x", "-moz-x", ":-webkit-x", "-webkit-\0x"] {
         let error = CssUnknownWebkitPseudoElement::try_new(invalid).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            &CssSelectorConstructionErrorKind::InvalidUnknownWebkitPseudoElementName
+        assert!(
+            error.is_invalid_unknown_webkit_pseudo_element_name(),
+            "{error:?}"
         );
     }
     for functional in ["::-webkit-x()", "::-WebKit-X(arg)", r"::-\77 ebkit-x()"] {
@@ -353,10 +355,7 @@ fn all_current_pseudo_rows_reject_internal_and_sibling_combinators() {
     let wrong_first = value.rest()[0].selector().clone();
     let error = CssComplexSelector::try_new(wrong_first, value.rest().to_vec(), Default::default())
         .unwrap_err();
-    assert_eq!(
-        error.kind(),
-        &CssSelectorConstructionErrorKind::NonTerminalPseudoElement { compound_index: 0 }
-    );
+    assert_eq!(error.non_terminal_pseudo_element(), Some(0));
 }
 
 #[test]
@@ -456,9 +455,12 @@ fn strict_and_forgiving_contexts_preserve_pseudo_exclusion_and_original_function
         );
         assert_eq!(diagnostic.span().start().byte_offset().value(), span_start);
         assert_eq!(diagnostic.span().end().byte_offset().value(), span_end);
-        let ErrorKind::InvalidSelector(detail) = diagnostic.error().kind() else {
-            panic!("structured selector failure")
-        };
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidSelector,
+            "structured selector failure"
+        );
         let token = detail.encountered().unwrap();
         assert_eq!(token.kind(), CssTokenKind::Function);
         assert_eq!(token.authored(), "-WeBkIt-JkL(");
@@ -659,17 +661,14 @@ fn canonical_escaping_and_list_byte_budget_are_cumulative_and_atomic_for_checked
         assert!(member.serialize_specified(short).is_ok());
     }
     let error = CssSelectorList::try_new(members.clone(), short).unwrap_err();
-    let CssSelectorConstructionErrorKind::Specified(error) = error.kind() else {
+    let Some(error) = error.serialization_error() else {
         panic!("shared specified-byte construction failure")
     };
     assert_eq!(
-        error.kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+        serialization_failure(error),
+        SerializationFailure::ByteLimit
     );
-    assert_eq!(
-        list.serialize_specified(short).unwrap_err().kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
-    );
+    assert!(list.serialize_specified(short).unwrap_err().is_byte_limit());
     assert_eq!(list, before);
     assert_eq!(list.serialize_specified(exact).unwrap(), expected);
     assert_eq!(

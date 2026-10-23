@@ -6,8 +6,7 @@
 use crate::css::support::serialization_limits::assert_limits as budget;
 use surgeist_css::{
     CssBlockPosition as B, CssHorizontalPosition as H, CssInlinePosition as I,
-    CssPositionConstructionError as E, CssRelativeAxisPosition as R, CssSerializationLimits as L,
-    CssSpecifiedValueSerializationErrorKind as K, CssVerticalPosition as V, *,
+    CssRelativeAxisPosition as R, CssSerializationLimits as L, CssVerticalPosition as V, *,
 };
 
 fn lp(text: &str) -> CssSpecifiedLengthPercentage {
@@ -181,9 +180,10 @@ fn every_checked_generic_family_rejects_unpaired_edge_offsets_with_typed_error()
         (H::Offset(lp("1px")), V::BottomOffset(lp("2%"))),
         (H::LeftOffset(lp("1px")), V::Offset(lp("2%"))),
     ] {
-        assert_eq!(
-            CssCartesianPosition::try_new(horizontal, vertical).unwrap_err(),
-            E::UnpairedEdgeOffsets
+        assert!(
+            CssCartesianPosition::try_new(horizontal, vertical)
+                .unwrap_err()
+                .is_unpaired_edge_offsets()
         );
     }
     for (block, inline) in [
@@ -192,9 +192,10 @@ fn every_checked_generic_family_rejects_unpaired_edge_offsets_with_typed_error()
         (B::Start, I::StartOffset(lp("2%"))),
         (B::Center, I::EndOffset(lp("2%"))),
     ] {
-        assert_eq!(
-            CssPosition::try_from_named_axes(block, inline).unwrap_err(),
-            E::UnpairedEdgeOffsets
+        assert!(
+            CssPosition::try_from_named_axes(block, inline)
+                .unwrap_err()
+                .is_unpaired_edge_offsets()
         );
     }
     for (block, inline) in [
@@ -203,16 +204,20 @@ fn every_checked_generic_family_rejects_unpaired_edge_offsets_with_typed_error()
         (R::End, R::StartOffset(lp("2%"))),
         (R::Center, R::EndOffset(lp("2%"))),
     ] {
-        assert_eq!(
-            CssPosition::try_from_relative_axes(block, inline).unwrap_err(),
-            E::UnpairedEdgeOffsets
+        assert!(
+            CssPosition::try_from_relative_axes(block, inline)
+                .unwrap_err()
+                .is_unpaired_edge_offsets()
         );
     }
-    let error: &dyn std::error::Error = &E::UnpairedEdgeOffsets;
+    let error = CssCartesianPosition::try_new(H::XStartOffset(lp("1px")), V::Center).unwrap_err();
+    let error: &dyn std::error::Error = &error;
     assert_eq!(error.to_string(), "position edge offsets must be paired");
     assert!(error.source().is_none());
     assert_eq!(
-        E::NonPhysicalKeyword.to_string(),
+        CssPhysicalPosition::try_new(H::XStart, V::Center)
+            .unwrap_err()
+            .to_string(),
         "physical position cannot contain axis-relative keywords"
     );
 }
@@ -220,23 +225,26 @@ fn every_checked_generic_family_rejects_unpaired_edge_offsets_with_typed_error()
 #[test]
 fn physical_and_background_construction_reject_every_new_cartesian_branch() {
     for horizontal in [H::XStart, H::XEnd] {
-        assert_eq!(
-            CssPhysicalPosition::try_new(horizontal.clone(), V::Top).unwrap_err(),
-            E::NonPhysicalKeyword
+        assert!(
+            CssPhysicalPosition::try_new(horizontal.clone(), V::Top)
+                .unwrap_err()
+                .is_non_physical_keyword()
         );
         assert!(CssBackgroundPosition::try_new(horizontal, V::Top).is_none());
     }
     for vertical in [V::YStart, V::YEnd] {
-        assert_eq!(
-            CssPhysicalPosition::try_new(H::Left, vertical.clone()).unwrap_err(),
-            E::NonPhysicalKeyword
+        assert!(
+            CssPhysicalPosition::try_new(H::Left, vertical.clone())
+                .unwrap_err()
+                .is_non_physical_keyword()
         );
         assert!(CssBackgroundPosition::try_new(H::Left, vertical).is_none());
     }
     for horizontal in [H::XStartOffset(lp("1px")), H::XEndOffset(lp("1px"))] {
-        assert_eq!(
-            CssPhysicalPosition::try_new(horizontal.clone(), V::TopOffset(lp("2%"))).unwrap_err(),
-            E::NonPhysicalKeyword
+        assert!(
+            CssPhysicalPosition::try_new(horizontal.clone(), V::TopOffset(lp("2%")))
+                .unwrap_err()
+                .is_non_physical_keyword()
         );
         assert!(
             CssBackgroundPosition::try_new(horizontal.clone(), V::TopOffset(lp("2%"))).is_none()
@@ -244,18 +252,20 @@ fn physical_and_background_construction_reject_every_new_cartesian_branch() {
         assert!(CssBackgroundPosition::try_new(horizontal, V::Top).is_none());
     }
     for vertical in [V::YStartOffset(lp("2%")), V::YEndOffset(lp("2%"))] {
-        assert_eq!(
-            CssPhysicalPosition::try_new(H::LeftOffset(lp("1px")), vertical.clone()).unwrap_err(),
-            E::NonPhysicalKeyword
+        assert!(
+            CssPhysicalPosition::try_new(H::LeftOffset(lp("1px")), vertical.clone())
+                .unwrap_err()
+                .is_non_physical_keyword()
         );
         assert!(
             CssBackgroundPosition::try_new(H::LeftOffset(lp("1px")), vertical.clone()).is_none()
         );
         assert!(CssBackgroundPosition::try_new(H::Left, vertical).is_none());
     }
-    assert_eq!(
-        CssPhysicalPosition::try_new(H::LeftOffset(lp("1px")), V::Center).unwrap_err(),
-        E::UnpairedEdgeOffsets
+    assert!(
+        CssPhysicalPosition::try_new(H::LeftOffset(lp("1px")), V::Center)
+            .unwrap_err()
+            .is_unpaired_edge_offsets()
     );
     let background = CssBackgroundPosition::try_new(H::LeftOffset(lp("1px")), V::Center).unwrap();
     assert_eq!(background.horizontal(), &H::LeftOffset(lp("1px")));
@@ -645,12 +655,11 @@ fn mixed_math_offsets_keep_family_order_and_original_numeric_provenance() {
             closing.span().end().column().value() as usize,
             closing.source().as_str()[..end].encode_utf16().count()
         );
-        assert_eq!(
+        assert!(
             value
                 .serialize_specified(L::new(0, 100, 100))
                 .unwrap_err()
-                .kind(),
-            K::InputNodeLimit
+                .is_input_node_limit()
         );
         assert_eq!(offset.origin(), &before);
     }

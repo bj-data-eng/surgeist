@@ -4,6 +4,9 @@
 //! https://www.w3.org/TR/2024/WD-css-typed-om-1-20240321/#cssnumericvalue-match
 
 use crate::css::support::component_values as components;
+use crate::css::support::failure_classes::ComponentFailure;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use surgeist_color::PredefinedColorSpace;
 use surgeist_css::*;
 
@@ -75,27 +78,18 @@ fn checked_hinted_root_rejects_other_domains_and_cannot_reenter_pure_number_root
         let error =
             CssHintedNumberCalculation::try_from_components(components(source), Default::default())
                 .unwrap_err();
-        assert_eq!(
-            error.kind(),
-            &CssNumericConstructionErrorKind::RootDomainMismatch
-        );
+        assert!(error.is_root_domain_mismatch(), "{error:?}");
         assert!(error.origin().is_some());
     }
     let value = hinted();
     let error =
         CssNumberCalculation::try_from_components(value.components().clone(), Default::default())
             .unwrap_err();
-    assert_eq!(
-        error.kind(),
-        &CssNumericConstructionErrorKind::RootDomainMismatch
-    );
+    assert!(error.is_root_domain_mismatch(), "{error:?}");
     let error =
         CssIntegerCalculation::try_from_components(value.components().clone(), Default::default())
             .unwrap_err();
-    assert_eq!(
-        error.kind(),
-        &CssNumericConstructionErrorKind::RootDomainMismatch
-    );
+    assert!(error.is_root_domain_mismatch(), "{error:?}");
     for source in ["calc(1 + 1%)", "calc(1px + 1s)", "calc(1px * 1px)"] {
         assert!(
             CssHintedNumberCalculation::try_from_components(components(source), Default::default())
@@ -125,15 +119,15 @@ fn programmatic_root_preserves_child_origins_and_constructor_limits() {
     for (limits, exceeded) in [
         (
             CssComponentValueLimits::try_new(1, 11, SOURCE.len()).unwrap(),
-            CssComponentValueErrorKind::NestingLimit,
+            ComponentFailure::NestingLimit,
         ),
         (
             CssComponentValueLimits::try_new(2, 10, SOURCE.len()).unwrap(),
-            CssComponentValueErrorKind::ComponentLimit,
+            ComponentFailure::ComponentLimit,
         ),
         (
             CssComponentValueLimits::try_new(2, 11, SOURCE.len() - 1).unwrap(),
-            CssComponentValueErrorKind::ByteLimit,
+            ComponentFailure::ByteLimit,
         ),
     ] {
         crate::css::support::value_assertions::assert_numeric_resource(
@@ -159,18 +153,21 @@ fn opacity_keeps_unknown_basis_symbolic_and_charges_the_shared_projection() {
     for (limits, kind) in [
         (
             CssSerializationLimits::new(6, 8, SPECIFIED.len()),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(7, 7, SPECIFIED.len()),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(7, 8, SPECIFIED.len() - 1),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
-        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+            kind
+        );
         assert_eq!(value, before);
     }
     assert_eq!(

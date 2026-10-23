@@ -243,11 +243,14 @@ fn failed_clause_probes_do_not_duplicate_retained_eof_closures() {
         );
         assert_eq!(statement.span().start().byte_offset().value(), 0);
         assert_eq!(statement.span().end().byte_offset().value(), source.len());
-        let surgeist_css::ErrorKind::UnexpectedEnd(detail) = statement.error().kind() else {
-            panic!("typed statement EOF");
-        };
+        let detail = statement.error();
         assert_eq!(
-            detail.expectation().as_str(),
+            detail.code(),
+            CssErrorCode::UnexpectedEnd,
+            "typed statement EOF"
+        );
+        assert_eq!(
+            detail.expectation().unwrap().as_str(),
             "a semicolon or block terminating an at-rule"
         );
         assert_eq!(
@@ -315,11 +318,14 @@ fn eof_closures_do_not_prefer_a_grammatically_incomplete_prefix_interpretation()
     );
     assert_eq!(statement.span().start().byte_offset().value(), 0);
     assert_eq!(statement.span().end().byte_offset().value(), source.len());
-    let surgeist_css::ErrorKind::UnexpectedEnd(detail) = statement.error().kind() else {
-        panic!("typed statement EOF");
-    };
+    let detail = statement.error();
     assert_eq!(
-        detail.expectation().as_str(),
+        detail.code(),
+        CssErrorCode::UnexpectedEnd,
+        "typed statement EOF"
+    );
+    assert_eq!(
+        detail.expectation().unwrap().as_str(),
         "a semicolon or block terminating an at-rule"
     );
     assert_eq!(
@@ -360,8 +366,7 @@ fn lexical_errors_remain_terminal_across_optional_clause_probes() {
             diagnostic.error().position().byte_offset().value(),
             source.find(token).unwrap()
         );
-        let surgeist_css::ErrorKind::InvalidComponentValue(error) = diagnostic.error().kind()
-        else {
+        let Some(error) = diagnostic.error().component_error() else {
             panic!("original typed component error");
         };
         let surgeist_css::CssValueOrigin::Parsed(origin) = error.origin() else {

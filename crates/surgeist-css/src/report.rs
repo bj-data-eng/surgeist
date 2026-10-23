@@ -1,4 +1,4 @@
-use crate::{CssSourceSpan, Error};
+use crate::{CssError, CssSourceSpan};
 
 /// A parser-produced authored syntax value and its ordered recovery diagnostics.
 ///
@@ -139,9 +139,9 @@ pub enum CssRecoveryAction {
 /// authored nodes, log, validate, cascade, or resolve syntax.
 ///
 /// ```compile_fail
-/// use surgeist_css::{CssRecoveryAction, CssRecoveryDiagnostic, CssSourceSpan, Error};
+/// use surgeist_css::{CssRecoveryAction, CssRecoveryDiagnostic, CssSourceSpan, CssError};
 ///
-/// fn forge(error: Error, span: CssSourceSpan) -> CssRecoveryDiagnostic {
+/// fn forge(error: CssError, span: CssSourceSpan) -> CssRecoveryDiagnostic {
 ///     CssRecoveryDiagnostic {
 ///         error,
 ///         span,
@@ -151,7 +151,7 @@ pub enum CssRecoveryAction {
 /// ```
 #[derive(Clone, Debug)]
 pub struct CssRecoveryDiagnostic {
-    error: Error,
+    error: CssError,
     span: CssSourceSpan,
     action: CssRecoveryAction,
     opening_owner: Option<usize>,
@@ -213,7 +213,7 @@ impl CssRecoveryDiagnostic {
 
     #[must_use]
     pub(crate) fn new(
-        error: Error,
+        error: CssError,
         span: CssSourceSpan,
         action: CssRecoveryAction,
     ) -> Option<Self> {
@@ -236,7 +236,7 @@ impl CssRecoveryDiagnostic {
     /// This diagnostic-phase accessor preserves typed error provenance. Display
     /// prose is not control flow, and the accessor performs no logging or parsing.
     #[must_use]
-    pub const fn error(&self) -> &Error {
+    pub const fn error(&self) -> &CssError {
         &self.error
     }
 
@@ -321,15 +321,33 @@ impl CssValidationFailure {
     }
 }
 
+impl std::fmt::Display for CssValidationFailure {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let count = self.diagnostics.len();
+        write!(
+            formatter,
+            "CSS validation rejected the input with {count} diagnostic{}, the first at {}",
+            if count == 1 { "" } else { "s" },
+            self.first().error().position()
+        )
+    }
+}
+
+impl std::error::Error for CssValidationFailure {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(self.first().error())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{CssParseReport, CssRecoveryAction, CssRecoveryDiagnostic, CssValidationFailure};
     use crate::test_support::CssParseReportTestExt;
-    use crate::{CssSourcePosition, CssSourceSpan, Error, parse_sheet};
+    use crate::{CssError, CssSourcePosition, CssSourceSpan, parse_sheet};
 
     const INVALID_SOURCE: &str = ".x { mystery: 1; }";
 
-    fn invalid_property_error() -> Error {
+    fn invalid_property_error() -> CssError {
         parse_sheet(INVALID_SOURCE).expect_err("unknown property must remain a strict error")
     }
 

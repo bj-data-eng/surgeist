@@ -3,6 +3,8 @@
 use crate::css::support::color_and_selector_fixtures::{
     assert_selector_input_rejected, assert_strict_validation_rejects,
 };
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::validated_selector_in as parsed;
 use surgeist_css::*;
 
@@ -144,18 +146,21 @@ fn constructed_column_relatives_share_the_node_and_utf8_limits() {
     for (limits, kind) in [
         (
             CssSerializationLimits::new(2, 3, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(3, 2, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(3, 3, expected.len() - 1),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
-        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+            kind
+        );
         assert_eq!(value, before);
     }
     assert_eq!(
@@ -279,20 +284,18 @@ fn column_relative_graphs_inherit_nested_has_and_pseudo_element_exclusions() {
     for child in [logical, nth, shadow, pseudo_element] {
         let value = column_has(child);
         let before = value.clone();
-        assert_eq!(
+        assert!(
             value
                 .serialize_specified(Default::default())
                 .unwrap_err()
-                .kind(),
-            CssSpecifiedValueSerializationErrorKind::UnrepresentableValue
+                .is_unrepresentable_value()
         );
         assert_eq!(value, before);
-        assert_eq!(
+        assert!(
             value
                 .serialize_specified(Default::default())
                 .unwrap_err()
-                .kind(),
-            CssSpecifiedValueSerializationErrorKind::UnrepresentableValue
+                .is_unrepresentable_value()
         );
     }
 }

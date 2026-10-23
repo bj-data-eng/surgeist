@@ -1,11 +1,13 @@
 //! Report observables: retained structure identities, authored declarations
 //! and recovery diagnostics, in the schema of the original report columns.
 
+use crate::css::support::failure_classes::{ComponentFailure, component_failure};
 use surgeist_css::{
-    CssComponentValueErrorKind, CssDeclaration, CssDeclarationContextRef, CssErrorCode,
-    CssEscapeError, CssGlobalKeyword, CssImportance, CssKnownDeclaredValueRef, CssPropertyNameRef,
-    CssRecoveryAction, CssRecoveryDiagnostic, CssRule, CssScopedRule, CssTokenKind,
-    CssTokenSummary, ErrorKind,
+    CssColorComponentName, CssDeclaration, CssDeclarationContextRef, CssError, CssErrorCode,
+    CssEscapeFailure, CssGlobalKeyword, CssGrammarExpectation, CssImportance,
+    CssKnownDeclaredValueRef, CssKnownProperty, CssProductionId, CssPropertyNameRef,
+    CssPropertyValueError, CssRecoveryAction, CssRecoveryDiagnostic, CssRule, CssScopedRule,
+    CssTokenKind, CssTokenSummary,
 };
 
 /// Retained identities and authored declarations collected in source order.
@@ -266,7 +268,7 @@ fn diagnostic(diagnostic: &CssRecoveryDiagnostic) -> String {
     format!(
         "{}/{}/{}@{}:{}:{}>{}:{}:{}-{}:{}:{}:{}",
         code_name(error.code()),
-        kind_facts(error.kind()),
+        kind_facts(error),
         action_name(diagnostic.action()),
         position.byte_offset().value(),
         position.line().value(),
@@ -320,139 +322,261 @@ fn token_kind_name(kind: CssTokenKind) -> &'static str {
     }
 }
 
+/// The facts of a stylesheet diagnostic or of a checked property-value
+/// grammar failure, which reports the same facts without a position.
+pub trait GrammarDetail {
+    fn grammar_code(&self) -> Option<CssErrorCode>;
+    fn expectation(&self) -> Option<CssGrammarExpectation>;
+    fn encountered(&self) -> Option<&CssTokenSummary>;
+    fn production(&self) -> Option<CssProductionId>;
+    fn known_property(&self) -> Option<CssKnownProperty>;
+    fn color_component(&self) -> Option<&CssColorComponentName>;
+    fn nesting_limit(&self) -> Option<u32>;
+    fn declaration_context(&self) -> Option<CssDeclarationContextRef<'_>>;
+    fn component_kind(&self) -> Option<ComponentFailure>;
+    /// The complete diagnostic, when there is one.
+    fn diagnostic(&self) -> Option<&CssError>;
+}
+
+impl GrammarDetail for CssError {
+    fn grammar_code(&self) -> Option<CssErrorCode> {
+        Some(self.code())
+    }
+    fn expectation(&self) -> Option<CssGrammarExpectation> {
+        self.expectation()
+    }
+    fn encountered(&self) -> Option<&CssTokenSummary> {
+        self.encountered()
+    }
+    fn production(&self) -> Option<CssProductionId> {
+        self.production()
+    }
+    fn known_property(&self) -> Option<CssKnownProperty> {
+        self.known_property()
+    }
+    fn color_component(&self) -> Option<&CssColorComponentName> {
+        self.color_component()
+    }
+    fn nesting_limit(&self) -> Option<u32> {
+        self.nesting_limit()
+    }
+    fn declaration_context(&self) -> Option<CssDeclarationContextRef<'_>> {
+        self.declaration_context()
+    }
+    fn component_kind(&self) -> Option<ComponentFailure> {
+        self.component_error().map(component_failure)
+    }
+    fn diagnostic(&self) -> Option<&CssError> {
+        Some(self)
+    }
+}
+
+impl GrammarDetail for CssPropertyValueError {
+    fn grammar_code(&self) -> Option<CssErrorCode> {
+        self.code()
+    }
+    fn expectation(&self) -> Option<CssGrammarExpectation> {
+        self.expectation()
+    }
+    fn encountered(&self) -> Option<&CssTokenSummary> {
+        self.encountered()
+    }
+    fn production(&self) -> Option<CssProductionId> {
+        self.production()
+    }
+    fn known_property(&self) -> Option<CssKnownProperty> {
+        self.known_property()
+    }
+    fn color_component(&self) -> Option<&CssColorComponentName> {
+        self.color_component()
+    }
+    fn nesting_limit(&self) -> Option<u32> {
+        self.nesting_limit()
+    }
+    fn declaration_context(&self) -> Option<CssDeclarationContextRef<'_>> {
+        self.declaration_context()
+    }
+    fn component_kind(&self) -> Option<ComponentFailure> {
+        self.component_error().map(component_failure)
+    }
+    fn diagnostic(&self) -> Option<&CssError> {
+        None
+    }
+}
+
 /// The diagnostic kind and each populated fact, read through its accessors.
-pub fn kind_facts(kind: &ErrorKind) -> String {
-    match kind {
-        ErrorKind::UnexpectedEnd(detail) => {
-            format!("UnexpectedEnd:{}", detail.expectation().as_str())
-        }
-        ErrorKind::UnexpectedToken(detail) => format!(
+pub fn kind_facts(error: &dyn GrammarDetail) -> String {
+    let expectation = || error.expectation().map_or("-", |value| value.as_str());
+    let Some(code) = error.grammar_code() else {
+        return "Future".to_owned();
+    };
+    // Facts only a complete diagnostic reports.
+    let diagnostic = error.diagnostic();
+    let at_rule = || {
+        diagnostic
+            .and_then(CssError::at_rule)
+            .map_or("-", |value| value.as_str())
+    };
+    let descriptor = || {
+        diagnostic
+            .and_then(CssError::descriptor)
+            .map_or("-", |value| value.as_str())
+    };
+    let feature = || {
+        diagnostic
+            .and_then(CssError::feature)
+            .map_or("-", |value| value.as_str())
+    };
+    let property_name = || {
+        diagnostic
+            .and_then(CssError::property_name)
+            .map_or("-", |value| value.as_str())
+    };
+    match code {
+        CssErrorCode::UnexpectedEnd => format!("UnexpectedEnd:{}", expectation()),
+        CssErrorCode::UnexpectedToken => format!(
             "UnexpectedToken:{}:{}",
-            detail.expectation().as_str(),
-            token(Some(detail.encountered()))
+            expectation(),
+            token(error.encountered())
         ),
-        ErrorKind::InvalidAtRulePlacement(detail) => format!(
-            "InvalidAtRulePlacement:{}:{}",
-            detail.name().as_str(),
-            detail.expected_context().as_str()
-        ),
-        ErrorKind::InvalidAtRulePrelude(detail) => format!(
+        CssErrorCode::InvalidAtRulePlacement => {
+            format!("InvalidAtRulePlacement:{}:{}", at_rule(), expectation())
+        }
+        CssErrorCode::InvalidAtRulePrelude => format!(
             "InvalidAtRulePrelude:{}:{}:{}:{}",
-            detail.name().as_str(),
-            detail.production().as_str(),
-            detail.expectation().as_str(),
-            token(detail.encountered())
+            at_rule(),
+            error.production().map_or("-", |value| value.as_str()),
+            expectation(),
+            token(error.encountered())
         ),
-        ErrorKind::InvalidAtRuleBody(detail) => format!(
+        CssErrorCode::InvalidAtRuleBody => format!(
             "InvalidAtRuleBody:{}:{}:{}:{}",
-            detail.name().as_str(),
-            detail.production().as_str(),
-            detail.expectation().as_str(),
-            token(detail.encountered())
+            at_rule(),
+            error.production().map_or("-", |value| value.as_str()),
+            expectation(),
+            token(error.encountered())
         ),
-        ErrorKind::UnknownAtRule(detail) => format!("UnknownAtRule:{}", detail.name().as_str()),
-        ErrorKind::UnsupportedAtRule(detail) => format!(
-            "UnsupportedAtRule:{}:{}",
-            detail.name().as_str(),
-            detail.feature().as_str()
-        ),
-        ErrorKind::InvalidQualifiedRule(detail) => format!(
+        CssErrorCode::UnknownAtRule => format!("UnknownAtRule:{}", at_rule()),
+        CssErrorCode::UnsupportedAtRule => {
+            format!("UnsupportedAtRule:{}:{}", at_rule(), feature())
+        }
+        CssErrorCode::InvalidQualifiedRule => format!(
             "InvalidQualifiedRule:{}:{}:{}",
-            detail.production().as_str(),
-            detail.expectation().as_str(),
-            token(detail.encountered())
+            error.production().map_or("-", |value| value.as_str()),
+            expectation(),
+            token(error.encountered())
         ),
-        ErrorKind::InvalidSelector(detail) => format!(
+        CssErrorCode::InvalidSelector => format!(
             "InvalidSelector:{}:{}:{}",
-            detail.production().map_or("-", |value| value.as_str()),
-            detail.expectation().as_str(),
-            token(detail.encountered())
+            error.production().map_or("-", |value| value.as_str()),
+            expectation(),
+            token(error.encountered())
         ),
-        ErrorKind::InvalidMediaQuery(detail) => format!(
+        CssErrorCode::InvalidMediaQuery => format!(
             "InvalidMediaQuery:{}:{}:{}",
-            detail.feature().map_or("-", |value| value.as_str()),
-            detail.expectation().as_str(),
-            token(detail.encountered())
+            diagnostic
+                .and_then(CssError::media_feature)
+                .map_or("-", |value| value.as_str()),
+            expectation(),
+            token(error.encountered())
         ),
-        ErrorKind::UnknownProperty(detail) => format!("UnknownProperty:{}", detail.name().as_str()),
-        ErrorKind::UnsupportedProperty(detail) => format!(
-            "UnsupportedProperty:{}:{}",
-            detail.name().as_str(),
-            detail.feature().as_str()
-        ),
-        ErrorKind::InvalidPropertyValue(detail) => format!(
+        CssErrorCode::UnknownProperty => format!("UnknownProperty:{}", property_name()),
+        CssErrorCode::UnsupportedProperty => {
+            format!("UnsupportedProperty:{}:{}", property_name(), feature())
+        }
+        CssErrorCode::InvalidPropertyValue => format!(
             "InvalidPropertyValue:{}:{}:{}",
-            detail.property().stable_id(),
-            detail.expectation().as_str(),
-            token(detail.encountered())
+            error
+                .known_property()
+                .map_or("-", |property| property.stable_id()),
+            expectation(),
+            token(error.encountered())
         ),
-        ErrorKind::InvalidDeclarationAnnotation(detail) => format!(
+        CssErrorCode::InvalidDeclarationAnnotation => format!(
             "InvalidDeclarationAnnotation:{}:{}",
-            declaration_context(detail.context()),
-            token(Some(detail.encountered()))
+            error
+                .declaration_context()
+                .map_or_else(|| "-".to_owned(), declaration_context),
+            token(error.encountered())
         ),
-        ErrorKind::UnknownDescriptor(detail) => format!(
-            "UnknownDescriptor:{}:{}",
-            detail.at_rule().as_str(),
-            detail.descriptor().as_str()
-        ),
-        ErrorKind::UnsupportedDescriptor(detail) => format!(
+        CssErrorCode::UnknownDescriptor => {
+            format!("UnknownDescriptor:{}:{}", at_rule(), descriptor())
+        }
+        CssErrorCode::UnsupportedDescriptor => format!(
             "UnsupportedDescriptor:{}:{}:{}",
-            detail.at_rule().as_str(),
-            detail.descriptor().as_str(),
-            detail.feature().as_str()
+            at_rule(),
+            descriptor(),
+            feature()
         ),
-        ErrorKind::InvalidDescriptorValue(detail) => format!(
+        CssErrorCode::InvalidDescriptorValue => format!(
             "InvalidDescriptorValue:{}:{}:{}:{}",
-            detail.at_rule().as_str(),
-            detail.descriptor().as_str(),
-            detail.expectation().as_str(),
-            token(detail.encountered())
+            at_rule(),
+            descriptor(),
+            expectation(),
+            token(error.encountered())
         ),
-        ErrorKind::InvalidDescriptorCombination(detail) => format!(
+        CssErrorCode::InvalidDescriptorCombination => format!(
             "InvalidDescriptorCombination:{}:{}:{}",
-            detail.at_rule().as_str(),
-            detail.responsible().as_str(),
-            detail
-                .conflicting()
+            at_rule(),
+            descriptor(),
+            diagnostic
+                .map(CssError::conflicting_descriptors)
+                .unwrap_or_default()
                 .iter()
                 .map(|value| value.as_str())
                 .collect::<Vec<_>>()
                 .join(",")
         ),
-        ErrorKind::InvalidColorSyntax(detail) => format!(
+        CssErrorCode::InvalidColorSyntax => format!(
             "InvalidColorSyntax:{}:{}:{}",
-            detail.component().map_or("-", |value| value.as_str()),
-            detail.expectation().as_str(),
-            token(detail.encountered())
+            error.color_component().map_or("-", |value| value.as_str()),
+            expectation(),
+            token(error.encountered())
         ),
-        ErrorKind::NestingLimit(detail) => format!(
+        CssErrorCode::NestingLimit => format!(
             "NestingLimit:{}:{}",
-            detail.limit(),
-            detail.enclosing_production().as_str()
+            error
+                .nesting_limit()
+                .map_or_else(|| "-".to_owned(), |limit| limit.to_string()),
+            error.production().map_or("-", |value| value.as_str())
         ),
-        ErrorKind::EscapeParseError(detail) => format!(
+        CssErrorCode::ParserUnavailable => format!(
+            "ParserUnavailable:{}:{}",
+            error
+                .nesting_limit()
+                .map_or_else(|| "-".to_owned(), |limit| limit.to_string()),
+            error.production().map_or("-", |value| value.as_str())
+        ),
+        CssErrorCode::EscapeParseError => format!(
             "EscapeParseError:{}",
-            match detail {
-                CssEscapeError::EndOfInput => "end-of-input",
-                CssEscapeError::Newline => "newline",
+            match diagnostic.and_then(CssError::escape_failure) {
+                Some(CssEscapeFailure::EndOfInput) => "end-of-input",
+                Some(CssEscapeFailure::Newline) => "newline",
                 _ => "future",
             }
         ),
-        ErrorKind::InvalidComponentValue(detail) => format!(
+        CssErrorCode::InvalidComponentValue => format!(
             "InvalidComponentValue:{}",
-            component_error_kind(detail.kind())
+            error.component_kind().map_or("-", component_error_kind)
         ),
-        ErrorKind::LegacyNavigationTarget(detail) => {
-            format!("LegacyNavigationTarget:{}", detail.target())
+        CssErrorCode::LegacyNavigationTarget => format!(
+            "LegacyNavigationTarget:{}",
+            diagnostic
+                .and_then(CssError::navigation_target)
+                .unwrap_or("-")
+        ),
+        CssErrorCode::NamespaceRedeclaration => {
+            let previous = diagnostic.and_then(CssError::previous_position);
+            format!(
+                "NamespaceRedeclaration:{}:{}:{}:{}",
+                diagnostic
+                    .and_then(CssError::namespace_prefix)
+                    .map_or("-", |prefix| prefix.as_str()),
+                previous.map_or_else(|| "-".to_owned(), |p| p.byte_offset().value().to_string()),
+                previous.map_or_else(|| "-".to_owned(), |p| p.line().value().to_string()),
+                previous.map_or_else(|| "-".to_owned(), |p| p.column().value().to_string())
+            )
         }
-        ErrorKind::NamespaceRedeclaration(detail) => format!(
-            "NamespaceRedeclaration:{}:{}:{}:{}",
-            detail.prefix().map_or("-", |prefix| prefix.as_str()),
-            detail.previous_position().byte_offset().value(),
-            detail.previous_position().line().value(),
-            detail.previous_position().column().value()
-        ),
         _ => "Future".to_owned(),
     }
 }
@@ -503,6 +627,7 @@ pub fn code_name(code: CssErrorCode) -> &'static str {
         CssErrorCode::InvalidComponentValue => "InvalidComponentValue",
         CssErrorCode::LegacyNavigationTarget => "LegacyNavigationTarget",
         CssErrorCode::NamespaceRedeclaration => "NamespaceRedeclaration",
+        CssErrorCode::ParserUnavailable => "ParserUnavailable",
         _ => "Future",
     }
 }
@@ -531,24 +656,24 @@ fn action_name(action: CssRecoveryAction) -> &'static str {
 }
 
 /// The component-value error kind, by name.
-pub fn component_error_kind(kind: CssComponentValueErrorKind) -> &'static str {
+pub fn component_error_kind(kind: ComponentFailure) -> &'static str {
     match kind {
-        CssComponentValueErrorKind::BadString => "BadString",
-        CssComponentValueErrorKind::BadUrl => "BadUrl",
-        CssComponentValueErrorKind::ByteLimit => "ByteLimit",
-        CssComponentValueErrorKind::CapacityOverflow => "CapacityOverflow",
-        CssComponentValueErrorKind::ComponentLimit => "ComponentLimit",
-        CssComponentValueErrorKind::EmptyInput => "EmptyInput",
-        CssComponentValueErrorKind::InvalidDimension => "InvalidDimension",
-        CssComponentValueErrorKind::InvalidFunction => "InvalidFunction",
-        CssComponentValueErrorKind::InvalidIdentifier => "InvalidIdentifier",
-        CssComponentValueErrorKind::InvalidNumber => "InvalidNumber",
-        CssComponentValueErrorKind::InvalidString => "InvalidString",
-        CssComponentValueErrorKind::InvalidToken => "InvalidToken",
-        CssComponentValueErrorKind::NestingLimit => "NestingLimit",
-        CssComponentValueErrorKind::TrailingInput => "TrailingInput",
-        CssComponentValueErrorKind::UnmatchedClosingDelimiter => "UnmatchedClosingDelimiter",
-        CssComponentValueErrorKind::UnserializableBoundary => "UnserializableBoundary",
-        _ => "Future",
+        ComponentFailure::BadString => "BadString",
+        ComponentFailure::BadUrl => "BadUrl",
+        ComponentFailure::ByteLimit => "ByteLimit",
+        ComponentFailure::CapacityOverflow => "CapacityOverflow",
+        ComponentFailure::ComponentLimit => "ComponentLimit",
+        ComponentFailure::EmptyInput => "EmptyInput",
+        ComponentFailure::InvalidDimension => "InvalidDimension",
+        ComponentFailure::InvalidFunction => "InvalidFunction",
+        ComponentFailure::InvalidIdentifier => "InvalidIdentifier",
+        ComponentFailure::InvalidNumber => "InvalidNumber",
+        ComponentFailure::InvalidString => "InvalidString",
+        ComponentFailure::InvalidToken => "InvalidToken",
+        ComponentFailure::NestingLimit => "NestingLimit",
+        ComponentFailure::TrailingInput => "TrailingInput",
+        ComponentFailure::UnmatchedClosingDelimiter => "UnmatchedClosingDelimiter",
+        ComponentFailure::UnserializableBoundary => "UnserializableBoundary",
+        ComponentFailure::ParserUnavailable => "ParserUnavailable",
     }
 }

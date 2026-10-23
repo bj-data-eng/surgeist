@@ -1,3 +1,5 @@
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::*;
 
 #[test]
@@ -25,18 +27,21 @@ fn scalar_style_keywords_share_exact_bounded_serialization() {
     for (limits, kind) in [
         (
             CssSerializationLimits::new(0, 1, 4),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(1, 0, 4),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(1, 1, 3),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
-        assert_eq!(style.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&style.serialize_specified(limits).unwrap_err()),
+            kind
+        );
     }
 }
 
@@ -63,18 +68,21 @@ fn logical_pairs_keep_authored_omission_and_cumulative_budget() {
     for (limits, kind) in [
         (
             CssSerializationLimits::new(2, 3, 13),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(3, 2, 13),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(3, 3, 12),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
-        assert_eq!(pair.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&pair.serialize_specified(limits).unwrap_err()),
+            kind
+        );
     }
 }
 
@@ -141,19 +149,19 @@ fn four_side_styles_preserve_authored_arity_and_physical_or_logical_roles() {
     for (limits, kind) in [
         (
             CssSerializationLimits::new(4, 5, 32),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(5, 4, 32),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(5, 5, 31),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            logical.serialize_specified(limits).unwrap_err().kind(),
+            serialization_failure(&logical.serialize_specified(limits).unwrap_err()),
             kind
         );
     }

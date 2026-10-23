@@ -3,6 +3,7 @@
 //! numeric_hinted_noncolor_contexts target. No percentage basis is supplied.
 
 use crate::css::support::component_values as components;
+use crate::css::support::failure_classes::ComponentFailure;
 use crate::css::support::important_declaration;
 use crate::css::support::serialization_limits::LimitLadder;
 use crate::css::support::value_assertions::filter_value as filter;
@@ -152,7 +153,7 @@ fn checked_transform_construction_preserves_context_and_ignores_only_origins_in_
             programmatic,
             CssComponentValueLimits::try_new(1, 11, SOURCE.len()).unwrap(),
         ),
-        CssComponentValueErrorKind::NestingLimit,
+        ComponentFailure::NestingLimit,
     );
     let original = value.components().clone();
     let z = CssTransformFunction::ScaleZ(CssTransformScaleComponent::HintedNumberCalculation(
@@ -375,13 +376,13 @@ fn shorthand_and_backdrop_reentry_retains_checked_contextual_payloads_and_occurr
             assert_eq!(actual.replacement_components(), Some(&replacement));
             assert_eq!(actual.source().importance(), CssImportance::Important);
         }
-        assert!(matches!(
+        assert!(
             pending
                 .reenter(components("calc(1 + 1%)"))
                 .unwrap_err()
-                .kind(),
-            CssExpansionErrorKind::InvalidReplacement(_)
-        ));
+                .replacement_error()
+                .is_some()
+        );
         assert!(pending.reenter(replacement).is_ok());
     }
 }

@@ -7,9 +7,9 @@
 //! and that its independently expected token and provenance contracts hold.
 
 use surgeist_css::{
-    CssBlockKind, CssComponentValue, CssComponentValueErrorKind, CssComponentValueLimits,
-    CssComponentValueRef, CssComponentValues, CssNumericTokenKind, CssSerializedOrigin,
-    CssValueOrigin, CssValueTokenRef, parse_component_values, parse_component_values_with_limits,
+    CssBlockKind, CssComponentValue, CssComponentValueLimits, CssComponentValueRef,
+    CssComponentValues, CssNumericTokenKind, CssSerializedOrigin, CssValueOrigin, CssValueTokenRef,
+    parse_component_values, parse_component_values_with_limits,
 };
 
 fn identifier(value: &CssComponentValue) -> &str {
@@ -102,25 +102,23 @@ fn checked_construction() {
     assert_eq!(identifier(&constructed), "1a");
     assert!(matches!(constructed.origin(), CssValueOrigin::Programmatic));
     let empty_identifier = CssComponentValue::try_ident("").expect_err("empty identifier");
-    assert_eq!(
-        empty_identifier.kind(),
-        CssComponentValueErrorKind::InvalidIdentifier
+    assert!(
+        empty_identifier.is_invalid_identifier(),
+        "{empty_identifier:?}"
     );
     assert!(matches!(
         empty_identifier.origin(),
         CssValueOrigin::Programmatic
     ));
-    assert_eq!(
+    assert!(
         CssComponentValue::try_ident("a\0b")
             .expect_err("NUL changes identity")
-            .kind(),
-        CssComponentValueErrorKind::InvalidIdentifier
+            .is_invalid_identifier()
     );
-    assert_eq!(
+    assert!(
         CssComponentValue::try_number("10px")
             .expect_err("dimension is not a number")
-            .kind(),
-        CssComponentValueErrorKind::InvalidNumber
+            .is_invalid_number()
     );
 
     for (spelling, kind, signed) in [
@@ -189,30 +187,26 @@ fn checked_construction() {
         "url",
         parse_component_values("x").expect("identifier argument"),
     );
-    assert_eq!(
+    assert!(
         invalid_url
             .expect_err("function must not turn into URL token")
-            .kind(),
-        CssComponentValueErrorKind::InvalidFunction
+            .is_invalid_function()
     );
 
-    assert_eq!(
+    assert!(
         parse_component_values("\"a\nb")
             .expect_err("bad string token")
-            .kind(),
-        CssComponentValueErrorKind::BadString
+            .is_bad_string()
     );
-    assert_eq!(
+    assert!(
         parse_component_values("url(a b)")
             .expect_err("bad URL token")
-            .kind(),
-        CssComponentValueErrorKind::BadUrl
+            .is_bad_url()
     );
-    assert_eq!(
+    assert!(
         parse_component_values("]")
             .expect_err("unmatched closer")
-            .kind(),
-        CssComponentValueErrorKind::UnmatchedClosingDelimiter
+            .is_unmatched_closing_delimiter()
     );
     println!("checked construction: ok");
 }
@@ -277,27 +271,24 @@ fn origins_and_limits() {
 
     let exact = CssComponentValueLimits::try_new(1, 3, 3).expect("valid limits");
     assert!(parse_component_values_with_limits("a b", exact).is_ok());
-    assert_eq!(
+    assert!(
         parse_component_values_with_limits("abcd", exact)
             .expect_err("input byte limit")
-            .kind(),
-        CssComponentValueErrorKind::ByteLimit
+            .is_byte_limit()
     );
     let fewer = CssComponentValueLimits::try_new(1, 2, 3).expect("valid limits");
-    assert_eq!(
+    assert!(
         parse_component_values_with_limits("a b", fewer)
             .expect_err("component limit")
-            .kind(),
-        CssComponentValueErrorKind::ComponentLimit
+            .is_component_limit()
     );
-    assert_eq!(
+    assert!(
         joined
             .serialize_tokens(
                 CssComponentValueLimits::try_new(256, usize::MAX, 7).expect("valid limits")
             )
             .expect_err("separator counts toward bytes")
-            .kind(),
-        CssComponentValueErrorKind::ByteLimit
+            .is_byte_limit()
     );
     assert!(CssComponentValueLimits::try_new(257, usize::MAX, usize::MAX).is_none());
 
@@ -309,11 +300,10 @@ fn origins_and_limits() {
         256
     );
     let excessive = format!("({at_limit})");
-    assert_eq!(
+    assert!(
         parse_component_values(&excessive)
             .expect_err("257 blocks rejected")
-            .kind(),
-        CssComponentValueErrorKind::NestingLimit
+            .is_nesting_limit()
     );
     let mut constructed = parse_component_values("x").expect("leaf");
     for _ in 0..256 {
@@ -326,11 +316,10 @@ fn origins_and_limits() {
         )
         .expect("checked stream");
     }
-    assert_eq!(
+    assert!(
         CssComponentValue::try_block(CssBlockKind::Parenthesis, constructed)
             .expect_err("constructed nesting obeys the same ceiling")
-            .kind(),
-        CssComponentValueErrorKind::NestingLimit
+            .is_nesting_limit()
     );
     println!("origins and limits: ok");
 }

@@ -130,10 +130,13 @@ fn limit(diagnostics: &[CssRecoveryDiagnostic], responsible: usize) {
         .find(|d| d.action() == CssRecoveryAction::StopAtNestingLimit)
         .expect("typed resource failure, independent of ordinary grammar recovery");
     assert_eq!(diagnostic.error().code(), CssErrorCode::NestingLimit);
-    let ErrorKind::NestingLimit(detail) = diagnostic.error().kind() else {
-        panic!("structural depth")
-    };
-    assert_eq!(detail.limit(), 256);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::NestingLimit,
+        "structural depth"
+    );
+    assert_eq!(detail.nesting_limit().unwrap(), 256);
     assert_eq!(
         diagnostic.error().position().byte_offset().value(),
         responsible
@@ -860,14 +863,15 @@ fn implicit_supports_function_and_body_retain_actual_origins_but_reject_clean_re
     assert_eq!(at.span().start().byte_offset().value(), 11);
     assert!(at.source().same_snapshot(fragment.origin().source()));
     recovered(&report);
-    assert!(matches!(
+    assert!(
         CssSupportsConditionRule::try_new(
             CssSupportsConditionName::try_new("--x").unwrap(),
             fragment.body().clone(),
             Default::default(),
-        ),
-        Err(CssNamedSupportsConstructionError::RecoveredInput { .. })
-    ));
+        )
+        .as_ref()
+        .is_err_and(|error| error.is_recovered_input())
+    );
 }
 
 #[test]

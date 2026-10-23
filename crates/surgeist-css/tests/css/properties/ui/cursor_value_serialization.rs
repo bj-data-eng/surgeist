@@ -5,8 +5,9 @@
 //! Selection and clamping are downstream. New APIs have functional tests, not
 //! a missing-symbol RED; the unchanged admission contract owns prior executable RED.
 
+use crate::css::support::failure_classes::SerializationFailure as Kind;
+use crate::css::support::failure_classes::serialization_failure;
 use CssSerializationLimits as Limits;
-use CssSpecifiedValueSerializationErrorKind as Kind;
 use surgeist_css::*;
 
 fn number(value: &str) -> CssSpecifiedNumber {
@@ -113,12 +114,11 @@ fn programmatic_pair_is_complete_signed_and_unclamped_with_ordinary_url_semantic
     let value = CssCursor::try_images(vec![entry], CssCursorKeyword::Pointer).unwrap();
     assert_eq!(images(&value).fallback(), CssCursorKeyword::Pointer);
     let before = value.clone();
-    assert_eq!(
+    assert!(
         value
             .serialize_specified(Limits::new(7, 7, 30))
             .unwrap_err()
-            .kind(),
-        Kind::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(value, before);
 }
@@ -403,26 +403,23 @@ fn every_selected_keyword_has_canonical_specified_output_and_one_node_cost() {
                 .unwrap(),
             name
         );
-        assert_eq!(
+        assert!(
             value
                 .serialize_specified(Limits::new(0, 1, name.len()))
                 .unwrap_err()
-                .kind(),
-            Kind::InputNodeLimit
+                .is_input_node_limit()
         );
-        assert_eq!(
+        assert!(
             value
                 .serialize_specified(Limits::new(1, 0, name.len()))
                 .unwrap_err()
-                .kind(),
-            Kind::ProjectionNodeLimit
+                .is_projection_node_limit()
         );
-        assert_eq!(
+        assert!(
             value
                 .serialize_specified(Limits::new(1, 1, name.len() - 1))
                 .unwrap_err()
-                .kind(),
-            Kind::ByteLimit
+                .is_byte_limit()
         );
     }
 }
@@ -469,7 +466,10 @@ fn exact_public_node_projection_and_byte_boundaries_follow_the_documented_model_
                 Kind::ByteLimit,
             ),
         ] {
-            assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+            assert_eq!(
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+                kind
+            );
         }
         assert_eq!(value, before);
         assert_eq!(declaration.value_components(), &components);

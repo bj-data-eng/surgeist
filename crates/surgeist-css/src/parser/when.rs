@@ -16,7 +16,7 @@ pub(crate) fn construct_when_condition(
     values: CssComponentValues,
     limits: CssComponentValueLimits,
     context: CssParserContext,
-) -> Result<CssWhenCondition, CssWhenConstructionError> {
+) -> Result<CssWhenCondition, CssConditionConstructionError> {
     condition(SupportsLexical::root(values), limits, context, false)
 }
 pub(super) fn parse_prelude<'i>(
@@ -25,7 +25,7 @@ pub(super) fn parse_prelude<'i>(
     recovery: &RecoveryState,
     name: &str,
     optional: bool,
-) -> Result<(Option<CssWhenCondition>, Vec<usize>), ParseError<'i, Error>> {
+) -> Result<(Option<CssWhenCondition>, Vec<usize>), ParseError<'i, CssError>> {
     let production = if optional {
         "ext.rule.else"
     } else {
@@ -53,8 +53,8 @@ fn prelude_error<'i>(
     source: &'i str,
     name: &str,
     fallback: usize,
-    error: CssWhenConstructionError,
-) -> ParseError<'i, Error> {
+    error: CssConditionConstructionError,
+) -> ParseError<'i, CssError> {
     let position = crate::media::parsed_position(error.origin()).unwrap_or_else(|| {
         let mut offset = fallback;
         while let Some((start, end, token)) = super::recovery::next_source_token(source, offset) {
@@ -72,8 +72,8 @@ fn prelude_error<'i>(
         line: position.line().value(),
         column: position.column().value() + 1,
     };
-    match error {
-        CssWhenConstructionError::Component(error) => {
+    match error.into_kind() {
+        crate::when::ConditionConstructionKind::Component(error) => {
             crate::error::invalid_component_value(location, error)
         }
         _ => {
@@ -83,7 +83,7 @@ fn prelude_error<'i>(
         }
     }
 }
-fn invalid(lexical: &SupportsLexical, index: usize) -> CssWhenConstructionError {
+fn invalid(lexical: &SupportsLexical, index: usize) -> CssConditionConstructionError {
     let origin = lexical
         .items()
         .get(index)
@@ -95,14 +95,16 @@ fn invalid(lexical: &SupportsLexical, index: usize) -> CssWhenConstructionError 
                 .find(|value| !crate::supports::trivia(value))
         })
         .map_or(CssValueOrigin::Programmatic, |value| value.origin().clone());
-    CssWhenConstructionError::InvalidConditionGrammar { origin }
+    CssConditionConstructionError::from(
+        crate::when::ConditionConstructionKind::InvalidConditionGrammar { origin },
+    )
 }
 fn condition(
     lexical: SupportsLexical,
     limits: CssComponentValueLimits,
     context: CssParserContext,
     authored: bool,
-) -> Result<CssWhenCondition, CssWhenConstructionError> {
+) -> Result<CssWhenCondition, CssConditionConstructionError> {
     match nested_condition(&lexical, limits, context, authored) {
         Ok(condition) => Ok(condition),
         Err(ConditionFailure::Mismatch(index)) => Err(invalid(&lexical, index)),
@@ -114,7 +116,7 @@ fn nested_condition(
     limits: CssComponentValueLimits,
     context: CssParserContext,
     authored: bool,
-) -> Result<CssWhenCondition, ConditionFailure<CssWhenConstructionError>> {
+) -> Result<CssWhenCondition, ConditionFailure<CssConditionConstructionError>> {
     parse_boolean_condition(
         &mut WhenGrammar {
             lexical,
@@ -138,7 +140,7 @@ struct WhenGrammar<'a> {
 impl BooleanConditionGrammar for WhenGrammar<'_> {
     type Operator = ();
     type Node = CssWhenCondition;
-    type Error = ConditionFailure<CssWhenConstructionError>;
+    type Error = ConditionFailure<CssConditionConstructionError>;
 
     fn keyword(&mut self, keyword: &'static str) -> Result<Option<()>, Self::Error> {
         Ok(self.cursor.ident(keyword).then_some(()))
@@ -186,14 +188,15 @@ impl BooleanConditionGrammar for WhenGrammar<'_> {
     }
 }
 fn grammar<T>(
-    result: Result<T, CssWhenConstructionError>,
-) -> Result<Option<T>, CssWhenConstructionError> {
+    result: Result<T, CssConditionConstructionError>,
+) -> Result<Option<T>, CssConditionConstructionError> {
     match result {
         Ok(value) => Ok(Some(value)),
-        Err(
-            CssWhenConstructionError::InvalidConditionGrammar { .. }
-            | CssWhenConstructionError::InvalidMediaFeatureGrammar { .. },
-        ) => Ok(None),
+        Err(error)
+            if error.is_invalid_condition_grammar() || error.is_invalid_media_feature_grammar() =>
+        {
+            Ok(None)
+        }
         Err(error) => Err(error),
     }
 }
@@ -203,7 +206,7 @@ fn term(
     limits: CssComponentValueLimits,
     context: CssParserContext,
     authored: bool,
-) -> Result<CssWhenCondition, ConditionFailure<CssWhenConstructionError>> {
+) -> Result<CssWhenCondition, ConditionFailure<CssConditionConstructionError>> {
     cursor.peek();
     let index = cursor.index;
     let component = cursor.next().ok_or(ConditionFailure::Mismatch(index))?;
@@ -249,19 +252,18 @@ fn term(
                             region,
                         ));
                     }
-                    Err(
-                        CssSupportsConstructionError::InvalidDeclarationGrammar { .. }
-                        | CssSupportsConstructionError::InvalidConditionGrammar { .. },
-                    ) => {}
-                    Err(CssSupportsConstructionError::Component(error)) => {
-                        return Err(ConditionFailure::Fatal(error.into()));
-                    }
+                    Err(error)
+                        if error.is_invalid_declaration_grammar()
+                            || error.is_invalid_condition_grammar() => {}
                     Err(error) => {
-                        return Err(ConditionFailure::Fatal(
-                            CssWhenConstructionError::RecoveredInput {
-                                origin: error.origin().clone(),
-                            },
-                        ));
+                        return Err(ConditionFailure::Fatal(match error.component_error() {
+                            Some(component) => component.clone().into(),
+                            None => CssConditionConstructionError::from(
+                                crate::when::ConditionConstructionKind::RecoveredInput {
+                                    origin: error.origin().clone(),
+                                },
+                            ),
+                        }));
                     }
                 }
             }

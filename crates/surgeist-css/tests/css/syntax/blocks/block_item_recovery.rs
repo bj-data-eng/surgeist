@@ -1,7 +1,7 @@
 use crate::css::support::authored_syntax::property_names;
 use surgeist_css::{
     CssDeclarationContextRef, CssErrorCode, CssRecoveryAction, CssRule, CssScopedRule, CssSelector,
-    CssSelectorCombinator, CssStyleSelector, CssTokenKind, ErrorKind, parse_sheet,
+    CssSelectorCombinator, CssStyleSelector, CssTokenKind, parse_sheet,
 };
 
 fn assert_drop(
@@ -89,15 +89,19 @@ fn block_item_recovery_invalid_custom_annotation_retains_ordered_siblings_and_co
         CssRecoveryAction::DropDeclaration,
         source.find('!').expect("first responsible bang"),
     );
-    let ErrorKind::InvalidDeclarationAnnotation(detail) = diagnostic.error().kind() else {
-        panic!("expected invalid declaration annotation detail");
-    };
-    let CssDeclarationContextRef::CustomProperty(name) = detail.context() else {
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidDeclarationAnnotation,
+        "expected invalid declaration annotation detail"
+    );
+    let CssDeclarationContextRef::CustomProperty(name) = detail.declaration_context().unwrap()
+    else {
         panic!("expected custom-property declaration context");
     };
     assert_eq!(name.as_str(), "--Accent");
-    assert_eq!(detail.encountered().kind(), CssTokenKind::Delim);
-    assert_eq!(detail.encountered().authored(), "!");
+    assert_eq!(detail.encountered().unwrap().kind(), CssTokenKind::Delim);
+    assert_eq!(detail.encountered().unwrap().authored(), "!");
 }
 
 #[test]
@@ -213,10 +217,13 @@ fn block_item_recovery_all_invalid_declarations_retain_empty_ordinary_style_in_o
         CssRecoveryAction::DropDeclaration,
         source.find("mystery").unwrap(),
     );
-    let ErrorKind::UnknownProperty(detail) = diagnostic.error().kind() else {
-        panic!("expected unknown-property detail");
-    };
-    assert_eq!(detail.name().as_str(), "mystery");
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::UnknownProperty,
+        "expected unknown-property detail"
+    );
+    assert_eq!(detail.property_name().unwrap().as_str(), "mystery");
 }
 
 #[test]
@@ -272,10 +279,13 @@ fn block_item_recovery_all_invalid_declarations_retain_empty_nested_style_in_ord
         CssRecoveryAction::DropDeclaration,
         source.find("mystery").unwrap(),
     );
-    let ErrorKind::UnknownProperty(detail) = diagnostic.error().kind() else {
-        panic!("expected nested unknown-property detail");
-    };
-    assert_eq!(detail.name().as_str(), "mystery");
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::UnknownProperty,
+        "expected nested unknown-property detail"
+    );
+    assert_eq!(detail.property_name().unwrap().as_str(), "mystery");
 }
 
 #[test]
@@ -294,10 +304,13 @@ fn block_item_recovery_nested_and_scoped_style_lists_own_declaration_recovery() 
         CssRecoveryAction::DropDeclaration,
         nested_source.find("bad").unwrap(),
     );
-    let ErrorKind::UnknownProperty(nested_detail) = nested_diagnostic.error().kind() else {
-        panic!("expected nested unknown-property detail");
-    };
-    assert_eq!(nested_detail.name().as_str(), "bad");
+    let nested_detail = nested_diagnostic.error();
+    assert_eq!(
+        nested_detail.code(),
+        CssErrorCode::UnknownProperty,
+        "expected nested unknown-property detail"
+    );
+    assert_eq!(nested_detail.property_name().unwrap().as_str(), "bad");
     let [CssRule::Style(parent)] = nested.syntax().rules() else {
         panic!("expected retained authored parent");
     };
@@ -328,10 +341,13 @@ fn block_item_recovery_nested_and_scoped_style_lists_own_declaration_recovery() 
         CssRecoveryAction::DropDeclaration,
         scoped_source.find("bad").unwrap(),
     );
-    let ErrorKind::UnknownProperty(scoped_detail) = scoped_diagnostic.error().kind() else {
-        panic!("expected scoped unknown-property detail");
-    };
-    assert_eq!(scoped_detail.name().as_str(), "bad");
+    let scoped_detail = scoped_diagnostic.error();
+    assert_eq!(
+        scoped_detail.code(),
+        CssErrorCode::UnknownProperty,
+        "expected scoped unknown-property detail"
+    );
+    assert_eq!(scoped_detail.property_name().unwrap().as_str(), "bad");
 }
 
 #[test]

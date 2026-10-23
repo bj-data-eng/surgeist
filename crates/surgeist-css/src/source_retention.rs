@@ -1,14 +1,104 @@
 //! Retained source admission over actual CSS payloads, independent of formatting.
 use crate::*;
 
+/// A finite resource of [`CssSourceRetention`] that can refuse a traversal.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[non_exhaustive]
+pub enum CssSourceRetentionResource {
+    /// Nesting depth of retained payload owners.
+    Depth,
+    /// Payload observations.
+    Visits,
+    /// Retained source bytes.
+    RetainedBytes,
+    /// Collector bank storage.
+    Storage,
+}
+impl CssSourceRetentionResource {
+    /// Returns the resource's stable description, as error messages name it.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Depth => "source depth",
+            Self::Visits => "source visits",
+            Self::RetainedBytes => "retained source bytes",
+            Self::Storage => "source storage",
+        }
+    }
+}
+
 /// Finite failure while enumerating or retaining shared source backing.
+///
+/// A [`CssRetainedSources`] implementation outside CSS returns the first refusal it
+/// receives unchanged, or builds one with [`Self::limit`], [`Self::allocation`] or
+/// [`Self::caller_admission`].
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum CssSourceRetentionError {
-    Limit(&'static str),
+pub struct CssSourceRetentionError {
+    kind: SourceRetentionErrorKind,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SourceRetentionErrorKind {
+    Limit(CssSourceRetentionResource),
     Allocation,
-    /// The borrowed caller admission predicate refused; this collector is terminal.
     CallerAdmission,
 }
+impl CssSourceRetentionError {
+    /// A refusal because `resource` is exhausted.
+    #[must_use]
+    pub const fn limit(resource: CssSourceRetentionResource) -> Self {
+        Self {
+            kind: SourceRetentionErrorKind::Limit(resource),
+        }
+    }
+    /// A refusal because storage could not be allocated.
+    #[must_use]
+    pub const fn allocation() -> Self {
+        Self {
+            kind: SourceRetentionErrorKind::Allocation,
+        }
+    }
+    /// A refusal by the borrowed caller admission predicate; the collector is terminal.
+    #[must_use]
+    pub const fn caller_admission() -> Self {
+        Self {
+            kind: SourceRetentionErrorKind::CallerAdmission,
+        }
+    }
+    /// Returns the exhausted resource of a limit refusal.
+    #[must_use]
+    pub const fn exhausted_limit(&self) -> Option<CssSourceRetentionResource> {
+        match self.kind {
+            SourceRetentionErrorKind::Limit(resource) => Some(resource),
+            _ => None,
+        }
+    }
+    crate::error::kind_predicates! { kind;
+        /// Returns whether storage could not be allocated.
+        is_allocation_failure => SourceRetentionErrorKind::Allocation,
+        /// Returns whether the borrowed caller admission predicate refused.
+        is_caller_admission => SourceRetentionErrorKind::CallerAdmission,
+    }
+}
+impl std::fmt::Display for CssSourceRetentionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.kind {
+            SourceRetentionErrorKind::Limit(resource) => {
+                write!(
+                    f,
+                    "CSS source retention {} limit exceeded",
+                    resource.as_str()
+                )
+            }
+            SourceRetentionErrorKind::Allocation => {
+                f.write_str("CSS source retention allocation failed")
+            }
+            SourceRetentionErrorKind::CallerAdmission => {
+                f.write_str("CSS source retention was refused by the caller's admission")
+            }
+        }
+    }
+}
+impl std::error::Error for CssSourceRetentionError {}
 
 /// Actual collector work or simultaneous temporary storage, separate from source payload.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -27,7 +117,7 @@ struct Admission<'a> {
 impl Admission<'_> {
     fn check(&self) -> Result<(), CssSourceRetentionError> {
         if self.refused {
-            Err(CssSourceRetentionError::CallerAdmission)
+            Err(CssSourceRetentionError::caller_admission())
         } else {
             Ok(())
         }
@@ -38,34 +128,75 @@ impl Admission<'_> {
             && !callback(action)
         {
             self.refused = true;
-            return Err(CssSourceRetentionError::CallerAdmission);
+            return Err(CssSourceRetentionError::caller_admission());
         }
         Ok(())
     }
 }
 
 /// Refusal while observing CSS-owned retained payloads.
+///
+/// The caller's admission refusal is returned unchanged through
+/// [`Self::into_admission`]; consumers that measure their own payloads build
+/// refusals with [`Self::admission`] and [`Self::capacity_overflow`].
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum CssRetainedPayloadError<E> {
-    /// The caller refused the next actual observation before its operands were read.
+pub struct CssRetainedPayloadError<E> {
+    kind: RetainedPayloadErrorKind<E>,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum RetainedPayloadErrorKind<E> {
     Admission(E),
-    /// The measured byte sum cannot be represented by usize.
     CapacityOverflow,
 }
-
+impl<E> CssRetainedPayloadError<E> {
+    /// The caller refused the next actual observation before its operands were read.
+    #[must_use]
+    pub const fn admission(error: E) -> Self {
+        Self {
+            kind: RetainedPayloadErrorKind::Admission(error),
+        }
+    }
+    /// The measured byte sum cannot be represented by `usize`.
+    #[must_use]
+    pub const fn capacity_overflow() -> Self {
+        Self {
+            kind: RetainedPayloadErrorKind::CapacityOverflow,
+        }
+    }
+    /// Returns the caller's admission refusal, or this error when the byte sum overflowed.
+    ///
+    /// # Errors
+    ///
+    /// Returns `self` unchanged when it is a capacity overflow.
+    pub fn into_admission(self) -> Result<E, Self> {
+        match self.kind {
+            RetainedPayloadErrorKind::Admission(error) => Ok(error),
+            kind @ RetainedPayloadErrorKind::CapacityOverflow => Err(Self { kind }),
+        }
+    }
+    /// Returns whether the measured byte sum cannot be represented by `usize`.
+    #[must_use]
+    pub const fn is_capacity_overflow(&self) -> bool {
+        matches!(self.kind, RetainedPayloadErrorKind::CapacityOverflow)
+    }
+}
 impl<E: std::fmt::Display> std::fmt::Display for CssRetainedPayloadError<E> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Admission(error) => write!(f, "CSS retained payload admission: {error}"),
-            Self::CapacityOverflow => f.write_str("CSS retained payload capacity overflow"),
+        match &self.kind {
+            RetainedPayloadErrorKind::Admission(error) => {
+                write!(f, "CSS retained payload admission: {error}")
+            }
+            RetainedPayloadErrorKind::CapacityOverflow => {
+                f.write_str("CSS retained payload capacity overflow")
+            }
         }
     }
 }
 impl<E: std::error::Error + 'static> std::error::Error for CssRetainedPayloadError<E> {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::Admission(error) => Some(error),
-            Self::CapacityOverflow => None,
+        match &self.kind {
+            RetainedPayloadErrorKind::Admission(error) => Some(error),
+            RetainedPayloadErrorKind::CapacityOverflow => None,
         }
     }
 }
@@ -131,7 +262,7 @@ impl<'admit> CssSourceRetention<'admit> {
         if !admit(CssSourceRetentionAction::Scratch {
             live_bytes: std::mem::size_of::<Self>(),
         }) {
-            return Err(CssSourceRetentionError::CallerAdmission);
+            return Err(CssSourceRetentionError::caller_admission());
         }
         let mut collector = Self::new(bytes, maximum_visits, maximum_depth);
         collector.admission.callback = Some(admit);
@@ -143,7 +274,9 @@ impl<'admit> CssSourceRetention<'admit> {
     ) -> Result<(), CssSourceRetentionError> {
         self.charge_step()?;
         if self.depth >= self.maximum_depth {
-            return Err(CssSourceRetentionError::Limit("source depth"));
+            return Err(CssSourceRetentionError::limit(
+                CssSourceRetentionResource::Depth,
+            ));
         }
         self.depth += 1;
         let result = value.visit_retained_sources(self);
@@ -158,7 +291,9 @@ impl<'admit> CssSourceRetention<'admit> {
             .visits
             .checked_add(1)
             .filter(|count| *count <= self.maximum_visits)
-            .ok_or(CssSourceRetentionError::Limit("source visits"))?;
+            .ok_or(CssSourceRetentionError::limit(
+                CssSourceRetentionResource::Visits,
+            ))?;
         Ok(())
     }
     pub fn source(&mut self, source: &CssSourceSnapshot) -> Result<(), CssSourceRetentionError> {
@@ -173,13 +308,17 @@ impl<'admit> CssSourceRetention<'admit> {
             .usage
             .checked_add(source.storage_usage())
             .filter(|value| value.validate(self.bytes))
-            .ok_or(CssSourceRetentionError::Limit("retained source bytes"))?;
+            .ok_or(CssSourceRetentionError::limit(
+                CssSourceRetentionResource::RetainedBytes,
+            ))?;
         if self.sources.len() == self.sources.capacity() {
-            let required = self
-                .sources
-                .len()
-                .checked_add(1)
-                .ok_or(CssSourceRetentionError::Limit("source storage"))?;
+            let required =
+                self.sources
+                    .len()
+                    .checked_add(1)
+                    .ok_or(CssSourceRetentionError::limit(
+                        CssSourceRetentionResource::Storage,
+                    ))?;
             let capacity = self
                 .sources
                 .capacity()
@@ -200,7 +339,9 @@ impl<'admit> CssSourceRetention<'admit> {
                 .and_then(|count| count.checked_mul(std::mem::size_of::<CssSourceSnapshot>()))
                 .and_then(|bytes| bytes.checked_add(std::mem::size_of::<Self>()))
                 .and_then(|bytes| bytes.checked_add(std::mem::size_of::<Vec<CssSourceSnapshot>>()))
-                .ok_or(CssSourceRetentionError::Limit("source storage"))
+                .ok_or(CssSourceRetentionError::limit(
+                    CssSourceRetentionResource::Storage,
+                ))
         };
         self.admission.action(CssSourceRetentionAction::Scratch {
             live_bytes: scratch(capacity)?,
@@ -208,7 +349,7 @@ impl<'admit> CssSourceRetention<'admit> {
         let mut replacement = Vec::new();
         replacement
             .try_reserve_exact(capacity)
-            .map_err(|_| CssSourceRetentionError::Allocation)?;
+            .map_err(|_| CssSourceRetentionError::allocation())?;
         // An allocator may grant more capacity than requested. Admit that actual
         // simultaneous extent before copying/using it; refusal drops it while
         // the caller still retains the requested reservation and the old bank.
@@ -216,7 +357,9 @@ impl<'admit> CssSourceRetention<'admit> {
             live_bytes: scratch(replacement.capacity())?,
         })?;
         if replacement.capacity() > self.maximum_visits {
-            return Err(CssSourceRetentionError::Limit("source storage"));
+            return Err(CssSourceRetentionError::limit(
+                CssSourceRetentionResource::Storage,
+            ));
         }
         replacement.append(&mut self.sources);
         self.sources = replacement;
@@ -276,7 +419,9 @@ impl<'admit> CssSourceRetention<'admit> {
     ) -> Result<T, CssSourceRetentionError> {
         self.admission.check()?;
         if depth < self.depth || depth > self.maximum_depth {
-            return Err(CssSourceRetentionError::Limit("source depth"));
+            return Err(CssSourceRetentionError::limit(
+                CssSourceRetentionResource::Depth,
+            ));
         }
         let previous = self.depth;
         self.depth = depth;
@@ -290,16 +435,15 @@ fn complete_payload_bytes<E>(
     sources: &[CssSourceSnapshot],
     admit: &mut impl FnMut() -> Result<(), E>,
 ) -> Result<usize, CssRetainedPayloadError<E>> {
-    use CssRetainedPayloadError::{Admission, CapacityOverflow};
-    admit().map_err(Admission)?;
+    admit().map_err(CssRetainedPayloadError::admission)?;
     let mut total = 0usize;
     for index in 0..sources.len() {
-        admit().map_err(Admission)?;
+        admit().map_err(CssRetainedPayloadError::admission)?;
         let source = &sources[index];
         let mut include_original = true;
         if let Some(original) = source.original_utf16() {
             for previous in sources.iter().take(index) {
-                admit().map_err(Admission)?;
+                admit().map_err(CssRetainedPayloadError::admission)?;
                 if previous
                     .original_utf16()
                     .is_some_and(|previous| std::sync::Arc::ptr_eq(previous, original))
@@ -309,14 +453,14 @@ fn complete_payload_bytes<E>(
                 }
             }
         }
-        admit().map_err(Admission)?;
+        admit().map_err(CssRetainedPayloadError::admission)?;
         total = total
             .checked_add(
                 source
                     .payload_bytes(include_original)
-                    .ok_or(CapacityOverflow)?,
+                    .ok_or_else(CssRetainedPayloadError::capacity_overflow)?,
             )
-            .ok_or(CapacityOverflow)?;
+            .ok_or_else(CssRetainedPayloadError::capacity_overflow)?;
     }
     Ok(total)
 }
@@ -393,7 +537,7 @@ impl CssRetainedSources for CssRecoveryDiagnostic {
         sources.visit(self.error())
     }
 }
-impl CssRetainedSources for Error {
+impl CssRetainedSources for CssError {
     fn visit_retained_sources(
         &self,
         sources: &mut CssSourceRetention<'_>,
@@ -991,13 +1135,14 @@ impl CssRetainedSources for CssDeclarationBlockError {
         if let Some(value) = self.declaration() {
             sources.visit(value)?;
         }
-        if let CssDeclarationBlockErrorKind::Serialization(value) = self.kind() {
+        if let Some(value) = self.serialization() {
             sources.visit(value)?;
         }
-        if let CssDeclarationBlockErrorKind::Expansion(value) = self.kind()
-            && let CssExpansionErrorKind::InvalidReplacement(value) = value.kind()
+        if let Some(value) = self
+            .expansion()
+            .and_then(CssExpansionError::replacement_error)
         {
-            sources.visit(value.origin())?;
+            sources.visit(&value.origin())?;
         }
         Ok(())
     }
@@ -1022,11 +1167,13 @@ impl CssRetainedSources for CssPageProjectionError {
         &self,
         sources: &mut CssSourceRetention<'_>,
     ) -> Result<(), CssSourceRetentionError> {
-        match self {
-            Self::Properties(value) => sources.visit(value),
-            Self::Resource(value) => sources.visit(value),
-            Self::DuplicateDescriptor { .. } => Ok(()),
+        if let Some(value) = self.properties() {
+            sources.visit(value)?;
         }
+        if let Some(value) = self.resource() {
+            sources.visit(value)?;
+        }
+        Ok(())
     }
 }
 impl CssRetainedSources for CssFontFaceDeclarationBlockError {
@@ -1034,9 +1181,9 @@ impl CssRetainedSources for CssFontFaceDeclarationBlockError {
         &self,
         sources: &mut CssSourceRetention<'_>,
     ) -> Result<(), CssSourceRetentionError> {
-        match self {
-            Self::Serialization(value) => sources.visit(value),
-            Self::DuplicateDescriptor { .. } => Ok(()),
+        match self.serialization() {
+            Some(value) => sources.visit(value),
+            None => Ok(()),
         }
     }
 }

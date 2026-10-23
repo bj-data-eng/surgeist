@@ -9,13 +9,15 @@
 use crate::css::support::color_and_selector_fixtures::{
     assert_color_limit_error as assert_error, assert_color_limits,
 };
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::{
     checked_color as color, checked_color_declaration as declaration,
     component_values as components, declaration_color,
 };
 use surgeist_css::*;
 type Limits = CssSerializationLimits;
-type Kind = CssSpecifiedValueSerializationErrorKind;
+type Kind = SerializationFailure;
 
 fn assert_value(value: &CssColor, expected: &str) {
     let before = value.clone();
@@ -785,7 +787,7 @@ fn sibling_numeric_colors_share_visits_and_output_atomically() {
         let result = pair.serialize_specified(limits);
         assert_eq!(result, pair.serialize_specified(limits));
         assert_eq!(pair, before);
-        assert_eq!(result.unwrap_err().kind(), kind);
+        assert_eq!(serialization_failure(&result.unwrap_err()), kind);
     }
     assert_eq!(
         pair.serialize_specified(Limits::new(13, 17, expected.len()))
@@ -810,7 +812,7 @@ fn utf8_prefix_spends_bytes_before_shrinking_hsl_scratch() {
     let result = pair.serialize_specified(limits);
     assert_eq!(result, pair.serialize_specified(limits));
     assert_eq!(pair, before);
-    assert_eq!(result.unwrap_err().kind(), Kind::ByteLimit);
+    assert!(result.unwrap_err().is_byte_limit());
     assert_eq!(
         pair.serialize_specified(Limits::new(usize::MAX, usize::MAX, prefix.len() + 19))
             .unwrap(),

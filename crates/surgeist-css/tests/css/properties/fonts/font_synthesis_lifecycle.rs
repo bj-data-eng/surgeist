@@ -218,10 +218,7 @@ fn checked_longhand_admission_preserves_component_origins_and_typed_rejection() 
             CssImportance::Normal,
         )
         .unwrap_err();
-        assert!(matches!(
-            error.kind(),
-            CssPropertyValueErrorKind::Grammar(_)
-        ));
+        assert!(error.code().is_some());
         let CssSerializedOrigin::Token(CssValueOrigin::Parsed(origin)) = error.origin() else {
             panic!("original none token")
         };
@@ -372,22 +369,19 @@ fn pending_reentry_is_strict_and_preserves_source_and_replacement_provenance() {
                 && item.source().same_occurrence(&source)));
             for invalid in ["auto none", "auto!important", "none;"] {
                 assert!(
-                    matches!(
-                        pending
-                            .reenter(parse_component_values(invalid).unwrap())
-                            .unwrap_err()
-                            .kind(),
-                        CssExpansionErrorKind::InvalidReplacement(_)
-                    ),
+                    pending
+                        .reenter(parse_component_values(invalid).unwrap())
+                        .unwrap_err()
+                        .replacement_error()
+                        .is_some(),
                     "{name}: {invalid}"
                 );
             }
-            assert_eq!(
+            assert!(
                 pending
                     .reenter(parse_component_values("var(--again)").unwrap())
                     .unwrap_err()
-                    .kind(),
-                &CssExpansionErrorKind::ResidualSubstitution
+                    .is_residual_substitution()
             );
             assert!(source.same_occurrence(&before));
             assert_eq!(source.value_components(), before.value_components());

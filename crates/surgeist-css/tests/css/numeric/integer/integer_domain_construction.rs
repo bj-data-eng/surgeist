@@ -6,6 +6,8 @@
 use crate::css::support::descriptor_phases;
 use descriptor_phases::*;
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use std::cmp::Ordering;
 use surgeist_css::*;
 
@@ -106,11 +108,7 @@ fn positive_literal_admission_rejects_noninteger_kinds_zero_and_negative_values(
         let component = parse_component_values(text).unwrap().items()[0].clone();
         let origin = component.origin().clone();
         let error = CssIntegerLiteral::try_from_component(component).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            CssComponentValueErrorKind::InvalidToken,
-            "{text}"
-        );
+        assert!(error.is_invalid_token(), "{text}");
         assert_eq!(error.origin(), &origin, "{text}");
     }
     for text in ["+0007", "2147483648", "999999999999999999999999999999"] {
@@ -217,19 +215,19 @@ fn repeat_counts_share_cumulative_input_projection_and_canonical_byte_budgets() 
     for (limits, expected_kind) in [
         (
             CssSerializationLimits::new(6, 7, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(7, 6, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(7, 7, expected.len() - 1),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            list.serialize_specified(limits).unwrap_err().kind(),
+            serialization_failure(&list.serialize_specified(limits).unwrap_err()),
             expected_kind
         );
     }

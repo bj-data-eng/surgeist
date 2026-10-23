@@ -14,8 +14,10 @@ use std::fmt::Debug;
 
 use surgeist_css::*;
 
+use super::failure_classes::{SerializationFailure, serialization_failure};
+
 pub type Limits = CssSerializationLimits;
-pub type LimitKind = CssSpecifiedValueSerializationErrorKind;
+pub type LimitKind = SerializationFailure;
 
 /// A serialization failure that may report one exhausted limit.
 pub trait LimitFailure: Debug {
@@ -26,16 +28,15 @@ pub trait LimitFailure: Debug {
 
 impl LimitFailure for CssSerializationError {
     fn limit_kind(&self) -> Option<LimitKind> {
-        Some(self.kind())
+        Some(serialization_failure(self))
     }
 }
 
 impl LimitFailure for CssRuleSerializationError {
     fn limit_kind(&self) -> Option<LimitKind> {
-        match self.kind() {
-            CssRuleCssomSerializationErrorKind::Resource(kind) => Some(kind),
-            _ => None,
-        }
+        self.serialization_error()
+            .filter(|_| self.is_resource_limit())
+            .map(serialization_failure)
     }
 }
 

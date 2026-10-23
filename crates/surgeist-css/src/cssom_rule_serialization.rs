@@ -2,8 +2,8 @@
 use std::fmt;
 
 use crate::{
-    CssDeclarationBlockError, CssDeclarationBlockErrorKind, CssRule, CssSerializationError,
-    CssSerializationLimits, CssSheet, CssSpecifiedValueSerializationErrorKind,
+    CssDeclarationBlockError, CssRule, CssSerializationError, CssSerializationLimits, CssSheet,
+    CssSpecifiedValueSerializationErrorKind,
     specified_rule_serialization::{SpecifiedRuleSerializationSource, SpecifiedRuleWriter},
 };
 
@@ -15,6 +15,15 @@ pub enum CssRuleCssomKind {
     When,
     /// No selected literal CSSOM algorithm defines this adopted authored profile.
     Else,
+}
+
+impl CssRuleCssomKind {
+    const fn description(self) -> &'static str {
+        match self {
+            Self::When => "@when rules",
+            Self::Else => "@else rules",
+        }
+    }
 }
 
 /// A modern rule with selected subformat providers but no adopted complete literal wrapper.
@@ -33,10 +42,26 @@ pub enum CssRuleCssomFormat {
     Scope,
 }
 
+impl CssRuleCssomFormat {
+    const fn description(self) -> &'static str {
+        match self {
+            Self::CounterStyle => "@counter-style rules",
+            Self::FontFeatureValues => "@font-feature-values rules",
+            Self::FontPaletteValues => "@font-palette-values rules",
+            Self::ColorProfile => "@color-profile rules",
+            Self::SupportsCondition => "@supports-condition rules",
+            Self::CustomMedia => "@custom-media rules",
+            Self::LayerStatement => "@layer statements",
+            Self::LayerBlock => "@layer blocks",
+            Self::Container => "@container rules",
+            Self::Scope => "@scope rules",
+        }
+    }
+}
+
 /// Why the complete literal rule request failed.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssRuleCssomSerializationErrorKind {
+enum CssRuleCssomSerializationErrorKind {
     Resource(CssSpecifiedValueSerializationErrorKind),
     Value(CssSpecifiedValueSerializationErrorKind),
     DeclarationBlock,
@@ -68,6 +93,9 @@ impl From<CssDeclarationBlockError> for RuleCssomSource {
 }
 
 /// Atomic literal serialization failure, retaining its actual graph and provider provenance.
+///
+/// The value or declaration-block failure behind it is the error's source and is
+/// exposed by its accessor; [`Self::is_resource_limit`] groups the resource refusals.
 #[derive(Clone, Debug)]
 pub struct CssRuleSerializationError {
     kind: CssRuleCssomSerializationErrorKind,
@@ -76,9 +104,47 @@ pub struct CssRuleSerializationError {
     source: RuleCssomSource,
 }
 impl CssRuleSerializationError {
+    /// Returns whether a resource limit, including a graph depth limit, refused the rule
+    /// or one of its value or declaration providers.
     #[must_use]
-    pub const fn kind(&self) -> CssRuleCssomSerializationErrorKind {
-        self.kind
+    pub const fn is_resource_limit(&self) -> bool {
+        matches!(self.kind, CssRuleCssomSerializationErrorKind::Resource(_))
+    }
+    /// Returns the value serialization failure behind a resource or value refusal,
+    /// whether a provider or a declaration block reported it.
+    #[must_use]
+    pub fn serialization_error(&self) -> Option<&CssSerializationError> {
+        match &self.source {
+            RuleCssomSource::Provider(value) => Some(value),
+            RuleCssomSource::DeclarationBlock(error) => error.serialization(),
+            RuleCssomSource::SourceUndefined(_) | RuleCssomSource::FormatUnavailable(_) => None,
+        }
+    }
+    /// Returns the declaration block's failure.
+    #[must_use]
+    pub const fn declaration_block_error(&self) -> Option<&CssDeclarationBlockError> {
+        match &self.source {
+            RuleCssomSource::DeclarationBlock(error) => Some(error),
+            _ => None,
+        }
+    }
+    /// Returns the represented rule whose literal format the selected sources leave
+    /// undefined.
+    #[must_use]
+    pub const fn undefined_source(&self) -> Option<CssRuleCssomKind> {
+        match self.kind {
+            CssRuleCssomSerializationErrorKind::SourceUndefined(kind) => Some(kind),
+            _ => None,
+        }
+    }
+    /// Returns the rule format that has selected subformats but no complete literal
+    /// wrapper.
+    #[must_use]
+    pub const fn unavailable_format(&self) -> Option<CssRuleCssomFormat> {
+        match self.kind {
+            CssRuleCssomSerializationErrorKind::FormatUnavailable(format) => Some(format),
+            _ => None,
+        }
     }
     /// Child indexes from the requested rule, or starting with the sheet's rule index.
     #[must_use]
@@ -95,11 +161,10 @@ impl CssRuleSerializationError {
         keyframe_block_index: Option<usize>,
     ) -> Self {
         let value = match &source {
-            RuleCssomSource::Provider(value) => Some(value.kind()),
-            RuleCssomSource::DeclarationBlock(error) => match error.kind() {
-                CssDeclarationBlockErrorKind::Serialization(value) => Some(value.kind()),
-                _ => None,
-            },
+            RuleCssomSource::Provider(value) => Some(value.kind),
+            RuleCssomSource::DeclarationBlock(error) => {
+                error.serialization().map(|value| value.kind)
+            }
             RuleCssomSource::SourceUndefined(_) | RuleCssomSource::FormatUnavailable(_) => None,
         };
         let kind = match value {
@@ -143,11 +208,13 @@ impl fmt::Display for CssRuleSerializationError {
             }
             CssRuleCssomSerializationErrorKind::SourceUndefined(kind) => write!(
                 f,
-                "selected sources define no literal CSSOM format for {kind:?}"
+                "selected sources define no literal CSSOM format for {}",
+                kind.description()
             ),
             CssRuleCssomSerializationErrorKind::FormatUnavailable(kind) => write!(
                 f,
-                "no complete literal CSSOM format has been selected for {kind:?}"
+                "no complete literal CSSOM format has been selected for {}",
+                kind.description()
             ),
         }
     }

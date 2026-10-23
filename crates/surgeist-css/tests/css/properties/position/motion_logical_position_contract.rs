@@ -632,16 +632,18 @@ fn pending(name: &str, valid: &str, expected: &[&str], invalid: &str) {
         };
         for _ in 0..2 {
             let bad = parse_component_values(invalid).unwrap();
-            assert!(matches!(
-                handle.reenter(bad).unwrap_err().kind(),
-                CssExpansionErrorKind::InvalidReplacement(_)
-            ));
-            assert_eq!(
+            assert!(
+                handle
+                    .reenter(bad)
+                    .unwrap_err()
+                    .replacement_error()
+                    .is_some()
+            );
+            assert!(
                 handle
                     .reenter(parse_component_values("var(--again)").unwrap())
                     .unwrap_err()
-                    .kind(),
-                &CssExpansionErrorKind::ResidualSubstitution
+                    .is_residual_substitution()
             );
             let replacement = parse_component_values(&format!("/*😀*/{valid}")).unwrap();
             let before = replacement.clone();
@@ -888,10 +890,7 @@ fn normalization_preserves_logical_source_order_importance_and_atomic_limits() {
         ),
     ] {
         let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            &CssNormalizationErrorKind::LimitExceeded { resource, limit }
-        );
+        assert_eq!(error.exhausted_limit(), Some((resource, limit)));
         assert_eq!(report, before);
     }
     assert!(normalize_report_with_limits(&report, exact).is_ok());

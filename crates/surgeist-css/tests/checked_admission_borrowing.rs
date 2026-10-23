@@ -223,12 +223,13 @@ fn rejected_sample(payload: usize, property: CssKnownProperty, inside: bool) -> 
         )
     });
     let error = result.expect_err("a time cannot be added to this property's numeric domain");
-    let CssPropertyValueErrorKind::Grammar(ErrorKind::InvalidPropertyValue(detail)) = error.kind()
-    else {
-        panic!("{property:?}: contextual numeric rejection: {error:?}");
-    };
-    assert_eq!(detail.property(), property);
-    let token = detail
+    assert_eq!(
+        error.code(),
+        Some(CssErrorCode::InvalidPropertyValue),
+        "{property:?}: contextual numeric rejection: {error:?}"
+    );
+    assert_eq!(error.known_property(), Some(property));
+    let token = error
         .encountered()
         .expect("the incompatible dimension is present");
     assert_eq!(
@@ -241,7 +242,8 @@ fn rejected_sample(payload: usize, property: CssKnownProperty, inside: bool) -> 
         "{property:?}: {error:?}"
     );
     assert_eq!(token.authored(), if rate { "calc(" } else { "1s" });
-    let CssSerializedOrigin::Token(actual) = error.origin() else {
+    let origin = error.origin();
+    let CssSerializedOrigin::Token(actual) = &origin else {
         panic!("responsible literal");
     };
     assert_same_snapshot(actual, &expected);
@@ -275,17 +277,19 @@ fn conflicting_speech_sample(payload: usize, property: CssKnownProperty, inside:
         )
     });
     let error = result.expect_err("a relative level cannot be combined with absolute");
-    let CssPropertyValueErrorKind::Grammar(ErrorKind::InvalidPropertyValue(detail)) = error.kind()
-    else {
-        panic!("the conflicting absolute keyword is the present-token rejection: {error:?}");
-    };
-    assert_eq!(detail.property(), property);
-    let token = detail
+    assert_eq!(
+        error.code(),
+        Some(CssErrorCode::InvalidPropertyValue),
+        "the conflicting absolute keyword is the present-token rejection: {error:?}"
+    );
+    assert_eq!(error.known_property(), Some(property));
+    let token = error
         .encountered()
         .expect("the conflicting absolute keyword is present");
     assert_eq!(token.kind(), CssTokenKind::Ident);
     assert_eq!(token.authored(), "absolute");
-    let CssSerializedOrigin::Token(actual) = error.origin() else {
+    let origin = error.origin();
+    let CssSerializedOrigin::Token(actual) = &origin else {
         panic!("original conflicting keyword");
     };
     assert_same_snapshot(actual, &expected);

@@ -1,11 +1,11 @@
 //! Functional evidence for the CSSOM media boundary: pinned CSSOM1 section 4,
 //! selected MQ5 grammar/recovery, and the shared specified resource policy.
 
+use crate::css::support::failure_classes::SerializationFailure as ResourceKind;
 use crate::css::support::value_assertions::clean_media_query as query;
 use crate::css::support::value_assertions::media_resource_kind as resource_kind;
 use surgeist_css::{
-    CssRecoveryAction, CssSerializationLimits as Limits, CssSerializedOrigin,
-    CssSpecifiedValueSerializationErrorKind as ResourceKind, CssValueOrigin,
+    CssRecoveryAction, CssSerializationLimits as Limits, CssSerializedOrigin, CssValueOrigin,
     parse_cssom_media_query, parse_media_query, parse_media_query_list,
 };
 

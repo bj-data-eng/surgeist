@@ -5,9 +5,10 @@
 //! CSSOM identifier escaping and the specified graph's semantic-node policy.
 //! New specified-text APIs are tested alongside their implementation.
 use crate::css::support::authored_syntax::container_names as names;
+use crate::css::support::failure_classes::SerializationFailure as Kind;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::serialization_limits::assert_node_limits as assert_limits;
 use CssSerializationLimits as Limits;
-use CssSpecifiedValueSerializationErrorKind as Kind;
 use surgeist_css::*;
 
 #[test]
@@ -183,19 +184,17 @@ fn component_token_limits_and_programmatic_origins_remain_distinct() {
     for component in components.items() {
         assert_eq!(component.origin(), &CssValueOrigin::Programmatic);
     }
-    assert_eq!(
+    assert!(
         value
             .to_components(CssComponentValueLimits::try_new(0, 4, expected.len()).unwrap())
             .unwrap_err()
-            .kind(),
-        CssComponentValueErrorKind::ComponentLimit
+            .is_component_limit()
     );
-    assert_eq!(
+    assert!(
         value
             .serialize_tokens(crate::css::support::byte_limits(expected.len() - 1))
             .unwrap_err()
-            .kind(),
-        CssComponentValueErrorKind::ByteLimit
+            .is_byte_limit()
     );
     let old_text = value
         .serialize_tokens(crate::css::support::byte_limits(expected.len()))
@@ -225,7 +224,10 @@ fn wide_names_fail_under_small_work_limits_and_retry_without_mutation() {
         (Limits::new(2049, 2, 10239), Kind::ProjectionNodeLimit),
         (Limits::new(2049, 2049, 4), Kind::ByteLimit),
     ] {
-        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+            kind
+        );
         assert_eq!(value, before);
     }
     // 2048 four-byte names plus 2047 one-byte separators.

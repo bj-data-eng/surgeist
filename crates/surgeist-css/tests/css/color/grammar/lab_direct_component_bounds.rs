@@ -6,6 +6,8 @@
 //! These public tests do not inspect implementation source or private helpers.
 
 use crate::css::support::color_and_selector_fixtures::assert_color_limit_error as assert_error;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::lab_direct_component_cases::{
     assert_specified_text as assert_text, lab_direct_component_cases,
 };
@@ -13,7 +15,7 @@ use crate::css::support::{checked_color as color, component_values as components
 use surgeist_css::*;
 
 type Limits = CssSerializationLimits;
-type Kind = CssSpecifiedValueSerializationErrorKind;
+type Kind = SerializationFailure;
 
 macro_rules! text_case {
     ($name:ident, $source:literal, $expected:literal) => {
@@ -320,7 +322,7 @@ fn assert_pair_result(value: &CssBorderColorPair, limits: Limits, expected: Resu
     assert_eq!(value, &before);
     match expected {
         Ok(expected) => assert_eq!(result.unwrap(), expected),
-        Err(kind) => assert_eq!(result.unwrap_err().kind(), kind),
+        Err(kind) => assert_eq!(serialization_failure(&result.unwrap_err()), kind),
     }
 }
 

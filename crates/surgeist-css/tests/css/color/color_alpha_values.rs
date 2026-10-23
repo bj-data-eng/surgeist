@@ -70,9 +70,10 @@ fn alpha_math_keeps_transparency_references_and_rejects_foreign_environments() {
     let rgb = color("rgb(from red r g b / alpha)");
     let foreign = rgb.relative_value().unwrap().alpha().unwrap().clone();
     assert_eq!(foreign.result_domain(), CssRelativeColorResultDomain::Alpha);
-    assert_eq!(
-        CssAlphaColor::try_new(color("red"), Some(foreign)).unwrap_err(),
-        CssColorConstructionError::InvalidExpressionEnvironment
+    assert!(
+        CssAlphaColor::try_new(color("red"), Some(foreign))
+            .unwrap_err()
+            .is_invalid_expression_environment()
     );
 }
 
@@ -164,9 +165,10 @@ fn checked_alpha_graph_enforces_depth_without_discarding_children() {
         current.absolute_eligibility(),
         CssAbsoluteColorEligibility::Eligible
     );
-    assert_eq!(
-        CssAlphaColor::try_new(current, None).unwrap_err(),
-        CssColorConstructionError::NestingLimit
+    assert!(
+        CssAlphaColor::try_new(current, None)
+            .unwrap_err()
+            .is_nesting_limit()
     );
     for depth in [254, 255, 256] {
         let text = format!("{}alpha{}", "calc(".repeat(depth), ")".repeat(depth));
@@ -174,7 +176,7 @@ fn checked_alpha_graph_enforces_depth_without_discarding_children() {
         if depth < 256 {
             assert!(result.is_ok());
         } else {
-            assert_eq!(result.unwrap_err(), CssColorConstructionError::NestingLimit);
+            assert!(result.unwrap_err().is_nesting_limit());
         }
     }
 }

@@ -1,6 +1,6 @@
 use surgeist_css::{
-    CssErrorCode, CssFeatureKind, CssRecoveryAction, CssRule, CssSupportStatus, ErrorKind,
-    feature_metadata, parse_sheet, parse_style_attribute,
+    CssErrorCode, CssFeatureKind, CssRecoveryAction, CssRule, CssSupportStatus, feature_metadata,
+    parse_sheet, parse_style_attribute,
 };
 
 fn assert_span(source: &str, diagnostic: &surgeist_css::CssRecoveryDiagnostic, authored: &str) {
@@ -147,10 +147,13 @@ fn generic_consumers_drop_unknown_rules_and_retain_supported_font_rules() {
     assert_eq!(unknown.error().code(), CssErrorCode::UnknownAtRule);
     assert_eq!(unknown.action(), CssRecoveryAction::DropAtRule);
     assert_span(source, unknown, "@mystery fn({x; y});");
-    let ErrorKind::UnknownAtRule(detail) = unknown.error().kind() else {
-        panic!("expected unknown at-rule detail");
-    };
-    assert_eq!(detail.name().as_str(), "mystery");
+    let detail = unknown.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::UnknownAtRule,
+        "expected unknown at-rule detail"
+    );
+    assert_eq!(detail.at_rule().unwrap().as_str(), "mystery");
 }
 
 #[test]

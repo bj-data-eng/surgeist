@@ -4,7 +4,7 @@
 use surgeist_css::{
     CssBoxSize, CssCalculationType, CssComponentValueRef, CssErrorCode, CssImageValue,
     CssImportance, CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef,
-    CssRecoveryAction, CssSizeValue, CssTokenKind, CssValueOrigin, CssValueTokenRef, ErrorKind,
+    CssRecoveryAction, CssSizeValue, CssTokenKind, CssValueOrigin, CssValueTokenRef,
     parse_property_value_text,
 };
 
@@ -585,13 +585,20 @@ fn raw_property_corpus_obeys_selected_grammar_and_original_coordinates() {
                 input.len(),
                 "{id}"
             );
-            let encountered = match diagnostic.error().kind() {
-                ErrorKind::InvalidPropertyValue(error) => {
-                    assert_eq!(error.property(), property, "{id}");
+            let encountered = match diagnostic.error().code() {
+                CssErrorCode::InvalidPropertyValue => {
+                    let error = diagnostic.error();
+                    assert_eq!(error.known_property().unwrap(), property, "{id}");
                     error.encountered()
                 }
-                ErrorKind::InvalidColorSyntax(error) => error.encountered(),
-                ErrorKind::UnexpectedToken(error) => Some(error.encountered()),
+                CssErrorCode::InvalidColorSyntax => {
+                    let error = diagnostic.error();
+                    error.encountered()
+                }
+                CssErrorCode::UnexpectedToken => {
+                    let error = diagnostic.error();
+                    Some(error.encountered().unwrap())
+                }
                 _ => panic!("expected property, color or boundary diagnostic: {id}"),
             };
             assert_eq!(encountered.unwrap().kind(), token_kind, "{id}");

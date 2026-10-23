@@ -104,10 +104,13 @@ fn acceptance_css_wide_global_keyword_matrix_accepts_supported_globals() {
 fn typo_property_has_unknown_property_error_kind() {
     let error = parse_sheet(".panel { widht: 10px; }").expect_err("rejected parse report");
 
-    let ErrorKind::UnknownProperty(detail) = error.kind() else {
-        panic!("unexpected error kind: {:?}", error.kind());
-    };
-    assert_eq!(detail.name().as_str(), "widht");
+    let detail = &error;
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::UnknownProperty,
+        "unexpected error kind: {error:?}"
+    );
+    assert_eq!(detail.property_name().unwrap().as_str(), "widht");
 }
 
 #[test]
@@ -161,10 +164,13 @@ fn rejects_non_global_all_values_with_typed_unsupported_value() {
     for input in [".panel { all: block; }", ".panel { all: 1px; }"] {
         let error = parse_sheet(input).expect_err(input);
 
-        let ErrorKind::InvalidPropertyValue(detail) = error.kind() else {
-            panic!("unexpected error kind: {:?}", error.kind());
-        };
-        assert_eq!(detail.property(), CssKnownProperty::All);
+        let detail = &error;
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidPropertyValue,
+            "unexpected error kind: {error:?}"
+        );
+        assert_eq!(detail.known_property().unwrap(), CssKnownProperty::All);
     }
 }
 
@@ -172,8 +178,8 @@ fn rejects_non_global_all_values_with_typed_unsupported_value() {
 fn global_keyword_must_be_the_whole_value() {
     let error = parse_sheet(".panel { width: inherit 10px; }").expect_err("rejected parse report");
 
-    assert!(matches!(
-        error.kind(),
-        ErrorKind::InvalidPropertyValue(_) | ErrorKind::UnexpectedToken(_)
-    ));
+    assert!(
+        (error.code() == CssErrorCode::InvalidPropertyValue
+            || error.code() == CssErrorCode::UnexpectedToken)
+    );
 }

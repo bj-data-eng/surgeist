@@ -26,9 +26,12 @@ enum ResponsibleToken {
 fn assert_color_rejected(value: &str, responsible: ResponsibleToken) {
     let input = format!(".panel {{ color: {value}; }}");
     let error = assert_drops_sole_declaration(&input);
-    let ErrorKind::InvalidColorSyntax(detail) = error.kind() else {
-        panic!("{input}: not a color syntax rejection: {error:?}");
-    };
+    let detail = &error;
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidColorSyntax,
+        "{input}: not a color syntax rejection: {error:?}"
+    );
     let offset = error.position().byte_offset().value();
     match responsible {
         ResponsibleToken::Token(kind, spelling) => {
@@ -448,26 +451,29 @@ fn color_model_rejects_invalid_hex_and_named_tokens() {
 fn symbolic_color_model_rejects_invalid_mix_weights_and_component_counts() {
     // Color 5 (WD 2026-09-08) §3: each mix weight is <percentage [0,100]>.
     for invalid in ["-0.1%", "100.1%", "1e999%"] {
-        assert_eq!(
+        assert!(
             CssColorMixPercentage::try_from_component(
                 CssComponentValue::try_token(invalid).unwrap()
             )
             .unwrap_err()
-            .kind(),
-            CssColorScalarErrorKind::OutOfRange,
+            .is_out_of_range(),
             "{invalid}"
         );
     }
-    assert_eq!(
-        CssColorMix::try_new(None, Vec::new()),
-        Err(CssColorMixConstructionError::EmptyComponents)
+    assert!(
+        CssColorMix::try_new(None, Vec::new())
+            .as_ref()
+            .unwrap_err()
+            .is_empty_components()
     );
-    assert_eq!(
+    assert!(
         CssCustomColor::try_new(
             CssColorProfileName::try_new("--brand").unwrap(),
             Vec::new(),
             None
-        ),
-        Err(CssColorConstructionError::EmptyComponents)
+        )
+        .as_ref()
+        .unwrap_err()
+        .is_empty_components()
     );
 }

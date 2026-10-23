@@ -11,7 +11,6 @@ use crate::css::support::serialization_limits::LimitLadder;
 use surgeist_css::*;
 
 type Limits = CssSerializationLimits;
-type Kind = CssSpecifiedValueSerializationErrorKind;
 
 #[test]
 fn every_represented_ordinary_property_dispatches_its_typed_payload() {
@@ -936,12 +935,11 @@ fn semantic_children_canonicalize_numeric_math_and_aggregate_owners() {
                 declaration.serialize_specified(Default::default()).unwrap(),
                 expected
             );
-            assert_eq!(
+            assert!(
                 declaration
                     .serialize_specified(Limits::new(65_536, 262_144, expected.len() - 1))
                     .unwrap_err()
-                    .kind(),
-                Kind::ByteLimit
+                    .is_byte_limit()
             );
             assert_eq!(declaration.value_components(), &components);
             assert_eq!(declaration, before);
@@ -1075,12 +1073,11 @@ fn owning_precision_failure_returns_no_declaration_text_and_preserves_occurrence
             let components = declaration.value_components().clone();
             let value_origin = declaration.parsed_value().cloned();
             for _ in 0..2 {
-                assert_eq!(
+                assert!(
                     declaration
                         .serialize_specified(Default::default())
                         .unwrap_err()
-                        .kind(),
-                    Kind::UnrepresentableValue
+                        .is_unrepresentable_value()
                 );
                 assert_eq!(declaration.value_components(), &components);
                 assert_eq!(declaration.parsed_value(), value_origin.as_ref());

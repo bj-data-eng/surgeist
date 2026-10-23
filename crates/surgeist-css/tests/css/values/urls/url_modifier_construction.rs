@@ -3,13 +3,12 @@
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#url-modifiers
 
 use surgeist_css::{
-    CssAuthoredFontFaceDescriptorValue, CssComponentValue, CssComponentValueErrorKind,
-    CssComponentValueRef, CssComponentValues, CssFontFaceDescriptorKind,
-    CssFontFaceDescriptorValue, CssFontFaceSource, CssIdent, CssImageValue, CssImportRule,
-    CssImportTarget, CssImportance, CssKnownProperty, CssKnownPropertyValueRef,
-    CssNamespaceContext, CssPropertyNameRef, CssRule, CssUrl, CssUrlFunction, CssUrlModifier,
-    CssUrlModifierFunction, CssValueOrigin, CssValueTokenRef, parse_component_values,
-    parse_property_value, parse_sheet, parse_style_attribute,
+    CssAuthoredFontFaceDescriptorValue, CssComponentValue, CssComponentValueRef,
+    CssComponentValues, CssFontFaceDescriptorKind, CssFontFaceDescriptorValue, CssFontFaceSource,
+    CssIdent, CssImageValue, CssImportRule, CssImportTarget, CssImportance, CssKnownProperty,
+    CssKnownPropertyValueRef, CssNamespaceContext, CssPropertyNameRef, CssRule, CssUrl,
+    CssUrlFunction, CssUrlModifier, CssUrlModifierFunction, CssValueOrigin, CssValueTokenRef,
+    parse_component_values, parse_property_value, parse_sheet, parse_style_attribute,
 };
 
 fn modifier(url: &CssUrl) -> &CssUrlModifierFunction {
@@ -50,9 +49,10 @@ fn checked_decoded_identifiers_and_modifier_function_follow_token_grammar() {
         assert_eq!(CssIdent::try_new(decoded).unwrap().as_str(), decoded);
     }
     for invalid in ["", "a\0b"] {
-        assert_eq!(
-            CssIdent::try_new(invalid).unwrap_err().kind(),
-            CssComponentValueErrorKind::InvalidIdentifier
+        assert!(
+            CssIdent::try_new(invalid)
+                .unwrap_err()
+                .is_invalid_identifier()
         );
     }
 
@@ -62,7 +62,7 @@ fn checked_decoded_identifiers_and_modifier_function_follow_token_grammar() {
     let invalid =
         CssUrlModifierFunction::try_new(url_name, parse_component_values("asset").unwrap())
             .unwrap_err();
-    assert_eq!(invalid.kind(), CssComponentValueErrorKind::InvalidFunction);
+    assert!(invalid.is_invalid_function(), "{invalid:?}");
     assert!(
         CssUrlModifierFunction::try_new(
             CssIdent::try_new("opaque").unwrap(),

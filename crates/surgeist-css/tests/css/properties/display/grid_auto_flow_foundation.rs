@@ -3,6 +3,7 @@
 //! Canonical serialization of new semantic states needs the future current
 //! value API; this RED uses only existing public parsing and expansion APIs.
 
+use crate::css::support::property_admission::assert_same_grammar_facts;
 use surgeist_css::*;
 
 fn grammar() -> CssPropertyGrammar {
@@ -143,16 +144,15 @@ fn normal_cannot_combine_with_dense_and_duplicate_or_conflicting_keywords_reject
             report.diagnostics(),
             "{source}"
         );
-        assert_eq!(
-            parse_property_value_for_grammar(
+        assert_same_grammar_facts(
+            &parse_property_value_for_grammar(
                 grammar(),
                 parse_component_values(value).unwrap(),
-                CssImportance::Normal
+                CssImportance::Normal,
             )
-            .unwrap_err()
-            .kind(),
-            &CssPropertyValueErrorKind::Grammar(report.diagnostics()[0].error().kind().clone()),
-            "checked accepted {value}"
+            .unwrap_err(),
+            report.diagnostics()[0].error(),
+            "checked accepted {value}",
         );
     }
 }
@@ -218,12 +218,11 @@ fn globals_are_terminal_and_pending_reentry_is_strict_repeatable_and_provenanced
     };
     assert!(pending.source().same_occurrence(&source));
     assert_eq!(pending.source().importance(), CssImportance::Important);
-    assert_eq!(
+    assert!(
         pending
             .reenter(parse_component_values("var(--again)").unwrap())
             .unwrap_err()
-            .kind(),
-        &CssExpansionErrorKind::ResidualSubstitution
+            .is_residual_substitution()
     );
     for value in [
         "normal dense",
@@ -233,13 +232,11 @@ fn globals_are_terminal_and_pending_reentry_is_strict_repeatable_and_provenanced
         "inherit row",
     ] {
         assert!(
-            matches!(
-                pending
-                    .reenter(parse_component_values(value).unwrap())
-                    .unwrap_err()
-                    .kind(),
-                CssExpansionErrorKind::InvalidReplacement(_)
-            ),
+            pending
+                .reenter(parse_component_values(value).unwrap())
+                .unwrap_err()
+                .replacement_error()
+                .is_some(),
             "{value}"
         );
     }

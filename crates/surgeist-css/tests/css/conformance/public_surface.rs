@@ -20,9 +20,9 @@ use surgeist_css::{
     CssRelativeColorEnvironment, CssRelativeColorExpressionValue, CssRelativeColorFunction,
     CssRelativeColorResultDomain, CssRule, CssSelector, CssSelectorCombinator,
     CssSpecificationTier, CssSpecifiedNonNegativeLengthPercentage, CssSupportStatus,
-    CssSupportsConditionKind, CssSupportsConditionList, CssSystemColor, ErrorKind,
-    conformance_exclusion, feature_metadata, parse_sheet, parse_style_attribute,
-    property_support_metadata, specification_source,
+    CssSupportsConditionKind, CssSupportsConditionList, CssSystemColor, conformance_exclusion,
+    feature_metadata, parse_sheet, parse_style_attribute, property_support_metadata,
+    specification_source,
 };
 
 #[test]
@@ -574,10 +574,10 @@ fn rule_kind(rule: &CssRule) -> &'static str {
     }
 }
 
-fn error_kind(kind: &ErrorKind) -> &'static str {
-    match kind {
-        ErrorKind::UnknownProperty(_) => "unknown property",
-        ErrorKind::InvalidPropertyValue(_) => "invalid property value",
+fn error_kind(error: &surgeist_css::CssError) -> &'static str {
+    match error.code() {
+        CssErrorCode::UnknownProperty => "unknown property",
+        CssErrorCode::InvalidPropertyValue => "invalid property value",
         _ => "other or future error",
     }
 }
@@ -958,11 +958,14 @@ fn public_surface_non_bmp_coordinates_are_byte_line_and_utf16_based() {
         position.byte_offset().value(),
         position.column().value() as usize
     );
-    assert_eq!(error_kind(diagnostic.error().kind()), "unknown property");
-    let ErrorKind::UnknownProperty(detail) = diagnostic.error().kind() else {
-        panic!("expected typed unknown-property detail");
-    };
-    assert_eq!(detail.name().as_str(), "mystery");
+    assert_eq!(error_kind(diagnostic.error()), "unknown property");
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::UnknownProperty,
+        "expected typed unknown-property detail"
+    );
+    assert_eq!(detail.property_name().unwrap().as_str(), "mystery");
 }
 
 #[test]

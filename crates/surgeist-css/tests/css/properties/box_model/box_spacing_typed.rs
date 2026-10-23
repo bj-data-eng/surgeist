@@ -1,11 +1,11 @@
+use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::property_admission::assert_component_rejected;
-use surgeist_css::CssNumericConstructionErrorKind;
 use surgeist_css::{
     CssBoxSideKind, CssComponentValue, CssComponentValueRef, CssLengthPercentageCalculation,
     CssMarginPair, CssMarginShorthand, CssMarginValue, CssPaddingPair, CssPaddingShorthand,
     CssPaddingValue, CssSerializationLimits, CssSpecifiedLengthPercentage,
-    CssSpecifiedNonNegativeLengthPercentage, CssSpecifiedValueSerializationErrorKind,
-    CssValueOrigin, CssValueTokenRef, parse_component_values,
+    CssSpecifiedNonNegativeLengthPercentage, CssValueOrigin, CssValueTokenRef,
+    parse_component_values,
 };
 
 fn component(text: &str) -> CssComponentValue {
@@ -98,13 +98,13 @@ fn signed_length_percentage_keeps_exact_extremes_and_literal_domain() {
         assert_component_rejected(
             CssSpecifiedLengthPercentage::try_from_component,
             component(text),
-            CssNumericConstructionErrorKind::RootDomainMismatch,
+            NumericFailure::RootDomainMismatch,
         );
     }
     assert_component_rejected(
         CssSpecifiedNonNegativeLengthPercentage::try_from_component,
         component("-1e-999%"),
-        CssNumericConstructionErrorKind::OutOfRange,
+        NumericFailure::OutOfRange,
     );
 }
 
@@ -311,43 +311,38 @@ fn four_side_shorthands_preserve_kind_cardinality_and_exact_role_order() {
 #[test]
 fn combined_serialization_budgets_cover_every_child_and_logical_switch() {
     let pair = CssMarginPair::new(margin("1px"), Some(margin("2px")));
-    assert_eq!(
+    assert!(
         pair.serialize_specified(CssSerializationLimits::new(1, 9, 99))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+            .is_input_node_limit()
     );
-    assert_eq!(
+    assert!(
         pair.serialize_specified(CssSerializationLimits::new(9, 1, 99))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
+            .is_projection_node_limit()
     );
     let logical = CssPaddingShorthand::try_new(
         CssBoxSideKind::Logical,
         vec![padding("1px"), padding("2px")],
     )
     .unwrap();
-    assert_eq!(
+    assert!(
         logical
             .serialize_specified(CssSerializationLimits::new(2, 9, 99))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+            .is_input_node_limit()
     );
-    assert_eq!(
+    assert!(
         logical
             .serialize_specified(CssSerializationLimits::new(9, 2, 99))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
+            .is_projection_node_limit()
     );
-    assert_eq!(
+    assert!(
         logical
             .serialize_specified(CssSerializationLimits::new(9, 9, 14))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(
         logical.serialize_specified(Default::default()).unwrap(),

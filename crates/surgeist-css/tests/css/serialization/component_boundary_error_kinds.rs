@@ -16,10 +16,9 @@ fn named_supports_body_reports_an_unserializable_trailing_reverse_solidus() {
     let (body, _) = parse_supports_test_contents("future: a \\\n;").into_parts();
     let body = body.expect("inert body");
     assert_eq!(body.children().count(), 1);
-    assert_eq!(
+    assert!(
         body.serialize_specified(CssSerializationLimits::default())
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::UnserializableBoundary
+            .is_unserializable_boundary()
     );
 }

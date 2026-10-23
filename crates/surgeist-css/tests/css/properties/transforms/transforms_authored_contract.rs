@@ -9,7 +9,6 @@ use crate::css::support::known_property as property;
 use crate::css::support::named_property::sole_completed_contributions as completed;
 use crate::css::support::serialization_limits::LimitLadder;
 use CssSerializationLimits as L;
-use CssSpecifiedValueSerializationErrorKind as K;
 use authored_property::{ParserFront, assert_source, checked, checked_components, invalid};
 use surgeist_css::*;
 
@@ -268,13 +267,12 @@ fn all_pending_forms_reenter_strictly_and_reuse_original_identity_and_replacemen
                 };
                 assert!(handle.source().same_occurrence(&source));
                 for invalid in ["var(--again)", "env(again)", "attr(data-again *)"] {
-                    assert!(matches!(
+                    assert!(
                         handle
                             .reenter(parse_component_values(invalid).unwrap())
                             .unwrap_err()
-                            .kind(),
-                        CssExpansionErrorKind::ResidualSubstitution
-                    ));
+                            .is_residual_substitution()
+                    );
                 }
                 for invalid in [
                     "__invalid__",
@@ -283,13 +281,13 @@ fn all_pending_forms_reenter_strictly_and_reuse_original_identity_and_replacemen
                     "initial;color:red",
                 ] {
                     for _ in 0..2 {
-                        assert!(matches!(
+                        assert!(
                             handle
                                 .reenter(parse_component_values(invalid).unwrap())
                                 .unwrap_err()
-                                .kind(),
-                            CssExpansionErrorKind::InvalidReplacement(_)
-                        ));
+                                .replacement_error()
+                                .is_some()
+                        );
                     }
                 }
                 for (text, expected_global) in
@@ -355,14 +353,11 @@ fn implicit_origin(values: &CssComponentValues) -> CssValueOrigin {
         })
         .expect("original implicit closure")
 }
-fn closed_error(error: &CssPropertyValueParseError, origin: &CssValueOrigin, text: &str) {
-    assert!(matches!(
-        error.kind(),
-        CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
-    ));
+fn closed_error(error: &CssPropertyValueError, origin: &CssValueOrigin, text: &str) {
+    assert!(error.code() == Some(CssErrorCode::UnexpectedEnd));
     assert_eq!(
         error.origin(),
-        &CssSerializedOrigin::End(Some(origin.clone()))
+        CssSerializedOrigin::End(Some(origin.clone()))
     );
     let CssValueOrigin::ImplicitClosure { opening, at } = origin else {
         panic!("implicit closure")
@@ -420,7 +415,7 @@ fn pending_reentry_closures_reject_without_consuming_the_handle_and_complete_com
             let origin = implicit_origin(&replacement);
             for _ in 0..2 {
                 let error = handle.reenter(replacement.clone()).unwrap_err();
-                let CssExpansionErrorKind::InvalidReplacement(error) = error.kind() else {
+                let Some(error) = error.replacement_error() else {
                     panic!("strict closure")
                 };
                 closed_error(error, &origin, &text);
@@ -485,11 +480,8 @@ fn normalized_composed_transform_families_preserve_occurrences_order_importance_
     let limits = CssNormalizationLimits::try_new(256, usize::MAX, usize::MAX, 4).unwrap();
     let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
     assert_eq!(
-        error.kind(),
-        &CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: 4
-        }
+        error.exhausted_limit(),
+        Some((CssNormalizationResource::Contributions, 4))
     );
 }
 fn budgets(source: &CssDeclaration, output: &str, input: usize, projection: usize) {
@@ -560,7 +552,7 @@ fn composed_sheets_share_bytes_and_retry_after_late_failure_without_mutation() {
     );
     for _ in 0..2 {
         let error = sheet.serialize_specified(short).unwrap_err();
-        assert_eq!(error.kind(), K::ByteLimit);
+        assert!(error.is_byte_limit(), "{error:?}");
         assert_eq!(error.rule_index(), Some(1));
         assert_eq!(sheet, &before);
     }
@@ -664,12 +656,11 @@ fn checked_programmatic_tokens_and_parsed_numeric_children_keep_exact_original_p
         source.serialize_specified(Default::default()).unwrap(),
         "translate: 25% 0px !important;"
     );
-    assert_eq!(
+    assert!(
         source
             .serialize_specified(L::new(6, 6, 1))
             .unwrap_err()
-            .kind(),
-        K::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(source, &before);
 }

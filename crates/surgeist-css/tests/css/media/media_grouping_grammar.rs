@@ -310,11 +310,14 @@ fn grouped_eof_closure_is_published_only_for_retained_owners() {
         statement.span().end().byte_offset().value(),
         import_source.len()
     );
-    let surgeist_css::ErrorKind::UnexpectedEnd(detail) = statement.error().kind() else {
-        panic!("typed statement EOF");
-    };
+    let detail = statement.error();
     assert_eq!(
-        detail.expectation().as_str(),
+        detail.code(),
+        CssErrorCode::UnexpectedEnd,
+        "typed statement EOF"
+    );
+    assert_eq!(
+        detail.expectation().unwrap().as_str(),
         "a semicolon or block terminating an at-rule"
     );
     assert_eq!(

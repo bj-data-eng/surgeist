@@ -1,7 +1,6 @@
 use surgeist_css::{
     CssErrorCode, CssKeyframeSelector, CssPropertyNameRef, CssPseudoClass, CssPseudoElement,
-    CssPseudoElementSegment, CssRecoveryAction, CssRule, CssScopedRule, CssSelector, ErrorKind,
-    parse_sheet,
+    CssPseudoElementSegment, CssRecoveryAction, CssRule, CssScopedRule, CssSelector, parse_sheet,
 };
 
 fn style_name(rule: &CssRule) -> &str {
@@ -96,10 +95,13 @@ fn nested_structural_group_contexts_retain_siblings_around_balanced_at_rule_fail
             CssRecoveryAction::DropAtRule,
             start,
         );
-        let ErrorKind::UnknownAtRule(detail) = diagnostic.error().kind() else {
-            panic!("expected unknown at-rule detail");
-        };
-        assert_eq!(detail.name().as_str(), "mystery");
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::UnknownAtRule,
+            "expected unknown at-rule detail"
+        );
+        assert_eq!(detail.at_rule().unwrap().as_str(), "mystery");
     }
 }
 
@@ -434,12 +436,15 @@ fn nested_structural_keyframes_drop_nested_children_and_invalid_blocks_only() {
         CssRecoveryAction::DropAtRule,
         source.find("@media").unwrap(),
     );
-    let ErrorKind::InvalidAtRulePlacement(detail) = report.diagnostics()[0].error().kind() else {
-        panic!("expected keyframe at-rule placement detail");
-    };
-    assert_eq!(detail.name().as_str(), "media");
+    let detail = report.diagnostics()[0].error();
     assert_eq!(
-        detail.expected_context().as_str(),
+        detail.code(),
+        CssErrorCode::InvalidAtRulePlacement,
+        "expected keyframe at-rule placement detail"
+    );
+    assert_eq!(detail.at_rule().unwrap().as_str(), "media");
+    assert_eq!(
+        detail.expectation().unwrap().as_str(),
         "a keyframe declaration list"
     );
     assert_drop(

@@ -9,7 +9,7 @@ use super::query_components::{
     media_literal_number, negative_literal, query_plain_range, query_range_chain,
 };
 use super::recovery::RecoveryState;
-use crate::error::{Error, invalid_syntax};
+use crate::error::{CssError, invalid_syntax};
 use crate::media_features::MediaRangeState;
 use crate::numeric::CalculationRoot;
 use crate::supports::SupportsLexical;
@@ -34,13 +34,15 @@ pub(crate) fn construct_container_condition(
 ) -> Result<CssContainerCondition, CssContainerConstructionError> {
     values.validate_with_limits(limits)?;
     let node = container_condition(values.items())?.map_err(|index| {
-        CssContainerConstructionError::InvalidConditionGrammar {
-            origin: values
-                .items()
-                .get(index)
-                .or_else(|| values.items().last())
-                .map_or(CssValueOrigin::Programmatic, |value| value.origin().clone()),
-        }
+        CssContainerConstructionError::from(
+            crate::syntax::ContainerConstructionKind::InvalidConditionGrammar {
+                origin: values
+                    .items()
+                    .get(index)
+                    .or_else(|| values.items().last())
+                    .map_or(CssValueOrigin::Programmatic, |value| value.origin().clone()),
+            },
+        )
     })?;
     Ok(node.into_condition(SupportsLexical::root(values)))
 }
@@ -475,7 +477,7 @@ pub(super) fn collect_container_components<'i>(
     source: &str,
     input: &mut Parser<'i, '_>,
     recovery: &RecoveryState,
-) -> Result<(CssComponentValues, Vec<usize>), ParseError<'i, Error>> {
+) -> Result<(CssComponentValues, Vec<usize>), ParseError<'i, CssError>> {
     let implicit =
         recovery.check_specialized_components(source, input, "baseline.rule.container")?;
     let values = CssComponentValues::collect_from_parser(input, recovery.source_snapshot())
@@ -494,7 +496,9 @@ pub(crate) fn construct_container_prelude(
     admit_container_prelude(values).map_err(|error| match error {
         ContainerPreludeAdmissionError::Component(error) => error.into(),
         ContainerPreludeAdmissionError::Grammar { origin, .. } => {
-            CssContainerConstructionError::InvalidPreludeGrammar { origin }
+            CssContainerConstructionError::from(
+                crate::syntax::ContainerConstructionKind::InvalidPreludeGrammar { origin },
+            )
         }
     })
 }
@@ -563,7 +567,7 @@ fn admit_container_prelude(
 pub(super) fn container_prelude_from_components<'i>(
     values: CssComponentValues,
     location: cssparser::SourceLocation,
-) -> Result<CssContainerPrelude, ParseError<'i, Error>> {
+) -> Result<CssContainerPrelude, ParseError<'i, CssError>> {
     let end = values.items().len();
     admit_container_prelude(values).map_err(|error| match error {
         ContainerPreludeAdmissionError::Component(error) => {
@@ -587,7 +591,7 @@ pub(super) fn container_prelude_from_components<'i>(
 fn container_component_error<'i>(
     fallback: cssparser::SourceLocation,
     error: crate::CssComponentValueError,
-) -> ParseError<'i, Error> {
+) -> ParseError<'i, CssError> {
     let location = crate::media::parsed_position(error.origin()).map_or(fallback, |position| {
         cssparser::SourceLocation {
             line: position.line().value(),

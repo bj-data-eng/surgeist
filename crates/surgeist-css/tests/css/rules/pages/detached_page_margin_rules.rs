@@ -1,4 +1,6 @@
 //! Complete original-input Page margin insertion provider (#1087).
+use crate::css::support::failure_classes::ComponentFailure;
+use crate::css::support::failure_classes::component_failure;
 use surgeist_css::*;
 
 fn names(rule: &CssMarginRule) -> Vec<&str> {
@@ -82,18 +84,21 @@ fn recognized_page_descriptor_property_in_margin_names_its_catalog_identity() {
         let errors = report
             .diagnostics()
             .iter()
-            .filter_map(|diagnostic| match diagnostic.error().kind() {
-                ErrorKind::UnsupportedProperty(error) => Some(error),
+            .filter_map(|diagnostic| match diagnostic.error().code() {
+                CssErrorCode::UnsupportedProperty => {
+                    let error = diagnostic.error();
+                    Some(error)
+                }
                 _ => None,
             })
             .collect::<Vec<_>>();
         let [error] = errors.as_slice() else {
             panic!("{spelling}: one unsupported property: {report:?}")
         };
-        assert_eq!(error.name().as_str(), spelling);
+        assert_eq!(error.property_name().unwrap().as_str(), spelling);
         let catalog = property_support_metadata("size").expect("size catalog record");
-        assert_eq!(error.feature(), catalog.feature().id());
-        assert!(feature_metadata(error.feature().as_str()).is_some());
+        assert_eq!(error.feature(), Some(catalog.feature().id()));
+        assert!(feature_metadata(error.feature().unwrap().as_str()).is_some());
     }
 }
 
@@ -119,7 +124,7 @@ fn complete_rule_framing_and_empty_prelude_reject_extra_input_without_hierarchy_
             report
                 .diagnostics()
                 .iter()
-                .all(|d| !matches!(d.error().kind(), ErrorKind::InvalidAtRulePlacement(_))),
+                .all(|d| d.error().code() != CssErrorCode::InvalidAtRulePlacement),
             "{source}: {report:?}"
         );
     }
@@ -139,7 +144,7 @@ fn preliminary_syntax_and_typed_page_placement_or_unsupported_name_remain_distin
         placed
             .diagnostics()
             .iter()
-            .any(|d| matches!(d.error().kind(), ErrorKind::InvalidAtRulePlacement(_)))
+            .any(|d| d.error().code() == CssErrorCode::InvalidAtRulePlacement)
     );
     let unknown = classify_rule_syntax("@unknown {}");
     assert!(unknown.is_clean());
@@ -149,7 +154,7 @@ fn preliminary_syntax_and_typed_page_placement_or_unsupported_name_remain_distin
         unsupported
             .diagnostics()
             .iter()
-            .any(|d| matches!(d.error().kind(), ErrorKind::UnknownAtRule(_)))
+            .any(|d| d.error().code() == CssErrorCode::UnknownAtRule)
     );
     let raw = "@top-left {content:'x'}";
     let candidate = classify_rule_syntax(raw).into_parts().0.unwrap();
@@ -273,20 +278,26 @@ fn whole_input_limits_fail_atomically_and_candidate_admission_does_not_reset_cha
     for (limits, cause) in [
         (
             CssComponentValueLimits::try_new(1, 4, source.len()).unwrap(),
-            CssComponentValueErrorKind::ComponentLimit,
+            ComponentFailure::ComponentLimit,
         ),
         (
             CssComponentValueLimits::try_new(0, 5, source.len()).unwrap(),
-            CssComponentValueErrorKind::NestingLimit,
+            ComponentFailure::NestingLimit,
         ),
         (
             CssComponentValueLimits::try_new(1, 5, source.len() - 1).unwrap(),
-            CssComponentValueErrorKind::ByteLimit,
+            ComponentFailure::ByteLimit,
         ),
     ] {
         let report = parse_page_margin_rule_with_limits(source, limits);
         assert!(report.syntax().is_none());
-        assert!(report.diagnostics().iter().any(|d| matches!(d.error().kind(), ErrorKind::InvalidComponentValue(error) if error.kind() == cause)), "{report:?}");
+        assert!(
+            report.diagnostics().iter().any(|d| d
+                .error()
+                .component_error()
+                .is_some_and(|error| component_failure(error) == cause)),
+            "{report:?}"
+        );
         let retry = parse_page_margin_rule_with_limits(source, adequate);
         assert!(retry.is_clean());
         assert_eq!(names(retry.syntax().as_ref().unwrap()), ["color"]);
@@ -295,6 +306,10 @@ fn whole_input_limits_fail_atomically_and_candidate_admission_does_not_reset_cha
     let trailing = "@top-left{color:red} /*charged trailing trivia*/";
     let failed = parse_page_margin_rule_with_limits(trailing, adequate);
     assert!(failed.syntax().is_none());
-    assert!(failed.diagnostics().iter().any(|d| matches!(d.error().kind(), ErrorKind::InvalidComponentValue(error) if error.kind() == CssComponentValueErrorKind::ByteLimit)));
+    assert!(failed.diagnostics().iter().any(|d| {
+        d.error()
+            .component_error()
+            .is_some_and(|error| error.is_byte_limit())
+    }));
     assert!(parse_page_margin_rule(trailing).is_clean());
 }

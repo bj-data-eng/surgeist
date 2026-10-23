@@ -3,8 +3,8 @@
 //! These UTF-8 string fronts do not run the byte-stream fallback algorithm.
 use surgeist_css::{
     CssErrorCode, CssNamespaceContext, CssParseReport, CssRecoveryAction, CssRecoveryDiagnostic,
-    CssRule, CssSelector, CssSheet, CssSourcePosition, CssTokenKind, ErrorKind, parse_rule,
-    parse_sheet, validate_sheet,
+    CssRule, CssSelector, CssSheet, CssSourcePosition, CssTokenKind, parse_rule, parse_sheet,
+    validate_sheet,
 };
 
 type ExpectedStyle<'a> = (&'a str, (usize, u32, u32), (usize, usize));
@@ -79,10 +79,13 @@ fn assert_unknown(
     assert_position(diagnostic.error().position(), position);
     assert_position(diagnostic.span().start(), position);
     assert_eq!(diagnostic.span().end().byte_offset().value(), end);
-    let ErrorKind::UnknownAtRule(detail) = diagnostic.error().kind() else {
-        panic!("an unrecognized at-rule: {diagnostic:?}")
-    };
-    assert_eq!(detail.name().as_str(), name);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::UnknownAtRule,
+        "an unrecognized at-rule: {diagnostic:?}"
+    );
+    assert_eq!(detail.at_rule().unwrap().as_str(), name);
 }
 
 fn assert_charset_sheet(source: &str, drops: &[ExpectedDrop<'_>], styles: &[ExpectedStyle<'_>]) {
@@ -269,10 +272,13 @@ fn assert_charset_fragment(source: &str, position: (usize, u32, u32)) {
     assert_position(diagnostic.error().position(), position);
     assert_position(diagnostic.span().start(), (0, 0, 0));
     assert_eq!(diagnostic.span().end().byte_offset().value(), source.len());
-    let ErrorKind::UnknownAtRule(detail) = diagnostic.error().kind() else {
-        panic!("unrecognized charset fragment")
-    };
-    assert_eq!(detail.name().as_str(), "charset");
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::UnknownAtRule,
+        "unrecognized charset fragment"
+    );
+    assert_eq!(detail.at_rule().unwrap().as_str(), "charset");
 }
 
 #[test]
@@ -376,9 +382,12 @@ fn assert_nested_html_token(
     assert_position(diagnostic.error().position(), (11, 0, 11));
     assert_position(diagnostic.span().start(), (11, 0, 11));
     assert_eq!(diagnostic.span().end().byte_offset().value(), end);
-    let ErrorKind::InvalidSelector(detail) = diagnostic.error().kind() else {
-        panic!("invalid selector")
-    };
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidSelector,
+        "invalid selector"
+    );
     let encountered = detail.encountered().expect("responsible nested HTML token");
     assert_eq!(encountered.kind(), token);
     assert_eq!(encountered.authored(), authored);
@@ -443,9 +452,12 @@ fn assert_root_token(source: &str, token: CssTokenKind, authored: &str) {
         diagnostic.span().end(),
         (source.len(), 0, u32::try_from(source.len()).unwrap()),
     );
-    let ErrorKind::InvalidSelector(detail) = diagnostic.error().kind() else {
-        panic!("malformed root qualified rule")
-    };
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidSelector,
+        "malformed root qualified rule"
+    );
     let encountered = detail.encountered().unwrap();
     assert_eq!(encountered.kind(), token);
     assert_eq!(encountered.authored(), authored);

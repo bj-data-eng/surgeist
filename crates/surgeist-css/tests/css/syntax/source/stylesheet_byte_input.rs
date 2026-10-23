@@ -1,5 +1,5 @@
 use surgeist_css::{
-    CssEncoding, CssEncodingSelection, CssInputDecodeError, CssRule, CssStylesheetDecodeHints,
+    CssEncoding, CssEncodingSelection, CssRule, CssStylesheetDecodeHints,
     CssStylesheetDecodeLimits, CssStylesheetLocation, CssStylesheetParseOptions,
     CssSupportsConditionKind, CssValueOrigin, decode_stylesheet_bytes,
     decode_stylesheet_bytes_with_limits, parse_decoded_stylesheet, parse_sheet,
@@ -234,21 +234,25 @@ fn limits_are_atomic_exact_in_original_and_decoded_byte_units() {
     let exact = CssStylesheetDecodeLimits::new(2, 5);
     let decoded = decode_stylesheet_bytes_with_limits(bytes, hints("windows-1252"), exact).unwrap();
     assert_eq!(decoded.source().as_str(), "€é");
-    assert_eq!(
+    assert!(
         decode_stylesheet_bytes_with_limits(
             bytes,
             hints("windows-1252"),
             CssStylesheetDecodeLimits::new(1, 5)
-        ),
-        Err(CssInputDecodeError::OriginalByteLimit)
+        )
+        .as_ref()
+        .unwrap_err()
+        .is_original_byte_limit()
     );
-    assert_eq!(
+    assert!(
         decode_stylesheet_bytes_with_limits(
             bytes,
             hints("windows-1252"),
             CssStylesheetDecodeLimits::new(2, 4)
-        ),
-        Err(CssInputDecodeError::DecodedUtf8ByteLimit)
+        )
+        .as_ref()
+        .unwrap_err()
+        .is_decoded_utf8_byte_limit()
     );
     assert_eq!(
         decode_stylesheet_bytes_with_limits(bytes, hints("windows-1252"), exact)
@@ -257,13 +261,15 @@ fn limits_are_atomic_exact_in_original_and_decoded_byte_units() {
             .as_str(),
         "€é"
     );
-    assert_eq!(
+    assert!(
         decode_stylesheet_bytes_with_limits(
             "😀".as_bytes(),
             hints("utf-8"),
             CssStylesheetDecodeLimits::new(4, 3)
-        ),
-        Err(CssInputDecodeError::DecodedUtf8ByteLimit)
+        )
+        .as_ref()
+        .unwrap_err()
+        .is_decoded_utf8_byte_limit()
     );
     assert_eq!(
         decode_stylesheet_bytes_with_limits(

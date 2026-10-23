@@ -100,7 +100,7 @@ pub(crate) fn parse_declaration_list_text_with_context(
                 let result = if at_rule {
                     advance_to(&mut input, end_byte);
                     components
-                        .and_then(|_| Err(location.new_unexpected_token_error::<Error>(token)))
+                        .and_then(|_| Err(location.new_unexpected_token_error::<CssError>(token)))
                 } else {
                     input.parse_until_before(Delimiter::Semicolon, |unit| {
                         let openings = components?;
@@ -212,7 +212,7 @@ pub(super) fn drop_bad_declaration<'i>(
     input.reset(&state);
     // A structural resource failure inside the remnants owns the diagnostic.
     let error = match recovery.check_declaration_list_unit(source, input, false) {
-        Ok(_) => location.new_unexpected_token_error::<Error>(token),
+        Ok(_) => location.new_unexpected_token_error::<CssError>(token),
         Err(resource) => resource,
     };
     advance_to(input, end);

@@ -3,6 +3,8 @@
 
 use crate::css::support::color_property::normal_checked_color as parsed;
 use crate::css::support::declaration_color;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use surgeist_color::{ColorSpace, HueInterpolation};
 use surgeist_css::*;
 
@@ -210,19 +212,22 @@ fn omitted_hue_uses_final_byte_length_and_retains_traversal_costs() {
     for (limits, error) in [
         (
             CssSerializationLimits::new(3, 24, usize::MAX),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(4, 23, usize::MAX),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(4, 24, expected.len() - 1),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
         for _ in 0..2 {
-            assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), error);
+            assert_eq!(
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+                error
+            );
             assert_eq!(value, before);
         }
     }

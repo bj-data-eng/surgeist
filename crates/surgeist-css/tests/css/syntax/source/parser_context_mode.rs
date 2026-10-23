@@ -52,11 +52,7 @@ fn changed_mode_controls_quirky_grammar_without_resetting_the_original_context()
         let [diagnostic] = report.diagnostics() else {
             panic!("one width grammar failure: {report:?}")
         };
-        assert_invalid_property_value(
-            diagnostic.error().kind(),
-            CssKnownProperty::Width,
-            Some("7"),
-        );
+        assert_invalid_property_value(diagnostic.error(), CssKnownProperty::Width, Some("7"));
         assert_diagnostics(
             report.diagnostics(),
             &[(

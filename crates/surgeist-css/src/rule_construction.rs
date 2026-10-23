@@ -3,8 +3,7 @@
 use crate::*;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssRuleConstructionErrorKind {
+pub(crate) enum CssRuleConstructionErrorKind {
     InvalidPlacement,
     InvalidPreludeOrder,
     DuplicateNamespace,
@@ -15,23 +14,206 @@ pub enum CssRuleConstructionErrorKind {
     SelectorNestingLimit,
     CapacityOverflow,
 }
-/// The first authored-order assembly failure. Path indexes identify retained children.
+impl CssRuleConstructionErrorKind {
+    const fn description(self) -> &'static str {
+        match self {
+            Self::InvalidPlacement => "a rule or selector is not permitted where it appears",
+            Self::InvalidPreludeOrder => "an @import or @namespace rule follows a later rule kind",
+            Self::DuplicateNamespace => "a namespace prefix is declared twice",
+            Self::NamespaceMismatch => {
+                "a selector namespace does not match the sheet's declarations"
+            }
+            Self::InvalidSelectorIdentifier => "a selector identifier is invalid",
+            Self::InvalidBoundaryAnchor => "a scope boundary anchor is invalid",
+            Self::NestingLimit => "rules nest deeper than the structural limit",
+            Self::SelectorNestingLimit => "selectors nest deeper than the structural limit",
+            Self::CapacityOverflow => "a structural size calculation overflowed",
+        }
+    }
+}
+/// The first authored-order rule assembly failure, or a failed `@import` construction.
+///
+/// Assembly failures are read through their `is_*` predicates and located by
+/// [`Self::path`] and [`Self::position`]. An import failure is read through its
+/// predicates and accessors, located by [`Self::origin`], and a rejected component,
+/// condition, media query or serialization is its source.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssRuleConstructionError {
-    kind: CssRuleConstructionErrorKind,
-    path: Vec<usize>,
-    position: Option<CssSourcePosition>,
+    kind: RuleConstructionKind,
+}
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum RuleConstructionKind {
+    Assembly {
+        kind: CssRuleConstructionErrorKind,
+        path: Vec<usize>,
+        position: Option<CssSourcePosition>,
+    },
+    Import(crate::imports::ImportConstructionKind),
 }
 impl CssRuleConstructionError {
-    pub const fn kind(&self) -> CssRuleConstructionErrorKind {
-        self.kind
+    const fn assembly(&self) -> Option<CssRuleConstructionErrorKind> {
+        match &self.kind {
+            RuleConstructionKind::Assembly { kind, .. } => Some(*kind),
+            RuleConstructionKind::Import(_) => None,
+        }
     }
+    const fn import(&self) -> Option<&crate::imports::ImportConstructionKind> {
+        match &self.kind {
+            RuleConstructionKind::Import(kind) => Some(kind),
+            RuleConstructionKind::Assembly { .. } => None,
+        }
+    }
+    /// Returns whether a rule or selector is not permitted where it appears.
+    #[must_use]
+    pub const fn is_invalid_placement(&self) -> bool {
+        matches!(
+            self.assembly(),
+            Some(CssRuleConstructionErrorKind::InvalidPlacement)
+        )
+    }
+    /// Returns whether an `@import` or `@namespace` rule follows a later rule.
+    #[must_use]
+    pub const fn is_invalid_prelude_order(&self) -> bool {
+        matches!(
+            self.assembly(),
+            Some(CssRuleConstructionErrorKind::InvalidPreludeOrder)
+        )
+    }
+    /// Returns whether a namespace prefix or default namespace is declared twice.
+    #[must_use]
+    pub const fn is_duplicate_namespace(&self) -> bool {
+        matches!(
+            self.assembly(),
+            Some(CssRuleConstructionErrorKind::DuplicateNamespace)
+        )
+    }
+    /// Returns whether a selector namespace does not match the sheet's declarations.
+    #[must_use]
+    pub const fn is_namespace_mismatch(&self) -> bool {
+        matches!(
+            self.assembly(),
+            Some(CssRuleConstructionErrorKind::NamespaceMismatch)
+        )
+    }
+    /// Returns whether a selector identifier is invalid in its rule.
+    #[must_use]
+    pub const fn is_invalid_selector_identifier(&self) -> bool {
+        matches!(
+            self.assembly(),
+            Some(CssRuleConstructionErrorKind::InvalidSelectorIdentifier)
+        )
+    }
+    /// Returns whether a scope boundary anchor is invalid.
+    #[must_use]
+    pub const fn is_invalid_boundary_anchor(&self) -> bool {
+        matches!(
+            self.assembly(),
+            Some(CssRuleConstructionErrorKind::InvalidBoundaryAnchor)
+        )
+    }
+    /// Returns whether rules nest deeper than the structural limit.
+    #[must_use]
+    pub const fn is_nesting_limit(&self) -> bool {
+        matches!(
+            self.assembly(),
+            Some(CssRuleConstructionErrorKind::NestingLimit)
+        )
+    }
+    /// Returns whether selectors nest deeper than the structural limit.
+    #[must_use]
+    pub const fn is_selector_nesting_limit(&self) -> bool {
+        matches!(
+            self.assembly(),
+            Some(CssRuleConstructionErrorKind::SelectorNestingLimit)
+        )
+    }
+    /// Returns whether a structural size calculation overflowed.
+    #[must_use]
+    pub const fn is_capacity_overflow(&self) -> bool {
+        matches!(
+            self.assembly(),
+            Some(CssRuleConstructionErrorKind::CapacityOverflow)
+        )
+    }
+    /// Returns the child-index path of the responsible assembled rule; empty for an
+    /// import failure.
+    #[must_use]
     pub fn path(&self) -> &[usize] {
-        &self.path
+        match &self.kind {
+            RuleConstructionKind::Assembly { path, .. } => path,
+            RuleConstructionKind::Import(_) => &[],
+        }
     }
-    /// Genuine parsed rule/condition position, absent for source-free construction.
+    /// Returns the genuine parsed rule or condition position of an assembly failure,
+    /// absent for source-free construction.
+    #[must_use]
     pub const fn position(&self) -> Option<CssSourcePosition> {
-        self.position
+        match &self.kind {
+            RuleConstructionKind::Assembly { position, .. } => *position,
+            RuleConstructionKind::Import(_) => None,
+        }
+    }
+    /// Returns whether the `@import` components do not form an import rule.
+    #[must_use]
+    pub const fn is_invalid_rule_grammar(&self) -> bool {
+        matches!(
+            self.import(),
+            Some(crate::imports::ImportConstructionKind::InvalidRuleGrammar { .. })
+        )
+    }
+    /// Returns whether the `@import` components contain an implicitly closed component.
+    #[must_use]
+    pub const fn is_recovered_input(&self) -> bool {
+        matches!(
+            self.import(),
+            Some(crate::imports::ImportConstructionKind::RecoveredInput { .. })
+        )
+    }
+    /// Returns whether the deep `@import` construction thread could not be started.
+    #[must_use]
+    pub const fn is_worker_unavailable(&self) -> bool {
+        matches!(
+            self.import(),
+            Some(crate::imports::ImportConstructionKind::WorkerUnavailable { .. })
+        )
+    }
+    /// Returns the rejected `@import` component.
+    #[must_use]
+    pub const fn component_error(&self) -> Option<&CssComponentValueError> {
+        match self.import() {
+            Some(crate::imports::ImportConstructionKind::Component(error)) => Some(error),
+            _ => None,
+        }
+    }
+    /// Returns the rejected `@import` supports condition.
+    #[must_use]
+    pub const fn supports_error(&self) -> Option<&CssSupportsConstructionError> {
+        match self.import() {
+            Some(crate::imports::ImportConstructionKind::Supports(error)) => Some(error),
+            _ => None,
+        }
+    }
+    /// Returns the rejected `@import` media query list.
+    #[must_use]
+    pub const fn media_error(&self) -> Option<&CssMediaConstructionError> {
+        match self.import() {
+            Some(crate::imports::ImportConstructionKind::Media(error)) => Some(error),
+            _ => None,
+        }
+    }
+    /// Returns the `@import` serialization failure.
+    #[must_use]
+    pub const fn serialization_error(&self) -> Option<&CssSerializationError> {
+        match self.import() {
+            Some(crate::imports::ImportConstructionKind::Serialization(error)) => Some(error),
+            _ => None,
+        }
+    }
+    /// Returns the responsible original origin of an `@import` failure.
+    #[must_use]
+    pub fn origin(&self) -> Option<&CssValueOrigin> {
+        self.import()
+            .map(crate::imports::ImportConstructionKind::origin)
     }
     fn new(
         kind: CssRuleConstructionErrorKind,
@@ -39,22 +221,45 @@ impl CssRuleConstructionError {
         position: Option<CssSourcePosition>,
     ) -> Self {
         Self {
-            kind,
-            path,
-            position,
+            kind: RuleConstructionKind::Assembly {
+                kind,
+                path,
+                position,
+            },
+        }
+    }
+}
+impl From<crate::imports::ImportConstructionKind> for CssRuleConstructionError {
+    fn from(kind: crate::imports::ImportConstructionKind) -> Self {
+        Self {
+            kind: RuleConstructionKind::Import(kind),
         }
     }
 }
 impl std::fmt::Display for CssRuleConstructionError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "invalid authored rule composition: {:?} at {:?}",
-            self.kind, self.path
-        )
+        match &self.kind {
+            RuleConstructionKind::Assembly { kind, path, .. } => {
+                write!(
+                    f,
+                    "invalid authored rule composition: {}",
+                    kind.description()
+                )?;
+                for (index, child) in path.iter().enumerate() {
+                    f.write_str(if index == 0 { " at rule " } else { "." })?;
+                    write!(f, "{child}")?;
+                }
+                Ok(())
+            }
+            RuleConstructionKind::Import(kind) => kind.describe(f),
+        }
     }
 }
-impl std::error::Error for CssRuleConstructionError {}
+impl std::error::Error for CssRuleConstructionError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.import()?.source()
+    }
+}
 
 pub(crate) fn sheet(rules: &[CssRule]) -> Result<(), CssRuleConstructionError> {
     let mut phase = 0; // initial, imports, namespaces, body: parser prelude phases
@@ -230,7 +435,7 @@ fn validate(
         };
         let fail = |kind| CssRuleConstructionError::new(kind, path(), node.position());
         if frames.len() == 1
-            && let Some(error) = prelude_error.filter(|error| error.path.first() == Some(&index))
+            && let Some(error) = prelude_error.filter(|error| error.path().first() == Some(&index))
         {
             return Err(error.clone());
         }

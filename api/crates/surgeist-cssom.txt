@@ -95,7 +95,7 @@ pub surgeist_cssom::CssomError::Limit::resource: &'static str
 pub surgeist_cssom::CssomError::Media(surgeist_css::specified_serialization::CssSerializationError)
 pub surgeist_cssom::CssomError::Metadata(surgeist_css::expansion::CssPropertyMetadataError)
 pub surgeist_cssom::CssomError::MissingObject
-pub surgeist_cssom::CssomError::NamedSupports(surgeist_css::named_supports::CssNamedSupportsConstructionError)
+pub surgeist_cssom::CssomError::NamedSupports(surgeist_css::supports::CssSupportsConstructionError)
 pub surgeist_cssom::CssomError::Page(surgeist_css::page_projection::CssPageProjectionError)
 pub surgeist_cssom::CssomError::PageBlock(surgeist_css::syntax::page::CssPageBlockError)
 pub surgeist_cssom::CssomError::ParseResource(alloc::boxed::Box<surgeist_css::report::CssRecoveryDiagnostic>)
@@ -112,6 +112,28 @@ pub surgeist_cssom::CssomError::StaleRevision
 pub surgeist_cssom::CssomError::UnresolvedDeclarationPreparation
 pub surgeist_cssom::CssomError::Value(surgeist_css::specified_serialization::CssSerializationError)
 pub surgeist_cssom::CssomError::WrongKind
+impl core::convert::From<surgeist_css::component_values::CssComponentValueError> for surgeist_cssom::CssomError
+pub fn surgeist_cssom::CssomError::from(error: surgeist_css::component_values::CssComponentValueError) -> Self
+impl core::convert::From<surgeist_css::cssom_rule_serialization::CssRuleSerializationError> for surgeist_cssom::CssomError
+pub fn surgeist_cssom::CssomError::from(error: surgeist_css::cssom_rule_serialization::CssRuleSerializationError) -> Self
+impl core::convert::From<surgeist_css::expansion::CssExpansionError> for surgeist_cssom::CssomError
+pub fn surgeist_cssom::CssomError::from(error: surgeist_css::expansion::CssExpansionError) -> Self
+impl core::convert::From<surgeist_css::expansion::CssPropertyMetadataError> for surgeist_cssom::CssomError
+pub fn surgeist_cssom::CssomError::from(error: surgeist_css::expansion::CssPropertyMetadataError) -> Self
+impl core::convert::From<surgeist_css::font_face_declaration_block::CssFontFaceDeclarationBlockError> for surgeist_cssom::CssomError
+pub fn surgeist_cssom::CssomError::from(error: surgeist_css::font_face_declaration_block::CssFontFaceDeclarationBlockError) -> Self
+impl core::convert::From<surgeist_css::keyframe_matching::CssKeyframeSelectorComparisonError> for surgeist_cssom::CssomError
+pub fn surgeist_cssom::CssomError::from(error: surgeist_css::keyframe_matching::CssKeyframeSelectorComparisonError) -> Self
+impl core::convert::From<surgeist_css::keyframe_serialization::CssKeyframeRuleViewError> for surgeist_cssom::CssomError
+pub fn surgeist_cssom::CssomError::from(error: surgeist_css::keyframe_serialization::CssKeyframeRuleViewError) -> Self
+impl core::convert::From<surgeist_css::page_projection::CssPageProjectionError> for surgeist_cssom::CssomError
+pub fn surgeist_cssom::CssomError::from(error: surgeist_css::page_projection::CssPageProjectionError) -> Self
+impl core::convert::From<surgeist_css::specified_declaration_block::CssDeclarationBlockError> for surgeist_cssom::CssomError
+pub fn surgeist_cssom::CssomError::from(error: surgeist_css::specified_declaration_block::CssDeclarationBlockError) -> Self
+impl core::convert::From<surgeist_css::supports::CssSupportsConstructionError> for surgeist_cssom::CssomError
+pub fn surgeist_cssom::CssomError::from(error: surgeist_css::supports::CssSupportsConstructionError) -> Self
+impl core::convert::From<surgeist_css::syntax::page::CssPageBlockError> for surgeist_cssom::CssomError
+pub fn surgeist_cssom::CssomError::from(error: surgeist_css::syntax::page::CssPageBlockError) -> Self
 impl core::error::Error for surgeist_cssom::CssomError
 pub fn surgeist_cssom::CssomError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_cssom::CssomError

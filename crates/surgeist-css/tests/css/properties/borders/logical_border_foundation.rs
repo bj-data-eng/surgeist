@@ -325,17 +325,19 @@ fn pending_var_and_env_reenter_the_same_logical_grammar_and_occurrence() {
                 panic!("{name}:{token} remains pending");
             };
             assert!(handle.source().same_occurrence(&source));
-            assert!(matches!(
-                rejection(handle.reenter(parse_component_values("1%").unwrap())).kind(),
-                CssExpansionErrorKind::InvalidReplacement(_)
-            ));
-            assert!(matches!(
-                rejection(handle.reenter(parse_component_values("solid solid").unwrap())).kind(),
-                CssExpansionErrorKind::InvalidReplacement(_)
-            ));
-            assert_eq!(
-                rejection(handle.reenter(parse_component_values("var(--again)").unwrap())).kind(),
-                &CssExpansionErrorKind::ResidualSubstitution
+            assert!(
+                rejection(handle.reenter(parse_component_values("1%").unwrap()))
+                    .replacement_error()
+                    .is_some()
+            );
+            assert!(
+                rejection(handle.reenter(parse_component_values("solid solid").unwrap()))
+                    .replacement_error()
+                    .is_some()
+            );
+            assert!(
+                rejection(handle.reenter(parse_component_values("var(--again)").unwrap()))
+                    .is_residual_substitution()
             );
             let replacement = parse_component_values("solid 1e100px red").unwrap();
             let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap()
@@ -422,13 +424,7 @@ fn normalization_keeps_logical_order_context_and_atomic_six_member_budget() {
     let original = report.syntax().clone();
     let limits = CssNormalizationLimits::try_new(256, usize::MAX, usize::MAX, 6).unwrap();
     let error = rejection(normalize_sheet_with_limits(report.syntax(), limits));
-    assert!(matches!(
-        error.kind(),
-        CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: 6
-        }
-    ));
+    assert!(error.exhausted_limit() == Some((CssNormalizationResource::Contributions, 6)));
     assert_eq!(error.declaration_order(), Some(1));
     assert_eq!(error.position(), source.position());
     assert_eq!(error.declaration(), Some(source));

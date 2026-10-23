@@ -37,13 +37,12 @@ fn declaration_only_page_has_adopted_cssom_output() {
     );
 }
 
+use crate::css::support::failure_classes::SerializationFailure;
 use surgeist_css::{
     CssImportance, CssMarginBox, CssMarginDeclarationBlock, CssMarginRule, CssPageBody,
     CssPageDeclaration, CssPageDeclarationBlock, CssPageDescriptor, CssPageDescriptorKind as K,
-    CssPageDescriptorValueRef as V, CssPagePseudo as P,
-    CssRuleCssomSerializationErrorKind as RuleError, CssSerializationLimits as Limits,
-    CssSpecifiedValueSerializationErrorKind as Resource, parse_margin_block, parse_page_block,
-    parse_page_descriptor_value, parse_page_selector_list,
+    CssPageDescriptorValueRef as V, CssPagePseudo as P, CssSerializationLimits as Limits,
+    parse_margin_block, parse_page_block, parse_page_descriptor_value, parse_page_selector_list,
 };
 #[test]
 fn complete_page_selector_getter_preserves_compounds_lists_and_original_coordinates() {
@@ -276,7 +275,13 @@ fn page_cumulative_budget_reports_margin_child_and_retry_preserves_source() {
         .syntax()
         .serialize_cssom(Limits::new(1000, 1000, expected.len() - 4))
         .unwrap_err();
-    assert_eq!(failure.kind(), RuleError::Resource(Resource::ByteLimit));
+    assert!(
+        failure.is_resource_limit()
+            && failure
+                .serialization_error()
+                .is_some_and(|error| error.is_byte_limit()),
+        "{failure:?}"
+    );
     assert_eq!(failure.rule_path(), &[0, 1]);
     assert_eq!(report, before);
     assert_eq!(
@@ -387,13 +392,14 @@ fn selected_page_terminal_edits_preserve_sources_and_do_not_expand_the_original_
         )
         .is_err()
     );
-    assert!(matches!(
+    assert!(
         B::try_from_entries(
             &[E::Descriptor(descriptor.clone()), E::Descriptor(descriptor)],
             Default::default()
-        ),
-        Err(surgeist_css::CssPageProjectionError::DuplicateDescriptor { .. })
-    ));
+        )
+        .as_ref()
+        .is_err_and(|error| error.duplicate_descriptor().is_some())
+    );
 }
 #[test]
 fn selected_page_and_margin_views_preserve_pending_occurrence_and_order_and_reject_wrong_domains() {
@@ -440,7 +446,7 @@ fn selected_page_and_margin_views_preserve_pending_occurrence_and_order_and_reje
     );
     crate::css::support::value_assertions::assert_rule_resource(
         margins[1].serialize_cssom(Limits::new(1000, 1000, margin_text.len() - 1)),
-        surgeist_css::CssSpecifiedValueSerializationErrorKind::ByteLimit,
+        SerializationFailure::ByteLimit,
     );
     assert_eq!(
         margins[1].serialize_cssom(Default::default()).unwrap(),
@@ -473,13 +479,7 @@ fn selected_page_and_margin_views_preserve_pending_occurrence_and_order_and_reje
         ),
     ] {
         let error = result.unwrap_err();
-        assert!(
-            matches!(
-                error.kind(),
-                surgeist_css::CssDeclarationBlockErrorKind::InvalidPageSource
-            ),
-            "{error:?}"
-        );
+        assert!(error.is_invalid_page_source(), "{error:?}");
     }
 }
 #[test]
@@ -504,15 +504,15 @@ fn edited_page_and_margin_projection_share_atomic_node_projection_and_byte_limit
     for (limits, kind) in [
         (
             Limits::new(0, 1000, 1000),
-            surgeist_css::CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             Limits::new(1000, 0, 1000),
-            surgeist_css::CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             Limits::new(1000, 1000, expected.len() - 1),
-            surgeist_css::CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
         crate::css::support::value_assertions::assert_rule_resource(

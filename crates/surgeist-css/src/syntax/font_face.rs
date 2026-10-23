@@ -6,7 +6,7 @@ use crate::{
 };
 
 mod pending;
-pub use pending::{CssFontFaceValueError, CssFontFaceValueErrorKind};
+pub use pending::CssFontFaceValueError;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssFontFaceRule {

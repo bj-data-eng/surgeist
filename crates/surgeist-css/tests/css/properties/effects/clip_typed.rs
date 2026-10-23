@@ -4,6 +4,9 @@
 //! CSS Values 4 §10.13 defines canonical calculation serialization:
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-serialize
 
+use crate::css::support::failure_classes::NumericFailure;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::property_admission::assert_component_rejected;
 use crate::css::support::sole_declaration as parsed;
 use surgeist_css::*;
@@ -34,16 +37,10 @@ fn checked_edge_construction_accepts_signed_pure_lengths_and_rejects_other_domai
         );
     }
     for (css, kind) in [
-        ("1%", CssNumericConstructionErrorKind::RootDomainMismatch),
-        ("auto", CssNumericConstructionErrorKind::RootDomainMismatch),
-        (
-            "min-content",
-            CssNumericConstructionErrorKind::RootDomainMismatch,
-        ),
-        (
-            "max-content",
-            CssNumericConstructionErrorKind::RootDomainMismatch,
-        ),
+        ("1%", NumericFailure::RootDomainMismatch),
+        ("auto", NumericFailure::RootDomainMismatch),
+        ("min-content", NumericFailure::RootDomainMismatch),
+        ("max-content", NumericFailure::RootDomainMismatch),
     ] {
         assert_component_rejected(
             CssSpecifiedLength::try_from_component,
@@ -262,18 +259,21 @@ fn edge_and_rectangle_limits_share_exact_cumulative_budgets() {
     for (limits, kind) in [
         (
             CssSerializationLimits::new(0, 1, 4),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(1, 0, 4),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(1, 1, 3),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
-        assert_eq!(one.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&one.serialize_specified(limits).unwrap_err()),
+            kind
+        );
     }
     let rect = CssClipRect::new(
         CssClipEdge::Auto,
@@ -291,18 +291,21 @@ fn edge_and_rectangle_limits_share_exact_cumulative_budgets() {
     for (limits, kind) in [
         (
             CssSerializationLimits::new(4, 5, 24),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(5, 4, 24),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(5, 5, 23),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
-        assert_eq!(rect.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&rect.serialize_specified(limits).unwrap_err()),
+            kind
+        );
     }
     assert_eq!(
         rect.serialize_specified(Default::default()).unwrap(),
@@ -335,23 +338,20 @@ fn symbolic_math_edges_obey_one_shared_rectangle_byte_budget() {
             .unwrap(),
         expected
     );
-    assert_eq!(
+    assert!(
         rect.serialize_specified(CssSerializationLimits::new(1_000, 1_000, 15))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
-    assert_eq!(
+    assert!(
         rect.serialize_specified(CssSerializationLimits::new(0, 1_000, 1_000))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+            .is_input_node_limit()
     );
-    assert_eq!(
+    assert!(
         rect.serialize_specified(CssSerializationLimits::new(1_000, 0, 1_000))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
+            .is_projection_node_limit()
     );
 }
 

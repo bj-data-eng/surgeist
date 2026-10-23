@@ -353,10 +353,13 @@ fn unit_matrix_rejects_unknown_length_units_in_ordinary_and_calc_contexts() {
 fn unknown_dimension_units_are_reported_as_unknown_units() {
     let error = parse_sheet(".panel { width: 1quux; }").expect_err("rejected parse report");
 
-    let ErrorKind::InvalidPropertyValue(detail) = error.kind() else {
-        panic!("unexpected error kind: {:?}", error.kind());
-    };
-    assert_eq!(detail.property(), CssKnownProperty::Width);
+    let detail = &error;
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "unexpected error kind: {error:?}"
+    );
+    assert_eq!(detail.known_property().unwrap(), CssKnownProperty::Width);
 }
 
 #[test]
@@ -364,10 +367,13 @@ fn unknown_calc_dimension_units_are_reported_as_unknown_units() {
     let error =
         parse_sheet(".panel { width: calc(1quux + 2px); }").expect_err("rejected parse report");
 
-    let ErrorKind::InvalidPropertyValue(detail) = error.kind() else {
-        panic!("unexpected error kind: {:?}", error.kind());
-    };
-    assert_eq!(detail.property(), CssKnownProperty::Width);
+    let detail = &error;
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "unexpected error kind: {error:?}"
+    );
+    assert_eq!(detail.known_property().unwrap(), CssKnownProperty::Width);
 }
 
 #[test]
@@ -404,7 +410,7 @@ fn flow_tolerance_calc_is_preserved_as_css_syntax() {
 fn rejects_unknown_calc_functions() {
     let error = parse_sheet(".panel { width: unknown-math(10px, 20px); }")
         .expect_err("rejected parse report");
-    assert!(matches!(error.kind(), ErrorKind::InvalidPropertyValue(_)));
+    assert!(error.code() == CssErrorCode::InvalidPropertyValue);
 }
 
 #[test]

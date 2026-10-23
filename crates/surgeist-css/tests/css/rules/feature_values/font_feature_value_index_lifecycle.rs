@@ -18,7 +18,6 @@ type Block = CssFontFeatureValueBlock;
 type Definition = CssFontFeatureValueDefinition;
 type Index = CssFontFeatureValueIndex;
 type Kind = CssFontFeatureValueKind;
-type ConstructionError = CssFontFeatureValuesErrorKind;
 
 fn definition(kind: Kind, name: &str, values: &[&str]) -> Definition {
     Definition::new(
@@ -247,21 +246,24 @@ fn invalid_definitions_recover_locally_without_discarding_newly_admitted_sibling
 #[test]
 fn rejected_integer_syntax_and_index_counts_remain_intrinsic_errors() {
     for text in ["", "+", "1.0", "1e0", "1px", "1%", "1 2"] {
-        assert_eq!(
-            Index::try_from_decimal(text).unwrap_err().kind(),
-            ConstructionError::InvalidIntegerSyntax
+        assert!(
+            Index::try_from_decimal(text)
+                .unwrap_err()
+                .is_invalid_integer_syntax()
         );
     }
-    assert_eq!(
-        Index::try_from_decimal("-1").unwrap_err().kind(),
-        ConstructionError::NegativeIndex
+    assert!(
+        Index::try_from_decimal("-1")
+            .unwrap_err()
+            .is_negative_index()
     );
-    assert!(matches!(
+    assert!(
         checked_feature_value(Kind::Styleset, &[])
             .unwrap_err()
-            .kind(),
-        CssFontFeatureValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
-    ));
+            .diagnostic()
+            .map(CssError::code)
+            == Some(CssErrorCode::UnexpectedEnd)
+    );
     for (kind, values) in [
         (Kind::CharacterVariant, &["1", "2", "3"][..]),
         (Kind::Stylistic, &["1", "2"][..]),
@@ -271,10 +273,13 @@ fn rejected_integer_syntax_and_index_counts_remain_intrinsic_errors() {
     ] {
         let good = definition(kind, "good", &["1", "2"][..kind_count(kind)]);
         assert!(Block::try_new(kind, vec![good]).is_ok());
-        assert!(matches!(
-            checked_feature_value(kind, values).unwrap_err().kind(),
-            CssFontFeatureValueErrorKind::Grammar(ErrorKind::UnexpectedToken(_))
-        ));
+        assert!(
+            checked_feature_value(kind, values)
+                .unwrap_err()
+                .diagnostic()
+                .map(CssError::code)
+                == Some(CssErrorCode::UnexpectedToken)
+        );
     }
     for (kind, invalid, token) in [
         ("character-variant", "1 2 3", Some("3")),

@@ -8,6 +8,8 @@
 use crate::css::support::color_and_selector_fixtures::{
     background_images as images, expanded_longhands as expanded,
 };
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::{parsed_color as color, sole_declaration as declaration};
 use surgeist_css::*;
 
@@ -174,9 +176,10 @@ fn two_image_branches_preserve_none_url_src_gradients_and_nested_pairs() {
         images("light-dark(none, url(a.svg))"),
         images("light-dark(url(a.svg), none)")
     );
-    assert_eq!(
-        CssImage::try_new(CssImageValue::None).unwrap_err(),
-        CssImageConstructionError::NotImage
+    assert!(
+        CssImage::try_new(CssImageValue::None)
+            .unwrap_err()
+            .is_not_image()
     );
 }
 
@@ -501,22 +504,19 @@ fn pending_reentry_preserves_color_image_and_background_replacement_provenance()
             "light-dark(red, blue, green)",
         ] {
             assert!(
-                matches!(
-                    pending
-                        .reenter(parse_component_values(invalid).unwrap())
-                        .unwrap_err()
-                        .kind(),
-                    CssExpansionErrorKind::InvalidReplacement(_)
-                ),
+                pending
+                    .reenter(parse_component_values(invalid).unwrap())
+                    .unwrap_err()
+                    .replacement_error()
+                    .is_some(),
                 "{property}: {invalid}"
             );
         }
-        assert_eq!(
+        assert!(
             pending
                 .reenter(parse_component_values("var(--again)").unwrap())
                 .unwrap_err()
-                .kind(),
-            &CssExpansionErrorKind::ResidualSubstitution
+                .is_residual_substitution()
         );
         let replacement = parse_component_values(replacement).unwrap();
         for _ in 0..2 {
@@ -607,19 +607,22 @@ fn color_pair_charges_wrapper_and_both_siblings_in_one_resource_context() {
     for (limits, kind) in [
         (
             CssSerializationLimits::new(2, 3, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(3, 2, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(3, 3, expected.len() - 1),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
         let before = value.clone();
-        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+            kind
+        );
         assert_eq!(value, before);
     }
 }
@@ -638,19 +641,22 @@ fn image_pairs_and_list_siblings_share_input_projection_and_punctuation_budgets(
     for (limits, kind) in [
         (
             CssSerializationLimits::new(6, 7, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(7, 6, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(7, 7, expected.len() - 1),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
         let before = value.clone();
-        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+            kind
+        );
         assert_eq!(value, before);
     }
 }
@@ -665,12 +671,11 @@ fn utf8_image_bytes_and_background_prefixes_have_exact_atomic_limits() {
             .unwrap(),
         expected
     );
-    assert_eq!(
+    assert!(
         value
             .serialize_specified(CssSerializationLimits::new(100, 100, expected.len() - 1))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
     let value =
         background("light-dark(none, none) left top / cover no-repeat light-dark(red, blue)");
@@ -681,12 +686,11 @@ fn utf8_image_bytes_and_background_prefixes_have_exact_atomic_limits() {
             .unwrap(),
         expected
     );
-    assert_eq!(
+    assert!(
         value
             .serialize_specified(CssSerializationLimits::new(100, 100, expected.len() - 1))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
 }
 
@@ -782,10 +786,9 @@ fn full_image_subtree_nesting_errors_survive_ambiguous_consumer_retries() {
         )
         .expect_err("whole image subtree exceeds the checked ceiling");
         assert!(
-            matches!(
-                error.kind(),
-                CssPropertyValueErrorKind::Component(CssComponentValueErrorKind::NestingLimit)
-            ),
+            error
+                .component_error()
+                .is_some_and(|error| error.is_nesting_limit()),
             "{} must preserve the resource failure: {error:?}",
             property.canonical_name()
         );
@@ -794,14 +797,13 @@ fn full_image_subtree_nesting_errors_survive_ambiguous_consumer_retries() {
             panic!("pending image consumer")
         };
         let error = pending.reenter(components.clone()).unwrap_err();
-        let CssExpansionErrorKind::InvalidReplacement(error) = error.kind() else {
+        let Some(error) = error.replacement_error() else {
             panic!("typed invalid replacement")
         };
         assert!(
-            matches!(
-                error.kind(),
-                CssPropertyValueErrorKind::Component(CssComponentValueErrorKind::NestingLimit)
-            ),
+            error
+                .component_error()
+                .is_some_and(|error| error.is_nesting_limit()),
             "{} reentry must preserve the resource failure: {error:?}",
             property.canonical_name()
         );

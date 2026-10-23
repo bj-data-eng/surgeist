@@ -25,11 +25,13 @@ fn layer(color: Option<CssColor>) -> CssBackgroundLayer {
 
 #[test]
 fn construction_rejects_empty_layers_uncoupled_size_and_nonfinal_color() {
-    assert_eq!(
-        CssBackgroundLayer::try_new(None, None, None, None, None, None, None),
-        Err(CssBackgroundConstructionError::EmptyLayer)
+    assert!(
+        CssBackgroundLayer::try_new(None, None, None, None, None, None, None)
+            .as_ref()
+            .unwrap_err()
+            .is_empty_layer()
     );
-    assert_eq!(
+    assert!(
         CssBackgroundLayer::try_new(
             None,
             None,
@@ -38,12 +40,16 @@ fn construction_rejects_empty_layers_uncoupled_size_and_nonfinal_color() {
             None,
             None,
             None
-        ),
-        Err(CssBackgroundConstructionError::SizeWithoutPosition)
+        )
+        .as_ref()
+        .unwrap_err()
+        .is_size_without_position()
     );
-    assert_eq!(
-        CssBackground::try_new(vec![]),
-        Err(CssBackgroundConstructionError::EmptyLayers)
+    assert!(
+        CssBackground::try_new(vec![])
+            .as_ref()
+            .unwrap_err()
+            .is_empty_layers()
     );
     let first = CssBackgroundLayer::try_new(
         Some(CssImageValue::None),
@@ -55,24 +61,33 @@ fn construction_rejects_empty_layers_uncoupled_size_and_nonfinal_color() {
         None,
     )
     .unwrap();
-    assert_eq!(
+    assert!(
         CssBackground::try_new(vec![
             first.clone(),
             layer(Some(CssColor::transparent())),
             first
-        ]),
-        Err(CssBackgroundConstructionError::NonFinalColor { layer_index: 1 })
+        ])
+        .as_ref()
+        .is_err_and(|error| error.non_final_color_layer() == Some(1))
     );
     let value = CssBackground::try_new(vec![layer(Some(CssColor::current_color()))]).unwrap();
     assert_eq!(
         value.serialize_specified(Default::default()).unwrap(),
         "currentcolor"
     );
-    assert_eq!(
-        CssBackgroundConstructionError::SizeWithoutPosition.to_string(),
-        "background size requires a position"
-    );
-    let error: &dyn std::error::Error = &CssBackgroundConstructionError::EmptyLayers;
+    let error = CssBackgroundLayer::try_new(
+        None,
+        None,
+        Some(CssBackgroundSize::Cover),
+        None,
+        None,
+        None,
+        None,
+    )
+    .unwrap_err();
+    assert_eq!(error.to_string(), "background size requires a position");
+    let error = CssBackground::try_new(vec![]).unwrap_err();
+    let error: &dyn std::error::Error = &error;
     assert!(error.source().is_none());
 }
 
@@ -323,12 +338,11 @@ fn omitted_nodes_consume_visits_but_only_generated_none_consumes_four_bytes() {
         "none",
     );
     // The tiny nonzero percentage must never be omitted through a machine-float zero.
-    assert_eq!(
+    assert!(
         background("1e-400% 0%")
             .serialize_specified(CssSerializationLimits::new(100, 100, 4))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
     // Exact signed/unit-bearing zero is an initial; discarded text need not fit four bytes.
     assert_limits("-0.0000000000000000000000em 0%", 7, 8, "none");

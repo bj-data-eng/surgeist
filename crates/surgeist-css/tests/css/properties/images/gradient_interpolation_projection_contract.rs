@@ -6,6 +6,8 @@
 //! https://www.w3.org/TR/2026/CRD-css-color-4-20260908/#interpolation-space
 //! https://www.w3.org/TR/2026/CRD-css-color-4-20260908/#serializing-sRGB-values
 //! https://www.w3.org/TR/2025/WD-css-images-4-20250930/#serialization
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::*;
 
 const FUNCTIONS: [&str; 5] = [
@@ -56,29 +58,19 @@ fn verify(css: &str, expected: &str) {
         expected,
     );
     for (input, projection, bytes, cause) in [
-        (
-            0,
-            1000,
-            1000,
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
-        ),
-        (
-            1000,
-            0,
-            1000,
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
-        ),
+        (0, 1000, 1000, SerializationFailure::InputNodeLimit),
+        (1000, 0, 1000, SerializationFailure::ProjectionNodeLimit),
         (
             1000,
             1000,
             expected.len() - 1,
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
         let error = image
             .serialize_specified(CssSerializationLimits::new(input, projection, bytes))
             .unwrap_err();
-        assert_eq!(error.kind(), cause);
+        assert_eq!(serialization_failure(&error), cause);
         assert_eq!(
             image.serialize_specified(Default::default()).unwrap(),
             expected

@@ -43,7 +43,7 @@ fn assert_recovered<'a>(invalid: &str, token: impl Into<Responsible<'a>>) {
         )
     };
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    assert_invalid_value(diagnostic.error().kind(), CssKnownProperty::Content, token);
+    assert_invalid_value(diagnostic.error(), CssKnownProperty::Content, token);
     assert_eq!(
         validate_style_attribute(&source).unwrap_err().diagnostics(),
         report.diagnostics()
@@ -216,20 +216,19 @@ fn pending_content_reentry_is_strict_and_retains_replacement_provenance() {
     };
     assert!(pending.source().same_occurrence(&source));
     for invalid in ["normal contents", "\"caption\" /", "leader()"] {
-        assert!(matches!(
+        assert!(
             pending
                 .reenter(parse_component_values(invalid).unwrap())
                 .unwrap_err()
-                .kind(),
-            CssExpansionErrorKind::InvalidReplacement(_)
-        ));
+                .replacement_error()
+                .is_some()
+        );
     }
-    assert_eq!(
+    assert!(
         pending
             .reenter(parse_component_values("var(--again)").unwrap())
             .unwrap_err()
-            .kind(),
-        &CssExpansionErrorKind::ResidualSubstitution
+            .is_residual_substitution()
     );
     for replacement_css in [
         "contents",
@@ -288,11 +287,8 @@ fn normalized_content_preserves_order_and_reports_atomic_limit_failure() {
     let limits = CssNormalizationLimits::try_new(256, usize::MAX, usize::MAX, 2).unwrap();
     let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
     assert_eq!(
-        error.kind(),
-        &CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: 2,
-        }
+        error.exhausted_limit(),
+        Some((CssNormalizationResource::Contributions, 2))
     );
     assert_eq!(error.declaration_order(), Some(2));
     assert_eq!(

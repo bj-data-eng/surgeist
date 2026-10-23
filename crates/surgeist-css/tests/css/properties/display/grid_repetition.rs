@@ -1,7 +1,7 @@
 use crate::css::support::math_depth::MathDepthBoundary;
 use surgeist_css::{
     CssErrorCode, CssGridAutoRepeatKind, CssGridAutoTrackComponent, CssGridGeneralTrackComponent,
-    CssKnownProperty, CssKnownPropertyValueRef, CssRecoveryAction, CssTokenKind, ErrorKind,
+    CssKnownProperty, CssKnownPropertyValueRef, CssRecoveryAction, CssTokenKind,
     parse_style_attribute,
 };
 
@@ -222,9 +222,12 @@ fn flexible_minmax_minimums_are_rejected_at_the_first_responsible_token() {
             source.find(';').expect("declaration terminator") + 1,
             "{source}",
         );
-        let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-            panic!("{source}: expected Grid property error");
-        };
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidPropertyValue,
+            "{source}: expected Grid property error"
+        );
         assert_eq!(
             detail.encountered().expect("responsible fraction").kind(),
             CssTokenKind::Dimension,
@@ -287,9 +290,12 @@ fn grid_repeat_failures_report_the_first_responsible_token_and_recover_progressi
             CssErrorCode::InvalidPropertyValue
         );
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-        let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-            panic!("expected property value diagnostic");
-        };
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidPropertyValue,
+            "expected property value diagnostic"
+        );
         let encountered = detail.encountered().expect("responsible token");
         assert_eq!(encountered.authored(), responsible);
         assert!(matches!(

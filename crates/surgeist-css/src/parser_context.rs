@@ -90,7 +90,7 @@ impl CssParserContext {
     pub fn parse_svg_glyph_orientation_vertical_attribute_components(
         self,
         values: CssComponentValues,
-    ) -> Result<CssDeclaration, CssPropertyValueParseError> {
+    ) -> Result<CssDeclaration, CssPropertyValueError> {
         let body = crate::property_value::checked_svg_glyph_value_body(
             crate::svg_glyph::SvgGlyphAdmission::attribute(self),
             &values,
@@ -305,7 +305,7 @@ impl CssParserContext {
         property: CssPropertyNameRef<'_>,
         values: CssComponentValues,
         importance: CssImportance,
-    ) -> Result<CssDeclaration, CssPropertyValueParseError> {
+    ) -> Result<CssDeclaration, CssPropertyValueError> {
         crate::property_value::parse_property_value_with_context(property, values, importance, self)
     }
     /// Checks detached Page components with this document mode and definition choice.
@@ -315,7 +315,7 @@ impl CssParserContext {
         property: CssPropertyNameRef<'_>,
         values: CssComponentValues,
         importance: CssImportance,
-    ) -> Result<CssDeclaration, CssPropertyValueParseError> {
+    ) -> Result<CssDeclaration, CssPropertyValueError> {
         crate::property_value::parse_page_property_value_with_context(
             property, values, importance, self,
         )
@@ -326,7 +326,7 @@ impl CssParserContext {
         grammar: CssPropertyGrammar,
         values: CssComponentValues,
         importance: CssImportance,
-    ) -> Result<CssDeclaration, CssPropertyValueParseError> {
+    ) -> Result<CssDeclaration, CssPropertyValueError> {
         crate::property_value::parse_property_value_for_grammar_with_context(
             grammar, values, importance, self,
         )
@@ -400,10 +400,9 @@ fn css_supports_condition(
         context,
     ) {
         Ok(condition) => Ok(condition),
-        Err(
-            CssSupportsConstructionError::InvalidConditionGrammar { .. }
-            | CssSupportsConstructionError::InvalidDeclarationGrammar { .. },
-        ) => {
+        Err(error)
+            if error.is_invalid_condition_grammar() || error.is_invalid_declaration_grammar() =>
+        {
             let block = CssComponentValue::try_block(CssBlockKind::Parenthesis, values)?;
             CssSupportsCondition::try_from_components_in_context(
                 CssComponentValues::try_new(vec![block], Default::default())?,
@@ -434,27 +433,33 @@ fn css_supports_declaration(
 ) -> Result<CssSupportsDeclaration, CssSupportsConstructionError> {
     let property_values = parse_component_values(property)?;
     if let Some(origin) = property_values.first_implicit_origin() {
-        return Err(CssSupportsConstructionError::RecoveredInput {
-            origin: origin.clone(),
-        });
+        return Err(CssSupportsConstructionError::from(
+            crate::supports::SupportsConstructionKind::RecoveredInput {
+                origin: origin.clone(),
+            },
+        ));
     }
     if !matches!(property_values.items(), [component]
         if matches!(component.view(), CssComponentValueRef::Token(CssValueTokenRef::Ident(name)) if name == property))
     {
-        return Err(CssSupportsConstructionError::InvalidDeclarationGrammar {
-            origin: property_values
-                .items()
-                .first()
-                .map_or(CssValueOrigin::Programmatic, |component| {
-                    component.origin().clone()
-                }),
-        });
+        return Err(CssSupportsConstructionError::from(
+            crate::supports::SupportsConstructionKind::InvalidDeclarationGrammar {
+                origin: property_values
+                    .items()
+                    .first()
+                    .map_or(CssValueOrigin::Programmatic, |component| {
+                        component.origin().clone()
+                    }),
+            },
+        ));
     }
     let value = parse_component_values(value)?;
     if let Some(origin) = value.first_implicit_origin() {
-        return Err(CssSupportsConstructionError::RecoveredInput {
-            origin: origin.clone(),
-        });
+        return Err(CssSupportsConstructionError::from(
+            crate::supports::SupportsConstructionKind::RecoveredInput {
+                origin: origin.clone(),
+            },
+        ));
     }
     if let Some(component) = value.items().iter().find(|component| {
         matches!(
@@ -462,9 +467,11 @@ fn css_supports_declaration(
             CssComponentValueRef::Token(CssValueTokenRef::Delim('!'))
         )
     }) {
-        return Err(CssSupportsConstructionError::InvalidDeclarationGrammar {
-            origin: component.origin().clone(),
-        });
+        return Err(CssSupportsConstructionError::from(
+            crate::supports::SupportsConstructionKind::InvalidDeclarationGrammar {
+                origin: component.origin().clone(),
+            },
+        ));
     }
     let mut items = property_values.items().to_vec();
     items.push(CssComponentValue::try_token(":")?);

@@ -658,8 +658,7 @@ mod calculation_type_classification_tests {
 
 /// Intrinsic rejection of checked numeric construction.
 #[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssNumericConstructionErrorKind {
+pub(crate) enum CssNumericConstructionErrorKind {
     EmptyValue,
     MultipleValues,
     RecoveredComponent,
@@ -674,6 +673,10 @@ pub enum CssNumericConstructionErrorKind {
     ResourceLimit,
     Component(CssComponentValueErrorKind),
 }
+/// A rejected checked numeric construction, located at its responsible component.
+///
+/// The violated invariant is read through the `is_*` predicates. A rejected component is
+/// exposed by [`Self::component_error`] and is the error's source.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssNumericConstructionError {
     kind: CssNumericConstructionErrorKind,
@@ -682,16 +685,50 @@ pub struct CssNumericConstructionError {
     path: Option<Box<[usize]>>,
 }
 impl CssNumericConstructionError {
-    pub fn kind(&self) -> &CssNumericConstructionErrorKind {
+    /// The private classification behind the predicates.
+    pub(crate) fn kind(&self) -> &CssNumericConstructionErrorKind {
         &self.kind
     }
+    crate::error::kind_predicates! { kind;
+        /// Returns whether no numeric value was supplied.
+        is_empty_value => CssNumericConstructionErrorKind::EmptyValue,
+        /// Returns whether more than one numeric value was supplied.
+        is_multiple_values => CssNumericConstructionErrorKind::MultipleValues,
+        /// Returns whether an implicitly closed component was supplied.
+        is_recovered_component => CssNumericConstructionErrorKind::RecoveredComponent,
+        /// Returns whether the value needs substitution before checked construction.
+        is_substitution_required => CssNumericConstructionErrorKind::SubstitutionRequired,
+        /// Returns whether a math expression is malformed.
+        is_malformed_expression => CssNumericConstructionErrorKind::MalformedExpression,
+        /// Returns whether a math function is unknown.
+        is_unknown_function => CssNumericConstructionErrorKind::UnknownFunction,
+        /// Returns whether a math function has the wrong number of arguments.
+        is_arity => CssNumericConstructionErrorKind::Arity,
+        /// Returns whether a math function argument has an invalid type.
+        is_invalid_argument_type => CssNumericConstructionErrorKind::InvalidArgumentType,
+        /// Returns whether math operands have incompatible types.
+        is_incompatible_types => CssNumericConstructionErrorKind::IncompatibleTypes,
+        /// Returns whether the value's type does not match the requested numeric domain.
+        is_root_domain_mismatch => CssNumericConstructionErrorKind::RootDomainMismatch,
+        /// Returns whether a literal lies outside the requested range.
+        is_out_of_range => CssNumericConstructionErrorKind::OutOfRange,
+        /// Returns whether a nesting, component-count or byte limit, or a refused deep parse,
+        /// rejected the components.
+        is_resource_limit => CssNumericConstructionErrorKind::ResourceLimit,
+    }
+    /// Returns the responsible component's origin, when known.
+    #[must_use]
     pub fn origin(&self) -> Option<&CssValueOrigin> {
         self.origin.as_ref()
     }
+    /// Returns the child-index path to the responsible component inside the value.
+    #[must_use]
     pub fn path(&self) -> Option<&[usize]> {
         self.path.as_deref()
     }
-    pub(crate) fn component_error(&self) -> Option<&CssComponentValueError> {
+    /// Returns the component failure that rejected the value.
+    #[must_use]
+    pub fn component_error(&self) -> Option<&CssComponentValueError> {
         self.source.as_deref()
     }
     pub(crate) fn at(kind: CssNumericConstructionErrorKind, c: Option<&CssComponentValue>) -> Self {
@@ -712,14 +749,10 @@ impl CssNumericConstructionError {
     }
     pub(crate) fn component(e: CssComponentValueError) -> Self {
         Self {
-            kind: match e.kind() {
-                CssComponentValueErrorKind::NestingLimit
-                | CssComponentValueErrorKind::ComponentLimit
-                | CssComponentValueErrorKind::ByteLimit
-                | CssComponentValueErrorKind::CapacityOverflow => {
-                    CssNumericConstructionErrorKind::ResourceLimit
-                }
-                kind => CssNumericConstructionErrorKind::Component(kind),
+            kind: if e.is_resource_limit() {
+                CssNumericConstructionErrorKind::ResourceLimit
+            } else {
+                CssNumericConstructionErrorKind::Component(e.kind)
             },
             origin: Some(e.origin().clone()),
             source: Some(Box::new(e)),
@@ -759,7 +792,23 @@ impl CssNumericConstructionError {
 }
 impl fmt::Display for CssNumericConstructionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "invalid CSS numeric value: {:?}", self.kind)
+        use CssNumericConstructionErrorKind as Kind;
+        f.write_str("invalid CSS numeric value: ")?;
+        f.write_str(match &self.kind {
+            Kind::EmptyValue => "no value was supplied",
+            Kind::MultipleValues => "more than one value was supplied",
+            Kind::RecoveredComponent => "an implicitly closed component was supplied",
+            Kind::SubstitutionRequired => "the value needs substitution",
+            Kind::MalformedExpression => "the math expression is malformed",
+            Kind::UnknownFunction => "the math function is unknown",
+            Kind::Arity => "the math function has the wrong number of arguments",
+            Kind::InvalidArgumentType => "a math function argument has an invalid type",
+            Kind::IncompatibleTypes => "the math operands have incompatible types",
+            Kind::RootDomainMismatch => "the value's type does not match its numeric domain",
+            Kind::OutOfRange => "the value is out of range",
+            Kind::ResourceLimit => "a resource limit refused the components",
+            Kind::Component(_) => "a component is invalid",
+        })
     }
 }
 impl std::error::Error for CssNumericConstructionError {

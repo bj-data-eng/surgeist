@@ -1,9 +1,10 @@
 //! Values 4 (2024-03-12) §8.3.2, specified generic `<position>` serialization.
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#position-serialization
 
+use crate::css::support::failure_classes::SerializationFailure as ErrorKind;
+use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::{
-    CssHorizontalPosition as H, CssSerializationLimits as L,
-    CssSpecifiedValueSerializationErrorKind as ErrorKind, CssVerticalPosition as V, *,
+    CssHorizontalPosition as H, CssSerializationLimits as L, CssVerticalPosition as V, *,
 };
 
 fn parsed(input: &str) -> CssPhysicalPosition {
@@ -97,7 +98,7 @@ fn one_budget_covers_aggregate_axes_children_and_full_output() {
         (L::new(3, 3, 0), ErrorKind::ByteLimit),
     ] {
         assert_eq!(
-            keywords.serialize_specified(limits).unwrap_err().kind(),
+            serialization_failure(&keywords.serialize_specified(limits).unwrap_err()),
             expected
         );
     }
@@ -120,7 +121,7 @@ fn one_budget_covers_aggregate_axes_children_and_full_output() {
         (L::new(5, 5, expected.len() - 1), ErrorKind::ByteLimit),
     ] {
         assert_eq!(
-            offsets.serialize_specified(limits).unwrap_err().kind(),
+            serialization_failure(&offsets.serialize_specified(limits).unwrap_err()),
             kind
         );
     }
@@ -153,14 +154,18 @@ fn typed_math_projection_is_cumulative_across_both_axes() {
         (L::new(10, 13, 1_000), ErrorKind::InputNodeLimit),
         (L::new(11, 12, 1_000), ErrorKind::ProjectionNodeLimit),
     ] {
-        assert_eq!(two.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&two.serialize_specified(limits).unwrap_err()),
+            kind
+        );
     }
 
     let one_limit = L::new(1_000, 1_000, one_css.len());
     assert!(one.serialize_specified(one_limit).is_ok());
-    assert_eq!(
-        two.serialize_specified(one_limit).unwrap_err().kind(),
-        ErrorKind::ByteLimit
+    assert!(
+        two.serialize_specified(one_limit)
+            .unwrap_err()
+            .is_byte_limit()
     );
 }
 

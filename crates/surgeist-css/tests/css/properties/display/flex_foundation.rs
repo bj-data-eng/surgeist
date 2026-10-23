@@ -15,7 +15,7 @@ use surgeist_css::*;
 
 const MEMBERS: [&str; 3] = ["flex-grow", "flex-shrink", "flex-basis"];
 
-fn direct(name: &str, value: &str) -> Result<CssDeclaration, CssPropertyValueParseError> {
+fn direct(name: &str, value: &str) -> Result<CssDeclaration, CssPropertyValueError> {
     parse_property_value_for_grammar(
         grammar(name),
         parse_component_values(value).unwrap(),
@@ -261,13 +261,12 @@ fn flex_css_wide_and_pending_values_cover_all_three_terminals() {
     let CssExpansion::Pending(pending) = expand_declaration(&pending_source).unwrap() else {
         panic!("flex substitution remains pending")
     };
-    assert!(matches!(
+    assert!(
         pending
             .reenter(parse_component_values("var(--again)").unwrap())
             .unwrap_err()
-            .kind(),
-        CssExpansionErrorKind::ResidualSubstitution
-    ));
+            .is_residual_substitution()
+    );
     // Flexbox 1 §7.1: grow, optional shrink and one basis; a third number is extra.
     assert_reentry_rejected(
         pending.reenter(parse_component_values("2 content 3").unwrap()),

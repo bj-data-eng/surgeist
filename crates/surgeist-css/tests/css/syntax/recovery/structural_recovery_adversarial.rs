@@ -2,8 +2,7 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use surgeist_css::{
     CssErrorCode, CssNamespaceConstraint, CssRecoveryAction, CssRule, CssScopedRule, CssSelector,
-    CssSelectorCombinator, CssSourcePosition, CssStyleSelector, CssTokenKind, ErrorKind,
-    parse_sheet,
+    CssSelectorCombinator, CssSourcePosition, CssStyleSelector, CssTokenKind, parse_sheet,
 };
 
 fn nested_layers(depth: usize, tail: &str) -> String {
@@ -162,10 +161,7 @@ fn ordered_declaration_offsets(rule: &surgeist_css::CssStyleRule) -> Vec<usize> 
 
 fn nesting_detail(
     report: &surgeist_css::CssParseReport<surgeist_css::CssSheet>,
-) -> (
-    &surgeist_css::CssNestingLimitError,
-    surgeist_css::CssSourceSpan,
-) {
+) -> (&surgeist_css::CssError, surgeist_css::CssSourceSpan) {
     let [diagnostic] = report.diagnostics() else {
         panic!(
             "expected exactly one nesting-limit diagnostic: {:?}",
@@ -174,9 +170,12 @@ fn nesting_detail(
     };
     assert_eq!(diagnostic.error().code(), CssErrorCode::NestingLimit);
     assert_eq!(diagnostic.action(), CssRecoveryAction::StopAtNestingLimit);
-    let ErrorKind::NestingLimit(detail) = diagnostic.error().kind() else {
-        panic!("expected typed nesting-limit detail");
-    };
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::NestingLimit,
+        "expected typed nesting-limit detail"
+    );
     (detail, diagnostic.span())
 }
 
@@ -212,9 +211,9 @@ fn structural_recovery_accepts_256_rule_blocks_and_drops_only_level_257() {
     );
     assert!(matches!(report.syntax().rules()[1], CssRule::Style(_)));
     let (detail, span) = nesting_detail(&report);
-    assert_eq!(detail.limit(), 256);
+    assert_eq!(detail.nesting_limit().unwrap(), 256);
     assert_eq!(
-        detail.enclosing_production().as_str(),
+        detail.production().unwrap().as_str(),
         "baseline.rule.layer-block"
     );
     let failed_start = "@layer{".len() * 256;
@@ -303,11 +302,8 @@ fn structural_split_preserves_namespace_bindings_through_the_256_level_boundary(
     assert_eq!(after.declarations().len(), 1);
 
     let (detail, span) = nesting_detail(&report);
-    assert_eq!(detail.limit(), 256);
-    assert_eq!(
-        detail.enclosing_production().as_str(),
-        "baseline.rule.style"
-    );
+    assert_eq!(detail.nesting_limit().unwrap(), 256);
+    assert_eq!(detail.production().unwrap().as_str(), "baseline.rule.style");
     let failed_start = source.find("svg|leaf").expect("level 257 style");
     assert_eq!(span.start().byte_offset().value(), failed_start);
     assert_eq!(
@@ -341,7 +337,7 @@ fn structural_recovery_nesting_limit_at_eof_spans_remaining_bounded_unit() {
     let report = parse_sheet(&source);
     let (detail, span) = nesting_detail(&report);
     assert_eq!(
-        detail.enclosing_production().as_str(),
+        detail.production().unwrap().as_str(),
         "baseline.rule.layer-block"
     );
     assert_eq!(span.start().byte_offset().value(), "@layer{".len() * 256);
@@ -377,8 +373,8 @@ fn structural_recovery_shares_rule_and_component_depth_for_functions_and_blocks(
             "only the excessive declaration is dropped"
         );
         let (detail, span) = nesting_detail(&report);
-        assert_eq!(detail.limit(), 256);
-        assert_eq!(detail.enclosing_production().as_str(), "css.declaration");
+        assert_eq!(detail.nesting_limit().unwrap(), 256);
+        assert_eq!(detail.production().unwrap().as_str(), "css.declaration");
         let declaration_start = source.find("--x:").expect("generated declaration");
         let declaration_end = source
             .find(";color")
@@ -402,7 +398,7 @@ fn structural_recovery_drops_only_an_excessively_nested_descriptor() {
         [CssRule::FontFace(_), CssRule::Style(_)]
     ));
     let (detail, span) = nesting_detail(&report);
-    assert_eq!(detail.enclosing_production().as_str(), "css.descriptor");
+    assert_eq!(detail.production().unwrap().as_str(), "css.descriptor");
     let start = source.find(&excessive).expect("generated descriptor");
     assert_eq!(span.start().byte_offset().value(), start);
     assert_eq!(span.end().byte_offset().value(), start + excessive.len());
@@ -445,7 +441,7 @@ fn malformed_at_rule_recovery_checks_balanced_component_depth() {
     let report = parse_sheet(&source);
     assert!(matches!(report.syntax().rules(), [CssRule::Style(_)]));
     let (detail, span) = nesting_detail(&report);
-    assert_eq!(detail.enclosing_production().as_str(), "css.at-rule");
+    assert_eq!(detail.production().unwrap().as_str(), "css.at-rule");
     assert_eq!(span.start().byte_offset().value(), 0);
     assert_eq!(span.end().byte_offset().value(), unit_end);
     assert_eq!(
@@ -493,7 +489,7 @@ fn nested_malformed_qualified_rule_recovery_checks_balanced_component_depth() {
         Some(CssRule::Style(_))
     ));
     let (detail, span) = nesting_detail(&report);
-    assert_eq!(detail.enclosing_production().as_str(), "css.qualified-rule");
+    assert_eq!(detail.production().unwrap().as_str(), "css.qualified-rule");
     assert_eq!(span.start().byte_offset().value(), unit_start);
     assert_eq!(span.end().byte_offset().value(), unit_end);
     assert_eq!(
@@ -826,11 +822,8 @@ fn structural_preflight_drops_only_style_level_257_with_exact_parent_order() {
     );
 
     let (detail, span) = nesting_detail(&report);
-    assert_eq!(detail.limit(), 256);
-    assert_eq!(
-        detail.enclosing_production().as_str(),
-        "baseline.rule.style"
-    );
+    assert_eq!(detail.nesting_limit().unwrap(), 256);
+    assert_eq!(detail.production().unwrap().as_str(), "baseline.rule.style");
     let failed_start = source.find(".n256{").expect("level 257 style");
     assert_eq!(span.start().byte_offset().value(), failed_start);
     assert_eq!(
@@ -889,7 +882,7 @@ fn structural_recovery_never_unwinds_on_bounded_adversarial_text() {
         let report = result.unwrap_or_else(|_| panic!("ordinary input unwound: {source:?}"));
         if source == deep {
             let (detail, span) = nesting_detail(&report);
-            assert_eq!(detail.enclosing_production().as_str(), "css.declaration");
+            assert_eq!(detail.production().unwrap().as_str(), "css.declaration");
             let declaration_start = source.find("--x:").expect("generated declaration");
             let declaration_end = source
                 .find(";color")
@@ -915,9 +908,12 @@ fn structural_recovery_never_unwinds_on_bounded_adversarial_text() {
             assert_eq!(diagnostic.error().position().byte_offset().value(), start);
             assert_eq!(diagnostic.span().start().byte_offset().value(), start);
             assert_eq!(diagnostic.span().end().byte_offset().value(), source.len());
-            let ErrorKind::InvalidSelector(detail) = diagnostic.error().kind() else {
-                panic!("selector grammar owns the final semicolon-prefixed unit")
-            };
+            let detail = diagnostic.error();
+            assert_eq!(
+                detail.code(),
+                CssErrorCode::InvalidSelector,
+                "selector grammar owns the final semicolon-prefixed unit"
+            );
             let encountered = detail.encountered().unwrap();
             assert_eq!(encountered.kind(), CssTokenKind::Semicolon);
             assert_eq!(encountered.authored(), ";");

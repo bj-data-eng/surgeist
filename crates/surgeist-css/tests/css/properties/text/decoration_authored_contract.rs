@@ -5,6 +5,8 @@
 //! Canonical oracles: accepted bf43 Decoration and shared Color/Number/Shadow
 //! contracts; Values4 math simplification/unit ordering; new Emphasis default
 //! omission is an explicitly documented CSSOM + Decoration4 inference.
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::{
     check_named_components as checked_components, detached_checked_declaration as checked,
     known_property as property,
@@ -113,9 +115,11 @@ fn canonical(name: &str, text: &str, expected: &str) {
         assert_eq!(source.serialize_specified(limits).unwrap(), expected);
         for _ in 0..2 {
             let short = CssSerializationLimits::new(65_536, 262_144, expected.len() - 1);
-            assert_eq!(
-                source.serialize_specified(short).unwrap_err().kind(),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit
+            assert!(
+                source
+                    .serialize_specified(short)
+                    .unwrap_err()
+                    .is_byte_limit()
             );
             assert_eq!(source, before);
         }
@@ -143,9 +147,12 @@ fn invalid(name: &str, text: &str) {
         panic!("one grammar failure: {css}")
     };
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    match diagnostic.error().kind() {
-        ErrorKind::InvalidPropertyValue(v) => assert_eq!(v.property(), p),
-        ErrorKind::InvalidColorSyntax(_)
+    match diagnostic.error().code() {
+        CssErrorCode::InvalidPropertyValue => {
+            let v = diagnostic.error();
+            assert_eq!(v.known_property().unwrap(), p)
+        }
+        CssErrorCode::InvalidColorSyntax
             if matches!(name, "text-decoration-color" | "text-emphasis-color") => {}
         other => panic!("owning grammar diagnostic: {other:?}"),
     }
@@ -156,12 +163,12 @@ fn invalid(name: &str, text: &str) {
     let values = parse_component_values(text).unwrap();
     let before = values.clone();
     for grammar in [false, true] {
-        assert!(matches!(
+        assert!(
             checked_components(name, values.clone(), grammar)
                 .unwrap_err()
-                .kind(),
-            CssPropertyValueErrorKind::Grammar(_)
-        ));
+                .code()
+                .is_some()
+        );
     }
     for report in [
         parse_property_value_text(text, CssPropertyNameRef::Known(p), CssImportance::Normal),
@@ -257,13 +264,12 @@ fn pending(name: &str, replacement: &str, names: &[&str]) {
                 "attr(data-again *)",
                 "var(--again",
             ] {
-                assert!(matches!(
+                assert!(
                     handle
                         .reenter(parse_component_values(residual).unwrap())
                         .unwrap_err()
-                        .kind(),
-                    CssExpansionErrorKind::ResidualSubstitution
-                ));
+                        .is_residual_substitution()
+                );
             }
             for rejected in [
                 "bogus",
@@ -272,13 +278,13 @@ fn pending(name: &str, replacement: &str, names: &[&str]) {
                 "auto;color:red",
             ] {
                 for _ in 0..2 {
-                    assert!(matches!(
+                    assert!(
                         handle
                             .reenter(parse_component_values(rejected).unwrap())
                             .unwrap_err()
-                            .kind(),
-                        CssExpansionErrorKind::InvalidReplacement(_)
-                    ));
+                            .replacement_error()
+                            .is_some()
+                    );
                 }
             }
             let components = parse_component_values(replacement).unwrap();
@@ -344,13 +350,10 @@ fn closure(name: &str, ordinary: &str) {
             .expect("original implicit origin");
         for grammar in [false, true] {
             let error = checked_components(name, components.clone(), grammar).unwrap_err();
-            assert!(matches!(
-                error.kind(),
-                CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
-            ));
+            assert!(error.code() == Some(CssErrorCode::UnexpectedEnd));
             assert_eq!(
                 error.origin(),
-                &CssSerializedOrigin::End(Some(origin.clone()))
+                CssSerializedOrigin::End(Some(origin.clone()))
             );
         }
         assert_eq!(components, snapshot);
@@ -361,13 +364,10 @@ fn closure(name: &str, ordinary: &str) {
     };
     let replacement = parse_component_values(&format!("{ordinary}/*")).unwrap();
     let error = handle.reenter(replacement).unwrap_err();
-    let CssExpansionErrorKind::InvalidReplacement(error) = error.kind() else {
+    let Some(error) = error.replacement_error() else {
         panic!("strict original replacement closure")
     };
-    assert!(matches!(
-        error.kind(),
-        CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
-    ));
+    assert!(error.code() == Some(CssErrorCode::UnexpectedEnd));
     assert!(
         handle
             .reenter(parse_component_values(&format!("{ordinary}/**/")).unwrap())
@@ -492,19 +492,22 @@ fn accepted_decoration_projection_and_cumulative_prices_are_independent_controls
         for (limits, kind) in [
             (
                 CssSerializationLimits::new(input_nodes - 1, projection_nodes, output.len()),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                SerializationFailure::InputNodeLimit,
             ),
             (
                 CssSerializationLimits::new(input_nodes, projection_nodes - 1, output.len()),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
                 CssSerializationLimits::new(input_nodes, projection_nodes, output.len() - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                SerializationFailure::ByteLimit,
             ),
         ] {
             for _ in 0..2 {
-                assert_eq!(source.serialize_specified(limits).unwrap_err().kind(), kind);
+                assert_eq!(
+                    serialization_failure(&source.serialize_specified(limits).unwrap_err()),
+                    kind
+                );
                 assert_eq!(source, before);
             }
         }
@@ -1131,11 +1134,8 @@ fn composed_decoration_normalization_keeps_occurrences_importance_and_atomic_bud
     )
     .unwrap_err();
     assert_eq!(
-        error.kind(),
-        &CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: 26
-        }
+        error.exhausted_limit(),
+        Some((CssNormalizationResource::Contributions, 26))
     );
     assert_eq!(error.declaration_order(), Some(18));
     assert_eq!(report, before);
@@ -1224,18 +1224,21 @@ fn checked_programmatic_inputs_and_zero_resource_failures_leave_supplied_graphs_
             for (limits, kind) in [
                 (
                     CssSerializationLimits::new(0, 262_144, 1_048_576),
-                    CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                    SerializationFailure::InputNodeLimit,
                 ),
                 (
                     CssSerializationLimits::new(65_536, 0, 1_048_576),
-                    CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                    SerializationFailure::ProjectionNodeLimit,
                 ),
                 (
                     CssSerializationLimits::new(65_536, 262_144, 0),
-                    CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                    SerializationFailure::ByteLimit,
                 ),
             ] {
-                assert_eq!(source.serialize_specified(limits).unwrap_err().kind(), kind);
+                assert_eq!(
+                    serialization_failure(&source.serialize_specified(limits).unwrap_err()),
+                    kind
+                );
                 assert_eq!(source, snapshot);
             }
         }
@@ -1271,12 +1274,12 @@ fn empty_ordinary_values_reject_atomically_through_every_front() {
         let components = parse_component_values("").unwrap();
         let before = components.clone();
         for grammar in [false, true] {
-            assert!(matches!(
+            assert!(
                 checked_components(name, components.clone(), grammar)
                     .unwrap_err()
-                    .kind(),
-                CssPropertyValueErrorKind::Grammar(_)
-            ));
+                    .code()
+                    .is_some()
+            );
         }
         for report in [
             parse_property_value_text("", CssPropertyNameRef::Known(p), CssImportance::Normal),

@@ -5,6 +5,7 @@
 //! ordinary mix children still use ordinary specified serialization.
 
 use crate::css::support::color_and_selector_fixtures::assert_color_limit_error as assert_error;
+use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::{
     checked_color as color, checked_color_declaration as declaration,
     component_values as components, declaration_color,
@@ -12,7 +13,7 @@ use crate::css::support::{
 use surgeist_css::*;
 
 type Limits = CssSerializationLimits;
-type Kind = CssSpecifiedValueSerializationErrorKind;
+type Kind = SerializationFailure;
 
 fn assert_value(value: &CssColor, expected: &str) {
     let before = value.clone();
@@ -515,7 +516,7 @@ fn border_pair_siblings_share_final_bytes_and_spent_prefix() {
     let error = pair
         .serialize_specified(Limits::new(usize::MAX, usize::MAX, expected.len() - 1))
         .unwrap_err();
-    assert_eq!(error.kind(), Kind::ByteLimit);
+    assert!(error.is_byte_limit(), "{error:?}");
     assert_eq!(pair, before);
 }
 
@@ -528,11 +529,10 @@ fn border_pair_input_limit_is_cumulative_across_literal_colors() {
     let before = pair.clone();
     // Pair root: one input. Each color: root, three literal channels, missing
     // alpha = five inputs. Literal exact-rational work adds no input visits.
-    assert_eq!(
+    assert!(
         pair.serialize_specified(Limits::new(10, usize::MAX, usize::MAX))
             .unwrap_err()
-            .kind(),
-        Kind::InputNodeLimit
+            .is_input_node_limit()
     );
     assert_eq!(pair, before);
     assert_eq!(
@@ -596,5 +596,5 @@ fn utf8_caller_prefix_leaves_one_below_missing_alpha_final_bytes() {
     let result = pair.serialize_specified(limits);
     assert_eq!(result, pair.serialize_specified(limits));
     assert_eq!(pair, before);
-    assert_eq!(result.unwrap_err().kind(), Kind::ByteLimit);
+    assert!(result.unwrap_err().is_byte_limit());
 }

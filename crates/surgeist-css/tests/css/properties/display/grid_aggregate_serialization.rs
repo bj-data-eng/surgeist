@@ -3,10 +3,12 @@
 //! canonical auto-flow/dense order. Existing child numeric/identity contracts
 //! determine operand text. There was no existing aggregate output API for RED.
 use crate::css::support::authored_property::{checked, parsed};
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::*;
 
 type Limits = CssSerializationLimits;
-type Kind = CssSpecifiedValueSerializationErrorKind;
+type Kind = SerializationFailure;
 
 fn serialize(value: &CssDeclaration, limits: Limits) -> Result<String, CssSerializationError> {
     match value.known().unwrap().property_value().unwrap() {
@@ -130,7 +132,7 @@ fn aggregate_node_and_byte_thresholds_have_no_enum_carrier_cost() {
             (Limits::new(nodes, nodes, text.len() - 1), Kind::ByteLimit),
         ] {
             assert_eq!(
-                serialize(&value, limits).unwrap_err().kind(),
+                serialization_failure(&serialize(&value, limits).unwrap_err()),
                 kind,
                 "{text}"
             );
@@ -191,12 +193,11 @@ fn output_and_atomic_error_preserve_authored_numeric_origins() {
         value.serialize_specified(Default::default()).unwrap(),
         "10px / auto-flow dense 0px"
     );
-    assert_eq!(
+    assert!(
         value
             .serialize_specified(Limits::new(100, 100, 1))
             .unwrap_err()
-            .kind(),
-        Kind::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(*value, before);
     assert!(matches!(operand.literal_component().unwrap().view(),

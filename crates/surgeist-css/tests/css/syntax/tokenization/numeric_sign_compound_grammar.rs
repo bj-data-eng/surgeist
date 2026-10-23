@@ -8,6 +8,8 @@
 //! explicit component budget is separate from that minimum grammar capacity.
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-syntax
 
+use crate::css::support::failure_classes::NumericFailure;
+use crate::css::support::failure_classes::numeric_failure;
 use surgeist_css::*;
 
 fn checked(source: &str) -> CssNumberCalculation {
@@ -209,11 +211,7 @@ fn bare_calc_abs_and_comparison_compound_results_remain_invalid() {
         let error =
             CssNumberCalculation::try_from_components(components.clone(), Default::default())
                 .unwrap_err();
-        assert_eq!(
-            error.kind(),
-            &CssNumericConstructionErrorKind::InvalidArgumentType,
-            "{source}"
-        );
+        assert!(error.is_invalid_argument_type(), "{source}");
         assert_eq!(components, before);
         let css = format!("opacity:{source};color:red");
         let report = parse_style_attribute(&css);
@@ -231,20 +229,16 @@ fn sign_keeps_one_argument_and_simple_signed_zero_semantics() {
     // `sign( <calc-sum> )` takes exactly one argument, and the `none`
     // keyword is no `<calc-sum>` argument.
     for (source, kind, responsible) in [
-        ("sign()", CssNumericConstructionErrorKind::Arity, 0),
-        ("sign(1,2)", CssNumericConstructionErrorKind::Arity, 0),
-        (
-            "sign(none)",
-            CssNumericConstructionErrorKind::InvalidArgumentType,
-            5,
-        ),
+        ("sign()", NumericFailure::Arity, 0),
+        ("sign(1,2)", NumericFailure::Arity, 0),
+        ("sign(none)", NumericFailure::InvalidArgumentType, 5),
     ] {
         let error = CssNumberCalculation::try_from_components(
             parse_component_values(source).unwrap(),
             Default::default(),
         )
         .unwrap_err();
-        assert_eq!(error.kind(), &kind, "{source}");
+        assert_eq!(numeric_failure(&error), kind, "{source}");
         let CssValueOrigin::Parsed(origin) = error.origin().expect("located failure") else {
             panic!("{source}: {error:?}")
         };
@@ -337,20 +331,16 @@ fn a_32_argument_calculation_obeys_explicit_aggregate_limits_atomically() {
     ] {
         let error =
             CssNumberCalculation::try_from_components(components.clone(), limits).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            &CssNumericConstructionErrorKind::ResourceLimit
-        );
+        assert!(error.is_resource_limit(), "{error:?}");
         assert_eq!(components, before);
         assert!(error.origin().is_some());
     }
     let larger = parse_component_values(&format!("min({})", ["1"; 33].join(","))).unwrap();
     let larger_before = larger.clone();
-    assert_eq!(
+    assert!(
         CssNumberCalculation::try_from_components(larger.clone(), exact)
             .unwrap_err()
-            .kind(),
-        &CssNumericConstructionErrorKind::ResourceLimit
+            .is_resource_limit()
     );
     assert_eq!(larger, larger_before);
     assert_eq!(

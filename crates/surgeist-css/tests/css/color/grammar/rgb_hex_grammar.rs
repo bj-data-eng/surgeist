@@ -8,10 +8,7 @@
 
 use crate::css::support::color_components::{assert_recovered, component};
 use crate::css::support::parsed_color;
-use surgeist_css::{
-    CssColor, CssColorComponent, CssColorConstructionError, CssColorSyntax, CssHexColor,
-    CssRgbColor,
-};
+use surgeist_css::{CssColor, CssColorComponent, CssColorSyntax, CssHexColor, CssRgbColor};
 
 fn assert_component(value: &CssColorComponent, expected: &str) {
     match value {
@@ -242,21 +239,21 @@ fn checked_legacy_rgb_rejects_missing_and_mixed_channel_domains() {
         ["1%", "2", "3%"],
         ["1%", "2%", "3"],
     ] {
-        assert_eq!(
+        assert!(
             CssRgbColor::try_new(CssColorSyntax::Legacy, channels.map(component), None)
-                .unwrap_err(),
-            CssColorConstructionError::InvalidSyntax
+                .unwrap_err()
+                .is_invalid_syntax()
         );
     }
     for channels in [["1", "2", "3"], ["1%", "2%", "3%"]] {
-        assert_eq!(
+        assert!(
             CssRgbColor::try_new(
                 CssColorSyntax::Legacy,
                 channels.map(component),
                 Some(CssColorComponent::None)
             )
-            .unwrap_err(),
-            CssColorConstructionError::InvalidSyntax
+            .unwrap_err()
+            .is_invalid_syntax()
         );
     }
 }

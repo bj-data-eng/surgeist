@@ -296,9 +296,9 @@ fn constructors_reject_first_original_closure(property: CssKnownProperty) {
             ),
         ] {
             match result {
-                Err(error) if matches!(error.kind(), CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_)))
-                    && error.origin() == &CssSerializedOrigin::End(Some(first_origin.clone())) => {},
-                Err(error) => failures.push(format!("{front_door}/{label}: expected UnexpectedEnd at {first_origin:?}; actual {:?} at {:?}", error.kind(), error.origin())),
+                Err(error) if error.code() == Some(CssErrorCode::UnexpectedEnd)
+                    && error.origin() == CssSerializedOrigin::End(Some(first_origin.clone())) => {},
+                Err(error) => failures.push(format!("{front_door}/{label}: expected UnexpectedEnd at {first_origin:?}; actual {:?} at {:?}", error, error.origin())),
                 Ok(_) => failures.push(format!("{front_door}/{label}: expected UnexpectedEnd at {first_origin:?}; actual accepted declaration")),
             }
             assert_eq!(
@@ -395,10 +395,13 @@ fn assert_invalid_duration(property: CssKnownProperty, coefficient: &str) {
         CssErrorCode::InvalidPropertyValue
     );
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("property grammar error")
-    };
-    assert_eq!(detail.property(), property);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "property grammar error"
+    );
+    assert_eq!(detail.known_property().unwrap(), property);
     assert_eq!(
         validate_style_attribute(&source).unwrap_err().diagnostics(),
         report.diagnostics()
@@ -712,6 +715,9 @@ fn non_time_iteration_and_easing_controls_preserve_exact_values_and_ranges() {
 
 // Functional evidence for the adopted public time API, appended after the immutable RED prefix.
 mod construction {
+    use crate::css::support::failure_classes::NumericFailure;
+    use crate::css::support::failure_classes::numeric_failure;
+    use crate::css::support::failure_classes::serialization_failure;
     use std::error::Error as _;
     use surgeist_css::*;
 
@@ -800,7 +806,7 @@ mod construction {
             let components = parse_component_values(source).unwrap();
             let component = components.items()[0].clone();
             let error = CssTimeLiteral::try_from_component(component.clone()).unwrap_err();
-            assert_eq!(error.kind(), CssComponentValueErrorKind::InvalidToken);
+            assert!(error.is_invalid_token(), "{error:?}");
             assert_eq!(error.origin(), component.origin());
         }
         for invalid in ["", "NaN", "infinity", "1 2", "1s"] {
@@ -829,10 +835,7 @@ mod construction {
                 Default::default(),
             )
             .unwrap_err();
-            assert_eq!(
-                error.kind(),
-                &CssNumericConstructionErrorKind::RootDomainMismatch
-            );
+            assert!(error.is_root_domain_mismatch(), "{error:?}");
         }
     }
 
@@ -842,7 +845,7 @@ mod construction {
             let value = time(number, CssTimeUnit::Milliseconds);
             let origin = value.origin().clone();
             let error = CssDuration::try_new(value).unwrap_err();
-            assert_eq!(error.kind(), &CssNumericConstructionErrorKind::OutOfRange);
+            assert!(error.is_out_of_range(), "{error:?}");
             assert_eq!(error.origin(), Some(&origin));
             assert_eq!(error.path(), None);
             assert!(error.source().is_none());
@@ -885,19 +888,13 @@ mod construction {
         let closing = function.closing_origin().clone();
         assert!(matches!(closing, CssValueOrigin::ImplicitClosure { .. }));
         let error = CssTimeValue::try_from_calculation(raw.clone()).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            &CssNumericConstructionErrorKind::RecoveredComponent
-        );
+        assert!(error.is_recovered_component(), "{error:?}");
         assert_eq!(error.origin(), Some(&closing));
         assert_eq!(error.path(), None);
         assert!(error.source().is_none());
         let error = CssDuration::try_new(duration.time().clone()).unwrap_err();
         assert_eq!(error.origin(), Some(&closing));
-        assert_eq!(
-            error.kind(),
-            &CssNumericConstructionErrorKind::RecoveredComponent
-        );
+        assert!(error.is_recovered_component(), "{error:?}");
         assert!(CssDurationList::try_new(vec![duration.clone()]).is_none());
         assert!(CssDelayList::try_new(vec![duration.time().clone()]).is_none());
         assert!(CssTransition::try_new(None, Some(duration.clone()), None, None).is_none());
@@ -1051,8 +1048,8 @@ mod construction {
 
     #[test]
     fn ordinary_and_calculation_resource_boundaries_are_independently_counted() {
+        use crate::css::support::failure_classes::SerializationFailure as K;
         use CssSerializationLimits as L;
-        use CssSpecifiedValueSerializationErrorKind as K;
         let ordinary = time("1", CssTimeUnit::Milliseconds);
         let ordinary_literal = ordinary.literal().unwrap().clone();
         let ordinary_duration = CssDuration::try_new(ordinary.clone()).unwrap();
@@ -1079,21 +1076,15 @@ mod construction {
         ] {
             let before = ordinary.clone();
             assert_eq!(
-                ordinary.serialize_specified(limits).unwrap_err().kind(),
+                serialization_failure(&ordinary.serialize_specified(limits).unwrap_err()),
                 kind
             );
             assert_eq!(
-                ordinary_literal
-                    .serialize_specified(limits)
-                    .unwrap_err()
-                    .kind(),
+                serialization_failure(&ordinary_literal.serialize_specified(limits).unwrap_err()),
                 kind
             );
             assert_eq!(
-                ordinary_duration
-                    .serialize_specified(limits)
-                    .unwrap_err()
-                    .kind(),
+                serialization_failure(&ordinary_duration.serialize_specified(limits).unwrap_err()),
                 kind
             );
             assert_eq!(ordinary, before);
@@ -1116,9 +1107,12 @@ mod construction {
                 .unwrap()
                 .serialize_tokens(Default::default())
                 .unwrap();
-            assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
             assert_eq!(
-                duration.serialize_specified(limits).unwrap_err().kind(),
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+                kind
+            );
+            assert_eq!(
+                serialization_failure(&duration.serialize_specified(limits).unwrap_err()),
                 kind
             );
             assert_eq!(value, before);
@@ -1153,9 +1147,11 @@ mod construction {
             if tiny {
                 assert_eq!(value.serialize_specified(limits).unwrap(), "0s");
             } else {
-                assert_eq!(
-                    value.serialize_specified(limits).unwrap_err().kind(),
-                    CssSpecifiedValueSerializationErrorKind::ByteLimit
+                assert!(
+                    value
+                        .serialize_specified(limits)
+                        .unwrap_err()
+                        .is_byte_limit()
                 );
             }
             assert_eq!(value, before);
@@ -1188,20 +1184,21 @@ mod construction {
         );
         assert!(value.calculation().is_some());
         for (source, kind) in [
-            ("(1s)", CssNumericConstructionErrorKind::RootDomainMismatch),
+            ("(1s)", NumericFailure::RootDomainMismatch),
             (
                 "calc(sibling-index() * 1s)",
-                CssNumericConstructionErrorKind::UnknownFunction,
+                NumericFailure::UnknownFunction,
             ),
         ] {
             assert_eq!(
-                CssTimeCalculation::try_from_components(
-                    parse_component_values(source).unwrap(),
-                    Default::default()
-                )
-                .unwrap_err()
-                .kind(),
-                &kind
+                numeric_failure(
+                    &CssTimeCalculation::try_from_components(
+                        parse_component_values(source).unwrap(),
+                        Default::default()
+                    )
+                    .unwrap_err()
+                ),
+                kind
             );
         }
     }
@@ -1220,7 +1217,7 @@ mod construction {
         .unwrap_err();
         assert_eq!(
             error.origin(),
-            &CssSerializedOrigin::Token(negative.origin().clone())
+            CssSerializedOrigin::Token(negative.origin().clone())
         );
         assert_eq!(components, before);
     }

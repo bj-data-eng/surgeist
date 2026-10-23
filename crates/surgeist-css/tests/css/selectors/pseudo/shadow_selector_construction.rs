@@ -145,9 +145,10 @@ fn part_names_preserve_order_duplicates_and_programmatic_origins() {
     assert!(CssPartNameList::try_new(Vec::new()).is_none());
     // An empty name and a NUL code point cannot survive as one CSS identifier.
     for invalid in ["", "a\0b"] {
-        assert_eq!(
-            CssPartName::try_new(invalid).unwrap_err().kind(),
-            CssComponentValueErrorKind::InvalidIdentifier,
+        assert!(
+            CssPartName::try_new(invalid)
+                .unwrap_err()
+                .is_invalid_identifier(),
             "{invalid:?}"
         );
     }

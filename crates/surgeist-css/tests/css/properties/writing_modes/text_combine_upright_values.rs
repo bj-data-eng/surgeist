@@ -1,4 +1,6 @@
 //! Specified text-combine counts retain omission and defer computed math semantics.
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::*;
 
 fn parsed(text: &str) -> CssTextCombineUpright {
@@ -32,7 +34,7 @@ fn output(value: &CssTextCombineUpright, expected: &str) {
             .unwrap(),
         expected
     );
-    assert_eq!(
+    assert!(
         value
             .serialize_specified(CssSerializationLimits::new(
                 65_536,
@@ -40,8 +42,7 @@ fn output(value: &CssTextCombineUpright, expected: &str) {
                 expected.len() - 1
             ))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(value, &before);
 }
@@ -140,38 +141,40 @@ fn keyword_and_literal_budgets_charge_outer_and_child_nodes_atomically() {
         for (limits, kind) in [
             (
                 CssSerializationLimits::new(input_nodes - 1, projection_nodes, text.len()),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                SerializationFailure::InputNodeLimit,
             ),
             (
                 CssSerializationLimits::new(input_nodes, projection_nodes - 1, text.len()),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
                 CssSerializationLimits::new(input_nodes, projection_nodes, text.len() - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                SerializationFailure::ByteLimit,
             ),
             (
                 CssSerializationLimits::new(0, 0, 0),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                SerializationFailure::InputNodeLimit,
             ),
             (
                 CssSerializationLimits::new(1, 0, 0),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                SerializationFailure::ProjectionNodeLimit,
             ),
         ] {
-            assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+            assert_eq!(
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+                kind
+            );
         }
         assert_eq!(value, before);
     }
     let value =
         CssTextCombineUpright::Digits(Some(CssTextCombineDigitCount::try_literal(2).unwrap()));
     // The outer prefix is checked before entering the child's residual budgets.
-    assert_eq!(
+    assert!(
         value
             .serialize_specified(CssSerializationLimits::new(1, 1, 6))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
 }
 
@@ -239,22 +242,25 @@ fn calculation_leaf_budgets_include_outer_nodes_and_prefix_bytes() {
     for (limits, kind) in [
         (
             CssSerializationLimits::new(1, 2, text.len()),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(2, 1, text.len()),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(2, 2, text.len() - 1),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
         (
             CssSerializationLimits::new(1, 1, 6),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
-        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+            kind
+        );
     }
     assert_eq!(value, before);
 }
@@ -335,8 +341,8 @@ fn recovered_counts_normalize_in_order_with_exact_contribution_budget() {
         assert_eq!(
             normalize_sheet_with_limits(report.syntax(), limits)
                 .unwrap_err()
-                .kind(),
-            &CssNormalizationErrorKind::LimitExceeded { resource, limit }
+                .exhausted_limit(),
+            Some((resource, limit))
         );
     }
 }

@@ -1,9 +1,9 @@
 //! #644's new graph-depth contract counts every actual native child edge.
 use surgeist_css::{
     CssEditedGroupPreludeRef, CssKeyframeRuleView, CssMarginBox, CssMarginRuleView,
-    CssNamespaceContext, CssPageRuleView, CssRule, CssRuleCssomSerializationErrorKind,
-    CssRuleGraphInput as Input, CssRuleSerializationLimits, CssSpecifiedDeclarationBlock as Block,
-    CssSpecifiedValueSerializationErrorKind as Resource, CssStyleAncestor, parse_sheet,
+    CssNamespaceContext, CssPageRuleView, CssRule, CssRuleGraphInput as Input,
+    CssRuleSerializationLimits, CssSpecifiedDeclarationBlock as Block, CssStyleAncestor,
+    parse_sheet,
 };
 
 fn format(
@@ -21,9 +21,12 @@ fn format(
 }
 fn depth_failure(input: Input<'_>, depth: usize, path: &[usize], block: Option<usize>) {
     let error = format(input, depth).expect_err("actual child edge must exhaust the depth bound");
-    assert_eq!(
-        error.kind(),
-        CssRuleCssomSerializationErrorKind::Resource(Resource::DepthLimit)
+    assert!(
+        error.is_resource_limit()
+            && error
+                .serialization_error()
+                .is_some_and(|error| error.is_depth_limit()),
+        "{error:?}"
     );
     assert_eq!(error.rule_path(), path);
     assert_eq!(error.keyframe_block_index(), block);

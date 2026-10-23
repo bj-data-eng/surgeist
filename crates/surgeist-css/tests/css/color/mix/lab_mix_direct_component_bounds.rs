@@ -4,6 +4,8 @@
 //! distinct roles. Expectations are exact domain/scale and resource oracles,
 //! not browser output or values copied from the implementation under test.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::lab_direct_component_cases::{
     assert_specified_text as assert_text, lab_direct_component_cases,
 };
@@ -12,7 +14,7 @@ use surgeist_color::{ColorSpace, HueInterpolation};
 use surgeist_css::*;
 
 type Limits = CssSerializationLimits;
-type Kind = CssSpecifiedValueSerializationErrorKind;
+type Kind = SerializationFailure;
 
 macro_rules! text_case {
     ($name:ident, $source:literal, $expected:literal) => {
@@ -183,7 +185,7 @@ fn assert_color_result(value: &CssColor, limits: Limits, expected: Result<&str, 
     assert_eq!(value, &before);
     match expected {
         Ok(text) => assert_eq!(result.unwrap(), text),
-        Err(kind) => assert_eq!(result.unwrap_err().kind(), kind),
+        Err(kind) => assert_eq!(serialization_failure(&result.unwrap_err()), kind),
     }
 }
 
@@ -194,7 +196,7 @@ fn assert_pair_result(value: &CssBorderColorPair, limits: Limits, expected: Resu
     assert_eq!(value, &before);
     match expected {
         Ok(text) => assert_eq!(result.unwrap(), text),
-        Err(kind) => assert_eq!(result.unwrap_err().kind(), kind),
+        Err(kind) => assert_eq!(serialization_failure(&result.unwrap_err()), kind),
     }
 }
 
@@ -790,7 +792,7 @@ fn checked_nested_mix_preserves_the_shared_depth_ceiling() {
         ],
     )
     .unwrap_err();
-    assert_eq!(error, CssColorMixConstructionError::NestingLimit);
+    assert!(error.is_nesting_limit());
     let result = value.serialize_specified(Default::default());
     assert_eq!(result, value.serialize_specified(Default::default()));
     assert_eq!(value, before);

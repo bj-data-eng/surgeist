@@ -11,10 +11,24 @@ use crate::{
 
 /// The work stage that rejected one complete normalized comparison.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum CssKeyframeSelectorComparisonStage {
+    /// Normalizing the left selector list.
     LeftNormalization,
+    /// Normalizing the right selector list.
     RightNormalization,
+    /// Comparing the normalized lists.
     Comparison,
+}
+
+impl CssKeyframeSelectorComparisonStage {
+    const fn description(self) -> &'static str {
+        match self {
+            Self::LeftNormalization => "normalizing the left selectors",
+            Self::RightNormalization => "normalizing the right selectors",
+            Self::Comparison => "comparing the normalized selectors",
+        }
+    }
 }
 
 /// Atomic normalization/comparison failure with the owning native resource cause.
@@ -55,7 +69,11 @@ impl CssKeyframeSelectorComparisonError {
 }
 impl fmt::Display for CssKeyframeSelectorComparisonError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(formatter, "keyframe selector comparison {:?}", self.stage)?;
+        write!(
+            formatter,
+            "keyframe selector comparison failed while {}",
+            self.stage.description()
+        )?;
         if let Some(index) = self.selector_index {
             write!(formatter, " at selector {index}")?;
         }

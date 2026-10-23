@@ -206,10 +206,7 @@ fn legacy_hsl_stays_percentage_only_and_invalid_modern_domains_recover() {
                 assert_color_value_rejected(checked, CssKnownProperty::Color, text, token)
             }
             None => assert!(
-                matches!(
-                    checked.unwrap_err().kind(),
-                    CssPropertyValueErrorKind::Grammar(ErrorKind::InvalidColorSyntax(_))
-                ),
+                checked.unwrap_err().code() == Some(CssErrorCode::InvalidColorSyntax),
                 "{text}"
             ),
         }

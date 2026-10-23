@@ -1,10 +1,9 @@
+use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::property_admission::{assert_component_rejected, assert_numeric_rejected};
-use surgeist_css::CssNumericConstructionErrorKind;
 use surgeist_css::{
     CssComponentValue, CssContainIntrinsicSize, CssContainIntrinsicSizeFallback,
     CssContainIntrinsicSizeValue, CssLengthCalculation, CssSerializationLimits,
-    CssSpecifiedNonNegativeLength, CssSpecifiedValueSerializationErrorKind, CssValueOrigin,
-    parse_component_values,
+    CssSpecifiedNonNegativeLength, CssValueOrigin, parse_component_values,
 };
 
 fn component(text: &str) -> CssComponentValue {
@@ -64,11 +63,11 @@ fn checked_nonnegative_length_preserves_exact_literal_domain() {
     assert_eq!(huge.len(), 1002); // 1 followed by 999 zeroes, then px.
     assert!(huge.starts_with('1') && huge.ends_with("px"));
     for (text, kind) in [
-        ("1", CssNumericConstructionErrorKind::RootDomainMismatch),
-        ("1%", CssNumericConstructionErrorKind::RootDomainMismatch),
-        ("-1px", CssNumericConstructionErrorKind::OutOfRange),
-        ("-1e-999px", CssNumericConstructionErrorKind::OutOfRange),
-        ("1fr", CssNumericConstructionErrorKind::RootDomainMismatch),
+        ("1", NumericFailure::RootDomainMismatch),
+        ("1%", NumericFailure::RootDomainMismatch),
+        ("-1px", NumericFailure::OutOfRange),
+        ("-1e-999px", NumericFailure::OutOfRange),
+        ("1fr", NumericFailure::RootDomainMismatch),
     ] {
         assert_component_rejected(
             CssSpecifiedNonNegativeLength::try_from_component,
@@ -99,7 +98,7 @@ fn bare_calculation_roots_reenter_ordinary_admission_but_negative_math_stays_def
     .unwrap();
     assert_numeric_rejected(
         CssSpecifiedNonNegativeLength::try_from_calculation(negative),
-        CssNumericConstructionErrorKind::OutOfRange,
+        NumericFailure::OutOfRange,
     );
 
     let symbolic = length("calc(1px - 2px)");
@@ -230,25 +229,22 @@ fn serialization_shares_input_projection_and_byte_budgets_across_whole_values() 
         shorthand.serialize_specified(Default::default()).unwrap(),
         "auto none 2px"
     );
-    assert_eq!(
+    assert!(
         shorthand
             .serialize_specified(CssSerializationLimits::new(2, 9, 99))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+            .is_input_node_limit()
     );
-    assert_eq!(
+    assert!(
         shorthand
             .serialize_specified(CssSerializationLimits::new(9, 2, 99))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
+            .is_projection_node_limit()
     );
-    assert_eq!(
+    assert!(
         shorthand
             .serialize_specified(CssSerializationLimits::new(9, 9, 12))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
 }

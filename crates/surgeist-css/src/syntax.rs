@@ -21,8 +21,8 @@ pub use crate::text_controls::*;
 pub use crate::text_decoration::*;
 use crate::{
     CssAngleLiteral, CssAngleOrZero, CssAngleValue, CssColorNumberLiteral,
-    CssColorPercentageLiteral, CssColorScalarError, CssDuration, CssFontSize, CssFontStyle,
-    CssFontWeight, CssFontWidthKeyword, CssLineHeight, CssTimeValue, CssValueOrigin,
+    CssColorPercentageLiteral, CssDuration, CssFontSize, CssFontStyle, CssFontWeight,
+    CssFontWidthKeyword, CssLineHeight, CssTimeValue, CssValueOrigin,
 };
 use crate::{
     CssColorProfileRule, CssContainerScrollQuery, CssContainerStyleQuery, CssFontFeatureValuesRule,
@@ -1248,55 +1248,11 @@ pub struct CssGeneralEnclosed {
     component: Box<crate::CssComponentValue>,
 }
 
-/// Failure to construct one lexically enclosed component.
-#[non_exhaustive]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum CssGeneralEnclosedError {
-    /// The outer component is neither a function nor a parenthesis block.
-    WrongOuterComponent {
-        /// The rejected component's token or opener origin.
-        origin: crate::CssValueOrigin,
-    },
-    /// The component owner rejected syntax or a resource limit.
-    Component(crate::CssComponentValueError),
-}
-
-impl CssGeneralEnclosedError {
-    /// Returns the responsible real parsed or programmatic origin.
-    #[must_use]
-    pub const fn origin(&self) -> &crate::CssValueOrigin {
-        match self {
-            Self::WrongOuterComponent { origin } => origin,
-            Self::Component(error) => error.origin(),
-        }
-    }
-}
-
-impl std::fmt::Display for CssGeneralEnclosedError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::WrongOuterComponent { .. } => {
-                f.write_str("expected a function or parenthesis component")
-            }
-            Self::Component(error) => error.fmt(f),
-        }
-    }
-}
-
-impl std::error::Error for CssGeneralEnclosedError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::Component(error) => Some(error),
-            Self::WrongOuterComponent { .. } => None,
-        }
-    }
-}
-
 impl CssGeneralEnclosed {
     /// Checks the outer lexical enclosure without changing any supplied origin.
     pub fn try_from_component(
         component: crate::CssComponentValue,
-    ) -> Result<Self, CssGeneralEnclosedError> {
+    ) -> Result<Self, crate::CssConditionConstructionError> {
         let valid = match component.view() {
             crate::CssComponentValueRef::Function(_) => true,
             crate::CssComponentValueRef::Block(block) => {
@@ -1305,9 +1261,12 @@ impl CssGeneralEnclosed {
             _ => false,
         };
         if !valid {
-            return Err(CssGeneralEnclosedError::WrongOuterComponent {
-                origin: component.origin().clone(),
-            });
+            return Err(
+                crate::when::ConditionConstructionKind::WrongOuterComponent {
+                    origin: component.origin().clone(),
+                }
+                .into(),
+            );
         }
         Ok(Self {
             component: Box::new(component),
@@ -1318,18 +1277,20 @@ impl CssGeneralEnclosed {
     pub fn try_function(
         name: impl Into<String>,
         values: CssComponentValues,
-    ) -> Result<Self, CssGeneralEnclosedError> {
+    ) -> Result<Self, crate::CssConditionConstructionError> {
         Self::try_from_component(
             crate::CssComponentValue::try_function(name, values)
-                .map_err(CssGeneralEnclosedError::Component)?,
+                .map_err(crate::CssConditionConstructionError::from)?,
         )
     }
 
     /// Constructs programmatic parentheses while preserving child origins.
-    pub fn try_parenthesized(values: CssComponentValues) -> Result<Self, CssGeneralEnclosedError> {
+    pub fn try_parenthesized(
+        values: CssComponentValues,
+    ) -> Result<Self, crate::CssConditionConstructionError> {
         Self::try_from_component(
             crate::CssComponentValue::try_block(crate::CssBlockKind::Parenthesis, values)
-                .map_err(CssGeneralEnclosedError::Component)?,
+                .map_err(crate::CssConditionConstructionError::from)?,
         )
     }
 
@@ -2539,42 +2500,83 @@ impl CssContainerGeneralEnclosed {
     }
 }
 
-/// A grammar or resource failure during checked construction.
-#[non_exhaustive]
+/// A container query or prelude that failed checked construction through its grammar
+/// or a resource.
+///
+/// The failure is read through the `is_*` predicates and located by [`Self::origin`]; a
+/// rejected component is exposed by [`Self::component_error`] and is the error's source.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum CssContainerConstructionError {
+pub struct CssContainerConstructionError {
+    kind: ContainerConstructionKind,
+}
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum ContainerConstructionKind {
     InvalidConditionGrammar { origin: CssValueOrigin },
     InvalidPreludeGrammar { origin: CssValueOrigin },
     Component(crate::CssComponentValueError),
     WorkerUnavailable { origin: CssValueOrigin },
 }
+impl From<ContainerConstructionKind> for CssContainerConstructionError {
+    fn from(kind: ContainerConstructionKind) -> Self {
+        Self { kind }
+    }
+}
 impl CssContainerConstructionError {
+    crate::error::kind_predicates! { kind;
+        /// Returns whether the components do not form a container condition.
+        is_invalid_condition_grammar => ContainerConstructionKind::InvalidConditionGrammar { .. },
+        /// Returns whether the components do not form a container prelude.
+        is_invalid_prelude_grammar => ContainerConstructionKind::InvalidPreludeGrammar { .. },
+        /// Returns whether the bounded deep-construction worker could not be started.
+        is_worker_unavailable => ContainerConstructionKind::WorkerUnavailable { .. },
+    }
+    /// Returns the rejected component.
+    #[must_use]
+    pub const fn component_error(&self) -> Option<&crate::CssComponentValueError> {
+        match &self.kind {
+            ContainerConstructionKind::Component(error) => Some(error),
+            _ => None,
+        }
+    }
+    /// Returns the responsible original or programmatic origin.
     #[must_use]
     pub const fn origin(&self) -> &CssValueOrigin {
-        match self {
-            Self::InvalidConditionGrammar { origin }
-            | Self::InvalidPreludeGrammar { origin }
-            | Self::WorkerUnavailable { origin } => origin,
-            Self::Component(error) => error.origin(),
+        match &self.kind {
+            ContainerConstructionKind::InvalidConditionGrammar { origin }
+            | ContainerConstructionKind::InvalidPreludeGrammar { origin }
+            | ContainerConstructionKind::WorkerUnavailable { origin } => origin,
+            ContainerConstructionKind::Component(error) => error.origin(),
         }
     }
 }
 impl std::fmt::Display for CssContainerConstructionError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "invalid authored container construction: {self:?}")
+        f.write_str("invalid authored container construction: ")?;
+        f.write_str(match &self.kind {
+            ContainerConstructionKind::InvalidConditionGrammar { .. } => {
+                "the components do not form a container condition"
+            }
+            ContainerConstructionKind::InvalidPreludeGrammar { .. } => {
+                "the components do not form a container prelude"
+            }
+            ContainerConstructionKind::Component(_) => "a component is invalid",
+            ContainerConstructionKind::WorkerUnavailable { .. } => {
+                "the construction thread could not be started"
+            }
+        })
     }
 }
 impl std::error::Error for CssContainerConstructionError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::Component(error) => Some(error),
-            _ => None,
-        }
+        self.component_error()
+            .map(|error| error as &(dyn std::error::Error + 'static))
     }
 }
 impl From<crate::CssComponentValueError> for CssContainerConstructionError {
     fn from(error: crate::CssComponentValueError) -> Self {
-        Self::Component(error)
+        Self {
+            kind: ContainerConstructionKind::Component(error),
+        }
     }
 }
 
@@ -7265,20 +7267,6 @@ impl CssRadialGradient {
     }
 }
 
-/// Rejection of more than two authored positions on a single color stop.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssGradientStopConstructionError {
-    /// The authored stop supplies more than the grammar's two positions.
-    TooManyPositions,
-}
-impl std::fmt::Display for CssGradientStopConstructionError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("a color stop admits at most two authored positions")
-    }
-}
-impl std::error::Error for CssGradientStopConstructionError {}
-
 /// An authored conic stop/hint position, with an unresolved angular percentage basis.
 ///
 /// # Specified serialization
@@ -7325,9 +7313,11 @@ impl CssAngularColorStop {
     pub fn try_new(
         color: CssColor,
         positions: Vec<CssAngularColorStopPosition>,
-    ) -> Result<Self, CssGradientStopConstructionError> {
+    ) -> Result<Self, CssImageConstructionError> {
         if positions.len() > 2 {
-            return Err(CssGradientStopConstructionError::TooManyPositions);
+            return Err(CssImageConstructionError::new(
+                images::ImageConstructionKind::TooManyPositions,
+            ));
         }
         Ok(Self { color, positions })
     }
@@ -7421,6 +7411,7 @@ pub use position::*;
 mod gradients;
 
 mod images;
+pub(crate) use images::ImageConstructionKind;
 pub use images::{
     CssFilterImage, CssFilterImageInput, CssFilterImageInputRef, CssFilterImageString, CssImage,
     CssImageConstructionError, CssLightDarkImage,
@@ -7486,7 +7477,9 @@ impl CssBackgroundLayer {
         color: Option<CssColor>,
     ) -> Result<Self, CssBackgroundConstructionError> {
         if size.is_some() && position.is_none() {
-            return Err(CssBackgroundConstructionError::SizeWithoutPosition);
+            return Err(CssBackgroundConstructionError::from(
+                BackgroundConstructionKind::SizeWithoutPosition,
+            ));
         }
         if image.is_none()
             && position.is_none()
@@ -7496,7 +7489,9 @@ impl CssBackgroundLayer {
             && boxes.is_none()
             && color.is_none()
         {
-            return Err(CssBackgroundConstructionError::EmptyLayer);
+            return Err(CssBackgroundConstructionError::from(
+                BackgroundConstructionKind::EmptyLayer,
+            ));
         }
         Ok(Self {
             image,
@@ -7554,21 +7549,52 @@ impl CssBackgroundLayer {
 
 /// Why checked authored background construction cannot represent a valid shorthand.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssBackgroundConstructionError {
+pub struct CssBackgroundConstructionError {
+    kind: BackgroundConstructionKind,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum BackgroundConstructionKind {
     EmptyLayer,
     SizeWithoutPosition,
     EmptyLayers,
     NonFinalColor { layer_index: usize },
 }
-
+impl From<BackgroundConstructionKind> for CssBackgroundConstructionError {
+    fn from(kind: BackgroundConstructionKind) -> Self {
+        Self { kind }
+    }
+}
+impl CssBackgroundConstructionError {
+    crate::error::kind_predicates! { kind;
+        /// Returns whether a background layer has no component.
+        is_empty_layer => BackgroundConstructionKind::EmptyLayer,
+        /// Returns whether a background size was given without a position.
+        is_size_without_position => BackgroundConstructionKind::SizeWithoutPosition,
+        /// Returns whether the layer list is empty.
+        is_empty_layers => BackgroundConstructionKind::EmptyLayers,
+    }
+    /// Returns the index of a nonfinal layer that carries a background color.
+    #[must_use]
+    pub const fn non_final_color_layer(&self) -> Option<usize> {
+        match self.kind {
+            BackgroundConstructionKind::NonFinalColor { layer_index } => Some(layer_index),
+            _ => None,
+        }
+    }
+}
 impl std::fmt::Display for CssBackgroundConstructionError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::EmptyLayer => formatter.write_str("background layer is empty"),
-            Self::SizeWithoutPosition => formatter.write_str("background size requires a position"),
-            Self::EmptyLayers => formatter.write_str("background layer list is empty"),
-            Self::NonFinalColor { layer_index } => write!(
+        match &self.kind {
+            BackgroundConstructionKind::EmptyLayer => {
+                formatter.write_str("background layer is empty")
+            }
+            BackgroundConstructionKind::SizeWithoutPosition => {
+                formatter.write_str("background size requires a position")
+            }
+            BackgroundConstructionKind::EmptyLayers => {
+                formatter.write_str("background layer list is empty")
+            }
+            BackgroundConstructionKind::NonFinalColor { layer_index } => write!(
                 formatter,
                 "background color in nonfinal layer {layer_index}"
             ),
@@ -7595,11 +7621,15 @@ impl CssBackground {
         layers: Vec<CssBackgroundLayer>,
     ) -> Result<Self, CssBackgroundConstructionError> {
         if layers.is_empty() {
-            return Err(CssBackgroundConstructionError::EmptyLayers);
+            return Err(CssBackgroundConstructionError::from(
+                BackgroundConstructionKind::EmptyLayers,
+            ));
         }
         for (layer_index, layer) in layers[..layers.len() - 1].iter().enumerate() {
             if layer.color().is_some() {
-                return Err(CssBackgroundConstructionError::NonFinalColor { layer_index });
+                return Err(CssBackgroundConstructionError::from(
+                    BackgroundConstructionKind::NonFinalColor { layer_index },
+                ));
             }
         }
         Ok(Self { layers })
@@ -8742,7 +8772,7 @@ pub enum CssRadialExtent {
 }
 
 mod path_data;
-pub use path_data::{CssPathData, CssPathDataConstructionError, CssPathDataConstructionErrorKind};
+pub use path_data::CssPathData;
 mod shape_commands;
 pub use shape_commands::*;
 mod shapes;

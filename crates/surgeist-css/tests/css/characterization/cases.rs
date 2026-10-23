@@ -1630,6 +1630,7 @@ const ERROR_CASES: &[(&str, &str)] = &[
     ("font-palette-value", "error"),
     ("general-enclosed", "error"),
     ("gradient-stop-construction", "error"),
+    ("grid-template-area", "error"),
     ("image-1d-construction", "error"),
     ("image-construction", "error"),
     ("import-construction", "error"),
@@ -1663,5 +1664,6 @@ const ERROR_CASES: &[(&str, &str)] = &[
     ("supports-construction", "error"),
     ("utf16-input-interrupted", "error"),
     ("utf16-input-limit", "error"),
+    ("validation-failure", "error"),
     ("when-construction", "error"),
 ];

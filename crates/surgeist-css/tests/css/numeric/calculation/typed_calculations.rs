@@ -1,3 +1,7 @@
+use crate::css::support::failure_classes::ComponentFailure;
+use crate::css::support::failure_classes::NumericFailure;
+use crate::css::support::failure_classes::NumericFailure as Kind;
+use crate::css::support::failure_classes::numeric_failure;
 use crate::css::support::math_depth::MathDepthBoundary;
 use crate::css::support::value_assertions::assert_numeric_kind;
 use surgeist_css::*;
@@ -234,21 +238,15 @@ fn typed_calculation_roots_enforce_checked_literal_boundaries() {
         assert!(CssLengthPercentageCalculation::try_percentage(value).is_none());
         assert_numeric_kind(
             CssAngleCalculation::try_literal(&value.to_string(), CssAngleUnit::Degrees),
-            surgeist_css::CssNumericConstructionErrorKind::Component(
-                surgeist_css::CssComponentValueErrorKind::InvalidDimension,
-            ),
+            NumericFailure::Component(ComponentFailure::InvalidDimension),
         );
         assert_numeric_kind(
             CssTimeCalculation::try_literal(&value.to_string(), CssTimeUnit::Seconds),
-            surgeist_css::CssNumericConstructionErrorKind::Component(
-                surgeist_css::CssComponentValueErrorKind::InvalidDimension,
-            ),
+            NumericFailure::Component(ComponentFailure::InvalidDimension),
         );
         assert_numeric_kind(
             CssFrequencyCalculation::try_literal(&value.to_string(), CssFrequencyUnit::Hertz),
-            surgeist_css::CssNumericConstructionErrorKind::Component(
-                surgeist_css::CssComponentValueErrorKind::InvalidDimension,
-            ),
+            NumericFailure::Component(ComponentFailure::InvalidDimension),
         );
     }
 
@@ -795,10 +793,7 @@ fn exact_construction_preserves_mixed_origins_and_canonical_operator_mapping() {
 
 #[test]
 fn exact_public_roots_keep_long_numbers_special_values_and_integer_requirements_distinct() {
-    use surgeist_css::{
-        CssNumericConstant, CssNumericConstructionErrorKind as Kind, CssResolutionCalculation,
-        parse_component_values,
-    };
+    use surgeist_css::{CssNumericConstant, CssResolutionCalculation, parse_component_values};
     let integer = CssIntegerCalculation::try_from_components(
         parse_component_values("1234567890123456789012345678901234567890").unwrap(),
         Default::default(),
@@ -853,14 +848,13 @@ fn exact_public_roots_keep_long_numbers_special_values_and_integer_requirements_
         .as_css(),
         "calc(-1dppx / 0)"
     );
-    assert_eq!(
+    assert!(
         CssLengthCalculation::try_from_components(
             parse_component_values("calc(1px + 2%)").unwrap(),
             Default::default()
         )
         .unwrap_err()
-        .kind(),
-        &Kind::RootDomainMismatch
+        .is_root_domain_mismatch()
     );
     assert!(
         CssLengthPercentageCalculation::try_from_components(
@@ -873,9 +867,7 @@ fn exact_public_roots_keep_long_numbers_special_values_and_integer_requirements_
 
 #[test]
 fn checked_numeric_construction_reports_resource_substitution_and_recovery_failures() {
-    use surgeist_css::{
-        CssComponentValueLimits, CssNumericConstructionErrorKind as Kind, parse_component_values,
-    };
+    use surgeist_css::{CssComponentValueLimits, parse_component_values};
     let components = parse_component_values("calc(1*2)").unwrap();
     for limits in [
         CssComponentValueLimits::try_new(0, 4, 11).unwrap(),
@@ -884,7 +876,7 @@ fn checked_numeric_construction_reports_resource_substitution_and_recovery_failu
     ] {
         let error =
             CssNumberCalculation::try_from_components(components.clone(), limits).unwrap_err();
-        assert_eq!(error.kind(), &Kind::ResourceLimit);
+        assert!(error.is_resource_limit(), "{error:?}");
         assert!(error.origin().is_some());
     }
     assert!(
@@ -901,13 +893,14 @@ fn checked_numeric_construction_reports_resource_substitution_and_recovery_failu
         ("min()", Kind::Arity),
     ] {
         assert_eq!(
-            CssNumberCalculation::try_from_components(
-                parse_component_values(source).unwrap(),
-                Default::default()
-            )
-            .unwrap_err()
-            .kind(),
-            &kind,
+            numeric_failure(
+                &CssNumberCalculation::try_from_components(
+                    parse_component_values(source).unwrap(),
+                    Default::default()
+                )
+                .unwrap_err()
+            ),
+            kind,
             "{source}"
         );
     }

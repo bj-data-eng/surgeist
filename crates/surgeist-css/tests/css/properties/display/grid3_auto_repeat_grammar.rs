@@ -17,7 +17,7 @@ use crate::css::support::property_admission::Responsible::{self, At};
 use crate::css::support::property_admission::{assert_checked_rejected, assert_invalid_value};
 use surgeist_css::{
     CssDeclaration, CssErrorCode, CssImportance, CssKnownProperty as Property,
-    CssKnownPropertyValueRef, CssPropertyNameRef, CssRecoveryAction, CssTokenKind, ErrorKind,
+    CssKnownPropertyValueRef, CssPropertyNameRef, CssRecoveryAction, CssTokenKind,
     parse_component_values, parse_property_value, parse_style_attribute, validate_style_attribute,
 };
 
@@ -206,9 +206,12 @@ fn a_flexible_minimum_inside_auto_repeat_reports_its_source_token() {
             diagnostic.error().position().column().value() as usize,
             responsible
         );
-        let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-            panic!("a Grid grammar error");
-        };
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidPropertyValue,
+            "a Grid grammar error"
+        );
         let token = detail.encountered().expect("responsible fraction");
         assert_eq!(token.kind(), CssTokenKind::Dimension);
         assert_eq!(token.authored(), "1fr");
@@ -302,7 +305,7 @@ fn assert_rejected<'a>(property: Property, authored: &str, token: impl Into<Resp
         "{source}"
     );
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    assert_invalid_value(diagnostic.error().kind(), property, token);
+    assert_invalid_value(diagnostic.error(), property, token);
     let start = "color:red;".len();
     assert_eq!(diagnostic.span().start().byte_offset().value(), start);
     assert_eq!(

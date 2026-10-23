@@ -1,12 +1,13 @@
 //! Authored rule composition, cumulative resource and immutable graph contracts.
 //! CSS Syntax 3 §8.3/9 and the specified-output provider contracts.
+use crate::css::support::failure_classes::SerializationFailure as Kind;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::rules::ExpectedRejection;
 use crate::css::support::rules::assert_exact_specified_sheet as exact;
 use crate::css::support::rules::clean_sheet as sheet;
 use surgeist_css::{
     CssErrorCode, CssMediaRule, CssNamespaceContext, CssRecoveryAction, CssRule,
-    CssSerializationLimits as Limits, CssSheet, CssSpecifiedValueSerializationErrorKind as Kind,
-    parse_sheet,
+    CssSerializationLimits as Limits, CssSheet, parse_sheet,
 };
 
 #[test]
@@ -190,7 +191,7 @@ fn utf8_byte_budget_counts_multibyte_output_and_sheet_separator_exactly_once() {
     let error = input
         .serialize_specified(Limits::new(usize::MAX, usize::MAX, expected.len() - 1))
         .unwrap_err();
-    assert_eq!(error.kind(), Kind::ByteLimit);
+    assert!(error.is_byte_limit(), "{error:?}");
     assert_eq!(error.rule_index(), Some(1));
     assert_eq!(input, before);
     assert_eq!(
@@ -221,7 +222,7 @@ fn namespace_node_control_proves_shared_sheet_aggregate_and_rule_accounting() {
                 .all(|rule| rule.serialize_specified(limits).is_ok())
         );
         let error = input.serialize_specified(limits).unwrap_err();
-        assert_eq!(error.kind(), kind);
+        assert_eq!(serialization_failure(&error), kind);
         assert_eq!(error.rule_index(), Some(1));
         assert_eq!(input, before);
     }
@@ -239,7 +240,7 @@ fn media_provider_work_shares_nodes_with_preceding_sibling_rules() {
     ] {
         assert!(input.rules()[0].serialize_specified(limits).is_ok());
         let error = input.serialize_specified(limits).unwrap_err();
-        assert_eq!(error.kind(), kind);
+        assert_eq!(serialization_failure(&error), kind);
         assert_eq!(error.rule_index(), Some(1));
         assert_eq!(input, before);
     }
@@ -275,7 +276,7 @@ fn finite_deep_grouping_is_emitted_and_stops_atomically_at_shared_work_limits() 
             ),
         ] {
             let error = input.rules()[0].serialize_specified(limits).unwrap_err();
-            assert_eq!(error.kind(), kind);
+            assert_eq!(serialization_failure(&error), kind);
             assert_eq!(error.rule_index(), None);
             assert_eq!(input, before);
         }
@@ -292,7 +293,7 @@ fn nested_provider_failure_points_to_the_enclosing_top_level_rule() {
     let error = input
         .serialize_specified(Limits::new(usize::MAX, usize::MAX, expected.len() - 1))
         .unwrap_err();
-    assert_eq!(error.kind(), Kind::ByteLimit);
+    assert!(error.is_byte_limit(), "{error:?}");
     assert_eq!(error.rule_index(), Some(1));
     assert_eq!(input, before);
     assert_eq!(
@@ -356,13 +357,13 @@ fn recovered_media_projection_cost_preserves_its_typed_provider_origin() {
         .query()
         .serialize_cssom(Limits::new(6, 7, expected.len()))
         .unwrap_err();
-    assert_eq!(provider.kind(), Kind::ProjectionNodeLimit);
+    assert!(provider.is_projection_node_limit(), "{provider:?}");
     // A sheet and enclosing media rule add work; the provider may not reset it.
     let error = report
         .syntax()
         .serialize_specified(Limits::new(usize::MAX, 6, 256))
         .unwrap_err();
-    assert_eq!(error.kind(), Kind::ProjectionNodeLimit);
+    assert!(error.is_projection_node_limit(), "{error:?}");
     assert_eq!(error.rule_index(), Some(0));
     assert_eq!(error.origin(), Some(rule.query().queries()[1].origin()));
     assert_eq!(report, before);

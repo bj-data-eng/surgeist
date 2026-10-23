@@ -3,7 +3,7 @@
 //! describe retained raw queries, import rules, and enclosing rule blocks.
 
 use surgeist_css::{
-    CssRecoveryAction, CssRule, parse_media_query_list, parse_sheet, validate_sheet,
+    CssErrorCode, CssRecoveryAction, CssRule, parse_media_query_list, parse_sheet, validate_sheet,
 };
 
 #[test]
@@ -97,11 +97,14 @@ fn retained_import_and_raw_query_keep_query_closure_diagnostics() {
     );
     assert_eq!(statement.span().start().byte_offset().value(), 0);
     assert_eq!(statement.span().end().byte_offset().value(), source.len());
-    let surgeist_css::ErrorKind::UnexpectedEnd(detail) = statement.error().kind() else {
-        panic!("typed statement EOF");
-    };
+    let detail = statement.error();
     assert_eq!(
-        detail.expectation().as_str(),
+        detail.code(),
+        CssErrorCode::UnexpectedEnd,
+        "typed statement EOF"
+    );
+    assert_eq!(
+        detail.expectation().unwrap().as_str(),
         "a semicolon or block terminating an at-rule"
     );
     assert_eq!(
@@ -178,11 +181,14 @@ fn retained_import_keeps_valid_member_closure_after_invalid_neighbor() {
     );
     assert_eq!(statement.span().start().byte_offset().value(), 0);
     assert_eq!(statement.span().end().byte_offset().value(), source.len());
-    let surgeist_css::ErrorKind::UnexpectedEnd(detail) = statement.error().kind() else {
-        panic!("typed statement EOF");
-    };
+    let detail = statement.error();
     assert_eq!(
-        detail.expectation().as_str(),
+        detail.code(),
+        CssErrorCode::UnexpectedEnd,
+        "typed statement EOF"
+    );
+    assert_eq!(
+        detail.expectation().unwrap().as_str(),
         "a semicolon or block terminating an at-rule"
     );
     assert_eq!(

@@ -204,12 +204,12 @@ pub(super) fn parse_native_comma_list<'i, 't, T>(
     input: &mut cssparser::Parser<'i, 't>,
     mut item: impl FnMut(
         &mut cssparser::Parser<'i, '_>,
-    ) -> Result<T, cssparser::ParseError<'i, crate::error::Error>>,
+    ) -> Result<T, cssparser::ParseError<'i, crate::error::CssError>>,
     trailing: impl FnOnce(
         &mut cssparser::Parser<'i, 't>,
         cssparser::SourceLocation,
-    ) -> cssparser::ParseError<'i, crate::error::Error>,
-) -> Result<Vec<T>, cssparser::ParseError<'i, crate::error::Error>> {
+    ) -> cssparser::ParseError<'i, crate::error::CssError>,
+) -> Result<Vec<T>, cssparser::ParseError<'i, crate::error::CssError>> {
     let mut values = Vec::with_capacity(1);
     loop {
         // The item starts directly after its separator.

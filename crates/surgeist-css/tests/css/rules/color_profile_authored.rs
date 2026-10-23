@@ -4,10 +4,11 @@
 //! Canonical spelling and fail-closed composition follow the CSS public specified
 //! serialization contract. No resource loading or substitution is performed.
 
+use crate::css::support::failure_classes::SerializationFailure as ValueError;
+use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::{
     CssNamespaceContext, CssNormalizedItem, CssRecoveryAction, CssRule, CssRuleContextKindRef,
-    CssSerializationLimits as Limits, CssSpecifiedValueSerializationErrorKind as ValueError,
-    normalize_report, parse_rule, parse_sheet, validate_sheet,
+    CssSerializationLimits as Limits, normalize_report, parse_rule, parse_sheet, validate_sheet,
 };
 
 fn canonical(source: &str, expected: &str) {
@@ -337,7 +338,7 @@ fn profiles_compose_with_style_and_group_siblings_under_atomic_limits() {
             .syntax()
             .serialize_specified(Limits::new(usize::MAX, usize::MAX, expected.len() - 1))
             .unwrap_err();
-        assert_eq!(error.kind(), ValueError::ByteLimit);
+        assert!(error.is_byte_limit(), "{error:?}");
         assert_eq!(error.rule_index(), Some(1));
         assert_eq!(report, before);
     }
@@ -374,7 +375,7 @@ fn cumulative_sheet_limits_include_supported_prefix_and_profile_punctuation() {
         .syntax()
         .serialize_specified(Limits::new(usize::MAX, usize::MAX, expected.len() - 1))
         .unwrap_err();
-    assert_eq!(error.kind(), ValueError::ByteLimit);
+    assert!(error.is_byte_limit(), "{error:?}");
     assert_eq!(error.rule_index(), Some(1));
     assert_eq!(
         report
@@ -390,7 +391,7 @@ fn cumulative_sheet_limits_include_supported_prefix_and_profile_punctuation() {
         let found = (1..200).any(|limit| {
             let limits = Limits::new(if input { limit } else { usize::MAX }, if input { usize::MAX } else { limit }, usize::MAX);
             report.syntax().rules().iter().all(|rule| rule.serialize_specified(limits).is_ok())
-                && matches!(report.syntax().serialize_specified(limits), Err(ref error) if error.kind() == kind && error.rule_index() == Some(1))
+                && matches!(report.syntax().serialize_specified(limits), Err(ref error) if serialization_failure(error) == kind && error.rule_index() == Some(1))
         });
         assert!(
             found,

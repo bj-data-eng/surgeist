@@ -6,10 +6,9 @@ use surgeist_css::{
     CssGridGeneralTrackList, CssGridIntegerTrackRepeat, CssGridLineNames, CssGridTrackBreadth,
     CssGridTrackList, CssGridTrackRepeatComponent, CssGridTrackRepeatContent, CssGridTrackSize,
     CssGridTrackSizeList, CssKnownPropertyValueRef, CssLengthPercentageCalculation,
-    CssNumericConstructionErrorKind, CssNumericDimension, CssPositiveIntegerLiteral,
-    CssSerializationLimits, CssSpecifiedNonNegativeFlex, CssSpecifiedNonNegativeLengthPercentage,
-    CssSpecifiedValueSerializationErrorKind, CssValueOrigin, CssValueTokenRef,
-    parse_component_values, parse_style_attribute,
+    CssNumericDimension, CssPositiveIntegerLiteral, CssSerializationLimits,
+    CssSpecifiedNonNegativeFlex, CssSpecifiedNonNegativeLengthPercentage, CssValueOrigin,
+    CssValueTokenRef, parse_component_values, parse_style_attribute,
 };
 
 fn flex(text: &str) -> CssSpecifiedNonNegativeFlex {
@@ -60,7 +59,7 @@ fn exact_flex_scalar_has_checked_programmatic_origin() {
         CssComponentValue::try_dimension("-1e-50", "fr").unwrap(),
     )
     .unwrap_err();
-    assert_eq!(error.kind(), &CssNumericConstructionErrorKind::OutOfRange);
+    assert!(error.is_out_of_range(), "{error:?}");
     assert!(matches!(error.origin(), Some(CssValueOrigin::Programmatic)));
 
     let bare_negative = CssFlexCalculation::try_from_components(
@@ -68,11 +67,10 @@ fn exact_flex_scalar_has_checked_programmatic_origin() {
         Default::default(),
     )
     .unwrap();
-    assert_eq!(
+    assert!(
         CssSpecifiedNonNegativeFlex::try_from_calculation(bare_negative)
             .unwrap_err()
-            .kind(),
-        &CssNumericConstructionErrorKind::OutOfRange,
+            .is_out_of_range()
     );
     let deferred_negative = CssSpecifiedNonNegativeFlex::try_from_calculation(
         CssFlexCalculation::try_from_components(
@@ -100,12 +98,11 @@ fn exact_flex_scalar_has_checked_programmatic_origin() {
             .unwrap(),
         "2fr",
     );
-    assert_eq!(
+    assert!(
         scalar
             .serialize_specified(CssSerializationLimits::new(1, 0, 3))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            .is_projection_node_limit()
     );
 }
 
@@ -331,16 +328,14 @@ fn parsed_track_graph_serializes_with_one_cumulative_budget() {
         list.serialize_specified(Default::default()).unwrap(),
         format!("{} fit-content(0px)", canonical_large("fr"))
     );
-    assert_eq!(
+    assert!(
         list.serialize_specified(CssSerializationLimits::new(1, 100, 100))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            .is_input_node_limit()
     );
-    assert_eq!(
+    assert!(
         list.serialize_specified(CssSerializationLimits::new(100, 100, 6))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            .is_byte_limit()
     );
 }

@@ -2,7 +2,7 @@
 
 use crate::component_values::{CssCanonicalBuilder, CssCanonicalToken};
 use crate::*;
-use std::{fmt, ops::Range};
+use std::ops::Range;
 
 impl CssRetainedSources for CssSupportsConditionRule {
     fn visit_retained_sources(
@@ -96,17 +96,19 @@ pub struct CssSupportsConditionName {
 }
 
 impl CssSupportsConditionName {
-    pub fn try_new(name: impl Into<String>) -> Result<Self, CssNamedSupportsConstructionError> {
+    pub fn try_new(name: impl Into<String>) -> Result<Self, CssSupportsConstructionError> {
         Self::try_from_component(CssComponentValue::try_ident(name)?)
     }
 
     pub fn try_from_component(
         component: CssComponentValue,
-    ) -> Result<Self, CssNamedSupportsConstructionError> {
+    ) -> Result<Self, CssSupportsConstructionError> {
         let Some(name) = crate::custom_media::extension_name(&component) else {
-            return Err(CssNamedSupportsConstructionError::InvalidName {
-                origin: component.origin().clone(),
-            });
+            return Err(CssSupportsConstructionError::from(
+                crate::supports::SupportsConstructionKind::InvalidName {
+                    origin: component.origin().clone(),
+                },
+            ));
         };
         Ok(Self {
             name: name.to_owned(),
@@ -334,12 +336,14 @@ impl CssSupportsTestBody {
     pub fn try_from_components(
         values: CssComponentValues,
         limits: CssComponentValueLimits,
-    ) -> Result<Self, CssNamedSupportsConstructionError> {
+    ) -> Result<Self, CssSupportsConstructionError> {
         values.validate_with_limits(limits)?;
         if let Some(origin) = values.first_implicit_origin() {
-            return Err(CssNamedSupportsConstructionError::RecoveredInput {
-                origin: origin.clone(),
-            });
+            return Err(CssSupportsConstructionError::from(
+                crate::supports::SupportsConstructionKind::RecoveredInput {
+                    origin: origin.clone(),
+                },
+            ));
         }
         let body = crate::parser::named_supports::construct_test_body(values, limits)?;
         let output = body.serialize_tokens(limits)?;
@@ -396,7 +400,7 @@ impl CssSupportsTestBody {
         &self,
         children: &[CssSupportsTestChildRef<'_>],
         limits: CssComponentValueLimits,
-    ) -> Result<Self, CssNamedSupportsConstructionError> {
+    ) -> Result<Self, CssSupportsConstructionError> {
         crate::named_supports_composition::admit(children, limits)?;
         let mut items = Vec::new();
         items.try_reserve(children.len()).map_err(|_| {
@@ -523,11 +527,13 @@ impl CssSupportsConditionRule {
         name: CssSupportsConditionName,
         body: CssSupportsTestBody,
         limits: CssComponentValueLimits,
-    ) -> Result<Self, CssNamedSupportsConstructionError> {
+    ) -> Result<Self, CssSupportsConstructionError> {
         if let Some(origin) = body.recovery_origin() {
-            return Err(CssNamedSupportsConstructionError::RecoveredInput {
-                origin: origin.clone(),
-            });
+            return Err(CssSupportsConstructionError::from(
+                crate::supports::SupportsConstructionKind::RecoveredInput {
+                    origin: origin.clone(),
+                },
+            ));
         }
         let value = Self::parsed(
             name,
@@ -600,64 +606,24 @@ fn validate_emitted_budget(
     output: &CssSerializedValue,
     limits: CssComponentValueLimits,
     fallback: &CssValueOrigin,
-) -> Result<(), CssNamedSupportsConstructionError> {
+) -> Result<(), CssSupportsConstructionError> {
     // Count the emitted syntax, including generated whitespace, semicolons,
     // and boundary comments. Reparse only for validation; the original tree
     // and every supplied or generated origin remain owned by the caller.
     parse_component_values_with_limits(output.as_css(), limits).map_err(|error| {
         let offset = crate::media::parsed_position(error.origin())
             .map_or(0, |position| position.byte_offset().value());
-        CssNamedSupportsConstructionError::Component(CssComponentValueError::new(
-            error.kind(),
-            output
-                .value_origin_at(offset)
-                .cloned()
-                .unwrap_or_else(|| fallback.clone()),
+        CssSupportsConstructionError::from(crate::supports::SupportsConstructionKind::Component(
+            CssComponentValueError::new(
+                error.kind,
+                output
+                    .value_origin_at(offset)
+                    .cloned()
+                    .unwrap_or_else(|| fallback.clone()),
+            ),
         ))
     })?;
     Ok(())
-}
-
-/// A failure to construct an unrecovered named supports definition or test body.
-#[non_exhaustive]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum CssNamedSupportsConstructionError {
-    InvalidName { origin: CssValueOrigin },
-    InvalidBodyGrammar { origin: CssValueOrigin },
-    RecoveredInput { origin: CssValueOrigin },
-    Component(CssComponentValueError),
-}
-
-impl CssNamedSupportsConstructionError {
-    pub fn origin(&self) -> &CssValueOrigin {
-        match self {
-            Self::InvalidName { origin }
-            | Self::InvalidBodyGrammar { origin }
-            | Self::RecoveredInput { origin } => origin,
-            Self::Component(error) => error.origin(),
-        }
-    }
-}
-
-impl From<CssComponentValueError> for CssNamedSupportsConstructionError {
-    fn from(error: CssComponentValueError) -> Self {
-        Self::Component(error)
-    }
-}
-
-impl fmt::Display for CssNamedSupportsConstructionError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "invalid named supports construction: {self:?}")
-    }
-}
-
-impl std::error::Error for CssNamedSupportsConstructionError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::Component(error) => Some(error),
-            _ => None,
-        }
-    }
 }
 
 /// One inert direct child. Nested candidate bodies remain immutable CSS payload.

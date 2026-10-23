@@ -290,13 +290,13 @@ mod composition_tests {
                 .unwrap(),
             ));
         }
-        assert_eq!(
+        assert!(
             CssFontPaletteMix::try_new(
                 None,
                 vec![CssFontPaletteMixComponent::new(value.clone(), None)]
             )
-            .unwrap_err(),
-            crate::CssFontPaletteMixConstructionError::NestingLimit,
+            .unwrap_err()
+            .is_nesting_limit()
         );
         let mut writer = SpecifiedRuleWriter::new(CssSerializationLimits::new(257, 100_000, 0));
         writer

@@ -431,16 +431,15 @@ fn prosody_substitution_reentry_checks_phase_and_grammar_atomically_with_origins
                 .reenter(parse_component_values(text).unwrap())
                 .unwrap_err();
             assert!(
-                matches!(error.kind(), CssExpansionErrorKind::InvalidReplacement(_)),
+                error.replacement_error().is_some(),
                 "{name}:{text}: {error:?}"
             );
         }
-        assert_eq!(
+        assert!(
             handle
                 .reenter(parse_component_values("var(--again)").unwrap())
                 .unwrap_err()
-                .kind(),
-            &CssExpansionErrorKind::ResidualSubstitution
+                .is_residual_substitution()
         );
         assert!(
             handle
@@ -477,12 +476,11 @@ fn prosody_case_escapes_comments_and_exact_coefficients_survive_bounded_raw_seri
                 .as_css(),
             value
         );
-        assert_eq!(
+        assert!(
             components
                 .serialize_tokens(crate::css::support::byte_limits(value.len() - 1))
                 .unwrap_err()
-                .kind(),
-            CssComponentValueErrorKind::ByteLimit
+                .is_byte_limit()
         );
         assert_eq!(
             components
@@ -589,10 +587,13 @@ fn recovered_prosody_calculations_remain_diagnosed_and_checked_reentry_rejects_o
         let CssExpansion::Pending(handle) = expand_declaration(&pending).unwrap() else {
             panic!("pending")
         };
-        assert!(matches!(
-            handle.reenter(components.clone()).unwrap_err().kind(),
-            CssExpansionErrorKind::InvalidReplacement(_)
-        ));
+        assert!(
+            handle
+                .reenter(components.clone())
+                .unwrap_err()
+                .replacement_error()
+                .is_some()
+        );
     }
 }
 

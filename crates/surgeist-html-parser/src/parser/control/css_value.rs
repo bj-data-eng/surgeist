@@ -4,7 +4,7 @@ use crate::parser::buffer::Utf16Buffer;
 use std::cell::{Cell, RefCell};
 use surgeist_css::{
     CssColorSchemeParseReport, CssComponentValueLimits, CssParserContext, CssParserMode,
-    CssUtf16InputError, CssUtf16InputLimits, CssUtf16PropertyValueLimits, CssUtf16ValueAdmission,
+    CssUtf16InputLimits, CssUtf16PropertyValueLimits, CssUtf16ValueAdmission,
 };
 
 /// One admitted immutable provider occurrence. This never enters the string pool.
@@ -199,14 +199,18 @@ impl ParseControl {
             let c = control.into_inner();
             let report = match result {
                 Ok(report) => report,
-                Err(CssUtf16InputError::Interrupted(stop)) => return Err(stop),
-                Err(CssUtf16InputError::Limit(resource)) => {
-                    return c.fail(ParseStop::CssPropertyLimit { resource });
-                }
-                Err(CssUtf16InputError::Allocation) => {
-                    return c.fail(ParseStop::CssPropertyAllocationFailed);
-                }
-                Err(CssUtf16InputError::CapacityOverflow) => {
+                Err(error) => {
+                    let refusal = match error.into_interruption() {
+                        Ok(stop) => return Err(stop),
+                        Err(refusal) => refusal,
+                    };
+                    if let Some(resource) = refusal.exhausted_limit() {
+                        return c.fail(ParseStop::CssPropertyLimit { resource });
+                    }
+                    if refusal.is_allocation_failure() {
+                        return c.fail(ParseStop::CssPropertyAllocationFailed);
+                    }
+                    // A capacity overflow.
                     return c.representation(HtmlParseResource::ManagedCapacityBytes);
                 }
             };

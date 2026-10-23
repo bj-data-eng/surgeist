@@ -110,12 +110,12 @@ fn checked_scalar_rejects_other_component_kinds_with_their_actual_origins() {
             panic!("one component for {text}")
         };
         let error = CssOpacityScalar::try_from_component(component.clone()).unwrap_err();
-        assert_eq!(error.kind(), CssComponentValueErrorKind::InvalidToken);
+        assert!(error.is_invalid_token(), "{error:?}");
         assert_eq!(error.origin(), component.origin());
     }
     let component = CssComponentValue::try_token("name").unwrap();
     let error = CssOpacityScalar::try_from_component(component).unwrap_err();
-    assert_eq!(error.kind(), CssComponentValueErrorKind::InvalidToken);
+    assert!(error.is_invalid_token(), "{error:?}");
     assert_eq!(error.origin(), &CssValueOrigin::Programmatic);
 }
 

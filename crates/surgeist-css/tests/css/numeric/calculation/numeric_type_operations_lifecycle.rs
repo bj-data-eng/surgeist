@@ -5,6 +5,7 @@
 //! https://www.w3.org/TR/2024/WD-css-typed-om-1-20240321/#cssnumericvalue-match
 
 use crate::css::support::component_values as components;
+use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::value_assertions::assert_calculation_rejected;
 use surgeist_css::*;
 
@@ -197,10 +198,7 @@ fn hinted_number_substitution_reentry_keeps_the_consumer_permission_and_source_o
             value_for(name, "calc(1px + 1s)"),
         ] {
             let error = handle.reenter(components(&invalid)).unwrap_err();
-            assert!(matches!(
-                error.kind(),
-                CssExpansionErrorKind::InvalidReplacement(_)
-            ));
+            assert!(error.replacement_error().is_some());
         }
         assert!(handle.reenter(replacement).is_ok());
     }
@@ -213,10 +211,7 @@ fn pure_number_roots_reject_inferred_hints_even_after_dimension_exponents_cancel
         let error =
             CssNumberCalculation::try_from_components(components(&source), Default::default())
                 .unwrap_err();
-        assert_eq!(
-            error.kind(),
-            &CssNumericConstructionErrorKind::RootDomainMismatch
-        );
+        assert!(error.is_root_domain_mismatch(), "{error:?}");
         assert!(error.origin().is_some());
     }
 }
@@ -353,11 +348,7 @@ fn incompatible_dimensions_and_conflicting_hints_fail_before_zero_simplification
     ] {
         let error = CssNumberCalculation::try_from_components(components(text), Default::default())
             .unwrap_err();
-        assert_eq!(
-            error.kind(),
-            &CssNumericConstructionErrorKind::IncompatibleTypes,
-            "{text}"
-        );
+        assert!(error.is_incompatible_types(), "{text}");
         assert!(error.origin().is_some());
     }
     for text in [
@@ -385,14 +376,8 @@ fn integer_number_phase_and_unitless_zero_controls_do_not_promote_or_mix_domains
     );
     assert!(CssLengthCalculation::try_from_components(components("0"), Default::default()).is_ok());
     for (text, kind) in [
-        (
-            "calc(0)",
-            surgeist_css::CssNumericConstructionErrorKind::RootDomainMismatch,
-        ),
-        (
-            "calc(0 + 1px)",
-            surgeist_css::CssNumericConstructionErrorKind::IncompatibleTypes,
-        ),
+        ("calc(0)", NumericFailure::RootDomainMismatch),
+        ("calc(0 + 1px)", NumericFailure::IncompatibleTypes),
     ] {
         assert_calculation_rejected(
             CssLengthCalculation::try_from_components(components(text), Default::default()),

@@ -1,12 +1,13 @@
 //! Public-only Animations 1 and selected CSSOM detached keyframe contracts.
 
+use crate::css::support::failure_classes::SerializationFailure as Resource;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::rules::ExpectedRejection;
 use surgeist_css::{
-    CssDeclarationBlockErrorKind, CssErrorCode, CssImportance, CssInvalidKeyframeSourceReason,
-    CssKeyframePercent, CssKeyframeRuleView, CssKeyframeRuleViewError, CssKeyframeSelector,
-    CssKeyframeSelectorList, CssKnownProperty, CssParserContext, CssParserMode, CssPropertyNameRef,
-    CssRecoveryAction, CssSerializationLimits as Limits, CssSpecifiedDeclarationBlock,
-    CssSpecifiedValueSerializationErrorKind as Resource, expand_declaration,
+    CssErrorCode, CssImportance, CssInvalidKeyframeSourceReason, CssKeyframePercent,
+    CssKeyframeRuleView, CssKeyframeRuleViewError, CssKeyframeSelector, CssKeyframeSelectorList,
+    CssKnownProperty, CssParserContext, CssParserMode, CssPropertyNameRef, CssRecoveryAction,
+    CssSerializationLimits as Limits, CssSpecifiedDeclarationBlock, expand_declaration,
     parse_component_values, parse_keyframe_rule, parse_keyframe_selector_list,
     parse_property_value, parse_style_attribute,
 };
@@ -14,14 +15,15 @@ use surgeist_css::{
 /// The serialization resource whose budget a detached keyframe exhausted,
 /// whether in its selectors or in its declaration block.
 fn exhausted(error: &CssKeyframeRuleViewError) -> Resource {
-    match error {
-        CssKeyframeRuleViewError::Serialization(error) => error.kind(),
-        CssKeyframeRuleViewError::Declaration(error) => match error.kind() {
-            CssDeclarationBlockErrorKind::Serialization(error) => error.kind(),
-            other => panic!("declaration resource failure: {other:?}"),
-        },
-        other => panic!("serialization resource failure: {other:?}"),
-    }
+    let serialization = error
+        .serialization()
+        .or_else(|| {
+            error
+                .declaration_block()
+                .and_then(|block| block.serialization())
+        })
+        .unwrap_or_else(|| panic!("serialization resource failure: {error:?}"));
+    serialization_failure(serialization)
 }
 
 fn selectors(source: &str) -> CssKeyframeSelectorList {
@@ -391,7 +393,7 @@ fn keytext_cumulative_limits_count_duplicates_and_symbolic_work_and_allow_atomic
         (Limits::new(4, 4, 0), Resource::ByteLimit),
     ] {
         assert_eq!(
-            literals.serialize_key_text(limits).unwrap_err().kind(),
+            serialization_failure(&literals.serialize_key_text(limits).unwrap_err()),
             kind
         );
         assert_eq!(literals, before);
@@ -406,19 +408,17 @@ fn keytext_cumulative_limits_count_duplicates_and_symbolic_work_and_allow_atomic
             .unwrap(),
         expected
     );
-    assert_eq!(
+    assert!(
         symbolic
             .serialize_key_text(Limits::new(6, 5, expected.len()))
             .unwrap_err()
-            .kind(),
-        Resource::InputNodeLimit
+            .is_input_node_limit()
     );
-    assert_eq!(
+    assert!(
         symbolic
             .serialize_key_text(Limits::new(7, 4, expected.len()))
             .unwrap_err()
-            .kind(),
-        Resource::ProjectionNodeLimit
+            .is_projection_node_limit()
     );
 }
 
@@ -462,10 +462,11 @@ fn checked_assembly_preserves_keyframe_domain_including_empty_blocks() {
         Default::default(),
     )
     .unwrap();
-    assert!(matches!(
-        CssKeyframeRuleView::try_new(&selectors, &ordinary),
-        Err(CssKeyframeRuleViewError::NonKeyframeDeclarations)
-    ));
+    assert!(
+        CssKeyframeRuleView::try_new(&selectors, &ordinary)
+            .as_ref()
+            .is_err_and(|error| error.is_non_keyframe_declarations())
+    );
     let parsed = parse_keyframe_rule("from{}");
     let declarations = CssSpecifiedDeclarationBlock::try_from_keyframe_declarations(
         parsed.syntax().as_ref().unwrap().block().declarations(),
@@ -488,9 +489,7 @@ fn checked_assembly_preserves_keyframe_domain_including_empty_blocks() {
             Default::default(),
         )
         .unwrap_err();
-        assert!(
-            matches!(error.kind(), CssDeclarationBlockErrorKind::InvalidKeyframeSource {reason: actual} if *actual == reason)
-        );
+        assert!(error.invalid_keyframe_source() == Some(reason));
     }
 }
 

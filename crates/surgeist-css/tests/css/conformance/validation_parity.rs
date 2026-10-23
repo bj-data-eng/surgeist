@@ -1,7 +1,7 @@
 use surgeist_css::{
-    CssDeclarationList, CssMediaConditionKind, CssMediaFeatureQuery, CssMediaQuery, CssParseReport,
-    CssRecoveryAction, CssRule, CssSheet, parse_sheet, parse_style_attribute, validate_sheet,
-    validate_style_attribute,
+    CssDeclarationList, CssErrorCode, CssMediaConditionKind, CssMediaFeatureQuery, CssMediaQuery,
+    CssParseReport, CssRecoveryAction, CssRule, CssSheet, parse_sheet, parse_style_attribute,
+    validate_sheet, validate_style_attribute,
 };
 
 fn assert_sheet_parity(source: &str) -> CssParseReport<CssSheet> {
@@ -210,11 +210,14 @@ fn validation_namespace_statement_eof_retains_the_same_payload_as_terminated_inp
         diagnostic.action(),
         CssRecoveryAction::RetainNonconformingRule
     );
-    let surgeist_css::ErrorKind::UnexpectedEnd(detail) = diagnostic.error().kind() else {
-        panic!("statement termination payload")
-    };
+    let detail = diagnostic.error();
     assert_eq!(
-        detail.expectation().as_str(),
+        detail.code(),
+        CssErrorCode::UnexpectedEnd,
+        "statement termination payload"
+    );
+    assert_eq!(
+        detail.expectation().unwrap().as_str(),
         "a semicolon or block terminating an at-rule"
     );
     assert_eq!(

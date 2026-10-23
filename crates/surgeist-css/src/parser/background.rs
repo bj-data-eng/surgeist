@@ -263,14 +263,14 @@ fn image_construction_error<'i>(
     location: super::property_input::Site<'i>,
     start: super::property_input::Site<'i>,
 ) -> ParseError<'i, Error> {
-    let kind = match error {
-        CssImageConstructionError::NotImage => {
-            return unexpected_at(location);
-        }
-        CssImageConstructionError::NestingLimit => crate::CssComponentValueErrorKind::NestingLimit,
-        CssImageConstructionError::CapacityOverflow => {
-            crate::CssComponentValueErrorKind::CapacityOverflow
-        }
+    // `CssImage::try_new` reports only these three image failures.
+    let kind = if error.is_not_image() {
+        return unexpected_at(location);
+    } else if error.is_nesting_limit() {
+        crate::CssComponentValueErrorKind::NestingLimit
+    } else {
+        debug_assert!(error.is_capacity_overflow(), "{error:?}");
+        crate::CssComponentValueErrorKind::CapacityOverflow
     };
     crate::error::property::invalid_component_value(
         location,

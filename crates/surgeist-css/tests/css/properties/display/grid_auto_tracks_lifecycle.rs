@@ -3,6 +3,7 @@
 //! https://www.w3.org/TR/2025/CRD-css-grid-2-20250326/#auto-tracks
 //! Tests exercise the public parser and lifecycle APIs.
 
+use crate::css::support::property_admission::assert_same_grammar_facts;
 use surgeist_css::*;
 
 const PROPERTIES: [(&str, CssKnownProperty); 2] = [
@@ -96,16 +97,15 @@ fn repeat_free_lists_parse_as_nonempty_typed_track_sizes() {
                 validate_style_attribute(&source).unwrap_err().diagnostics(),
                 report.diagnostics()
             );
-            assert_eq!(
-                parse_property_value_for_grammar(
+            assert_same_grammar_facts(
+                &parse_property_value_for_grammar(
                     grammar(name),
                     parse_component_values(invalid).unwrap(),
-                    CssImportance::Normal
+                    CssImportance::Normal,
                 )
-                .unwrap_err()
-                .kind(),
-                &CssPropertyValueErrorKind::Grammar(report.diagnostics()[0].error().kind().clone()),
-                "checked accepted {name}:{invalid}"
+                .unwrap_err(),
+                report.diagnostics()[0].error(),
+                "checked accepted {name}:{invalid}",
             );
         }
     }
@@ -196,22 +196,19 @@ fn css_wide_values_expand_terminally_and_pending_reentry_is_strict() {
         };
         assert!(pending.source().same_occurrence(&source));
         assert_eq!(pending.source().importance(), CssImportance::Important);
-        assert_eq!(
+        assert!(
             pending
                 .reenter(parse_component_values("var(--again)").unwrap())
                 .unwrap_err()
-                .kind(),
-            &CssExpansionErrorKind::ResidualSubstitution
+                .is_residual_substitution()
         );
         for invalid in ["repeat(2, 10px)", "[line] 10px", "none", "auto / 10px"] {
             assert!(
-                matches!(
-                    pending
-                        .reenter(parse_component_values(invalid).unwrap())
-                        .unwrap_err()
-                        .kind(),
-                    CssExpansionErrorKind::InvalidReplacement(_)
-                ),
+                pending
+                    .reenter(parse_component_values(invalid).unwrap())
+                    .unwrap_err()
+                    .replacement_error()
+                    .is_some(),
                 "{name}:{invalid}"
             );
         }
@@ -313,10 +310,7 @@ fn normalization_reports_exact_rule_declaration_and_contribution_limits() {
             ),
         ] {
             let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
-            assert_eq!(
-                error.kind(),
-                &CssNormalizationErrorKind::LimitExceeded { resource, limit: 0 }
-            );
+            assert_eq!(error.exhausted_limit(), Some((resource, 0)));
             assert_eq!(report.syntax(), &original);
         }
         assert!(

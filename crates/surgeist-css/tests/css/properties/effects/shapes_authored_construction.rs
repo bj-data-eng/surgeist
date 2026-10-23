@@ -136,9 +136,10 @@ fn checked_shape_composition_retains_omission_and_each_explicit_box() {
 
 #[test]
 fn image_only_composition_rejects_bare_none_but_keeps_two_none_children() {
-    assert_eq!(
-        CssImage::try_new(CssImageValue::None).unwrap_err(),
-        CssImageConstructionError::NotImage
+    assert!(
+        CssImage::try_new(CssImageValue::None)
+            .unwrap_err()
+            .is_not_image()
     );
     let branches = CssLightDarkImage::try_new(CssImageValue::None, CssImageValue::None).unwrap();
     let image = CssImage::try_new(CssImageValue::LightDark(Box::new(branches))).unwrap();
@@ -308,10 +309,7 @@ fn margin_wrappers_keep_exact_checked_literals_and_deferred_negative_math() {
             components.items()[0].clone(),
         )
         .unwrap_err();
-        assert_eq!(
-            numeric_error.kind(),
-            &CssNumericConstructionErrorKind::OutOfRange
-        );
+        assert!(numeric_error.is_out_of_range(), "{numeric_error:?}");
         assert_eq!(numeric_error.origin(), Some(components.items()[0].origin()));
         let error = parse_property_value(
             CssPropertyNameRef::Known(CssKnownProperty::ShapeMargin),
@@ -321,7 +319,7 @@ fn margin_wrappers_keep_exact_checked_literals_and_deferred_negative_math() {
         .unwrap_err();
         assert_eq!(
             error.origin(),
-            &CssSerializedOrigin::Token(components.items()[0].origin().clone())
+            CssSerializedOrigin::Token(components.items()[0].origin().clone())
         );
     }
 }
@@ -361,7 +359,7 @@ fn checked_numeric_construction_retains_programmatic_zero_and_rechecks_bare_nega
                 .unwrap();
         let error =
             CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(calculation).unwrap_err();
-        assert_eq!(error.kind(), &CssNumericConstructionErrorKind::OutOfRange);
+        assert!(error.is_out_of_range(), "{error:?}");
         assert_eq!(error.origin(), Some(input.items()[0].origin()));
     }
 }

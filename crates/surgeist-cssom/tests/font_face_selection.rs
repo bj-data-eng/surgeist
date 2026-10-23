@@ -33,9 +33,7 @@ fn new_font_face_selection_initialization_rejects_resource_failure_atomically() 
         assert!(
             matches!(
                 result,
-                Err(CssomError::FontFace(
-                    CssFontFaceDeclarationBlockError::Serialization(_)
-                ))
+                Err(CssomError::FontFace(ref error)) if error.serialization().is_some()
             ),
             "new selected FontFace projection returned {result:?}"
         );

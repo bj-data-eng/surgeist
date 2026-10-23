@@ -1,6 +1,8 @@
 //! Functional checked-value and canonical-writer contracts from Will Change 1 §2,
 //! Scroll Anchoring 1 §3, and Fragmentation 3 §5.4, using the pinned editions.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::normal_declaration as declaration;
 use surgeist_css::*;
 
@@ -117,16 +119,13 @@ fn mixed_keyword_exclusions_and_escaped_exclusions_reject_with_component_origins
             CssImportance::Normal,
         )
         .unwrap_err();
-        assert!(
-            matches!(error.kind(), CssPropertyValueErrorKind::Grammar(_)),
-            "{text}"
-        );
+        assert!(error.code().is_some(), "{text}");
         let origin = match error.origin() {
             CssSerializedOrigin::Token(origin) | CssSerializedOrigin::End(Some(origin)) => origin,
             other => panic!("{other:?}"),
         };
         assert!(
-            original.items().iter().any(|item| item.origin() == origin),
+            original.items().iter().any(|item| *item.origin() == origin),
             "{text}"
         );
     }
@@ -149,18 +148,21 @@ fn identifier_escaping_and_repeated_entries_share_exact_resource_budgets() {
     for (limits, kind) in [
         (
             CssSerializationLimits::new(3, 4, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(4, 3, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(4, 4, expected.len() - 1),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
-        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+            kind
+        );
         assert_eq!(value, snapshot);
         assert_eq!(value.serialize_specified(exact).unwrap(), expected);
     }
@@ -177,22 +179,19 @@ fn auto_writer_has_one_node_and_four_bytes() {
     for (limits, kind) in [
         (
             CssSerializationLimits::new(0, 1, 4),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(1, 0, 4),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(1, 1, 3),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            CssWillChange::Auto
-                .serialize_specified(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&CssWillChange::Auto.serialize_specified(limits).unwrap_err()),
             kind
         );
     }
@@ -260,18 +259,18 @@ fn keyword_writers_enforce_exact_limits_atomically() {
         for (limits, kind) in [
             (
                 CssSerializationLimits::new(0, 1, css.len()),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                SerializationFailure::InputNodeLimit,
             ),
             (
                 CssSerializationLimits::new(1, 0, css.len()),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
                 CssSerializationLimits::new(1, 1, css.len() - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                SerializationFailure::ByteLimit,
             ),
         ] {
-            assert_eq!(emit(limits).unwrap_err().kind(), kind);
+            assert_eq!(serialization_failure(&emit(limits).unwrap_err()), kind);
             assert_eq!(emit(exact).unwrap(), css);
             assert_eq!(
                 source

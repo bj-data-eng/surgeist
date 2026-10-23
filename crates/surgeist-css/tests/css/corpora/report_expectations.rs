@@ -14,9 +14,9 @@
 use std::ops::Range;
 
 use surgeist_css::{
-    CssDeclaration, CssErrorCode, CssImportance, CssKnownPropertyValueRef, CssPropertyNameRef,
-    CssRecoveryAction, CssRecoveryDiagnostic, CssRule, CssSourcePosition, CssTokenKind,
-    CssTokenSummary, ErrorKind, parse_sheet, parse_style_attribute,
+    CssDeclaration, CssError, CssErrorCode, CssImportance, CssKnownPropertyValueRef,
+    CssPropertyNameRef, CssRecoveryAction, CssRecoveryDiagnostic, CssRule, CssSourcePosition,
+    CssTokenKind, parse_sheet, parse_style_attribute,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -422,28 +422,29 @@ fn observe_diagnostic(diagnostic: &CssRecoveryDiagnostic) -> Reject {
         offset: error.position().byte_offset().value(),
         span: diagnostic.span().start().byte_offset().value()
             ..diagnostic.span().end().byte_offset().value(),
-        subject: subject(error.kind()),
+        subject: subject(error),
     }
 }
 
-fn subject(kind: &ErrorKind) -> Subject {
-    let token = |token: Option<&CssTokenSummary>| {
-        token.map_or(Subject::End, |token| {
+fn subject(error: &CssError) -> Subject {
+    let token = || {
+        error.encountered().map_or(Subject::End, |token| {
             Subject::Token(token.kind(), token.authored().to_owned())
         })
     };
-    match kind {
-        ErrorKind::UnexpectedEnd(_) => Subject::End,
-        ErrorKind::UnexpectedToken(detail) => token(Some(detail.encountered())),
-        ErrorKind::UnknownAtRule(detail) => Subject::Name(detail.name().as_str().to_owned()),
-        ErrorKind::UnknownProperty(detail) => Subject::Name(detail.name().as_str().to_owned()),
-        ErrorKind::InvalidAtRulePlacement(detail) => {
-            Subject::Name(detail.name().as_str().to_owned())
+    match error.code() {
+        CssErrorCode::UnexpectedEnd => Subject::End,
+        CssErrorCode::UnexpectedToken
+        | CssErrorCode::InvalidQualifiedRule
+        | CssErrorCode::InvalidSelector
+        | CssErrorCode::InvalidPropertyValue => token(),
+        CssErrorCode::UnknownAtRule | CssErrorCode::InvalidAtRulePlacement => {
+            Subject::Name(error.at_rule().unwrap().as_str().to_owned())
         }
-        ErrorKind::InvalidQualifiedRule(detail) => token(detail.encountered()),
-        ErrorKind::InvalidSelector(detail) => token(detail.encountered()),
-        ErrorKind::InvalidPropertyValue(detail) => token(detail.encountered()),
-        other => panic!("no expectation row subject for {other:?}"),
+        CssErrorCode::UnknownProperty => {
+            Subject::Name(error.property_name().unwrap().as_str().to_owned())
+        }
+        _ => panic!("no expectation row subject for {error:?}"),
     }
 }
 
@@ -1525,10 +1526,13 @@ fn removed_track_declarations_preserve_adjacent_current_alignment_and_custom_sem
         .iter()
         .zip(["align-tracks", "justify-tracks"])
     {
-        let ErrorKind::UnknownProperty(detail) = diagnostic.error().kind() else {
-            panic!("unknown obsolete property")
-        };
-        assert_eq!(detail.name().as_str(), name);
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::UnknownProperty,
+            "unknown obsolete property"
+        );
+        assert_eq!(detail.property_name().unwrap().as_str(), name);
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
         assert_eq!(
             diagnostic.error().position().byte_offset().value(),

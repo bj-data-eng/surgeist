@@ -11,8 +11,8 @@ use crate::css::support::rules::declaration_text;
 use surgeist_css::{
     CssErrorCode, CssNamespaceContext, CssNormalizedItem, CssNormalizedSheet, CssPseudoClass,
     CssRecoveryAction, CssRule, CssRuleContextKindRef, CssSelector, CssSelectorBinding,
-    CssSelectorCombinator, CssStyleSelector, CssTokenKind, ErrorKind, normalize_sheet,
-    parse_selector, parse_sheet,
+    CssSelectorCombinator, CssStyleSelector, CssTokenKind, normalize_sheet, parse_selector,
+    parse_sheet,
 };
 
 fn stream(sheet: &CssNormalizedSheet) -> Vec<String> {
@@ -354,9 +354,12 @@ fn identifier_led_invalid_child_is_one_recovery_unit_without_descendant_promotio
         diagnostic.error().position().byte_offset().value(),
         start + 4
     );
-    let ErrorKind::InvalidSelector(detail) = diagnostic.error().kind() else {
-        panic!("the nested rule's selector failure");
-    };
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidSelector,
+        "the nested rule's selector failure"
+    );
     let encountered = detail.encountered().expect("responsible selector token");
     assert_eq!(encountered.kind(), CssTokenKind::Ident);
     assert_eq!(encountered.authored(), "extra");
@@ -364,7 +367,21 @@ fn identifier_led_invalid_child_is_one_recovery_unit_without_descendant_promotio
     let [top_diagnostic] = top.diagnostics() else {
         panic!("the same rule at the top level");
     };
-    assert_eq!(top_diagnostic.error().kind(), diagnostic.error().kind());
+    let (top_error, nested_error) = (top_diagnostic.error(), diagnostic.error());
+    assert_eq!(
+        (
+            top_error.code(),
+            top_error.production(),
+            top_error.expectation(),
+            top_error.encountered()
+        ),
+        (
+            nested_error.code(),
+            nested_error.production(),
+            nested_error.expectation(),
+            nested_error.encountered()
+        )
+    );
     assert_eq!(
         top_diagnostic.error().position().byte_offset().value() + start,
         diagnostic.error().position().byte_offset().value()

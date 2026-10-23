@@ -14,6 +14,7 @@ fn parsed(p: P, value: &str) -> CssDeclaration {
     };
     source.clone()
 }
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::named_property::longhand_contributions as completed;
 use crate::css::support::serialization_limits::assert_node_limits as provider;
 use surgeist_css::CssKnownProperty as P;
@@ -637,13 +638,10 @@ fn new_constituent_browser_recovery_retains_eof_and_strict_checked_rejection() {
             ),
         ] {
             let error = result.unwrap_err();
-            assert!(matches!(
-                error.kind(),
-                CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
-            ));
+            assert!(error.code() == Some(CssErrorCode::UnexpectedEnd));
             assert_eq!(
                 error.origin(),
-                &CssSerializedOrigin::End(Some(origin.clone()))
+                CssSerializedOrigin::End(Some(origin.clone()))
             );
         }
         assert_eq!(source, &before);
@@ -680,11 +678,8 @@ fn new_constituent_browser_recovery_retains_eof_and_strict_checked_rejection() {
             )
             .unwrap_err();
             assert_eq!(
-                error.kind(),
-                &CssNormalizationErrorKind::LimitExceeded {
-                    resource: CssNormalizationResource::Contributions,
-                    limit: 0
-                }
+                error.exhausted_limit(),
+                Some((CssNormalizationResource::Contributions, 0))
             );
             assert!(error.declaration().unwrap().same_occurrence(item.source()));
         }
@@ -710,13 +705,13 @@ fn typed_pending_retries_keep_original_occurrence_and_replacement_snapshots() {
         let replacement = parse_component_values(css).unwrap();
         for invalid in [bad.to_string(), format!("{css}/*"), "initial/*".into()] {
             for _ in 0..2 {
-                assert!(matches!(
+                assert!(
                     handle
                         .reenter(parse_component_values(&invalid).unwrap())
                         .unwrap_err()
-                        .kind(),
-                    CssExpansionErrorKind::InvalidReplacement(_)
-                ));
+                        .replacement_error()
+                        .is_some()
+                );
             }
             let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap()
             else {
@@ -733,12 +728,11 @@ fn typed_pending_retries_keep_original_occurrence_and_replacement_snapshots() {
                 );
             }
         }
-        assert_eq!(
+        assert!(
             handle
                 .reenter(parse_component_values("env(again)").unwrap())
                 .unwrap_err()
-                .kind(),
-            &CssExpansionErrorKind::ResidualSubstitution
+                .is_residual_substitution()
         );
         for _ in 0..2 {
             let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap()
@@ -852,10 +846,7 @@ fn seven_property_normalization_shares_context_and_atomic_eleven_member_budget()
     ] {
         for _ in 0..2 {
             let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
-            assert_eq!(
-                error.kind(),
-                &CssNormalizationErrorKind::LimitExceeded { resource, limit }
-            );
+            assert_eq!(error.exhausted_limit(), Some((resource, limit)));
             assert_eq!(error.declaration_order(), Some(7));
             assert!(
                 error
@@ -870,8 +861,8 @@ fn seven_property_normalization_shares_context_and_atomic_eleven_member_budget()
 }
 #[test]
 fn new_trim_declarations_and_sibling_rules_share_exact_provider_budgets() {
+    use crate::css::support::failure_classes::SerializationFailure as Kind;
     use CssSerializationLimits as Limits;
-    use CssSpecifiedValueSerializationErrorKind as Kind;
     let source = parsed(P::WhiteSpaceTrim, "discard-after discard-before");
     let before = source.clone();
     let expected = "white-space-trim: discard-before discard-after !important;";
@@ -887,7 +878,10 @@ fn new_trim_declarations_and_sibling_rules_share_exact_provider_budgets() {
         (Limits::new(4, 4, expected.len() - 1), Kind::ByteLimit),
     ] {
         for _ in 0..2 {
-            assert_eq!(source.serialize_specified(limits).unwrap_err().kind(), kind);
+            assert_eq!(
+                serialization_failure(&source.serialize_specified(limits).unwrap_err()),
+                kind
+            );
         }
         assert_eq!(source, before);
     }
@@ -916,7 +910,7 @@ fn new_trim_declarations_and_sibling_rules_share_exact_provider_budgets() {
     );
     for _ in 0..2 {
         let error = report.syntax().serialize_specified(short).unwrap_err();
-        assert_eq!(error.kind(), Kind::ByteLimit);
+        assert!(error.is_byte_limit(), "{error:?}");
         assert_eq!(error.rule_index(), Some(1));
         assert_eq!(report, before);
     }

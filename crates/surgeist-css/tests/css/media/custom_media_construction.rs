@@ -1,6 +1,8 @@
 //! Independent checked-model and canonical-output witnesses for MQ5 custom media.
 use crate::css::support::authored_syntax::assert_diagnostics;
 use crate::css::support::component_values as components;
+use crate::css::support::failure_classes::ComponentFailure;
+use crate::css::support::failure_classes::component_failure;
 use surgeist_css::*;
 
 fn list(css: &str) -> CssMediaQueryList {
@@ -36,24 +38,27 @@ fn decoded_names_escape_without_changing_extension_identity() {
     }
     // `<extension-name>` is a dashed ident; the empty string is no ident.
     for name in ["ordinary", "-x"] {
-        assert_eq!(
-            CssCustomMediaName::try_new(name),
-            Err(CssCustomMediaConstructionError::InvalidName {
-                origin: CssValueOrigin::Programmatic
-            }),
+        assert!(
+            CssCustomMediaName::try_new(name)
+                .as_ref()
+                .is_err_and(|error| error.is_invalid_name()
+                    && error.origin() == &CssValueOrigin::Programmatic),
             "{name:?}"
         );
     }
-    let Err(CssCustomMediaConstructionError::Component(error)) = CssCustomMediaName::try_new("")
-    else {
+    let Err(outer) = CssCustomMediaName::try_new("") else {
         panic!("empty name")
     };
-    assert_eq!(error.kind(), CssComponentValueErrorKind::InvalidIdentifier);
+    let Some(error) = outer.component_error() else {
+        panic!("empty name")
+    };
+    assert!(error.is_invalid_identifier(), "{error:?}");
     assert_eq!(error.origin(), &CssValueOrigin::Programmatic);
     let number = components("2").items()[0].clone();
     let origin = number.origin().clone();
     assert!(
-        matches!(CssCustomMediaName::try_from_component(number),Err(CssCustomMediaConstructionError::InvalidName{origin:actual})if actual==origin)
+        CssCustomMediaName::try_from_component(number)
+            .is_err_and(|error| error.is_invalid_name() && *error.origin() == origin)
     );
 }
 
@@ -87,7 +92,12 @@ fn standalone_boolean_media_bodies_are_rejected_with_the_exact_type_origin() {
         let media = list(source);
         let expected = media.queries()[0].origin().clone();
         assert!(
-            matches!(CssCustomMediaRule::try_new(programmatic_name(), CssCustomMediaBody::Media(media), Default::default()),Err(CssCustomMediaConstructionError::AmbiguousMediaBody{origin})if origin==expected),
+            CssCustomMediaRule::try_new(
+                programmatic_name(),
+                CssCustomMediaBody::Media(media),
+                Default::default()
+            )
+            .is_err_and(|error| error.is_ambiguous_media_body() && *error.origin() == expected),
             "{source}"
         );
     }
@@ -131,16 +141,16 @@ fn component_boolean_selection_and_empty_media_body_remain_distinct() {
             expected
         );
     }
-    assert!(matches!(
-        CssCustomMediaRule::try_from_components(components(""), Default::default()),
-        Err(CssCustomMediaConstructionError::InvalidPrelude { .. })
-    ));
+    assert!(
+        CssCustomMediaRule::try_from_components(components(""), Default::default())
+            .as_ref()
+            .is_err_and(|error| error.is_invalid_prelude())
+    );
     for input in ["--x ,screen", "--x screen, ", "--x (--x: 1)"] {
         assert!(
-            matches!(
-                CssCustomMediaRule::try_from_components(components(input), Default::default()),
-                Err(CssCustomMediaConstructionError::Media(_))
-            ),
+            CssCustomMediaRule::try_from_components(components(input), Default::default())
+                .is_err_and(|error| error.is_invalid_query_grammar()
+                    || error.is_invalid_condition_grammar()),
             "{input}"
         );
     }
@@ -186,7 +196,7 @@ fn reference_inspection_agrees_across_parsed_and_mixed_origin_checked_admission(
         ("not ((--x: 1))", Some(6)),
         ("(1 < --x)", Some(5)),
     ] {
-        let Err(CssMediaConstructionError::InvalidConditionGrammar { origin }) =
+        let Err(error) =
             CssMediaCondition::try_from_components(components(source), Default::default())
         else {
             panic!(
@@ -194,7 +204,8 @@ fn reference_inspection_agrees_across_parsed_and_mixed_origin_checked_admission(
                 CssMediaCondition::try_from_components(components(source), Default::default())
             )
         };
-        let CssValueOrigin::Parsed(origin) = origin else {
+        assert!(error.is_invalid_condition_grammar(), "{source}: {error:?}");
+        let CssValueOrigin::Parsed(origin) = error.origin() else {
             panic!("{source}: parsed failing token")
         };
         assert_eq!(origin.source().as_str(), source);
@@ -236,11 +247,14 @@ fn parsed_rule_grammar_tokens_and_eof_terminators_keep_honest_origins() {
     );
     assert_eq!(diagnostic.span().start().byte_offset().value(), 0);
     assert_eq!(diagnostic.span().end().byte_offset().value(), source.len());
-    let ErrorKind::UnexpectedEnd(detail) = diagnostic.error().kind() else {
-        panic!("typed statement EOF");
-    };
+    let detail = diagnostic.error();
     assert_eq!(
-        detail.expectation().as_str(),
+        detail.code(),
+        CssErrorCode::UnexpectedEnd,
+        "typed statement EOF"
+    );
+    assert_eq!(
+        detail.expectation().unwrap().as_str(),
         "a semicolon or block terminating an at-rule"
     );
     let [CssRule::CustomMedia(eof_rule)] = report.syntax().rules() else {
@@ -348,26 +362,31 @@ fn recovered_members_and_implicit_components_are_rejected_by_checked_constructio
     );
     let never = report.syntax().queries()[1].origin().clone();
     assert!(
-        matches!(CssCustomMediaRule::try_new(programmatic_name(), CssCustomMediaBody::Media(report.syntax().clone()), Default::default()),Err(CssCustomMediaConstructionError::RecoveredInput{origin})if origin==never)
+        CssCustomMediaRule::try_new(
+            programmatic_name(),
+            CssCustomMediaBody::Media(report.syntax().clone()),
+            Default::default()
+        )
+        .is_err_and(|error| error.is_recovered_input() && *error.origin() == never)
     );
     for source in ["--x (color", "--x true/*"] {
         assert!(
-            matches!(
-                CssCustomMediaRule::try_from_components(components(source), Default::default()),
-                Err(CssCustomMediaConstructionError::RecoveredInput { .. })
-            ),
+            CssCustomMediaRule::try_from_components(components(source), Default::default())
+                .as_ref()
+                .is_err_and(|error| error.is_recovered_input()),
             "{source}"
         );
     }
     let recovered = parse_media_query_list("(color");
-    assert!(matches!(
+    assert!(
         CssCustomMediaRule::try_new(
             programmatic_name(),
             CssCustomMediaBody::Media(recovered.syntax().clone()),
             Default::default(),
-        ),
-        Err(CssCustomMediaConstructionError::RecoveredInput { .. })
-    ));
+        )
+        .as_ref()
+        .is_err_and(|error| error.is_recovered_input())
+    );
 }
 
 #[test]
@@ -411,41 +430,51 @@ fn selected_component_limits_apply_to_input_and_canonical_output_with_original_c
         (
             "--x (color)",
             CssComponentValueLimits::try_new(0, usize::MAX, usize::MAX).unwrap(),
-            CssComponentValueErrorKind::NestingLimit,
+            ComponentFailure::NestingLimit,
         ),
         (
             "--x true",
             CssComponentValueLimits::try_new(256, 1, usize::MAX).unwrap(),
-            CssComponentValueErrorKind::ComponentLimit,
+            ComponentFailure::ComponentLimit,
         ),
         (
             "--x true",
             CssComponentValueLimits::try_new(256, usize::MAX, 3).unwrap(),
-            CssComponentValueErrorKind::ByteLimit,
+            ComponentFailure::ByteLimit,
         ),
     ] {
         let values = components(input);
-        let Err(CssCustomMediaConstructionError::Component(error)) =
-            CssCustomMediaRule::try_from_components(values, limits)
-        else {
+        let Err(outer) = CssCustomMediaRule::try_from_components(values, limits) else {
             panic!("typed {kind:?}")
         };
-        assert_eq!(error.kind(), kind);
+        let Some(error) = outer.component_error() else {
+            panic!("typed {kind:?}")
+        };
+        assert_eq!(component_failure(error), kind);
         assert!(matches!(error.origin(), CssValueOrigin::Parsed(_)));
     }
     let input = components("--x true");
     let expected = input.items()[2].origin().clone();
     let limits = CssComponentValueLimits::try_new(256, usize::MAX, 19).unwrap();
-    let Err(CssCustomMediaConstructionError::Component(error)) =
-        CssCustomMediaRule::try_from_components(input, limits)
-    else {
+    let Err(outer) = CssCustomMediaRule::try_from_components(input, limits) else {
         panic!("canonical expansion exceeds 19 bytes")
     };
-    assert_eq!(error.kind(), CssComponentValueErrorKind::ByteLimit);
+    let Some(error) = outer.component_error() else {
+        panic!("canonical expansion exceeds 19 bytes")
+    };
+    assert!(error.is_byte_limit(), "{error:?}");
     assert_eq!(error.origin(), &expected);
     let limits = CssComponentValueLimits::try_new(0, usize::MAX, usize::MAX).unwrap();
     assert!(
-        matches!(CssCustomMediaRule::try_new(programmatic_name(),CssCustomMediaBody::Media(list("(color)")),limits),Err(CssCustomMediaConstructionError::Component(error))if error.kind()==CssComponentValueErrorKind::NestingLimit)
+        CssCustomMediaRule::try_new(
+            programmatic_name(),
+            CssCustomMediaBody::Media(list("(color)")),
+            limits
+        )
+        .as_ref()
+        .is_err_and(|error| error
+            .component_error()
+            .is_some_and(|error| error.is_nesting_limit()))
     );
 }
 
@@ -487,10 +516,7 @@ fn lexical_bad_members_recover_locally_inside_retained_definitions() {
         report.diagnostics()[0].action(),
         CssRecoveryAction::ReplaceMediaQueryWithNever
     );
-    assert!(matches!(
-        report.diagnostics()[0].error().kind(),
-        ErrorKind::InvalidComponentValue(_)
-    ));
+    assert!(report.diagnostics()[0].error().code() == CssErrorCode::InvalidComponentValue);
 }
 
 #[test]

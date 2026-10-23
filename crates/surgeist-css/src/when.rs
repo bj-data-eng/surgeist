@@ -80,7 +80,7 @@ impl CssWhenMediaFeature {
     pub fn try_from_component(
         component: CssComponentValue,
         limits: CssComponentValueLimits,
-    ) -> Result<Self, CssWhenConstructionError> {
+    ) -> Result<Self, CssConditionConstructionError> {
         let values = CssComponentValues::try_new(vec![component.clone()], limits)?;
         construct(values, |values| {
             reject_recovered(&values)?;
@@ -104,60 +104,120 @@ impl CssWhenMediaFeature {
         crate::media::parsed_position(self.origin())
     }
 }
-/// A typed grammar, recovered-input or resource failure during checked admission.
+/// A `@when` condition or general-enclosed component that failed checked admission
+/// through its grammar, recovered input or a resource.
+///
+/// The failure is read through the `is_*` predicates and located by [`Self::origin`]; a
+/// rejected component is exposed by [`Self::component_error`] and is the error's source.
 #[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssWhenConstructionError {
+pub struct CssConditionConstructionError {
+    kind: ConditionConstructionKind,
+}
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum ConditionConstructionKind {
     InvalidConditionGrammar { origin: CssValueOrigin },
     InvalidMediaFeatureGrammar { origin: CssValueOrigin },
     RecoveredInput { origin: CssValueOrigin },
+    WrongOuterComponent { origin: CssValueOrigin },
     Component(CssComponentValueError),
     WorkerUnavailable { origin: CssValueOrigin },
 }
-impl CssWhenConstructionError {
+impl CssConditionConstructionError {
+    crate::error::kind_predicates! { kind;
+        /// Returns whether the components do not form a condition.
+        is_invalid_condition_grammar => ConditionConstructionKind::InvalidConditionGrammar { .. },
+        /// Returns whether a `media()` query does not form a media feature.
+        is_invalid_media_feature_grammar =>
+            ConditionConstructionKind::InvalidMediaFeatureGrammar { .. },
+        /// Returns whether an implicitly closed component was supplied.
+        is_recovered_input => ConditionConstructionKind::RecoveredInput { .. },
+        /// Returns whether a general-enclosed component is neither a function nor a
+        /// parenthesis block.
+        is_wrong_outer_component => ConditionConstructionKind::WrongOuterComponent { .. },
+        /// Returns whether the bounded deep-construction worker could not be started.
+        is_worker_unavailable => ConditionConstructionKind::WorkerUnavailable { .. },
+    }
+    /// Returns the rejected component.
     #[must_use]
-    pub fn origin(&self) -> &CssValueOrigin {
-        match self {
-            Self::InvalidConditionGrammar { origin }
-            | Self::InvalidMediaFeatureGrammar { origin }
-            | Self::RecoveredInput { origin }
-            | Self::WorkerUnavailable { origin } => origin,
-            Self::Component(error) => error.origin(),
-        }
-    }
-}
-impl fmt::Display for CssWhenConstructionError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "invalid authored when construction: {self:?}")
-    }
-}
-impl std::error::Error for CssWhenConstructionError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::Component(error) => Some(error),
+    pub const fn component_error(&self) -> Option<&CssComponentValueError> {
+        match &self.kind {
+            ConditionConstructionKind::Component(error) => Some(error),
             _ => None,
         }
     }
+    /// Returns the responsible original or programmatic origin.
+    #[must_use]
+    pub const fn origin(&self) -> &CssValueOrigin {
+        match &self.kind {
+            ConditionConstructionKind::InvalidConditionGrammar { origin }
+            | ConditionConstructionKind::InvalidMediaFeatureGrammar { origin }
+            | ConditionConstructionKind::RecoveredInput { origin }
+            | ConditionConstructionKind::WrongOuterComponent { origin }
+            | ConditionConstructionKind::WorkerUnavailable { origin } => origin,
+            ConditionConstructionKind::Component(error) => error.origin(),
+        }
+    }
+    pub(crate) fn into_kind(self) -> ConditionConstructionKind {
+        self.kind
+    }
 }
-impl From<CssComponentValueError> for CssWhenConstructionError {
+impl From<ConditionConstructionKind> for CssConditionConstructionError {
+    fn from(kind: ConditionConstructionKind) -> Self {
+        Self { kind }
+    }
+}
+impl fmt::Display for CssConditionConstructionError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let reason = match &self.kind {
+            ConditionConstructionKind::WrongOuterComponent { .. } => {
+                return f.write_str("expected a function or parenthesis component");
+            }
+            ConditionConstructionKind::InvalidConditionGrammar { .. } => {
+                "the components do not form a condition"
+            }
+            ConditionConstructionKind::InvalidMediaFeatureGrammar { .. } => {
+                "the media() query does not form a media feature"
+            }
+            ConditionConstructionKind::RecoveredInput { .. } => {
+                "an implicitly closed component is not admitted"
+            }
+            ConditionConstructionKind::Component(_) => "a component is invalid",
+            ConditionConstructionKind::WorkerUnavailable { .. } => {
+                "the construction thread could not be started"
+            }
+        };
+        write!(f, "invalid authored when construction: {reason}")
+    }
+}
+impl std::error::Error for CssConditionConstructionError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.component_error()
+            .map(|error| error as &(dyn std::error::Error + 'static))
+    }
+}
+impl From<CssComponentValueError> for CssConditionConstructionError {
     fn from(error: CssComponentValueError) -> Self {
-        Self::Component(error)
+        Self {
+            kind: ConditionConstructionKind::Component(error),
+        }
     }
 }
 pub(crate) fn reject_recovered(
     values: &CssComponentValues,
-) -> Result<(), CssWhenConstructionError> {
+) -> Result<(), CssConditionConstructionError> {
     if let Some(origin) = values.first_implicit_origin() {
-        return Err(CssWhenConstructionError::RecoveredInput {
-            origin: origin.clone(),
-        });
+        return Err(CssConditionConstructionError::from(
+            crate::when::ConditionConstructionKind::RecoveredInput {
+                origin: origin.clone(),
+            },
+        ));
     }
     Ok(())
 }
 fn construct<T: Send>(
     values: CssComponentValues,
-    action: impl FnOnce(CssComponentValues) -> Result<T, CssWhenConstructionError> + Send,
-) -> Result<T, CssWhenConstructionError> {
+    action: impl FnOnce(CssComponentValues) -> Result<T, CssConditionConstructionError> + Send,
+) -> Result<T, CssConditionConstructionError> {
     if values.nesting_depth() < 32 {
         return action(values);
     }
@@ -173,7 +233,11 @@ fn construct<T: Send>(
             .spawn_scoped(scope, || {
                 action(values.take().expect("single construction worker"))
             })
-            .map_err(|_| CssWhenConstructionError::WorkerUnavailable { origin })?;
+            .map_err(|_| {
+                CssConditionConstructionError::from(
+                    crate::when::ConditionConstructionKind::WorkerUnavailable { origin },
+                )
+            })?;
         match worker.join() {
             Ok(result) => result,
             Err(panic) => std::panic::resume_unwind(panic),
@@ -212,14 +276,14 @@ impl CssWhenCondition {
     pub fn try_from_components(
         values: CssComponentValues,
         limits: CssComponentValueLimits,
-    ) -> Result<Self, CssWhenConstructionError> {
+    ) -> Result<Self, CssConditionConstructionError> {
         Self::try_in_context(values, limits, CssParserContext::default())
     }
     pub(crate) fn try_in_context(
         values: CssComponentValues,
         limits: CssComponentValueLimits,
         context: CssParserContext,
-    ) -> Result<Self, CssWhenConstructionError> {
+    ) -> Result<Self, CssConditionConstructionError> {
         construct(values, |values| {
             values.validate_with_limits(limits)?;
             reject_recovered(&values)?;
@@ -261,27 +325,29 @@ impl CssWhenCondition {
     }
 }
 /// Checks condition text without evaluating its supported or opaque tests.
-pub fn parse_when_condition(source: &str) -> Result<CssWhenCondition, CssWhenConstructionError> {
+pub fn parse_when_condition(
+    source: &str,
+) -> Result<CssWhenCondition, CssConditionConstructionError> {
     parse_when_condition_with_limits(source, CssComponentValueLimits::default())
 }
 pub fn parse_when_condition_with_limits(
     source: &str,
     limits: CssComponentValueLimits,
-) -> Result<CssWhenCondition, CssWhenConstructionError> {
+) -> Result<CssWhenCondition, CssConditionConstructionError> {
     CssParserContext::default().parse_when_condition_with_limits(source, limits)
 }
 impl CssParserContext {
     pub fn parse_when_condition(
         self,
         source: &str,
-    ) -> Result<CssWhenCondition, CssWhenConstructionError> {
+    ) -> Result<CssWhenCondition, CssConditionConstructionError> {
         self.parse_when_condition_with_limits(source, CssComponentValueLimits::default())
     }
     pub fn parse_when_condition_with_limits(
         self,
         source: &str,
         limits: CssComponentValueLimits,
-    ) -> Result<CssWhenCondition, CssWhenConstructionError> {
+    ) -> Result<CssWhenCondition, CssConditionConstructionError> {
         CssWhenCondition::try_in_context(
             parse_component_values_with_limits(source, limits)?,
             limits,

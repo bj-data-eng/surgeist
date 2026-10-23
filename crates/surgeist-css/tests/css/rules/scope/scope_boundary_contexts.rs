@@ -34,11 +34,10 @@ fn checked_relative_members_preserve_combinators_and_contextual_root_admission()
         CssSelectorCombinator::SubsequentSibling,
     ] {
         let boundary = relative(combinator, CssSelector::Class("target".into()));
-        assert_eq!(
+        assert!(
             new_scope(Some(boundary.clone()), None, CssScopeNestingContext::None)
                 .unwrap_err()
-                .kind(),
-            CssRuleConstructionErrorKind::InvalidPlacement
+                .is_invalid_placement()
         );
         for nesting in [CssScopeNestingContext::Style, CssScopeNestingContext::Scope] {
             let scope = new_scope(Some(boundary.clone()), Some(boundary.clone()), nesting).unwrap();
@@ -73,7 +72,7 @@ fn checked_assembly_revalidates_actual_scope_ancestry_and_parsed_position() {
     };
     let before = inner.clone();
     let error = CssSheet::try_from_rules(vec![CssRule::Scope(inner.clone())]).unwrap_err();
-    assert_eq!(error.kind(), CssRuleConstructionErrorKind::InvalidPlacement);
+    assert!(error.is_invalid_placement(), "{error:?}");
     assert_eq!(error.path(), &[0]);
     assert_eq!(error.position(), inner.position());
     assert_eq!(
@@ -136,10 +135,7 @@ fn relative_boundary_payloads_share_checked_namespace_admission() {
         CssScopeNestingContext::Style,
     )
     .unwrap_err();
-    assert_eq!(
-        error.kind(),
-        CssRuleConstructionErrorKind::NamespaceMismatch
-    );
+    assert!(error.is_namespace_mismatch(), "{error:?}");
     assert!(error.path().is_empty());
     assert_eq!(error.position(), None);
     assert_eq!(*scope, before);
@@ -163,16 +159,16 @@ fn explicit_boundary_anchors_cannot_silently_change_categories_when_reassembled(
         (inner.root().cloned(), CssScopeNestingContext::Style),
         (inner.root().cloned(), CssScopeNestingContext::None),
     ] {
-        assert_eq!(
-            new_scope(root, None, nesting).unwrap_err().kind(),
-            CssRuleConstructionErrorKind::InvalidBoundaryAnchor
+        assert!(
+            new_scope(root, None, nesting)
+                .unwrap_err()
+                .is_invalid_boundary_anchor()
         );
     }
-    assert_eq!(
+    assert!(
         new_scope(None, ordinary.root().cloned(), CssScopeNestingContext::None)
             .unwrap_err()
-            .kind(),
-        CssRuleConstructionErrorKind::InvalidBoundaryAnchor
+            .is_invalid_boundary_anchor()
     );
     let moved = CssScopeRule::try_new(
         None,
@@ -182,10 +178,7 @@ fn explicit_boundary_anchors_cannot_silently_change_categories_when_reassembled(
         CssScopeNestingContext::None,
     )
     .unwrap_err();
-    assert_eq!(
-        moved.kind(),
-        CssRuleConstructionErrorKind::InvalidBoundaryAnchor
-    );
+    assert!(moved.is_invalid_boundary_anchor(), "{moved:?}");
     assert_eq!(moved.path(), &[0]);
     assert_eq!(moved.position(), ordinary.position());
     assert!(
@@ -221,9 +214,10 @@ fn relative_payloads_reject_pseudo_elements_bad_identifiers_and_excess_function_
             CssSelectorCombinator::Child,
             CssSelector::Class("\0".into()),
         );
-        assert_eq!(
-            new_scope(None, Some(bad), nesting).unwrap_err().kind(),
-            CssRuleConstructionErrorKind::InvalidSelectorIdentifier
+        assert!(
+            new_scope(None, Some(bad), nesting)
+                .unwrap_err()
+                .is_invalid_selector_identifier()
         );
     }
     let mut selector = CssSelector::Class("leaf".into());
@@ -243,15 +237,14 @@ fn relative_payloads_reject_pseudo_elements_bad_identifiers_and_excess_function_
     selector = CssSelector::PseudoClass(CssPseudoClass::Is(
         CssPseudoSelectorList::try_new(vec![selector], Default::default()).unwrap(),
     ));
-    assert_eq!(
+    assert!(
         new_scope(
             None,
             Some(relative(CssSelectorCombinator::Child, selector)),
             CssScopeNestingContext::None
         )
         .unwrap_err()
-        .kind(),
-        CssRuleConstructionErrorKind::SelectorNestingLimit
+        .is_selector_nesting_limit()
     );
 }
 
@@ -375,13 +368,12 @@ fn mixed_ancestry_keeps_implicit_root_order_explicit_style_anchors_and_direct_ru
         .unwrap();
         assert_eq!(constructed.position(), None);
         assert_eq!(constructed.rules(), inner.rules());
-        assert_eq!(
+        assert!(
             CssSheet::try_from_rules(vec![CssRule::Scope(constructed)])
                 .unwrap_err()
-                .kind(),
-            CssRuleConstructionErrorKind::InvalidPlacement
+                .is_invalid_placement()
         );
-        assert_eq!(
+        assert!(
             CssScopeRule::try_new(
                 inner.root().cloned(),
                 inner.limit().cloned(),
@@ -390,8 +382,7 @@ fn mixed_ancestry_keeps_implicit_root_order_explicit_style_anchors_and_direct_ru
                 CssScopeNestingContext::Scope
             )
             .unwrap_err()
-            .kind(),
-            CssRuleConstructionErrorKind::InvalidBoundaryAnchor
+            .is_invalid_boundary_anchor()
         );
         let normalized = normalize_sheet(&input).unwrap();
         let inner_context = normalized

@@ -146,12 +146,11 @@ fn attr_remains_residual_at_any_depth_before_replacement_grammar() {
         panic!("source pending")
     };
     for text in ["attr(foo)", "attr()", "f([ATTR(foo,)])", "block attr(foo)"] {
-        assert_eq!(
+        assert!(
             pending
                 .reenter(parse_component_values(text).unwrap())
                 .unwrap_err()
-                .kind(),
-            &CssExpansionErrorKind::ResidualSubstitution,
+                .is_residual_substitution(),
             "{text}"
         );
     }

@@ -323,22 +323,45 @@ pub fn assert_diagnostics(
     assert_eq!(actual, expected, "{diagnostics:?}");
 }
 
-/// Asserts that `kind` reports an invalid value of `property` whose grammar
+/// Asserts that `error` reports an invalid value of `property` whose grammar
 /// first failed at the authored token `token`, or at EOF when it is `None`.
 #[track_caller]
 pub fn assert_invalid_property_value(
-    kind: &ErrorKind,
+    error: &CssError,
     property: CssKnownProperty,
     token: Option<&str>,
 ) {
-    let ErrorKind::InvalidPropertyValue(detail) = kind else {
-        panic!("invalid property value: {kind:?}")
-    };
-    assert_eq!(detail.property(), property, "{kind:?}");
     assert_eq!(
-        detail.encountered().map(|token| token.authored()),
+        error.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "{error:?}"
+    );
+    assert_eq!(error.known_property(), Some(property), "{error:?}");
+    assert_eq!(
+        error.encountered().map(|token| token.authored()),
         token,
-        "{kind:?}"
+        "{error:?}"
+    );
+}
+
+/// [`assert_invalid_property_value`] for a checked property-value failure, which
+/// reports the same grammar facts without an authored position.
+#[track_caller]
+pub fn assert_checked_invalid_property_value(
+    error: &CssPropertyValueError,
+    property: CssKnownProperty,
+    token: Option<&str>,
+) {
+    assert_eq!(
+        error.code(),
+        Some(CssErrorCode::InvalidPropertyValue),
+        "{error:?}"
+    );
+    assert_eq!(error.known_property(), Some(property), "{error:?}");
+    assert_eq!(
+        error.encountered().map(|token| token.authored()),
+        token,
+        "{error:?}"
     );
 }
 

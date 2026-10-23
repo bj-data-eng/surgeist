@@ -313,20 +313,22 @@ fn delete_removes_all_serialized_matches_and_not_found_aborts_then_retry_succeed
 
 #[test]
 fn complete_scan_budget_fails_atomically_including_later_members_and_retries() {
-    for (css, expected) in [
+    type Case = (CssSerializationLimits, fn(&CssSerializationError) -> bool);
+    let cases: [Case; 3] = [
         (
             CssSerializationLimits::new(6, 7, 17),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationError::is_input_node_limit,
         ),
         (
             CssSerializationLimits::new(7, 6, 17),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationError::is_projection_node_limit,
         ),
         (
             CssSerializationLimits::new(7, 7, 16),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            CssSerializationError::is_byte_limit,
         ),
-    ] {
+    ];
+    for (css, expected) in cases {
         let mut store = CssomStore::new(
             CssomLimits {
                 css,
@@ -342,9 +344,9 @@ fn complete_scan_budget_fails_atomically_including_later_members_and_retries() {
         let before = store.snapshot();
         let mut edit = batch(&store);
         let Err(CssomError::Media(error)) = edit.append_medium(&id, "SCREEN") else {
-            panic!("whole scan must exhaust {expected:?}");
+            panic!("whole scan must exhaust {css:?}");
         };
-        assert_eq!(error.kind(), expected);
+        assert!(expected(&error), "{css:?}: {error:?}");
         assert!(matches!(store.commit(edit), Err(CssomError::BatchAborted)));
         assert_eq!(store.snapshot().revision(), before.revision());
         assert_eq!(text(&store, &store.snapshot(), &id), "screen, print");
@@ -418,9 +420,7 @@ fn snapshot_output_errors_are_typed_and_do_not_change_the_owner() {
             .item(0, CssSerializationLimits::new(2, 2, 5))
             .map(|v| v.unwrap()),
     ] {
-        assert!(
-            matches!(result, Err(CssomError::Media(error)) if error.kind() == CssSpecifiedValueSerializationErrorKind::ByteLimit)
-        );
+        assert!(matches!(result, Err(CssomError::Media(error)) if error.is_byte_limit()));
     }
     assert_eq!(text(&store, &snapshot, &id), "screen");
     assert_eq!(store.snapshot().revision(), snapshot.revision());

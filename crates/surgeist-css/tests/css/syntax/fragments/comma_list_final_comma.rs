@@ -12,10 +12,9 @@
 //! https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-face-src-parsing
 use crate::css::support::authored_syntax::parsed_origin;
 use surgeist_css::{
-    CssCustomMediaBody, CssCustomMediaConstructionError, CssCustomMediaRule,
-    CssFontFaceDescriptorKind as Kind, CssFontFaceDescriptorValue, CssImportConstructionError,
-    CssImportRule, CssMediaConstructionError, CssMediaQuery, CssMediaQueryList,
-    CssNamespaceContext, CssRecoveryAction, CssRule, parse_component_values,
+    CssCustomMediaBody, CssCustomMediaRule, CssFontFaceDescriptorKind as Kind,
+    CssFontFaceDescriptorValue, CssImportRule, CssMediaConstructionError, CssMediaQuery,
+    CssMediaQueryList, CssNamespaceContext, CssRecoveryAction, CssRule, parse_component_values,
     parse_media_query_list, parse_selector, parse_sheet,
 };
 
@@ -151,10 +150,13 @@ fn checked_media_lists_share_the_final_comma_boundary() {
         ("@import 'x.css' screen, ;", Some(23)),
         ("@import 'x.css' screen,,;", Some(23)),
     ] {
-        let Err(CssImportConstructionError::Media(error)) = import(source) else {
+        let Err(outer) = import(source) else {
             panic!("{source:?}: {:?}", import(source))
         };
-        assert_invalid_member(&error, source, responsible);
+        let Some(error) = outer.media_error() else {
+            panic!("{source:?}: {:?}", import(source))
+        };
+        assert_invalid_member(error, source, responsible);
     }
 
     let custom = |source: &str| {
@@ -169,7 +171,7 @@ fn checked_media_lists_share_the_final_comma_boundary() {
     };
     assert_eq!(list.queries().len(), 1);
     for source in ["--narrow screen, ", "--narrow screen,,"] {
-        let Err(CssCustomMediaConstructionError::Media(error)) = custom(source) else {
+        let Err(error) = custom(source) else {
             panic!("{source:?}: {:?}", custom(source))
         };
         assert_invalid_member(&error, source, Some(16));
@@ -182,10 +184,7 @@ fn assert_invalid_member(
     source: &str,
     responsible: Option<usize>,
 ) {
-    assert!(
-        matches!(error, CssMediaConstructionError::InvalidQueryGrammar { .. }),
-        "{source:?}: {error:?}"
-    );
+    assert!(error.is_invalid_query_grammar(), "{source:?}: {error:?}");
     let origin = parsed_origin(error.origin());
     assert_eq!(origin.source().as_str(), source);
     if let Some(responsible) = responsible {

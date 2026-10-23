@@ -389,19 +389,18 @@ fn stable_globals_and_pending_reentry_keep_original_occurrence_and_strict_gramma
         } else {
             "auto auto auto"
         };
-        assert!(matches!(
+        assert!(
             handle
                 .reenter(parse_component_values(invalid).unwrap())
                 .unwrap_err()
-                .kind(),
-            CssExpansionErrorKind::InvalidReplacement(_)
-        ));
-        assert_eq!(
+                .replacement_error()
+                .is_some()
+        );
+        assert!(
             handle
                 .reenter(parse_component_values("var(--again)").unwrap())
                 .unwrap_err()
-                .kind(),
-            &CssExpansionErrorKind::ResidualSubstitution
+                .is_residual_substitution()
         );
         let components = parse_component_values(replacement).unwrap();
         let CssContributions::Longhands(values) = handle.reenter(components.clone()).unwrap()
@@ -679,23 +678,20 @@ fn canonical_pair_and_quad_compression_compares_values_across_distinct_origins()
 #[test]
 fn pair_and_quad_serialization_charge_each_authored_child_under_one_budget() {
     let pair = CssScrollMarginPair::new(length("1px"), Some(length("2px")));
-    assert_eq!(
+    assert!(
         pair.serialize_specified(CssSerializationLimits::new(1, 2, 7))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+            .is_input_node_limit()
     );
-    assert_eq!(
+    assert!(
         pair.serialize_specified(CssSerializationLimits::new(2, 1, 7))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
+            .is_projection_node_limit()
     );
-    assert_eq!(
+    assert!(
         pair.serialize_specified(CssSerializationLimits::new(2, 2, 6))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(
         pair.serialize_specified(CssSerializationLimits::new(2, 2, 7))
@@ -718,28 +714,25 @@ fn pair_and_quad_serialization_charge_each_authored_child_under_one_budget() {
         quad.serialize_specified(Default::default()).unwrap(),
         "logical 1px"
     );
-    assert_eq!(
+    assert!(
         quad.serialize_specified(CssSerializationLimits::new(4, 5, 64))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+            .is_input_node_limit()
     );
-    assert_eq!(
+    assert!(
         quad.serialize_specified(CssSerializationLimits::new(5, 4, 64))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
+            .is_projection_node_limit()
     );
     assert_eq!(
         quad.serialize_specified(CssSerializationLimits::new(5, 5, 11))
             .unwrap(),
         "logical 1px"
     );
-    assert_eq!(
+    assert!(
         quad.serialize_specified(CssSerializationLimits::new(5, 5, 10))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
 }
 
@@ -767,11 +760,10 @@ fn math_pair_captures_both_authored_trees_with_one_input_budget() {
         .serialize_specified(ample_projection_and_bytes)
         .unwrap();
     let pair = CssScrollMarginPair::new(first, Some(second));
-    assert_eq!(
+    assert!(
         pair.serialize_specified(CssSerializationLimits::new(7, 64, 64))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+            .is_input_node_limit()
     );
     assert!(
         pair.serialize_specified(CssSerializationLimits::new(8, 64, 64))
@@ -803,19 +795,18 @@ fn four_side_authored_values_expand_selected_mode_footprint() {
             panic!("four-side substitution remains pending")
         };
         assert!(handle.source().same_occurrence(&source));
-        assert!(matches!(
+        assert!(
             handle
                 .reenter(parse_component_values(invalid).unwrap())
                 .unwrap_err()
-                .kind(),
-            CssExpansionErrorKind::InvalidReplacement(_)
-        ));
-        assert_eq!(
+                .replacement_error()
+                .is_some()
+        );
+        assert!(
             handle
                 .reenter(parse_component_values("var(--again)").unwrap())
                 .unwrap_err()
-                .kind(),
-            &CssExpansionErrorKind::ResidualSubstitution
+                .is_residual_substitution()
         );
         let replacement = parse_component_values(valid).unwrap();
         assert_four_contributions(handle.reenter(replacement.clone()));

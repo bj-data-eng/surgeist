@@ -257,21 +257,20 @@ fn alias_var_and_env_reentry_are_strict_retryable_and_provenance_preserving() {
         };
         assert!(handle.source().same_occurrence(&source));
         for invalid in ["45deg", "mixed", "inherit extra"] {
-            assert!(matches!(
+            assert!(
                 handle
                     .reenter(parse_component_values(invalid).unwrap())
                     .unwrap_err()
-                    .kind(),
-                CssExpansionErrorKind::InvalidReplacement(_)
-            ));
+                    .replacement_error()
+                    .is_some()
+            );
         }
         for residual in ["var(--again)", "env(--again)"] {
-            assert_eq!(
+            assert!(
                 handle
                     .reenter(parse_component_values(residual).unwrap())
                     .unwrap_err()
-                    .kind(),
-                &CssExpansionErrorKind::ResidualSubstitution
+                    .is_residual_substitution()
             );
         }
         let replacement = parse_component_values("90deg").unwrap();

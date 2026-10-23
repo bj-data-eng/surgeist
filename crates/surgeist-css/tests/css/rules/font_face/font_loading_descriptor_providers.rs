@@ -3,6 +3,8 @@
 //! shortening. CSSOM owns strings; shared specified providers own work/byte
 //! limits. No face lookup, initial-value resolution or resource load is performed.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::rules::descriptor_rejected_at;
 use crate::css::support::rules::ordinary_font_face_descriptor as ordinary;
 use crate::css::support::serialization_limits::LimitLadder;
@@ -12,7 +14,7 @@ type Kind = CssFontFaceDescriptorKind;
 type Value = CssFontFaceDescriptorValue;
 type Authored = CssAuthoredFontFaceDescriptorValue;
 type Limits = CssSerializationLimits;
-type ErrorKind = CssSpecifiedValueSerializationErrorKind;
+type ErrorKind = SerializationFailure;
 
 fn cases() -> [(Kind, &'static str, &'static str); 14] {
     [
@@ -88,7 +90,10 @@ fn every_descriptor_emits_the_same_canonical_value_after_raw_and_checked_admissi
                 ErrorKind::ByteLimit,
             ),
         ] {
-            assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), error);
+            assert_eq!(
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+                error
+            );
             assert_eq!(value, before);
         }
         assert_eq!(
@@ -130,15 +135,14 @@ fn environment_pending_values_reenter_each_concrete_grammar_without_mutating_aut
                 expected
             );
             for residual in ["env(face-value)", "var(--face-value)"] {
-                assert_eq!(
+                assert!(
                     pending
                         .reparse_after_substitution(
                             parse_component_values(residual).unwrap(),
                             Default::default()
                         )
                         .unwrap_err()
-                        .kind(),
-                    &CssFontFaceValueErrorKind::ResidualSubstitution,
+                        .is_residual_substitution(),
                     "{kind:?}: {residual}"
                 );
             }
@@ -182,7 +186,7 @@ fn descriptor_boundaries_and_stylesheet_only_substitution_do_not_become_ordinary
                 Default::default(),
             )
             .unwrap_err();
-            let CssFontFaceValueErrorKind::Grammar(detail) = error.kind() else {
+            let Some(detail) = error.diagnostic() else {
                 panic!("{kind:?}: {invalid}: grammar failure: {error:?}")
             };
             expected.assert_kind(detail);
@@ -281,12 +285,11 @@ fn metric_calculations_remain_authored_and_original_after_aggregate_failure() {
                 value.serialize_specified(Default::default()).unwrap(),
                 expected
             );
-            assert_eq!(
+            assert!(
                 value
                     .serialize_specified(Limits::new(usize::MAX, usize::MAX, expected.len() - 1))
                     .unwrap_err()
-                    .kind(),
-                ErrorKind::ByteLimit
+                    .is_byte_limit()
             );
             assert_eq!(calculation.components(), &before);
             let CssValueOrigin::Parsed(origin) = percentage.origin() else {
@@ -318,12 +321,11 @@ fn aggregate_source_emission_preserves_url_phase_modifiers_and_original_argument
         value.serialize_specified(Default::default()).unwrap(),
         expected
     );
-    assert_eq!(
+    assert!(
         value
             .serialize_specified(Limits::new(usize::MAX, usize::MAX, expected.len() - 1))
             .unwrap_err()
-            .kind(),
-        ErrorKind::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(modifier.argument_components(), &before);
     let CssValueOrigin::Parsed(origin) = modifier.argument_components().items()[0].origin() else {
@@ -366,11 +368,10 @@ fn eof_string_recovery_stays_visible_and_checked_descriptor_reentry_rejects_it()
         );
         assert!(report.into_validation_result().is_err());
         let components = parse_component_values(source).unwrap();
-        assert_eq!(
+        assert!(
             Authored::try_from_components(kind, components.clone(), Default::default())
                 .unwrap_err()
-                .kind(),
-            &CssFontFaceValueErrorKind::RecoveredComponent,
+                .is_recovered_component(),
             "{kind:?}: {source}"
         );
         let Authored::Pending(pending) = parse_font_face_descriptor_value("env(face-value)", kind)
@@ -380,12 +381,11 @@ fn eof_string_recovery_stays_visible_and_checked_descriptor_reentry_rejects_it()
         else {
             panic!("pending descriptor")
         };
-        assert_eq!(
+        assert!(
             pending
                 .reparse_after_substitution(components, Default::default())
                 .unwrap_err()
-                .kind(),
-            &CssFontFaceValueErrorKind::RecoveredComponent,
+                .is_recovered_component(),
             "{kind:?}: {source}"
         );
     }

@@ -183,11 +183,10 @@ fn images_keep_globals_substitutions_and_exact_invalid_recovery_distinct() {
         diagnostic.error().position().column().value() as usize,
         source[..responsible].encode_utf16().count(),
     );
-    assert!(matches!(
-        diagnostic.error().kind(),
-        ErrorKind::InvalidPropertyValue(detail)
-            if detail.property() == CssKnownProperty::BackgroundImage
-    ));
+    assert!(
+        (diagnostic.error().code() == CssErrorCode::InvalidPropertyValue
+            && diagnostic.error().known_property().unwrap() == CssKnownProperty::BackgroundImage)
+    );
 
     assert_eq!(
         surgeist_css::validate_style_attribute(source)

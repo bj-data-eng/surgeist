@@ -10,14 +10,16 @@ use surgeist_css::{
 };
 
 fn error(error: CssColorError) -> DomError {
-    use CssColorError as E;
-    DomError::Meta(match error {
-        E::Unavailable(value) => Failure::ThemeColorUnavailable(value),
-        E::Unsupported(value) => Failure::ThemeColorUnsupported(value),
-        E::Facts(value) => Failure::ThemeColorFacts(value),
+    DomError::Meta(if let Some(value) = error.unavailable() {
+        Failure::ThemeColorUnavailable(value)
+    } else if let Some(value) = error.unsupported() {
+        Failure::ThemeColorUnsupported(value)
+    } else if let Some(value) = error.fact_defect() {
+        Failure::ThemeColorFacts(value)
+    } else {
         // The adapter's UTF-16 input admits every unit, so a malformed-input
         // report is an adapter inconsistency.
-        E::MalformedInput { .. } => Failure::CssProcessingProtocol,
+        Failure::CssProcessingProtocol
     })
 }
 fn index(bank: CssColorBank) -> usize {

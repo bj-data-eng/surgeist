@@ -246,12 +246,11 @@ fn css_wide_and_pending_font_values_cover_all_nineteen_members() {
         panic!("font substitution remains pending")
     };
     assert!(pending.source().same_occurrence(&pending_source));
-    assert_eq!(
+    assert!(
         pending
             .reenter(parse_component_values("var(--again)").unwrap())
             .unwrap_err()
-            .kind(),
-        &CssExpansionErrorKind::ResidualSubstitution
+            .is_residual_substitution()
     );
     // Fonts 4 §2.7: `700` would be a second <'font-weight'>.
     assert_invalid_replacement_at(
@@ -319,11 +318,8 @@ fn normalized_font_keeps_order_and_enforces_nineteen_contribution_limit() {
     )
     .unwrap_err();
     assert_eq!(
-        error.kind(),
-        &CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: 19,
-        }
+        error.exhausted_limit(),
+        Some((CssNormalizationResource::Contributions, 19))
     );
     let normalized = normalize_sheet_with_limits(
         report.syntax(),

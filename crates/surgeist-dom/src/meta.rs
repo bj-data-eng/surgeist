@@ -191,13 +191,13 @@ pub enum DomMetaError {
     ThemeColorMediaUnavailable,
     ThemeColorUnavailable(surgeist_css::CssColorUnavailable),
     ThemeColorUnsupported(surgeist_css::CssColorUnsupported),
-    ThemeColorFacts(surgeist_css::CssColorFactError),
+    ThemeColorFacts(surgeist_css::CssColorFactDefect),
     ThemeColorScratchLimit {
         limit: usize,
     },
     /// No caller-selected finite CSS property processing allowance is present.
     ColorSchemeProcessingUnavailable,
-    ColorSchemeLimit(&'static str),
+    ColorSchemeLimit(surgeist_css::CssUtf16Resource),
     CssProcessingProtocol,
     /// Cumulative current-batch Meta processing exhausted its caller allowance.
     WorkLimit {

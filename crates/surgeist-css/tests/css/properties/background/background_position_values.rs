@@ -1,10 +1,11 @@
 //! Functional tests for Backgrounds 3 §2.6 and §2.6.1 and Values 4 §8.3.2.
 //! https://www.w3.org/TR/2024/CRD-css-backgrounds-3-20240311/#bg-position-serialization
 
+use crate::css::support::failure_classes::SerializationFailure as E;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::sole_declaration as declaration;
 use surgeist_css::{
-    CssHorizontalPosition as H, CssSerializationLimits as L,
-    CssSpecifiedValueSerializationErrorKind as E, CssVerticalPosition as V, *,
+    CssHorizontalPosition as H, CssSerializationLimits as L, CssVerticalPosition as V, *,
 };
 
 fn authored(source: &CssDeclaration) -> &CssBackgroundPositionList {
@@ -253,9 +254,11 @@ fn checked_list_serialization_retains_domain_distinctions_and_comma_order() {
         three.serialize_specified(Default::default()).unwrap(),
         "right 10px top"
     );
-    assert_eq!(
-        CssPhysicalPosition::try_new(H::RightOffset(offset("10px")), V::Top),
-        Err(CssPositionConstructionError::UnpairedEdgeOffsets)
+    assert!(
+        CssPhysicalPosition::try_new(H::RightOffset(offset("10px")), V::Top)
+            .as_ref()
+            .unwrap_err()
+            .is_unpaired_edge_offsets()
     );
     assert!(
         CssBackgroundPosition::try_new(H::RightOffset(offset("10px")), V::Offset(offset("2px")))
@@ -297,7 +300,10 @@ fn scalar_serialization_charges_axes_numeric_children_and_output_atomically() {
             (L::new(nodes, 0, expected.len()), E::ProjectionNodeLimit),
             (L::new(nodes, nodes, 0), E::ByteLimit),
         ] {
-            assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), error);
+            assert_eq!(
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+                error
+            );
             assert_eq!(value, original);
         }
         assert_eq!(
@@ -328,7 +334,10 @@ fn list_serialization_uses_one_budget_for_all_layers_and_separators() {
         (L::new(7, 7, expected.len() - 1), E::ByteLimit),
         (L::new(4, 4, expected.len()), E::InputNodeLimit),
     ] {
-        assert_eq!(list.serialize_specified(limits).unwrap_err().kind(), error);
+        assert_eq!(
+            serialization_failure(&list.serialize_specified(limits).unwrap_err()),
+            error
+        );
         assert_eq!(list, original);
     }
     assert_eq!(
@@ -354,7 +363,7 @@ fn calculation_projection_work_is_cumulative_across_axes_and_layers() {
         (L::new(11, 13, scalar_css.len() - 1), E::ByteLimit),
     ] {
         assert_eq!(
-            scalar.serialize_specified(limits).unwrap_err().kind(),
+            serialization_failure(&scalar.serialize_specified(limits).unwrap_err()),
             error
         );
     }
@@ -374,7 +383,10 @@ fn calculation_projection_work_is_cumulative_across_axes_and_layers() {
         (L::new(15, 16, expected.len()), E::ProjectionNodeLimit),
         (L::new(15, 17, expected.len() - 1), E::ByteLimit),
     ] {
-        assert_eq!(list.serialize_specified(limits).unwrap_err().kind(), error);
+        assert_eq!(
+            serialization_failure(&list.serialize_specified(limits).unwrap_err()),
+            error
+        );
     }
     assert_eq!(
         list.serialize_specified(Default::default()).unwrap(),

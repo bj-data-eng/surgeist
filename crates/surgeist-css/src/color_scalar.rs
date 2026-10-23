@@ -64,55 +64,6 @@ fn invalid(component: &CssComponentValue) -> CssComponentValueError {
     )
 }
 
-/// A checked color scalar construction failure.
-#[non_exhaustive]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum CssColorScalarErrorKind {
-    InvalidComponent,
-    OutOfRange,
-}
-/// A range or component failure retaining the actual supplied token origin.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssColorScalarError {
-    kind: CssColorScalarErrorKind,
-    origin: CssValueOrigin,
-    source: Option<Box<CssComponentValueError>>,
-}
-impl CssColorScalarError {
-    pub const fn kind(&self) -> CssColorScalarErrorKind {
-        self.kind
-    }
-    pub const fn origin(&self) -> &CssValueOrigin {
-        &self.origin
-    }
-    pub(crate) fn out_of_range(origin: CssValueOrigin) -> Self {
-        Self {
-            kind: CssColorScalarErrorKind::OutOfRange,
-            origin,
-            source: None,
-        }
-    }
-}
-impl From<CssComponentValueError> for CssColorScalarError {
-    fn from(source: CssComponentValueError) -> Self {
-        Self {
-            kind: CssColorScalarErrorKind::InvalidComponent,
-            origin: source.origin().clone(),
-            source: Some(Box::new(source)),
-        }
-    }
-}
-impl std::fmt::Display for CssColorScalarError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "invalid color scalar: {:?}", self.kind)
-    }
-}
-impl std::error::Error for CssColorScalarError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        self.source.as_deref().map(|e| e as &dyn std::error::Error)
-    }
-}
-
 pub(crate) fn component(
     value: CssComponentValue,
 ) -> Result<CssColorComponent, CssComponentValueError> {

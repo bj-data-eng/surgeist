@@ -64,9 +64,10 @@ fn checked_chains_admit_256_wrappers_and_reject_the_next() {
     for _ in 0..256 {
         value = contrast(value);
     }
-    assert_eq!(
-        CssContrastColor::try_new(value).unwrap_err(),
-        CssColorConstructionError::NestingLimit
+    assert!(
+        CssContrastColor::try_new(value)
+            .unwrap_err()
+            .is_nesting_limit()
     );
 }
 
@@ -86,15 +87,17 @@ fn constructor_counts_the_complete_numeric_channel_and_alpha_subtrees() {
             value.serialize_specified(Default::default()).unwrap(),
             expected
         );
-        assert_eq!(
-            CssContrastColor::try_new(value).unwrap_err(),
-            CssColorConstructionError::NestingLimit
+        assert!(
+            CssContrastColor::try_new(value)
+                .unwrap_err()
+                .is_nesting_limit()
         );
         // Existing RGB construction permits its own 256-level subtree, but
         // enclosing that independently valid child adds the forbidden 257th level.
-        assert_eq!(
-            CssContrastColor::try_new(numeric_color(255, alpha)).unwrap_err(),
-            CssColorConstructionError::NestingLimit
+        assert!(
+            CssContrastColor::try_new(numeric_color(255, alpha))
+                .unwrap_err()
+                .is_nesting_limit()
         );
     }
 }
@@ -110,9 +113,10 @@ fn contrast_depth_composes_with_both_light_dark_branches_and_gradient_images() {
         (named("blue"), child.clone()),
     ] {
         let pair = CssColor::from_light_dark(CssLightDarkColor::try_new(light, dark).unwrap());
-        assert_eq!(
-            CssContrastColor::try_new(pair).unwrap_err(),
-            CssColorConstructionError::NestingLimit
+        assert!(
+            CssContrastColor::try_new(pair)
+                .unwrap_err()
+                .is_nesting_limit()
         );
     }
     let pair =
@@ -132,9 +136,10 @@ fn contrast_depth_composes_with_both_light_dark_branches_and_gradient_images() {
     ])
     .unwrap();
     let image = CssImageValue::Gradient(CssGradient::Linear(CssLinearGradient::new(None, stops)));
-    assert_eq!(
-        CssLightDarkImage::try_new(image, CssImageValue::None).unwrap_err(),
-        CssImageConstructionError::NestingLimit
+    assert!(
+        CssLightDarkImage::try_new(image, CssImageValue::None)
+            .unwrap_err()
+            .is_nesting_limit()
     );
 }
 

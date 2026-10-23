@@ -1,3 +1,5 @@
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::important_declaration;
 use crate::css::support::named_property::longhand_contributions as longhands;
 use surgeist_css::*;
@@ -231,19 +233,19 @@ fn shorthand_uses_one_cumulative_budget_for_all_components() {
     for (limits, kind) in [
         (
             CssSerializationLimits::new(2, 100, 100),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(100, 2, 100),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(100, 100, 9),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            authored.serialize_specified(limits).unwrap_err().kind(),
+            serialization_failure(&authored.serialize_specified(limits).unwrap_err()),
             kind
         );
     }
@@ -271,12 +273,11 @@ fn shorthand_uses_one_cumulative_budget_for_all_components() {
             .unwrap(),
         "medium serif"
     );
-    assert_eq!(
+    assert!(
         normal_components
             .serialize_specified(CssSerializationLimits::new(6, 100, 100))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+            .is_input_node_limit()
     );
 }
 

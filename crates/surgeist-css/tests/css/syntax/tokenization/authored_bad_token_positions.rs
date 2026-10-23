@@ -10,11 +10,12 @@
 use std::ops::Range;
 
 use crate::css::support::authored_syntax::assert_position_at as assert_position;
+use crate::css::support::failure_classes::ComponentFailure;
+use crate::css::support::failure_classes::component_failure;
 use surgeist_css::{
-    CssComponentValueErrorKind, CssDeclarationList, CssErrorCode, CssKnownProperty,
-    CssRecoveryAction, CssRecoveryDiagnostic, CssRule, CssTokenKind, CssValueOrigin, ErrorKind,
-    parse_component_values, parse_sheet, parse_style_attribute, validate_sheet,
-    validate_style_attribute,
+    CssDeclarationList, CssErrorCode, CssKnownProperty, CssRecoveryAction, CssRecoveryDiagnostic,
+    CssRule, CssTokenKind, CssValueOrigin, parse_component_values, parse_sheet,
+    parse_style_attribute, validate_sheet, validate_style_attribute,
 };
 
 struct ExpectedToken {
@@ -51,20 +52,16 @@ fn assert_diagnostic(diagnostic: &CssRecoveryDiagnostic, expected: &ExpectedToke
         "responsible-token correction must not shorten the recovery unit",
     );
 
-    let token = match (diagnostic.error().kind(), expected.property) {
-        (ErrorKind::InvalidPropertyValue(detail), Some(property)) => {
-            assert_eq!(
-                diagnostic.error().code(),
-                CssErrorCode::InvalidPropertyValue
-            );
-            assert_eq!(detail.property(), property);
-            detail.encountered().expect("responsible bad token")
+    let error = diagnostic.error();
+    let token = match (error.code(), expected.property) {
+        (CssErrorCode::InvalidPropertyValue, Some(property)) => {
+            assert_eq!(error.known_property(), Some(property));
+            error.encountered().expect("responsible bad token")
         }
-        (ErrorKind::UnexpectedToken(detail), None) => {
-            assert_eq!(diagnostic.error().code(), CssErrorCode::UnexpectedToken);
-            detail.encountered()
+        (CssErrorCode::UnexpectedToken, None) => {
+            error.encountered().expect("responsible unexpected token")
         }
-        (kind, property) => panic!("unexpected declaration error {kind:?} for {property:?}"),
+        (_, property) => panic!("unexpected declaration error {error:?} for {property:?}"),
     };
     assert_eq!(token.kind(), expected.kind);
     // Check the diagnosed defect before spelling: an end cursor can also make
@@ -93,14 +90,14 @@ fn assert_rejected_attribute(source: &str, expected: ExpectedToken, retained: &[
     // neither parser's output supplies the expected coordinate for the other.
     let component = parse_component_values(source).expect_err("the bad component is intrinsic");
     let expected_component_kind = match expected.kind {
-        CssTokenKind::BadUrl => CssComponentValueErrorKind::BadUrl,
-        CssTokenKind::BadString => CssComponentValueErrorKind::BadString,
+        CssTokenKind::BadUrl => ComponentFailure::BadUrl,
+        CssTokenKind::BadString => ComponentFailure::BadString,
         CssTokenKind::CloseParenthesis | CssTokenKind::CloseSquareBracket => {
-            CssComponentValueErrorKind::UnmatchedClosingDelimiter
+            ComponentFailure::UnmatchedClosingDelimiter
         }
         _ => panic!("this regression covers only bad declaration-value tokens"),
     };
-    assert_eq!(component.kind(), expected_component_kind);
+    assert_eq!(component_failure(&component), expected_component_kind);
     let CssValueOrigin::Parsed(origin) = component.origin() else {
         panic!("the responsible token retains parsed source provenance");
     };

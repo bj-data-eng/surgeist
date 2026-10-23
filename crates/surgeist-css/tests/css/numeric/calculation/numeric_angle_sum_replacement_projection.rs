@@ -9,12 +9,14 @@
 //! binary64(1e308), divided by binary64(1e308), rounds to 0.797693, flat or grouped.
 //! Genuine infinite operands and NaN retain the §10.9.1 exception semantics.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::value_assertions::assert_calculated_number as assert_number;
 use crate::css::support::value_assertions::calculated_number as number;
 use surgeist_css::*;
 
 type Limits = CssSerializationLimits;
-type Kind = CssSpecifiedValueSerializationErrorKind;
+type Kind = SerializationFailure;
 
 #[test]
 fn flat_same_unit_angle_sum_converts_at_each_accumulation_step() {
@@ -122,7 +124,7 @@ fn merged_angle_replacement_obeys_exact_limits_and_atomic_failures() {
             (Limits::new(8, 8, expected.len() - 1), Kind::ByteLimit),
         ] {
             let error = value.serialize_specified(limits).unwrap_err();
-            assert_eq!(error.kind(), kind, "{source}: {limits:?}");
+            assert_eq!(serialization_failure(&error), kind, "{source}: {limits:?}");
             assert_eq!(value, before);
             assert_eq!(value.origin(), before.origin());
             assert_eq!(
@@ -154,7 +156,7 @@ fn sibling_angle_replacements_share_one_cumulative_budget() {
         (Limits::new(18, 17, expected.len() - 1), Kind::ByteLimit),
     ] {
         let error = value.serialize_specified(limits).unwrap_err();
-        assert_eq!(error.kind(), kind, "{limits:?}");
+        assert_eq!(serialization_failure(&error), kind, "{limits:?}");
         assert_eq!(value, before);
         assert_eq!(value.origin(), before.origin());
         assert_eq!(

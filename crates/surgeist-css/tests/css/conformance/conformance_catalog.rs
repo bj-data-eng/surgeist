@@ -384,8 +384,11 @@ fn diagnostics(input: Input) -> Vec<(CssErrorCode, Option<&'static str>)> {
     diagnostics
         .iter()
         .map(|diagnostic| {
-            let feature = match diagnostic.error().kind() {
-                ErrorKind::UnsupportedAtRule(detail) => Some(detail.feature().as_str()),
+            let feature = match diagnostic.error().code() {
+                CssErrorCode::UnsupportedAtRule => {
+                    let detail = diagnostic.error();
+                    Some(detail.feature().unwrap().as_str())
+                }
                 _ => None,
             };
             (diagnostic.error().code(), feature)

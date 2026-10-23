@@ -5,6 +5,8 @@
 //! Fetch execution, CORS policy and resource resolution belong downstream.
 
 use crate::css::support::check_property_text as checked;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::value_assertions::background_image_url as parsed_url;
 use crate::css::support::value_assertions::url_consumer_text as consumer_value;
 use crate::css::support::value_assertions::{
@@ -210,10 +212,7 @@ fn checked_input_rejects_every_invalid_known_argument_without_losing_origin() {
     for modifier in INVALID_MODIFIERS {
         let text = format!("src(\"asset\" {modifier})");
         let error = checked(CssKnownProperty::BackgroundImage, &text).unwrap_err();
-        assert!(
-            matches!(error.kind(), CssPropertyValueErrorKind::Grammar(_)),
-            "{text}: {error:?}"
-        );
+        assert!(error.code().is_some(), "{text}: {error:?}");
         let CssSerializedOrigin::Token(CssValueOrigin::Parsed(origin)) = error.origin() else {
             panic!("original parsed token origin: {text}: {error:?}")
         };
@@ -281,14 +280,15 @@ fn imports_reject_invalid_known_modifiers_atomically_and_keep_following_rules() 
             validate_sheet(&source).unwrap_err().diagnostics(),
             report.diagnostics()
         );
-        assert!(matches!(
+        assert!(
             CssImportRule::try_from_components(
                 parse_component_values(&source[..source.find(".after").unwrap()]).unwrap(),
                 &CssNamespaceContext::default(),
                 Default::default(),
-            ),
-            Err(CssImportConstructionError::InvalidRuleGrammar { .. })
-        ));
+            )
+            .as_ref()
+            .is_err_and(|error| error.is_invalid_rule_grammar())
+        );
     }
 }
 
@@ -317,10 +317,7 @@ fn font_sources_reject_invalid_known_modifiers_at_the_source_item_boundary() {
             Default::default(),
         )
         .unwrap_err();
-        assert!(
-            matches!(error.kind(), CssFontFaceValueErrorKind::Grammar(_)),
-            "{value}: {error:?}"
-        );
+        assert!(error.diagnostic().is_some(), "{value}: {error:?}");
     }
 }
 
@@ -472,21 +469,21 @@ fn strict_pending_reentry_rejects_bad_known_arguments_and_is_retryable() {
             let replacement =
                 parse_component_values(&format!("src(\"asset\" {modifier})")).unwrap();
             assert!(
-                matches!(
-                    pending.reenter(replacement).unwrap_err().kind(),
-                    CssExpansionErrorKind::InvalidReplacement(_)
-                ),
+                pending
+                    .reenter(replacement)
+                    .unwrap_err()
+                    .replacement_error()
+                    .is_some(),
                 "{modifier}"
             );
             assert!(pending.source().same_occurrence(&authored));
         }
-        assert!(matches!(
+        assert!(
             pending
                 .reenter(parse_component_values("src(\"asset\" integrity(var(--hash)))").unwrap())
                 .unwrap_err()
-                .kind(),
-            CssExpansionErrorKind::ResidualSubstitution
-        ));
+                .is_residual_substitution()
+        );
         let replacement = parse_component_values("src(\"asset\" integrity(\"hash\"))").unwrap();
         let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap()
         else {
@@ -542,18 +539,21 @@ fn known_modifiers_share_cumulative_specified_output_budgets_atomically() {
     for (limits, kind) in [
         (
             CssSerializationLimits::new(7, 8, text.len()),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(8, 7, text.len()),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(8, 8, text.len() - 1),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
-        assert_eq!(url.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&url.serialize_specified(limits).unwrap_err()),
+            kind
+        );
         assert_eq!(url, before);
     }
     assert_eq!(url.serialize_specified(Default::default()).unwrap(), text);
@@ -594,13 +594,7 @@ fn normalization_preserves_request_modifiers_and_has_atomic_cumulative_limits() 
         CssNormalizationLimits::try_new(0, 1, 2, 1).unwrap(),
     )
     .unwrap_err();
-    assert!(matches!(
-        error.kind(),
-        CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: 1
-        }
-    ));
+    assert!(error.exhausted_limit() == Some((CssNormalizationResource::Contributions, 1)));
     assert_eq!(report.syntax().rules().len(), 1);
     assert!(normalize_sheet(report.syntax()).is_ok());
 }
@@ -618,9 +612,10 @@ fn structural_recovery_and_checked_component_failures_remain_typed() {
             "{source}"
         );
     }
-    assert_eq!(
-        CssComponentValue::try_token("a b").unwrap_err().kind(),
-        CssComponentValueErrorKind::InvalidToken
+    assert!(
+        CssComponentValue::try_token("a b")
+            .unwrap_err()
+            .is_invalid_token()
     );
     let recovered = parse_component_values("src(\"asset\" integrity(\"hash\")) f(").unwrap();
     let error = parse_property_value(
@@ -629,10 +624,7 @@ fn structural_recovery_and_checked_component_failures_remain_typed() {
         CssImportance::Normal,
     )
     .unwrap_err();
-    assert!(matches!(
-        error.kind(),
-        CssPropertyValueErrorKind::Grammar(_)
-    ));
+    assert!(error.code().is_some());
 }
 
 #[test]
@@ -689,10 +681,7 @@ fn checked_programmatic_url_components_reject_invalid_known_function_arguments()
             CssImportance::Normal,
         )
         .unwrap_err();
-        assert!(matches!(
-            error.kind(),
-            CssPropertyValueErrorKind::Grammar(_)
-        ));
+        assert!(error.code().is_some());
         assert!(matches!(
             error.origin(),
             CssSerializedOrigin::Token(CssValueOrigin::Programmatic)
@@ -783,10 +772,7 @@ fn profile_pending_reentry_rejects_invalid_known_modifiers_and_allows_retry() {
                 Default::default(),
             )
             .unwrap_err();
-        assert!(
-            matches!(error.kind(), CssColorProfileValueErrorKind::Grammar(_)),
-            "{modifier}: {error:?}"
-        );
+        assert!(error.diagnostic().is_some(), "{modifier}: {error:?}");
         assert!(matches!(
             pending.view(),
             CssColorProfileDescriptorValueRef::Pending(_)
@@ -837,7 +823,7 @@ fn counter_symbol_descriptor_consumers_use_shared_known_argument_validation() {
         )
         .unwrap_err();
         assert!(
-            matches!(error.kind(), CssCounterStyleValueErrorKind::Grammar(_)),
+            error.diagnostic().is_some(),
             "{}:{invalid}: {error:?}",
             kind.css_name()
         );

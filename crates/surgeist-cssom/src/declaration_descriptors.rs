@@ -204,8 +204,7 @@ impl CssomBatch {
             .collect::<Result<Vec<_>, _>>()?;
         let winners = font_winners(entries.clone());
         let selected =
-            CssSpecifiedFontFaceDeclarationBlock::try_from_entries(&winners, budget.provider()?)
-                .map_err(CssomError::FontFace)?;
+            CssSpecifiedFontFaceDeclarationBlock::try_from_entries(&winners, budget.provider()?)?;
         let block = self.staged.blocks.get_mut(id).expect("owned block");
         block.data = std::sync::Arc::new(CssomBlockData::FontFace(CssFontFaceDescriptors::new(
             entries,
@@ -220,8 +219,7 @@ impl CssomBatch {
         budget: &mut DeclarationBudget,
     ) -> Result<(), CssomError> {
         let selected =
-            CssSpecifiedFontFaceDeclarationBlock::try_from_entries(entries, budget.provider()?)
-                .map_err(CssomError::FontFace)?;
+            CssSpecifiedFontFaceDeclarationBlock::try_from_entries(entries, budget.provider()?)?;
         self.staged
             .blocks
             .get_mut(id)

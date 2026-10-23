@@ -6,8 +6,10 @@ use crate::css::support::descriptor_phases;
 use crate::css::support::normal_checked_declaration as declaration;
 use descriptor_phases::*;
 
+use crate::css::support::failure_classes::SerializationFailure as K;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::serialization_limits::LimitLadder;
-use surgeist_css::{CssSerializationLimits as L, CssSpecifiedValueSerializationErrorKind as K, *};
+use surgeist_css::{CssSerializationLimits as L, *};
 
 fn list(text: &str) -> CssFilterFunctionList {
     let source = declaration(CssKnownProperty::Filter, text);
@@ -131,7 +133,7 @@ fn checked_string_rejects_wrong_recovered_and_nul_inputs_with_real_origins() {
         let values = parse_component_values(spelling).unwrap();
         let token = values.items()[0].clone();
         let error = CssFilterImageString::try_from_component(token.clone()).unwrap_err();
-        assert_eq!(error.kind(), CssComponentValueErrorKind::InvalidToken);
+        assert!(error.is_invalid_token(), "{error:?}");
         assert_eq!(error.origin(), token.origin());
         assert_eq!(values.items()[0], token);
         let semantic: &dyn std::error::Error = &error;
@@ -139,7 +141,7 @@ fn checked_string_rejects_wrong_recovered_and_nul_inputs_with_real_origins() {
     }
     let token = parse_component_values("'unterminated").unwrap().items()[0].clone();
     let error = CssFilterImageString::try_from_component(token.clone()).unwrap_err();
-    assert_eq!(error.kind(), CssComponentValueErrorKind::InvalidToken);
+    assert!(error.is_invalid_token(), "{error:?}");
     let CssValueOrigin::ImplicitClosure { .. } = error.origin() else {
         panic!("original recovered EOF")
     };
@@ -148,7 +150,7 @@ fn checked_string_rejects_wrong_recovered_and_nul_inputs_with_real_origins() {
         CssComponentValueRef::Token(CssValueTokenRef::String("unterminated"))
     ));
     let error = CssFilterImageString::try_new("x\0y").unwrap_err();
-    assert_eq!(error.kind(), CssComponentValueErrorKind::InvalidString);
+    assert!(error.is_invalid_string(), "{error:?}");
     assert_eq!(error.origin(), &CssValueOrigin::Programmatic);
     for decoded in ["", "é😀", "a\"b\\c\nx"] {
         let value = CssFilterImageString::try_new(decoded).unwrap();
@@ -162,9 +164,10 @@ fn checked_string_rejects_wrong_recovered_and_nul_inputs_with_real_origins() {
 
 #[test]
 fn input_views_separate_strings_urls_real_none_pairs_and_nested_filter_images() {
-    assert_eq!(
-        CssFilterImageInput::try_from_image(CssImageValue::None).unwrap_err(),
-        CssImageConstructionError::NotImage
+    assert!(
+        CssFilterImageInput::try_from_image(CssImageValue::None)
+            .unwrap_err()
+            .is_not_image()
     );
     let text = CssFilterImageString::try_new("a.svg").unwrap();
     let input = CssFilterImageInput::from_string(text.clone());
@@ -360,7 +363,10 @@ fn bookmark_label_keeps_filter_image_identity_and_one_cumulative_list_budget() {
         (L::new(7, 6, expected.len()), K::ProjectionNodeLimit),
         (L::new(7, 7, expected.len() - 1), K::ByteLimit),
     ] {
-        assert_eq!(source.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&source.serialize_specified(limits).unwrap_err()),
+            kind
+        );
         assert_eq!(source, original);
     }
     assert_eq!(
@@ -470,9 +476,10 @@ fn whole_filter_graph_checks_every_filter_and_numeric_color_role_in_every_siblin
             let list = CssFilterFunctionList::try_new(functions).unwrap();
             let before = list.clone();
             for _ in 0..2 {
-                assert_eq!(
-                    CssFilterImage::try_new(string_input(), list.clone()).unwrap_err(),
-                    CssImageConstructionError::NestingLimit,
+                assert!(
+                    CssFilterImage::try_new(string_input(), list.clone())
+                        .unwrap_err()
+                        .is_nesting_limit(),
                     "role {role}, slot {position}"
                 );
                 assert_eq!(list, before);
@@ -519,14 +526,16 @@ fn complete_checked_image_inputs_count_enclosing_filter_for_all_gradient_familie
         let valid = CssFilterImageInput::try_from_image(gradient(254, family)).unwrap();
         let invalid = CssFilterImageInput::try_from_image(gradient(255, family)).unwrap();
         let before = invalid.clone();
-        assert_eq!(
-            CssFilterImageInput::try_from_image(gradient(256, family)).unwrap_err(),
-            CssImageConstructionError::NestingLimit
+        assert!(
+            CssFilterImageInput::try_from_image(gradient(256, family))
+                .unwrap_err()
+                .is_nesting_limit()
         );
         for _ in 0..2 {
-            assert_eq!(
-                CssFilterImage::try_new(invalid.clone(), list("blur()")).unwrap_err(),
-                CssImageConstructionError::NestingLimit
+            assert!(
+                CssFilterImage::try_new(invalid.clone(), list("blur()"))
+                    .unwrap_err()
+                    .is_nesting_limit()
             );
             assert_eq!(invalid, before);
             assert!(CssFilterImage::try_new(valid.clone(), list("blur()")).is_ok());
@@ -547,24 +556,24 @@ fn url_input_and_each_list_sibling_include_modifier_and_original_argument_depth(
         )
         .is_ok()
     );
-    assert_eq!(
+    assert!(
         CssFilterImage::try_new(
             CssFilterImageInput::try_from_image(CssImageValue::Url(invalid.clone())).unwrap(),
             list("blur()")
         )
-        .unwrap_err(),
-        CssImageConstructionError::NestingLimit
+        .unwrap_err()
+        .is_nesting_limit()
     );
     for position in 0..3 {
         let mut functions = vec![CssFilterFunction::Blur(CssFilterBlur::omitted()); 3];
         functions[position] = CssFilterFunction::Url(invalid.clone());
-        assert_eq!(
+        assert!(
             CssFilterImage::try_new(
                 string_input(),
                 CssFilterFunctionList::try_new(functions.clone()).unwrap()
             )
-            .unwrap_err(),
-            CssImageConstructionError::NestingLimit
+            .unwrap_err()
+            .is_nesting_limit()
         );
         functions[position] = CssFilterFunction::Url(valid.clone());
         assert!(
@@ -608,9 +617,10 @@ fn mixed_full_image_color_math_and_url_graphs_share_one_enclosing_depth() {
     *siblings.last_mut().unwrap() = CssFilterFunction::Url(modified_url(254));
     let invalid = CssFilterFunctionList::try_new(siblings).unwrap();
     for _ in 0..2 {
-        assert_eq!(
-            CssFilterImage::try_new(input.clone(), invalid.clone()).unwrap_err(),
-            CssImageConstructionError::NestingLimit
+        assert!(
+            CssFilterImage::try_new(input.clone(), invalid.clone())
+                .unwrap_err()
+                .is_nesting_limit()
         );
         assert_eq!(input, input_before);
         assert_eq!(valid, before);
@@ -634,17 +644,19 @@ fn nested_filter_cached_depth_and_both_light_dark_branches_obey_256_and_257() {
     }
     let value = value.unwrap();
     let before = value.clone();
-    assert_eq!(
-        CssFilterImage::try_new(input, list("blur()")).unwrap_err(),
-        CssImageConstructionError::NestingLimit
+    assert!(
+        CssFilterImage::try_new(input, list("blur()"))
+            .unwrap_err()
+            .is_nesting_limit()
     );
     for (light, dark) in [
         (value.clone(), CssImageValue::None),
         (CssImageValue::None, value.clone()),
     ] {
-        assert_eq!(
-            CssLightDarkImage::try_new(light, dark).unwrap_err(),
-            CssImageConstructionError::NestingLimit
+        assert!(
+            CssLightDarkImage::try_new(light, dark)
+                .unwrap_err()
+                .is_nesting_limit()
         );
     }
     let matched = matched.unwrap();
@@ -701,9 +713,10 @@ fn failed_filter_composition_preserves_mixed_provider_components_and_original_le
         CssFilterBlur::new(length.clone()),
     )])
     .unwrap();
-    assert_eq!(
-        CssFilterImage::try_new(string_input(), filters).unwrap_err(),
-        CssImageConstructionError::NestingLimit
+    assert!(
+        CssFilterImage::try_new(string_input(), filters)
+            .unwrap_err()
+            .is_nesting_limit()
     );
     assert_eq!(length.calculation().unwrap().components(), &before);
     assert_eq!(components, before);
@@ -755,14 +768,16 @@ fn aggregate_filter_refusal_preserves_actual_original_opener_through_imports_and
                 CssImportance::Normal,
             )
             .unwrap_err();
-            assert_eq!(
-                direct.kind(),
-                &CssPropertyValueErrorKind::Component(CssComponentValueErrorKind::NestingLimit)
+            assert!(
+                direct
+                    .component_error()
+                    .is_some_and(|error| error.is_nesting_limit()),
+                "{direct:?}"
             );
-            assert_eq!(direct.origin(), &CssSerializedOrigin::Token(opener.clone()));
+            assert_eq!(direct.origin(), CssSerializedOrigin::Token(opener.clone()));
             assert_eq!(grammar, direct);
             let error = handle.reenter(invalid.clone()).unwrap_err();
-            let CssExpansionErrorKind::InvalidReplacement(actual) = error.kind() else {
+            let Some(actual) = error.replacement_error() else {
                 panic!("resource replacement failure")
             };
             assert_eq!(actual, &direct);
@@ -839,19 +854,17 @@ fn standalone_string_and_input_serializers_share_utf8_budget_without_wrapper_cha
     let input = CssFilterImageInput::from_string(value.clone());
     let expected = "\"é😀\\\"\\\\\\a x\"";
     for _ in 0..2 {
-        assert_eq!(
+        assert!(
             value
                 .serialize_specified(L::new(1, 1, expected.len() - 1))
                 .unwrap_err()
-                .kind(),
-            K::ByteLimit
+                .is_byte_limit()
         );
-        assert_eq!(
+        assert!(
             input
                 .serialize_specified(L::new(1, 1, expected.len() - 1))
                 .unwrap_err()
-                .kind(),
-            K::ByteLimit
+                .is_byte_limit()
         );
         assert_eq!(
             value
@@ -865,19 +878,17 @@ fn standalone_string_and_input_serializers_share_utf8_budget_without_wrapper_cha
                 .unwrap(),
             expected
         );
-        assert_eq!(
+        assert!(
             input
                 .serialize_specified(L::new(0, 1, expected.len()))
                 .unwrap_err()
-                .kind(),
-            K::InputNodeLimit
+                .is_input_node_limit()
         );
-        assert_eq!(
+        assert!(
             input
                 .serialize_specified(L::new(1, 0, expected.len()))
                 .unwrap_err()
-                .kind(),
-            K::ProjectionNodeLimit
+                .is_projection_node_limit()
         );
     }
     let input = CssFilterImageInput::try_from_image(CssImageValue::Url(CssUrl::new("é"))).unwrap();
@@ -887,18 +898,16 @@ fn standalone_string_and_input_serializers_share_utf8_budget_without_wrapper_cha
             .unwrap(),
         "url(\"é\")"
     );
-    assert_eq!(
+    assert!(
         input
             .serialize_specified(L::new(1, 2, 64))
             .unwrap_err()
-            .kind(),
-        K::InputNodeLimit
+            .is_input_node_limit()
     );
-    assert_eq!(
+    assert!(
         input
             .serialize_specified(L::new(2, 1, 64))
             .unwrap_err()
-            .kind(),
-        K::ProjectionNodeLimit
+            .is_projection_node_limit()
     );
 }

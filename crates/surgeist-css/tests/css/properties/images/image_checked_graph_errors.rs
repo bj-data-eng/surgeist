@@ -50,22 +50,25 @@ fn image_only_consumers_preserve_resource_origin_and_pending_retry() {
             for grammar in [false, true] {
                 assert!(checked(property, valid.clone(), grammar).is_ok());
                 let error = checked(property, invalid.clone(), grammar).unwrap_err();
-                assert_eq!(
-                    error.kind(),
-                    &CssPropertyValueErrorKind::Component(CssComponentValueErrorKind::NestingLimit),
+                assert!(
+                    error
+                        .component_error()
+                        .is_some_and(|error| error.is_nesting_limit()),
                     "{name} image resource failure survives grammar alternatives"
                 );
-                assert_eq!(error.origin(), &CssSerializedOrigin::Token(opener.clone()));
+                assert_eq!(error.origin(), CssSerializedOrigin::Token(opener.clone()));
             }
             let error = handle.reenter(invalid.clone()).unwrap_err();
-            let CssExpansionErrorKind::InvalidReplacement(error) = error.kind() else {
+            let Some(error) = error.replacement_error() else {
                 panic!("typed image replacement failure")
             };
-            assert_eq!(
-                error.kind(),
-                &CssPropertyValueErrorKind::Component(CssComponentValueErrorKind::NestingLimit)
+            assert!(
+                error
+                    .component_error()
+                    .is_some_and(|error| error.is_nesting_limit()),
+                "{error:?}"
             );
-            assert_eq!(error.origin(), &CssSerializedOrigin::Token(opener.clone()));
+            assert_eq!(error.origin(), CssSerializedOrigin::Token(opener.clone()));
             assert!(handle.reenter(valid.clone()).is_ok());
             assert!(handle.source().same_occurrence(&pending));
             assert_eq!(handle.source().importance(), CssImportance::Important);
@@ -78,7 +81,7 @@ fn image_only_consumers_preserve_resource_origin_and_pending_retry() {
 #[test]
 fn typed_none_failure_preserves_consumer_keyword_and_symbol_ownership() {
     let error = CssImage::try_new(CssImageValue::None).unwrap_err();
-    assert_eq!(error, CssImageConstructionError::NotImage);
+    assert!(error.is_not_image());
     assert_eq!(error.to_string(), "none is not an image");
     let semantic: &dyn std::error::Error = &error;
     assert!(semantic.source().is_none());
@@ -97,10 +100,7 @@ fn typed_none_failure_preserves_consumer_keyword_and_symbol_ownership() {
     let before = invalid.clone();
     for grammar in [false, true] {
         let error = checked(property, invalid.clone(), grammar).unwrap_err();
-        assert!(matches!(
-            error.kind(),
-            CssPropertyValueErrorKind::Grammar(_)
-        ));
+        assert!(error.code().is_some());
         assert_eq!(invalid, before);
         assert!(
             checked(

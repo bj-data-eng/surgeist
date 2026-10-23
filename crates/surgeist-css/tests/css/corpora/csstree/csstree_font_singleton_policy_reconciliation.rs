@@ -6,8 +6,8 @@ use descriptor_phases::*;
 
 use serde_json::{Value, json};
 use surgeist_css::{
-    CssFontFeatureValuesItem, CssNamespaceContext, CssRule, CssSourcePosition, CssSourceSpan,
-    ErrorKind, parse_rule,
+    CssErrorCode, CssFontFeatureValuesItem, CssNamespaceContext, CssRule, CssSourcePosition,
+    CssSourceSpan, parse_rule,
 };
 
 use crate::css::support::csstree::adapters::{EntryPoint, Extractor};
@@ -88,9 +88,8 @@ fn typed_definitions_reconcile(row: &Value) -> Result<(), String> {
         .iter()
         .map(|diagnostic| {
             let error = diagnostic.error();
-            let ErrorKind::InvalidDescriptorValue(detail) = error.kind() else {
-                panic!("expected descriptor grammar failure: {error:?}")
-            };
+            let detail = &error;
+            assert_eq!(detail.code(), CssErrorCode::InvalidDescriptorValue, "expected descriptor grammar failure: {error:?}");
             let encountered = detail.encountered().expect("responsible authored identifier");
             let start = diagnostic.span().start().byte_offset().value();
             let end = diagnostic.span().end().byte_offset().value();
@@ -99,8 +98,8 @@ fn typed_definitions_reconcile(row: &Value) -> Result<(), String> {
                 "error_position": position(error.position()), "recovery_byte_span": [start, end],
                 "recovery_span": span(diagnostic.span()), "action": format!("{:?}", diagnostic.action()),
                 "detail": {
-                    "at_rule": detail.at_rule().as_str(), "descriptor": detail.descriptor().as_str(),
-                    "expectation": detail.expectation().as_str(),
+                    "at_rule": detail.at_rule().unwrap().as_str(), "descriptor": detail.descriptor().unwrap().as_str(),
+                    "expectation": detail.expectation().unwrap().as_str(),
                     "encountered": {"kind": format!("{:?}", encountered.kind()), "authored": encountered.authored()}
                 }, "recovered_source": &input[start..end]})
         })

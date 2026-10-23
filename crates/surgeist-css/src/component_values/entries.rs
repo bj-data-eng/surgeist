@@ -208,7 +208,7 @@ fn rejection(
     detail: CssComponentValueError,
     range: Range<usize>,
 ) -> CssRecoveryDiagnostic {
-    let action = if detail.kind() == CssComponentValueErrorKind::NestingLimit {
+    let action = if detail.kind == CssComponentValueErrorKind::NestingLimit {
         CssRecoveryAction::StopAtNestingLimit
     } else {
         CssRecoveryAction::RejectInput

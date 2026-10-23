@@ -3,6 +3,10 @@
 use crate::css::support::color_and_selector_fixtures::{
     assert_color_text_rejected, assert_color_value_rejected,
 };
+use crate::css::support::failure_classes::ComponentFailure;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::component_failure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::{contextual_checked_declaration as checked, known_property as property};
 use surgeist_css::*;
 const QUIRKS: CssParserContext = CssParserContext::new(CssParserMode::Quirks);
@@ -47,11 +51,8 @@ fn test_declaration(condition: &CssSupportsCondition) -> &CssSupportsDeclaration
     };
     v
 }
-fn strict_error(error: &CssPropertyValueParseError, original: &str) {
-    assert!(matches!(
-        error.kind(),
-        CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
-    ));
+fn strict_error(error: &CssPropertyValueError, original: &str) {
+    assert!(error.code() == Some(CssErrorCode::UnexpectedEnd));
     let CssSerializedOrigin::End(Some(CssValueOrigin::ImplicitClosure { opening, at })) =
         error.origin()
     else {
@@ -291,15 +292,12 @@ fn lexical_flag_length_range_and_unit_failures_keep_original_error_anchors() {
                     CssImportance::Normal,
                 )
                 .unwrap_err();
-            assert!(matches!(
-                error.kind(),
-                CssPropertyValueErrorKind::Grammar(_)
-            ));
+            assert!(error.code().is_some());
             let anchor = match error.origin() {
                 CssSerializedOrigin::Token(v) | CssSerializedOrigin::End(Some(v)) => v,
                 _ => panic!("original token"),
             };
-            assert_eq!(anchor, values.items()[0].origin());
+            assert_eq!(&anchor, values.items()[0].origin());
             assert_eq!(values, before);
         }
     }
@@ -599,20 +597,19 @@ fn pending_handles_keep_mode_importance_and_origins_across_failed_successful_ret
                 panic!("pending")
             };
             for bad in ["1.0", "abcd", "inherit extra", "123!important"] {
-                assert!(matches!(
+                assert!(
                     handle
                         .reenter(parse_component_values(bad).unwrap())
                         .unwrap_err()
-                        .kind(),
-                    CssExpansionErrorKind::InvalidReplacement(_)
-                ));
+                        .replacement_error()
+                        .is_some()
+                );
             }
-            assert_eq!(
+            assert!(
                 handle
                     .reenter(parse_component_values("var(--again)").unwrap())
                     .unwrap_err()
-                    .kind(),
-                &CssExpansionErrorKind::ResidualSubstitution
+                    .is_residual_substitution()
             );
             for replacement in [
                 parse_component_values("ABC").unwrap(),
@@ -651,7 +648,7 @@ fn pending_handles_keep_mode_importance_and_origins_across_failed_successful_ret
             let error = handle
                 .reenter(parse_component_values("ABC").unwrap())
                 .unwrap_err();
-            let CssExpansionErrorKind::InvalidReplacement(cause) = error.kind() else {
+            let Some(cause) = error.replacement_error() else {
                 panic!("{name}: invalid replacement: {error:?}")
             };
             assert_color_value_rejected(Err(cause.clone()), property(name), "ABC", "ABC");
@@ -679,7 +676,7 @@ fn contextual_checked_and_reentry_failures_report_original_implicit_eof() {
     let error = handle
         .reenter(parse_component_values("ABC/*").unwrap())
         .unwrap_err();
-    let CssExpansionErrorKind::InvalidReplacement(error) = error.kind() else {
+    let Some(error) = error.replacement_error() else {
         panic!("strict original")
     };
     strict_error(error, "ABC/*");
@@ -780,25 +777,25 @@ fn supports_resources_keep_original_component_errors_and_allow_retry() {
     for (limits, kind) in [
         (
             CssComponentValueLimits::try_new(1, 3, text.len()).unwrap(),
-            CssComponentValueErrorKind::ComponentLimit,
+            ComponentFailure::ComponentLimit,
         ),
         (
             CssComponentValueLimits::try_new(1, 4, text.len() - 1).unwrap(),
-            CssComponentValueErrorKind::ByteLimit,
+            ComponentFailure::ByteLimit,
         ),
         (
             CssComponentValueLimits::try_new(0, 4, text.len()).unwrap(),
-            CssComponentValueErrorKind::NestingLimit,
+            ComponentFailure::NestingLimit,
         ),
     ] {
-        let CssSupportsConstructionError::Component(error) = QUIRKS
+        let outer = QUIRKS
             .parse_supports_condition_with_limits(text, &namespaces, limits)
-            .unwrap_err()
-        else {
+            .unwrap_err();
+        let Some(error) = outer.component_error() else {
             panic!("component resource")
         };
-        assert_eq!(error.kind(), kind);
-        if kind == CssComponentValueErrorKind::ByteLimit {
+        assert_eq!(component_failure(error), kind);
+        if kind == ComponentFailure::ByteLimit {
             // The byte preflight rejects before allocating a source snapshot.
             assert_eq!(
                 error.origin(),
@@ -879,11 +876,8 @@ fn conversion_shares_cumulative_normalization_and_sheet_byte_budgets() {
     )
     .unwrap_err();
     assert_eq!(
-        error.kind(),
-        &CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: 1
-        }
+        error.exhausted_limit(),
+        Some((CssNormalizationResource::Contributions, 1))
     );
     assert_eq!(error.declaration_order(), Some(1));
     assert!(
@@ -901,10 +895,7 @@ fn conversion_shares_cumulative_normalization_and_sheet_byte_budgets() {
     let short = CssSerializationLimits::new(usize::MAX, usize::MAX, expected.len() - 1);
     for _ in 0..2 {
         let error = report.syntax().serialize_specified(short).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit
-        );
+        assert!(error.is_byte_limit(), "{error:?}");
         assert_eq!(error.rule_index(), Some(1));
         assert_eq!(report, before);
     }
@@ -925,18 +916,21 @@ fn converted_hex_keeps_leaf_node_tariffs_and_atomic_writer_retry() {
     for (limits, kind) in [
         (
             CssSerializationLimits::new(2, 3, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(3, 2, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(3, 3, expected.len() - 1),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
-        assert_eq!(source.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&source.serialize_specified(limits).unwrap_err()),
+            kind
+        );
         assert_eq!(source, before);
     }
     assert_eq!(source.serialize_specified(exact).unwrap(), expected);

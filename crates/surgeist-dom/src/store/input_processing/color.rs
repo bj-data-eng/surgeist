@@ -21,14 +21,16 @@ use surgeist_css::{
 use surgeist_html::{HtmlInputColorEffect, HtmlInputColorSerialization, HtmlInputColorSpace};
 
 fn error(error: CssColorError) -> DomError {
-    use CssColorError as E;
-    match error {
-        E::Unavailable(value) => DomError::InputColorUnavailable(value),
-        E::Unsupported(value) => DomError::InputColorUnsupported(value),
-        E::Facts(value) => DomError::InputColorFacts(value),
+    if let Some(value) = error.unavailable() {
+        DomError::InputColorUnavailable(value)
+    } else if let Some(value) = error.unsupported() {
+        DomError::InputColorUnsupported(value)
+    } else if let Some(value) = error.fact_defect() {
+        DomError::InputColorFacts(value)
+    } else {
         // The adapter's UTF-16 input admits every unit, so a malformed-input
         // report is an adapter inconsistency.
-        E::MalformedInput { .. } => DomError::InputProcessingProtocol,
+        DomError::InputProcessingProtocol
     }
 }
 

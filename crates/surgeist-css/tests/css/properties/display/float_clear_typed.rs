@@ -1,5 +1,7 @@
 //! Exact authored float/clear values from CSS2 §§9.5.1–2 and Logical 1 §2.2.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::normal_declaration as parsed;
 use surgeist_css::*;
 
@@ -34,18 +36,21 @@ fn every_float_keyword_serializes_with_exact_single_keyword_budgets() {
         for (limits, kind) in [
             (
                 CssSerializationLimits::new(0, 1, text.len()),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                SerializationFailure::InputNodeLimit,
             ),
             (
                 CssSerializationLimits::new(1, 0, text.len()),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
                 CssSerializationLimits::new(1, 1, text.len() - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                SerializationFailure::ByteLimit,
             ),
         ] {
-            assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+            assert_eq!(
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+                kind
+            );
         }
     }
 }
@@ -67,12 +72,11 @@ fn every_clear_keyword_serializes_and_both_expands_as_its_own_value() {
                 .unwrap(),
             text
         );
-        assert_eq!(
+        assert!(
             value
                 .serialize_specified(CssSerializationLimits::new(1, 1, text.len() - 1,))
                 .unwrap_err()
-                .kind(),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit
+                .is_byte_limit()
         );
     }
     assert_eq!(

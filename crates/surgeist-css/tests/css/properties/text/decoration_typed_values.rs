@@ -1,8 +1,9 @@
 //! Functional public-model evidence paired with implementation. Expectations use
 //! selected Decoration 4 §§2.1, 2.7–2.10, 3 and 4 and adopted CSSOM omissions.
+use crate::css::support::failure_classes::SerializationFailure as K;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::sole_declaration as declaration;
 use CssSerializationLimits as L;
-use CssSpecifiedValueSerializationErrorKind as K;
 use surgeist_css::*;
 
 fn length(text: &str) -> CssSpecifiedLength {
@@ -36,11 +37,10 @@ fn exclusive_error_lines_are_constructible_without_ordinary_flags() {
                 .unwrap(),
             expected
         );
-        assert_eq!(
+        assert!(
             line.serialize_specified(L::new(1, 2, expected.len()))
                 .unwrap_err()
-                .kind(),
-            K::InputNodeLimit
+                .is_input_node_limit()
         );
         let value =
             CssTextDecoration::try_new(Some(line), None, Some(CssTextDecorationStyle::Wavy), None)
@@ -136,11 +136,10 @@ fn emphasis_mark_and_position_retain_explicit_slots_and_original_origins() {
     ));
     assert_ne!(mark.fill_origin(), mark.shape_origin());
     assert_eq!(mark.serialize_specified(L::new(2, 1, 3)).unwrap(), "dot");
-    assert_eq!(
+    assert!(
         mark.serialize_specified(L::new(1, 1, 3))
             .unwrap_err()
-            .kind(),
-        K::InputNodeLimit
+            .is_input_node_limit()
     );
     assert_eq!(mark, &before);
     for (text, explicit) in [("over", false), ("right over", true)] {
@@ -443,7 +442,10 @@ fn checked_text_shadow_narrows_spread_but_reuses_retained_box_children() {
         (L::new(7, 6, expected.len()), K::ProjectionNodeLimit),
         (L::new(7, 7, expected.len() - 1), K::ByteLimit),
     ] {
-        assert_eq!(layer.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&layer.serialize_specified(limits).unwrap_err()),
+            kind
+        );
         assert_eq!(
             layer.serialize_specified(Default::default()).unwrap(),
             expected
@@ -466,7 +468,10 @@ fn checked_text_shadow_narrows_spread_but_reuses_retained_box_children() {
         (L::new(15, 14, expected.len()), K::ProjectionNodeLimit),
         (L::new(15, 15, expected.len() - 1), K::ByteLimit),
     ] {
-        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+            kind
+        );
         assert_eq!(value, before);
         assert_eq!(
             value.serialize_specified(Default::default()).unwrap(),

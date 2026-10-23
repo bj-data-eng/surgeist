@@ -3,9 +3,7 @@
 //! serialization retains the separate modern punctuation contract.
 
 use crate::css::support::parsed_color;
-use surgeist_css::{
-    CssColor, CssHexColor, CssSerializationLimits, CssSpecifiedValueSerializationErrorKind,
-};
+use surgeist_css::{CssColor, CssHexColor, CssSerializationLimits};
 
 #[test]
 fn parsed_opaque_hex_alpha_uses_rgb_with_an_implicit_alpha() {
@@ -48,12 +46,11 @@ fn opaque_hex_fits_the_exact_rgb_byte_budget_without_mutation() {
     let color = parsed_color("#112233ff");
     let before = color.clone();
     let expected = "rgb(17, 34, 51)";
-    assert_eq!(
+    assert!(
         color
             .serialize_specified(CssSerializationLimits::new(1, 1, expected.len() - 1,))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            .is_byte_limit()
     );
     assert_eq!(color, before);
     assert_eq!(

@@ -3,8 +3,7 @@
 use crate::css::support::authored_syntax::assert_unclean_sheet as assert_nonclean_validation;
 use surgeist_css::{
     CssCustomMediaBody, CssErrorCode, CssImportTarget, CssNamespaceContext, CssRecoveryAction,
-    CssRecoveryDiagnostic, CssRule, CssScopedRule, ErrorKind, parse_rule, parse_sheet,
-    validate_sheet,
+    CssRecoveryDiagnostic, CssRule, CssScopedRule, parse_rule, parse_sheet, validate_sheet,
 };
 
 fn assert_eof(diagnostic: &CssRecoveryDiagnostic, source: &str, start: usize, end: usize) {
@@ -13,11 +12,10 @@ fn assert_eof(diagnostic: &CssRecoveryDiagnostic, source: &str, start: usize, en
         diagnostic.action(),
         CssRecoveryAction::RetainNonconformingRule
     );
-    let ErrorKind::UnexpectedEnd(detail) = diagnostic.error().kind() else {
-        panic!("at-rule EOF")
-    };
+    let detail = diagnostic.error();
+    assert_eq!(detail.code(), CssErrorCode::UnexpectedEnd, "at-rule EOF");
     assert_eq!(
-        detail.expectation().as_str(),
+        detail.expectation().unwrap().as_str(),
         "a semicolon or block terminating an at-rule"
     );
     assert_eq!(diagnostic.error().position().byte_offset().value(), end);

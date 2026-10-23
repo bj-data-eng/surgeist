@@ -19,8 +19,12 @@ fn construct<T: Send>(
             .spawn_scoped(scope, || {
                 action.take().expect("single construction worker")()
             })
-            .map_err(|_| CssContainerConstructionError::WorkerUnavailable {
-                origin: CssValueOrigin::Programmatic,
+            .map_err(|_| {
+                CssContainerConstructionError::from(
+                    crate::syntax::ContainerConstructionKind::WorkerUnavailable {
+                        origin: CssValueOrigin::Programmatic,
+                    },
+                )
             })?;
         match worker.join() {
             Ok(result) => result,

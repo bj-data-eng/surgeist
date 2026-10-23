@@ -2,6 +2,9 @@
 //! §§10.12–10.13 defer math range checks and integer rounding beyond specified values.
 //! https://www.w3.org/TR/2023/CRD-css-easing-1-20230213/#serialization
 
+use crate::css::support::failure_classes::NumericFailure;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::property_admission::Responsible::At;
 use crate::css::support::property_admission::{assert_invalid_value, assert_numeric_rejected};
 use crate::css::support::serialization_limits::LimitLadder;
@@ -72,7 +75,7 @@ fn assert_list(source: &str, expected: &str) {
                 .unwrap(),
             expected,
         );
-        assert_eq!(
+        assert!(
             value
                 .serialize_specified(CssSerializationLimits::new(
                     65_536,
@@ -80,8 +83,7 @@ fn assert_list(source: &str, expected: &str) {
                     expected.len() - 1,
                 ))
                 .unwrap_err()
-                .kind(),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                .is_byte_limit()
         );
         assert_eq!(
             value.serialize_specified(Default::default()).unwrap(),
@@ -296,7 +298,7 @@ fn invalid_grammar_drops_only_easing_and_strict_validation_agrees() {
             CssRecoveryAction::DropDeclaration
         );
         assert_invalid_value(
-            report.diagnostics()[0].error().kind(),
+            report.diagnostics()[0].error(),
             CssKnownProperty::TransitionTimingFunction,
             token,
         );
@@ -324,11 +326,11 @@ fn checked_ranges_and_pure_roots_share_admission_with_parsing() {
     let contextual = parse_component_values("calc((1px + 1%) / 1px)").unwrap();
     assert_numeric_rejected(
         CssNumberCalculation::try_from_components(contextual.clone(), Default::default()),
-        CssNumericConstructionErrorKind::RootDomainMismatch,
+        NumericFailure::RootDomainMismatch,
     );
     assert_numeric_rejected(
         CssIntegerCalculation::try_from_components(contextual, Default::default()),
-        CssNumericConstructionErrorKind::RootDomainMismatch,
+        NumericFailure::RootDomainMismatch,
     );
     let fraction = CssIntegerCalculation::try_from_components(
         parse_component_values("calc(1.5)").unwrap(),
@@ -393,18 +395,21 @@ fn standalone_aggregates_apply_the_same_exact_resource_contract() {
     for (limits, kind) in [
         (
             CssSerializationLimits::new(4, 5, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(5, 4, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(5, 5, expected.len() - 1),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
-        assert_eq!(cubic.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&cubic.serialize_specified(limits).unwrap_err()),
+            kind
+        );
         assert_eq!(
             cubic.serialize_specified(Default::default()).unwrap(),
             expected
@@ -430,18 +435,21 @@ fn standalone_aggregates_apply_the_same_exact_resource_contract() {
         for (limits, kind) in [
             (
                 CssSerializationLimits::new(inputs - 1, projections, expected.len()),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                SerializationFailure::InputNodeLimit,
             ),
             (
                 CssSerializationLimits::new(inputs, projections - 1, expected.len()),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
                 CssSerializationLimits::new(inputs, projections, expected.len() - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                SerializationFailure::ByteLimit,
             ),
         ] {
-            assert_eq!(steps.serialize_specified(limits).unwrap_err().kind(), kind);
+            assert_eq!(
+                serialization_failure(&steps.serialize_specified(limits).unwrap_err()),
+                kind
+            );
             assert_eq!(steps.position(), position);
             assert_eq!(
                 steps.serialize_specified(Default::default()).unwrap(),

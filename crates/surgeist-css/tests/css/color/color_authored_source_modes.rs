@@ -29,7 +29,7 @@ fn parsed_report(text: &str) -> CssParseReport<Option<CssDeclaration>> {
 }
 
 /// The `color` property's check of component values.
-fn checked(values: CssComponentValues) -> Result<CssDeclaration, CssPropertyValueParseError> {
+fn checked(values: CssComponentValues) -> Result<CssDeclaration, CssPropertyValueError> {
     parse_property_value(
         CssPropertyNameRef::Known(CssKnownProperty::Color),
         values,
@@ -52,7 +52,7 @@ fn components(text: &str) -> Result<CssColor, String> {
 }
 
 /// The sole diagnostic of a rejected parsed-text color.
-fn parsed_error(text: &str) -> Error {
+fn parsed_error(text: &str) -> CssError {
     let report = parsed_report(text);
     let [diagnostic] = report.diagnostics() else {
         panic!("{text}: exactly one diagnostic: {:?}", report.diagnostics());
@@ -61,7 +61,7 @@ fn parsed_error(text: &str) -> Error {
 }
 
 /// The authored byte offset a component-value rejection reports.
-fn checked_value_error(text: &str) -> CssPropertyValueParseError {
+fn checked_value_error(text: &str) -> CssPropertyValueError {
     checked(parse_component_values(text).unwrap()).unwrap_err()
 }
 
@@ -338,16 +338,13 @@ fn custom_names_weights_order_and_nested_branches_are_not_resolved() {
     let text = "light-dark(contrast-color(currentcolor), device-cmyk(1%, none, 0, 1))";
     let error = parsed_error(text);
     assert!(
-        matches!(error.kind(), ErrorKind::InvalidColorSyntax(_)),
+        error.code() == CssErrorCode::InvalidColorSyntax,
         "{text}: {:?}",
-        error.kind()
+        error
     );
     let error = checked(parse_component_values(text).unwrap()).unwrap_err();
     assert!(
-        matches!(
-            error.kind(),
-            CssPropertyValueErrorKind::Grammar(ErrorKind::InvalidColorSyntax(_))
-        ),
+        error.code() == Some(CssErrorCode::InvalidColorSyntax),
         "{text}: {error:?}"
     );
 }
@@ -369,16 +366,13 @@ fn grammar_failures_and_prefix_consumption_use_actual_boundaries() {
         // typed diagnostic rather than an unrelated earlier failure.
         let error = parsed_error(text);
         assert!(
-            matches!(error.kind(), ErrorKind::InvalidColorSyntax(_)),
+            error.code() == CssErrorCode::InvalidColorSyntax,
             "{text}: {:?}",
-            error.kind()
+            error
         );
         let error = checked(parse_component_values(text).unwrap()).unwrap_err();
         assert!(
-            matches!(
-                error.kind(),
-                CssPropertyValueErrorKind::Grammar(ErrorKind::InvalidColorSyntax(_))
-            ),
+            error.code() == Some(CssErrorCode::InvalidColorSyntax),
             "{text}: {error:?}"
         );
     }
@@ -423,9 +417,12 @@ fn grammar_failures_and_prefix_consumption_use_actual_boundaries() {
         ),
     ] {
         let error = parsed_error(text);
-        let ErrorKind::InvalidColorSyntax(detail) = error.kind() else {
-            panic!("{text}: color grammar rejection: {:?}", error.kind());
-        };
+        let detail = &error;
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidColorSyntax,
+            "{text}: color grammar rejection: {error:?}"
+        );
         assert_eq!(
             (
                 detail.encountered().map(|token| token.authored()),
@@ -434,7 +431,7 @@ fn grammar_failures_and_prefix_consumption_use_actual_boundaries() {
             ),
             (Some(token), at, at),
             "{text}: {:?}",
-            error.kind()
+            error
         );
     }
     // The color consumes exactly its `<color>` prefix, so the trailing
@@ -472,7 +469,7 @@ fn source_positions_keep_utf16_columns_and_constructor_limits_stay_typed() {
     // dedicated nesting-limit kind.
     let error = parsed_error(&too_deep);
     assert_eq!(error.code(), CssErrorCode::NestingLimit);
-    assert!(matches!(error.kind(), ErrorKind::NestingLimit(_)));
+    assert!(error.code() == CssErrorCode::NestingLimit);
 }
 
 #[test]
@@ -500,25 +497,19 @@ fn closing_and_eof_failures_use_actual_end_sites_in_both_source_modes() {
             ),
             (at, column, checked),
             "{text:?}: {:?}",
-            error.kind()
+            error
         );
         // The checked refusal of an implicit closure is its own kind, not
         // the colour grammar's rejection.
         let checked = checked_value_error(text);
         let implicit = !text.ends_with(')');
         assert_eq!(
-            matches!(
-                checked.kind(),
-                CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
-            ),
+            checked.code() == Some(CssErrorCode::UnexpectedEnd),
             implicit,
             "{text:?}: {checked:?}"
         );
         assert_eq!(
-            matches!(
-                checked.kind(),
-                CssPropertyValueErrorKind::Grammar(ErrorKind::InvalidColorSyntax(_))
-            ),
+            checked.code() == Some(CssErrorCode::InvalidColorSyntax),
             !implicit,
             "{text:?}: {checked:?}"
         );

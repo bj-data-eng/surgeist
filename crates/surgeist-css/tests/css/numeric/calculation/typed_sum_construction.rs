@@ -1,10 +1,11 @@
 //! Checked sum assembly preserves authored operands and applies ordinary numeric
 //! typing. Root-only unitless-zero admission does not turn zero into a length.
+use crate::css::support::failure_classes::ComponentFailure;
+use crate::css::support::failure_classes::component_failure;
 use surgeist_css::{
     CssCalculationExpressionRef, CssCalculationSumOperator as Op, CssComponentValueError,
-    CssComponentValueErrorKind, CssComponentValueLimits, CssComponentValueRef,
-    CssLengthPercentageCalculation as Calculation, CssNumericConstructionError,
-    CssNumericConstructionErrorKind, CssSerializedOrigin, CssValueOrigin, parse_component_values,
+    CssComponentValueLimits, CssComponentValueRef, CssLengthPercentageCalculation as Calculation,
+    CssNumericConstructionError, CssSerializedOrigin, CssValueOrigin, parse_component_values,
 };
 
 fn operand(source: &str) -> Calculation {
@@ -12,15 +13,12 @@ fn operand(source: &str) -> Calculation {
         .unwrap()
 }
 
-fn resource(error: &CssNumericConstructionError, expected: CssComponentValueErrorKind) {
-    assert_eq!(
-        error.kind(),
-        &CssNumericConstructionErrorKind::ResourceLimit
-    );
+fn resource(error: &CssNumericConstructionError, expected: ComponentFailure) {
+    assert!(error.is_resource_limit(), "{error:?}");
     let component = std::error::Error::source(error)
         .and_then(|source| source.downcast_ref::<CssComponentValueError>())
         .expect("original component resource failure");
-    assert_eq!(component.kind(), expected);
+    assert_eq!(component_failure(component), expected);
 }
 
 fn same_origin(actual: &CssValueOrigin, expected: &CssValueOrigin) {
@@ -158,20 +156,14 @@ fn original_operand_trivia_is_retained_even_when_numeric_output_normalizes_it() 
 fn root_only_unitless_zero_is_rechecked_as_an_arithmetic_operand() {
     for zero in ["0", "-0", "0e2"] {
         let error = Calculation::try_sum(operand(zero), [], Default::default()).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            &CssNumericConstructionErrorKind::RootDomainMismatch
-        );
+        assert!(error.is_root_domain_mismatch(), "{error:?}");
         for (first, rest) in [
             (operand(zero), operand("1px")),
             (operand("1px"), operand(zero)),
         ] {
             let error =
                 Calculation::try_sum(first, [(Op::Add, rest)], Default::default()).unwrap_err();
-            assert_eq!(
-                error.kind(),
-                &CssNumericConstructionErrorKind::IncompatibleTypes
-            );
+            assert!(error.is_incompatible_types(), "{error:?}");
         }
     }
     assert_eq!(
@@ -232,11 +224,10 @@ fn trusted_parsed_recovery_remains_in_the_child_while_strict_component_admission
         panic!("inner")
     };
     assert_eq!(inner.closing_origin(), &closure);
-    assert_eq!(
+    assert!(
         Calculation::try_from_components(sum.components().clone(), Default::default())
             .unwrap_err()
-            .kind(),
-        &CssNumericConstructionErrorKind::RecoveredComponent
+            .is_recovered_component()
     );
 }
 
@@ -252,15 +243,15 @@ fn inserted_wrapper_and_separators_are_included_in_exact_component_and_byte_limi
     for (limits, kind) in [
         (
             CssComponentValueLimits::try_new(0, 6, 15).unwrap(),
-            CssComponentValueErrorKind::NestingLimit,
+            ComponentFailure::NestingLimit,
         ),
         (
             CssComponentValueLimits::try_new(1, 5, 15).unwrap(),
-            CssComponentValueErrorKind::ComponentLimit,
+            ComponentFailure::ComponentLimit,
         ),
         (
             CssComponentValueLimits::try_new(1, 6, 14).unwrap(),
-            CssComponentValueErrorKind::ByteLimit,
+            ComponentFailure::ByteLimit,
         ),
     ] {
         let error =
@@ -273,7 +264,7 @@ fn inserted_wrapper_and_separators_are_included_in_exact_component_and_byte_limi
         CssComponentValueLimits::try_new(0, usize::MAX, usize::MAX).unwrap(),
     )
     .unwrap_err();
-    resource(&error, CssComponentValueErrorKind::NestingLimit);
+    resource(&error, ComponentFailure::NestingLimit);
     assert_eq!(error.origin(), Some(&CssValueOrigin::Programmatic));
 }
 
@@ -282,7 +273,7 @@ fn a_supported_child_depth_cannot_silently_exceed_the_aggregate_wrapper_depth() 
     let source = format!("{}1px{}", "calc(".repeat(256), ")".repeat(256));
     let child = operand(&source);
     let error = Calculation::try_sum(child, [], Default::default()).unwrap_err();
-    resource(&error, CssComponentValueErrorKind::NestingLimit);
+    resource(&error, ComponentFailure::NestingLimit);
     let source = format!("{}1px{}", "calc(".repeat(255), ")".repeat(255));
     let sum = Calculation::try_sum(operand(&source), [], Default::default()).unwrap();
     assert_eq!(
@@ -308,7 +299,7 @@ fn finite_component_limits_stop_consuming_a_finite_iterator_at_the_first_overflo
         CssComponentValueLimits::try_new(256, 2, usize::MAX).unwrap(),
     )
     .unwrap_err();
-    resource(&error, CssComponentValueErrorKind::ComponentLimit);
+    resource(&error, ComponentFailure::ComponentLimit);
     assert_eq!(consumed.get(), 1);
 }
 
@@ -344,7 +335,7 @@ fn the_complete_wrapper_byte_budget_is_checked_before_consuming_another_operand(
     // Five bytes for calc(, three for 1px, and one closing parenthesis.
     let tight = CssComponentValueLimits::try_new(256, usize::MAX, 8).unwrap();
     let error = Calculation::try_sum(operand("1px"), rest, tight).unwrap_err();
-    resource(&error, CssComponentValueErrorKind::ByteLimit);
+    resource(&error, ComponentFailure::ByteLimit);
     assert_eq!(consumed.get(), 0);
     let exact = CssComponentValueLimits::try_new(256, usize::MAX, 9).unwrap();
     let sum = Calculation::try_sum(operand("1px"), [], exact).unwrap();
@@ -366,7 +357,7 @@ fn normalized_operator_spacing_is_budgeted_before_consuming_another_operand() {
     // two spaces around the product operator and therefore needs 19 bytes.
     let tight = CssComponentValueLimits::try_new(256, usize::MAX, 18).unwrap();
     let error = Calculation::try_sum(operand("calc(1px*2)"), rest, tight).unwrap_err();
-    resource(&error, CssComponentValueErrorKind::ByteLimit);
+    resource(&error, ComponentFailure::ByteLimit);
     assert_eq!(consumed.get(), 0);
     let exact = CssComponentValueLimits::try_new(256, usize::MAX, 19).unwrap();
     let sum = Calculation::try_sum(operand("calc(1px*2)"), [], exact).unwrap();
@@ -397,7 +388,7 @@ fn escaped_operand_boundary_bytes_are_counted_before_reading_later_operands() {
     // calc(1p\78/**/ + 2px) = 6 + 5 + 4 + 3 + 3 = 21 bytes.
     let limits = CssComponentValueLimits::try_new(256, usize::MAX, 17).unwrap();
     let error = Calculation::try_sum(operand(r"1p\78"), rest, limits).unwrap_err();
-    resource(&error, CssComponentValueErrorKind::ByteLimit);
+    resource(&error, ComponentFailure::ByteLimit);
     assert_eq!(
         consumed.get(),
         1,

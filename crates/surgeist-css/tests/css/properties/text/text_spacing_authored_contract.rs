@@ -16,6 +16,7 @@ use surgeist_css::*;
 
 use crate::css::support::authored_property;
 use crate::css::support::check_named_components as checked_components;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::named_property::invalid_named_value as invalid;
 use crate::css::support::named_property::named_fronts as fronts;
 use crate::css::support::serialization_limits::LimitLadder;
@@ -237,10 +238,7 @@ fn normalization_counts_complete_terminals_and_pending_occurrences_cumulatively(
         ] {
             for _ in 0..2 {
                 let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
-                assert_eq!(
-                    error.kind(),
-                    &CssNormalizationErrorKind::LimitExceeded { resource, limit }
-                );
+                assert_eq!(error.exhausted_limit(), Some((resource, limit)));
                 assert_eq!(error.declaration_order(), Some(3));
                 assert!(
                     error
@@ -793,8 +791,8 @@ fn sheet_siblings_share_exact_work_and_non_ascii_output_bytes_without_charging_h
 
 #[test]
 fn signed_length_provider_keeps_exact_source_and_bare_root_admission_with_atomic_limits() {
+    use crate::css::support::failure_classes::SerializationFailure as Kind;
     use CssSerializationLimits as Limits;
-    use CssSpecifiedValueSerializationErrorKind as Kind;
     for (input, expected) in [
         ("0", "0"),
         ("-2PX", "-2px"),
@@ -828,7 +826,7 @@ fn signed_length_provider_keeps_exact_source_and_bare_root_admission_with_atomic
         ] {
             for _ in 0..2 {
                 assert_eq!(
-                    numeric.serialize_specified(limits).unwrap_err().kind(),
+                    serialization_failure(&numeric.serialize_specified(limits).unwrap_err()),
                     kind
                 );
                 assert_eq!(numeric, before);

@@ -32,7 +32,9 @@ fn parsed_terminator_is_retained_by_constructed_supports_declaration() {
     let mut sources = CssSourceRetention::new(0, 100_000, 100);
     assert_eq!(
         sources.visit(&sheet),
-        Err(CssSourceRetentionError::Limit("retained source bytes")),
+        Err(CssSourceRetentionError::limit(
+            CssSourceRetentionResource::RetainedBytes
+        )),
         "retained semicolon source has {} backing bytes",
         source.storage_usage().retained_bytes()
     );
@@ -67,7 +69,9 @@ fn selected_supports_subcondition_retains_its_whole_lexical_root() {
     let mut sources = CssSourceRetention::new(0, 100_000, 100);
     assert_eq!(
         sources.visit(&sheet),
-        Err(CssSourceRetentionError::Limit("retained source bytes"))
+        Err(CssSourceRetentionError::limit(
+            CssSourceRetentionResource::RetainedBytes
+        ))
     );
 }
 
@@ -101,12 +105,16 @@ fn completed_specified_entry_retains_independently_parsed_replacement() {
     let mut sources = CssSourceRetention::new(0, 100_000, 100);
     assert_eq!(
         sources.visit(&block),
-        Err(CssSourceRetentionError::Limit("retained source bytes"))
+        Err(CssSourceRetentionError::limit(
+            CssSourceRetentionResource::RetainedBytes
+        ))
     );
     let mut sources = CssSourceRetention::new(0, 100_000, 100);
     assert_eq!(
         sources.visit(&block.entries()[0]),
-        Err(CssSourceRetentionError::Limit("retained source bytes"))
+        Err(CssSourceRetentionError::limit(
+            CssSourceRetentionResource::RetainedBytes
+        ))
     );
 }
 
@@ -137,7 +145,9 @@ fn selected_when_subcondition_retains_its_whole_lexical_root() {
     let mut sources = CssSourceRetention::new(0, 100_000, 100);
     assert_eq!(
         sources.visit(&sheet),
-        Err(CssSourceRetentionError::Limit("retained source bytes"))
+        Err(CssSourceRetentionError::limit(
+            CssSourceRetentionResource::RetainedBytes
+        ))
     );
 }
 
@@ -180,7 +190,9 @@ fn universal_and_independent_svg_entries_retain_completed_replacement_contexts()
             let mut sources = CssSourceRetention::new(0, 100_000, 100);
             assert_eq!(
                 sources.visit(entry),
-                Err(CssSourceRetentionError::Limit("retained source bytes"))
+                Err(CssSourceRetentionError::limit(
+                    CssSourceRetentionResource::RetainedBytes
+                ))
             );
         }
     }

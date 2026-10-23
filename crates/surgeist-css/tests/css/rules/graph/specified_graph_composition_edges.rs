@@ -5,6 +5,8 @@
 //! These exercise existing callable boundaries; wrapper RED is not direct
 //! evidence of a defect in the distinct authored Import/CustomMedia serializers.
 
+use crate::css::support::failure_classes::SerializationFailure as Kind;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::rules::ExpectedRejection;
 use crate::css::support::rules::assert_exact_specified_sheet as exact;
 use crate::css::support::rules::clean_sheet as sheet;
@@ -12,12 +14,12 @@ use crate::css::support::serialization_limits::LimitLadder;
 use surgeist_css::{
     CssContainerPrelude, CssContainerRule, CssCustomMediaBody, CssErrorCode, CssNamespaceContext,
     CssRecoveryAction, CssRule, CssScopedRule, CssSerializationError,
-    CssSerializationLimits as Limits, CssSheet, CssSpecifiedValueSerializationErrorKind as Kind,
-    CssSupportsCondition, CssSupportsRule, parse_component_values, parse_sheet,
+    CssSerializationLimits as Limits, CssSheet, CssSupportsCondition, CssSupportsRule,
+    parse_component_values, parse_sheet,
 };
 
 fn resource(error: &CssSerializationError, kind: Kind, index: Option<usize>) {
-    assert_eq!(error.kind(), kind);
+    assert_eq!(serialization_failure(error), kind);
     assert_eq!(error.rule_index(), index);
 }
 
@@ -63,7 +65,7 @@ fn recovered_media_provider_control_keeps_member_order_and_exact_work_costs() {
         .query()
         .serialize_cssom(Limits::new(6, 5, expected.len()))
         .unwrap_err();
-    assert_eq!(error.kind(), Kind::ProjectionNodeLimit);
+    assert!(error.is_projection_node_limit(), "{error:?}");
     assert_eq!(error.origin(), Some(rule.query().queries()[1].origin()));
     assert_eq!(report, before);
 }

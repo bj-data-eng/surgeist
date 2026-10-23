@@ -9,9 +9,11 @@
 //! never geometry, computed defaults or unfinished exact math projection.
 //! All tests use callable public APIs that predate shape() support.
 
+use crate::css::support::failure_classes::SerializationFailure as K;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::property_admission::assert_checked_matches_diagnostic;
 use crate::css::support::property_admission::validated_sole_declaration;
-use surgeist_css::{CssSerializationLimits as L, CssSpecifiedValueSerializationErrorKind as K, *};
+use surgeist_css::{CssSerializationLimits as L, *};
 
 fn clip(source: &CssDeclaration) -> &CssClipPath {
     let CssKnownPropertyValueRef::ClipPath(value) =
@@ -642,10 +644,13 @@ fn diagnosed_implicit_closure_is_retained_but_original_components_remain_strict(
     let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
         panic!("pending clip")
     };
-    assert!(matches!(
-        pending.reenter(components).unwrap_err().kind(),
-        CssExpansionErrorKind::InvalidReplacement(_)
-    ));
+    assert!(
+        pending
+            .reenter(components)
+            .unwrap_err()
+            .replacement_error()
+            .is_some()
+    );
 }
 
 #[test]
@@ -692,20 +697,19 @@ fn pending_reentry_is_reusable_and_returns_only_validated_terminal_replacements(
         "shape(from 0px 0px, arc by 1px 2px)",
         "shape(from 0px 0px, close",
     ] {
-        assert!(matches!(
+        assert!(
             pending
                 .reenter(parse_component_values(invalid).unwrap())
                 .unwrap_err()
-                .kind(),
-            CssExpansionErrorKind::InvalidReplacement(_)
-        ));
+                .replacement_error()
+                .is_some()
+        );
     }
-    assert_eq!(
+    assert!(
         pending
             .reenter(parse_component_values("shape(from var(--again), close)").unwrap())
             .unwrap_err()
-            .kind(),
-        &CssExpansionErrorKind::ResidualSubstitution
+            .is_residual_substitution()
     );
     for (authored, expected) in [
         ("shape(from 0px 0px, close)", "shape(from 0px 0px, close)"),
@@ -845,7 +849,10 @@ fn close_fixture_obeys_atomic_cumulative_limits_without_mutating_values_or_origi
         (L::new(9, 8, 26), K::ProjectionNodeLimit),
         (L::new(9, 9, 25), K::ByteLimit),
     ] {
-        assert_eq!(basic.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&basic.serialize_specified(limits).unwrap_err()),
+            kind
+        );
     }
     for (limits, kind) in [
         (L::new(9, 10, 26), K::InputNodeLimit),
@@ -853,10 +860,7 @@ fn close_fixture_obeys_atomic_cumulative_limits_without_mutating_values_or_origi
         (L::new(10, 10, 25), K::ByteLimit),
     ] {
         assert_eq!(
-            clip(&source)
-                .serialize_specified(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&clip(&source).serialize_specified(limits).unwrap_err()),
             kind
         );
     }
@@ -923,7 +927,7 @@ mod construction {
     #[test]
     fn empty_list_returns_only_the_typed_construction_error() {
         let error = CssShapeCommandList::try_new(vec![]).unwrap_err();
-        assert_eq!(error, CssShapeConstructionError::EmptyCommands);
+        assert!(error.is_empty_commands());
         assert!(error.source().is_none());
         assert_eq!(
             CssShapeCommandList::try_new(vec![CssShapeCommand::Close])
@@ -1158,7 +1162,7 @@ mod construction {
         let component = CssComponentValue::try_number("0").unwrap();
         let origin = component.origin().clone();
         let error = CssAngleLiteral::try_from_component(component).unwrap_err();
-        assert_eq!(error.kind(), CssComponentValueErrorKind::InvalidToken);
+        assert!(error.is_invalid_token(), "{error:?}");
         assert_eq!(error.origin(), &origin);
         for text in [
             "-1e-999deg",
@@ -1254,11 +1258,10 @@ mod construction {
             clip.serialize_specified(L::new(11, 11, 37)).unwrap(),
             "shape(from 0px 0px, close) border-box"
         );
-        assert_eq!(
+        assert!(
             clip.serialize_specified(L::new(10, 11, 37))
                 .unwrap_err()
-                .kind(),
-            K::InputNodeLimit
+                .is_input_node_limit()
         );
     }
 
@@ -1346,7 +1349,10 @@ mod construction {
             (L::new(30, 33, expected.len()), K::ProjectionNodeLimit),
             (L::new(30, 34, expected.len() - 1), K::ByteLimit),
         ] {
-            assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+            assert_eq!(
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+                kind
+            );
             let CssShapeCommand::Line(CssShapeEndpoint::By(pair)) = &value.commands().commands()[0]
             else {
                 panic!("relative line")

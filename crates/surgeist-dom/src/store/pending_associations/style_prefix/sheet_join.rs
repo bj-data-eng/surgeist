@@ -612,11 +612,10 @@ fn admit_construction(
 ) -> Result<(), DomError> {
     let bytes = value
         .retained_backing_bytes_with(|| meter.step(cancel))
-        .map_err(|e| match e {
-            surgeist_css::CssRetainedPayloadError::Admission(e) => e,
-            surgeist_css::CssRetainedPayloadError::CapacityOverflow => {
-                DomError::RepresentationExhausted
-            }
+        .map_err(|e| match e.into_admission() {
+            Ok(e) => e,
+            // The measurement's only other refusal is a capacity overflow.
+            Err(_) => DomError::RepresentationExhausted,
         })?;
     meter.retain(bytes, 0, 0, cancel)?;
     let scratch = meter.fork();
@@ -659,7 +658,7 @@ fn admit_construction(
                 }
                 sources
                     .complete_payload_bytes_admitted()
-                    .map_err(|_| surgeist_css::CssSourceRetentionError::CallerAdmission)
+                    .map_err(|_| surgeist_css::CssSourceRetentionError::caller_admission())
             })(),
         }
     };

@@ -175,12 +175,11 @@ fn voice_properties_decode_keyword_case_escapes_and_preserve_authored_tokens() {
                 .as_css(),
             value
         );
-        assert_eq!(
+        assert!(
             components
                 .serialize_tokens(crate::css::support::byte_limits(value.len() - 1))
                 .unwrap_err()
-                .kind(),
-            CssComponentValueErrorKind::ByteLimit
+                .is_byte_limit()
         );
         assert_eq!(
             components
@@ -388,16 +387,15 @@ fn voice_substitution_reentry_checks_the_original_grammar_atomically_and_keeps_o
                 .reenter(parse_component_values(text).unwrap())
                 .unwrap_err();
             assert!(
-                matches!(error.kind(), CssExpansionErrorKind::InvalidReplacement(_)),
+                error.replacement_error().is_some(),
                 "{name}:{text}: {error:?}"
             );
         }
-        assert_eq!(
+        assert!(
             handle
                 .reenter(parse_component_values("var(--again)").unwrap())
                 .unwrap_err()
-                .kind(),
-            &CssExpansionErrorKind::ResidualSubstitution
+                .is_residual_substitution()
         );
         assert!(
             handle

@@ -1,11 +1,13 @@
 //! Independent specified-value expectations from UI3 caret-color, Containment 1
 //! grammar order and Compositing 1's ordered background-blend-mode list.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::serialization_limits::assert_node_limits;
 use surgeist_css::*;
 
 type Limits = CssSerializationLimits;
-type Kind = CssSpecifiedValueSerializationErrorKind;
+type Kind = SerializationFailure;
 
 fn parsed_caret(source: &str) -> CssCaretColor {
     let report = parse_style_attribute(&format!("caret-color:{source}"));
@@ -64,7 +66,10 @@ fn caret_math_and_authored_numeric_origins_survive_failure_and_retry() {
         (Limits::new(65_536, 0, 1_048_576), Kind::ProjectionNodeLimit),
         (Limits::new(65_536, 262_144, 0), Kind::ByteLimit),
     ] {
-        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+            kind
+        );
         assert_eq!(
             value.serialize_specified(Default::default()).unwrap(),
             "rgb(255, 127, 0)"

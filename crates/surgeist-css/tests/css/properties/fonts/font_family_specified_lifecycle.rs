@@ -5,6 +5,8 @@
 //! https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-family-name-syntax
 //! https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#serializing
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::important_declaration;
 use crate::css::support::named_property::{assert_invalid_replacement_at, assert_origin_at};
 use surgeist_css::*;
@@ -108,19 +110,19 @@ fn list_limits_are_cumulative_exact_and_atomic() {
     for (limits, expected) in [
         (
             CssSerializationLimits::new(2, 3, 8),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(3, 2, 8),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(3, 3, 7),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            value.serialize_specified(limits).unwrap_err().kind(),
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
             expected
         );
         assert_eq!(value, before);
@@ -140,26 +142,23 @@ fn standalone_name_limits_charge_tokens_and_emitted_utf8_bytes() {
             .unwrap(),
         "A 日本"
     );
-    assert_eq!(
+    assert!(
         value
             .serialize_specified(CssSerializationLimits::new(2, 3, 8))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+            .is_input_node_limit()
     );
-    assert_eq!(
+    assert!(
         value
             .serialize_specified(CssSerializationLimits::new(3, 2, 8))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
+            .is_projection_node_limit()
     );
-    assert_eq!(
+    assert!(
         value
             .serialize_specified(CssSerializationLimits::new(3, 3, 7))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
     let quoted = CssFontFamilyName::try_quoted("a\"b").unwrap();
     assert_eq!(
@@ -168,12 +167,11 @@ fn standalone_name_limits_charge_tokens_and_emitted_utf8_bytes() {
             .unwrap(),
         r#""a\"b""#
     );
-    assert_eq!(
+    assert!(
         quoted
             .serialize_specified(CssSerializationLimits::new(1, 1, 5))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
 }
 
@@ -202,10 +200,7 @@ fn checked_property_admission_retains_components_and_rejects_annotations() {
         CssImportance::Normal,
     )
     .unwrap_err();
-    assert!(matches!(
-        error.kind(),
-        CssPropertyValueErrorKind::Grammar(_)
-    ));
+    assert!(error.code().is_some());
     assert!(matches!(
         error.origin(),
         CssSerializedOrigin::Token(CssValueOrigin::Parsed(_))
@@ -284,16 +279,18 @@ fn metadata_globals_and_pending_reentry_keep_symbolic_lifecycle() {
         let error = pending
             .reenter(parse_component_values("A!important").unwrap())
             .unwrap_err();
-        let CssExpansionErrorKind::InvalidReplacement(error) = error.kind() else {
+        let Some(error) = error.replacement_error() else {
             panic!("invalid replacement: {error:?}")
         };
-        let CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedToken(token)) = error.kind()
-        else {
-            panic!("unexpected `!`: {error:?}")
-        };
-        assert_eq!(token.encountered().kind(), CssTokenKind::Delim);
-        assert_eq!(token.encountered().authored(), "!");
-        assert_origin_at(error.origin(), "A!important", "!important");
+        let token = &error;
+        assert_eq!(
+            token.code(),
+            Some(CssErrorCode::UnexpectedToken),
+            "unexpected `!`: {error:?}"
+        );
+        assert_eq!(token.encountered().unwrap().kind(), CssTokenKind::Delim);
+        assert_eq!(token.encountered().unwrap().authored(), "!");
+        assert_origin_at(&error.origin(), "A!important", "!important");
         assert_eq!(source, before);
     }
 }
@@ -326,19 +323,19 @@ fn embedded_shorthand_shares_output_and_cumulative_node_contract() {
     for (limits, expected) in [
         (
             CssSerializationLimits::new(3, 4, 15),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(4, 3, 15),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(4, 4, 14),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            font.serialize_specified(limits).unwrap_err().kind(),
+            serialization_failure(&font.serialize_specified(limits).unwrap_err()),
             expected
         );
     }
@@ -408,19 +405,19 @@ fn literal_and_palette_routes_share_output_without_inventing_identifier_nodes() 
     for (limits, expected) in [
         (
             CssSerializationLimits::new(0, 1, 9),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(1, 0, 9),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(1, 1, 8),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            family.serialize_specified(limits).unwrap_err().kind(),
+            serialization_failure(&family.serialize_specified(limits).unwrap_err()),
             expected
         );
     }
@@ -437,19 +434,17 @@ fn literal_and_palette_routes_share_output_without_inventing_identifier_nodes() 
             .unwrap(),
         css
     );
-    assert_eq!(
+    assert!(
         value
             .serialize_specified(CssSerializationLimits::new(1, 2, css.len()))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+            .is_input_node_limit()
     );
-    assert_eq!(
+    assert!(
         value
             .serialize_specified(CssSerializationLimits::new(2, 1, css.len()))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
+            .is_projection_node_limit()
     );
     let CssFontPaletteDescriptorValueRef::FontFamily(names) = value.view() else {
         panic!("palette family")

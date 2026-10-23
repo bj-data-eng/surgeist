@@ -15,12 +15,12 @@
 
 use surgeist_color::Color;
 use surgeist_css::{
-    CssAuthoredColorOrdinaryLimits, CssAuthoredColorOutcome, CssColorError, CssColorFactIdentity,
-    CssColorFacts, CssColorGrammarRequest, CssColorInput, CssColorOrdinaryError,
-    CssColorOrdinaryLimits, CssColorOrdinaryOutcome, CssColorPaletteEntry, CssColorPropertyFacts,
-    CssColorSchemeFact, CssDeviceColorFact, CssImportance, CssKnownProperty,
-    CssKnownPropertyValueRef, CssPropertyNameRef, CssSystemColor, parse_property_value_text,
-    parse_used_color, resolve_authored_color,
+    CssAuthoredColorOrdinaryLimits, CssAuthoredColorOutcome, CssColorFactIdentity, CssColorFacts,
+    CssColorGrammarRequest, CssColorInput, CssColorOrdinaryLimits, CssColorOrdinaryOutcome,
+    CssColorPaletteEntry, CssColorPropertyFacts, CssColorResolveError, CssColorSchemeFact,
+    CssDeviceColorFact, CssImportance, CssKnownProperty, CssKnownPropertyValueRef,
+    CssPropertyNameRef, CssSystemColor, parse_property_value_text, parse_used_color,
+    resolve_authored_color,
 };
 use surgeist_fuzz::engine::{PropertyConfig, run_property};
 use surgeist_fuzz::generation::property::bytes;
@@ -419,12 +419,16 @@ impl Outcome {
 }
 /// The generous limits are never reached, so any error but a reached fact,
 /// capability or envelope outcome violates the contract.
-fn classify(error: &CssColorOrdinaryError) -> Outcome {
-    match error {
-        CssColorOrdinaryError::Operation(
-            CssColorError::Unavailable(_) | CssColorError::Unsupported(_) | CssColorError::Facts(_),
-        ) => Outcome::Expected(error.to_string()),
-        other => Outcome::Unexpected(other.to_string()),
+fn classify(error: &CssColorResolveError) -> Outcome {
+    let reached = error.color_error().is_some_and(|error| {
+        error.unavailable().is_some()
+            || error.unsupported().is_some()
+            || error.fact_defect().is_some()
+    });
+    if reached {
+        Outcome::Expected(error.to_string())
+    } else {
+        Outcome::Unexpected(error.to_string())
     }
 }
 fn used(input: CssColorInput<'_>, facts: &CssColorFacts<'_>) -> Outcome {

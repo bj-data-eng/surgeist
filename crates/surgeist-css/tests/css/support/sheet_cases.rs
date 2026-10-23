@@ -304,25 +304,30 @@ pub enum ExpectedErrorKind {
 
 impl ExpectedErrorKind {
     #[track_caller]
-    fn assert_matches(&self, actual: &ErrorKind, label: &str) {
-        let matched = match (self, actual) {
-            (Self::UnexpectedToken, ErrorKind::UnexpectedToken(_))
-            | (Self::InvalidSelector, ErrorKind::InvalidSelector(_)) => true,
-            (Self::InvalidPropertyValue { property }, ErrorKind::InvalidPropertyValue(detail)) => {
-                Some(detail.property()) == expected_property(property, label)
+    fn assert_matches(&self, actual: &CssError, label: &str) {
+        let matched = match self {
+            Self::UnexpectedToken => actual.code() == CssErrorCode::UnexpectedToken,
+            Self::InvalidSelector => actual.code() == CssErrorCode::InvalidSelector,
+            Self::InvalidPropertyValue { property } => {
+                actual.code() == CssErrorCode::InvalidPropertyValue
+                    && actual.known_property() == expected_property(property, label)
             }
-            (Self::InvalidColorSyntax { encountered }, ErrorKind::InvalidColorSyntax(detail)) => {
-                detail
-                    .encountered()
-                    .is_some_and(|token| token.authored() == *encountered)
+            Self::InvalidColorSyntax { encountered } => {
+                actual.code() == CssErrorCode::InvalidColorSyntax
+                    && actual
+                        .encountered()
+                        .is_some_and(|token| token.authored() == *encountered)
             }
-            (Self::UnknownAtRule { name }, ErrorKind::UnknownAtRule(detail)) => {
-                *name == detail.name().as_str()
+            Self::UnknownAtRule { name } => {
+                actual.code() == CssErrorCode::UnknownAtRule
+                    && actual.at_rule().is_some_and(|rule| rule.as_str() == *name)
             }
-            (Self::UnknownProperty { name }, ErrorKind::UnknownProperty(detail)) => {
-                *name == detail.name().as_str()
+            Self::UnknownProperty { name } => {
+                actual.code() == CssErrorCode::UnknownProperty
+                    && actual
+                        .property_name()
+                        .is_some_and(|property| property.as_str() == *name)
             }
-            _ => false,
         };
         assert!(
             matched,
@@ -343,9 +348,9 @@ fn expected_property(name: &str, label: &str) -> Option<CssKnownProperty> {
 
 /// The first diagnostic of `input`, which must match `expected_error`.
 #[track_caller]
-pub fn assert_sheet_rejected(input: &str, expected_error: &ExpectedErrorKind) -> Error {
+pub fn assert_sheet_rejected(input: &str, expected_error: &ExpectedErrorKind) -> CssError {
     let error = parse_sheet(input).expect_err("invalid CSS must report a diagnostic");
-    expected_error.assert_matches(error.kind(), input);
+    expected_error.assert_matches(&error, input);
     error
 }
 
@@ -357,9 +362,9 @@ pub struct RejectedSheetCase {
 
 impl RejectedSheetCase {
     #[track_caller]
-    pub fn assert_rejects(&self) -> Error {
+    pub fn assert_rejects(&self) -> CssError {
         let error = parse_sheet(self.input).expect_err("invalid CSS must report a diagnostic");
-        self.expected_error.assert_matches(error.kind(), self.label);
+        self.expected_error.assert_matches(&error, self.label);
         error
     }
 }
@@ -374,11 +379,11 @@ pub struct RejectedDeclarationCase {
 
 impl RejectedDeclarationCase {
     #[track_caller]
-    pub fn assert_rejects(&self) -> Error {
+    pub fn assert_rejects(&self) -> CssError {
         let css = declaration_sheet(self.property_name, self.authored_value);
         let error = assert_sheet_rejected(&css, &self.expected_error);
         assert_eq!(
-            matches!(error.kind(), ErrorKind::UnknownProperty(_)),
+            error.code() == CssErrorCode::UnknownProperty,
             !self.property_name_should_be_recognized,
             "{} property-name recognition mismatch",
             self.label,
@@ -448,7 +453,7 @@ pub fn assert_rejects_sheets(cases: &[RejectedSheetCase]) {
 /// inside a block's contents without discarding the enclosing rule. Returns
 /// that diagnostic.
 #[track_caller]
-pub fn assert_drops_sole_declaration(input: &str) -> Error {
+pub fn assert_drops_sole_declaration(input: &str) -> CssError {
     let report = parse_sheet(input);
     let [diagnostic] = report.diagnostics() else {
         panic!(
@@ -571,68 +576,48 @@ impl Rejection {
     }
 }
 
-/// The identity a diagnostic kind names.
-fn rejection_names(kind: &ErrorKind) -> Option<String> {
-    let name = match kind {
-        ErrorKind::InvalidPropertyValue(detail) => detail.property().canonical_name(),
-        ErrorKind::UnknownProperty(detail) => detail.name().as_str(),
-        ErrorKind::UnsupportedProperty(detail) => detail.name().as_str(),
-        ErrorKind::UnknownAtRule(detail) => detail.name().as_str(),
-        ErrorKind::UnsupportedAtRule(detail) => detail.name().as_str(),
-        ErrorKind::InvalidAtRulePlacement(detail) => detail.name().as_str(),
-        ErrorKind::InvalidAtRulePrelude(detail) | ErrorKind::InvalidAtRuleBody(detail) => {
-            detail.name().as_str()
+/// The identity a diagnostic names.
+fn rejection_names(error: &CssError) -> Option<String> {
+    let name = match error.code() {
+        CssErrorCode::InvalidPropertyValue => error.known_property()?.canonical_name(),
+        CssErrorCode::UnknownProperty | CssErrorCode::UnsupportedProperty => {
+            error.property_name()?.as_str()
         }
-        ErrorKind::UnknownDescriptor(detail) => detail.descriptor().as_str(),
-        ErrorKind::UnsupportedDescriptor(detail) => detail.descriptor().as_str(),
-        ErrorKind::InvalidDescriptorValue(detail) => detail.descriptor().as_str(),
+        CssErrorCode::UnknownAtRule
+        | CssErrorCode::UnsupportedAtRule
+        | CssErrorCode::InvalidAtRulePlacement
+        | CssErrorCode::InvalidAtRulePrelude
+        | CssErrorCode::InvalidAtRuleBody => error.at_rule()?.as_str(),
+        CssErrorCode::UnknownDescriptor
+        | CssErrorCode::UnsupportedDescriptor
+        | CssErrorCode::InvalidDescriptorValue => error.descriptor()?.as_str(),
         _ => return None,
     };
     Some(name.to_owned())
 }
 
-/// The responsible authored token a diagnostic kind reports.
-fn rejection_token(kind: &ErrorKind) -> Option<String> {
-    let token = match kind {
-        ErrorKind::UnexpectedToken(detail) => Some(detail.encountered()),
-        ErrorKind::InvalidDeclarationAnnotation(detail) => Some(detail.encountered()),
-        ErrorKind::InvalidAtRulePrelude(detail) | ErrorKind::InvalidAtRuleBody(detail) => {
-            detail.encountered()
-        }
-        ErrorKind::InvalidQualifiedRule(detail) => detail.encountered(),
-        ErrorKind::InvalidSelector(detail) => detail.encountered(),
-        ErrorKind::InvalidMediaQuery(detail) => detail.encountered(),
-        ErrorKind::InvalidPropertyValue(detail) => detail.encountered(),
-        ErrorKind::InvalidDescriptorValue(detail) => detail.encountered(),
-        ErrorKind::InvalidColorSyntax(detail) => detail.encountered(),
-        _ => None,
-    };
-    token.map(|token| token.authored().to_owned())
-}
-
 /// Asserts that `error` is the expected typed rejection of `input`.
 #[track_caller]
-pub fn assert_rejection_matches(input: &str, error: &Error, expected: Rejection) {
+pub fn assert_rejection_matches(input: &str, error: &CssError, expected: Rejection) {
     assert_eq!(
         (
             error.code(),
-            rejection_names(error.kind()),
-            rejection_token(error.kind())
+            rejection_names(error),
+            error.encountered().map(|token| token.authored().to_owned())
         ),
         (
             expected.code,
             expected.names.map(str::to_owned),
             expected.encountered.map(str::to_owned)
         ),
-        "{input}: unexpected rejection {:?}",
-        error.kind()
+        "{input}: unexpected rejection {error:?}"
     );
 }
 
 /// Asserts that the first diagnostic of the stylesheet `input` is the
 /// expected typed rejection, and returns it.
 #[track_caller]
-pub fn assert_rejection(input: &str, expected: Rejection) -> Error {
+pub fn assert_rejection(input: &str, expected: Rejection) -> CssError {
     let error = parse_sheet(input).expect_err("invalid CSS must report a diagnostic");
     assert_rejection_matches(input, &error, expected);
     error

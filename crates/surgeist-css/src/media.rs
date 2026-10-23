@@ -4,33 +4,101 @@ use crate::specified_serialization::SpecifiedSerializationContext;
 use crate::*;
 use std::fmt;
 
+/// A media query, condition or custom-media definition that failed checked
+/// construction through its grammar, recovered input or a resource.
+///
+/// The failure is read through the `is_*` predicates and located by [`Self::origin`]; a
+/// rejected component is exposed by [`Self::component_error`] and is the error's source.
 #[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssMediaConstructionError {
+pub struct CssMediaConstructionError {
+    kind: MediaConstructionKind,
+}
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum MediaConstructionKind {
     InvalidQueryGrammar { origin: CssValueOrigin },
     InvalidConditionGrammar { origin: CssValueOrigin },
+    InvalidName { origin: CssValueOrigin },
+    InvalidPrelude { origin: CssValueOrigin },
+    AmbiguousMediaBody { origin: CssValueOrigin },
     RecoveredInput { origin: CssValueOrigin },
     Component(CssComponentValueError),
 }
 impl CssMediaConstructionError {
-    pub fn origin(&self) -> &CssValueOrigin {
-        match self {
-            Self::InvalidQueryGrammar { origin }
-            | Self::InvalidConditionGrammar { origin }
-            | Self::RecoveredInput { origin } => origin,
-            Self::Component(error) => error.origin(),
+    crate::error::kind_predicates! { kind;
+        /// Returns whether the components do not form a media query.
+        is_invalid_query_grammar => MediaConstructionKind::InvalidQueryGrammar { .. },
+        /// Returns whether the components do not form a media condition.
+        is_invalid_condition_grammar => MediaConstructionKind::InvalidConditionGrammar { .. },
+        /// Returns whether a custom-media name is not a `<dashed-ident>`.
+        is_invalid_name => MediaConstructionKind::InvalidName { .. },
+        /// Returns whether a custom-media prelude does not satisfy its grammar.
+        is_invalid_prelude => MediaConstructionKind::InvalidPrelude { .. },
+        /// Returns whether a custom-media body is ambiguous between its media and boolean
+        /// forms.
+        is_ambiguous_media_body => MediaConstructionKind::AmbiguousMediaBody { .. },
+        /// Returns whether an implicitly closed component was supplied.
+        is_recovered_input => MediaConstructionKind::RecoveredInput { .. },
+    }
+    /// Returns the rejected component.
+    #[must_use]
+    pub const fn component_error(&self) -> Option<&CssComponentValueError> {
+        match &self.kind {
+            MediaConstructionKind::Component(error) => Some(error),
+            _ => None,
         }
+    }
+    /// Returns the responsible original or programmatic origin.
+    #[must_use]
+    pub const fn origin(&self) -> &CssValueOrigin {
+        match &self.kind {
+            MediaConstructionKind::InvalidQueryGrammar { origin }
+            | MediaConstructionKind::InvalidConditionGrammar { origin }
+            | MediaConstructionKind::InvalidName { origin }
+            | MediaConstructionKind::InvalidPrelude { origin }
+            | MediaConstructionKind::AmbiguousMediaBody { origin }
+            | MediaConstructionKind::RecoveredInput { origin } => origin,
+            MediaConstructionKind::Component(error) => error.origin(),
+        }
+    }
+}
+impl From<MediaConstructionKind> for CssMediaConstructionError {
+    fn from(kind: MediaConstructionKind) -> Self {
+        Self { kind }
     }
 }
 impl fmt::Display for CssMediaConstructionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "invalid authored media construction: {self:?}")
+        f.write_str("invalid authored media construction: ")?;
+        f.write_str(match &self.kind {
+            MediaConstructionKind::InvalidQueryGrammar { .. } => {
+                "the components do not form a media query"
+            }
+            MediaConstructionKind::InvalidConditionGrammar { .. } => {
+                "the components do not form a media condition"
+            }
+            MediaConstructionKind::InvalidName { .. } => "the custom-media name is invalid",
+            MediaConstructionKind::InvalidPrelude { .. } => "the custom-media prelude is invalid",
+            MediaConstructionKind::AmbiguousMediaBody { .. } => {
+                "the custom-media body is ambiguous"
+            }
+            MediaConstructionKind::RecoveredInput { .. } => {
+                "an implicitly closed component is not admitted"
+            }
+            MediaConstructionKind::Component(_) => "a component is invalid",
+        })
     }
 }
-impl std::error::Error for CssMediaConstructionError {}
+impl std::error::Error for CssMediaConstructionError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.component_error()
+            .map(|error| error as &(dyn std::error::Error + 'static))
+    }
+}
 impl From<CssComponentValueError> for CssMediaConstructionError {
     fn from(error: CssComponentValueError) -> Self {
-        Self::Component(error)
+        Self {
+            kind: MediaConstructionKind::Component(error),
+        }
     }
 }
 /// A lexical media emission failure, before its public classification.
@@ -814,7 +882,7 @@ fn resource(error: CssSerializationError, origin: &CssValueOrigin) -> CssSeriali
 pub(crate) fn media_error(error: MediaSerializationFailure) -> CssSerializationError {
     match error {
         MediaSerializationFailure::Component(component) => {
-            let kind = match component.kind() {
+            let kind = match component.kind {
                 CssComponentValueErrorKind::ByteLimit => {
                     CssSpecifiedValueSerializationErrorKind::ByteLimit
                 }
@@ -987,7 +1055,9 @@ pub(crate) fn empty_media_member_error(
         .or_else(|| items.get(end))
         .or_else(|| start.checked_sub(1).and_then(|index| items.get(index)))
         .map_or(CssValueOrigin::Programmatic, |value| value.origin().clone());
-    Some(CssMediaConstructionError::InvalidQueryGrammar { origin })
+    Some(CssMediaConstructionError::from(
+        crate::media::MediaConstructionKind::InvalidQueryGrammar { origin },
+    ))
 }
 
 pub(crate) fn check_canonical_limit(
@@ -1001,8 +1071,8 @@ pub(crate) fn check_canonical_limit(
 }
 
 /// Runs deep media work on the shared bounded parser thread. If that thread is
-/// unavailable the operation fails with its existing component `NestingLimit`
-/// error at `origin`, never recursing deeply on the caller's stack.
+/// unavailable the operation fails with a component `ParserUnavailable` error
+/// at `origin`, never recursing deeply on the caller's stack.
 pub(crate) fn with_media_stack<T: Send, E: Send + From<CssComponentValueError>>(
     deep: bool,
     origin: impl FnOnce() -> CssValueOrigin,

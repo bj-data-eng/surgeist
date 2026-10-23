@@ -252,13 +252,14 @@ fn assert_incompatible_angle_diagnostic(value: &str) {
         );
     };
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!(
-            "typed rotate grammar rejection: {source}: {:?}",
-            diagnostic.error()
-        );
-    };
-    assert_eq!(detail.property(), CssKnownProperty::Rotate);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "typed rotate grammar rejection: {source}: {:?}",
+        diagnostic.error()
+    );
+    assert_eq!(detail.known_property().unwrap(), CssKnownProperty::Rotate);
     let encountered = detail
         .encountered()
         .expect("the incompatible right-hand numeric operand");
@@ -289,10 +290,7 @@ fn checked_angle_type_error_identifies_the_incompatible_right_hand_dimension() {
         Default::default(),
     )
     .unwrap_err();
-    assert_eq!(
-        error.kind(),
-        &CssNumericConstructionErrorKind::IncompatibleTypes
-    );
+    assert!(error.is_incompatible_types(), "{error:?}");
     let start = source.find("1px").unwrap();
     assert_origin(
         error.origin().expect("incompatible operand origin"),

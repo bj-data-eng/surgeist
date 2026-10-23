@@ -32,13 +32,9 @@ fn admit(
     resource: CssColorOrdinaryResource,
     required: usize,
     allowed: usize,
-) -> Result<(), CssColorOrdinaryError> {
+) -> Result<(), CssColorResolveError> {
     if required > allowed {
-        Err(CssColorOrdinaryError::Limit {
-            resource,
-            required,
-            allowed,
-        })
+        Err(CssColorResolveError::limit(resource, required, allowed))
     } else {
         Ok(())
     }
@@ -60,11 +56,11 @@ fn resource(bank: CssColorBank) -> CssColorOrdinaryResource {
 /// One failure of the ordinary loop: its own resource refusal, or a failure
 /// of the operation it drives.
 enum Failure {
-    Ordinary(CssColorOrdinaryError),
+    Ordinary(CssColorResolveError),
     Authored(AuthoredError),
 }
-impl From<CssColorOrdinaryError> for Failure {
-    fn from(error: CssColorOrdinaryError) -> Self {
+impl From<CssColorResolveError> for Failure {
+    fn from(error: CssColorResolveError) -> Self {
         Self::Ordinary(error)
     }
 }
@@ -79,7 +75,7 @@ impl From<ColorProtocolError> for Failure {
     }
 }
 impl Failure {
-    fn into_ordinary(self) -> CssColorOrdinaryError {
+    fn into_ordinary(self) -> CssColorResolveError {
         match self {
             Self::Ordinary(error) => error,
             Self::Authored(error) => ordinary(error),
@@ -88,7 +84,7 @@ impl Failure {
 }
 /// A reached semantic failure. This loop is the operation's only driver, so a
 /// protocol inconsistency is a defect in it and panics (#1353 decision 5).
-fn ordinary(error: AuthoredError) -> CssColorOrdinaryError {
+fn ordinary(error: AuthoredError) -> CssColorResolveError {
     match error {
         AuthoredError::Color(error) => error.into(),
         AuthoredError::Protocol(defect) => defect.raise(),
@@ -109,7 +105,7 @@ pub fn resolve_authored_color<'authored, 'facts>(
     facts: &'facts CssColorFacts<'facts>,
     expected: CssColorFactIdentity,
     limits: CssAuthoredColorOrdinaryLimits,
-) -> Result<CssAuthoredColorResult<'authored, 'facts>, CssColorOrdinaryError> {
+) -> Result<CssAuthoredColorResult<'authored, 'facts>, CssColorResolveError> {
     use CssAuthoredColorActionDescription as A;
     let mut owner = CssColorOperationOwner::new();
     let mut path = CssColorPathBuffer::new();
@@ -157,10 +153,7 @@ pub fn resolve_authored_color<'authored, 'facts>(
                     // A failed allocator attempt wins over any later observation
                     // refusal. Successful overshoot is a distinct capacity limit.
                     if result.is_err() {
-                        return Err(CssColorOrdinaryError::Allocation {
-                            resource: resource(bank),
-                        }
-                        .into());
+                        return Err(CssColorResolveError::allocation(resource(bank)).into());
                     }
                     admit(resource(bank), slots.capacity(), maximum(limits, bank))?;
                     slots.push(action.record()?);
@@ -183,9 +176,9 @@ pub fn resolve_authored_color<'authored, 'facts>(
                     let receipt = action.reserve_path()?;
                     let failure =
                         if receipt.status() == CssColorPathReservationStatus::AllocationFailed {
-                            Some(CssColorOrdinaryError::Allocation {
-                                resource: CssColorOrdinaryResource::PathSteps,
-                            })
+                            Some(CssColorResolveError::allocation(
+                                CssColorOrdinaryResource::PathSteps,
+                            ))
                         } else {
                             admit(
                                 CssColorOrdinaryResource::PathSteps,

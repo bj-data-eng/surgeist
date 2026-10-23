@@ -362,14 +362,14 @@ fn pause_rest_substitution_reentry_is_atomic_ordered_and_retains_replacement_ori
                 .reenter(parse_component_values(text).unwrap())
                 .unwrap_err();
             assert!(
-                matches!(error.kind(), CssExpansionErrorKind::InvalidReplacement(_)),
+                error.replacement_error().is_some(),
                 "{name}:{text}: {error:?}"
             );
         }
         let error = handle
             .reenter(parse_component_values("var(--again)").unwrap())
             .unwrap_err();
-        assert_eq!(error.kind(), &CssExpansionErrorKind::ResidualSubstitution);
+        assert!(error.is_residual_substitution(), "{error:?}");
         assert!(
             handle
                 .reenter(parse_component_values(valid).unwrap())
@@ -406,12 +406,11 @@ fn pause_rest_authored_case_escapes_comments_and_exact_numbers_survive_bounded_s
                 .as_css(),
             text
         );
-        assert_eq!(
+        assert!(
             components
                 .serialize_tokens(crate::css::support::byte_limits(text.len() - 1))
                 .unwrap_err()
-                .kind(),
-            CssComponentValueErrorKind::ByteLimit
+                .is_byte_limit()
         );
         assert_eq!(
             components

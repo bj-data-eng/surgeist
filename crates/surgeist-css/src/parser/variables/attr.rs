@@ -159,7 +159,7 @@ fn syntax_valid_with_control(
             let values = match parsed {
                 Ok(values) => values,
                 Err(error) => {
-                    let kind = error.kind();
+                    let kind = error.kind;
                     let bytes = source
                         .as_ref()
                         .and_then(|source| source.payload_bytes(true));

@@ -207,7 +207,7 @@ impl<'i> ParseError<'i, Error> {
         self,
         source: &str,
         offset: usize,
-    ) -> cssparser::ParseError<'s, super::Error> {
+    ) -> cssparser::ParseError<'s, super::CssError> {
         let (kind, _) = self.into_parts();
         let position = CssSourcePosition::from_byte_offset_in(source, offset);
         let location = cssparser::SourceLocation {
@@ -215,11 +215,11 @@ impl<'i> ParseError<'i, Error> {
             column: position.column().value().saturating_add(1),
         };
         cssparser::ParseError {
-            kind: cssparser::ParseErrorKind::Custom(super::Error { position, kind }),
+            kind: cssparser::ParseErrorKind::Custom(super::CssError { position, kind }),
             location,
         }
     }
-    pub(crate) fn into_native_source<'s>(self) -> cssparser::ParseError<'s, super::Error> {
+    pub(crate) fn into_native_source<'s>(self) -> cssparser::ParseError<'s, super::CssError> {
         let error = self.into_source_error();
         let position = error.position();
         let location = cssparser::SourceLocation {
@@ -232,7 +232,7 @@ impl<'i> ParseError<'i, Error> {
         }
     }
     /// Only source-owned callers may ask for a single source diagnostic.
-    pub(crate) fn into_source_error(self) -> super::Error {
+    pub(crate) fn into_source_error(self) -> super::CssError {
         let error = self.qualify();
         let site = error.location;
         let (kind, origin) = error.into_parts();
@@ -246,7 +246,7 @@ impl<'i> ParseError<'i, Error> {
             }) => at.span().start(),
             _ => site.source_position().expect("source property input"),
         };
-        super::Error { position, kind }
+        super::CssError { position, kind }
     }
 }
 pub(crate) fn basic<'i>(error: BasicParseError<'i>) -> ParseError<'i, Error> {
@@ -320,7 +320,7 @@ pub(crate) fn with_property_context<'i>(
         return error;
     }
     let encountered = encountered(&mut error.kind);
-    let kind = ErrorKind::InvalidPropertyValue(CssPropertyValueError {
+    let kind = ErrorKind::InvalidPropertyValue(PropertyValueRejection {
         property,
         expectation: EXPECT_PROPERTY_VALUE,
         encountered,
@@ -352,7 +352,7 @@ pub(crate) fn property_rejection_kind(
 ) -> ErrorKind {
     let encountered = component.map(CssTokenSummary::from_component);
     if let Some(property) = property_for_supported_name(name) {
-        return ErrorKind::InvalidPropertyValue(CssPropertyValueError {
+        return ErrorKind::InvalidPropertyValue(PropertyValueRejection {
             property,
             expectation: EXPECT_PROPERTY_VALUE,
             encountered,
@@ -412,7 +412,7 @@ fn with_property_context_controlled<'i>(
             .transpose()?,
         _ => None,
     };
-    let kind = ErrorKind::InvalidPropertyValue(CssPropertyValueError {
+    let kind = ErrorKind::InvalidPropertyValue(PropertyValueRejection {
         property,
         expectation: EXPECT_PROPERTY_VALUE,
         encountered,
@@ -422,9 +422,8 @@ fn with_property_context_controlled<'i>(
             let previous_bytes = detail
                 .kind
                 .retained_backing_bytes_with(&mut || control.step())
-                .map_err(|error| match error {
-                    crate::CssRetainedPayloadError::Admission(()) => (),
-                    crate::CssRetainedPayloadError::CapacityOverflow => {
+                .map_err(|error| {
+                    if error.is_capacity_overflow() {
                         let _ = control.fail::<()>(crate::utf16_value::Failure::CapacityOverflow);
                     }
                 })?;

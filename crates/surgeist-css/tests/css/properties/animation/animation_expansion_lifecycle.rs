@@ -4,6 +4,8 @@
 //! propagation. Exact child provenance, ordered intrinsic contributions and
 //! bounded atomic failures are Surgeist contracts, before contextual execution.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::property_admission::Responsible::{At, End};
 use crate::css::support::property_admission::eof_closure_origin as implicit_origin;
 use crate::css::support::property_admission::{
@@ -749,11 +751,8 @@ fn late_recovered_time_projections_keep_implicit_graphs_through_output_and_norma
                 CssNormalizationLimits::try_new(0, 1, 1, 7).unwrap()
             )
             .unwrap_err()
-            .kind(),
-            &CssNormalizationErrorKind::LimitExceeded {
-                resource: CssNormalizationResource::Contributions,
-                limit: 7
-            }
+            .exhausted_limit(),
+            Some((CssNormalizationResource::Contributions, 7))
         );
         assert_eq!(report.diagnostics(), before.diagnostics());
         assert!(normalize_report_with_limits(&report, limits).is_ok());
@@ -779,27 +778,23 @@ fn pending_handles_retry_original_eof_grammar_residual_and_output_resource_failu
         let recovered = parse_component_values(&recovered_source).unwrap();
         let origin = implicit_origin(&recovered, &recovered_source);
         let error = handle.reenter(recovered).unwrap_err();
-        let CssExpansionErrorKind::InvalidReplacement(error) = error.kind() else {
+        let Some(error) = error.replacement_error() else {
             panic!("strict recovered replacement")
         };
-        assert!(matches!(
-            error.kind(),
-            CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
-        ));
-        assert_eq!(error.origin(), &CssSerializedOrigin::End(Some(origin)));
-        assert!(matches!(
+        assert!(error.code() == Some(CssErrorCode::UnexpectedEnd));
+        assert_eq!(error.origin(), CssSerializedOrigin::End(Some(origin)));
+        assert!(
             handle
                 .reenter(parse_component_values("1px").unwrap())
                 .unwrap_err()
-                .kind(),
-            CssExpansionErrorKind::InvalidReplacement(_)
-        ));
-        assert_eq!(
+                .replacement_error()
+                .is_some()
+        );
+        assert!(
             handle
                 .reenter(parse_component_values("var(--again)").unwrap())
                 .unwrap_err()
-                .kind(),
-            &CssExpansionErrorKind::ResidualSubstitution
+                .is_residual_substitution()
         );
         let replacement = parse_component_values(good).unwrap();
         let CssContributions::Longhands(first) = handle.reenter(replacement.clone()).unwrap()
@@ -808,11 +803,10 @@ fn pending_handles_retry_original_eof_grammar_residual_and_output_resource_failu
         };
         for item in first.items() {
             let view = item.ordinary_value().unwrap().view();
-            assert_eq!(
+            assert!(
                 output(view, CssSerializationLimits::new(100, 100, 0))
                     .unwrap_err()
-                    .kind(),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit
+                    .is_byte_limit()
             );
         }
         let CssContributions::Longhands(retry) = handle.reenter(replacement.clone()).unwrap()
@@ -864,18 +858,21 @@ fn projected_eight_lists_use_exact_cumulative_provider_budgets_and_fail_atomical
         for (limit, kind) in [
             (
                 limits(nodes - 1, nodes, expected.len()),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                SerializationFailure::InputNodeLimit,
             ),
             (
                 limits(nodes, nodes - 1, expected.len()),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
                 limits(nodes, nodes, expected.len() - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                SerializationFailure::ByteLimit,
             ),
         ] {
-            assert_eq!(output(view, limit).unwrap_err().kind(), kind);
+            assert_eq!(
+                serialization_failure(&output(view, limit).unwrap_err()),
+                kind
+            );
             assert_eq!(
                 output(view, limits(nodes, nodes, expected.len())).unwrap(),
                 expected
@@ -1077,10 +1074,9 @@ fn quoted_names_and_keyword_priority_remain_independent_of_projection_defaults()
         CssKeyframesString::new("\0"),
     )])
     .unwrap();
-    assert_eq!(
+    assert!(
         name.serialize_specified(Default::default())
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::UnrepresentableValue
+            .is_unrepresentable_value()
     );
 }

@@ -2,10 +2,11 @@
 //! Expected order and disambiguation follow the selected Transitions 1 §2.5
 //! and Animations 1 §3.10 references. Limits follow the provider node policy.
 
+use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::property_admission::assert_numeric_rejected;
 use crate::css::support::serialization_limits::assert_limits as budget;
 use crate::css::support::sole_declaration as declaration;
-use surgeist_css::{CssSerializationLimits as L, CssSpecifiedValueSerializationErrorKind as K, *};
+use surgeist_css::{CssSerializationLimits as L, *};
 
 fn time(text: &str) -> CssTimeValue {
     CssTimeValue::from_literal(CssTimeLiteral::try_new(text, CssTimeUnit::Seconds).unwrap())
@@ -570,26 +571,23 @@ fn checked_keyword_names_and_mixed_none_lists_are_rejected() {
 #[test]
 fn late_byte_failure_returns_no_partial_css_and_leaves_large_lists_unchanged() {
     let value = CssDelayList::try_new(vec![time("-1"); 8192]).unwrap();
-    assert_eq!(
+    assert!(
         value
             .serialize_specified(L::new(4, usize::MAX, usize::MAX))
             .unwrap_err()
-            .kind(),
-        K::InputNodeLimit
+            .is_input_node_limit()
     );
-    assert_eq!(
+    assert!(
         value
             .serialize_specified(L::new(usize::MAX, 4, usize::MAX))
             .unwrap_err()
-            .kind(),
-        K::ProjectionNodeLimit
+            .is_projection_node_limit()
     );
-    assert_eq!(
+    assert!(
         value
             .serialize_specified(L::new(usize::MAX, usize::MAX, 8))
             .unwrap_err()
-            .kind(),
-        K::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(value.values().len(), 8192);
     assert_eq!(
@@ -613,7 +611,7 @@ fn exact_duration_admission_and_signed_delay_projection_keep_distinct_domains() 
     let tiny_negative = time("-1e-999");
     assert_numeric_rejected(
         CssDuration::try_new(tiny_negative.clone()),
-        CssNumericConstructionErrorKind::OutOfRange,
+        NumericFailure::OutOfRange,
     );
     let delays = CssDelayList::try_new(vec![tiny_negative]).unwrap();
     check!(&delays, 2, 2, "0s");
@@ -632,12 +630,11 @@ fn exact_duration_admission_and_signed_delay_projection_keep_distinct_domains() 
 fn nul_quoted_animation_identity_cannot_be_replaced_during_output() {
     let original = CssAnimationName::String(CssKeyframesString::new("a\0b"));
     let values = CssAnimationNameList::try_new(vec![original.clone()]).unwrap();
-    assert_eq!(
+    assert!(
         values
             .serialize_specified(Default::default())
             .unwrap_err()
-            .kind(),
-        K::UnrepresentableValue
+            .is_unrepresentable_value()
     );
     assert_eq!(values.names()[0], original);
 }
@@ -650,11 +647,10 @@ fn nul_animation_shorthand_string_cannot_be_replaced_during_output() {
     })
     .unwrap();
     let values = CssAnimationList::try_new(vec![item]).unwrap();
-    assert_eq!(
+    assert!(
         values
             .serialize_specified(Default::default())
             .unwrap_err()
-            .kind(),
-        K::UnrepresentableValue
+            .is_unrepresentable_value()
     );
 }

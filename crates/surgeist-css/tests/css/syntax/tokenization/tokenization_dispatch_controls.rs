@@ -9,8 +9,7 @@
 use std::ops::Range;
 
 use surgeist_css::{
-    CssBlockKind, CssComponentValueErrorKind, CssComponentValueRef, CssValueOrigin,
-    CssValueTokenRef, parse_component_values,
+    CssBlockKind, CssComponentValueRef, CssValueOrigin, CssValueTokenRef, parse_component_values,
 };
 
 fn assert_origin(origin: &CssValueOrigin, source: &str, expected: Range<usize>) {
@@ -129,11 +128,7 @@ fn bracket_dispatch_matches_all_block_kinds_and_rejects_unmatched_closers() {
 
     for source in [")", "]", "}"] {
         let error = parse_component_values(source).expect_err("strict unmatched closer");
-        assert_eq!(
-            error.kind(),
-            CssComponentValueErrorKind::UnmatchedClosingDelimiter,
-            "{source:?}"
-        );
+        assert!(error.is_unmatched_closing_delimiter(), "{source:?}");
         assert_origin(error.origin(), source, 0..1);
     }
 }

@@ -471,7 +471,7 @@ fn replacement_candidate_resource_failure_aborts_staged_changes_and_fresh_retry_
         .unwrap();
     let error = edit.apply_declaration(prepared, &[]).unwrap_err();
     assert!(
-        matches!(error, CssomError::Declaration(ref cause) if matches!(cause.kind(), CssDeclarationBlockErrorKind::Serialization(error) if error.kind() == CssSpecifiedValueSerializationErrorKind::InputNodeLimit))
+        matches!(error, CssomError::Declaration(ref cause) if cause.serialization().is_some_and(|error| error.is_input_node_limit()))
     );
     let CssomError::Declaration(cause) = error else {
         panic!("checked candidate selection resource error");
@@ -2160,9 +2160,7 @@ fn descriptor_support_is_supplied_not_inferred_and_resource_failures_abort_whole
         .unwrap();
     assert!(matches!(
         edit.apply_declaration(prepared, &[]),
-        Err(CssomError::FontFace(
-            CssFontFaceDeclarationBlockError::Serialization(_)
-        ))
+        Err(CssomError::FontFace(ref error)) if error.serialization().is_some()
     ));
     assert!(matches!(
         supported.commit(edit),
@@ -2305,7 +2303,7 @@ fn complete_value_component_resource_failure_remains_atomic_error() {
             },
         );
         assert!(
-            matches!(result, Err(CssomError::Component(ref error)) if error.kind() == CssComponentValueErrorKind::ComponentLimit)
+            matches!(result, Err(CssomError::Component(ref error)) if error.is_component_limit())
         );
         assert!(matches!(live.commit(edit), Err(CssomError::BatchAborted)));
         assert_eq!(live.snapshot().revision(), before.revision());

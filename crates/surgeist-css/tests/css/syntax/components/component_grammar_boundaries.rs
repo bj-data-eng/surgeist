@@ -4,18 +4,19 @@
 //! Sizing3 WD20260904 §3.1.1 and Transforms1 CR20190214 §9.1.
 //! This is not a public raw-error stream or generic grammar DSL test.
 use crate::css::support::authored_syntax::{
-    assert_diagnostics, assert_invalid_property_value, assert_strict_rejection,
-    parsed_origin as parsed,
+    assert_checked_invalid_property_value, assert_diagnostics, assert_invalid_property_value,
+    assert_strict_rejection, parsed_origin as parsed,
 };
+use crate::css::support::failure_classes::ComponentFailure;
+use crate::css::support::failure_classes::component_failure;
 use surgeist_css::{
-    CssBlockKind, CssComponentValueErrorKind, CssComponentValueRef, CssCustomPropertyName,
-    CssErrorCode, CssGeneralEnclosed, CssGeneralEnclosedError, CssImportance, CssKnownProperty,
-    CssKnownPropertyValueRef, CssMediaConditionKind, CssMediaQuery, CssMediaType,
-    CssNamespaceContext, CssPropertyNameRef, CssPropertyValueErrorKind, CssRecoveryAction, CssRule,
-    CssSerializedOrigin, CssSupportsConstructionError, CssValueOrigin, CssValueTokenRef, ErrorKind,
-    parse_component_values, parse_css_supports_declaration, parse_media_query,
-    parse_media_query_list, parse_property_value, parse_property_value_text,
-    parse_property_value_text_for_grammar, parse_rule,
+    CssBlockKind, CssComponentValueRef, CssCustomPropertyName, CssErrorCode, CssGeneralEnclosed,
+    CssImportance, CssKnownProperty, CssKnownPropertyValueRef, CssMediaConditionKind,
+    CssMediaQuery, CssMediaType, CssNamespaceContext, CssPropertyNameRef, CssRecoveryAction,
+    CssRule, CssSerializedOrigin, CssValueOrigin, CssValueTokenRef, parse_component_values,
+    parse_css_supports_declaration, parse_media_query, parse_media_query_list,
+    parse_property_value, parse_property_value_text, parse_property_value_text_for_grammar,
+    parse_rule,
 };
 
 fn width(source: &str) -> surgeist_css::CssParseReport<Option<surgeist_css::CssDeclaration>> {
@@ -118,14 +119,11 @@ fn whole_width_production_matches_complete_input_and_rejects_a_valid_prefix_with
             CssImportance::Normal,
         )
         .unwrap_err();
-        let CssPropertyValueErrorKind::Grammar(kind) = error.kind() else {
-            panic!("{source}: {error:?}")
-        };
-        assert_invalid_property_value(kind, property, Some(token));
+        assert_checked_invalid_property_value(&error, property, Some(token));
         let CssSerializedOrigin::Token(origin) = error.origin() else {
             panic!("{source}: {error:?}")
         };
-        let origin = parsed(origin);
+        let origin = parsed(&origin);
         assert_eq!(origin.source().as_str(), source);
         assert_eq!(origin.span().start().byte_offset().value(), responsible);
     }
@@ -237,10 +235,7 @@ fn escaped_ident_values_do_not_acquire_function_or_at_keyword_kind() {
             matches!(component.view(), CssComponentValueRef::Token(CssValueTokenRef::Ident(value)) if value == ident)
         );
         let error = CssGeneralEnclosed::try_from_component(component.clone()).unwrap_err();
-        assert!(matches!(
-            error,
-            CssGeneralEnclosedError::WrongOuterComponent { .. }
-        ));
+        assert!(error.is_wrong_outer_component());
         assert_eq!(error.origin(), component.origin());
     }
     let at = parse_component_values("@future").unwrap();
@@ -251,10 +246,7 @@ fn escaped_ident_values_do_not_acquire_function_or_at_keyword_kind() {
     // `<general-enclosed>` is a function or a parenthesized block, never an
     // at-keyword token.
     let error = CssGeneralEnclosed::try_from_component(at.items()[0].clone()).unwrap_err();
-    assert!(matches!(
-        error,
-        CssGeneralEnclosedError::WrongOuterComponent { .. }
-    ));
+    assert!(error.is_wrong_outer_component());
     assert_eq!(error.origin(), at.items()[0].origin());
     let function = parse_component_values("future()").unwrap();
     assert!(
@@ -374,10 +366,9 @@ fn root_semicolon_and_bang_are_allowed_by_any_value_but_excluded_from_declaratio
             CssRecoveryAction::RejectInput
         );
         assert!(
-            matches!(
-                parse_css_supports_declaration("--tokens", source),
-                Err(CssSupportsConstructionError::InvalidDeclarationGrammar { .. })
-            ),
+            parse_css_supports_declaration("--tokens", source)
+                .as_ref()
+                .is_err_and(|error| error.is_invalid_declaration_grammar()),
             "two-argument method grammar: {source}"
         );
         let query = parse_media_query(&format!("future({source})"));
@@ -426,7 +417,7 @@ fn nullable_defining_grammars_do_not_make_nonnullable_known_property_values_matc
         let [diagnostic] = report.diagnostics() else {
             panic!("one missing-value rejection: {source:?}: {report:?}")
         };
-        assert_invalid_property_value(diagnostic.error().kind(), CssKnownProperty::Width, None);
+        assert_invalid_property_value(diagnostic.error(), CssKnownProperty::Width, None);
         assert_eq!(
             diagnostic.error().position().byte_offset().value(),
             source.len(),
@@ -456,21 +447,13 @@ fn nullable_defining_grammars_do_not_make_nonnullable_known_property_values_matc
 #[test]
 fn recursive_lexical_faults_reject_checked_values_and_only_the_owning_media_member() {
     for (payload, responsible, kind) in [
-        ("f(url(a b))", "url(", CssComponentValueErrorKind::BadUrl),
-        ("f(\"bad\n)", "\"", CssComponentValueErrorKind::BadString),
-        (
-            "f(])",
-            "]",
-            CssComponentValueErrorKind::UnmatchedClosingDelimiter,
-        ),
-        (
-            "f([)])",
-            ")",
-            CssComponentValueErrorKind::UnmatchedClosingDelimiter,
-        ),
+        ("f(url(a b))", "url(", ComponentFailure::BadUrl),
+        ("f(\"bad\n)", "\"", ComponentFailure::BadString),
+        ("f(])", "]", ComponentFailure::UnmatchedClosingDelimiter),
+        ("f([)])", ")", ComponentFailure::UnmatchedClosingDelimiter),
     ] {
         let error = parse_component_values(payload).unwrap_err();
-        assert_eq!(error.kind(), kind, "{payload}");
+        assert_eq!(component_failure(&error), kind, "{payload}");
         let CssValueOrigin::Parsed(origin) = error.origin() else {
             panic!("original checked lexical failure")
         };
@@ -515,10 +498,10 @@ fn recursive_lexical_faults_reject_checked_values_and_only_the_owning_media_memb
             diagnostic.error().code(),
             CssErrorCode::InvalidComponentValue
         );
-        let ErrorKind::InvalidComponentValue(error) = diagnostic.error().kind() else {
+        let Some(error) = diagnostic.error().component_error() else {
             panic!("original typed lexical error")
         };
-        assert_eq!(error.kind(), kind);
+        assert_eq!(component_failure(error), kind);
         let CssValueOrigin::Parsed(origin) = error.origin() else {
             panic!("original media lexical origin")
         };
@@ -530,10 +513,7 @@ fn recursive_lexical_faults_reject_checked_values_and_only_the_owning_media_memb
     }
     for source in [")", "]", "}"] {
         let error = parse_component_values(source).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            CssComponentValueErrorKind::UnmatchedClosingDelimiter
-        );
+        assert!(error.is_unmatched_closing_delimiter(), "{error:?}");
         let CssValueOrigin::Parsed(origin) = error.origin() else {
             panic!("actual root closer")
         };

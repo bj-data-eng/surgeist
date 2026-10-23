@@ -3,6 +3,8 @@
 //! oracles: Conditional 5 WD20251030 §2 and Fonts 4 WD20260907 §4.3 vocabularies.
 //! Support truth, font loading and actual at-rule admission remain downstream.
 use crate::css::support::authored_syntax::checked_supports_condition as checked;
+use crate::css::support::failure_classes::ComponentFailure;
+use crate::css::support::failure_classes::component_failure;
 use surgeist_css::*;
 
 fn both(source: &str, inspect: impl Fn(&CssSupportsCondition)) {
@@ -481,10 +483,7 @@ fn balanced_invalid_predicate_arguments_remain_opaque_but_invalid_outer_algebra_
             Default::default(),
         )
         .unwrap_err();
-        assert!(matches!(
-            error,
-            CssSupportsConstructionError::InvalidConditionGrammar { .. }
-        ));
+        assert!(error.is_invalid_condition_grammar());
         let report = parse_sheet(&format!("@supports {source}{{}} .after{{color:red}}"));
         assert!(matches!(report.syntax().rules(), [CssRule::Style(_)]));
         let [diagnostic] = report.diagnostics() else {
@@ -501,24 +500,16 @@ fn balanced_invalid_predicate_arguments_remain_opaque_but_invalid_outer_algebra_
 #[test]
 fn lexical_failures_in_function_predicates_are_terminal_and_recover_to_the_later_sibling() {
     for (predicate, bad, kind) in [
-        (
-            "font-tech(url(a b))",
-            "url(",
-            CssComponentValueErrorKind::BadUrl,
-        ),
-        (
-            "at-rule(url(a b))",
-            "url(",
-            CssComponentValueErrorKind::BadUrl,
-        ),
+        ("font-tech(url(a b))", "url(", ComponentFailure::BadUrl),
+        ("at-rule(url(a b))", "url(", ComponentFailure::BadUrl),
         (
             "font-format(\"broken\n)",
             "\"broken",
-            CssComponentValueErrorKind::BadString,
+            ComponentFailure::BadString,
         ),
     ] {
         let component_error = parse_component_values(predicate).unwrap_err();
-        assert_eq!(component_error.kind(), kind);
+        assert_eq!(component_failure(&component_error), kind);
         for (prefix, ending) in [("@supports ", "{}"), ("@import 'x' supports(", ");")] {
             let source = format!("/*😀*/\r\n{prefix}{predicate}{ending} .after{{color:red}}");
             let report = parse_sheet(&source);
@@ -529,10 +520,10 @@ fn lexical_failures_in_function_predicates_are_terminal_and_recover_to_the_later
             let [diagnostic] = report.diagnostics() else {
                 panic!("one terminal lexical failure: {report:?}")
             };
-            let ErrorKind::InvalidComponentValue(detail) = diagnostic.error().kind() else {
+            let Some(detail) = diagnostic.error().component_error() else {
                 panic!("lexical error survives predicate probes")
             };
-            assert_eq!(detail.kind(), kind);
+            assert_eq!(component_failure(detail), kind);
             let CssValueOrigin::Parsed(origin) = detail.origin() else {
                 panic!("original bad token")
             };
@@ -575,17 +566,17 @@ fn complete_predicate_graph_limits_are_cumulative_and_retries_preserve_origins()
     for (limits, kind, offset) in [
         (
             CssComponentValueLimits::try_new(0, 7, source.len()).unwrap(),
-            CssComponentValueErrorKind::NestingLimit,
+            ComponentFailure::NestingLimit,
             0,
         ),
         (
             CssComponentValueLimits::try_new(1, 6, source.len()).unwrap(),
-            CssComponentValueErrorKind::ComponentLimit,
+            ComponentFailure::ComponentLimit,
             source.find("@unknown").unwrap(),
         ),
         (
             CssComponentValueLimits::try_new(1, 7, source.len() - 1).unwrap(),
-            CssComponentValueErrorKind::ByteLimit,
+            ComponentFailure::ByteLimit,
             source.len() - 1,
         ),
     ] {
@@ -595,22 +586,21 @@ fn complete_predicate_graph_limits_are_cumulative_and_retries_preserve_origins()
             limits,
         )
         .unwrap_err();
-        let CssSupportsConstructionError::Component(error) = error else {
+        let Some(error) = error.component_error() else {
             panic!("terminal component resource failure")
         };
-        assert_eq!(error.kind(), kind);
+        assert_eq!(component_failure(error), kind);
         let CssValueOrigin::Parsed(origin) = error.origin() else {
             panic!("original exhausted component")
         };
         assert_eq!(origin.source().as_str(), source);
         assert_eq!(origin.span().start().byte_offset().value(), offset);
     }
-    assert_eq!(
+    assert!(
         condition
             .serialize_tokens(crate::css::support::byte_limits(source.len() - 1))
             .unwrap_err()
-            .kind(),
-        CssComponentValueErrorKind::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(condition, before);
     assert_eq!(
@@ -645,10 +635,7 @@ fn recovered_predicate_delimiters_keep_parsed_import_payloads_but_fail_strict_re
             Default::default(),
         )
         .unwrap_err();
-        assert!(matches!(
-            error,
-            CssSupportsConstructionError::RecoveredInput { .. }
-        ));
+        assert!(error.is_recovered_input());
         let CssValueOrigin::ImplicitClosure { at, .. } = error.origin() else {
             panic!("original implied closure")
         };
@@ -698,14 +685,15 @@ fn recovered_predicate_delimiters_keep_parsed_import_payloads_but_fail_strict_re
         let recovered =
             CssComponentValues::try_new(condition.components().to_vec(), Default::default())
                 .unwrap();
-        assert!(matches!(
+        assert!(
             CssSupportsCondition::try_from_components(
                 recovered,
                 &CssNamespaceContext::default(),
                 Default::default()
-            ),
-            Err(CssSupportsConstructionError::RecoveredInput { .. })
-        ));
+            )
+            .as_ref()
+            .is_err_and(|error| error.is_recovered_input())
+        );
         assert!(parse_sheet(&expected).is_clean());
     }
 }

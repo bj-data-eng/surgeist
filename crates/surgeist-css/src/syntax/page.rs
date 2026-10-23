@@ -685,29 +685,43 @@ impl CssPageRule {
     }
 }
 
-/// Typed failure at the Page/margin domain reconstruction boundary.
-#[derive(Clone, Debug)]
-#[non_exhaustive]
-pub enum CssPageBlockErrorKind {
+#[derive(Clone, Debug, PartialEq)]
+enum CssPageBlockErrorKind {
     PropertyNotApplicable,
     InvalidPropertyValue,
     Resource(crate::CssSerializationError),
 }
-#[derive(Clone, Debug)]
+/// Typed failure at the Page/margin domain reconstruction boundary.
+///
+/// The responsible declaration is located by [`Self::ordinal`]; a resource refusal is
+/// exposed by [`Self::resource`] and is the error's source.
+#[derive(Clone, Debug, PartialEq)]
 pub struct CssPageBlockError {
     kind: CssPageBlockErrorKind,
     ordinal: Option<usize>,
     declaration: Option<CssDeclaration>,
 }
 impl CssPageBlockError {
-    #[must_use]
-    pub const fn kind(&self) -> &CssPageBlockErrorKind {
-        &self.kind
+    crate::error::kind_predicates! { kind;
+        /// Returns whether a declaration's property does not apply in the Page/margin domain.
+        is_property_not_applicable => CssPageBlockErrorKind::PropertyNotApplicable,
+        /// Returns whether a declaration's value is invalid in the Page/margin domain.
+        is_invalid_property_value => CssPageBlockErrorKind::InvalidPropertyValue,
     }
+    /// Returns the serialization resource refusal.
+    #[must_use]
+    pub const fn resource(&self) -> Option<&crate::CssSerializationError> {
+        match &self.kind {
+            CssPageBlockErrorKind::Resource(error) => Some(error),
+            _ => None,
+        }
+    }
+    /// Returns the zero-based ordinal of the responsible declaration.
     #[must_use]
     pub const fn ordinal(&self) -> Option<usize> {
         self.ordinal
     }
+    /// Returns the responsible declaration.
     #[must_use]
     pub const fn declaration(&self) -> Option<&CssDeclaration> {
         self.declaration.as_ref()
@@ -715,19 +729,27 @@ impl CssPageBlockError {
 }
 impl std::fmt::Display for CssPageBlockError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "invalid Page/margin block at {:?}: {:?}",
-            self.ordinal, self.kind
-        )
+        match &self.kind {
+            CssPageBlockErrorKind::PropertyNotApplicable => {
+                f.write_str("property does not apply in the Page/margin domain")
+            }
+            CssPageBlockErrorKind::InvalidPropertyValue => {
+                f.write_str("invalid property value in the Page/margin domain")
+            }
+            CssPageBlockErrorKind::Resource(error) => {
+                write!(f, "invalid Page/margin block: {error}")
+            }
+        }?;
+        if let Some(ordinal) = self.ordinal {
+            write!(f, " at declaration {ordinal}")?;
+        }
+        Ok(())
     }
 }
 impl std::error::Error for CssPageBlockError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match &self.kind {
-            CssPageBlockErrorKind::Resource(v) => Some(v),
-            _ => None,
-        }
+        self.resource()
+            .map(|error| error as &(dyn std::error::Error + 'static))
     }
 }
 impl From<crate::CssSerializationError> for CssPageBlockError {

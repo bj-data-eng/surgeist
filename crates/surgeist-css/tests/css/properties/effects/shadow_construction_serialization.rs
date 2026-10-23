@@ -4,10 +4,11 @@
 //! and Filter Effects 1 WD 2018-12-18 §6.1; canonical ordering and cumulative
 //! resource charges are Surgeist's specified-value contract, not computed CSS.
 
+use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::property_admission::assert_component_rejected;
 use crate::css::support::serialization_limits::LimitLadder;
 use crate::css::support::sole_declaration as declaration;
-use surgeist_css::{CssSerializationLimits as L, CssSpecifiedValueSerializationErrorKind as K, *};
+use surgeist_css::{CssSerializationLimits as L, *};
 
 #[test]
 fn resumed_lengths_report_the_responsible_token_and_utf16_column() {
@@ -125,10 +126,10 @@ fn construction_preserves_omissions_and_rejects_spread_without_blur_and_empty_li
     );
     assert!(CssBoxShadowList::try_new(vec![]).is_none());
     for (invalid, kind) in [
-        ("-1px", CssNumericConstructionErrorKind::OutOfRange),
-        ("-1e-999px", CssNumericConstructionErrorKind::OutOfRange),
-        ("1%", CssNumericConstructionErrorKind::RootDomainMismatch),
-        ("auto", CssNumericConstructionErrorKind::RootDomainMismatch),
+        ("-1px", NumericFailure::OutOfRange),
+        ("-1e-999px", NumericFailure::OutOfRange),
+        ("1%", NumericFailure::RootDomainMismatch),
+        ("auto", NumericFailure::RootDomainMismatch),
     ] {
         assert_component_rejected(
             CssSpecifiedNonNegativeLength::try_from_component,
@@ -137,9 +138,9 @@ fn construction_preserves_omissions_and_rejects_spread_without_blur_and_empty_li
         );
     }
     for (invalid, kind) in [
-        ("1%", CssNumericConstructionErrorKind::RootDomainMismatch),
-        ("auto", CssNumericConstructionErrorKind::RootDomainMismatch),
-        ("1", CssNumericConstructionErrorKind::RootDomainMismatch),
+        ("1%", NumericFailure::RootDomainMismatch),
+        ("auto", NumericFailure::RootDomainMismatch),
+        ("1", NumericFailure::RootDomainMismatch),
     ] {
         assert_component_rejected(
             CssSpecifiedLength::try_from_component,
@@ -304,12 +305,11 @@ fn serialization_failure_and_success_leave_exact_parsed_origins_unchanged() {
             ..parsed.span().end().byte_offset().value()],
         "1e999px"
     );
-    assert_eq!(
+    assert!(
         value
             .serialize_specified(L::new(100, 100, 1))
             .unwrap_err()
-            .kind(),
-        K::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(value, &before);
     assert_eq!(value.offset_x().origin(), &origin);
@@ -322,11 +322,10 @@ fn serialization_failure_and_success_leave_exact_parsed_origins_unchanged() {
     let drop = drop_value("1e999px -1e-999px 0 red");
     let before = drop.clone();
     let origin = drop.standard_deviation().unwrap().origin().clone();
-    assert_eq!(
+    assert!(
         drop.serialize_specified(L::new(0, 100, 100))
             .unwrap_err()
-            .kind(),
-        K::InputNodeLimit
+            .is_input_node_limit()
     );
     assert_eq!(drop, before);
     assert_eq!(drop.standard_deviation().unwrap().origin(), &origin);
@@ -577,11 +576,8 @@ fn mixed_normalization_preserves_order_provenance_and_one_unit_per_shadow() {
         let limits = CssNormalizationLimits::try_new(256, usize::MAX, usize::MAX, limit).unwrap();
         let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
         assert_eq!(
-            error.kind(),
-            &CssNormalizationErrorKind::LimitExceeded {
-                resource: CssNormalizationResource::Contributions,
-                limit
-            }
+            error.exhausted_limit(),
+            Some((CssNormalizationResource::Contributions, limit))
         );
         assert_eq!(error.declaration_order(), Some(order));
         assert!(

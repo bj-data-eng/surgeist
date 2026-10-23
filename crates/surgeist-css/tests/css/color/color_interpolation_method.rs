@@ -61,40 +61,41 @@ const HUES: [(HueInterpolation, &str); 4] = [
     (HueInterpolation::Decreasing, "decreasing"),
 ];
 
-const OMITTED_POLAR: CssColorInterpolationMethod =
-    match CssColorInterpolationMethod::try_new(ColorSpace::Hsl, None) {
-        Ok(value) => value,
-        Err(_) => panic!("polar omitted hue is valid"),
-    };
-const EXPLICIT_POLAR: CssColorInterpolationMethod =
-    match CssColorInterpolationMethod::try_new(ColorSpace::Hsl, Some(HueInterpolation::Shorter)) {
-        Ok(value) => value,
-        Err(_) => panic!("polar shorter hue is valid"),
-    };
-const REJECTED_RECTANGULAR: Result<
-    CssColorInterpolationMethod,
-    CssColorInterpolationMethodConstructionError,
-> = CssColorInterpolationMethod::try_new(ColorSpace::Lab, Some(HueInterpolation::Longer));
-const CONST_WRAPPER: CssColorInterpolation = CssColorInterpolation::from_predefined(OMITTED_POLAR);
-const CONST_DEFAULT_HUE: Option<HueInterpolation> = OMITTED_POLAR.effective_hue();
-const CONST_SPACE: ColorSpace = OMITTED_POLAR.space();
-const CONST_AUTHORED_HUE: Option<HueInterpolation> = OMITTED_POLAR.hue();
+// Checked construction is const. Its error carries retained origins, so a
+// constant can hold the checked result but cannot discard the error to
+// unwrap it; the polar methods are unwrapped at run time.
+const OMITTED_POLAR: Result<CssColorInterpolationMethod, CssColorConstructionError> =
+    CssColorInterpolationMethod::try_new(ColorSpace::Hsl, None);
+const EXPLICIT_POLAR: Result<CssColorInterpolationMethod, CssColorConstructionError> =
+    CssColorInterpolationMethod::try_new(ColorSpace::Hsl, Some(HueInterpolation::Shorter));
+const REJECTED_RECTANGULAR: Result<CssColorInterpolationMethod, CssColorConstructionError> =
+    CssColorInterpolationMethod::try_new(ColorSpace::Lab, Some(HueInterpolation::Longer));
 
 #[test]
 fn const_checked_methods_preserve_authored_omission_and_supply_the_baseline_default() {
-    assert_eq!(CONST_SPACE, ColorSpace::Hsl);
-    assert_eq!(CONST_AUTHORED_HUE, None);
-    assert_eq!(CONST_DEFAULT_HUE, Some(HueInterpolation::Shorter));
-    assert_eq!(CONST_WRAPPER.predefined(), Some(OMITTED_POLAR));
-    assert_ne!(OMITTED_POLAR, EXPLICIT_POLAR);
-    assert_eq!(EXPLICIT_POLAR.hue(), Some(HueInterpolation::Shorter));
+    let omitted_polar = OMITTED_POLAR.expect("polar omitted hue is valid");
+    let explicit_polar = EXPLICIT_POLAR.expect("polar shorter hue is valid");
+    assert_eq!(omitted_polar.space(), ColorSpace::Hsl);
+    assert_eq!(omitted_polar.hue(), None);
     assert_eq!(
-        EXPLICIT_POLAR.effective_hue(),
-        OMITTED_POLAR.effective_hue()
+        omitted_polar.effective_hue(),
+        Some(HueInterpolation::Shorter)
     );
     assert_eq!(
-        REJECTED_RECTANGULAR,
-        Err(CssColorInterpolationMethodConstructionError::HueRequiresPolarSpace)
+        CssColorInterpolation::from_predefined(omitted_polar).predefined(),
+        Some(omitted_polar)
+    );
+    assert_ne!(omitted_polar, explicit_polar);
+    assert_eq!(explicit_polar.hue(), Some(HueInterpolation::Shorter));
+    assert_eq!(
+        explicit_polar.effective_hue(),
+        omitted_polar.effective_hue()
+    );
+    assert!(
+        REJECTED_RECTANGULAR
+            .as_ref()
+            .unwrap_err()
+            .is_hue_requires_polar_space()
     );
     for (space, _) in POLAR {
         let omitted = CssColorInterpolationMethod::try_new(space, None).unwrap();
@@ -110,10 +111,7 @@ fn rejected_hue_construction_has_a_typed_error_and_display_contract() {
     let error =
         CssColorInterpolationMethod::try_new(ColorSpace::Lab, Some(HueInterpolation::Longer))
             .unwrap_err();
-    assert_eq!(
-        error,
-        CssColorInterpolationMethodConstructionError::HueRequiresPolarSpace
-    );
+    assert!(error.is_hue_requires_polar_space());
     assert_eq!(
         error.to_string(),
         "hue interpolation requires a polar color space"
@@ -121,12 +119,11 @@ fn rejected_hue_construction_has_a_typed_error_and_display_contract() {
     let public_error: &dyn std::error::Error = &error;
     assert!(public_error.source().is_none());
     // Downstream matches include a wildcard because construction errors can grow.
-    match error {
-        CssColorInterpolationMethodConstructionError::HueRequiresPolarSpace => {
-            assert_eq!(public_error.to_string(), error.to_string());
-        }
-        _ => panic!("unexpected interpolation construction error"),
-    }
+    assert!(
+        error.is_hue_requires_polar_space(),
+        "unexpected interpolation construction error"
+    );
+    assert_eq!(public_error.to_string(), error.to_string());
 }
 
 fn admitted(source: &str) -> [CssDeclaration; 2] {
@@ -182,11 +179,14 @@ fn rejected_with_recovery(value: &str, rectangular_hue: Option<(&str, &str)>) {
             diagnostic.error().position().column().value() as usize,
             responsible - line_start
         );
-        let ErrorKind::InvalidColorSyntax(detail) = diagnostic.error().kind() else {
-            panic!("structured hue-method rejection")
-        };
+        let detail = diagnostic.error();
         assert_eq!(
-            detail.component().map(|component| component.as_str()),
+            detail.code(),
+            CssErrorCode::InvalidColorSyntax,
+            "structured hue-method rejection"
+        );
+        assert_eq!(
+            detail.color_component().map(|component| component.as_str()),
             Some("hue interpolation")
         );
         let encountered = detail.encountered().expect("responsible hue strategy");
@@ -233,9 +233,11 @@ fn rectangular_methods_without_hue_are_accepted_by_the_checked_wrapper() {
 fn every_explicit_hue_strategy_is_rejected_for_every_rectangular_space() {
     for (space, keyword) in RECTANGULAR {
         for (hue, strategy) in HUES {
-            assert_eq!(
-                CssColorInterpolationMethod::try_new(space, Some(hue)),
-                Err(CssColorInterpolationMethodConstructionError::HueRequiresPolarSpace)
+            assert!(
+                CssColorInterpolationMethod::try_new(space, Some(hue))
+                    .as_ref()
+                    .unwrap_err()
+                    .is_hue_requires_polar_space()
             );
             rejected_with_recovery(
                 &format!("color-mix(in {keyword} {strategy} hue, red, blue)"),

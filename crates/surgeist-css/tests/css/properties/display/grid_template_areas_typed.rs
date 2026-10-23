@@ -1,9 +1,10 @@
+use crate::css::support::failure_classes::SerializationFailure as SerializationError;
+use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::{
-    CssGridTemplateAreaCell as Cell, CssGridTemplateAreaError as AreaError,
-    CssGridTemplateAreaName as Name, CssGridTemplateAreaRow as Row, CssGridTemplateAreas as Areas,
-    CssInitialValueRef, CssKnownProperty, CssKnownPropertyValueRef, CssLonghandValueRef,
-    CssPropertyKindRef, CssSerializationLimits as Limits,
-    CssSpecifiedValueSerializationErrorKind as SerializationError, parse_style_attribute,
+    CssGridTemplateAreaCell as Cell, CssGridTemplateAreaName as Name,
+    CssGridTemplateAreaRow as Row, CssGridTemplateAreas as Areas, CssInitialValueRef,
+    CssKnownProperty, CssKnownPropertyValueRef, CssLonghandValueRef, CssPropertyKindRef,
+    CssSerializationLimits as Limits, parse_style_attribute,
 };
 
 fn named(value: &str) -> Cell {
@@ -157,9 +158,8 @@ fn decoded_name_domain_accepts_digits_keywords_case_and_non_ascii() {
     for value in [
         "", ".", "a.b", "a b", "a\tb", "a\nb", "a\rb", "a\u{c}b", "a#b", "a\\b", "a\"b",
     ] {
-        assert_eq!(
-            Name::try_new(value),
-            Err(AreaError::InvalidName),
+        assert!(
+            Name::try_new(value).as_ref().unwrap_err().is_invalid_name(),
             "{value:?}"
         );
     }
@@ -167,25 +167,38 @@ fn decoded_name_domain_accepts_digits_keywords_case_and_non_ascii() {
 
 #[test]
 fn checked_rows_enforce_nonempty_equal_width_and_rectangles() {
-    assert_eq!(Row::try_new(vec![]), Err(AreaError::EmptyRow));
-    assert_eq!(Areas::try_rows(vec![]), Err(AreaError::MissingRows));
-    assert_eq!(
+    assert!(Row::try_new(vec![]).as_ref().unwrap_err().is_empty_row());
+    assert!(
+        Areas::try_rows(vec![])
+            .as_ref()
+            .unwrap_err()
+            .is_missing_rows()
+    );
+    assert!(
         Areas::try_rows(vec![
             row(vec![named("a"), Cell::Empty]),
             row(vec![named("a")])
-        ]),
-        Err(AreaError::InconsistentWidths)
+        ])
+        .as_ref()
+        .unwrap_err()
+        .is_inconsistent_widths()
     );
     assert_eq!(
         Areas::try_rows(vec![
             row(vec![named("a"), named("a")]),
             row(vec![named("a"), Cell::Empty])
-        ]),
-        Err(AreaError::NonRectangular("a".into()))
+        ])
+        .as_ref()
+        .unwrap_err()
+        .non_rectangular_area(),
+        Some("a")
     );
     assert_eq!(
-        Areas::try_rows(vec![row(vec![named("a"), Cell::Empty, named("a")])]),
-        Err(AreaError::NonRectangular("a".into()))
+        Areas::try_rows(vec![row(vec![named("a"), Cell::Empty, named("a")])])
+            .as_ref()
+            .unwrap_err()
+            .non_rectangular_area(),
+        Some("a")
     );
     Areas::try_rows(vec![
         row(vec![named("a"), named("a")]),
@@ -235,7 +248,7 @@ fn specified_serialization_charges_each_node_and_exact_output_bytes() {
         (Limits::new(5, 5, 6), SerializationError::ByteLimit),
     ] {
         assert_eq!(
-            areas.serialize_specified(limits).unwrap_err().kind(),
+            serialization_failure(&areas.serialize_specified(limits).unwrap_err()),
             expected
         );
     }
@@ -245,11 +258,10 @@ fn specified_serialization_charges_each_node_and_exact_output_bytes() {
             .unwrap(),
         "none"
     );
-    assert_eq!(
+    assert!(
         Areas::None
             .serialize_specified(Limits::new(0, 1, 4))
             .unwrap_err()
-            .kind(),
-        SerializationError::InputNodeLimit
+            .is_input_node_limit()
     );
 }

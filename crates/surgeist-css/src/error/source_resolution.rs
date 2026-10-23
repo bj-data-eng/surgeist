@@ -1,7 +1,7 @@
 use super::*;
 use cssparser::ParserInput;
 
-impl Error {
+impl CssError {
     pub(super) fn resolve_source(mut self, source: &str) -> Self {
         // Component origins already refer to the shared original snapshot, which
         // may differ from this parser's same-length masked working source.

@@ -253,21 +253,20 @@ fn pending_alignment_reentry_is_strict_retryable_and_keeps_original_occurrence()
             };
             assert!(handle.source().same_occurrence(&source));
             for invalid_value in ["start end", "inherit center"] {
-                assert!(matches!(
+                assert!(
                     handle
                         .reenter(parse_component_values(invalid_value).unwrap())
                         .unwrap_err()
-                        .kind(),
-                    CssExpansionErrorKind::InvalidReplacement(_)
-                ));
+                        .replacement_error()
+                        .is_some()
+                );
             }
             for residual in ["var(--again)", "env(--again)"] {
-                assert_eq!(
+                assert!(
                     handle
                         .reenter(parse_component_values(residual).unwrap())
                         .unwrap_err()
-                        .kind(),
-                    &CssExpansionErrorKind::ResidualSubstitution
+                        .is_residual_substitution()
                 );
             }
             let replacement = parse_component_values(valid).unwrap();
@@ -366,11 +365,8 @@ fn normalization_preserves_alignment_order_context_and_atomic_two_member_limit()
     let before = one.syntax().clone();
     let error = normalize_sheet_with_limits(one.syntax(), limit).unwrap_err();
     assert_eq!(
-        error.kind(),
-        &CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: 1
-        }
+        error.exhausted_limit(),
+        Some((CssNormalizationResource::Contributions, 1))
     );
     assert_eq!(error.declaration_order(), Some(0));
     assert_eq!(error.position().unwrap().byte_offset().value(), 3);

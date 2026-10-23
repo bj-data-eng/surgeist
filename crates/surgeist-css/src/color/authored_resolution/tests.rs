@@ -127,8 +127,8 @@ fn controlled_site_less_failure_retains_its_actual_backing_until_explicit_recove
     };
     assert_eq!(
         error,
-        AuthoredError::Color(CssColorError::Unavailable(
-            CssColorUnavailable::CurrentColor
+        AuthoredError::Color(CssColorError::from(
+            crate::color::ColorErrorKind::Unavailable(CssColorUnavailable::CurrentColor)
         ))
     );
     assert_eq!(
@@ -547,7 +547,7 @@ fn controlled_and_ordinary_use_identical_actions_and_one_short_limits_refuse_the
             _ => short.actions -= 1,
         };
         assert!(
-            matches!(resolve_authored_color(&root,&facts,facts.identity(),short),Err(CssColorOrdinaryError::Limit {resource:actual,..}) if actual==resource),
+            matches!(resolve_authored_color(&root,&facts,facts.identity(),short),Err(ref error) if error.exhausted_limit().is_some_and(|(actual, _, _)| actual == resource)),
             "{resource:?}"
         );
     }
@@ -641,7 +641,9 @@ fn reached_unavailable_unsupported_and_malformed_facts_remain_site_less_and_reco
     let (error, cleanup) = stopped_error(&color("light-dark(red,blue)"), &unavailable);
     assert_eq!(
         error,
-        AuthoredError::Color(CssColorError::Unavailable(CssColorUnavailable::Scheme))
+        AuthoredError::Color(CssColorError::from(
+            crate::color::ColorErrorKind::Unavailable(CssColorUnavailable::Scheme)
+        ))
     );
     assert_eq!(cleanup.path_len, 0);
     assert!(cleanup.path_capacity_bytes > 0);
@@ -659,8 +661,8 @@ fn reached_unavailable_unsupported_and_malformed_facts_remain_site_less_and_reco
     let (error, cleanup) = stopped_error(&color("light-dark(red,CanvasText)"), &malformed);
     assert_eq!(
         error,
-        AuthoredError::Color(CssColorError::Facts(CssColorFactError::DuplicatePalette(
-            CssSystemColor::CanvasText
+        AuthoredError::Color(CssColorError::from(crate::color::ColorErrorKind::Facts(
+            CssColorFactDefect::DuplicatePalette(CssSystemColor::CanvasText)
         )))
     );
     assert_eq!(cleanup.path_len, 1);
@@ -699,16 +701,16 @@ fn reached_unavailable_unsupported_and_malformed_facts_remain_site_less_and_reco
     let (error, cleanup) = stopped_error(&color("color(--p .1)"), &unsupported);
     assert_eq!(
         error,
-        AuthoredError::Color(CssColorError::Unsupported(
-            CssColorUnsupported::ProfileConversion
+        AuthoredError::Color(CssColorError::from(
+            crate::color::ColorErrorKind::Unsupported(CssColorUnsupported::ProfileConversion)
         ))
     );
     assert_eq!(cleanup.path_len, 0);
     let (error, cleanup) = stopped_error(&color("color(from red --p x)"), &unsupported);
     assert_eq!(
         error,
-        AuthoredError::Color(CssColorError::Unsupported(
-            CssColorUnsupported::ReverseProfile
+        AuthoredError::Color(CssColorError::from(
+            crate::color::ColorErrorKind::Unsupported(CssColorUnsupported::ReverseProfile)
         ))
     );
     assert_eq!(cleanup.path_len, 1);
@@ -910,8 +912,10 @@ fn legitimate_contextual_unit_leaves_preserve_source_authored_reachability_and_o
     let (error, cleanup) = stopped_error(&root, &facts);
     assert_eq!(
         error,
-        AuthoredError::Color(CssColorError::Unsupported(
-            CssColorUnsupported::ContextualUnit(CssNumericUnit::Length(CssLengthUnit::Em))
+        AuthoredError::Color(CssColorError::from(
+            crate::color::ColorErrorKind::Unsupported(CssColorUnsupported::ContextualUnit(
+                CssNumericUnit::Length(CssLengthUnit::Em)
+            ))
         ))
     );
     assert_eq!(cleanup.path_len, 3);
@@ -931,11 +935,8 @@ fn legitimate_contextual_unit_leaves_preserve_source_authored_reachability_and_o
     );
     assert!(matches!(
         source,
-        Err(CssColorOrdinaryError::Operation(
-            CssColorError::Unsupported(CssColorUnsupported::ContextualUnit(
-                CssNumericUnit::Length(CssLengthUnit::Em)
-            ))
-        ))
+        Err(ref error) if error.color_error().and_then(CssColorError::unsupported)
+            == Some(CssColorUnsupported::ContextualUnit(CssNumericUnit::Length(CssLengthUnit::Em)))
     ));
     let root = color("light-dark(red,rgb(calc(1em / 1em) 0 0))");
     let result = resolve_authored_color(&root, &facts, facts.identity(), limits()).unwrap();

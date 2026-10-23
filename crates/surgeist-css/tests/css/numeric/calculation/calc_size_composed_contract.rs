@@ -2,6 +2,8 @@
 //! calc-sum independently. Interpolation basis rewriting is a later operation.
 //! Shared strict reentry retains the original occurrence and replacement origins.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::value_assertions::assert_parsed_span as parsed_origin;
 use surgeist_css::*;
 
@@ -121,18 +123,21 @@ fn checked_and_raw_width(
     for (limits, kind) in [
         (
             CssSerializationLimits::new(0, 128, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(128, 0, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(128, 128, expected.len() - 1),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
-        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+            kind
+        );
         assert_eq!(value, original_value);
         assert_eq!(value.origin(), &origin);
         assert_eq!(value.basis_origin(), &basis_origin);
@@ -285,23 +290,22 @@ fn pending_function_basis_reentry_preserves_occurrence_origins_and_allows_retry(
         "calc-size(var(--again), size + 2px)",
         "calc-size(min-content, size + env(inset))",
     ] {
-        assert_eq!(
+        assert!(
             handle
                 .reenter(parse_component_values(residual).unwrap())
                 .unwrap_err()
-                .kind(),
-            &CssExpansionErrorKind::ResidualSubstitution
+                .is_residual_substitution()
         );
         assert!(handle.source().same_occurrence(source));
         assert_eq!(handle.source().value_components(), &components);
     }
-    assert!(matches!(
+    assert!(
         handle
             .reenter(parse_component_values("calc-size(any, size)").unwrap())
             .unwrap_err()
-            .kind(),
-        CssExpansionErrorKind::InvalidReplacement(_)
-    ));
+            .replacement_error()
+            .is_some()
+    );
 
     const REPLACEMENT: &str = "calc-size(min-content, size + 2px + 3px)";
     let replacement = parse_component_values(REPLACEMENT).unwrap();

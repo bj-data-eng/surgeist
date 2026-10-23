@@ -145,20 +145,19 @@ fn inherited_normal_style_has_one_longhand_contribution_and_strict_reentry() {
     let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
         panic!("unresolved style remains pending");
     };
-    assert_eq!(
+    assert!(
         pending
             .reenter(parse_component_values("var(--again)").unwrap())
             .unwrap_err()
-            .kind(),
-        &CssExpansionErrorKind::ResidualSubstitution
+            .is_residual_substitution()
     );
-    assert!(matches!(
+    assert!(
         pending
             .reenter(parse_component_values("oblique 0").unwrap())
             .unwrap_err()
-            .kind(),
-        CssExpansionErrorKind::InvalidReplacement(_)
-    ));
+            .replacement_error()
+            .is_some()
+    );
     let replacement = parse_component_values("oblique 90deg").unwrap();
     let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap() else {
         panic!("strict replacement contributes a style");

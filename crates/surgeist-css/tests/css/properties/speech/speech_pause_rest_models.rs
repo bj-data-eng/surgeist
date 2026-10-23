@@ -4,6 +4,8 @@
 //! These tests accompany new APIs; public-boundary preimplementation RED is in
 //! speech_pause_rest_lifecycle.rs.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::important_declaration as parsed;
 use surgeist_css::*;
 
@@ -102,18 +104,21 @@ fn speech_pairs_omit_none_and_exact_zero_equivalents_without_losing_authored_chi
             for (limits, error) in [
                 (
                     CssSerializationLimits::new(2, 3, expected.len()),
-                    CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                    SerializationFailure::InputNodeLimit,
                 ),
                 (
                     CssSerializationLimits::new(3, 2, expected.len()),
-                    CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                    SerializationFailure::ProjectionNodeLimit,
                 ),
                 (
                     CssSerializationLimits::new(3, 3, expected.len() - 1),
-                    CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                    SerializationFailure::ByteLimit,
                 ),
             ] {
-                assert_eq!(model.serialize_specified(limits).unwrap_err().kind(), error);
+                assert_eq!(
+                    serialization_failure(&model.serialize_specified(limits).unwrap_err()),
+                    error
+                );
                 assert_eq!(model, retained);
             }
         }
@@ -150,9 +155,10 @@ fn checked_speech_time_composition_uses_the_owned_exact_duration_invariant() {
         let value = CssTimeValue::from_literal(
             CssTimeLiteral::try_new(number, CssTimeUnit::Seconds).unwrap(),
         );
-        assert_eq!(
-            CssSpeechBreak::try_time(value).unwrap_err().kind(),
-            &CssNumericConstructionErrorKind::OutOfRange
+        assert!(
+            CssSpeechBreak::try_time(value)
+                .unwrap_err()
+                .is_out_of_range()
         );
     }
     for (number, unit, expected) in [
@@ -193,21 +199,19 @@ fn checked_speech_pairs_reject_original_recovered_time_in_either_authored_positi
     let CssSpeechBreak::Time(duration) = recovered else {
         panic!("retained recovered calculation")
     };
-    assert_eq!(
+    assert!(
         CssSpeechBreak::try_time(duration.time().clone())
             .unwrap_err()
-            .kind(),
-        &CssNumericConstructionErrorKind::RecoveredComponent
+            .is_recovered_component()
     );
     for (before, after) in [
         (recovered.clone(), None),
         (CssSpeechBreak::None, Some(recovered.clone())),
     ] {
-        assert_eq!(
+        assert!(
             CssSpeechBreakPair::try_new(before, after)
                 .unwrap_err()
-                .kind(),
-            &CssNumericConstructionErrorKind::RecoveredComponent
+                .is_recovered_component()
         );
     }
     let parsed_pair = parse_style_attribute("rest:none calc(1s");
@@ -326,18 +330,21 @@ fn speech_break_specified_serialization_counts_leaves_and_actual_canonical_bytes
         for (limits, error) in [
             (
                 CssSerializationLimits::new(0, 1, css.len()),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                SerializationFailure::InputNodeLimit,
             ),
             (
                 CssSerializationLimits::new(1, 0, css.len()),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
                 CssSerializationLimits::new(1, 1, css.len() - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                SerializationFailure::ByteLimit,
             ),
         ] {
-            assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), error);
+            assert_eq!(
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+                error
+            );
         }
         assert_eq!(value.serialize_specified(Default::default()).unwrap(), css);
     }
@@ -378,18 +385,21 @@ fn speech_pairs_share_one_budget_and_charge_suppressed_authored_after_children()
         for (limits, error) in [
             (
                 CssSerializationLimits::new(nodes - 1, nodes, css.len()),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                SerializationFailure::InputNodeLimit,
             ),
             (
                 CssSerializationLimits::new(nodes, nodes - 1, css.len()),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
                 CssSerializationLimits::new(nodes, nodes, css.len() - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                SerializationFailure::ByteLimit,
             ),
         ] {
-            assert_eq!(model.serialize_specified(limits).unwrap_err().kind(), error);
+            assert_eq!(
+                serialization_failure(&model.serialize_specified(limits).unwrap_err()),
+                error
+            );
         }
         assert_eq!(model.serialize_specified(Default::default()).unwrap(), css);
         assert_eq!(model.authored_after().is_some(), nodes == 3);
@@ -412,12 +422,11 @@ fn speech_time_calculations_keep_math_phase_and_use_the_shared_time_projection_b
         );
         // Input traversal includes both retained calculation children even
         // though only one is emitted; default failure leaves the tree intact.
-        assert_eq!(
+        assert!(
             model
                 .serialize_specified(CssSerializationLimits::new(2, 100, 100))
                 .unwrap_err()
-                .kind(),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+                .is_input_node_limit()
         );
         assert_eq!(
             source

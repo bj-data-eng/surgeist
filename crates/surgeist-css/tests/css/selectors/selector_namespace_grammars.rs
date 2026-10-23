@@ -2,7 +2,7 @@ use surgeist_css::{
     CssCompoundSelector, CssErrorCode, CssLanguageRange, CssNamespaceConstraint, CssNamespaceName,
     CssNamespacePrefix, CssPseudoClass, CssPseudoElement, CssPseudoElementSegment,
     CssRecoveryAction, CssRule, CssScopedRule, CssSelector, CssSelectorCombinator,
-    CssSupportsConditionKind, ErrorKind, parse_sheet,
+    CssSupportsConditionKind, parse_sheet,
 };
 
 fn compound_selector(rule: &CssRule) -> &CssCompoundSelector {
@@ -246,12 +246,15 @@ fn late_namespace_is_a_placement_error_not_an_unsupported_rule() {
     );
     assert_ne!(diagnostic.error().code(), CssErrorCode::UnsupportedAtRule);
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropAtRule);
-    let ErrorKind::InvalidAtRulePlacement(detail) = diagnostic.error().kind() else {
-        panic!("expected namespace placement payload")
-    };
-    assert_eq!(detail.name().as_str(), "namespace");
+    let detail = diagnostic.error();
     assert_eq!(
-        detail.expected_context().as_str(),
+        detail.code(),
+        CssErrorCode::InvalidAtRulePlacement,
+        "expected namespace placement payload"
+    );
+    assert_eq!(detail.at_rule().unwrap().as_str(), "namespace");
+    assert_eq!(
+        detail.expectation().unwrap().as_str(),
         "after initial layer statements and imports, before later layers or body rules"
     );
 }
@@ -329,18 +332,21 @@ fn malformed_late_and_nested_namespace_rules_drop_one_at_rule_and_keep_siblings(
             CssRecoveryAction::DropAtRule,
             "{source}"
         );
-        let ErrorKind::InvalidAtRulePlacement(detail) = diagnostic.error().kind() else {
-            panic!("{source}: expected placement payload")
-        };
-        assert_eq!(detail.name().as_str(), "namespace", "{source}");
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidAtRulePlacement,
+            "{source}: expected placement payload"
+        );
+        assert_eq!(detail.at_rule().unwrap().as_str(), "namespace", "{source}");
         if source.starts_with(".body") {
             assert_eq!(
-                detail.expected_context().as_str(),
+                detail.expectation().unwrap().as_str(),
                 "after initial layer statements and imports, before later layers or body rules"
             );
         } else {
             assert_eq!(
-                detail.expected_context().as_str(),
+                detail.expectation().unwrap().as_str(),
                 "the stylesheet top level"
             );
         }
@@ -369,11 +375,14 @@ fn namespace_statement_at_eof_retains_payload_and_reports_its_missing_terminator
         diagnostic.action(),
         CssRecoveryAction::RetainNonconformingRule
     );
-    let ErrorKind::UnexpectedEnd(detail) = diagnostic.error().kind() else {
-        panic!("statement termination payload")
-    };
+    let detail = diagnostic.error();
     assert_eq!(
-        detail.expectation().as_str(),
+        detail.code(),
+        CssErrorCode::UnexpectedEnd,
+        "statement termination payload"
+    );
+    assert_eq!(
+        detail.expectation().unwrap().as_str(),
         "a semicolon or block terminating an at-rule"
     );
     assert_eq!(

@@ -111,7 +111,7 @@ fn payload_observation_admits_each_action_and_leaves_collector_unchanged_on_refu
                 reached += 1;
                 Ok(())
             }),
-            Err(CssRetainedPayloadError::Admission(allowance))
+            Err(CssRetainedPayloadError::admission(allowance))
         );
         assert_eq!(reached, allowance);
         assert_eq!(retained.usage(), usage);

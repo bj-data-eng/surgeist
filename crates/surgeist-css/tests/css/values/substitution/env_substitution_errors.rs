@@ -45,13 +45,10 @@ fn checked_missing_variable_name_keeps_original_closing_origin() {
         )
         .unwrap_err();
         assert!(
-            matches!(
-                error.kind(),
-                CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
-            ),
+            error.code() == Some(CssErrorCode::UnexpectedEnd),
             "{text}: {error:?}"
         );
-        assert_eq!(error.origin(), &expected, "{text}");
+        assert_eq!(error.origin(), expected, "{text}");
     }
     for argument in [" ", "/**/"] {
         let values = CssComponentValues::try_new(
@@ -70,7 +67,7 @@ fn checked_missing_variable_name_keeps_original_closing_origin() {
         .unwrap_err();
         assert_eq!(
             error.origin(),
-            &CssSerializedOrigin::Token(CssValueOrigin::Programmatic)
+            CssSerializedOrigin::Token(CssValueOrigin::Programmatic)
         );
     }
 }
@@ -81,9 +78,12 @@ fn invalid_known_variable_name_preserves_the_responsible_identifier() {
     let report = parse_style_attribute(text);
     let error = report.diagnostics()[0].error();
     assert_eq!(error.position().byte_offset().value(), 12);
-    let ErrorKind::InvalidPropertyValue(detail) = error.kind() else {
-        panic!("property context")
-    };
+    let detail = &error;
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "property context"
+    );
     let token = detail.encountered().unwrap();
     assert_eq!(token.kind(), CssTokenKind::Ident);
     assert_eq!(token.authored(), "x");
@@ -99,7 +99,7 @@ fn invalid_known_variable_name_preserves_the_responsible_identifier() {
         CssImportance::Normal,
     )
     .unwrap_err();
-    assert_eq!(error.origin(), &expected);
+    assert_eq!(error.origin(), expected);
 }
 
 #[test]
@@ -110,10 +110,16 @@ fn nested_custom_bad_string_preserves_lexical_category_and_neighbor_recovery() {
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
     assert_eq!(diagnostic.error().code(), CssErrorCode::UnexpectedToken);
     assert_eq!(diagnostic.error().position().byte_offset().value(), 6);
-    let ErrorKind::UnexpectedToken(detail) = diagnostic.error().kind() else {
-        panic!("lexical category")
-    };
-    assert_eq!(detail.encountered().kind(), CssTokenKind::BadString);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::UnexpectedToken,
+        "lexical category"
+    );
+    assert_eq!(
+        detail.encountered().unwrap().kind(),
+        CssTokenKind::BadString
+    );
     assert_eq!(report.syntax().len(), 1);
     assert_eq!(
         report.syntax()[0].known().unwrap().property(),

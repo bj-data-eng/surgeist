@@ -86,7 +86,7 @@ fn selected_survivors_keep_order_priority_and_original_margin_occurrence() {
 
 #[test]
 fn selected_pending_members_retain_origin_and_reject_duplicates_atomically() {
-    use surgeist_css::{CssDeclarationBlockErrorKind, CssImportance};
+    use surgeist_css::CssImportance;
     let original = block("margin-inline:var(--m)");
     let mut selected = original.entries().to_vec();
     selected.reverse();
@@ -122,12 +122,11 @@ fn selected_pending_members_retain_origin_and_reject_duplicates_atomically() {
     let other = block("margin-inline:var(--m)");
     selected[0] = other.entries()[0].clone();
     selected[1] = selected[0].clone();
-    assert!(matches!(
+    assert!(
         CssSpecifiedDeclarationBlock::try_from_entries(&selected, Default::default())
             .unwrap_err()
-            .kind(),
-        CssDeclarationBlockErrorKind::DuplicateTerminal
-    ));
+            .is_duplicate_terminal()
+    );
     assert_eq!(
         original.serialize_cssom(Default::default()).unwrap(),
         "margin-inline: var(--m);"
@@ -141,12 +140,12 @@ fn selected_pending_members_retain_origin_and_reject_duplicates_atomically() {
         1
     );
     let report = parse_declaration_list_text("inset:var(--i)");
-    assert!(matches!(
+    assert!(
         CssSpecifiedDeclarationBlock::try_from_declarations(report.syntax(), Default::default())
             .unwrap_err()
-            .kind(),
-        CssDeclarationBlockErrorKind::PendingFootprintUndetermined { .. }
-    ));
+            .pending_footprint_property()
+            .is_some()
+    );
 }
 
 #[test]
@@ -264,10 +263,10 @@ fn empty_live_nested_declarations_are_retained_and_filtered_from_style_and_media
 #[test]
 fn selection_and_edited_graph_limits_are_cumulative_and_retry_preserves_sources() {
     use surgeist_css::{
-        CssDeclarationBlockErrorKind, CssEditedGroupPreludeRef, CssEditedRuleView, CssRule,
-        CssRuleCssomSerializationErrorKind, CssSerializationLimits as Limits,
-        CssSpecifiedValueSerializationErrorKind as Kind, parse_sheet,
+        CssEditedGroupPreludeRef, CssEditedRuleView, CssRule, CssSerializationLimits as Limits,
+        parse_sheet,
     };
+
     let input = block("margin-left:1px; padding-left:2px");
     // Input aggregate + each occurrence/name/component aggregate/dimension = 9.
     let exact =
@@ -277,7 +276,9 @@ fn selection_and_edited_graph_limits_are_cumulative_and_retry_preserves_sources(
         CssSpecifiedDeclarationBlock::try_from_entries(input.entries(), Limits::new(8, 100, 0))
             .unwrap_err();
     assert!(
-        matches!(failure.kind(), CssDeclarationBlockErrorKind::Serialization(error) if error.kind()==Kind::InputNodeLimit)
+        failure
+            .serialization()
+            .is_some_and(|error| error.is_input_node_limit())
     );
     assert_eq!(failure.authored_ordinal(), Some(1));
     assert!(
@@ -290,7 +291,9 @@ fn selection_and_edited_graph_limits_are_cumulative_and_retry_preserves_sources(
         CssSpecifiedDeclarationBlock::try_from_entries(input.entries(), Limits::new(100, 2, 0))
             .unwrap_err();
     assert!(
-        matches!(projection_failure.kind(), CssDeclarationBlockErrorKind::Serialization(error) if error.kind()==Kind::ProjectionNodeLimit)
+        projection_failure
+            .serialization()
+            .is_some_and(|error| error.is_projection_node_limit())
     );
     assert_eq!(
         exact.serialize_cssom(Default::default()).unwrap(),
@@ -312,9 +315,12 @@ fn selection_and_edited_graph_limits_are_cumulative_and_retry_preserves_sources(
     )
     .unwrap();
     let skipped_failure = group.serialize_cssom(Limits::new(5, 100, 100)).unwrap_err();
-    assert_eq!(
-        skipped_failure.kind(),
-        CssRuleCssomSerializationErrorKind::Resource(Kind::InputNodeLimit)
+    assert!(
+        skipped_failure.is_resource_limit()
+            && skipped_failure
+                .serialization_error()
+                .is_some_and(|error| error.is_input_node_limit()),
+        "{skipped_failure:?}"
     );
     assert_eq!(skipped_failure.rule_path(), &[0]);
     let expected = "@media screen {\n  .a { }\n}";
@@ -327,29 +333,37 @@ fn selection_and_edited_graph_limits_are_cumulative_and_retry_preserves_sources(
     let failure = group
         .serialize_cssom(Limits::new(100, 100, expected.len() - 1))
         .unwrap_err();
-    assert_eq!(
-        failure.kind(),
-        CssRuleCssomSerializationErrorKind::Resource(Kind::ByteLimit)
+    assert!(
+        failure.is_resource_limit()
+            && failure
+                .serialization_error()
+                .is_some_and(|error| error.is_byte_limit()),
+        "{failure:?}"
     );
     assert_eq!(group.serialize_cssom(Default::default()).unwrap(), expected);
-    assert_eq!(
+    assert!(
         CssEditedRuleView::try_group(
             CssEditedGroupPreludeRef::Media(media.query()),
             &children,
             Limits::new(1, 100, 100)
         )
         .unwrap_err()
-        .kind(),
-        CssRuleCssomSerializationErrorKind::Resource(Kind::InputNodeLimit)
+        .is_resource_limit()
+            && CssEditedRuleView::try_group(
+                CssEditedGroupPreludeRef::Media(media.query()),
+                &children,
+                Limits::new(1, 100, 100)
+            )
+            .unwrap_err()
+            .serialization_error()
+            .is_some_and(|error| error.is_input_node_limit())
     );
 }
 
 #[test]
 fn getters_reject_incomplete_mixed_reset_and_incompatible_pending_members() {
-    use surgeist_css::{
-        CssDeclarationBlockErrorKind, CssSerializationLimits as Limits,
-        CssSpecifiedValueSerializationErrorKind as Kind,
-    };
+    use surgeist_css::CssSerializationLimits as Limits;
+
     let name = CssPropertyNameRef::Known(CssKnownProperty::Margin);
     for source in [
         "margin-top:1px",
@@ -387,7 +401,11 @@ fn getters_reject_incomplete_mixed_reset_and_incompatible_pending_members() {
         "margin-top:1px; margin-inline-start:7px; margin-right:2px; margin-bottom:3px; margin-left:4px",
     );
     assert!(
-        matches!(input.property_value(name, Limits::new(100, 1, 100)).unwrap_err().kind(), CssDeclarationBlockErrorKind::Serialization(error) if error.kind()==Kind::ProjectionNodeLimit)
+        input
+            .property_value(name, Limits::new(100, 1, 100))
+            .unwrap_err()
+            .serialization()
+            .is_some_and(|error| error.is_projection_node_limit())
     );
     assert_eq!(
         input
@@ -396,16 +414,17 @@ fn getters_reject_incomplete_mixed_reset_and_incompatible_pending_members() {
         Some("1px 2px 3px 4px".into())
     );
     assert!(
-        matches!(input.property_value(name, Limits::new(10000, 10000, 14)).unwrap_err().kind(), CssDeclarationBlockErrorKind::Serialization(error) if error.kind()==Kind::ByteLimit)
+        input
+            .property_value(name, Limits::new(10000, 10000, 14))
+            .unwrap_err()
+            .serialization()
+            .is_some_and(|error| error.is_byte_limit())
     );
 }
 
 #[test]
 fn selected_keyframe_domain_rejects_priority_and_animation_terminals() {
-    use surgeist_css::{
-        CssDeclarationBlockErrorKind, CssEditedRuleView, CssImportance,
-        CssInvalidKeyframeSourceReason,
-    };
+    use surgeist_css::{CssEditedRuleView, CssImportance, CssInvalidKeyframeSourceReason};
     let ordinary = block("opacity:0.5");
     let keyframe = CssSpecifiedDeclarationBlock::try_from_keyframe_entries(
         ordinary.entries(),
@@ -420,26 +439,22 @@ fn selected_keyframe_domain_rejects_priority_and_animation_terminals() {
     );
     assert!(CssEditedRuleView::try_nested_declarations(&keyframe, Default::default()).is_err());
     let entries = [ordinary.entries()[0].with_importance(CssImportance::Important)];
-    assert!(matches!(
+    assert!(
         CssSpecifiedDeclarationBlock::try_from_keyframe_entries(&entries, Default::default())
             .unwrap_err()
-            .kind(),
-        CssDeclarationBlockErrorKind::InvalidKeyframeSource {
-            reason: CssInvalidKeyframeSourceReason::Importance
-        }
-    ));
+            .invalid_keyframe_source()
+            == Some(CssInvalidKeyframeSourceReason::Importance)
+    );
     let animation = block("animation-name:a");
-    assert!(matches!(
+    assert!(
         CssSpecifiedDeclarationBlock::try_from_keyframe_entries(
             animation.entries(),
             Default::default()
         )
         .unwrap_err()
-        .kind(),
-        CssDeclarationBlockErrorKind::InvalidKeyframeSource {
-            reason: CssInvalidKeyframeSourceReason::Property
-        }
-    ));
+        .invalid_keyframe_source()
+            == Some(CssInvalidKeyframeSourceReason::Property)
+    );
 }
 
 #[test]
@@ -517,7 +532,7 @@ fn selected_completed_replacements_and_programmatic_sources_keep_their_own_paylo
 fn edited_group_views_reuse_preludes_and_retain_typed_literal_unavailability() {
     use surgeist_css::{
         CssEditedGroupPreludeRef as Prelude, CssEditedRuleView as View, CssRule,
-        CssRuleCssomFormat, CssRuleCssomSerializationErrorKind as ErrorKind, parse_sheet,
+        CssRuleCssomFormat, parse_sheet,
     };
     let report =
         parse_sheet("@supports (display:grid) {} @container (width>1px) {} @layer theme {}");
@@ -564,8 +579,10 @@ fn edited_group_views_reuse_preludes_and_retain_typed_literal_unavailability() {
             expected
         );
         assert_eq!(
-            view.serialize_cssom(Default::default()).unwrap_err().kind(),
-            ErrorKind::FormatUnavailable(format)
+            view.serialize_cssom(Default::default())
+                .unwrap_err()
+                .unavailable_format(),
+            Some(format)
         );
         assert_eq!(
             view.serialize_specified(Default::default()).unwrap(),

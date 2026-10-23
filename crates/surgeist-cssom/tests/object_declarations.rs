@@ -686,6 +686,6 @@ fn pending_groups_keep_selected_survivors_and_unavailable_footprint_is_an_error(
     );
     let unresolved = create(&mut store, "inset:var(--I)", false, false, false);
     assert!(
-        matches!(unresolved.length(&store, Default::default()), Err(CssomError::Declaration(ref error)) if matches!(error.kind(), CssDeclarationBlockErrorKind::PendingFootprintUndetermined {..}))
+        matches!(unresolved.length(&store, Default::default()), Err(CssomError::Declaration(ref error)) if error.pending_footprint_property().is_some())
     );
 }

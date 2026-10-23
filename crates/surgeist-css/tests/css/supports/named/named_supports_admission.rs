@@ -4,8 +4,8 @@ use crate::css::support::authored_syntax::{
     assert_diagnostics, assert_strict_rejection, offset_of,
 };
 use surgeist_css::{
-    CssErrorCode, CssNamespaceContext, CssNormalizationErrorKind, CssNormalizationLimits,
-    CssNormalizationResource, CssNormalizedItem, CssRecoveryAction, CssRule, CssRuleContextKindRef,
+    CssErrorCode, CssNamespaceContext, CssNormalizationLimits, CssNormalizationResource,
+    CssNormalizedItem, CssRecoveryAction, CssRule, CssRuleContextKindRef,
     normalize_sheet_with_limits, parse_rule, parse_sheet, parse_style_block, validate_sheet,
 };
 
@@ -242,13 +242,7 @@ fn named_test_payload_uses_one_rule_budget_and_zero_style_declaration_budgets() 
         CssNormalizationLimits::try_new(0, 1, 0, 0).unwrap(),
     )
     .unwrap_err();
-    assert!(matches!(
-        error.kind(),
-        CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Rules,
-            limit: 1,
-        }
-    ));
+    assert!(error.exhausted_limit() == Some((CssNormalizationResource::Rules, 1)));
     assert_eq!(
         error.position().unwrap().byte_offset().value(),
         two.find("@supports-condition --b").unwrap()
@@ -264,13 +258,7 @@ fn named_test_payload_uses_one_rule_budget_and_zero_style_declaration_budgets() 
         CssNormalizationLimits::try_new(0, 2, 0, 0).unwrap(),
     )
     .unwrap_err();
-    assert!(matches!(
-        error.kind(),
-        CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::RuleDepth,
-            limit: 0,
-        }
-    ));
+    assert!(error.exhausted_limit() == Some((CssNormalizationResource::RuleDepth, 0)));
     assert_eq!(
         error.position().unwrap().byte_offset().value(),
         nested.find("@supports-condition").unwrap()

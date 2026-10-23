@@ -4,7 +4,7 @@ use std::rc::Rc;
 
 use cssparser::{ParseError, Parser, ParserInput, Token};
 
-use crate::error::{Error, is_nesting_limit_error, nesting_limit};
+use crate::error::{CssError, is_nesting_limit_error, nesting_limit};
 use crate::source::CssSourcePosition;
 use crate::syntax::{CssNamespaceName, CssNamespacePrefix};
 
@@ -61,7 +61,7 @@ pub(crate) fn finish_report<T>(
             diagnostics.push(escape_diagnostic(
                 source,
                 token_start..token_end,
-                crate::CssEscapeError::Newline,
+                crate::CssEscapeFailure::Newline,
             ));
             continue;
         }
@@ -79,7 +79,7 @@ pub(crate) fn finish_report<T>(
             diagnostics.push(escape_diagnostic(
                 source,
                 token_end - 1..token_end,
-                crate::CssEscapeError::EndOfInput,
+                crate::CssEscapeFailure::EndOfInput,
             ));
             continue;
         }
@@ -113,11 +113,11 @@ pub(crate) fn finish_report<T>(
 fn escape_diagnostic(
     source: &str,
     range: std::ops::Range<usize>,
-    detail: crate::CssEscapeError,
+    detail: crate::CssEscapeFailure,
 ) -> crate::CssRecoveryDiagnostic {
     let responsible = match detail {
-        crate::CssEscapeError::Newline => range.start,
-        crate::CssEscapeError::EndOfInput => range.end,
+        crate::CssEscapeFailure::Newline => range.start,
+        crate::CssEscapeFailure::EndOfInput => range.end,
     };
     let span = crate::CssSourceSpan::new(
         CssSourcePosition::from_byte_offset_in(source, range.start),
@@ -543,7 +543,7 @@ impl RecoveryState {
         source: &str,
         input: &Parser<'i, '_>,
         enclosing_production: &'static str,
-    ) -> Result<RecoveryDepthGuard, ParseError<'i, Error>> {
+    ) -> Result<RecoveryDepthGuard, ParseError<'i, CssError>> {
         let opening_offset = input.position().byte_index().saturating_sub(1);
         self.enter(source, opening_offset, enclosing_production)
     }
@@ -559,7 +559,7 @@ impl RecoveryState {
         source: &str,
         input: &Parser<'i, '_>,
         enclosing_production: &'static str,
-    ) -> Result<RecoveryDepthGuard, ParseError<'i, Error>> {
+    ) -> Result<RecoveryDepthGuard, ParseError<'i, CssError>> {
         let opening_offset = input.position().byte_index().saturating_sub(1);
         self.enter(source, opening_offset, enclosing_production)
     }
@@ -569,7 +569,7 @@ impl RecoveryState {
         source: &'i str,
         input: &Parser<'i, '_>,
         enclosing_production: &'static str,
-    ) -> Result<Vec<usize>, ParseError<'i, Error>> {
+    ) -> Result<Vec<usize>, ParseError<'i, CssError>> {
         let start = input.position().byte_index();
         let end = scan_nested_tokens(
             source,
@@ -588,7 +588,7 @@ impl RecoveryState {
         source: &'i str,
         input: &Parser<'i, '_>,
         at_rule: bool,
-    ) -> Result<Vec<usize>, ParseError<'i, Error>> {
+    ) -> Result<Vec<usize>, ParseError<'i, CssError>> {
         let start = input.position().byte_index();
         let end = scan_nested_tokens(
             source,
@@ -609,7 +609,7 @@ impl RecoveryState {
         source: &str,
         input: &Parser<'i, '_>,
         enclosing_production: &'static str,
-    ) -> Result<Vec<usize>, ParseError<'i, Error>> {
+    ) -> Result<Vec<usize>, ParseError<'i, CssError>> {
         let start = input.position().byte_index();
         let end = scan_nested_tokens(
             source,
@@ -626,7 +626,7 @@ impl RecoveryState {
         source: &str,
         input: &Parser<'i, '_>,
         enclosing_production: &'static str,
-    ) -> Result<(), ParseError<'i, Error>> {
+    ) -> Result<(), ParseError<'i, CssError>> {
         scan_nested_tokens(
             source,
             input.position().byte_index(),
@@ -642,7 +642,7 @@ impl RecoveryState {
         source: &str,
         input: &Parser<'i, '_>,
         enclosing_production: &'static str,
-    ) -> Result<Vec<usize>, ParseError<'i, Error>> {
+    ) -> Result<Vec<usize>, ParseError<'i, CssError>> {
         let start = input.position().byte_index();
         let end = scan_nested_tokens(
             source,
@@ -734,7 +734,7 @@ impl RecoveryState {
         source: &'i str,
         input: &Parser<'i, '_>,
         enclosing_production: &'static str,
-    ) -> Option<ParseError<'i, Error>> {
+    ) -> Option<ParseError<'i, CssError>> {
         let content_start = input.position().byte_index();
         let opening_offset = content_start.saturating_sub(1);
         if self.depth.get() >= STRUCTURAL_NESTING_LIMIT {
@@ -760,7 +760,7 @@ impl RecoveryState {
         source: &'i str,
         input: &Parser<'i, '_>,
         enclosing_production: &'static str,
-    ) -> Result<(), ParseError<'i, Error>> {
+    ) -> Result<(), ParseError<'i, CssError>> {
         scan_nested_tokens(
             source,
             input.position().byte_index(),
@@ -776,7 +776,7 @@ impl RecoveryState {
         source: &str,
         opening_offset: usize,
         enclosing_production: &'static str,
-    ) -> Result<RecoveryDepthGuard, ParseError<'i, Error>> {
+    ) -> Result<RecoveryDepthGuard, ParseError<'i, CssError>> {
         let depth = self.depth.get();
         if depth >= STRUCTURAL_NESTING_LIMIT {
             return Err(nesting_limit(
@@ -1271,7 +1271,7 @@ fn scan_nested_tokens<'i>(
     base_depth: u32,
     enclosing_production: &'static str,
     boundary: ScanBoundary,
-) -> Result<usize, ParseError<'i, Error>> {
+) -> Result<usize, ParseError<'i, CssError>> {
     let mut offset = start.min(source.len());
     let mut blocks: Vec<BlockKind> = Vec::new();
     while let Some((token_start, token_end, token)) = next_source_token(source, offset) {
@@ -1440,7 +1440,7 @@ impl RecoveryProgress {
 }
 
 pub(super) fn recovery_action_for_error(
-    error: &ParseError<'_, Error>,
+    error: &ParseError<'_, CssError>,
     ordinary: crate::CssRecoveryAction,
 ) -> crate::CssRecoveryAction {
     if is_nesting_limit_error(error) {

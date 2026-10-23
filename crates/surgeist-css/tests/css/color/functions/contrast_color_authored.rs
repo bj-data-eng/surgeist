@@ -6,6 +6,8 @@
 use crate::css::support::color_and_selector_fixtures::{
     background_images as images, expanded_longhands as expanded,
 };
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::{
     color_property::color_property_value, parsed_color as color, sole_declaration as declaration,
 };
@@ -165,10 +167,10 @@ fn absolute_palette_construction_rejects_the_admitted_contextual_contrast_input(
         "color-mix(red, contrast-color(blue))",
     ] {
         assert_eq!(
-            CssFontPaletteOverride::try_new(index.clone(), color(source)).unwrap_err(),
-            CssFontPaletteConstructionError::ContextualColor(
-                CssAbsoluteColorExclusion::ContrastColor
-            )
+            CssFontPaletteOverride::try_new(index.clone(), color(source))
+                .unwrap_err()
+                .contextual_color(),
+            Some(CssAbsoluteColorExclusion::ContrastColor)
         );
         let report = parse_sheet(&format!(
             "@font-palette-values --p {{ font-family: Demo; override-colors: 0 {source}; base-palette: light; }}"
@@ -434,20 +436,19 @@ fn pending_reentry_is_strict_repeatable_and_preserves_replacement_provenance() {
             "contrast-color(red, blue)",
             "contrast-color(none)",
         ] {
-            assert!(matches!(
+            assert!(
                 pending
                     .reenter(parse_component_values(invalid).unwrap())
                     .unwrap_err()
-                    .kind(),
-                CssExpansionErrorKind::InvalidReplacement(_)
-            ));
+                    .replacement_error()
+                    .is_some()
+            );
         }
-        assert_eq!(
+        assert!(
             pending
                 .reenter(parse_component_values("var(--again)").unwrap())
                 .unwrap_err()
-                .kind(),
-            &CssExpansionErrorKind::ResidualSubstitution
+                .is_residual_substitution()
         );
         let replacement = parse_component_values(replacement).unwrap();
         for _ in 0..2 {
@@ -549,19 +550,22 @@ fn wrapper_and_child_charge_exact_cumulative_node_projection_and_byte_budgets() 
         for (limits, kind) in [
             (
                 CssSerializationLimits::new(input_nodes - 1, projection_nodes, expected.len()),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                SerializationFailure::InputNodeLimit,
             ),
             (
                 CssSerializationLimits::new(input_nodes, projection_nodes - 1, expected.len()),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
                 CssSerializationLimits::new(input_nodes, projection_nodes, expected.len() - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                SerializationFailure::ByteLimit,
             ),
         ] {
             let before = value.clone();
-            assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+            assert_eq!(
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+                kind
+            );
             assert_eq!(value, before);
         }
     }
@@ -583,12 +587,11 @@ fn utf8_url_prefix_and_nested_image_children_share_the_complete_output_budget() 
             .unwrap(),
         expected
     );
-    assert_eq!(
+    assert!(
         value
             .serialize_specified(CssSerializationLimits::new(100, 100, expected.len() - 1))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
     let value = images(
         "light-dark(linear-gradient(contrast-color(red), blue), none), linear-gradient(contrast-color(green), blue)",
@@ -600,12 +603,11 @@ fn utf8_url_prefix_and_nested_image_children_share_the_complete_output_budget() 
             .unwrap(),
         expected
     );
-    assert_eq!(
+    assert!(
         value
             .serialize_specified(CssSerializationLimits::new(100, 100, expected.len() - 1))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
 }
 

@@ -90,9 +90,12 @@ impl Default for CssStylesheetDecodeLimits {
 }
 
 /// A byte decode failed atomically, without returning partial text or input.
-#[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum CssInputDecodeError {
+pub struct CssInputDecodeError {
+    kind: InputDecodeKind,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum InputDecodeKind {
     /// The original byte length exceeds the supplied policy.
     OriginalByteLimit,
     /// The complete decoded UTF-8 length exceeds the supplied policy.
@@ -102,14 +105,30 @@ pub enum CssInputDecodeError {
     /// A fallible byte, UTF-8 or source-checkpoint reservation failed.
     AllocationFailure,
 }
-
+impl From<InputDecodeKind> for CssInputDecodeError {
+    fn from(kind: InputDecodeKind) -> Self {
+        Self { kind }
+    }
+}
+impl CssInputDecodeError {
+    crate::error::kind_predicates! { kind;
+        /// Returns whether the original byte length exceeds the supplied policy.
+        is_original_byte_limit => InputDecodeKind::OriginalByteLimit,
+        /// Returns whether the complete decoded UTF-8 length exceeds the supplied policy.
+        is_decoded_utf8_byte_limit => InputDecodeKind::DecodedUtf8ByteLimit,
+        /// Returns whether a length/capacity cannot be represented by Rust's allocation APIs.
+        is_capacity_overflow => InputDecodeKind::CapacityOverflow,
+        /// Returns whether a fallible byte, UTF-8 or source-checkpoint reservation failed.
+        is_allocation_failure => InputDecodeKind::AllocationFailure,
+    }
+}
 impl fmt::Display for CssInputDecodeError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(match self {
-            Self::OriginalByteLimit => "stylesheet original-byte limit exceeded",
-            Self::DecodedUtf8ByteLimit => "stylesheet decoded UTF-8 byte limit exceeded",
-            Self::CapacityOverflow => "stylesheet input capacity overflow",
-            Self::AllocationFailure => "stylesheet input allocation failed",
+        formatter.write_str(match &self.kind {
+            InputDecodeKind::OriginalByteLimit => "stylesheet original-byte limit exceeded",
+            InputDecodeKind::DecodedUtf8ByteLimit => "stylesheet decoded UTF-8 byte limit exceeded",
+            InputDecodeKind::CapacityOverflow => "stylesheet input capacity overflow",
+            InputDecodeKind::AllocationFailure => "stylesheet input allocation failed",
         })
     }
 }
@@ -214,13 +233,15 @@ pub fn decode_stylesheet_bytes_with_limits(
     limits: CssStylesheetDecodeLimits,
 ) -> Result<CssDecodedStylesheetInput, CssInputDecodeError> {
     if bytes.len() > limits.original_bytes {
-        return Err(CssInputDecodeError::OriginalByteLimit);
+        return Err(CssInputDecodeError::from(
+            InputDecodeKind::OriginalByteLimit,
+        ));
     }
     check_capacity(bytes.len())?;
     let mut original = Vec::new();
     original
         .try_reserve_exact(bytes.len())
-        .map_err(|_| CssInputDecodeError::AllocationFailure)?;
+        .map_err(|_| CssInputDecodeError::from(InputDecodeKind::AllocationFailure))?;
     original.extend_from_slice(bytes);
     let (fallback, fallback_selection) = fallback_encoding(bytes, hints);
     let (text, encoding, had_replacements) =
@@ -234,7 +255,7 @@ pub fn decode_stylesheet_bytes_with_limits(
         fallback_selection
     };
     let source = CssSourceSnapshot::try_from_owned(text)
-        .map_err(|_| CssInputDecodeError::AllocationFailure)?;
+        .map_err(|_| CssInputDecodeError::from(InputDecodeKind::AllocationFailure))?;
     Ok(CssDecodedStylesheetInput(Arc::new(DecodedStylesheetData {
         bytes: original,
         source,
@@ -280,7 +301,7 @@ fn prefix_encoding(bytes: &[u8]) -> Option<CssEncoding> {
 
 fn check_capacity(length: usize) -> Result<(), CssInputDecodeError> {
     if length > isize::MAX as usize {
-        Err(CssInputDecodeError::CapacityOverflow)
+        Err(CssInputDecodeError::from(InputDecodeKind::CapacityOverflow))
     } else {
         Ok(())
     }
@@ -309,14 +330,16 @@ fn decode_bounded(
         let length = output
             .len()
             .checked_add(written)
-            .ok_or(CssInputDecodeError::CapacityOverflow)?;
+            .ok_or(CssInputDecodeError::from(InputDecodeKind::CapacityOverflow))?;
         if length > max_bytes {
-            return Err(CssInputDecodeError::DecodedUtf8ByteLimit);
+            return Err(CssInputDecodeError::from(
+                InputDecodeKind::DecodedUtf8ByteLimit,
+            ));
         }
         check_capacity(length)?;
         output
             .try_reserve_exact(written)
-            .map_err(|_| CssInputDecodeError::AllocationFailure)?;
+            .map_err(|_| CssInputDecodeError::from(InputDecodeKind::AllocationFailure))?;
         // The safe codec guarantees complete valid UTF-8 in every written slice.
         output.push_str(
             std::str::from_utf8(&buffer[..written]).expect("encoding_rs guarantees UTF-8"),
@@ -330,7 +353,7 @@ fn decode_bounded(
             chunk_size = chunk_size
                 .checked_mul(2)
                 .filter(|size| *size <= buffer.len())
-                .ok_or(CssInputDecodeError::CapacityOverflow)?;
+                .ok_or(CssInputDecodeError::from(InputDecodeKind::CapacityOverflow))?;
         }
     }
 }
@@ -378,7 +401,9 @@ mod tests {
         );
         assert_eq!(
             decode_bounded(bytes, CssEncoding(UTF_8), 9, 4),
-            Err(CssInputDecodeError::DecodedUtf8ByteLimit)
+            Err(CssInputDecodeError::from(
+                InputDecodeKind::DecodedUtf8ByteLimit
+            ))
         );
         assert_eq!(
             decode_bounded(b"AAA\xE2\x82\xACZ", CssEncoding(UTF_8), 7, 4),
@@ -396,7 +421,9 @@ mod tests {
         );
         assert_eq!(
             decode_bounded(bytes, encoding, 8, 4),
-            Err(CssInputDecodeError::DecodedUtf8ByteLimit)
+            Err(CssInputDecodeError::from(
+                InputDecodeKind::DecodedUtf8ByteLimit
+            ))
         );
         assert_eq!(
             decode_bounded(bytes, encoding, 9, 4),
@@ -421,7 +448,7 @@ mod tests {
     fn capacity_overflow_is_typed_without_allocating() {
         assert_eq!(
             check_capacity(usize::MAX),
-            Err(CssInputDecodeError::CapacityOverflow)
+            Err(CssInputDecodeError::from(InputDecodeKind::CapacityOverflow))
         );
     }
 }

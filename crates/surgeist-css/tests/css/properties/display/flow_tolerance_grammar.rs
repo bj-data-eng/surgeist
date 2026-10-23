@@ -236,7 +236,7 @@ fn invalid_keywords_dimensions_and_combinations_drop_only_the_offending_declarat
             "{source}"
         );
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-        assert_invalid_value(diagnostic.error().kind(), property, token);
+        assert_invalid_value(diagnostic.error(), property, token);
         let start = "color:red;".len();
         assert_eq!(diagnostic.span().start().byte_offset().value(), start);
         assert_eq!(

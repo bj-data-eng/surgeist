@@ -2,9 +2,9 @@
 //! termination at a real parent close. Checked output may supply a semicolon.
 
 use surgeist_css::{
-    CssNamedSupportsConstructionError, CssRecoveryAction, CssRule, CssSerializedOrigin,
-    CssSupportsAtRuleTest, CssSupportsConditionRule, CssSupportsTestBody, CssSupportsTestItem,
-    CssValueOrigin, parse_component_values, parse_sheet, validate_sheet,
+    CssRecoveryAction, CssRule, CssSerializedOrigin, CssSupportsAtRuleTest,
+    CssSupportsConditionRule, CssSupportsTestBody, CssSupportsTestItem, CssValueOrigin,
+    parse_component_values, parse_sheet, validate_sheet,
 };
 
 fn statement(body: &CssSupportsTestBody) -> &CssSupportsAtRuleTest {
@@ -96,8 +96,12 @@ fn actual_source_eof_retains_the_statement_and_only_the_real_named_body_closure(
         validate_sheet(source).unwrap_err().diagnostics(),
         report.diagnostics()
     );
-    assert!(matches!(
-        CssSupportsConditionRule::try_new(definition.name().clone(), definition.body().clone(), Default::default()),
-        Err(CssNamedSupportsConstructionError::RecoveredInput { origin }) if &origin == recovery
-    ));
+    assert!(
+        CssSupportsConditionRule::try_new(
+            definition.name().clone(),
+            definition.body().clone(),
+            Default::default()
+        )
+        .is_err_and(|error| error.is_recovered_input() && error.origin() == recovery)
+    );
 }

@@ -1,6 +1,8 @@
 //! Typed authored overflow wrapping contracts from CSS Text 4 §6.4 (2026-08-14).
 
 use crate::css::support::checked_grammar_declaration as checked;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::important_declaration as parsed;
 use surgeist_css::*;
 
@@ -75,19 +77,19 @@ fn direct_keyword_serialization_is_canonical_and_budgeted() {
         for (limits, expected) in [
             (
                 CssSerializationLimits::new(0, 1, spelling.len()),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                SerializationFailure::InputNodeLimit,
             ),
             (
                 CssSerializationLimits::new(1, 0, spelling.len()),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
                 CssSerializationLimits::new(1, 1, spelling.len() - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                SerializationFailure::ByteLimit,
             ),
         ] {
             assert_eq!(
-                value.serialize_specified(limits).unwrap_err().kind(),
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
                 expected
             );
         }

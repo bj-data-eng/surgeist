@@ -1,6 +1,8 @@
 //! CSS2 REC 2011-06-07 §9.9.1 supplies auto and exact signed integers,
 //! initial auto, noninheritance. Values4 specified math and the shared bounded
 //! writer are existing product contracts; computed integer rounding is downstream.
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::important_declaration;
 use surgeist_css::*;
 
@@ -108,7 +110,7 @@ fn canonical_auto_exact_integers_and_unrounded_math_round_trip_without_mutation(
                 .unwrap(),
             expected
         );
-        assert_eq!(
+        assert!(
             value
                 .serialize_specified(CssSerializationLimits::new(
                     65_536,
@@ -116,8 +118,7 @@ fn canonical_auto_exact_integers_and_unrounded_math_round_trip_without_mutation(
                     expected.len() - 1
                 ))
                 .unwrap_err()
-                .kind(),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit
+                .is_byte_limit()
         );
         assert!(source.same_occurrence(&before));
         assert_eq!(source.value_components(), before.value_components());
@@ -134,19 +135,19 @@ fn each_z_index_branch_obeys_atomic_input_projection_and_byte_limits() {
         for (limits, kind) in [
             (
                 CssSerializationLimits::new(0, 262_144, 1_048_576),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                SerializationFailure::InputNodeLimit,
             ),
             (
                 CssSerializationLimits::new(65_536, 0, 1_048_576),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
                 CssSerializationLimits::new(65_536, 262_144, 0),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                SerializationFailure::ByteLimit,
             ),
         ] {
             assert_eq!(
-                value.serialize_specified(limits).unwrap_err().kind(),
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
                 kind,
                 "{text}"
             );
@@ -212,15 +213,15 @@ fn reentered_z_index_longhand_retains_parsed_and_programmatic_integer_origins() 
         for (limits, failure) in [
             (
                 CssSerializationLimits::new(1, 0, 10),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
                 CssSerializationLimits::new(1, 1, 9),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                SerializationFailure::ByteLimit,
             ),
         ] {
             assert_eq!(
-                value.serialize_specified(limits).unwrap_err().kind(),
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
                 failure
             );
             assert_eq!(literal.component(), &before.items()[0]);
@@ -261,14 +262,17 @@ fn parsed_symbolic_math_keeps_origins_after_late_projection_and_byte_failure() {
     for (limits, kind) in [
         (
             CssSerializationLimits::new(65_536, 1, 1_048_576),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(65_536, 262_144, "sign(1em - 1px)".len() - 1),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
-        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+            kind
+        );
         assert_eq!(value, &before);
         assert_eq!(math.components(), &original);
         for (component, retained) in original.items().iter().zip(math.components().items()) {

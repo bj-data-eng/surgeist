@@ -6,7 +6,7 @@ use crate::css::support::rules::ExpectedRejection;
 use surgeist_css::{
     CssErrorCode, CssNamespaceConstraint, CssNamespaceContext, CssNamespacePrefix,
     CssNormalizedItem, CssParseReport, CssRecoveryAction, CssRule, CssRuleContextKindRef,
-    CssSelector, CssSheet, ErrorKind, normalize_report, parse_rule, parse_selector, parse_sheet,
+    CssSelector, CssSheet, normalize_report, parse_rule, parse_selector, parse_sheet,
     validate_sheet,
 };
 
@@ -72,10 +72,7 @@ fn assert_duplicate_diagnostics(
             diagnostic.action(),
             CssRecoveryAction::RetainNonconformingRule
         );
-        assert!(matches!(
-            diagnostic.error().kind(),
-            ErrorKind::NamespaceRedeclaration(_)
-        ));
+        assert!(diagnostic.error().code() == CssErrorCode::NamespaceRedeclaration);
     }
     let failure = validate_sheet(source).expect_err("nonconforming sheet fails validation");
     assert_eq!(failure.diagnostics(), report.diagnostics());
@@ -430,16 +427,22 @@ fn named_and_default_redeclarations_preserve_typed_prior_origins_through_normali
             diagnostic.error().code(),
             CssErrorCode::NamespaceRedeclaration
         );
-        let ErrorKind::NamespaceRedeclaration(detail) = diagnostic.error().kind() else {
-            panic!("typed namespace redeclaration detail: {diagnostic:?}");
-        };
-        assert_eq!(detail.prefix().map(CssNamespacePrefix::as_str), name);
+        let detail = diagnostic.error();
         assert_eq!(
-            detail.previous_position().byte_offset().value(),
+            detail.code(),
+            CssErrorCode::NamespaceRedeclaration,
+            "typed namespace redeclaration detail: {diagnostic:?}"
+        );
+        assert_eq!(
+            detail.namespace_prefix().map(CssNamespacePrefix::as_str),
+            name
+        );
+        assert_eq!(
+            detail.previous_position().unwrap().byte_offset().value(),
             source.find(previous).unwrap()
         );
-        assert_eq!(detail.previous_position().line().value(), line - 1);
-        assert_eq!(detail.previous_position().column().value(), 0);
+        assert_eq!(detail.previous_position().unwrap().line().value(), line - 1);
+        assert_eq!(detail.previous_position().unwrap().column().value(), 0);
         let position = diagnostic.error().position();
         assert_eq!(
             position.byte_offset().value(),

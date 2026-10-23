@@ -221,7 +221,7 @@ fn source_descriptor_recovery_and_strict_components_have_separate_admission() {
         Default::default(),
     )
     .unwrap_err();
-    let CssFontFaceValueErrorKind::Grammar(detail) = error.kind() else {
+    let Some(detail) = error.diagnostic() else {
         panic!("grammar failure: {error:?}")
     };
     invalid_descriptor("font-face", "src")

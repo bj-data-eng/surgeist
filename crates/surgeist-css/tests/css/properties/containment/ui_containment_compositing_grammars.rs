@@ -1,3 +1,4 @@
+use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::property_admission::assert_component_rejected;
 use surgeist_css::*;
 
@@ -317,7 +318,7 @@ fn checked_public_containment_transform_and_list_construction_rejects_invalid_st
         assert_component_rejected(
             CssSpecifiedLength::try_from_component,
             CssComponentValue::try_token(css).unwrap(),
-            CssNumericConstructionErrorKind::RootDomainMismatch,
+            NumericFailure::RootDomainMismatch,
         );
     }
     assert!(
@@ -431,15 +432,19 @@ fn ui_containment_and_compositing_invalid_values_drop_only_their_declaration() {
             "{source}",
         );
         if expected_code == CssErrorCode::InvalidPropertyValue {
-            let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-                panic!("{source}: expected property-specific error");
-            };
-            assert_eq!(detail.property().canonical_name(), property, "{source}");
+            let detail = diagnostic.error();
+            assert_eq!(
+                detail.code(),
+                CssErrorCode::InvalidPropertyValue,
+                "{source}: expected property-specific error"
+            );
+            assert_eq!(
+                detail.known_property().unwrap().canonical_name(),
+                property,
+                "{source}"
+            );
         } else {
-            assert!(matches!(
-                diagnostic.error().kind(),
-                ErrorKind::InvalidColorSyntax(_)
-            ));
+            assert!(diagnostic.error().code() == CssErrorCode::InvalidColorSyntax);
         }
         assert!(
             diagnostic.error().position().byte_offset().value() < invalid.len() + 1,
@@ -505,11 +510,11 @@ fn ui_containment_and_compositing_eof_and_non_bmp_recovery_preserve_coordinates(
         declaration_end,
     );
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    assert!(matches!(
-        diagnostic.error().kind(),
-        ErrorKind::InvalidPropertyValue(detail)
-            if detail.property() == CssKnownProperty::BackgroundBlendMode
-    ));
+    assert!(
+        (diagnostic.error().code() == CssErrorCode::InvalidPropertyValue
+            && diagnostic.error().known_property().unwrap()
+                == CssKnownProperty::BackgroundBlendMode)
+    );
     assert_eq!(
         report.syntax()[1].known().unwrap().property(),
         CssKnownProperty::Color,

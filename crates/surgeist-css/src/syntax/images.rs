@@ -181,27 +181,106 @@ impl CssFilterImage {
         &self.filters
     }
 }
-/// Failure to admit the complete authored image subtree.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssImageConstructionError {
-    /// A property-specific `none` keyword is not an image.
+/// Failure to admit a complete authored image subtree, gradient color stop or
+/// `stripes()` image.
+///
+/// Unit failures are read through the `is_*` predicates; a rejected component
+/// or `stripes()` grammar is exposed by its accessor and is the error's source.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CssImageConstructionError {
+    kind: ImageConstructionKind,
+}
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum ImageConstructionKind {
     NotImage,
-    /// The complete subtree exceeds the shared 256-level structural ceiling.
     NestingLimit,
-    /// The composed structural depth cannot be represented.
     CapacityOverflow,
+    TooManyPositions,
+    EmptyStripes,
+    Component(crate::CssComponentValueError),
+    // Boxed so that every image construction failure stays small.
+    Grammar(Box<crate::CssPropertyValueError>),
+    RecoveredComponent(crate::CssValueOrigin),
+}
+impl CssImageConstructionError {
+    pub(crate) const fn new(kind: ImageConstructionKind) -> Self {
+        Self { kind }
+    }
+    crate::error::kind_predicates! { kind;
+        /// Returns whether a property-specific `none` keyword was given as an image.
+        is_not_image => ImageConstructionKind::NotImage,
+        /// Returns whether the subtree exceeds the shared 256-level structural ceiling.
+        is_nesting_limit => ImageConstructionKind::NestingLimit,
+        /// Returns whether the composed structural depth cannot be represented.
+        is_capacity_overflow => ImageConstructionKind::CapacityOverflow,
+        /// Returns whether a color stop supplies more than its two authored positions.
+        is_too_many_positions => ImageConstructionKind::TooManyPositions,
+        /// Returns whether `stripes()` was given no stripes.
+        is_empty_stripes => ImageConstructionKind::EmptyStripes,
+    }
+    /// Returns the rejected component of a `stripes()` image.
+    #[must_use]
+    pub const fn component_error(&self) -> Option<&crate::CssComponentValueError> {
+        match &self.kind {
+            ImageConstructionKind::Component(error) => Some(error),
+            _ => None,
+        }
+    }
+    /// Returns the `stripes()` grammar failure.
+    #[must_use]
+    pub fn property_value_error(&self) -> Option<&crate::CssPropertyValueError> {
+        match &self.kind {
+            ImageConstructionKind::Grammar(error) => Some(error),
+            _ => None,
+        }
+    }
+    /// Returns the origin of an implicitly closed component, which checked
+    /// construction rejects.
+    #[must_use]
+    pub const fn recovered_origin(&self) -> Option<&crate::CssValueOrigin> {
+        match &self.kind {
+            ImageConstructionKind::RecoveredComponent(origin) => Some(origin),
+            _ => None,
+        }
+    }
+}
+impl From<crate::CssComponentValueError> for CssImageConstructionError {
+    fn from(error: crate::CssComponentValueError) -> Self {
+        Self::new(ImageConstructionKind::Component(error))
+    }
+}
+impl From<crate::CssPropertyValueError> for CssImageConstructionError {
+    fn from(error: crate::CssPropertyValueError) -> Self {
+        Self::new(ImageConstructionKind::Grammar(Box::new(error)))
+    }
 }
 impl std::fmt::Display for CssImageConstructionError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            Self::NotImage => "none is not an image",
-            Self::NestingLimit => "image nesting limit exceeded",
-            Self::CapacityOverflow => "image capacity overflow",
+        f.write_str(match &self.kind {
+            ImageConstructionKind::NotImage => "none is not an image",
+            ImageConstructionKind::NestingLimit => "image nesting limit exceeded",
+            ImageConstructionKind::CapacityOverflow => "image capacity overflow",
+            ImageConstructionKind::TooManyPositions => {
+                "a color stop admits at most two authored positions"
+            }
+            ImageConstructionKind::EmptyStripes => "stripes() requires at least one stripe",
+            ImageConstructionKind::Component(_) => "invalid stripes() component",
+            ImageConstructionKind::Grammar(_) => "invalid stripes() image",
+            ImageConstructionKind::RecoveredComponent(_) => {
+                "stripes() rejects an implicitly closed component"
+            }
         })
     }
 }
-impl std::error::Error for CssImageConstructionError {}
+impl std::error::Error for CssImageConstructionError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match &self.kind {
+            ImageConstructionKind::Component(error) => Some(error),
+            ImageConstructionKind::Grammar(error) => Some(&**error),
+            _ => None,
+        }
+    }
+}
 
 /// Two checked authored image/none branches awaiting used-scheme selection.
 #[derive(Clone, Debug, PartialEq)]
@@ -245,11 +324,13 @@ impl CssLightDarkImage {
 }
 
 fn enclosing_depth(depth: u32) -> Result<u32, CssImageConstructionError> {
-    let depth = depth
-        .checked_add(1)
-        .ok_or(CssImageConstructionError::CapacityOverflow)?;
+    let depth = depth.checked_add(1).ok_or(CssImageConstructionError::new(
+        ImageConstructionKind::CapacityOverflow,
+    ))?;
     if depth > crate::STRUCTURAL_NESTING_LIMIT {
-        Err(CssImageConstructionError::NestingLimit)
+        Err(CssImageConstructionError::new(
+            ImageConstructionKind::NestingLimit,
+        ))
     } else {
         Ok(depth)
     }
@@ -263,10 +344,10 @@ fn length_percentage_depth(value: &CssSpecifiedLengthPercentage) -> u32 {
 
 fn color_depth(value: &CssColor) -> Result<u32, CssImageConstructionError> {
     value.nesting_depth().map_err(|error| match error {
-        super::CssColorConstructionError::CapacityOverflow => {
-            CssImageConstructionError::CapacityOverflow
+        error if error.is_capacity_overflow() => {
+            CssImageConstructionError::new(ImageConstructionKind::CapacityOverflow)
         }
-        _ => CssImageConstructionError::NestingLimit,
+        _ => CssImageConstructionError::new(ImageConstructionKind::NestingLimit),
     })
 }
 
@@ -452,7 +533,9 @@ impl CssImage {
     /// This checked carrier adds no CSS function level of its own.
     pub fn try_new(value: CssImageValue) -> Result<Self, CssImageConstructionError> {
         if matches!(value, CssImageValue::None) {
-            return Err(CssImageConstructionError::NotImage);
+            return Err(CssImageConstructionError::new(
+                ImageConstructionKind::NotImage,
+            ));
         }
         image_depth(&value)?;
         Ok(Self { value })
@@ -480,9 +563,11 @@ impl CssGradientColorStop {
     pub fn try_from_positions(
         color: CssColor,
         positions: Vec<CssSpecifiedLengthPercentage>,
-    ) -> Result<Self, super::CssGradientStopConstructionError> {
+    ) -> Result<Self, CssImageConstructionError> {
         if positions.len() > 2 {
-            return Err(super::CssGradientStopConstructionError::TooManyPositions);
+            return Err(CssImageConstructionError::new(
+                ImageConstructionKind::TooManyPositions,
+            ));
         }
         Ok(Self { color, positions })
     }
@@ -541,5 +626,29 @@ impl CssRadialGradient {
             interpolation: None,
             stops,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{CssImageConstructionError, ImageConstructionKind};
+
+    #[test]
+    fn construction_failures_display_their_invariant_without_a_source() {
+        for (kind, text) in [
+            (ImageConstructionKind::NotImage, "none is not an image"),
+            (
+                ImageConstructionKind::NestingLimit,
+                "image nesting limit exceeded",
+            ),
+            (
+                ImageConstructionKind::CapacityOverflow,
+                "image capacity overflow",
+            ),
+        ] {
+            let error = CssImageConstructionError::new(kind);
+            assert_eq!(error.to_string(), text);
+            assert!(std::error::Error::source(&error).is_none());
+        }
     }
 }

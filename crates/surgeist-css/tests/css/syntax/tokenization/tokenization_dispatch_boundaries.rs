@@ -9,9 +9,9 @@
 use std::ops::Range;
 
 use surgeist_css::{
-    CssComponentValue, CssComponentValueErrorKind, CssComponentValueLimits, CssComponentValueRef,
-    CssHashFlag, CssRule, CssSupportsTestItem, CssValueOrigin, CssValueTokenRef,
-    parse_component_values, parse_component_values_with_limits, parse_sheet, parse_style_attribute,
+    CssComponentValue, CssComponentValueLimits, CssComponentValueRef, CssHashFlag, CssRule,
+    CssSupportsTestItem, CssValueOrigin, CssValueTokenRef, parse_component_values,
+    parse_component_values_with_limits, parse_sheet, parse_style_attribute,
 };
 
 fn assert_span(origin: &CssValueOrigin, source: &str, expected: Range<usize>) {
@@ -139,7 +139,7 @@ fn split_at_keyword_components_count_separately_toward_the_limit() {
         CssComponentValueLimits::try_new(0, 3, 100).unwrap(),
     )
     .expect_err("the fourth whitespace token exceeds a three-component budget");
-    assert_eq!(failure.kind(), CssComponentValueErrorKind::ComponentLimit);
+    assert!(failure.is_component_limit(), "{failure:?}");
     assert_span(failure.origin(), source, 3..4);
     let admitted = parse_component_values_with_limits(
         source,
@@ -157,7 +157,7 @@ fn split_dimension_components_count_separately_toward_the_limit() {
         CssComponentValueLimits::try_new(0, 3, 100).unwrap(),
     )
     .expect_err("the fourth whitespace token exceeds a three-component budget");
-    assert_eq!(failure.kind(), CssComponentValueErrorKind::ComponentLimit);
+    assert!(failure.is_component_limit(), "{failure:?}");
     assert_span(failure.origin(), source, 5..7);
     let admitted = parse_component_values_with_limits(
         source,
@@ -175,7 +175,7 @@ fn a_one_component_limit_reports_the_first_split_hyphen_range() {
             CssComponentValueLimits::try_new(0, 1, 100).unwrap(),
         )
         .unwrap_err();
-        assert_eq!(failure.kind(), CssComponentValueErrorKind::ComponentLimit);
+        assert!(failure.is_component_limit(), "{failure:?}");
         assert_span(failure.origin(), source, hyphen);
     }
 }

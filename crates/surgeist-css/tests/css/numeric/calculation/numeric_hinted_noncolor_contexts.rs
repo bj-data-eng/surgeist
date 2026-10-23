@@ -241,10 +241,13 @@ fn rejects_atomically(property: CssKnownProperty, text: &str) {
     let CssExpansion::Pending(pending) = expand_declaration(&pending_source).unwrap() else {
         panic!("pending")
     };
-    assert!(matches!(
-        pending.reenter(components(text)).unwrap_err().kind(),
-        CssExpansionErrorKind::InvalidReplacement(_)
-    ));
+    assert!(
+        pending
+            .reenter(components(text))
+            .unwrap_err()
+            .replacement_error()
+            .is_some()
+    );
     assert!(pending.source().same_occurrence(&pending_source));
 }
 

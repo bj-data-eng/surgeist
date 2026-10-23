@@ -1,17 +1,17 @@
 //! Exact authored Fonts 4 font-size and the shared explicit font size component.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::named_property::assert_programmatic_rejection;
 use crate::css::support::named_property::normal_grammar_components;
 use surgeist_css::{
     CssComponentValue, CssComponentValueRef, CssComponentValues, CssContributionValueRef,
-    CssContributions, CssExpansion, CssExpansionErrorKind, CssFontSize, CssFontValue,
-    CssGlobalKeyword, CssImportance, CssInitialValueRef, CssKnownProperty,
-    CssKnownPropertyValueRef, CssLengthPercentageCalculation, CssLonghandValueRef,
-    CssNumericConstructionErrorKind, CssPropertyKindRef, CssPropertyValueErrorKind,
-    CssRecoveryAction, CssSerializationLimits, CssSerializedOrigin,
-    CssSpecifiedNonNegativeLengthPercentage as SizeLengthPercentage,
-    CssSpecifiedValueSerializationErrorKind, CssValueOrigin, CssValueTokenRef, expand_declaration,
-    parse_component_values, parse_style_attribute,
+    CssContributions, CssExpansion, CssFontSize, CssFontValue, CssGlobalKeyword, CssImportance,
+    CssInitialValueRef, CssKnownProperty, CssKnownPropertyValueRef, CssLengthPercentageCalculation,
+    CssLonghandValueRef, CssPropertyKindRef, CssRecoveryAction, CssSerializationLimits,
+    CssSerializedOrigin, CssSpecifiedNonNegativeLengthPercentage as SizeLengthPercentage,
+    CssValueOrigin, CssValueTokenRef, expand_declaration, parse_component_values,
+    parse_style_attribute,
 };
 
 fn scalar(text: &str) -> SizeLengthPercentage {
@@ -137,21 +137,13 @@ fn tiny_negatives_and_wrong_numeric_domains_fail_without_dropping_neighbors() {
         let error =
             SizeLengthPercentage::try_from_component(CssComponentValue::try_token(text).unwrap())
                 .unwrap_err();
-        assert_eq!(
-            error.kind(),
-            &CssNumericConstructionErrorKind::OutOfRange,
-            "{text}"
-        );
+        assert!(error.is_out_of_range(), "{text}");
     }
     for text in ["1", "1e-999", "1deg", "1s", "1frobs"] {
         let error =
             SizeLengthPercentage::try_from_component(CssComponentValue::try_token(text).unwrap())
                 .unwrap_err();
-        assert_eq!(
-            error.kind(),
-            &CssNumericConstructionErrorKind::RootDomainMismatch,
-            "{text}"
-        );
+        assert!(error.is_root_domain_mismatch(), "{text}");
     }
     for text in [
         "-1e-999px",
@@ -205,11 +197,10 @@ fn bare_calculation_roots_reenter_literal_admission_while_functions_stay_symboli
         Default::default(),
     )
     .unwrap();
-    assert_eq!(
+    assert!(
         SizeLengthPercentage::try_from_calculation(calculation)
             .unwrap_err()
-            .kind(),
-        &CssNumericConstructionErrorKind::OutOfRange
+            .is_out_of_range()
     );
     for (text, canonical) in [
         ("calc(-1px)", "calc(-1px)"),
@@ -340,13 +331,10 @@ fn checked_and_pending_reentry_preserve_original_and_programmatic_origins() {
         .unwrap(),
     )
     .unwrap_err();
-    assert!(matches!(
-        invalid.kind(),
-        CssPropertyValueErrorKind::Grammar(_)
-    ));
+    assert!(invalid.code().is_some());
     assert_eq!(
         invalid.origin(),
-        &CssSerializedOrigin::Token(CssValueOrigin::Programmatic)
+        CssSerializedOrigin::Token(CssValueOrigin::Programmatic)
     );
     let adjacent = CssComponentValues::try_new(
         vec![
@@ -410,23 +398,19 @@ fn checked_and_pending_reentry_preserve_original_and_programmatic_origins() {
             .unwrap(),
         )
         .unwrap_err();
-    let CssExpansionErrorKind::InvalidReplacement(mapped) = error.kind() else {
+    let Some(mapped) = error.replacement_error() else {
         panic!("invalid reentry")
     };
-    assert!(matches!(
-        mapped.kind(),
-        CssPropertyValueErrorKind::Grammar(_)
-    ));
+    assert!(mapped.code().is_some());
     assert_eq!(
         mapped.origin(),
-        &CssSerializedOrigin::Token(CssValueOrigin::Programmatic)
+        CssSerializedOrigin::Token(CssValueOrigin::Programmatic)
     );
-    assert_eq!(
+    assert!(
         handle
             .reenter(parse_component_values("var(--still-pending)").unwrap())
             .unwrap_err()
-            .kind(),
-        &CssExpansionErrorKind::ResidualSubstitution
+            .is_residual_substitution()
     );
 }
 
@@ -452,15 +436,11 @@ fn recovered_math_requires_parser_admission_before_typed_transfer() {
         Default::default(),
     )
     .unwrap_err();
-    assert_eq!(
-        error.kind(),
-        &CssNumericConstructionErrorKind::RecoveredComponent
-    );
-    assert_eq!(
+    assert!(error.is_recovered_component(), "{error:?}");
+    assert!(
         SizeLengthPercentage::try_from_calculation(calculation.clone())
             .unwrap_err()
-            .kind(),
-        &CssNumericConstructionErrorKind::RecoveredComponent
+            .is_recovered_component()
     );
     assert_eq!(
         admitted.serialize_specified(Default::default()).unwrap(),
@@ -542,19 +522,19 @@ fn specified_serialization_uses_one_bounded_budget_and_remains_atomic() {
     for (limits, expected_kind) in [
         (
             CssSerializationLimits::new(0, 1, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(1, 0, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(1, 1, expected.len() - 1),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            value.serialize_specified(limits).unwrap_err().kind(),
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
             expected_kind
         );
     }
@@ -562,12 +542,11 @@ fn specified_serialization_uses_one_bounded_budget_and_remains_atomic() {
         value.serialize_specified(Default::default()).unwrap(),
         expected
     );
-    assert_eq!(
+    assert!(
         CssFontSize::Math
             .serialize_specified(CssSerializationLimits::new(1, 1, 3))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(
         CssFontSize::Math

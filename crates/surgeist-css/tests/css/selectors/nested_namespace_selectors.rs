@@ -3,8 +3,9 @@
 //! A single namespace bar is distinct from the two-bar column combinator.
 
 use surgeist_css::{
-    CssCompoundSelector, CssErrorCode, CssNamespaceConstraint, CssPseudoClass, CssRecoveryAction,
-    CssRecoveryDiagnostic, CssRule, CssSelector, CssSelectorError, ErrorKind, parse_sheet,
+    CssCompoundSelector, CssErrorCode, CssGrammarExpectation, CssNamespaceConstraint,
+    CssProductionId, CssPseudoClass, CssRecoveryAction, CssRecoveryDiagnostic, CssRule,
+    CssSelector, CssTokenSummary, parse_sheet,
 };
 
 fn compound(selector: &CssSelector) -> &CssCompoundSelector {
@@ -141,11 +142,25 @@ fn selector_failure(source: &str, unit: &str) -> (usize, CssRecoveryDiagnostic) 
     (start, (*diagnostic).clone())
 }
 
-fn selector_detail(diagnostic: &CssRecoveryDiagnostic) -> &CssSelectorError {
-    let ErrorKind::InvalidSelector(detail) = diagnostic.error().kind() else {
-        panic!("an invalid selector: {diagnostic:?}");
-    };
-    detail
+/// The position-independent facts of an invalid-selector diagnostic.
+fn selector_detail(
+    diagnostic: &CssRecoveryDiagnostic,
+) -> (
+    Option<CssProductionId>,
+    Option<CssGrammarExpectation>,
+    Option<CssTokenSummary>,
+) {
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidSelector,
+        "an invalid selector: {diagnostic:?}"
+    );
+    (
+        detail.production(),
+        detail.expectation(),
+        detail.encountered().cloned(),
+    )
 }
 
 #[test]
@@ -154,7 +169,7 @@ fn undeclared_namespace_prefix_is_the_same_invalid_selector_at_every_level() {
         let (top_start, top) = selector_failure(unit, unit);
         assert_eq!(top_start, 0);
         assert_eq!(top.error().code(), CssErrorCode::InvalidSelector, "{unit}");
-        let top_detail = selector_detail(&top).clone();
+        let top_detail = selector_detail(&top);
         let relative = top.error().position().byte_offset().value();
         for context in [
             ".card { UNIT }",
@@ -171,7 +186,7 @@ fn undeclared_namespace_prefix_is_the_same_invalid_selector_at_every_level() {
                 CssErrorCode::InvalidSelector,
                 "{source}: {nested:?}"
             );
-            assert_eq!(selector_detail(&nested), &top_detail, "{source}");
+            assert_eq!(selector_detail(&nested), top_detail, "{source}");
             assert_eq!(
                 nested.error().position().byte_offset().value(),
                 start + relative,

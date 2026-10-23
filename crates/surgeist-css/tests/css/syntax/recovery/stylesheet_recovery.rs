@@ -1,4 +1,4 @@
-use surgeist_css::{CssErrorCode, CssRecoveryAction, CssRule, ErrorKind, parse_sheet};
+use surgeist_css::{CssErrorCode, CssRecoveryAction, CssRule, parse_sheet};
 
 fn style_rule_names(report: &surgeist_css::CssParseReport<surgeist_css::CssSheet>) -> Vec<&str> {
     report
@@ -50,9 +50,12 @@ fn assert_root_token_drop(
     assert_eq!(&source[start..start + authored.len()], authored);
     assert!(diagnostic.span().start() < diagnostic.span().end());
 
-    let ErrorKind::InvalidSelector(detail) = diagnostic.error().kind() else {
-        panic!("expected invalid selector detail")
-    };
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidSelector,
+        "expected invalid selector detail"
+    );
     assert_eq!(
         detail.production().unwrap().as_str(),
         "baseline.selector.complex"
@@ -74,10 +77,13 @@ fn assert_charset_drop(source: &str, diagnostic: &surgeist_css::CssRecoveryDiagn
         diagnostic.error().position().byte_offset().value(),
         source.find("@charset").unwrap()
     );
-    let ErrorKind::UnknownAtRule(detail) = diagnostic.error().kind() else {
-        panic!("expected unknown at-rule detail")
-    };
-    assert_eq!(detail.name().as_str(), "charset");
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::UnknownAtRule,
+        "expected unknown at-rule detail"
+    );
+    assert_eq!(detail.at_rule().unwrap().as_str(), "charset");
 }
 
 #[test]
@@ -274,10 +280,13 @@ fn stylesheet_recovery_unknown_block_at_rule_keeps_surrounding_rules_and_balance
         diagnostic.error().position().byte_offset().value(),
         source.find(failed).unwrap()
     );
-    let ErrorKind::UnknownAtRule(detail) = diagnostic.error().kind() else {
-        panic!("expected unknown at-rule detail")
-    };
-    assert_eq!(detail.name().as_str(), "mystery");
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::UnknownAtRule,
+        "expected unknown at-rule detail"
+    );
+    assert_eq!(detail.at_rule().unwrap().as_str(), "mystery");
 }
 
 #[test]
@@ -297,11 +306,17 @@ fn stylesheet_recovery_malformed_namespace_rule_is_distinct() {
         CssRecoveryAction::DropAtRule,
         failed,
     );
-    let ErrorKind::InvalidAtRulePrelude(detail) = diagnostic.error().kind() else {
-        panic!("expected namespace prelude detail")
-    };
-    assert_eq!(detail.name().as_str(), "namespace");
-    assert_eq!(detail.production().as_str(), "later.rule.namespace");
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidAtRulePrelude,
+        "expected namespace prelude detail"
+    );
+    assert_eq!(detail.at_rule().unwrap().as_str(), "namespace");
+    assert_eq!(
+        detail.production().unwrap().as_str(),
+        "later.rule.namespace"
+    );
 }
 
 #[test]
@@ -375,10 +390,13 @@ fn stylesheet_recovery_all_duplicate_and_nonleading_charset_rules_are_dropped() 
             CssRecoveryAction::DropAtRule,
             failed,
         );
-        let ErrorKind::UnknownAtRule(detail) = diagnostic.error().kind() else {
-            panic!("unknown charset")
-        };
-        assert_eq!(detail.name().as_str(), "charset");
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::UnknownAtRule,
+            "unknown charset"
+        );
+        assert_eq!(detail.at_rule().unwrap().as_str(), "charset");
     }
     let source = ".before { color: red; } @charset \"UTF-8\"; .after { color: blue; }";
     let report = parse_sheet(source);
@@ -552,9 +570,12 @@ fn stylesheet_recovery_charset_errors_identify_the_unknown_at_keyword() {
             source,
         );
         assert_eq!(diagnostic.error().position().byte_offset().value(), 0);
-        let ErrorKind::UnknownAtRule(detail) = diagnostic.error().kind() else {
-            panic!("expected unknown at-rule detail")
-        };
-        assert_eq!(detail.name().as_str(), "charset");
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::UnknownAtRule,
+            "expected unknown at-rule detail"
+        );
+        assert_eq!(detail.at_rule().unwrap().as_str(), "charset");
     }
 }

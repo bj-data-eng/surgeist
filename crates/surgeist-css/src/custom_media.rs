@@ -1,7 +1,6 @@
 //! Checked authored custom-media definitions and symbolic references.
 use crate::component_values::{CssCanonicalBuilder, CssCanonicalToken};
 use crate::*;
-use std::fmt;
 
 impl CssRetainedSources for CssCustomMediaRule {
     fn visit_retained_sources(
@@ -27,16 +26,18 @@ pub struct CssCustomMediaName {
 }
 impl CssCustomMediaName {
     /// Constructs from a decoded identifier value, escaping it as necessary.
-    pub fn try_new(name: impl Into<String>) -> Result<Self, CssCustomMediaConstructionError> {
+    pub fn try_new(name: impl Into<String>) -> Result<Self, CssMediaConstructionError> {
         Self::try_from_component(CssComponentValue::try_ident(name)?)
     }
     pub fn try_from_component(
         component: CssComponentValue,
-    ) -> Result<Self, CssCustomMediaConstructionError> {
+    ) -> Result<Self, CssMediaConstructionError> {
         let Some(name) = extension_name(&component) else {
-            return Err(CssCustomMediaConstructionError::InvalidName {
-                origin: component.origin().clone(),
-            });
+            return Err(CssMediaConstructionError::from(
+                crate::media::MediaConstructionKind::InvalidName {
+                    origin: component.origin().clone(),
+                },
+            ));
         };
         let name = name.to_owned();
         Ok(Self { component, name })
@@ -104,17 +105,6 @@ struct CustomMediaRuleData {
     body_origin: CssValueOrigin,
     semicolon: CssValueOrigin,
 }
-/// A failure to construct an unrecovered custom-media definition.
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssCustomMediaConstructionError {
-    InvalidName { origin: CssValueOrigin },
-    InvalidPrelude { origin: CssValueOrigin },
-    RecoveredInput { origin: CssValueOrigin },
-    AmbiguousMediaBody { origin: CssValueOrigin },
-    Component(CssComponentValueError),
-    Media(CssMediaConstructionError),
-}
 /// A lexical custom-media emission failure, before its public classification.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum CustomMediaSerializationFailure {
@@ -130,42 +120,6 @@ pub(crate) fn custom_media_error(error: CustomMediaSerializationFailure) -> CssS
             error,
         ),
         CustomMediaSerializationFailure::Media(error) => crate::media::media_error(error),
-    }
-}
-impl CssCustomMediaConstructionError {
-    pub fn origin(&self) -> &CssValueOrigin {
-        match self {
-            Self::InvalidName { origin }
-            | Self::InvalidPrelude { origin }
-            | Self::RecoveredInput { origin }
-            | Self::AmbiguousMediaBody { origin } => origin,
-            Self::Component(e) => e.origin(),
-            Self::Media(e) => e.origin(),
-        }
-    }
-}
-impl fmt::Display for CssCustomMediaConstructionError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "custom-media construction failed: {self:?}")
-    }
-}
-impl std::error::Error for CssCustomMediaConstructionError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::Component(e) => Some(e),
-            Self::Media(e) => Some(e),
-            _ => None,
-        }
-    }
-}
-impl From<CssComponentValueError> for CssCustomMediaConstructionError {
-    fn from(e: CssComponentValueError) -> Self {
-        Self::Component(e)
-    }
-}
-impl From<CssMediaConstructionError> for CssCustomMediaConstructionError {
-    fn from(e: CssMediaConstructionError) -> Self {
-        Self::Media(e)
     }
 }
 impl From<CssComponentValueError> for CustomMediaSerializationFailure {
@@ -230,7 +184,7 @@ impl CssCustomMediaRule {
         name: CssCustomMediaName,
         body: CssCustomMediaBody,
         limits: CssComponentValueLimits,
-    ) -> Result<Self, CssCustomMediaConstructionError> {
+    ) -> Result<Self, CssMediaConstructionError> {
         let deep = matches!(&body,CssCustomMediaBody::Media(list) if list.queries().iter().any(crate::media::query_is_deep));
         let origin = match &body {
             CssCustomMediaBody::Media(list) if deep => crate::media::deep_list_origin(list),
@@ -259,7 +213,7 @@ impl CssCustomMediaRule {
     pub fn try_from_components(
         values: CssComponentValues,
         limits: CssComponentValueLimits,
-    ) -> Result<Self, CssCustomMediaConstructionError> {
+    ) -> Result<Self, CssMediaConstructionError> {
         let deep = values.nesting_depth() >= 64;
         let origin = if deep {
             crate::parser::bounded_execution::deep_component_origin(values.items())
@@ -272,14 +226,18 @@ impl CssCustomMediaRule {
             || {
                 values.validate_with_limits(limits)?;
                 if let Some(origin) = values.first_implicit_origin() {
-                    return Err(CssCustomMediaConstructionError::RecoveredInput {
-                        origin: origin.clone(),
-                    });
+                    return Err(CssMediaConstructionError::from(
+                        crate::media::MediaConstructionKind::RecoveredInput {
+                            origin: origin.clone(),
+                        },
+                    ));
                 }
                 let Some(index) = values.items().iter().position(|v| !trivia(v)) else {
-                    return Err(CssCustomMediaConstructionError::InvalidPrelude {
-                        origin: CssValueOrigin::Programmatic,
-                    });
+                    return Err(CssMediaConstructionError::from(
+                        crate::media::MediaConstructionKind::InvalidPrelude {
+                            origin: CssValueOrigin::Programmatic,
+                        },
+                    ));
                 };
                 let name = CssCustomMediaName::try_from_component(values.items()[index].clone())?;
                 let tail = &values.items()[index + 1..];
@@ -311,7 +269,7 @@ impl CssCustomMediaRule {
                                 if let Some(error) =
                                     crate::media::empty_media_member_error(tail, start, end)
                                 {
-                                    return Err(error.into());
+                                    return Err(error);
                                 }
                                 queries.push(CssMediaQuery::try_from_components(
                                     CssComponentValues::try_new(
@@ -488,10 +446,7 @@ impl CssCustomMediaRule {
         out.push_grammar(CssCanonicalToken::Semicolon, &self.data.semicolon)?;
         Ok(())
     }
-    fn validate(
-        &self,
-        limits: CssComponentValueLimits,
-    ) -> Result<(), CssCustomMediaConstructionError> {
+    fn validate(&self, limits: CssComponentValueLimits) -> Result<(), CssMediaConstructionError> {
         if let CssCustomMediaBody::Media(list) = &self.data.body {
             if let [CssMediaQuery::Typed(query)] = list.queries()
                 && query.modifier().is_none()
@@ -500,51 +455,61 @@ impl CssCustomMediaRule {
                     name.eq_ignore_ascii_case("true") || name.eq_ignore_ascii_case("false")
                 })
             {
-                return Err(CssCustomMediaConstructionError::AmbiguousMediaBody {
-                    origin: query.syntax.media_type.origin().clone(),
-                });
+                return Err(CssMediaConstructionError::from(
+                    crate::media::MediaConstructionKind::AmbiguousMediaBody {
+                        origin: query.syntax.media_type.origin().clone(),
+                    },
+                ));
             }
             if let Some(CssMediaQuery::Never(value)) = list
                 .queries()
                 .iter()
                 .find(|q| matches!(q, CssMediaQuery::Never(_)))
             {
-                return Err(CssCustomMediaConstructionError::RecoveredInput {
-                    origin: value.origin().clone(),
-                });
+                return Err(CssMediaConstructionError::from(
+                    crate::media::MediaConstructionKind::RecoveredInput {
+                        origin: value.origin().clone(),
+                    },
+                ));
             }
         }
 
         let output = self.emit(limits.max_css_bytes()).map_err(|e| match e {
             CustomMediaSerializationFailure::Component(e) => {
-                CssCustomMediaConstructionError::Component(e)
+                CssMediaConstructionError::from(crate::media::MediaConstructionKind::Component(e))
             }
             CustomMediaSerializationFailure::Media(
                 crate::media::MediaSerializationFailure::Component(e),
-            ) => CssCustomMediaConstructionError::Component(e),
+            ) => CssMediaConstructionError::from(crate::media::MediaConstructionKind::Component(e)),
             CustomMediaSerializationFailure::Media(
                 crate::media::MediaSerializationFailure::RecoveredNever { origin },
-            ) => CssCustomMediaConstructionError::RecoveredInput { origin },
+            ) => CssMediaConstructionError::from(
+                crate::media::MediaConstructionKind::RecoveredInput { origin },
+            ),
         })?;
         for segment in output.segments() {
             if let Some(origin @ CssValueOrigin::ImplicitClosure { .. }) =
                 output.value_origin_at(segment.byte_range().start)
             {
-                return Err(CssCustomMediaConstructionError::RecoveredInput {
-                    origin: origin.clone(),
-                });
+                return Err(CssMediaConstructionError::from(
+                    crate::media::MediaConstructionKind::RecoveredInput {
+                        origin: origin.clone(),
+                    },
+                ));
             }
         }
         // Validate resource consumption only. The original typed graph is never replaced.
         parse_component_values_with_limits(output.as_css(), limits).map_err(|error| {
             let offset = crate::media::parsed_position(error.origin())
                 .map_or(0, |p| p.byte_offset().value());
-            CssCustomMediaConstructionError::Component(CssComponentValueError::new(
-                error.kind(),
-                output
-                    .value_origin_at(offset)
-                    .cloned()
-                    .unwrap_or_else(|| self.data.origin.clone()),
+            CssMediaConstructionError::from(crate::media::MediaConstructionKind::Component(
+                CssComponentValueError::new(
+                    error.kind,
+                    output
+                        .value_origin_at(offset)
+                        .cloned()
+                        .unwrap_or_else(|| self.data.origin.clone()),
+                ),
             ))
         })?;
         Ok(())

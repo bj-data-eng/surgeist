@@ -73,12 +73,7 @@ impl DeclarationBudget {
         // maximum avoids interpreting the value or duplicating its mode grammar.
         let members = match declaration.known() {
             None => 1,
-            Some(known) => match known
-                .grammar()
-                .metadata()
-                .map_err(CssomError::Metadata)?
-                .kind()
-            {
+            Some(known) => match known.grammar().metadata()?.kind() {
                 CssPropertyKindRef::Longhand(_) => 1,
                 CssPropertyKindRef::Shorthand(meta) => meta.members().len(),
                 CssPropertyKindRef::FourSideShorthand(meta) => meta

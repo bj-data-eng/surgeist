@@ -1,10 +1,11 @@
 //! Existing rule/sheet boundaries must serialize retained namespace declarations
 //! using the selected CSSOM namespace-rule spelling, atomically and in order.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::{
     CssErrorCode, CssNamespacePrefix, CssNormalizedItem, CssRule, CssRuleContextKindRef,
-    CssSerializationLimits, CssSpecifiedValueSerializationErrorKind, normalize_report, parse_sheet,
-    validate_sheet,
+    CssSerializationLimits, normalize_report, parse_sheet, validate_sheet,
 };
 
 #[test]
@@ -133,20 +134,11 @@ fn namespace_output_uses_shared_cumulative_resource_budgets() {
     );
     let short = CssSerializationLimits::new(usize::MAX, usize::MAX, expected.len() - 1);
     let error = report.syntax().serialize_specified(short).unwrap_err();
-    assert_eq!(
-        error.kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
-    );
+    assert!(error.is_byte_limit(), "{error:?}");
     assert_eq!(error.rule_index(), Some(1));
     for (input, kind) in [
-        (
-            true,
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
-        ),
-        (
-            false,
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
-        ),
+        (true, SerializationFailure::InputNodeLimit),
+        (false, SerializationFailure::ProjectionNodeLimit),
     ] {
         let limits = |nodes| {
             CssSerializationLimits::new(
@@ -167,14 +159,16 @@ fn namespace_output_uses_shared_cumulative_resource_budgets() {
                     && report
                         .syntax()
                         .serialize_specified(limits(*nodes))
-                        .is_err_and(|error| error.kind() == kind && error.rule_index() == Some(1))
+                        .is_err_and(|error| {
+                            serialization_failure(&error) == kind && error.rule_index() == Some(1)
+                        })
             })
             .expect("shared node budget exhausts on the second rule");
         let error = report
             .syntax()
             .serialize_specified(limits(nodes))
             .unwrap_err();
-        assert_eq!(error.kind(), kind);
+        assert_eq!(serialization_failure(&error), kind);
         assert_eq!(error.rule_index(), Some(1));
     }
     assert_eq!(report.syntax().rules().len(), 2);

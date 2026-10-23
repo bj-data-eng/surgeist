@@ -14,6 +14,8 @@
 //! Source-defined initials are compared with explicitly authored values through
 //! existing property wrapper accessors.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::property_admission::assert_checked_matches_diagnostic;
 use crate::css::support::{
     checked_property_grammar_declaration as checked, sole_declaration as parsed,
@@ -179,19 +181,18 @@ fn pending_contract(property: P, valid_css: &str, invalid: &[&str]) {
             )
             .unwrap_err();
             let error = handle.reenter(components).unwrap_err();
-            let CssExpansionErrorKind::InvalidReplacement(actual) = error.kind() else {
+            let Some(actual) = error.replacement_error() else {
                 panic!("original grammar failure")
             };
             assert_eq!(actual, &expected);
             assert!(handle.source().same_occurrence(&source));
         }
         for residual in ["var(--again)", "env(again)", "attr(data-again)"] {
-            assert_eq!(
+            assert!(
                 handle
                     .reenter(parse_component_values(residual).unwrap())
                     .unwrap_err()
-                    .kind(),
-                &CssExpansionErrorKind::ResidualSubstitution
+                    .is_residual_substitution()
             );
         }
         let replacement = parse_component_values(valid_css).unwrap();
@@ -416,10 +417,13 @@ fn invalid_compositing_values_recover_atomically_and_keep_color_control() {
                 diagnostic.error().code(),
                 CssErrorCode::InvalidPropertyValue
             );
-            let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-                panic!("property error")
-            };
-            assert_eq!(detail.property(), property);
+            let detail = diagnostic.error();
+            assert_eq!(
+                detail.code(),
+                CssErrorCode::InvalidPropertyValue,
+                "property error"
+            );
+            assert_eq!(detail.known_property().unwrap(), property);
             assert_eq!(
                 validate_style_attribute(&css).unwrap_err().diagnostics(),
                 report.diagnostics()
@@ -462,13 +466,10 @@ fn closure_contract(property: P, css: &str) {
             ),
         ] {
             let error = result.expect_err("checked values cannot repair original delimiters");
-            assert!(matches!(
-                error.kind(),
-                CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
-            ));
+            assert!(error.code() == Some(CssErrorCode::UnexpectedEnd));
             assert_eq!(
                 error.origin(),
-                &CssSerializedOrigin::End(Some(origin.clone()))
+                CssSerializedOrigin::End(Some(origin.clone()))
             );
         }
         assert_eq!(components, before);
@@ -529,14 +530,11 @@ fn recovered_reentry_fails_at_original_closure_then_valid_retry_preserves_source
             let components = parse_component_values(&value).unwrap();
             let origin = recovered_origin(&components);
             let error = handle.reenter(components).unwrap_err();
-            let CssExpansionErrorKind::InvalidReplacement(error) = error.kind() else {
+            let Some(error) = error.replacement_error() else {
                 panic!("strict closure failure")
             };
-            assert!(matches!(
-                error.kind(),
-                CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
-            ));
-            assert_eq!(error.origin(), &CssSerializedOrigin::End(Some(origin)));
+            assert!(error.code() == Some(CssErrorCode::UnexpectedEnd));
+            assert_eq!(error.origin(), CssSerializedOrigin::End(Some(origin)));
             let replacement = parse_component_values(css).unwrap();
             let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap()
             else {
@@ -745,10 +743,7 @@ fn ordered_normalization_keeps_authored_lists_and_charges_background_reset_termi
         ),
     ] {
         let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            &CssNormalizationErrorKind::LimitExceeded { resource, limit }
-        );
+        assert_eq!(error.exhausted_limit(), Some((resource, limit)));
         assert_eq!(error.declaration_order(), Some(6));
         assert!(
             error
@@ -782,11 +777,8 @@ fn background_requires_nine_normalization_members_and_recovers_after_eight_budge
         )
         .unwrap_err();
         assert_eq!(
-            error.kind(),
-            &CssNormalizationErrorKind::LimitExceeded {
-                resource: CssNormalizationResource::Contributions,
-                limit: 8
-            }
+            error.exhausted_limit(),
+            Some((CssNormalizationResource::Contributions, 8))
         );
         assert_eq!(error.declaration_order(), Some(0));
         assert!(error.declaration().unwrap().same_occurrence(source));
@@ -832,11 +824,8 @@ fn recovered_browser_comments_keep_diagnostics_through_report_normalization() {
         )
         .unwrap_err();
         assert_eq!(
-            error.kind(),
-            &CssNormalizationErrorKind::LimitExceeded {
-                resource: CssNormalizationResource::Contributions,
-                limit: 0
-            }
+            error.exhausted_limit(),
+            Some((CssNormalizationResource::Contributions, 0))
         );
         assert!(error.declaration().unwrap().same_occurrence(item.source()));
         assert_eq!(report, before);
@@ -846,8 +835,8 @@ fn recovered_browser_comments_keep_diagnostics_through_report_normalization() {
 
 #[test]
 fn blend_list_and_primitive_output_obey_independent_text_and_cumulative_limits() {
+    use crate::css::support::failure_classes::SerializationFailure as Kind;
     use CssSerializationLimits as Limits;
-    use CssSpecifiedValueSerializationErrorKind as Kind;
     let list = CssBlendModeList::try_new(vec![
         CssBlendMode::Hue,
         CssBlendMode::Normal,
@@ -867,7 +856,10 @@ fn blend_list_and_primitive_output_obey_independent_text_and_cumulative_limits()
         (Limits::new(4, 3, expected.len()), Kind::ProjectionNodeLimit),
         (Limits::new(4, 4, expected.len() - 1), Kind::ByteLimit),
     ] {
-        assert_eq!(list.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&list.serialize_specified(limits).unwrap_err()),
+            kind
+        );
         assert_eq!(list, before);
     }
     assert_eq!(
@@ -887,31 +879,27 @@ fn blend_list_and_primitive_output_obey_independent_text_and_cumulative_limits()
         "isolate"
     );
     for (limits, kind) in [
-        (
-            Limits::new(0, 1, 8),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
-        ),
+        (Limits::new(0, 1, 8), SerializationFailure::InputNodeLimit),
         (
             Limits::new(1, 0, 8),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
-        (
-            Limits::new(1, 1, 0),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
-        ),
+        (Limits::new(1, 1, 0), SerializationFailure::ByteLimit),
     ] {
         assert_eq!(
-            CssBlendMode::Multiply
-                .serialize_specified(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(
+                &CssBlendMode::Multiply
+                    .serialize_specified(limits)
+                    .unwrap_err()
+            ),
             kind
         );
         assert_eq!(
-            CssIsolation::Isolate
-                .serialize_specified(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(
+                &CssIsolation::Isolate
+                    .serialize_specified(limits)
+                    .unwrap_err()
+            ),
             kind
         );
     }
@@ -919,8 +907,8 @@ fn blend_list_and_primitive_output_obey_independent_text_and_cumulative_limits()
 
 #[test]
 fn declaration_output_preserves_explicit_list_importance_and_full_provider_budget() {
+    use crate::css::support::failure_classes::SerializationFailure as Kind;
     use CssSerializationLimits as Limits;
-    use CssSpecifiedValueSerializationErrorKind as Kind;
     let source = parsed("BACKGROUND-BLEND-MODE:HUE,NORMAL,HUE!important");
     let expected = "background-blend-mode: hue, normal, hue !important;";
     let before = source.clone();
@@ -936,7 +924,10 @@ fn declaration_output_preserves_explicit_list_importance_and_full_provider_budge
         (Limits::new(6, 5, expected.len()), Kind::ProjectionNodeLimit),
         (Limits::new(6, 6, expected.len() - 1), Kind::ByteLimit),
     ] {
-        assert_eq!(source.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&source.serialize_specified(limits).unwrap_err()),
+            kind
+        );
         assert_eq!(source, before);
     }
     assert_eq!(
@@ -955,7 +946,7 @@ fn declaration_output_preserves_explicit_list_importance_and_full_provider_budge
 #[test]
 fn sibling_rule_output_shares_final_byte_budget_and_preserves_original_sheet() {
     use CssSerializationLimits as Limits;
-    use CssSpecifiedValueSerializationErrorKind as Kind;
+
     let report = parse_sheet(
         ".a{background-blend-mode:hue,normal,hue!important;isolation:isolate}.b{mix-blend-mode:multiply}",
     );
@@ -975,7 +966,7 @@ fn sibling_rule_output_shares_final_byte_budget_and_preserves_original_sheet() {
             .all(|rule| rule.serialize_specified(short).is_ok())
     );
     let error = sheet.serialize_specified(short).unwrap_err();
-    assert_eq!(error.kind(), Kind::ByteLimit);
+    assert!(error.is_byte_limit(), "{error:?}");
     assert_eq!(error.rule_index(), Some(1));
     assert_eq!(sheet, &before);
     assert_eq!(

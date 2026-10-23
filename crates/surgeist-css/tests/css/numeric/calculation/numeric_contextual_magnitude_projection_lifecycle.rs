@@ -15,11 +15,13 @@
 //! Frozen WebKit 73aa6c89e2cb77c46184a81aec944e4ab99d114d also permits
 //! contextual numeric coefficients in simplify(Abs&) through magnitudeComparable.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::value_assertions::calculated_length as length;
 use surgeist_css::*;
 
 type Limits = CssSerializationLimits;
-type Kind = CssSpecifiedValueSerializationErrorKind;
+type Kind = SerializationFailure;
 
 fn assert_length(source: &str, expected: &str) {
     let value = length(source);
@@ -223,7 +225,7 @@ fn contextual_abs_replacement_obeys_exact_limits_and_atomic_failures() {
         (Limits::new(2, 0, 0), Kind::ProjectionNodeLimit),
     ] {
         let error = value.serialize_specified(limits).unwrap_err();
-        assert_eq!(error.kind(), kind);
+        assert_eq!(serialization_failure(&error), kind);
         assert_eq!(value, before);
         assert_eq!(value.origin(), before.origin());
         assert_eq!(
@@ -248,7 +250,7 @@ fn contextual_hypot_replacement_obeys_exact_limits_and_atomic_failures() {
         (Limits::new(3, 3, expected.len() - 1), Kind::ByteLimit),
     ] {
         let error = value.serialize_specified(limits).unwrap_err();
-        assert_eq!(error.kind(), kind);
+        assert_eq!(serialization_failure(&error), kind);
         assert_eq!(value, before);
         assert_eq!(value.origin(), before.origin());
         assert_eq!(

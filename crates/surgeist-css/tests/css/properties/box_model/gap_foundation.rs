@@ -164,19 +164,18 @@ fn gap_global_and_pending_values_expand_to_both_members() {
         panic!("substitution-dependent gap remains pending")
     };
     assert!(pending.source().same_occurrence(&source));
-    assert!(matches!(
+    assert!(
         pending
             .reenter(parse_component_values("-1px").unwrap())
             .unwrap_err()
-            .kind(),
-        CssExpansionErrorKind::InvalidReplacement(_)
-    ));
-    assert_eq!(
+            .replacement_error()
+            .is_some()
+    );
+    assert!(
         pending
             .reenter(parse_component_values("var(--again)").unwrap())
             .unwrap_err()
-            .kind(),
-        &CssExpansionErrorKind::ResidualSubstitution
+            .is_residual_substitution()
     );
     let replacement = parse_component_values("1px 2px").unwrap();
     let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap() else {

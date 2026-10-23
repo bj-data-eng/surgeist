@@ -8,10 +8,12 @@ use crate::css::support::color_and_selector_fixtures::{
     assert_specified_construction_cause, assert_unrepresentable_construction,
     originating_compound as compound,
 };
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::*;
 
 type Limits = CssSerializationLimits;
-type LimitKind = CssSpecifiedValueSerializationErrorKind;
+type LimitKind = SerializationFailure;
 
 fn segments(value: &CssSelector) -> &[CssPseudoElementSegment] {
     compound(value).pseudo_elements().unwrap().segments()
@@ -255,12 +257,11 @@ fn current_is_a_search_text_or_element_backed_suffix_and_resets_with_the_receive
         rejected(source);
     }
     let detached = CssSelector::PseudoClass(CssPseudoClass::Current);
-    assert_eq!(
+    assert!(
         detached
             .serialize_specified(Default::default())
             .unwrap_err()
-            .kind(),
-        LimitKind::UnrepresentableValue
+            .is_unrepresentable_value()
     );
     assert_unrepresentable_construction(CssSelectorList::try_new(
         vec![detached.clone()],
@@ -325,9 +326,12 @@ fn new_receiver_classes_share_checked_child_and_logical_attachment_permissions()
         diagnostic.error().position().byte_offset().value(),
         start + 1
     );
-    let ErrorKind::InvalidSelector(detail) = diagnostic.error().kind() else {
-        panic!("original selector diagnostic")
-    };
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidSelector,
+        "original selector diagnostic"
+    );
     let token = detail.encountered().unwrap();
     assert_eq!(token.kind(), CssTokenKind::Ident);
     assert_eq!(token.authored(), "first-child");
@@ -438,12 +442,11 @@ fn retained_invalid_items_require_true_permission_set_inclusion_for_checked_reus
                 .same_snapshot(item.origin().source())
         );
         let detached = CssSelector::PseudoClass(CssPseudoClass::Is(suffix_list(value).clone()));
-        assert_eq!(
+        assert!(
             detached
                 .serialize_specified(Default::default())
                 .unwrap_err()
-                .kind(),
-            LimitKind::UnrepresentableValue
+                .is_unrepresentable_value()
         );
         assert_unrepresentable_construction(CssSelectorList::try_new(
             vec![detached],
@@ -784,11 +787,14 @@ fn cumulative_node_and_escaped_byte_limits_fail_atomically_and_allow_retry() {
             assert!(member.serialize_specified(limits).is_ok());
         }
         let error = CssSelectorList::try_new(members.clone(), limits).unwrap_err();
-        let CssSelectorConstructionErrorKind::Specified(cause_error) = error.kind() else {
+        let Some(cause_error) = error.serialization_error() else {
             panic!("shared specified resource cause")
         };
-        assert_eq!(cause_error.kind(), cause);
-        assert_eq!(list.serialize_specified(limits).unwrap_err().kind(), cause);
+        assert_eq!(serialization_failure(cause_error), cause);
+        assert_eq!(
+            serialization_failure(&list.serialize_specified(limits).unwrap_err()),
+            cause
+        );
         assert_eq!(list, before);
     }
     assert_eq!(list.serialize_specified(exact_limit).unwrap(), literal);
@@ -814,9 +820,11 @@ fn cumulative_node_and_escaped_byte_limits_fail_atomically_and_allow_retry() {
         &CssSelectorList::try_new(escaped, short).unwrap_err(),
         LimitKind::ByteLimit,
     );
-    assert_eq!(
-        checked.serialize_specified(short).unwrap_err().kind(),
-        LimitKind::ByteLimit
+    assert!(
+        checked
+            .serialize_specified(short)
+            .unwrap_err()
+            .is_byte_limit()
     );
     assert_eq!(checked, unchanged);
     assert_eq!(checked.serialize_specified(fit).unwrap(), expected);
@@ -880,14 +888,14 @@ fn highlight_function_and_checked_rule_composition_respect_the_structural_ceilin
         diagnostic.error().position().byte_offset().value(),
         opening.len() * 256 + leaf.find('{').unwrap()
     );
-    let ErrorKind::NestingLimit(detail) = diagnostic.error().kind() else {
-        panic!("typed nesting limit")
-    };
-    assert_eq!(detail.limit(), 256);
+    let detail = diagnostic.error();
     assert_eq!(
-        detail.enclosing_production().as_str(),
-        "baseline.rule.style"
+        detail.code(),
+        CssErrorCode::NestingLimit,
+        "typed nesting limit"
     );
+    assert_eq!(detail.nesting_limit().unwrap(), 256);
+    assert_eq!(detail.production().unwrap().as_str(), "baseline.rule.style");
     let mut rules = rejected.syntax().rules();
     for _ in 0..256 {
         let [CssRule::Media(group)] = rules else {
@@ -921,7 +929,7 @@ fn highlight_function_and_checked_rule_composition_respect_the_structural_ceilin
     let checked = CssSheet::try_from_rules(vec![child.clone()]).unwrap();
     assert_eq!(checked.rules(), std::slice::from_ref(&child));
     let error = CssMediaRule::try_new(query, vec![child.clone()], &context).unwrap_err();
-    assert_eq!(error.kind(), CssRuleConstructionErrorKind::NestingLimit);
+    assert!(error.is_nesting_limit(), "{error:?}");
     assert_eq!(error.path(), &[0; 256]);
     assert_eq!(
         error.position().unwrap().byte_offset().value(),

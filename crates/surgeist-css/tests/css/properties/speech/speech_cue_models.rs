@@ -2,6 +2,8 @@
 //! component omission. Existing-public preimplementation RED is in
 //! speech_cue_lifecycle.rs; resources stay authored and are never loaded.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::important_declaration as declaration;
 use surgeist_css::*;
 
@@ -73,7 +75,7 @@ fn decibel_literal_rejects_wrong_domains_and_invalid_coefficients_at_the_origina
     for text in ["3", "3%", "3px", "3s", "none", "calc(3dB)"] {
         let component = parse_component_values(text).unwrap().items()[0].clone();
         let error = CssDecibelLiteral::try_from_component(component.clone()).unwrap_err();
-        assert_eq!(error.kind(), CssComponentValueErrorKind::InvalidToken);
+        assert!(error.is_invalid_token(), "{error:?}");
         assert_eq!(error.origin(), component.origin());
     }
     for text in ["NaN", "infinity", "3 4", "", "3dB"] {
@@ -273,18 +275,21 @@ fn cue_budgets_are_cumulative_and_atomic_even_for_omitted_authored_children() {
     for (limits, kind) in [
         (
             CssSerializationLimits::new(8, 9, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(9, 8, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(9, 9, expected.len() - 1),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
-        assert_eq!(model.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&model.serialize_specified(limits).unwrap_err()),
+            kind
+        );
         assert_eq!(model, retained);
         assert_eq!(
             model.serialize_specified(Default::default()).unwrap(),
@@ -306,11 +311,10 @@ fn cue_budgets_are_cumulative_and_atomic_even_for_omitted_authored_children() {
             .unwrap(),
         "url(\"a\")"
     );
-    assert_eq!(
+    assert!(
         zero.serialize_specified(CssSerializationLimits::new(3, 4, 8))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+            .is_input_node_limit()
     );
 }
 
@@ -338,18 +342,21 @@ fn cue_url_modifier_components_share_cumulative_budgets_and_safe_boundaries() {
     for (limits, kind) in [
         (
             CssSerializationLimits::new(5, 6, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(6, 5, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(6, 6, expected.len() - 1),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
-        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+            kind
+        );
         assert_eq!(value, retained);
     }
     assert_eq!(
@@ -377,14 +384,17 @@ fn equivalent_after_with_url_modifiers_consumes_nodes_without_extra_output_bytes
     for (limits, kind) in [
         (
             CssSerializationLimits::new(12, 13, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(13, 12, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
     ] {
-        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+            kind
+        );
         assert_eq!(value, retained);
     }
 }
@@ -400,7 +410,7 @@ fn checked_cue_models_reject_retained_url_modifier_argument_recovery() {
         panic!("audio")
     };
     let error = CssAudioCue::try_new(value.url().clone(), value.decibel().cloned()).unwrap_err();
-    assert_eq!(error.kind(), CssComponentValueErrorKind::InvalidFunction);
+    assert!(error.is_invalid_function(), "{error:?}");
     assert!(matches!(
         error.origin(),
         CssValueOrigin::ImplicitClosure { .. }

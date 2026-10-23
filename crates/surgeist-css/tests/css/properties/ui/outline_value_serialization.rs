@@ -2,12 +2,14 @@
 //! Canonical order is width/style/color; ambiguous lone auto sets both slots.
 //! These tests cover the represented Auto/shared-Color subset, not image-1D.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::retained_checked_declaration as declaration;
 use crate::css::support::serialization_limits::assert_limits;
 use surgeist_css::*;
 
 type Limits = CssSerializationLimits;
-type Kind = CssSpecifiedValueSerializationErrorKind;
+type Kind = SerializationFailure;
 
 fn outline(source: &str) -> CssOutline {
     let declaration = declaration(CssKnownProperty::Outline, source);
@@ -355,7 +357,10 @@ fn parsed_shorthand_retains_lexical_components_importance_and_both_numeric_origi
         (Limits::new(65_536, 0, 1_048_576), Kind::ProjectionNodeLimit),
         (Limits::new(65_536, 262_144, 0), Kind::ByteLimit),
     ] {
-        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+            kind
+        );
         assert_eq!(
             value.serialize_specified(Default::default()).unwrap(),
             "calc(3px) solid rgb(5, 0, 0)"

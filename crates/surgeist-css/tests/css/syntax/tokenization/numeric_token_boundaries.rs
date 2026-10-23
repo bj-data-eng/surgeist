@@ -13,8 +13,8 @@
 use std::ops::Range;
 
 use surgeist_css::{
-    CssComponentValue, CssComponentValueErrorKind, CssComponentValueRef, CssComponentValues,
-    CssNumericTokenKind, CssNumericTokenRef, CssSpecifiedNumber, CssValueOrigin, CssValueTokenRef,
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssNumericTokenKind,
+    CssNumericTokenRef, CssSpecifiedNumber, CssValueOrigin, CssValueTokenRef,
     parse_component_values,
 };
 
@@ -340,11 +340,7 @@ fn whole_number_construction_rejects_invalid_spelling_and_admits_a_valid_retry()
     ] {
         let error = CssComponentValue::try_number(spelling)
             .expect_err("a prefix/category is not a whole CSS number");
-        assert_eq!(
-            error.kind(),
-            CssComponentValueErrorKind::InvalidNumber,
-            "{spelling:?}"
-        );
+        assert!(error.is_invalid_number(), "{spelling:?}");
         assert_eq!(error.origin(), &CssValueOrigin::Programmatic);
         let retry = CssComponentValue::try_number("-.5e+2").unwrap();
         assert_token(&retry, &Expected::Number("-.5e+2", Number, true));
@@ -364,11 +360,7 @@ fn dimension_construction_validates_number_text_before_an_exponent_like_unit() {
     for spelling in ["", "+", ".", "1.", "1e+", "1 2", "1px", "1%"] {
         let error = CssComponentValue::try_dimension(spelling, "e2")
             .expect_err("dimension number must be checked whole text");
-        assert_eq!(
-            error.kind(),
-            CssComponentValueErrorKind::InvalidDimension,
-            "{spelling:?}"
-        );
+        assert!(error.is_invalid_dimension(), "{spelling:?}");
         assert_eq!(error.origin(), &CssValueOrigin::Programmatic);
         let retry = CssComponentValue::try_dimension("1", "e2").unwrap();
         assert_token(&retry, &Expected::Dimension("1", "e2", Integer, false));

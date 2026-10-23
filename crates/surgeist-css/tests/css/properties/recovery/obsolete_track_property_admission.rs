@@ -2,7 +2,8 @@
 //! https://github.com/w3c/csswg-drafts/issues/8207#issuecomment-1747805578
 //! explicitly removed both former Masonry properties in October 2023.
 use surgeist_css::{
-    CssKnownProperty, CssRecoveryAction, ErrorKind, parse_style_attribute, validate_style_attribute,
+    CssErrorCode, CssKnownProperty, CssRecoveryAction, parse_style_attribute,
+    validate_style_attribute,
 };
 
 fn require_unknown_declarations(source: &str, names: &[&str]) {
@@ -14,10 +15,13 @@ fn require_unknown_declarations(source: &str, names: &[&str]) {
     assert_eq!(report.diagnostics().len(), names.len(), "{report:?}");
     for (diagnostic, expected) in report.diagnostics().iter().zip(names) {
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-        let ErrorKind::UnknownProperty(detail) = diagnostic.error().kind() else {
-            panic!("expected unknown property for {expected}: {diagnostic:?}");
-        };
-        assert_eq!(detail.name().as_str(), *expected);
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::UnknownProperty,
+            "expected unknown property for {expected}: {diagnostic:?}"
+        );
+        assert_eq!(detail.property_name().unwrap().as_str(), *expected);
         assert_eq!(
             diagnostic.error().position().byte_offset().value(),
             source.find(expected).unwrap()
@@ -76,10 +80,7 @@ fn strict_validation_rejects_removed_names_through_the_same_grammar() {
     for source in ["align-tracks: center", "justify-tracks: space-evenly"] {
         let failure = validate_style_attribute(source)
             .expect_err("obsolete property must fail clean validation");
-        assert!(matches!(
-            failure.first().error().kind(),
-            ErrorKind::UnknownProperty(_)
-        ));
+        assert!(failure.first().error().code() == CssErrorCode::UnknownProperty);
     }
 }
 

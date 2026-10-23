@@ -1,4 +1,5 @@
 //! CSS Sizing 3 box-sizing remains a non-inherited terminal longhand.
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::property_admission::assert_style_attribute_rejected;
 use crate::css::support::sole_declaration as declaration;
 use surgeist_css::*;
@@ -72,17 +73,13 @@ fn box_sizing_pending_reentry_checks_the_same_grammar_atomically() {
         let error = handle
             .reenter(parse_component_values(text).unwrap())
             .unwrap_err();
-        assert!(
-            matches!(error.kind(), CssExpansionErrorKind::InvalidReplacement(_)),
-            "{text}: {error:?}"
-        );
+        assert!(error.replacement_error().is_some(), "{text}: {error:?}");
     }
-    assert_eq!(
+    assert!(
         handle
             .reenter(parse_component_values("var(--again)").unwrap())
             .unwrap_err()
-            .kind(),
-        &CssExpansionErrorKind::ResidualSubstitution
+            .is_residual_substitution()
     );
     let replacement = parse_component_values("BORDER-BOX").unwrap();
     for _ in 0..2 {
@@ -214,7 +211,7 @@ fn box_sizing_checked_construction_preserves_programmatic_origins_and_keyword_me
 
 #[test]
 fn box_sizing_specified_serialization_is_canonical_and_resource_bounded() {
-    use CssSpecifiedValueSerializationErrorKind as K;
+    use crate::css::support::failure_classes::SerializationFailure as K;
     for (source_text, expected, canonical) in [
         ("content-box", CssBoxSizing::ContentBox, "content-box"),
         ("BORDER-BOX", CssBoxSizing::BorderBox, "border-box"),
@@ -254,7 +251,7 @@ fn box_sizing_specified_serialization_is_canonical_and_resource_bounded() {
             ),
         ] {
             assert_eq!(
-                expected.serialize_specified(limits).unwrap_err().kind(),
+                serialization_failure(&expected.serialize_specified(limits).unwrap_err()),
                 kind
             );
         }

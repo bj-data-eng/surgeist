@@ -1,5 +1,7 @@
 //! Direct typed and bounded specified-value evidence for Containment 2 §4.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::important_declaration;
 use surgeist_css::*;
 
@@ -117,22 +119,25 @@ fn canonical_keywords_obey_exact_node_and_byte_limits_without_mutating_authored_
         for (limits, error) in [
             (
                 CssSerializationLimits::new(0, 1, expected.len()),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                SerializationFailure::InputNodeLimit,
             ),
             (
                 CssSerializationLimits::new(1, 0, expected.len()),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
                 CssSerializationLimits::new(1, 1, expected.len() - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                SerializationFailure::ByteLimit,
             ),
             (
                 CssSerializationLimits::new(1, 1, 0),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                SerializationFailure::ByteLimit,
             ),
         ] {
-            assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), error);
+            assert_eq!(
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+                error
+            );
             assert_eq!(
                 value.serialize_specified(Default::default()).unwrap(),
                 expected
@@ -158,13 +163,12 @@ fn canonical_keywords_obey_exact_node_and_byte_limits_without_mutating_authored_
                 .unwrap(),
             expected
         );
-        assert_eq!(
+        assert!(
             wrapper
                 .value()
                 .serialize_specified(CssSerializationLimits::new(1, 1, 0))
                 .unwrap_err()
-                .kind(),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit
+                .is_byte_limit()
         );
         assert_eq!(wrapper.as_css(), expected.to_uppercase());
     }

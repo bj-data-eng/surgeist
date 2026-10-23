@@ -104,9 +104,8 @@ fn media_preparation_limits_actual_backing_and_stops_at_late_interruption() {
         );
         assert_eq!(result.is_ok(), success);
         if !success {
-            assert!(matches!(
-                result,
-                Err(CssUtf16InputError::Limit("retained source bytes"))
+            assert!(result.as_ref().is_err_and(
+                |error| error.exhausted_limit() == Some(CssUtf16Resource::RetainedBytes)
             ));
         }
     }
@@ -134,7 +133,11 @@ fn media_preparation_limits_actual_backing_and_stops_at_late_interruption() {
                 if calls == stop { Err(stop) } else { Ok(()) }
             },
         );
-        assert!(matches!(result, Err(CssUtf16InputError::Interrupted(actual)) if actual == stop));
+        assert!(
+            result
+                .as_ref()
+                .is_err_and(|error| error.interruption().is_some_and(|actual| *actual == stop))
+        );
         assert_eq!(calls, stop);
         assert_eq!(Arc::strong_count(&raw), 1);
     }

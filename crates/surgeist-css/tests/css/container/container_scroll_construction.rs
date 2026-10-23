@@ -1,5 +1,7 @@
 //! Typed authored contracts from Conditional5 sections 5.4 and 6.3; no matching.
 use crate::css::support::authored_syntax::checked_container_condition as construct;
+use crate::css::support::failure_classes::ComponentFailure;
+use crate::css::support::failure_classes::component_failure;
 use surgeist_css::*;
 
 fn scroll(condition: &CssContainerCondition) -> &CssContainerScrollQuery {
@@ -377,23 +379,24 @@ fn limits_and_recovered_closures_keep_typed_resource_and_source_information() {
     for (limits, expected) in [
         (
             CssComponentValueLimits::try_new(1, usize::MAX, usize::MAX).unwrap(),
-            CssComponentValueErrorKind::NestingLimit,
+            ComponentFailure::NestingLimit,
         ),
         (
             CssComponentValueLimits::try_new(256, 1, usize::MAX).unwrap(),
-            CssComponentValueErrorKind::ComponentLimit,
+            ComponentFailure::ComponentLimit,
         ),
         (
             CssComponentValueLimits::try_new(256, usize::MAX, 1).unwrap(),
-            CssComponentValueErrorKind::ByteLimit,
+            ComponentFailure::ByteLimit,
         ),
     ] {
-        let Err(CssContainerConstructionError::Component(error)) =
-            CssContainerCondition::try_from_components(values.clone(), limits)
-        else {
+        let Err(outer) = CssContainerCondition::try_from_components(values.clone(), limits) else {
             panic!("resource failure")
         };
-        assert_eq!(error.kind(), expected);
+        let Some(error) = outer.component_error() else {
+            panic!("resource failure")
+        };
+        assert_eq!(component_failure(error), expected);
     }
     let recovered = "scroll-state(stuck:var(--edge,";
     let condition = construct(recovered);
@@ -406,23 +409,21 @@ fn limits_and_recovered_closures_keep_typed_resource_and_source_information() {
             CssValueOrigin::ImplicitClosure { .. }
         ))
     ));
-    assert_eq!(
+    assert!(
         pending
             .serialize_tokens(crate::css::support::byte_limits(1))
             .unwrap_err()
-            .kind(),
-        CssComponentValueErrorKind::ByteLimit
+            .is_byte_limit()
     );
-    assert!(matches!(
+    assert!(
         parse_component_values(&format!(
             "scroll-state({}stuck{})",
             "(".repeat(256),
             ")".repeat(256)
         ))
         .unwrap_err()
-        .kind(),
-        CssComponentValueErrorKind::NestingLimit
-    ));
+        .is_nesting_limit()
+    );
 }
 
 #[test]

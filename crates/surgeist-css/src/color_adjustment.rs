@@ -6,19 +6,36 @@ use crate::CssIdent;
 
 /// Why a checked scheme name or list cannot express the selected property grammar.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssColorSchemeConstructionError {
+pub struct CssColorSchemeConstructionError {
+    kind: ColorSchemeConstructionKind,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ColorSchemeConstructionKind {
     /// A custom name is a CSS-wide keyword, `default`, or a property keyword.
     ReservedName,
     /// A scheme list needs at least one light, dark, or custom entry.
     EmptySchemes,
 }
-
+impl From<ColorSchemeConstructionKind> for CssColorSchemeConstructionError {
+    fn from(kind: ColorSchemeConstructionKind) -> Self {
+        Self { kind }
+    }
+}
+impl CssColorSchemeConstructionError {
+    crate::error::kind_predicates! { kind;
+        /// Returns whether a custom name is a CSS-wide keyword, `default`, or a property keyword.
+        is_reserved_name => ColorSchemeConstructionKind::ReservedName,
+        /// Returns whether a scheme list needs at least one light, dark, or custom entry.
+        is_empty_schemes => ColorSchemeConstructionKind::EmptySchemes,
+    }
+}
 impl fmt::Display for CssColorSchemeConstructionError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(match self {
-            Self::ReservedName => "reserved color-scheme custom identifier",
-            Self::EmptySchemes => "color-scheme list requires at least one scheme",
+        formatter.write_str(match &self.kind {
+            ColorSchemeConstructionKind::ReservedName => "reserved color-scheme custom identifier",
+            ColorSchemeConstructionKind::EmptySchemes => {
+                "color-scheme list requires at least one scheme"
+            }
         })
     }
 }
@@ -42,7 +59,9 @@ impl CssColorSchemeName {
                 .iter()
                 .any(|keyword| value.eq_ignore_ascii_case(keyword))
         {
-            return Err(CssColorSchemeConstructionError::ReservedName);
+            return Err(CssColorSchemeConstructionError::from(
+                ColorSchemeConstructionKind::ReservedName,
+            ));
         }
         Ok(Self(name))
     }
@@ -85,19 +104,19 @@ impl CssColorScheme {
         admit: &mut impl FnMut() -> Result<(), E>,
     ) -> Result<usize, crate::CssRetainedPayloadError<E>> {
         use crate::CssRetainedPayloadError as Error;
-        admit().map_err(Error::Admission)?;
+        admit().map_err(Error::admission)?;
         let mut bytes = self
             .schemes
             .capacity()
             .checked_mul(std::mem::size_of::<CssColorSchemeKeyword>())
-            .ok_or(Error::CapacityOverflow)?;
+            .ok_or_else(Error::capacity_overflow)?;
         for scheme in &self.schemes {
-            admit().map_err(Error::Admission)?;
+            admit().map_err(Error::admission)?;
             if let CssColorSchemeKeyword::Custom(name) = scheme {
-                admit().map_err(Error::Admission)?;
+                admit().map_err(Error::admission)?;
                 bytes = bytes
                     .checked_add(name.0.backing_capacity())
-                    .ok_or(Error::CapacityOverflow)?;
+                    .ok_or_else(Error::capacity_overflow)?;
             }
         }
         Ok(bytes)
@@ -117,7 +136,9 @@ impl CssColorScheme {
         only: bool,
     ) -> Result<Self, CssColorSchemeConstructionError> {
         if schemes.is_empty() {
-            return Err(CssColorSchemeConstructionError::EmptySchemes);
+            return Err(CssColorSchemeConstructionError::from(
+                ColorSchemeConstructionKind::EmptySchemes,
+            ));
         }
         Ok(Self { schemes, only })
     }

@@ -248,7 +248,7 @@ fn pending_values_keep_whole_operand_and_required_domain_without_typing_fallback
         let error = pending
             .serialize_tokens(crate::css::support::byte_limits(1))
             .unwrap_err();
-        assert_eq!(error.kind(), CssComponentValueErrorKind::ByteLimit);
+        assert!(error.is_byte_limit(), "{error:?}");
         assert_eq!(error.origin(), pending.components().items()[0].origin());
         let CssValueOrigin::Parsed(origin) = pending.components().items()[0].origin() else {
             panic!("original operand")
@@ -302,10 +302,7 @@ fn tree_counting_is_inspectable_and_remains_symbolic_in_container_context() {
         Default::default(),
     )
     .unwrap_err();
-    assert_eq!(
-        error.kind(),
-        &CssNumericConstructionErrorKind::UnknownFunction
-    );
+    assert!(error.is_unknown_function(), "{error:?}");
     let CssValueOrigin::Parsed(origin) = error.origin().expect("located failure") else {
         panic!("{error:?}")
     };
@@ -357,7 +354,7 @@ fn mixed_origin_pending_components_preserve_token_origins_and_bounded_constructi
         CssComponentValueLimits::try_new(256, usize::MAX, 1).unwrap(),
     )
     .unwrap_err();
-    assert!(matches!(error, CssContainerConstructionError::Component(_)));
+    assert!(error.component_error().is_some());
 }
 
 #[test]

@@ -306,20 +306,19 @@ fn css_wide_all_and_pending_reentry_keep_axes_and_occurrence() {
             };
             assert!(handle.source().same_occurrence(&source));
             for bad in ["none", "visible hidden clip", "initial clip"] {
-                assert!(matches!(
+                assert!(
                     handle
                         .reenter(parse_component_values(bad).unwrap())
                         .unwrap_err()
-                        .kind(),
-                    CssExpansionErrorKind::InvalidReplacement(_)
-                ));
+                        .replacement_error()
+                        .is_some()
+                );
             }
-            assert_eq!(
+            assert!(
                 handle
                     .reenter(parse_component_values("var(--again)").unwrap())
                     .unwrap_err()
-                    .kind(),
-                &CssExpansionErrorKind::ResidualSubstitution
+                    .is_residual_substitution()
             );
             let replacement = parse_component_values("overlay").unwrap();
             let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap()

@@ -10,8 +10,7 @@ use surgeist_css::{
     CssFontFaceDescriptorKind as Kind, CssFontFaceDescriptorValue as Value,
     CssFontFeatureValueKind as BlockKind, CssFontFeatureValuesItem as Item,
     CssFontFeatureValuesRule, CssNormalizedItem, CssRule, CssRuleContextKindRef,
-    CssSerializationLimits as Limits, CssSpecifiedValueSerializationErrorKind as ValueError,
-    normalize_sheet,
+    CssSerializationLimits as Limits, normalize_sheet,
 };
 
 fn features(rule: &CssRule) -> &CssFontFeatureValuesRule {
@@ -232,7 +231,7 @@ fn sheet_composes_fonts_in_source_order_with_atomic_output_byte_limits() {
     let error = input
         .serialize_specified(Limits::new(usize::MAX, usize::MAX, output.len() - 1))
         .unwrap_err();
-    assert_eq!(error.kind(), ValueError::ByteLimit);
+    assert!(error.is_byte_limit(), "{error:?}");
     assert_eq!(error.rule_index(), Some(2));
     assert_eq!(input, before);
 }

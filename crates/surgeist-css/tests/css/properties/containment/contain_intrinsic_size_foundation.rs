@@ -269,22 +269,19 @@ fn css_wide_values_all_reset_and_substitutions_keep_symbolic_provenance() {
             assert!(handle.source().same_occurrence(&source));
             for invalid in ["auto", "-1e-999px", "1%"] {
                 assert!(
-                    matches!(
-                        handle
-                            .reenter(parse_component_values(invalid).unwrap())
-                            .unwrap_err()
-                            .kind(),
-                        CssExpansionErrorKind::InvalidReplacement(_)
-                    ),
+                    handle
+                        .reenter(parse_component_values(invalid).unwrap())
+                        .unwrap_err()
+                        .replacement_error()
+                        .is_some(),
                     "{name}: {invalid}"
                 );
             }
-            assert_eq!(
+            assert!(
                 handle
                     .reenter(parse_component_values("var(--again)").unwrap())
                     .unwrap_err()
-                    .kind(),
-                &CssExpansionErrorKind::ResidualSubstitution
+                    .is_residual_substitution()
             );
             let replacement = parse_component_values("auto 2px").unwrap();
             let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap()

@@ -287,7 +287,7 @@ fn programmatic_components_and_output_retry_do_not_invent_original_coordinates()
         let error = condition
             .serialize_tokens(crate::css::support::byte_limits(16))
             .unwrap_err();
-        assert_eq!(error.kind(), CssComponentValueErrorKind::ByteLimit);
+        assert!(error.is_byte_limit(), "{error:?}");
         assert_eq!(error.origin(), &CssValueOrigin::Programmatic);
         assert_eq!(condition, before);
         assert_eq!(

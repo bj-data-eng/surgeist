@@ -3,12 +3,13 @@
 //! exercise checked constructors, preserved origins, omission views, exact typed
 //! terminals and providers that did not exist at that checkpoint.
 
+use crate::css::support::failure_classes::SerializationFailure as Kind;
 use CssSerializationLimits as Limits;
-use CssSpecifiedValueSerializationErrorKind as Kind;
 use surgeist_css::*;
 
 use crate::css::support::authored_parsed_declaration as declaration;
 use crate::css::support::authored_property;
+use crate::css::support::failure_classes::serialization_failure;
 use authored_property::ParserFront;
 
 const FRONTS: [ParserFront; 5] = [
@@ -81,7 +82,10 @@ macro_rules! limits {
             ),
         ] {
             for _ in 0..2 {
-                assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+                assert_eq!(
+                    serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+                    kind
+                );
                 assert_eq!(value, before);
             }
         }
@@ -209,10 +213,7 @@ fn nonnegative_integer_constructor_rechecks_bare_roots_without_clamping_function
         let error =
             CssIntegerCalculation::try_from_components(components(input), Default::default())
                 .unwrap_err();
-        assert_eq!(
-            error.kind(),
-            &CssNumericConstructionErrorKind::RootDomainMismatch
-        );
+        assert!(error.is_root_domain_mismatch(), "{error:?}");
     }
     for (input, expected) in [
         ("calc(-1)", "calc(-1)"),

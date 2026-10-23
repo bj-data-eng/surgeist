@@ -2,6 +2,8 @@
 //! axis/dense ordering; Grid 3 (2026-01-21) §2.3 and the recorded WebKit choice
 //! supply symbolic normal and bare dense without choosing a layout direction.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::property_admission::assert_checked_value_rejected;
 use surgeist_css::*;
 
@@ -132,18 +134,21 @@ fn canonical_serializer_charges_each_keyword_and_exact_output_bytes() {
     for (limits, error) in [
         (
             CssSerializationLimits::new(1, 2, 12),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(2, 1, 12),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(2, 2, 11),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
-        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), error);
+        assert_eq!(
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+            error
+        );
     }
     assert_eq!(
         value
@@ -184,11 +189,8 @@ fn normalization_charges_one_terminal_contribution_for_dense() {
     )
     .unwrap_err();
     assert_eq!(
-        error.kind(),
-        &CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: 0,
-        }
+        error.exhausted_limit(),
+        Some((CssNormalizationResource::Contributions, 0))
     );
     assert_eq!(report.syntax(), &original);
     assert!(

@@ -7,10 +7,9 @@ use crate::css::support::property_expectations;
 
 use crate::css::support::authored_property;
 use crate::css::support::authored_property::parsed;
-use surgeist_css::{
-    CssKnownProperty as P, CssSerializationLimits as L,
-    CssSpecifiedValueSerializationErrorKind as K, *,
-};
+use crate::css::support::failure_classes::SerializationFailure as K;
+use crate::css::support::failure_classes::serialization_failure;
+use surgeist_css::{CssKnownProperty as P, CssSerializationLimits as L, *};
 
 // Specialized rendering identity/output cases; generic property/initial inventory
 // remains in the shared independent common records.
@@ -165,7 +164,10 @@ fn new_rendering_keywords_keep_exact_primitive_and_declaration_work_budgets() {
             (L::new(1, 1, expected.len() - 1), K::ByteLimit),
         ] {
             for _ in 0..2 {
-                assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+                assert_eq!(
+                    serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+                    kind
+                );
             }
         }
         let source = parsed(P::ImageRendering, expected);
@@ -182,7 +184,10 @@ fn new_rendering_keywords_keep_exact_primitive_and_declaration_work_budgets() {
             (L::new(3, 2, output.len()), K::ProjectionNodeLimit),
             (L::new(3, 3, output.len() - 1), K::ByteLimit),
         ] {
-            assert_eq!(source.serialize_specified(limits).unwrap_err().kind(), kind);
+            assert_eq!(
+                serialization_failure(&source.serialize_specified(limits).unwrap_err()),
+                kind
+            );
             assert_eq!(source, before);
         }
         assert_eq!(

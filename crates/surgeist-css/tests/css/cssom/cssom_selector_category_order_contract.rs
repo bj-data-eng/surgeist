@@ -3,14 +3,15 @@
 //! repetition survive checked construction, parsing and rule output, while the
 //! per-category accessors keep their grouped matching-relevant view.
 
+use crate::css::support::failure_classes::SerializationFailure as Resource;
+use crate::css::support::serialization_limits::LimitFailure;
 use crate::css::support::validated_selector as parsed;
 use surgeist_css::{
     CssAttributeCaseSensitivity, CssAttributeMatcher, CssAttributeName, CssAttributeSelector,
     CssCompoundSelector, CssIdent, CssNamespaceContext, CssPseudoClass, CssPseudoElement,
     CssPseudoElementSegment as Segment, CssQualifiedAttributeName, CssQualifiedNamePrefix, CssRule,
-    CssRuleCssomSerializationErrorKind as RuleError, CssSelector, CssSerializationLimits as Limits,
-    CssSimpleSelector as Simple, CssSpecifiedValueSerializationErrorKind as Resource,
-    CssStyleSelector, CssStyleSelectorContext, CssValueOrigin, parse_rule, parse_sheet,
+    CssSelector, CssSerializationLimits as Limits, CssSimpleSelector as Simple, CssStyleSelector,
+    CssStyleSelectorContext, CssValueOrigin, parse_rule, parse_sheet,
 };
 
 const AUTHORED: &str = ".One#X:hover[A='é'].Two#Y:focus[B='two'].One#X:hover[A='é']";
@@ -256,7 +257,7 @@ fn interleaved_rule_siblings_share_exact_limits_and_failure_preserves_retry() {
         ),
     ] {
         let failure = report.syntax().serialize_cssom(limits).unwrap_err();
-        assert_eq!(failure.kind(), RuleError::Resource(kind));
+        assert_eq!(failure.limit_kind(), Some(kind));
         assert_eq!(failure.rule_path(), &[1]);
         assert_eq!(report, before);
         assert_eq!(report.syntax().serialize_cssom(adequate).unwrap(), expected);

@@ -1,7 +1,7 @@
 //! Nested rule-list context remains semantic across bounded structural replay.
 use surgeist_css::{
-    CssErrorCode, CssRecoveryAction, CssRule, CssSelector, CssSheet, CssTokenKind, ErrorKind,
-    parse_sheet, validate_sheet,
+    CssErrorCode, CssRecoveryAction, CssRule, CssSelector, CssSheet, CssTokenKind, parse_sheet,
+    validate_sheet,
 };
 
 fn assert_style(rule: &CssRule, source: &str, class: &str, value: &str) {
@@ -131,9 +131,12 @@ fn check_html_token(html: &str, kind: CssTokenKind) {
             diagnostic.span().end().byte_offset().value(),
             start + unit.len()
         );
-        let ErrorKind::InvalidSelector(detail) = diagnostic.error().kind() else {
-            panic!("selector owns the qualified prelude")
-        };
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidSelector,
+            "selector owns the qualified prelude"
+        );
         let token = detail.encountered().unwrap();
         assert_eq!(token.kind(), kind);
         assert_eq!(token.authored(), html);
@@ -183,12 +186,15 @@ fn check_root_only_statement(statement: &str, name: &str) {
             diagnostic.span().end().byte_offset().value(),
             start + statement.len()
         );
-        let ErrorKind::InvalidAtRulePlacement(detail) = diagnostic.error().kind() else {
-            panic!("nested placement owns rejection")
-        };
-        assert_eq!(detail.name().as_str(), name);
+        let detail = diagnostic.error();
         assert_eq!(
-            detail.expected_context().as_str(),
+            detail.code(),
+            CssErrorCode::InvalidAtRulePlacement,
+            "nested placement owns rejection"
+        );
+        assert_eq!(detail.at_rule().unwrap().as_str(), name);
+        assert_eq!(
+            detail.expectation().unwrap().as_str(),
             "the stylesheet top level"
         );
         assert_eq!(

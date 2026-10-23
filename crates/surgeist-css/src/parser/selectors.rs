@@ -6,8 +6,8 @@ use cssparser::{
 use super::recovery::{RecoveryState, comma_member_span, recovery_action_for_error};
 use crate::CssViewTransitionNameSelector;
 use crate::error::{
-    CssFeatureId, Error, from_parse_error, invalid_selector, invalid_selector_at, selector_basic,
-    selector_component_error,
+    CssError, CssFeatureId, from_parse_error, invalid_selector, invalid_selector_at,
+    selector_basic, selector_component_error,
 };
 use crate::syntax::*;
 
@@ -98,7 +98,7 @@ impl<'a> SelectorRecovery<'a> {
     pub(super) fn check_depth<'i, 't>(
         &self,
         input: &Parser<'i, 't>,
-    ) -> std::result::Result<(), ParseError<'i, Error>> {
+    ) -> std::result::Result<(), ParseError<'i, CssError>> {
         self.state
             .check_specialized_components(self.source, input, "baseline.selector.complex")
             .map(|_| ())
@@ -107,7 +107,7 @@ impl<'a> SelectorRecovery<'a> {
     fn check_forgiving_envelope<'i>(
         &self,
         input: &mut Parser<'i, '_>,
-    ) -> Result<(), ParseError<'i, Error>> {
+    ) -> Result<(), ParseError<'i, CssError>> {
         // Selectors 4 checks the complete <any-value>? envelope before member
         // forgiveness. The component owner sees bad tokens and mismatched
         // closers at every depth, while allowing missing EOF delimiters.
@@ -122,7 +122,7 @@ impl<'a> SelectorRecovery<'a> {
 
     fn diagnose_forgiving_member(
         &mut self,
-        error: ParseError<'_, Error>,
+        error: ParseError<'_, CssError>,
         member_start: usize,
         member_end: usize,
         following_comma: Option<(usize, usize)>,
@@ -149,7 +149,7 @@ impl<'a> SelectorRecovery<'a> {
 pub(super) fn parse_rule_selector_list<'i, 't>(
     input: &mut Parser<'i, 't>,
     recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<Vec<CssSelector>, ParseError<'i, Error>> {
+) -> std::result::Result<Vec<CssSelector>, ParseError<'i, CssError>> {
     recovery.check_depth(input)?;
     let mut selectors = Vec::new();
     loop {
@@ -167,7 +167,7 @@ pub(super) fn parse_scope_boundary_selector_list<'i, 't>(
     recovery: &mut SelectorRecovery<'_>,
     anchors: SelectorAnchorMode,
     allow_relative: bool,
-) -> std::result::Result<CssScopeSelectorList, ParseError<'i, Error>> {
+) -> std::result::Result<CssScopeSelectorList, ParseError<'i, CssError>> {
     recovery
         .state
         .check_component_contents(recovery.source, input, "baseline.selector.complex")?;
@@ -194,7 +194,7 @@ pub(super) fn parse_scope_boundary_selector_list<'i, 't>(
 pub(super) fn parse_scoped_style_selector_list<'i, 't>(
     input: &mut Parser<'i, 't>,
     recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<CssScopedStyleSelectorList, ParseError<'i, Error>> {
+) -> std::result::Result<CssScopedStyleSelectorList, ParseError<'i, CssError>> {
     recovery.check_depth(input)?;
     let mut selectors = Vec::new();
     loop {
@@ -210,7 +210,7 @@ pub(super) fn parse_scoped_style_selector_list<'i, 't>(
 fn parse_scoped_style_selector<'i, 't>(
     input: &mut Parser<'i, 't>,
     recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<CssScopedStyleSelector, ParseError<'i, Error>> {
+) -> std::result::Result<CssScopedStyleSelector, ParseError<'i, CssError>> {
     match parse_style_selector_with_options(input, SelectorParseOptions::scoped_style(), recovery)?
     {
         CssStyleSelector::Selector(selector) => Ok(CssScopedStyleSelector::Selector(selector)),
@@ -221,7 +221,7 @@ fn parse_scoped_style_selector<'i, 't>(
 pub(super) fn parse_nested_style_selector_list<'i, 't>(
     input: &mut Parser<'i, 't>,
     recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<Vec<CssStyleSelector>, ParseError<'i, Error>> {
+) -> std::result::Result<Vec<CssStyleSelector>, ParseError<'i, CssError>> {
     recovery.check_depth(input)?;
     let mut selectors = Vec::new();
     loop {
@@ -242,7 +242,7 @@ fn parse_style_selector_with_options<'i, 't>(
     input: &mut Parser<'i, 't>,
     options: SelectorParseOptions,
     recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<CssStyleSelector, ParseError<'i, Error>> {
+) -> std::result::Result<CssStyleSelector, ParseError<'i, CssError>> {
     consume_selector_whitespace(input)?;
     let state = input.state();
     match input.next_including_whitespace() {
@@ -297,7 +297,7 @@ fn parse_style_selector_with_options<'i, 't>(
 pub(super) fn parse_rule_selector<'i, 't>(
     input: &mut Parser<'i, 't>,
     recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<CssSelector, ParseError<'i, Error>> {
+) -> std::result::Result<CssSelector, ParseError<'i, CssError>> {
     parse_rule_selector_with_options(input, SelectorParseOptions::standard(), recovery)
 }
 
@@ -387,7 +387,7 @@ fn parse_rule_selector_with_options<'i, 't>(
     input: &mut Parser<'i, 't>,
     options: SelectorParseOptions,
     recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<CssSelector, ParseError<'i, Error>> {
+) -> std::result::Result<CssSelector, ParseError<'i, CssError>> {
     let first = parse_compound_selector_model_with_options(input, options, recovery)?;
     let selector = parse_selector_after_first_compound(input, first, options, recovery)?;
     if options.compound_only && matches!(selector, CssSelector::Complex(_)) {
@@ -406,7 +406,7 @@ fn parse_selector_after_first_compound<'i, 't>(
     first: CssCompoundSelector,
     options: SelectorParseOptions,
     recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<CssSelector, ParseError<'i, Error>> {
+) -> std::result::Result<CssSelector, ParseError<'i, CssError>> {
     let mut rest = Vec::new();
 
     loop {
@@ -514,7 +514,7 @@ fn parse_complex_selector_part_with_options<'i, 't>(
     combinator: CssSelectorCombinator,
     options: SelectorParseOptions,
     recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<CssComplexSelectorPart, ParseError<'i, Error>> {
+) -> std::result::Result<CssComplexSelectorPart, ParseError<'i, CssError>> {
     consume_selector_whitespace(input)?;
     let selector = parse_compound_selector_model_with_options(input, options, recovery)?;
     Ok(CssComplexSelectorPart::new(combinator, selector))
@@ -522,7 +522,7 @@ fn parse_complex_selector_part_with_options<'i, 't>(
 
 pub(super) fn consume_selector_whitespace<'i, 't>(
     input: &mut Parser<'i, 't>,
-) -> std::result::Result<bool, ParseError<'i, Error>> {
+) -> std::result::Result<bool, ParseError<'i, CssError>> {
     let mut consumed = false;
     loop {
         let state = input.state();
@@ -544,7 +544,7 @@ pub(super) fn consume_selector_whitespace<'i, 't>(
 fn parse_type_selector<'i, 't>(
     input: &mut Parser<'i, 't>,
     recovery: &SelectorRecovery<'_>,
-) -> std::result::Result<Option<CssQualifiedSelectorName>, ParseError<'i, Error>> {
+) -> std::result::Result<Option<CssQualifiedSelectorName>, ParseError<'i, CssError>> {
     let start = input.state();
     let first = match input.next_including_whitespace() {
         Ok(token) => token.clone(),
@@ -611,7 +611,7 @@ fn parse_type_selector<'i, 't>(
 
 fn parse_qualified_local_name<'i, 't>(
     input: &mut Parser<'i, 't>,
-) -> std::result::Result<Option<String>, ParseError<'i, Error>> {
+) -> std::result::Result<Option<String>, ParseError<'i, CssError>> {
     // A token that is neither an identifier nor `*` cannot follow `|`.
     let location = input.current_source_location();
     match input.next_including_whitespace() {
@@ -629,7 +629,7 @@ fn parse_compound_selector_model_with_options<'i, 't>(
     input: &mut Parser<'i, 't>,
     options: SelectorParseOptions,
     recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<CssCompoundSelector, ParseError<'i, Error>> {
+) -> std::result::Result<CssCompoundSelector, ParseError<'i, CssError>> {
     loop {
         let state = input.state();
         match input.next_including_whitespace() {
@@ -816,7 +816,7 @@ fn expect_adjacent_bar<'i>(
 /// combinator. Leave both column tokens for the complex-selector provider.
 fn consume_namespace_separator<'i>(
     input: &mut Parser<'i, '_>,
-) -> Result<bool, ParseError<'i, Error>> {
+) -> Result<bool, ParseError<'i, CssError>> {
     let start = input.state();
     match input.next_including_whitespace() {
         Ok(Token::Delim('|')) => {
@@ -839,7 +839,7 @@ fn consume_namespace_separator<'i>(
 
 fn parse_adjacent_class_name<'i>(
     input: &mut Parser<'i, '_>,
-) -> Result<String, ParseError<'i, Error>> {
+) -> Result<String, ParseError<'i, CssError>> {
     loop {
         let start = input.state();
         match input.next_including_whitespace_and_comments().cloned() {
@@ -860,7 +860,7 @@ fn parse_pseudo_element_sequence<'i, 't>(
     input: &mut Parser<'i, 't>,
     options: SelectorParseOptions,
     recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<CssPseudoElementSequence, ParseError<'i, Error>> {
+) -> std::result::Result<CssPseudoElementSequence, ParseError<'i, CssError>> {
     let first = parse_pseudo_element(input, options, recovery)?;
     parse_pseudo_element_sequence_from_first(input, first, options, recovery)
 }
@@ -870,7 +870,7 @@ fn parse_pseudo_element_sequence_from_first<'i, 't>(
     first: CssPseudoElement,
     options: SelectorParseOptions,
     recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<CssPseudoElementSequence, ParseError<'i, Error>> {
+) -> std::result::Result<CssPseudoElementSequence, ParseError<'i, CssError>> {
     let mut suffix = first.suffix_context();
     let mut segments = vec![CssPseudoElementSegment::PseudoElement(first)];
     while input.try_parse(expect_adjacent_colon).is_ok() {
@@ -899,7 +899,7 @@ fn parse_pseudo_element_sequence_from_first<'i, 't>(
 
 fn parse_legacy_pseudo_element<'i, 't>(
     input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssPseudoElement, ParseError<'i, Error>> {
+) -> std::result::Result<CssPseudoElement, ParseError<'i, CssError>> {
     let name = match input.next_including_whitespace()?.clone() {
         Token::Ident(name) => name,
         token => return Err(input.new_basic_unexpected_token_error(token).into()),
@@ -921,7 +921,7 @@ fn parse_pseudo_element<'i, 't>(
     input: &mut Parser<'i, 't>,
     options: SelectorParseOptions,
     recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<CssPseudoElement, ParseError<'i, Error>> {
+) -> std::result::Result<CssPseudoElement, ParseError<'i, CssError>> {
     let state = input.state();
     match input.next_including_whitespace() {
         Ok(Token::Ident(name)) => match_ignore_ascii_case! { &name,
@@ -1017,7 +1017,7 @@ fn expect_adjacent_attribute_equals<'i>(
 fn parse_attribute_selector<'i, 't>(
     input: &mut Parser<'i, 't>,
     recovery: &SelectorRecovery<'_>,
-) -> std::result::Result<CssAttributeSelector, ParseError<'i, Error>> {
+) -> std::result::Result<CssAttributeSelector, ParseError<'i, CssError>> {
     consume_selector_whitespace(input)?;
     let name = parse_attribute_selector_name(input, recovery)?;
 
@@ -1088,7 +1088,7 @@ fn parse_attribute_selector<'i, 't>(
 fn parse_attribute_selector_name<'i, 't>(
     input: &mut Parser<'i, 't>,
     recovery: &SelectorRecovery<'_>,
-) -> std::result::Result<CssQualifiedAttributeName, ParseError<'i, Error>> {
+) -> std::result::Result<CssQualifiedAttributeName, ParseError<'i, CssError>> {
     let prefix_location = input.current_source_location();
     match input.next_including_whitespace() {
         Ok(Token::Ident(prefix_or_name)) => {
@@ -1198,7 +1198,7 @@ fn parse_attribute_selector_name<'i, 't>(
 
 fn parse_attribute_selector_value<'i, 't>(
     input: &mut Parser<'i, 't>,
-) -> std::result::Result<String, ParseError<'i, Error>> {
+) -> std::result::Result<String, ParseError<'i, CssError>> {
     let value = input
         .expect_ident_or_string()
         .map_err(selector_basic)?
@@ -1208,7 +1208,7 @@ fn parse_attribute_selector_value<'i, 't>(
 
 fn parse_attribute_case_sensitivity<'i, 't>(
     input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssAttributeCaseSensitivity, ParseError<'i, Error>> {
+) -> std::result::Result<CssAttributeCaseSensitivity, ParseError<'i, CssError>> {
     let state = input.state();
     let location = input.current_source_location();
     match input.next() {
@@ -1232,7 +1232,7 @@ fn parse_pseudo_class_with_options<'i, 't>(
     input: &mut Parser<'i, 't>,
     options: SelectorParseOptions,
     recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<CssPseudoClass, ParseError<'i, Error>> {
+) -> std::result::Result<CssPseudoClass, ParseError<'i, CssError>> {
     let state = input.state();
     match input.next_including_whitespace() {
         Ok(Token::Ident(name)) => {
@@ -1282,7 +1282,7 @@ fn parse_named_pseudo_class<'i>(
     name: &str,
     input: &mut Parser<'i, '_>,
     name_start: &ParserState,
-) -> std::result::Result<CssPseudoClass, ParseError<'i, Error>> {
+) -> std::result::Result<CssPseudoClass, ParseError<'i, CssError>> {
     match_ignore_ascii_case! { name,
         "host" => Ok(CssPseudoClass::Host),
         "root" => Ok(CssPseudoClass::Root),
@@ -1349,7 +1349,7 @@ fn parse_function_pseudo_class<'i, 't>(
     input: &mut Parser<'i, 't>,
     options: SelectorParseOptions,
     recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<CssPseudoClass, ParseError<'i, Error>> {
+) -> std::result::Result<CssPseudoClass, ParseError<'i, CssError>> {
     let arguments = options.independent_arguments();
     let pseudo_class = match_ignore_ascii_case! { name,
         "host" => CssPseudoClass::HostFunction(parse_compound_argument(input, arguments, recovery)?),
@@ -1375,7 +1375,7 @@ fn parse_compound_argument<'i, 't>(
     input: &mut Parser<'i, 't>,
     options: SelectorParseOptions,
     recovery: &mut SelectorRecovery<'_>,
-) -> Result<CssCompoundSelectorArgument, ParseError<'i, Error>> {
+) -> Result<CssCompoundSelectorArgument, ParseError<'i, CssError>> {
     let options = SelectorParseOptions {
         compound_only: true,
         pseudo_suffix: None,
@@ -1389,7 +1389,7 @@ fn parse_compound_argument<'i, 't>(
 fn parse_part_names<'i, 't>(
     input: &mut Parser<'i, 't>,
     recovery: &SelectorRecovery<'_>,
-) -> Result<CssPartNameList, ParseError<'i, Error>> {
+) -> Result<CssPartNameList, ParseError<'i, CssError>> {
     let mut names = Vec::new();
     loop {
         input.skip_whitespace();
@@ -1410,7 +1410,7 @@ fn parse_part_names<'i, 't>(
 
 fn parse_view_transition_name_selector<'i>(
     input: &mut Parser<'i, '_>,
-) -> Result<CssViewTransitionNameSelector, ParseError<'i, Error>> {
+) -> Result<CssViewTransitionNameSelector, ParseError<'i, CssError>> {
     input.skip_whitespace();
     let start = input.state();
     let argument = match input.next().map_err(selector_basic)? {
@@ -1427,7 +1427,7 @@ fn parse_view_transition_name_selector<'i>(
 
 fn parse_highlight_name<'i>(
     input: &mut Parser<'i, '_>,
-) -> Result<CssCustomIdent, ParseError<'i, Error>> {
+) -> Result<CssCustomIdent, ParseError<'i, CssError>> {
     input.skip_whitespace();
     let start = input.state();
     let name = input.expect_ident().map_err(selector_basic)?.to_string();
@@ -1440,7 +1440,7 @@ fn parse_highlight_name<'i>(
 fn parse_directionality<'i, 't>(
     input: &mut Parser<'i, 't>,
     recovery: &SelectorRecovery<'_>,
-) -> std::result::Result<CssDirectionality, ParseError<'i, Error>> {
+) -> std::result::Result<CssDirectionality, ParseError<'i, CssError>> {
     input.skip_whitespace();
     let start = input.state();
     input.expect_ident().map_err(selector_basic)?;
@@ -1453,7 +1453,7 @@ fn parse_directionality<'i, 't>(
 fn parse_language_ranges<'i, 't>(
     input: &mut Parser<'i, 't>,
     recovery: &SelectorRecovery<'_>,
-) -> std::result::Result<CssLanguageRangeList, ParseError<'i, Error>> {
+) -> std::result::Result<CssLanguageRangeList, ParseError<'i, CssError>> {
     let mut ranges = Vec::new();
     loop {
         input.skip_whitespace();
@@ -1476,7 +1476,7 @@ fn parse_pseudo_selector_list_with_options<'i, 't>(
     input: &mut Parser<'i, 't>,
     options: SelectorParseOptions,
     recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<CssPseudoSelectorList, ParseError<'i, Error>> {
+) -> std::result::Result<CssPseudoSelectorList, ParseError<'i, CssError>> {
     let selectors = parse_pseudo_selector_list_items_with_options(input, options, recovery)?;
     // This parser has proved each member in its actual containing context and
     // charged the shared parse budget. Programmatic output limits are separate.
@@ -1487,7 +1487,7 @@ fn parse_pseudo_selector_list_items_with_options<'i, 't>(
     input: &mut Parser<'i, 't>,
     options: SelectorParseOptions,
     recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<Vec<CssPseudoSelectorListItem>, ParseError<'i, Error>> {
+) -> std::result::Result<Vec<CssPseudoSelectorListItem>, ParseError<'i, CssError>> {
     let mut selectors = Vec::new();
     loop {
         let selector = parse_rule_selector_with_options(input, options, recovery)?;
@@ -1513,7 +1513,7 @@ fn parse_forgiving_pseudo_selector_list<'i, 't>(
     input: &mut Parser<'i, 't>,
     options: SelectorParseOptions,
     recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<CssPseudoSelectorList, ParseError<'i, Error>> {
+) -> std::result::Result<CssPseudoSelectorList, ParseError<'i, CssError>> {
     recovery.check_forgiving_envelope(input)?;
     let mut items = Vec::new();
     let mut preceding_comma = None;
@@ -1617,7 +1617,7 @@ fn parse_has_relative_selector_list<'i, 't>(
     input: &mut Parser<'i, 't>,
     options: SelectorParseOptions,
     recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<CssRelativeSelectorList, ParseError<'i, Error>> {
+) -> std::result::Result<CssRelativeSelectorList, ParseError<'i, CssError>> {
     parse_relative_selector_list_with_options(
         input,
         options.without_nested_has().without_pseudo_elements(),
@@ -1628,7 +1628,7 @@ fn parse_has_relative_selector_list<'i, 't>(
 pub(super) fn parse_general_relative_selector_list<'i, 't>(
     input: &mut Parser<'i, 't>,
     recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<CssRelativeSelectorList, ParseError<'i, Error>> {
+) -> std::result::Result<CssRelativeSelectorList, ParseError<'i, CssError>> {
     recovery.check_depth(input)?;
     parse_relative_selector_list_with_options(input, SelectorParseOptions::standard(), recovery)
 }
@@ -1637,7 +1637,7 @@ fn parse_relative_selector_list_with_options<'i, 't>(
     input: &mut Parser<'i, 't>,
     options: SelectorParseOptions,
     recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<CssRelativeSelectorList, ParseError<'i, Error>> {
+) -> std::result::Result<CssRelativeSelectorList, ParseError<'i, CssError>> {
     let mut selectors = Vec::new();
     loop {
         selectors.push(parse_relative_selector_with_options(
@@ -1657,7 +1657,7 @@ fn parse_relative_selector_with_options<'i, 't>(
     input: &mut Parser<'i, 't>,
     options: SelectorParseOptions,
     recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<CssRelativeSelector, ParseError<'i, Error>> {
+) -> std::result::Result<CssRelativeSelector, ParseError<'i, CssError>> {
     match parse_style_selector_with_options(input, options, recovery)? {
         CssStyleSelector::Selector(selector) => Ok(CssRelativeSelector::new(
             CssSelectorCombinator::Descendant,
@@ -1672,7 +1672,7 @@ fn parse_selector_after_leading_combinator_with_options<'i, 't>(
     combinator: CssSelectorCombinator,
     options: SelectorParseOptions,
     recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<CssRelativeSelector, ParseError<'i, Error>> {
+) -> std::result::Result<CssRelativeSelector, ParseError<'i, CssError>> {
     consume_selector_whitespace(input)?;
     let first = parse_compound_selector_model_with_options(input, options, recovery)?;
     let selector = parse_selector_after_first_compound(input, first, options, recovery)?;
@@ -1683,7 +1683,7 @@ fn parse_nth_child_pattern<'i, 't>(
     input: &mut Parser<'i, 't>,
     options: SelectorParseOptions,
     recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<CssNthChildPattern, ParseError<'i, Error>> {
+) -> std::result::Result<CssNthChildPattern, ParseError<'i, CssError>> {
     let pattern = parse_nth_pattern(input)?;
     let state = input.state();
     match input.next() {
@@ -1709,7 +1709,7 @@ fn parse_nth_child_pattern<'i, 't>(
 
 fn parse_nth_pattern<'i, 't>(
     input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssNthPattern, ParseError<'i, Error>> {
+) -> std::result::Result<CssNthPattern, ParseError<'i, CssError>> {
     if input
         .try_parse(|input| input.expect_ident_matching("odd"))
         .is_ok()

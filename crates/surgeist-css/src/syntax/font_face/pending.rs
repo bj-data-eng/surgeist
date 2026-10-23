@@ -1,101 +1,43 @@
 //! Checked whole-descriptor environment deferral and strict reentry.
 
-use std::fmt;
-
 use super::{
     CssAuthoredFontFaceDescriptorValue, CssFontFaceDescriptorKind, CssFontFaceDescriptorValue,
     CssPendingFontFaceDescriptorValue,
 };
+use crate::descriptor_values::DescriptorValueFailure;
 use crate::{
-    CssComponentValueError, CssComponentValueErrorKind, CssComponentValueLimits,
-    CssComponentValues, CssSerializedOrigin, CssSerializedValue, CssValueOrigin, Error, ErrorKind,
+    CssComponentValueError, CssComponentValueLimits, CssComponentValues, CssError,
+    CssSerializedValue, CssValueOrigin,
 };
 
-/// The first reason a checked descriptor or pending reentry failed.
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssFontFaceValueErrorKind {
-    Component(CssComponentValueErrorKind),
-    Grammar(ErrorKind),
-    RecoveredComponent,
-    ResidualSubstitution,
-}
-
-/// A font-face descriptor failure mapped to original component provenance.
+/// A checked `@font-face` descriptor or pending-reentry failure mapped to original
+/// component provenance.
+///
+/// The supplied components were not admitted ([`Self::component_error`]), the descriptor
+/// grammar rejected them ([`Self::diagnostic`]), or reentry was refused; the component
+/// error or diagnostic is the error's source.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssFontFaceValueError {
-    kind: Box<CssFontFaceValueErrorKind>,
-    origin: Box<CssSerializedOrigin>,
-    source: Option<Box<FontFaceValueErrorSource>>,
+    failure: DescriptorValueFailure,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-enum FontFaceValueErrorSource {
-    Component(CssComponentValueError),
-    Grammar(Error),
-}
+crate::descriptor_values::descriptor_value_api!(CssFontFaceValueError, "font-face");
 
 impl CssFontFaceValueError {
-    #[must_use]
-    pub fn kind(&self) -> &CssFontFaceValueErrorKind {
-        &self.kind
-    }
-
-    #[must_use]
-    pub fn origin(&self) -> &CssSerializedOrigin {
-        &self.origin
-    }
-
     fn component(error: CssComponentValueError) -> Self {
-        Self {
-            kind: Box::new(CssFontFaceValueErrorKind::Component(error.kind())),
-            origin: Box::new(CssSerializedOrigin::Token(error.origin().clone())),
-            source: Some(Box::new(FontFaceValueErrorSource::Component(error))),
-        }
+        DescriptorValueFailure::component(error).into()
     }
 
-    fn grammar(error: Error, serialized: &CssSerializedValue) -> Self {
-        let origin = error.component_input_origin(serialized);
-        Self {
-            kind: Box::new(CssFontFaceValueErrorKind::Grammar(error.kind().clone())),
-            origin: Box::new(origin),
-            source: Some(Box::new(FontFaceValueErrorSource::Grammar(error))),
-        }
+    fn grammar(error: CssError, serialized: &CssSerializedValue) -> Self {
+        DescriptorValueFailure::grammar(error, serialized).into()
     }
 
     fn implicit(origin: CssValueOrigin) -> Self {
-        Self {
-            kind: Box::new(CssFontFaceValueErrorKind::RecoveredComponent),
-            origin: Box::new(CssSerializedOrigin::Token(origin)),
-            source: None,
-        }
+        DescriptorValueFailure::recovered(origin).into()
     }
 
     fn residual(origin: CssValueOrigin) -> Self {
-        Self {
-            kind: Box::new(CssFontFaceValueErrorKind::ResidualSubstitution),
-            origin: Box::new(CssSerializedOrigin::Token(origin)),
-            source: None,
-        }
-    }
-}
-
-impl fmt::Display for CssFontFaceValueError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            formatter,
-            "invalid font-face descriptor value: {:?}",
-            self.kind
-        )
-    }
-}
-
-impl std::error::Error for CssFontFaceValueError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self.source.as_deref()? {
-            FontFaceValueErrorSource::Component(error) => Some(error),
-            FontFaceValueErrorSource::Grammar(error) => Some(error),
-        }
+        DescriptorValueFailure::residual(origin).into()
     }
 }
 

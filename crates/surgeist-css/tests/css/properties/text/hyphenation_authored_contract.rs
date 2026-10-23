@@ -17,6 +17,7 @@
 use crate::css::support::authored_checked_declaration as checked;
 use crate::css::support::authored_property::assert_source;
 use crate::css::support::check_named_components as checked_components;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::known_property as property;
 use crate::css::support::named_property::accepted_through_every_front as accepted;
 use crate::css::support::named_property::invalid_named_value as invalid;
@@ -322,13 +323,12 @@ fn pending(name: &str) {
                 "attr(data-again *",
             ] {
                 for _ in 0..2 {
-                    assert!(matches!(
+                    assert!(
                         handle
                             .reenter(parse_component_values(text).unwrap())
                             .unwrap_err()
-                            .kind(),
-                        CssExpansionErrorKind::ResidualSubstitution
-                    ));
+                            .is_residual_substitution()
+                    );
                 }
             }
             for text in negatives(name).iter().copied().chain([
@@ -340,13 +340,10 @@ fn pending(name: &str) {
                 let snapshot = replacement.clone();
                 for _ in 0..2 {
                     let error = handle.reenter(replacement.clone()).unwrap_err();
-                    let CssExpansionErrorKind::InvalidReplacement(error) = error.kind() else {
+                    let Some(error) = error.replacement_error() else {
                         panic!("strict replacement")
                     };
-                    assert!(matches!(
-                        error.kind(),
-                        CssPropertyValueErrorKind::Grammar(_)
-                    ));
+                    assert!(error.code().is_some());
                 }
                 assert_eq!(replacement, snapshot);
             }
@@ -391,12 +388,11 @@ fn pending(name: &str) {
                     item.ordinary_value(),
                     completed(&ordinary).items()[0].ordinary_value()
                 );
-                assert_eq!(
+                assert!(
                     ordinary
                         .serialize_specified(CssSerializationLimits::new(0, usize::MAX, usize::MAX))
                         .unwrap_err()
-                        .kind(),
-                    CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+                        .is_input_node_limit()
                 );
                 assert!(handle.reenter(replacement.clone()).is_ok());
                 assert_eq!(replacement, snapshot);
@@ -444,14 +440,11 @@ fn implicit_origin(components: &CssComponentValues) -> CssValueOrigin {
         })
         .expect("actual public origin mapping for original EOF")
 }
-fn assert_closure(error: &CssPropertyValueParseError, origin: &CssValueOrigin, text: &str) {
-    assert!(matches!(
-        error.kind(),
-        CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
-    ));
+fn assert_closure(error: &CssPropertyValueError, origin: &CssValueOrigin, text: &str) {
+    assert!(error.code() == Some(CssErrorCode::UnexpectedEnd));
     assert_eq!(
         error.origin(),
-        &CssSerializedOrigin::End(Some(origin.clone()))
+        CssSerializedOrigin::End(Some(origin.clone()))
     );
     let CssValueOrigin::ImplicitClosure { opening, at } = origin else {
         panic!("original implicit EOF")
@@ -723,12 +716,9 @@ fn recovered_replacements_keep_original_eof_and_residual_priority_then_allow_ret
             for _ in 0..2 {
                 let error = handle.reenter(components.clone()).unwrap_err();
                 if text.contains("var(") || text.contains("env(") || text.contains("attr(") {
-                    assert!(matches!(
-                        error.kind(),
-                        CssExpansionErrorKind::ResidualSubstitution
-                    ));
+                    assert!(error.is_residual_substitution());
                 } else {
-                    let CssExpansionErrorKind::InvalidReplacement(error) = error.kind() else {
+                    let Some(error) = error.replacement_error() else {
                         panic!("original closure failure")
                     };
                     assert_closure(error, &origin, &text);
@@ -812,11 +802,8 @@ fn browser_recovery_retains_diagnostics_and_one_normalized_original_occurrence()
             )
             .unwrap_err();
             assert_eq!(
-                error.kind(),
-                &CssNormalizationErrorKind::LimitExceeded {
-                    resource: CssNormalizationResource::Contributions,
-                    limit: 0
-                }
+                error.exhausted_limit(),
+                Some((CssNormalizationResource::Contributions, 0))
             );
             assert_eq!(error.declaration_order(), Some(0));
             assert!(error.declaration().unwrap().same_occurrence(item.source()));
@@ -918,10 +905,7 @@ fn normalization_preserves_all_six_order_importance_context_pending_and_exact_li
     ] {
         for _ in 0..2 {
             let error = normalize_report_with_limits(&report, limits).unwrap_err();
-            assert_eq!(
-                error.kind(),
-                &CssNormalizationErrorKind::LimitExceeded { resource, limit: 7 }
-            );
+            assert_eq!(error.exhausted_limit(), Some((resource, 7)));
             assert_eq!(error.declaration_order(), Some(7));
             assert!(
                 error
@@ -936,8 +920,8 @@ fn normalization_preserves_all_six_order_importance_context_pending_and_exact_li
 }
 #[test]
 fn canonical_declarations_have_exact_leaf_math_and_byte_limits_with_atomic_retry() {
+    use crate::css::support::failure_classes::SerializationFailure as K;
     use CssSerializationLimits as L;
-    use CssSpecifiedValueSerializationErrorKind as K;
     for (name, text, canonical, input, projection) in [
         ("hyphens", "manual", "manual", 1, 1),
         ("hyphenate-character", r#""😀""#, r#""😀""#, 1, 1),
@@ -971,7 +955,10 @@ fn canonical_declarations_have_exact_leaf_math_and_byte_limits_with_atomic_retry
             ),
         ] {
             for _ in 0..2 {
-                assert_eq!(source.serialize_specified(limits).unwrap_err().kind(), kind);
+                assert_eq!(
+                    serialization_failure(&source.serialize_specified(limits).unwrap_err()),
+                    kind
+                );
                 assert_eq!(source, before);
             }
         }
@@ -986,12 +973,11 @@ fn canonical_declarations_have_exact_leaf_math_and_byte_limits_with_atomic_retry
             .unwrap(),
         expected
     );
-    assert_eq!(
+    assert!(
         source
             .serialize_specified(L::new(3, 3, expected.len() - 1))
             .unwrap_err()
-            .kind(),
-        K::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(
         source.serialize_specified(Default::default()).unwrap(),
@@ -1000,8 +986,8 @@ fn canonical_declarations_have_exact_leaf_math_and_byte_limits_with_atomic_retry
 }
 #[test]
 fn sibling_sheet_output_shares_exact_work_and_utf8_bytes_without_partial_results() {
+    use crate::css::support::failure_classes::SerializationFailure as K;
     use CssSerializationLimits as L;
-    use CssSpecifiedValueSerializationErrorKind as K;
     let report = parse_sheet(".a{hyphens:manual!important}.b{hyphenate-limit-chars:8 auto 3}");
     assert!(report.is_clean());
     let sheet = report.syntax();
@@ -1024,7 +1010,7 @@ fn sibling_sheet_output_shares_exact_work_and_utf8_bytes_without_partial_results
         );
         for _ in 0..2 {
             let error = sheet.serialize_specified(limits).unwrap_err();
-            assert_eq!(error.kind(), kind);
+            assert_eq!(serialization_failure(&error), kind);
             assert_eq!(error.rule_index(), Some(1));
             assert_eq!(sheet, &before);
         }
@@ -1117,11 +1103,10 @@ fn closure_origin_and_color_provider_prices_are_independent_controls() {
             .unwrap(),
         expected
     );
-    assert_eq!(
+    assert!(
         source
             .serialize_specified(CssSerializationLimits::new(3, 3, expected.len() - 1))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
 }

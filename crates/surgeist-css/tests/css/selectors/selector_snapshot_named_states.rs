@@ -4,6 +4,8 @@
 use crate::css::support::color_and_selector_fixtures::{
     assert_selector_input_rejected, assert_strict_validation_rejects,
 };
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::validated_selector as parsed;
 use surgeist_css::*;
 
@@ -364,9 +366,12 @@ fn every_named_state_preserves_strict_atomic_and_forgiving_member_recovery() {
                 )
                 .unwrap()
             );
-            let ErrorKind::InvalidSelector(detail) = diagnostic.error().kind() else {
-                panic!("typed selector error");
-            };
+            let detail = diagnostic.error();
+            assert_eq!(
+                detail.code(),
+                CssErrorCode::InvalidSelector,
+                "typed selector error"
+            );
             assert_eq!(detail.encountered().unwrap().authored(), "future");
             let diagnostics = report.diagnostics().to_vec();
             assert_eq!(
@@ -563,19 +568,19 @@ fn named_identity_and_lists_charge_cumulative_nodes_bytes_and_atomic_retry() {
         for (limits, kind) in [
             (
                 CssSerializationLimits::new(0, 1, literal.len()),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                SerializationFailure::InputNodeLimit,
             ),
             (
                 CssSerializationLimits::new(1, 0, literal.len()),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
                 CssSerializationLimits::new(1, 1, literal.len() - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                SerializationFailure::ByteLimit,
             ),
         ] {
             assert_eq!(
-                selector.serialize_specified(limits).unwrap_err().kind(),
+                serialization_failure(&selector.serialize_specified(limits).unwrap_err()),
                 kind
             );
             assert_eq!(selector, before);
@@ -594,23 +599,26 @@ fn named_identity_and_lists_charge_cumulative_nodes_bytes_and_atomic_retry() {
         for (limits, kind) in [
             (
                 CssSerializationLimits::new(2, 3, output.len()),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                SerializationFailure::InputNodeLimit,
             ),
             (
                 CssSerializationLimits::new(3, 2, output.len()),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
                 CssSerializationLimits::new(3, 3, output.len() - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                SerializationFailure::ByteLimit,
             ),
         ] {
             let error = CssSelectorList::try_new(members.clone(), limits).unwrap_err();
-            let CssSelectorConstructionErrorKind::Specified(cause) = error.kind() else {
+            let Some(cause) = error.serialization_error() else {
                 panic!("typed resource error");
             };
-            assert_eq!(cause.kind(), kind);
-            assert_eq!(list.serialize_specified(limits).unwrap_err().kind(), kind);
+            assert_eq!(serialization_failure(cause), kind);
+            assert_eq!(
+                serialization_failure(&list.serialize_specified(limits).unwrap_err()),
+                kind
+            );
         }
         assert_eq!(
             CssSelectorList::try_new(members, Default::default()).unwrap(),

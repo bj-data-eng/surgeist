@@ -1,3 +1,4 @@
+use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::property_admission::assert_component_rejected;
 use surgeist_css::*;
 
@@ -198,8 +199,8 @@ fn multicolumn_calculations_remain_symbolic_and_checked_constructors_reject_lite
         .is_none()
     );
     for (css, kind) in [
-        ("-1px", CssNumericConstructionErrorKind::OutOfRange),
-        ("auto", CssNumericConstructionErrorKind::RootDomainMismatch),
+        ("-1px", NumericFailure::OutOfRange),
+        ("auto", NumericFailure::RootDomainMismatch),
     ] {
         assert_component_rejected(
             surgeist_css::CssSpecifiedNonNegativeLength::try_from_component,
@@ -312,14 +313,15 @@ fn multicolumn_mutations_drop_exact_declaration_and_retain_siblings() {
             "{source}",
         );
         assert!(
-            matches!(
-                diagnostic.error().kind(),
-                ErrorKind::InvalidPropertyValue(detail)
-                    if detail.property().canonical_name() == name
-            ) || matches!(
-                (name, diagnostic.error().kind()),
-                ("column-rule-color", ErrorKind::InvalidColorSyntax(_))
-            ),
+            (diagnostic.error().code() == CssErrorCode::InvalidPropertyValue
+                && diagnostic
+                    .error()
+                    .known_property()
+                    .unwrap()
+                    .canonical_name()
+                    == name)
+                || (name == "column-rule-color"
+                    && diagnostic.error().code() == CssErrorCode::InvalidColorSyntax),
             "{source}",
         );
 

@@ -1,10 +1,9 @@
 //! Deep generic test bodies retain their authored payload on an ordinary caller stack.
 
 use surgeist_css::{
-    CssComponentValueErrorKind, CssComponentValueLimits, CssNamedSupportsConstructionError,
-    CssNormalizedItem, CssRule, CssSupportsConditionName, CssSupportsConditionRule,
-    CssSupportsTestBody, CssSupportsTestItem, ErrorKind, normalize_sheet, parse_component_values,
-    parse_sheet,
+    CssComponentValueLimits, CssErrorCode, CssNormalizedItem, CssRule, CssSupportsConditionName,
+    CssSupportsConditionRule, CssSupportsTestBody, CssSupportsTestItem, normalize_sheet,
+    parse_component_values, parse_sheet,
 };
 
 const CHILD: &str = "SURGEIST_NAMED_SUPPORTS_STACK_CHILD";
@@ -151,11 +150,11 @@ fn assert_nested_lifecycle(chain: Chain) {
     assert!(!overflow_report.is_clean());
     assert!(
         overflow_report.diagnostics().iter().any(|diagnostic| {
-            matches!(
-                diagnostic.error().kind(),
-                ErrorKind::InvalidComponentValue(detail)
-                    if detail.kind() == CssComponentValueErrorKind::NestingLimit
-            ) || matches!(diagnostic.error().kind(), ErrorKind::NestingLimit(_))
+            diagnostic
+                .error()
+                .component_error()
+                .is_some_and(|detail| detail.is_nesting_limit())
+                || diagnostic.error().code() == CssErrorCode::NestingLimit
         }),
         "expected typed nesting diagnostic: {:?}",
         overflow_report.diagnostics()
@@ -168,7 +167,9 @@ fn assert_nested_lifecycle(chain: Chain) {
     let tighter = CssComponentValueLimits::try_new(255, usize::MAX, usize::MAX).unwrap();
     let error = CssSupportsTestBody::try_from_components(components.clone(), tighter).unwrap_err();
     assert!(
-        matches!(error, CssNamedSupportsConstructionError::Component(ref detail) if detail.kind() == CssComponentValueErrorKind::NestingLimit)
+        error
+            .component_error()
+            .is_some_and(|detail| detail.is_nesting_limit())
     );
     let body_at_ceiling =
         CssSupportsTestBody::try_from_components(components, Default::default()).unwrap();
@@ -179,7 +180,9 @@ fn assert_nested_lifecycle(chain: Chain) {
     )
     .unwrap_err();
     assert!(
-        matches!(error, CssNamedSupportsConstructionError::Component(ref detail) if detail.kind() == CssComponentValueErrorKind::NestingLimit)
+        error
+            .component_error()
+            .is_some_and(|detail| detail.is_nesting_limit())
     );
 }
 

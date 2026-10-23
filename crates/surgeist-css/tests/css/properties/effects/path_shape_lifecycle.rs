@@ -4,6 +4,7 @@
 //! Signed/zero arc radii follow the adopted F.6.2 interpretation; flags remain
 //! single ASCII 0/1 characters. SVG spelling is retained, never float-normalized.
 
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::property_admission::assert_checked_matches_diagnostic;
 use crate::css::support::property_admission::validated_declaration;
 use surgeist_css::*;
@@ -372,10 +373,13 @@ fn strict_recovered(value: &str, expected: &str) {
     let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
         panic!("pending clip")
     };
-    assert!(matches!(
-        pending.reenter(recovered).unwrap_err().kind(),
-        CssExpansionErrorKind::InvalidReplacement(_)
-    ));
+    assert!(
+        pending
+            .reenter(recovered)
+            .unwrap_err()
+            .replacement_error()
+            .is_some()
+    );
 }
 
 #[test]
@@ -462,20 +466,19 @@ fn pending_path_reentry_is_strict_reusable_and_preserves_authored_replacement_or
         "path('M0 0A1 2 0 2 1 3 4')",
         "path(nonzero 'M0 0')",
     ] {
-        assert!(matches!(
+        assert!(
             pending
                 .reenter(parse_component_values(invalid).unwrap())
                 .unwrap_err()
-                .kind(),
-            CssExpansionErrorKind::InvalidReplacement(_)
-        ));
+                .replacement_error()
+                .is_some()
+        );
     }
-    assert_eq!(
+    assert!(
         pending
             .reenter(parse_component_values("path(var(--again))").unwrap())
             .unwrap_err()
-            .kind(),
-        &CssExpansionErrorKind::ResidualSubstitution
+            .is_residual_substitution()
     );
     for (authored, expected) in [
         ("path('M0 0')", "path(\"M0 0\")"),
@@ -578,8 +581,8 @@ fn normalization_retains_path_family_fill_importance_and_source_order_after_reco
 
 #[test]
 fn clip_serializer_charges_path_string_fill_and_box_cumulatively() {
+    use crate::css::support::failure_classes::SerializationFailure as K;
     use CssSerializationLimits as L;
-    use CssSpecifiedValueSerializationErrorKind as K;
     for (authored, expected, nodes) in [
         ("path('M0 0')", "path(\"M0 0\")", 3),
         ("path(nonzero, 'M0 0')", "path(nonzero, \"M0 0\")", 4),
@@ -606,7 +609,10 @@ fn clip_serializer_charges_path_string_fill_and_box_cumulatively() {
             ),
             (L::new(nodes, nodes, expected.len() - 1), K::ByteLimit),
         ] {
-            assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+            assert_eq!(
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+                kind
+            );
         }
         assert_eq!(
             value.serialize_specified(Default::default()).unwrap(),
@@ -626,9 +632,6 @@ fn pending_clip_reentry_rejects_recovered_circle_and_rect_before_canonical_closu
         let Err(error) = pending.reenter(parse_component_values(value).unwrap()) else {
             panic!("pending reentry must reject recovered replacement: {value}")
         };
-        assert!(matches!(
-            error.kind(),
-            CssExpansionErrorKind::InvalidReplacement(_)
-        ));
+        assert!(error.replacement_error().is_some());
     }
 }

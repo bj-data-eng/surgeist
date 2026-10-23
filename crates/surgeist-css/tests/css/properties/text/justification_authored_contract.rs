@@ -219,10 +219,7 @@ fn normalization_counts_complete_terminals_and_pending_occurrences_cumulatively(
         ] {
             for _ in 0..2 {
                 let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
-                assert_eq!(
-                    error.kind(),
-                    &CssNormalizationErrorKind::LimitExceeded { resource, limit }
-                );
+                assert_eq!(error.exhausted_limit(), Some((resource, limit)));
                 assert_eq!(error.declaration_order(), Some(3));
                 assert!(
                     error

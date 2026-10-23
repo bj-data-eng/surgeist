@@ -11,7 +11,7 @@ use surgeist_color::Finite;
 use surgeist_color::format::{self, FormatError, RoundingMode};
 
 type Result<T> = std::result::Result<T, Error>;
-use CssSpecifiedValueSerializationErrorKind::{ByteLimit, CapacityOverflow};
+use CssSpecifiedValueSerializationErrorKind::{ByteLimit, CapacityOverflow, UnrepresentableValue};
 
 /// Applies an exact decimal shift before planning the actual rounded output.
 /// Input validity belongs to the checked component owner. Current unit policies
@@ -130,7 +130,8 @@ fn format_finite_number(value: f64, limit: usize, rounding: RoundingMode) -> Res
     format::format_finite(value, rounding, limit).map_err(|error| match error {
         FormatError::ByteLimit => Error::new(ByteLimit),
         FormatError::CapacityOverflow => Error::new(CapacityOverflow),
-        _ => unreachable!("all format errors in the pinned numerical color edition are handled"),
+        // A failure surgeist-color adds later has no CSS meaning yet.
+        _ => Error::new(UnrepresentableValue),
     })
 }
 

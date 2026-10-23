@@ -1,7 +1,7 @@
 use surgeist_css::{
     CssErrorCode, CssGlobalKeyword, CssKnownDeclaredValueRef, CssKnownProperty,
     CssKnownPropertyValueRef, CssRecoveryAction, CssTextCombineUpright, CssTextOrientation,
-    CssUnicodeBidi, ErrorKind, parse_style_attribute,
+    CssUnicodeBidi, parse_style_attribute,
 };
 
 #[test]
@@ -275,10 +275,17 @@ fn writing_modes_invalid_values_drop_exact_declaration_and_keep_sibling() {
             invalid.len() + 1,
             "{source}",
         );
-        let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-            panic!("{source}: expected property-specific error");
-        };
-        assert_eq!(detail.property(), expected_property, "{source}");
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidPropertyValue,
+            "{source}: expected property-specific error"
+        );
+        assert_eq!(
+            detail.known_property().unwrap(),
+            expected_property,
+            "{source}"
+        );
         assert!(
             diagnostic.error().position().byte_offset().value() < invalid.len() + 1,
             "{source}: responsible position must be inside the dropped declaration",
@@ -343,11 +350,10 @@ fn writing_modes_eof_and_non_bmp_recovery_preserve_exact_coordinates() {
         declaration_end,
     );
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    assert!(matches!(
-        diagnostic.error().kind(),
-        ErrorKind::InvalidPropertyValue(detail)
-            if detail.property() == CssKnownProperty::TextOrientation
-    ));
+    assert!(
+        (diagnostic.error().code() == CssErrorCode::InvalidPropertyValue
+            && diagnostic.error().known_property().unwrap() == CssKnownProperty::TextOrientation)
+    );
     assert_eq!(
         report.syntax()[1].known().unwrap().property(),
         CssKnownProperty::Color,

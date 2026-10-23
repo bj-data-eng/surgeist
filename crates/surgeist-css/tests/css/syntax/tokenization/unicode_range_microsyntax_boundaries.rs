@@ -6,16 +6,16 @@
 //! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-unicode-range-token
 //! https://www.w3.org/TR/2018/REC-css-fonts-3-20180920/#unicode-range-desc
 //! These literal endpoints use consumed source text, not decoded numeric values.
+use crate::css::support::failure_classes::SerializationFailure as OutputError;
+use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::{
     CssAuthoredFontFaceDescriptorValue as Authored, CssComponentValue,
-    CssComponentValueRef as Component, CssComponentValues, CssErrorCode,
-    CssFontFaceDescriptorKind as Kind, CssFontFaceDescriptorValue as Value,
-    CssFontFaceValueErrorKind, CssNamespaceContext, CssNumericTokenKind, CssRecoveryAction,
-    CssRule, CssSelector, CssSelectorCombinator, CssSerializationLimits as OutputLimits,
-    CssSerializedOrigin, CssSpecifiedValueSerializationErrorKind as OutputError, CssUnicodeRange,
-    CssUnicodeRangeList, CssValueOrigin, CssValueTokenRef as Token, ErrorKind,
-    parse_component_values, parse_font_face_descriptor_value, parse_selector, parse_sheet,
-    validate_sheet,
+    CssComponentValueRef as Component, CssComponentValues, CssError, CssErrorCode,
+    CssFontFaceDescriptorKind as Kind, CssFontFaceDescriptorValue as Value, CssNamespaceContext,
+    CssNumericTokenKind, CssRecoveryAction, CssRule, CssSelector, CssSelectorCombinator,
+    CssSerializationLimits as OutputLimits, CssSerializedOrigin, CssUnicodeRange,
+    CssUnicodeRangeList, CssValueOrigin, CssValueTokenRef as Token, parse_component_values,
+    parse_font_face_descriptor_value, parse_selector, parse_sheet, validate_sheet,
 };
 
 fn endpoints(value: &Authored) -> Vec<(u32, u32)> {
@@ -83,10 +83,7 @@ fn unicode_range_rejection_offset(source: &str) -> Option<usize> {
     )
     .unwrap_err();
     assert!(
-        matches!(
-            error.kind(),
-            CssFontFaceValueErrorKind::Grammar(ErrorKind::InvalidDescriptorValue(_))
-        ),
+        error.diagnostic().map(CssError::code) == Some(CssErrorCode::InvalidDescriptorValue),
         "{source:?}: {error:?}"
     );
     let origin = match error.origin() {
@@ -450,11 +447,14 @@ fn invalid_members_drop_only_their_occurrence_and_keep_original_token_coordinate
             diagnostic.span().end().byte_offset().value(),
             source.find("font-display").unwrap()
         );
-        let ErrorKind::InvalidDescriptorValue(detail) = diagnostic.error().kind() else {
-            panic!("typed descriptor failure");
-        };
-        assert_eq!(detail.at_rule().as_str(), "font-face");
-        assert_eq!(detail.descriptor().as_str(), "unicode-range");
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidDescriptorValue,
+            "typed descriptor failure"
+        );
+        assert_eq!(detail.at_rule().unwrap().as_str(), "font-face");
+        assert_eq!(detail.descriptor().unwrap().as_str(), "unicode-range");
         assert_eq!(detail.encountered().unwrap().authored(), spelling);
 
         let [CssRule::FontFace(face), CssRule::Style(_)] = report.syntax().rules() else {
@@ -517,9 +517,12 @@ fn missing_range_tokens_or_endpoints_name_the_last_authored_token() {
             last.map_or(source.len(), |last| source.rfind(last).unwrap()),
             "{source:?}"
         );
-        let ErrorKind::InvalidDescriptorValue(detail) = diagnostic.error().kind() else {
-            panic!("descriptor error");
-        };
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidDescriptorValue,
+            "descriptor error"
+        );
         assert_eq!(
             detail
                 .encountered()
@@ -565,10 +568,7 @@ fn checked_mixed_origins_preserve_representation_and_map_the_actual_rejected_com
     .unwrap();
     let error =
         Authored::try_from_components(Kind::UnicodeRange, mixed, Default::default()).unwrap_err();
-    assert!(matches!(
-        error.kind(),
-        CssFontFaceValueErrorKind::Grammar(ErrorKind::InvalidDescriptorValue(_))
-    ));
+    assert!(error.diagnostic().map(CssError::code) == Some(CssErrorCode::InvalidDescriptorValue));
     assert_eq!(error.origin(), &CssSerializedOrigin::Token(escaped_origin));
     let CssSerializedOrigin::Token(CssValueOrigin::Parsed(origin)) = error.origin() else {
         panic!("actual parsed failing component");
@@ -636,7 +636,10 @@ fn checked_ranges_keep_domain_order_overlap_and_atomic_specified_limits() {
             OutputError::ByteLimit,
         ),
     ] {
-        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+            kind
+        );
         assert_eq!(value, before);
     }
     assert_eq!(
@@ -663,9 +666,12 @@ fn every_front_names_the_same_responsible_unicode_range_token() {
         };
         let value_start = "@font-face{unicode-range:".len();
         for (front, diagnostic, start) in [("raw", raw, 0), ("sheet", sheet, value_start)] {
-            let ErrorKind::InvalidDescriptorValue(detail) = diagnostic.error().kind() else {
-                panic!("{value:?} {front}: descriptor rejection: {diagnostic:?}")
-            };
+            let detail = diagnostic.error();
+            assert_eq!(
+                detail.code(),
+                CssErrorCode::InvalidDescriptorValue,
+                "{value:?} {front}: descriptor rejection: {diagnostic:?}"
+            );
             assert_eq!(
                 (
                     diagnostic.error().position().byte_offset().value() - start,

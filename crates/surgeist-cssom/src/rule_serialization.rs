@@ -95,10 +95,10 @@ impl State {
     }
     fn keyframe_view(&self, id: &CssomRuleId) -> Result<CssKeyframeRuleView<'_>, CssomError> {
         match self.rule(id)?.data() {
-            CssomRuleData::Keyframe { selectors, block } => {
-                CssKeyframeRuleView::try_new(selectors, self.current_properties(block)?)
-                    .map_err(CssomError::Keyframe)
-            }
+            CssomRuleData::Keyframe { selectors, block } => Ok(CssKeyframeRuleView::try_new(
+                selectors,
+                self.current_properties(block)?,
+            )?),
             _ => Err(CssomError::WrongKind),
         }
     }
@@ -140,16 +140,10 @@ impl State {
             });
         }
         if matches!(root.data(), CssomRuleData::Keyframe { .. }) {
-            return self
-                .keyframe_view(id)?
-                .serialize_cssom(limits.css)
-                .map_err(CssomError::Keyframe);
+            return Ok(self.keyframe_view(id)?.serialize_cssom(limits.css)?);
         }
         if matches!(root.data(), CssomRuleData::Margin { .. }) {
-            return self
-                .margin_view(id)?
-                .serialize_cssom(limits.css)
-                .map_err(CssomError::Format);
+            return Ok(self.margin_view(id)?.serialize_cssom(limits.css)?);
         }
         let mut parent = &root.parent;
         let mut ancestor = CssStyleAncestor::Absent;
@@ -370,18 +364,14 @@ impl State {
             };
             views[index].set(input).expect("single assignment");
         }
-        views[0]
-            .get()
-            .expect("root initialized")
-            .serialize_cssom(
-                namespaces,
-                ancestor,
-                CssRuleSerializationLimits {
-                    values: limits.css,
-                    max_depth: limits.max_depth.saturating_sub(depth),
-                },
-            )
-            .map_err(CssomError::Format)
+        Ok(views[0].get().expect("root initialized").serialize_cssom(
+            namespaces,
+            ancestor,
+            CssRuleSerializationLimits {
+                values: limits.css,
+                max_depth: limits.max_depth.saturating_sub(depth),
+            },
+        )?)
     }
 }
 

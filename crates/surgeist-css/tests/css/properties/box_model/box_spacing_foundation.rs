@@ -322,19 +322,18 @@ fn css_wide_values_and_pending_reentry_participate_at_every_property() {
                 panic!("{name} retains pending substitution")
             };
             assert!(handle.source().same_occurrence(&source));
-            assert!(matches!(
+            assert!(
                 handle
                     .reenter(parse_component_values("1fr").unwrap())
                     .unwrap_err()
-                    .kind(),
-                CssExpansionErrorKind::InvalidReplacement(_)
-            ));
-            assert_eq!(
+                    .replacement_error()
+                    .is_some()
+            );
+            assert!(
                 handle
                     .reenter(parse_component_values("var(--again)").unwrap())
                     .unwrap_err()
-                    .kind(),
-                &CssExpansionErrorKind::ResidualSubstitution
+                    .is_residual_substitution()
             );
             let replacement = parse_component_values("1px").unwrap();
             if four_side {

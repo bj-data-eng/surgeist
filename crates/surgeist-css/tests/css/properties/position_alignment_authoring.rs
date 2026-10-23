@@ -10,30 +10,42 @@ use crate::css::support::sheet_cases::*;
 fn invalid_display_keyword_is_typed_with_property_context() {
     let error = parse_sheet(".panel { display: solid; }").expect_err("rejected parse report");
 
-    let ErrorKind::InvalidPropertyValue(detail) = error.kind() else {
-        panic!("unexpected error kind: {:?}", error.kind());
-    };
-    assert_eq!(detail.property(), CssKnownProperty::Display);
+    let detail = &error;
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "unexpected error kind: {:?}",
+        error
+    );
+    assert_eq!(detail.known_property().unwrap(), CssKnownProperty::Display);
 }
 
 #[test]
 fn unsupported_overflow_keyword_is_typed_with_property_context() {
     let error = parse_sheet(".panel { overflow: none; }").expect_err("rejected parse report");
 
-    let ErrorKind::InvalidPropertyValue(detail) = error.kind() else {
-        panic!("unexpected error kind: {:?}", error.kind());
-    };
-    assert_eq!(detail.property(), CssKnownProperty::Overflow);
+    let detail = &error;
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "unexpected error kind: {:?}",
+        error
+    );
+    assert_eq!(detail.known_property().unwrap(), CssKnownProperty::Overflow);
 }
 
 #[test]
 fn unsupported_position_keyword_is_typed_with_property_context() {
     let error = parse_sheet(".panel { position: running; }").expect_err("rejected parse report");
 
-    let ErrorKind::InvalidPropertyValue(detail) = error.kind() else {
-        panic!("unexpected error kind: {:?}", error.kind());
-    };
-    assert_eq!(detail.property(), CssKnownProperty::Position);
+    let detail = &error;
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "unexpected error kind: {:?}",
+        error
+    );
+    assert_eq!(detail.known_property().unwrap(), CssKnownProperty::Position);
 }
 
 #[test]
@@ -41,10 +53,17 @@ fn unsupported_alignment_keyword_is_typed_with_property_context() {
     let error =
         parse_sheet(".panel { align-items: unsafe stretch; }").expect_err("rejected parse report");
 
-    let ErrorKind::InvalidPropertyValue(detail) = error.kind() else {
-        panic!("unexpected error kind: {:?}", error.kind());
-    };
-    assert_eq!(detail.property(), CssKnownProperty::AlignItems);
+    let detail = &error;
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "unexpected error kind: {:?}",
+        error
+    );
+    assert_eq!(
+        detail.known_property().unwrap(),
+        CssKnownProperty::AlignItems
+    );
 }
 
 #[test]

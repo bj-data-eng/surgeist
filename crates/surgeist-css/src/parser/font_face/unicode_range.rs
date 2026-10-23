@@ -14,7 +14,7 @@ use cssparser::{ParseError, Parser, SourceLocation, SourcePosition, Token};
 use crate::CssSerializedOrigin;
 use crate::numeric::NumericInputContext;
 
-use crate::error::{Error, incomplete_descriptor_at, invalid_descriptor_token_at};
+use crate::error::{CssError, incomplete_descriptor_at, invalid_descriptor_token_at};
 use crate::syntax::CssUnicodeRange;
 
 struct RangeToken<'i> {
@@ -27,7 +27,7 @@ struct RangeToken<'i> {
 }
 
 impl RangeToken<'_> {
-    fn error<'i>(&self) -> ParseError<'i, Error> {
+    fn error<'i>(&self) -> ParseError<'i, CssError> {
         let (token, spelling, location) = match &self.following {
             Some((token, spelling, location)) => (token, *spelling, *location),
             None => (&self.token, self.spelling, self.location),
@@ -36,14 +36,14 @@ impl RangeToken<'_> {
     }
 }
 
-fn missing<'i>(end: SourceLocation) -> ParseError<'i, Error> {
+fn missing<'i>(end: SourceLocation) -> ParseError<'i, CssError> {
     incomplete_descriptor_at(end, "font-face", "unicode-range")
 }
 
 pub(super) fn parse<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
-) -> Result<CssUnicodeRange, ParseError<'i, Error>> {
+) -> Result<CssUnicodeRange, ParseError<'i, CssError>> {
     // A valid range has at most eight tokens (u, +, six question marks).
     // A ninth token suffices to prove failure, even for unbounded malformed input.
     let mut tokens = Vec::with_capacity(9);
@@ -124,7 +124,7 @@ fn inserted_separator(numeric: &NumericInputContext<'_>, start: SourcePosition) 
 fn check_token_grammar<'i>(
     tokens: &[RangeToken<'_>],
     end: SourceLocation,
-) -> Result<(), ParseError<'i, Error>> {
+) -> Result<(), ParseError<'i, CssError>> {
     let first = tokens.first().ok_or_else(|| missing(end))?;
     // An escaped `u` decodes to the same ident but does not start the token.
     if !matches!(first.token, Token::Ident(_)) || !first.spelling.eq_ignore_ascii_case("u") {
@@ -168,7 +168,7 @@ fn check_token_grammar<'i>(
 fn interpret<'i>(
     tokens: &[RangeToken<'_>],
     end: SourceLocation,
-) -> Result<CssUnicodeRange, ParseError<'i, Error>> {
+) -> Result<CssUnicodeRange, ParseError<'i, CssError>> {
     let mut text = tokens
         .iter()
         .flat_map(|token| token.spelling.bytes().map(move |byte| (byte, token)))

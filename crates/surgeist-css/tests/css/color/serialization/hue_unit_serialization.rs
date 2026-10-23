@@ -6,6 +6,8 @@
 //! 57.29578. Degree and turn literals are exact multiples and keep their
 //! exact decimal.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::parsed_color;
 use surgeist_css::*;
 
@@ -88,7 +90,7 @@ fn rounded_hue_budgets_are_exact_at_the_limit_and_one_short() {
     // nodes, the projection work of the exact conversion and its rounding,
     // and exactly the emitted UTF-8 bytes.
     type Limits = CssSerializationLimits;
-    type Kind = CssSpecifiedValueSerializationErrorKind;
+    type Kind = SerializationFailure;
     for (source, expected, input, projection) in [
         ("hsl(1rad none 50%)", "hsl(57.29578 none 50%)", 4, 19),
         ("hsl(100grad none 50%)", "hsl(90 none 50%)", 4, 11),
@@ -109,7 +111,7 @@ fn rounded_hue_budgets_are_exact_at_the_limit_and_one_short() {
             ((input, projection, bytes - 1), Kind::ByteLimit),
         ] {
             assert_eq!(
-                serialize(limits.0, limits.1, limits.2).unwrap_err().kind(),
+                serialization_failure(&serialize(limits.0, limits.1, limits.2).unwrap_err()),
                 kind,
                 "{source}: {limits:?}"
             );

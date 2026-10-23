@@ -4,7 +4,6 @@
 use crate::css::support::serialization_limits::assert_limits as bounds;
 use surgeist_css::*;
 type Limits = CssSerializationLimits;
-type Kind = CssSpecifiedValueSerializationErrorKind;
 
 fn number(text: &str) -> CssSpecifiedNonNegativeNumber {
     CssSpecifiedNonNegativeNumber::try_from_component(CssComponentValue::try_number(text).unwrap())
@@ -258,12 +257,11 @@ fn parsed_border_children_retain_span_and_origin_through_failure_and_retry() {
     assert_eq!(origin.source().as_str(), authored);
     assert_eq!(origin.span().start().byte_offset().value(), start);
     assert_eq!(origin.span().end().byte_offset().value(), start + 2);
-    assert_eq!(
+    assert!(
         value
             .serialize_specified(Limits::new(100, 100, 1))
             .unwrap_err()
-            .kind(),
-        Kind::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(value, &before);
     assert_eq!(
@@ -354,12 +352,11 @@ fn mask_border_math_retains_hinted_and_dimensioned_domains_with_shared_projectio
         value.serialize_specified(Default::default()).unwrap(),
         "calc((1% + 1px) / 1px) / calc((1% + 1px) / 1px) alpha"
     );
-    assert_eq!(
+    assert!(
         value
             .serialize_specified(Limits::new(100, 100, 1))
             .unwrap_err()
-            .kind(),
-        Kind::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(value, before);
     assert!(matches!(

@@ -1,6 +1,7 @@
 //! Functional evidence for new APIs, without preimplementation executable API RED.
 //! Independent expectations follow pinned Shapes 1 §§3.1–3.3 and the adopted
 //! authored serialization resource contract. No contextual geometry is inferred.
+use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::normal_declaration;
 use crate::css::support::property_admission::assert_component_rejected;
 use crate::css::support::serialization_limits::assert_limits as budget;
@@ -99,13 +100,13 @@ fn checked_xywh_composition_retains_signed_offsets_and_nonnegative_sizes() {
     );
     assert_ne!(xywh, CssXywhShape::new(y, x, height, width, None));
     for (invalid, kind) in [
-        ("-1px", CssNumericConstructionErrorKind::OutOfRange),
-        ("-1%", CssNumericConstructionErrorKind::OutOfRange),
-        ("-1e-999px", CssNumericConstructionErrorKind::OutOfRange),
-        ("-1e-999%", CssNumericConstructionErrorKind::OutOfRange),
-        ("auto", CssNumericConstructionErrorKind::RootDomainMismatch),
-        ("1", CssNumericConstructionErrorKind::RootDomainMismatch),
-        ("1deg", CssNumericConstructionErrorKind::RootDomainMismatch),
+        ("-1px", NumericFailure::OutOfRange),
+        ("-1%", NumericFailure::OutOfRange),
+        ("-1e-999px", NumericFailure::OutOfRange),
+        ("-1e-999%", NumericFailure::OutOfRange),
+        ("auto", NumericFailure::RootDomainMismatch),
+        ("1", NumericFailure::RootDomainMismatch),
+        ("1deg", NumericFailure::RootDomainMismatch),
     ] {
         assert_component_rejected(
             CssSpecifiedNonNegativeLengthPercentage::try_from_component,
@@ -114,9 +115,9 @@ fn checked_xywh_composition_retains_signed_offsets_and_nonnegative_sizes() {
         );
     }
     for (invalid, kind) in [
-        ("auto", CssNumericConstructionErrorKind::RootDomainMismatch),
-        ("1", CssNumericConstructionErrorKind::RootDomainMismatch),
-        ("1deg", CssNumericConstructionErrorKind::RootDomainMismatch),
+        ("auto", NumericFailure::RootDomainMismatch),
+        ("1", NumericFailure::RootDomainMismatch),
+        ("1deg", NumericFailure::RootDomainMismatch),
     ] {
         assert_component_rejected(
             CssSpecifiedLengthPercentage::try_from_component,

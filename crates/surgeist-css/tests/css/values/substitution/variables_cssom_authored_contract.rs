@@ -3,6 +3,8 @@
 //! contract preserves absence/nonrepresentability as None, distinct from a
 //! present empty terminal. CSSOM string APIs collapse those cases to empty text.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::value_assertions::specified_property_value as read;
 use surgeist_css::*;
 
@@ -228,12 +230,12 @@ fn a_bounded_requested_pending_value_can_retry_without_changing_its_source() {
     let error = block
         .property_value(CssPropertyNameRef::Known(CssKnownProperty::Pause), short)
         .unwrap_err();
-    let CssDeclarationBlockErrorKind::Serialization(cause) = error.kind() else {
+    let Some(cause) = error.serialization() else {
         panic!("a typed specified byte bound")
     };
     assert_eq!(
-        cause.kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+        serialization_failure(cause),
+        SerializationFailure::ByteLimit
     );
     assert_eq!(
         block

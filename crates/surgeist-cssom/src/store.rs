@@ -682,8 +682,7 @@ impl CssomBatch {
                 CssomPropertyDomain::Margin => {
                     CssSpecifiedDeclarationBlock::try_from_margin_entries(&entries, this.limits.css)
                 }
-            }
-            .map_err(CssomError::Declaration)?;
+            }?;
             let CssomBlockData::Properties { selected, .. } = this
                 .staged
                 .blocks

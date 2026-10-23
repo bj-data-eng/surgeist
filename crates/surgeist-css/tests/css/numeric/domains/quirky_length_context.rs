@@ -1,5 +1,8 @@
 //! Values4 WD20240312 Appendix C. Independent number-token -> px expectations.
 //! Unitless admission composes with the selected named shorthand assignment mode.
+use crate::css::support::failure_classes::NumericFailure;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::value_assertions::assert_component_rejected;
 use crate::css::support::{contextual_checked_declaration as checked, known_property as property};
 use surgeist_css::*;
@@ -499,7 +502,7 @@ fn pending_logical_number_replacement_selects_logical_targets_and_retains_both_o
             let error = handle
                 .reenter(parse_component_values(bad).unwrap())
                 .unwrap_err();
-            let CssExpansionErrorKind::InvalidReplacement(error) = error.kind() else {
+            let Some(error) = error.replacement_error() else {
                 panic!("invalid Length math")
             };
             let origin = match error.origin() {
@@ -508,12 +511,11 @@ fn pending_logical_number_replacement_selects_logical_targets_and_retains_both_o
                 other => panic!("replacement source: {other:?}"),
             };
             assert_eq!(origin.source().as_str(), bad);
-            assert_eq!(
+            assert!(
                 handle
                     .reenter(parse_component_values("logical var(--again)").unwrap())
                     .unwrap_err()
-                    .kind(),
-                &CssExpansionErrorKind::ResidualSubstitution
+                    .is_residual_substitution()
             );
             let generated = CssComponentValues::try_new(
                 vec![
@@ -678,12 +680,12 @@ fn ordinary_zero_dimensions_percentages_numbers_and_css_wide_values_are_controls
     assert_component_rejected(
         CssSpecifiedLength::try_from_component,
         CssComponentValue::try_number("7").unwrap(),
-        surgeist_css::CssNumericConstructionErrorKind::RootDomainMismatch,
+        NumericFailure::RootDomainMismatch,
     );
     assert_component_rejected(
         CssSpecifiedLengthPercentage::try_from_component,
         CssComponentValue::try_number("7").unwrap(),
-        surgeist_css::CssNumericConstructionErrorKind::RootDomainMismatch,
+        NumericFailure::RootDomainMismatch,
     );
     assert!(!parse_style_attribute("margin-top:7").is_clean());
     for context in [STANDARDS, QUIRKS] {
@@ -778,7 +780,7 @@ fn pending_reentry_retains_document_mode_original_and_replacement_origins_after_
             };
             let bad = parse_component_values("bogus").unwrap();
             let error = handle.reenter(bad).unwrap_err();
-            let CssExpansionErrorKind::InvalidReplacement(error) = error.kind() else {
+            let Some(error) = error.replacement_error() else {
                 panic!("grammar error")
             };
             let origin = match error.origin() {
@@ -788,12 +790,11 @@ fn pending_reentry_retains_document_mode_original_and_replacement_origins_after_
             };
             assert_eq!(origin.source().as_str(), "bogus");
             assert_eq!(origin.span().start().byte_offset().value(), 0);
-            assert_eq!(
+            assert!(
                 handle
                     .reenter(parse_component_values("var(--again)").unwrap())
                     .unwrap_err()
-                    .kind(),
-                &CssExpansionErrorKind::ResidualSubstitution
+                    .is_residual_substitution()
             );
             let replacement = parse_component_values(text).unwrap();
             for _ in 0..2 {
@@ -862,11 +863,8 @@ fn sheet_rule_and_block_fronts_keep_quirks_mode_and_normalized_occurrence_order(
     )
     .unwrap_err();
     assert_eq!(
-        error.kind(),
-        &CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: 2
-        }
+        error.exhausted_limit(),
+        Some((CssNormalizationResource::Contributions, 2))
     );
     assert_eq!(error.declaration_order(), Some(2));
     assert!(
@@ -964,18 +962,21 @@ fn converted_length_keeps_scalar_tariff_and_shared_cumulative_atomic_budgets() {
     for (limits, kind) in [
         (
             CssSerializationLimits::new(2, 3, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(3, 2, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(3, 3, expected.len() - 1),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
-        assert_eq!(source.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&source.serialize_specified(limits).unwrap_err()),
+            kind
+        );
         assert_eq!(source, before);
     }
     assert_eq!(source.serialize_specified(exact).unwrap(), expected);

@@ -421,7 +421,7 @@ fn shorthand_reentry_is_reusable_after_grammar_and_residual_substitution_failure
         )
         .unwrap_err();
         let error = handle.reenter(components).unwrap_err();
-        let CssExpansionErrorKind::InvalidReplacement(actual) = error.kind() else {
+        let Some(actual) = error.replacement_error() else {
             panic!("original-grammar failure")
         };
         assert_eq!(actual, &expected);
@@ -441,12 +441,11 @@ fn shorthand_reentry_is_reusable_after_grammar_and_residual_substitution_failure
         "attr(timing)",
         "opacity calc(var(--again) + 1s)",
     ] {
-        assert_eq!(
+        assert!(
             handle
                 .reenter(parse_component_values(residual).unwrap())
                 .unwrap_err()
-                .kind(),
-            &CssExpansionErrorKind::ResidualSubstitution
+                .is_residual_substitution()
         );
         let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap()
         else {
@@ -508,7 +507,7 @@ fn recovered_replacement_is_rejected_without_consuming_pending_handle() {
         )
         .unwrap_err();
         let error = handle.reenter(recovered).unwrap_err();
-        let CssExpansionErrorKind::InvalidReplacement(actual) = error.kind() else {
+        let Some(actual) = error.replacement_error() else {
             panic!("strict original-grammar admission")
         };
         assert_eq!(actual, &expected);
@@ -603,11 +602,8 @@ fn ordered_normalization_preserves_timing_groups_and_exact_contribution_budget()
     )
     .unwrap_err();
     assert_eq!(
-        error.kind(),
-        &CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: 8
-        }
+        error.exhausted_limit(),
+        Some((CssNormalizationResource::Contributions, 8))
     );
     assert_eq!(error.declaration_order(), Some(5));
     assert!(
@@ -640,11 +636,8 @@ fn a_sparse_shorthand_admits_four_members_and_fails_atomically_at_three() {
     )
     .unwrap_err();
     assert_eq!(
-        error.kind(),
-        &CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: 3
-        }
+        error.exhausted_limit(),
+        Some((CssNormalizationResource::Contributions, 3))
     );
     assert_eq!(error.declaration_order(), Some(0));
     assert!(error.declaration().unwrap().same_occurrence(source));
@@ -700,11 +693,8 @@ fn recovered_time_normalization_preserves_diagnostics_and_contribution_budget() 
         )
         .unwrap_err();
         assert_eq!(
-            error.kind(),
-            &CssNormalizationErrorKind::LimitExceeded {
-                resource: CssNormalizationResource::Contributions,
-                limit: 3
-            }
+            error.exhausted_limit(),
+            Some((CssNormalizationResource::Contributions, 3))
         );
         assert_eq!(error.declaration_order(), Some(0));
         assert!(

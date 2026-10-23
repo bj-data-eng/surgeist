@@ -1,6 +1,8 @@
 //! Public specified-value contracts from CSS Box Alignment 3 WD 2026-01-30
 //! §§8.1, 8.2, and 8.4.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::property_admission::assert_declaration_rejected as rejected;
 use crate::css::support::{
     checked_grammar_declaration as checked, important_declaration as parsed,
@@ -308,18 +310,21 @@ fn one_value_and_two_value_serializers_charge_actual_authored_structure() {
     for (limits, kind) in [
         (
             CssSerializationLimits::new(0, 1, 6),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(1, 0, 6),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(1, 1, 5),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
-        assert_eq!(normal.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&normal.serialize_specified(limits).unwrap_err()),
+            kind
+        );
     }
 
     let one = CssGapShorthand::new(CssGapValue::Normal, None);
@@ -343,17 +348,20 @@ fn one_value_and_two_value_serializers_charge_actual_authored_structure() {
     for (limits, kind) in [
         (
             CssSerializationLimits::new(2, 3, 6),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(3, 2, 6),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(3, 3, 5),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
-        assert_eq!(two.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&two.serialize_specified(limits).unwrap_err()),
+            kind
+        );
     }
 }

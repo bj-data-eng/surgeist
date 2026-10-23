@@ -3,13 +3,15 @@
 //! Halfway away from zero is the adopted operational policy on binary64 bits.
 
 use crate::css::support::color_and_selector_fixtures::assert_color_limits;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::{
     checked_color as color, checked_color_declaration as declaration,
     component_values as components, declaration_color,
 };
 use surgeist_css::*;
 type Limits = CssSerializationLimits;
-type Kind = CssSpecifiedValueSerializationErrorKind;
+type Kind = SerializationFailure;
 fn assert_text(source: &str, expected: &str) {
     let d = declaration(source);
     let before = d.clone();
@@ -403,7 +405,10 @@ macro_rules! error_case {
         fn $name() {
             let c = color("alpha(from rgb(calc(1 / 128) none none))");
             let before = c.clone();
-            assert_eq!(c.serialize_specified($limits).unwrap_err().kind(), $kind);
+            assert_eq!(
+                serialization_failure(&c.serialize_specified($limits).unwrap_err()),
+                $kind
+            );
             assert_eq!(c, before);
         }
     };
@@ -446,33 +451,30 @@ fn rounded_origin_scratch_reaches_sibling_input_error() {
     // Four outer root/reference visits; origin root/divide bring totals to 9/9.
     // After 'rgb(from ', 14 bytes remain. Rounded calc needs exactly 14;
     // the old 15-byte capture fails before visiting either none sibling.
-    assert_eq!(
+    assert!(
         c.serialize_specified(Limits::new(9, usize::MAX, 23))
             .unwrap_err()
-            .kind(),
-        Kind::InputNodeLimit
+            .is_input_node_limit()
     );
     assert_eq!(c, before);
 }
 #[test]
 fn rounded_origin_scratch_reaches_sibling_projection_error() {
     let c = color("rgb(from color(srgb calc(1 / 128) none none) r g b)");
-    assert_eq!(
+    assert!(
         c.serialize_specified(Limits::new(usize::MAX, 9, 23))
             .unwrap_err()
-            .kind(),
-        Kind::ProjectionNodeLimit
+            .is_projection_node_limit()
     );
 }
 #[test]
 fn standalone_discarded_capture_control() {
     let c = color("rgb(calc(10000000000) 0 0)");
     let before = c.clone();
-    assert_eq!(
+    assert!(
         c.serialize_specified(Limits::new(usize::MAX, usize::MAX, 16))
             .unwrap_err()
-            .kind(),
-        Kind::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(
         c.serialize_specified(Limits::new(usize::MAX, usize::MAX, 17))
@@ -560,10 +562,7 @@ fn origin_substitution_stays_pending_control() {
     let error =
         CssNumberCalculation::try_from_components(components("calc(var(--n))"), Default::default())
             .unwrap_err();
-    assert_eq!(
-        error.kind(),
-        &CssNumericConstructionErrorKind::SubstitutionRequired
-    );
+    assert!(error.is_substitution_required(), "{error:?}");
     assert!(error.origin().is_some());
 }
 

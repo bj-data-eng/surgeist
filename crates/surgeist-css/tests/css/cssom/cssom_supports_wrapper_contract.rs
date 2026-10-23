@@ -5,8 +5,7 @@
 
 use surgeist_css::{
     CssEditedGroupPreludeRef as Prelude, CssEditedRuleView as View, CssRule, CssRuleCssomFormat,
-    CssRuleCssomSerializationErrorKind as ErrorKind, CssScopedRule,
-    CssSpecifiedDeclarationBlock as Block, parse_sheet,
+    CssScopedRule, CssSpecifiedDeclarationBlock as Block, parse_sheet,
 };
 
 #[test]
@@ -244,13 +243,13 @@ fn media_empty_frame_and_unselected_container_are_independent_controls() {
         media.serialize_cssom(Default::default()).unwrap(),
         "@media screen {\n\n}"
     );
-    assert!(matches!(
+    assert!(
         container
             .serialize_cssom(Default::default())
             .unwrap_err()
-            .kind(),
-        ErrorKind::FormatUnavailable(CssRuleCssomFormat::Container)
-    ));
+            .unavailable_format()
+            == Some(CssRuleCssomFormat::Container)
+    );
     assert_eq!(
         container.serialize_specified(Default::default()).unwrap(),
         "@container (width>1px) { }"

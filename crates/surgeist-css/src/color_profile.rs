@@ -1,11 +1,10 @@
 //! Authored color-profile definitions; resource loading and substitution belong to hosts.
 use crate::{
     CssColorProfileComponentName, CssColorProfileName, CssComponentValueError,
-    CssComponentValueErrorKind, CssComponentValueLimits, CssComponentValues, CssSerializedOrigin,
-    CssSerializedValue, CssSourcePosition, CssSubstitutionDependentValue, CssUrl, CssValueOrigin,
-    Error, ErrorKind,
+    CssComponentValueLimits, CssComponentValues, CssError, CssSerializedValue, CssSourcePosition,
+    CssSubstitutionDependentValue, CssUrl, CssValueOrigin,
+    descriptor_values::DescriptorValueFailure,
 };
-use std::fmt;
 
 /// The custom case-sensitive name or reserved device profile identity.
 ///
@@ -101,101 +100,38 @@ impl CssColorProfileDescriptorKind {
 
 fn reject_recovered(components: &CssComponentValues) -> Result<(), CssColorProfileValueError> {
     if let Some(origin) = components.first_implicit_origin() {
-        return Err(CssColorProfileValueError {
-            kind: Box::new(CssColorProfileValueErrorKind::RecoveredComponent),
-            origin: Box::new(CssSerializedOrigin::Token(origin.clone())),
-            source: None,
-        });
+        return Err(DescriptorValueFailure::recovered(origin.clone()).into());
     }
     Ok(())
 }
 
-/// A checked component-native descriptor construction or reentry failure.
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssColorProfileValueErrorKind {
-    Component(CssComponentValueErrorKind),
-    RecoveredComponent,
-    Grammar(ErrorKind),
-    ResidualSubstitution,
-    NotPending,
-}
-
-/// A failure mapped to the supplied component origins, never fabricated source text.
+/// A checked component-native `@color-profile` descriptor construction or reentry failure.
+///
+/// The supplied components were not admitted ([`Self::component_error`]), the descriptor
+/// grammar rejected them ([`Self::diagnostic`]), or reentry was refused; the component
+/// error or diagnostic is the error's source.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssColorProfileValueError {
-    kind: Box<CssColorProfileValueErrorKind>,
-    origin: Box<CssSerializedOrigin>,
-    source: Option<Box<ProfileValueErrorSource>>,
+    failure: DescriptorValueFailure,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-enum ProfileValueErrorSource {
-    Component(CssComponentValueError),
-    Grammar(Error),
-}
+crate::descriptor_values::descriptor_value_api!(CssColorProfileValueError, "color-profile");
 
 impl CssColorProfileValueError {
-    #[must_use]
-    pub fn kind(&self) -> &CssColorProfileValueErrorKind {
-        &self.kind
-    }
-
-    #[must_use]
-    pub fn origin(&self) -> &CssSerializedOrigin {
-        &self.origin
-    }
-
     fn from_component(error: CssComponentValueError) -> Self {
-        Self {
-            kind: Box::new(CssColorProfileValueErrorKind::Component(error.kind())),
-            origin: Box::new(CssSerializedOrigin::Token(error.origin().clone())),
-            source: Some(Box::new(ProfileValueErrorSource::Component(error))),
-        }
+        DescriptorValueFailure::component(error).into()
     }
 
-    fn from_grammar(error: Error, serialized: &CssSerializedValue) -> Self {
-        let origin = error.component_input_origin(serialized);
-        Self {
-            kind: Box::new(CssColorProfileValueErrorKind::Grammar(error.kind().clone())),
-            origin: Box::new(origin),
-            source: Some(Box::new(ProfileValueErrorSource::Grammar(error))),
-        }
+    fn from_grammar(error: CssError, serialized: &CssSerializedValue) -> Self {
+        DescriptorValueFailure::grammar(error, serialized).into()
     }
 
     fn residual(origin: CssValueOrigin) -> Self {
-        Self {
-            kind: Box::new(CssColorProfileValueErrorKind::ResidualSubstitution),
-            origin: Box::new(CssSerializedOrigin::Token(origin)),
-            source: None,
-        }
+        DescriptorValueFailure::residual(origin).into()
     }
 
     fn not_pending() -> Self {
-        Self {
-            kind: Box::new(CssColorProfileValueErrorKind::NotPending),
-            origin: Box::new(CssSerializedOrigin::End(None)),
-            source: None,
-        }
-    }
-}
-
-impl fmt::Display for CssColorProfileValueError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            formatter,
-            "invalid color-profile descriptor value: {:?}",
-            self.kind
-        )
-    }
-}
-
-impl std::error::Error for CssColorProfileValueError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self.source.as_deref()? {
-            ProfileValueErrorSource::Component(error) => Some(error),
-            ProfileValueErrorSource::Grammar(error) => Some(error),
-        }
+        DescriptorValueFailure::not_pending().into()
     }
 }
 

@@ -283,19 +283,18 @@ fn css_wide_all_and_pending_reentry_preserve_members_and_occurrences() {
                 panic!("{name} retains pending substitution")
             };
             assert!(handle.source().same_occurrence(&source));
-            assert!(matches!(
+            assert!(
                 handle
                     .reenter(parse_component_values("-1e-100px").unwrap())
                     .unwrap_err()
-                    .kind(),
-                CssExpansionErrorKind::InvalidReplacement(_)
-            ));
-            assert_eq!(
+                    .replacement_error()
+                    .is_some()
+            );
+            assert!(
                 handle
                     .reenter(parse_component_values("var(--again)").unwrap())
                     .unwrap_err()
-                    .kind(),
-                &CssExpansionErrorKind::ResidualSubstitution
+                    .is_residual_substitution()
             );
             let replacement = parse_component_values("1px 2%").unwrap();
             let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap()

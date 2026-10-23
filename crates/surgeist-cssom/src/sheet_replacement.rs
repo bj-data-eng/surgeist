@@ -193,7 +193,7 @@ impl CssomStore {
                 maximum: self.limits.max_objects,
             })?;
         let mut edit = self.batch(guard)?;
-        let token = edit.apply(|this| {
+        let token = edit.apply(|this| -> Result<_, CssomError> {
             let serial = this.staged.allocate(&this.limits)?;
             this.staged
                 .sheets
@@ -282,7 +282,7 @@ impl CssomStore {
                 })?;
             stored_diagnostics.extend_from_slice(&diagnostics);
             let mut edit = self.batch(guard)?;
-            edit.apply(|this| {
+            edit.apply(|this| -> Result<_, CssomError> {
                 this.replace(&work.token.sheet, authored, stored_diagnostics)?;
                 this.staged
                     .sheets
@@ -338,7 +338,7 @@ impl CssomStore {
     ) -> Result<CssomReplaceCompletion, CssomError> {
         self.checked_replacement(token)?;
         let mut edit = self.batch(CssomEditGuard::from_snapshot(&self.snapshot()))?;
-        edit.apply(|this| {
+        edit.apply(|this| -> Result<_, CssomError> {
             this.staged
                 .sheets
                 .get_mut(&token.sheet)

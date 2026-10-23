@@ -25,7 +25,7 @@ use std::collections::BTreeSet;
 
 use surgeist_css::{
     CssDeclaration, CssDeclarationContextRef, CssErrorCode, CssImportance, CssPropertyNameRef,
-    CssRecoveryAction, CssRecoveryDiagnostic, CssRule, CssScopedRule, ErrorKind, parse_sheet,
+    CssRecoveryAction, CssRecoveryDiagnostic, CssRule, CssScopedRule, parse_sheet,
     parse_style_attribute,
 };
 
@@ -4638,7 +4638,7 @@ fn diagnostic_observable(diagnostic: &CssRecoveryDiagnostic) -> String {
     format!(
         "{}/{}/{}@{}:{}:{}>{}:{}:{}-{}:{}:{}:{}",
         code_name(error.code()),
-        root_and_payload(error.kind()),
+        root_and_payload(error),
         action_name(diagnostic.action()),
         position.byte_offset().value(),
         position.line().value(),
@@ -4692,115 +4692,118 @@ fn token_kind_name(kind: surgeist_css::CssTokenKind) -> &'static str {
     }
 }
 
-fn root_and_payload(kind: &ErrorKind) -> String {
-    match kind {
-        ErrorKind::UnexpectedEnd(detail) => {
-            format!("UnexpectedEnd:{}", detail.expectation().as_str())
-        }
-        ErrorKind::UnexpectedToken(detail) => format!(
+fn root_and_payload(error: &surgeist_css::CssError) -> String {
+    let name = |value: Option<&str>| value.unwrap_or("-").to_owned();
+    let expectation = || error.expectation().map_or("-", |value| value.as_str());
+    let at_rule = || name(error.at_rule().map(|value| value.as_str()));
+    let production = || error.production().map_or("-", |value| value.as_str());
+    let descriptor = || name(error.descriptor().map(|value| value.as_str()));
+    let feature = || error.feature().map_or("-", |value| value.as_str());
+    let property_name = || name(error.property_name().map(|value| value.as_str()));
+    match error.code() {
+        CssErrorCode::UnexpectedEnd => format!("UnexpectedEnd:{}", expectation()),
+        CssErrorCode::UnexpectedToken => format!(
             "UnexpectedToken:{}:{}",
-            detail.expectation().as_str(),
-            token(Some(detail.encountered()))
+            expectation(),
+            token(error.encountered())
         ),
-        ErrorKind::InvalidAtRulePlacement(detail) => format!(
-            "InvalidAtRulePlacement:{}:{}",
-            detail.name().as_str(),
-            detail.expected_context().as_str()
-        ),
-        ErrorKind::InvalidAtRulePrelude(detail) => format!(
+        CssErrorCode::InvalidAtRulePlacement => {
+            format!("InvalidAtRulePlacement:{}:{}", at_rule(), expectation())
+        }
+        CssErrorCode::InvalidAtRulePrelude => format!(
             "InvalidAtRulePrelude:{}:{}:{}:{}",
-            detail.name().as_str(),
-            detail.production().as_str(),
-            detail.expectation().as_str(),
-            token(detail.encountered())
+            at_rule(),
+            production(),
+            expectation(),
+            token(error.encountered())
         ),
-        ErrorKind::InvalidAtRuleBody(detail) => format!(
+        CssErrorCode::InvalidAtRuleBody => format!(
             "InvalidAtRuleBody:{}:{}:{}:{}",
-            detail.name().as_str(),
-            detail.production().as_str(),
-            detail.expectation().as_str(),
-            token(detail.encountered())
+            at_rule(),
+            production(),
+            expectation(),
+            token(error.encountered())
         ),
-        ErrorKind::UnknownAtRule(detail) => format!("UnknownAtRule:{}", detail.name().as_str()),
-        ErrorKind::UnsupportedAtRule(detail) => format!(
-            "UnsupportedAtRule:{}:{}",
-            detail.name().as_str(),
-            detail.feature().as_str()
-        ),
-        ErrorKind::InvalidQualifiedRule(detail) => format!(
+        CssErrorCode::UnknownAtRule => format!("UnknownAtRule:{}", at_rule()),
+        CssErrorCode::UnsupportedAtRule => {
+            format!("UnsupportedAtRule:{}:{}", at_rule(), feature())
+        }
+        CssErrorCode::InvalidQualifiedRule => format!(
             "InvalidQualifiedRule:{}:{}:{}",
-            detail.production().as_str(),
-            detail.expectation().as_str(),
-            token(detail.encountered())
+            production(),
+            expectation(),
+            token(error.encountered())
         ),
-        ErrorKind::InvalidSelector(detail) => format!(
+        CssErrorCode::InvalidSelector => format!(
             "InvalidSelector:{}:{}:{}",
-            detail.production().map_or("-", |value| value.as_str()),
-            detail.expectation().as_str(),
-            token(detail.encountered())
+            production(),
+            expectation(),
+            token(error.encountered())
         ),
-        ErrorKind::InvalidMediaQuery(detail) => format!(
+        CssErrorCode::InvalidMediaQuery => format!(
             "InvalidMediaQuery:{}:{}:{}",
-            detail.feature().map_or("-", |value| value.as_str()),
-            detail.expectation().as_str(),
-            token(detail.encountered())
+            error.media_feature().map_or("-", |value| value.as_str()),
+            expectation(),
+            token(error.encountered())
         ),
-        ErrorKind::UnknownProperty(detail) => format!("UnknownProperty:{}", detail.name().as_str()),
-        ErrorKind::UnsupportedProperty(detail) => format!(
-            "UnsupportedProperty:{}:{}",
-            detail.name().as_str(),
-            detail.feature().as_str()
-        ),
-        ErrorKind::InvalidPropertyValue(detail) => format!(
+        CssErrorCode::UnknownProperty => format!("UnknownProperty:{}", property_name()),
+        CssErrorCode::UnsupportedProperty => {
+            format!("UnsupportedProperty:{}:{}", property_name(), feature())
+        }
+        CssErrorCode::InvalidPropertyValue => format!(
             "InvalidPropertyValue:{}:{}:{}",
-            detail.property().stable_id(),
-            detail.expectation().as_str(),
-            token(detail.encountered())
+            error
+                .known_property()
+                .map_or("-", |property| property.stable_id()),
+            expectation(),
+            token(error.encountered())
         ),
-        ErrorKind::InvalidDeclarationAnnotation(detail) => format!(
+        CssErrorCode::InvalidDeclarationAnnotation => format!(
             "InvalidDeclarationAnnotation:{}:{}",
-            declaration_context(detail.context()),
-            token(Some(detail.encountered()))
+            error
+                .declaration_context()
+                .map_or_else(|| "-".to_owned(), declaration_context),
+            token(error.encountered())
         ),
-        ErrorKind::UnknownDescriptor(detail) => format!(
-            "UnknownDescriptor:{}:{}",
-            detail.at_rule().as_str(),
-            detail.descriptor().as_str()
-        ),
-        ErrorKind::UnsupportedDescriptor(detail) => format!(
+        CssErrorCode::UnknownDescriptor => {
+            format!("UnknownDescriptor:{}:{}", at_rule(), descriptor())
+        }
+        CssErrorCode::UnsupportedDescriptor => format!(
             "UnsupportedDescriptor:{}:{}:{}",
-            detail.at_rule().as_str(),
-            detail.descriptor().as_str(),
-            detail.feature().as_str()
+            at_rule(),
+            descriptor(),
+            feature()
         ),
-        ErrorKind::InvalidDescriptorValue(detail) => format!(
+        CssErrorCode::InvalidDescriptorValue => format!(
             "InvalidDescriptorValue:{}:{}:{}:{}",
-            detail.at_rule().as_str(),
-            detail.descriptor().as_str(),
-            detail.expectation().as_str(),
-            token(detail.encountered())
+            at_rule(),
+            descriptor(),
+            expectation(),
+            token(error.encountered())
         ),
-        ErrorKind::InvalidDescriptorCombination(detail) => format!(
+        CssErrorCode::InvalidDescriptorCombination => format!(
             "InvalidDescriptorCombination:{}:{}:{}",
-            detail.at_rule().as_str(),
-            detail.responsible().as_str(),
-            detail
-                .conflicting()
+            at_rule(),
+            descriptor(),
+            error
+                .conflicting_descriptors()
                 .iter()
                 .map(|value| value.as_str())
                 .collect::<Vec<_>>()
                 .join(",")
         ),
-        ErrorKind::InvalidColorSyntax(detail) => format!(
+        CssErrorCode::InvalidColorSyntax => format!(
             "InvalidColorSyntax:{}:{}:{}",
-            detail.component().map_or("-", |value| value.as_str()),
-            detail.expectation().as_str(),
-            token(detail.encountered())
+            error.color_component().map_or("-", |value| value.as_str()),
+            expectation(),
+            token(error.encountered())
         ),
-        ErrorKind::NestingLimit(detail) => format!(
+        CssErrorCode::NestingLimit => format!(
             "NestingLimit:{}:{}",
-            detail.limit(),
-            detail.enclosing_production().as_str()
+            error
+                .nesting_limit()
+                .map_or_else(|| "-".to_owned(), |limit| limit.to_string()),
+            production()
         ),
         _ => "Future".to_owned(),
     }

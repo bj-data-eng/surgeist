@@ -387,22 +387,19 @@ fn css_wide_all_and_pending_reentry_keep_style_members_and_original_occurrence()
                     handle.reenter(parse_component_values(invalid_value).unwrap()),
                 );
                 if invalid_value.starts_with("var(") {
-                    assert_eq!(error.kind(), &CssExpansionErrorKind::ResidualSubstitution);
+                    assert!(error.is_residual_substitution(), "{error:?}");
                 } else {
-                    assert!(matches!(
-                        error.kind(),
-                        CssExpansionErrorKind::InvalidReplacement(_)
-                    ));
+                    assert!(error.replacement_error().is_some());
                 }
             }
             if PHYSICAL.contains(&name) || LOGICAL.contains(&name) {
-                assert!(matches!(
+                assert!(
                     expect_rejection(
                         handle.reenter(parse_component_values("solid dashed").unwrap())
                     )
-                    .kind(),
-                    CssExpansionErrorKind::InvalidReplacement(_)
-                ));
+                    .replacement_error()
+                    .is_some()
+                );
             }
             let replacement = parse_component_values("solid dashed").unwrap();
             if name == FOUR_SIDE {

@@ -85,14 +85,14 @@ pub(super) trait Receiver {
         &self,
         name: &str,
         location: cssparser::SourceLocation,
-    ) -> Result<(), ParseError<'i, Error>>;
+    ) -> Result<(), ParseError<'i, CssError>>;
     fn parse_value<'i>(
         &mut self,
         name: CowRcStr<'i>,
         input: &mut Parser<'i, '_>,
         start: &ParserState,
         recovery: &RecoveryState,
-    ) -> Result<Self::Declaration, ParseError<'i, Error>>
+    ) -> Result<Self::Declaration, ParseError<'i, CssError>>
     where
         Self: 'i;
     fn retained(&self, _declaration: &Self::Declaration, _recovery: &RecoveryState) {}
@@ -111,7 +111,7 @@ impl Receiver for OrdinaryReceiver {
         &self,
         name: &str,
         location: cssparser::SourceLocation,
-    ) -> Result<(), ParseError<'i, Error>> {
+    ) -> Result<(), ParseError<'i, CssError>> {
         if !self.parser_context.selects_svg_glyph(name) && resolve_property_name(name).is_none() {
             Err(property_name_error(location, name))
         } else {
@@ -124,7 +124,7 @@ impl Receiver for OrdinaryReceiver {
         input: &mut Parser<'i, '_>,
         start: &ParserState,
         recovery: &RecoveryState,
-    ) -> Result<CssDeclaration, ParseError<'i, Error>>
+    ) -> Result<CssDeclaration, ParseError<'i, CssError>>
     where
         Self: 'i,
     {

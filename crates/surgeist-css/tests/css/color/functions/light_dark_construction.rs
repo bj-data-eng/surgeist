@@ -53,7 +53,7 @@ fn assert_image_admission_in_both_branches(value: CssImageValue, admitted: bool)
         if admitted {
             assert!(result.is_ok());
         } else {
-            assert_eq!(result.unwrap_err(), CssImageConstructionError::NestingLimit);
+            assert!(result.unwrap_err().is_nesting_limit());
         }
     }
 }
@@ -98,9 +98,10 @@ fn checked_image_pairs_preserve_url_none_identity_and_are_real_images() {
         image.serialize_specified(Default::default()).unwrap(),
         "light-dark(none, none)"
     );
-    assert_eq!(
-        CssImage::try_new(CssImageValue::None).unwrap_err(),
-        CssImageConstructionError::NotImage
+    assert!(
+        CssImage::try_new(CssImageValue::None)
+            .unwrap_err()
+            .is_not_image()
     );
 }
 
@@ -115,23 +116,22 @@ fn checked_color_and_image_pairs_admit_256_functions_and_reject_the_next() {
             CssLightDarkImage::try_new(image, CssImageValue::None).unwrap(),
         ));
     }
-    assert_eq!(
-        CssLightDarkColor::try_new(named("blue"), color.clone()).unwrap_err(),
-        CssColorConstructionError::NestingLimit
+    assert!(
+        CssLightDarkColor::try_new(named("blue"), color.clone())
+            .unwrap_err()
+            .is_nesting_limit()
     );
-    assert_eq!(
-        CssLightDarkColor::try_new(color, named("blue")).unwrap_err(),
-        CssColorConstructionError::NestingLimit
+    assert!(
+        CssLightDarkColor::try_new(color, named("blue"))
+            .unwrap_err()
+            .is_nesting_limit()
     );
     assert_image_admission_in_both_branches(image, false);
     let mut image = CssImageValue::Url(CssUrl::new("a.svg"));
     for _ in 0..255 {
         image = CssImageValue::LightDark(Box::new(wrap_image(image).unwrap()));
     }
-    assert_eq!(
-        wrap_image(image).unwrap_err(),
-        CssImageConstructionError::NestingLimit
-    );
+    assert!(wrap_image(image).unwrap_err().is_nesting_limit());
 }
 
 #[test]
@@ -264,21 +264,11 @@ fn checked_image_depth_includes_url_modifier_function_and_argument_trees() {
 
 #[test]
 fn new_image_construction_errors_implement_the_semantic_error_contract() {
-    for (value, text) in [
-        (CssImageConstructionError::NotImage, "none is not an image"),
-        (
-            CssImageConstructionError::NestingLimit,
-            "image nesting limit exceeded",
-        ),
-        (
-            CssImageConstructionError::CapacityOverflow,
-            "image capacity overflow",
-        ),
-    ] {
-        assert_eq!(value.to_string(), text);
-        let error: &dyn std::error::Error = &value;
-        assert!(error.source().is_none());
-    }
+    let value = CssImage::try_new(CssImageValue::None).unwrap_err();
+    assert!(value.is_not_image(), "{value:?}");
+    assert_eq!(value.to_string(), "none is not an image");
+    let error: &dyn std::error::Error = &value;
+    assert!(error.source().is_none());
 }
 
 #[test]

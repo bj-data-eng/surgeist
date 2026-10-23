@@ -34,7 +34,7 @@ pub(super) fn bounded_report<T: Send>(
 
 pub(super) fn reject(
     source: &str,
-    error: ParseError<'_, Error>,
+    error: ParseError<'_, CssError>,
     action: crate::CssRecoveryAction,
 ) -> crate::CssRecoveryDiagnostic {
     let action = recovery_action_for_error(&error, action);
@@ -43,7 +43,7 @@ pub(super) fn reject(
 
 fn reject_resolved(
     source: &str,
-    error: Error,
+    error: CssError,
     action: crate::CssRecoveryAction,
 ) -> crate::CssRecoveryDiagnostic {
     let span = crate::CssSourceSpan::new(
@@ -58,7 +58,7 @@ fn reject_resolved(
 pub(super) fn finish_nested_component<'i>(
     input: &mut Parser<'i, '_>,
     token: &Token<'i>,
-) -> Result<(), ParseError<'i, Error>> {
+) -> Result<(), ParseError<'i, CssError>> {
     if matches!(
         token,
         Token::Function(_)
@@ -85,7 +85,7 @@ fn real_brace_block<T: Send>(
         &mut Parser<'i, 't>,
         &mut Vec<crate::CssRecoveryDiagnostic>,
         RecoveryState,
-    ) -> Result<T, ParseError<'i, Error>>
+    ) -> Result<T, ParseError<'i, CssError>>
     + Send,
 ) -> crate::CssParseReport<Option<crate::CssBlockFragment<T>>> {
     bounded(source, || {
@@ -104,7 +104,7 @@ fn real_brace_block_inner<T>(
         &mut Parser<'i, 't>,
         &mut Vec<crate::CssRecoveryDiagnostic>,
         RecoveryState,
-    ) -> Result<T, ParseError<'i, Error>>,
+    ) -> Result<T, ParseError<'i, CssError>>,
 ) -> crate::CssParseReport<Option<crate::CssBlockFragment<T>>> {
     let working_source = crate::tokenization::prepare(source);
     let mut parser_input = ParserInput::new(&working_source);
@@ -671,7 +671,7 @@ pub(crate) fn parse_declaration_with_context(
                         | Token::CloseParenthesis
                         | Token::CloseSquareBracket
                 ) {
-                    return Err(location.new_unexpected_token_error::<Error>(token));
+                    return Err(location.new_unexpected_token_error::<CssError>(token));
                 }
                 finish_nested_component(&mut input, &token)?;
             }
@@ -709,7 +709,7 @@ fn selector_fragment<T>(
     parse: impl for<'i> FnOnce(
         &mut Parser<'i, '_>,
         &mut SelectorRecovery<'_>,
-    ) -> Result<T, ParseError<'i, Error>>,
+    ) -> Result<T, ParseError<'i, CssError>>,
 ) -> crate::CssParseReport<Option<T>> {
     let state = RecoveryState::at_depth(source, 0, StyleContextCaptures::default());
     if let Some(name) = &context.0.default {
@@ -728,7 +728,7 @@ pub(super) fn selector_fragment_with_state<T>(
     parse: impl for<'i> FnOnce(
         &mut Parser<'i, '_>,
         &mut SelectorRecovery<'_>,
-    ) -> Result<T, ParseError<'i, Error>>,
+    ) -> Result<T, ParseError<'i, CssError>>,
 ) -> crate::CssParseReport<Option<T>> {
     let working_source = crate::tokenization::prepare(source);
     let mut input = ParserInput::new(&working_source);
@@ -1149,7 +1149,7 @@ fn descriptor_value_fragment<T: Send>(
     parse: impl for<'i, 't> FnOnce(
         &mut Parser<'i, 't>,
         &RecoveryState,
-    ) -> Result<T, ParseError<'i, Error>>
+    ) -> Result<T, ParseError<'i, CssError>>
     + Send,
 ) -> crate::CssParseReport<Option<T>> {
     bounded(source, || {
@@ -1532,13 +1532,13 @@ struct SingleRuleParser<'s> {
 impl<'i> AtRuleParser<'i> for SingleRuleParser<'i> {
     type Prelude = AtRulePrelude;
     type AtRule = Vec<CssRule>;
-    type Error = Error;
+    type Error = CssError;
 
     fn parse_prelude<'t>(
         &mut self,
         name: CowRcStr<'i>,
         input: &mut Parser<'i, 't>,
-    ) -> Result<Self::Prelude, ParseError<'i, Error>> {
+    ) -> Result<Self::Prelude, ParseError<'i, CssError>> {
         AtRuleParser::parse_prelude(&mut self.grammar, name, input)
     }
 
@@ -1557,7 +1557,7 @@ impl<'i> AtRuleParser<'i> for SingleRuleParser<'i> {
         prelude: Self::Prelude,
         start: &ParserState,
         input: &mut Parser<'i, 't>,
-    ) -> Result<Self::AtRule, ParseError<'i, Error>> {
+    ) -> Result<Self::AtRule, ParseError<'i, CssError>> {
         let result = AtRuleParser::parse_block(&mut self.grammar, prelude, start, input);
         self.completed = result.is_ok();
         result.map(RuleListItem::into_rules)
@@ -1567,12 +1567,12 @@ impl<'i> AtRuleParser<'i> for SingleRuleParser<'i> {
 impl<'i> QualifiedRuleParser<'i> for SingleRuleParser<'i> {
     type Prelude = CssStyleSelectorList;
     type QualifiedRule = Vec<CssRule>;
-    type Error = Error;
+    type Error = CssError;
 
     fn parse_prelude<'t>(
         &mut self,
         input: &mut Parser<'i, 't>,
-    ) -> Result<Self::Prelude, ParseError<'i, Error>> {
+    ) -> Result<Self::Prelude, ParseError<'i, CssError>> {
         QualifiedRuleParser::parse_prelude(&mut self.grammar, input)
     }
 
@@ -1581,7 +1581,7 @@ impl<'i> QualifiedRuleParser<'i> for SingleRuleParser<'i> {
         prelude: Self::Prelude,
         start: &ParserState,
         input: &mut Parser<'i, 't>,
-    ) -> Result<Self::QualifiedRule, ParseError<'i, Error>> {
+    ) -> Result<Self::QualifiedRule, ParseError<'i, CssError>> {
         let result = QualifiedRuleParser::parse_block(&mut self.grammar, prelude, start, input);
         self.completed = result.is_ok();
         result.map(RuleListItem::into_rules)

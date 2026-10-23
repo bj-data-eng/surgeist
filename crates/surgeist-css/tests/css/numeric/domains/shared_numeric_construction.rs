@@ -4,6 +4,9 @@
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#numeric-types
 //! https://www.w3.org/TR/2023/CRD-css-easing-1-20230213/#cubic-bezier-easing-functions
 
+use crate::css::support::failure_classes::NumericFailure;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::value_assertions::first_token as parsed_token;
 use surgeist_css::*;
 
@@ -81,10 +84,7 @@ fn signed_percentage_checks_its_root_and_preserves_rejected_origin() {
         let component = parsed_token(text);
         let origin = component.origin().clone();
         let error = CssSpecifiedPercentage::try_from_component(component).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            &CssNumericConstructionErrorKind::RootDomainMismatch
-        );
+        assert!(error.is_root_domain_mismatch(), "{error:?}");
         assert_eq!(error.origin(), Some(&origin));
     }
     for text in ["-0%", "-1e-999%", "-1e999%"] {
@@ -97,7 +97,7 @@ fn signed_percentage_checks_its_root_and_preserves_rejected_origin() {
         crate::css::support::value_assertions::assert_component_rejected(
             CssSpecifiedNonNegativePercentage::try_from_component,
             CssComponentValue::try_token(text).unwrap(),
-            surgeist_css::CssNumericConstructionErrorKind::OutOfRange,
+            NumericFailure::OutOfRange,
         );
     }
 }
@@ -532,41 +532,32 @@ fn signed_scalar_projection_has_exact_independent_budgets_and_atomic_errors() {
         "-12.5%"
     );
     for (input, projection, bytes, kind) in [
-        (
-            0,
-            1,
-            10,
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
-        ),
-        (
-            1,
-            0,
-            10,
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
-        ),
-        (1, 1, 4, CssSpecifiedValueSerializationErrorKind::ByteLimit),
+        (0, 1, 10, SerializationFailure::InputNodeLimit),
+        (1, 0, 10, SerializationFailure::ProjectionNodeLimit),
+        (1, 1, 4, SerializationFailure::ByteLimit),
     ] {
         assert_eq!(
-            number
-                .serialize_specified(CssSerializationLimits::new(input, projection, bytes))
-                .unwrap_err()
-                .kind(),
+            serialization_failure(
+                &number
+                    .serialize_specified(CssSerializationLimits::new(input, projection, bytes))
+                    .unwrap_err()
+            ),
             kind
         );
         assert_eq!(
-            percentage
-                .serialize_specified(CssSerializationLimits::new(input, projection, bytes))
-                .unwrap_err()
-                .kind(),
+            serialization_failure(
+                &percentage
+                    .serialize_specified(CssSerializationLimits::new(input, projection, bytes))
+                    .unwrap_err()
+            ),
             kind
         );
     }
-    assert_eq!(
+    assert!(
         percentage
             .serialize_specified(CssSerializationLimits::new(1, 1, 5))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(number_spelling(&number), "-12.50");
     assert_eq!(percentage_spelling(&percentage), "-12.50");
@@ -597,30 +588,21 @@ fn shared_signed_number_projection_keeps_cumulative_variation_budgets() {
         expected
     );
     for (input, projection, bytes, kind) in [
-        (
-            3,
-            4,
-            expected.len(),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
-        ),
+        (3, 4, expected.len(), SerializationFailure::InputNodeLimit),
         (
             4,
             3,
             expected.len(),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
-        (
-            4,
-            4,
-            expected.len() - 1,
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
-        ),
+        (4, 4, expected.len() - 1, SerializationFailure::ByteLimit),
     ] {
         assert_eq!(
-            value
-                .serialize_specified(CssSerializationLimits::new(input, projection, bytes))
-                .unwrap_err()
-                .kind(),
+            serialization_failure(
+                &value
+                    .serialize_specified(CssSerializationLimits::new(input, projection, bytes))
+                    .unwrap_err()
+            ),
             kind
         );
     }

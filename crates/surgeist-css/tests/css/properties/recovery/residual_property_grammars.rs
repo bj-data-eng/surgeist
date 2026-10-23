@@ -384,11 +384,14 @@ fn css2_residual_invalid_values_drop_exact_declaration_and_keep_sibling() {
             invalid.len() + 1,
             "{source}",
         );
-        let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-            panic!("{source}: expected property-specific error");
-        };
+        let detail = diagnostic.error();
         assert_eq!(
-            detail.property().canonical_name(),
+            detail.code(),
+            CssErrorCode::InvalidPropertyValue,
+            "{source}: expected property-specific error"
+        );
+        assert_eq!(
+            detail.known_property().unwrap().canonical_name(),
             property.strip_prefix("page-").unwrap_or(property),
             "{source}",
         );
@@ -429,11 +432,10 @@ fn css2_residual_eof_and_non_bmp_recovery_preserve_exact_coordinates() {
         diagnostic.span().end().byte_offset().value(),
         invalid_eof_source.len()
     );
-    assert!(matches!(
-        diagnostic.error().kind(),
-        ErrorKind::InvalidPropertyValue(detail)
-            if detail.property() == CssKnownProperty::Quotes
-    ));
+    assert!(
+        (diagnostic.error().code() == CssErrorCode::InvalidPropertyValue
+            && diagnostic.error().known_property().unwrap() == CssKnownProperty::Quotes)
+    );
 
     let accepted = "--😀: 1; word-spacing: 10%; color: red";
     let accepted_report = parse_style_attribute(accepted);
@@ -497,11 +499,10 @@ fn css2_residual_eof_and_non_bmp_recovery_preserve_exact_coordinates() {
         declaration_end
     );
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    assert!(matches!(
-        diagnostic.error().kind(),
-        ErrorKind::InvalidPropertyValue(detail)
-            if detail.property() == CssKnownProperty::WordSpacing
-    ));
+    assert!(
+        (diagnostic.error().code() == CssErrorCode::InvalidPropertyValue
+            && diagnostic.error().known_property().unwrap() == CssKnownProperty::WordSpacing)
+    );
     assert_eq!(
         report.syntax()[1].known().unwrap().property(),
         CssKnownProperty::Color

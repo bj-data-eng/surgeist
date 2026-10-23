@@ -6,7 +6,7 @@
 
 use crate::css::support::serialization_limits::assert_limits_with_zero as budget;
 use crate::css::support::sole_declaration as declaration;
-use surgeist_css::{CssSerializationLimits as L, CssSpecifiedValueSerializationErrorKind as K, *};
+use surgeist_css::{CssSerializationLimits as L, *};
 
 fn length(text: &str) -> CssSpecifiedLengthPercentage {
     CssSpecifiedLengthPercentage::try_from_component(CssComponentValue::try_token(text).unwrap())
@@ -376,12 +376,11 @@ fn rounding_and_failed_serialization_keep_exact_coefficients_units_and_origins()
     let value = parsed!(source, TextDecorationThickness);
     let before = value.clone();
     check!(&value, 1, 1, "0%");
-    assert_eq!(
+    assert!(
         value
             .serialize_specified(L::new(1, 1, 1))
             .unwrap_err()
-            .kind(),
-        K::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(value, before);
     let CssTextDecorationThickness::Length(retained) = value else {
@@ -405,11 +404,10 @@ fn rounding_and_failed_serialization_keep_exact_coefficients_units_and_origins()
         source[..start].encode_utf16().count()
     );
     let huge = CssTextDecorationThickness::Length(length("1e999px"));
-    assert_eq!(
+    assert!(
         huge.serialize_specified(L::new(1, 1, 16))
             .unwrap_err()
-            .kind(),
-        K::ByteLimit
+            .is_byte_limit()
     );
     let CssTextDecorationThickness::Length(huge) = huge else {
         unreachable!()
@@ -432,12 +430,11 @@ fn a_late_aggregate_failure_returns_no_partial_css_and_does_not_mutate_children(
     );
     let before = value.clone();
     let expected = "underline blink -10px solid currentcolor";
-    assert_eq!(
+    assert!(
         value
             .serialize_specified(L::new(7, 7, expected.len() - 1))
             .unwrap_err()
-            .kind(),
-        K::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(value, before);
     assert_eq!(

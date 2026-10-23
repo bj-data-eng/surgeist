@@ -1,9 +1,10 @@
 //! Reusable Images4 one-dimensional stripes, imported by selected UI4 Outline.
 use crate::specified_rule_serialization::SpecifiedRuleWriter;
 use crate::{
-    CssColor, CssComponentValue, CssComponentValueError, CssComponentValueRef,
+    CssColor, CssComponentValue, CssComponentValueRef, CssImageConstructionError,
     CssLengthPercentageCalculation, CssNumericConstructionError, CssNumericConstructionErrorKind,
     CssSpecifiedFlex, CssSpecifiedNonNegativeLengthPercentage, CssValueOrigin, CssValueTokenRef,
+    ImageConstructionKind,
 };
 
 /// A checked stripe thickness length-percentage. Literal percentages are 0..100;
@@ -120,23 +121,6 @@ impl CssStripeThickness {
             .value_eq(&crate::exact_decimal::LexicalDecimal::new("1"))
     }
 }
-/// Typed checked construction failures retaining original component or numeric provenance.
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssImage1DConstructionError {
-    EmptyStripes,
-    Component(CssComponentValueError),
-    Numeric(CssNumericConstructionError),
-    Grammar(crate::CssPropertyValueParseError),
-    RecoveredComponent(CssValueOrigin),
-    NestingLimit,
-}
-impl std::fmt::Display for CssImage1DConstructionError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "CSS image-1D construction {self:?}")
-    }
-}
-impl std::error::Error for CssImage1DConstructionError {}
 /// A required color and optional thickness, retaining complete original color syntax.
 #[derive(Clone, Debug)]
 pub struct CssStripe {
@@ -154,20 +138,20 @@ impl CssStripe {
     pub fn try_new(
         color: CssComponentValue,
         thickness: Option<CssStripeThickness>,
-    ) -> Result<Self, CssImage1DConstructionError> {
+    ) -> Result<Self, CssImageConstructionError> {
         let values = crate::CssComponentValues::try_new(vec![color.clone()], Default::default())
-            .map_err(CssImage1DConstructionError::Component)?;
+            .map_err(CssImageConstructionError::from)?;
         if let Some(origin) = values.first_implicit_origin() {
-            return Err(CssImage1DConstructionError::RecoveredComponent(
-                origin.clone(),
+            return Err(CssImageConstructionError::new(
+                ImageConstructionKind::RecoveredComponent(origin.clone()),
             ));
         }
         if let Some(origin) = thickness
             .as_ref()
             .and_then(CssStripeThickness::first_implicit_origin)
         {
-            return Err(CssImage1DConstructionError::RecoveredComponent(
-                origin.clone(),
+            return Err(CssImageConstructionError::new(
+                ImageConstructionKind::RecoveredComponent(origin.clone()),
             ));
         }
         Self::check_component_depth(&values, thickness.as_ref())?;
@@ -189,23 +173,25 @@ impl CssStripe {
             thickness,
         }
     }
-    fn check_depth(&self) -> Result<(), CssImage1DConstructionError> {
+    fn check_depth(&self) -> Result<(), CssImageConstructionError> {
         let color = crate::CssComponentValues::try_new(
             vec![self.color_component.clone()],
             Default::default(),
         )
-        .map_err(CssImage1DConstructionError::Component)?;
+        .map_err(CssImageConstructionError::from)?;
         Self::check_component_depth(&color, self.thickness.as_ref())
     }
     fn check_component_depth(
         color: &crate::CssComponentValues,
         thickness: Option<&CssStripeThickness>,
-    ) -> Result<(), CssImage1DConstructionError> {
+    ) -> Result<(), CssImageConstructionError> {
         let depth = color
             .nesting_depth()
             .max(thickness.map_or(0, CssStripeThickness::nesting_depth));
         if depth >= crate::STRUCTURAL_NESTING_LIMIT {
-            return Err(CssImage1DConstructionError::NestingLimit);
+            return Err(CssImageConstructionError::new(
+                ImageConstructionKind::NestingLimit,
+            ));
         }
         Ok(())
     }
@@ -234,9 +220,11 @@ impl PartialEq for CssStripes {
     }
 }
 impl CssStripes {
-    pub fn try_new(stripes: Vec<CssStripe>) -> Result<Self, CssImage1DConstructionError> {
+    pub fn try_new(stripes: Vec<CssStripe>) -> Result<Self, CssImageConstructionError> {
         if stripes.is_empty() {
-            return Err(CssImage1DConstructionError::EmptyStripes);
+            return Err(CssImageConstructionError::new(
+                ImageConstructionKind::EmptyStripes,
+            ));
         }
         for stripe in &stripes {
             stripe.check_depth()?;
@@ -244,10 +232,10 @@ impl CssStripes {
                 vec![stripe.color_component.clone()],
                 Default::default(),
             )
-            .map_err(CssImage1DConstructionError::Component)?;
+            .map_err(CssImageConstructionError::from)?;
             if let Some(origin) = values.first_implicit_origin() {
-                return Err(CssImage1DConstructionError::RecoveredComponent(
-                    origin.clone(),
+                return Err(CssImageConstructionError::new(
+                    ImageConstructionKind::RecoveredComponent(origin.clone()),
                 ));
             }
             if let Some(origin) = stripe
@@ -255,8 +243,8 @@ impl CssStripes {
                 .as_ref()
                 .and_then(CssStripeThickness::first_implicit_origin)
             {
-                return Err(CssImage1DConstructionError::RecoveredComponent(
-                    origin.clone(),
+                return Err(CssImageConstructionError::new(
+                    ImageConstructionKind::RecoveredComponent(origin.clone()),
                 ));
             }
         }
@@ -294,10 +282,10 @@ impl CssImage1D {
     /// Checks the reusable image-1D grammar from closed original components.
     pub fn try_from_components(
         values: crate::CssComponentValues,
-    ) -> Result<Self, CssImage1DConstructionError> {
+    ) -> Result<Self, CssImageConstructionError> {
         if let Some(origin) = values.first_implicit_origin() {
-            return Err(CssImage1DConstructionError::RecoveredComponent(
-                origin.clone(),
+            return Err(CssImageConstructionError::new(
+                ImageConstructionKind::RecoveredComponent(origin.clone()),
             ));
         }
         crate::parser::image_1d::checked_image(&values)

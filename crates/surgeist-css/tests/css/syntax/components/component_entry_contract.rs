@@ -3,12 +3,13 @@
 use crate::css::support::authored_syntax::{
     assert_span_bytes as span, assert_strict_rejection, parsed_origin as parsed,
 };
+use crate::css::support::failure_classes::ComponentFailure;
+use crate::css::support::failure_classes::component_failure;
 use surgeist_css::{
-    CssBlockKind, CssComponentValue, CssComponentValueErrorKind, CssComponentValueLimits,
-    CssComponentValueRef, CssErrorCode, CssRecoveryAction, CssRecoveryDiagnostic, CssValueOrigin,
-    CssValueTokenRef, ErrorKind, parse_comma_separated_component_values,
-    parse_comma_separated_component_values_with_limits, parse_component_value,
-    parse_component_value_with_limits,
+    CssBlockKind, CssComponentValue, CssComponentValueLimits, CssComponentValueRef, CssErrorCode,
+    CssRecoveryAction, CssRecoveryDiagnostic, CssValueOrigin, CssValueTokenRef,
+    parse_comma_separated_component_values, parse_comma_separated_component_values_with_limits,
+    parse_component_value, parse_component_value_with_limits,
 };
 
 fn origin(origin: &CssValueOrigin, source: &str, range: std::ops::Range<usize>) {
@@ -19,7 +20,7 @@ fn origin(origin: &CssValueOrigin, source: &str, range: std::ops::Range<usize>) 
 fn lexical(
     diagnostic: &CssRecoveryDiagnostic,
     source: &str,
-    kind: CssComponentValueErrorKind,
+    kind: ComponentFailure,
     responsible: std::ops::Range<usize>,
     unit: std::ops::Range<usize>,
 ) {
@@ -28,10 +29,10 @@ fn lexical(
         diagnostic.error().code(),
         CssErrorCode::InvalidComponentValue
     );
-    let ErrorKind::InvalidComponentValue(detail) = diagnostic.error().kind() else {
+    let Some(detail) = diagnostic.error().component_error() else {
         panic!("typed component failure")
     };
-    assert_eq!(detail.kind(), kind);
+    assert_eq!(component_failure(detail), kind);
     origin(detail.origin(), source, responsible.clone());
     assert_eq!(
         diagnostic.error().position().byte_offset().value(),
@@ -118,7 +119,7 @@ fn singular_empty_or_trivia_only_input_rejects_at_real_eof() {
         lexical(
             diagnostic,
             source,
-            CssComponentValueErrorKind::EmptyInput,
+            ComponentFailure::EmptyInput,
             source.len()..source.len(),
             0..source.len(),
         );
@@ -140,7 +141,7 @@ fn singular_extra_component_rejects_the_whole_fragment_at_first_extra_component(
         lexical(
             diagnostic,
             source,
-            CssComponentValueErrorKind::TrailingInput,
+            ComponentFailure::TrailingInput,
             extra,
             0..source.len(),
         );
@@ -150,28 +151,12 @@ fn singular_extra_component_rejects_the_whole_fragment_at_first_extra_component(
 #[test]
 fn singular_checked_admission_rejects_raw_bad_tokens_and_unmatched_closers() {
     for (source, kind, responsible) in [
-        ("url(a b)", CssComponentValueErrorKind::BadUrl, 0..8),
-        ("\"bad\n", CssComponentValueErrorKind::BadString, 0..4),
-        (
-            "]",
-            CssComponentValueErrorKind::UnmatchedClosingDelimiter,
-            0..1,
-        ),
-        (
-            ")",
-            CssComponentValueErrorKind::UnmatchedClosingDelimiter,
-            0..1,
-        ),
-        (
-            "}",
-            CssComponentValueErrorKind::UnmatchedClosingDelimiter,
-            0..1,
-        ),
-        (
-            "f([)])",
-            CssComponentValueErrorKind::UnmatchedClosingDelimiter,
-            3..4,
-        ),
+        ("url(a b)", ComponentFailure::BadUrl, 0..8),
+        ("\"bad\n", ComponentFailure::BadString, 0..4),
+        ("]", ComponentFailure::UnmatchedClosingDelimiter, 0..1),
+        (")", ComponentFailure::UnmatchedClosingDelimiter, 0..1),
+        ("}", ComponentFailure::UnmatchedClosingDelimiter, 0..1),
+        ("f([)])", ComponentFailure::UnmatchedClosingDelimiter, 3..4),
     ] {
         let report = parse_component_value(source);
         assert!(report.syntax().is_none());
@@ -322,13 +307,7 @@ fn raw_comma_member_failure_preserves_later_slots_and_original_responsible_span(
     let [diagnostic] = report.diagnostics() else {
         panic!("one bad member diagnostic")
     };
-    lexical(
-        diagnostic,
-        source,
-        CssComponentValueErrorKind::BadUrl,
-        3..11,
-        2..12,
-    );
+    lexical(diagnostic, source, ComponentFailure::BadUrl, 3..11, 2..12);
     assert!(report.into_validation_result().is_err());
     let source = "] ,a,\"bad\n,z";
     let report = parse_comma_separated_component_values(source);
@@ -343,17 +322,11 @@ fn raw_comma_member_failure_preserves_later_slots_and_original_responsible_span(
     lexical(
         closer,
         source,
-        CssComponentValueErrorKind::UnmatchedClosingDelimiter,
+        ComponentFailure::UnmatchedClosingDelimiter,
         0..1,
         0..2,
     );
-    lexical(
-        bad_string,
-        source,
-        CssComponentValueErrorKind::BadString,
-        5..9,
-        5..10,
-    );
+    lexical(bad_string, source, ComponentFailure::BadString, 5..9, 5..10);
 }
 
 #[test]
@@ -394,17 +367,17 @@ fn explicit_limits_charge_whole_original_input_and_fail_atomically_before_slot_p
         (
             "a,b",
             CssComponentValueLimits::try_new(0, 2, 100).unwrap(),
-            CssComponentValueErrorKind::ComponentLimit,
+            ComponentFailure::ComponentLimit,
         ),
         (
             "a,b",
             CssComponentValueLimits::try_new(0, 100, 2).unwrap(),
-            CssComponentValueErrorKind::ByteLimit,
+            ComponentFailure::ByteLimit,
         ),
         (
             "a,f(x)",
             CssComponentValueLimits::try_new(0, 100, 100).unwrap(),
-            CssComponentValueErrorKind::NestingLimit,
+            ComponentFailure::NestingLimit,
         ),
     ] {
         let report = parse_comma_separated_component_values_with_limits(source, limits);
@@ -415,11 +388,11 @@ fn explicit_limits_charge_whole_original_input_and_fail_atomically_before_slot_p
         let [diagnostic] = report.diagnostics() else {
             panic!("one atomic resource failure")
         };
-        let ErrorKind::InvalidComponentValue(detail) = diagnostic.error().kind() else {
+        let Some(detail) = diagnostic.error().component_error() else {
             panic!("typed original resource error")
         };
-        assert_eq!(detail.kind(), expected);
-        if expected == CssComponentValueErrorKind::ByteLimit {
+        assert_eq!(component_failure(detail), expected);
+        if expected == ComponentFailure::ByteLimit {
             assert_eq!(
                 detail.origin(),
                 &CssValueOrigin::UnretainedInput {
@@ -429,10 +402,10 @@ fn explicit_limits_charge_whole_original_input_and_fail_atomically_before_slot_p
             assert_eq!(diagnostic.error().position().byte_offset().value(), 0);
         } else {
             let responsible = match (source, expected) {
-                ("a,b", CssComponentValueErrorKind::ComponentLimit)
-                | (" a ", CssComponentValueErrorKind::ComponentLimit) => 2..3,
-                ("a,f(x)", CssComponentValueErrorKind::NestingLimit) => 2..4,
-                ("f(x)", CssComponentValueErrorKind::NestingLimit) => 0..2,
+                ("a,b", ComponentFailure::ComponentLimit)
+                | (" a ", ComponentFailure::ComponentLimit) => 2..3,
+                ("a,f(x)", ComponentFailure::NestingLimit) => 2..4,
+                ("f(x)", ComponentFailure::NestingLimit) => 0..2,
                 _ => panic!("literal selected limit stimulus"),
             };
             origin(detail.origin(), source, responsible.clone());
@@ -443,7 +416,7 @@ fn explicit_limits_charge_whole_original_input_and_fail_atomically_before_slot_p
         }
         assert_eq!(
             diagnostic.action(),
-            if expected == CssComponentValueErrorKind::NestingLimit {
+            if expected == ComponentFailure::NestingLimit {
                 CssRecoveryAction::StopAtNestingLimit
             } else {
                 CssRecoveryAction::RejectInput
@@ -459,17 +432,17 @@ fn explicit_limits_charge_whole_original_input_and_fail_atomically_before_slot_p
         (
             " a ",
             CssComponentValueLimits::try_new(0, 2, 100).unwrap(),
-            CssComponentValueErrorKind::ComponentLimit,
+            ComponentFailure::ComponentLimit,
         ),
         (
             " a ",
             CssComponentValueLimits::try_new(0, 100, 2).unwrap(),
-            CssComponentValueErrorKind::ByteLimit,
+            ComponentFailure::ByteLimit,
         ),
         (
             "f(x)",
             CssComponentValueLimits::try_new(0, 100, 100).unwrap(),
-            CssComponentValueErrorKind::NestingLimit,
+            ComponentFailure::NestingLimit,
         ),
     ] {
         let report = parse_component_value_with_limits(source, limits);
@@ -480,11 +453,11 @@ fn explicit_limits_charge_whole_original_input_and_fail_atomically_before_slot_p
         let [diagnostic] = report.diagnostics() else {
             panic!("one resource failure")
         };
-        let ErrorKind::InvalidComponentValue(detail) = diagnostic.error().kind() else {
+        let Some(detail) = diagnostic.error().component_error() else {
             panic!("typed resource error")
         };
-        assert_eq!(detail.kind(), expected);
-        if expected == CssComponentValueErrorKind::ByteLimit {
+        assert_eq!(component_failure(detail), expected);
+        if expected == ComponentFailure::ByteLimit {
             assert_eq!(
                 detail.origin(),
                 &CssValueOrigin::UnretainedInput {
@@ -494,10 +467,10 @@ fn explicit_limits_charge_whole_original_input_and_fail_atomically_before_slot_p
             assert_eq!(diagnostic.error().position().byte_offset().value(), 0);
         } else {
             let responsible = match (source, expected) {
-                ("a,b", CssComponentValueErrorKind::ComponentLimit)
-                | (" a ", CssComponentValueErrorKind::ComponentLimit) => 2..3,
-                ("a,f(x)", CssComponentValueErrorKind::NestingLimit) => 2..4,
-                ("f(x)", CssComponentValueErrorKind::NestingLimit) => 0..2,
+                ("a,b", ComponentFailure::ComponentLimit)
+                | (" a ", ComponentFailure::ComponentLimit) => 2..3,
+                ("a,f(x)", ComponentFailure::NestingLimit) => 2..4,
+                ("f(x)", ComponentFailure::NestingLimit) => 0..2,
                 _ => panic!("literal selected limit stimulus"),
             };
             origin(detail.origin(), source, responsible.clone());
@@ -508,7 +481,7 @@ fn explicit_limits_charge_whole_original_input_and_fail_atomically_before_slot_p
         }
         assert_eq!(
             diagnostic.action(),
-            if expected == CssComponentValueErrorKind::NestingLimit {
+            if expected == ComponentFailure::NestingLimit {
                 CssRecoveryAction::StopAtNestingLimit
             } else {
                 CssRecoveryAction::RejectInput
@@ -549,10 +522,10 @@ fn generated_implicit_closers_and_root_separators_share_one_aggregate_byte_budge
         let [diagnostic] = report.diagnostics() else {
             panic!("atomic generated-byte resource failure")
         };
-        let ErrorKind::InvalidComponentValue(detail) = diagnostic.error().kind() else {
+        let Some(detail) = diagnostic.error().component_error() else {
             panic!("typed canonical byte bound")
         };
-        assert_eq!(detail.kind(), CssComponentValueErrorKind::ByteLimit);
+        assert!(detail.is_byte_limit(), "{detail:?}");
         let CssValueOrigin::ImplicitClosure { opening, at } = detail.origin() else {
             panic!("the actual first over-budget generated closer")
         };
@@ -626,10 +599,10 @@ fn default_and_explicit_depth_limits_preserve_the_public_256_level_ceiling() {
         let [diagnostic] = report.diagnostics() else {
             panic!("one global depth admission failure")
         };
-        let ErrorKind::InvalidComponentValue(detail) = diagnostic.error().kind() else {
+        let Some(detail) = diagnostic.error().component_error() else {
             panic!("typed depth failure")
         };
-        assert_eq!(detail.kind(), CssComponentValueErrorKind::NestingLimit);
+        assert!(detail.is_nesting_limit(), "{detail:?}");
         origin(detail.origin(), &source, 512..514);
         assert_eq!(diagnostic.error().position().byte_offset().value(), 512);
         assert_eq!(diagnostic.action(), CssRecoveryAction::StopAtNestingLimit);

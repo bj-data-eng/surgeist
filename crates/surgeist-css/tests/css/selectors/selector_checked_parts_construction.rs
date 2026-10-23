@@ -3,18 +3,17 @@
 //! use the selected authored grammar and independently computed output tariffs.
 
 use crate::css::support::color_and_selector_fixtures::assert_specified_construction_cause as specified_cause;
+use crate::css::support::failure_classes::SerializationFailure as Kind;
 use crate::css::support::validated_selector_in as parsed;
 use surgeist_css::{
     CssAttributeCaseSensitivity as Case, CssAttributeMatcher as Matcher, CssAttributeName,
     CssAttributeSelector, CssComplexSelector, CssComplexSelectorPart, CssComponentValueError,
-    CssComponentValueErrorKind, CssCompoundSelector, CssCompoundSelectorArgument, CssIdent,
-    CssNamespaceConstraint, CssNamespaceContext, CssNamespaceName, CssNamespacePrefix,
-    CssNthChildPattern, CssNthPattern, CssPseudoClass, CssPseudoSelectorList,
-    CssQualifiedAttributeName, CssQualifiedNameError, CssQualifiedNamePrefix as Prefix,
-    CssQualifiedSelectorName, CssRelativeSelector, CssRelativeSelectorList, CssSelector,
-    CssSelectorCombinator as Combinator, CssSelectorConstructionErrorKind as ConstructionKind,
-    CssSerializationLimits as Limits, CssSimpleSelector as Simple,
-    CssSpecifiedValueSerializationErrorKind as Kind, CssValueOrigin,
+    CssCompoundSelector, CssCompoundSelectorArgument, CssIdent, CssNamespaceConstraint,
+    CssNamespaceContext, CssNamespaceName, CssNamespacePrefix, CssNthChildPattern, CssNthPattern,
+    CssPseudoClass, CssPseudoSelectorList, CssQualifiedAttributeName,
+    CssQualifiedNamePrefix as Prefix, CssQualifiedSelectorName, CssRelativeSelector,
+    CssRelativeSelectorList, CssSelector, CssSelectorCombinator as Combinator,
+    CssSerializationLimits as Limits, CssSimpleSelector as Simple, CssValueOrigin,
 };
 
 fn ident(value: &str) -> CssIdent {
@@ -220,8 +219,9 @@ fn qualified_composition_preserves_namespaces_case_and_universal_identity() {
             CssAttributeName::try_new("A").unwrap(),
             &context
         )
-        .unwrap_err(),
-        CssQualifiedNameError::UndeclaredNamespacePrefix(missing)
+        .unwrap_err()
+        .undeclared_namespace_prefix(),
+        Some(&missing)
     );
 }
 
@@ -231,7 +231,7 @@ fn attribute_modifier_and_nul_failures_keep_typed_programmatic_causes() {
         let error =
             CssAttributeSelector::try_new(name(), Matcher::Exists, case, Limits::new(0, 0, 0))
                 .unwrap_err();
-        assert_eq!(error.kind(), &ConstructionKind::ModifierWithoutValue);
+        assert!(error.is_modifier_without_value(), "{error:?}");
         assert!(std::error::Error::source(&error).is_none());
     }
     for matcher in [
@@ -249,10 +249,10 @@ fn attribute_modifier_and_nul_failures_keep_typed_programmatic_causes() {
             Default::default(),
         )
         .unwrap_err();
-        let ConstructionKind::InvalidAttributeValue(cause) = error.kind() else {
+        let Some(cause) = error.attribute_value_error() else {
             panic!("decoded attribute string cause: {error:?}");
         };
-        assert_eq!(cause.kind(), CssComponentValueErrorKind::InvalidString);
+        assert!(cause.is_invalid_string(), "{cause:?}");
         assert_eq!(cause.origin(), &CssValueOrigin::Programmatic);
         assert_eq!(
             std::error::Error::source(&error)
@@ -325,7 +325,7 @@ fn attribute_limits_charge_one_node_and_exact_utf8_output_atomically() {
 #[test]
 fn compound_rejects_empty_duplicate_and_misplaced_type_members() {
     let error = CssCompoundSelector::try_new(Vec::new(), Limits::new(0, 0, 0)).unwrap_err();
-    assert_eq!(error.kind(), &ConstructionKind::EmptyCompound);
+    assert!(error.is_empty_compound(), "{error:?}");
     let name = CssQualifiedSelectorName::try_new(
         Prefix::Unqualified,
         ident("Leaf"),
@@ -351,10 +351,7 @@ fn compound_rejects_empty_duplicate_and_misplaced_type_members() {
         ),
     ] {
         let error = CssCompoundSelector::try_new(members, Limits::new(0, 0, 0)).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            &ConstructionKind::InvalidTypePosition { member_index }
-        );
+        assert_eq!(error.invalid_type_position(), Some(member_index));
         assert!(std::error::Error::source(&error).is_none());
     }
 }
@@ -648,7 +645,7 @@ fn valid_terminal_part_is_rechecked_when_placed_before_a_following_compound() {
     let error =
         CssComplexSelector::try_new(parsed.first().clone(), Vec::new(), Limits::new(0, 0, 0))
             .unwrap_err();
-    assert_eq!(error.kind(), &ConstructionKind::EmptyComplexRest);
+    assert!(error.is_empty_complex_rest(), "{error:?}");
     let following =
         CssComplexSelectorPart::try_new(Combinator::Child, compound("C"), Default::default())
             .unwrap();
@@ -658,20 +655,14 @@ fn valid_terminal_part_is_rechecked_when_placed_before_a_following_compound() {
         Limits::new(0, 0, 0),
     )
     .unwrap_err();
-    assert_eq!(
-        error.kind(),
-        &ConstructionKind::NonTerminalPseudoElement { compound_index: 0 }
-    );
+    assert_eq!(error.non_terminal_pseudo_element(), Some(0));
     let error = CssComplexSelector::try_new(
         parsed.first().clone(),
         vec![terminal, following],
         Limits::new(0, 0, 0),
     )
     .unwrap_err();
-    assert_eq!(
-        error.kind(),
-        &ConstructionKind::NonTerminalPseudoElement { compound_index: 1 }
-    );
+    assert_eq!(error.non_terminal_pseudo_element(), Some(1));
     assert!(std::error::Error::source(&error).is_none());
 }
 

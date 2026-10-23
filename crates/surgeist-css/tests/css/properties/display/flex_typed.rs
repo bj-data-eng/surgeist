@@ -1,5 +1,7 @@
 //! Public checked flex construction and intrinsic specified-value behavior.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::*;
 
 fn one_component(text: &str) -> CssComponentValue {
@@ -113,7 +115,7 @@ fn checked_factors_preserve_exact_lexical_numbers_and_symbolic_math() {
             CssComponentValue::try_number(text).unwrap(),
         )
         .unwrap_err();
-        assert_eq!(error.kind(), &CssNumericConstructionErrorKind::OutOfRange);
+        assert!(error.is_out_of_range(), "{error:?}");
     }
     let math = CssNumberCalculation::try_from_components(
         parse_component_values("calc(1 + 2)").unwrap(),
@@ -197,10 +199,7 @@ fn content_calc_size_is_flex_valid_and_box_invalid_at_the_offending_basis() {
         }
         .clone();
         let error = CssBoxCalcSize::try_from(calc).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            &CssNumericConstructionErrorKind::InvalidArgumentType
-        );
+        assert!(error.is_invalid_argument_type(), "{error:?}");
         assert_eq!(error.origin(), Some(&expected_origin));
     }
 
@@ -211,10 +210,7 @@ fn content_calc_size_is_flex_valid_and_box_invalid_at_the_offending_basis() {
     .unwrap();
     let calc = CssCalcSize::try_from_component(constructed, Default::default()).unwrap();
     let error = CssBoxCalcSize::try_from(calc.clone()).unwrap_err();
-    assert_eq!(
-        error.kind(),
-        &CssNumericConstructionErrorKind::InvalidArgumentType
-    );
+    assert!(error.is_invalid_argument_type(), "{error:?}");
     assert_eq!(error.origin(), Some(calc.basis_origin()));
     assert!(matches!(error.origin(), Some(CssValueOrigin::Parsed(_))));
 
@@ -224,11 +220,10 @@ fn content_calc_size_is_flex_valid_and_box_invalid_at_the_offending_basis() {
     )
     .unwrap();
     let box_value = CssBoxCalcSize::try_from(nested_auto).unwrap();
-    assert_eq!(
+    assert!(
         CssMaxSizeValue::try_box_size(CssBoxSize::CalcSize(box_value))
             .unwrap_err()
-            .kind(),
-        &CssNumericConstructionErrorKind::InvalidArgumentType
+            .is_invalid_argument_type()
     );
 }
 
@@ -408,18 +403,21 @@ fn flex_serialization_uses_one_shared_resource_budget() {
     for (limits, kind) in [
         (
             CssSerializationLimits::new(1, 100, 1000),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(100, 1, 1000),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(100, 100, 8),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
-        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+            kind
+        );
     }
     assert!(
         value
@@ -457,13 +455,13 @@ fn global_and_pending_flex_declarations_keep_all_three_contributions() {
     let CssExpansion::Pending(pending) = expand_declaration(&report.syntax()[0]).unwrap() else {
         panic!("pending flex")
     };
-    assert!(matches!(
+    assert!(
         pending
             .reenter(parse_component_values("2 content 3").unwrap())
             .unwrap_err()
-            .kind(),
-        CssExpansionErrorKind::InvalidReplacement(_)
-    ));
+            .replacement_error()
+            .is_some()
+    );
     let replacement = parse_component_values("10px 2 3").unwrap();
     let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap() else {
         panic!("reentered flex")
@@ -551,13 +549,7 @@ fn normalization_preserves_mixed_flex_occurrence_order_and_rejects_member_limit(
 
     let limits = CssNormalizationLimits::try_new(256, usize::MAX, usize::MAX, 3).unwrap();
     let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
-    assert!(matches!(
-        error.kind(),
-        CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: 3
-        }
-    ));
+    assert!(error.exhausted_limit() == Some((CssNormalizationResource::Contributions, 3)));
     assert_eq!(
         error.declaration().unwrap().known().unwrap().property(),
         CssKnownProperty::Flex

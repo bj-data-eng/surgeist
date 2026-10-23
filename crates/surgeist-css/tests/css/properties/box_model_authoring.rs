@@ -16,19 +16,19 @@ fn assert_percentage_literal(component: &CssComponentValue, expected_number: &st
 #[test]
 fn rejects_padding_auto() {
     let error = parse_sheet(".panel { padding: auto; }").expect_err("rejected parse report");
-    assert!(matches!(error.kind(), ErrorKind::InvalidPropertyValue(_)));
+    assert!(error.code() == CssErrorCode::InvalidPropertyValue);
 }
 
 #[test]
 fn rejects_border_width_percent() {
     let error = parse_sheet(".panel { border-width: 10%; }").expect_err("rejected parse report");
-    assert!(matches!(error.kind(), ErrorKind::InvalidPropertyValue(_)));
+    assert!(error.code() == CssErrorCode::InvalidPropertyValue);
 }
 
 #[test]
 fn rejects_gap_auto() {
     let error = parse_sheet(".panel { gap: auto; }").expect_err("rejected parse report");
-    assert!(matches!(error.kind(), ErrorKind::InvalidPropertyValue(_)));
+    assert!(error.code() == CssErrorCode::InvalidPropertyValue);
 }
 
 #[test]
@@ -579,7 +579,7 @@ fn non_negative_box_model_properties_reject_negative_lengths() {
         ".panel { box-shadow: 1px 2px -3px; }",
     ] {
         let error = parse_sheet(input).expect_err(input);
-        assert!(matches!(error.kind(), ErrorKind::InvalidPropertyValue(_)));
+        assert!(error.code() == CssErrorCode::InvalidPropertyValue);
     }
 }
 

@@ -5,35 +5,12 @@ use std::{cell::RefCell, sync::Arc};
 
 use crate::{CssComponentValueLimits, CssUtf16InputLimits};
 
-/// A language rejection after successful finite CSS input admission.
-#[derive(Debug)]
-pub enum CssPropertyValueSyntaxError {
-    Component(crate::CssComponentValueError),
-    Property(crate::CssPropertyValueParseError),
-}
-impl std::fmt::Display for CssPropertyValueSyntaxError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Component(error) => std::fmt::Display::fmt(error, formatter),
-            Self::Property(error) => std::fmt::Display::fmt(error, formatter),
-        }
-    }
-}
-impl std::error::Error for CssPropertyValueSyntaxError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::Component(error) => Some(error),
-            Self::Property(error) => Some(error),
-        }
-    }
-}
-
 /// One complete original UTF16 input and its checked authored color-scheme
 /// declaration. Global and substitution-dependent values remain symbolic.
 #[derive(Debug)]
 pub struct CssColorSchemeParseReport {
     source: crate::CssParseSource,
-    result: Result<crate::CssDeclaration, CssPropertyValueSyntaxError>,
+    result: Result<crate::CssDeclaration, crate::CssPropertyValueError>,
     retained: CssUtf16ValueStorage,
 }
 impl CssColorSchemeParseReport {
@@ -41,7 +18,7 @@ impl CssColorSchemeParseReport {
     pub const fn source(&self) -> &crate::CssParseSource {
         &self.source
     }
-    pub const fn result(&self) -> &Result<crate::CssDeclaration, CssPropertyValueSyntaxError> {
+    pub const fn result(&self) -> &Result<crate::CssDeclaration, crate::CssPropertyValueError> {
         &self.result
     }
     /// Exact immutable producer receipt, including the original Vec capacity,
@@ -58,32 +35,32 @@ impl CssColorSchemeParseReport {
         other: &Self,
         mut admit: impl FnMut() -> Result<(), E>,
     ) -> Result<bool, crate::CssRetainedPayloadError<E>> {
-        use crate::CssRetainedPayloadError::Admission;
-        admit().map_err(Admission)?;
+        use crate::CssRetainedPayloadError;
+        admit().map_err(CssRetainedPayloadError::admission)?;
         if self.source.context() != other.source.context() {
             return Ok(false);
         }
-        admit().map_err(Admission)?;
+        admit().map_err(CssRetainedPayloadError::admission)?;
         let left = self.source.source().original_utf16().expect("UTF16 report");
-        admit().map_err(Admission)?;
+        admit().map_err(CssRetainedPayloadError::admission)?;
         let right = other
             .source
             .source()
             .original_utf16()
             .expect("UTF16 report");
-        admit().map_err(Admission)?;
+        admit().map_err(CssRetainedPayloadError::admission)?;
         if left.len() != right.len() {
             return Ok(false);
         }
         for index in 0..left.len() {
-            admit().map_err(Admission)?;
+            admit().map_err(CssRetainedPayloadError::admission)?;
             let a = left[index];
-            admit().map_err(Admission)?;
+            admit().map_err(CssRetainedPayloadError::admission)?;
             if a != right[index] {
                 return Ok(false);
             }
         }
-        admit().map_err(Admission)?;
+        admit().map_err(CssRetainedPayloadError::admission)?;
         match (&self.result, &other.result) {
             (Ok(left), Ok(right)) => {
                 if !crate::component_values::equivalent_in_same_input_with(
@@ -99,14 +76,7 @@ impl CssColorSchemeParseReport {
             // language owner over the complete equal input/context above.
             // Their source occurrences differ, but their checked rejection is
             // the same. No consumer-supplied diagnostic can enter this report.
-            (
-                Err(CssPropertyValueSyntaxError::Component(left)),
-                Err(CssPropertyValueSyntaxError::Component(right)),
-            ) => Ok(left.kind() == right.kind()),
-            (
-                Err(CssPropertyValueSyntaxError::Property(_)),
-                Err(CssPropertyValueSyntaxError::Property(_)),
-            ) => Ok(true),
+            (Err(left), Err(right)) => Ok(left.admission_kind() == right.admission_kind()),
             _ => Ok(false),
         }
     }
@@ -128,15 +98,15 @@ fn text_equal<E>(
     right: &str,
     admit: &mut impl FnMut() -> Result<(), E>,
 ) -> Result<bool, crate::CssRetainedPayloadError<E>> {
-    use crate::CssRetainedPayloadError::Admission;
-    admit().map_err(Admission)?;
+    use crate::CssRetainedPayloadError;
+    admit().map_err(CssRetainedPayloadError::admission)?;
     if left.len() != right.len() {
         return Ok(false);
     }
     for index in 0..left.len() {
-        admit().map_err(Admission)?;
+        admit().map_err(CssRetainedPayloadError::admission)?;
         let a = left.as_bytes()[index];
-        admit().map_err(Admission)?;
+        admit().map_err(CssRetainedPayloadError::admission)?;
         if a != right.as_bytes()[index] {
             return Ok(false);
         }
@@ -151,11 +121,11 @@ fn equivalent_bodies<E>(
 ) -> Result<bool, crate::CssRetainedPayloadError<E>> {
     use crate::{
         CssKnownDeclaredValueRef as Value, CssKnownPropertyValueRef as Property,
-        CssRetainedPayloadError::Admission,
+        CssRetainedPayloadError,
     };
-    admit().map_err(Admission)?;
+    admit().map_err(CssRetainedPayloadError::admission)?;
     let left = left.known().expect("checked color-scheme");
-    admit().map_err(Admission)?;
+    admit().map_err(CssRetainedPayloadError::admission)?;
     let right = right.known().expect("checked color-scheme");
     match (left.declared_value(), right.declared_value()) {
         (Value::Global(a), Value::Global(b)) => Ok(a == b),
@@ -166,14 +136,14 @@ fn equivalent_bodies<E>(
             if !text_equal(a.as_css(), b.as_css(), admit)? {
                 return Ok(false);
             }
-            admit().map_err(Admission)?;
+            admit().map_err(CssRetainedPayloadError::admission)?;
             if a.value().only() != b.value().only()
                 || a.value().schemes().len() != b.value().schemes().len()
             {
                 return Ok(false);
             }
             for (a, b) in a.value().schemes().iter().zip(b.value().schemes()) {
-                admit().map_err(Admission)?;
+                admit().map_err(CssRetainedPayloadError::admission)?;
                 match (a, b) {
                     (crate::CssColorSchemeKeyword::Light, crate::CssColorSchemeKeyword::Light)
                     | (crate::CssColorSchemeKeyword::Dark, crate::CssColorSchemeKeyword::Dark) => {}
@@ -231,7 +201,7 @@ impl crate::CssParserContext {
             + size_of::<CssColorSchemeParseReport>();
         let outcome = if control.add(fixed).is_err() {
             drop(original);
-            Err(crate::CssUtf16InputError::Interrupted(()))
+            Err(crate::CssUtf16InputError::interrupted(()))
         } else {
             parse_operation(self, original, limits, &control)
         };
@@ -239,7 +209,7 @@ impl crate::CssParserContext {
         let outcome = match outcome {
             Ok(report) => match control.transfer(report.retained) {
                 Ok(()) => Ok(report),
-                Err(()) => Err(crate::CssUtf16InputError::Interrupted(())),
+                Err(()) => Err(crate::CssUtf16InputError::interrupted(())),
             },
             Err(error) => Err(error),
         };
@@ -255,20 +225,14 @@ impl crate::CssParserContext {
             Err(error) => {
                 use crate::CssUtf16InputError as Error;
                 match failure {
-                    Some(Failure::Admission) => Err(Error::Interrupted(
+                    Some(Failure::Admission) => Err(Error::interrupted(
                         cause.borrow_mut().take().expect("original admission error"),
                     )),
-                    Some(Failure::Limit(resource)) => Err(Error::Limit(resource)),
-                    Some(Failure::Allocation) => Err(Error::Allocation),
-                    Some(Failure::CapacityOverflow) => Err(Error::CapacityOverflow),
-                    None => Err(match error {
-                        Error::Limit(value) => Error::Limit(value),
-                        Error::Allocation => Error::Allocation,
-                        Error::CapacityOverflow => Error::CapacityOverflow,
-                        Error::Interrupted(()) => {
-                            unreachable!("controlled interruption is latched")
-                        }
-                    }),
+                    Some(Failure::Limit(resource)) => Err(Error::limit(resource)),
+                    Some(Failure::Allocation) => Err(Error::allocation()),
+                    Some(Failure::CapacityOverflow) => Err(Error::capacity_overflow()),
+                    None => Err(error
+                        .map_interruption(|()| unreachable!("controlled interruption is latched"))),
                 }
             }
         }
@@ -282,7 +246,7 @@ fn parse_operation(
     control: &Control<'_>,
 ) -> Result<CssColorSchemeParseReport, crate::CssUtf16InputError<()>> {
     use crate::CssUtf16InputError as Error;
-    let refused = |()| Error::Interrupted(());
+    let refused = |()| Error::interrupted(());
     let baseline = control.live().bytes;
     let source = crate::utf16_input::prepare_utf16(
         original,
@@ -300,10 +264,10 @@ fn parse_operation(
         match crate::component_values::parse_controlled_snapshot(&source, limits.syntax, control) {
             Err(error) => {
                 if control.failure().is_some() {
-                    return Err(Error::Interrupted(()));
+                    return Err(Error::interrupted(()));
                 }
-                control.component_resource(error.kind()).map_err(refused)?;
-                Err(CssPropertyValueSyntaxError::Component(error))
+                control.component_resource(error.kind).map_err(refused)?;
+                Err(crate::CssPropertyValueError::admission(error))
             }
             Ok(components) => {
                 match crate::parser::parse_color_scheme_value_controlled(
@@ -314,7 +278,7 @@ fn parse_operation(
                 )
                 .map_err(refused)?
                 {
-                    Err(error) => Err(CssPropertyValueSyntaxError::Property(error)),
+                    Err(error) => Err(error),
                     Ok(body) => {
                         control
                             .add(crate::CssDeclaration::constructed_allocation_bytes())
@@ -330,7 +294,9 @@ fn parse_operation(
             }
         };
     control.step().map_err(refused)?;
-    let source_bytes = source.payload_bytes(true).ok_or(Error::CapacityOverflow)?;
+    let source_bytes = source
+        .payload_bytes(true)
+        .ok_or_else(Error::capacity_overflow)?;
     let output_bytes = match &result {
         Ok(declaration) => {
             let components = crate::component_values::retained_backing_bytes_with(
@@ -343,17 +309,16 @@ fn parse_operation(
             crate::CssDeclaration::constructed_allocation_bytes()
                 .checked_add(components)
                 .and_then(|bytes| bytes.checked_add(body))
-                .ok_or(Error::CapacityOverflow)?
+                .ok_or_else(Error::capacity_overflow)?
         }
-        Err(CssPropertyValueSyntaxError::Component(_)) => 0,
-        Err(CssPropertyValueSyntaxError::Property(error)) => error
+        Err(error) => error
             .retained_backing_bytes_with(&mut || control.step())
             .map_err(|error| payload_failure(error, control))?,
     };
     let bytes = source_bytes
         .checked_add(size_of::<CssColorSchemeParseReport>())
         .and_then(|bytes| bytes.checked_add(output_bytes))
-        .ok_or(Error::CapacityOverflow)?;
+        .ok_or_else(Error::capacity_overflow)?;
     let units = source.original_utf16().expect("UTF16 source").capacity();
     Ok(CssColorSchemeParseReport {
         source: crate::CssParseSource::new(source, context),
@@ -369,11 +334,11 @@ fn payload_failure(
     error: crate::CssRetainedPayloadError<()>,
     control: &Control<'_>,
 ) -> crate::CssUtf16InputError<()> {
-    match error {
-        crate::CssRetainedPayloadError::Admission(()) => crate::CssUtf16InputError::Interrupted(()),
-        crate::CssRetainedPayloadError::CapacityOverflow => {
+    match error.into_admission() {
+        Ok(()) => crate::CssUtf16InputError::interrupted(()),
+        Err(_) => {
             let _ = control.fail::<()>(Failure::CapacityOverflow);
-            crate::CssUtf16InputError::CapacityOverflow
+            crate::CssUtf16InputError::capacity_overflow()
         }
     }
 }
@@ -384,9 +349,9 @@ fn body_backing<E>(
 ) -> Result<usize, crate::CssRetainedPayloadError<E>> {
     use crate::{
         CssKnownDeclaredValueRef as Value, CssKnownPropertyValueRef as Property,
-        CssRetainedPayloadError::Admission,
+        CssRetainedPayloadError,
     };
-    admit().map_err(Admission)?;
+    admit().map_err(CssRetainedPayloadError::admission)?;
     match declaration
         .known()
         .expect("checked color-scheme")
@@ -394,7 +359,7 @@ fn body_backing<E>(
     {
         Value::Global(_) => Ok(0),
         Value::SubstitutionDependent(value) => {
-            admit().map_err(Admission)?;
+            admit().map_err(CssRetainedPayloadError::admission)?;
             Ok(value.backing_capacity())
         }
         Value::Property(Property::ColorScheme(value)) => value.retained_backing_bytes_with(admit),
@@ -440,7 +405,7 @@ pub enum CssUtf16ValueAdmission {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum Failure {
-    Limit(&'static str),
+    Limit(crate::CssUtf16Resource),
     Allocation,
     CapacityOverflow,
     Admission,
@@ -488,9 +453,13 @@ impl<'a> Control<'a> {
     ) -> Result<(), ()> {
         use crate::CssComponentValueErrorKind as Kind;
         match kind {
-            Kind::ByteLimit => self.fail(Failure::Limit("property component bytes")),
-            Kind::ComponentLimit => self.fail(Failure::Limit("property component count")),
-            Kind::NestingLimit => self.fail(Failure::Limit("property component depth")),
+            Kind::ByteLimit => self.fail(Failure::Limit(crate::CssUtf16Resource::ComponentBytes)),
+            Kind::ComponentLimit => {
+                self.fail(Failure::Limit(crate::CssUtf16Resource::ComponentCount))
+            }
+            Kind::NestingLimit => {
+                self.fail(Failure::Limit(crate::CssUtf16Resource::ComponentDepth))
+            }
             Kind::CapacityOverflow => self.fail(Failure::CapacityOverflow),
             _ => Ok(()),
         }
@@ -503,7 +472,7 @@ impl<'a> Control<'a> {
             return self.fail(Failure::CapacityOverflow);
         };
         if work > self.limits.max_work {
-            return self.fail(Failure::Limit("property input work"));
+            return self.fail(Failure::Limit(crate::CssUtf16Resource::PropertyWork));
         }
         self.work.set(work);
         if (self.admit)(action).is_err() {
@@ -519,7 +488,7 @@ impl<'a> Control<'a> {
     }
     pub(crate) fn set_live(&self, bytes: usize, utf16_units: usize) -> Result<(), ()> {
         if bytes > self.limits.max_live_bytes {
-            return self.fail(Failure::Limit("property input live bytes"));
+            return self.fail(Failure::Limit(crate::CssUtf16Resource::PropertyLiveBytes));
         }
         let usage = CssUtf16ValueStorage { bytes, utf16_units };
         self.observe(CssUtf16ValueAdmission::Live(usage))?;
@@ -649,7 +618,9 @@ impl<'a> Control<'a> {
     pub(crate) fn transfer(&self, storage: CssUtf16ValueStorage) -> Result<(), ()> {
         self.step()?;
         if storage.bytes > self.limits.max_retained_bytes {
-            return self.fail(Failure::Limit("property input retained bytes"));
+            return self.fail(Failure::Limit(
+                crate::CssUtf16Resource::PropertyRetainedBytes,
+            ));
         }
         assert!(
             storage.bytes <= self.live.get().bytes,

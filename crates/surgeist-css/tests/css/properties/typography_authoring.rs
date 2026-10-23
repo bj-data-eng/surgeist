@@ -9,20 +9,20 @@ use crate::css::support::sheet_cases::*;
 #[test]
 fn rejects_line_height_auto() {
     let error = parse_sheet(".panel { line-height: auto; }").expect_err("rejected parse report");
-    assert!(matches!(error.kind(), ErrorKind::InvalidPropertyValue(_)));
+    assert!(error.code() == CssErrorCode::InvalidPropertyValue);
 }
 
 #[test]
 fn rejects_line_height_min_content() {
     let error =
         parse_sheet(".panel { line-height: min-content; }").expect_err("rejected parse report");
-    assert!(matches!(error.kind(), ErrorKind::InvalidPropertyValue(_)));
+    assert!(error.code() == CssErrorCode::InvalidPropertyValue);
 }
 
 #[test]
 fn rejects_font_size_auto() {
     let error = parse_sheet(".panel { font-size: auto; }").expect_err("rejected parse report");
-    assert!(matches!(error.kind(), ErrorKind::InvalidPropertyValue(_)));
+    assert!(error.code() == CssErrorCode::InvalidPropertyValue);
 }
 
 #[test]

@@ -390,13 +390,14 @@ fn explicit_property_dispatch_cases_preserve_ordinary_and_important_behavior() {
             );
             let error = parse_sheet(&source).expect_err("`all` ordinary value must be rejected");
             assert_eq!(error.code(), CssErrorCode::InvalidPropertyValue);
-            let ErrorKind::InvalidPropertyValue(detail) = error.kind() else {
-                panic!(
-                    "`all` returned the wrong structured error: {:?}",
-                    error.kind()
-                );
-            };
-            assert_eq!(detail.property(), CssKnownProperty::All);
+            let detail = &error;
+            assert_eq!(
+                detail.code(),
+                CssErrorCode::InvalidPropertyValue,
+                "`all` returned the wrong structured error: {:?}",
+                error
+            );
+            assert_eq!(detail.known_property().unwrap(), CssKnownProperty::All);
             continue;
         }
 
@@ -1195,10 +1196,17 @@ fn deferred_basic_shape_math_drops_only_the_invalid_declaration() {
             invalid.len(),
             "{source}",
         );
-        let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-            panic!("{source}: expected property-value detail");
-        };
-        assert_eq!(detail.property(), CssKnownProperty::ClipPath, "{source}");
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidPropertyValue,
+            "{source}: expected property-value detail"
+        );
+        assert_eq!(
+            detail.known_property().unwrap(),
+            CssKnownProperty::ClipPath,
+            "{source}"
+        );
 
         {
             let failure = surgeist_css::validate_style_attribute(&source)

@@ -308,19 +308,18 @@ fn css_wide_all_and_pending_reentry_keep_member_order_and_source() {
             } else {
                 "1fr"
             };
-            assert!(matches!(
+            assert!(
                 handle
                     .reenter(parse_component_values(invalid_value).unwrap())
                     .unwrap_err()
-                    .kind(),
-                CssExpansionErrorKind::InvalidReplacement(_)
-            ));
-            assert_eq!(
+                    .replacement_error()
+                    .is_some()
+            );
+            assert!(
                 handle
                     .reenter(parse_component_values("var(--again)").unwrap())
                     .unwrap_err()
-                    .kind(),
-                &CssExpansionErrorKind::ResidualSubstitution
+                    .is_residual_substitution()
             );
             let replacement_text = match name {
                 "size" | "min-size" => "auto 2px",

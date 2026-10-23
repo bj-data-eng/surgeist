@@ -337,10 +337,7 @@ fn tree_query_output_byte_limit_is_cumulative_across_rules_and_atomic_on_failure
         assert_eq!(rule.serialize_specified(short).unwrap(), text);
     }
     let error = report.syntax().serialize_specified(short).unwrap_err();
-    assert_eq!(
-        error.kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
-    );
+    assert!(error.is_byte_limit(), "{error:?}");
     assert_eq!(error.rule_index(), Some(1));
     assert_eq!(report, before);
     assert_eq!(

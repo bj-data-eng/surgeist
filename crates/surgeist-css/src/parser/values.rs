@@ -69,7 +69,7 @@ pub(crate) static IMPLEMENTED_SHARED_VALUES: &[CssFeatureId] = &[
 pub(super) fn checked_percentage_value<'i>(
     location: cssparser::SourceLocation,
     token_css: &str,
-) -> std::result::Result<f64, cssparser::ParseError<'i, crate::Error>> {
+) -> std::result::Result<f64, cssparser::ParseError<'i, crate::CssError>> {
     // cssparser exposes percentages after dividing by 100 and rounding to f32.
     // Re-multiplication can change the authored magnitude (30% -> 30.000002).
     // The caller passes exactly the consumed percentage token, without trivia.
@@ -325,7 +325,7 @@ pub(super) fn parse_custom_ident_from_str_at<'i>(
 pub(super) fn parse_custom_ident_from_str_at_source<'i>(
     ident: &str,
     location: cssparser::SourceLocation,
-) -> Result<CssCustomIdent, cssparser::ParseError<'i, crate::Error>> {
+) -> Result<CssCustomIdent, cssparser::ParseError<'i, crate::CssError>> {
     CssCustomIdent::try_from_ident(CssIdent::new(ident))
         .ok_or_else(|| crate::error::unexpected_at(location))
 }
@@ -459,14 +459,14 @@ mod typed_calculation_tests {
     fn parse(
         source: &str,
         root: CalculationRoot,
-    ) -> Result<CssCalculationExpression, crate::Error> {
+    ) -> Result<CssCalculationExpression, crate::CssError> {
         parse_complete(&format!("calc({source})"), root)
     }
 
     fn parse_complete(
         source: &str,
         root: CalculationRoot,
-    ) -> Result<CssCalculationExpression, crate::Error> {
+    ) -> Result<CssCalculationExpression, crate::CssError> {
         let snapshot = crate::CssSourceSnapshot::new(source);
         let numeric = NumericInputContext::parsed(&snapshot);
         let document =

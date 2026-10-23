@@ -187,10 +187,7 @@ fn strict_pending_reentry_retains_original_priority_source_after_failed_replacem
         let error = pending
             .reenter(parse_component_values(invalid).unwrap())
             .unwrap_err();
-        assert!(matches!(
-            error.kind(),
-            CssExpansionErrorKind::InvalidReplacement(_)
-        ));
+        assert!(error.replacement_error().is_some());
         assert!(pending.source().same_occurrence(source));
         assert_eq!(
             pending.source().parsed_value().unwrap().source().as_str(),
@@ -198,12 +195,11 @@ fn strict_pending_reentry_retains_original_priority_source_after_failed_replacem
         );
         assert_eq!(pending.source().importance(), CssImportance::Important);
     }
-    assert_eq!(
+    assert!(
         pending
             .reenter(parse_component_values("var(x)").unwrap())
             .unwrap_err()
-            .kind(),
-        &CssExpansionErrorKind::ResidualSubstitution,
+            .is_residual_substitution()
     );
     let replacement = parse_component_values("block").unwrap();
     let original = replacement.clone();

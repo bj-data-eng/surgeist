@@ -4,10 +4,11 @@
 //! records belong in tests/css/support/property_expectations/records.rs later.
 //! This file names only existing public symbols. New typed model/variant/provider
 //! tests accompany functional implementation; absent symbols/stubs are not RED.
+use crate::css::support::failure_classes::ComponentFailure;
+use crate::css::support::failure_classes::component_failure;
 use crate::css::support::serialization_limits::LimitLadder;
 use surgeist_css::*;
 type Limits = CssSerializationLimits;
-type Kind = CssSpecifiedValueSerializationErrorKind;
 
 // These are specialized ordered shorthand expansion behavior oracles, not a
 // second identity/metadata/dispatch inventory. The pin's grammar defines order.
@@ -119,10 +120,13 @@ fn rejected(name: &str, value: &str) {
         panic!("one diagnostic: {css}")
     };
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("typed grammar error")
-    };
-    assert_eq!(detail.property().canonical_name(), name);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "typed grammar error"
+    );
+    assert_eq!(detail.known_property().unwrap().canonical_name(), name);
     let start = css.find(&format!("{name}:")).unwrap();
     let end = start + css[start..].find(';').unwrap() + 1;
     assert_eq!(diagnostic.span().start().byte_offset().value(), start);
@@ -136,7 +140,7 @@ fn rejected(name: &str, value: &str) {
         report.diagnostics()
     );
     // The real error's named property selects checked boundaries without absent enums.
-    let property = detail.property();
+    let property = detail.known_property().unwrap();
     let components = parse_component_values(value).unwrap();
     let snapshot = components.clone();
     for error in [
@@ -153,10 +157,7 @@ fn rejected(name: &str, value: &str) {
         )
         .unwrap_err(),
     ] {
-        assert!(matches!(
-            error.kind(),
-            CssPropertyValueErrorKind::Grammar(_)
-        ));
+        assert!(error.code().is_some());
     }
     assert_eq!(components, snapshot);
 }
@@ -173,12 +174,11 @@ fn canonical(name: &str, authored: &str, expected_value: &str) {
         let exact = Limits::new(65_536, 262_144, expected.len());
         assert_eq!(source.serialize_specified(exact).unwrap(), expected);
         for _ in 0..2 {
-            assert_eq!(
+            assert!(
                 source
                     .serialize_specified(Limits::new(65_536, 262_144, expected.len() - 1))
                     .unwrap_err()
-                    .kind(),
-                Kind::ByteLimit
+                    .is_byte_limit()
             );
             assert_eq!(source, snapshot);
             assert_eq!(source.value_components(), &components);
@@ -576,21 +576,20 @@ fn lifecycle(name: &str, ordinary: &str, invalid: &str, members: &[&str]) {
             "attr(data-mask)",
             "calc(var(--n) * 1px)",
         ] {
-            assert_eq!(
+            assert!(
                 handle
                     .reenter(parse_component_values(residual).unwrap())
                     .unwrap_err()
-                    .kind(),
-                &CssExpansionErrorKind::ResidualSubstitution
+                    .is_residual_substitution()
             );
         }
-        assert!(matches!(
+        assert!(
             handle
                 .reenter(parse_component_values(invalid).unwrap())
                 .unwrap_err()
-                .kind(),
-            CssExpansionErrorKind::InvalidReplacement(_)
-        ));
+                .replacement_error()
+                .is_some()
+        );
         let replacement = parse_component_values(ordinary).unwrap();
         let before = replacement.clone();
         for _ in 0..2 {
@@ -769,27 +768,26 @@ fn original_repaired_closures_fail_checked_and_reentry_but_closed_retry_succeeds
                 )
                 .unwrap_err(),
             ] {
-                assert!(matches!(
-                    error.kind(),
-                    CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
-                ));
+                assert!(error.code() == Some(CssErrorCode::UnexpectedEnd));
                 assert_eq!(
                     error.origin(),
-                    &CssSerializedOrigin::End(Some(origin.clone()))
+                    CssSerializedOrigin::End(Some(origin.clone()))
                 );
             }
             // Residual substitution has documented precedence before grammar.
             if input.starts_with("var(") {
-                assert_eq!(
-                    handle.reenter(components.clone()).unwrap_err().kind(),
-                    &CssExpansionErrorKind::ResidualSubstitution
+                assert!(
+                    handle
+                        .reenter(components.clone())
+                        .unwrap_err()
+                        .is_residual_substitution()
                 );
             } else {
                 let error = handle.reenter(components.clone()).unwrap_err();
-                let CssExpansionErrorKind::InvalidReplacement(error) = error.kind() else {
+                let Some(error) = error.replacement_error() else {
                     panic!("strict original closure")
                 };
-                assert_eq!(error.origin(), &CssSerializedOrigin::End(Some(origin)));
+                assert_eq!(error.origin(), CssSerializedOrigin::End(Some(origin)));
             }
             assert_eq!(components, snapshot);
         }
@@ -853,12 +851,11 @@ fn source_graph_tariffs_are_cumulative_exact_and_atomic_at_declaration_boundary(
         "mask: none, ".len(),
         "mask: none, none".len(),
     ] {
-        assert_eq!(
+        assert!(
             source
                 .serialize_specified(Limits::new(7, 7, bytes))
                 .unwrap_err()
-                .kind(),
-            Kind::ByteLimit
+                .is_byte_limit()
         );
         assert_eq!(source, snapshot);
     }
@@ -884,17 +881,17 @@ fn checked_component_source_budget_counts_comma_and_both_layers_cumulatively() {
     for (limits, kind) in [
         (
             CssComponentValueLimits::try_new(0, 2, 9).unwrap(),
-            CssComponentValueErrorKind::ComponentLimit,
+            ComponentFailure::ComponentLimit,
         ),
         (
             CssComponentValueLimits::try_new(0, 3, 8).unwrap(),
-            CssComponentValueErrorKind::ByteLimit,
+            ComponentFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            CssComponentValues::try_new(components.items().to_vec(), limits)
-                .unwrap_err()
-                .kind(),
+            component_failure(
+                &CssComponentValues::try_new(components.items().to_vec(), limits).unwrap_err()
+            ),
             kind
         );
         assert_eq!(components, snapshot);
@@ -976,11 +973,8 @@ fn composed_normalization_retains_order_importance_and_exact_twenty_seven_contri
     )
     .unwrap_err();
     assert_eq!(
-        error.kind(),
-        &CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: 26
-        }
+        error.exhausted_limit(),
+        Some((CssNormalizationResource::Contributions, 26))
     );
     assert_eq!(error.declaration_order(), Some(8));
     assert!(

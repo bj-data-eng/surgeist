@@ -162,7 +162,7 @@ fn targets(
         budget.scan(1)?;
         return Ok(vec![name.clone()]);
     };
-    let meta = grammar.metadata().map_err(CssomError::Metadata)?;
+    let meta = grammar.metadata()?;
     let members = match meta.kind() {
         CssPropertyKindRef::Longhand(_) => {
             budget.scan(1)?;
@@ -181,10 +181,7 @@ fn targets(
             let mut members = Vec::new();
             for property in CssKnownProperty::all() {
                 if !meta.excludes(CssPropertyNameRef::Known(*property))
-                    && matches!(
-                        property.metadata().map_err(CssomError::Metadata)?.kind(),
-                        CssPropertyKindRef::Longhand(_)
-                    )
+                    && matches!(property.metadata()?.kind(), CssPropertyKindRef::Longhand(_))
                 {
                     members.push(Name::Known(property.grammar()));
                 }
@@ -238,7 +235,7 @@ fn selected_properties(
     entries: &[CssSpecifiedDeclarationEntry],
     limits: CssSerializationLimits,
 ) -> Result<CssSpecifiedDeclarationBlock, CssomError> {
-    match block.data() {
+    let block = match block.data() {
         CssomBlockData::Properties { domain, .. } => match domain {
             CssomPropertyDomain::Ordinary => {
                 CssSpecifiedDeclarationBlock::try_from_entries(entries, limits)
@@ -254,8 +251,8 @@ fn selected_properties(
             CssSpecifiedDeclarationBlock::try_from_page_entries(entries, limits)
         }
         _ => return Err(CssomError::WrongKind),
-    }
-    .map_err(CssomError::Declaration)
+    }?;
+    Ok(block)
 }
 fn entry_name(block: &CssomBlock, index: usize) -> Result<&str, CssomError> {
     match block.data() {
@@ -301,15 +298,13 @@ pub(crate) fn serialize_block(
     budget: &mut DeclarationBudget,
 ) -> Result<String, CssomError> {
     match block.data() {
-        CssomBlockData::FontFace(_) => font_selected(block)?
-            .serialize_cssom(budget.provider()?)
-            .map_err(CssomError::FontFace),
+        CssomBlockData::FontFace(_) => {
+            Ok(font_selected(block)?.serialize_cssom(budget.provider()?)?)
+        }
         CssomBlockData::Properties {
             selected: CssomProjection::Available(selected),
             ..
-        } => selected
-            .serialize_cssom(budget.provider()?)
-            .map_err(CssomError::Declaration),
+        } => Ok(selected.serialize_cssom(budget.provider()?)?),
         CssomBlockData::Properties {
             selected: CssomProjection::Unavailable(error),
             ..
@@ -317,9 +312,7 @@ pub(crate) fn serialize_block(
         CssomBlockData::Page {
             selected: CssomProjection::Available(selected),
             ..
-        } => selected
-            .serialize_cssom(budget.provider()?)
-            .map_err(CssomError::Format),
+        } => Ok(selected.serialize_cssom(budget.provider()?)?),
         CssomBlockData::Page {
             selected: CssomProjection::Unavailable(error),
             ..
@@ -347,7 +340,7 @@ fn query_value(
     let mut entries = properties(block)?;
     if let Name::Known(grammar) = &name
         && matches!(
-            grammar.metadata().map_err(CssomError::Metadata)?.kind(),
+            grammar.metadata()?.kind(),
             CssPropertyKindRef::FourSideShorthand(_)
         )
     {
@@ -359,10 +352,9 @@ fn query_value(
         });
     }
     let projection = selected_properties(block, &entries, budget.provider()?)?;
-    projection
-        .property_value(name.as_ref(), budget.provider()?)
-        .map(|value| value.unwrap_or_default())
-        .map_err(CssomError::Declaration)
+    Ok(projection
+        .property_value(name.as_ref(), budget.provider()?)?
+        .unwrap_or_default())
 }
 // Complete setter values reject tokenizer syntax as a source null parse.
 // Resource and other checked-provider failures retain their typed cause.
@@ -373,12 +365,9 @@ pub(crate) fn complete_value_components(
     match parse_component_values_with_limits(value, limits) {
         Ok(_) => Ok(true),
         Err(error)
-            if matches!(
-                error.kind(),
-                CssComponentValueErrorKind::BadString
-                    | CssComponentValueErrorKind::BadUrl
-                    | CssComponentValueErrorKind::UnmatchedClosingDelimiter
-            ) =>
+            if error.is_bad_string()
+                || error.is_bad_url()
+                || error.is_unmatched_closing_delimiter() =>
         {
             Ok(false)
         }
@@ -901,13 +890,7 @@ impl CssomBatch {
                             Err(CssomError::PageBlock(error)) if page_rejection(&error) => {
                                 return Ok(CssomDeclarationEditResult::Noop);
                             }
-                            Err(CssomError::Declaration(error))
-                                if matches!(
-                                    error.kind(),
-                                    CssDeclarationBlockErrorKind::InvalidKeyframeSource { .. }
-                                        | CssDeclarationBlockErrorKind::InvalidPageSource
-                                ) =>
-                            {
+                            Err(CssomError::Declaration(error)) if error.is_invalid_source() => {
                                 return Ok(CssomDeclarationEditResult::Noop);
                             }
                             Err(error) => return Err(error),
@@ -1000,11 +983,8 @@ impl CssomBatch {
                                 })
                                 .collect::<Result<Vec<_>, _>>()?,
                             prepared.budget.provider()?,
-                        )
-                        .map_err(CssomError::PageBlock)?;
-                        let selected = authored
-                            .try_specified(prepared.budget.provider()?)
-                            .map_err(CssomError::Page)?;
+                        )?;
+                        let selected = authored.try_specified(prepared.budget.provider()?)?;
                         this.staged.blocks.get_mut(id).expect("owned block").data =
                             Arc::new(CssomBlockData::Page {
                                 authored,
@@ -1056,19 +1036,14 @@ impl CssomBatch {
                                 }
                                 Err(CssomError::PageBlock(error)) if page_rejection(&error) => {}
                                 Err(CssomError::Declaration(error))
-                                    if matches!(
-                                        error.kind(),
-                                        CssDeclarationBlockErrorKind::InvalidKeyframeSource { .. }
-                                            | CssDeclarationBlockErrorKind::InvalidPageSource
-                                    ) => {}
+                                    if error.is_invalid_source() => {}
                                 Err(error) => return Err(error),
                             }
                         }
                         let entries = CssSpecifiedDeclarationBlock::try_select_winning_entries(
                             entries,
                             prepared.budget.provider()?,
-                        )
-                        .map_err(CssomError::Declaration)?;
+                        )?;
                         if unchanged {
                             selected_properties(
                                 this.staged.block(id)?,
@@ -1252,8 +1227,7 @@ impl CssomBatch {
                 })
                 .collect::<Vec<_>>();
             let selected =
-                CssSpecifiedPageDeclarationBlock::try_from_entries(&mixed, budget.provider()?)
-                    .map_err(CssomError::Page)?;
+                CssSpecifiedPageDeclarationBlock::try_from_entries(&mixed, budget.provider()?)?;
             let CssomBlockData::Page {
                 selected: current, ..
             } = self
@@ -1310,10 +1284,10 @@ impl CssomBatch {
                     ..
                 }
         ) {
-            Some(
-                CssMarginDeclarationBlock::try_new(declarations.to_vec(), budget.provider()?)
-                    .map_err(CssomError::PageBlock)?,
-            )
+            Some(CssMarginDeclarationBlock::try_new(
+                declarations.to_vec(),
+                budget.provider()?,
+            )?)
         } else {
             None
         };
@@ -1323,8 +1297,7 @@ impl CssomBatch {
         let expansions = declarations
             .iter()
             .map(expand_declaration)
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(CssomError::Expansion)?;
+            .collect::<Result<Vec<_>, _>>()?;
         let selected = match block.data() {
             CssomBlockData::Properties {
                 domain: CssomPropertyDomain::Keyframe,
@@ -1334,8 +1307,7 @@ impl CssomBatch {
                 budget.provider()?,
             ),
             _ => CssSpecifiedDeclarationBlock::try_from_expansions(&expansions, budget.provider()?),
-        }
-        .map_err(CssomError::Declaration)?;
+        }?;
         selected_properties(block, selected.entries(), budget.provider()?)
             .map(|selected| selected.entries().to_vec())
     }
@@ -1344,7 +1316,7 @@ fn longhand(name: CssPropertyNameRef<'_>) -> Result<Option<CssLonghandProperty>,
     let CssPropertyNameRef::Known(property) = name else {
         return Ok(None);
     };
-    match property.metadata().map_err(CssomError::Metadata)?.kind() {
+    match property.metadata()?.kind() {
         CssPropertyKindRef::Longhand(meta) => Ok(Some(meta.property())),
         _ => Ok(None),
     }
@@ -1417,10 +1389,7 @@ fn selected_entries(
 }
 
 fn page_rejection(error: &CssPageBlockError) -> bool {
-    matches!(
-        error.kind(),
-        CssPageBlockErrorKind::PropertyNotApplicable | CssPageBlockErrorKind::InvalidPropertyValue
-    )
+    error.is_property_not_applicable() || error.is_invalid_property_value()
 }
 
 fn normalize_in(name: &str, block: &CssomBlock) -> Option<Name> {

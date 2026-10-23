@@ -2,8 +2,8 @@
 //! Unknown function names are invalid under pinned Selectors 4 section 3.9:
 //! https://www.w3.org/TR/2026/WD-selectors-4-20260122/#invalid
 use surgeist_css::{
-    CssNamespaceContext, CssPseudoClass, CssPseudoSelectorListItem, CssRecoveryAction,
-    CssRecoveryDiagnostic, CssRule, CssSelector, CssTokenKind, ErrorKind, parse_selector,
+    CssErrorCode, CssNamespaceContext, CssPseudoClass, CssPseudoSelectorListItem,
+    CssRecoveryAction, CssRecoveryDiagnostic, CssRule, CssSelector, CssTokenKind, parse_selector,
     parse_sheet,
 };
 
@@ -20,9 +20,12 @@ fn assert_origin(
     assert_eq!(actual.column().value(), position.2);
     assert_eq!(diagnostic.span().start().byte_offset().value(), span.0);
     assert_eq!(diagnostic.span().end().byte_offset().value(), span.1);
-    let ErrorKind::InvalidSelector(detail) = diagnostic.error().kind() else {
-        panic!("selector error expected: {diagnostic:?}");
-    };
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidSelector,
+        "selector error expected: {diagnostic:?}"
+    );
     let token = detail.encountered().expect("responsible authored token");
     assert_eq!(token.kind(), kind);
     assert_eq!(token.authored(), spelling);

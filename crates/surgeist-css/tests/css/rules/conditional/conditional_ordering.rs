@@ -1,7 +1,7 @@
 use surgeist_css::{
     CssErrorCode, CssImportLayer, CssImportTarget, CssMediaConditionKind, CssMediaQuery,
     CssRecoveryAction, CssRule, CssSerializedOrigin, CssSupportsConditionKind, CssValueOrigin,
-    ErrorKind, parse_sheet, validate_sheet,
+    parse_sheet, validate_sheet,
 };
 
 fn import_rule(source: &str) -> surgeist_css::CssParseReport<surgeist_css::CssSheet> {
@@ -120,11 +120,14 @@ fn import_supports_accepts_bare_declarations_and_full_conditions() {
     );
     assert_eq!(diagnostic.span().start().byte_offset().value(), 0);
     assert_eq!(diagnostic.span().end().byte_offset().value(), source.len());
-    let ErrorKind::UnexpectedEnd(detail) = diagnostic.error().kind() else {
-        panic!("typed statement EOF");
-    };
+    let detail = diagnostic.error();
     assert_eq!(
-        detail.expectation().as_str(),
+        detail.code(),
+        CssErrorCode::UnexpectedEnd,
+        "typed statement EOF"
+    );
+    assert_eq!(
+        detail.expectation().unwrap().as_str(),
         "a semicolon or block terminating an at-rule"
     );
     let [CssRule::Import(import)] = eof.syntax().rules() else {

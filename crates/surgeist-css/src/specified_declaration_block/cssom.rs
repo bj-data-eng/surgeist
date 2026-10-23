@@ -485,8 +485,8 @@ impl SpecifiedRuleWriter {
 mod tests {
     use super::*;
     use crate::{
-        CssDeclarationBlockError, CssDeclarationBlockErrorKind,
-        CssSpecifiedValueSerializationErrorKind,
+        CssDeclarationBlockError, CssSpecifiedValueSerializationErrorKind,
+        specified_declaration_block::CssDeclarationBlockErrorKind,
     };
 
     fn block(source: &str) -> CssSpecifiedDeclarationBlock {

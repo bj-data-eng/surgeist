@@ -6,7 +6,7 @@ use cssparser::{Parser, RuleBodyItemParser, RuleBodyParser};
 
 use super::recovery::{RecoveryLoopOutcome, RecoveryProgress, RecoveryState};
 use super::{consume_failed_rule_block, structural_rule_diagnostic};
-use crate::error::Error;
+use crate::error::CssError;
 use crate::{CssRecoveryAction, CssRecoveryDiagnostic};
 
 pub(super) struct RecoveryContext<'a, 'i> {
@@ -17,7 +17,7 @@ pub(super) struct RecoveryContext<'a, 'i> {
 
 /// Borrow the family's original source, accounting state, and diagnostic sink
 /// together only after its item parser has released its mutable borrow.
-pub(super) trait Receiver<'i, Item>: RuleBodyItemParser<'i, Item, Error> {
+pub(super) trait Receiver<'i, Item>: RuleBodyItemParser<'i, Item, CssError> {
     fn recovery_context(&mut self) -> RecoveryContext<'_, 'i>;
 }
 

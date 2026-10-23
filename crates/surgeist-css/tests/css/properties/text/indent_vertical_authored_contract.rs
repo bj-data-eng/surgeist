@@ -18,6 +18,7 @@
 use crate::css::support::authored_property::checked;
 use crate::css::support::authored_property::fronts;
 use crate::css::support::authored_property::parsed;
+use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::CssKnownProperty as P;
 use surgeist_css::*;
 
@@ -285,13 +286,12 @@ fn retry(p: P, valid: &str, invalid: &[&str]) {
         "var(--again",
     ] {
         for _ in 0..2 {
-            assert!(matches!(
+            assert!(
                 handle
                     .reenter(parse_component_values(text).unwrap())
                     .unwrap_err()
-                    .kind(),
-                CssExpansionErrorKind::ResidualSubstitution
-            ));
+                    .is_residual_substitution()
+            );
         }
     }
     for text in invalid {
@@ -299,13 +299,10 @@ fn retry(p: P, valid: &str, invalid: &[&str]) {
             let error = handle
                 .reenter(parse_component_values(text).unwrap())
                 .unwrap_err();
-            let CssExpansionErrorKind::InvalidReplacement(error) = error.kind() else {
+            let Some(error) = error.replacement_error() else {
                 panic!("strict invalid replacement")
             };
-            assert!(matches!(
-                error.kind(),
-                CssPropertyValueErrorKind::Grammar(_)
-            ));
+            assert!(error.code().is_some());
         }
     }
     let CssContributions::Longhands(values) = handle
@@ -377,14 +374,11 @@ fn implicit_origin(components: &CssComponentValues) -> CssValueOrigin {
         .expect("implicit comment or function closure")
 }
 
-fn assert_closure(error: &CssPropertyValueParseError, origin: &CssValueOrigin, text: &str) {
-    assert!(matches!(
-        error.kind(),
-        CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
-    ));
+fn assert_closure(error: &CssPropertyValueError, origin: &CssValueOrigin, text: &str) {
+    assert!(error.code() == Some(CssErrorCode::UnexpectedEnd));
     assert_eq!(
         error.origin(),
-        &CssSerializedOrigin::End(Some(origin.clone()))
+        CssSerializedOrigin::End(Some(origin.clone()))
     );
     let CssValueOrigin::ImplicitClosure { opening, at } = origin else {
         panic!("original EOF origin")
@@ -460,7 +454,7 @@ fn reentry_closure(p: P, ordinary: &str) {
         let origin = implicit_origin(&components);
         for _ in 0..2 {
             let error = handle.reenter(components.clone()).unwrap_err();
-            let CssExpansionErrorKind::InvalidReplacement(error) = error.kind() else {
+            let Some(error) = error.replacement_error() else {
                 panic!("original closure failure")
             };
             assert_closure(error, &origin, &text);
@@ -660,10 +654,7 @@ fn normalization_preserves_duplicate_order_importance_pending_context_and_limits
     ] {
         for _ in 0..2 {
             let error = normalize_report_with_limits(&report, limits).unwrap_err();
-            assert_eq!(
-                error.kind(),
-                &CssNormalizationErrorKind::LimitExceeded { resource, limit: 5 }
-            );
+            assert_eq!(error.exhausted_limit(), Some((resource, 5)));
             assert_eq!(error.declaration_order(), Some(5));
             assert!(
                 error
@@ -814,10 +805,13 @@ fn grammar_failure_preserves_unrelated_siblings_and_checked_inputs() {
                 panic!("one grammar failure")
             };
             assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-            let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-                panic!("owning grammar error")
-            };
-            assert_eq!(detail.property(), p);
+            let detail = diagnostic.error();
+            assert_eq!(
+                detail.code(),
+                CssErrorCode::InvalidPropertyValue,
+                "owning grammar error"
+            );
+            assert_eq!(detail.known_property().unwrap(), p);
             assert_eq!(
                 validate_style_attribute(&css).unwrap_err().diagnostics(),
                 report.diagnostics()
@@ -836,10 +830,7 @@ fn grammar_failure_preserves_unrelated_siblings_and_checked_inputs() {
                     CssImportance::Normal,
                 ),
             ] {
-                assert!(matches!(
-                    result.unwrap_err().kind(),
-                    CssPropertyValueErrorKind::Grammar(_)
-                ));
+                assert!(result.unwrap_err().code().is_some());
             }
             assert_eq!(components, before);
         }
@@ -848,8 +839,8 @@ fn grammar_failure_preserves_unrelated_siblings_and_checked_inputs() {
 
 #[test]
 fn declaration_resource_costs_accumulate_without_changing_the_owning_payload() {
+    use crate::css::support::failure_classes::SerializationFailure as K;
     use CssSerializationLimits as L;
-    use CssSpecifiedValueSerializationErrorKind as K;
     for (p, input, canonical, inputs, projections) in [
         (P::TextIndent, "0", "0", 2, 2),
         (P::TextIndent, "hanging -2px", "-2px hanging", 3, 3),
@@ -891,7 +882,10 @@ fn declaration_resource_costs_accumulate_without_changing_the_owning_payload() {
             ),
         ] {
             for _ in 0..2 {
-                assert_eq!(source.serialize_specified(limits).unwrap_err().kind(), kind);
+                assert_eq!(
+                    serialization_failure(&source.serialize_specified(limits).unwrap_err()),
+                    kind
+                );
                 assert_eq!(source, before);
             }
         }
@@ -921,10 +915,7 @@ fn sheet_declarations_share_one_byte_budget_and_failure_is_atomic_and_retryable(
     );
     for _ in 0..2 {
         let error = sheet.serialize_specified(short).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit
-        );
+        assert!(error.is_byte_limit(), "{error:?}");
         assert_eq!(error.rule_index(), Some(1));
         assert_eq!(sheet, &before);
     }

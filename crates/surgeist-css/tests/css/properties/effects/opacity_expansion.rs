@@ -168,16 +168,13 @@ fn opacity_pending_reentry_is_strict_atomic_and_reusable() {
         let error = handle
             .reenter(parse_component_values(input).unwrap())
             .unwrap_err();
-        assert_eq!(error.kind(), &CssExpansionErrorKind::ResidualSubstitution);
+        assert!(error.is_residual_substitution(), "{error:?}");
     }
     for input in ["1px", "0.5 0.6", "inherit extra", "0.5!important"] {
         let error = handle
             .reenter(parse_component_values(input).unwrap())
             .unwrap_err();
-        assert!(
-            matches!(error.kind(), CssExpansionErrorKind::InvalidReplacement(_)),
-            "{input}: {error:?}"
-        );
+        assert!(error.replacement_error().is_some(), "{input}: {error:?}");
     }
     let replacement = parse_component_values("150%").unwrap();
     for _ in 0..2 {
@@ -375,10 +372,7 @@ fn opacity_normalization_consumes_one_declaration_and_one_contribution() {
         ),
     ] {
         let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            &CssNormalizationErrorKind::LimitExceeded { resource, limit }
-        );
+        assert_eq!(error.exhausted_limit(), Some((resource, limit)));
         assert_eq!(error.position().unwrap().byte_offset().value(), offset);
     }
     let normalized = normalize_sheet_with_limits(

@@ -4,6 +4,9 @@
 //! https://www.w3.org/TR/2023/CRD-css-images-3-20231218/#serialization
 
 use crate::css::support::checked_color as color;
+use crate::css::support::failure_classes::NumericFailure;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::value_assertions::assert_calculation_rejected;
 use surgeist_css::*;
 
@@ -164,11 +167,10 @@ fn one_shared_angle_retains_four_literal_units_and_exact_coefficients() {
         assert_eq!(value.numeric().representation(), "-0.25");
         assert_eq!(value.unit(), unit);
         for invalid in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
-            assert_eq!(
+            assert!(
                 CssAngleLiteral::try_new(&invalid.to_string(), unit)
                     .unwrap_err()
-                    .kind(),
-                surgeist_css::CssComponentValueErrorKind::InvalidDimension
+                    .is_invalid_dimension()
             );
         }
     }
@@ -333,7 +335,7 @@ fn shared_angle_math_retains_raw_provenance_and_semantic_aggregate_equality() {
                 parse_component_values(source).unwrap(),
                 Default::default(),
             ),
-            Some(surgeist_css::CssNumericConstructionErrorKind::RootDomainMismatch),
+            Some(NumericFailure::RootDomainMismatch),
         );
     }
 }
@@ -403,29 +405,21 @@ fn omitted_shared_angle_counts_with_sibling_images_under_cumulative_limits() {
         expected
     );
     for (input, projection, bytes, kind) in [
-        (
-            9,
-            10,
-            expected.len(),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
-        ),
+        (9, 10, expected.len(), SerializationFailure::InputNodeLimit),
         (
             10,
             9,
             expected.len(),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
-        (
-            10,
-            10,
-            expected.len() - 1,
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
-        ),
+        (10, 10, expected.len() - 1, SerializationFailure::ByteLimit),
     ] {
         assert_eq!(
-            list.serialize_specified(CssSerializationLimits::new(input, projection, bytes))
-                .unwrap_err()
-                .kind(),
+            serialization_failure(
+                &list
+                    .serialize_specified(CssSerializationLimits::new(input, projection, bytes))
+                    .unwrap_err()
+            ),
             kind
         );
     }

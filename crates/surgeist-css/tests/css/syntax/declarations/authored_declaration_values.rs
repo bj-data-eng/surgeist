@@ -4,7 +4,7 @@ use common::CssParseReportTestExt;
 use surgeist_css::{
     CssCustomPropertyDeclaredValue, CssCustomPropertyName, CssErrorCode, CssGlobalKeyword,
     CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssRule, CssTokenKind,
-    ErrorKind, parse_sheet,
+    parse_sheet,
 };
 
 fn declarations(source: &str) -> Vec<surgeist_css::CssDeclaration> {
@@ -218,12 +218,15 @@ fn authored_declaration_rejects_top_level_semicolon_in_variable_fallback() {
         error.position().column().value(),
         u32::try_from(source.find(';').unwrap()).unwrap()
     );
-    let ErrorKind::InvalidPropertyValue(detail) = error.kind() else {
-        panic!("expected structured property-value error");
-    };
-    assert_eq!(detail.property(), CssKnownProperty::Width);
+    let detail = &error;
     assert_eq!(
-        detail.expectation().as_str(),
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "expected structured property-value error"
+    );
+    assert_eq!(detail.known_property().unwrap(), CssKnownProperty::Width);
+    assert_eq!(
+        detail.expectation().unwrap().as_str(),
         "a value accepted by the property's grammar"
     );
     let token = detail.encountered().expect("semicolon token");
@@ -246,12 +249,15 @@ fn authored_declaration_rejects_top_level_bang_in_variable_fallback() {
         error.position().column().value(),
         u32::try_from(source.find('!').unwrap()).unwrap()
     );
-    let ErrorKind::InvalidPropertyValue(detail) = error.kind() else {
-        panic!("expected structured property-value error");
-    };
-    assert_eq!(detail.property(), CssKnownProperty::Width);
+    let detail = &error;
     assert_eq!(
-        detail.expectation().as_str(),
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "expected structured property-value error"
+    );
+    assert_eq!(detail.known_property().unwrap(), CssKnownProperty::Width);
+    assert_eq!(
+        detail.expectation().unwrap().as_str(),
         "a value accepted by the property's grammar"
     );
     let token = detail.encountered().expect("bang token");
@@ -340,12 +346,12 @@ fn authored_declaration_malformed_substitution_and_tokens_remain_structured_erro
     for (source, code, is_width_value_error) in cases {
         let error = parse_sheet(source).expect_err("malformed authored value must fail strictly");
         assert_eq!(error.code(), code, "unexpected error root for `{source}`");
-        match (error.kind(), is_width_value_error) {
-            (ErrorKind::InvalidPropertyValue(detail), true) => {
-                assert_eq!(detail.property(), CssKnownProperty::Width);
+        match (error.code(), is_width_value_error) {
+            (CssErrorCode::InvalidPropertyValue, true) => {
+                assert_eq!(error.known_property(), Some(CssKnownProperty::Width));
             }
-            (ErrorKind::UnknownProperty(detail), false) => {
-                assert_eq!(detail.name().as_str(), "bogus");
+            (CssErrorCode::UnknownProperty, false) => {
+                assert_eq!(error.property_name().unwrap().as_str(), "bogus");
             }
             _ => panic!("expected structured property-value context for `{source}`"),
         }

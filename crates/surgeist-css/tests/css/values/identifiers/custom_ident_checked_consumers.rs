@@ -1,6 +1,8 @@
 //! Checked name owners separate Values 4 identifier validity from the extra
 //! exclusions in Animations 1, Transitions 1, and Grid 1.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::*;
 
 fn custom(value: &str) -> CssCustomIdent {
@@ -184,19 +186,19 @@ fn checked_name_projection_keeps_exact_budgets_and_atomic_failures() {
     for (limits, expected) in [
         (
             CssSerializationLimits::new(1, 2, 4),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(2, 1, 4),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(2, 2, 3),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            names.serialize_specified(limits).unwrap_err().kind(),
+            serialization_failure(&names.serialize_specified(limits).unwrap_err()),
             expected
         );
         assert_eq!(names, before);
@@ -210,10 +212,16 @@ fn mixed_transition_none_diagnostic_identifies_the_property_after_a_duration() {
     let [diagnostic] = report.diagnostics() else {
         panic!("one rejected mixed-none list");
     };
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("transition grammar error");
-    };
-    assert_eq!(detail.property(), CssKnownProperty::Transition);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "transition grammar error"
+    );
+    assert_eq!(
+        detail.known_property().unwrap(),
+        CssKnownProperty::Transition
+    );
     // Transitions 1 §2.5: `1s none` is a valid single transition, so the
     // comma that continues the list is responsible.
     assert_eq!(

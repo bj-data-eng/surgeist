@@ -1,11 +1,12 @@
 //! Public expectations from CSSOM current fields, Nesting and the existing
 //! native projection tariffs. Node composition is a new callable API, not RED.
+use crate::css::support::failure_classes::SerializationFailure as Resource;
+use crate::css::support::failure_classes::serialization_failure;
+use crate::css::support::serialization_limits::LimitFailure;
 use CssEditedGroupPreludeRef as Prelude;
-use CssRuleCssomSerializationErrorKind as Error;
 use CssRuleGraphInput as Input;
 use CssSerializationLimits as Limits;
 use CssSpecifiedDeclarationBlock as Block;
-use CssSpecifiedValueSerializationErrorKind as Resource;
 use surgeist_css::*;
 
 fn ordinary(source: &str) -> Block {
@@ -67,16 +68,19 @@ fn three_level_composition_spends_exact_native_budget_once_and_later_sibling_ret
         ),
     ] {
         let error = format(root, limits).unwrap_err();
-        assert_eq!(error.kind(), Error::Resource(cause));
+        assert_eq!(error.limit_kind(), Some(cause));
         assert_eq!(error.rule_path(), &[0, 0, 2]);
         assert_eq!(format(root, exact).unwrap(), expected);
         assert_eq!(raw, before);
     }
-    assert_eq!(
+    assert!(
         format(root, Limits::new(19, 19, expected.len() - 1))
             .unwrap_err()
-            .kind(),
-        Error::Resource(Resource::ByteLimit)
+            .is_resource_limit()
+            && format(root, Limits::new(19, 19, expected.len() - 1))
+                .unwrap_err()
+                .serialization_error()
+                .is_some_and(|error| error.is_byte_limit())
     );
     assert_eq!(format(root, exact).unwrap(), expected);
     // Existing eager constructors keep their independent validation contracts.
@@ -85,7 +89,7 @@ fn three_level_composition_spends_exact_native_budget_once_and_later_sibling_ret
         CssKeyframesRuleView::try_new(&name, &[], Limits::new(0, 0, 0)).map(drop),
     ] {
         assert!(
-            matches!(result, Err(ref error) if matches!(error.kind(), Error::Resource(_))),
+            matches!(result, Err(ref error) if error.is_resource_limit()),
             "{result:?}"
         );
     }
@@ -107,9 +111,12 @@ fn domain_mismatch_is_admitted_at_the_actual_child_path_and_empty_children_keep_
         let children = [Input::nested_declarations(&valid), child];
         let root = Input::group(Prelude::Media(&query), &children);
         let failure = format(root, Limits::default()).unwrap_err();
-        assert_eq!(
-            failure.kind(),
-            Error::Value(Resource::UnserializableBoundary)
+        assert!(
+            !failure.is_resource_limit()
+                && failure
+                    .serialization_error()
+                    .is_some_and(|error| error.is_unserializable_boundary()),
+            "{failure:?}"
         );
         assert_eq!(failure.rule_path(), &[1]);
     }
@@ -125,7 +132,13 @@ fn domain_mismatch_is_admitted_at_the_actual_child_path_and_empty_children_keep_
         expected
     );
     let failure = format(root, Limits::new(7, 8, expected.len())).unwrap_err();
-    assert_eq!(failure.kind(), Error::Resource(Resource::InputNodeLimit));
+    assert!(
+        failure.is_resource_limit()
+            && failure
+                .serialization_error()
+                .is_some_and(|error| error.is_input_node_limit()),
+        "{failure:?}"
+    );
     assert_eq!(failure.rule_path(), &[1]);
     assert_eq!(
         format(root, Limits::new(8, 8, expected.len())).unwrap(),
@@ -263,10 +276,7 @@ fn current_selected_font_face_uses_one_shared_block_writer_with_order_pending_em
         ),
         (Limits::new(8, 8, expected.len() - 1), Resource::ByteLimit),
     ] {
-        assert_eq!(
-            format(input, limits).unwrap_err().kind(),
-            Error::Resource(kind)
-        );
+        assert_eq!(format(input, limits).unwrap_err().limit_kind(), Some(kind));
         assert_eq!(format(input, exact).unwrap(), expected);
     }
     assert_eq!(current.entries()[0].position(), occurrences[3].position());
@@ -293,7 +303,13 @@ fn current_selected_font_face_uses_one_shared_block_writer_with_order_pending_em
     );
     let failure = format(root, Limits::new(13, 14, expected.len())).unwrap_err();
     assert_eq!(failure.rule_path(), &[1]);
-    assert_eq!(failure.kind(), Error::Resource(Resource::InputNodeLimit));
+    assert!(
+        failure.is_resource_limit()
+            && failure
+                .serialization_error()
+                .is_some_and(|error| error.is_input_node_limit()),
+        "{failure:?}"
+    );
     drop(source);
     assert!(origin.source().as_str().contains("font-family:Old"));
 }
@@ -333,9 +349,12 @@ fn namespace_and_external_style_ancestry_propagate_through_groups_and_restore_fo
         )
         .unwrap_err();
     assert_eq!(failure.rule_path(), &[0]);
-    assert_eq!(
-        failure.kind(),
-        Error::Value(Resource::NamespaceBindingUnavailable)
+    assert!(
+        !failure.is_resource_limit()
+            && failure
+                .serialization_error()
+                .is_some_and(|error| error.is_namespace_binding_unavailable()),
+        "{failure:?}"
     );
     let outer_list = parse_selector_list(".outer", &namespaces)
         .into_parts()
@@ -409,7 +428,7 @@ fn unavailable_wrappers_are_lazy_typed_descendants_and_do_not_hide_independent_p
         let inputs = [Input::from_rule(rule)];
         let root = Input::group(Prelude::Media(&query), &inputs);
         let failure = format(root, Limits::default()).unwrap_err();
-        assert_eq!(failure.kind(), Error::FormatUnavailable(unavailable));
+        assert_eq!(failure.unavailable_format(), Some(unavailable));
         assert_eq!(failure.rule_path(), &[0]);
     }
     let CssRule::Scope(scope) = &report.syntax().rules()[0] else {
@@ -450,7 +469,10 @@ fn named_import_layer_partial_output_uses_the_native_component_meter_and_escapin
         ),
         (Limits::new(3, 3, expected.len() - 1), Resource::ByteLimit),
     ] {
-        assert_eq!(name.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&name.serialize_specified(limits).unwrap_err()),
+            kind
+        );
         assert_eq!(name.serialize_specified(exact).unwrap(), expected);
     }
     assert_eq!(
@@ -499,7 +521,7 @@ fn graph_inputs_under_published_supports_keep_empty_visits_and_exact_atomic_mete
         ),
     ] {
         let error = format(root, limits).unwrap_err();
-        assert_eq!(error.kind(), Error::Resource(kind));
+        assert_eq!(error.limit_kind(), Some(kind));
         assert_eq!(error.rule_path(), path);
         assert_eq!(format(root, exact).unwrap(), expected);
         assert_eq!(report, before);
@@ -555,18 +577,18 @@ fn published_supports_input_continuations_keep_namespace_ancestry_and_lazy_child
             Default::default(),
         )
         .unwrap_err();
-    assert_eq!(
-        error.kind(),
-        Error::Value(Resource::NamespaceBindingUnavailable)
+    assert!(
+        !error.is_resource_limit()
+            && error
+                .serialization_error()
+                .is_some_and(|error| error.is_namespace_binding_unavailable()),
+        "{error:?}"
     );
     assert_eq!(error.rule_path(), &[0, 0]);
     let children = [Input::nested_declarations(&empty), Input::from_rule(scope)];
     let root = Input::group(Prelude::Supports(supports.condition()), &children);
     let error = format(root, Limits::default()).unwrap_err();
-    assert_eq!(
-        error.kind(),
-        Error::FormatUnavailable(CssRuleCssomFormat::Scope)
-    );
+    assert_eq!(error.unavailable_format(), Some(CssRuleCssomFormat::Scope));
     assert_eq!(error.rule_path(), &[1]);
     assert_eq!(selected.origin().source().as_str(), "n|leaf");
 }
@@ -601,7 +623,13 @@ fn default_graph_limits_bound_depth_at_256_and_an_explicit_bound_lifts_it() {
     assert!(graph_text(nested_groups(257), CssRuleSerializationLimits::default()).is_ok());
     let beyond = nested_groups(258);
     let error = graph_text(beyond, CssRuleSerializationLimits::default()).unwrap_err();
-    assert_eq!(error.kind(), Error::Resource(Resource::DepthLimit));
+    assert!(
+        error.is_resource_limit()
+            && error
+                .serialization_error()
+                .is_some_and(|error| error.is_depth_limit()),
+        "{error:?}"
+    );
     let unbounded = CssRuleSerializationLimits {
         max_depth: usize::MAX,
         ..CssRuleSerializationLimits::default()

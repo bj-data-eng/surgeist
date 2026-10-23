@@ -479,14 +479,15 @@ fn globals_all_and_pending_reentry_keep_color_members_and_occurrence() {
                 panic!("{name} retains pending substitution")
             };
             assert!(handle.source().same_occurrence(&source));
-            assert_eq!(
-                rejected(handle.reenter(parse_component_values("var(--again)").unwrap())).kind(),
-                &CssExpansionErrorKind::ResidualSubstitution
+            assert!(
+                rejected(handle.reenter(parse_component_values("var(--again)").unwrap()))
+                    .is_residual_substitution()
             );
-            assert!(matches!(
-                rejected(handle.reenter(parse_component_values("none").unwrap())).kind(),
-                CssExpansionErrorKind::InvalidReplacement(_)
-            ));
+            assert!(
+                rejected(handle.reenter(parse_component_values("none").unwrap()))
+                    .replacement_error()
+                    .is_some()
+            );
             if name == FOUR_SIDE {
                 for replacement in ["red blue", "logical red #12abef"] {
                     assert_four_contributions(

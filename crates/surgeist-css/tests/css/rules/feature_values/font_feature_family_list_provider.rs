@@ -2,6 +2,8 @@
 //! Pinned WebKit 73aa6c89 CSSFontFeatureValuesRule.cpp setter requires complete
 //! native nongeneric prelude consumption; its getter uses comma-space joining.
 //! Native CSS Syntax EOF recovery is distinct from a clean-report policy.
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::rules::ExpectedRejection;
 use surgeist_css::*;
 
@@ -17,8 +19,8 @@ fn component_error(
     report
         .diagnostics()
         .iter()
-        .find_map(|diagnostic| match diagnostic.error().kind() {
-            ErrorKind::InvalidComponentValue(error) => Some(error.as_ref()),
+        .find_map(|diagnostic| match diagnostic.error().code() {
+            CssErrorCode::InvalidComponentValue => diagnostic.error().component_error(),
             _ => None,
         })
         .expect("typed component resource failure")
@@ -72,7 +74,7 @@ fn reserved_generics_and_incomplete_lists_reject_the_whole_input() {
             !report
                 .diagnostics()
                 .iter()
-                .any(|d| matches!(d.error().kind(), ErrorKind::InvalidComponentValue(_))),
+                .any(|d| d.error().code() == CssErrorCode::InvalidComponentValue),
             "syntax rejection is not resource exhaustion: {source}"
         );
     }
@@ -120,11 +122,10 @@ fn original_member_occurrences_survive_input_drop_and_programmatic_lists_claim_n
         constructed.serialize_specified(Default::default()).unwrap(),
         "A, 日本語"
     );
-    assert_eq!(
+    assert!(
         CssFontFeatureValuesFamilyList::try_new(vec![])
             .unwrap_err()
-            .kind(),
-        CssFontFeatureValuesErrorKind::EmptyFamilies
+            .is_empty_families()
     );
     let quirks = CssParserContext::new(CssParserMode::Quirks).with_svg_glyph_orientation_vertical();
     assert_eq!(
@@ -176,7 +177,7 @@ fn complete_input_limits_include_later_members_and_retry_has_no_partial_state() 
     let short = CssComponentValueLimits::try_new(0, 2, source.len()).unwrap();
     let failed = parse_font_feature_values_family_list_with_limits(source, short);
     let error = component_error(&failed);
-    assert_eq!(error.kind(), CssComponentValueErrorKind::ComponentLimit);
+    assert!(error.is_component_limit(), "{error:?}");
     let CssValueOrigin::Parsed(origin) = error.origin() else {
         panic!("later token origin")
     };
@@ -186,10 +187,7 @@ fn complete_input_limits_include_later_members_and_retry_has_no_partial_state() 
         source,
         CssComponentValueLimits::try_new(0, 3, source.len() - 1).unwrap(),
     );
-    assert_eq!(
-        component_error(&failed).kind(),
-        CssComponentValueErrorKind::ByteLimit
-    );
+    assert!(component_error(&failed).is_byte_limit());
     assert!(
         matches!(component_error(&failed).origin(), CssValueOrigin::UnretainedInput { byte_length } if *byte_length == source.len())
     );
@@ -197,19 +195,13 @@ fn complete_input_limits_include_later_members_and_retry_has_no_partial_state() 
         "A, f(B)",
         CssComponentValueLimits::try_new(0, 99, 99).unwrap(),
     );
-    assert_eq!(
-        component_error(&failed).kind(),
-        CssComponentValueErrorKind::NestingLimit
-    );
+    assert!(component_error(&failed).is_nesting_limit());
     // Resource admission covers even trailing syntax that grammar would reject.
     let failed = parse_font_feature_values_family_list_with_limits(
         "A;B",
         CssComponentValueLimits::try_new(0, 2, 99).unwrap(),
     );
-    assert_eq!(
-        component_error(&failed).kind(),
-        CssComponentValueErrorKind::ComponentLimit
-    );
+    assert!(component_error(&failed).is_component_limit());
     assert_eq!(
         CssParserContext::default()
             .parse_font_feature_values_family_list_with_limits(source, exact)
@@ -239,25 +231,23 @@ fn literal_slice_writer_charges_all_members_and_separators_atomically() {
     for (limits, kind) in [
         (
             CssSerializationLimits::new(2, 3, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(3, 2, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(3, 3, expected.len() - 1),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
         (
             CssSerializationLimits::new(3, 3, 2),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            serialize_font_face_family_list(&families, limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&serialize_font_face_family_list(&families, limits).unwrap_err()),
             kind
         );
         assert_eq!(families, before);
@@ -295,10 +285,7 @@ fn trivia_and_original_line_endings_are_charged_without_rewriting_occurrences() 
         source,
         CssComponentValueLimits::try_new(0, 3, source.len()).unwrap(),
     );
-    assert_eq!(
-        component_error(&limited).kind(),
-        CssComponentValueErrorKind::ComponentLimit
-    );
+    assert!(component_error(&limited).is_component_limit());
     let CssValueOrigin::Parsed(origin) = component_error(&limited).origin() else {
         panic!("original member")
     };

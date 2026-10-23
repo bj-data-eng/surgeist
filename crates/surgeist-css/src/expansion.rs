@@ -234,50 +234,54 @@ pub(crate) fn grid_auto_flow(value: &CssGrid) -> Option<CssGridAutoFlow> {
 }
 use crate::{
     CssComponentValues, CssContainer, CssContainerNames, CssContainerType, CssKnownProperty,
-    CssPropertyValueParseError, CssSpecifiedLengthPercentage,
-    CssSpecifiedNonNegativeLengthPercentage, CssSpecifiedNonNegativeNumber,
+    CssPropertyValueError, CssSpecifiedLengthPercentage, CssSpecifiedNonNegativeLengthPercentage,
+    CssSpecifiedNonNegativeNumber,
 };
 
 /// Why intrinsic expansion could not produce completed contributions.
-#[non_exhaustive]
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum CssExpansionErrorKind {
-    /// The known property is outside the currently selected expansion slice.
-    UnsupportedProperty(CssKnownProperty),
+pub(crate) enum CssExpansionErrorKind {
     /// Strict reentry still contains a decoded `var()` function.
     ResidualSubstitution,
     /// Replacement components failed serialization or the original property grammar.
-    InvalidReplacement(CssPropertyValueParseError),
+    /// Boxed so that every error carrying an expansion failure stays small.
+    InvalidReplacement(Box<CssPropertyValueError>),
 }
 
 /// A typed expansion capability or strict-reentry failure.
+///
+/// A rejected replacement is exposed by [`Self::replacement_error`] and is the error's
+/// source.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssExpansionError {
     kind: CssExpansionErrorKind,
 }
 
 impl CssExpansionError {
-    /// Returns the precise failure without losing known or custom property identity.
+    /// Returns whether strict reentry still contains a decoded `var()` function.
     #[must_use]
-    pub const fn kind(&self) -> &CssExpansionErrorKind {
-        &self.kind
+    pub const fn is_residual_substitution(&self) -> bool {
+        matches!(self.kind, CssExpansionErrorKind::ResidualSubstitution)
     }
 
-    fn new(kind: CssExpansionErrorKind) -> Self {
+    /// Returns why the replacement components failed serialization or the original
+    /// property grammar.
+    #[must_use]
+    pub fn replacement_error(&self) -> Option<&CssPropertyValueError> {
+        match &self.kind {
+            CssExpansionErrorKind::InvalidReplacement(error) => Some(error),
+            CssExpansionErrorKind::ResidualSubstitution => None,
+        }
+    }
+
+    pub(crate) const fn new(kind: CssExpansionErrorKind) -> Self {
         Self { kind }
     }
 }
 
 impl fmt::Display for CssExpansionError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.kind() {
-            CssExpansionErrorKind::UnsupportedProperty(property) => {
-                write!(
-                    formatter,
-                    "intrinsic expansion does not support {}",
-                    property.canonical_name()
-                )
-            }
+        match &self.kind {
             CssExpansionErrorKind::ResidualSubstitution => {
                 formatter.write_str("replacement still contains var() or env() substitution")
             }
@@ -288,9 +292,9 @@ impl fmt::Display for CssExpansionError {
 
 impl std::error::Error for CssExpansionError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self.kind() {
-            CssExpansionErrorKind::InvalidReplacement(error) => Some(error),
-            _ => None,
+        match &self.kind {
+            CssExpansionErrorKind::InvalidReplacement(error) => Some(&**error),
+            CssExpansionErrorKind::ResidualSubstitution => None,
         }
     }
 }
@@ -1339,7 +1343,7 @@ impl CssPendingSubstitution {
             }
         }
         .map_err(|error| {
-            CssExpansionError::new(CssExpansionErrorKind::InvalidReplacement(error))
+            CssExpansionError::new(CssExpansionErrorKind::InvalidReplacement(Box::new(error)))
         })?;
         let context = Arc::new(ContributionContext {
             source: self.source.clone(),
@@ -1637,16 +1641,26 @@ impl OwnedContributionValue {
     }
 }
 /// Intrinsic metadata availability is separate from recognition and parser support.
-#[non_exhaustive]
+///
+/// The grammar's intrinsic metadata is unavailable.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum CssPropertyMetadataError {
-    Unavailable(crate::CssPropertyGrammar),
+pub struct CssPropertyMetadataError {
+    grammar: crate::CssPropertyGrammar,
+}
+impl CssPropertyMetadataError {
+    /// Returns the grammar whose intrinsic metadata is unavailable.
+    #[must_use]
+    pub const fn grammar(&self) -> crate::CssPropertyGrammar {
+        self.grammar
+    }
 }
 impl fmt::Display for CssPropertyMetadataError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Unavailable(g) => write!(f, "intrinsic metadata unavailable for {}", g.name()),
-        }
+        write!(
+            f,
+            "intrinsic metadata unavailable for {}",
+            self.grammar.name()
+        )
     }
 }
 impl std::error::Error for CssPropertyMetadataError {}

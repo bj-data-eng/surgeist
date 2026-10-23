@@ -265,19 +265,18 @@ fn css_wide_all_and_pending_reentry_preserve_property_and_source() {
             } else {
                 "none"
             };
-            assert!(matches!(
+            assert!(
                 handle
                     .reenter(parse_component_values(invalid_value).unwrap())
                     .unwrap_err()
-                    .kind(),
-                CssExpansionErrorKind::InvalidReplacement(_)
-            ));
-            assert_eq!(
+                    .replacement_error()
+                    .is_some()
+            );
+            assert!(
                 handle
                     .reenter(parse_component_values("var(--again)").unwrap())
                     .unwrap_err()
-                    .kind(),
-                &CssExpansionErrorKind::ResidualSubstitution
+                    .is_residual_substitution()
             );
             let replacement_text = match name {
                 "overflow-clip-margin" => "border-box 2px",

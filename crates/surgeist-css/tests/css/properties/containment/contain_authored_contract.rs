@@ -8,6 +8,7 @@
 //! No future Style variant or generated Contain longhand variant is named.
 
 use crate::css::support::authored_property;
+use crate::css::support::failure_classes::serialization_failure;
 use authored_property::{ParserFront, assert_source, checked_components};
 use surgeist_css::*;
 
@@ -290,11 +291,8 @@ fn normalization_counts_one_terminal_per_occurrence_and_preserves_order_importan
     )
     .unwrap_err();
     assert_eq!(
-        error.kind(),
-        &CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: 3
-        }
+        error.exhausted_limit(),
+        Some((CssNormalizationResource::Contributions, 3))
     );
     assert_eq!(error.declaration_order(), Some(3));
     assert_eq!(report, before);
@@ -303,8 +301,8 @@ fn normalization_counts_one_terminal_per_occurrence_and_preserves_order_importan
 
 #[test]
 fn every_specified_state_keeps_exact_aggregate_leaf_and_declaration_byte_costs_with_atomic_reuse() {
+    use crate::css::support::failure_classes::SerializationFailure as Kind;
     use CssSerializationLimits as Limits;
-    use CssSpecifiedValueSerializationErrorKind as Kind;
     for canonical in STATES {
         let source = ParserFront::CheckedGrammar.valid(PROPERTY, canonical, canonical);
         let before = source.clone();
@@ -332,7 +330,10 @@ fn every_specified_state_keeps_exact_aggregate_leaf_and_declaration_byte_costs_w
             ),
         ] {
             for _ in 0..2 {
-                assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+                assert_eq!(
+                    serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+                    kind
+                );
             }
         }
         let nodes = primitive_nodes + 2;
@@ -353,7 +354,10 @@ fn every_specified_state_keeps_exact_aggregate_leaf_and_declaration_byte_costs_w
             ),
         ] {
             for _ in 0..2 {
-                assert_eq!(source.serialize_specified(limits).unwrap_err().kind(), kind);
+                assert_eq!(
+                    serialization_failure(&source.serialize_specified(limits).unwrap_err()),
+                    kind
+                );
             }
         }
         assert_eq!(source.serialize_specified(exact).unwrap(), expected);
@@ -383,10 +387,7 @@ fn sibling_sheet_output_shares_a_cumulative_byte_budget_and_remains_reusable_aft
                 expected.len() - 1,
             ))
             .unwrap_err();
-        assert_eq!(
-            error.kind(),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit
-        );
+        assert!(error.is_byte_limit(), "{error:?}");
         assert_eq!(error.rule_index(), Some(0));
         assert_eq!(report, before);
     }

@@ -2,12 +2,14 @@
 //! Values4 custom-ident and selected Selectors4 attachment/context contracts.
 //! New typed APIs establish functional behavior without absent-symbol RED.
 //! Limits tariffs follow the adopted shared writer convention, not spec mandates.
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::rules::ExpectedRejection;
 use crate::css::support::sole_declaration as declaration;
 use CssPseudoElementSegment::{PseudoClass as P, PseudoElement as E};
 use surgeist_css::*;
 type Limits = CssSerializationLimits;
-type LimitKind = CssSpecifiedValueSerializationErrorKind;
+type LimitKind = SerializationFailure;
 
 fn ident(text: &str) -> CssViewTransitionIdent {
     CssViewTransitionIdent::try_new(CssCustomIdent::try_new(text).unwrap()).unwrap()
@@ -289,10 +291,16 @@ fn invalid_property_values_drop_only_their_occurrence_with_original_responsible_
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
     assert_eq!(diagnostic.error().position().byte_offset().value(), 29);
     assert_eq!(diagnostic.error().position().column().value(), 27);
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("typed grammar error")
-    };
-    assert_eq!(detail.property(), CssKnownProperty::ViewTransitionName);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "typed grammar error"
+    );
+    assert_eq!(
+        detail.known_property().unwrap(),
+        CssKnownProperty::ViewTransitionName
+    );
     assert_eq!(detail.encountered().unwrap().authored(), "AUTO");
     assert!(report.into_validation_result().is_err());
     // VT1 §3.1: none | <custom-ident>, a single identifier other than
@@ -319,10 +327,7 @@ fn invalid_property_values_drop_only_their_occurrence_with_original_responsible_
             CssImportance::Normal,
         )
         .unwrap_err();
-        let CssPropertyValueErrorKind::Grammar(detail) = error.kind() else {
-            panic!("{invalid}: grammar failure: {error:?}")
-        };
-        expected.assert_kind(detail);
+        expected.assert_checked(&error);
         assert_eq!(components, before);
     }
 }
@@ -351,19 +356,12 @@ fn pending_property_reentry_is_strict_repeatable_and_preserves_source_and_replac
             let error = pending.reenter(replacement.clone()).unwrap_err();
             match token {
                 Some(token) => {
-                    let CssExpansionErrorKind::InvalidReplacement(failure) = error.kind() else {
+                    let Some(failure) = error.replacement_error() else {
                         panic!("{invalid}: invalid replacement: {error:?}")
                     };
-                    let CssPropertyValueErrorKind::Grammar(detail) = failure.kind() else {
-                        panic!("{invalid}: grammar failure: {failure:?}")
-                    };
-                    rejected.clone().at(token).assert_kind(detail);
+                    rejected.clone().at(token).assert_checked(failure);
                 }
-                None => assert_eq!(
-                    error.kind(),
-                    &CssExpansionErrorKind::ResidualSubstitution,
-                    "{invalid}"
-                ),
+                None => assert!(error.is_residual_substitution(), "{invalid}"),
             }
             assert_eq!(replacement, before);
             assert!(pending.source().same_occurrence(&source));
@@ -389,9 +387,11 @@ fn pending_property_reentry_is_strict_repeatable_and_preserves_source_and_replac
             assert_eq!(actual, &name("Card"));
         }
         let recovered = parse_component_values("var(--tag").unwrap();
-        assert_eq!(
-            pending.reenter(recovered).unwrap_err().kind(),
-            &CssExpansionErrorKind::ResidualSubstitution
+        assert!(
+            pending
+                .reenter(recovered)
+                .unwrap_err()
+                .is_residual_substitution()
         );
         assert!(
             pending
@@ -485,11 +485,13 @@ fn malformed_names_reject_and_implicit_function_eof_is_retained_but_not_clean() 
         "::view-transition-old(Card)"
     );
     assert!(!report.is_clean());
-    assert!(report.diagnostics().iter().any(|d| matches!(
-        d.error().kind(),
-        ErrorKind::UnexpectedEnd(_)
-    ) && d.error().position().byte_offset().value()
-        == source.len()));
+    assert!(
+        report
+            .diagnostics()
+            .iter()
+            .any(|d| d.error().code() == CssErrorCode::UnexpectedEnd
+                && d.error().position().byte_offset().value() == source.len())
+    );
     assert!(report.into_validation_result().is_err());
 }
 
@@ -630,12 +632,11 @@ fn retained_invalid_logical_items_require_actual_suffix_permission_inclusion() {
         "::view-transition-old(Card):is(:NoPe(&))"
     );
     let detached = CssSelector::PseudoClass(CssPseudoClass::Is(suffix_list(&named).clone()));
-    assert_eq!(
+    assert!(
         detached
             .serialize_specified(Default::default())
             .unwrap_err()
-            .kind(),
-        LimitKind::UnrepresentableValue
+            .is_unrepresentable_value()
     );
 }
 
@@ -757,7 +758,7 @@ fn proposed_scalar_and_selector_list_tariffs_are_cumulative_atomic_and_repeatabl
         (Limits::new(1, 1, 3), LimitKind::ByteLimit),
     ] {
         assert_eq!(
-            scalar.serialize_specified(limits).unwrap_err().kind(),
+            serialization_failure(&scalar.serialize_specified(limits).unwrap_err()),
             cause
         );
         assert_eq!(scalar, name("A B"));
@@ -786,11 +787,14 @@ fn proposed_scalar_and_selector_list_tariffs_are_cumulative_atomic_and_repeatabl
             assert!(member.serialize_specified(limits).is_ok());
         }
         let error = CssSelectorList::try_new(members.clone(), limits).unwrap_err();
-        let CssSelectorConstructionErrorKind::Specified(error) = error.kind() else {
+        let Some(error) = error.serialization_error() else {
             panic!("shared specified cause")
         };
-        assert_eq!(error.kind(), cause);
-        assert_eq!(list.serialize_specified(limits).unwrap_err().kind(), cause);
+        assert_eq!(serialization_failure(error), cause);
+        assert_eq!(
+            serialization_failure(&list.serialize_specified(limits).unwrap_err()),
+            cause
+        );
         assert_eq!(list, before);
     }
     assert_eq!(list.serialize_specified(fit).unwrap(), css);
@@ -816,9 +820,10 @@ fn checked_pending_components_obey_the_real_256_ceiling_and_keep_leaf_origins() 
     );
     assert_eq!(declaration.value_components(), &before);
     let rejected = format!("{}var(--tag){}", "f(".repeat(256), ")".repeat(256));
-    assert_eq!(
-        parse_component_values(&rejected).unwrap_err().kind(),
-        CssComponentValueErrorKind::NestingLimit
+    assert!(
+        parse_component_values(&rejected)
+            .unwrap_err()
+            .is_nesting_limit()
     );
     let CssExpansion::Pending(pending) = expand_declaration(&declaration).unwrap() else {
         panic!("deep authored pending name")

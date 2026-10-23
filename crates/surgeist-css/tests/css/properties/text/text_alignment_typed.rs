@@ -1,5 +1,7 @@
 //! Functional current-value evidence for Text 4 (2026-08-14) and UAX29 r47.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::*;
 
 fn one(name: &str, value: &str) -> CssDeclaration {
@@ -237,25 +239,26 @@ fn decoded_unicode_clusters_and_source_graphs_share_checked_construction() {
 #[test]
 fn invalid_decoded_clusters_components_and_literal_bad_newlines_are_rejected() {
     for text in ["", "ab", "🇺🇸🇨"] {
-        assert_eq!(
+        assert!(
             CssCharacterAlignment::try_new(text, None)
                 .unwrap_err()
-                .kind(),
-            CssCharacterAlignmentErrorKind::InvalidCharacter
+                .is_invalid_character()
         );
     }
     let error = CssCharacterAlignment::try_new("\0", None).unwrap_err();
-    assert_eq!(
-        error.kind(),
-        CssCharacterAlignmentErrorKind::Component(CssComponentValueErrorKind::InvalidString)
+    assert!(
+        error
+            .component_error()
+            .is_some_and(|error| error.is_invalid_string()),
+        "{error:?}"
     );
     assert_eq!(error.origin(), &CssValueOrigin::Programmatic);
     let identifier = CssComponentValue::try_ident("red").unwrap();
-    assert_eq!(
+    assert!(
         CssCharacterAlignment::try_from_component(identifier, None)
             .unwrap_err()
-            .kind(),
-        CssCharacterAlignmentErrorKind::Component(CssComponentValueErrorKind::InvalidString)
+            .component_error()
+            .is_some_and(|error| error.is_invalid_string())
     );
     for name in ["text-align", "text-align-all"] {
         let report = parse_style_attribute(&format!("{name}:\"a\nb\""));
@@ -353,18 +356,21 @@ fn specified_serialization_is_canonical_and_atomically_bounded() {
         for (limits, kind) in [
             (
                 CssSerializationLimits::new(nodes - 1, nodes, expected.len()),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                SerializationFailure::InputNodeLimit,
             ),
             (
                 CssSerializationLimits::new(nodes, nodes - 1, expected.len()),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
                 CssSerializationLimits::new(nodes, nodes, expected.len() - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                SerializationFailure::ByteLimit,
             ),
         ] {
-            assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+            assert_eq!(
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+                kind
+            );
         }
     }
     assert_eq!(
@@ -384,12 +390,11 @@ fn specified_serialization_is_canonical_and_atomically_bounded() {
     let parsed = parse_component_values(&format!("\"{one_long_cluster}\"")).unwrap();
     let value = CssCharacterAlignment::try_from_component(parsed.items()[0].clone(), None).unwrap();
     assert_eq!(value.decoded(), one_long_cluster);
-    assert_eq!(
+    assert!(
         value
             .serialize_specified(CssSerializationLimits::new(1, 1, 8))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(
         value.serialize_specified(Default::default()).unwrap(),

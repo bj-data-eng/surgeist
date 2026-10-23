@@ -7,6 +7,8 @@
 use crate::css::support::color_and_selector_fixtures::{
     assert_color_limit_error, assert_color_limits,
 };
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::{
     checked_color as color, checked_color_declaration as declaration,
     component_values as components, declaration_color,
@@ -14,7 +16,7 @@ use crate::css::support::{
 use surgeist_css::*;
 
 type Limits = CssSerializationLimits;
-type Kind = CssSpecifiedValueSerializationErrorKind;
+type Kind = SerializationFailure;
 
 fn assert_text(source: &str, expected: &str) {
     let declaration = declaration(source);
@@ -422,12 +424,11 @@ fn discarded_ordinary_rgb_capture_preserves_larger_scratch_requirement() {
             .unwrap(),
         "rgb(255, 0, 0)"
     );
-    assert_eq!(
+    assert!(
         value
             .serialize_specified(Limits::new(usize::MAX, usize::MAX, 16))
             .unwrap_err()
-            .kind(),
-        Kind::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(value, before);
 }
@@ -447,10 +448,11 @@ fn rounded_nested_origin_capture_controls_scratch_and_source_visit_precedence() 
         (9, 23, Kind::InputNodeLimit),
     ] {
         assert_eq!(
-            value
-                .serialize_specified(Limits::new(inputs, usize::MAX, bytes))
-                .unwrap_err()
-                .kind(),
+            serialization_failure(
+                &value
+                    .serialize_specified(Limits::new(inputs, usize::MAX, bytes))
+                    .unwrap_err()
+            ),
             expected
         );
     }
@@ -517,10 +519,7 @@ fn invalid_grammars_recover_and_substitutions_remain_pending() {
         Default::default(),
     )
     .unwrap_err();
-    assert_eq!(
-        error.kind(),
-        &CssNumericConstructionErrorKind::SubstitutionRequired
-    );
+    assert!(error.is_substitution_required(), "{error:?}");
     assert!(error.origin().is_some());
     assert_eq!(before, components("calc(r + var(--n))"));
 }

@@ -4,6 +4,8 @@
 //! CSS-wide values to reset-only members. Provenance, typed borrowed payloads
 //! and cumulative atomic limits are Surgeist authored-layer contracts.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::property_admission::eof_closure_origin;
 use crate::css::support::{
     checked_property_grammar_declaration as checked, sole_declaration as parsed,
@@ -281,12 +283,11 @@ fn sixty_four_authored_blend_entries_keep_every_index_duplicate_and_decoded_orde
                 .unwrap(),
             expected_css
         );
-        assert_eq!(
+        assert!(
             value
                 .serialize_specified(CssSerializationLimits::new(64, 65, expected_css.len()))
                 .unwrap_err()
-                .kind(),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+                .is_input_node_limit()
         );
         assert_eq!(value.modes(), expected_modes);
     }
@@ -390,14 +391,11 @@ fn pending_family_handles_retry_strict_original_eof_grammar_residual_and_provide
             let origin = eof_closure_origin(&recovered, &recovered_text);
             let before = recovered.clone();
             let error = handle.reenter(recovered.clone()).unwrap_err();
-            let CssExpansionErrorKind::InvalidReplacement(error) = error.kind() else {
+            let Some(error) = error.replacement_error() else {
                 panic!("original grammar failure")
             };
-            assert!(matches!(
-                error.kind(),
-                CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
-            ));
-            assert_eq!(error.origin(), &CssSerializedOrigin::End(Some(origin)));
+            assert!(error.code() == Some(CssErrorCode::UnexpectedEnd));
+            assert_eq!(error.origin(), CssSerializedOrigin::End(Some(origin)));
             assert_eq!(recovered, before);
             let invalid = parse_component_values("plus-lighter").unwrap();
             let expected = parse_property_value_for_grammar(
@@ -407,30 +405,28 @@ fn pending_family_handles_retry_strict_original_eof_grammar_residual_and_provide
             )
             .unwrap_err();
             let error = handle.reenter(invalid).unwrap_err();
-            let CssExpansionErrorKind::InvalidReplacement(error) = error.kind() else {
+            let Some(error) = error.replacement_error() else {
                 panic!("same invalid grammar")
             };
             assert_eq!(error, &expected);
-            assert_eq!(
+            assert!(
                 handle
                     .reenter(parse_component_values("var(--again)").unwrap())
                     .unwrap_err()
-                    .kind(),
-                &CssExpansionErrorKind::ResidualSubstitution
+                    .is_residual_substitution()
             );
             let replacement = parse_component_values(good).unwrap();
             let CssContributions::Longhands(first) = handle.reenter(replacement.clone()).unwrap()
             else {
                 panic!("completed replacement")
             };
-            assert_eq!(
+            assert!(
                 output(
                     one(&first, property),
                     CssSerializationLimits::new(100, 100, 0)
                 )
                 .unwrap_err()
-                .kind(),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit
+                .is_byte_limit()
             );
             let CssContributions::Longhands(retry) = handle.reenter(replacement.clone()).unwrap()
             else {
@@ -483,18 +479,21 @@ fn projected_family_payloads_and_singleton_reset_keep_exact_provider_budgets() {
         for (budget, kind) in [
             (
                 limits(nodes - 1, nodes, css.len()),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                SerializationFailure::InputNodeLimit,
             ),
             (
                 limits(nodes, nodes - 1, css.len()),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
                 limits(nodes, nodes, css.len() - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                SerializationFailure::ByteLimit,
             ),
         ] {
-            assert_eq!(output(view, budget).unwrap_err().kind(), kind);
+            assert_eq!(
+                serialization_failure(&output(view, budget).unwrap_err()),
+                kind
+            );
             assert_eq!(output(view, limits(nodes, nodes, css.len())).unwrap(), css);
         }
     }
@@ -606,20 +605,19 @@ fn global_and_pending_backgrounds_keep_nine_terminals_and_reset_replacement_cont
         }
     }
     for bad in ["red, none", "none,", "/cover"] {
-        assert!(matches!(
+        assert!(
             handle
                 .reenter(parse_component_values(bad).unwrap())
                 .unwrap_err()
-                .kind(),
-            CssExpansionErrorKind::InvalidReplacement(_)
-        ));
+                .replacement_error()
+                .is_some()
+        );
     }
-    assert_eq!(
+    assert!(
         handle
             .reenter(parse_component_values("env(layers)").unwrap())
             .unwrap_err()
-            .kind(),
-        &CssExpansionErrorKind::ResidualSubstitution
+            .is_residual_substitution()
     );
     let replacement = CssComponentValues::try_new(
         vec![CssComponentValue::try_ident("red").unwrap()],
@@ -705,11 +703,8 @@ fn normalized_order_counts_the_singleton_reset_and_recovers_atomically_at_one_sh
         )
         .unwrap_err();
         assert_eq!(
-            error.kind(),
-            &CssNormalizationErrorKind::LimitExceeded {
-                resource: CssNormalizationResource::Contributions,
-                limit: budget
-            }
+            error.exhausted_limit(),
+            Some((CssNormalizationResource::Contributions, budget))
         );
         assert_eq!(error.declaration_order(), Some(order));
         assert!(
@@ -772,7 +767,7 @@ fn browser_recovered_comments_preserve_typed_payloads_and_unclean_report_normali
         ] {
             assert_eq!(
                 result.unwrap_err().origin(),
-                &CssSerializedOrigin::End(Some(origin.clone()))
+                CssSerializedOrigin::End(Some(origin.clone()))
             );
         }
         let error = normalize_report_with_limits(
@@ -781,11 +776,8 @@ fn browser_recovered_comments_preserve_typed_payloads_and_unclean_report_normali
         )
         .unwrap_err();
         assert_eq!(
-            error.kind(),
-            &CssNormalizationErrorKind::LimitExceeded {
-                resource: CssNormalizationResource::Contributions,
-                limit: 0
-            }
+            error.exhausted_limit(),
+            Some((CssNormalizationResource::Contributions, 0))
         );
         assert!(
             error

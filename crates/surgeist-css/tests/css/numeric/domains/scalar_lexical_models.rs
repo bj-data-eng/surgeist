@@ -1,4 +1,6 @@
 //! Ordinary authored scalar transport preserves checked tokens at every magnitude.
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::*;
 
 fn integer(declaration: &CssDeclaration) -> &CssIntegerLiteral {
@@ -166,10 +168,11 @@ fn signed_zero_has_nonnegative_semantics_and_positive_counts_reject_every_zero_s
     assert!(negative.is_negative());
     assert!(!negative.is_zero());
     // Fonts 4 @font-palette-values: a palette index is a nonnegative <integer>.
-    assert!(matches!(
-        CssFontPaletteIndex::try_new(CssIntegerValue::Literal(negative)),
-        Err(CssFontPaletteConstructionError::NegativeIndex)
-    ));
+    assert!(
+        CssFontPaletteIndex::try_new(CssIntegerValue::Literal(negative))
+            .as_ref()
+            .is_err_and(|error| error.is_negative_index())
+    );
     for text in ["+0002", "2147483648", "9999999999999999999999999"] {
         let literal =
             CssIntegerLiteral::try_from_component(CssComponentValue::try_number(text).unwrap())
@@ -240,18 +243,21 @@ fn bounded_scalar_serialization_normalizes_output_without_changing_retained_toke
         for (limits, kind) in [
             (
                 CssSerializationLimits::new(0, 1, 10),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                SerializationFailure::InputNodeLimit,
             ),
             (
                 CssSerializationLimits::new(1, 0, 10),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
                 CssSerializationLimits::new(1, 1, expected.len() - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                SerializationFailure::ByteLimit,
             ),
         ] {
-            assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+            assert_eq!(
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+                kind
+            );
         }
         let CssOpacityValue::Scalar(scalar) = value else {
             unreachable!()

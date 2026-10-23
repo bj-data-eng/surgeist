@@ -19,6 +19,7 @@
 //! Catalog source completeness and downstream execution are not test oracles.
 
 use crate::css::support::authored_property::{checked, parsed};
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::property_admission::Responsible::{self, At};
 use crate::css::support::property_admission::implicit_closing_origin as implicit_origin;
 use crate::css::support::property_admission::{
@@ -106,11 +107,14 @@ fn invalid<'a>(property: P, value: &str, token: impl Into<Responsible<'a>>) {
         panic!("one atomic declaration failure: {css}")
     };
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("typed property failure")
-    };
-    assert_eq!(detail.property(), property);
-    assert_invalid_value(diagnostic.error().kind(), property, token);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "typed property failure"
+    );
+    assert_eq!(detail.known_property().unwrap(), property);
+    assert_invalid_value(diagnostic.error(), property, token);
     assert_eq!(
         validate_style_attribute(&css).unwrap_err().diagnostics(),
         report.diagnostics()
@@ -483,15 +487,9 @@ fn whole_value_pending_reentry_reuses_original_grammar_order_importance_and_orig
                             .reenter(parse_component_values(invalid_text).unwrap())
                             .unwrap_err();
                         if invalid_text.starts_with("var") {
-                            assert!(matches!(
-                                error.kind(),
-                                CssExpansionErrorKind::ResidualSubstitution
-                            ));
+                            assert!(error.is_residual_substitution());
                         } else {
-                            assert!(matches!(
-                                error.kind(),
-                                CssExpansionErrorKind::InvalidReplacement(_)
-                            ));
+                            assert!(error.replacement_error().is_some());
                         }
                         assert!(handle.source().same_occurrence(&source));
                     }
@@ -535,14 +533,11 @@ fn whole_value_pending_reentry_reuses_original_grammar_order_importance_and_orig
     }
 }
 
-fn assert_closure_error(error: &CssPropertyValueParseError, origin: &CssValueOrigin) {
-    assert!(matches!(
-        error.kind(),
-        CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
-    ));
+fn assert_closure_error(error: &CssPropertyValueError, origin: &CssValueOrigin) {
+    assert!(error.code() == Some(CssErrorCode::UnexpectedEnd));
     assert_eq!(
         error.origin(),
-        &CssSerializedOrigin::End(Some(origin.clone()))
+        CssSerializedOrigin::End(Some(origin.clone()))
     );
 }
 #[test]
@@ -589,7 +584,7 @@ fn all_four_checked_roles_reject_original_implicit_comments_functions_and_blocks
             if !text.starts_with("var") {
                 for _ in 0..2 {
                     let error = handle.reenter(components.clone()).unwrap_err();
-                    let CssExpansionErrorKind::InvalidReplacement(error) = error.kind() else {
+                    let Some(error) = error.replacement_error() else {
                         panic!("original closure rejection")
                     };
                     assert_closure_error(error, &origin);
@@ -635,7 +630,7 @@ fn checked_invalid_repeat_count_maps_to_the_original_responsible_token() {
                 CssImportance::Normal,
             ),
         ] {
-            assert_eq!(result.unwrap_err().origin(), &expected);
+            assert_eq!(result.unwrap_err().origin(), expected);
         }
     }
 }
@@ -717,10 +712,7 @@ fn normalization_preserves_duplicate_order_contexts_and_exact_one_three_six_acco
     ] {
         for _ in 0..2 {
             let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
-            assert_eq!(
-                error.kind(),
-                &CssNormalizationErrorKind::LimitExceeded { resource, limit }
-            );
+            assert_eq!(error.exhausted_limit(), Some((resource, limit)));
             assert_eq!(error.declaration_order(), Some(5));
             assert!(
                 error
@@ -782,7 +774,7 @@ fn recoverable_browser_comments_retain_diagnostics_and_source_in_normalized_repo
 #[test]
 fn every_new_typed_branch_obeys_atomic_byte_limits_and_reusable_output() {
     use CssSerializationLimits as Limits;
-    use CssSpecifiedValueSerializationErrorKind as Kind;
+
     for (property, value) in [
         (P::GridTemplateRows, "none"),
         (P::GridTemplateColumns, "subgrid [] repeat(calc(2), [a])"),
@@ -794,14 +786,13 @@ fn every_new_typed_branch_obeys_atomic_byte_limits_and_reusable_output() {
         let exact = Limits::new(usize::MAX, usize::MAX, value.len());
         assert_eq!(typed_output(&source, exact).unwrap(), value);
         for _ in 0..2 {
-            assert_eq!(
+            assert!(
                 typed_output(
                     &source,
                     Limits::new(usize::MAX, usize::MAX, value.len() - 1)
                 )
                 .unwrap_err()
-                .kind(),
-                Kind::ByteLimit
+                .is_byte_limit()
             );
             assert_eq!(source, before);
         }
@@ -810,8 +801,8 @@ fn every_new_typed_branch_obeys_atomic_byte_limits_and_reusable_output() {
 }
 #[test]
 fn aggregate_work_costs_and_sheet_sibling_byte_limits_remain_atomic() {
+    use crate::css::support::failure_classes::SerializationFailure as Kind;
     use CssSerializationLimits as Limits;
-    use CssSpecifiedValueSerializationErrorKind as Kind;
     // Accepted grid_aggregate_serialization.rs:124-158 independently fixes five
     // semantic visits for the represented aggregate. The public declaration
     // contract (declaration_serialization.rs:205-210) adds declaration + name.
@@ -844,14 +835,15 @@ fn aggregate_work_costs_and_sheet_sibling_byte_limits_remain_atomic() {
     ] {
         for _ in 0..2 {
             assert_eq!(
-                typed_output(&declaration, value_limits).unwrap_err().kind(),
+                serialization_failure(&typed_output(&declaration, value_limits).unwrap_err()),
                 kind
             );
             assert_eq!(
-                declaration
-                    .serialize_specified(declaration_limits)
-                    .unwrap_err()
-                    .kind(),
+                serialization_failure(
+                    &declaration
+                        .serialize_specified(declaration_limits)
+                        .unwrap_err()
+                ),
                 kind
             );
             assert_eq!(declaration, declaration_before);
@@ -883,7 +875,7 @@ fn aggregate_work_costs_and_sheet_sibling_byte_limits_remain_atomic() {
     );
     for _ in 0..2 {
         let error = sheet.serialize_specified(short).unwrap_err();
-        assert_eq!(error.kind(), Kind::ByteLimit);
+        assert!(error.is_byte_limit(), "{error:?}");
         assert_eq!(error.rule_index(), Some(1));
         assert_eq!(sheet, &before);
     }
@@ -892,7 +884,7 @@ fn aggregate_work_costs_and_sheet_sibling_byte_limits_remain_atomic() {
 #[test]
 fn new_subgrid_and_area_siblings_share_final_sheet_output_budget_without_mutation() {
     use CssSerializationLimits as Limits;
-    use CssSpecifiedValueSerializationErrorKind as Kind;
+
     let report = parse_sheet(
         r#".a{grid-template-rows:subgrid repeat(calc(2), [a])!important}.b{grid-template:"a a" / 10px 20px}"#,
     );
@@ -914,7 +906,7 @@ fn new_subgrid_and_area_siblings_share_final_sheet_output_budget_without_mutatio
     );
     for _ in 0..2 {
         let error = sheet.serialize_specified(short).unwrap_err();
-        assert_eq!(error.kind(), Kind::ByteLimit);
+        assert!(error.is_byte_limit(), "{error:?}");
         assert_eq!(error.rule_index(), Some(1));
         assert_eq!(sheet, &before);
     }

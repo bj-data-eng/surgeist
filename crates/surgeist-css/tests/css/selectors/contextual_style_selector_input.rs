@@ -4,6 +4,8 @@
 use crate::css::support::color_and_selector_fixtures::{
     assert_selector_input_rejected, assert_strict_validation_rejects,
 };
+use crate::css::support::failure_classes::ComponentFailure;
+use crate::css::support::failure_classes::component_failure;
 use surgeist_css::*;
 
 fn clean(source: &str, context: CssStyleSelectorContext) -> CssParsedStyleSelectors {
@@ -271,7 +273,7 @@ fn complete_input_failure_is_atomic_and_reports_original_responsible_positions()
     assert_eq!(error.position().byte_offset().value(), 17);
     assert_eq!(error.position().line().value(), 1);
     assert_eq!(error.position().column().value(), 6);
-    assert!(matches!(error.kind(), ErrorKind::InvalidSelector(_)));
+    assert!(error.code() == CssErrorCode::InvalidSelector);
 }
 
 #[test]
@@ -327,21 +329,27 @@ fn bounded_failure_distinguishes_resource_from_syntax_and_allows_unchanged_retry
         for (limits, expected) in [
             (
                 CssComponentValueLimits::try_new(256, usize::MAX, source.len() - 1).unwrap(),
-                CssComponentValueErrorKind::ByteLimit,
+                ComponentFailure::ByteLimit,
             ),
             (
                 CssComponentValueLimits::try_new(256, 1, source.len()).unwrap(),
-                CssComponentValueErrorKind::ComponentLimit,
+                ComponentFailure::ComponentLimit,
             ),
             (
                 CssComponentValueLimits::try_new(0, usize::MAX, source.len()).unwrap(),
-                CssComponentValueErrorKind::NestingLimit,
+                ComponentFailure::NestingLimit,
             ),
         ] {
             let failure =
                 parse_style_selector_list_with_limits(source, &namespaces, context, limits);
             assert!(failure.syntax().is_none());
-            assert!(failure.diagnostics().iter().any(|d| matches!(d.error().kind(), ErrorKind::InvalidComponentValue(error) if error.kind() == expected)), "{failure:?}");
+            assert!(
+                failure.diagnostics().iter().any(|d| d
+                    .error()
+                    .component_error()
+                    .is_some_and(|error| component_failure(error) == expected)),
+                "{failure:?}"
+            );
             assert!(
                 failure
                     .diagnostics()
@@ -382,7 +390,11 @@ fn component_allowance_covers_all_members_descendants_and_root_trivia_once() {
         CssComponentValueLimits::try_new(1, 9, source.len()).unwrap(),
     );
     assert!(fail.syntax().is_none());
-    assert!(fail.diagnostics().iter().any(|d| matches!(d.error().kind(), ErrorKind::InvalidComponentValue(error) if error.kind() == CssComponentValueErrorKind::ComponentLimit)));
+    assert!(fail.diagnostics().iter().any(|d| {
+        d.error()
+            .component_error()
+            .is_some_and(|error| error.is_component_limit())
+    }));
     let pass = parse_style_selector_list_with_limits(
         source,
         &namespaces,

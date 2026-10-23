@@ -209,41 +209,36 @@ fn initial_foreign_facts_and_ordinary_denials_keep_their_original_classes() {
     let root = color("red");
     let mut denied = limits();
     denied.actions = 0;
-    assert!(matches!(
-        resolve_authored_color(&root, &facts, CssColorFactIdentity::new(0, 0), denied),
-        Err(CssColorOrdinaryError::Operation(CssColorError::Facts(
-            CssColorFactError::Foreign
-        )))
-    ));
-    assert!(matches!(
-        resolve_authored_color(&root, &facts, facts.identity(), denied),
-        Err(CssColorOrdinaryError::Limit {
-            resource: CssColorOrdinaryResource::Actions,
-            required: 1,
-            allowed: 0
-        })
-    ));
+    assert!(
+        resolve_authored_color(&root, &facts, CssColorFactIdentity::new(0, 0), denied).is_err_and(
+            |error| error.color_error().and_then(CssColorError::fact_defect)
+                == Some(CssColorFactDefect::Foreign)
+        )
+    );
+    assert!(
+        resolve_authored_color(&root, &facts, facts.identity(), denied)
+            .as_ref()
+            .is_err_and(
+                |error| error.exhausted_limit() == Some((CssColorOrdinaryResource::Actions, 0, 1))
+            )
+    );
     let root = color("rgb(1 2 3)");
     denied = limits();
     denied.path_steps = 0;
-    assert!(matches!(
-        resolve_authored_color(&root, &facts, facts.identity(), denied),
-        Err(CssColorOrdinaryError::Limit {
-            resource: CssColorOrdinaryResource::PathSteps,
-            required: 1,
-            allowed: 0
-        })
-    ));
+    assert!(
+        resolve_authored_color(&root, &facts, facts.identity(), denied)
+            .as_ref()
+            .is_err_and(|error| error.exhausted_limit()
+                == Some((CssColorOrdinaryResource::PathSteps, 0, 1)))
+    );
     denied = limits();
     denied.algorithm_records = 0;
-    assert!(matches!(
-        resolve_authored_color(&root, &facts, facts.identity(), denied),
-        Err(CssColorOrdinaryError::Limit {
-            resource: CssColorOrdinaryResource::AlgorithmRecords,
-            required: 1,
-            allowed: 0
-        })
-    ));
+    assert!(
+        resolve_authored_color(&root, &facts, facts.identity(), denied)
+            .as_ref()
+            .is_err_and(|error| error.exhausted_limit()
+                == Some((CssColorOrdinaryResource::AlgorithmRecords, 0, 1)))
+    );
 }
 
 #[test]

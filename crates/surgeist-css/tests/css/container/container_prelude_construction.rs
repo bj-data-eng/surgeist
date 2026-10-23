@@ -1,11 +1,13 @@
 //! New authored prelude API contracts: ordered independent entries from pinned
 //! Conditional Rules 5 section 5.4, and shared component provenance/limits.
 //! https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#container-rule
+use crate::css::support::failure_classes::ComponentFailure;
+use crate::css::support::failure_classes::component_failure;
 use surgeist_css::{
-    CssComponentValue, CssComponentValueErrorKind, CssComponentValueLimits, CssComponentValueRef,
-    CssComponentValues, CssContainerConditionKind, CssContainerConstructionError, CssContainerName,
-    CssContainerPrelude, CssNormalizedItem, CssRule, CssRuleContextKindRef, CssSerializedOrigin,
-    CssValueOrigin, CssValueTokenRef, normalize_sheet, parse_component_values, parse_sheet,
+    CssComponentValue, CssComponentValueLimits, CssComponentValueRef, CssComponentValues,
+    CssContainerConditionKind, CssContainerName, CssContainerPrelude, CssNormalizedItem, CssRule,
+    CssRuleContextKindRef, CssSerializedOrigin, CssValueOrigin, CssValueTokenRef, normalize_sheet,
+    parse_component_values, parse_sheet,
 };
 
 fn construct(source: &str) -> CssContainerPrelude {
@@ -171,11 +173,11 @@ fn malformed_complete_preludes_return_typed_failure_and_the_offending_origin() {
         "card,(width:1px) junk",
     ] {
         let values = parse_component_values(source).unwrap();
-        let Err(CssContainerConstructionError::InvalidPreludeGrammar { .. }) =
+        assert!(
             CssContainerPrelude::try_from_components(values, Default::default())
-        else {
-            panic!("invalid full prelude: {source}")
-        };
+                .is_err_and(|error| error.is_invalid_prelude_grammar()),
+            "invalid full prelude: {source}"
+        );
     }
     let values = parse_component_values("card,!").unwrap();
     let expected = values.items().last().unwrap().origin().clone();
@@ -186,12 +188,12 @@ fn malformed_complete_preludes_return_typed_failure_and_the_offending_origin() {
         Default::default(),
     )
     .unwrap();
-    assert!(matches!(
-        CssContainerPrelude::try_from_components(values, Default::default()),
-        Err(CssContainerConstructionError::InvalidPreludeGrammar {
-            origin: CssValueOrigin::Programmatic
-        })
-    ));
+    assert!(
+        CssContainerPrelude::try_from_components(values, Default::default())
+            .as_ref()
+            .is_err_and(|error| error.is_invalid_prelude_grammar()
+                && matches!(error.origin(), CssValueOrigin::Programmatic))
+    );
 }
 
 #[test]
@@ -212,12 +214,11 @@ fn full_prelude_limits_count_all_entries_commas_and_nested_components() {
             .as_css(),
         source
     );
-    assert_eq!(
+    assert!(
         prelude
             .serialize_tokens(crate::css::support::byte_limits(source.len() - 1))
             .unwrap_err()
-            .kind(),
-        CssComponentValueErrorKind::ByteLimit
+            .is_byte_limit()
     );
     let entry = &prelude.entries()[1];
     assert_eq!(
@@ -227,44 +228,46 @@ fn full_prelude_limits_count_all_entries_commas_and_nested_components() {
             .as_css(),
         "(width:1px)"
     );
-    assert_eq!(
+    assert!(
         entry
             .serialize_tokens(crate::css::support::byte_limits("(width:1px)".len() - 1))
             .unwrap_err()
-            .kind(),
-        CssComponentValueErrorKind::ByteLimit
+            .is_byte_limit()
     );
     for (limits, kind) in [
         (
             CssComponentValueLimits::try_new(0, usize::MAX, usize::MAX).unwrap(),
-            CssComponentValueErrorKind::NestingLimit,
+            ComponentFailure::NestingLimit,
         ),
         (
             CssComponentValueLimits::try_new(256, components.component_count() - 1, usize::MAX)
                 .unwrap(),
-            CssComponentValueErrorKind::ComponentLimit,
+            ComponentFailure::ComponentLimit,
         ),
         (
             CssComponentValueLimits::try_new(256, usize::MAX, source.len() - 1).unwrap(),
-            CssComponentValueErrorKind::ByteLimit,
+            ComponentFailure::ByteLimit,
         ),
     ] {
-        let Err(CssContainerConstructionError::Component(error)) =
-            CssContainerPrelude::try_from_components(components.clone(), limits)
+        let Err(outer) = CssContainerPrelude::try_from_components(components.clone(), limits)
         else {
             panic!("whole input limit")
         };
-        assert_eq!(error.kind(), kind);
+        let Some(error) = outer.component_error() else {
+            panic!("whole input limit")
+        };
+        assert_eq!(component_failure(error), kind);
     }
     // Resource admission precedes grammar classification, even for invalid input.
     let limits = CssComponentValueLimits::try_new(256, 0, usize::MAX).unwrap();
-    assert!(matches!(
+    assert!(
         CssContainerPrelude::try_from_components(
             parse_component_values("default").unwrap(),
             limits
-        ),
-        Err(CssContainerConstructionError::Component(_))
-    ));
+        )
+        .as_ref()
+        .is_err_and(|error| error.component_error().is_some())
+    );
 }
 
 #[test]

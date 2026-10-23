@@ -1,6 +1,8 @@
 //! Conditional 5 section 5.4 admits general-enclosed query operands. MQ4
 //! section 3 permits empty any-value contents; unknown syntax stays symbolic.
 use crate::css::support::authored_syntax::assert_diagnostics;
+use crate::css::support::failure_classes::ComponentFailure;
+use crate::css::support::failure_classes::component_failure;
 use surgeist_css::{
     CssComponentValue, CssComponentValueRef, CssComponentValues,
     CssContainerCondition as Condition, CssContainerConditionKind as Kind,
@@ -276,19 +278,15 @@ fn component_depth_limit_rejects_an_oversized_opaque_query() {
 
 #[test]
 fn speculative_query_branches_preserve_terminal_bad_token_categories_and_original_coordinates() {
-    use surgeist_css::{CssComponentValueErrorKind, CssErrorCode, ErrorKind};
+    use surgeist_css::CssErrorCode;
     // Syntax tokenization attributes a bad string to its opening quote and a
     // bad URL to its url( opener, even when an enclosing query probe fails.
     for (query, offending, kind) in [
-        (
-            "Future(\"x\n)",
-            "\"x",
-            CssComponentValueErrorKind::BadString,
-        ),
+        ("Future(\"x\n)", "\"x", ComponentFailure::BadString),
         (
             "not ((width > 1px) and (not Future(url(a b))))",
             "url(a b)",
-            CssComponentValueErrorKind::BadUrl,
+            ComponentFailure::BadUrl,
         ),
     ] {
         let source = format!("/*😀*/ @container {query} {{ .x {{ color:red }} }}");
@@ -303,10 +301,10 @@ fn speculative_query_branches_preserve_terminal_bad_token_categories_and_origina
             CssErrorCode::InvalidComponentValue
         );
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropAtRule);
-        let ErrorKind::InvalidComponentValue(component) = diagnostic.error().kind() else {
+        let Some(component) = diagnostic.error().component_error() else {
             panic!("original typed component failure")
         };
-        assert_eq!(component.kind(), kind);
+        assert_eq!(component_failure(component), kind);
         let CssValueOrigin::Parsed(origin) = component.origin() else {
             panic!("original bad token")
         };
@@ -407,16 +405,12 @@ fn checked_unknown_and_failed_recognized_enclosures_retain_the_supplied_lexical_
 
 #[test]
 fn wrong_outer_syntax_is_rejected_by_the_enclosure_owner_with_its_original_origin() {
-    use surgeist_css::CssGeneralEnclosedError;
     for source in ["/*😀*/ident", "/*😀*/[x]", "/*😀*/{x}"] {
         let components = parse_component_values(source).unwrap();
         let component = components.items().last().unwrap().clone();
         let expected = component.origin().clone();
         let error = CssGeneralEnclosed::try_from_component(component).unwrap_err();
-        assert!(matches!(
-            error,
-            CssGeneralEnclosedError::WrongOuterComponent { .. }
-        ));
+        assert!(error.is_wrong_outer_component());
         let (CssValueOrigin::Parsed(actual), CssValueOrigin::Parsed(expected)) =
             (error.origin(), expected)
         else {

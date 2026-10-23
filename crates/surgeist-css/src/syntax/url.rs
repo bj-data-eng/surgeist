@@ -101,8 +101,9 @@ impl CssUrlModifierFunction {
     ///
     /// `crossorigin()` requires one of its two keywords, `integrity()` one string,
     /// and `referrerpolicy()` one of its eight keywords. Invalid recognized
-    /// arguments return [`crate::CssComponentValueErrorKind::InvalidFunction`]
-    /// with their original token origin. Unknown functions retain generic syntax.
+    /// arguments return a [`crate::CssComponentValueError`] for which
+    /// [`is_invalid_function`](crate::CssComponentValueError::is_invalid_function)
+    /// holds, with their original token origin. Unknown functions retain generic syntax.
     pub fn try_new(
         name: CssIdent,
         arguments: crate::CssComponentValues,

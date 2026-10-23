@@ -92,7 +92,7 @@ impl CssCanonicalBuilder {
         let (text, kind, reverse_solidus) = match token {
             CssCanonicalToken::Function(name) => {
                 CssComponentValue::try_ident(name)
-                    .map_err(|error| CssComponentValueError::new(error.kind(), origin.clone()))?;
+                    .map_err(|error| CssComponentValueError::new(error.kind, origin.clone()))?;
                 (
                     Token::Function(name.into()).to_css_string().into(),
                     TokenSerializationType::Function,
@@ -118,7 +118,7 @@ impl CssCanonicalBuilder {
                     CssCanonicalToken::Comma => CssComponentValue::try_token(","),
                     CssCanonicalToken::Colon => CssComponentValue::try_token(":"),
                     CssCanonicalToken::Delim(character) => {
-                        let component = CssComponentValue::try_token(&character.to_string()).map_err(|error| CssComponentValueError::new(error.kind(), origin.clone()))?;
+                        let component = CssComponentValue::try_token(&character.to_string()).map_err(|error| CssComponentValueError::new(error.kind, origin.clone()))?;
                         if !matches!(component.view(), CssComponentValueRef::Token(CssValueTokenRef::Delim(actual)) if actual == character) {
                             return Err(CssComponentValueError::new(CssComponentValueErrorKind::InvalidToken, origin.clone()));
                         }
@@ -129,7 +129,7 @@ impl CssCanonicalBuilder {
                     | CssCanonicalToken::CloseParen
                     | CssCanonicalToken::OpenBrace
                     | CssCanonicalToken::CloseBrace => unreachable!(),
-                }.map_err(|error| CssComponentValueError::new(error.kind(), origin.clone()))?;
+                }.map_err(|error| CssComponentValueError::new(error.kind, origin.clone()))?;
                 let ComponentData::Token(value) = component.data else {
                     unreachable!("checked grammar token")
                 };

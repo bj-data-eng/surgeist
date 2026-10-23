@@ -12,11 +12,13 @@
 //! coefficient range. Neither is an authored infinity or division by zero.
 //! Target-context computed/used clamping is a different rule under §10.12.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::value_assertions::calculated_number as number;
 use surgeist_css::*;
 
 type Limits = CssSerializationLimits;
-type Kind = CssSpecifiedValueSerializationErrorKind;
+type Kind = SerializationFailure;
 
 fn assert_number(source: &str, expected: &str) {
     let value = number(source);
@@ -166,7 +168,7 @@ fn finite_angle_conversion_obeys_typed_limits_without_mutating_authored_values()
         (Limits::new(100, 100, 0), Kind::ByteLimit),
     ] {
         let error = value.serialize_specified(limits).unwrap_err();
-        assert_eq!(error.kind(), expected);
+        assert_eq!(serialization_failure(&error), expected);
         assert_eq!(value, before);
         assert_eq!(value.origin(), before.origin());
         assert_eq!(
@@ -188,7 +190,7 @@ fn multiple_finite_angle_conversions_share_cumulative_traversal_limits() {
         (Limits::new(100, 2, 100), Kind::ProjectionNodeLimit),
     ] {
         let error = value.serialize_specified(limits).unwrap_err();
-        assert_eq!(error.kind(), expected);
+        assert_eq!(serialization_failure(&error), expected);
         assert_eq!(value, before);
         assert_eq!(value.origin(), before.origin());
     }

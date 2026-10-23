@@ -185,20 +185,19 @@ fn pending_alias_reentry_completes_once_and_rejects_invalid_replacements() {
         panic!("substitution remains pending")
     };
     assert!(pending.source().same_occurrence(&source));
-    assert_eq!(
+    assert!(
         pending
             .reenter(parse_component_values("var(--again)").unwrap())
             .unwrap_err()
-            .kind(),
-        &CssExpansionErrorKind::ResidualSubstitution
+            .is_residual_substitution()
     );
-    assert!(matches!(
+    assert!(
         pending
             .reenter(parse_component_values("none").unwrap())
             .unwrap_err()
-            .kind(),
-        CssExpansionErrorKind::InvalidReplacement(_)
-    ));
+            .replacement_error()
+            .is_some()
+    );
     let replacement = parse_component_values("normal").unwrap();
     let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap() else {
         panic!("replacement completes canonical longhand")

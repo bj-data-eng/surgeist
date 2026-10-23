@@ -7,9 +7,8 @@
 use surgeist_css::{
     CssComponentValueRef, CssFlexCalculation, CssFontWidth, CssKnownPropertyValueRef,
     CssLengthCalculation, CssLengthPercentageCalculation, CssLineHeight, CssNumberCalculation,
-    CssNumericConstructionError, CssNumericConstructionErrorKind, CssPercentageCalculation,
-    CssSpecifiedFlex, CssSpecifiedLength, CssSpecifiedLengthPercentage,
-    CssSpecifiedNonNegativeFlex, CssSpecifiedNonNegativeLength,
+    CssNumericConstructionError, CssPercentageCalculation, CssSpecifiedFlex, CssSpecifiedLength,
+    CssSpecifiedLengthPercentage, CssSpecifiedNonNegativeFlex, CssSpecifiedNonNegativeLength,
     CssSpecifiedNonNegativeLengthPercentage, CssSpecifiedNonNegativeNumber,
     CssSpecifiedNonNegativePercentage, CssSpecifiedNumber, CssSpecifiedPercentage,
     CssStripeThickness, CssValueOrigin, parse_component_values, parse_style_attribute,
@@ -96,10 +95,7 @@ fn assert_recovered(
     error: CssNumericConstructionError,
     components: &surgeist_css::CssComponentValues,
 ) {
-    assert_eq!(
-        error.kind(),
-        &CssNumericConstructionErrorKind::RecoveredComponent
-    );
+    assert!(error.is_recovered_component(), "{error:?}");
     let [root] = components.items() else {
         panic!("one math root")
     };

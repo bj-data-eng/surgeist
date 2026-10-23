@@ -3,13 +3,13 @@
 //! Every import, including modern clauses and `src()`, uses the CSSOM editor
 //! capture's URL-first CSSImportRule text (#1327).
 
+use crate::css::support::failure_classes::SerializationFailure as Resource;
+use crate::css::support::serialization_limits::LimitFailure;
 use std::error::Error;
 use surgeist_css::{
     CssEditedGroupPreludeRef as Prelude, CssEditedRuleView as Edited, CssImportRule,
-    CssImportRuleView as ImportView, CssMediaQueryList, CssRule,
-    CssRuleCssomSerializationErrorKind as Kind, CssSerializationError,
-    CssSerializationLimits as Limits, CssSpecifiedValueSerializationErrorKind as Resource,
-    CssValueOrigin, parse_media_query_list, parse_sheet,
+    CssImportRuleView as ImportView, CssMediaQueryList, CssRule, CssSerializationError,
+    CssSerializationLimits as Limits, CssValueOrigin, parse_media_query_list, parse_sheet,
 };
 
 fn import(source: &str) -> CssImportRule {
@@ -196,7 +196,13 @@ fn supplied_recovered_media_keeps_current_origin_and_its_cssom_projection() {
     let current = report.syntax();
     let before = report.clone();
     let error = ImportView::try_new(&original, current, Limits::new(6, 7, 128)).unwrap_err();
-    assert_eq!(error.kind(), Kind::Resource(Resource::ProjectionNodeLimit));
+    assert!(
+        error.is_resource_limit()
+            && error
+                .serialization_error()
+                .is_some_and(|error| error.is_projection_node_limit()),
+        "{error:?}"
+    );
     let provider = error
         .source()
         .unwrap()
@@ -237,8 +243,8 @@ fn empty_current_media_charges_current_payload_and_url_bytes_atomically() {
         assert_eq!(
             ImportView::try_new(&original, &empty, limits)
                 .unwrap_err()
-                .kind(),
-            Kind::Resource(kind)
+                .limit_kind(),
+            Some(kind)
         );
         assert_eq!(original, before);
     }
@@ -252,11 +258,14 @@ fn empty_current_media_charges_current_payload_and_url_bytes_atomically() {
     // Embedding checks compact output; the final literal request separately
     // bounds its bytes while preserving the same provider node accounting.
     let compact = "@import 'é';";
-    assert_eq!(
+    assert!(
         Edited::try_import(view, Limits::new(2, 3, compact.len()))
             .unwrap_err()
-            .kind(),
-        Kind::Resource(Resource::InputNodeLimit)
+            .is_resource_limit()
+            && Edited::try_import(view, Limits::new(2, 3, compact.len()))
+                .unwrap_err()
+                .serialization_error()
+                .is_some_and(|error| error.is_input_node_limit())
     );
     let edited = Edited::try_import(view, Limits::new(3, 3, compact.len())).unwrap();
     assert_eq!(
@@ -304,13 +313,19 @@ fn recursive_siblings_share_node_and_output_limits_with_exact_failure_path() {
         ),
     ] {
         let error = group.serialize_cssom(limits).unwrap_err();
-        assert_eq!(error.kind(), Kind::Resource(kind));
+        assert_eq!(error.limit_kind(), Some(kind));
         assert_eq!(error.rule_path(), &[1]);
     }
     let error = group
         .serialize_cssom(Limits::new(12, 12, expected.len() - 1))
         .unwrap_err();
-    assert_eq!(error.kind(), Kind::Resource(Resource::ByteLimit));
+    assert!(
+        error.is_resource_limit()
+            && error
+                .serialization_error()
+                .is_some_and(|error| error.is_byte_limit()),
+        "{error:?}"
+    );
     assert_eq!(
         group
             .serialize_cssom(Limits::new(12, 12, expected.len()))

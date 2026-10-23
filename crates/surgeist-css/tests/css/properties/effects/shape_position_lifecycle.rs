@@ -381,20 +381,19 @@ fn pending_shape_reentry_is_strict_reusable_and_retains_replacement_origins() {
         "ellipse(at left block-end)",
         "circle(at center 1px top 2px)",
     ] {
-        assert!(matches!(
+        assert!(
             pending
                 .reenter(parse_component_values(invalid).unwrap())
                 .unwrap_err()
-                .kind(),
-            CssExpansionErrorKind::InvalidReplacement(_)
-        ));
+                .replacement_error()
+                .is_some()
+        );
     }
-    assert_eq!(
+    assert!(
         pending
             .reenter(parse_component_values("circle(at var(--again))").unwrap())
             .unwrap_err()
-            .kind(),
-        &CssExpansionErrorKind::ResidualSubstitution
+            .is_residual_substitution()
     );
     for text in [
         "circle(at x-start bottom)",

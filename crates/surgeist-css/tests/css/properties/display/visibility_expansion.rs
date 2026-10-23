@@ -135,17 +135,13 @@ fn visibility_pending_reentry_is_strict_and_keeps_original_and_replacement_origi
         let error = handle
             .reenter(parse_component_values(text).unwrap())
             .unwrap_err();
-        assert!(
-            matches!(error.kind(), CssExpansionErrorKind::InvalidReplacement(_)),
-            "{text}"
-        );
+        assert!(error.replacement_error().is_some(), "{text}");
     }
-    assert_eq!(
+    assert!(
         handle
             .reenter(parse_component_values("var(--again)").unwrap())
             .unwrap_err()
-            .kind(),
-        &CssExpansionErrorKind::ResidualSubstitution
+            .is_residual_substitution()
     );
     assert!(handle.source().same_occurrence(&source));
 }

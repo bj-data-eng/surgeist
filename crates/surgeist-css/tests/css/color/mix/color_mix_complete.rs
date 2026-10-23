@@ -225,10 +225,7 @@ fn rejected(text: &str, responsible: Option<(&str, usize)>) {
             assert_color_value_rejected_at(checked, CssKnownProperty::Color, text, token, at)
         }
         None => assert!(
-            matches!(
-                checked.unwrap_err().kind(),
-                CssPropertyValueErrorKind::Grammar(ErrorKind::InvalidColorSyntax(_))
-            ),
+            checked.unwrap_err().code() == Some(CssErrorCode::InvalidColorSyntax),
             "{text}"
         ),
     }
@@ -318,12 +315,11 @@ fn qualified_substitutions_keep_the_whole_mix_pending_and_reentry_strict() {
             };
             assert!(pending.source().same_occurrence(&declaration));
             for replacement in ["color-mix(var(--items))", "color-mix(red env(), blue)"] {
-                assert_eq!(
+                assert!(
                     pending
                         .reenter(parse_component_values(replacement).unwrap())
                         .unwrap_err()
-                        .kind(),
-                    &CssExpansionErrorKind::ResidualSubstitution
+                        .is_residual_substitution()
                 );
             }
             assert!(

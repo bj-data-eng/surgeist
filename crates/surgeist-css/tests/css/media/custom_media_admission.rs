@@ -2,8 +2,8 @@
 //! imported Extensions 1 name grammar and adopted feature-candidate precedence.
 //! These tests deliberately use only the public surface preceding custom media.
 use surgeist_css::{
-    CssMediaConditionKind, CssMediaQuery, CssMediaType, CssNormalizedItem, CssRecoveryAction,
-    CssRule, CssUnknownMediaFeatureReason, normalize_sheet, parse_media_query,
+    CssErrorCode, CssMediaConditionKind, CssMediaQuery, CssMediaType, CssNormalizedItem,
+    CssRecoveryAction, CssRule, CssUnknownMediaFeatureReason, normalize_sheet, parse_media_query,
     parse_media_query_list, parse_sheet, validate_sheet,
 };
 
@@ -384,11 +384,14 @@ fn eof_statement_reports_missing_terminator_without_inventing_enclosure() {
     );
     assert_eq!(diagnostic.span().start().byte_offset().value(), 0);
     assert_eq!(diagnostic.span().end().byte_offset().value(), source.len());
-    let surgeist_css::ErrorKind::UnexpectedEnd(detail) = diagnostic.error().kind() else {
-        panic!("typed statement EOF");
-    };
+    let detail = diagnostic.error();
     assert_eq!(
-        detail.expectation().as_str(),
+        detail.code(),
+        CssErrorCode::UnexpectedEnd,
+        "typed statement EOF"
+    );
+    assert_eq!(
+        detail.expectation().unwrap().as_str(),
         "a semicolon or block terminating an at-rule"
     );
     assert_eq!(

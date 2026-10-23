@@ -1,15 +1,16 @@
 //! Current immutable payload composition. Expected wrappers follow the selected
 //! CSSOM 2026 keyframes branch and adopted Blink Page/margin witness; four-side
 //! terminal values follow CSS2's independent margin assignment rule.
+use crate::css::support::failure_classes::SerializationFailure as Resource;
+use crate::css::support::serialization_limits::LimitFailure;
 use surgeist_css::{
     CssAdmittedRule, CssEditedGroupPreludeRef as Prelude, CssEditedRuleView as View, CssImportance,
     CssKeyframeRuleView, CssKeyframesName, CssKeyframesRuleView, CssKeyframesString,
     CssKnownProperty as K, CssMarginBox, CssMarginRuleView, CssNamespaceContext, CssPageRuleView,
     CssPropertyNameRef, CssRule, CssRuleAdmissionContext as Context,
-    CssRuleCssomSerializationErrorKind as Error, CssSerializationLimits as Limits,
-    CssSpecifiedDeclarationBlock as Block, CssSpecifiedDeclarationEntry as Entry,
-    CssSpecifiedPageDeclarationBlock as PageBlock, CssSpecifiedPageDeclarationEntry as PageEntry,
-    CssSpecifiedValueSerializationErrorKind as Resource, classify_rule_syntax, parse_keyframe_rule,
+    CssSerializationLimits as Limits, CssSpecifiedDeclarationBlock as Block,
+    CssSpecifiedDeclarationEntry as Entry, CssSpecifiedPageDeclarationBlock as PageBlock,
+    CssSpecifiedPageDeclarationEntry as PageEntry, classify_rule_syntax, parse_keyframe_rule,
     parse_keyframe_selector_list, parse_page_block, parse_page_selector_list, parse_sheet,
 };
 
@@ -186,7 +187,13 @@ fn recursive_page_preserves_mixed_selected_order_shorthand_survivors_pending_and
     let failure = group
         .serialize_cssom(Limits::new(100_000, 100_000, expected.len() - 5))
         .unwrap_err();
-    assert_eq!(failure.kind(), Error::Resource(Resource::ByteLimit));
+    assert!(
+        failure.is_resource_limit()
+            && failure
+                .serialization_error()
+                .is_some_and(|error| error.is_byte_limit()),
+        "{failure:?}"
+    );
     assert_eq!(failure.rule_path(), &[0, 1]);
     assert_eq!(group.serialize_cssom(Default::default()).unwrap(), expected);
     assert_eq!(report, before);
@@ -281,7 +288,13 @@ fn whole_keyframes_preserves_renamed_edited_deleted_and_appended_duplicate_child
     let failure = whole
         .serialize_cssom(Limits::new(100_000, 100_000, expected.len() - 6))
         .unwrap_err();
-    assert_eq!(failure.kind(), Error::Resource(Resource::ByteLimit));
+    assert!(
+        failure.is_resource_limit()
+            && failure
+                .serialization_error()
+                .is_some_and(|error| error.is_byte_limit()),
+        "{failure:?}"
+    );
     assert_eq!(failure.keyframe_block_index(), Some(2));
     assert_eq!(failure.rule_path(), &[] as &[usize]);
     assert_eq!(whole.serialize_cssom(Default::default()).unwrap(), expected);
@@ -353,8 +366,8 @@ fn coupled_recursive_payloads_share_input_projection_and_output_limits_and_allow
         ),
     ] {
         assert_eq!(
-            outer.serialize_cssom(limits).unwrap_err().kind(),
-            Error::Resource(kind)
+            outer.serialize_cssom(limits).unwrap_err().limit_kind(),
+            Some(kind)
         );
         assert_eq!(outer.serialize_cssom(Default::default()).unwrap(), expected);
         if kind != Resource::ByteLimit {
@@ -420,7 +433,7 @@ fn whole_keyframes_exact_empty_child_work_is_cumulative_not_restarted() {
         (Limits::new(12, 12, expected.len() - 5), Resource::ByteLimit),
     ] {
         let failure = leaf.serialize_cssom(limits).unwrap_err();
-        assert_eq!(failure.kind(), Error::Resource(kind));
+        assert_eq!(failure.limit_kind(), Some(kind));
         assert_eq!(failure.keyframe_block_index(), Some(1));
         crate::css::support::value_assertions::assert_rule_resource(
             CssKeyframesRuleView::try_new(&name, &children, limits),
@@ -435,7 +448,13 @@ fn whole_keyframes_exact_empty_child_work_is_cumulative_not_restarted() {
     let failure = group
         .serialize_cssom(Limits::new(1000, 1000, group_expected.len() - 8))
         .unwrap_err();
-    assert_eq!(failure.kind(), Error::Resource(Resource::ByteLimit));
+    assert!(
+        failure.is_resource_limit()
+            && failure
+                .serialization_error()
+                .is_some_and(|error| error.is_byte_limit()),
+        "{failure:?}"
+    );
     assert_eq!(failure.rule_path(), &[0]);
     assert_eq!(failure.keyframe_block_index(), Some(1));
     assert_eq!(
@@ -451,15 +470,10 @@ fn unresolved_pending_page_footprint_remains_a_typed_source_attributed_capabilit
     let before = raw.clone();
     let declarations = raw.syntax().as_ref().unwrap().body().declarations();
     let failure = declarations.try_specified(Default::default()).unwrap_err();
-    let surgeist_css::CssPageProjectionError::Properties(failure) = failure else {
+    let Some(failure) = failure.properties() else {
         panic!("property capability failure")
     };
-    assert!(matches!(
-        failure.kind(),
-        surgeist_css::CssDeclarationBlockErrorKind::PendingFootprintUndetermined {
-            property: K::Margin
-        }
-    ));
+    assert!(failure.pending_footprint_property() == Some(K::Margin));
     assert!(
         failure
             .declaration()

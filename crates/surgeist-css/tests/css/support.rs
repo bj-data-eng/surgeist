@@ -14,6 +14,7 @@ pub mod csstree;
 pub mod descriptor_phases;
 pub mod digest;
 pub mod external_consumer;
+pub mod failure_classes;
 #[macro_use]
 pub mod font_face;
 pub mod isolated_stack;
@@ -34,8 +35,7 @@ use surgeist_css::*;
 /// Whether `error` is the serialization failure of a recovered media member:
 /// an unserializable boundary without a lexical component cause.
 pub fn is_recovered_media_failure(error: &CssSerializationError) -> bool {
-    error.kind() == CssSpecifiedValueSerializationErrorKind::UnserializableBoundary
-        && std::error::Error::source(error).is_none()
+    error.is_unserializable_boundary() && std::error::Error::source(error).is_none()
 }
 
 /// Component limits that bound only the serialized byte length, for
@@ -208,7 +208,7 @@ pub fn check_property_components(
     property: CssKnownProperty,
     components: CssComponentValues,
     grammar: bool,
-) -> Result<CssDeclaration, CssPropertyValueParseError> {
+) -> Result<CssDeclaration, CssPropertyValueError> {
     if grammar {
         parse_property_value_for_grammar(property.grammar(), components, CssImportance::Important)
     } else {
@@ -348,7 +348,7 @@ pub fn retained_checked_declaration(property: CssKnownProperty, value: &str) -> 
 pub fn check_property_text(
     property: CssKnownProperty,
     text: &str,
-) -> Result<CssDeclaration, CssPropertyValueParseError> {
+) -> Result<CssDeclaration, CssPropertyValueError> {
     parse_property_value(
         CssPropertyNameRef::Known(property),
         parse_component_values(text).unwrap(),
@@ -384,7 +384,7 @@ pub fn check_named_components(
     name: &str,
     values: CssComponentValues,
     grammar: bool,
-) -> Result<CssDeclaration, CssPropertyValueParseError> {
+) -> Result<CssDeclaration, CssPropertyValueError> {
     let p = known_property(name);
     if grammar {
         parse_property_value_for_grammar(p.grammar(), values, CssImportance::Important)

@@ -425,23 +425,23 @@ fn css_wide_all_and_pending_reentry_preserve_original_grammar_and_occurrence() {
                 panic!("{name} retains pending substitution")
             };
             assert!(handle.source().same_occurrence(&source));
-            assert!(matches!(
-                expect_rejection(handle.reenter(parse_component_values("1%").unwrap())).kind(),
-                CssExpansionErrorKind::InvalidReplacement(_)
-            ));
-            assert_eq!(
+            assert!(
+                expect_rejection(handle.reenter(parse_component_values("1%").unwrap()))
+                    .replacement_error()
+                    .is_some()
+            );
+            assert!(
                 expect_rejection(handle.reenter(parse_component_values("var(--again)").unwrap()))
-                    .kind(),
-                &CssExpansionErrorKind::ResidualSubstitution
+                    .is_residual_substitution()
             );
             if PAIRS.contains(&name) {
-                assert!(matches!(
+                assert!(
                     expect_rejection(
                         handle.reenter(parse_component_values("logical 1px").unwrap()),
                     )
-                    .kind(),
-                    CssExpansionErrorKind::InvalidReplacement(_)
-                ));
+                    .replacement_error()
+                    .is_some()
+                );
             }
             let replacement_text = if TRIPLES.contains(&name) {
                 "1px solid"

@@ -1,6 +1,6 @@
 use surgeist_css::{
     CssErrorCode, CssMediaConditionKind, CssMediaQuery, CssMediaType, CssNamespaceConstraint,
-    CssPseudoClass, CssPseudoSelectorListItem, CssRecoveryAction, CssRule, CssSelector, ErrorKind,
+    CssPseudoClass, CssPseudoSelectorListItem, CssRecoveryAction, CssRule, CssSelector,
     parse_sheet,
 };
 
@@ -111,14 +111,20 @@ fn specialized_list_forgiving_selector_members_drop_independently_in_authored_or
             end,
             start,
         );
-        let ErrorKind::InvalidSelector(detail) = report.diagnostics()[0].error().kind() else {
-            panic!("expected selector detail")
-        };
+        let detail = report.diagnostics()[0].error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidSelector,
+            "expected selector detail"
+        );
         assert_eq!(
             detail.production().expect("selector production").as_str(),
             "baseline.selector.complex"
         );
-        assert_eq!(detail.expectation().as_str(), "a supported selector");
+        assert_eq!(
+            detail.expectation().unwrap().as_str(),
+            "a supported selector"
+        );
     }
 }
 
@@ -324,11 +330,17 @@ fn specialized_list_media_members_become_never_in_authored_order() {
             span_end,
             responsible,
         );
-        let ErrorKind::InvalidMediaQuery(detail) = report.diagnostics()[0].error().kind() else {
-            panic!("expected media-query detail")
-        };
-        assert!(detail.feature().is_none());
-        assert_eq!(detail.expectation().as_str(), "a supported media query");
+        let detail = report.diagnostics()[0].error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidMediaQuery,
+            "expected media-query detail"
+        );
+        assert!(detail.media_feature().is_none());
+        assert_eq!(
+            detail.expectation().unwrap().as_str(),
+            "a supported media query"
+        );
         let encountered = detail.encountered().expect("responsible media token");
         assert_eq!(encountered.kind(), surgeist_css::CssTokenKind::Delim);
         assert_eq!(encountered.authored(), "?");

@@ -209,10 +209,13 @@ fn malformed_groups_drop_only_local_declaration_with_exact_recovery_coordinates(
             panic!("one diagnostic: {value}")
         };
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-        let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-            panic!("typed property error")
-        };
-        assert_eq!(detail.property(), CssKnownProperty::Mask);
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidPropertyValue,
+            "typed property error"
+        );
+        assert_eq!(detail.known_property().unwrap(), CssKnownProperty::Mask);
         let start = source.find("mask:").unwrap();
         let end = start + source[start..].find(';').unwrap() + 1;
         position(diagnostic.span().start(), &source, start);
@@ -250,11 +253,13 @@ fn checked_rejects(value: &str, grammar: bool) {
         )
     };
     let error = result.expect_err("malformed mask layer");
-    let CssPropertyValueErrorKind::Grammar(ErrorKind::InvalidPropertyValue(detail)) = error.kind()
-    else {
-        panic!("typed grammar error: {error:?}")
-    };
-    assert_eq!(detail.property(), CssKnownProperty::Mask);
+    let detail = &error;
+    assert_eq!(
+        detail.code(),
+        Some(CssErrorCode::InvalidPropertyValue),
+        "typed grammar error: {error:?}"
+    );
+    assert_eq!(detail.known_property().unwrap(), CssKnownProperty::Mask);
 }
 
 #[test]

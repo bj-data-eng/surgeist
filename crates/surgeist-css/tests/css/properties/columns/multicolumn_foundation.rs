@@ -1,6 +1,9 @@
 //! Authored fill, rule, and span from Multicol 1 CR (2024-05-16) §§4, 6.1, 7.1:
 //! https://www.w3.org/TR/2024/CR-css-multicol-1-20240516/
 
+use crate::css::support::failure_classes::NumericFailure;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::property_admission::assert_component_rejected;
 use crate::css::support::property_admission::assert_declaration_rejected as rejected;
 use crate::css::support::{
@@ -262,12 +265,11 @@ fn globals_and_pending_values_expand_all_six_properties_with_strict_reentry() {
                 panic!("{name} remains pending until substitution")
             };
             assert!(handle.source().same_occurrence(&source));
-            assert_eq!(
+            assert!(
                 handle
                     .reenter(parse_component_values("var(--again)").unwrap())
                     .unwrap_err()
-                    .kind(),
-                &CssExpansionErrorKind::ResidualSubstitution
+                    .is_residual_substitution()
             );
             let (valid, invalid_text) = match name {
                 "column-fill" => ("balance-all", "justify"),
@@ -278,13 +280,13 @@ fn globals_and_pending_values_expand_all_six_properties_with_strict_reentry() {
                 "column-span" => ("all", "2"),
                 _ => unreachable!(),
             };
-            assert!(matches!(
+            assert!(
                 handle
                     .reenter(parse_component_values(invalid_text).unwrap())
                     .unwrap_err()
-                    .kind(),
-                CssExpansionErrorKind::InvalidReplacement(_)
-            ));
+                    .replacement_error()
+                    .is_some()
+            );
             let replacement = parse_component_values(valid).unwrap();
             for _ in 0..2 {
                 let CssContributions::Longhands(values) =
@@ -361,11 +363,8 @@ fn normalization_keeps_mixed_order_and_fails_atomically_at_contribution_limit() 
     let limit = CssNormalizationLimits::try_new(256, usize::MAX, usize::MAX, 3).unwrap();
     let error = normalize_sheet_with_limits(report.syntax(), limit).unwrap_err();
     assert_eq!(
-        error.kind(),
-        &CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: 3,
-        }
+        error.exhausted_limit(),
+        Some((CssNormalizationResource::Contributions, 3))
     );
     assert_eq!(error.declaration_order(), Some(1));
     assert_eq!(
@@ -380,7 +379,7 @@ fn direct_rule_construction_keeps_exact_width_and_modern_color_without_legacy_pr
     assert_component_rejected(
         CssSpecifiedNonNegativeLength::try_from_component,
         CssComponentValue::try_dimension("-1e-100", "px").unwrap(),
-        CssNumericConstructionErrorKind::OutOfRange,
+        NumericFailure::OutOfRange,
     );
     let width = programmatic_width("1e100");
     let color = authored_color("color-mix(in srgb, red, green, blue)");
@@ -587,19 +586,19 @@ fn column_rule_canonical_output_omits_initials_and_charges_one_cumulative_budget
     for (limits, expected) in [
         (
             CssSerializationLimits::new(3, 4, 4),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(4, 3, 4),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(4, 4, 3),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            all_initial.serialize_specified(limits).unwrap_err().kind(),
+            serialization_failure(&all_initial.serialize_specified(limits).unwrap_err()),
             expected
         );
     }
@@ -616,12 +615,11 @@ fn column_rule_canonical_output_omits_initials_and_charges_one_cumulative_budget
             .unwrap(),
         "none"
     );
-    assert_eq!(
+    assert!(
         style_only
             .serialize_specified(CssSerializationLimits::new(2, 1, 4))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
+            .is_projection_node_limit()
     );
     // Without an authored style the `none` token is synthesized: it charges
     // one projection node and no input node.
@@ -639,19 +637,19 @@ fn column_rule_canonical_output_omits_initials_and_charges_one_cumulative_budget
     for (limits, expected) in [
         (
             CssSerializationLimits::new(1, 3, 4),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(2, 2, 4),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(2, 3, 3),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            synthetic.serialize_specified(limits).unwrap_err().kind(),
+            serialization_failure(&synthetic.serialize_specified(limits).unwrap_err()),
             expected
         );
     }
@@ -685,11 +683,10 @@ fn fill_and_span_keyword_output_is_bounded() {
                 .unwrap(),
             text
         );
-        assert_eq!(
+        assert!(
             fill.serialize_specified(CssSerializationLimits::new(1, 1, text.len() - 1,))
                 .unwrap_err()
-                .kind(),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit
+                .is_byte_limit()
         );
     }
     for (span, text) in [(CssColumnSpan::None, "none"), (CssColumnSpan::All, "all")] {
@@ -699,24 +696,15 @@ fn fill_and_span_keyword_output_is_bounded() {
                 .unwrap(),
             text
         );
-        assert_eq!(
+        assert!(
             span.serialize_specified(CssSerializationLimits::new(1, 1, text.len() - 1))
                 .unwrap_err()
-                .kind(),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit
+                .is_byte_limit()
         );
     }
     for (input_limit, projection_limit, error) in [
-        (
-            0,
-            1,
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
-        ),
-        (
-            1,
-            0,
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
-        ),
+        (0, 1, SerializationFailure::InputNodeLimit),
+        (1, 0, SerializationFailure::ProjectionNodeLimit),
     ] {
         let limits = CssSerializationLimits::new(input_limit, projection_limit, 32);
         for fill in [
@@ -724,10 +712,16 @@ fn fill_and_span_keyword_output_is_bounded() {
             CssColumnFill::Balance,
             CssColumnFill::BalanceAll,
         ] {
-            assert_eq!(fill.serialize_specified(limits).unwrap_err().kind(), error);
+            assert_eq!(
+                serialization_failure(&fill.serialize_specified(limits).unwrap_err()),
+                error
+            );
         }
         for span in [CssColumnSpan::None, CssColumnSpan::All] {
-            assert_eq!(span.serialize_specified(limits).unwrap_err().kind(), error);
+            assert_eq!(
+                serialization_failure(&span.serialize_specified(limits).unwrap_err()),
+                error
+            );
         }
     }
 }
@@ -769,11 +763,11 @@ fn nested_math_and_modern_color_share_the_rule_budget() {
             CssSerializationLimits::new(usize::MAX, combined_nodes - 1, usize::MAX)
         };
         assert_eq!(
-            combined.serialize_specified(limits).unwrap_err().kind(),
+            serialization_failure(&combined.serialize_specified(limits).unwrap_err()),
             if input {
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+                SerializationFailure::InputNodeLimit
             } else {
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
+                SerializationFailure::ProjectionNodeLimit
             }
         );
     }
@@ -792,7 +786,7 @@ fn nested_math_and_modern_color_share_the_rule_budget() {
             .unwrap(),
         expected
     );
-    assert_eq!(
+    assert!(
         combined
             .serialize_specified(CssSerializationLimits::new(
                 usize::MAX,
@@ -800,7 +794,6 @@ fn nested_math_and_modern_color_share_the_rule_budget() {
                 expected.len() - 1,
             ))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
 }

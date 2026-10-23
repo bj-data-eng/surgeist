@@ -2,7 +2,7 @@
 //! that contract with existing ordinary/scoped structural recovery boundaries.
 use surgeist_css::{
     CssErrorCode, CssLayerNameList, CssParseReport, CssRecoveryAction, CssRule, CssScopedRule,
-    CssSheet, CssSourcePosition, ErrorKind, parse_sheet, validate_sheet,
+    CssSheet, CssSourcePosition, parse_sheet, validate_sheet,
 };
 
 const DEPTHS: [usize; 6] = [63, 64, 65, 127, 128, 129];
@@ -110,11 +110,14 @@ fn assert_local_eof(report: &CssParseReport<CssSheet>, source: &str, start: usiz
         diagnostic.action(),
         CssRecoveryAction::RetainNonconformingRule
     );
-    let ErrorKind::UnexpectedEnd(detail) = diagnostic.error().kind() else {
-        panic!("statement EOF diagnostic")
-    };
+    let detail = diagnostic.error();
     assert_eq!(
-        detail.expectation().as_str(),
+        detail.code(),
+        CssErrorCode::UnexpectedEnd,
+        "statement EOF diagnostic"
+    );
+    assert_eq!(
+        detail.expectation().unwrap().as_str(),
         "a semicolon or block terminating an at-rule"
     );
     assert_original_position(diagnostic.error().position(), source, end);

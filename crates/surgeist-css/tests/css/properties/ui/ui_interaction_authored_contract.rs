@@ -15,6 +15,7 @@ use crate::css::support::authored_checked_declaration as checked;
 use crate::css::support::authored_parsed_declaration;
 use crate::css::support::authored_property::assert_source;
 use crate::css::support::check_named_components as checked_components;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::known_property as property;
 use crate::css::support::named_property::named_text_front as text_front;
 use crate::css::support::named_property::sole_completed_contributions as completed;
@@ -218,10 +219,12 @@ fn invalid(name: &str, value: &str) {
         panic!("one atomic grammar failure")
     };
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    match diagnostic.error().kind() {
-        ErrorKind::InvalidPropertyValue(detail) => assert_eq!(detail.property(), p),
-        // Caret imports the shared Color grammar and its structured diagnostics.
-        ErrorKind::InvalidColorSyntax(_) if p == P::CaretColor => {
+    match diagnostic.error().code() {
+        CssErrorCode::InvalidPropertyValue => {
+            let detail = diagnostic.error();
+            assert_eq!(detail.known_property().unwrap(), p)
+        }
+        CssErrorCode::InvalidColorSyntax if p == P::CaretColor => {
             assert_eq!(diagnostic.error().code(), CssErrorCode::InvalidColorSyntax);
         }
         other => panic!("owned grammar diagnostic for {css}: {other:?}"),
@@ -233,12 +236,12 @@ fn invalid(name: &str, value: &str) {
     let components = parse_component_values(value).unwrap();
     let before = components.clone();
     for grammar in [false, true] {
-        assert!(matches!(
+        assert!(
             checked_components(name, components.clone(), grammar)
                 .unwrap_err()
-                .kind(),
-            CssPropertyValueErrorKind::Grammar(_)
-        ));
+                .code()
+                .is_some()
+        );
     }
     for report in [
         parse_property_value_text(value, CssPropertyNameRef::Known(p), CssImportance::Normal),
@@ -318,14 +321,11 @@ fn implicit_origin(components: &CssComponentValues) -> CssValueOrigin {
         })
         .expect("public original implicit closing origin")
 }
-fn assert_closure(error: &CssPropertyValueParseError, origin: &CssValueOrigin, text: &str) {
-    assert!(matches!(
-        error.kind(),
-        CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
-    ));
+fn assert_closure(error: &CssPropertyValueError, origin: &CssValueOrigin, text: &str) {
+    assert!(error.code() == Some(CssErrorCode::UnexpectedEnd));
     assert_eq!(
         error.origin(),
-        &CssSerializedOrigin::End(Some(origin.clone()))
+        CssSerializedOrigin::End(Some(origin.clone()))
     );
     let CssValueOrigin::ImplicitClosure { opening, at } = origin else {
         panic!("implicit EOF")
@@ -338,8 +338,8 @@ fn assert_closure(error: &CssPropertyValueParseError, origin: &CssValueOrigin, t
 
 #[test]
 fn canonical_keyword_declarations_have_exact_node_byte_budgets_and_atomic_reusable_failures() {
+    use crate::css::support::failure_classes::SerializationFailure as Kind;
     use CssSerializationLimits as Limits;
-    use CssSpecifiedValueSerializationErrorKind as Kind;
     for name in FAMILY {
         for &text in keywords(name) {
             for source in [parsed(name, text), checked(name, text, true)] {
@@ -353,7 +353,10 @@ fn canonical_keyword_declarations_have_exact_node_byte_budgets_and_atomic_reusab
                     (Limits::new(3, 3, expected.len() - 1), Kind::ByteLimit),
                 ] {
                     for _ in 0..2 {
-                        assert_eq!(source.serialize_specified(limits).unwrap_err().kind(), kind);
+                        assert_eq!(
+                            serialization_failure(&source.serialize_specified(limits).unwrap_err()),
+                            kind
+                        );
                         assert_eq!(source, before);
                     }
                 }
@@ -715,7 +718,7 @@ fn original_function_closure_is_strict_for_imported_colors_cursor_sets_and_math(
         };
         for _ in 0..2 {
             let error = handle.reenter(components.clone()).unwrap_err();
-            let CssExpansionErrorKind::InvalidReplacement(error) = error.kind() else {
+            let Some(error) = error.replacement_error() else {
                 panic!("closure precedes grammar")
             };
             assert_closure(error, &origin, text);
@@ -783,13 +786,12 @@ fn imported_replacements_retain_supplied_graphs_origins_and_original_occurrences
                 "bogus env(again)",
                 "url(a) calc(attr(data-again type(<number>))),auto",
             ] {
-                assert!(matches!(
+                assert!(
                     handle
                         .reenter(parse_component_values(residual).unwrap())
                         .unwrap_err()
-                        .kind(),
-                    CssExpansionErrorKind::ResidualSubstitution
-                ));
+                        .is_residual_substitution()
+                );
             }
             assert_eq!(replacement, snapshot);
             assert_eq!(source, before);
@@ -957,10 +959,7 @@ fn normalization_keeps_ui_order_contexts_alias_pending_importance_and_exact_coun
     ] {
         for _ in 0..2 {
             let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
-            assert_eq!(
-                error.kind(),
-                &CssNormalizationErrorKind::LimitExceeded { resource, limit: 8 }
-            );
+            assert_eq!(error.exhausted_limit(), Some((resource, 8)));
             assert_eq!(error.declaration_order(), Some(8));
             assert!(
                 error
@@ -1017,8 +1016,8 @@ fn caret_providers_emit_every_explicit_golden_without_intrinsic_metadata() {
 
 #[test]
 fn primitive_providers_charge_exact_keyword_and_cursor_child_work_atomically() {
+    use crate::css::support::failure_classes::SerializationFailure as Kind;
     use CssSerializationLimits as Limits;
-    use CssSpecifiedValueSerializationErrorKind as Kind;
     let mut cases: Vec<(&str, &str, &str, usize)> = Vec::new();
     for name in FAMILY {
         for text in keywords(name) {
@@ -1067,7 +1066,10 @@ fn primitive_providers_charge_exact_keyword_and_cursor_child_work_atomically() {
             ),
         ] {
             for _ in 0..2 {
-                assert_eq!(primitive_css(&source, limits).unwrap_err().kind(), kind);
+                assert_eq!(
+                    serialization_failure(&primitive_css(&source, limits).unwrap_err()),
+                    kind
+                );
                 assert_eq!(source, before);
             }
         }
@@ -1089,7 +1091,10 @@ fn primitive_providers_charge_exact_keyword_and_cursor_child_work_atomically() {
                 Kind::ByteLimit,
             ),
         ] {
-            assert_eq!(source.serialize_specified(limits).unwrap_err().kind(), kind);
+            assert_eq!(
+                serialization_failure(&source.serialize_specified(limits).unwrap_err()),
+                kind
+            );
         }
         assert_eq!(source, before);
     }
@@ -1103,12 +1108,11 @@ fn huge_rgb_scalar_suppression_uses_only_final_output_bytes_and_keeps_source_reu
     let exact = Limits::new(usize::MAX, usize::MAX, expected.len());
     assert_eq!(source.serialize_specified(exact).unwrap(), expected);
     for _ in 0..2 {
-        assert_eq!(
+        assert!(
             source
                 .serialize_specified(Limits::new(usize::MAX, usize::MAX, expected.len() - 1))
                 .unwrap_err()
-                .kind(),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit
+                .is_byte_limit()
         );
         assert_eq!(source, before);
     }
@@ -1117,7 +1121,7 @@ fn huge_rgb_scalar_suppression_uses_only_final_output_bytes_and_keeps_source_reu
 #[test]
 fn sheet_siblings_share_final_bytes_and_nodes_and_remain_reusable_after_failure() {
     use CssSerializationLimits as Limits;
-    use CssSpecifiedValueSerializationErrorKind as Kind;
+
     let report = parse_sheet(
         ".a{caret-color:auto!important;cursor:url(a) 30 -.25,pointer}.b{pointer-events:none;-webkit-user-select:all}.c{resize:block}",
     );
@@ -1136,7 +1140,7 @@ fn sheet_siblings_share_final_bytes_and_nodes_and_remain_reusable_after_failure(
     );
     for _ in 0..2 {
         let error = sheet.serialize_specified(short).unwrap_err();
-        assert_eq!(error.kind(), Kind::ByteLimit);
+        assert!(error.is_byte_limit(), "{error:?}");
         assert_eq!(error.rule_index(), Some(2));
         assert_eq!(sheet, &before);
     }
@@ -1148,10 +1152,7 @@ fn sheet_siblings_share_final_bytes_and_nodes_and_remain_reusable_after_failure(
         Limits::new(usize::MAX, 9, expected.len()),
     ] {
         let error = sheet.serialize_specified(limits).unwrap_err();
-        assert!(matches!(
-            error.kind(),
-            Kind::InputNodeLimit | Kind::ProjectionNodeLimit
-        ));
+        assert!((error.is_input_node_limit() || error.is_projection_node_limit()));
         assert_eq!(sheet, &before);
     }
     assert_eq!(sheet.serialize_specified(exact).unwrap(), expected);

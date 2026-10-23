@@ -414,20 +414,19 @@ fn rectangle_pending_reentry_checks_full_grammar_and_preserves_replacement_origi
         "xywh(0 0 -1e-999px 2px)",
         "xywh(0 0 1px 2px round / 0)",
     ] {
-        assert!(matches!(
+        assert!(
             pending
                 .reenter(parse_component_values(invalid).unwrap())
                 .unwrap_err()
-                .kind(),
-            CssExpansionErrorKind::InvalidReplacement(_)
-        ));
+                .replacement_error()
+                .is_some()
+        );
     }
-    assert_eq!(
+    assert!(
         pending
             .reenter(parse_component_values("rect(var(--again) 2px 3px 4px)").unwrap())
             .unwrap_err()
-            .kind(),
-        &CssExpansionErrorKind::ResidualSubstitution
+            .is_residual_substitution()
     );
     for (authored, expected) in [
         (

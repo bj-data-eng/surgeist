@@ -7,6 +7,9 @@ use std::error::Error as StdError;
 use surgeist_css::*;
 
 use super::report::{code_name, component_error_kind, kind_facts};
+use crate::css::support::failure_classes::{
+    NumericFailure, SerializationFailure, component_failure, numeric_failure, serialization_failure,
+};
 
 /// Accessor facts of `error` and of each error in its `source()` chain.
 pub fn accessor_facts(error: &(dyn StdError + 'static)) -> Vec<String> {
@@ -27,384 +30,325 @@ pub fn accessor_facts(error: &(dyn StdError + 'static)) -> Vec<String> {
     facts
 }
 
-/// `name` for a unit or payload variant of a construction or serialization
-/// enum, read through a braced pattern so payload shape does not matter.
-macro_rules! variant {
-    ($error:expr, $type:ident, [$($variant:ident),* $(,)?]) => {
-        match $error {
-            $($type::$variant { .. } => stringify!($variant),)*
-            #[allow(unreachable_patterns)]
-            _ => "Future",
-        }
-    };
+/// The name of the first class whose predicate holds, or `Future`.
+fn first(classes: &[(bool, &'static str)]) -> &'static str {
+    classes
+        .iter()
+        .find_map(|(holds, name)| holds.then_some(*name))
+        .unwrap_or("Future")
 }
 
-/// The kind of a descriptor-value error: its component kind or grammar
-/// diagnostic kind, or the unit kind's name.
-macro_rules! descriptor_kind {
-    ($kind:expr, $type:ident, [$($unit:ident),* $(,)?]) => {
-        match $kind {
-            $type::Component(kind) => format!("component:{}", component_error_kind(*kind)),
-            $type::Grammar(kind) => format!("grammar:{}", kind_facts(kind)),
-            $($type::$unit => stringify!($unit).to_owned(),)*
-            #[allow(unreachable_patterns)]
-            _ => "Future".to_owned(),
-        }
+/// The kind of a descriptor-value failure: its component kind or grammar
+/// diagnostic kind, or the name of the refusal.
+fn descriptor_kind(
+    component: Option<&CssComponentValueError>,
+    diagnostic: Option<&CssError>,
+    units: &[(bool, &'static str)],
+) -> String {
+    if let Some(component) = component {
+        return format!(
+            "component:{}",
+            component_error_kind(component_failure(component))
+        );
+    }
+    if let Some(diagnostic) = diagnostic {
+        return format!("grammar:{}", kind_facts(diagnostic));
+    }
+    first(units).to_owned()
+}
+
+/// The facts of a descriptor-value failure, which every descriptor family reports alike.
+macro_rules! descriptor_facts {
+    ($error:expr, $origin:expr, [$($predicate:ident => $name:literal),* $(,)?]) => {
+        vec![
+            format!(
+                "kind={}",
+                descriptor_kind(
+                    $error.component_error(),
+                    $error.diagnostic(),
+                    &[$(($error.$predicate(), $name)),*],
+                )
+            ),
+            format!("origin={}", serialized_origin($origin)),
+        ]
     };
 }
 
 fn link_facts(error: &(dyn StdError + 'static)) -> Vec<String> {
-    if let Some(error) = error.downcast_ref::<Error>() {
+    if let Some(error) = error.downcast_ref::<CssError>() {
         return vec![
             format!("code={}", code_name(error.code())),
-            format!("kind={}", kind_facts(error.kind())),
+            format!("kind={}", kind_facts(error)),
             format!("position={}", position(error.position())),
         ];
     }
-    if let Some(error) = error.downcast_ref::<CssColorOrdinaryError>() {
-        return vec![match error {
-            CssColorOrdinaryError::Operation(_) => "variant=Operation".to_owned(),
-            CssColorOrdinaryError::Limit {
-                resource,
-                required,
-                allowed,
-            } => format!(
+    if let Some(error) = error.downcast_ref::<CssColorResolveError>() {
+        if error.color_error().is_some() {
+            return vec!["variant=Operation".to_owned()];
+        }
+        if let Some((resource, allowed, required)) = error.exhausted_limit() {
+            return vec![format!(
                 "variant=Limit resource={} required={required} allowed={allowed}",
-                super::color::resource_name(*resource)
-            ),
-            CssColorOrdinaryError::Allocation { resource } => format!(
+                super::color::resource_name(resource)
+            )];
+        }
+        if let Some(resource) = error.failed_allocation() {
+            return vec![format!(
                 "variant=Allocation resource={}",
-                super::color::resource_name(*resource)
-            ),
-        }];
+                super::color::resource_name(resource)
+            )];
+        }
+        return vec!["variant=Future".to_owned()];
     }
     if let Some(error) = error.downcast_ref::<CssColorError>() {
-        return vec![match error {
-            CssColorError::Unavailable(unavailable) => format!(
+        if let Some(unavailable) = error.unavailable() {
+            return vec![format!(
                 "variant=Unavailable fact={}",
-                super::color::unavailable_name(unavailable)
-            ),
-            CssColorError::Unsupported(unsupported) => format!(
+                super::color::unavailable_name(&unavailable)
+            )];
+        }
+        if let Some(unsupported) = error.unsupported() {
+            return vec![format!(
                 "variant=Unsupported feature={}",
-                super::color::unsupported_name(unsupported)
-            ),
-            other => format!(
-                "variant={}",
-                variant!(other, CssColorError, [Facts, MalformedInput])
-            ),
-        }];
-    }
-    if let Some(error) = error.downcast_ref::<CssFontPaletteConstructionError>() {
+                super::color::unsupported_name(&unsupported)
+            )];
+        }
         return vec![format!(
             "variant={}",
-            variant!(
-                error,
-                CssFontPaletteConstructionError,
-                [
-                    ContextualColor,
-                    InvalidName,
-                    MissingFontFamily,
-                    NegativeIndex
-                ]
-            )
+            first(&[
+                (error.fact_defect().is_some(), "Facts"),
+                (error.malformed_input_offset().is_some(), "MalformedInput"),
+            ])
+        )];
+    }
+    if let Some(error) = error.downcast_ref::<CssFontPaletteValuesError>() {
+        // A descriptor-value failure carries its origin; a palette
+        // construction failure has none.
+        if let Some(origin) = error.origin() {
+            return descriptor_facts!(error, origin, [
+                is_not_pending => "NotPending",
+                is_residual_substitution => "ResidualSubstitution",
+            ]);
+        }
+        return vec![format!(
+            "variant={}",
+            first(&[
+                (error.contextual_color().is_some(), "ContextualColor"),
+                (error.is_invalid_name(), "InvalidName"),
+                (error.is_missing_font_family(), "MissingFontFamily"),
+                (error.is_negative_index(), "NegativeIndex"),
+            ])
         )];
     }
     if let Some(error) = error.downcast_ref::<CssComponentValueError>() {
         return vec![
-            format!("kind={}", component_error_kind(error.kind())),
+            format!("kind={}", component_error_kind(component_failure(error))),
             format!("origin={}", origin(error.origin())),
         ];
     }
-    if let Some(error) = error.downcast_ref::<CssPropertyValueParseError>() {
+    if let Some(error) = error.downcast_ref::<CssPropertyValueError>() {
+        let kind = match error.component_error() {
+            Some(component) if error.code().is_none() => {
+                format!(
+                    "component:{}",
+                    component_error_kind(component_failure(component))
+                )
+            }
+            _ if error.code().is_some() => format!("grammar:{}", kind_facts(error)),
+            _ => "Future".to_owned(),
+        };
         return vec![
-            format!(
-                "kind={}",
-                match error.kind() {
-                    CssPropertyValueErrorKind::Component(kind) => {
-                        format!("component:{}", component_error_kind(*kind))
-                    }
-                    CssPropertyValueErrorKind::Grammar(kind) => {
-                        format!("grammar:{}", kind_facts(kind))
-                    }
-                    _ => "Future".to_owned(),
-                }
-            ),
-            format!("origin={}", serialized_origin(error.origin())),
+            format!("kind={kind}"),
+            format!("origin={}", serialized_origin(&error.origin())),
         ];
-    }
-    if let Some(error) = error.downcast_ref::<CssPropertyValueSyntaxError>() {
-        let variant = variant!(error, CssPropertyValueSyntaxError, [Component, Property]);
-        let mut facts = vec![format!("variant={variant}")];
-        match error {
-            CssPropertyValueSyntaxError::Component(inner) => {
-                facts.extend(prefixed("component", link_facts(inner)))
-            }
-            CssPropertyValueSyntaxError::Property(inner) => {
-                facts.extend(prefixed("property", link_facts(inner)))
-            }
-        }
-        return facts;
     }
     if let Some(error) = error.downcast_ref::<CssExpansionError>() {
-        return match error.kind() {
-            CssExpansionErrorKind::InvalidReplacement(inner) => {
-                let mut facts = vec!["kind=InvalidReplacement".to_owned()];
-                facts.extend(prefixed("replacement", link_facts(inner)));
-                facts
-            }
-            CssExpansionErrorKind::ResidualSubstitution => {
-                vec!["kind=ResidualSubstitution".to_owned()]
-            }
-            CssExpansionErrorKind::UnsupportedProperty(property) => {
-                vec![format!("kind=UnsupportedProperty:{}", property.stable_id())]
-            }
-            _ => vec!["kind=Future".to_owned()],
-        };
+        if let Some(inner) = error.replacement_error() {
+            let mut facts = vec!["kind=InvalidReplacement".to_owned()];
+            facts.extend(prefixed("replacement", link_facts(inner)));
+            return facts;
+        }
+        if error.is_residual_substitution() {
+            return vec!["kind=ResidualSubstitution".to_owned()];
+        }
+        return vec!["kind=Future".to_owned()];
     }
     if let Some(error) = error.downcast_ref::<CssColorProfileValueError>() {
-        return vec![
-            format!(
-                "kind={}",
-                descriptor_kind!(
-                    error.kind(),
-                    CssColorProfileValueErrorKind,
-                    [NotPending, RecoveredComponent, ResidualSubstitution]
-                )
-            ),
-            format!("origin={}", serialized_origin(error.origin())),
-        ];
+        return descriptor_facts!(error, error.origin(), [
+            is_not_pending => "NotPending",
+            is_recovered_component => "RecoveredComponent",
+            is_residual_substitution => "ResidualSubstitution",
+        ]);
     }
     if let Some(error) = error.downcast_ref::<CssCounterStyleValueError>() {
-        return vec![
-            format!(
-                "kind={}",
-                descriptor_kind!(
-                    error.kind(),
-                    CssCounterStyleValueErrorKind,
-                    [NotPending, RecoveredComponent, ResidualSubstitution]
-                )
-            ),
-            format!("origin={}", serialized_origin(error.origin())),
-        ];
+        return descriptor_facts!(error, error.origin(), [
+            is_not_pending => "NotPending",
+            is_recovered_component => "RecoveredComponent",
+            is_residual_substitution => "ResidualSubstitution",
+        ]);
     }
     if let Some(error) = error.downcast_ref::<CssFontFaceValueError>() {
-        return vec![
-            format!(
-                "kind={}",
-                descriptor_kind!(
-                    error.kind(),
-                    CssFontFaceValueErrorKind,
-                    [RecoveredComponent, ResidualSubstitution]
-                )
-            ),
-            format!("origin={}", serialized_origin(error.origin())),
-        ];
+        return descriptor_facts!(error, error.origin(), [
+            is_recovered_component => "RecoveredComponent",
+            is_residual_substitution => "ResidualSubstitution",
+        ]);
     }
-    if let Some(error) = error.downcast_ref::<CssFontFeatureValueError>() {
-        return vec![
-            format!(
-                "kind={}",
-                descriptor_kind!(
-                    error.kind(),
-                    CssFontFeatureValueErrorKind,
-                    [NotPending, RecoveredComponent, ResidualSubstitution]
-                )
-            ),
-            format!("origin={}", serialized_origin(error.origin())),
-        ];
-    }
-    if let Some(error) = error.downcast_ref::<CssFontPaletteValueError>() {
-        return vec![
-            format!(
-                "kind={}",
-                descriptor_kind!(
-                    error.kind(),
-                    CssFontPaletteValueErrorKind,
-                    [NotPending, ResidualSubstitution]
-                )
-            ),
-            format!("origin={}", serialized_origin(error.origin())),
-        ];
+    if let Some(error) = error.downcast_ref::<CssFontFeatureValuesError>() {
+        // A descriptor-value failure carries its origin; a structural
+        // failure of the rule has none.
+        if let Some(origin) = error.origin() {
+            return descriptor_facts!(error, origin, [
+                is_not_pending => "NotPending",
+                is_recovered_component => "RecoveredComponent",
+                is_residual_substitution => "ResidualSubstitution",
+            ]);
+        }
+        return vec![format!(
+            "kind={}",
+            first(&[
+                (error.is_empty_families(), "EmptyFamilies"),
+                (error.is_invalid_identifier(), "InvalidIdentifier"),
+                (error.is_invalid_index_count(), "InvalidIndexCount"),
+                (error.is_invalid_integer_syntax(), "InvalidIntegerSyntax"),
+                (error.is_kind_mismatch(), "KindMismatch"),
+                (error.is_negative_index(), "NegativeIndex"),
+            ])
+        )];
     }
     if let Some(error) = error.downcast_ref::<CssMediaConstructionError>() {
         return construction(
-            variant!(
-                error,
-                CssMediaConstructionError,
-                [
-                    Component,
-                    InvalidConditionGrammar,
-                    InvalidQueryGrammar,
-                    RecoveredInput
-                ]
-            ),
+            first(&[
+                (error.is_ambiguous_media_body(), "AmbiguousMediaBody"),
+                (error.component_error().is_some(), "Component"),
+                (
+                    error.is_invalid_condition_grammar(),
+                    "InvalidConditionGrammar",
+                ),
+                (error.is_invalid_name(), "InvalidName"),
+                (error.is_invalid_prelude(), "InvalidPrelude"),
+                (error.is_invalid_query_grammar(), "InvalidQueryGrammar"),
+                (error.is_recovered_input(), "RecoveredInput"),
+            ]),
             error.origin(),
         );
     }
-    if let Some(error) = error.downcast_ref::<CssImportConstructionError>() {
-        return construction(
-            variant!(
-                error,
-                CssImportConstructionError,
-                [
-                    Component,
-                    InvalidRuleGrammar,
-                    Media,
-                    RecoveredInput,
-                    Serialization,
-                    Supports,
-                    WorkerUnavailable
-                ]
-            ),
-            error.origin(),
-        );
+    if let Some(error) = error.downcast_ref::<CssRuleConstructionError>() {
+        // An `@import` construction failure carries its origin; a rule-list
+        // construction failure has none.
+        if let Some(value) = error.origin() {
+            return construction(
+                first(&[
+                    (error.component_error().is_some(), "Component"),
+                    (error.is_invalid_rule_grammar(), "InvalidRuleGrammar"),
+                    (error.media_error().is_some(), "Media"),
+                    (error.is_recovered_input(), "RecoveredInput"),
+                    (error.serialization_error().is_some(), "Serialization"),
+                    (error.supports_error().is_some(), "Supports"),
+                    (error.is_worker_unavailable(), "WorkerUnavailable"),
+                ]),
+                value,
+            );
+        }
+        return vec![format!(
+            "kind={}",
+            first(&[
+                (error.is_capacity_overflow(), "CapacityOverflow"),
+                (error.is_duplicate_namespace(), "DuplicateNamespace"),
+                (error.is_invalid_boundary_anchor(), "InvalidBoundaryAnchor"),
+                (error.is_invalid_placement(), "InvalidPlacement"),
+                (error.is_invalid_prelude_order(), "InvalidPreludeOrder"),
+                (
+                    error.is_invalid_selector_identifier(),
+                    "InvalidSelectorIdentifier"
+                ),
+                (error.is_namespace_mismatch(), "NamespaceMismatch"),
+                (error.is_nesting_limit(), "NestingLimit"),
+                (error.is_selector_nesting_limit(), "SelectorNestingLimit"),
+            ])
+        )];
     }
     if let Some(error) = error.downcast_ref::<CssSupportsConstructionError>() {
         return construction(
-            variant!(
-                error,
-                CssSupportsConstructionError,
-                [
-                    Component,
-                    InvalidConditionGrammar,
-                    InvalidDeclarationGrammar,
-                    RecoveredInput,
-                    WorkerUnavailable
-                ]
-            ),
+            first(&[
+                (error.component_error().is_some(), "Component"),
+                (error.is_invalid_body_grammar(), "InvalidBodyGrammar"),
+                (
+                    error.is_invalid_condition_grammar(),
+                    "InvalidConditionGrammar",
+                ),
+                (
+                    error.is_invalid_declaration_grammar(),
+                    "InvalidDeclarationGrammar",
+                ),
+                (error.is_invalid_name(), "InvalidName"),
+                (error.is_recovered_input(), "RecoveredInput"),
+                (error.is_worker_unavailable(), "WorkerUnavailable"),
+            ]),
             error.origin(),
         );
     }
-    if let Some(error) = error.downcast_ref::<CssWhenConstructionError>() {
+    if let Some(error) = error.downcast_ref::<CssConditionConstructionError>() {
         return construction(
-            variant!(
-                error,
-                CssWhenConstructionError,
-                [
-                    Component,
-                    InvalidConditionGrammar,
-                    InvalidMediaFeatureGrammar,
-                    RecoveredInput,
-                    WorkerUnavailable
-                ]
-            ),
+            first(&[
+                (error.component_error().is_some(), "Component"),
+                (
+                    error.is_invalid_condition_grammar(),
+                    "InvalidConditionGrammar",
+                ),
+                (
+                    error.is_invalid_media_feature_grammar(),
+                    "InvalidMediaFeatureGrammar",
+                ),
+                (error.is_recovered_input(), "RecoveredInput"),
+                (error.is_worker_unavailable(), "WorkerUnavailable"),
+                (error.is_wrong_outer_component(), "WrongOuterComponent"),
+            ]),
             error.origin(),
         );
     }
     if let Some(error) = error.downcast_ref::<CssContainerConstructionError>() {
         return construction(
-            variant!(
-                error,
-                CssContainerConstructionError,
-                [
-                    Component,
-                    InvalidConditionGrammar,
-                    InvalidPreludeGrammar,
-                    WorkerUnavailable
-                ]
-            ),
+            first(&[
+                (error.component_error().is_some(), "Component"),
+                (
+                    error.is_invalid_condition_grammar(),
+                    "InvalidConditionGrammar",
+                ),
+                (error.is_invalid_prelude_grammar(), "InvalidPreludeGrammar"),
+                (error.is_worker_unavailable(), "WorkerUnavailable"),
+            ]),
             error.origin(),
         );
     }
-    if let Some(error) = error.downcast_ref::<CssCustomMediaConstructionError>() {
-        return construction(
-            variant!(
-                error,
-                CssCustomMediaConstructionError,
-                [
-                    AmbiguousMediaBody,
-                    Component,
-                    InvalidName,
-                    InvalidPrelude,
-                    Media,
-                    RecoveredInput
-                ]
-            ),
-            error.origin(),
-        );
-    }
-    if let Some(error) = error.downcast_ref::<CssNamedSupportsConstructionError>() {
-        return construction(
-            variant!(
-                error,
-                CssNamedSupportsConstructionError,
-                [Component, InvalidBodyGrammar, InvalidName, RecoveredInput]
-            ),
-            error.origin(),
-        );
-    }
-    if let Some(error) = error.downcast_ref::<CssGeneralEnclosedError>() {
-        return construction(
-            variant!(
-                error,
-                CssGeneralEnclosedError,
-                [Component, WrongOuterComponent]
-            ),
-            error.origin(),
-        );
-    }
-    if let Some(error) = error.downcast_ref::<CssImage1DConstructionError>() {
-        let mut facts = vec![format!(
-            "variant={}",
-            variant!(
-                error,
-                CssImage1DConstructionError,
-                [
-                    Component,
-                    EmptyStripes,
-                    Grammar,
-                    NestingLimit,
-                    Numeric,
-                    RecoveredComponent
-                ]
-            )
-        )];
-        match error {
-            CssImage1DConstructionError::Component(inner) => {
-                facts.extend(prefixed("component", link_facts(inner)))
-            }
-            CssImage1DConstructionError::Grammar(inner) => {
-                facts.extend(prefixed("grammar", link_facts(inner)))
-            }
-            CssImage1DConstructionError::Numeric(inner) => {
-                facts.extend(prefixed("numeric", link_facts(inner)))
-            }
-            CssImage1DConstructionError::RecoveredComponent(value) => {
-                facts.push(format!("origin={}", origin(value)))
-            }
-            _ => {}
+    if let Some(error) = error.downcast_ref::<CssImageConstructionError>() {
+        // `<image-1d>` failures report their variant; the image and
+        // gradient-stop construction failures have no accessor facts.
+        let variant = first(&[
+            (error.component_error().is_some(), "Component"),
+            (error.is_empty_stripes(), "EmptyStripes"),
+            (error.property_value_error().is_some(), "Grammar"),
+            (error.recovered_origin().is_some(), "RecoveredComponent"),
+        ]);
+        if variant == "Future" {
+            return Vec::new();
+        }
+        let mut facts = vec![format!("variant={variant}")];
+        if let Some(inner) = error.component_error() {
+            facts.extend(prefixed("component", link_facts(inner)));
+        } else if let Some(inner) = error.property_value_error() {
+            facts.extend(prefixed("grammar", link_facts(inner)));
+        } else if let Some(value) = error.recovered_origin() {
+            facts.push(format!("origin={}", origin(value)));
         }
         return facts;
     }
     if let Some(error) = error.downcast_ref::<CssNumericConstructionError>() {
+        let kind = match numeric_failure(error) {
+            NumericFailure::Component(kind) => format!("component:{}", component_error_kind(kind)),
+            other => numeric_name(other).to_owned(),
+        };
         return vec![
-            format!(
-                "kind={}",
-                match error.kind() {
-                    CssNumericConstructionErrorKind::Component(kind) => {
-                        format!("component:{}", component_error_kind(*kind))
-                    }
-                    other => variant!(
-                        other,
-                        CssNumericConstructionErrorKind,
-                        [
-                            Arity,
-                            EmptyValue,
-                            IncompatibleTypes,
-                            InvalidArgumentType,
-                            MalformedExpression,
-                            MultipleValues,
-                            OutOfRange,
-                            RecoveredComponent,
-                            ResourceLimit,
-                            RootDomainMismatch,
-                            SubstitutionRequired,
-                            UnknownFunction
-                        ]
-                    )
-                    .to_owned(),
-                }
-            ),
+            format!("kind={kind}"),
             format!(
                 "origin={}",
                 error.origin().map_or_else(|| "-".to_owned(), origin)
@@ -412,59 +356,73 @@ fn link_facts(error: &(dyn StdError + 'static)) -> Vec<String> {
             format!("path={}", error.path().map_or_else(|| "-".to_owned(), path)),
         ];
     }
-    if let Some(error) = error.downcast_ref::<CssColorScalarError>() {
+    if let Some(error) = error.downcast_ref::<CssColorConstructionError>() {
+        // A colour scalar failure carries its origin; the other colour
+        // construction failures have no accessor facts.
+        let Some(value) = error.origin() else {
+            return Vec::new();
+        };
         return vec![
             format!(
                 "kind={}",
-                variant!(
-                    error.kind(),
-                    CssColorScalarErrorKind,
-                    [InvalidComponent, OutOfRange]
-                )
-            ),
-            format!("origin={}", origin(error.origin())),
-        ];
-    }
-    if let Some(error) = error.downcast_ref::<CssCharacterAlignmentError>() {
-        return vec![
-            format!(
-                "kind={}",
-                match error.kind() {
-                    CssCharacterAlignmentErrorKind::Component(kind) => {
-                        format!("component:{}", component_error_kind(kind))
-                    }
-                    CssCharacterAlignmentErrorKind::InvalidCharacter => {
-                        "InvalidCharacter".to_owned()
-                    }
-                    _ => "Future".to_owned(),
+                if error.component_error().is_some() {
+                    "InvalidComponent"
+                } else {
+                    "OutOfRange"
                 }
             ),
+            format!("origin={}", origin(value)),
+        ];
+    }
+    if let Some(error) = error.downcast_ref::<CssTextConstructionError>() {
+        let kind = match error.component_error() {
+            Some(component) => format!(
+                "component:{}",
+                component_error_kind(component_failure(component))
+            ),
+            None if error.is_invalid_character() => "InvalidCharacter".to_owned(),
+            None => "Future".to_owned(),
+        };
+        return vec![
+            format!("kind={kind}"),
             format!("origin={}", origin(error.origin())),
         ];
     }
     if let Some(error) = error.downcast_ref::<CssSelectorConstructionError>() {
+        // A qualified-name failure has no accessor facts.
+        if error.undeclared_namespace_prefix().is_some() {
+            return Vec::new();
+        }
         return vec![format!(
             "kind={}",
-            variant!(
-                error.kind(),
-                CssSelectorConstructionErrorKind,
-                [
-                    EmptyComplexRest,
-                    EmptyCompound,
-                    EmptyList,
-                    InvalidAttributeValue,
-                    InvalidTypePosition,
-                    InvalidUnknownWebkitPseudoElementName,
-                    ModifierWithoutValue,
-                    NonTerminalPseudoElement,
-                    Specified
-                ]
-            )
+            first(&[
+                (error.is_empty_complex_rest(), "EmptyComplexRest"),
+                (error.is_empty_compound(), "EmptyCompound"),
+                (error.is_empty_list(), "EmptyList"),
+                (
+                    error.attribute_value_error().is_some(),
+                    "InvalidAttributeValue"
+                ),
+                (
+                    error.invalid_type_position().is_some(),
+                    "InvalidTypePosition"
+                ),
+                (
+                    error.is_invalid_unknown_webkit_pseudo_element_name(),
+                    "InvalidUnknownWebkitPseudoElementName",
+                ),
+                (error.is_modifier_without_value(), "ModifierWithoutValue"),
+                (
+                    error.non_terminal_pseudo_element().is_some(),
+                    "NonTerminalPseudoElement"
+                ),
+                (error.serialization_error().is_some(), "Specified"),
+            ])
         )];
     }
     if let Some(error) = error.downcast_ref::<CssSerializationError>() {
         return vec![
-            format!("kind={}", serialization_kind(error.kind())),
+            format!("kind={}", serialization_kind(serialization_failure(error))),
             format!(
                 "origin={}",
                 error.origin().map_or_else(|| "-".to_owned(), origin)
@@ -472,121 +430,96 @@ fn link_facts(error: &(dyn StdError + 'static)) -> Vec<String> {
         ];
     }
     if let Some(error) = error.downcast_ref::<CssRuleSerializationError>() {
-        return vec![format!(
-            "kind={}",
-            match error.kind() {
-                CssRuleCssomSerializationErrorKind::Resource(kind) => {
-                    format!("resource:{}", serialization_kind(kind))
-                }
-                CssRuleCssomSerializationErrorKind::Value(kind) => {
-                    format!("value:{}", serialization_kind(kind))
-                }
-                other => variant!(
-                    other,
-                    CssRuleCssomSerializationErrorKind,
-                    [DeclarationBlock, FormatUnavailable, SourceUndefined]
+        let kind = match error.serialization_error() {
+            Some(cause) if error.is_resource_limit() => {
+                format!(
+                    "resource:{}",
+                    serialization_kind(serialization_failure(cause))
                 )
-                .to_owned(),
             }
-        )];
+            Some(cause) => format!("value:{}", serialization_kind(serialization_failure(cause))),
+            None => first(&[
+                (
+                    error.declaration_block_error().is_some(),
+                    "DeclarationBlock",
+                ),
+                (error.unavailable_format().is_some(), "FormatUnavailable"),
+                (error.undefined_source().is_some(), "SourceUndefined"),
+            ])
+            .to_owned(),
+        };
+        return vec![format!("kind={kind}")];
     }
     if let Some(error) = error.downcast_ref::<CssDeclarationBlockError>() {
         return vec![format!(
             "kind={}",
-            variant!(
-                error.kind(),
-                CssDeclarationBlockErrorKind,
-                [
-                    DuplicateTerminal,
-                    Expansion,
-                    InvalidKeyframeSource,
-                    InvalidPageSource,
-                    PendingFootprintUndetermined,
-                    Serialization,
-                    UnresolvedEnvironment
-                ]
-            )
+            first(&[
+                (error.is_duplicate_terminal(), "DuplicateTerminal"),
+                (error.expansion().is_some(), "Expansion"),
+                (
+                    error.invalid_keyframe_source().is_some(),
+                    "InvalidKeyframeSource"
+                ),
+                (error.is_invalid_page_source(), "InvalidPageSource"),
+                (
+                    error.pending_footprint_property().is_some(),
+                    "PendingFootprintUndetermined",
+                ),
+                (error.serialization().is_some(), "Serialization"),
+                (
+                    error.unresolved_environment_property().is_some(),
+                    "UnresolvedEnvironment"
+                ),
+            ])
         )];
     }
     if let Some(error) = error.downcast_ref::<CssPageBlockError>() {
         return vec![format!(
             "kind={}",
-            variant!(
-                error.kind(),
-                CssPageBlockErrorKind,
-                [InvalidPropertyValue, PropertyNotApplicable, Resource]
-            )
+            first(&[
+                (error.is_invalid_property_value(), "InvalidPropertyValue"),
+                (error.is_property_not_applicable(), "PropertyNotApplicable"),
+                (error.resource().is_some(), "Resource"),
+            ])
         )];
     }
     if let Some(error) = error.downcast_ref::<CssNormalizationError>() {
         return vec![format!(
             "kind={}",
-            variant!(
-                error.kind(),
-                CssNormalizationErrorKind,
-                [LimitExceeded, UnsupportedDeclaration]
-            )
+            first(&[
+                (error.exhausted_limit().is_some(), "LimitExceeded"),
+                (error.expansion().is_some(), "UnsupportedDeclaration"),
+            ])
         )];
     }
     if let Some(error) = error.downcast_ref::<CssKeyframeSelectorComparisonError>() {
         return vec![format!(
             "stage={}",
-            variant!(
-                error.stage(),
-                CssKeyframeSelectorComparisonStage,
-                [Comparison, LeftNormalization, RightNormalization]
-            )
+            match error.stage() {
+                CssKeyframeSelectorComparisonStage::Comparison => "Comparison",
+                CssKeyframeSelectorComparisonStage::LeftNormalization => "LeftNormalization",
+                CssKeyframeSelectorComparisonStage::RightNormalization => "RightNormalization",
+                _ => "Future",
+            }
         )];
     }
-    if let Some(error) = error.downcast_ref::<CssFontFeatureValuesError>() {
-        return vec![format!(
-            "kind={}",
-            variant!(
-                error.kind(),
-                CssFontFeatureValuesErrorKind,
-                [
-                    EmptyFamilies,
-                    EmptyIndexes,
-                    InvalidIdentifier,
-                    InvalidIndexCount,
-                    InvalidIntegerSyntax,
-                    KindMismatch,
-                    NegativeIndex
-                ]
-            )
-        )];
-    }
-    if let Some(error) = error.downcast_ref::<CssRuleConstructionError>() {
-        return vec![format!(
-            "kind={}",
-            variant!(
-                error.kind(),
-                CssRuleConstructionErrorKind,
-                [
-                    CapacityOverflow,
-                    DuplicateNamespace,
-                    InvalidBoundaryAnchor,
-                    InvalidPlacement,
-                    InvalidPreludeOrder,
-                    InvalidSelectorIdentifier,
-                    NamespaceMismatch,
-                    NestingLimit,
-                    SelectorNestingLimit
-                ]
-            )
-        )];
-    }
-    if let Some(error) = error.downcast_ref::<CssPathDataConstructionError>() {
+    if let Some(error) = error.downcast_ref::<CssShapeConstructionError>() {
+        // A path-data failure carries its origin; a command-list failure has
+        // no accessor facts.
+        let Some(value) = error.origin() else {
+            return Vec::new();
+        };
         return vec![
             format!(
                 "kind={}",
-                variant!(
-                    error.kind(),
-                    CssPathDataConstructionErrorKind,
-                    [EmptyPath, ExpectedString, InvalidPathData, RecoveredInput]
-                )
+                first(&[
+                    (error.is_empty_path(), "EmptyPath"),
+                    (error.is_expected_string(), "ExpectedString"),
+                    (error.is_invalid_path_data(), "InvalidPathData"),
+                    (error.is_recovered_input(), "RecoveredInput"),
+                ])
             ),
-            format!("origin={}", origin(error.origin())),
+            format!("origin={}", origin(value)),
         ];
     }
     Vec::new()
@@ -606,21 +539,35 @@ fn prefixed(prefix: &str, facts: Vec<String>) -> Vec<String> {
         .collect()
 }
 
-fn serialization_kind(kind: CssSpecifiedValueSerializationErrorKind) -> &'static str {
-    variant!(
-        kind,
-        CssSpecifiedValueSerializationErrorKind,
-        [
-            ByteLimit,
-            CapacityOverflow,
-            DepthLimit,
-            InputNodeLimit,
-            NamespaceBindingUnavailable,
-            ProjectionNodeLimit,
-            UnrepresentableValue,
-            UnserializableBoundary
-        ]
-    )
+fn numeric_name(kind: NumericFailure) -> &'static str {
+    match kind {
+        NumericFailure::Arity => "Arity",
+        NumericFailure::EmptyValue => "EmptyValue",
+        NumericFailure::IncompatibleTypes => "IncompatibleTypes",
+        NumericFailure::InvalidArgumentType => "InvalidArgumentType",
+        NumericFailure::MalformedExpression => "MalformedExpression",
+        NumericFailure::MultipleValues => "MultipleValues",
+        NumericFailure::OutOfRange => "OutOfRange",
+        NumericFailure::RecoveredComponent => "RecoveredComponent",
+        NumericFailure::ResourceLimit => "ResourceLimit",
+        NumericFailure::RootDomainMismatch => "RootDomainMismatch",
+        NumericFailure::SubstitutionRequired => "SubstitutionRequired",
+        NumericFailure::UnknownFunction => "UnknownFunction",
+        NumericFailure::Component(_) => "Component",
+    }
+}
+
+fn serialization_kind(kind: SerializationFailure) -> &'static str {
+    match kind {
+        SerializationFailure::ByteLimit => "ByteLimit",
+        SerializationFailure::CapacityOverflow => "CapacityOverflow",
+        SerializationFailure::DepthLimit => "DepthLimit",
+        SerializationFailure::InputNodeLimit => "InputNodeLimit",
+        SerializationFailure::NamespaceBindingUnavailable => "NamespaceBindingUnavailable",
+        SerializationFailure::ProjectionNodeLimit => "ProjectionNodeLimit",
+        SerializationFailure::UnrepresentableValue => "UnrepresentableValue",
+        SerializationFailure::UnserializableBoundary => "UnserializableBoundary",
+    }
 }
 
 fn position(position: CssSourcePosition) -> String {

@@ -14,7 +14,6 @@ fn declaration(name: &str, input: &str) -> CssDeclaration {
 }
 use crate::css::support::serialization_limits::assert_node_limits as budget;
 use CssSerializationLimits as L;
-use CssSpecifiedValueSerializationErrorKind as K;
 use surgeist_css::*;
 
 fn angle(number: &str, unit: CssAngleUnit) -> CssAngleValue {
@@ -83,9 +82,11 @@ fn checked_coord_conversion_admits_six_boxes_and_rejects_margin() {
         assert_eq!(coord.as_css_str(), keyword);
         budget(keyword, 1, |limits| coord.serialize_specified(limits));
     }
-    assert_eq!(
-        CssCoordBox::try_from(CssBoxEdgeKeyword::MarginBox),
-        Err(CssMotionConstructionError::InvalidCoordBox)
+    assert!(
+        CssCoordBox::try_from(CssBoxEdgeKeyword::MarginBox)
+            .as_ref()
+            .unwrap_err()
+            .is_invalid_coord_box()
     );
     for keyword in ["margin-box", "text", "no-clip", "none"] {
         assert!(CssCoordBox::from_keyword(keyword).is_none());
@@ -169,9 +170,11 @@ fn ray_sizes_have_independent_direct_keyword_and_retained_default_contracts() {
 
 #[test]
 fn rotation_rejects_empty_and_preserves_modifier_angle_omissions() {
-    assert_eq!(
-        CssOffsetRotate::try_new(None, None),
-        Err(CssMotionConstructionError::EmptyRotate)
+    assert!(
+        CssOffsetRotate::try_new(None, None)
+            .as_ref()
+            .unwrap_err()
+            .is_empty_rotate()
     );
     let literal = angle(".25", CssAngleUnit::Turns);
     let alone = CssOffsetRotate::try_new(None, Some(literal.clone())).unwrap();
@@ -213,7 +216,7 @@ fn motion_angle_construction_uses_strict_angle_owner_errors_and_origins() {
     let component = parse_component_values("0").unwrap().items()[0].clone();
     let origin = component.origin().clone();
     let error = CssAngleLiteral::try_from_component(component).unwrap_err();
-    assert_eq!(error.kind(), CssComponentValueErrorKind::InvalidToken);
+    assert!(error.is_invalid_token(), "{error:?}");
     assert_eq!(error.origin(), &origin);
     let source = declaration("offset-path", "ray(calc(1turn - 90deg))");
     let bearing = ray(&source).angle();
@@ -250,10 +253,7 @@ fn recovered_bearing_graph_cannot_reenter_a_checked_motion_constructor() {
     };
     let before = calculation.components().clone();
     let error = CssAngleValue::try_from_calculation(calculation.clone()).unwrap_err();
-    assert_eq!(
-        error.kind(),
-        &CssNumericConstructionErrorKind::RecoveredComponent
-    );
+    assert!(error.is_recovered_component(), "{error:?}");
     assert_eq!(error.origin(), Some(function.closing_origin()));
     assert!(error.path().is_none());
     assert!(std::error::Error::source(&error).is_none());
@@ -404,48 +404,60 @@ fn physical_position_anchor_and_position_branches_retain_checked_axes_and_origin
     budget("auto", 1, |limits| {
         CssOffsetAnchor::Auto.serialize_specified(limits)
     });
-    assert_eq!(
-        CssPhysicalPosition::try_new(CssHorizontalPosition::XStart, CssVerticalPosition::Top),
-        Err(CssPositionConstructionError::NonPhysicalKeyword)
+    assert!(
+        CssPhysicalPosition::try_new(CssHorizontalPosition::XStart, CssVerticalPosition::Top)
+            .as_ref()
+            .unwrap_err()
+            .is_non_physical_keyword()
     );
-    assert_eq!(
+    assert!(
         CssPhysicalPosition::try_new(
             CssHorizontalPosition::LeftOffset(scalar),
             CssVerticalPosition::Top
-        ),
-        Err(CssPositionConstructionError::UnpairedEdgeOffsets)
+        )
+        .as_ref()
+        .unwrap_err()
+        .is_unpaired_edge_offsets()
     );
 }
 
 #[test]
 fn shorthand_constructor_rejects_anchor_only_and_pathless_distance_or_rotation() {
-    assert_eq!(
-        CssOffset::try_new(None, None, None, None, None),
-        Err(CssMotionConstructionError::EmptyOffset)
+    assert!(
+        CssOffset::try_new(None, None, None, None, None)
+            .as_ref()
+            .unwrap_err()
+            .is_empty_offset()
     );
-    assert_eq!(
-        CssOffset::try_new(None, None, None, None, Some(CssOffsetAnchor::Auto)),
-        Err(CssMotionConstructionError::EmptyOffset)
+    assert!(
+        CssOffset::try_new(None, None, None, None, Some(CssOffsetAnchor::Auto))
+            .as_ref()
+            .unwrap_err()
+            .is_empty_offset()
     );
-    assert_eq!(
+    assert!(
         CssOffset::try_new(
             Some(CssOffsetPosition::Normal),
             None,
             Some(CssSpecifiedLengthPercentage::zero()),
             None,
             None
-        ),
-        Err(CssMotionConstructionError::MissingPath)
+        )
+        .as_ref()
+        .unwrap_err()
+        .is_missing_path()
     );
-    assert_eq!(
+    assert!(
         CssOffset::try_new(
             Some(CssOffsetPosition::Auto),
             None,
             None,
             Some(CssOffsetRotate::auto()),
             None
-        ),
-        Err(CssMotionConstructionError::MissingPath)
+        )
+        .as_ref()
+        .unwrap_err()
+        .is_missing_path()
     );
     let position_only =
         CssOffset::try_new(Some(CssOffsetPosition::Normal), None, None, None, None).unwrap();
@@ -686,7 +698,7 @@ fn composed_motion_numeric_graphs_share_projection_limits_without_mutation() {
     let error = value
         .serialize_specified(L::new(8, 6, expected.len()))
         .unwrap_err();
-    assert_eq!(error.kind(), K::ProjectionNodeLimit);
+    assert!(error.is_projection_node_limit(), "{error:?}");
     assert_eq!(value, &before);
     assert_eq!(
         value

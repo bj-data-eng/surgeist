@@ -511,12 +511,15 @@ fn assert_important_keyframe_declaration_is_dropped(
         diagnostic.error().position().byte_offset().value(),
         source.find('!').unwrap()
     );
-    let ErrorKind::InvalidDeclarationAnnotation(detail) = diagnostic.error().kind() else {
-        panic!("annotation detail");
-    };
-    assert_eq!(detail.encountered().kind(), CssTokenKind::Delim);
-    assert_eq!(detail.encountered().authored(), "!");
-    match (detail.context(), property) {
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidDeclarationAnnotation,
+        "annotation detail"
+    );
+    assert_eq!(detail.encountered().unwrap().kind(), CssTokenKind::Delim);
+    assert_eq!(detail.encountered().unwrap().authored(), "!");
+    match (detail.declaration_context().unwrap(), property) {
         (CssDeclarationContextRef::Keyframe(actual), Some(expected)) => {
             assert_eq!(actual, expected)
         }

@@ -427,10 +427,7 @@ fn pending_reentry_preserves_original_and_replacement_origins_and_is_retryable()
         let error = pending
             .reenter(parse_component_values(source).unwrap())
             .unwrap_err();
-        assert!(matches!(
-            error.kind(),
-            CssExpansionErrorKind::ResidualSubstitution
-        ));
+        assert!(error.is_residual_substitution());
     }
     for source in [
         "auto",
@@ -443,18 +440,15 @@ fn pending_reentry_preserves_original_and_replacement_origins_and_is_retryable()
         let error = pending
             .reenter(parse_component_values(source).unwrap())
             .unwrap_err();
-        let CssExpansionErrorKind::InvalidReplacement(error) = error.kind() else {
+        let Some(error) = error.replacement_error() else {
             panic!("invalid replacement must fail strictly: {source}: {error:?}");
         };
-        assert!(matches!(
-            error.kind(),
-            CssPropertyValueErrorKind::Grammar(_)
-        ));
+        assert!(error.code().is_some());
         assert!(pending.source().same_occurrence(authored));
     }
     let replacement = parse_component_values("1px!important").unwrap();
     let error = pending.reenter(replacement).unwrap_err();
-    let CssExpansionErrorKind::InvalidReplacement(error) = error.kind() else {
+    let Some(error) = error.replacement_error() else {
         unreachable!()
     };
     let CssSerializedOrigin::Token(CssValueOrigin::Parsed(origin)) = error.origin() else {
@@ -520,12 +514,11 @@ fn canonical_specified_values_keep_context_dependent_operands_symbolic() {
         "calc(-3% - 2px)"
     );
     let before = tolerance.clone();
-    assert_eq!(
+    assert!(
         tolerance
             .serialize_specified(CssSerializationLimits::new(100, 100, 1))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(tolerance, before);
     println!("canonical symbolic specified serialization: ok");

@@ -16,6 +16,9 @@
 //! implementation-defined part of the diagnostic; every case asserts the
 //! token this rule derives from its grammar.
 
+use crate::css::support::failure_classes::ComponentFailure;
+use crate::css::support::failure_classes::NumericFailure;
+use crate::css::support::failure_classes::{component_failure, numeric_failure};
 use surgeist_css::*;
 
 /// The authored token a property-value rejection is expected to name.
@@ -124,11 +127,17 @@ pub fn assert_checked_matches_diagnostic(
     value: &str,
     diagnostic: &CssRecoveryDiagnostic,
 ) {
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("{property:?}: expected an invalid property value, got {diagnostic:?}")
-    };
-    assert_eq!(detail.property(), property, "rejecting property");
-    let expected = CssPropertyValueErrorKind::Grammar(diagnostic.error().kind().clone());
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "{property:?}: expected an invalid property value, got {diagnostic:?}"
+    );
+    assert_eq!(
+        detail.known_property().unwrap(),
+        property,
+        "rejecting property"
+    );
     let components = parse_component_values(value).unwrap();
     for result in [
         parse_property_value(
@@ -139,8 +148,115 @@ pub fn assert_checked_matches_diagnostic(
         parse_property_value_for_grammar(property.grammar(), components, CssImportance::Normal),
     ] {
         let error = result.expect_err(value);
-        assert_eq!(error.kind(), &expected, "{property:?}: {value}");
+        assert_same_grammar_facts(
+            &error,
+            diagnostic.error(),
+            &format!("{property:?}: {value}"),
+        );
     }
+}
+
+/// The grammar facts that a stylesheet diagnostic and a checked property-value
+/// failure both report, so that one assertion covers every front.
+pub trait GrammarFacts: std::fmt::Debug {
+    /// The diagnostic code, or `None` when no grammar rejected the value.
+    fn grammar_code(&self) -> Option<CssErrorCode>;
+    /// The property whose grammar rejected the value.
+    fn rejecting_property(&self) -> Option<CssKnownProperty>;
+    /// The responsible authored token, or `None` at the end of input.
+    fn responsible_token(&self) -> Option<&CssTokenSummary>;
+}
+
+impl GrammarFacts for CssError {
+    fn grammar_code(&self) -> Option<CssErrorCode> {
+        Some(self.code())
+    }
+    fn rejecting_property(&self) -> Option<CssKnownProperty> {
+        self.known_property()
+    }
+    fn responsible_token(&self) -> Option<&CssTokenSummary> {
+        self.encountered()
+    }
+}
+
+impl GrammarFacts for CssPropertyValueError {
+    fn grammar_code(&self) -> Option<CssErrorCode> {
+        self.code()
+    }
+    fn rejecting_property(&self) -> Option<CssKnownProperty> {
+        self.known_property()
+    }
+    fn responsible_token(&self) -> Option<&CssTokenSummary> {
+        self.encountered()
+    }
+}
+
+/// The facts [`property_value_facts`] reads, in accessor order.
+pub type PropertyValueFacts<'a> = (
+    Option<CssErrorCode>,
+    Option<CssGrammarExpectation>,
+    Option<&'a CssTokenSummary>,
+    Option<CssKnownProperty>,
+    Option<&'a CssColorComponentName>,
+    Option<CssProductionId>,
+    Option<u32>,
+    Option<CssDeclarationContextRef<'a>>,
+    Option<Option<&'a CssComponentValueError>>,
+    Option<ComponentFailure>,
+);
+
+/// The grammar and component facts of a checked property-value failure,
+/// without its origin, for comparing two fronts' failures: a grammar
+/// failure's complete component error, and otherwise only the class of the
+/// component failure.
+pub fn property_value_facts(error: &CssPropertyValueError) -> PropertyValueFacts<'_> {
+    (
+        error.code(),
+        error.expectation(),
+        error.encountered(),
+        error.known_property(),
+        error.color_component(),
+        error.production(),
+        error.nesting_limit(),
+        error.declaration_context(),
+        error.code().map(|_| error.component_error()),
+        error.component_error().map(component_failure),
+    )
+}
+
+/// Asserts that a checked property-value failure reports the same grammar facts as a
+/// stylesheet diagnostic; only the diagnostic carries an authored position.
+#[track_caller]
+pub fn assert_same_grammar_facts(
+    checked: &CssPropertyValueError,
+    diagnostic: &CssError,
+    label: &str,
+) {
+    assert_eq!(
+        (
+            checked.code(),
+            checked.expectation(),
+            checked.encountered(),
+            checked.known_property(),
+            checked.color_component(),
+            checked.production(),
+            checked.nesting_limit(),
+            checked.declaration_context(),
+            checked.component_error(),
+        ),
+        (
+            Some(diagnostic.code()),
+            diagnostic.expectation(),
+            diagnostic.encountered(),
+            diagnostic.known_property(),
+            diagnostic.color_component(),
+            diagnostic.production(),
+            diagnostic.nesting_limit(),
+            diagnostic.declaration_context(),
+            diagnostic.component_error(),
+        ),
+        "{label}"
+    );
 }
 
 /// Asserts that strict reentry rejected its replacement by the grammar of
@@ -152,30 +268,48 @@ pub fn assert_reentry_rejected<'a>(
     token: impl Into<Responsible<'a>>,
 ) {
     let error = result.expect_err("strict reentry rejects the replacement");
-    let CssExpansionErrorKind::InvalidReplacement(error) = error.kind() else {
+    let Some(error) = error.replacement_error() else {
         panic!("{property:?}: expected an invalid replacement, got {error:?}")
     };
     assert_checked_rejected(Err(error.clone()), property, token);
 }
 
-/// Asserts that `kind` is a property-value grammar rejection by `property`
+/// Asserts that `error` is a property-value grammar rejection by `property`
 /// at the responsible authored `token`.
 #[track_caller]
 pub fn assert_invalid_value<'a>(
-    kind: &ErrorKind,
+    error: &CssError,
     property: CssKnownProperty,
     token: impl Into<Responsible<'a>>,
 ) {
-    let encountered = match kind {
-        ErrorKind::InvalidPropertyValue(detail) => {
-            assert_eq!(detail.property(), property, "rejecting property");
-            detail.encountered()
+    assert_invalid_value_facts(
+        Some(error.code()),
+        error.known_property(),
+        error.encountered(),
+        property,
+        token,
+        error,
+    );
+}
+
+#[track_caller]
+fn assert_invalid_value_facts<'a>(
+    code: Option<CssErrorCode>,
+    known_property: Option<CssKnownProperty>,
+    encountered: Option<&CssTokenSummary>,
+    property: CssKnownProperty,
+    token: impl Into<Responsible<'a>>,
+    error: &dyn std::fmt::Debug,
+) {
+    match code {
+        Some(CssErrorCode::InvalidPropertyValue) => {
+            assert_eq!(known_property, Some(property), "rejecting property");
         }
-        // A `<color>` failure keeps its color-syntax kind, which names the
+        // A `<color>` failure keeps its color-syntax code, which names the
         // responsible token but no property.
-        ErrorKind::InvalidColorSyntax(detail) => detail.encountered(),
-        other => panic!("{property:?}: expected an invalid property value, got {other:?}"),
-    };
+        Some(CssErrorCode::InvalidColorSyntax) => {}
+        _ => panic!("{property:?}: expected an invalid property value, got {error:?}"),
+    }
     let actual = encountered.map(CssTokenSummary::authored);
     let token = match token.into() {
         Responsible::At(token) => Some(token),
@@ -188,18 +322,26 @@ pub fn assert_invalid_value<'a>(
 /// `token`, and returns the failure for further origin checks.
 #[track_caller]
 pub fn assert_checked_rejected<'a>(
-    result: Result<CssDeclaration, CssPropertyValueParseError>,
+    result: Result<CssDeclaration, CssPropertyValueError>,
     property: CssKnownProperty,
     token: impl Into<Responsible<'a>>,
-) -> CssPropertyValueParseError {
+) -> CssPropertyValueError {
     let error = match result {
         Ok(declaration) => panic!("{property:?}: checked construction accepted {declaration:?}"),
         Err(error) => error,
     };
-    let CssPropertyValueErrorKind::Grammar(kind) = error.kind() else {
-        panic!("{property:?}: expected a grammar rejection, got {error:?}")
-    };
-    assert_invalid_value(kind, property, token);
+    assert!(
+        error.code().is_some(),
+        "{property:?}: expected a grammar rejection, got {error:?}"
+    );
+    assert_invalid_value_facts(
+        error.code(),
+        error.known_property(),
+        error.encountered(),
+        property,
+        token,
+        &error,
+    );
     error
 }
 
@@ -207,17 +349,14 @@ pub fn assert_checked_rejected<'a>(
 /// syntax was repaired by an implicit EOF closure, at that closure.
 #[track_caller]
 pub fn assert_checked_closure_rejected(
-    result: Result<CssDeclaration, CssPropertyValueParseError>,
-) -> CssPropertyValueParseError {
+    result: Result<CssDeclaration, CssPropertyValueError>,
+) -> CssPropertyValueError {
     let error = match result {
         Ok(declaration) => panic!("checked construction accepted a closure: {declaration:?}"),
         Err(error) => error,
     };
     assert!(
-        matches!(
-            error.kind(),
-            CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
-        ),
+        error.code() == Some(CssErrorCode::UnexpectedEnd),
         "{error:?}"
     );
     assert!(
@@ -284,12 +423,14 @@ pub fn assert_style_attribute_rejected<'a>(
         CssRecoveryAction::DropDeclaration,
         "{css}"
     );
-    let code = match diagnostic.error().kind() {
-        ErrorKind::InvalidColorSyntax(_) => CssErrorCode::InvalidColorSyntax,
-        _ => CssErrorCode::InvalidPropertyValue,
-    };
-    assert_eq!(diagnostic.error().code(), code, "{css}");
-    assert_invalid_value(diagnostic.error().kind(), property, token);
+    assert!(
+        matches!(
+            diagnostic.error().code(),
+            CssErrorCode::InvalidColorSyntax | CssErrorCode::InvalidPropertyValue
+        ),
+        "{css}"
+    );
+    assert_invalid_value(diagnostic.error(), property, token);
     assert_eq!(
         validate_style_attribute(css).unwrap_err().diagnostics(),
         report.diagnostics(),
@@ -317,7 +458,7 @@ pub fn assert_implicit_closure<T>(css: &str, report: &CssParseReport<T>) {
             "{css}: {diagnostic:?}"
         );
         assert!(
-            matches!(diagnostic.error().kind(), ErrorKind::UnexpectedEnd(_)),
+            diagnostic.error().code() == CssErrorCode::UnexpectedEnd,
             "{css}: {diagnostic:?}"
         );
         assert_eq!(
@@ -340,44 +481,50 @@ pub enum ValueTextRejection<'a> {
     /// (CSS Syntax 3 §5.4.8), which strict construction does not repair.
     Closure,
     /// Component syntax failed with this kind before the grammar ran.
-    Component(CssComponentValueErrorKind),
+    Component(ComponentFailure),
 }
 
 /// Asserts that checked value text for `property` failed as `expected`.
 #[track_caller]
 pub fn assert_value_text_rejected(
-    result: &Result<CssDeclaration, CssPropertyValueSyntaxError>,
+    result: &Result<CssDeclaration, CssPropertyValueError>,
     property: CssKnownProperty,
     expected: ValueTextRejection<'_>,
 ) {
-    match (result, expected) {
-        (Err(CssPropertyValueSyntaxError::Property(error)), ValueTextRejection::Grammar(token)) => {
+    let Err(error) = result else {
+        panic!("{property:?}: expected {expected:?}, got {result:?}")
+    };
+    match expected {
+        ValueTextRejection::Grammar(token) => {
             assert_checked_rejected(Err(error.clone()), property, token);
         }
-        (Err(CssPropertyValueSyntaxError::Property(error)), ValueTextRejection::Syntax(token)) => {
-            let CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedToken(detail)) =
-                error.kind()
-            else {
-                panic!("{property:?}: expected an unexpected token, got {error:?}")
-            };
-            assert_eq!(detail.encountered().authored(), token, "responsible token");
+        ValueTextRejection::Syntax(token) => {
+            assert_eq!(
+                error.code(),
+                Some(CssErrorCode::UnexpectedToken),
+                "{property:?}: expected an unexpected token, got {error:?}"
+            );
+            assert_eq!(
+                error.encountered().unwrap().authored(),
+                token,
+                "responsible token"
+            );
         }
-        (Err(CssPropertyValueSyntaxError::Property(error)), ValueTextRejection::Closure) => {
-            assert!(
-                matches!(
-                    error.kind(),
-                    CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
-                ),
+        ValueTextRejection::Closure => {
+            assert_eq!(
+                error.code(),
+                Some(CssErrorCode::UnexpectedEnd),
                 "{property:?}: expected an unexpected end, got {error:?}"
             );
         }
-        (
-            Err(CssPropertyValueSyntaxError::Component(error)),
-            ValueTextRejection::Component(kind),
-        ) => {
-            assert_eq!(error.kind(), kind, "{error:?}");
+        ValueTextRejection::Component(kind) => {
+            assert_eq!(error.code(), None, "{property:?}: {error:?}");
+            assert_eq!(
+                error.component_error().map(component_failure),
+                Some(kind),
+                "{error:?}"
+            );
         }
-        (actual, expected) => panic!("{property:?}: expected {expected:?}, got {actual:?}"),
     }
 }
 
@@ -386,13 +533,13 @@ pub fn assert_value_text_rejected(
 #[track_caller]
 pub fn assert_numeric_rejected<T: std::fmt::Debug>(
     result: Result<T, CssNumericConstructionError>,
-    kind: CssNumericConstructionErrorKind,
+    kind: NumericFailure,
 ) -> CssNumericConstructionError {
     let error = match result {
         Ok(value) => panic!("{kind:?}: numeric construction accepted {value:?}"),
         Err(error) => error,
     };
-    assert_eq!(error.kind(), &kind, "{error:?}");
+    assert_eq!(numeric_failure(&error), kind, "{error:?}");
     error
 }
 
@@ -402,7 +549,7 @@ pub fn assert_numeric_rejected<T: std::fmt::Debug>(
 pub fn assert_component_rejected<T: std::fmt::Debug>(
     construct: impl FnOnce(CssComponentValue) -> Result<T, CssNumericConstructionError>,
     component: CssComponentValue,
-    kind: CssNumericConstructionErrorKind,
+    kind: NumericFailure,
 ) {
     let origin = component.origin().clone();
     let error = assert_numeric_rejected(construct(component), kind);

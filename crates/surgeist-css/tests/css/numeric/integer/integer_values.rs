@@ -1,4 +1,6 @@
 //! Exact authored integer fidelity and Values4 specified math projection.
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::*;
 
 fn order(text: &str) -> CssIntegerValue {
@@ -40,7 +42,7 @@ fn assert_output(value: &CssIntegerValue, expected: &str) {
             .unwrap(),
         expected
     );
-    assert_eq!(
+    assert!(
         value
             .serialize_specified(CssSerializationLimits::new(
                 65_536,
@@ -48,8 +50,7 @@ fn assert_output(value: &CssIntegerValue, expected: &str) {
                 expected.len() - 1
             ))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(value, &before);
 }
@@ -80,7 +81,7 @@ fn checked_integer_literals_preserve_components_and_reject_other_token_kinds() {
         assert_eq!(components.items().len(), 1);
         let component = components.items()[0].clone();
         let error = CssIntegerLiteral::try_from_component(component.clone()).unwrap_err();
-        assert_eq!(error.kind(), CssComponentValueErrorKind::InvalidToken);
+        assert!(error.is_invalid_token(), "{error:?}");
         assert_eq!(error.origin(), component.origin());
     }
 }
@@ -182,19 +183,19 @@ fn ordinary_integer_limits_charge_canonical_bytes_and_one_node_per_stage() {
         for (limits, expected) in [
             (
                 CssSerializationLimits::new(0, 0, 0),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                SerializationFailure::InputNodeLimit,
             ),
             (
                 CssSerializationLimits::new(1, 0, 0),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
                 CssSerializationLimits::new(1, 1, 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                SerializationFailure::ByteLimit,
             ),
         ] {
             assert_eq!(
-                value.serialize_specified(limits).unwrap_err().kind(),
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
                 expected
             );
         }
@@ -272,15 +273,15 @@ fn integer_context_math_preserves_fractional_results_and_symbolic_requirements()
     for (limits, expected) in [
         (
             CssSerializationLimits::new(0, 100, 100),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(100, 0, 100),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
     ] {
         assert_eq!(
-            value.serialize_specified(limits).unwrap_err().kind(),
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
             expected
         );
     }

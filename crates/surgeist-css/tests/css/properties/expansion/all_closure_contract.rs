@@ -2,6 +2,8 @@
 //! Cascade5 CR20220113 #all-shorthand/#propdef-all; Syntax3 original recovery
 //! provenance; Variables1 pending reentry; current public authored contracts.
 use crate::css::support::authored_property::checked_components;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::*;
 
 const GLOBALS: [(&str, CssGlobalKeyword); 5] = [
@@ -23,11 +25,8 @@ fn source(text: &str, importance: CssImportance, grammar: bool) -> CssDeclaratio
     assert!(declaration.parsed_value().is_none());
     declaration
 }
-fn strict_error(error: &CssPropertyValueParseError, original: &str) {
-    assert!(matches!(
-        error.kind(),
-        CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
-    ));
+fn strict_error(error: &CssPropertyValueError, original: &str) {
+    assert!(error.code() == Some(CssErrorCode::UnexpectedEnd));
     let CssSerializedOrigin::End(Some(CssValueOrigin::ImplicitClosure { opening, at })) =
         error.origin()
     else {
@@ -129,7 +128,7 @@ fn all_pending_reentry_rejects_recovered_globals_then_accepts_matched_complete_r
             let snapshot = replacement.clone();
             for _ in 0..2 {
                 let error = handle.reenter(replacement.clone()).unwrap_err();
-                let CssExpansionErrorKind::InvalidReplacement(detail) = error.kind() else {
+                let Some(detail) = error.replacement_error() else {
                     panic!("strict replacement error")
                 };
                 strict_error(detail, &original);
@@ -179,7 +178,7 @@ fn mixed_origin_all_recovery_rejects_the_actual_comment_source_without_fabricati
         panic!("pending")
     };
     let error = handle.reenter(values.clone()).unwrap_err();
-    let CssExpansionErrorKind::InvalidReplacement(detail) = error.kind() else {
+    let Some(detail) = error.replacement_error() else {
         panic!("replacement failure")
     };
     strict_error(detail, "/*");
@@ -377,13 +376,10 @@ fn invalid_all_replacements_remain_atomic_and_residual_substitution_is_distinct(
         let snapshot = replacement.clone();
         for _ in 0..2 {
             let error = handle.reenter(replacement.clone()).unwrap_err();
-            let CssExpansionErrorKind::InvalidReplacement(detail) = error.kind() else {
+            let Some(detail) = error.replacement_error() else {
                 panic!("owned grammar failure")
             };
-            assert!(matches!(
-                detail.kind(),
-                CssPropertyValueErrorKind::Grammar(_)
-            ));
+            assert!(detail.code().is_some());
             assert_eq!(replacement, snapshot);
             let complete = parse_component_values("unset").unwrap();
             let CssContributions::UniversalReset(value) = handle.reenter(complete.clone()).unwrap()
@@ -399,12 +395,11 @@ fn invalid_all_replacements_remain_atomic_and_residual_substitution_is_distinct(
         }
     }
     for text in ["var(--again)", "env(again)", "attr(data-again *)"] {
-        assert_eq!(
+        assert!(
             handle
                 .reenter(parse_component_values(text).unwrap())
                 .unwrap_err()
-                .kind(),
-            &CssExpansionErrorKind::ResidualSubstitution
+                .is_residual_substitution()
         );
     }
     assert_eq!(declaration, before);
@@ -462,11 +457,8 @@ fn all_remains_one_symbolic_normalization_unit_per_occurrence_with_atomic_retry(
     )
     .unwrap_err();
     assert_eq!(
-        error.kind(),
-        &CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: 1
-        }
+        error.exhausted_limit(),
+        Some((CssNormalizationResource::Contributions, 1))
     );
     assert_eq!(error.declaration_order(), Some(1));
     assert!(
@@ -489,20 +481,20 @@ fn global_all_canonical_writer_preserves_three_node_prices_and_atomic_source() {
         for (limits, kind) in [
             (
                 CssSerializationLimits::new(2, 3, expected.len()),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                SerializationFailure::InputNodeLimit,
             ),
             (
                 CssSerializationLimits::new(3, 2, expected.len()),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
                 CssSerializationLimits::new(3, 3, expected.len() - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                SerializationFailure::ByteLimit,
             ),
         ] {
             for _ in 0..2 {
                 assert_eq!(
-                    declaration.serialize_specified(limits).unwrap_err().kind(),
+                    serialization_failure(&declaration.serialize_specified(limits).unwrap_err()),
                     kind
                 );
                 assert_eq!(declaration, before);

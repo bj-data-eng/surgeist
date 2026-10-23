@@ -1,9 +1,6 @@
 //! Literal expectations from CSSOM's selected 2026 CSSKeyframesRule branch.
 
-use surgeist_css::{
-    CssRule, CssRuleCssomSerializationErrorKind, CssSerializationLimits,
-    CssSpecifiedValueSerializationErrorKind, parse_sheet,
-};
+use surgeist_css::{CssRule, CssSerializationLimits, parse_sheet};
 
 fn rule(source: &str) -> CssRule {
     let report = parse_sheet(source);
@@ -88,11 +85,12 @@ fn selected_output_byte_failure_is_atomic_and_retry_keeps_original_occurrences()
             expected.len() - 1,
         ))
         .unwrap_err();
-    assert_eq!(
-        failure.kind(),
-        CssRuleCssomSerializationErrorKind::Resource(
-            CssSpecifiedValueSerializationErrorKind::ByteLimit
-        )
+    assert!(
+        failure.is_resource_limit()
+            && failure
+                .serialization_error()
+                .is_some_and(|error| error.is_byte_limit()),
+        "{failure:?}"
     );
     assert_eq!(report, before);
     assert!(declaration.source().same_occurrence(saved.source()));

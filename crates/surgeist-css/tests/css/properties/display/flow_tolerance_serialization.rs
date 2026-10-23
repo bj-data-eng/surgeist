@@ -4,11 +4,12 @@
 //! opacity_specified_serialization's determinate-calculation expectations.
 //! This new serializer API has no executable preimplementation RED boundary.
 
+use crate::css::support::failure_classes::SerializationFailure as ErrorKind;
+use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::{
     CssComponentValueRef, CssFlowTolerance, CssFlowToleranceRef, CssKnownPropertyValueRef,
     CssLengthPercentageCalculation, CssSerializationLimits as Limits, CssSpecifiedLengthPercentage,
-    CssSpecifiedValueSerializationErrorKind as ErrorKind, CssValueTokenRef, parse_component_values,
-    parse_style_attribute,
+    CssValueTokenRef, parse_component_values, parse_style_attribute,
 };
 
 fn constructed(text: &str) -> CssFlowTolerance {
@@ -137,12 +138,11 @@ fn extreme_signed_literals_preserve_exact_magnitudes_and_output_limits() {
                 expected
             );
             let before = value.clone();
-            assert_eq!(
+            assert!(
                 value
                     .serialize_specified(Limits::new(1, 1, expected.len() - 1))
                     .unwrap_err()
-                    .kind(),
-                ErrorKind::ByteLimit
+                    .is_byte_limit()
             );
             assert_eq!(value, before);
         }
@@ -182,7 +182,7 @@ fn keywords_literals_and_calculations_obey_each_exact_resource_boundary() {
             ),
         ] {
             assert_eq!(
-                value.serialize_specified(limits).unwrap_err().kind(),
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
                 kind,
                 "{input}"
             );

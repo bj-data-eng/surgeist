@@ -5,10 +5,9 @@ use surgeist_color::{
 };
 use surgeist_css::{
     CssColorError, CssColorFactIdentity, CssColorFacts, CssColorGrammarRequest, CssColorInput,
-    CssColorOrdinaryError, CssColorOrdinaryLimits, CssColorOrdinaryOutcome,
-    CssColorOrdinaryResource, CssColorPaletteEntry, CssColorPropertyFacts, CssColorSchemeFact,
-    CssColorStandardFailureKind, CssColorUnavailable, CssDeviceColorFact, CssSystemColor,
-    parse_used_color,
+    CssColorOrdinaryLimits, CssColorOrdinaryOutcome, CssColorOrdinaryResource,
+    CssColorPaletteEntry, CssColorPropertyFacts, CssColorSchemeFact, CssColorStandardFailureKind,
+    CssColorUnavailable, CssDeviceColorFact, CssSystemColor, parse_used_color,
 };
 
 /// A finite numerical color from plain test coordinates.
@@ -191,10 +190,8 @@ fn initial_current_color_reaches_canvas_text_and_only_the_selected_scheme_child(
     .err()
     .unwrap();
     assert_eq!(
-        error,
-        CssColorOrdinaryError::Operation(CssColorError::Unavailable(CssColorUnavailable::Palette(
-            CssSystemColor::CanvasText
-        )))
+        error.color_error().and_then(CssColorError::unavailable),
+        Some(CssColorUnavailable::Palette(CssSystemColor::CanvasText))
     );
     assert_eq!(
         value("light-dark(red, currentcolor)", &missing).srgb_bytes(),
@@ -247,7 +244,7 @@ fn standard_invalidity_cannot_be_confused_with_logical_admission_or_reached_fact
     );
     let mut denied = limits();
     denied.algorithm_records = 0;
-    assert_eq!(
+    assert!(
         parse_used_color(
             CssColorInput::Utf8(b"red"),
             CssColorGrammarRequest::WholeColor,
@@ -256,12 +253,9 @@ fn standard_invalidity_cannot_be_confused_with_logical_admission_or_reached_fact
             denied
         )
         .err()
-        .unwrap(),
-        CssColorOrdinaryError::Limit {
-            resource: CssColorOrdinaryResource::AlgorithmRecords,
-            required: 1,
-            allowed: 0
-        }
+        .unwrap()
+        .exhausted_limit()
+            == Some((CssColorOrdinaryResource::AlgorithmRecords, 0, 1))
     );
     let error = parse_used_color(
         CssColorInput::Utf8(b"currentcolor"),
@@ -273,10 +267,8 @@ fn standard_invalidity_cannot_be_confused_with_logical_admission_or_reached_fact
     .err()
     .unwrap();
     assert_eq!(
-        error,
-        CssColorOrdinaryError::Operation(CssColorError::Unavailable(
-            CssColorUnavailable::CurrentColor
-        ))
+        error.color_error().and_then(CssColorError::unavailable),
+        Some(CssColorUnavailable::CurrentColor)
     );
     assert!(std::error::Error::source(&error).is_some());
 }
@@ -310,14 +302,14 @@ fn malformed_utf8_input_is_a_semantic_color_error_at_its_original_unit() {
         )
         .err()
         .expect("malformed UTF-8 has no used color");
-        (input, error)
-    });
-    let expected = cases.map(|(input, offset)| {
         (
             input,
-            CssColorOrdinaryError::Operation(CssColorError::MalformedInput { offset }),
+            error
+                .color_error()
+                .and_then(CssColorError::malformed_input_offset),
         )
     });
+    let expected = cases.map(|(input, offset)| (input, Some(offset)));
     assert_eq!(actual, expected);
 }
 

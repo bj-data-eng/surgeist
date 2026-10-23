@@ -728,11 +728,8 @@ impl Builder<'_, '_, '_> {
         error: CssColorConstructionError,
         recipe: Recipe,
     ) -> ColorInputFailure {
-        if matches!(
-            error,
-            CssColorConstructionError::CapacityOverflow | CssColorConstructionError::NestingLimit
-        ) {
-            let kind = if error == CssColorConstructionError::CapacityOverflow {
+        if error.is_capacity_overflow() || error.is_nesting_limit() {
+            let kind = if error.is_capacity_overflow() {
                 CssComponentValueErrorKind::CapacityOverflow
             } else {
                 CssComponentValueErrorKind::NestingLimit
@@ -1083,20 +1080,7 @@ impl Builder<'_, '_, '_> {
         components.reverse();
         CssColorMix::try_new(interpolation, components)
             .map(CssColor::from_color_mix)
-            .map_err(|error| {
-                let error = match error {
-                    CssColorMixConstructionError::EmptyComponents => {
-                        CssColorConstructionError::EmptyComponents
-                    }
-                    CssColorMixConstructionError::NestingLimit => {
-                        CssColorConstructionError::NestingLimit
-                    }
-                    CssColorMixConstructionError::CapacityOverflow => {
-                        CssColorConstructionError::CapacityOverflow
-                    }
-                };
-                self.construction_error(error, recipe)
-            })
+            .map_err(|error| self.construction_error(error, recipe))
     }
 }
 
@@ -1119,7 +1103,7 @@ mod tests {
 
     fn checked(
         values: CssComponentValues,
-    ) -> std::result::Result<CssDeclaration, CssPropertyValueParseError> {
+    ) -> std::result::Result<CssDeclaration, CssPropertyValueError> {
         parse_property_value(
             CssPropertyNameRef::Known(CssKnownProperty::Color),
             values,

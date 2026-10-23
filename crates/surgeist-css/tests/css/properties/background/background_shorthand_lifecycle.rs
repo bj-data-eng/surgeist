@@ -280,18 +280,14 @@ fn pending_background_reentry_is_strict_reusable_and_preserves_both_origins() {
             let error = pending
                 .reenter(parse_component_values(invalid).unwrap())
                 .unwrap_err();
-            assert!(matches!(
-                error.kind(),
-                CssExpansionErrorKind::InvalidReplacement(_)
-            ));
+            assert!(error.replacement_error().is_some());
         }
         for residual in ["var(--again)", "env(layer)", "attr(layer)"] {
-            assert_eq!(
+            assert!(
                 pending
                     .reenter(parse_component_values(residual).unwrap())
                     .unwrap_err()
-                    .kind(),
-                &CssExpansionErrorKind::ResidualSubstitution
+                    .is_residual_substitution()
             );
         }
         let parsed = parse_component_values("none, red").unwrap();
@@ -419,11 +415,8 @@ fn normalization_keeps_one_shorthand_ordinal_but_charges_nine_contributions() {
         let limits = CssNormalizationLimits::try_new(256, usize::MAX, usize::MAX, limit).unwrap();
         let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
         assert_eq!(
-            error.kind(),
-            &CssNormalizationErrorKind::LimitExceeded {
-                resource: CssNormalizationResource::Contributions,
-                limit
-            }
+            error.exhausted_limit(),
+            Some((CssNormalizationResource::Contributions, limit))
         );
         assert_eq!(error.declaration_order(), Some(order));
         assert!(
@@ -465,9 +458,15 @@ fn forbidden_nonfinal_color_and_size_without_position_drop_only_the_background()
             diagnostic.error().position().byte_offset().value(),
             "background:".len() + invalid.find(responsible).unwrap()
         );
-        let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-            panic!("property diagnostic")
-        };
-        assert_eq!(detail.property().canonical_name(), "background");
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidPropertyValue,
+            "property diagnostic"
+        );
+        assert_eq!(
+            detail.known_property().unwrap().canonical_name(),
+            "background"
+        );
     }
 }

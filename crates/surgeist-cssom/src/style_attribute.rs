@@ -139,25 +139,28 @@ fn encode_input<E>(
     limits: CssUtf16InputLimits,
     poll: &mut impl FnMut() -> Result<(), E>,
 ) -> Result<Arc<Vec<u16>>, CssUtf16InputError<E>> {
-    use CssUtf16InputError::{Allocation, CapacityOverflow, Interrupted, Limit};
     let mut count = 0_usize;
     for scalar in text.chars() {
-        poll().map_err(Interrupted)?;
+        poll().map_err(CssUtf16InputError::interrupted)?;
         count = count
             .checked_add(scalar.len_utf16())
-            .ok_or(CapacityOverflow)?;
+            .ok_or_else(CssUtf16InputError::capacity_overflow)?;
         if count > limits.max_input_units {
-            return Err(Limit("input units"));
+            return Err(CssUtf16InputError::limit(CssUtf16Resource::InputUnits));
         }
     }
-    let bytes = count.checked_mul(2).ok_or(CapacityOverflow)?;
+    let bytes = count
+        .checked_mul(2)
+        .ok_or_else(CssUtf16InputError::capacity_overflow)?;
     if bytes > limits.max_retained_bytes {
-        return Err(Limit("retained source bytes"));
+        return Err(CssUtf16InputError::limit(CssUtf16Resource::RetainedBytes));
     }
     let mut units = Vec::new();
-    units.try_reserve_exact(count).map_err(|_| Allocation)?;
+    units
+        .try_reserve_exact(count)
+        .map_err(|_| CssUtf16InputError::allocation())?;
     for scalar in text.chars() {
-        poll().map_err(Interrupted)?;
+        poll().map_err(CssUtf16InputError::interrupted)?;
         let mut encoded = [0; 2];
         units.extend_from_slice(scalar.encode_utf16(&mut encoded));
     }

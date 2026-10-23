@@ -2,6 +2,9 @@
 //! Source: Filter Effects 1 WD20181218 §§3,9.13.1–2,10,11.5;
 //! selected Color4 and complete shared Color owner, Values4, Cascade5,
 //! Variables1, Syntax3 and CSSOM WD20210826 §6.7.2.
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
+use crate::css::support::property_admission::assert_same_grammar_facts;
 use crate::css::support::{
     check_named_components as checked_components, detached_checked_declaration as checked,
 };
@@ -139,9 +142,11 @@ fn canonical(name: &str, text: &str, expected: &str) {
         assert_eq!(source.serialize_specified(exact).unwrap(), expected);
         for _ in 0..2 {
             let short = CssSerializationLimits::new(65_536, 262_144, expected.len() - 1);
-            assert_eq!(
-                source.serialize_specified(short).unwrap_err().kind(),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit
+            assert!(
+                source
+                    .serialize_specified(short)
+                    .unwrap_err()
+                    .is_byte_limit()
             );
             assert_eq!(source, before);
         }
@@ -188,9 +193,12 @@ fn invalid(name: &str, text: &str) {
         panic!("one atomic diagnostic: {css}")
     };
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    match diagnostic.error().kind() {
-        ErrorKind::InvalidPropertyValue(v) => assert_eq!(v.property(), p),
-        ErrorKind::InvalidColorSyntax(_) if name == FLOOD || name == LIGHT => {}
+    match diagnostic.error().code() {
+        CssErrorCode::InvalidPropertyValue => {
+            let v = diagnostic.error();
+            assert_eq!(v.known_property().unwrap(), p)
+        }
+        CssErrorCode::InvalidColorSyntax if name == FLOOD || name == LIGHT => {}
         other => panic!("property-owned grammar diagnostic: {other:?}"),
     }
     assert_eq!(
@@ -200,12 +208,10 @@ fn invalid(name: &str, text: &str) {
     let values = parse_component_values(text).unwrap();
     let before = values.clone();
     for grammar in [false, true] {
-        assert_eq!(
-            checked_components(name, values.clone(), grammar)
-                .unwrap_err()
-                .kind(),
-            &CssPropertyValueErrorKind::Grammar(diagnostic.error().kind().clone()),
-            "{name}:{text}"
+        assert_same_grammar_facts(
+            &checked_components(name, values.clone(), grammar).unwrap_err(),
+            diagnostic.error(),
+            "{name}:{text}",
         );
     }
     for report in [
@@ -414,12 +420,11 @@ fn whole_pending_substitutions_reenter_strictly_reusably_and_preserve_replacemen
                 };
                 assert!(handle.source().same_occurrence(&source));
                 for residual in ["var(--again)", "env(again)", "attr(data-again *)"] {
-                    assert_eq!(
+                    assert!(
                         handle
                             .reenter(parse_component_values(residual).unwrap())
                             .unwrap_err()
-                            .kind(),
-                        &CssExpansionErrorKind::ResidualSubstitution
+                            .is_residual_substitution()
                     );
                 }
                 for rejected in [
@@ -430,13 +435,13 @@ fn whole_pending_substitutions_reenter_strictly_reusably_and_preserve_replacemen
                     "initial;color:red",
                 ] {
                     for _ in 0..2 {
-                        assert!(matches!(
+                        assert!(
                             handle
                                 .reenter(parse_component_values(rejected).unwrap())
                                 .unwrap_err()
-                                .kind(),
-                            CssExpansionErrorKind::InvalidReplacement(_)
-                        ));
+                                .replacement_error()
+                                .is_some()
+                        );
                     }
                 }
                 for valid in [replacement, "inherit"] {
@@ -488,10 +493,7 @@ fn strict_checked_admission_rejects_original_implicit_closures_before_serialized
             let before = components.clone();
             for grammar in [false, true] {
                 let error = checked_components(name, components.clone(), grammar).unwrap_err();
-                assert!(matches!(
-                    error.kind(),
-                    CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
-                ));
+                assert!(error.code() == Some(CssErrorCode::UnexpectedEnd));
                 assert!(matches!(
                     error.origin(),
                     CssSerializedOrigin::End(Some(CssValueOrigin::ImplicitClosure { .. }))
@@ -503,13 +505,13 @@ fn strict_checked_admission_rejects_original_implicit_closures_before_serialized
         let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
             panic!("pending")
         };
-        assert!(matches!(
+        assert!(
             handle
                 .reenter(parse_component_values(&format!("{ordinary}/*")).unwrap())
                 .unwrap_err()
-                .kind(),
-            CssExpansionErrorKind::InvalidReplacement(_)
-        ));
+                .replacement_error()
+                .is_some()
+        );
         assert!(
             handle
                 .reenter(parse_component_values(&format!("{ordinary}/**/")).unwrap())
@@ -584,10 +586,7 @@ fn nested_filter_declarations_normalize_in_source_order_with_exact_cumulative_li
         ),
     ] {
         let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            &CssNormalizationErrorKind::LimitExceeded { resource, limit: 4 }
-        );
+        assert_eq!(error.exhausted_limit(), Some((resource, 4)));
         assert_eq!(error.declaration_order(), Some(4));
         assert!(
             error
@@ -637,19 +636,22 @@ fn borrowed_keyword_color_and_numeric_providers_keep_three_node_declaration_pric
         for (limits, kind) in [
             (
                 CssSerializationLimits::new(2, 3, expected.len()),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                SerializationFailure::InputNodeLimit,
             ),
             (
                 CssSerializationLimits::new(3, 2, expected.len()),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
                 CssSerializationLimits::new(3, 3, expected.len() - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                SerializationFailure::ByteLimit,
             ),
         ] {
             for _ in 0..2 {
-                assert_eq!(source.serialize_specified(limits).unwrap_err().kind(), kind);
+                assert_eq!(
+                    serialization_failure(&source.serialize_specified(limits).unwrap_err()),
+                    kind
+                );
                 assert_eq!(source, before);
             }
         }
@@ -676,10 +678,7 @@ fn sheet_siblings_share_final_bytes_and_fail_atomically_at_the_later_rule() {
     );
     for _ in 0..2 {
         let error = sheet.serialize_specified(short).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit
-        );
+        assert!(error.is_byte_limit(), "{error:?}");
         assert_eq!(error.rule_index(), Some(1));
         assert_eq!(sheet, &before);
     }
@@ -690,12 +689,11 @@ fn huge_flood_exponents_report_atomic_output_limits_without_clamping_or_mutation
     let source = checked(ALPHA, "1e1000000000%", true);
     let before = source.clone();
     for _ in 0..2 {
-        assert_eq!(
+        assert!(
             source
                 .serialize_specified(Default::default())
                 .unwrap_err()
-                .kind(),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit
+                .is_byte_limit()
         );
         assert_eq!(source, before);
     }
@@ -739,14 +737,17 @@ fn hinted_flood_calculation_uses_existing_seven_input_eight_projection_provider_
     for (limits, kind) in [
         (
             CssSerializationLimits::new(8, 10, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(9, 9, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
     ] {
-        assert_eq!(source.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&source.serialize_specified(limits).unwrap_err()),
+            kind
+        );
         assert_eq!(source, before);
     }
     assert_eq!(source.serialize_specified(exact).unwrap(), expected);

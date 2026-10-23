@@ -3,7 +3,7 @@
 //! contract independently define these expectations; geometry stays unresolved.
 
 use crate::css::support::serialization_limits::assert_node_limits as budget;
-use surgeist_css::{CssPathDataConstructionErrorKind as E, *};
+use surgeist_css::*;
 
 #[test]
 fn decoded_grammar_errors_locate_the_first_failure_or_incomplete_end() {
@@ -24,14 +24,14 @@ fn decoded_grammar_errors_locate_the_first_failure_or_incomplete_end() {
         ("M0 0\u{a0}", 4),
     ] {
         let error = CssPathData::try_new(data).unwrap_err();
-        assert_eq!(error.kind(), E::InvalidPathData, "{data}");
+        assert!(error.is_invalid_path_data(), "{data}");
         assert_eq!(error.decoded_byte_offset(), Some(offset), "{data}");
-        assert_eq!(error.origin(), &CssValueOrigin::Programmatic);
+        assert_eq!(error.origin(), Some(&CssValueOrigin::Programmatic));
         assert!(error.to_string().contains(&offset.to_string()));
     }
     for data in ["", " \t\r\n "] {
         let error = CssPathData::try_new(data).unwrap_err();
-        assert_eq!(error.kind(), E::EmptyPath);
+        assert!(error.is_empty_path(), "{error:?}");
         assert_eq!(error.decoded_byte_offset(), None);
     }
 }
@@ -68,16 +68,16 @@ fn component_construction_rejects_non_string_and_recovered_string_with_original_
     ] {
         let origin = component.origin().clone();
         let error = CssPathData::try_from_component(component).unwrap_err();
-        assert_eq!(error.kind(), E::ExpectedString);
-        assert_eq!(error.origin(), &origin);
+        assert!(error.is_expected_string(), "{error:?}");
+        assert_eq!(error.origin(), Some(&origin));
         assert_eq!(error.decoded_byte_offset(), None);
     }
     for source in ["'M0 0", "'M0 0\\"] {
         let values = parse_component_values(source).unwrap();
         let error = CssPathData::try_from_component(values.items()[0].clone()).unwrap_err();
-        assert_eq!(error.kind(), E::RecoveredInput);
+        assert!(error.is_recovered_input(), "{error:?}");
         assert_eq!(error.decoded_byte_offset(), None);
-        let CssValueOrigin::ImplicitClosure { at, .. } = error.origin() else {
+        let Some(CssValueOrigin::ImplicitClosure { at, .. }) = error.origin() else {
             panic!("implicit quote");
         };
         assert_eq!(at.source().as_str(), source);
@@ -92,10 +92,10 @@ fn escaped_component_error_offsets_remain_decoded_and_do_not_shift_source_spans(
     let component = parse_component_values(source).unwrap().items()[0].clone();
     let origin = component.origin().clone();
     let error = CssPathData::try_from_component(component).unwrap_err();
-    assert_eq!(error.kind(), E::InvalidPathData);
+    assert!(error.is_invalid_path_data(), "{error:?}");
     assert_eq!(error.decoded_byte_offset(), Some(8));
-    assert_eq!(error.origin(), &origin);
-    let CssValueOrigin::Parsed(parsed) = error.origin() else {
+    assert_eq!(error.origin(), Some(&origin));
+    let Some(CssValueOrigin::Parsed(parsed)) = error.origin() else {
         panic!("parsed quote");
     };
     assert_eq!(parsed.span().start().byte_offset().value(), 0);
@@ -103,8 +103,8 @@ fn escaped_component_error_offsets_remain_decoded_and_do_not_shift_source_spans(
     let empty = parse_component_values("''").unwrap().items()[0].clone();
     let origin = empty.origin().clone();
     let error = CssPathData::try_from_component(empty).unwrap_err();
-    assert_eq!(error.kind(), E::EmptyPath);
-    assert_eq!(error.origin(), &origin);
+    assert!(error.is_empty_path(), "{error:?}");
+    assert_eq!(error.origin(), Some(&origin));
     assert_eq!(error.decoded_byte_offset(), None);
 }
 

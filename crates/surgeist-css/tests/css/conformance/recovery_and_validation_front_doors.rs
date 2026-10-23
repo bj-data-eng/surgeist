@@ -1,6 +1,6 @@
 use surgeist_css::{
     CssErrorCode, CssImportance, CssKnownProperty, CssRecoveryAction, CssRule, CssSupportStatus,
-    ErrorKind, feature_metadata, parse_sheet, parse_style_attribute, property_support_metadata,
+    feature_metadata, parse_sheet, parse_style_attribute, property_support_metadata,
 };
 
 fn actions(source: &str) -> Vec<CssRecoveryAction> {
@@ -160,10 +160,13 @@ fn malformed_units_report_typed_diagnostics_in_source_order() {
         offsets[0],
         first.error().position().column().value() as usize
     );
-    let ErrorKind::UnknownProperty(detail) = first.error().kind() else {
-        panic!("expected structured unknown-property detail");
-    };
-    assert_eq!(detail.name().as_str(), "mystery");
+    let detail = first.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::UnknownProperty,
+        "expected structured unknown-property detail"
+    );
+    assert_eq!(detail.property_name().unwrap().as_str(), "mystery");
 }
 
 #[test]

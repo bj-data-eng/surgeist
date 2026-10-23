@@ -391,70 +391,62 @@ fn malformed_perceptual_functions_drop_only_color_and_fail_strict_validation() {
 #[test]
 fn checked_scalar_front_doors_reject_dimensions_that_cannot_enter_the_models() {
     for text in ["1deg", "1px", "1s"] {
-        assert_eq!(
+        assert!(
             CssColorNumberLiteral::try_from_component(token(text))
                 .unwrap_err()
-                .kind(),
-            CssComponentValueErrorKind::InvalidToken
+                .is_invalid_token()
         );
-        assert_eq!(
+        assert!(
             CssColorPercentageLiteral::try_from_component(token(text))
                 .unwrap_err()
-                .kind(),
-            CssComponentValueErrorKind::InvalidToken
+                .is_invalid_token()
         );
     }
-    assert_eq!(
+    assert!(
         CssColorNumberLiteral::try_from_component(token("1%"))
             .unwrap_err()
-            .kind(),
-        CssComponentValueErrorKind::InvalidToken
+            .is_invalid_token()
     );
-    assert_eq!(
+    assert!(
         CssColorPercentageLiteral::try_from_component(token("1"))
             .unwrap_err()
-            .kind(),
-        CssComponentValueErrorKind::InvalidToken
+            .is_invalid_token()
     );
     for text in ["1", "1%", "1px", "1s"] {
-        assert_eq!(
+        assert!(
             CssAngleLiteral::try_from_component(token(text))
                 .unwrap_err()
-                .kind(),
-            CssComponentValueErrorKind::InvalidToken
+                .is_invalid_token()
         );
     }
     for text in ["calc(1px)", "calc(1deg)", "calc(1s)"] {
-        assert_eq!(
+        assert!(
             CssNumberCalculation::try_from_components(
                 parse_component_values(text).unwrap(),
                 Default::default()
             )
             .unwrap_err()
-            .kind(),
-            &CssNumericConstructionErrorKind::RootDomainMismatch,
+            .is_root_domain_mismatch(),
             "{text}"
         );
-        assert_eq!(
+        assert!(
             CssPercentageCalculation::try_from_components(
                 parse_component_values(text).unwrap(),
                 Default::default()
             )
             .unwrap_err()
-            .kind(),
-            &CssNumericConstructionErrorKind::RootDomainMismatch,
+            .is_root_domain_mismatch(),
             "{text}"
         );
     }
     for text in ["calc(1px)", "calc(1%)", "calc(1s)"] {
-        assert_eq!(
+        assert!(
             CssAngleCalculation::try_from_components(
                 parse_component_values(text).unwrap(),
                 Default::default()
             )
             .unwrap_err()
-            .kind(),
-            &CssNumericConstructionErrorKind::RootDomainMismatch,
+            .is_root_domain_mismatch(),
             "{text}"
         );
     }

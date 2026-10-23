@@ -1,14 +1,15 @@
 //! Ordinary font-face weight descriptor contract from Fonts 4 §4.4.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::rules::invalid_descriptor;
 use crate::css::support::rules::ordinary_font_face_descriptor;
 use surgeist_css::{
     CssAbsoluteFontWeight as Absolute, CssAuthoredFontFaceDescriptorValue as Authored,
     CssComponentValue, CssComponentValues, CssFontFaceDescriptorKind as Kind,
-    CssFontFaceDescriptorValue as Ordinary, CssFontFaceValueErrorKind, CssFontFaceWeight,
-    CssFontWeightNumber, CssRecoveryAction, CssRule, CssSerializationLimits, CssSerializedOrigin,
-    CssSpecifiedValueSerializationErrorKind, CssValueOrigin, parse_component_values,
-    parse_font_face_descriptor_value, parse_sheet,
+    CssFontFaceDescriptorValue as Ordinary, CssFontFaceWeight, CssFontWeightNumber,
+    CssRecoveryAction, CssRule, CssSerializationLimits, CssSerializedOrigin, CssValueOrigin,
+    parse_component_values, parse_font_face_descriptor_value, parse_sheet,
 };
 
 fn ordinary(text: &str) -> CssFontFaceWeight {
@@ -253,10 +254,7 @@ fn descriptor_serialization_is_canonical_and_budgeted() {
     let error = value
         .serialize_specified(CssSerializationLimits::new(8, 8, 3))
         .unwrap_err();
-    assert_eq!(
-        error.kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
-    );
+    assert!(error.is_byte_limit(), "{error:?}");
     assert_eq!(
         value.serialize_specified(Default::default()).unwrap(),
         "bold 300.25"
@@ -275,15 +273,15 @@ fn descriptor_serialization_is_canonical_and_budgeted() {
     for (limits, expected) in [
         (
             CssSerializationLimits::new(2, 3, 11),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(3, 2, 11),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
     ] {
         assert_eq!(
-            two_keywords.serialize_specified(limits).unwrap_err().kind(),
+            serialization_failure(&two_keywords.serialize_specified(limits).unwrap_err()),
             expected
         );
     }
@@ -304,10 +302,7 @@ fn checked_descriptor_rejects_programmatic_invalid_and_adjacent_number_tokens() 
     .unwrap();
     let error =
         Authored::try_from_components(Kind::FontWeight, invalid, Default::default()).unwrap_err();
-    assert!(matches!(
-        error.kind(),
-        CssFontFaceValueErrorKind::Grammar(_)
-    ));
+    assert!(error.diagnostic().is_some());
     assert_eq!(
         error.origin(),
         &CssSerializedOrigin::Token(CssValueOrigin::Programmatic)
@@ -323,10 +318,7 @@ fn checked_descriptor_rejects_programmatic_invalid_and_adjacent_number_tokens() 
     .unwrap();
     let error =
         Authored::try_from_components(Kind::FontWeight, adjacent, Default::default()).unwrap_err();
-    assert!(matches!(
-        error.kind(),
-        CssFontFaceValueErrorKind::Grammar(_)
-    ));
+    assert!(error.diagnostic().is_some());
     let checked = Authored::try_from_components(
         Kind::FontWeight,
         parse_component_values("env(weight)").unwrap(),
@@ -349,7 +341,7 @@ fn checked_descriptor_rejects_programmatic_invalid_and_adjacent_number_tokens() 
     let error = pending
         .reparse_after_substitution(adjacent, Default::default())
         .unwrap_err();
-    let CssFontFaceValueErrorKind::Grammar(detail) = error.kind() else {
+    let Some(detail) = error.diagnostic() else {
         panic!("grammar failure: {error:?}")
     };
     invalid_descriptor("font-face", "font-weight")

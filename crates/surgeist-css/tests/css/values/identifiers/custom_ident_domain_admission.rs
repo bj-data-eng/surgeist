@@ -156,10 +156,13 @@ fn assert_rejected_property(property: CssKnownProperty, value: &str, responsible
         CssErrorCode::InvalidPropertyValue
     );
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("typed property grammar error");
-    };
-    assert_eq!(detail.property(), property);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "typed property grammar error"
+    );
+    assert_eq!(detail.known_property().unwrap(), property);
     if let Some(responsible) = responsible {
         let offset = source.find(responsible).unwrap();
         assert_eq!(diagnostic.error().position().byte_offset().value(), offset);
@@ -192,10 +195,13 @@ fn assert_rejected_keyframes_name(authored: &str) {
         CssErrorCode::InvalidAtRulePrelude
     );
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropAtRule);
-    let ErrorKind::InvalidAtRulePrelude(detail) = diagnostic.error().kind() else {
-        panic!("typed at-rule prelude error");
-    };
-    assert_eq!(detail.name().as_str(), "keyframes");
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidAtRulePrelude,
+        "typed at-rule prelude error"
+    );
+    assert_eq!(detail.at_rule().unwrap().as_str(), "keyframes");
     let position = diagnostic.error().position().byte_offset().value();
     assert!(diagnostic.span().start().byte_offset().value() <= position);
     assert!(position <= diagnostic.span().end().byte_offset().value());

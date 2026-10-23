@@ -70,7 +70,7 @@ fn descriptor_boxes_conflict_vec_and_actual_spare_spelling_are_counted() {
 #[test]
 fn static_variants_and_nested_component_error_exclude_sources_and_inline_headers() {
     assert_eq!(
-        measured(&ErrorKind::EscapeParseError(CssEscapeError::EndOfInput)),
+        measured(&ErrorKind::EscapeParseError(CssEscapeFailure::EndOfInput)),
         0
     );
     assert_eq!(
@@ -105,7 +105,7 @@ fn cancellation_and_each_one_short_observation_refuse_without_false_total() {
             CssDescriptorName(spare("range", 96)),
         ],
     });
-    let error = Error {
+    let error = CssError {
         kind,
         position: CssSourcePosition::from_byte_offset_in("", 0),
     };
@@ -127,7 +127,7 @@ fn cancellation_and_each_one_short_observation_refuse_without_false_total() {
                 reached += 1;
                 Ok(())
             }),
-            Err(CssRetainedPayloadError::Admission(allowance))
+            Err(CssRetainedPayloadError::admission(allowance))
         );
         assert_eq!(reached, allowance);
     }
@@ -237,7 +237,7 @@ fn all_spelling_families_include_authored_capacity() {
             47,
         ),
         (
-            ErrorKind::InvalidPropertyValue(CssPropertyValueError {
+            ErrorKind::InvalidPropertyValue(PropertyValueRejection {
                 property: CssKnownProperty::Width,
                 expectation: EXPECT_PROPERTY_VALUE,
                 encountered: Some(token()),
@@ -327,7 +327,7 @@ fn nested_component_origin_remains_in_existing_source_closure_separately() {
     let outer = crate::CssSourceSnapshot::new("outer");
     let nested = crate::CssSourceSnapshot::new("inner");
     let origin = crate::CssParsedOrigin::from_range(&nested, 0..5).unwrap();
-    let error = Error {
+    let error = CssError {
         kind: ErrorKind::InvalidComponentValue(Box::new(crate::CssComponentValueError::new(
             crate::CssComponentValueErrorKind::CapacityOverflow,
             crate::CssValueOrigin::Parsed(origin),

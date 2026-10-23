@@ -61,17 +61,13 @@ fn order_reentry_is_atomic_and_preserves_exact_replacement_origin() {
         let error = handle
             .reenter(parse_component_values(input).unwrap())
             .unwrap_err();
-        assert!(
-            matches!(error.kind(), CssExpansionErrorKind::InvalidReplacement(_)),
-            "{input}: {error:?}"
-        );
+        assert!(error.replacement_error().is_some(), "{input}: {error:?}");
     }
-    assert_eq!(
+    assert!(
         handle
             .reenter(parse_component_values("var(--again)").unwrap())
             .unwrap_err()
-            .kind(),
-        &CssExpansionErrorKind::ResidualSubstitution
+            .is_residual_substitution()
     );
     for replacement in [
         parse_component_values("+0002147483648").unwrap(),
@@ -123,7 +119,7 @@ fn normalization_preserves_authored_order_around_nested_rules_instead_of_sorting
         CssRecoveryAction::DropDeclaration
     );
     assert_invalid_value(
-        report.diagnostics()[0].error().kind(),
+        report.diagnostics()[0].error(),
         CssKnownProperty::Order,
         Some("1.0"),
     );
@@ -186,10 +182,7 @@ fn normalization_preserves_authored_order_around_nested_rules_instead_of_sorting
     )
     .unwrap_err();
     assert_eq!(
-        error.kind(),
-        &CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: 2
-        }
+        error.exhausted_limit(),
+        Some((CssNormalizationResource::Contributions, 2))
     );
 }

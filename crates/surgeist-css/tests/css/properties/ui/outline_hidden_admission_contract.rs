@@ -65,10 +65,13 @@ fn parsed_rejects(property: CssKnownProperty, value: &str) {
         CssErrorCode::InvalidPropertyValue
     );
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("known-property grammar failure")
-    };
-    assert_eq!(detail.property(), property);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "known-property grammar failure"
+    );
+    assert_eq!(detail.known_property().unwrap(), property);
     let start = source.find(name).unwrap();
     let end = start + source[start..].find(';').unwrap() + 1;
     position(diagnostic.span().start(), &source, start);
@@ -86,7 +89,7 @@ fn checked_rejects(
     property: CssKnownProperty,
     value: &str,
     grammar: bool,
-) -> CssPropertyValueParseError {
+) -> CssPropertyValueError {
     let components = parse_component_values(value).expect("well-formed components");
     checked_components_rejects(property, components, grammar)
 }
@@ -95,7 +98,7 @@ fn checked_components_rejects(
     property: CssKnownProperty,
     components: CssComponentValues,
     grammar: bool,
-) -> CssPropertyValueParseError {
+) -> CssPropertyValueError {
     let result = if grammar {
         parse_property_value_for_grammar(property.grammar(), components, CssImportance::Important)
     } else {
@@ -106,11 +109,13 @@ fn checked_components_rejects(
         )
     };
     let error = result.expect_err("hidden is not an outline style");
-    let CssPropertyValueErrorKind::Grammar(ErrorKind::InvalidPropertyValue(detail)) = error.kind()
-    else {
-        panic!("typed outline grammar failure: {error:?}")
-    };
-    assert_eq!(detail.property(), property);
+    let detail = &error;
+    assert_eq!(
+        detail.code(),
+        Some(CssErrorCode::InvalidPropertyValue),
+        "typed outline grammar failure: {error:?}"
+    );
+    assert_eq!(detail.known_property().unwrap(), property);
     error
 }
 
@@ -188,7 +193,7 @@ fn original_hidden_origin(property: CssKnownProperty) {
                 }
                 _ => panic!("singleton rejection must map to its original hidden token"),
             };
-            assert_eq!(origin, hidden.origin());
+            assert_eq!(&origin, hidden.origin());
             let CssValueOrigin::Parsed(origin) = origin else {
                 panic!("original component provenance")
             };

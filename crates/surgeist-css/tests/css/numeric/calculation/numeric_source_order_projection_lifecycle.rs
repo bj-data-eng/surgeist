@@ -6,6 +6,8 @@
 //! around 10^16: adding one to either signed 10^16 rounds back to that value,
 //! while cancellation before adding one leaves exactly one.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::value_assertions::calculated_length as length;
 use crate::css::support::value_assertions::calculated_number as number;
 use surgeist_css::*;
@@ -103,19 +105,19 @@ fn ordered_sum_replacement_has_exact_resource_limits_and_atomic_failures() {
     for (limits, kind) in [
         (
             CssSerializationLimits::new(4, 5, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(5, 4, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(5, 5, expected.len() - 1),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
         let error = value.serialize_specified(limits).unwrap_err();
-        assert_eq!(error.kind(), kind);
+        assert_eq!(serialization_failure(&error), kind);
         assert_eq!(value, before);
         assert_eq!(value.origin(), before.origin());
     }

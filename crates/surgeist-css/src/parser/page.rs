@@ -10,7 +10,7 @@ use super::{
     top_level_only_at_rule_placement,
 };
 use crate::error::{
-    CssFeatureId, Error, basic, invalid_at_rule_body, property_name_error, unexpected_at,
+    CssError, CssFeatureId, basic, invalid_at_rule_body, property_name_error, unexpected_at,
     with_property_context,
 };
 use crate::properties::{CssKnownProperty, CssKnownPropertyValueRef};
@@ -25,7 +25,7 @@ pub(super) static IMPLEMENTED_SELECTORS: &[CssFeatureId] = &[
 pub(super) fn parse_page_selector<'i, 't>(
     input: &mut Parser<'i, 't>,
     snapshot: &crate::CssSourceSnapshot,
-) -> Result<CssPageSelectorList, ParseError<'i, Error>> {
+) -> Result<CssPageSelectorList, ParseError<'i, CssError>> {
     let start = input.position().byte_index();
     let selectors = if input.is_exhausted() {
         Vec::new()
@@ -86,7 +86,7 @@ pub(super) fn parse_page_rule<'i, 't>(
     start: &ParserState,
     diagnostics: &mut Vec<crate::CssRecoveryDiagnostic>,
     recovery: RecoveryState,
-) -> Result<CssPageRule, ParseError<'i, Error>> {
+) -> Result<CssPageRule, ParseError<'i, CssError>> {
     let declarations = parse_body(source, input, diagnostics, recovery);
     Ok(CssPageRule::new(
         selector,
@@ -179,12 +179,12 @@ struct DetachedMarginParser<'s> {
 impl<'i> AtRuleParser<'i> for DetachedMarginParser<'i> {
     type Prelude = PageBodyAtRulePrelude<'i>;
     type AtRule = PageBodyItem;
-    type Error = Error;
+    type Error = CssError;
     fn parse_prelude<'t>(
         &mut self,
         name: CowRcStr<'i>,
         input: &mut Parser<'i, 't>,
-    ) -> Result<Self::Prelude, ParseError<'i, Error>> {
+    ) -> Result<Self::Prelude, ParseError<'i, CssError>> {
         let location = input.current_source_location();
         match AtRuleParser::parse_prelude(&mut self.page, name.clone(), input)? {
             prelude @ PageBodyAtRulePrelude::MarginBox(_) => Ok(prelude),
@@ -208,14 +208,14 @@ impl<'i> AtRuleParser<'i> for DetachedMarginParser<'i> {
         prelude: Self::Prelude,
         start: &ParserState,
         input: &mut Parser<'i, 't>,
-    ) -> Result<Self::AtRule, ParseError<'i, Error>> {
+    ) -> Result<Self::AtRule, ParseError<'i, CssError>> {
         AtRuleParser::parse_block(&mut self.page, prelude, start, input)
     }
 }
 impl<'i> QualifiedRuleParser<'i> for DetachedMarginParser<'i> {
     type Prelude = ();
     type QualifiedRule = PageBodyItem;
-    type Error = Error;
+    type Error = CssError;
 }
 
 pub(super) fn admit_margin_rule(
@@ -284,7 +284,7 @@ impl super::declaration_block::Receiver for PageBodyParser<'_> {
         &self,
         name: &str,
         location: cssparser::SourceLocation,
-    ) -> Result<(), ParseError<'i, Error>> {
+    ) -> Result<(), ParseError<'i, CssError>> {
         if CssPageDescriptorKind::from_name(name).is_some() {
             Ok(())
         } else {
@@ -297,7 +297,7 @@ impl super::declaration_block::Receiver for PageBodyParser<'_> {
         input: &mut Parser<'i, '_>,
         start: &ParserState,
         _recovery: &RecoveryState,
-    ) -> Result<CssPageDeclaration, ParseError<'i, Error>>
+    ) -> Result<CssPageDeclaration, ParseError<'i, CssError>>
     where
         Self: 'i,
     {
@@ -316,7 +316,7 @@ impl super::declaration_block::Receiver for PageBodyParser<'_> {
 fn page_property_name<'i>(
     name: &str,
     location: cssparser::SourceLocation,
-) -> Result<Option<CssKnownProperty>, ParseError<'i, Error>> {
+) -> Result<Option<CssKnownProperty>, ParseError<'i, CssError>> {
     let property = CssKnownProperty::from_name(name);
     if property.is_none() && !name.starts_with("--") {
         Err(property_name_error(location, name))
@@ -339,7 +339,7 @@ enum PageBodyAtRulePrelude<'i> {
 impl<'i> AtRuleParser<'i> for PageBodyParser<'i> {
     type Prelude = PageBodyAtRulePrelude<'i>;
     type AtRule = PageBodyItem;
-    type Error = Error;
+    type Error = CssError;
 
     fn parse_prelude<'t>(
         &mut self,
@@ -411,7 +411,7 @@ impl<'i> AtRuleParser<'i> for PageBodyParser<'i> {
 impl<'i> QualifiedRuleParser<'i> for PageBodyParser<'i> {
     type Prelude = ();
     type QualifiedRule = PageBodyItem;
-    type Error = Error;
+    type Error = CssError;
 
     fn parse_prelude<'t>(
         &mut self,
@@ -426,7 +426,7 @@ impl<'i> QualifiedRuleParser<'i> for PageBodyParser<'i> {
     }
 }
 
-impl<'i> RuleBodyItemParser<'i, PageBodyItem, Error> for PageBodyParser<'i> {
+impl<'i> RuleBodyItemParser<'i, PageBodyItem, CssError> for PageBodyParser<'i> {
     fn parse_declarations(&self) -> bool {
         true
     }
@@ -438,7 +438,7 @@ impl<'i> RuleBodyItemParser<'i, PageBodyItem, Error> for PageBodyParser<'i> {
 
 impl<'i, 's: 'i> DeclarationParser<'i> for PageBodyParser<'s> {
     type Declaration = PageBodyItem;
-    type Error = Error;
+    type Error = CssError;
 
     fn parse_value<'t>(
         &mut self,
@@ -700,7 +700,7 @@ pub(super) fn parse_descriptor_value<'i>(
     input: &mut Parser<'i, '_>,
     kind: CssPageDescriptorKind,
     snapshot: &crate::CssSourceSnapshot,
-) -> Result<crate::syntax::PageValueData, ParseError<'i, Error>> {
+) -> Result<crate::syntax::PageValueData, ParseError<'i, CssError>> {
     use crate::syntax::PageValueData as V;
     let start = input.state();
     let components =
@@ -724,7 +724,7 @@ pub(super) fn parse_descriptor_value<'i>(
         let global = crate::validation::parse_global_keyword(&ident)
             .ok_or_else(|| unexpected_at(keyword_location))?;
         input.expect_exhausted().map_err(basic)?;
-        Ok::<_, ParseError<'i, Error>>(global)
+        Ok::<_, ParseError<'i, CssError>>(global)
     }) {
         return Ok(V::Global(global));
     }
@@ -776,7 +776,7 @@ pub(super) fn parse_descriptor_value<'i>(
 fn parse_size<'i>(
     input: &mut Parser<'i, '_>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> Result<CssPageSizeValue, ParseError<'i, Error>> {
+) -> Result<CssPageSizeValue, ParseError<'i, CssError>> {
     if input
         .try_parse(|input| input.expect_ident_matching("auto"))
         .is_ok()

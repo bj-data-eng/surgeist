@@ -6,10 +6,12 @@
 //! 35–41, and CSSValueTypes.h, lines 97–118. Goldens select exact edges first,
 //! then round each emitted coefficient; rounded text is never an equality oracle.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::*;
 
 type Limits = CssSerializationLimits;
-type Kind = CssSpecifiedValueSerializationErrorKind;
+type Kind = SerializationFailure;
 
 #[derive(Clone, Copy, Debug)]
 enum Slot {
@@ -329,7 +331,11 @@ fn unequal_edges_visit_all_four_before_final_byte_failure() {
         ] {
             let result = value.serialize(limits);
             assert_eq!(value, before);
-            assert_eq!(result.unwrap_err().kind(), kind, "{slot:?}");
+            assert_eq!(
+                serialization_failure(&result.unwrap_err()),
+                kind,
+                "{slot:?}"
+            );
         }
         assert_eq!(
             value.serialize(Limits::new(9, 9, bytes)).unwrap(),
@@ -352,7 +358,10 @@ fn compressed_edges_still_charge_four_visits_and_exact_scratch_bytes() {
         // The first component's input is charged before its projection.
         (Limits::new(1, 1, 8), Kind::InputNodeLimit),
     ] {
-        assert_eq!(value.serialize(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&value.serialize(limits).unwrap_err()),
+            kind
+        );
     }
     assert_eq!(value.serialize(Limits::new(9, 9, 8)).unwrap(), "0.123456");
 }
@@ -598,7 +607,10 @@ fn ordinary_length_compression_folds_unit_case_without_converting_units() {
                 (Limits::new(9, 8, bytes), Kind::ProjectionNodeLimit),
                 (Limits::new(9, 9, bytes - 1), Kind::ByteLimit),
             ] {
-                assert_eq!(value.serialize(limits).unwrap_err().kind(), kind);
+                assert_eq!(
+                    serialization_failure(&value.serialize(limits).unwrap_err()),
+                    kind
+                );
                 assert_eq!(value, before);
             }
             for (component, authored) in value.literals().iter().zip(authored) {

@@ -1,6 +1,8 @@
 //! Public authored font-variant contracts from CSS Fonts 4 WD 2026-09-07 §§6.4–6.11.
 
 use crate::css::support::checked_grammar_declaration as checked;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::important_declaration as parsed;
 use crate::css::support::named_property::assert_implicit_closure_rejection;
 use crate::css::support::named_property::invalid_named_value_at as invalid;
@@ -342,23 +344,19 @@ fn specified_serialization_orders_all_seven_groups_and_fails_atomically_at_limit
     for (limits, kind) in [
         (
             CssSerializationLimits::new(0, 1000, 1000),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(1000, 0, 1000),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(1000, 1000, expected.len() - 1),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            wrapper
-                .variant()
-                .serialize_specified(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&wrapper.variant().serialize_specified(limits).unwrap_err()),
             kind
         );
     }
@@ -446,11 +444,7 @@ fn specified_serialization_orders_all_seven_groups_and_fails_atomically_at_limit
             }
             _ => panic!("{name} typed wrapper"),
         };
-        assert_eq!(
-            error.kind(),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
-            "{name}"
-        );
+        assert!(error.is_byte_limit(), "{name}");
     }
 }
 
@@ -565,21 +559,20 @@ fn pending_reentry_is_strict_and_keeps_occurrence_and_replacement() {
             };
             assert!(handle.source().same_occurrence(&source));
             for residual in ["var(--again)", "env(--again)"] {
-                assert!(matches!(
+                assert!(
                     handle
                         .reenter(parse_component_values(residual).unwrap())
                         .unwrap_err()
-                        .kind(),
-                    CssExpansionErrorKind::ResidualSubstitution
-                ));
+                        .is_residual_substitution()
+                );
             }
-            assert!(matches!(
+            assert!(
                 handle
                     .reenter(parse_component_values("unknown(A)").unwrap())
                     .unwrap_err()
-                    .kind(),
-                CssExpansionErrorKind::InvalidReplacement(_)
-            ));
+                    .replacement_error()
+                    .is_some()
+            );
             let components = parse_component_values(replacement).unwrap();
             let CssContributions::Longhands(contributions) =
                 handle.reenter(components.clone()).unwrap()
@@ -632,10 +625,13 @@ fn recovered_eof_function_retains_diagnostic_but_strict_inputs_reject_it() {
     let CssExpansion::Pending(handle) = expand_declaration(&pending).unwrap() else {
         panic!("pending alternates")
     };
-    assert!(matches!(
-        handle.reenter(recovered_components).unwrap_err().kind(),
-        CssExpansionErrorKind::InvalidReplacement(_)
-    ));
+    assert!(
+        handle
+            .reenter(recovered_components)
+            .unwrap_err()
+            .replacement_error()
+            .is_some()
+    );
 }
 
 #[test]
@@ -651,10 +647,16 @@ fn invalid_alternates_keep_parsed_and_programmatic_error_origins() {
         CssErrorCode::InvalidPropertyValue
     );
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("property-mapped diagnostic")
-    };
-    assert_eq!(detail.property(), CssKnownProperty::FontVariantAlternates);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "property-mapped diagnostic"
+    );
+    assert_eq!(
+        detail.known_property().unwrap(),
+        CssKnownProperty::FontVariantAlternates
+    );
     let duplicate = source.rfind("stylistic").unwrap();
     assert_eq!(
         diagnostic.error().position().byte_offset().value(),
@@ -667,10 +669,7 @@ fn invalid_alternates_keep_parsed_and_programmatic_error_origins() {
         CssImportance::Normal,
     )
     .unwrap_err();
-    assert!(matches!(
-        checked_error.kind(),
-        CssPropertyValueErrorKind::Grammar(ErrorKind::InvalidPropertyValue(_))
-    ));
+    assert!(checked_error.code() == Some(CssErrorCode::InvalidPropertyValue));
     assert!(matches!(
         checked_error.origin(),
         CssSerializedOrigin::Token(CssValueOrigin::Parsed(_))
@@ -687,13 +686,10 @@ fn invalid_alternates_keep_parsed_and_programmatic_error_origins() {
         CssImportance::Normal,
     )
     .unwrap_err();
-    assert!(matches!(
-        programmatic_error.kind(),
-        CssPropertyValueErrorKind::Grammar(ErrorKind::InvalidPropertyValue(_))
-    ));
+    assert!(programmatic_error.code() == Some(CssErrorCode::InvalidPropertyValue));
     assert_eq!(
         programmatic_error.origin(),
-        &CssSerializedOrigin::Token(CssValueOrigin::Programmatic)
+        CssSerializedOrigin::Token(CssValueOrigin::Programmatic)
     );
 }
 
@@ -711,10 +707,13 @@ fn reentry_keeps_programmatic_ident_token_boundaries() {
         Default::default(),
     )
     .unwrap();
-    assert!(matches!(
-        handle.reenter(separate_idents).unwrap_err().kind(),
-        CssExpansionErrorKind::InvalidReplacement(_)
-    ));
+    assert!(
+        handle
+            .reenter(separate_idents)
+            .unwrap_err()
+            .replacement_error()
+            .is_some()
+    );
     let CssContributions::Longhands(contributions) = handle
         .reenter(parse_component_values("historical-forms").unwrap())
         .unwrap()

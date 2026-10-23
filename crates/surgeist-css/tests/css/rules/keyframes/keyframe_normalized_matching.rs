@@ -251,10 +251,7 @@ fn exact_literal_aggregate_tariffs_need_no_output_bytes_and_retry_is_atomic() {
     let error = a
         .matches_normalized(&b, CssSerializationLimits::new(5, 8, 0))
         .unwrap_err();
-    assert_eq!(
-        error.cause().kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
-    );
+    assert!(error.cause().is_input_node_limit());
     assert_eq!(
         error.stage(),
         CssKeyframeSelectorComparisonStage::RightNormalization
@@ -265,10 +262,7 @@ fn exact_literal_aggregate_tariffs_need_no_output_bytes_and_retry_is_atomic() {
     let error = a
         .matches_normalized(&b, CssSerializationLimits::new(6, 7, 0))
         .unwrap_err();
-    assert_eq!(
-        error.cause().kind(),
-        CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
-    );
+    assert!(error.cause().is_projection_node_limit());
     assert_eq!(
         error.stage(),
         CssKeyframeSelectorComparisonStage::Comparison
@@ -285,10 +279,7 @@ fn later_math_normalization_and_comparison_failures_retain_both_actual_origins()
     let error = a
         .matches_normalized(&b, CssSerializationLimits::new(9, 11, 0))
         .unwrap_err();
-    assert_eq!(
-        error.cause().kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
-    );
+    assert!(error.cause().is_input_node_limit());
     assert_eq!(
         error.stage(),
         CssKeyframeSelectorComparisonStage::RightNormalization
@@ -299,10 +290,7 @@ fn later_math_normalization_and_comparison_failures_retain_both_actual_origins()
     let error = a
         .matches_normalized(&b, CssSerializationLimits::new(10, 10, 0))
         .unwrap_err();
-    assert_eq!(
-        error.cause().kind(),
-        CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
-    );
+    assert!(error.cause().is_projection_node_limit());
     assert_eq!(
         error.stage(),
         CssKeyframeSelectorComparisonStage::Comparison
@@ -326,10 +314,7 @@ fn a_request_meter_prepares_query_once_and_accumulates_all_candidate_work() {
     assert!(matcher.matches(&same).unwrap());
     assert!(!matcher.matches(&different).unwrap());
     let error = matcher.matches(&same).unwrap_err();
-    assert_eq!(
-        error.cause().kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
-    );
+    assert!(error.cause().is_input_node_limit());
     assert_eq!(
         error.stage(),
         CssKeyframeSelectorComparisonStage::RightNormalization
@@ -471,10 +456,7 @@ fn failed_query_preparation_exposes_its_actual_origin_and_can_retry_unchanged() 
         CssKeyframeSelectorComparisonStage::LeftNormalization
     );
     assert_eq!(error.selector_index(), Some(0));
-    assert_eq!(
-        error.cause().kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
-    );
+    assert!(error.cause().is_input_node_limit());
     assert_eq!(source(error.left_origin().unwrap()), "calc(10%)");
     assert!(error.right_origin().is_none());
     assert_eq!(query, before);
@@ -639,10 +621,7 @@ fn derived_numeric_negation_is_charged_cumulatively_with_real_origins_and_retry(
     let error = query
         .matches_normalized(&candidate, CssSerializationLimits::new(21, 34, 0))
         .unwrap_err();
-    assert_eq!(
-        error.cause().kind(),
-        CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
-    );
+    assert!(error.cause().is_projection_node_limit());
     assert_eq!(
         error.stage(),
         CssKeyframeSelectorComparisonStage::Comparison

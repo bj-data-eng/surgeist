@@ -11,9 +11,9 @@ use stats_alloc::{INSTRUMENTED_SYSTEM, Region, Stats, StatsAlloc};
 use std::alloc::System;
 use std::hint::black_box;
 use surgeist_css::{
-    CssComponentValues, CssGlobalKeyword, CssImportance, CssKnownProperty, CssPropertyNameRef,
-    CssPropertyValueErrorKind, CssSerializedOrigin, CssTokenKind, CssValueOrigin, ErrorKind,
-    parse_component_values, parse_property_value,
+    CssComponentValues, CssErrorCode, CssGlobalKeyword, CssImportance, CssKnownProperty,
+    CssPropertyNameRef, CssSerializedOrigin, CssTokenKind, CssValueOrigin, parse_component_values,
+    parse_property_value,
 };
 
 #[global_allocator]
@@ -87,14 +87,15 @@ fn measure(values: &CssComponentValues, outcome: Outcome) -> Stats {
         }
         Outcome::RootSemicolon => {
             let error = result.expect_err("a root semicolon is not declaration-value data");
-            let CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedToken(detail)) =
-                error.kind()
-            else {
-                panic!("expected a root-token grammar rejection: {error:?}");
-            };
-            assert_eq!(detail.encountered().kind(), CssTokenKind::Semicolon);
-            assert_eq!(detail.encountered().authored(), ";");
-            let CssSerializedOrigin::Token(actual_origin) = error.origin() else {
+            assert_eq!(
+                error.code(),
+                Some(CssErrorCode::UnexpectedToken),
+                "expected a root-token grammar rejection: {error:?}"
+            );
+            assert_eq!(error.encountered().unwrap().kind(), CssTokenKind::Semicolon);
+            assert_eq!(error.encountered().unwrap().authored(), ";");
+            let origin = error.origin();
+            let CssSerializedOrigin::Token(actual_origin) = &origin else {
                 panic!("expected the original semicolon token: {error:?}");
             };
             assert_eq!(actual_origin, &expected_token_origin);
@@ -164,11 +165,9 @@ fn measure_missing_var(
     let stats = region.change();
 
     let error = result.expect_err("a comment cannot supply var()'s required name");
-    assert!(matches!(
-        error.kind(),
-        CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
-    ));
-    let CssSerializedOrigin::Token(actual_closing) = error.origin() else {
+    assert_eq!(error.code(), Some(CssErrorCode::UnexpectedEnd), "{error:?}");
+    let origin = error.origin();
+    let CssSerializedOrigin::Token(actual_closing) = &origin else {
         panic!("explicit closing delimiter retains its original token origin: {error:?}");
     };
     assert_eq!(actual_closing, &expected_closing);

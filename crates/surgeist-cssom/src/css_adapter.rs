@@ -60,12 +60,8 @@ impl State {
             Some(
                 match CssSpecifiedFontFaceDeclarationBlock::try_from_entries(&entries, limits.css) {
                     Ok(selected) => CssomProjection::Available(selected),
-                    Err(CssFontFaceDeclarationBlockError::Serialization(error))
-                        if resource_kind(error.kind()) =>
-                    {
-                        return Err(CssomError::FontFace(
-                            CssFontFaceDeclarationBlockError::Serialization(error),
-                        ));
+                    Err(error) if error.is_resource_limit() => {
+                        return Err(CssomError::FontFace(error));
                     }
                     Err(error) => CssomProjection::Unavailable(error),
                 },
@@ -243,7 +239,7 @@ impl State {
         check_declarations(v.declarations().properties().iter(), limits)?;
         let selected = match v.declarations().try_specified(limits.css) {
             Ok(v) => CssomProjection::Available(v),
-            Err(e) if page_resource(&e) => return Err(CssomError::Page(e)),
+            Err(e) if e.is_resource_limit() => return Err(CssomError::Page(e)),
             Err(e) => CssomProjection::Unavailable(e),
         };
         let block = self.block_record(
@@ -554,31 +550,12 @@ impl State {
     }
 }
 
-pub(crate) fn resource_kind(kind: CssSpecifiedValueSerializationErrorKind) -> bool {
-    matches!(
-        kind,
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
-            | CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
-            | CssSpecifiedValueSerializationErrorKind::ByteLimit
-            | CssSpecifiedValueSerializationErrorKind::CapacityOverflow
-    )
-}
-pub(crate) fn declaration_resource(e: &CssDeclarationBlockError) -> bool {
-    matches!(e.kind(),CssDeclarationBlockErrorKind::Serialization(e) if resource_kind(e.kind()))
-}
-fn page_resource(e: &CssPageProjectionError) -> bool {
-    match e {
-        CssPageProjectionError::Resource(e) => resource_kind(e.kind()),
-        CssPageProjectionError::Properties(e) => declaration_resource(e),
-        _ => false,
-    }
-}
 pub(crate) fn projection(
     result: Result<CssSpecifiedDeclarationBlock, CssDeclarationBlockError>,
 ) -> Result<CssomProjection<CssSpecifiedDeclarationBlock, CssDeclarationBlockError>, CssomError> {
     match result {
         Ok(v) => Ok(CssomProjection::Available(v)),
-        Err(e) if declaration_resource(&e) => Err(CssomError::Declaration(e)),
+        Err(e) if e.is_resource_limit() => Err(CssomError::Declaration(e)),
         Err(e) => Ok(CssomProjection::Unavailable(e)),
     }
 }
@@ -619,13 +596,7 @@ pub(crate) fn check_declarations<'a>(
         // Charge raw component output even when symbolic expansion cannot select
         // a footprint. No semantic wrapper or parse round trip is involved.
         if let Err(e) = values.serialize_tokens(token_byte_limits(limits.max_input_bytes))
-            && matches!(
-                e.kind(),
-                CssComponentValueErrorKind::NestingLimit
-                    | CssComponentValueErrorKind::ComponentLimit
-                    | CssComponentValueErrorKind::ByteLimit
-                    | CssComponentValueErrorKind::CapacityOverflow
-            )
+            && e.is_resource_limit()
         {
             return Err(CssomError::Component(e));
         }

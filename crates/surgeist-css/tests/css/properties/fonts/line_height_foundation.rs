@@ -204,20 +204,19 @@ fn inherited_normal_has_one_contribution_and_strict_pending_reentry() {
         panic!("unresolved line-height remains pending");
     };
     assert!(pending.source().same_occurrence(&source));
-    assert_eq!(
+    assert!(
         pending
             .reenter(parse_component_values("var(--again)").unwrap())
             .unwrap_err()
-            .kind(),
-        &CssExpansionErrorKind::ResidualSubstitution
+            .is_residual_substitution()
     );
-    assert!(matches!(
+    assert!(
         pending
             .reenter(parse_component_values("-1e-999").unwrap())
             .unwrap_err()
-            .kind(),
-        CssExpansionErrorKind::InvalidReplacement(_)
-    ));
+            .replacement_error()
+            .is_some()
+    );
     for replacement_text in ["normal", "0", "1.2", "120%", "1em", "calc(-1)"] {
         let replacement = parse_component_values(replacement_text).unwrap();
         let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap()

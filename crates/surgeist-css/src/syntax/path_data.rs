@@ -1,12 +1,11 @@
 //! Checked decoded SVG 1.1 path syntax, without geometry or numeric conversion.
 
+use super::CssShapeConstructionError;
 use crate::{CssComponentValue, CssComponentValueRef, CssValueOrigin, CssValueTokenRef};
-use std::fmt;
 
 /// Intrinsic failure to construct checked decoded SVG path data.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssPathDataConstructionErrorKind {
+pub(crate) enum PathDataFailure {
     /// The supplied component is not a quoted string.
     ExpectedString,
     /// The quoted string has an implicitly recovered termination.
@@ -16,44 +15,6 @@ pub enum CssPathDataConstructionErrorKind {
     /// The decoded string does not satisfy the complete SVG path grammar.
     InvalidPathData,
 }
-
-/// A path admission failure retaining input provenance and decoded-byte location.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssPathDataConstructionError {
-    kind: CssPathDataConstructionErrorKind,
-    origin: CssValueOrigin,
-    decoded_byte_offset: Option<usize>,
-}
-
-impl CssPathDataConstructionError {
-    /// Returns the intrinsic construction failure.
-    #[must_use]
-    pub const fn kind(&self) -> CssPathDataConstructionErrorKind {
-        self.kind
-    }
-    /// Returns the original component or programmatic origin.
-    #[must_use]
-    pub const fn origin(&self) -> &CssValueOrigin {
-        &self.origin
-    }
-    /// Returns the first invalid decoded byte, or decoded length for incomplete data.
-    /// This offset is independent of CSS escaping and is not a CSS source coordinate.
-    #[must_use]
-    pub const fn decoded_byte_offset(&self) -> Option<usize> {
-        self.decoded_byte_offset
-    }
-}
-
-impl fmt::Display for CssPathDataConstructionError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(formatter, "CSS path data {:?}", self.kind)?;
-        if let Some(offset) = self.decoded_byte_offset {
-            write!(formatter, " at decoded byte {offset}")?;
-        }
-        Ok(())
-    }
-}
-impl std::error::Error for CssPathDataConstructionError {}
 
 /// Complete authored SVG path data, preserving decoded spelling and provenance.
 ///
@@ -79,13 +40,13 @@ enum Admission {
 
 impl CssPathData {
     /// Validates a complete decoded path with programmatic provenance.
-    pub fn try_new(decoded: impl Into<String>) -> Result<Self, CssPathDataConstructionError> {
+    pub fn try_new(decoded: impl Into<String>) -> Result<Self, CssShapeConstructionError> {
         Self::validate(decoded.into(), CssValueOrigin::Programmatic)
     }
     /// Admits exactly one complete quoted-string component, retaining its origin.
     pub fn try_from_component(
         component: CssComponentValue,
-    ) -> Result<Self, CssPathDataConstructionError> {
+    ) -> Result<Self, CssShapeConstructionError> {
         Self::from_component(component, Admission::Strict)
     }
     /// Returns the unchanged decoded SVG spelling.
@@ -102,7 +63,7 @@ impl CssPathData {
     pub(crate) fn from_parser_component(
         component: CssComponentValue,
         context: &crate::numeric::NumericInputContext<'_>,
-    ) -> Result<Self, CssPathDataConstructionError> {
+    ) -> Result<Self, CssShapeConstructionError> {
         let admission = match context.ordinary() {
             crate::numeric::NumericInputContext::QuirkyLengths(_) => {
                 unreachable!("ordinary numeric provenance")
@@ -116,41 +77,41 @@ impl CssPathData {
     fn from_component(
         component: CssComponentValue,
         admission: Admission,
-    ) -> Result<Self, CssPathDataConstructionError> {
+    ) -> Result<Self, CssShapeConstructionError> {
         let CssComponentValueRef::Token(CssValueTokenRef::String(decoded)) = component.view()
         else {
-            return Err(CssPathDataConstructionError {
-                kind: CssPathDataConstructionErrorKind::ExpectedString,
-                origin: component.origin().clone(),
-                decoded_byte_offset: None,
-            });
+            return Err(CssShapeConstructionError::path_data(
+                PathDataFailure::ExpectedString,
+                component.origin().clone(),
+                None,
+            ));
         };
         if matches!(admission, Admission::Strict)
             && let Some(origin) = component.implicit_termination_origin()
         {
-            return Err(CssPathDataConstructionError {
-                kind: CssPathDataConstructionErrorKind::RecoveredInput,
-                origin: origin.clone(),
-                decoded_byte_offset: None,
-            });
+            return Err(CssShapeConstructionError::path_data(
+                PathDataFailure::RecoveredInput,
+                origin.clone(),
+                None,
+            ));
         }
         Self::validate(decoded.to_owned(), component.origin().clone())
     }
     fn validate(
         decoded: String,
         origin: CssValueOrigin,
-    ) -> Result<Self, CssPathDataConstructionError> {
+    ) -> Result<Self, CssShapeConstructionError> {
         match Scanner::new(&decoded).validate() {
             Ok(()) => Ok(Self { decoded, origin }),
-            Err(offset) => Err(CssPathDataConstructionError {
-                kind: if offset.is_none() {
-                    CssPathDataConstructionErrorKind::EmptyPath
+            Err(offset) => Err(CssShapeConstructionError::path_data(
+                if offset.is_none() {
+                    PathDataFailure::EmptyPath
                 } else {
-                    CssPathDataConstructionErrorKind::InvalidPathData
+                    PathDataFailure::InvalidPathData
                 },
                 origin,
-                decoded_byte_offset: offset,
-            }),
+                offset,
+            )),
         }
     }
 }

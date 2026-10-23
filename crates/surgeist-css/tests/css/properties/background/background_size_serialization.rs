@@ -12,7 +12,7 @@
 
 use crate::css::support::serialization_limits::assert_limits as exact_bounds;
 use crate::css::support::sole_declaration;
-use surgeist_css::{CssSerializationLimits as L, CssSpecifiedValueSerializationErrorKind as E, *};
+use surgeist_css::{CssSerializationLimits as L, *};
 
 fn parsed(property: &str, css: &str) -> CssBackgroundSizeList {
     match sole_declaration(&format!("{property}:{css}"))
@@ -157,12 +157,11 @@ fn serialization_success_and_failure_preserve_authored_height_and_numeric_proven
         let origin = width.origin().clone();
         assert!(matches!(origin, CssValueOrigin::Parsed(_)));
         assert_eq!(height.is_some(), authored.ends_with(" auto"));
-        assert_eq!(
+        assert!(
             value
                 .serialize_specified(L::new(100, 100, 0))
                 .unwrap_err()
-                .kind(),
-            E::ByteLimit
+                .is_byte_limit()
         );
         assert_eq!(value, original);
         let output = value.serialize_specified(Default::default()).unwrap();

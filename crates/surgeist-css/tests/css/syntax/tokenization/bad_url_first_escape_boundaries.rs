@@ -3,15 +3,15 @@
 //! an unescaped closing parenthesis; the first escape cannot be discarded.
 
 use surgeist_css::{
-    CssComponentValueErrorKind, CssComponentValueRef, CssDeclarationList, CssErrorCode,
-    CssRecoveryAction, CssRecoveryDiagnostic, CssRule, CssSupportsTestItem, CssTokenKind,
-    CssValueOrigin, CssValueTokenRef, ErrorKind, parse_component_values, parse_sheet,
-    parse_style_attribute, validate_style_attribute,
+    CssComponentValueRef, CssDeclarationList, CssErrorCode, CssRecoveryAction,
+    CssRecoveryDiagnostic, CssRule, CssSupportsTestItem, CssTokenKind, CssValueOrigin,
+    CssValueTokenRef, parse_component_values, parse_sheet, parse_style_attribute,
+    validate_style_attribute,
 };
 
 fn assert_bad_url_range(source: &str, end: usize) {
     let error = parse_component_values(source).expect_err("invalid trailing URL content");
-    assert_eq!(error.kind(), CssComponentValueErrorKind::BadUrl);
+    assert!(error.is_bad_url(), "{error:?}");
     let CssValueOrigin::Parsed(origin) = error.origin() else {
         panic!("bad URL retains its genuine authored source");
     };
@@ -41,7 +41,7 @@ fn preceding_nonmember_and_quote_controls_keep_their_unescaped_final_boundary() 
 
 fn assert_bad_url_origin(source: &str, range: std::ops::Range<usize>) {
     let error = parse_component_values(source).expect_err("bad URL rejects the component sequence");
-    assert_eq!(error.kind(), CssComponentValueErrorKind::BadUrl);
+    assert!(error.is_bad_url(), "{error:?}");
     let CssValueOrigin::Parsed(origin) = error.origin() else {
         panic!("original bad-URL origin");
     };
@@ -71,12 +71,15 @@ fn assert_bad_url_diagnostic(
 ) {
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
     assert_eq!(diagnostic.error().code(), CssErrorCode::UnexpectedToken);
-    let ErrorKind::UnexpectedToken(detail) = diagnostic.error().kind() else {
-        panic!("custom bad-token diagnostic");
-    };
-    assert_eq!(detail.encountered().kind(), CssTokenKind::BadUrl);
+    let detail = diagnostic.error();
     assert_eq!(
-        detail.encountered().authored(),
+        detail.code(),
+        CssErrorCode::UnexpectedToken,
+        "custom bad-token diagnostic"
+    );
+    assert_eq!(detail.encountered().unwrap().kind(), CssTokenKind::BadUrl);
+    assert_eq!(
+        detail.encountered().unwrap().authored(),
         authored,
         "complete original bad token"
     );
@@ -221,10 +224,10 @@ fn recovering_named_tests_preserve_declaration_neighbors_and_bad_token_origins()
             panic!("one bad token, no payload escape event: {report:?}");
         };
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-        let ErrorKind::InvalidComponentValue(error) = diagnostic.error().kind() else {
+        let Some(error) = diagnostic.error().component_error() else {
             panic!("named collector owns its typed bad token");
         };
-        assert_eq!(error.kind(), CssComponentValueErrorKind::BadUrl);
+        assert!(error.is_bad_url(), "{error:?}");
         let CssValueOrigin::Parsed(origin) = error.origin() else {
             panic!("original bad-URL origin");
         };

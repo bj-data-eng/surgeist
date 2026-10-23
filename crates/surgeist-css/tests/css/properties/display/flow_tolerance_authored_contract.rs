@@ -12,6 +12,7 @@
 //! owners; the existing CssSheet boundary supplies cumulative sibling bytes.
 
 use crate::css::support::authored_property;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::property_admission::implicit_closing_origin as implicit_origin;
 use surgeist_css::CssKnownProperty as P;
 use surgeist_css::*;
@@ -131,10 +132,13 @@ fn invalid(input: &str) {
         panic!("one atomic grammar failure: {input}")
     };
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("property-specific failure")
-    };
-    assert_eq!(detail.property(), PROP);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "property-specific failure"
+    );
+    assert_eq!(detail.known_property().unwrap(), PROP);
     assert_eq!(
         validate_style_attribute(&css).unwrap_err().diagnostics(),
         report.diagnostics()
@@ -149,13 +153,7 @@ fn invalid(input: &str) {
         ),
         parse_property_value_for_grammar(PROP.grammar(), components.clone(), CssImportance::Normal),
     ] {
-        assert!(
-            matches!(
-                result.unwrap_err().kind(),
-                CssPropertyValueErrorKind::Grammar(_)
-            ),
-            "{input}"
-        );
+        assert!(result.unwrap_err().code().is_some(), "{input}");
     }
     assert_eq!(components, before);
 }
@@ -422,11 +420,8 @@ fn checked_failures_map_to_the_original_responsible_annotation_token() {
         parse_property_value_for_grammar(PROP.grammar(), components.clone(), CssImportance::Normal),
     ] {
         let error = result.unwrap_err();
-        assert!(matches!(
-            error.kind(),
-            CssPropertyValueErrorKind::Grammar(_)
-        ));
-        assert_eq!(error.origin(), &expected);
+        assert!(error.code().is_some());
+        assert_eq!(error.origin(), expected);
     }
     assert_eq!(components, before);
 }
@@ -523,13 +518,12 @@ fn residual_and_invalid_replacements_are_atomic_reusable_and_keep_pending_source
             r"\76 ar(--again)",
         ] {
             for _ in 0..2 {
-                assert!(matches!(
+                assert!(
                     handle
                         .reenter(parse_component_values(replacement).unwrap())
                         .unwrap_err()
-                        .kind(),
-                    CssExpansionErrorKind::ResidualSubstitution
-                ));
+                        .is_residual_substitution()
+                );
             }
         }
         for replacement in [
@@ -544,13 +538,10 @@ fn residual_and_invalid_replacements_are_atomic_reusable_and_keep_pending_source
                 let error = handle
                     .reenter(parse_component_values(replacement).unwrap())
                     .unwrap_err();
-                let CssExpansionErrorKind::InvalidReplacement(error) = error.kind() else {
+                let Some(error) = error.replacement_error() else {
                     panic!("strict grammar reentry")
                 };
-                assert!(matches!(
-                    error.kind(),
-                    CssPropertyValueErrorKind::Grammar(_)
-                ));
+                assert!(error.code().is_some());
             }
         }
         assert!(handle.source().same_occurrence(&source));
@@ -567,14 +558,11 @@ fn residual_and_invalid_replacements_are_atomic_reusable_and_keep_pending_source
     }
 }
 
-fn assert_closure(error: &CssPropertyValueParseError, origin: &CssValueOrigin) {
-    assert!(matches!(
-        error.kind(),
-        CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
-    ));
+fn assert_closure(error: &CssPropertyValueError, origin: &CssValueOrigin) {
+    assert!(error.code() == Some(CssErrorCode::UnexpectedEnd));
     assert_eq!(
         error.origin(),
-        &CssSerializedOrigin::End(Some(origin.clone()))
+        CssSerializedOrigin::End(Some(origin.clone()))
     );
 }
 fn assert_original_eof(origin: &CssValueOrigin, text: &str) {
@@ -680,7 +668,7 @@ fn strict_reentry_rejects_original_closure_and_can_retry_matched_replacements() 
             assert_original_eof(&origin, text);
             for _ in 0..2 {
                 let error = handle.reenter(components.clone()).unwrap_err();
-                let CssExpansionErrorKind::InvalidReplacement(error) = error.kind() else {
+                let Some(error) = error.replacement_error() else {
                     panic!("original closure rejection")
                 };
                 assert_closure(error, &origin);
@@ -689,13 +677,12 @@ fn strict_reentry_rejects_original_closure_and_can_retry_matched_replacements() 
         }
         // Residual detection has priority over reentry grammar even at repaired EOF.
         for text in ["var(--again", "env(again", "attr(data-again *"] {
-            assert!(matches!(
+            assert!(
                 handle
                     .reenter(parse_component_values(text).unwrap())
                     .unwrap_err()
-                    .kind(),
-                CssExpansionErrorKind::ResidualSubstitution
-            ));
+                    .is_residual_substitution()
+            );
         }
         for text in ["-2px/**/", "initial/**/", "calc(-2px - 3%)"] {
             assert!(
@@ -763,11 +750,8 @@ fn browser_recovery_retains_occurrences_and_diagnostics_through_normalization() 
         )
         .unwrap_err();
         assert_eq!(
-            error.kind(),
-            &CssNormalizationErrorKind::LimitExceeded {
-                resource: CssNormalizationResource::Contributions,
-                limit: 0,
-            }
+            error.exhausted_limit(),
+            Some((CssNormalizationResource::Contributions, 0))
         );
         assert_eq!(error.declaration_order(), Some(0));
         assert_eq!(report, before);
@@ -855,10 +839,7 @@ fn normalization_counts_every_ordinary_global_and_whole_pending_occurrence_once(
     ] {
         for _ in 0..2 {
             let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
-            assert_eq!(
-                error.kind(),
-                &CssNormalizationErrorKind::LimitExceeded { resource, limit: 5 }
-            );
+            assert_eq!(error.exhausted_limit(), Some((resource, 5)));
             assert_eq!(error.declaration_order(), Some(5));
             assert!(
                 error
@@ -873,8 +854,8 @@ fn normalization_counts_every_ordinary_global_and_whole_pending_occurrence_once(
 }
 #[test]
 fn primitive_and_declaration_resources_have_exact_independent_costs_and_atomic_retry() {
+    use crate::css::support::failure_classes::SerializationFailure as Kind;
     use CssSerializationLimits as Limits;
-    use CssSpecifiedValueSerializationErrorKind as Kind;
     for (input, expected, inputs, projections) in [
         ("normal", "normal", 1, 1),
         ("infinite", "infinite", 1, 1),
@@ -915,14 +896,13 @@ fn primitive_and_declaration_resources_have_exact_independent_costs_and_atomic_r
         ] {
             for _ in 0..2 {
                 assert_eq!(
-                    value(&source)
-                        .serialize_specified(primitive)
-                        .unwrap_err()
-                        .kind(),
+                    serialization_failure(
+                        &value(&source).serialize_specified(primitive).unwrap_err()
+                    ),
                     kind
                 );
                 assert_eq!(
-                    source.serialize_specified(aggregate).unwrap_err().kind(),
+                    serialization_failure(&source.serialize_specified(aggregate).unwrap_err()),
                     kind
                 );
                 assert_eq!(source, before);
@@ -955,10 +935,7 @@ fn sheet_siblings_share_canonical_byte_budget_with_atomic_reusable_failure() {
     );
     for _ in 0..2 {
         let error = sheet.serialize_specified(short).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit
-        );
+        assert!(error.is_byte_limit(), "{error:?}");
         assert_eq!(error.rule_index(), Some(1));
         assert_eq!(sheet, &before);
     }

@@ -6,7 +6,7 @@ use crate::css::support::value_assertions::assert_first_code;
 use surgeist_css::{
     CssErrorCode, CssNamespaceConstraint, CssNamespaceContext, CssNamespaceName,
     CssNamespacePrefix, CssNormalizedItem, CssRecoveryAction, CssRule, CssRuleContextKindRef,
-    CssSelector, CssSelectorCombinator, CssTokenKind, ErrorKind, normalize_report, parse_selector,
+    CssSelector, CssSelectorCombinator, CssTokenKind, normalize_report, parse_selector,
     parse_selector_list, parse_sheet, validate_sheet,
 };
 
@@ -221,9 +221,12 @@ fn attribute_names_name_the_token_that_cannot_continue_them() {
         let [diagnostic] = report.diagnostics() else {
             panic!("{source}: one rejection: {report:?}")
         };
-        let ErrorKind::InvalidSelector(detail) = diagnostic.error().kind() else {
-            panic!("{source}: selector rejection: {diagnostic:?}")
-        };
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidSelector,
+            "{source}: selector rejection: {diagnostic:?}"
+        );
         let encountered = detail
             .encountered()
             .map(|token| (token.kind(), token.authored()));

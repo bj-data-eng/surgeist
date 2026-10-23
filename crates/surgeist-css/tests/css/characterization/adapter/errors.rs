@@ -74,10 +74,13 @@ fn facts(case: &str, observation: &mut Observation) -> Vec<String> {
             Some(surgeist_color::HueInterpolation::Shorter),
         )),
         "color-mix-construction" => failed(CssColorMix::try_new(None, Vec::new())),
-        "color-operation" => match unavailable_current_color() {
-            CssColorOrdinaryError::Operation(error) => chain(&error),
-            other => chain(&other),
-        },
+        "color-operation" => {
+            let error = unavailable_current_color();
+            match error.color_error() {
+                Some(operation) => chain(operation),
+                None => chain(&error),
+            }
+        }
         "color-ordinary-limit" => {
             let facts = absent_facts();
             let error = parse_used_color(
@@ -201,6 +204,7 @@ fn facts(case: &str, observation: &mut Observation) -> Vec<String> {
             Default::default(),
         )),
         "general-enclosed" => failed(CssGeneralEnclosed::try_from_component(token("a"))),
+        "grid-template-area" => failed(CssGridTemplateAreas::try_rows(vec![])),
         "gradient-stop-construction" => {
             let stop = || {
                 CssAngularColorStopPosition::try_from_component(token("10deg"))
@@ -459,6 +463,7 @@ fn facts(case: &str, observation: &mut Observation) -> Vec<String> {
             },
             || Ok::<(), Stop>(()),
         )),
+        "validation-failure" => failed(validate_style_attribute("width: red")),
         "when-construction" => failed(parse_when_condition(")")),
         other => {
             observation.shape = "unknown".to_owned();
@@ -491,7 +496,7 @@ fn absent_facts() -> CssColorFacts<'static> {
     )
 }
 
-fn unavailable_current_color() -> CssColorOrdinaryError {
+fn unavailable_current_color() -> CssColorResolveError {
     let facts = absent_facts();
     parse_used_color(
         CssColorInput::Utf8(b"currentcolor"),

@@ -137,7 +137,7 @@ pub fn checked_components(
     components: CssComponentValues,
     grammar: bool,
     importance: CssImportance,
-) -> Result<CssDeclaration, CssPropertyValueParseError> {
+) -> Result<CssDeclaration, CssPropertyValueError> {
     if grammar {
         parse_property_value_for_grammar(property.grammar(), components, importance)
     } else {
@@ -174,10 +174,13 @@ pub fn invalid(property: CssKnownProperty, value: &str) {
         panic!("{css}: expected one atomic grammar failure")
     };
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("{css}: expected property grammar diagnostic")
-    };
-    assert_eq!(detail.property(), property);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "{css}: expected property grammar diagnostic"
+    );
+    assert_eq!(detail.known_property().unwrap(), property);
     assert_eq!(
         validate_style_attribute(&css).unwrap_err().diagnostics(),
         report.diagnostics()
@@ -195,7 +198,7 @@ pub fn invalid(property: CssKnownProperty, value: &str) {
             let error =
                 checked_components(property, components.clone(), grammar, importance).unwrap_err();
             assert!(
-                matches!(error.kind(), CssPropertyValueErrorKind::Grammar(_)),
+                error.code().is_some(),
                 "{property:?}: {value:?} via {front:?}, {importance:?}: expected grammar error, got {error:?}"
             );
         }
@@ -259,21 +262,20 @@ pub fn pending_longhand_reentry(
     };
     assert!(handle.source().same_occurrence(&source));
     for &text in invalid {
-        assert!(matches!(
+        assert!(
             handle
                 .reenter(parse_component_values(text).unwrap())
                 .unwrap_err()
-                .kind(),
-            CssExpansionErrorKind::InvalidReplacement(_)
-        ));
+                .replacement_error()
+                .is_some()
+        );
     }
     for text in ["var(--again)", "env(value)", "attr(data-value)"] {
-        assert_eq!(
+        assert!(
             handle
                 .reenter(parse_component_values(text).unwrap())
                 .unwrap_err()
-                .kind(),
-            &CssExpansionErrorKind::ResidualSubstitution
+                .is_residual_substitution()
         );
     }
     for text in [valid[0], "inherit"] {
@@ -334,11 +336,8 @@ pub fn normalized_longhand_order_and_limit(name: &str, valid: &[&str]) {
     let limits = CssNormalizationLimits::try_new(256, usize::MAX, usize::MAX, 2).unwrap();
     let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
     assert_eq!(
-        error.kind(),
-        &CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: 2,
-        }
+        error.exhausted_limit(),
+        Some((CssNormalizationResource::Contributions, 2))
     );
     assert_eq!(error.declaration_order(), Some(2));
     assert_eq!(

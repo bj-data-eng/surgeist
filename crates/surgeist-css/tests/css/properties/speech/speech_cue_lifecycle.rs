@@ -256,16 +256,15 @@ fn cue_reentry_is_atomic_and_keeps_source_and_replacement_occurrences() {
                 .reenter(parse_component_values(text).unwrap())
                 .unwrap_err();
             assert!(
-                matches!(error.kind(), CssExpansionErrorKind::InvalidReplacement(_)),
+                error.replacement_error().is_some(),
                 "{name}:{text}: {error:?}"
             );
         }
-        assert_eq!(
+        assert!(
             handle
                 .reenter(parse_component_values("var(--again)").unwrap())
                 .unwrap_err()
-                .kind(),
-            &CssExpansionErrorKind::ResidualSubstitution
+                .is_residual_substitution()
         );
         assert!(
             handle
@@ -305,12 +304,11 @@ fn cue_authored_spelling_and_exact_coefficients_survive_bounded_component_serial
                 .as_css(),
             text
         );
-        assert_eq!(
+        assert!(
             components
                 .serialize_tokens(crate::css::support::byte_limits(text.len() - 1))
                 .unwrap_err()
-                .kind(),
-            CssComponentValueErrorKind::ByteLimit
+                .is_byte_limit()
         );
         assert_eq!(
             components

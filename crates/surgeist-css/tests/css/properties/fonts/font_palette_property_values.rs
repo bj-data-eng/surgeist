@@ -3,13 +3,15 @@
 //! The shared accepted Color 5 omitted-weight reconciliation also applies.
 //! Functional tests for new APIs, separate from the executable lifecycle RED.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::important_declaration;
 use crate::css::support::named_property::assert_implicit_closure_rejection;
 use surgeist_color::ColorSpace;
 use surgeist_css::*;
 
 type Limits = CssSerializationLimits;
-type Kind = CssSpecifiedValueSerializationErrorKind;
+type Kind = SerializationFailure;
 
 fn palette(source: &CssDeclaration) -> &CssFontPalette {
     let CssKnownPropertyValueRef::FontPalette(value) =
@@ -124,9 +126,10 @@ fn typed_keywords_and_names_retain_their_distinct_authored_meanings() {
 
 #[test]
 fn checked_mixes_preserve_order_duplicates_weights_and_omitted_method() {
-    assert_eq!(
-        CssFontPaletteMix::try_new(None, vec![]).unwrap_err(),
-        CssFontPaletteMixConstructionError::EmptyComponents
+    assert!(
+        CssFontPaletteMix::try_new(None, vec![])
+            .unwrap_err()
+            .is_empty_components()
     );
     let weight = literal("25%");
     let named = CssFontPalette::Named(CssFontPaletteName::try_new("--Theme").unwrap());
@@ -370,17 +373,17 @@ fn checked_palette_and_math_graphs_share_the_complete_256_level_ceiling() {
         value.serialize_specified(Default::default()).unwrap(),
         format!("{}dark{}", "palette-mix(".repeat(256), ")".repeat(256))
     );
-    assert_eq!(
+    assert!(
         CssFontPaletteMix::try_new(None, vec![CssFontPaletteMixComponent::new(value, None),])
-            .unwrap_err(),
-        CssFontPaletteMixConstructionError::NestingLimit
+            .unwrap_err()
+            .is_nesting_limit()
     );
     let text = format!("{}10%{}", "calc(".repeat(256), ")".repeat(256));
     let graph = parse_component_values(&text).unwrap();
     let calculation =
         CssPercentageCalculation::try_from_components(graph, Default::default()).unwrap();
     let weight = CssColorMixWeight::try_calculation(calculation).unwrap();
-    assert_eq!(
+    assert!(
         CssFontPaletteMix::try_new(
             None,
             vec![CssFontPaletteMixComponent::new(
@@ -388,8 +391,8 @@ fn checked_palette_and_math_graphs_share_the_complete_256_level_ceiling() {
                 Some(weight)
             ),]
         )
-        .unwrap_err(),
-        CssFontPaletteMixConstructionError::NestingLimit
+        .unwrap_err()
+        .is_nesting_limit()
     );
 }
 
@@ -414,7 +417,10 @@ fn specified_limits_are_cumulative_atomic_and_exact_for_simple_palette_leaves() 
             (Limits::new(1, 0, expected.len()), Kind::ProjectionNodeLimit),
             (Limits::new(1, 1, expected.len() - 1), Kind::ByteLimit),
         ] {
-            assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+            assert_eq!(
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+                kind
+            );
             assert_eq!(value, before);
             assert_eq!(
                 value.serialize_specified(Default::default()).unwrap(),
@@ -449,7 +455,10 @@ fn specified_limits_are_cumulative_atomic_and_exact_for_simple_palette_leaves() 
             Kind::ByteLimit,
         ),
     ] {
-        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+            kind
+        );
         assert_eq!(source, before);
         assert_eq!(
             value.serialize_specified(Default::default()).unwrap(),
@@ -474,10 +483,13 @@ fn strict_checked_admission_and_reentry_reject_implicit_closures() {
     let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
         panic!("pending")
     };
-    assert!(matches!(
-        pending.reenter(recovered).unwrap_err().kind(),
-        CssExpansionErrorKind::InvalidReplacement(_)
-    ));
+    assert!(
+        pending
+            .reenter(recovered)
+            .unwrap_err()
+            .replacement_error()
+            .is_some()
+    );
     let replacement =
         parse_component_values("palette-mix(in --Profile, --Theme calc(10%), dark)").unwrap();
     let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap() else {
@@ -509,10 +521,17 @@ fn shared_argument_failures_keep_the_palette_property_diagnostic_context() {
         let report = parse_style_attribute(&format!("font-palette:{value};color:red"));
         assert_eq!(report.syntax().len(), 1);
         assert_eq!(report.diagnostics().len(), 1);
-        let ErrorKind::InvalidPropertyValue(detail) = report.diagnostics()[0].error().kind() else {
-            panic!("palette grammar failure: {:?}", report.diagnostics())
-        };
-        assert_eq!(detail.property(), CssKnownProperty::FontPalette);
+        let detail = report.diagnostics()[0].error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidPropertyValue,
+            "palette grammar failure: {:?}",
+            report.diagnostics()
+        );
+        assert_eq!(
+            detail.known_property().unwrap(),
+            CssKnownProperty::FontPalette
+        );
         let error = parse_property_value(
             CssPropertyNameRef::Known(CssKnownProperty::FontPalette),
             parse_component_values(value).unwrap(),
@@ -520,8 +539,8 @@ fn shared_argument_failures_keep_the_palette_property_diagnostic_context() {
         )
         .unwrap_err();
         assert!(
-            matches!(error.kind(), CssPropertyValueErrorKind::Grammar(ErrorKind::InvalidPropertyValue(detail))
-            if detail.property() == CssKnownProperty::FontPalette)
+            (error.code() == Some(CssErrorCode::InvalidPropertyValue)
+                && error.known_property().unwrap() == CssKnownProperty::FontPalette)
         );
     }
 }

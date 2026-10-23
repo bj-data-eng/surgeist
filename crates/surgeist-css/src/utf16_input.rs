@@ -64,21 +64,170 @@ impl Default for CssUtf16InputLimits {
     }
 }
 
-/// Atomic refusal: no partial source or parse report is returned.
-#[derive(Debug, Eq, PartialEq)]
-pub enum CssUtf16InputError<E> {
-    Limit(&'static str),
+/// A finite resource of UTF-16 CSS input preparation or property admission that can
+/// refuse the input.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[non_exhaustive]
+pub enum CssUtf16Resource {
+    /// [`CssUtf16InputLimits::max_input_units`]: original UTF-16 units.
+    InputUnits,
+    /// [`CssUtf16InputLimits::max_output_bytes`]: normalized UTF-8 bytes.
+    OutputBytes,
+    /// [`CssUtf16InputLimits::max_map_entries`]: source map entries.
+    MapEntries,
+    /// [`CssUtf16InputLimits::max_checkpoints`]: source checkpoints.
+    Checkpoints,
+    /// [`CssUtf16InputLimits::max_scratch_bytes`]: preparation scratch bytes.
+    ScratchBytes,
+    /// [`CssUtf16InputLimits::max_retained_bytes`]: retained source bytes.
+    RetainedBytes,
+    /// [`CssUtf16InputLimits::max_work`]: preparation work.
+    Work,
+    /// `CssUtf16PropertyValueLimits::max_work`: property input work.
+    PropertyWork,
+    /// `CssUtf16PropertyValueLimits::max_live_bytes`: property input live bytes.
+    PropertyLiveBytes,
+    /// `CssUtf16PropertyValueLimits::max_retained_bytes`: property input retained bytes.
+    PropertyRetainedBytes,
+    /// The property's component byte limit.
+    ComponentBytes,
+    /// The property's component count limit.
+    ComponentCount,
+    /// The property's component depth limit.
+    ComponentDepth,
+}
+impl CssUtf16Resource {
+    /// Returns the resource's stable description, as error messages name it.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::InputUnits => "original UTF16 units",
+            Self::OutputBytes => "normalized UTF8 bytes",
+            Self::MapEntries => "source map entries",
+            Self::Checkpoints => "source checkpoints",
+            Self::ScratchBytes => "preparation scratch bytes",
+            Self::RetainedBytes => "retained source bytes",
+            Self::Work => "preparation work",
+            Self::PropertyWork => "property input work",
+            Self::PropertyLiveBytes => "property input live bytes",
+            Self::PropertyRetainedBytes => "property input retained bytes",
+            Self::ComponentBytes => "property component bytes",
+            Self::ComponentCount => "property component count",
+            Self::ComponentDepth => "property component depth",
+        }
+    }
+}
+
+/// Atomic refusal of UTF-16 CSS input: no partial source or parse report is returned.
+///
+/// A consumer's interruption is returned unchanged through [`Self::into_interruption`].
+/// Consumers whose admission callbacks prepare UTF-16 input build refusals with
+/// [`Self::limit`], [`Self::allocation`], [`Self::capacity_overflow`] and
+/// [`Self::interrupted`].
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CssUtf16InputError<E> {
+    kind: Utf16InputErrorKind<E>,
+}
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum Utf16InputErrorKind<E> {
+    Limit(CssUtf16Resource),
     Allocation,
     CapacityOverflow,
     Interrupted(E),
 }
+impl<E> CssUtf16InputError<E> {
+    /// A refusal because `resource` is exhausted.
+    #[must_use]
+    pub const fn limit(resource: CssUtf16Resource) -> Self {
+        Self {
+            kind: Utf16InputErrorKind::Limit(resource),
+        }
+    }
+    /// A refusal because storage could not be allocated.
+    #[must_use]
+    pub const fn allocation() -> Self {
+        Self {
+            kind: Utf16InputErrorKind::Allocation,
+        }
+    }
+    /// A refusal because a size calculation cannot be represented.
+    #[must_use]
+    pub const fn capacity_overflow() -> Self {
+        Self {
+            kind: Utf16InputErrorKind::CapacityOverflow,
+        }
+    }
+    /// The consumer's poll or admission callback interrupted preparation with `error`.
+    #[must_use]
+    pub const fn interrupted(error: E) -> Self {
+        Self {
+            kind: Utf16InputErrorKind::Interrupted(error),
+        }
+    }
+    /// Returns the consumer's interruption, or this error for a CSS-owned refusal.
+    ///
+    /// # Errors
+    ///
+    /// Returns `self` unchanged when CSS refused the input itself.
+    pub fn into_interruption(self) -> Result<E, Self> {
+        match self.kind {
+            Utf16InputErrorKind::Interrupted(error) => Ok(error),
+            kind => Err(Self { kind }),
+        }
+    }
+    /// Returns the consumer's interruption.
+    #[must_use]
+    pub const fn interruption(&self) -> Option<&E> {
+        match &self.kind {
+            Utf16InputErrorKind::Interrupted(error) => Some(error),
+            _ => None,
+        }
+    }
+    /// Returns the exhausted resource of a limit refusal.
+    #[must_use]
+    pub const fn exhausted_limit(&self) -> Option<CssUtf16Resource> {
+        match self.kind {
+            Utf16InputErrorKind::Limit(resource) => Some(resource),
+            _ => None,
+        }
+    }
+    /// Returns whether storage could not be allocated.
+    #[must_use]
+    pub const fn is_allocation_failure(&self) -> bool {
+        matches!(self.kind, Utf16InputErrorKind::Allocation)
+    }
+    /// Returns whether a size calculation cannot be represented.
+    #[must_use]
+    pub const fn is_capacity_overflow(&self) -> bool {
+        matches!(self.kind, Utf16InputErrorKind::CapacityOverflow)
+    }
+    /// Maps the consumer's interruption, keeping every CSS-owned refusal.
+    pub(crate) fn map_interruption<F>(self, map: impl FnOnce(E) -> F) -> CssUtf16InputError<F> {
+        CssUtf16InputError {
+            kind: match self.kind {
+                Utf16InputErrorKind::Limit(resource) => Utf16InputErrorKind::Limit(resource),
+                Utf16InputErrorKind::Allocation => Utf16InputErrorKind::Allocation,
+                Utf16InputErrorKind::CapacityOverflow => Utf16InputErrorKind::CapacityOverflow,
+                Utf16InputErrorKind::Interrupted(error) => {
+                    Utf16InputErrorKind::Interrupted(map(error))
+                }
+            },
+        }
+    }
+}
 impl<E: std::fmt::Display> std::fmt::Display for CssUtf16InputError<E> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Limit(resource) => write!(f, "CSS UTF16 {resource} limit exceeded"),
-            Self::Allocation => f.write_str("CSS UTF16 input allocation failed"),
-            Self::CapacityOverflow => f.write_str("CSS UTF16 input capacity overflow"),
-            Self::Interrupted(error) => write!(f, "CSS UTF16 input interrupted: {error}"),
+        match &self.kind {
+            Utf16InputErrorKind::Limit(resource) => {
+                write!(f, "CSS UTF16 {} limit exceeded", resource.as_str())
+            }
+            Utf16InputErrorKind::Allocation => f.write_str("CSS UTF16 input allocation failed"),
+            Utf16InputErrorKind::CapacityOverflow => {
+                f.write_str("CSS UTF16 input capacity overflow")
+            }
+            Utf16InputErrorKind::Interrupted(error) => {
+                write!(f, "CSS UTF16 input interrupted: {error}")
+            }
         }
     }
 }
@@ -87,10 +236,10 @@ impl<E: std::fmt::Debug + std::fmt::Display> std::error::Error for CssUtf16Input
 pub(crate) fn check<E>(
     actual: usize,
     maximum: usize,
-    resource: &'static str,
+    resource: CssUtf16Resource,
 ) -> Result<(), CssUtf16InputError<E>> {
     if actual > maximum {
-        Err(CssUtf16InputError::Limit(resource))
+        Err(CssUtf16InputError::limit(resource))
     } else {
         Ok(())
     }
@@ -177,15 +326,15 @@ pub(crate) struct Preparation<'a, E> {
 }
 impl<E> Preparation<'_, E> {
     pub(crate) fn step(&mut self) -> Result<(), CssUtf16InputError<E>> {
-        (self.poll)().map_err(CssUtf16InputError::Interrupted)?;
+        (self.poll)().map_err(CssUtf16InputError::interrupted)?;
         self.work = self
             .work
             .checked_add(1)
-            .ok_or(CssUtf16InputError::CapacityOverflow)?;
-        check(self.work, self.limits.max_work, "preparation work")
+            .ok_or_else(CssUtf16InputError::capacity_overflow)?;
+        check(self.work, self.limits.max_work, CssUtf16Resource::Work)
     }
     fn set_live(&mut self, bytes: usize) -> Result<(), CssUtf16InputError<E>> {
-        (self.live)(bytes, self.units).map_err(CssUtf16InputError::Interrupted)?;
+        (self.live)(bytes, self.units).map_err(CssUtf16InputError::interrupted)?;
         self.bytes = bytes;
         Ok(())
     }
@@ -193,7 +342,7 @@ impl<E> Preparation<'_, E> {
         self.set_live(
             self.bytes
                 .checked_add(bytes)
-                .ok_or(CssUtf16InputError::CapacityOverflow)?,
+                .ok_or_else(CssUtf16InputError::capacity_overflow)?,
         )
     }
     pub(crate) fn released(&mut self, bytes: usize) {
@@ -214,30 +363,31 @@ impl<E> Preparation<'_, E> {
         values: &mut Vec<T>,
         capacity: usize,
     ) -> Result<(), CssUtf16InputError<E>> {
-        use CssUtf16InputError::{Allocation, CapacityOverflow};
         if capacity <= values.capacity() {
             return Ok(());
         }
         let old = values
             .capacity()
             .checked_mul(std::mem::size_of::<T>())
-            .ok_or(CapacityOverflow)?;
+            .ok_or_else(CssUtf16InputError::capacity_overflow)?;
         let planned = capacity
             .checked_mul(std::mem::size_of::<T>())
-            .ok_or(CapacityOverflow)?;
+            .ok_or_else(CssUtf16InputError::capacity_overflow)?;
         let header = std::mem::size_of::<Vec<T>>() + std::mem::size_of::<std::vec::IntoIter<T>>();
-        let prospective = planned.checked_add(header).ok_or(CapacityOverflow)?;
+        let prospective = planned
+            .checked_add(header)
+            .ok_or_else(CssUtf16InputError::capacity_overflow)?;
         self.add(prospective)?;
         let mut next = Vec::new();
         if next.try_reserve_exact(capacity).is_err() {
             drop(next);
             self.released(prospective);
-            return Err(Allocation);
+            return Err(CssUtf16InputError::allocation());
         }
         let actual = next
             .capacity()
             .checked_mul(std::mem::size_of::<T>())
-            .ok_or(CapacityOverflow)?;
+            .ok_or_else(CssUtf16InputError::capacity_overflow)?;
         if actual > planned
             && let Err(error) = self.add(actual - planned)
         {
@@ -266,18 +416,19 @@ impl<E> Preparation<'_, E> {
         value: &mut String,
         capacity: usize,
     ) -> Result<(), CssUtf16InputError<E>> {
-        use CssUtf16InputError::{Allocation, CapacityOverflow};
         if capacity <= value.capacity() {
             return Ok(());
         }
         let header = std::mem::size_of::<String>();
-        let prospective = capacity.checked_add(header).ok_or(CapacityOverflow)?;
+        let prospective = capacity
+            .checked_add(header)
+            .ok_or_else(CssUtf16InputError::capacity_overflow)?;
         self.add(prospective)?;
         let mut next = String::new();
         if next.try_reserve_exact(capacity).is_err() {
             drop(next);
             self.released(prospective);
-            return Err(Allocation);
+            return Err(CssUtf16InputError::allocation());
         }
         let actual = next.capacity();
         if actual > capacity
@@ -311,7 +462,7 @@ fn with_prepared<E, T>(
     mut release: impl FnMut(usize, usize),
     finish: impl FnOnce(CssSourceSnapshot, &mut Preparation<'_, E>) -> Result<T, CssUtf16InputError<E>>,
 ) -> Result<T, CssUtf16InputError<E>> {
-    poll().map_err(CssUtf16InputError::Interrupted)?;
+    poll().map_err(CssUtf16InputError::interrupted)?;
     let (result, retained) = {
         let mut control = Preparation {
             limits,
@@ -329,14 +480,14 @@ fn with_prepared<E, T>(
             // the preparation control itself still lives through finish.
             let bytes = source
                 .payload_bytes(true)
-                .ok_or(CssUtf16InputError::CapacityOverflow)?;
+                .ok_or_else(CssUtf16InputError::capacity_overflow)?;
             let units = source
                 .original_utf16()
                 .expect("original UTF16 owner")
                 .capacity();
             let live = bytes
                 .checked_add(std::mem::size_of::<Preparation<'_, E>>())
-                .ok_or(CssUtf16InputError::CapacityOverflow)?;
+                .ok_or_else(CssUtf16InputError::capacity_overflow)?;
             control.release_to(live, units);
             retained = (bytes, units);
             finish(source, &mut control)
@@ -357,22 +508,24 @@ fn prepare_owned<E>(
     limits: CssUtf16InputLimits,
     control: &mut Preparation<'_, E>,
 ) -> Result<CssSourceSnapshot, CssUtf16InputError<E>> {
-    use CssUtf16InputError::CapacityOverflow;
     check(
         original.len(),
         limits.max_input_units,
-        "original UTF16 units",
+        CssUtf16Resource::InputUnits,
     )?;
-    let original_bytes = original.capacity().checked_mul(2).ok_or(CapacityOverflow)?;
+    let original_bytes = original
+        .capacity()
+        .checked_mul(2)
+        .ok_or_else(CssUtf16InputError::capacity_overflow)?;
     check(
         original_bytes,
         limits.max_retained_bytes,
-        "retained source bytes",
+        CssUtf16Resource::RetainedBytes,
     )?;
     check(
         std::mem::size_of::<InputCursor>() + std::mem::size_of::<crate::CssSourcePosition>(),
         limits.max_scratch_bytes,
-        "preparation scratch bytes",
+        CssUtf16Resource::ScratchBytes,
     )?;
     let mut cursor = InputCursor::new(InputKind::Utf16, original.len());
     let mut text = String::new();
@@ -390,7 +543,7 @@ fn prepare_owned<E>(
     control.set_live(
         original_bytes
             .checked_add(headers)
-            .ok_or(CapacityOverflow)?,
+            .ok_or_else(CssUtf16InputError::capacity_overflow)?,
     )?;
     loop {
         control.step()?;
@@ -401,12 +554,14 @@ fn prepare_owned<E>(
                 let end = text
                     .len()
                     .checked_add(scalar.value.len_utf8())
-                    .ok_or(CapacityOverflow)?;
-                check(end, limits.max_output_bytes, "normalized UTF8 bytes")?;
+                    .ok_or_else(CssUtf16InputError::capacity_overflow)?;
+                check(end, limits.max_output_bytes, CssUtf16Resource::OutputBytes)?;
                 check(
-                    map.len().checked_add(1).ok_or(CapacityOverflow)?,
+                    map.len()
+                        .checked_add(1)
+                        .ok_or_else(CssUtf16InputError::capacity_overflow)?,
                     limits.max_map_entries,
-                    "source map entries",
+                    CssUtf16Resource::MapEntries,
                 )?;
                 let text_capacity = if end > text.capacity() {
                     text.capacity()
@@ -431,16 +586,24 @@ fn prepare_owned<E>(
                             .checked_mul(std::mem::size_of::<(usize, usize)>())
                             .and_then(|m| v.checked_add(m))
                     })
-                    .ok_or(CapacityOverflow)?;
-                check(backing, limits.max_retained_bytes, "retained source bytes")?;
+                    .ok_or_else(CssUtf16InputError::capacity_overflow)?;
+                check(
+                    backing,
+                    limits.max_retained_bytes,
+                    CssUtf16Resource::RetainedBytes,
+                )?;
                 control.grow_string(&mut text, text_capacity)?;
                 control.grow_vec(&mut map, map_capacity)?;
                 check(
                     text.capacity(),
                     limits.max_output_bytes,
-                    "normalized UTF8 bytes",
+                    CssUtf16Resource::OutputBytes,
                 )?;
-                check(map.capacity(), limits.max_map_entries, "source map entries")?;
+                check(
+                    map.capacity(),
+                    limits.max_map_entries,
+                    CssUtf16Resource::MapEntries,
+                )?;
                 let backing = original_bytes
                     .checked_add(text.capacity())
                     .and_then(|v| {
@@ -448,8 +611,12 @@ fn prepare_owned<E>(
                             .checked_mul(std::mem::size_of::<(usize, usize)>())
                             .and_then(|m| v.checked_add(m))
                     })
-                    .ok_or(CapacityOverflow)?;
-                check(backing, limits.max_retained_bytes, "retained source bytes")?;
+                    .ok_or_else(CssUtf16InputError::capacity_overflow)?;
+                check(
+                    backing,
+                    limits.max_retained_bytes,
+                    CssUtf16Resource::RetainedBytes,
+                )?;
                 map.push((text.len(), scalar.start));
                 text.push(scalar.value);
                 cursor.emitted().expect("UTF16 emit protocol");
@@ -465,9 +632,9 @@ fn prepare_owned<E>(
         .checked_add(
             map.capacity()
                 .checked_mul(std::mem::size_of::<(usize, usize)>())
-                .ok_or(CapacityOverflow)?,
+                .ok_or_else(CssUtf16InputError::capacity_overflow)?,
         )
-        .ok_or(CapacityOverflow)?;
+        .ok_or_else(CssUtf16InputError::capacity_overflow)?;
     let source = CssSourceSnapshot::try_from_preprocessed(
         text,
         checkpoints,
@@ -477,14 +644,14 @@ fn prepare_owned<E>(
         control,
     )?
     .attach_utf16(Utf16Source { original, map })
-    .ok_or(CapacityOverflow)?;
+    .ok_or_else(CssUtf16InputError::capacity_overflow)?;
     control.released(
         std::mem::size_of::<Vec<(usize, usize)>>() + std::mem::size_of::<Arc<Vec<u16>>>(),
     );
     check(
         source.storage_usage().retained_bytes(),
         limits.max_retained_bytes,
-        "retained source bytes",
+        CssUtf16Resource::RetainedBytes,
     )?;
     Ok(source)
 }
@@ -585,7 +752,7 @@ mod preparation_tests {
         let original_pointer = values.as_ptr();
         assert_eq!(
             control.grow_vec(&mut values, requested),
-            Err(CssUtf16InputError::Interrupted("live refusal"))
+            Err(CssUtf16InputError::interrupted("live refusal"))
         );
         assert_eq!(values.as_ptr(), original_pointer);
         assert_eq!(values.capacity(), old_capacity);
@@ -649,7 +816,7 @@ mod preparation_tests {
         control.set_live(baseline).unwrap();
         assert_eq!(
             control.grow_vec(&mut values, 4),
-            Err(CssUtf16InputError::Interrupted("movement canceled"))
+            Err(CssUtf16InputError::interrupted("movement canceled"))
         );
         assert!(values.is_empty());
         assert_eq!(values.capacity(), 0);
@@ -696,9 +863,7 @@ mod preparation_tests {
                     released.set(Some((bytes, units)));
                 },
             );
-            assert!(
-                matches!(result, Err(CssUtf16InputError::Interrupted(actual)) if actual == stop)
-            );
+            assert!(matches!(result, Err(ref error) if error.interruption() == Some(&stop)));
             assert_eq!(polled.get(), stop);
             assert_eq!(released.get(), Some((0, 0)));
             assert_eq!(Arc::strong_count(&raw), 1);
@@ -724,7 +889,7 @@ mod preparation_tests {
                 released.set(Some((bytes, units)));
             },
         );
-        assert!(matches!(result, Err(CssUtf16InputError::Interrupted(()))));
+        assert!(matches!(result, Err(error) if error.interruption() == Some(&())));
         assert_eq!(observations.get(), 2);
         assert_eq!(released.get(), Some((0, 0)));
     }

@@ -1,7 +1,7 @@
 //! Unicode-range expectations from selected Syntax 3 (2026-10-01) §§4.3.14 and 5.5.11.
 //! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-unicode-range-value
 use surgeist_css::{
-    CssFontFaceDescriptorKind, CssFontFaceDescriptorValue, CssRecoveryAction, ErrorKind,
+    CssErrorCode, CssFontFaceDescriptorKind, CssFontFaceDescriptorValue, CssRecoveryAction,
     parse_font_face_descriptor_value,
 };
 
@@ -133,9 +133,12 @@ fn raw_unicode_range_corpus_preserves_values_and_original_diagnostics() {
                 input.len(),
                 "{id}"
             );
-            let ErrorKind::InvalidDescriptorValue(detail) = diagnostic.error().kind() else {
-                panic!("descriptor grammar error for {id}");
-            };
+            let detail = diagnostic.error();
+            assert_eq!(
+                detail.code(),
+                CssErrorCode::InvalidDescriptorValue,
+                "descriptor grammar error for {id}"
+            );
             // Input ending before the range is complete names its last
             // authored token; any other failure names a token inside it.
             let encountered = detail.encountered().expect("responsible authored token");

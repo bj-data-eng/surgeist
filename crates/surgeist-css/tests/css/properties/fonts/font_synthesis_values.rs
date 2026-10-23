@@ -1,6 +1,8 @@
 //! Functional coverage for new checked payloads and emission methods. The oracle
 //! is Fonts 4 WD 2026-09-07 §§2.8.1–2.8.5, including canonical grammar order and
 //! the four-column expansion table. These APIs had no preimplementation RED.
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::important_declaration as declaration;
 use surgeist_css::*;
 
@@ -237,31 +239,31 @@ fn exact_input_projection_and_byte_budgets_are_cumulative_and_failure_is_atomic(
         for (limits, kind) in [
             (
                 CssSerializationLimits::new(nodes - 1, nodes, expected.len()),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                SerializationFailure::InputNodeLimit,
             ),
             (
                 CssSerializationLimits::new(nodes, nodes - 1, expected.len()),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
                 CssSerializationLimits::new(nodes, nodes, expected.len() - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                SerializationFailure::ByteLimit,
             ),
             (
                 CssSerializationLimits::new(0, nodes, expected.len()),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                SerializationFailure::InputNodeLimit,
             ),
             (
                 CssSerializationLimits::new(nodes, 0, expected.len()),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
                 CssSerializationLimits::new(nodes, nodes, 0),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                SerializationFailure::ByteLimit,
             ),
         ] {
             assert_eq!(
-                specified(&source, limits).unwrap_err().kind(),
+                serialization_failure(&specified(&source, limits).unwrap_err()),
                 kind,
                 "{name}"
             );
@@ -325,10 +327,7 @@ fn normalization_counts_all_four_members_and_returns_the_exact_late_failure() {
         ),
     ] {
         let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            &CssNormalizationErrorKind::LimitExceeded { resource, limit }
-        );
+        assert_eq!(error.exhausted_limit(), Some((resource, limit)));
         assert_eq!(error.declaration_order(), Some(4));
         assert!(error.declaration().unwrap().same_occurrence(&color));
         assert_eq!(error.position(), color.position());

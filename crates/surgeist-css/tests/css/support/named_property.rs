@@ -53,7 +53,7 @@ pub fn validated_important_property_declaration(
 pub fn normal_grammar_components(
     name: &str,
     components: CssComponentValues,
-) -> Result<CssDeclaration, CssPropertyValueParseError> {
+) -> Result<CssDeclaration, CssPropertyValueError> {
     parse_property_value_for_grammar(selected_grammar(name), components, CssImportance::Normal)
 }
 
@@ -118,15 +118,14 @@ pub fn invalid_named_value(name: &str, value: &str) {
 
 /// `error` is the grammar of `property` rejecting its value.
 #[track_caller]
-pub fn assert_property_grammar_error(
-    error: &CssPropertyValueParseError,
-    property: CssKnownProperty,
-) {
-    let CssPropertyValueErrorKind::Grammar(ErrorKind::InvalidPropertyValue(detail)) = error.kind()
-    else {
-        panic!("{property:?}: expected a property grammar rejection, got {error:?}")
-    };
-    assert_eq!(detail.property(), property, "{error:?}");
+pub fn assert_property_grammar_error(error: &CssPropertyValueError, property: CssKnownProperty) {
+    let detail = &error;
+    assert_eq!(
+        detail.code(),
+        Some(CssErrorCode::InvalidPropertyValue),
+        "{property:?}: expected a property grammar rejection, got {error:?}"
+    );
+    assert_eq!(detail.known_property().unwrap(), property, "{error:?}");
 }
 
 /// Byte offset in `value` of the token that first violates the grammar,
@@ -177,7 +176,7 @@ pub fn assert_checked_value_rejected_at<'a>(
             assert_property_grammar_error(&error, property);
             if let Some(expected) = expected {
                 assert_eq!(
-                    error.origin(),
+                    &error.origin(),
                     expected,
                     "{property:?}: {value:?} (grammar: {grammar}): responsible token {rest:?}"
                 );
@@ -191,16 +190,19 @@ pub fn assert_checked_value_rejected_at<'a>(
 /// `value` from which `rest` remains.
 #[track_caller]
 pub fn assert_value_diagnostic_at<'a>(
-    error: &Error,
+    error: &CssError,
     property: CssKnownProperty,
     value_start: usize,
     value: &str,
     rest: impl Into<Option<&'a str>>,
 ) {
-    let ErrorKind::InvalidPropertyValue(detail) = error.kind() else {
-        panic!("{value:?}: expected a property grammar diagnostic, got {error:?}")
-    };
-    assert_eq!(detail.property(), property, "{value:?}");
+    let detail = &error;
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "{value:?}: expected a property grammar diagnostic, got {error:?}"
+    );
+    assert_eq!(detail.known_property().unwrap(), property, "{value:?}");
     if let Some(rest) = rest.into() {
         assert_eq!(
             error.position().byte_offset().value(),
@@ -237,14 +239,14 @@ pub fn assert_origin_at(origin: &CssSerializedOrigin, text: &str, rest: &str) {
 /// programmatic, so it carries no authored position.
 #[track_caller]
 pub fn assert_programmatic_rejection(
-    result: Result<CssDeclaration, CssPropertyValueParseError>,
+    result: Result<CssDeclaration, CssPropertyValueError>,
     property: CssKnownProperty,
 ) {
     let error = result.unwrap_err();
     assert_property_grammar_error(&error, property);
     assert_eq!(
         error.origin(),
-        &CssSerializedOrigin::Token(CssValueOrigin::Programmatic)
+        CssSerializedOrigin::Token(CssValueOrigin::Programmatic)
     );
 }
 
@@ -257,12 +259,12 @@ pub fn assert_invalid_replacement_at<'a>(
     text: &str,
     rest: impl Into<Option<&'a str>>,
 ) {
-    let CssExpansionErrorKind::InvalidReplacement(error) = error.kind() else {
+    let Some(error) = error.replacement_error() else {
         panic!("{text:?}: expected an invalid replacement, got {error:?}")
     };
     assert_property_grammar_error(error, property);
     if let Some(rest) = rest.into() {
-        assert_origin_at(error.origin(), text, rest);
+        assert_origin_at(&error.origin(), text, rest);
     }
 }
 
@@ -270,12 +272,9 @@ pub fn assert_invalid_replacement_at<'a>(
 /// was closed only by the end of input, fails at that original implicit
 /// closure.
 #[track_caller]
-pub fn assert_implicit_closure_rejection(error: &CssPropertyValueParseError, text: &str) {
+pub fn assert_implicit_closure_rejection(error: &CssPropertyValueError, text: &str) {
     assert!(
-        matches!(
-            error.kind(),
-            CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
-        ),
+        error.code() == Some(CssErrorCode::UnexpectedEnd),
         "{text:?}: expected an unexpected end, got {error:?}"
     );
     let CssSerializedOrigin::End(Some(CssValueOrigin::ImplicitClosure { opening, at })) =

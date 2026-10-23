@@ -7,35 +7,69 @@ use crate::{
 };
 
 /// Why selected membership or its specified text cannot be completed.
+///
+/// A serialization failure is exposed by [`Self::serialization`] and is the error's
+/// source; [`Self::is_resource_limit`] groups the resource refusals.
 #[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssFontFaceDeclarationBlockError {
-    /// An authored inventory with duplicate kinds is not selected membership.
+pub struct CssFontFaceDeclarationBlockError {
+    kind: FontFaceDeclarationBlockKind,
+}
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum FontFaceDeclarationBlockKind {
     DuplicateDescriptor { kind: CssFontFaceDescriptorKind },
-    /// The scalar/punctuation owner retains its precise resource or capability cause.
     Serialization(CssSerializationError),
+}
+impl CssFontFaceDeclarationBlockError {
+    pub(crate) const fn duplicate(kind: CssFontFaceDescriptorKind) -> Self {
+        Self {
+            kind: FontFaceDeclarationBlockKind::DuplicateDescriptor { kind },
+        }
+    }
+    /// Returns the descriptor kind that occurs more than once in an authored inventory,
+    /// which is not selected membership.
+    #[must_use]
+    pub const fn duplicate_descriptor(&self) -> Option<CssFontFaceDescriptorKind> {
+        match self.kind {
+            FontFaceDeclarationBlockKind::DuplicateDescriptor { kind } => Some(kind),
+            FontFaceDeclarationBlockKind::Serialization(_) => None,
+        }
+    }
+    /// Returns the scalar or punctuation owner's precise resource or capability cause.
+    #[must_use]
+    pub const fn serialization(&self) -> Option<&CssSerializationError> {
+        match &self.kind {
+            FontFaceDeclarationBlockKind::Serialization(error) => Some(error),
+            FontFaceDeclarationBlockKind::DuplicateDescriptor { .. } => None,
+        }
+    }
+    /// Returns whether the serialization cause is a resource limit.
+    #[must_use]
+    pub fn is_resource_limit(&self) -> bool {
+        self.serialization()
+            .is_some_and(CssSerializationError::is_resource_limit)
+    }
 }
 impl std::fmt::Display for CssFontFaceDeclarationBlockError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::DuplicateDescriptor { kind } => {
+        match &self.kind {
+            FontFaceDeclarationBlockKind::DuplicateDescriptor { kind } => {
                 write!(f, "duplicate selected {} descriptor", kind.css_name())
             }
-            Self::Serialization(error) => error.fmt(f),
+            FontFaceDeclarationBlockKind::Serialization(error) => error.fmt(f),
         }
     }
 }
 impl std::error::Error for CssFontFaceDeclarationBlockError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::DuplicateDescriptor { .. } => None,
-            Self::Serialization(error) => Some(error),
-        }
+        self.serialization()
+            .map(|error| error as &(dyn std::error::Error + 'static))
     }
 }
 impl From<CssSerializationError> for CssFontFaceDeclarationBlockError {
     fn from(error: CssSerializationError) -> Self {
-        Self::Serialization(error)
+        Self {
+            kind: FontFaceDeclarationBlockKind::Serialization(error),
+        }
     }
 }
 
@@ -66,7 +100,7 @@ impl CssSpecifiedFontFaceDeclarationBlock {
                 .iter()
                 .any(|entry: &CssFontFaceDescriptor| entry.value().kind() == kind)
             {
-                return Err(CssFontFaceDeclarationBlockError::DuplicateDescriptor { kind });
+                return Err(CssFontFaceDeclarationBlockError::duplicate(kind));
             }
             writer.without_output(|writer| entry.value().append_to_rule_writer(writer))?;
             admitted.try_reserve(1).map_err(|_| {

@@ -1,15 +1,13 @@
 //! Public consumer composition: checked CSS payloads without semantic text round trips.
 
 use surgeist_css::{
-    CssAdmittedRule, CssDeclaration, CssDeclarationBlockErrorKind, CssEditedGroupPreludeRef,
-    CssEditedRuleView, CssImportance, CssInvalidKeyframeSourceReason, CssKeyframeRuleView,
-    CssKeyframeRuleViewError, CssKnownProperty, CssNamespaceContext, CssNamespaceName,
-    CssNamespacePrefix, CssPropertyNameRef, CssRecoveryAction, CssRule, CssRuleAdmissionContext,
-    CssRuleCssomSerializationErrorKind, CssSerializationLimits as Limits,
-    CssSpecifiedDeclarationBlock, CssSpecifiedDeclarationEntry,
-    CssSpecifiedValueSerializationErrorKind as Resource, classify_rule_syntax,
-    parse_component_values, parse_declaration_block_contents, parse_keyframe_rule,
-    parse_keyframe_selector_list, parse_property_value,
+    CssAdmittedRule, CssDeclaration, CssEditedGroupPreludeRef, CssEditedRuleView, CssImportance,
+    CssInvalidKeyframeSourceReason, CssKeyframeRuleView, CssKnownProperty, CssNamespaceContext,
+    CssNamespaceName, CssNamespacePrefix, CssPropertyNameRef, CssRecoveryAction, CssRule,
+    CssRuleAdmissionContext, CssSerializationLimits as Limits, CssSpecifiedDeclarationBlock,
+    CssSpecifiedDeclarationEntry, classify_rule_syntax, parse_component_values,
+    parse_declaration_block_contents, parse_keyframe_rule, parse_keyframe_selector_list,
+    parse_property_value,
 };
 
 fn terminal(
@@ -125,9 +123,12 @@ fn recovered_raw_terminals_form_an_edited_media_child_after_inputs_drop_and_budg
     let error = media
         .serialize_cssom(Limits::new(100_000, 100_000, EXPECTED.len() - 1))
         .unwrap_err();
-    assert_eq!(
-        error.kind(),
-        CssRuleCssomSerializationErrorKind::Resource(Resource::ByteLimit)
+    assert!(
+        error.is_resource_limit()
+            && error
+                .serialization_error()
+                .is_some_and(|error| error.is_byte_limit()),
+        "{error:?}"
     );
     assert_eq!(
         media
@@ -273,14 +274,12 @@ fn detached_keyframe_accepts_checked_replacements_and_preserves_authored_and_pro
 
     let mut invalid = selected.clone();
     invalid[1] = invalid[1].with_importance(CssImportance::Important);
-    assert!(matches!(
+    assert!(
         CssSpecifiedDeclarationBlock::try_from_keyframe_entries(&invalid, Default::default())
             .unwrap_err()
-            .kind(),
-        CssDeclarationBlockErrorKind::InvalidKeyframeSource {
-            reason: CssInvalidKeyframeSourceReason::Importance
-        }
-    ));
+            .invalid_keyframe_source()
+            == Some(CssInvalidKeyframeSourceReason::Importance)
+    );
     let edited =
         CssSpecifiedDeclarationBlock::try_from_keyframe_entries(&selected, Default::default())
             .unwrap();
@@ -292,10 +291,13 @@ fn detached_keyframe_accepts_checked_replacements_and_preserves_authored_and_pro
         "100%, 0%, 25%, 25%"
     );
     const EXPECTED: &str = "100%, 0%, 25%, 25% { margin-right: 2px; opacity: 0.75; --Tone: 日本; }";
-    assert!(matches!(
-        view.serialize_cssom(Limits::new(100_000, 100_000, EXPECTED.len() - 1)),
-        Err(CssKeyframeRuleViewError::Serialization(error)) if error.kind() == Resource::ByteLimit
-    ));
+    assert!(
+        view.serialize_cssom(Limits::new(100_000, 100_000, EXPECTED.len() - 1))
+            .as_ref()
+            .is_err_and(|error| error
+                .serialization()
+                .is_some_and(|error| error.is_byte_limit()))
+    );
     assert_eq!(
         view.serialize_cssom(Limits::new(100_000, 100_000, EXPECTED.len()))
             .unwrap(),

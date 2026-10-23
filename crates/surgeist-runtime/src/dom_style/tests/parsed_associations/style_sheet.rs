@@ -3,7 +3,7 @@ use super::super::meta::cancel;
 use super::super::*;
 use super::consumption::{envelope, report};
 use super::style_decision::{empty_policy, installed, observe, request_ready};
-use surgeist_css::CssUtf16InputError;
+use surgeist_css::CssUtf16Resource;
 use surgeist_dom::*;
 
 pub(super) fn ready(
@@ -261,9 +261,8 @@ fn css_input_refusal_after_empty_body_preserves_producer_names_and_cursor_for_re
         .unwrap();
     assert!(matches!(
         create(&mut session, id, envelope()),
-        Err(DomStyleParsedSheetError::Css(CssUtf16InputError::Limit(
-            "original UTF16 units"
-        )))
+        Err(DomStyleParsedSheetError::Css(ref error))
+            if error.exhausted_limit() == Some(CssUtf16Resource::InputUnits)
     ));
     unchanged(&mut session, id, document, stamp, &revision);
     runtime
@@ -434,16 +433,20 @@ fn original_poll_work_exhausts_across_real_parse_refusals_then_raised_retry_succ
     loop {
         attempts += 1;
         match create(&mut session, id, finite) {
-            Err(DomStyleParsedSheetError::Css(CssUtf16InputError::Limit(
-                "original UTF16 units",
-            ))) => {}
-            Err(DomStyleParsedSheetError::Css(CssUtf16InputError::Interrupted(
-                DomStyleRuntimeError::Dom(DomError::WorkLimit {
-                    resource: DomResource::ParsedAssociationProcessingWork,
-                    limit: 4096,
-                }),
-            )))
-            | Err(DomStyleParsedSheetError::Runtime(DomStyleRuntimeError::Dom(
+            Err(DomStyleParsedSheetError::Css(ref error))
+                if error.exhausted_limit() == Some(CssUtf16Resource::InputUnits) => {}
+            Err(DomStyleParsedSheetError::Css(ref error))
+                if matches!(
+                    error.interruption(),
+                    Some(DomStyleRuntimeError::Dom(DomError::WorkLimit {
+                        resource: DomResource::ParsedAssociationProcessingWork,
+                        limit: 4096,
+                    }))
+                ) =>
+            {
+                break;
+            }
+            Err(DomStyleParsedSheetError::Runtime(DomStyleRuntimeError::Dom(
                 DomError::WorkLimit {
                     resource: DomResource::ParsedAssociationProcessingWork,
                     limit: 4096,

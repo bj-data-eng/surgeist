@@ -4,7 +4,7 @@ use crate::error::property::{Error, basic, unexpected_at};
 use crate::numeric::{CalculationRoot, NumericInputContext};
 use crate::{
     CssColor, CssComponentValueRef, CssComponentValues, CssFlexCalculation, CssImage1D,
-    CssImage1DConstructionError, CssLengthPercentageCalculation, CssSpecifiedFlex, CssStripe,
+    CssImageConstructionError, CssLengthPercentageCalculation, CssSpecifiedFlex, CssStripe,
     CssStripeLengthPercentage, CssStripeThickness, CssStripes, CssValueTokenRef,
 };
 use cssparser::Token;
@@ -16,14 +16,14 @@ pub(super) static IMPLEMENTED_SHARED_VALUES: &[crate::CssFeatureId] = &[
 
 pub(crate) fn checked_color(
     values: &CssComponentValues,
-) -> Result<CssColor, CssImage1DConstructionError> {
+) -> Result<CssColor, CssImageConstructionError> {
     checked(values, |input, numeric| {
         super::color::parse_color(input, numeric)
     })
 }
 pub(crate) fn checked_image(
     values: &CssComponentValues,
-) -> Result<CssImage1D, CssImage1DConstructionError> {
+) -> Result<CssImage1D, CssImageConstructionError> {
     checked(values, parse_image_1d)
 }
 fn checked<T: Send>(
@@ -33,23 +33,23 @@ fn checked<T: Send>(
         &NumericInputContext<'_>,
     ) -> Result<T, ParseError<'i, Error>>
     + Send,
-) -> Result<T, CssImage1DConstructionError> {
-    let refused = CssImage1DConstructionError::Component;
+) -> Result<T, CssImageConstructionError> {
+    let refused = CssImageConstructionError::from;
     super::bounded_execution::components(values.items(), values.nesting_depth(), refused, || {
         let document = crate::syntax_consumption::normalize(
             crate::syntax_consumption::SyntaxInput::CheckedComponents(values.items()),
             crate::syntax_consumption::SyntaxInputLimits::default(),
             0,
         )
-        .map_err(CssImage1DConstructionError::Component)?;
+        .map_err(CssImageConstructionError::from)?;
         let mut input = Parser::new(&document);
         input
             .parse_entirely(|input| parse(input, &NumericInputContext::Checked))
             .map_err(|error| {
                 let (kind, origin) = error.into_parts();
-                CssImage1DConstructionError::Grammar(
-                    crate::CssPropertyValueParseError::from_direct_grammar(kind, origin),
-                )
+                CssImageConstructionError::from(crate::CssPropertyValueError::from_direct_grammar(
+                    kind, origin,
+                ))
             })
     })
 }

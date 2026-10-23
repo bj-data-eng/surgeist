@@ -147,21 +147,20 @@ fn pending_substitutions_reenter_whole_grammar_without_losing_original_occurrenc
         };
         assert!(pending.source().same_occurrence(&source));
         for invalid in ["", "collapse", "auto hidden"] {
-            assert!(matches!(
+            assert!(
                 pending
                     .reenter(parse_component_values(invalid).unwrap())
                     .unwrap_err()
-                    .kind(),
-                CssExpansionErrorKind::InvalidReplacement(_)
-            ));
+                    .replacement_error()
+                    .is_some()
+            );
         }
         for unresolved in ["var(--again)", "env(--again)", "attr(data-again)"] {
-            assert_eq!(
+            assert!(
                 pending
                     .reenter(parse_component_values(unresolved).unwrap())
                     .unwrap_err()
-                    .kind(),
-                &CssExpansionErrorKind::ResidualSubstitution
+                    .is_residual_substitution()
             );
         }
         for (replacement_text, expected) in [
@@ -230,7 +229,7 @@ fn normalization_preserves_valid_order_and_fails_atomically_at_contribution_budg
         CssRecoveryAction::DropDeclaration
     );
     assert_invalid_value(
-        report.diagnostics()[0].error().kind(),
+        report.diagnostics()[0].error(),
         property(),
         Some("collapse"),
     );
@@ -242,11 +241,8 @@ fn normalization_preserves_valid_order_and_fails_atomically_at_contribution_budg
     let limits = CssNormalizationLimits::try_new(0, 1, 3, 2).unwrap();
     let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
     assert_eq!(
-        error.kind(),
-        &CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: 2,
-        }
+        error.exhausted_limit(),
+        Some((CssNormalizationResource::Contributions, 2))
     );
     assert_eq!(error.declaration_order(), Some(2));
     assert_eq!(

@@ -3,11 +3,11 @@
 //! the existing checked Shadow argument boundary, without private-field access.
 
 use crate::css::support::color_and_selector_fixtures::assert_specified_construction_cause;
+use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::validated_selector as parsed;
 use surgeist_css::{
     CssComplexSelector, CssComplexSelectorPart, CssCompoundSelector, CssCompoundSelectorArgument,
-    CssSelector, CssSelectorConstructionErrorKind, CssSerializationLimits,
-    CssSpecifiedValueSerializationErrorKind,
+    CssSelector, CssSerializationLimits,
 };
 
 fn complex(source: &str) -> CssComplexSelector {
@@ -54,11 +54,10 @@ fn complex_assembly_preserves_order_and_legal_terminal_pseudo_element() {
 #[test]
 fn complex_assembly_rejects_empty_rest_and_nonterminal_pseudo_element() {
     let ordinary = complex(".One > .Two");
-    assert_eq!(
+    assert!(
         CssComplexSelector::try_new(ordinary.first().clone(), Vec::new(), Default::default())
             .unwrap_err()
-            .kind(),
-        &CssSelectorConstructionErrorKind::EmptyComplexRest
+            .is_empty_complex_rest()
     );
 
     let terminal = complex(".One > .Two::before");
@@ -67,8 +66,8 @@ fn complex_assembly_rejects_empty_rest_and_nonterminal_pseudo_element() {
     assert_eq!(
         CssComplexSelector::try_new(first, ordinary.rest().to_vec(), Default::default())
             .unwrap_err()
-            .kind(),
-        &CssSelectorConstructionErrorKind::NonTerminalPseudoElement { compound_index: 0 }
+            .non_terminal_pseudo_element(),
+        Some(0)
     );
 
     let mut rest = terminal.rest().to_vec();
@@ -76,8 +75,8 @@ fn complex_assembly_rejects_empty_rest_and_nonterminal_pseudo_element() {
     assert_eq!(
         CssComplexSelector::try_new(ordinary.first().clone(), rest, Default::default())
             .unwrap_err()
-            .kind(),
-        &CssSelectorConstructionErrorKind::NonTerminalPseudoElement { compound_index: 1 }
+            .non_terminal_pseudo_element(),
+        Some(1)
     );
 }
 
@@ -150,17 +149,16 @@ fn complex_assembly_rejects_one_node_above_default_cumulative_budget() {
         Default::default(),
     );
     if let Ok(value) = &actual {
-        assert_eq!(
+        assert!(
             CssSelector::Complex(value.clone())
                 .serialize_specified(Default::default())
                 .unwrap_err()
-                .kind(),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+                .is_input_node_limit()
         );
     }
     assert_specified_construction_cause(
         &actual.expect_err("complex assembly admitted 65,537 cumulative input nodes"),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+        SerializationFailure::InputNodeLimit,
     );
 }
 
@@ -203,16 +201,15 @@ fn complex_assembly_rejects_utf8_bytes_above_default_cumulative_budget() {
     assert_eq!(literal.len(), 1_048_577);
     let actual = CssComplexSelector::try_new(first, vec![child_part()], Default::default());
     if let Ok(value) = &actual {
-        assert_eq!(
+        assert!(
             CssSelector::Complex(value.clone())
                 .serialize_specified(Default::default())
                 .unwrap_err()
-                .kind(),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit
+                .is_byte_limit()
         );
     }
     assert_specified_construction_cause(
         &actual.expect_err("complex assembly admitted 1,048,577 cumulative UTF-8 bytes"),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit,
+        SerializationFailure::ByteLimit,
     );
 }

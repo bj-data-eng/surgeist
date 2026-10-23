@@ -2,6 +2,8 @@
 //! for CSS Box Alignment 3, 2026-01-30, §§4–7.
 //! https://www.w3.org/TR/2026/WD-css-align-3-20260130/
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::sole_declaration as declaration;
 use surgeist_css::*;
 
@@ -628,18 +630,21 @@ fn serializers_enforce_exact_keyword_and_cumulative_pair_limits() {
     for (limits, kind) in [
         (
             CssSerializationLimits::new(1, 2, 11),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(2, 1, 11),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(2, 2, 10),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
-        assert_eq!(single.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&single.serialize_specified(limits).unwrap_err()),
+            kind
+        );
     }
 
     let align = CssAlignContentValue::try_new(position(
@@ -661,17 +666,20 @@ fn serializers_enforce_exact_keyword_and_cumulative_pair_limits() {
     for (limits, kind) in [
         (
             CssSerializationLimits::new(3, 4, 24),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(4, 3, 24),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(4, 4, 23),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
-        assert_eq!(pair.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&pair.serialize_specified(limits).unwrap_err()),
+            kind
+        );
     }
 }

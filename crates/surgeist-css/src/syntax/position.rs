@@ -2,21 +2,38 @@
 use super::{CssSpecifiedLength, CssSpecifiedLengthPercentage, optional_numeric_eq};
 use crate::specified_rule_serialization::SpecifiedProvider as _;
 use std::{error::Error, fmt};
-
 /// An intrinsic failure to construct a checked authored position.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssPositionConstructionError {
+pub struct CssPositionConstructionError {
+    kind: PositionConstructionKind,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum PositionConstructionKind {
     /// An edge-relative offset needs a matching offset on the other axis.
     UnpairedEdgeOffsets,
     /// A physical-only consumer cannot accept an axis-relative keyword.
     NonPhysicalKeyword,
 }
+impl From<PositionConstructionKind> for CssPositionConstructionError {
+    fn from(kind: PositionConstructionKind) -> Self {
+        Self { kind }
+    }
+}
+impl CssPositionConstructionError {
+    crate::error::kind_predicates! { kind;
+        /// Returns whether an edge-relative offset needs a matching offset on the other axis.
+        is_unpaired_edge_offsets => PositionConstructionKind::UnpairedEdgeOffsets,
+        /// Returns whether a physical-only consumer cannot accept an axis-relative keyword.
+        is_non_physical_keyword => PositionConstructionKind::NonPhysicalKeyword,
+    }
+}
 impl fmt::Display for CssPositionConstructionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            Self::UnpairedEdgeOffsets => "position edge offsets must be paired",
-            Self::NonPhysicalKeyword => "physical position cannot contain axis-relative keywords",
+        f.write_str(match &self.kind {
+            PositionConstructionKind::UnpairedEdgeOffsets => "position edge offsets must be paired",
+            PositionConstructionKind::NonPhysicalKeyword => {
+                "physical position cannot contain axis-relative keywords"
+            }
         })
     }
 }
@@ -163,7 +180,9 @@ fn paired_offsets(block: bool, inline: bool) -> Result<(), CssPositionConstructi
     if block == inline {
         Ok(())
     } else {
-        Err(CssPositionConstructionError::UnpairedEdgeOffsets)
+        Err(CssPositionConstructionError::from(
+            PositionConstructionKind::UnpairedEdgeOffsets,
+        ))
     }
 }
 
@@ -220,7 +239,9 @@ impl CssPhysicalPosition {
         cartesian: CssCartesianPosition,
     ) -> Result<Self, CssPositionConstructionError> {
         if !cartesian.axes.is_physical() {
-            return Err(CssPositionConstructionError::NonPhysicalKeyword);
+            return Err(CssPositionConstructionError::from(
+                PositionConstructionKind::NonPhysicalKeyword,
+            ));
         }
         Ok(Self { cartesian })
     }

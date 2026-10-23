@@ -1,5 +1,6 @@
 //! CSS Syntax preprocessing and Color Adjustment authored-property contracts.
 
+use crate::css::support::failure_classes::ComponentFailure;
 use crate::css::support::property_admission::{
     ValueTextRejection::{Closure, Component, Grammar, Syntax},
     assert_value_text_rejected,
@@ -158,16 +159,16 @@ fn invalid_values_and_recovered_components_are_syntax_failures_with_original_sou
         ("light;dark", Syntax(";")),
         (
             "light}",
-            Component(CssComponentValueErrorKind::UnmatchedClosingDelimiter),
+            Component(ComponentFailure::UnmatchedClosingDelimiter),
         ),
         ("var(--theme", Closure),
         (
             "var(--theme, url(a\"b))",
-            Component(CssComponentValueErrorKind::BadUrl),
+            Component(ComponentFailure::BadUrl),
         ),
         (
             "var(--theme, \"bad\n)",
-            Component(CssComponentValueErrorKind::BadString),
+            Component(ComponentFailure::BadString),
         ),
     ] {
         let report = parse(text);
@@ -274,7 +275,11 @@ fn padded_original_capacity_and_retained_report_have_separate_limits() {
             let result = result.unwrap();
             assert_eq!(final_live.get(), result.retained_storage().bytes());
         } else {
-            assert!(matches!(result, Err(CssUtf16InputError::Limit(_))));
+            assert!(
+                result
+                    .as_ref()
+                    .is_err_and(|error| error.exhausted_limit().is_some())
+            );
             assert_eq!(final_live.get(), 0);
         }
     }
@@ -314,7 +319,11 @@ fn assert_admission_cuts(text: &str) {
             },
             |remaining| live.set(remaining.bytes()),
         );
-        assert!(matches!(result, Err(CssUtf16InputError::Interrupted(index)) if index == refusal));
+        assert!(
+            result
+                .as_ref()
+                .is_err_and(|error| error.interruption().is_some_and(|index| *index == refusal))
+        );
         assert_eq!(
             seen.get(),
             refusal + 1,
@@ -342,15 +351,19 @@ fn syntax_diagnostics_preserve_first_refusal_and_release_their_actual_payload() 
         "\"unexpected\"",
         "attr(foo \"<not-a-type>\")",
     ] {
-        assert!(matches!(
-            parse(text).result(),
-            Err(CssPropertyValueSyntaxError::Property(_))
-        ));
+        assert!(
+            parse(text)
+                .result()
+                .as_ref()
+                .is_err_and(|error| error.code().is_some())
+        );
         assert_admission_cuts(text);
     }
-    assert!(matches!(
-        parse("light]").result(),
-        Err(CssPropertyValueSyntaxError::Component(_))
-    ));
+    assert!(
+        parse("light]")
+            .result()
+            .as_ref()
+            .is_err_and(|error| error.component_error().is_some())
+    );
     assert_admission_cuts("light]");
 }

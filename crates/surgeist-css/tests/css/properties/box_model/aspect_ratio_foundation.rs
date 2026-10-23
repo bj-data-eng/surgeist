@@ -2,18 +2,19 @@
 //! `<number [0,∞]> [ / <number [0,∞]> ]?` and serializes both components.
 //! The expected spellings below come from those grammars, not parser output.
 
+use crate::css::support::failure_classes::NumericFailure;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::property_admission::{
     assert_checked_rejected, assert_component_rejected, assert_invalid_value,
     assert_numeric_rejected,
 };
-use surgeist_css::CssNumericConstructionErrorKind;
 use surgeist_css::{
     CssAspectRatioValue, CssComponentValue, CssContributionValueRef, CssContributions,
-    CssExpansion, CssExpansionErrorKind, CssGlobalKeyword, CssImportance, CssInitialValueRef,
-    CssKnownProperty, CssKnownPropertyValueRef, CssLonghandValueRef, CssNormalizedItem,
-    CssNumberCalculation, CssPropertyKindRef, CssPropertyNameRef, CssRatioOperand,
-    CssRecoveryAction, CssSerializationLimits, CssSpecifiedRatio,
-    CssSpecifiedValueSerializationErrorKind, CssValueOrigin, expand_declaration, normalize_sheet,
+    CssExpansion, CssGlobalKeyword, CssImportance, CssInitialValueRef, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandValueRef, CssNormalizedItem, CssNumberCalculation,
+    CssPropertyKindRef, CssPropertyNameRef, CssRatioOperand, CssRecoveryAction,
+    CssSerializationLimits, CssSpecifiedRatio, CssValueOrigin, expand_declaration, normalize_sheet,
     parse_component_values, parse_property_value, parse_sheet, parse_style_attribute,
 };
 
@@ -199,7 +200,7 @@ fn malformed_ratio_drops_only_its_declaration() {
             "{value}"
         );
         assert_invalid_value(
-            report.diagnostics()[0].error().kind(),
+            report.diagnostics()[0].error(),
             CssKnownProperty::AspectRatio,
             token,
         );
@@ -262,10 +263,10 @@ fn specified_serialization_keeps_both_components_and_canonical_auto_order() {
 #[test]
 fn checked_operands_cannot_hide_invalid_literals_in_typed_calculations() {
     for (text, kind) in [
-        ("-1e-999", CssNumericConstructionErrorKind::OutOfRange),
-        ("-1", CssNumericConstructionErrorKind::OutOfRange),
-        ("2px", CssNumericConstructionErrorKind::RootDomainMismatch),
-        ("auto", CssNumericConstructionErrorKind::RootDomainMismatch),
+        ("-1e-999", NumericFailure::OutOfRange),
+        ("-1", NumericFailure::OutOfRange),
+        ("2px", NumericFailure::RootDomainMismatch),
+        ("auto", NumericFailure::RootDomainMismatch),
     ] {
         let component = parse_component_values(text).unwrap().items()[0].clone();
         assert_component_rejected(CssRatioOperand::try_from_component, component, kind);
@@ -283,7 +284,7 @@ fn checked_operands_cannot_hide_invalid_literals_in_typed_calculations() {
     .unwrap();
     assert_numeric_rejected(
         CssRatioOperand::try_from_calculation(bare_negative),
-        CssNumericConstructionErrorKind::OutOfRange,
+        NumericFailure::OutOfRange,
     );
     let math = CssNumberCalculation::try_from_components(
         parse_component_values("calc(-1)").unwrap(),
@@ -329,23 +330,19 @@ fn ratio_serialization_charges_one_budget_across_auto_and_both_operands() {
     for (limits, expected) in [
         (
             CssSerializationLimits::new(2, 3, 11),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(3, 2, 11),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(3, 3, 10),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            value
-                .ratio()
-                .serialize_specified(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&value.ratio().serialize_specified(limits).unwrap_err()),
             expected
         );
     }
@@ -367,12 +364,11 @@ fn ratio_serialization_charges_one_budget_across_auto_and_both_operands() {
         .serialize_specified(Default::default())
         .unwrap();
     assert_eq!(full, "calc(16) / 9");
-    assert_eq!(
+    assert!(
         math.ratio()
             .serialize_specified(CssSerializationLimits::new(100, 100, full.len() - 1))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
 }
 
@@ -456,17 +452,13 @@ fn pending_ratio_reentry_checks_full_grammar_and_retains_source() {
         let error = handle
             .reenter(parse_component_values(text).unwrap())
             .unwrap_err();
-        assert!(
-            matches!(error.kind(), CssExpansionErrorKind::InvalidReplacement(_)),
-            "{text}"
-        );
+        assert!(error.replacement_error().is_some(), "{text}");
     }
-    assert_eq!(
+    assert!(
         handle
             .reenter(parse_component_values("var(--again)").unwrap())
             .unwrap_err()
-            .kind(),
-        &CssExpansionErrorKind::ResidualSubstitution
+            .is_residual_substitution()
     );
     let replacement = parse_component_values("16/9 auto").unwrap();
     let CssContributions::Longhands(items) = handle.reenter(replacement.clone()).unwrap() else {

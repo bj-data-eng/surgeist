@@ -10,7 +10,7 @@ use crate::syntax_consumption::{
 use crate::{
     CssBlockKind, CssComponentValue, CssComponentValueError, CssComponentValueErrorKind,
     CssComponentValueLimits, CssParseReport, CssRecoveryAction, CssRecoveryDiagnostic,
-    CssValueOrigin,
+    CssSupportsConstructionError, CssValueOrigin,
 };
 use cssparser::{ParseError, Parser, ParserState};
 
@@ -41,7 +41,7 @@ pub(super) struct NamedSupportsPrelude {
 pub(super) fn parse_prelude<'i, 't>(
     input: &mut Parser<'i, 't>,
     recovery: &RecoveryState,
-) -> Result<NamedSupportsPrelude, ParseError<'i, Error>> {
+) -> Result<NamedSupportsPrelude, ParseError<'i, CssError>> {
     let at = input.current_source_location();
     let values = CssComponentValues::collect_from_parser(input, recovery.source_snapshot())
         .map_err(|error| invalid_component_value(at, error))?;
@@ -77,7 +77,7 @@ pub(super) fn parse_rule<'i, 't>(
     input: &mut Parser<'i, 't>,
     diagnostics: &mut Vec<CssRecoveryDiagnostic>,
     recovery: &RecoveryState,
-) -> Result<CssSupportsConditionRule, ParseError<'i, Error>> {
+) -> Result<CssSupportsConditionRule, ParseError<'i, CssError>> {
     let (body, opening, closing) = parse_body(source, input, diagnostics, recovery)?;
     let document = recovery
         .syntax_document(source)
@@ -107,7 +107,7 @@ pub(super) fn parse_body<'i, 't>(
     input: &mut Parser<'i, 't>,
     diagnostics: &mut Vec<CssRecoveryDiagnostic>,
     recovery: &RecoveryState,
-) -> Result<(CssSupportsTestBody, CssValueOrigin, CssValueOrigin), ParseError<'i, Error>> {
+) -> Result<(CssSupportsTestBody, CssValueOrigin, CssValueOrigin), ParseError<'i, CssError>> {
     let body_start = input.position().byte_index();
     // Arena preparation may omit resource-invalid components. Actual current
     // source admission must therefore precede checked promotion of this body.
@@ -213,7 +213,7 @@ fn issue_diagnostic(source: &str, issue: PartitionIssue) -> Option<CssRecoveryDi
 pub(crate) fn construct_test_body(
     values: CssComponentValues,
     limits: CssComponentValueLimits,
-) -> Result<CssSupportsTestBody, CssNamedSupportsConstructionError> {
+) -> Result<CssSupportsTestBody, CssSupportsConstructionError> {
     values.validate_with_limits(limits)?;
     let document = syntax::normalize(
         syntax::SyntaxInput::CheckedComponents(values.items()),
@@ -229,9 +229,11 @@ pub(crate) fn construct_test_body(
     let mut issues = Vec::new();
     let body = partition(&document, document.root, None, false, &mut issues)?;
     if let Some(issue) = issues.into_iter().next() {
-        return Err(CssNamedSupportsConstructionError::InvalidBodyGrammar {
-            origin: issue.origin().clone(),
-        });
+        return Err(CssSupportsConstructionError::from(
+            crate::supports::SupportsConstructionKind::InvalidBodyGrammar {
+                origin: issue.origin().clone(),
+            },
+        ));
     }
     Ok(body)
 }

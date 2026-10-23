@@ -1,6 +1,6 @@
 use surgeist_css::{
     CssBlendMode, CssBoxEdgeKeyword, CssErrorCode, CssKnownProperty, CssPropertyNameRef,
-    CssRecoveryAction, CssRule, ErrorKind, parse_sheet, parse_style_attribute,
+    CssRecoveryAction, CssRule, parse_sheet, parse_style_attribute,
 };
 
 #[derive(Clone, Copy)]
@@ -250,10 +250,17 @@ fn assert_one_invalid_declaration(
             .count(),
         "{source}",
     );
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("{source}: expected a property-specific value diagnostic");
-    };
-    assert_eq!(detail.property(), expected_property, "{source}");
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "{source}: expected a property-specific value diagnostic"
+    );
+    assert_eq!(
+        detail.known_property().unwrap(),
+        expected_property,
+        "{source}"
+    );
 
     assert_eq!(
         surgeist_css::validate_style_attribute(source)
@@ -322,10 +329,10 @@ fn residual_property_recovery_preserves_siblings_and_boundaries() {
             CssErrorCode::InvalidPropertyValue
         );
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-        assert!(matches!(
-            diagnostic.error().kind(),
-            ErrorKind::InvalidPropertyValue(detail) if detail.property() == property
-        ));
+        assert!(
+            (diagnostic.error().code() == CssErrorCode::InvalidPropertyValue
+                && diagnostic.error().known_property().unwrap() == property)
+        );
     }
 
     let nested = concat!(
@@ -357,11 +364,10 @@ fn residual_property_recovery_preserves_siblings_and_boundaries() {
     };
     assert_eq!(eof.span().start().byte_offset().value(), 0);
     assert_eq!(eof.span().end().byte_offset().value(), eof_source.len());
-    assert!(matches!(
-        eof.error().kind(),
-        ErrorKind::InvalidPropertyValue(detail)
-            if detail.property() == CssKnownProperty::Quotes
-    ));
+    assert!(
+        (eof.error().code() == CssErrorCode::InvalidPropertyValue
+            && eof.error().known_property().unwrap() == CssKnownProperty::Quotes)
+    );
 
     for depth in [255_usize, 256] {
         let value = format!(
@@ -450,11 +456,11 @@ fn residual_property_recovery_preserves_siblings_and_boundaries() {
                 "depth {depth}",
             );
         } else {
-            assert!(matches!(
-                nested_diagnostic.error().kind(),
-                ErrorKind::InvalidPropertyValue(detail)
-                    if detail.property() == CssKnownProperty::Contain
-            ));
+            assert!(
+                (nested_diagnostic.error().code() == CssErrorCode::InvalidPropertyValue
+                    && nested_diagnostic.error().known_property().unwrap()
+                        == CssKnownProperty::Contain)
+            );
         }
 
         assert_eq!(

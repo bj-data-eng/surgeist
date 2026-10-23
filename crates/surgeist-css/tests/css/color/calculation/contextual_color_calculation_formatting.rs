@@ -3,13 +3,15 @@
 //! Halfway away from zero is the adopted operational policy on binary64 bits.
 
 use crate::css::support::color_and_selector_fixtures::assert_color_limits;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::{
     checked_color as color, checked_color_declaration as declaration,
     component_values as components, declaration_color,
 };
 use surgeist_css::*;
 type Limits = CssSerializationLimits;
-type Kind = CssSpecifiedValueSerializationErrorKind;
+type Kind = SerializationFailure;
 fn assert_text(source: &str, expected: &str) {
     let d = declaration(source);
     let before = d.clone();
@@ -449,11 +451,10 @@ fn contextual_scratch_reaches_sibling_input_limit() {
     let before = c.clone();
     // Rounded calc(0 * 1em / 1px) needs 19 bytes. A 24-byte scratch bound
     // allows it, then the seventh input (none) exceeds the six-slot budget.
-    assert_eq!(
+    assert!(
         c.serialize_specified(Limits::new(6, usize::MAX, 24))
             .unwrap_err()
-            .kind(),
-        Kind::InputNodeLimit
+            .is_input_node_limit()
     );
     assert_eq!(c, before);
 }
@@ -461,11 +462,10 @@ fn contextual_scratch_reaches_sibling_input_limit() {
 fn contextual_scratch_reaches_sibling_projection_limit() {
     let c = color("color(--P calc(5e-324 * 1em / 1px) none)");
     // Color root + first pass 5 + scale 3 spend nine before the none sibling.
-    assert_eq!(
+    assert!(
         c.serialize_specified(Limits::new(usize::MAX, 9, 24))
             .unwrap_err()
-            .kind(),
-        Kind::ProjectionNodeLimit
+            .is_projection_node_limit()
     );
 }
 #[test]
@@ -477,11 +477,10 @@ fn numeric_discarded_scratch_control() {
             .unwrap(),
         "rgb(255, 0, 0)"
     );
-    assert_eq!(
+    assert!(
         c.serialize_specified(Limits::new(usize::MAX, usize::MAX, 16))
             .unwrap_err()
-            .kind(),
-        Kind::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(c, before);
 }
@@ -491,7 +490,10 @@ macro_rules! error_case {
         fn $name() {
             let c = color("color(--P calc(.0078125 * 1em / 1px))");
             let before = c.clone();
-            assert_eq!(c.serialize_specified($limits).unwrap_err().kind(), $kind);
+            assert_eq!(
+                serialization_failure(&c.serialize_specified($limits).unwrap_err()),
+                $kind
+            );
             assert_eq!(c, before);
         }
     };
@@ -613,10 +615,7 @@ fn substitution_stays_pending_control() {
         Default::default(),
     )
     .unwrap_err();
-    assert_eq!(
-        e.kind(),
-        &CssNumericConstructionErrorKind::SubstitutionRequired
-    );
+    assert!(e.is_substitution_required(), "{e:?}");
     assert!(e.origin().is_some());
 }
 
@@ -719,7 +718,10 @@ fn discarded_numeric_capture_error_precedence_control() {
         (Limits::new(3, 3, 16), Kind::ProjectionNodeLimit),
         (Limits::new(3, 4, 16), Kind::ByteLimit),
     ] {
-        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+            kind
+        );
         assert_eq!(value, before);
     }
 }

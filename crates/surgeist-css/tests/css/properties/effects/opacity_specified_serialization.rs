@@ -1,6 +1,8 @@
 //! Color 4 specified opacity formatting; exact dyadic goldens come from
 //! (2^24-1)*2^104 and 5^149*10^-151, independently of the formatter.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::*;
 
 fn opacity(text: &str) -> CssOpacityValue {
@@ -31,9 +33,11 @@ fn assert_output(value: &CssOpacityValue, expected: &str) {
     let exact = CssSerializationLimits::new(65_536, 262_144, expected.len());
     assert_eq!(value.serialize_specified(exact).unwrap(), expected);
     let short = CssSerializationLimits::new(65_536, 262_144, expected.len() - 1);
-    assert_eq!(
-        value.serialize_specified(short).unwrap_err().kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+    assert!(
+        value
+            .serialize_specified(short)
+            .unwrap_err()
+            .is_byte_limit()
     );
     assert_eq!(*value, before);
 }
@@ -103,18 +107,21 @@ fn scalar_limits_are_independent_atomic_and_precede_exponent_expansion() {
     for (limits, kind) in [
         (
             CssSerializationLimits::new(0, 1, 3),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(1, 0, 3),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(1, 1, 2),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
-        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+            kind
+        );
     }
     assert_eq!(
         value
@@ -128,12 +135,11 @@ fn scalar_limits_are_independent_atomic_and_precede_exponent_expansion() {
     ] {
         let value = opacity(text);
         let before = value.clone();
-        assert_eq!(
+        assert!(
             value
                 .serialize_specified(Default::default())
                 .unwrap_err()
-                .kind(),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit
+                .is_byte_limit()
         );
         assert_eq!(value, before);
     }
@@ -264,18 +270,21 @@ fn calculation_limits_are_atomic_and_not_source_coordinate_dependent() {
     for (limits, kind) in [
         (
             CssSerializationLimits::new(0, 100, 100),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(100, 0, 100),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(100, 100, 6),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
-        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+            kind
+        );
         assert_eq!(value, before);
     }
     assert_eq!(
@@ -460,10 +469,7 @@ fn flat_symbolic_graph_and_repeated_distribution_obey_projection_limits() {
     let error = value
         .serialize_specified(CssSerializationLimits::new(65_536, 32, 1_048_576))
         .unwrap_err();
-    assert_eq!(
-        error.kind(),
-        CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
-    );
+    assert!(error.is_projection_node_limit(), "{error:?}");
     assert_eq!(value, before);
     let expected = format!(
         "calc({})",
@@ -557,9 +563,11 @@ fn representational_capacity_overflow_is_typed_before_allocation() {
     let value = opacity(&format!("1e{}", isize::MAX));
     let before = value.clone();
     let limits = CssSerializationLimits::new(1, 1, usize::MAX);
-    assert_eq!(
-        value.serialize_specified(limits).unwrap_err().kind(),
-        CssSpecifiedValueSerializationErrorKind::CapacityOverflow
+    assert!(
+        value
+            .serialize_specified(limits)
+            .unwrap_err()
+            .is_capacity_overflow()
     );
     assert_eq!(value, before);
 }

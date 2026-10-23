@@ -9,10 +9,8 @@ use surgeist_css::{
     CssAttributeCaseSensitivity, CssErrorCode, CssNamespaceConstraint, CssNamespaceContext,
     CssNamespaceName, CssNamespacePrefix, CssNthPattern, CssPseudoClass, CssPseudoSelectorListItem,
     CssQualifiedNamePrefix, CssRecoveryAction, CssRelativeSelectorList, CssSelector,
-    CssSelectorCombinator as Combinator, CssSelectorConstructionErrorKind,
-    CssSerializationLimits as Limits, CssSourcePosition,
-    CssSpecifiedValueSerializationErrorKind as Kind, CssTokenKind, ErrorKind,
-    parse_relative_selector_list, parse_selector, parse_selector_list,
+    CssSelectorCombinator as Combinator, CssSerializationLimits as Limits, CssSourcePosition,
+    CssTokenKind, parse_relative_selector_list, parse_selector, parse_selector_list,
 };
 
 fn clean_in(source: &str, context: &CssNamespaceContext) -> CssRelativeSelectorList {
@@ -148,12 +146,11 @@ fn general_terminal_pseudo_elements_are_valid_until_has_attachment() {
         );
         assert!(list.has_pseudo_elements());
         let attached = CssSelector::PseudoClass(CssPseudoClass::Has(list));
-        assert_eq!(
+        assert!(
             attached
                 .serialize_specified(Default::default())
                 .unwrap_err()
-                .kind(),
-            Kind::UnrepresentableValue
+                .is_unrepresentable_value()
         );
     }
     for source in ["> .Cell::before > .Other", ".Cell::after + .Other"] {
@@ -169,12 +166,11 @@ fn independent_has_selectors_remain_general_relatives_without_authorizing_nested
         "> :has(+ .One), :not(:has(|| .Two))"
     );
     let attached = CssSelector::PseudoClass(CssPseudoClass::Has(list));
-    assert_eq!(
+    assert!(
         attached
             .serialize_specified(Default::default())
             .unwrap_err()
-            .kind(),
-        Kind::UnrepresentableValue
+            .is_unrepresentable_value()
     );
     for source in [":has(:has(.One))", "> :has(:not(:has(.One)))"] {
         rejected_in(source, &CssNamespaceContext::default());
@@ -216,14 +212,20 @@ fn independent_has_selectors_remain_general_relatives_without_authorizing_nested
     position(diagnostic.error().position(), (16, 0, 16));
     position(diagnostic.span().start(), (11, 0, 11));
     position(diagnostic.span().end(), (21, 0, 21));
-    let ErrorKind::InvalidSelector(detail) = diagnostic.error().kind() else {
-        panic!("typed inherited Has restriction");
-    };
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidSelector,
+        "typed inherited Has restriction"
+    );
     assert_eq!(
         detail.production().unwrap().as_str(),
         "baseline.selector.complex"
     );
-    assert_eq!(detail.expectation().as_str(), "a supported selector");
+    assert_eq!(
+        detail.expectation().unwrap().as_str(),
+        "a supported selector"
+    );
     let token = detail.encountered().unwrap();
     assert_eq!(token.kind(), CssTokenKind::Delim);
     assert_eq!(token.authored(), ".");
@@ -488,9 +490,12 @@ fn outer_error_keeps_original_unicode_crlf_token_and_complete_source_span() {
     position(diagnostic.error().position(), (20, 1, 9));
     position(diagnostic.span().start(), (0, 0, 0));
     position(diagnostic.span().end(), (24, 1, 13));
-    let ErrorKind::InvalidSelector(detail) = diagnostic.error().kind() else {
-        panic!("typed selector error");
-    };
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidSelector,
+        "typed selector error"
+    );
     let token = detail.encountered().unwrap();
     assert_eq!(token.kind(), CssTokenKind::Ident);
     assert_eq!(token.authored(), "NoPe");
@@ -629,12 +634,11 @@ fn relative_fragments_share_the_exact_256_function_depth_and_257_rejection_bound
         diagnostic.span().end(),
         (source.len(), 0, source.len() as u32),
     );
-    let ErrorKind::NestingLimit(detail) = diagnostic.error().kind() else {
-        panic!("typed limit");
-    };
-    assert_eq!(detail.limit(), 256);
+    let detail = diagnostic.error();
+    assert_eq!(detail.code(), CssErrorCode::NestingLimit, "typed limit");
+    assert_eq!(detail.nesting_limit().unwrap(), 256);
     assert_eq!(
-        detail.enclosing_production().as_str(),
+        detail.production().unwrap().as_str(),
         "baseline.selector.complex"
     );
     assert_strict_validation_rejects(report);
@@ -663,18 +667,17 @@ fn large_clean_relative_list_keeps_parse_budget_separate_from_default_specified_
             .all(|member| member.combinator() == Combinator::Descendant
                 && matches!(member.selector(), CssSelector::Class(name) if name == "A"))
     );
-    assert_eq!(
+    assert!(
         list.serialize_specified(Default::default())
             .unwrap_err()
-            .kind(),
-        Kind::InputNodeLimit
+            .is_input_node_limit()
     );
     let error = CssRelativeSelectorList::try_new(list.selectors().to_vec(), Default::default())
         .unwrap_err();
-    let CssSelectorConstructionErrorKind::Specified(cause) = error.kind() else {
+    let Some(cause) = error.serialization_error() else {
         panic!("typed aggregate error");
     };
-    assert_eq!(cause.kind(), Kind::InputNodeLimit);
+    assert!(cause.is_input_node_limit(), "{cause:?}");
     assert!(
         list.serialize_specified(Limits::new(65_537, 65_537, source.len()))
             .unwrap()

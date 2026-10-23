@@ -4,15 +4,18 @@
 //! Published source basis: cfffe14a4e5371a1b09e9a0a37b56dd74cf712e0.
 //! No missing-symbol/constructor RED or execution evidence is claimed.
 
+use crate::css::support::failure_classes::SerializationFailure as K;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::property_admission::Responsible::{self, At};
 use crate::css::support::property_admission::implicit_closure_origin as implicit_origin;
+use crate::css::support::property_admission::property_value_facts;
 use crate::css::support::property_admission::{assert_checked_rejected, assert_invalid_value};
 use crate::css::support::serialization_limits::LimitLadder;
 use crate::css::support::{
     authored_declaration_through_front as declaration, check_property_components as checked,
     discoverable_property as property,
 };
-use surgeist_css::{CssSerializationLimits as L, CssSpecifiedValueSerializationErrorKind as K, *};
+use surgeist_css::{CssSerializationLimits as L, *};
 const NAMES: [&str; 6] = [
     "content",
     "quotes",
@@ -72,11 +75,14 @@ fn invalid<'a, T: Copy + Into<Responsible<'a>>>(name: &str, values: &[(&str, T)]
         let [diagnostic] = report.diagnostics() else {
             panic!("one atomic diagnostic {css}")
         };
-        let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-            panic!("actual property grammar diagnostic")
-        };
-        assert_eq!(detail.property(), p);
-        assert_invalid_value(diagnostic.error().kind(), p, token);
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidPropertyValue,
+            "actual property grammar diagnostic"
+        );
+        assert_eq!(detail.known_property().unwrap(), p);
+        assert_invalid_value(diagnostic.error(), p, token);
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
         let start = css.find(&middle).unwrap();
         assert_eq!(diagnostic.span().start().byte_offset().value(), start);
@@ -441,10 +447,10 @@ fn pending(name: &str, valid: &str, invalid: &str) {
                     let components = parse_component_values(bad).unwrap();
                     let direct = checked(p, components.clone(), false).unwrap_err();
                     let error = handle.reenter(components).unwrap_err();
-                    let CssExpansionErrorKind::InvalidReplacement(actual) = error.kind() else {
+                    let Some(actual) = error.replacement_error() else {
                         panic!("typed strict replacement error")
                     };
-                    assert_eq!(actual.kind(), direct.kind());
+                    assert_eq!(property_value_facts(actual), property_value_facts(&direct));
                     assert_eq!(actual.origin(), direct.origin());
                 }
                 for residual in [
@@ -453,12 +459,11 @@ fn pending(name: &str, valid: &str, invalid: &str) {
                     "f(attr(data-generated))",
                     r"f(v\61 r(--again))",
                 ] {
-                    assert_eq!(
+                    assert!(
                         handle
                             .reenter(parse_component_values(residual).unwrap())
                             .unwrap_err()
-                            .kind(),
-                        &CssExpansionErrorKind::ResidualSubstitution
+                            .is_residual_substitution()
                     );
                 }
                 let replacement = parse_component_values(&format!("/*😀*/{valid}")).unwrap();
@@ -559,15 +564,12 @@ fn strict_original(name: &str, ordinary: &str, unclosed: &str) {
         for grammar in [false, true] {
             let error = checked(p, components.clone(), grammar).unwrap_err();
             assert!(
-                matches!(
-                    error.kind(),
-                    CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
-                ),
+                error.code() == Some(CssErrorCode::UnexpectedEnd),
                 "{input}: {error:?}"
             );
             assert_eq!(
                 error.origin(),
-                &CssSerializedOrigin::End(Some(origin.clone()))
+                CssSerializedOrigin::End(Some(origin.clone()))
             );
         }
         assert_eq!(components, original);
@@ -605,20 +607,16 @@ fn reentry_rejects_original_closure_after_residual_scan_and_remains_reusable_for
         let replacement = parse_component_values(open).unwrap();
         let origin = implicit_origin(&replacement);
         let error = handle.reenter(replacement).unwrap_err();
-        let CssExpansionErrorKind::InvalidReplacement(actual) = error.kind() else {
+        let Some(actual) = error.replacement_error() else {
             panic!("closure failure")
         };
-        assert!(matches!(
-            actual.kind(),
-            CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
-        ));
-        assert_eq!(actual.origin(), &CssSerializedOrigin::End(Some(origin)));
-        assert_eq!(
+        assert!(actual.code() == Some(CssErrorCode::UnexpectedEnd));
+        assert_eq!(actual.origin(), CssSerializedOrigin::End(Some(origin)));
+        assert!(
             handle
                 .reenter(parse_component_values("future(var(--again)").unwrap())
                 .unwrap_err()
-                .kind(),
-            &CssExpansionErrorKind::ResidualSubstitution
+                .is_residual_substitution()
         );
         assert!(
             handle
@@ -657,12 +655,11 @@ fn typed_attribute_functions_keep_the_whole_occurrence_pending_until_full_replac
             let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
                 panic!("valid attr is whole pending")
             };
-            assert_eq!(
+            assert!(
                 handle
                     .reenter(parse_component_values(input).unwrap())
                     .unwrap_err()
-                    .kind(),
-                &CssExpansionErrorKind::ResidualSubstitution
+                    .is_residual_substitution()
             );
             assert!(
                 handle
@@ -727,10 +724,7 @@ fn normalized_six_property_composition_keeps_context_order_and_cumulative_contri
         ),
     ] {
         let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            &CssNormalizationErrorKind::LimitExceeded { resource, limit: 5 }
-        );
+        assert_eq!(error.exhausted_limit(), Some((resource, 5)));
         assert_eq!(error.declaration_order(), Some(5));
         assert!(
             error
@@ -832,7 +826,10 @@ fn nested_counter_image_and_numeric_children_in_labels_share_atomic_byte_and_wor
             (L::new(0, 256, output.len()), K::InputNodeLimit),
             (L::new(128, 0, output.len()), K::ProjectionNodeLimit),
         ] {
-            assert_eq!(source.serialize_specified(limits).unwrap_err().kind(), kind);
+            assert_eq!(
+                serialization_failure(&source.serialize_specified(limits).unwrap_err()),
+                kind
+            );
             assert_eq!(source, original);
         }
     }
@@ -910,10 +907,9 @@ fn full_image_depth_error_survives_content_list_retry_and_pending_reentry() {
         for grammar in [false, true] {
             let error = checked(p, components.clone(), grammar).unwrap_err();
             assert!(
-                matches!(
-                    error.kind(),
-                    CssPropertyValueErrorKind::Component(CssComponentValueErrorKind::NestingLimit)
-                ),
+                error
+                    .component_error()
+                    .is_some_and(|error| error.is_nesting_limit()),
                 "{error:?}"
             );
         }
@@ -924,10 +920,10 @@ fn full_image_depth_error_survives_content_list_retry_and_pending_reentry() {
         for _ in 0..2 {
             let direct = checked(p, components.clone(), false).unwrap_err();
             let error = handle.reenter(components.clone()).unwrap_err();
-            let CssExpansionErrorKind::InvalidReplacement(error) = error.kind() else {
+            let Some(error) = error.replacement_error() else {
                 panic!("typed resource failure")
             };
-            assert_eq!(error.kind(), direct.kind());
+            assert_eq!(property_value_facts(error), property_value_facts(&direct));
             assert_eq!(error.origin(), direct.origin());
         }
         assert!(

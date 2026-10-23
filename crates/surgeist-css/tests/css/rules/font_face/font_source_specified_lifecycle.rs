@@ -5,11 +5,13 @@
 //! URL emission remains authored and context-free; CSSOM's URL phase question
 //! and resource support do not change the stored model or select this output.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::rules::ordinary_font_face_descriptor;
 use surgeist_css::*;
 
 type Limits = CssSerializationLimits;
-type Kind = CssSpecifiedValueSerializationErrorKind;
+type Kind = SerializationFailure;
 
 fn parsed(text: &str) -> CssFontFaceSourceList {
     let CssFontFaceDescriptorValue::Src(list) =
@@ -254,12 +256,16 @@ fn source_children_share_exact_input_projection_and_final_byte_limits() {
         ),
         (Limits::new(2, 2, local_text.len() - 1), Kind::ByteLimit),
     ] {
-        assert_eq!(local.serialize_specified(limits).unwrap_err().kind(), kind);
         assert_eq!(
-            CssFontFaceSource::Local(local.clone())
-                .serialize_specified(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&local.serialize_specified(limits).unwrap_err()),
+            kind
+        );
+        assert_eq!(
+            serialization_failure(
+                &CssFontFaceSource::Local(local.clone())
+                    .serialize_specified(limits)
+                    .unwrap_err()
+            ),
             kind
         );
     }
@@ -268,12 +274,16 @@ fn source_children_share_exact_input_projection_and_final_byte_limits() {
         (Limits::new(8, 7, url_text.len()), Kind::ProjectionNodeLimit),
         (Limits::new(8, 8, url_text.len() - 1), Kind::ByteLimit),
     ] {
-        assert_eq!(url.serialize_specified(limits).unwrap_err().kind(), kind);
         assert_eq!(
-            CssFontFaceSource::Url(url.clone())
-                .serialize_specified(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&url.serialize_specified(limits).unwrap_err()),
+            kind
+        );
+        assert_eq!(
+            serialization_failure(
+                &CssFontFaceSource::Url(url.clone())
+                    .serialize_specified(limits)
+                    .unwrap_err()
+            ),
             kind
         );
     }
@@ -303,7 +313,10 @@ fn source_children_share_exact_input_projection_and_final_byte_limits() {
         ),
         (Limits::new(11, 11, expected.len() - 1), Kind::ByteLimit),
     ] {
-        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+            kind
+        );
         assert_eq!(value, before);
     }
     assert_eq!(

@@ -10,6 +10,7 @@ use crate::css::support::color_and_selector_fixtures::assert_color_grammar_failu
 use crate::css::support::color_and_selector_fixtures::{
     assert_color_limit_error as assert_error, assert_color_limits,
 };
+use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::{
     checked_color as color, checked_color_declaration as declaration,
     component_values as components, declaration_color,
@@ -17,7 +18,7 @@ use crate::css::support::{
 use surgeist_css::*;
 
 type Limits = CssSerializationLimits;
-type Kind = CssSpecifiedValueSerializationErrorKind;
+type Kind = SerializationFailure;
 
 fn assert_color_text(value: &CssColor, expected: &str) {
     let before = value.clone();
@@ -642,12 +643,11 @@ fn protected_direct_origin_relative_profile_and_non_alpha_policies() {
             .unwrap(),
         "rgb(255, 0, 0)"
     );
-    assert_eq!(
+    assert!(
         value
             .serialize_specified(Limits::new(usize::MAX, usize::MAX, 16))
             .unwrap_err()
-            .kind(),
-        Kind::ByteLimit
+            .is_byte_limit()
     );
 }
 
@@ -1178,9 +1178,6 @@ fn alpha_and_weight_substitutions_remain_pending_contributions() {
         Default::default(),
     )
     .unwrap_err();
-    assert_eq!(
-        error.kind(),
-        &CssNumericConstructionErrorKind::SubstitutionRequired
-    );
+    assert!(error.is_substitution_required(), "{error:?}");
     assert!(error.origin().is_some());
 }

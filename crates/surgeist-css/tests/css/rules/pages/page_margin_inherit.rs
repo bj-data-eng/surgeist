@@ -438,8 +438,8 @@ fn page_local_recovery_retains_inherit_and_literal_siblings_around_invalid_units
                 .diagnostics()
                 .iter()
                 .any(|d| d.action() == CssRecoveryAction::DropDeclaration
-                    && matches!(d.error().kind(), ErrorKind::InvalidPropertyValue(detail)
-                if detail.property() == CssKnownProperty::MarginLeft))
+                    && (d.error().code() == CssErrorCode::InvalidPropertyValue
+                        && d.error().known_property().unwrap() == CssKnownProperty::MarginLeft))
         );
         recovered(&report);
     }
@@ -478,8 +478,9 @@ fn inherit_is_a_complete_global_alternative_not_a_mixed_margin_component() {
         );
         assert_eq!(report.diagnostics().len(), 1);
         assert!(
-            matches!(report.diagnostics()[0].error().kind(), ErrorKind::InvalidPropertyValue(detail)
-            if detail.property() == CssKnownProperty::Margin)
+            (report.diagnostics()[0].error().code() == CssErrorCode::InvalidPropertyValue
+                && report.diagnostics()[0].error().known_property().unwrap()
+                    == CssKnownProperty::Margin)
         );
         assert_eq!(
             report.diagnostics()[0].action(),

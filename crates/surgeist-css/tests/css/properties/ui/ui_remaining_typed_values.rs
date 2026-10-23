@@ -259,10 +259,13 @@ fn legacy_navigation_has_typed_diagnostic_original_string_and_reusable_report_pa
             diagnostic.error().code(),
             CssErrorCode::LegacyNavigationTarget
         );
-        let ErrorKind::LegacyNavigationTarget(detail) = diagnostic.error().kind() else {
-            panic!("typed diagnostic")
-        };
-        assert_eq!(detail.target(), "_ROOT");
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::LegacyNavigationTarget,
+            "typed diagnostic"
+        );
+        assert_eq!(detail.navigation_target().unwrap(), "_ROOT");
         let declaration = report.syntax().as_ref().unwrap();
         let CssKnownPropertyValueRef::NavUp(v) =
             declaration.known().unwrap().property_value().unwrap()
@@ -351,10 +354,11 @@ fn stripes_checked_construction_preserves_optional_thickness_and_exact_origins()
     });
     assert_eq!(stripes, before);
     assert!(stripes.original_component().is_none());
-    assert!(matches!(
-        CssStripes::try_new(vec![]),
-        Err(CssImage1DConstructionError::EmptyStripes)
-    ));
+    assert!(
+        CssStripes::try_new(vec![])
+            .as_ref()
+            .is_err_and(|error| error.is_empty_stripes())
+    );
     let image = CssImage1D::try_from_components(
         parse_component_values("stripes(2px ReD, blue 100%)").unwrap(),
     )
@@ -442,10 +446,11 @@ fn recovered_stripe_closure_is_retained_only_by_browser_and_checked_reentry_reje
     let original = image.stripes().original_component().unwrap();
     let components =
         CssComponentValues::try_new(vec![original.clone()], Default::default()).unwrap();
-    assert!(matches!(
-        CssImage1D::try_from_components(components.clone()),
-        Err(CssImage1DConstructionError::RecoveredComponent(_))
-    ));
+    assert!(
+        CssImage1D::try_from_components(components.clone())
+            .as_ref()
+            .is_err_and(|error| error.recovered_origin().is_some())
+    );
     assert!(
         parse_property_value(
             CssPropertyNameRef::Known(CssKnownProperty::OutlineColor),
@@ -461,7 +466,7 @@ fn typed_stripe_errors_use_original_component_origins_and_aggregate_depth() {
     let source = "/*lead*/stripes(red 101%)";
     let error =
         CssImage1D::try_from_components(parse_component_values(source).unwrap()).unwrap_err();
-    let CssImage1DConstructionError::Grammar(error) = error else {
+    let Some(error) = error.property_value_error() else {
         panic!("grammar error")
     };
     let CssSerializedOrigin::Token(CssValueOrigin::Parsed(origin)) = error.origin() else {
@@ -490,10 +495,11 @@ fn typed_stripe_errors_use_original_component_origins_and_aggregate_depth() {
     };
     assert_eq!(origin.source().as_str(), source);
     let color = parse_component_values(&nested(256)).unwrap().items()[0].clone();
-    assert!(matches!(
-        CssStripe::try_new(color, None),
-        Err(CssImage1DConstructionError::NestingLimit)
-    ));
+    assert!(
+        CssStripe::try_new(color, None)
+            .as_ref()
+            .is_err_and(|error| error.is_nesting_limit())
+    );
 }
 #[test]
 fn signed_flex_checked_calculation_reuses_numeric_owner_and_rejects_recovered_graph() {
@@ -538,10 +544,7 @@ fn signed_flex_checked_calculation_reuses_numeric_owner_and_rejects_recovered_gr
     };
     let error =
         CssSpecifiedFlex::try_from_calculation(flex.calculation().unwrap().clone()).unwrap_err();
-    assert_eq!(
-        error.kind(),
-        &CssNumericConstructionErrorKind::RecoveredComponent
-    );
+    assert!(error.is_recovered_component(), "{error:?}");
     assert!(error.origin().is_some());
 }
 #[test]
@@ -561,9 +564,10 @@ fn interest_checked_construction_rejects_recovered_time_from_either_slot() {
         (recovered.clone(), None),
         (CssInterestDelayValue::Normal, Some(recovered)),
     ] {
-        assert_eq!(
-            CssInterestDelay::try_new(start, end).unwrap_err().kind(),
-            &CssNumericConstructionErrorKind::RecoveredComponent
+        assert!(
+            CssInterestDelay::try_new(start, end)
+                .unwrap_err()
+                .is_recovered_component()
         );
     }
 }

@@ -1,5 +1,7 @@
 //! Conditional5 style-query structure, lexical ownership and checked boundaries.
 use crate::css::support::authored_syntax::checked_container_condition as construct;
+use crate::css::support::failure_classes::ComponentFailure;
+use crate::css::support::failure_classes::component_failure;
 use surgeist_css::*;
 
 fn style(condition: &CssContainerCondition) -> &CssContainerStyleQuery {
@@ -310,23 +312,24 @@ fn style_limits_apply_before_admission_and_recovered_groups_keep_closure_origins
     for (limits, expected) in [
         (
             CssComponentValueLimits::try_new(1, usize::MAX, usize::MAX).unwrap(),
-            CssComponentValueErrorKind::NestingLimit,
+            ComponentFailure::NestingLimit,
         ),
         (
             CssComponentValueLimits::try_new(256, 1, usize::MAX).unwrap(),
-            CssComponentValueErrorKind::ComponentLimit,
+            ComponentFailure::ComponentLimit,
         ),
         (
             CssComponentValueLimits::try_new(256, usize::MAX, 1).unwrap(),
-            CssComponentValueErrorKind::ByteLimit,
+            ComponentFailure::ByteLimit,
         ),
     ] {
-        let Err(CssContainerConstructionError::Component(error)) =
-            CssContainerCondition::try_from_components(values.clone(), limits)
-        else {
+        let Err(outer) = CssContainerCondition::try_from_components(values.clone(), limits) else {
             panic!("component limit")
         };
-        assert_eq!(error.kind(), expected);
+        let Some(error) = outer.component_error() else {
+            panic!("component limit")
+        };
+        assert_eq!(component_failure(error), expected);
     }
     let condition = construct("style((--x");
     let serialized = condition.serialize_tokens(Default::default()).unwrap();
@@ -346,12 +349,11 @@ fn style_limits_apply_before_admission_and_recovered_groups_keep_closure_origins
         child.kind(),
         CssContainerStyleQueryKind::Feature(CssContainerStyleFeature::Boolean(_))
     ));
-    assert_eq!(
+    assert!(
         child
             .serialize_tokens(crate::css::support::byte_limits(2))
             .unwrap_err()
-            .kind(),
-        CssComponentValueErrorKind::ByteLimit
+            .is_byte_limit()
     );
 }
 

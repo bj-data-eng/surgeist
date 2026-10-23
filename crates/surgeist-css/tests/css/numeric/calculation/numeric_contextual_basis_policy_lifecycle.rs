@@ -9,11 +9,13 @@
 //! The projection policy conservatively retains glyph-metric and flex bases;
 //! these tests characterize that boundary rather than assuming metric signs.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::value_assertions::calculated_length as length;
 use surgeist_css::*;
 
 type Limits = CssSerializationLimits;
-type Kind = CssSpecifiedValueSerializationErrorKind;
+type Kind = SerializationFailure;
 
 fn length_percentage(source: &str) -> CssSpecifiedLengthPercentage {
     CssSpecifiedLengthPercentage::try_from_calculation(
@@ -169,7 +171,7 @@ fn folded_siblings_share_one_cumulative_enclosing_budget() {
         (Limits::new(7, 7, expected.len() - 1), Kind::ByteLimit),
     ] {
         let error = shape.serialize_specified(limits).unwrap_err();
-        assert_eq!(error.kind(), kind, "{limits:?}");
+        assert_eq!(serialization_failure(&error), kind, "{limits:?}");
         assert_eq!(shape, before);
         for (value, original) in shape
             .offsets()

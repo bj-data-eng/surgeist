@@ -18,10 +18,9 @@
 
 use crate::css::support::authored_property;
 use crate::css::support::authored_property::parsed;
-use surgeist_css::{
-    CssKnownProperty as P, CssSerializationLimits as L,
-    CssSpecifiedValueSerializationErrorKind as K, *,
-};
+use crate::css::support::failure_classes::SerializationFailure as K;
+use crate::css::support::failure_classes::serialization_failure;
+use surgeist_css::{CssKnownProperty as P, CssSerializationLimits as L, *};
 
 const LINEAR: [&str; 2] = ["linear-gradient", "repeating-linear-gradient"];
 const RADIAL: [&str; 2] = ["radial-gradient", "repeating-radial-gradient"];
@@ -652,20 +651,19 @@ fn pending_substitution_is_whole_value_strict_reusable_and_preserves_source_iden
                 "linear-gradient(in lab longer hue, red, blue)",
                 "radial-gradient(red 0 1% 2%, blue)",
             ] {
-                assert!(matches!(
+                assert!(
                     handle
                         .reenter(parse_component_values(invalid).unwrap())
                         .unwrap_err()
-                        .kind(),
-                    CssExpansionErrorKind::InvalidReplacement(_)
-                ));
+                        .replacement_error()
+                        .is_some()
+                );
             }
-            assert_eq!(
+            assert!(
                 handle
                     .reenter(parse_component_values("var(--again)").unwrap())
                     .unwrap_err()
-                    .kind(),
-                &CssExpansionErrorKind::ResidualSubstitution
+                    .is_residual_substitution()
             );
             let replacement =
                 parse_component_values("/*😀*/conic-gradient(from 0 in lab, red 0 50%, blue)")
@@ -730,11 +728,8 @@ fn normalization_preserves_gradient_order_importance_pending_and_occurrence_prov
     .unwrap_err();
     assert_eq!(error.declaration_order(), Some(3));
     assert_eq!(
-        error.kind(),
-        &CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: 3
-        }
+        error.exhausted_limit(),
+        Some((CssNormalizationResource::Contributions, 3))
     );
     assert_eq!(report, before);
     assert!(normalize_report_with_limits(&report, limits).is_ok());
@@ -763,7 +758,10 @@ fn selected_gradient_serialization_limits_are_atomic_reusable_and_cumulative() {
         ),
     ] {
         for _ in 0..2 {
-            assert_eq!(source.serialize_specified(limit).unwrap_err().kind(), kind);
+            assert_eq!(
+                serialization_failure(&source.serialize_specified(limit).unwrap_err()),
+                kind
+            );
         }
         assert_eq!(
             source.serialize_specified(Default::default()).unwrap(),
@@ -794,12 +792,11 @@ fn selected_gradient_serialization_limits_are_atomic_reusable_and_cumulative() {
             .serialize_specified(L::new(unlimited, unlimited, single.len()))
             .is_ok()
     );
-    assert_eq!(
+    assert!(
         repeated
             .serialize_specified(L::new(unlimited, unlimited, single.len()))
             .unwrap_err()
-            .kind(),
-        K::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(
         repeated.serialize_specified(Default::default()).unwrap(),
@@ -1049,7 +1046,10 @@ fn singleton_gradient_lists_share_exact_graph_work_caps_across_siblings() {
         (L::new(9, 9, expected.len() - 1), K::ByteLimit),
     ] {
         for _ in 0..2 {
-            assert_eq!(list.serialize_specified(limits).unwrap_err().kind(), kind);
+            assert_eq!(
+                serialization_failure(&list.serialize_specified(limits).unwrap_err()),
+                kind
+            );
         }
         assert_eq!(
             list.serialize_specified(Default::default()).unwrap(),
@@ -1061,10 +1061,9 @@ fn singleton_gradient_lists_share_exact_graph_work_caps_across_siblings() {
             .serialize_specified(L::new(4, 4, "linear-gradient(red)".len()))
             .is_ok()
     );
-    assert_eq!(
+    assert!(
         list.serialize_specified(L::new(4, 9, expected.len()))
             .unwrap_err()
-            .kind(),
-        K::InputNodeLimit
+            .is_input_node_limit()
     );
 }

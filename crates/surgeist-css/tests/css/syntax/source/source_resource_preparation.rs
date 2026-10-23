@@ -54,11 +54,14 @@ fn limit(
 ) {
     assert_eq!(diagnostic.error().code(), CssErrorCode::NestingLimit);
     assert_eq!(diagnostic.action(), CssRecoveryAction::StopAtNestingLimit);
-    let ErrorKind::NestingLimit(detail) = diagnostic.error().kind() else {
-        panic!("native owner retains the typed resource fault")
-    };
-    assert_eq!(detail.limit(), 256);
-    assert_eq!(detail.enclosing_production().as_str(), production);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::NestingLimit,
+        "native owner retains the typed resource fault"
+    );
+    assert_eq!(detail.nesting_limit().unwrap(), 256);
+    assert_eq!(detail.production().unwrap().as_str(), production);
     original(diagnostic.error().position(), source, opening);
     original(diagnostic.span().start(), source, start);
     original(diagnostic.span().end(), source, end);

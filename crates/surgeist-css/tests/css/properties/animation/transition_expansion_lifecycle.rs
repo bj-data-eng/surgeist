@@ -4,6 +4,8 @@
 //! Exact raw time-child provenance and contribution order are Surgeist contracts.
 //! These functional tests exercise the four new borrowed longhand variants.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::property_admission::Responsible::{At, End};
 use crate::css::support::property_admission::{
     assert_checked_rejected, assert_implicit_closure, assert_style_attribute_rejected,
@@ -621,39 +623,32 @@ fn projected_time_lists_keep_cumulative_specified_limits_and_atomic_failure() {
         "-0.001s, -0.002s"
     );
     for (input, projection, byte_deficit, kind) in [
-        (
-            2,
-            3,
-            0,
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
-        ),
-        (
-            3,
-            2,
-            0,
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
-        ),
-        (3, 3, 1, CssSpecifiedValueSerializationErrorKind::ByteLimit),
+        (2, 3, 0, SerializationFailure::InputNodeLimit),
+        (3, 2, 0, SerializationFailure::ProjectionNodeLimit),
+        (3, 3, 1, SerializationFailure::ByteLimit),
     ] {
         assert_eq!(
-            properties
-                .serialize_specified(limits(input, projection, 18 - byte_deficit))
-                .unwrap_err()
-                .kind(),
+            serialization_failure(
+                &properties
+                    .serialize_specified(limits(input, projection, 18 - byte_deficit))
+                    .unwrap_err()
+            ),
             kind
         );
         assert_eq!(
-            durations
-                .serialize_specified(limits(input, projection, 14 - byte_deficit))
-                .unwrap_err()
-                .kind(),
+            serialization_failure(
+                &durations
+                    .serialize_specified(limits(input, projection, 14 - byte_deficit))
+                    .unwrap_err()
+            ),
             kind
         );
         assert_eq!(
-            delays
-                .serialize_specified(limits(input, projection, 16 - byte_deficit))
-                .unwrap_err()
-                .kind(),
+            serialization_failure(
+                &delays
+                    .serialize_specified(limits(input, projection, 16 - byte_deficit))
+                    .unwrap_err()
+            ),
             kind
         );
     }
@@ -702,21 +697,12 @@ fn projected_math_retains_raw_graph_and_uses_numeric_provider_budgets() {
         "-0.25s"
     );
     for (budget, kind) in [
-        (
-            limits(4, 4, 8),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
-        ),
-        (
-            limits(5, 3, 8),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
-        ),
-        (
-            limits(5, 4, 7),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
-        ),
+        (limits(4, 4, 8), SerializationFailure::InputNodeLimit),
+        (limits(5, 3, 8), SerializationFailure::ProjectionNodeLimit),
+        (limits(5, 4, 7), SerializationFailure::ByteLimit),
     ] {
         assert_eq!(
-            durations.serialize_specified(budget).unwrap_err().kind(),
+            serialization_failure(&durations.serialize_specified(budget).unwrap_err()),
             kind
         );
         assert_eq!(
@@ -774,13 +760,10 @@ fn pending_names_and_easing_reject_original_closures_and_remain_retryable() {
         let replacement = parse_component_values(recovered).unwrap();
         let before = replacement.clone();
         let error = handle.reenter(replacement.clone()).unwrap_err();
-        let CssExpansionErrorKind::InvalidReplacement(actual) = error.kind() else {
+        let Some(actual) = error.replacement_error() else {
             panic!("original grammar rejection")
         };
-        assert!(matches!(
-            actual.kind(),
-            CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
-        ));
+        assert!(actual.code() == Some(CssErrorCode::UnexpectedEnd));
         let CssSerializedOrigin::End(Some(CssValueOrigin::ImplicitClosure { at, .. })) =
             actual.origin()
         else {

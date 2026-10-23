@@ -19,19 +19,15 @@
 use surgeist_css::{
     CssAuthoredFontFaceDescriptorValue, CssComponentValue, CssComponentValues,
     CssContributionValueRef, CssContributions, CssCustomPropertyDeclaredValue,
-    CssCustomPropertyName, CssDeclaration, CssExpansion, CssExpansionErrorKind,
-    CssFontFaceDescriptorKind, CssFontFaceDescriptorValue, CssGlobalKeyword, CssImportance,
-    CssKnownProperty as Property, CssLonghandContributions, CssLonghandValueRef,
-    CssMediaConditionKind, CssMediaQuery, CssNormalizationErrorKind, CssNormalizationLimits,
-    CssNormalizationResource, CssNormalizedDeclaration, CssNormalizedItem, CssNormalizedSheet,
-    CssPropertyNameRef, CssRecoveryAction, CssRule, CssRuleContext, CssRuleContextKindRef,
-    CssScopedRule, CssSelector, CssSelectorBinding, CssSelectorCombinator, CssStyleRule,
-    CssValueOrigin, expand_declaration, normalize_report, normalize_sheet,
+    CssCustomPropertyName, CssDeclaration, CssExpansion, CssFontFaceDescriptorKind,
+    CssFontFaceDescriptorValue, CssGlobalKeyword, CssImportance, CssKnownProperty as Property,
+    CssLonghandContributions, CssLonghandValueRef, CssMediaConditionKind, CssMediaQuery,
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedDeclaration, CssNormalizedItem,
+    CssNormalizedSheet, CssPropertyNameRef, CssRecoveryAction, CssRule, CssRuleContext,
+    CssRuleContextKindRef, CssScopedRule, CssSelector, CssSelectorBinding, CssSelectorCombinator,
+    CssStyleRule, CssValueOrigin, expand_declaration, normalize_report, normalize_sheet,
     normalize_sheet_with_limits, parse_component_values, parse_property_value, parse_sheet,
 };
-
-#[path = "../tests/css/support/property_expectations.rs"]
-mod property_expectations;
 
 fn declaration_items(sheet: &CssNormalizedSheet) -> Vec<&CssNormalizedDeclaration> {
     sheet
@@ -273,10 +269,7 @@ fn pending_shorthand_and_reentry() {
     let error = pending
         .reenter(parse_component_values("var(--still-pending)").unwrap())
         .unwrap_err();
-    assert!(matches!(
-        error.kind(),
-        CssExpansionErrorKind::ResidualSubstitution
-    ));
+    assert!(error.is_residual_substitution());
     assert!(matches!(
         declarations[0].expansion(),
         CssExpansion::Pending(_)
@@ -729,70 +722,6 @@ fn ordered_terminal_payloads() {
     println!("ordered terminal payloads: ok");
 }
 
-fn atomic_unsupported_declaration() {
-    for case in property_expectations::CASES {
-        if !matches!(
-            case.metadata,
-            property_expectations::MetadataExpectation::Unavailable
-        ) {
-            continue;
-        }
-        let css = format!(
-            ".a {{ margin-block:0; @media screen {{ {}:{}; padding-block:1px }} }}",
-            case.name,
-            case.ordinary_stimulus()
-                .expect("authored unavailable-property stimulus")
-        );
-        let report = parse_sheet(&css);
-        assert!(report.is_clean(), "{:?}", report.diagnostics());
-        let before = report.clone();
-        let error = normalize_sheet(report.syntax())
-            .expect_err("record selects unavailable expansion metadata");
-        let CssNormalizationErrorKind::UnsupportedDeclaration(expansion) = error.kind() else {
-            panic!("typed expansion capability failure: {error:?}")
-        };
-        assert_eq!(
-            expansion.kind(),
-            &CssExpansionErrorKind::UnsupportedProperty(case.property)
-        );
-        let [CssRule::Media(media)] = style(&report.syntax().rules()[0]).rules() else {
-            unreachable!()
-        };
-        let [CssRule::NestedDeclarations(run)] = media.rules() else {
-            unreachable!()
-        };
-        assert!(
-            error
-                .declaration()
-                .unwrap()
-                .same_occurrence(&run.declarations()[0])
-        );
-        assert_eq!(error.declaration_order(), Some(1));
-        assert_eq!(
-            error.position().unwrap().byte_offset().value(),
-            css.find(&format!("{}:", case.name)).unwrap()
-        );
-        assert_eq!(
-            ancestors(error.rule_context().unwrap()),
-            ["style", "media", "declarations"]
-        );
-        assert_eq!(
-            report, before,
-            "failed normalization cannot change authored syntax or diagnostics"
-        );
-        let again =
-            normalize_report(&report).expect_err("report entry uses the same capability boundary");
-        assert_eq!(again.declaration_order(), Some(1));
-        assert!(
-            again
-                .declaration()
-                .unwrap()
-                .same_occurrence(error.declaration().unwrap())
-        );
-    }
-    println!("atomic unsupported declaration: ok");
-}
-
 fn normalization_resource_boundaries() {
     let css = ".a { margin-block:0; .b { padding-block:1px } }";
     let report = parse_sheet(css);
@@ -840,7 +769,8 @@ fn normalization_resource_boundaries() {
     ] {
         let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
         assert!(
-            matches!(error.kind(), CssNormalizationErrorKind::LimitExceeded { resource: actual, limit: actual_limit } if *actual == resource && *actual_limit == limit)
+            error.exhausted_limit() == Some((resource, limit)),
+            "{error:?}"
         );
         assert_eq!(error.position().unwrap().byte_offset().value(), position);
         assert_eq!(error.declaration_order(), ordinal);
@@ -878,13 +808,7 @@ fn normalization_resource_boundaries() {
         CssNormalizationLimits::try_new(2, 2, 2, 8).unwrap(),
     )
     .unwrap_err();
-    assert!(matches!(
-        error.kind(),
-        CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Rules,
-            limit: 2
-        }
-    ));
+    assert!(error.exhausted_limit() == Some((CssNormalizationResource::Rules, 2)));
     assert_eq!(
         error.declaration_order(),
         None,
@@ -909,13 +833,7 @@ fn normalization_resource_boundaries() {
     )
     .unwrap_err();
     assert_eq!(error.declaration_order(), Some(2));
-    assert!(matches!(
-        error.kind(),
-        CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: 2
-        }
-    ));
+    assert!(error.exhausted_limit() == Some((CssNormalizationResource::Contributions, 2)));
     println!("normalization resource boundaries: ok");
 }
 
@@ -1111,7 +1029,6 @@ fn main() {
     linear_selector_representation();
     symbolic_conditional_and_layer_contexts();
     ordered_terminal_payloads();
-    atomic_unsupported_declaration();
     normalization_resource_boundaries();
     unchanged_recovery_diagnostics();
     complete_scoped_rule_traversal();

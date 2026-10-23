@@ -362,10 +362,7 @@ fn ordinary_scope_rejects_declarations_while_style_nested_scope_retains_runs() {
         CssScopeNestingContext::None,
     )
     .unwrap_err();
-    assert_eq!(
-        detached.kind(),
-        CssRuleConstructionErrorKind::InvalidPlacement
-    );
+    assert!(detached.is_invalid_placement(), "{detached:?}");
     assert_eq!(detached.path(), &[0]);
 }
 
@@ -492,10 +489,7 @@ fn scope_serialization_byte_limits_are_atomic_and_cumulative_across_sheet_rules(
             expected.len() - 1,
         ))
         .unwrap_err();
-    assert_eq!(
-        error.kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
-    );
+    assert!(error.is_byte_limit(), "{error:?}");
     assert_eq!(error.rule_index(), Some(1));
     assert_eq!(input, before);
     assert_eq!(

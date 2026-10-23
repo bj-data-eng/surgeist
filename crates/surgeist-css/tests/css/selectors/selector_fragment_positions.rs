@@ -9,8 +9,8 @@
 
 use surgeist_css::{
     CssErrorCode, CssPseudoClass, CssPseudoSelectorListItem, CssRecoveryAction,
-    CssRecoveryDiagnostic, CssRule, CssSelector, CssSourcePosition, CssTokenKind, ErrorKind,
-    parse_sheet, validate_sheet,
+    CssRecoveryDiagnostic, CssRule, CssSelector, CssSourcePosition, CssTokenKind, parse_sheet,
+    validate_sheet,
 };
 
 fn assert_position(actual: CssSourcePosition, expected: (usize, u32, u32)) {
@@ -38,9 +38,12 @@ fn assert_named_error(
     assert_eq!(diagnostic.action(), action);
     assert_eq!(diagnostic.span().start().byte_offset().value(), span.0);
     assert_eq!(diagnostic.span().end().byte_offset().value(), span.1);
-    let ErrorKind::InvalidSelector(detail) = diagnostic.error().kind() else {
-        panic!("typed selector details");
-    };
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidSelector,
+        "typed selector details"
+    );
     assert_eq!(
         detail.production().unwrap().as_str(),
         "baseline.selector.complex"

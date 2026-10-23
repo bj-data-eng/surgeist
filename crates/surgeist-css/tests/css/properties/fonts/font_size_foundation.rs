@@ -188,20 +188,19 @@ fn inherited_medium_expands_once_with_globals_and_strict_pending_reentry() {
         panic!("unresolved size remains pending");
     };
     assert!(pending.source().same_occurrence(&source));
-    assert_eq!(
+    assert!(
         pending
             .reenter(parse_component_values("var(--again)").unwrap())
             .unwrap_err()
-            .kind(),
-        &CssExpansionErrorKind::ResidualSubstitution
+            .is_residual_substitution()
     );
-    assert!(matches!(
+    assert!(
         pending
             .reenter(parse_component_values("-1e-50px").unwrap())
             .unwrap_err()
-            .kind(),
-        CssExpansionErrorKind::InvalidReplacement(_)
-    ));
+            .replacement_error()
+            .is_some()
+    );
     for valid in ["xxx-large", "math", "125%"] {
         let replacement = parse_component_values(valid).unwrap();
         let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap()

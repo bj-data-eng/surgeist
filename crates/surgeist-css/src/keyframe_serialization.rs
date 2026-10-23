@@ -69,34 +69,85 @@ pub struct CssKeyframeRuleView<'a> {
 }
 
 /// Why a checked detached keyframe could not be assembled or formatted.
-#[derive(Clone, Debug)]
-#[non_exhaustive]
-pub enum CssKeyframeRuleViewError {
-    /// Declarations from another domain carry no proof of keyframe admission.
+///
+/// A serialization or declaration-block failure is exposed by its accessor and is the
+/// error's source.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CssKeyframeRuleViewError {
+    kind: KeyframeRuleViewKind,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+enum KeyframeRuleViewKind {
     NonKeyframeDeclarations,
-    /// Selector or punctuation serialization exhausted its resource budget.
     Serialization(CssSerializationError),
-    /// The owning declaration formatter rejected the complete block.
     Declaration(CssDeclarationBlockError),
+}
+
+impl CssKeyframeRuleViewError {
+    const NON_KEYFRAME_DECLARATIONS: Self = Self {
+        kind: KeyframeRuleViewKind::NonKeyframeDeclarations,
+    };
+
+    /// Returns whether declarations from another domain carry no proof of keyframe
+    /// admission.
+    #[must_use]
+    pub const fn is_non_keyframe_declarations(&self) -> bool {
+        matches!(self.kind, KeyframeRuleViewKind::NonKeyframeDeclarations)
+    }
+
+    /// Returns the selector or punctuation serialization failure.
+    #[must_use]
+    pub const fn serialization(&self) -> Option<&CssSerializationError> {
+        match &self.kind {
+            KeyframeRuleViewKind::Serialization(error) => Some(error),
+            _ => None,
+        }
+    }
+
+    /// Returns the declaration formatter's rejection of the complete block.
+    #[must_use]
+    pub const fn declaration_block(&self) -> Option<&CssDeclarationBlockError> {
+        match &self.kind {
+            KeyframeRuleViewKind::Declaration(error) => Some(error),
+            _ => None,
+        }
+    }
+}
+
+impl From<CssSerializationError> for CssKeyframeRuleViewError {
+    fn from(error: CssSerializationError) -> Self {
+        Self {
+            kind: KeyframeRuleViewKind::Serialization(error),
+        }
+    }
+}
+
+impl From<CssDeclarationBlockError> for CssKeyframeRuleViewError {
+    fn from(error: CssDeclarationBlockError) -> Self {
+        Self {
+            kind: KeyframeRuleViewKind::Declaration(error),
+        }
+    }
 }
 
 impl fmt::Display for CssKeyframeRuleViewError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::NonKeyframeDeclarations => formatter
+        match &self.kind {
+            KeyframeRuleViewKind::NonKeyframeDeclarations => formatter
                 .write_str("keyframe assembly requires a checked keyframe declaration block"),
-            Self::Serialization(error) => error.fmt(formatter),
-            Self::Declaration(error) => error.fmt(formatter),
+            KeyframeRuleViewKind::Serialization(error) => error.fmt(formatter),
+            KeyframeRuleViewKind::Declaration(error) => error.fmt(formatter),
         }
     }
 }
 
 impl std::error::Error for CssKeyframeRuleViewError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::NonKeyframeDeclarations => None,
-            Self::Serialization(error) => Some(error),
-            Self::Declaration(error) => Some(error),
+        match &self.kind {
+            KeyframeRuleViewKind::NonKeyframeDeclarations => None,
+            KeyframeRuleViewKind::Serialization(error) => Some(error),
+            KeyframeRuleViewKind::Declaration(error) => Some(error),
         }
     }
 }
@@ -111,7 +162,7 @@ impl<'a> CssKeyframeRuleView<'a> {
         declarations: &'a CssSpecifiedDeclarationBlock,
     ) -> Result<Self, CssKeyframeRuleViewError> {
         if !declarations.is_keyframe() {
-            return Err(CssKeyframeRuleViewError::NonKeyframeDeclarations);
+            return Err(CssKeyframeRuleViewError::NON_KEYFRAME_DECLARATIONS);
         }
         Ok(Self {
             selectors,
@@ -145,10 +196,10 @@ impl<'a> CssKeyframeRuleView<'a> {
             .append_selected_keyframe(*self)
             .map_err(|error| match error {
                 crate::cssom_rule_serialization::RuleCssomSource::DeclarationBlock(error) => {
-                    CssKeyframeRuleViewError::Declaration(error)
+                    CssKeyframeRuleViewError::from(error)
                 }
                 crate::cssom_rule_serialization::RuleCssomSource::Provider(error) => {
-                    CssKeyframeRuleViewError::Serialization(error)
+                    CssKeyframeRuleViewError::from(error)
                 }
                 _ => unreachable!("selected keyframe has only value and declaration providers"),
             })?;

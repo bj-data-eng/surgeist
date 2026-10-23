@@ -1,11 +1,12 @@
 //! Checked media construction and canonical authored output share parsed semantics.
 use crate::css::support::authored_syntax::component_list as values;
 use crate::css::support::byte_limits;
+use crate::css::support::failure_classes::ComponentFailure;
+use crate::css::support::failure_classes::component_failure;
 use surgeist_css::{
-    CssBlockKind, CssComponentValue, CssComponentValueErrorKind, CssComponentValueLimits,
-    CssComponentValues, CssMediaCondition, CssMediaConditionKind, CssMediaConstructionError,
-    CssMediaFeatureQuery, CssMediaQuery, CssMediaRangeRef, CssSerializedOrigin,
-    CssSpecifiedValueSerializationErrorKind, CssValueOrigin, parse_component_values,
+    CssBlockKind, CssComponentValue, CssComponentValueLimits, CssComponentValues,
+    CssMediaCondition, CssMediaConditionKind, CssMediaFeatureQuery, CssMediaQuery,
+    CssMediaRangeRef, CssSerializedOrigin, CssValueOrigin, parse_component_values,
     parse_media_query, parse_media_query_list,
 };
 
@@ -109,24 +110,27 @@ fn opaque_programmatic_functions_preserve_original_components_and_token_boundari
 #[test]
 fn checked_construction_rejects_recovery_and_query_condition_context_mismatches() {
     let recovered = parse_component_values("future(").unwrap();
-    assert!(matches!(
-        CssMediaQuery::try_from_components(recovered, Default::default()),
-        Err(CssMediaConstructionError::RecoveredInput { .. })
-    ));
-    assert!(matches!(
+    assert!(
+        CssMediaQuery::try_from_components(recovered, Default::default())
+            .as_ref()
+            .is_err_and(|error| error.is_recovered_input())
+    );
+    assert!(
         CssMediaCondition::try_from_components(
             parse_component_values("screen").unwrap(),
             Default::default()
-        ),
-        Err(CssMediaConstructionError::InvalidConditionGrammar { .. })
-    ));
-    assert!(matches!(
+        )
+        .as_ref()
+        .is_err_and(|error| error.is_invalid_condition_grammar())
+    );
+    assert!(
         CssMediaQuery::try_from_components(
             parse_component_values("screen, print").unwrap(),
             Default::default()
-        ),
-        Err(CssMediaConstructionError::InvalidQueryGrammar { .. })
-    ));
+        )
+        .as_ref()
+        .is_err_and(|error| error.is_invalid_query_grammar())
+    );
 }
 
 #[test]
@@ -139,10 +143,7 @@ fn grammar_errors_map_inserted_token_boundaries_back_to_original_input() {
         Default::default(),
     )
     .unwrap_err();
-    assert!(matches!(
-        error,
-        CssMediaConstructionError::InvalidQueryGrammar { .. }
-    ));
+    assert!(error.is_invalid_query_grammar());
     assert_eq!(error.origin(), &origin);
 }
 
@@ -154,22 +155,22 @@ fn requested_component_limits_preserve_their_actual_failure_categories() {
     for (limits, expected) in [
         (
             CssComponentValueLimits::try_new(0, usize::MAX, usize::MAX).unwrap(),
-            CssComponentValueErrorKind::NestingLimit,
+            ComponentFailure::NestingLimit,
         ),
         (
             CssComponentValueLimits::try_new(256, 0, usize::MAX).unwrap(),
-            CssComponentValueErrorKind::ComponentLimit,
+            ComponentFailure::ComponentLimit,
         ),
         (
             CssComponentValueLimits::try_new(256, usize::MAX, 7).unwrap(),
-            CssComponentValueErrorKind::ByteLimit,
+            ComponentFailure::ByteLimit,
         ),
     ] {
         let error = CssMediaQuery::try_from_components(components.clone(), limits).unwrap_err();
-        let CssMediaConstructionError::Component(error) = error else {
+        let Some(error) = error.component_error() else {
             panic!("typed component resource failure");
         };
-        assert_eq!(error.kind(), expected);
+        assert_eq!(component_failure(error), expected);
         assert!(matches!(error.origin(), CssValueOrigin::Programmatic));
     }
 }
@@ -180,12 +181,11 @@ fn construction_byte_budget_includes_canonical_ratio_expansion() {
     let canonical = "(aspect-ratio: 2 / 1)";
     let components = parse_component_values(source).unwrap();
     let tight = CssComponentValueLimits::try_new(256, usize::MAX, source.len()).unwrap();
-    let CssMediaConstructionError::Component(error) =
-        CssMediaQuery::try_from_components(components.clone(), tight).unwrap_err()
-    else {
+    let outer = CssMediaQuery::try_from_components(components.clone(), tight).unwrap_err();
+    let Some(error) = outer.component_error() else {
         panic!("canonical output exceeds selected byte limit");
     };
-    assert_eq!(error.kind(), CssComponentValueErrorKind::ByteLimit);
+    assert!(error.is_byte_limit(), "{error:?}");
     let exact = CssComponentValueLimits::try_new(256, usize::MAX, canonical.len()).unwrap();
     let query = CssMediaQuery::try_from_components(components, exact).unwrap();
     assert_eq!(
@@ -382,10 +382,7 @@ fn media_tokens_refuse_one_byte_below_their_serialized_length() {
         unlimited.as_css()
     );
     let error = list.serialize_tokens(byte_limits(length - 1)).unwrap_err();
-    assert_eq!(
-        error.kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
-    );
+    assert!(error.is_byte_limit(), "{error:?}");
     assert!(matches!(error.origin(), Some(CssValueOrigin::Parsed(_))));
     let query = &list.queries()[0];
     let query_length = query
@@ -393,11 +390,10 @@ fn media_tokens_refuse_one_byte_below_their_serialized_length() {
         .unwrap()
         .as_css()
         .len();
-    assert_eq!(
+    assert!(
         query
             .serialize_tokens(byte_limits(query_length - 1))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
 }

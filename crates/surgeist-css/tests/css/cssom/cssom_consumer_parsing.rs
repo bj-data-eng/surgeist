@@ -1,6 +1,8 @@
 //! Public consumer oracles for the selected current Syntax block-contents witness
 //! and CSSOM staged insertion algorithms. These are new boundaries: no executable
 //! preimplementation RED is claimed. CSSOM exception/state policy stays downstream.
+use crate::css::support::failure_classes::ComponentFailure;
+use crate::css::support::failure_classes::component_failure;
 use surgeist_css::*;
 
 fn candidate(source: &str) -> CssRuleSyntax {
@@ -24,8 +26,14 @@ fn names(list: &CssDeclarationList) -> Vec<&str> {
         })
         .collect()
 }
-fn resource(report: &[CssRecoveryDiagnostic], expected: CssComponentValueErrorKind) {
-    assert!(report.iter().any(|d| matches!(d.error().kind(), ErrorKind::InvalidComponentValue(error) if error.kind() == expected)), "{report:?}");
+fn resource(report: &[CssRecoveryDiagnostic], expected: ComponentFailure) {
+    assert!(
+        report.iter().any(|d| d
+            .error()
+            .component_error()
+            .is_some_and(|error| component_failure(error) == expected)),
+        "{report:?}"
+    );
 }
 
 #[test]
@@ -418,16 +426,13 @@ fn whole_input_resource_limits_are_cumulative_and_admission_reuses_the_charged_o
         CssComponentValueLimits::try_new(1, 5, 100).unwrap(),
     );
     assert!(denied.syntax().is_none());
-    resource(
-        denied.diagnostics(),
-        CssComponentValueErrorKind::ComponentLimit,
-    );
+    resource(denied.diagnostics(), ComponentFailure::ComponentLimit);
     let denied = classify_rule_syntax_with_limits(
         source,
         CssComponentValueLimits::try_new(1, 100, source.len() - 1).unwrap(),
     );
     assert!(denied.syntax().is_none());
-    resource(denied.diagnostics(), CssComponentValueErrorKind::ByteLimit);
+    resource(denied.diagnostics(), ComponentFailure::ByteLimit);
     assert!(
         classify_rule_syntax_with_limits(source, limits)
             .syntax()
@@ -439,10 +444,7 @@ fn whole_input_resource_limits_are_cumulative_and_admission_reuses_the_charged_o
         CssComponentValueLimits::try_new(0, 6, 100).unwrap(),
     );
     assert!(denied.syntax().is_empty());
-    resource(
-        denied.diagnostics(),
-        CssComponentValueErrorKind::ComponentLimit,
-    );
+    resource(denied.diagnostics(), ComponentFailure::ComponentLimit);
     let accepted = parse_declaration_block_contents_with_limits(
         raw,
         CssComponentValueLimits::try_new(0, 7, raw.len()).unwrap(),
@@ -458,10 +460,7 @@ fn depth_resource_rejection_and_bounded_nested_replay_have_distinct_outcomes() {
         CssComponentValueLimits::try_new(1, 100, 100).unwrap(),
     );
     assert!(denied.syntax().is_none());
-    resource(
-        denied.diagnostics(),
-        CssComponentValueErrorKind::NestingLimit,
-    );
+    resource(denied.diagnostics(), ComponentFailure::NestingLimit);
     let source = format!(
         "{}& .leaf{{width:1px}}{}",
         "@media all{".repeat(130),

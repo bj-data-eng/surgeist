@@ -3,6 +3,7 @@
 //! define finite roles, authored arity, metadata and expansion; corrected
 //! omitted trim follows CSSWG editorial commit 97441f74 / PR12765.
 
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::normal_checked_declaration as checked;
 use surgeist_css::*;
 
@@ -173,8 +174,8 @@ fn empty_shorthand_construction_rejects_and_each_authored_slot_remains_observabl
 
 #[test]
 fn primitive_providers_charge_exact_nodes_and_bytes_and_retry_without_mutation() {
+    use crate::css::support::failure_classes::SerializationFailure as Kind;
     use CssSerializationLimits as Limits;
-    use CssSpecifiedValueSerializationErrorKind as Kind;
     for (value, expected, nodes) in [
         (CssTextBox::Normal, "normal", 1),
         (
@@ -231,7 +232,10 @@ fn primitive_providers_charge_exact_nodes_and_bytes_and_retry_without_mutation()
             ),
         ] {
             for _ in 0..2 {
-                assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+                assert_eq!(
+                    serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+                    kind
+                );
                 assert_eq!(value, before);
             }
         }

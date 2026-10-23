@@ -1,10 +1,12 @@
 //! Fonts 4 section 13.2: equal retained endpoints use the shorter form.
 //! Rounding two different retained numbers to the same text is not equality.
 
+use crate::css::support::failure_classes::SerializationFailure as ErrorKind;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::rules::ordinary_font_face_descriptor as ordinary;
 use surgeist_css::{
     CssFontFaceDescriptorKind as Kind, CssFontFaceDescriptorValue as Value, CssFontFaceStyle,
-    CssSerializationLimits as Limits, CssSpecifiedValueSerializationErrorKind as ErrorKind,
+    CssSerializationLimits as Limits,
 };
 
 // Both retained endpoints consume visits, including the endpoint suppressed in
@@ -39,7 +41,10 @@ macro_rules! assert_shortened {
                 ErrorKind::ByteLimit,
             ),
         ] {
-            assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+            assert_eq!(
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+                kind
+            );
             assert_eq!(value, before);
         }
     }};

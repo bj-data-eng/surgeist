@@ -2,8 +2,8 @@
 //! The leading `--` in a CDC must not be consumed by its preceding token.
 
 use surgeist_css::{
-    CssComponentValue, CssComponentValueErrorKind, CssComponentValueLimits, CssComponentValueRef,
-    CssComponentValues, CssNumericTokenKind, CssSerializedOrigin, CssValueOrigin, CssValueTokenRef,
+    CssComponentValue, CssComponentValueLimits, CssComponentValueRef, CssComponentValues,
+    CssNumericTokenKind, CssSerializedOrigin, CssValueOrigin, CssValueTokenRef,
     parse_component_values,
 };
 
@@ -136,14 +136,14 @@ fn cdc_separator_bytes_count_in_construction_and_serialization_limits() {
             let error = values
                 .serialize_tokens(crate::css::support::byte_limits(limit))
                 .unwrap_err();
-            assert_eq!(error.kind(), CssComponentValueErrorKind::ByteLimit);
+            assert!(error.is_byte_limit(), "{error:?}");
             assert_eq!(error.origin(), values.items()[1].origin());
             let error = CssComponentValues::try_new(
                 values.items().to_vec(),
                 CssComponentValueLimits::try_new(0, 2, limit).unwrap(),
             )
             .unwrap_err();
-            assert_eq!(error.kind(), CssComponentValueErrorKind::ByteLimit);
+            assert!(error.is_byte_limit(), "{error:?}");
             assert_eq!(error.origin(), values.items()[1].origin());
         }
         let exact = CssComponentValues::try_new(

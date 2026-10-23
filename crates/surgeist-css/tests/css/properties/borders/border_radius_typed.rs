@@ -1,3 +1,6 @@
+use crate::css::support::failure_classes::NumericFailure;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::property_admission::assert_component_rejected;
 use surgeist_css::*;
 
@@ -84,10 +87,10 @@ fn checked_corner_preserves_omission_axes_origins_and_exact_literals() {
         assert!(scalar(text).literal_component().is_some(), "{text}");
     }
     for (text, kind) in [
-        ("-1e-100px", CssNumericConstructionErrorKind::OutOfRange),
-        ("-1e-100%", CssNumericConstructionErrorKind::OutOfRange),
-        ("1fr", CssNumericConstructionErrorKind::RootDomainMismatch),
-        ("1", CssNumericConstructionErrorKind::RootDomainMismatch),
+        ("-1e-100px", NumericFailure::OutOfRange),
+        ("-1e-100%", NumericFailure::OutOfRange),
+        ("1fr", NumericFailure::RootDomainMismatch),
+        ("1", NumericFailure::RootDomainMismatch),
     ] {
         let values = parse_component_values(text).unwrap();
         let [component] = values.items() else {
@@ -209,18 +212,21 @@ fn specified_serialization_charges_one_aggregate_and_every_authored_child() {
     for (limits, kind) in [
         (
             CssSerializationLimits::new(2, 3, 6),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(3, 2, 6),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(3, 3, 5),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
-        assert_eq!(corner.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&corner.serialize_specified(limits).unwrap_err()),
+            kind
+        );
     }
     let shorthand = CssBorderRadiusShorthand::try_new(
         vec![scalar("1px"), scalar("2px")],
@@ -236,19 +242,19 @@ fn specified_serialization_charges_one_aggregate_and_every_authored_child() {
     for (limits, kind) in [
         (
             CssSerializationLimits::new(4, 5, 15),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(5, 4, 15),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(5, 5, 14),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            shorthand.serialize_specified(limits).unwrap_err().kind(),
+            serialization_failure(&shorthand.serialize_specified(limits).unwrap_err()),
             kind
         );
     }
@@ -283,18 +289,21 @@ fn symbolic_math_remains_typed_and_shares_aggregate_limits() {
     for (limits, kind) in [
         (
             CssSerializationLimits::new(5, 7, rendered.len()),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(6, 6, rendered.len()),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(6, 7, rendered.len() - 1),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
-        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+            kind
+        );
     }
 }
 

@@ -378,7 +378,7 @@ fn shorthand_pending_handle_survives_grammar_recovery_and_residual_failures() {
         )
         .unwrap_err();
         let error = handle.reenter(components).unwrap_err();
-        let CssExpansionErrorKind::InvalidReplacement(actual) = error.kind() else {
+        let Some(actual) = error.replacement_error() else {
             panic!("strict original grammar")
         };
         assert_eq!(actual, &expected);
@@ -394,12 +394,11 @@ fn shorthand_pending_handle_survives_grammar_recovery_and_residual_failures() {
         "attr(animation)",
         "fade calc(var(--again) + 1s)",
     ] {
-        assert_eq!(
+        assert!(
             handle
                 .reenter(parse_component_values(residual).unwrap())
                 .unwrap_err()
-                .kind(),
-            &CssExpansionErrorKind::ResidualSubstitution
+                .is_residual_substitution()
         );
         let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap()
         else {
@@ -541,11 +540,8 @@ fn ordered_normalization_preserves_groups_and_fixed_eight_member_budget() {
     )
     .unwrap_err();
     assert_eq!(
-        error.kind(),
-        &CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: 12
-        }
+        error.exhausted_limit(),
+        Some((CssNormalizationResource::Contributions, 12))
     );
     assert_eq!(error.declaration_order(), Some(5));
     assert!(
@@ -594,11 +590,8 @@ fn sparse_and_recovered_shorthands_normalize_at_eight_and_fail_atomically_at_sev
         )
         .unwrap_err();
         assert_eq!(
-            error.kind(),
-            &CssNormalizationErrorKind::LimitExceeded {
-                resource: CssNormalizationResource::Contributions,
-                limit: 7
-            }
+            error.exhausted_limit(),
+            Some((CssNormalizationResource::Contributions, 7))
         );
         assert_eq!(error.declaration_order(), Some(0));
         assert!(

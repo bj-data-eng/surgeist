@@ -3,8 +3,7 @@
 
 use crate::css::support::authored_syntax::{assert_diagnostics, offset_of};
 use surgeist_css::{
-    CssComponentValueErrorKind, CssImportance, CssRule, CssSupportsTestItem, CssValueTokenRef,
-    ErrorKind, parse_sheet,
+    CssErrorCode, CssImportance, CssRule, CssSupportsTestItem, CssValueTokenRef, parse_sheet,
 };
 
 fn body(source: &str) -> surgeist_css::CssSupportsTestBody {
@@ -252,9 +251,16 @@ fn ambient_group_depth_counts_toward_named_test_limit_even_after_bad_token() {
     for source in [nested(255, ""), nested(255, ")")] {
         let report = parse_sheet(&source);
         assert!(!report.is_clean());
-        assert!(report.diagnostics().iter().any(|diagnostic| {
-            matches!(diagnostic.error().kind(), ErrorKind::InvalidComponentValue(detail) if detail.kind() == CssComponentValueErrorKind::NestingLimit)
-                || matches!(diagnostic.error().kind(), ErrorKind::NestingLimit(_))
-        }), "expected typed depth failure: {:?}", report.diagnostics());
+        assert!(
+            report.diagnostics().iter().any(|diagnostic| {
+                diagnostic
+                    .error()
+                    .component_error()
+                    .is_some_and(|detail| detail.is_nesting_limit())
+                    || diagnostic.error().code() == CssErrorCode::NestingLimit
+            }),
+            "expected typed depth failure: {:?}",
+            report.diagnostics()
+        );
     }
 }

@@ -1,3 +1,5 @@
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::*;
 
 fn line_name(value: &str) -> CssGridLineName {
@@ -231,11 +233,10 @@ fn decoded_names_serialize_as_identifiers_and_reenter() {
             .unwrap(),
         "A\\:B"
     );
-    assert_eq!(
+    assert!(
         line.serialize_specified(CssSerializationLimits::new(1, 1, 3))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(parsed_line(&css), line);
     assert_eq!(
@@ -268,17 +269,20 @@ fn shorthand_serialization_charges_one_cumulative_budget() {
     for (limits, kind) in [
         (
             CssSerializationLimits::new(3, 4, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(4, 3, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(4, 4, expected.len() - 1),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
-        assert_eq!(area.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&area.serialize_specified(limits).unwrap_err()),
+            kind
+        );
     }
 }

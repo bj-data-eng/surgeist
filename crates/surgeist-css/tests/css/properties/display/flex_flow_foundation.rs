@@ -131,20 +131,19 @@ fn pending_flow_reentry_checks_complete_grammar_and_preserves_original_source() 
         panic!("substitution remains pending")
     };
     for invalid in ["row column", "wrap nowrap", "row wrap nowrap", "row / wrap"] {
-        assert!(matches!(
+        assert!(
             pending
                 .reenter(parse_component_values(invalid).unwrap())
                 .unwrap_err()
-                .kind(),
-            CssExpansionErrorKind::InvalidReplacement(_)
-        ));
+                .replacement_error()
+                .is_some()
+        );
     }
-    assert_eq!(
+    assert!(
         pending
             .reenter(parse_component_values("var(--again)").unwrap())
             .unwrap_err()
-            .kind(),
-        &CssExpansionErrorKind::ResidualSubstitution
+            .is_residual_substitution()
     );
     let replacement = parse_component_values("wrap-reverse column").unwrap();
     for _ in 0..2 {
@@ -222,13 +221,7 @@ fn normalized_flow_keeps_mixed_order_and_rejects_a_missing_member_budget() {
     }
     let limits = CssNormalizationLimits::try_new(256, usize::MAX, usize::MAX, 2).unwrap();
     let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
-    assert!(matches!(
-        error.kind(),
-        CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: 2
-        }
-    ));
+    assert!(error.exhausted_limit() == Some((CssNormalizationResource::Contributions, 2)));
     assert_eq!(
         error.declaration().unwrap().known().unwrap().property(),
         CssKnownProperty::FlexFlow

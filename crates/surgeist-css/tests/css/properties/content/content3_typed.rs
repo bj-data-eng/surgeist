@@ -1,6 +1,8 @@
 //! Functional checked-value expectations from Content 3 (2025-12-04), Counter
 //! Styles 3 (2021-07-27), and CSSOM §6.7.2's specified default omissions.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::normal_declaration;
 use surgeist_css::*;
 
@@ -397,22 +399,25 @@ fn serialization_limits_are_cumulative_and_fail_without_mutation() {
     for (limits, kind) in [
         (
             CssSerializationLimits::new(2, 3, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(3, 2, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(3, 3, expected.len() - 1),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
         (
             CssSerializationLimits::new(0, 0, 0),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
     ] {
-        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+            kind
+        );
     }
     assert_eq!(
         value.serialize_specified(Default::default()).unwrap(),
@@ -528,21 +533,19 @@ fn nested_symbols_images_preserve_math_modifier_order_and_shared_budget() {
             .unwrap(),
         canonical
     );
-    assert_eq!(
+    assert!(
         wrapper
             .value()
             .serialize_specified(CssSerializationLimits::new(128, 256, canonical.len() - 1,))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
-    assert_eq!(
+    assert!(
         wrapper
             .value()
             .serialize_specified(CssSerializationLimits::new(6, 256, canonical.len(),))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+            .is_input_node_limit()
     );
 }
 
@@ -574,13 +577,16 @@ fn two_image_symbols_share_the_outer_input_and_projection_limits() {
     for (limits, kind) in [
         (
             CssSerializationLimits::new(7, 8, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(8, 7, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
     ] {
-        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+            kind
+        );
     }
 }

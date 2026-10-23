@@ -19,6 +19,7 @@
 //! are never taken from the implementation under test.
 
 use crate::css::support::authored_property::{self, assert_source};
+use crate::css::support::property_admission::GrammarFacts;
 use crate::css::support::property_admission::assert_implicit_closure;
 use crate::css::support::property_expectations::{
     self, Leading, MetadataExpectation, PropertyExpectation,
@@ -451,17 +452,14 @@ fn implicit_origin(components: &CssComponentValues) -> CssValueOrigin {
 }
 
 #[track_caller]
-fn assert_closure(error: &CssPropertyValueParseError, origin: &CssValueOrigin, text: &str) {
+fn assert_closure(error: &CssPropertyValueError, origin: &CssValueOrigin, text: &str) {
     assert!(
-        matches!(
-            error.kind(),
-            CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
-        ),
+        error.code() == Some(CssErrorCode::UnexpectedEnd),
         "{text:?}: expected an unexpected end, got {error:?}"
     );
     assert_eq!(
         error.origin(),
-        &CssSerializedOrigin::End(Some(origin.clone())),
+        CssSerializedOrigin::End(Some(origin.clone())),
         "{text:?}"
     );
     let CssValueOrigin::ImplicitClosure { opening, at } = origin else {
@@ -494,9 +492,12 @@ fn invalid(case: &PropertyExpectation, value: &str) {
         CssRecoveryAction::DropDeclaration,
         "{css}"
     );
-    match diagnostic.error().kind() {
-        ErrorKind::InvalidPropertyValue(detail) => assert_eq!(detail.property(), case.property),
-        ErrorKind::InvalidColorSyntax(_) if COLOR_DIAGNOSTICS.contains(&case.property) => {}
+    match diagnostic.error().code() {
+        CssErrorCode::InvalidPropertyValue => {
+            let detail = diagnostic.error();
+            assert_eq!(detail.known_property().unwrap(), case.property)
+        }
+        CssErrorCode::InvalidColorSyntax if COLOR_DIAGNOSTICS.contains(&case.property) => {}
         other => panic!("{css}: grammar diagnostic, got {other:?}"),
     }
     assert_eq!(
@@ -514,10 +515,7 @@ fn invalid(case: &PropertyExpectation, value: &str) {
                 importance,
             )
             .unwrap_err();
-            assert!(
-                matches!(error.kind(), CssPropertyValueErrorKind::Grammar(_)),
-                "{value:?}: {error:?}"
-            );
+            assert!(error.code().is_some(), "{value:?}: {error:?}");
             let report = text_report(case, value, grammar, importance);
             assert!(report.syntax().is_none(), "{value:?}: retained");
             assert!(!report.is_clean(), "{value:?}: diagnostic");
@@ -735,11 +733,12 @@ fn every_record_rejected_row_drops_atomically_through_every_front_and_importance
                     panic!("{css}: one diagnostic")
                 };
                 assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-                match diagnostic.error().kind() {
-                    ErrorKind::InvalidPropertyValue(detail) => {
-                        assert_eq!(detail.property(), case.property, "{css}")
+                match diagnostic.error().code() {
+                    CssErrorCode::InvalidPropertyValue => {
+                        let detail = diagnostic.error();
+                        assert_eq!(detail.known_property().unwrap(), case.property, "{css}")
                     }
-                    ErrorKind::InvalidColorSyntax(_)
+                    CssErrorCode::InvalidColorSyntax
                         if COLOR_DIAGNOSTICS.contains(&case.property) => {}
                     other => panic!("{css}: grammar diagnostic, got {other:?}"),
                 }
@@ -786,9 +785,11 @@ fn every_record_pending_substitution_is_admitted_and_reenters_strictly_and_repea
                         let replacement = parse_component_values(text).unwrap();
                         let snapshot = replacement.clone();
                         for _ in 0..2 {
-                            assert_eq!(
-                                handle.reenter(replacement.clone()).unwrap_err().kind(),
-                                &CssExpansionErrorKind::ResidualSubstitution,
+                            assert!(
+                                handle
+                                    .reenter(replacement.clone())
+                                    .unwrap_err()
+                                    .is_residual_substitution(),
                                 "{label}: {text}"
                             );
                         }
@@ -815,14 +816,10 @@ fn every_record_pending_substitution_is_admitted_and_reenters_strictly_and_repea
                         .unwrap_err();
                         for _ in 0..2 {
                             let error = handle.reenter(replacement.clone()).unwrap_err();
-                            let CssExpansionErrorKind::InvalidReplacement(detail) = error.kind()
-                            else {
+                            let Some(detail) = error.replacement_error() else {
                                 panic!("{label}: {text}: strict replacement, got {error:?}")
                             };
-                            assert!(
-                                matches!(detail.kind(), CssPropertyValueErrorKind::Grammar(_)),
-                                "{label}: {text}: {detail:?}"
-                            );
+                            assert!(detail.code().is_some(), "{label}: {text}: {detail:?}");
                             assert_eq!(detail, &direct, "{label}: {text}: checked failure");
                         }
                     }
@@ -953,7 +950,7 @@ fn every_record_checked_fronts_and_reentry_reject_recovered_ordinary_values_at_o
                     };
                     for _ in 0..2 {
                         let error = handle.reenter(components.clone()).unwrap_err();
-                        let CssExpansionErrorKind::InvalidReplacement(error) = error.kind() else {
+                        let Some(error) = error.replacement_error() else {
                             panic!("{text:?}: original replacement closure, got {error:?}")
                         };
                         assert_closure(error, &origin, &text);
@@ -1140,11 +1137,8 @@ fn every_record_sheet_recovery_retains_original_occurrences_within_exact_contrib
             )
             .unwrap_err();
             assert_eq!(
-                error.kind(),
-                &CssNormalizationErrorKind::LimitExceeded {
-                    resource: CssNormalizationResource::Contributions,
-                    limit: count - 1,
-                },
+                error.exhausted_limit(),
+                Some((CssNormalizationResource::Contributions, count - 1)),
                 "{css}"
             );
             assert_eq!(error.declaration_order(), Some(0));
@@ -1358,11 +1352,8 @@ fn every_record_checked_fronts_reject_an_authored_importance_annotation_at_its_t
                         importance,
                     )
                     .unwrap_err();
-                    assert!(
-                        matches!(error.kind(), CssPropertyValueErrorKind::Grammar(_)),
-                        "{text}: {error:?}"
-                    );
-                    assert_eq!(error.origin(), origin, "{text}");
+                    assert!(error.code().is_some(), "{text}: {error:?}");
+                    assert_eq!(&error.origin(), origin, "{text}");
                     let report = text_report(case, &text, grammar, importance);
                     assert!(report.syntax().is_none(), "{text}: retained");
                     assert!(!report.is_clean(), "{text}: diagnostic");
@@ -1463,13 +1454,15 @@ fn every_record_substitution_after_an_ordinary_value_defers_the_whole_value() {
 
 /// A grammar diagnostic's kind and the responsible token it names, as
 /// `Kind:token`.
-fn token_of_kind(kind: &ErrorKind) -> String {
-    let (label, token) = match kind {
-        ErrorKind::InvalidPropertyValue(detail) => ("InvalidPropertyValue", detail.encountered()),
-        ErrorKind::InvalidColorSyntax(detail) => ("InvalidColorSyntax", detail.encountered()),
-        other => return format!("<{other:?}>"),
+fn token_of_kind(error: &dyn GrammarFacts) -> String {
+    let label = match error.grammar_code() {
+        Some(CssErrorCode::InvalidPropertyValue) => "InvalidPropertyValue",
+        Some(CssErrorCode::InvalidColorSyntax) => "InvalidColorSyntax",
+        _ => return format!("<{error:?}>"),
     };
-    let token = token.map_or("<none>", CssTokenSummary::authored);
+    let token = error
+        .responsible_token()
+        .map_or("<none>", CssTokenSummary::authored);
     format!("{label}:{token}")
 }
 
@@ -1479,7 +1472,7 @@ fn sheet_responsible_token(case: &PropertyExpectation, value: &str) -> Option<St
     parse_sheet(&format!(".a{{{}: {value}}}", case.name))
         .diagnostics()
         .first()
-        .map(|diagnostic| token_of_kind(diagnostic.error().kind()))
+        .map(|diagnostic| token_of_kind(diagnostic.error()))
 }
 
 /// The responsible token a front reports for `value`, or `None` when the
@@ -1505,10 +1498,7 @@ fn responsible_token(case: &PropertyExpectation, front: Front, value: &str) -> O
                 CssImportance::Normal,
             )
             .err()
-            .map(|error| match error.kind() {
-                CssPropertyValueErrorKind::Grammar(kind) => of_kind(kind),
-                other => format!("<{other:?}>"),
-            });
+            .map(|error| of_kind(&error));
         }
         Front::TextName | Front::TextGrammar => text_report(
             case,
@@ -1521,7 +1511,7 @@ fn responsible_token(case: &PropertyExpectation, front: Front, value: &str) -> O
     };
     diagnostics
         .first()
-        .map(|diagnostic| of_kind(diagnostic.error().kind()))
+        .map(|diagnostic| of_kind(diagnostic.error()))
 }
 
 /// The crate's location rule: a token that cannot continue the production

@@ -153,10 +153,7 @@ fn invalid_z_index_values_fail_typed_checking_and_recovery_preserves_neighbors()
             CssImportance::Normal,
         )
         .unwrap_err();
-        assert!(matches!(
-            error.kind(),
-            CssPropertyValueErrorKind::Grammar(_)
-        ));
+        assert!(error.code().is_some());
     }
     let components = CssComponentValues::try_new(
         vec![CssComponentValue::try_ident("none").unwrap()],
@@ -173,7 +170,7 @@ fn invalid_z_index_values_fail_typed_checking_and_recovery_preserves_neighbors()
         CssSerializedOrigin::Token(origin) | CssSerializedOrigin::End(Some(origin)) => origin,
         other => panic!("responsible origin: {other:?}"),
     };
-    assert_eq!(responsible, &CssValueOrigin::Programmatic);
+    assert_eq!(responsible, CssValueOrigin::Programmatic);
 }
 
 #[test]
@@ -248,23 +245,20 @@ fn pending_z_index_reentry_is_strict_atomic_and_preserves_replacement_origins() 
         .chain(["1; color:red", "1!important"])
     {
         assert!(
-            matches!(
-                handle
-                    .reenter(parse_component_values(text).unwrap())
-                    .unwrap_err()
-                    .kind(),
-                CssExpansionErrorKind::InvalidReplacement(_)
-            ),
+            handle
+                .reenter(parse_component_values(text).unwrap())
+                .unwrap_err()
+                .replacement_error()
+                .is_some(),
             "{text}"
         );
     }
     for text in ["var(--again)", "env(level)", "attr(data-level)"] {
-        assert_eq!(
+        assert!(
             handle
                 .reenter(parse_component_values(text).unwrap())
                 .unwrap_err()
-                .kind(),
-            &CssExpansionErrorKind::ResidualSubstitution
+                .is_residual_substitution()
         );
     }
     for text in ["auto", "+0002147483648", "calc(1.5)", "inherit"] {
@@ -340,11 +334,8 @@ fn normalized_z_index_keeps_order_importance_and_atomic_cumulative_limits() {
     )
     .unwrap_err();
     assert_eq!(
-        error.kind(),
-        &CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: 2
-        }
+        error.exhausted_limit(),
+        Some((CssNormalizationResource::Contributions, 2))
     );
     assert_eq!(error.declaration_order(), Some(2));
     assert!(

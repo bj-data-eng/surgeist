@@ -2,6 +2,8 @@
 //! and the shared CSSOM identifier serialization contract. Contextual execution
 //! remains outside these authored models.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::important_declaration as declaration;
 use surgeist_css::*;
 
@@ -34,9 +36,10 @@ fn checked_scheme_names_apply_only_generic_and_local_exclusions() {
         "revert",
         "REVERT-LAYER",
     ] {
-        assert_eq!(
-            CssColorSchemeName::try_new(CssIdent::try_new(name).unwrap()).unwrap_err(),
-            CssColorSchemeConstructionError::ReservedName,
+        assert!(
+            CssColorSchemeName::try_new(CssIdent::try_new(name).unwrap())
+                .unwrap_err()
+                .is_reserved_name(),
             "{name}"
         );
     }
@@ -55,17 +58,14 @@ fn checked_scheme_names_apply_only_generic_and_local_exclusions() {
     }
     for name in ["", "bad\0name"] {
         let error = CssIdent::try_new(name).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            CssComponentValueErrorKind::InvalidIdentifier,
-            "{name:?}"
-        );
+        assert!(error.is_invalid_identifier(), "{name:?}");
         assert_eq!(error.origin(), &CssValueOrigin::Programmatic);
     }
     for only in [false, true] {
-        assert_eq!(
-            CssColorScheme::try_new(vec![], only).unwrap_err(),
-            CssColorSchemeConstructionError::EmptySchemes
+        assert!(
+            CssColorScheme::try_new(vec![], only)
+                .unwrap_err()
+                .is_empty_schemes()
         );
     }
 }
@@ -156,18 +156,21 @@ fn scheme_modifier_consumes_cumulative_nodes_and_late_bytes_atomically() {
     for (limits, kind) in [
         (
             CssSerializationLimits::new(3, 4, 15),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             CssSerializationLimits::new(4, 3, 15),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             CssSerializationLimits::new(4, 4, 14),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
-        assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+            kind
+        );
         assert_eq!(value, &snapshot);
         assert_eq!(source.value_components(), &original);
         assert_eq!(value.serialize_specified(exact).unwrap(), "light dark only");
@@ -179,12 +182,11 @@ fn scheme_modifier_consumes_cumulative_nodes_and_late_bytes_atomically() {
             .unwrap(),
         "normal"
     );
-    assert_eq!(
+    assert!(
         normal
             .serialize_specified(CssSerializationLimits::new(1, 1, 5))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
 }
 
@@ -202,12 +204,11 @@ fn escaped_custom_scheme_bytes_share_the_aggregate_budget() {
         r"light Future\ Theme only"
     );
     for bytes in [12, 23] {
-        assert_eq!(
+        assert!(
             value
                 .serialize_specified(CssSerializationLimits::new(4, 4, bytes))
                 .unwrap_err()
-                .kind(),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit
+                .is_byte_limit()
         );
         assert_eq!(value, original);
     }
@@ -249,18 +250,21 @@ fn keyword_models_emit_source_derived_canonical_hints_with_exact_limits() {
         for (limits, kind) in [
             (
                 CssSerializationLimits::new(0, 1, expected.len()),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                SerializationFailure::InputNodeLimit,
             ),
             (
                 CssSerializationLimits::new(1, 0, expected.len()),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
                 CssSerializationLimits::new(1, 1, expected.len() - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                SerializationFailure::ByteLimit,
             ),
         ] {
-            assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+            assert_eq!(
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+                kind
+            );
         }
     }
     for (text, value, expected) in [
@@ -289,18 +293,21 @@ fn keyword_models_emit_source_derived_canonical_hints_with_exact_limits() {
         for (limits, kind) in [
             (
                 CssSerializationLimits::new(0, 1, expected.len()),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                SerializationFailure::InputNodeLimit,
             ),
             (
                 CssSerializationLimits::new(1, 0, expected.len()),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
                 CssSerializationLimits::new(1, 1, expected.len() - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                SerializationFailure::ByteLimit,
             ),
         ] {
-            assert_eq!(value.serialize_specified(limits).unwrap_err().kind(), kind);
+            assert_eq!(
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+                kind
+            );
         }
     }
 }
@@ -322,11 +329,8 @@ fn reserved_scheme_failure_maps_to_the_original_late_mixed_source_token() {
         CssImportance::Important,
     )
     .unwrap_err();
-    assert!(matches!(
-        error.kind(),
-        CssPropertyValueErrorKind::Grammar(_)
-    ));
-    assert_eq!(error.origin(), &CssSerializedOrigin::Token(original_tail));
+    assert!(error.code().is_some());
+    assert_eq!(error.origin(), CssSerializedOrigin::Token(original_tail));
     assert_eq!(components, snapshot);
 }
 

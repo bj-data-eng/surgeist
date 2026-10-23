@@ -5,11 +5,10 @@
 
 use crate::css::support::rules::{invalid_descriptor, rejected_bang};
 use surgeist_css::{
-    CssAuthoredFontFaceDescriptorValue as Authored, CssComponentValueErrorKind,
-    CssComponentValueLimits, CssErrorCode, CssFontFaceDescriptor, CssFontFaceDescriptorKind,
-    CssFontFaceDescriptors, CssFontFaceValueErrorKind, CssNormalizedItem, CssRecoveryAction,
-    CssRule, CssRuleContextKindRef, CssSerializedOrigin, CssValueOrigin, normalize_report,
-    parse_component_values, parse_font_face_descriptor_value, parse_sheet,
+    CssAuthoredFontFaceDescriptorValue as Authored, CssComponentValueLimits, CssErrorCode,
+    CssFontFaceDescriptor, CssFontFaceDescriptorKind, CssFontFaceDescriptors, CssNormalizedItem,
+    CssRecoveryAction, CssRule, CssRuleContextKindRef, CssSerializedOrigin, CssValueOrigin,
+    normalize_report, parse_component_values, parse_font_face_descriptor_value, parse_sheet,
 };
 
 fn kind_from_sheet(name: &str, value: &str) -> CssFontFaceDescriptorKind {
@@ -69,7 +68,7 @@ fn ordinary_grammar(name: &str, valid: &[&str], invalid: &[&str]) {
             Default::default(),
         )
         .unwrap_err();
-        let CssFontFaceValueErrorKind::Grammar(detail) = error.kind() else {
+        let Some(detail) = error.diagnostic() else {
             panic!("{name}: {value}: grammar failure: {error:?}")
         };
         // A top-level `!` is the first token <declaration-value> excludes.
@@ -146,24 +145,20 @@ fn pending_recovery_and_provenance(name: &str, first: &str, last: &str, invalid:
     let error = pending
         .reparse_after_substitution(invalid_components, Default::default())
         .unwrap_err();
-    assert!(matches!(
-        error.kind(),
-        CssFontFaceValueErrorKind::Grammar(_)
-    ));
+    assert!(error.diagnostic().is_some());
     let CssSerializedOrigin::Token(CssValueOrigin::Parsed(origin)) = error.origin() else {
         panic!("strict failure retains replacement provenance")
     };
     assert_eq!(origin.source().as_str(), invalid);
     for residual in ["env(selection)", "var(--selection)"] {
-        assert_eq!(
+        assert!(
             pending
                 .reparse_after_substitution(
                     parse_component_values(residual).unwrap(),
                     Default::default()
                 )
                 .unwrap_err()
-                .kind(),
-            &CssFontFaceValueErrorKind::ResidualSubstitution
+                .is_residual_substitution()
         );
     }
     for text in [
@@ -198,7 +193,7 @@ fn pending_recovery_and_provenance(name: &str, first: &str, last: &str, invalid:
             Default::default(),
         )
         .unwrap_err();
-        let CssFontFaceValueErrorKind::Grammar(detail) = error.kind() else {
+        let Some(detail) = error.diagnostic() else {
             panic!("{name}: {text}: grammar failure: {error:?}")
         };
         expected.assert_kind(detail);
@@ -211,9 +206,11 @@ fn pending_recovery_and_provenance(name: &str, first: &str, last: &str, invalid:
         CssComponentValueLimits::try_new(256, 0, usize::MAX).unwrap(),
     )
     .unwrap_err();
-    assert_eq!(
-        error.kind(),
-        &CssFontFaceValueErrorKind::Component(CssComponentValueErrorKind::ComponentLimit)
+    assert!(
+        error
+            .component_error()
+            .is_some_and(|error| error.is_component_limit()),
+        "{error:?}"
     );
     assert_eq!(components, original);
 

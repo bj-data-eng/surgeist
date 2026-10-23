@@ -9,12 +9,12 @@ use surgeist_color::{
 use surgeist_css::{
     CssAuthoredColorOrdinaryLimits, CssAuthoredColorOutcome, CssColorBank, CssColorError,
     CssColorFactIdentity, CssColorFacts, CssColorGrammarRequest, CssColorInput, CssColorInputKind,
-    CssColorOperationOwner, CssColorOrdinaryError, CssColorOrdinaryLimits, CssColorOrdinaryOutcome,
+    CssColorOperationOwner, CssColorOrdinaryLimits, CssColorOrdinaryOutcome,
     CssColorOrdinaryResource, CssColorPaletteEntry, CssColorParse, CssColorParseAction,
-    CssColorParseOutcome, CssColorParseStep, CssColorPropertyFacts, CssColorSchemeFact,
-    CssColorSlot, CssColorStandardFailure, CssColorStandardFailureKind, CssColorTransform,
-    CssColorUnavailable, CssColorUnsupported, CssDeviceColorFact, CssImportance, CssKnownProperty,
-    CssKnownPropertyValueRef, CssPropertyNameRef, CssUsedColorCheckpoint,
+    CssColorParseOutcome, CssColorParseStep, CssColorPropertyFacts, CssColorResolveError,
+    CssColorSchemeFact, CssColorSlot, CssColorStandardFailure, CssColorStandardFailureKind,
+    CssColorTransform, CssColorUnavailable, CssColorUnsupported, CssDeviceColorFact, CssImportance,
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssUsedColorCheckpoint,
     parse_property_value_text, parse_used_color, resolve_authored_color,
 };
 
@@ -632,33 +632,28 @@ fn failure_kind(kind: CssColorStandardFailureKind) -> &'static str {
 }
 
 /// The error category and its facts, then the `Display` chain.
-fn ordinary_error(error: &CssColorOrdinaryError) -> String {
-    let category = match error {
-        CssColorOrdinaryError::Operation(operation) => match operation {
-            CssColorError::Facts(_) => "operation:facts".to_owned(),
-            CssColorError::MalformedInput { offset } => {
-                format!("operation:malformed-input:offset={offset}")
-            }
-            CssColorError::Unavailable(unavailable) => {
-                format!("operation:unavailable:{}", unavailable_name(unavailable))
-            }
-            CssColorError::Unsupported(unsupported) => {
-                format!("operation:unsupported:{}", unsupported_name(unsupported))
-            }
-            #[allow(unreachable_patterns)]
-            _ => "operation:future".to_owned(),
-        },
-        CssColorOrdinaryError::Limit {
-            resource,
-            required,
-            allowed,
-        } => format!(
-            "limit:{}:required={required}:allowed={allowed}",
-            resource_name(*resource)
-        ),
-        CssColorOrdinaryError::Allocation { resource } => {
-            format!("allocation:{}", resource_name(*resource))
+fn ordinary_error(error: &CssColorResolveError) -> String {
+    let category = if let Some(operation) = error.color_error() {
+        if operation.fact_defect().is_some() {
+            "operation:facts".to_owned()
+        } else if let Some(offset) = operation.malformed_input_offset() {
+            format!("operation:malformed-input:offset={offset}")
+        } else if let Some(unavailable) = operation.unavailable() {
+            format!("operation:unavailable:{}", unavailable_name(&unavailable))
+        } else if let Some(unsupported) = operation.unsupported() {
+            format!("operation:unsupported:{}", unsupported_name(&unsupported))
+        } else {
+            "operation:future".to_owned()
         }
+    } else if let Some((resource, allowed, required)) = error.exhausted_limit() {
+        format!(
+            "limit:{}:required={required}:allowed={allowed}",
+            resource_name(resource)
+        )
+    } else if let Some(resource) = error.failed_allocation() {
+        format!("allocation:{}", resource_name(resource))
+    } else {
+        "future".to_owned()
     };
     format!("{category} | {}", super::error_text(error))
 }
@@ -695,5 +690,6 @@ pub(super) fn resource_name(resource: CssColorOrdinaryResource) -> &'static str 
         CssColorOrdinaryResource::ArithmeticRecords => "arithmetic-records",
         CssColorOrdinaryResource::EvaluationRecords => "evaluation-records",
         CssColorOrdinaryResource::Actions => "actions",
+        _ => "future",
     }
 }

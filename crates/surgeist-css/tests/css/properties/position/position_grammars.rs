@@ -452,12 +452,13 @@ fn object_and_transform_origin_invalid_z_mutations_drop_only_the_declaration() {
         {
             reasons.push(format!("span {:?}", diagnostic.span()));
         }
-        match diagnostic.error().kind() {
-            ErrorKind::InvalidPropertyValue(detail) => {
+        match diagnostic.error().code() {
+            CssErrorCode::InvalidPropertyValue => {
+                let detail = diagnostic.error();
                 if let Some(known_property) = known_property
-                    && detail.property() != known_property
+                    && detail.known_property().unwrap() != known_property
                 {
-                    reasons.push(format!("property {:?}", detail.property()));
+                    reasons.push(format!("property {:?}", detail.known_property().unwrap()));
                 }
                 match detail.encountered() {
                     Some(encountered)
@@ -668,10 +669,13 @@ fn mask_shorthand_rejects_a_three_component_position_and_recovers_at_the_declara
         diagnostic.span().end().byte_offset().value(),
         source.find(';').expect("mask declaration semicolon") + 1,
     );
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("expected structured mask property-value error");
-    };
-    assert_eq!(detail.property(), CssKnownProperty::Mask);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "expected structured mask property-value error"
+    );
+    assert_eq!(detail.known_property().unwrap(), CssKnownProperty::Mask);
     let encountered = detail.encountered().expect("invalid position start token");
     assert_eq!(encountered.kind(), CssTokenKind::Ident);
     assert_eq!(encountered.authored(), "left");

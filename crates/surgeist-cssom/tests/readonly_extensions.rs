@@ -179,8 +179,8 @@ fn query_collection_keeps_identity_current_recovery_and_historical_provenance() 
         native
             .serialize_cssom(Default::default())
             .unwrap_err()
-            .kind(),
-        CssRuleCssomSerializationErrorKind::FormatUnavailable(CssRuleCssomFormat::CustomMedia)
+            .unavailable_format(),
+        Some(CssRuleCssomFormat::CustomMedia)
     );
 
     let CssomAuthoredRule::Ordinary(CssRule::CustomMedia(original)) =
@@ -310,8 +310,8 @@ fn profile_getters_serialize_effective_values_and_distinguish_absence_from_empty
         original
             .serialize_cssom(Default::default())
             .unwrap_err()
-            .kind(),
-        CssRuleCssomSerializationErrorKind::FormatUnavailable(CssRuleCssomFormat::ColorProfile)
+            .unavailable_format(),
+        Some(CssRuleCssomFormat::ColorProfile)
     );
 }
 
@@ -496,26 +496,28 @@ fn owner_kind_missing_capture_and_output_limits_return_typed_errors_without_muta
             .unwrap(),
         expected
     );
-    for (policy, kind) in [
+    type Case = (CssSerializationLimits, fn(&CssSerializationError) -> bool);
+    let cases: [Case; 3] = [
         (
             CssSerializationLimits::new(1, 2, 99),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationError::is_input_node_limit,
         ),
         (
             CssSerializationLimits::new(2, 1, 99),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationError::is_projection_node_limit,
         ),
         (
             CssSerializationLimits::new(2, 2, expected.len() - 1),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            CssSerializationError::is_byte_limit,
         ),
-    ] {
+    ];
+    for (policy, kind) in cases {
         assert!(
-            matches!(profile_capture(&store, &snapshot, &ids[1]).and_then(|value| value.components(policy)), Err(CssomError::Value(error)) if error.kind() == kind)
+            matches!(profile_capture(&store, &snapshot, &ids[1]).and_then(|value| value.components(policy)), Err(CssomError::Value(error)) if kind(&error))
         );
     }
     assert!(
-        matches!(profile_capture(&store, &snapshot, &ids[1]).and_then(|value| value.name(CssSerializationLimits::new(0,1,99))), Err(CssomError::Value(error)) if error.kind() == CssSpecifiedValueSerializationErrorKind::InputNodeLimit)
+        matches!(profile_capture(&store, &snapshot, &ids[1]).and_then(|value| value.name(CssSerializationLimits::new(0,1,99))), Err(CssomError::Value(error)) if error.is_input_node_limit())
     );
     let media = media(&store, &snapshot, &ids[0]);
     assert!(matches!(

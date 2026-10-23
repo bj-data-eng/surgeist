@@ -4,8 +4,8 @@ use surgeist_css::{
     CssComponentValue, CssComponentValueRef, CssComponentValues, CssCustomPropertyName,
     CssDeclarationList, CssErrorCode, CssFontFaceDescriptorKind, CssImportance, CssKnownProperty,
     CssMediaQuery, CssMediaType, CssParseReport, CssPropertyNameRef, CssRecoveryAction, CssRule,
-    CssSelector, CssSheet, CssStyleRule, CssValueTokenRef, ErrorKind, parse_declaration,
-    parse_property_value, parse_sheet, parse_style_attribute, validate_sheet,
+    CssSelector, CssSheet, CssStyleRule, CssValueTokenRef, parse_declaration, parse_property_value,
+    parse_sheet, parse_style_attribute, validate_sheet,
 };
 
 fn style<'a>(rule: &'a CssRule, class: &str) -> &'a CssStyleRule {
@@ -63,7 +63,7 @@ fn required_media_block_at_eof_reports_actual_missing_input_without_an_authored_
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropAtRule);
         assert_eq!(diagnostic.error().code(), CssErrorCode::UnexpectedEnd);
         assert!(
-            matches!(diagnostic.error().kind(), ErrorKind::UnexpectedEnd(_)),
+            diagnostic.error().code() == CssErrorCode::UnexpectedEnd,
             "EOF has no authored encountered token: {diagnostic:?}"
         );
         let at = diagnostic.error().position();
@@ -87,11 +87,14 @@ fn authored_semicolon_ends_media_statement_and_reports_missing_body_at_the_bound
     };
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropAtRule);
     assert_eq!(diagnostic.error().code(), CssErrorCode::InvalidAtRuleBody);
-    let ErrorKind::InvalidAtRuleBody(detail) = diagnostic.error().kind() else {
-        panic!("defined media body is missing after the statement terminator")
-    };
-    assert_eq!(detail.name().as_str(), "media");
-    assert_eq!(detail.production().as_str(), "baseline.rule.media");
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidAtRuleBody,
+        "defined media body is missing after the statement terminator"
+    );
+    assert_eq!(detail.at_rule().unwrap().as_str(), "media");
+    assert_eq!(detail.production().unwrap().as_str(), "baseline.rule.media");
     assert!(detail.encountered().is_none());
     let at = diagnostic.error().position();
     assert_eq!(at.byte_offset().value(), 14);
@@ -189,10 +192,13 @@ fn invalid_selector_list_discards_the_entire_style_and_unknown_at_rule_without_l
     assert_eq!(selector.error().code(), CssErrorCode::InvalidSelector);
     assert_eq!(unknown.action(), CssRecoveryAction::DropAtRule);
     assert_eq!(unknown.error().code(), CssErrorCode::UnknownAtRule);
-    let ErrorKind::UnknownAtRule(detail) = unknown.error().kind() else {
-        panic!("unknown at-rule identity")
-    };
-    assert_eq!(detail.name().as_str(), "unknown");
+    let detail = unknown.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::UnknownAtRule,
+        "unknown at-rule identity"
+    );
+    assert_eq!(detail.at_rule().unwrap().as_str(), "unknown");
     for (diagnostic, unit) in [(selector, ".bad,>{color:red}"), (unknown, "@unknown x;")] {
         let start = source.find(unit).unwrap();
         span(diagnostic.span(), start..start + unit.len());
@@ -280,11 +286,14 @@ fn identical_declaration_token_shapes_use_property_or_descriptor_grammar_from_th
         CssErrorCode::UnknownDescriptor
     );
     assert_eq!(descriptor_error.action(), CssRecoveryAction::DropDescriptor);
-    let ErrorKind::UnknownDescriptor(detail) = descriptor_error.error().kind() else {
-        panic!("descriptor context carried explicitly")
-    };
-    assert_eq!(detail.at_rule().as_str(), "font-face");
-    assert_eq!(detail.descriptor().as_str(), "color");
+    let detail = descriptor_error.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::UnknownDescriptor,
+        "descriptor context carried explicitly"
+    );
+    assert_eq!(detail.at_rule().unwrap().as_str(), "font-face");
+    assert_eq!(detail.descriptor().unwrap().as_str(), "color");
     strict_failure(source, &report);
 }
 

@@ -1,10 +1,10 @@
-use crate::{CssParseReport, Error};
+use crate::{CssError, CssParseReport};
 
 /// Clean-report assertions for crate-private tests.
 pub(crate) trait CssParseReportTestExt<T> {
     fn unwrap(self) -> T;
     fn expect(self, message: &str) -> T;
-    fn expect_err(self, message: &str) -> Error;
+    fn expect_err(self, message: &str) -> CssError;
 }
 
 impl<T> CssParseReportTestExt<T> for CssParseReport<T> {
@@ -18,7 +18,7 @@ impl<T> CssParseReportTestExt<T> for CssParseReport<T> {
         syntax
     }
 
-    fn expect_err(self, message: &str) -> Error {
+    fn expect_err(self, message: &str) -> CssError {
         let (_, diagnostics) = self.into_parts();
         diagnostics
             .into_iter()

@@ -8,6 +8,7 @@
 use std::fmt::Debug;
 
 use super::serialization_limits::{LimitKind, LimitLadder, Limits};
+use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::*;
 
 /// The sole declaration of the clean style attribute
@@ -82,16 +83,13 @@ pub fn expanded_longhands(source: &CssDeclaration) -> CssLonghandContributions {
 /// (a truncated argument list or a calculation's resolved type).
 #[track_caller]
 pub fn assert_color_grammar_failure(
-    result: Result<CssDeclaration, CssPropertyValueParseError>,
+    result: Result<CssDeclaration, CssPropertyValueError>,
     text: &str,
 ) {
     match result {
         Ok(declaration) => panic!("{text}: admitted {declaration:?}"),
         Err(error) => assert!(
-            matches!(
-                error.kind(),
-                CssPropertyValueErrorKind::Grammar(ErrorKind::InvalidColorSyntax(_))
-            ),
+            error.code() == Some(CssErrorCode::InvalidColorSyntax),
             "{text}: not a color syntax rejection: {error:?}"
         ),
     }
@@ -103,20 +101,22 @@ pub fn assert_color_grammar_failure(
 /// `property` whose own grammar rejected the value.
 #[track_caller]
 fn color_rejection_token<'a>(
-    kind: &'a ErrorKind,
+    code: Option<CssErrorCode>,
+    known_property: Option<CssKnownProperty>,
+    encountered: Option<&'a CssTokenSummary>,
     property: CssKnownProperty,
     text: &str,
+    error: &dyn std::fmt::Debug,
 ) -> &'a str {
-    let token = match kind {
-        ErrorKind::InvalidColorSyntax(detail) => detail.encountered(),
-        ErrorKind::InvalidPropertyValue(detail) if property != CssKnownProperty::Color => {
-            assert_eq!(detail.property(), property, "{text}");
-            detail.encountered()
+    match code {
+        Some(CssErrorCode::InvalidColorSyntax) => {}
+        Some(CssErrorCode::InvalidPropertyValue) if property != CssKnownProperty::Color => {
+            assert_eq!(known_property, Some(property), "{text}");
         }
-        _ => panic!("{property:?}:{text}: not a color value rejection: {kind:?}"),
-    };
-    token
-        .unwrap_or_else(|| panic!("{property:?}:{text}: no responsible token: {kind:?}"))
+        _ => panic!("{property:?}:{text}: not a color value rejection: {error:?}"),
+    }
+    encountered
+        .unwrap_or_else(|| panic!("{property:?}:{text}: no responsible token: {error:?}"))
         .authored()
 }
 
@@ -127,7 +127,7 @@ fn color_rejection_token<'a>(
 /// compare.
 #[track_caller]
 pub fn assert_color_value_rejected(
-    result: Result<CssDeclaration, CssPropertyValueParseError>,
+    result: Result<CssDeclaration, CssPropertyValueError>,
     property: CssKnownProperty,
     text: &str,
     responsible: &str,
@@ -140,7 +140,7 @@ pub fn assert_color_value_rejected(
 /// `at` of `text`.
 #[track_caller]
 pub fn assert_color_value_rejected_at(
-    result: Result<CssDeclaration, CssPropertyValueParseError>,
+    result: Result<CssDeclaration, CssPropertyValueError>,
     property: CssKnownProperty,
     text: &str,
     responsible: &str,
@@ -151,11 +151,19 @@ pub fn assert_color_value_rejected_at(
         Ok(declaration) => panic!("{text}: admitted {declaration:?}"),
         Err(error) => error,
     };
-    let CssPropertyValueErrorKind::Grammar(kind) = error.kind() else {
-        panic!("{text}: not a grammar rejection: {error:?}")
-    };
+    assert!(
+        error.code().is_some(),
+        "{text}: not a grammar rejection: {error:?}"
+    );
     assert_eq!(
-        color_rejection_token(kind, property, text),
+        color_rejection_token(
+            error.code(),
+            error.known_property(),
+            error.encountered(),
+            property,
+            text,
+            &error
+        ),
         responsible,
         "{text}"
     );
@@ -188,8 +196,16 @@ pub fn assert_color_text_rejected(
     let [diagnostic] = report.diagnostics() else {
         panic!("{text}: one diagnostic: {report:?}")
     };
+    let error = diagnostic.error();
     assert_eq!(
-        color_rejection_token(diagnostic.error().kind(), property, text),
+        color_rejection_token(
+            Some(error.code()),
+            error.known_property(),
+            error.encountered(),
+            property,
+            text,
+            error
+        ),
         responsible,
         "{text}"
     );
@@ -208,7 +224,11 @@ pub fn assert_color_limit_error(value: &CssColor, limits: Limits, kind: LimitKin
     let result = value.serialize_specified(limits);
     assert_eq!(result, value.serialize_specified(limits));
     assert_eq!(value, &before);
-    assert_eq!(result.unwrap_err().kind(), kind, "{limits:?}");
+    assert_eq!(
+        serialization_failure(&result.unwrap_err()),
+        kind,
+        "{limits:?}"
+    );
 }
 
 /// The [`LimitLadder`] of `serialize(value, limits)`: `expected` from exactly
@@ -240,7 +260,7 @@ pub fn assert_bounded_serialization<T>(
                 _ => return,
             };
             assert_eq!(
-                serialize(value, isolated).unwrap_err().kind(),
+                serialization_failure(&serialize(value, isolated).unwrap_err()),
                 kind,
                 "{isolated:?}"
             );
@@ -300,7 +320,11 @@ pub fn assert_scratch_serialization<T>(
             LimitKind::ByteLimit,
         ),
     ] {
-        assert_eq!(attempt(limits).unwrap_err().kind(), kind, "{limits:?}");
+        assert_eq!(
+            serialization_failure(&attempt(limits).unwrap_err()),
+            kind,
+            "{limits:?}"
+        );
     }
     assert_eq!(
         attempt(Limits::new(input, projection, bytes)).unwrap(),
@@ -344,10 +368,10 @@ pub fn originating_compound(value: &CssSelector) -> &CssCompoundSelector {
 /// error keeps that cause as its source.
 #[track_caller]
 pub fn assert_specified_construction_cause(error: &CssSelectorConstructionError, kind: LimitKind) {
-    let CssSelectorConstructionErrorKind::Specified(cause) = error.kind() else {
+    let Some(cause) = error.serialization_error() else {
         panic!("specified construction cause: {error:?}")
     };
-    assert_eq!(cause.kind(), kind, "{error:?}");
+    assert_eq!(serialization_failure(cause), kind, "{error:?}");
     let source = std::error::Error::source(error).expect("original specified source");
     assert_eq!(source.downcast_ref::<CssSerializationError>(), Some(cause));
 }
@@ -369,7 +393,7 @@ pub fn assert_unrepresentable_construction<T: Debug>(
 #[track_caller]
 pub fn assert_empty_list_construction<T: Debug>(result: Result<T, CssSelectorConstructionError>) {
     let error = result.expect_err("empty strict list admitted");
-    assert_eq!(error.kind(), &CssSelectorConstructionErrorKind::EmptyList);
+    assert!(error.is_empty_list(), "{error:?}");
     assert!(std::error::Error::source(&error).is_none());
 }
 

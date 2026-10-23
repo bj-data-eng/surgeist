@@ -1,3 +1,4 @@
+use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::math_depth::MathDepthBoundary;
 use crate::css::support::value_assertions::assert_component_rejected;
 use crate::css::support::value_assertions::assert_first_property_diagnostic;
@@ -360,17 +361,17 @@ fn shape_checked_scalars_reject_invalid_public_construction() {
     assert_component_rejected(
         CssSpecifiedNonNegativeLength::try_from_component,
         CssComponentValue::try_token("10%").unwrap(),
-        surgeist_css::CssNumericConstructionErrorKind::RootDomainMismatch,
+        NumericFailure::RootDomainMismatch,
     );
     assert_component_rejected(
         CssSpecifiedNonNegativeLength::try_from_component,
         CssComponentValue::try_dimension("-1", "px").unwrap(),
-        surgeist_css::CssNumericConstructionErrorKind::OutOfRange,
+        NumericFailure::OutOfRange,
     );
     assert_component_rejected(
         CssSpecifiedNonNegativeLengthPercentage::try_from_component,
         CssComponentValue::try_token("-1%").unwrap(),
-        surgeist_css::CssNumericConstructionErrorKind::OutOfRange,
+        NumericFailure::OutOfRange,
     );
 }
 
@@ -727,12 +728,12 @@ fn filter_checked_scalars_and_lists_reject_unrepresentable_states() {
     assert_component_rejected(
         CssSpecifiedNonNegativeLength::try_from_component,
         CssComponentValue::try_dimension("-1", "px").unwrap(),
-        surgeist_css::CssNumericConstructionErrorKind::OutOfRange,
+        NumericFailure::OutOfRange,
     );
     assert_component_rejected(
         CssSpecifiedLength::try_from_component,
         CssComponentValue::try_token("1%").unwrap(),
-        surgeist_css::CssNumericConstructionErrorKind::RootDomainMismatch,
+        NumericFailure::RootDomainMismatch,
     );
     assert!(CssFilterFunctionList::try_new(Vec::new()).is_none());
 }
@@ -1339,17 +1340,17 @@ fn transform_checked_scalars_and_lists_reject_unrepresentable_states() {
     assert_component_rejected(
         CssSpecifiedLengthPercentage::try_from_component,
         CssComponentValue::try_token("auto").unwrap(),
-        surgeist_css::CssNumericConstructionErrorKind::RootDomainMismatch,
+        NumericFailure::RootDomainMismatch,
     );
     assert_component_rejected(
         CssSpecifiedLength::try_from_component,
         CssComponentValue::try_token("10%").unwrap(),
-        surgeist_css::CssNumericConstructionErrorKind::RootDomainMismatch,
+        NumericFailure::RootDomainMismatch,
     );
     assert_component_rejected(
         CssSpecifiedNonNegativeLength::try_from_component,
         CssComponentValue::try_dimension("-1", "px").unwrap(),
-        surgeist_css::CssNumericConstructionErrorKind::OutOfRange,
+        NumericFailure::OutOfRange,
     );
     assert!(CssTransformFunctionList::try_new(Vec::new()).is_none());
 }

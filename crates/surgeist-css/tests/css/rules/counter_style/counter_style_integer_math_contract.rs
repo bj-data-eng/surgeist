@@ -4,11 +4,10 @@
 //! and numeric range clamping to computed/used values, preserving specified math.
 
 use surgeist_css::{
-    CssComponentValueErrorKind, CssComponentValueLimits, CssCounterStyleDescriptorKind as Kind,
+    CssComponentValueLimits, CssCounterStyleDescriptorKind as Kind,
     CssCounterStyleDescriptorValue as Value, CssCounterStyleDescriptorValueRef as View,
-    CssCounterStyleRule, CssCounterStyleValueErrorKind as Failure, CssErrorCode, CssRecoveryAction,
-    CssRule, CssSerializationLimits as SerializationLimits,
-    CssSpecifiedValueSerializationErrorKind as SerializationError, parse_component_values,
+    CssCounterStyleRule, CssErrorCode, CssRecoveryAction, CssRule,
+    CssSerializationLimits as SerializationLimits, parse_component_values,
     parse_counter_style_descriptor_value, parse_sheet, validate_sheet,
 };
 
@@ -297,12 +296,11 @@ fn strict_checked_math_rejects_recovered_closures_and_residual_substitution() {
         let error = pending
             .reparse_after_substitution(parse_component_values(input).unwrap(), Default::default())
             .unwrap_err();
-        let expected = if input.ends_with(')') {
-            Failure::ResidualSubstitution
+        if input.ends_with(')') {
+            assert!(error.is_residual_substitution(), "{input}: {error:?}");
         } else {
-            Failure::RecoveredComponent
-        };
-        assert_eq!(error.kind(), &expected, "{input}");
+            assert!(error.is_recovered_component(), "{input}: {error:?}");
+        }
     }
     // Counter Styles 3 §3.1.5: fixed takes an <integer>; calc(1px) is a
     // <length>, and a math function of the wrong type is responsible as a
@@ -313,21 +311,20 @@ fn strict_checked_math_rejects_recovered_closures_and_residual_substitution() {
             Default::default(),
         )
         .unwrap_err();
-    let Failure::Grammar(detail) = error.kind() else {
+    let Some(detail) = error.diagnostic() else {
         panic!("grammar failure: {error:?}")
     };
     crate::css::support::rules::invalid_descriptor("counter-style", "system")
         .at("calc(")
         .assert_kind(detail);
-    assert_eq!(
+    assert!(
         Value::try_from_components(
             Kind::System,
             parse_component_values("fixed calc(1 + 1").unwrap(),
             Default::default(),
         )
         .unwrap_err()
-        .kind(),
-        &Failure::RecoveredComponent
+        .is_recovered_component()
     );
 }
 
@@ -344,24 +341,23 @@ fn math_projection_byte_failures_are_atomic_and_checked_graph_limits_are_cumulat
             .unwrap(),
         expected
     );
-    assert_eq!(
+    assert!(
         value
             .serialize_specified(SerializationLimits::new(65536, 262144, expected.len() - 1))
             .unwrap_err()
-            .kind(),
-        SerializationError::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(value, retained);
     let input = parse_component_values("fixed calc(1 + 1)").unwrap();
-    assert_eq!(
+    assert!(
         Value::try_from_components(
             Kind::System,
             input.clone(),
             CssComponentValueLimits::try_new(256, 2, 65536).unwrap()
         )
         .unwrap_err()
-        .kind(),
-        &Failure::Component(CssComponentValueErrorKind::ComponentLimit)
+        .component_error()
+        .is_some_and(|error| error.is_component_limit())
     );
     let pending = Value::try_from_components(
         Kind::System,
@@ -369,15 +365,15 @@ fn math_projection_byte_failures_are_atomic_and_checked_graph_limits_are_cumulat
         Default::default(),
     )
     .unwrap();
-    assert_eq!(
+    assert!(
         pending
             .reparse_after_substitution(
                 input,
                 CssComponentValueLimits::try_new(256, 65536, 1).unwrap()
             )
             .unwrap_err()
-            .kind(),
-        &Failure::Component(CssComponentValueErrorKind::ByteLimit)
+            .component_error()
+            .is_some_and(|error| error.is_byte_limit())
     );
     assert!(matches!(pending.view(), View::Pending(_)));
 }

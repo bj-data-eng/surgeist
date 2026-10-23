@@ -109,11 +109,10 @@ fn metadata_and_initials() {
                 assert_eq!(metadata.grammar(), handle);
                 observed.push(property);
             }
-            Err(CssPropertyMetadataError::Unavailable(g)) => {
+            Err(error) => {
                 assert!(!expected.contains(&property));
-                assert_eq!(g, handle);
+                assert_eq!(error.grammar(), handle);
             }
-            other => panic!("unexpected capability result: {other:?}"),
         }
     }
     assert!(unexpected.is_empty(), "unexpected metadata: {unexpected:?}");
@@ -376,13 +375,12 @@ fn grammar_identity_and_reentry() {
             .reenter(parse_component_values("bogus").unwrap())
             .is_err()
     );
-    assert!(matches!(
+    assert!(
         handle
             .reenter(parse_component_values("var(--again)").unwrap())
             .unwrap_err()
-            .kind(),
-        CssExpansionErrorKind::ResidualSubstitution
-    ));
+            .is_residual_substitution()
+    );
     for _ in 0..2 {
         let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap()
         else {

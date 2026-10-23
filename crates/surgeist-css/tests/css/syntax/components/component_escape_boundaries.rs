@@ -3,8 +3,8 @@
 //! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/
 
 use surgeist_css::{
-    CssComponentValue, CssComponentValueErrorKind, CssComponentValueRef, CssComponentValues,
-    CssSerializedOrigin, CssValueOrigin, CssValueTokenRef, parse_component_values,
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssSerializedOrigin,
+    CssValueOrigin, CssValueTokenRef, parse_component_values,
 };
 
 fn joined(left: &str, right: &str) -> CssComponentValues {
@@ -65,7 +65,7 @@ fn escape_boundary_separators_keep_both_origins_and_count_toward_limits() {
     let failure = values
         .serialize_tokens(crate::css::support::byte_limits(7))
         .unwrap_err();
-    assert_eq!(failure.kind(), CssComponentValueErrorKind::ByteLimit);
+    assert!(failure.is_byte_limit(), "{failure:?}");
     assert_eq!(failure.origin(), right);
     assert_eq!(
         values

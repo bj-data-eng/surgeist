@@ -5,7 +5,7 @@
 
 use surgeist_css::{
     CssErrorCode, CssNamespaceConstraint, CssNamespaceContext, CssRecoveryAction, CssRule,
-    CssSelector, CssSelectorCombinator, CssSourcePosition, CssTokenKind, ErrorKind, parse_selector,
+    CssSelector, CssSelectorCombinator, CssSourcePosition, CssTokenKind, parse_selector,
     parse_sheet,
 };
 
@@ -35,9 +35,12 @@ fn rejected_column(source: &str) {
     // its required right compound; lookahead must preserve that token's origin.
     let invalid_rhs = source.find('!').unwrap();
     assert_position(diagnostic.error().position(), source, invalid_rhs);
-    let ErrorKind::InvalidSelector(detail) = diagnostic.error().kind() else {
-        panic!("structured selector error");
-    };
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidSelector,
+        "structured selector error"
+    );
     let encountered = detail.encountered().expect("invalid right-hand delimiter");
     assert_eq!(encountered.kind(), CssTokenKind::Delim);
     assert_eq!(encountered.authored(), "!");

@@ -2,16 +2,17 @@
 //! forgiving-empty construction, and ordinary/general-relative specified output.
 
 use crate::css::support::color_and_selector_fixtures::assert_specified_construction_cause as specified_cause;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::validated_selector as parsed;
 use surgeist_css::{
     CssCompoundSelectorArgument, CssNthChildPattern, CssNthPattern, CssPseudoClass,
     CssPseudoSelectorList, CssPseudoSelectorListItem, CssRelativeSelector, CssRelativeSelectorList,
-    CssSelector, CssSelectorCombinator, CssSelectorConstructionErrorKind, CssSelectorList,
-    CssSerializationLimits, CssSpecifiedValueSerializationErrorKind,
+    CssSelector, CssSelectorCombinator, CssSelectorList, CssSerializationLimits,
 };
 
 type Limits = CssSerializationLimits;
-type Kind = CssSpecifiedValueSerializationErrorKind;
+type Kind = SerializationFailure;
 
 fn ordinary_members() -> Vec<CssSelector> {
     vec![
@@ -37,7 +38,7 @@ fn strict_empty_lists_report_their_typed_cause_before_resource_admission() {
         CssPseudoSelectorList::try_new(Vec::new(), Limits::new(0, 0, 0)).unwrap_err(),
         CssRelativeSelectorList::try_new(Vec::new(), Limits::new(0, 0, 0)).unwrap_err(),
     ] {
-        assert_eq!(error.kind(), &CssSelectorConstructionErrorKind::EmptyList);
+        assert!(error.is_empty_list(), "{error:?}");
         assert!(std::error::Error::source(&error).is_none());
     }
 }
@@ -69,7 +70,10 @@ fn ordinary_admission_and_output_share_three_nodes_and_exact_utf8_bytes() {
             &CssSelectorList::try_new(members.clone(), limits).unwrap_err(),
             cause,
         );
-        assert_eq!(list.serialize_specified(limits).unwrap_err().kind(), cause);
+        assert_eq!(
+            serialization_failure(&list.serialize_specified(limits).unwrap_err()),
+            cause
+        );
         assert_eq!(list, before);
     }
     assert_eq!(
@@ -109,7 +113,10 @@ fn general_relative_admission_and_output_charge_each_leading_carrier() {
             &CssRelativeSelectorList::try_new(members.clone(), limits).unwrap_err(),
             cause,
         );
-        assert_eq!(list.serialize_specified(limits).unwrap_err().kind(), cause);
+        assert_eq!(
+            serialization_failure(&list.serialize_specified(limits).unwrap_err()),
+            cause
+        );
         assert_eq!(list, before);
     }
     assert_eq!(
@@ -200,12 +207,11 @@ fn checked_forgiving_empty_list_costs_one_aggregate_and_retains_strict_consumers
             &CssSelectorList::try_new(vec![invalid.clone()], Default::default()).unwrap_err(),
             Kind::UnrepresentableValue,
         );
-        assert_eq!(
+        assert!(
             invalid
                 .serialize_specified(Default::default())
                 .unwrap_err()
-                .kind(),
-            Kind::UnrepresentableValue
+                .is_unrepresentable_value()
         );
     }
 }
@@ -255,12 +261,11 @@ fn general_relative_output_preserves_members_that_has_attachment_disallows() {
         "> .Cell::before, || :has(> .One)"
     );
     assert_eq!(list, before);
-    assert_eq!(
+    assert!(
         CssSelector::PseudoClass(CssPseudoClass::Has(list))
             .serialize_specified(Default::default())
             .unwrap_err()
-            .kind(),
-        Kind::UnrepresentableValue
+            .is_unrepresentable_value()
     );
 }
 

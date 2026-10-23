@@ -1,6 +1,4 @@
-use surgeist_css::{
-    CssSelector, CssSerializationLimits as Limits, CssSpecifiedValueSerializationErrorKind as Kind,
-};
+use surgeist_css::{CssSelector, CssSerializationLimits as Limits};
 
 const VALUE_FAILURE: &str = "specified value cannot be represented by the selected serializer";
 
@@ -11,7 +9,7 @@ fn empty_selector_identity_reports_a_general_value_failure() {
     let error = selector
         .serialize_specified(Default::default())
         .unwrap_err();
-    assert_eq!(error.kind(), Kind::UnrepresentableValue);
+    assert!(error.is_unrepresentable_value(), "{error:?}");
     assert_eq!(error.to_string(), VALUE_FAILURE);
     assert_eq!(selector, before);
 }
@@ -23,7 +21,7 @@ fn nul_selector_identity_reports_a_general_value_failure() {
     let error = selector
         .serialize_specified(Default::default())
         .unwrap_err();
-    assert_eq!(error.kind(), Kind::UnrepresentableValue);
+    assert!(error.is_unrepresentable_value(), "{error:?}");
     assert_eq!(error.to_string(), VALUE_FAILURE);
     assert_eq!(selector, before);
 }
@@ -33,7 +31,7 @@ fn byte_exhaustion_retains_its_distinct_resource_message() {
     let error = CssSelector::Class("x".into())
         .serialize_specified(Limits::new(1, 1, 0))
         .unwrap_err();
-    assert_eq!(error.kind(), Kind::ByteLimit);
+    assert!(error.is_byte_limit(), "{error:?}");
     assert_eq!(error.to_string(), "specified-value CSS byte limit exceeded");
 }
 

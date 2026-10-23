@@ -447,14 +447,11 @@ fn implicit_origin(components: &CssComponentValues) -> CssValueOrigin {
         .expect("retained implicit closure")
 }
 
-fn assert_closure(error: &CssPropertyValueParseError, origin: &CssValueOrigin, text: &str) {
-    assert!(matches!(
-        error.kind(),
-        CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
-    ));
+fn assert_closure(error: &CssPropertyValueError, origin: &CssValueOrigin, text: &str) {
+    assert!(error.code() == Some(CssErrorCode::UnexpectedEnd));
     assert_eq!(
         error.origin(),
-        &CssSerializedOrigin::End(Some(origin.clone()))
+        CssSerializedOrigin::End(Some(origin.clone()))
     );
     let CssValueOrigin::ImplicitClosure { opening, at } = origin else {
         panic!("original EOF origin")
@@ -590,29 +587,25 @@ fn pending_reentry_keeps_source_importance_and_replacement_origins_with_residual
                 "attr(data-again *)",
             ] {
                 for _ in 0..2 {
-                    assert!(matches!(
+                    assert!(
                         handle
                             .reenter(parse_component_values(residual).unwrap())
                             .unwrap_err()
-                            .kind(),
-                        CssExpansionErrorKind::ResidualSubstitution
-                    ));
+                            .is_residual_substitution()
+                    );
                 }
             }
             for _ in 0..2 {
                 let error = handle
                     .reenter(parse_component_values(w.invalid).unwrap())
                     .unwrap_err();
-                assert!(matches!(
-                    error.kind(),
-                    CssExpansionErrorKind::InvalidReplacement(_)
-                ));
+                assert!(error.replacement_error().is_some());
             }
             let recovered = format!("{}/*", w.authored);
             let components = parse_component_values(&recovered).unwrap();
             let origin = implicit_origin(&components);
             let error = handle.reenter(components).unwrap_err();
-            let CssExpansionErrorKind::InvalidReplacement(error) = error.kind() else {
+            let Some(error) = error.replacement_error() else {
                 panic!("original replacement closure")
             };
             assert_closure(error, &origin, &recovered);
@@ -731,11 +724,8 @@ fn composed_normalization_and_sheet_bytes_preserve_all_occurrences_and_member_bo
         CssNormalizationLimits::try_new(0, 1, WITNESSES.len(), terminal_budget - 1).unwrap();
     let error = normalize_report_with_limits(&report, short).unwrap_err();
     assert_eq!(
-        error.kind(),
-        &CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: terminal_budget - 1
-        }
+        error.exhausted_limit(),
+        Some((CssNormalizationResource::Contributions, terminal_budget - 1))
     );
     assert_eq!(error.declaration_order(), Some(WITNESSES.len() - 1));
     assert!(
@@ -751,13 +741,12 @@ fn composed_normalization_and_sheet_bytes_preserve_all_occurrences_and_member_bo
         expected
     );
     for _ in 0..2 {
-        assert_eq!(
+        assert!(
             report
                 .syntax()
                 .serialize_specified(byte_short)
                 .unwrap_err()
-                .kind(),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit
+                .is_byte_limit()
         );
         assert_eq!(report, before);
     }

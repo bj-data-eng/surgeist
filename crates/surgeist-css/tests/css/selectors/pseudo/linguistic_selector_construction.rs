@@ -1,9 +1,9 @@
 //! Selectors 4 (2026-01-22), sections 7.1–7.2: checked authored arguments.
 use crate::css::support::color_and_selector_fixtures::assert_strict_validation_rejects;
 use surgeist_css::{
-    CssComponentValueErrorKind, CssDirectionality, CssEmptyLanguageRangeList, CssLanguageRange,
-    CssLanguageRangeKind, CssLanguageRangeList, CssNamespaceContext, CssPseudoClass, CssSelector,
-    CssValueOrigin, parse_selector,
+    CssDirectionality, CssEmptyLanguageRangeList, CssLanguageRange, CssLanguageRangeKind,
+    CssLanguageRangeList, CssNamespaceContext, CssPseudoClass, CssSelector, CssValueOrigin,
+    parse_selector,
 };
 
 #[test]
@@ -75,12 +75,12 @@ fn constructed_nul_and_empty_identifiers_fail_without_fabricated_origins() {
             CssDirectionality::try_new(decoded).unwrap_err(),
             CssLanguageRange::try_ident(decoded).unwrap_err(),
         ] {
-            assert_eq!(error.kind(), CssComponentValueErrorKind::InvalidIdentifier);
+            assert!(error.is_invalid_identifier(), "{error:?}");
             assert!(matches!(error.origin(), CssValueOrigin::Programmatic));
         }
     }
     let error = CssLanguageRange::try_string("\0").unwrap_err();
-    assert_eq!(error.kind(), CssComponentValueErrorKind::InvalidString);
+    assert!(error.is_invalid_string(), "{error:?}");
     assert!(matches!(error.origin(), CssValueOrigin::Programmatic));
 }
 

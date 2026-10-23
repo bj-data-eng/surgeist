@@ -501,10 +501,17 @@ fn invalid_border_image_domains_drop_exact_declaration_and_keep_siblings() {
             source[..responsible].encode_utf16().count(),
             "{source}",
         );
-        let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-            panic!("{source}: expected property-specific diagnostic");
-        };
-        assert_eq!(detail.property().canonical_name(), property, "{source}");
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidPropertyValue,
+            "{source}: expected property-specific diagnostic"
+        );
+        assert_eq!(
+            detail.known_property().unwrap().canonical_name(),
+            property,
+            "{source}"
+        );
 
         assert_eq!(
             surgeist_css::validate_style_attribute(&source)

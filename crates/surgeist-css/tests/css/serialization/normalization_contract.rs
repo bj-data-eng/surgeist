@@ -21,7 +21,6 @@ fn public_normalization_consumer_preserves_order_contexts_payloads_and_failures(
             "linear selector representation: ok\n",
             "symbolic conditional and layer contexts: ok\n",
             "ordered terminal payloads: ok\n",
-            "atomic unsupported declaration: ok\n",
             "normalization resource boundaries: ok\n",
             "unchanged recovery diagnostics: ok\n",
             "complete scoped rule traversal: ok\n",

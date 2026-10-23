@@ -8,6 +8,12 @@
 
 use std::fmt::Debug;
 
+use crate::css::support::failure_classes::ComponentFailure;
+use crate::css::support::failure_classes::NumericFailure;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::component_failure;
+use crate::css::support::failure_classes::numeric_failure;
+use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::*;
 
 /// Asserts that checked numeric construction rejected its input with `kind`
@@ -16,11 +22,11 @@ use surgeist_css::*;
 #[track_caller]
 pub fn assert_numeric_rejected<T: Debug>(
     result: Result<T, CssNumericConstructionError>,
-    kind: CssNumericConstructionErrorKind,
+    kind: NumericFailure,
     origin: Option<&CssValueOrigin>,
 ) {
     let error = result.expect_err("checked numeric construction must reject");
-    assert_eq!(error.kind(), &kind, "{error:?}");
+    assert_eq!(numeric_failure(&error), kind, "{error:?}");
     assert_eq!(error.origin(), origin, "{error:?}");
 }
 
@@ -28,10 +34,10 @@ pub fn assert_numeric_rejected<T: Debug>(
 #[track_caller]
 pub fn assert_numeric_kind<T: Debug>(
     result: Result<T, CssNumericConstructionError>,
-    kind: CssNumericConstructionErrorKind,
+    kind: NumericFailure,
 ) {
     let error = result.expect_err("checked numeric construction must reject");
-    assert_eq!(error.kind(), &kind, "{error:?}");
+    assert_eq!(numeric_failure(&error), kind, "{error:?}");
 }
 
 /// Asserts that checked numeric construction exceeded a resource limit, and
@@ -39,18 +45,14 @@ pub fn assert_numeric_kind<T: Debug>(
 #[track_caller]
 pub fn assert_numeric_resource<T: Debug>(
     result: Result<T, CssNumericConstructionError>,
-    limit: CssComponentValueErrorKind,
+    limit: ComponentFailure,
 ) {
     let error = result.expect_err("checked numeric construction must exceed a limit");
-    assert_eq!(
-        error.kind(),
-        &CssNumericConstructionErrorKind::ResourceLimit,
-        "{error:?}"
-    );
+    assert!(error.is_resource_limit(), "{error:?}");
     let source = std::error::Error::source(&error)
         .and_then(|source| source.downcast_ref::<CssComponentValueError>())
         .unwrap_or_else(|| panic!("component limit source: {error:?}"));
-    assert_eq!(source.kind(), limit, "{error:?}");
+    assert_eq!(component_failure(source), limit, "{error:?}");
 }
 
 /// Asserts that `construct` rejects the single `component` with `kind` at
@@ -59,7 +61,7 @@ pub fn assert_numeric_resource<T: Debug>(
 pub fn assert_component_rejected<T: Debug>(
     construct: fn(CssComponentValue) -> Result<T, CssNumericConstructionError>,
     component: CssComponentValue,
-    kind: CssNumericConstructionErrorKind,
+    kind: NumericFailure,
 ) {
     let origin = component.origin().clone();
     assert_numeric_rejected(construct(component), kind, Some(&origin));
@@ -72,48 +74,45 @@ pub fn assert_component_rejected<T: Debug>(
 #[track_caller]
 pub fn assert_calculation_rejected<T: Debug>(
     result: Result<T, CssNumericConstructionError>,
-    kind: Option<CssNumericConstructionErrorKind>,
+    kind: Option<NumericFailure>,
 ) {
-    use CssNumericConstructionErrorKind as K;
     let error = result.expect_err("calculation construction must reject");
     match kind {
-        Some(kind) => assert_eq!(error.kind(), &kind, "{error:?}"),
+        Some(kind) => assert_eq!(numeric_failure(&error), kind, "{error:?}"),
         None => assert!(
-            matches!(
-                error.kind(),
-                K::EmptyValue
-                    | K::MalformedExpression
-                    | K::UnknownFunction
-                    | K::Arity
-                    | K::InvalidArgumentType
-                    | K::IncompatibleTypes
-                    | K::RootDomainMismatch
-            ),
+            (error.is_empty_value()
+                || error.is_malformed_expression()
+                || error.is_unknown_function()
+                || error.is_arity()
+                || error.is_invalid_argument_type()
+                || error.is_incompatible_types()
+                || error.is_root_domain_mismatch()),
             "{error:?}"
         ),
     }
 }
 
-/// The property-grammar detail of a checked property-value rejection.
+/// Asserts that a checked property-value failure is a property-grammar rejection.
 #[track_caller]
-pub fn property_grammar_error(error: &CssPropertyValueParseError) -> &CssPropertyValueError {
-    let CssPropertyValueErrorKind::Grammar(ErrorKind::InvalidPropertyValue(detail)) = error.kind()
-    else {
-        panic!("property grammar rejection: {error:?}")
-    };
-    detail
+pub fn property_grammar_error(error: &CssPropertyValueError) -> &CssPropertyValueError {
+    assert_eq!(
+        error.code(),
+        Some(CssErrorCode::InvalidPropertyValue),
+        "property grammar rejection: {error:?}"
+    );
+    error
 }
 
 /// The grammar detail of a checked property value that `property`'s grammar
 /// rejected.
 #[track_caller]
 pub fn property_rejection(
-    result: Result<CssDeclaration, CssPropertyValueParseError>,
+    result: Result<CssDeclaration, CssPropertyValueError>,
     property: CssKnownProperty,
 ) -> CssPropertyValueError {
     let error = result.expect_err("checked property value must reject");
     let detail = property_grammar_error(&error);
-    assert_eq!(detail.property(), property, "{error:?}");
+    assert_eq!(detail.known_property(), Some(property), "{error:?}");
     detail.clone()
 }
 
@@ -121,7 +120,7 @@ pub fn property_rejection(
 /// the authored token `encountered` (`None` when the value ended first).
 #[track_caller]
 pub fn assert_property_rejected(
-    result: Result<CssDeclaration, CssPropertyValueParseError>,
+    result: Result<CssDeclaration, CssPropertyValueError>,
     property: CssKnownProperty,
     encountered: Option<&str>,
 ) {
@@ -141,11 +140,11 @@ pub fn replacement_rejection(
     property: CssKnownProperty,
 ) -> CssPropertyValueError {
     let error = result.expect_err("reentry must reject the replacement");
-    let CssExpansionErrorKind::InvalidReplacement(error) = error.kind() else {
+    let Some(error) = error.replacement_error() else {
         panic!("invalid replacement: {error:?}")
     };
     let detail = property_grammar_error(error);
-    assert_eq!(detail.property(), property, "{error:?}");
+    assert_eq!(detail.known_property(), Some(property), "{error:?}");
     detail.clone()
 }
 
@@ -195,10 +194,13 @@ pub fn assert_first_property_diagnostic(
         CssErrorCode::InvalidPropertyValue,
         responsible,
     );
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostics[0].error().kind() else {
-        unreachable!("checked by code")
-    };
-    assert_eq!(detail.property(), property, "{source}");
+    let detail = diagnostics[0].error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "checked by code"
+    );
+    assert_eq!(detail.known_property().unwrap(), property, "{source}");
 }
 
 /// Asserts that a CSSOM rule projection failed atomically on the `kind`
@@ -206,12 +208,13 @@ pub fn assert_first_property_diagnostic(
 #[track_caller]
 pub fn assert_rule_resource<T: Debug>(
     result: Result<T, CssRuleSerializationError>,
-    kind: CssSpecifiedValueSerializationErrorKind,
+    kind: SerializationFailure,
 ) {
     let error = result.expect_err("rule projection must exceed its budget");
+    assert!(error.is_resource_limit(), "{error:?}");
     assert_eq!(
-        error.kind(),
-        CssRuleCssomSerializationErrorKind::Resource(kind),
+        error.serialization_error().map(serialization_failure),
+        Some(kind),
         "{error:?}"
     );
 }
@@ -223,10 +226,13 @@ pub fn assert_first_property_rejection(
     property: CssKnownProperty,
 ) {
     let first = diagnostics.first().expect("a diagnostic");
-    let ErrorKind::InvalidPropertyValue(detail) = first.error().kind() else {
-        panic!("invalid property value: {first:?}")
-    };
-    assert_eq!(detail.property(), property, "{first:?}");
+    let detail = first.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "invalid property value: {first:?}"
+    );
+    assert_eq!(detail.known_property().unwrap(), property, "{first:?}");
 }
 
 /// Asserts that `origin` is parsed from `source` and spans `start..end`.
@@ -378,11 +384,9 @@ pub fn clean_media_query(source: &str) -> CssMediaQuery {
 
 /// The resource-limit kind of a media CSSOM serialization failure.
 #[track_caller]
-pub fn media_resource_kind(
-    error: &CssSerializationError,
-) -> CssSpecifiedValueSerializationErrorKind {
-    use CssSpecifiedValueSerializationErrorKind as Kind;
-    let kind = error.kind();
+pub fn media_resource_kind(error: &CssSerializationError) -> SerializationFailure {
+    use crate::css::support::failure_classes::SerializationFailure as Kind;
+    let kind = serialization_failure(error);
     assert!(
         matches!(
             kind,
