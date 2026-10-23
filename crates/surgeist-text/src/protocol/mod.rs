@@ -313,7 +313,7 @@ pub struct LineSelectionRequest {
     pub participants: Vec<PreparedParticipant>,
     pub termination: PreparedTermination,
     pub alternative: Option<PreparedAlternative>,
-    /// Exact nonempty LogicalAfter choice emitted by the preceding selection.
+    /// Exact choice whose nonempty After emission is owed by the preceding selection.
     pub incoming: Option<HyphenationContinuation>,
     pub context: LineContext,
     pub atomics: Vec<AtomicAllocation>,

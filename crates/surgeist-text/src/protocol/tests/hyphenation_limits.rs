@@ -323,12 +323,12 @@ fn governing_shy_and_control_styles_override_surrounding_minima_without_a_prepar
     }
 }
 #[test]
-fn count_rejection_precedes_unsupported_placement_and_missing_primary_resolution() {
+fn count_rejection_precedes_unsupported_separator_and_missing_primary_resolution() {
     let mut system = system();
     let convention = NativeHyphenationConvention::language_script(
         "en-Latn",
         "Latn",
-        Text::from("A"),
+        Text::from("A\u{2028}"),
         HyphenationPlacement::BothSides,
     )
     .unwrap();
@@ -346,7 +346,7 @@ fn count_rejection_precedes_unsupported_placement_and_missing_primary_resolution
         if admitted {
             assert_eq!(
                 error_reason(&result.unwrap_err()),
-                HyphenationError::UnsupportedPlacement(HyphenationPlacement::BothSides)
+                HyphenationError::UnsupportedIndicationSeparator
             );
         } else {
             assert!(cuts(&result.unwrap()).is_empty());

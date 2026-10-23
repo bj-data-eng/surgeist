@@ -1,4 +1,6 @@
 //! Independent functional oracles for continuation custody and joint ownership.
+#[path = "both_sides.rs"]
+mod both_sides;
 use super::*;
 use crate::TextSeam;
 use crate::{

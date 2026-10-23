@@ -42,10 +42,12 @@ Automatic hyphenation has bounded en-US support through the pinned
 [resource and exceptions](docs/hyphenation-resources.md). Prepared word and cut
 views retain actual source custody; selected indication text remains presentation
 and does not enter plaintext. LogicalAfter continuations pair exact selected
-choices across lines; Before and After use local indication bidi without changing
-original paragraph resolution. Joint shaping remains required, with precise
-refusal when local order or retained font-query evidence cannot support the
-combined presentation. Nonempty BothSides remains unsupported.
+choices across lines. BothSides emits the same chosen text once on each side of
+one ending, with the same exact continuation identity. Before and After use their
+own authenticated local bidi attachments and fresh joint shaping without changing
+original paragraph resolution. Local order or retained font-query evidence that
+cannot support the combined presentation returns a precise refusal. Independently
+chosen strings for each side and a language-convention table are not provided.
 
 `System::registered_font_faces` lends actual registered resources without shaping
 a sample character or resolving a Style. Retained `FontData` can select an explicit

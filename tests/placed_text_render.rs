@@ -562,6 +562,21 @@ fn assert_retained_layout_composition(expanded: bool, indent: f32, contextual: b
 
 #[test]
 fn after_indication_keeps_authored_carets_and_accessibility_through_paint_admission() {
+    indication_keeps_authored_carets_and_accessibility_through_paint_admission(
+        text::HyphenationPlacement::LogicalAfter,
+    );
+}
+
+#[test]
+fn both_indications_keep_authored_carets_and_accessibility_through_paint_admission() {
+    indication_keeps_authored_carets_and_accessibility_through_paint_admission(
+        text::HyphenationPlacement::BothSides,
+    );
+}
+
+fn indication_keeps_authored_carets_and_accessibility_through_paint_admission(
+    placement: text::HyphenationPlacement,
+) {
     const AHEM: &[u8] =
         include_bytes!("../crates/surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
     let mut system = text::System::new(text::SystemOptions {
@@ -582,7 +597,7 @@ fn after_indication_keeps_authored_carets_and_accessibility_through_paint_admiss
                 "und-Latn",
                 "Latn",
                 "A".into(),
-                text::HyphenationPlacement::LogicalAfter,
+                placement,
             )
             .unwrap(),
         ),
@@ -687,7 +702,7 @@ fn after_indication_keeps_authored_carets_and_accessibility_through_paint_admiss
             (text::Range::new(3, 6), 18.0)
         ]
     );
-    // Ahem's one-em cells independently give AB20 and incoming-A+CDE40.
+    // Ahem's one-em cells give AB20 or ABA30, then incoming-A+CDE40.
     let mut glyphs = Vec::new();
     for run in placed.run_views() {
         assert_eq!(run.face().bytes(), AHEM);
@@ -709,34 +724,109 @@ fn after_indication_keeps_authored_carets_and_accessibility_through_paint_admiss
             ));
         }
     }
-    assert_eq!(
-        glyphs,
-        [
+    let expected = match placement {
+        text::HyphenationPlacement::LogicalAfter => vec![
             (0, 35, 10.0, 0.0, 8.0),
             (0, 36, 10.0, 10.0, 8.0),
             (1, 35, 10.0, 0.0, 18.0),
             (1, 37, 10.0, 10.0, 18.0),
             (1, 38, 10.0, 20.0, 18.0),
             (1, 39, 10.0, 30.0, 18.0),
-        ]
-    );
+        ],
+        text::HyphenationPlacement::BothSides => vec![
+            (0, 35, 10.0, 0.0, 8.0),
+            (0, 36, 10.0, 10.0, 8.0),
+            (0, 35, 10.0, 20.0, 8.0),
+            (1, 35, 10.0, 0.0, 18.0),
+            (1, 37, 10.0, 10.0, 18.0),
+            (1, 38, 10.0, 20.0, 18.0),
+            (1, 39, 10.0, 30.0, 18.0),
+        ],
+        text::HyphenationPlacement::LogicalBefore => unreachable!(),
+    };
+    assert_eq!(glyphs, expected);
     let shy = placed
         .source_range_fragments(&origin, text::Range::new(2, 3))
         .unwrap();
     let units = shy.units().collect::<Vec<_>>();
-    assert_eq!(units.len(), 1);
-    assert_eq!(units[0].line_index(), 1);
-    assert_eq!(units[0].alternatives().count(), 1);
+    let expected_units = match placement {
+        text::HyphenationPlacement::LogicalAfter => {
+            vec![(1, 1, vec![text::Rect::new(0.0, 10.0, 10.0, 10.0)])]
+        }
+        text::HyphenationPlacement::BothSides => vec![
+            (0, 1, vec![text::Rect::new(20.0, 0.0, 10.0, 10.0)]),
+            (1, 1, vec![text::Rect::new(0.0, 10.0, 10.0, 10.0)]),
+        ],
+        text::HyphenationPlacement::LogicalBefore => unreachable!(),
+    };
     assert_eq!(
-        units[0]
-            .pieces()
-            .map(|piece| piece.rect())
+        units
+            .iter()
+            .map(|unit| (
+                unit.line_index(),
+                unit.alternatives().count(),
+                unit.pieces().map(|piece| piece.rect()).collect::<Vec<_>>(),
+            ))
             .collect::<Vec<_>>(),
-        [text::Rect::new(0.0, 10.0, 10.0, 10.0)]
+        expected_units
     );
-    let cursor = text::Cursor::new(3, text::Affinity::After);
+    if placement == text::HyphenationPlacement::BothSides {
+        assert!(!units[0].same_unit(&units[1]));
+    }
+    let seam = text::Cursor::new(3, text::Affinity::After);
+    let assert_ambiguous = |error: text::Error| {
+        assert_eq!(
+            error.detail(),
+            Some(&text::ErrorDetail::InvalidTextProtocol {
+                reason: text::ProtocolError::AmbiguousSourcePosition {
+                    index: 3,
+                    affinity: text::Affinity::After,
+                },
+            })
+        );
+    };
+    // Both emissions have genuine source-empty occurrences at the same source
+    // endpoint on distinct lines. Retain issued positions for those exact edges.
+    let seam_positions = if placement == text::HyphenationPlacement::BothSides {
+        assert_ambiguous(placed.cursor(seam).unwrap_err());
+        let positions = placed
+            .positions()
+            .filter(|position| position.source_cursor().index() == 3)
+            .map(|position| {
+                let rect = placed.position_geometry(&position).unwrap().rect();
+                assert_eq!(rect.size, text::Size::new(1.0, 10.0));
+                (position, rect)
+            })
+            .collect::<Vec<_>>();
+        let mut edges = Vec::new();
+        for (_, rect) in &positions {
+            if !edges.contains(&rect.origin) {
+                edges.push(rect.origin);
+            }
+        }
+        edges.sort_by(|a, b| a.y.total_cmp(&b.y).then_with(|| a.x.total_cmp(&b.x)));
+        assert_eq!(
+            edges,
+            [
+                text::Point::new(20.0, 0.0),
+                text::Point::new(30.0, 0.0),
+                text::Point::new(0.0, 10.0),
+                text::Point::new(10.0, 10.0),
+            ]
+        );
+        positions
+    } else {
+        Vec::new()
+    };
+    // D is an unambiguous authored caret for Both; retain the existing C/After
+    // control where only the receiving manifestation exists.
+    let (cursor, caret_x) = if placement == text::HyphenationPlacement::BothSides {
+        (text::Cursor::new(4, text::Affinity::After), 20.0)
+    } else {
+        (seam, 10.0)
+    };
     let caret = placed.cursor(cursor).unwrap().rect();
-    assert_eq!(caret.origin, text::Point::new(10.0, 10.0));
+    assert_eq!(caret.origin, text::Point::new(caret_x, 10.0));
     assert_eq!(caret.size.height, 10.0);
     drop(system);
     let paint = render::prepare_text_layout(
@@ -753,6 +843,15 @@ fn after_indication_keeps_authored_carets_and_accessibility_through_paint_admiss
     assert!(!paint.scene().is_empty());
     assert!(std::ptr::eq(paint.layout(), placed));
     assert_eq!(paint.layout().cursor(cursor).unwrap().rect(), caret);
+    for (position, rect) in &seam_positions {
+        assert_eq!(
+            paint.layout().position_geometry(position).unwrap().rect(),
+            *rect
+        );
+    }
+    if placement == text::HyphenationPlacement::BothSides {
+        assert_ambiguous(paint.layout().cursor(seam).unwrap_err());
+    }
     assert_eq!(paint.layout().source(), &source);
     #[cfg(feature = "text-accessibility")]
     {
@@ -778,12 +877,25 @@ fn after_indication_keeps_authored_carets_and_accessibility_through_paint_admiss
             .find(|(id, _)| *id == position.node)
             .unwrap()
             .1;
-        assert_eq!(node.value(), Some("C"));
+        let character = if placement == text::HyphenationPlacement::BothSides {
+            "D"
+        } else {
+            "C"
+        };
+        assert_eq!(node.value(), Some(character));
         assert_eq!(position.character_index, 0);
+        if placement == text::HyphenationPlacement::BothSides {
+            assert_ambiguous(
+                paint
+                    .layout()
+                    .access_position(&accessibility, seam)
+                    .unwrap_err(),
+            );
+        }
         let bounds = node.bounds().unwrap();
         assert_eq!(
             (bounds.x0, bounds.y0, bounds.x1, bounds.y1),
-            (110.0, 210.0, 120.0, 220.0)
+            (100.0 + caret_x, 210.0, 110.0 + caret_x, 220.0)
         );
     }
 }

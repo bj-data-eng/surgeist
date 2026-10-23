@@ -425,6 +425,13 @@ still selects a real hyphenation ending and retains joining and source semantics
 it needs no visible indication font or placement operation. No truncation is
 required; any adopted truncation preserves whole typographic character units.
 
+In a captured native convention, `BothSides` emits the same resolved string once
+on each side of the selected cut. Its Before and After manifestations use their
+respective attachments and fresh joint shaping. The ending selects one
+alternative and counts once, while its receiving prefix creates no additional
+ending. This native form does not represent conventions requiring different
+strings on the two sides or establish a language table.
+
 For an automatic indication with no established language or writing-system
 convention, Surgeist selects the bounded [WebKit font fallback](../references/webkit-hyphen-indication--73aa6c89e2cb-metadata.md):
 choose U+2010 when the indication-owning style's resolved primary font has a
@@ -474,10 +481,11 @@ unsupported conventions, primary-font versus adjacent-fallback coverage, genuine
 source/control custody, min-content and unchanged authored/selection/search text.
 This determination supplies requirements, not an implementation-completion claim.
 
-A nonempty LogicalAfter ending retains a Text-issued continuation for its exact
-preparation, alternative and mixed cut. The receiving selection supplies that
-incoming choice separately from its own outgoing ending. Whole-paragraph
-placement requires exact adjacent pairing and no discarded final obligation.
+A nonempty LogicalAfter or BothSides ending retains a Text-issued continuation
+for its exact preparation, alternative and mixed cut. The receiving selection
+supplies that incoming choice separately from its own outgoing ending.
+Whole-paragraph placement requires exact adjacent pairing and no discarded final
+obligation.
 A range may retain an open outgoing obligation or authentic incoming choice
 without claiming an omitted predecessor was committed or widening original
 source-query coverage. Receiving an indication does not create another

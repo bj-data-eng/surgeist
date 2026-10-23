@@ -66,9 +66,20 @@ pub enum HyphenateCharacter {
 /// Captured native indication placement relative to logical source order.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HyphenationPlacement {
+    /// Emit the chosen text at the logical end of the terminating line.
     LogicalBefore,
+    /// Emit the chosen text at the logical start of its receiving line.
     LogicalAfter,
+    /// Emit the same chosen text once on each side of the actual cut.
     BothSides,
+}
+impl HyphenationPlacement {
+    pub(crate) const fn includes_before(self) -> bool {
+        matches!(self, Self::LogicalBefore | Self::BothSides)
+    }
+    pub(crate) const fn includes_after(self) -> bool {
+        matches!(self, Self::LogicalAfter | Self::BothSides)
+    }
 }
 
 /// A native producer's explicit convention claim. This is not a language table.
@@ -80,7 +91,7 @@ pub struct NativeHyphenationConvention {
     placement: HyphenationPlacement,
 }
 
-/// Invalid input, missing resource, or unsupported indication placement.
+/// Invalid input, missing resource, or unsupported indication composition.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HyphenationError {
     InvalidResourceMapping,
@@ -90,7 +101,6 @@ pub enum HyphenationError {
     InvalidConventionBinding,
     EmptyNativeAlternatives,
     MissingPrimaryFont,
-    UnsupportedPlacement(HyphenationPlacement),
     InvalidContinuation,
     MissingReceivingBidiAuthority,
     UnsupportedReceivingRole,
@@ -106,8 +116,7 @@ pub(crate) fn error(reason: HyphenationError) -> Error {
             | HyphenationError::ResourceStorage
             | HyphenationError::ResourceLengthOverflow => ErrorCode::LayoutFailed,
             HyphenationError::MissingPrimaryFont => ErrorCode::NoUsableFontFace,
-            HyphenationError::UnsupportedPlacement(_)
-            | HyphenationError::MissingReceivingBidiAuthority
+            HyphenationError::MissingReceivingBidiAuthority
             | HyphenationError::UnsupportedReceivingRole
             | HyphenationError::UnsupportedIndicationSeparator
             | HyphenationError::UnsupportedIndicationComposition

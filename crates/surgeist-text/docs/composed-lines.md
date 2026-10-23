@@ -92,17 +92,21 @@ uses the same selected-line and placement machinery.
    not required. It chooses U+2010 when present, otherwise U+002D; normal shaping
    then resolves the chosen text. LogicalBefore and LogicalAfter use independent
    indication-local bidi attached to authenticated original levels; generated
-   strings never change original paragraph UBA. A nonempty LogicalAfter ending
+   strings never change original paragraph UBA. BothSides emits the same exact
+   resolved text once Before and once After, using each side's actual attachment
+   and fresh joint shaping; it remains one selected ending for line-count policy.
+   A nonempty LogicalAfter or BothSides ending
    lends `HyphenationContinuation` through `hyphenation_continuation()`. Supply
    that exact choice in the next `LineSelectionRequest.incoming`; its indication
    is shaped on the receiving line using its own owning style and actual receiver
    direction. `PreparedWordPortion::incoming()` retains the corresponding
    hypothetical manual choice for measurement. Conditional queries retain that
    incoming identity too. No emission is pending for an empty indication.
-   Missing primary fonts, missing receiving authority, nonempty BothSides,
-   unsupported hard separators inside an indication and incompatible local/joint
+   Missing primary fonts, missing receiving authority, unsupported hard separators
+   inside an indication and incompatible local/joint
    shaping order return precise errors. Actual replacement TABs retain the chosen
-   CSS-stop or FontAdvance operation with local bidi-S and line L1 handling. Combined query units require exact font-match witnesses
+   CSS-stop or FontAdvance operation with local bidi-S and line L1 handling.
+   Combined query units require exact font-match witnesses
    retained by preparation; covering glyphs or two partial matches cannot replace
    one complete query. Font witnesses never impose shaping boundaries or retain
    final glyphs. Suppressed or empty indications do not consume unused capabilities.
@@ -284,5 +288,6 @@ barriers; these receipts neither advance phantom source nor admit intrinsic use.
 
 The [indication bidi contract](../../../docs/text-layout-contract.md#hyphenation-indication-bidi)
 defines the explicit local operation and its remaining capability limits. There
-is no language-convention table, BothSides implementation or general guarantee
-that arbitrary local control strings compose with joint provider units/runs.
+is no language-convention table, independent per-side chosen strings, or general
+guarantee that arbitrary local control strings compose with joint provider
+units/runs.

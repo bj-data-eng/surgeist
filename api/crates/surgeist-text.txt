@@ -325,7 +325,6 @@ pub surgeist_text::HyphenationError::ResourceStorage
 pub surgeist_text::HyphenationError::UncapturedIndicationFontQuery
 pub surgeist_text::HyphenationError::UnsupportedIndicationComposition
 pub surgeist_text::HyphenationError::UnsupportedIndicationSeparator
-pub surgeist_text::HyphenationError::UnsupportedPlacement(surgeist_text::HyphenationPlacement)
 pub surgeist_text::HyphenationError::UnsupportedReceivingRole
 pub enum surgeist_text::HyphenationMinimum
 pub surgeist_text::HyphenationMinimum::Auto

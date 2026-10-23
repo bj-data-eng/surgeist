@@ -893,14 +893,6 @@ fn indication(
                 }
             },
         };
-        if !text.is_empty()
-            && let Some(convention) = &authored.native_hyphenation_convention
-            && convention.placement() == crate::HyphenationPlacement::BothSides
-        {
-            return Err(crate::hyphenation::error(
-                crate::HyphenationError::UnsupportedPlacement(convention.placement()),
-            ));
-        }
         (vec![text], resolution)
     };
 
@@ -1102,7 +1094,7 @@ fn disappearing_space_wrap(analyzed: &AnalyzedData, atom: usize) -> Option<crate
         .then_some(style.wrap)
 }
 
-/// Performs actual alternative font matching/shaping while the original
+/// Performs actual alternative font matching while the original
 /// catalogue capture is still owned by preparation. No finalizer can requery it.
 pub(crate) fn prepare_indication_fonts(
     catalogue: &mut crate::catalogue::Catalogue,
@@ -1148,69 +1140,48 @@ pub(crate) fn prepare_indication_fonts(
         presentation::local_levels(&projection, &mut analysis, inserted_atoms.clone(), base & 1)?;
         // Capture only the genuine selected side. Unselected original text
         // cannot change an indication's query EGC or script inheritance.
-        let side = match row.placement {
-            crate::HyphenationPlacement::LogicalAfter => {
+        let mut capture_side = |after: bool| -> crate::Result<PreparedIndicationFonts> {
+            let side = if after {
                 inserted_atoms.start..projection.atoms.len()
+            } else {
+                0..inserted_atoms.end
+            };
+            let offset = side.start;
+            let mut atoms = projection.atoms[side.clone()].to_vec();
+            let mut position = 0usize;
+            for atom in &mut atoms {
+                let end = position
+                    .checked_add(atom.presentation.len())
+                    .ok_or_else(crate::projection::length_overflow)?;
+                atom.presentation = Range::new(position, end);
+                position = end;
             }
-            _ => 0..inserted_atoms.end,
-        };
-        let offset = side.start;
-        let mut atoms = projection.atoms[side.clone()].to_vec();
-        let mut position = 0usize;
-        for atom in &mut atoms {
-            let end = position
-                .checked_add(atom.presentation.len())
-                .ok_or_else(crate::projection::length_overflow)?;
-            atom.presentation = Range::new(position, end);
-            position = end;
-        }
-        let projection =
-            SourceProjection::from_atoms(atoms, position, projection.barriers.clone())?;
-        let graphemes = projection
-            .graphemes
-            .windows(2)
-            .filter_map(|p| {
-                let a = projection
-                    .atoms
-                    .partition_point(|a| a.presentation.start < p[0]);
-                let b = projection
-                    .atoms
-                    .partition_point(|a| a.presentation.start < p[1]);
-                (a < b).then_some(a..b)
-            })
-            .collect();
-        let mut analysis = Analysis {
-            infos: analysis.infos[side.clone()].to_vec(),
-            levels: analysis.levels[side].to_vec(),
-            base_level: analysis.base_level,
-            box_levels: analysis.box_levels,
-            control_levels: analysis.control_levels,
-            graphemes,
-        };
-        let inserted_atoms = inserted_atoms.start - offset..inserted_atoms.end - offset;
-        let catalogue_identity = catalogue.identity().clone();
-        let mut font_queries = crate::engine::shape::capture_fonts(
-            catalogue.query(),
-            crate::engine::ShapingInput {
-                projection: &projection,
-                analysis: &analysis,
-                styles,
-                boxes: analyzed.processed.source().boxes(),
-                font_catalogue: &catalogue_identity,
-                paragraph: &analyzed.paragraph,
-                css_tabs,
-            },
-            scratch,
-        )?;
-        if row.placement == crate::HyphenationPlacement::LogicalAfter && !inserted_atoms.is_empty()
-        {
-            presentation::local_levels(
-                &projection,
-                &mut analysis,
-                inserted_atoms.clone(),
-                (base & 1) ^ 1,
-            )?;
-            font_queries.extend(crate::engine::shape::capture_fonts(
+            let projection =
+                SourceProjection::from_atoms(atoms, position, projection.barriers.clone())?;
+            let graphemes = projection
+                .graphemes
+                .windows(2)
+                .filter_map(|p| {
+                    let a = projection
+                        .atoms
+                        .partition_point(|a| a.presentation.start < p[0]);
+                    let b = projection
+                        .atoms
+                        .partition_point(|a| a.presentation.start < p[1]);
+                    (a < b).then_some(a..b)
+                })
+                .collect();
+            let mut analysis = Analysis {
+                infos: analysis.infos[side.clone()].to_vec(),
+                levels: analysis.levels[side].to_vec(),
+                base_level: analysis.base_level,
+                box_levels: analysis.box_levels.clone(),
+                control_levels: analysis.control_levels.clone(),
+                graphemes,
+            };
+            let inserted_atoms = inserted_atoms.start - offset..inserted_atoms.end - offset;
+            let catalogue_identity = catalogue.identity().clone();
+            let mut font_queries = crate::engine::shape::capture_fonts(
                 catalogue.query(),
                 crate::engine::ShapingInput {
                     projection: &projection,
@@ -1222,20 +1193,51 @@ pub(crate) fn prepare_indication_fonts(
                     css_tabs,
                 },
                 scratch,
-            )?);
-            presentation::local_levels(
-                &projection,
-                &mut analysis,
-                inserted_atoms.clone(),
-                base & 1,
             )?;
+            if after && !inserted_atoms.is_empty() {
+                presentation::local_levels(
+                    &projection,
+                    &mut analysis,
+                    inserted_atoms.clone(),
+                    (base & 1) ^ 1,
+                )?;
+                font_queries.extend(crate::engine::shape::capture_fonts(
+                    catalogue.query(),
+                    crate::engine::ShapingInput {
+                        projection: &projection,
+                        analysis: &analysis,
+                        styles,
+                        boxes: analyzed.processed.source().boxes(),
+                        font_catalogue: &catalogue_identity,
+                        paragraph: &analyzed.paragraph,
+                        css_tabs,
+                    },
+                    scratch,
+                )?);
+                presentation::local_levels(
+                    &projection,
+                    &mut analysis,
+                    inserted_atoms.clone(),
+                    base & 1,
+                )?;
+            }
+            Ok(PreparedIndicationFonts {
+                inserted_atoms,
+                projection,
+                analysis,
+                font_queries,
+            })
+        };
+        let mut captured = capture_side(!row.placement.includes_before())?;
+        if row.placement == crate::HyphenationPlacement::BothSides && !row.text.is_empty() {
+            // One exact chosen Text supplies both emissions. Only its raw
+            // scalar/style metadata is shared; each genuine seam executes its
+            // own full matching profiles, with both possible receiving parities.
+            captured
+                .font_queries
+                .extend(capture_side(true)?.font_queries);
         }
-        alternatives.push(PreparedIndicationFonts {
-            inserted_atoms,
-            projection,
-            analysis,
-            font_queries,
-        });
+        alternatives.push(captured);
     }
     Ok(alternatives)
 }

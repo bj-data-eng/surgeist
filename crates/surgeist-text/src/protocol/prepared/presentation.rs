@@ -281,8 +281,7 @@ pub(super) fn select(
     let analysis = &prepared.analyzed.analysis;
     let alternative = request.alternative.as_ref().map(|value| value.index);
     let definition = alternative.map(|i| tables.alternatives[i].definition);
-    let before = alternative
-        .filter(|&i| tables.alternatives[i].placement != crate::HyphenationPlacement::LogicalAfter);
+    let before = alternative.filter(|&i| tables.alternatives[i].placement.includes_before());
     let mut output = Output::default();
     for (local, participant) in tables.participants[start.participant..end.participant]
         .iter()

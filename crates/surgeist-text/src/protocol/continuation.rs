@@ -1,7 +1,7 @@
 //! Exact after-bearing choice; no receiving geometry or committed-history claim.
 use super::{FinalizedLine, PreparedAlternative, PreparedBoundary};
 
-/// An immutable nonempty LogicalAfter indication attached to its authentic cut.
+/// An immutable nonempty After emission attached to its authentic cut.
 /// Text issues this choice from a selected Soft ending. It authenticates the
 /// preparation/alternative/boundary, not that a predecessor was committed.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -13,7 +13,7 @@ impl HyphenationContinuation {
     pub(crate) fn from_alternative(alternative: PreparedAlternative) -> Option<Self> {
         let prepared = &alternative.prepared;
         let row = &prepared.tables.alternatives[alternative.index];
-        if row.text.is_empty() || row.placement != crate::HyphenationPlacement::LogicalAfter {
+        if row.text.is_empty() || !row.placement.includes_after() {
             return None;
         }
         let boundary = PreparedBoundary {

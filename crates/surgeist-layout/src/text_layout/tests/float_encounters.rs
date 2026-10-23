@@ -1707,6 +1707,9 @@ mod conditional_cache;
 #[path = "after_continuation.rs"]
 mod after_continuation;
 
+#[path = "both_sides_feedback.rs"]
+mod both_sides_feedback;
+
 #[test]
 fn automatic_portion_retains_preceding_float_at_word_start_and_actual_fractional_frame() {
     fn check<S: LayoutScalar>() {
