@@ -6,6 +6,8 @@ use crate::test_fonts::replace_tables;
 
 const AHEM: &[u8] = include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf");
 
+#[path = "casing.rs"]
+mod casing;
 #[path = "kana.rs"]
 mod kana;
 
@@ -77,6 +79,84 @@ fn cmap(mappings: &[(u32, u32)]) -> Vec<u8> {
         output.extend(glyph.to_be_bytes());
     }
     output
+}
+
+/// Fixed dot/Greek coverage over licensed Ahem for literal None baselines.
+/// No casing is performed here. Marks100/101/102 have zero raw advance and
+/// existing nonempty outlines; mark-to-base anchors are (100,200)/(400,600).
+pub(crate) fn casing_ahem() -> Vec<u8> {
+    let mappings = [
+        (0x20, 3),
+        (0x41, 35),
+        (0x49, 43),
+        (0x58, 58),
+        (0x69, 75),
+        (0xcd, 168),
+        (0xed, 115),
+        (0x130, 36),
+        (0x131, 178),
+        (0x301, 102),
+        (0x307, 100),
+        (0x308, 101),
+        (0x386, 154),
+        (0x389, 165),
+        (0x390, 110),
+        (0x391, 35),
+        (0x394, 210),
+        (0x397, 36),
+        (0x399, 43),
+        (0x39a, 45),
+        (0x39f, 49),
+        (0x3a3, 53),
+        (0x3aa, 55),
+        (0x3ac, 105),
+        (0x3ae, 106),
+        (0x3af, 107),
+        (0x3b1, 67),
+        (0x3b4, 70),
+        (0x3b7, 71),
+        (0x3b9, 75),
+        (0x3ba, 77),
+        (0x3bf, 81),
+        (0x3c2, 84),
+        (0x3c3, 85),
+        (0x3ca, 109),
+    ];
+    let bases = [36, 43, 53, 55, 75, 84, 85];
+    let mut gdef = words(&[1, 0, 12, 0, 0, 0, 2, 8]);
+    for base in bases {
+        gdef.extend(words(&[base, base, 1]));
+    }
+    gdef.extend(words(&[100, 102, 3]));
+    // MarkBasePos format1: three marks, one class, seven actual bases.
+    let mut subtable = words(&[1, 102, 112, 1, 12, 44]);
+    subtable.extend(words(&[3, 0, 14, 0, 20, 0, 26]));
+    for _ in 0..3 {
+        subtable.extend(words(&[1, 100, 200]));
+    }
+    subtable.extend(words(&[7, 16, 22, 28, 34, 40, 46, 52]));
+    for _ in bases {
+        subtable.extend(words(&[1, 400, 600]));
+    }
+    subtable.extend(words(&[1, 3, 100, 101, 102]));
+    subtable.extend(words(&[1, 7]));
+    subtable.extend(words(&bases));
+    let mut hmtx = crate::test_fonts::table(AHEM, *b"hmtx").to_vec();
+    for glyph in [100, 101, 102] {
+        hmtx[glyph * 4..glyph * 4 + 2].copy_from_slice(&0_u16.to_be_bytes());
+    }
+    replace_tables(
+        AHEM,
+        vec![
+            (*b"cmap", cmap(&mappings)),
+            (*b"hmtx", hmtx),
+            (*b"GDEF", gdef),
+            (
+                *b"GPOS",
+                layout_table(*b"DFLT", vec![(*b"mark", 4, subtable)]),
+            ),
+        ],
+    )
 }
 
 /// Fixed cmap for A/C and small hiragana KO/full-size KO over licensed Ahem.
