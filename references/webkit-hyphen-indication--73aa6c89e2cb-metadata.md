@@ -29,10 +29,23 @@ compiled or ingested by this reference.
   The inspected path appends the style's indication to the selected substring.
   This establishes logical trailing insertion in that path, not physical-right
   placement in RTL or comprehensive language-specific placement support.
+- [`Source/WebCore/platform/graphics/FontCascadeFonts.h`, lines 231–259](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/platform/graphics/FontCascadeFonts.h#L231):
+  complete-source SHA-256
+  `ba58d0d1adc1be495efdee1024b664894c506de5094b9891baae80e9f35a6991`.
+  Primary-font resolution explicitly cites CSS Fonts' first-available-font rule
+  and distinguishes space eligibility from actual space-glyph availability.
+- [`Source/WebCore/platform/graphics/FontCascadeFonts.cpp`, lines 200–233](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/platform/graphics/FontCascadeFonts.cpp#L200):
+  complete-source SHA-256
+  `8d085714b786c3c80bd35c582062d340e11eaa14b76e7e9baf6c29da77b6f140`.
+  Cascade realization begins with the style's family resolution, then has an
+  explicit standard-family/last-resort path. This does not establish a native
+  primary by taking arbitrary script-fallback candidates, or require failure for
+  every missing family list.
 
 These files were inspected on 2026-10-23. Their original file-level notices
-identify LGPL version 2-or-later material for ComputedStyle and BSD notices for
-Font and InlineDisplayContentBuilder. Those notices remain with the immutable
+identify LGPL version 2-or-later material for ComputedStyle and FontCascadeFonts.h,
+and BSD notices for Font, InlineDisplayContentBuilder and FontCascadeFonts.cpp.
+Those notices remain with the immutable
 originals; this record copies no implementation text. See the existing
 [WebKit attribution](../licenses/webkit/NOTICE.md) and
 [LGPL version 2 text](../licenses/webkit/LICENSE-LGPL-2.txt).

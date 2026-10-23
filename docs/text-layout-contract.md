@@ -241,9 +241,28 @@ This is an explicit unknown-convention policy, not all-language support. The
 source SHY's own style governs its indication; a source-less typed control needs
 its actual captured style authority. Resolve the primary font against the same
 captured catalogue and instance selection, independently of adjacent shaped-run
-fallback. Missing required primary-font authority is a precise failure. After
-choosing the string, use normal font selection and shaping; the character choice
-does not promise glyph coverage or permit fabricated metrics.
+fallback. After choosing the string, use normal font selection and shaping; the
+character choice does not promise glyph coverage or permit fabricated metrics.
+
+Primary resolution is a distinct operation following the owning style's ordered
+families, resolved generics and actual face attributes. The selected
+[first-available-font rule](../references/css-fonts-4-width-matching--editor-capture-20261010--72f4c49ea2ec.md#first-available-font)
+uses U+0020 eligibility under admitted `unicode-range` restrictions, not the
+presence of a space glyph or U+2010 coverage. If listed faces are unavailable,
+only a genuinely configured and captured default-primary authority can supply
+the default; script fallback candidates do not establish that authority. With
+neither an eligible family face nor such a default, return a precise missing-primary
+failure for this auto-indication probe. This bounded failure does not make family
+list misses universally invalid under CSS Fonts.
+
+The current native raw-font catalogue has no CSS `@font-face` range restriction
+or separate default-primary capture. Its indication probe therefore qualifies
+ordered unrestricted native families and resolved generics, without the metric
+strut query's Latin/Han fallback. This does not complete CSS font-face range or
+default-font integration. Preserve existing strut selection independently.
+Specified strings, empty strings and suppressed hyphenation do not require this
+auto-indication probe; nonempty specified strings still need normal shaping
+resources.
 
 Each authentic defining occurrence has one indication input mode: resolve from
 its governing style and convention, or consume explicitly resolved native text
