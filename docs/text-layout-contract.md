@@ -474,6 +474,73 @@ unsupported conventions, primary-font versus adjacent-fallback coverage, genuine
 source/control custody, min-content and unchanged authored/selection/search text.
 This determination supplies requirements, not an implementation-completion claim.
 
+### Hyphenation indication bidi
+
+Text resolves the original paragraph's bidi state without generated hyphenation
+indications and applies its actual selected-line L1/L2 processing. An indication
+cannot change original embedding, strong-type or bracket resolution, or leave
+state for another line or indication. This applies to Source, Control and
+Automatic definitions and to both style-resolved and explicitly resolved native
+indication alternatives.
+
+Each nonempty indication has a local bidi domain attached at its authenticated
+logical before/after boundary. The outer attachment retains the originating or
+receiving run's full level; the indication's internal base direction uses that
+level's parity. Keep the outer and local level spaces distinct rather than
+adding their levels. The attachment authority is:
+
+| Placement and definition | Actual level owner |
+| --- | --- |
+| Before, Source SHY | Its analyzed original-source occurrence |
+| Before, typed Control | Its authenticated analyzed control occurrence |
+| Before, Automatic | The original contribution immediately preceding the cut |
+| After | The original contribution immediately following the generating cut on the receiving continuation line, with its actual selected-line directional authority |
+
+At a mixed-direction After boundary, use the following side. Retain the original
+occurrence, cut side and selected-line association, not an unqualified integer
+level. Transparent empty and out-of-flow events supply no level; do not skip a
+genuine formatting character merely to find visible content. Receiving direction
+does not transfer the indication's established style, font or convention
+ownership. A nonempty After indication without authenticated receiving
+continuation authority returns a precise missing-receiving-bidi-authority result;
+paragraph direction, adjacent fallback fonts and equal-offset anchors cannot
+substitute. Empty indications retain their selected-ending identity without a
+visible placement operation.
+
+Resolve the exact indication string internally with the existing UBA owner and
+the supplied local base direction. Strong characters, brackets, embeddings,
+isolates and overrides affect only that domain. Unmatched terminators cannot
+close original-source state, and unclosed local embeddings cannot escape it.
+Place the internally ordered result at its logical attachment side. Do not
+flatten all its characters to the attachment level, strip controls, or insert
+synthetic isolate characters into authored text.
+
+This bidi scope does not itself create a shaping barrier. Preserve the adopted
+original and computed joining contexts, genuine shared graphemes, and joint
+substitution and positioning across otherwise compatible original/computed
+runs. Different resolved directional runs retain their actual shaping
+constraints. If local bidi order, shared-unit correspondence and joint shaping
+cannot be composed faithfully, return a specific capability refusal before
+publication. Paragraph or segment separators inside an indication require an
+explicit local handling rule or a precise refusal, never an invented original
+paragraph break. Refused strings remain outstanding support.
+
+This is explicit Surgeist policy. The pinned
+[WebKit display mechanism](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/layout/formattingContexts/inline/display/InlineDisplayContentBuilder.cpp#L210)
+supports attaching a Before indication to an already resolved run. It does not
+establish After placement or arbitrary-string handling; those extensions are
+not uniquely prescribed by the pinned
+[hyphenate-character clause](../references/css-text-4--WD-css-text-4-20260814--106c5cd086ab.md#hyphenate-character).
+The prior full-paragraph variant-analysis effect is not an exception for Before.
+
+Qualification includes a real existing-callable Before case where an indication
+strong character, bracket or explicit control otherwise changes original bidi;
+opposite-direction After attachment; simultaneous incoming and outgoing
+indications; local control containment; genuine shared-unit shaping; unchanged
+subsequent-line source bidi; and precise missing-authority/composition refusals.
+Exact font-query witness reuse must follow these authenticated directional
+inputs. These are requirements, not an implementation-completion claim.
+
 ### Automatic resources, word custody and initial limits
 
 The selected first automatic resource is Hypher 0.1.8 with allocation and only
