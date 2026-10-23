@@ -160,6 +160,17 @@ allows automatic refinement within manual partitions; max-content stays
 unbroken. Neither operation infers fit failure from an absent finite width.
 Ordinary indication-inclusive trials precede nonhyphenating emergency cuts;
 automatic variant dispositions do not turn meaningful content into phantom flow.
+`NodeInputOf::hyphenate_limit_lines` supplies a block-owned `NoLimit` or finite
+count. Only successfully committed formatted lines update remaining capacity;
+automatic cuts are suppressed at the cap, while admitted manual endings
+(including empty indications) remain permitted and consume capacity. A genuine
+nonhyphenated ending resets it. Trials, floats and administrative run splits do
+not themselves change it; nested block containers own separate state. Min-content
+uses only the static zero/nonzero policy, independently of actual line history:
+zero retains manual partitions without automatic refinement, positive counts and
+no-limit retain refinement. Max-content stays unbroken. See the
+[successive-line contract](../../../docs/text-layout-contract.md#successive-hyphenated-lines-and-intrinsic-measurement).
+
 
 `TextJustification::Spaces` expands retained U+0020 slots using Text's finalized
 ownership and edge decisions. Layout distributes the remaining line capacity

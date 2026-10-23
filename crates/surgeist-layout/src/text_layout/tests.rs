@@ -14,6 +14,10 @@ mod conditional_overflow;
 mod float_fit;
 #[path = "tests/indent.rs"]
 mod indent;
+#[path = "tests/line_limit_composition.rs"]
+mod line_limit_composition;
+#[path = "tests/line_limits.rs"]
+mod line_limits;
 #[path = "tests/line_policy.rs"]
 mod line_policy;
 #[path = "tests/manual_css_minima.rs"]
@@ -215,6 +219,7 @@ fn assert_intrinsic_line_box<S: LayoutScalar>() {
             justification: TextJustification::None,
             indent: crate::text_indent::ResolvedTextIndent::ZERO,
             indent_state: crate::text_indent::IndentLineState::default(),
+            hyphenation_state: crate::hyphenation::LineHyphenationState::default(),
         },
         &[],
         super::run::LineEnvironment {

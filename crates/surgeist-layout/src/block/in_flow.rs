@@ -178,6 +178,8 @@ where
     let mut index = 0;
     let mut first_in_flow = true;
     let mut inline_indent_state = None;
+    let mut hyphenation_state =
+        crate::hyphenation::LineHyphenationState::new(constants.hyphenate_limit_lines);
     while index < children.len() {
         let source_index = index;
         let child = children[index];
@@ -286,6 +288,7 @@ where
                     node,
                     children,
                     InlineRunContext {
+                        hyphenation_state,
                         source_index_start: transition.start,
                         cursor_block,
                         owned_float_block_end,
@@ -301,6 +304,7 @@ where
                     },
                     InlineRunTransitionState {
                         indent_state: &mut inline_indent_state,
+                        hyphenation_state: &mut hyphenation_state,
                         cursor_block: &mut cursor_block,
                         content_size: &mut content_size,
                         scroll_content_size: &mut scroll_content_size,

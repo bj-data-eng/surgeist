@@ -53,6 +53,7 @@ pub(crate) struct Context<S: LayoutScalar> {
     pub justification: TextJustification,
     pub indent: crate::text_indent::ResolvedTextIndent<S>,
     pub indent_state: crate::text_indent::IndentLineState,
+    pub hyphenation_state: crate::hyphenation::LineHyphenationState,
 }
 
 impl<S: LayoutScalar> Context<S> {
@@ -175,6 +176,7 @@ pub(crate) fn layout<Node: Copy + Eq, S: LayoutScalar>(
             justification: context.justification,
             indent: context.indent.widened(),
             indent_state: context.indent_state,
+            hyphenation_state: context.hyphenation_state,
             orientation,
             atomics: &allocations,
             controls: &control_allocations,
@@ -508,6 +510,7 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
     lines: Vec<FittedLine>,
 ) -> Result<Output<Node, S>, FitError> {
     let mut report = MixedInlineRunReportOf {
+        hyphenation_state: context.hyphenation_state,
         indent_state: context.indent_state,
         inline_extent: S::ZERO,
         block_extent: S::ZERO,
@@ -530,6 +533,7 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
     let mut static_positions = Vec::new();
     let mut outflows = Vec::new();
     for (line_index, line) in lines.into_iter().enumerate() {
+        report.hyphenation_state = line.hyphenation_end;
         let feedback = line.finalized.feedback();
         let contribution = match context.available {
             AvailableOf::MinContent => line.finalized.measurements().min_content_contribution(),
@@ -761,6 +765,7 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
         });
     }
     let indent_end = report.indent_state;
+    let hyphenation_end = report.hyphenation_state;
     Ok(Output {
         report,
         line_bounds,
@@ -780,6 +785,8 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
             indent: context.indent.widened(),
             indent_start: context.indent_state,
             indent_end,
+            hyphenation_start: context.hyphenation_state,
+            hyphenation_end,
         },
     })
 }

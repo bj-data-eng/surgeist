@@ -25,6 +25,15 @@ pub enum ConditionalPurpose {
 #[derive(Clone, Debug, PartialEq)]
 pub enum ConditionalDisposition {
     Phantom(FinalizedLine),
+    /// Consumer-owned successive-line policy suppresses this exact automatic
+    /// variant before attempting it. Overflow means exhausted finite capacity;
+    /// MinContent permits only the static zero limit. This does not suppress
+    /// manual or no-alternative siblings, prove fit, or advance the phantom
+    /// frontier. Rebuild the query when the committed policy context changes.
+    AutoLineLimit {
+        alternative: super::PreparedAlternative,
+        limit: usize,
+    },
     /// Consumer's finite manual-priority decision, backed by an exact
     /// admitted manual portion trial through the shared measurement finalizer.
     AutoManualPriority {
@@ -42,6 +51,7 @@ struct DispositionIdentity {
     opportunity: usize,
     alternative: Option<usize>,
     portion: Option<super::PreparedWordPortion>,
+    line_limit: Option<usize>,
     controls: Vec<(usize, bool)>,
     atomics: Vec<(usize, bool)>,
 }
@@ -51,7 +61,7 @@ impl ConditionalDisposition {
             Self::Phantom(line)
             | Self::AutoFitExhausted(line)
             | Self::AutoManualPriority { portion: line, .. } => Some(line),
-            Self::AutoIntrinsicRefinement(_) => None,
+            Self::AutoIntrinsicRefinement(_) | Self::AutoLineLimit { .. } => None,
         }
     }
 }
@@ -344,6 +354,7 @@ fn validate_frontier(
                 opportunity: index,
                 alternative: variant,
                 portion: None,
+                line_limit: None,
                 controls: Vec::new(),
                 atomics: Vec::new(),
             };
@@ -440,6 +451,18 @@ fn validate_frontier(
                     }
                     identity.kind = 1;
                     identity.portion = Some(part.clone());
+                    all_phantom = false;
+                }
+                ConditionalDisposition::AutoLineLimit { alternative, limit } => {
+                    if automatic.is_none()
+                        || (purpose == ConditionalPurpose::MinContent && *limit != 0)
+                        || !Arc::ptr_eq(&prepared.inner, &alternative.prepared)
+                        || Some(alternative.index) != variant
+                    {
+                        return Err(invalid());
+                    }
+                    identity.kind = 4;
+                    identity.line_limit = Some(*limit);
                     all_phantom = false;
                 }
                 ConditionalDisposition::AutoIntrinsicRefinement(alternative) => {

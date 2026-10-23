@@ -25,6 +25,8 @@ pub(crate) struct PendingParagraph<Node> {
     pub indent: crate::text_indent::ResolvedTextIndent<f64>,
     pub indent_start: crate::text_indent::IndentLineState,
     pub indent_end: crate::text_indent::IndentLineState,
+    pub hyphenation_start: crate::hyphenation::LineHyphenationState,
+    pub hyphenation_end: crate::hyphenation::LineHyphenationState,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -43,6 +45,11 @@ pub(crate) struct PassBasis<Node, S: LayoutScalar> {
     pub frames: Vec<CanonicalFrame<Node, S>>,
     pub lines: Vec<LineBasis>,
     pub absolute_baselines: Vec<(Node, f64)>,
+    pub hyphenation: Vec<(
+        Node,
+        crate::hyphenation::LineHyphenationState,
+        crate::hyphenation::LineHyphenationState,
+    )>,
     pub indentation: Vec<(
         Node,
         crate::text_indent::ResolvedTextIndent<f64>,
@@ -166,6 +173,17 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
                 )
                 .collect(),
             absolute_baselines: self.absolute_baselines.clone(),
+            hyphenation: self
+                .pending
+                .iter()
+                .map(|paragraph| {
+                    (
+                        paragraph.container,
+                        paragraph.hyphenation_start,
+                        paragraph.hyphenation_end,
+                    )
+                })
+                .collect(),
             indentation: self
                 .pending
                 .iter()

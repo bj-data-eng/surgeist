@@ -114,6 +114,7 @@ pub(super) struct InlineControlSourceOf<S: LayoutScalar = DefaultScalar> {
 
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct MixedInlineRunReportOf<S: LayoutScalar = DefaultScalar> {
+    pub hyphenation_state: crate::hyphenation::LineHyphenationState,
     pub indent_state: crate::text_indent::IndentLineState,
     pub inline_extent: S,
     pub block_extent: S,
@@ -1263,6 +1264,7 @@ where
     }
 
     MixedInlineRunReportOf {
+        hyphenation_state: crate::hyphenation::LineHyphenationState::default(),
         indent_state,
         inline_extent,
         block_extent: block_cursor.max(resolved_terminal_block_extent),

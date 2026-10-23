@@ -25,6 +25,7 @@ pub(crate) fn fragment_for(
             justification: crate::TextJustification::None,
             indent: crate::text_indent::ResolvedTextIndent::ZERO,
             indent_state: crate::text_indent::IndentLineState::default(),
+            hyphenation_state: crate::hyphenation::LineHyphenationState::default(),
             orientation: surgeist_text::LineOrientation::Horizontal,
             atomics: &[],
             controls: &[],

@@ -211,6 +211,7 @@ mod error;
 mod flex;
 mod geometry;
 mod grid;
+mod hyphenation;
 mod inline;
 mod layout_math;
 mod measurement;
@@ -220,6 +221,7 @@ mod output;
 #[cfg(test)]
 #[path = "../tests/layout/browser_parity/pinned_font.rs"]
 mod pinned_font;
+pub use hyphenation::HyphenateLimitLines;
 mod text_indent;
 mod text_layout;
 pub use text_layout::{

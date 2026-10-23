@@ -151,6 +151,7 @@ impl VisibleInlineRunTransition {
     {
         let InlineRunTransitionState {
             indent_state,
+            hyphenation_state,
             cursor_block,
             content_size,
             scroll_content_size,
@@ -180,6 +181,7 @@ impl VisibleInlineRunTransition {
             contributions,
         )?;
 
+        *hyphenation_state = placement.hyphenation_state;
         if let Some(committed) = placement.indent_state {
             *indent_state = Some(committed);
         }
@@ -226,6 +228,7 @@ impl VisibleInlineRunTransition {
 
 pub(super) struct InlineRunTransitionState<'a, Node, S: LayoutScalar> {
     pub(super) indent_state: &'a mut Option<crate::text_indent::IndentLineState>,
+    pub(super) hyphenation_state: &'a mut crate::hyphenation::LineHyphenationState,
     pub(super) cursor_block: &'a mut S,
     pub(super) content_size: &'a mut LogicalSizeOf<S>,
     pub(super) scroll_content_size: &'a mut LogicalSizeOf<S>,
@@ -247,6 +250,7 @@ struct InlineRunPlacement<Node, S: LayoutScalar> {
     floats: Vec<PendingFloat<Node, S>>,
     owned_float_block_end: S,
     indent_state: Option<crate::text_indent::IndentLineState>,
+    hyphenation_state: crate::hyphenation::LineHyphenationState,
     size: Size<S>,
     content_size: Size<S>,
     scroll_content_size: Size<S>,
@@ -265,6 +269,7 @@ impl<Node, S: LayoutScalar> InlineRunPlacement<Node, S> {
 
 pub(super) struct InlineRunContext<'a, S: LayoutScalar> {
     pub(super) indent_state: crate::text_indent::IndentLineState,
+    pub(super) hyphenation_state: crate::hyphenation::LineHyphenationState,
     pub(super) source_index_start: usize,
     pub(super) cursor_block: S,
     pub(super) owned_float_block_end: S,
@@ -339,6 +344,7 @@ where
 {
     let InlineRunContext {
         indent_state,
+        hyphenation_state,
         source_index_start,
         cursor_block,
         owned_float_block_end,
@@ -660,7 +666,7 @@ where
     let logical_content_box_inset = constants.logical_content_box_inset();
     let provider_error = std::cell::RefCell::new(None);
     let mut text_output = None;
-    let report = if let Some(binding) = text_binding {
+    let mut report = if let Some(binding) = text_binding {
         let (frame, frames, reusable) = {
             let state = tree
                 .text_computation()
@@ -715,6 +721,7 @@ where
             justification: constants.text_justification,
             indent: resolve_text_indent(container, constants.text_indent, available)?,
             indent_state,
+            hyphenation_state,
         };
         let text_controls = binding
             .controls
@@ -939,6 +946,16 @@ where
             },
         )
     };
+    if text_output.is_none() {
+        report.hyphenation_state = hyphenation_state;
+        if matches!(available_inline_extent, AvailableOf::Definite(_))
+            && !report.line_bands.is_empty()
+        {
+            // The numeric box/control path committed real nonhyphenated lines.
+            // Empty wrappers and floats with no formatted line do not reset.
+            report.hyphenation_state.commit(false);
+        }
+    }
     if let Some(error) = provider_error.into_inner() {
         return Err(error);
     }
@@ -1205,6 +1222,7 @@ where
         floats: encounter_plans,
         owned_float_block_end: float_end,
         indent_state: (!report.line_bands.is_empty()).then_some(report.indent_state),
+        hyphenation_state: report.hyphenation_state,
         size: report_size,
         content_size,
         scroll_content_size,

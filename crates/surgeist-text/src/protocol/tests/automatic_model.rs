@@ -1193,3 +1193,107 @@ fn automatic_range_units_keep_optional_ligature_shares_distinct() {
         matches!(outside.detail(),Some(crate::ErrorDetail::SourceRangeFragments { reason:crate::SourceRangeFragmentError::OutsidePlacement {aggregate} }) if *aggregate==Range::new(5,6))
     );
 }
+
+#[test]
+fn line_limit_dispositions_authenticate_exact_automatic_variants_and_purpose() {
+    let mut value = input(Source::new("associate"), &[0, 9]);
+    value.base_style.overflow_wrap = crate::OverflowWrap::Anywhere;
+    let p = prepare(value.clone());
+    let start = p.boundary_views().next().unwrap().handle();
+    let ceiling = p.opportunity_views().last().unwrap().handle();
+    let alternatives = p
+        .opportunity_views()
+        .flat_map(|view| {
+            view.alternatives()
+                .map(|alt| alt.handle())
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(alternatives.len(), 2);
+    let dispositions = |limit| {
+        alternatives
+            .iter()
+            .cloned()
+            .map(|alternative| crate::ConditionalDisposition::AutoLineLimit { alternative, limit })
+            .collect::<Vec<_>>()
+    };
+    let zero = dispositions(0);
+    let finite = dispositions(1);
+    let query = |purpose, rows: &[_]| p.conditional_opportunities(&start, &ceiling, purpose, rows);
+    let overflow = query(ConditionalPurpose::Overflow, &finite).unwrap();
+    assert_eq!(
+        overflow
+            .iter()
+            .map(|cut| cut.boundary().view().source_before().get())
+            .collect::<Vec<_>>(),
+        [1, 2, 3, 4, 5, 6, 7, 8]
+    );
+    // Suppression covers inventory, not a phantom prefix: even before first Auto2.
+    assert_eq!(
+        overflow,
+        query(ConditionalPurpose::Overflow, &dispositions(1)).unwrap()
+    );
+    assert_ne!(
+        overflow,
+        query(ConditionalPurpose::Overflow, &zero).unwrap()
+    );
+    assert!(query(ConditionalPurpose::MinContent, &finite).is_err());
+    let minimum = query(ConditionalPurpose::MinContent, &zero).unwrap();
+    assert_ne!(overflow, minimum);
+    assert!(query(ConditionalPurpose::Overflow, &[]).is_err());
+    assert!(
+        query(
+            ConditionalPurpose::Overflow,
+            &[finite[1].clone(), finite[0].clone()]
+        )
+        .is_err()
+    );
+    assert!(
+        query(
+            ConditionalPurpose::Overflow,
+            &[finite[0].clone(), finite[0].clone()]
+        )
+        .is_err()
+    );
+    let foreign = prepare(value);
+    let mut bad = finite.clone();
+    bad[0] = crate::ConditionalDisposition::AutoLineLimit {
+        alternative: foreign.alternative_views().next().unwrap().handle(),
+        limit: 1,
+    };
+    assert!(query(ConditionalPurpose::Overflow, &bad).is_err());
+    let mut request = request(&p);
+    request.end = overflow[0].boundary();
+    request.participants = p
+        .participants()
+        .take(request.end.view().participant_offset())
+        .collect();
+    request.termination = PreparedTermination::Conditional(overflow[0].clone());
+    request.context.end = LineEnd::Soft;
+    request.context.available_inline = Some(10.0);
+    let line = p
+        .select(request.clone())
+        .unwrap()
+        .finalize(SpacingAllocations::None)
+        .unwrap();
+    assert_eq!(line.feedback().advance, 10.0);
+    request.context.available_inline = None;
+    assert!(p.select(request).is_err());
+    // Authored SHY has independent permission and cannot be excluded by line policy.
+    let manual = prepare(input(Source::new("as\u{ad}sociate"), &[0, 10]));
+    let first = manual.opportunity_views().next().unwrap();
+    let manual_disposition = crate::ConditionalDisposition::AutoLineLimit {
+        alternative: first.alternatives().next().unwrap().handle(),
+        limit: 0,
+    };
+    assert!(
+        manual
+            .conditional_opportunities(
+                &manual.boundary_views().next().unwrap().handle(),
+                &manual.opportunity_views().last().unwrap().handle(),
+                ConditionalPurpose::Overflow,
+                &[manual_disposition]
+            )
+            .is_err()
+    );
+}

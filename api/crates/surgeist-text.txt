@@ -27,6 +27,9 @@ pub surgeist_text::BidiLevelError::OutOfRange::level: u8
 pub enum surgeist_text::ConditionalDisposition
 pub surgeist_text::ConditionalDisposition::AutoFitExhausted(surgeist_text::FinalizedLine)
 pub surgeist_text::ConditionalDisposition::AutoIntrinsicRefinement(surgeist_text::PreparedAlternative)
+pub surgeist_text::ConditionalDisposition::AutoLineLimit
+pub surgeist_text::ConditionalDisposition::AutoLineLimit::alternative: surgeist_text::PreparedAlternative
+pub surgeist_text::ConditionalDisposition::AutoLineLimit::limit: usize
 pub surgeist_text::ConditionalDisposition::AutoManualPriority
 pub surgeist_text::ConditionalDisposition::AutoManualPriority::alternative: surgeist_text::PreparedAlternative
 pub surgeist_text::ConditionalDisposition::AutoManualPriority::portion: surgeist_text::FinalizedLine

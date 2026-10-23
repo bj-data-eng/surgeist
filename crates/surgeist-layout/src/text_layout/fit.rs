@@ -127,6 +127,7 @@ pub(crate) struct LineFlow {
 }
 
 pub(crate) struct FittedLine {
+    pub hyphenation_end: crate::hyphenation::LineHyphenationState,
     pub encounters: Vec<EncounterBasis>,
     pub finalized: FinalizedLine,
     pub amounts: Vec<f64>,
@@ -169,6 +170,7 @@ pub(crate) struct FitInput<'a> {
     pub justification: TextJustification,
     pub indent: crate::text_indent::ResolvedTextIndent<f64>,
     pub indent_state: crate::text_indent::IndentLineState,
+    pub hyphenation_state: crate::hyphenation::LineHyphenationState,
     pub orientation: LineOrientation,
     pub atomics: &'a [AtomicAllocation],
     pub controls: &'a [ControlAllocation],
@@ -728,6 +730,7 @@ pub(crate) fn fit(
     let mut logical_start = 0.0;
     let mut minimum_block: Option<f64> = None;
     let mut indent_state = input.indent_state;
+    let mut hyphenation_state = input.hyphenation_state;
     let mut completed_end = false;
     while !completed_end {
         let start_boundary = boundaries
@@ -768,6 +771,16 @@ pub(crate) fn fit(
                             _ => None,
                         });
                     if automatic.is_some() && matches!(input.available, Available::Maximum) {
+                        continue;
+                    }
+                    if let Some(alternative) = alternative.as_ref().filter(|_| automatic.is_some())
+                        && let Some(limit) = hyphenation_state
+                            .suppressed_limit(matches!(input.available, Available::Minimum))
+                    {
+                        dispositions.push(ConditionalDisposition::AutoLineLimit {
+                            alternative: alternative.clone(),
+                            limit,
+                        });
                         continue;
                     }
                     let request = selection_request(
@@ -997,8 +1010,12 @@ pub(crate) fn fit(
             let end = candidate.request.end.view().participant_offset();
             indent_state.commit(ending == LineEnd::Forced);
             accept_encounters()?;
+            if matches!(input.available, Available::Definite(_)) && candidate.formatted {
+                hyphenation_state.commit(candidate.request.alternative.is_some());
+            }
             let available = candidate.finalized.metric_bounds().size.width;
             result.push(FittedLine {
+                hyphenation_end: hyphenation_state,
                 encounters: candidate.encounters,
                 finalized: candidate.finalized,
                 amounts: candidate.amounts,

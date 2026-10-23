@@ -100,7 +100,11 @@ uses the same selected-line and placement machinery.
    Min-content instead permits automatic refinement of those portions; maximum
    remains unbroken. Conditional queries require complete earlier variant
    dispositions, keeping actual phantom receipts separate from automatic
-   priority, fit-exhaustion and intrinsic dispositions. Text validates their
+   priority, fit-exhaustion, intrinsic and successive-line-limit dispositions.
+   `AutoLineLimit` covers only the exact automatic variant, before a suppressed
+   trial: finite Overflow is the consumer's exhausted-capacity decision and
+   MinContent accepts only static zero. It does not advance the phantom frontier,
+   suppress a manual sibling, or certify consumer counter/fit arithmetic. Text validates their
    owners and roles; the consumer owns actual fit and recomputes on replay.
 4. `PreparedText::select` returns `SelectedLine`. Its slots identify actual selected
    presentation contributions, including replacement spaces. Finalize first with

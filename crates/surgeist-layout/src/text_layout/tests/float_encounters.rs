@@ -1948,3 +1948,6 @@ fn automatic_internal_float_retries_changed_band_and_preserves_committed_results
     check::<f32>();
     check::<f64>();
 }
+
+#[path = "line_limit_retry.rs"]
+mod line_limit_retry;
