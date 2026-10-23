@@ -30,20 +30,21 @@ pub(crate) fn finalize_selected(
 
 fn finalize_standalone(
     prepared: Arc<PreparedData>,
-    selection: super::LineSelection,
+    request: crate::LineSelectionRequest,
     quantize: bool,
     scratch: &mut ShapeContext,
 ) -> Result<super::FinalizedLine> {
-    use crate::protocol::selection::{LineMetricPolicy, lower_standalone};
-    let selected = lower_standalone(
-        prepared,
-        selection,
+    use crate::protocol::selection::{LineMetricPolicy, select};
+    let selected = select(
+        &crate::PreparedText { inner: prepared },
+        request,
         if quantize {
             LineMetricPolicy::StandaloneQuantized
         } else {
             LineMetricPolicy::Exact
         },
-    )?;
+    )?
+    .inner;
     let first = finalize::finalize(
         Arc::clone(&selected),
         &vec![0.0; selected.spacing_slots.len()],

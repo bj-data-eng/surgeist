@@ -2,11 +2,11 @@
 
 use crate::{TextAlign, TextAlignLast, TextJustification};
 use surgeist_text::{
-    Alignment, AtomicAllocation, ConditionalPurpose, ControlAllocation, FinalizedLine, LineContext,
-    LineEnd, LineOrientation, LineSelectionRequest, LineStart, ParagraphBaseDirection,
-    PreparedAlternative, PreparedBoundary, PreparedBreakKind, PreparedParticipant,
-    PreparedTermination, PreparedText, SelectedLine, SpacingAllocation, SpacingAllocations,
-    SpacingPolicy, SpacingSlotDisposition, TabContext, TabPreparation,
+    Alignment, AtomicAllocation, ConditionalDisposition, ConditionalPurpose, ControlAllocation,
+    FinalizedLine, LineContext, LineEnd, LineOrientation, LineSelectionRequest, LineStart,
+    ParagraphBaseDirection, PreparedAlternative, PreparedBoundary, PreparedBreakKind,
+    PreparedParticipant, PreparedTermination, PreparedText, SelectedLine, SpacingAllocation,
+    SpacingAllocations, SpacingPolicy, SpacingSlotDisposition, TabContext, TabPreparation,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -19,12 +19,21 @@ pub(crate) struct Band {
 }
 
 /// A source-line encounter checkpoint is not the mutable text avoidance cursor.
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub(crate) struct EncounterReplay {
+    /// Actual preceding source encounters of a pure word-portion trial.
+    pub preceding: Option<PrecedingEncounter>,
     pub source_floor: f64,
     pub logical: f64,
     pub placed: f64,
     pub defer_preceding: bool,
+}
+
+/// Actual receipt and placed anchor belong to one accepted trial frame.
+#[derive(Clone)]
+pub(crate) struct PrecedingEncounter {
+    pub line: FinalizedLine,
+    pub placed: f64,
 }
 
 /// Constraints from the two actual footprints, never their bounding union.
@@ -385,6 +394,7 @@ where
         input: &FitInput<'_>,
         mut request: LineSelectionRequest,
         position: &CandidatePosition,
+        preceding: Option<&EvaluatedCandidate>,
     ) -> Result<EvaluatedCandidate, FitError> {
         (self.reset)();
         let mut height = 0.0;
@@ -406,7 +416,10 @@ where
                     input.justification,
                 )?;
                 request = candidate.request;
-                (self.replay)(&candidate.finalized, position.replay(placed_start))?;
+                (self.replay)(
+                    &candidate.finalized,
+                    position.replay(placed_start, preceding),
+                )?;
                 let actual = (self.allocate)(&candidate.finalized, band, placed_start)?;
                 if actual.atomics == request.atomics
                     && actual.controls == request.controls
@@ -423,7 +436,7 @@ where
                 request.controls = actual.controls;
                 request.line_strut = actual.line_strut;
             };
-            let encounters = (self.replay)(&finalized, position.replay(placed_start))?;
+            let encounters = (self.replay)(&finalized, position.replay(placed_start, preceding))?;
             let feedback = finalized.feedback();
             let actual_height = finite(feedback.line_height)?;
             let actual_start = (self.canonical)(
@@ -507,7 +520,7 @@ where
         (self.reset)();
         let encounters = (self.replay)(
             &candidate.finalized,
-            position.replay(candidate.placed_start),
+            position.replay(candidate.placed_start, None),
         )?;
         let bands = query_bands(
             &mut self.band,
@@ -533,8 +546,12 @@ where
 }
 
 impl CandidatePosition {
-    fn replay(&self, placed: f64) -> EncounterReplay {
+    fn replay(&self, placed: f64, preceding: Option<&EvaluatedCandidate>) -> EncounterReplay {
         EncounterReplay {
+            preceding: preceding.map(|candidate| PrecedingEncounter {
+                line: candidate.finalized.clone(),
+                placed: candidate.placed_start,
+            }),
             source_floor: self.source_floor,
             logical: self.logical_start,
             placed,
@@ -739,15 +756,27 @@ pub(crate) fn fit(
                     .into_iter()
                     .chain(alternatives.iter().cloned().map(Some));
                 let mut endpoint_choice: Option<EvaluatedCandidate> = None;
-                let mut phantom_variants = Vec::new();
+                let mut dispositions = Vec::new();
+                let mut ordinary_formatted = false;
                 for alternative in variants {
+                    let automatic = alternative
+                        .as_ref()
+                        .and_then(|alternative| match alternative.view().definition() {
+                            surgeist_text::PreparedAlternativeDefinition::Automatic { cut } => {
+                                Some(cut)
+                            }
+                            _ => None,
+                        });
+                    if automatic.is_some() && matches!(input.available, Available::Maximum) {
+                        continue;
+                    }
                     let request = selection_request(
                         &input,
                         &start_boundary,
                         LineEndpoint {
                             boundary: opportunity.view().boundary(),
                             termination: PreparedTermination::Ordinary(opportunity.clone()),
-                            alternative,
+                            alternative: alternative.clone(),
                             ending: match kind {
                                 PreparedBreakKind::Allowed | PreparedBreakKind::Discretionary => {
                                     LineEnd::Soft
@@ -758,37 +787,90 @@ pub(crate) fn fit(
                         },
                         indent_state,
                     );
-                    let candidate = environment.evaluate(&input, request, &position)?;
+                    let candidate = environment.evaluate(&input, request, &position, None)?;
+                    if let Some(cut) = &automatic
+                        && matches!(input.available, Available::Definite(_))
+                        && let Some(word) = cut.view().word()
+                    {
+                        let mut priority = None;
+                        for portion in word.view().portions()? {
+                            let boundary = cut.view().boundary().view().participant_offset();
+                            if !portion.has_manual_partition()
+                                || boundary <= portion.start().view().participant_offset()
+                                || boundary > portion.end().view().participant_offset()
+                            {
+                                continue;
+                            }
+                            let request = selection_request(
+                                &input,
+                                &portion.start(),
+                                LineEndpoint {
+                                    boundary: portion.end(),
+                                    termination: PreparedTermination::Measurement(portion.clone()),
+                                    alternative: portion.alternative(),
+                                    ending: LineEnd::Soft,
+                                },
+                                indent_state,
+                            );
+                            let trial = environment.evaluate(
+                                &input,
+                                request,
+                                &position,
+                                Some(&candidate),
+                            )?;
+                            if trial.fits {
+                                priority = Some(trial.finalized);
+                                break;
+                            }
+                        }
+                        if let Some(portion) = priority {
+                            dispositions.push(ConditionalDisposition::AutoManualPriority {
+                                alternative: alternative.clone().expect("automatic alternative"),
+                                portion,
+                            });
+                            continue;
+                        }
+                    }
                     if !candidate.formatted {
-                        phantom_variants.push(candidate.finalized);
+                        dispositions.push(ConditionalDisposition::Phantom(candidate.finalized));
                         continue;
+                    }
+                    if let Some(alternative) = alternative.filter(|_| automatic.is_some()) {
+                        if matches!(input.available, Available::Minimum) {
+                            dispositions
+                                .push(ConditionalDisposition::AutoIntrinsicRefinement(alternative));
+                        } else {
+                            dispositions.push(ConditionalDisposition::AutoFitExhausted(
+                                candidate.finalized.clone(),
+                            ));
+                        }
+                    } else {
+                        ordinary_formatted = true;
                     }
                     let fits = candidate.fits;
                     if endpoint_choice.is_none() || fits {
                         endpoint_choice = Some(candidate);
                     }
-                    // An actual fitting declared variant retains its preference.
-                    if fits {
+                    if fits && !matches!(input.available, Available::Minimum) {
                         break;
                     }
                 }
-                if let Some(candidate) = endpoint_choice {
-                    if first_ceiling.is_none() {
+                if let Some(candidate) = endpoint_choice
+                    && (choice.is_none()
+                        || (!matches!(input.available, Available::Minimum)
+                            && (candidate.fits || matches!(input.available, Available::Maximum))))
+                {
+                    choice = Some(candidate);
+                }
+                if first_ceiling.is_none() {
+                    if ordinary_formatted {
                         first_ceiling = Some(opportunity.clone());
+                    } else {
+                        skipped_ordinary.extend(dispositions);
                     }
-                    if choice.is_none()
-                        || candidate.fits
-                        || matches!(input.available, Available::Maximum)
-                    {
-                        choice = Some(candidate);
-                    }
-                    if matches!(input.available, Available::Minimum) {
-                        break;
-                    }
-                } else if first_ceiling.is_none() {
-                    // Every legal variant was executed and proved phantom.
-                    // Keep the original start and every original occurrence.
-                    skipped_ordinary.extend(phantom_variants);
+                }
+                if matches!(input.available, Available::Minimum) && ordinary_formatted {
+                    break;
                 }
                 if !matches!(
                     kind,
@@ -828,7 +910,7 @@ pub(crate) fn fit(
                         },
                         indent_state,
                     );
-                    let trial = environment.evaluate(&input, request, &position)?;
+                    let trial = environment.evaluate(&input, request, &position, None)?;
                     if !trial.formatted {
                         continue;
                     }
@@ -869,8 +951,9 @@ pub(crate) fn fit(
                 let deferred = (environment.replay)(
                     &candidate.finalized,
                     EncounterReplay {
+                        preceding: None,
                         defer_preceding: true,
-                        ..position.replay(candidate.placed_start)
+                        ..position.replay(candidate.placed_start, None)
                     },
                 )?;
                 if deferred != candidate.encounters {

@@ -1,5 +1,6 @@
 //! Functional qualification of the new public phase front.
 
+mod automatic_model;
 mod automatic_opportunities;
 mod conditional;
 mod count_admission;

@@ -6,8 +6,8 @@ use fontique::{Collection, FamilyId, FontStyle, FontWeight, FontWidth, GenericFa
 use parlance::{FontFamilyName, FontFeature, FontVariation};
 
 use crate::{
-    Brush, Decoration, Error, ErrorCode, LineHeight, OverflowWrap, Range, Result, Source,
-    TextNumericError, TextNumericPhase, ValidatedStyle, Wrap,
+    Brush, Decoration, Error, ErrorCode, LineHeight, Range, Result, Source, TextNumericError,
+    TextNumericPhase, ValidatedStyle,
 };
 
 #[derive(Clone, Debug)]
@@ -33,8 +33,6 @@ pub(crate) struct ResolvedStyle {
     pub(crate) line_height: LineHeight,
     pub(crate) word_spacing: f64,
     pub(crate) letter_spacing: f64,
-    pub(crate) overflow_wrap: OverflowWrap,
-    pub(crate) wrap: Wrap,
 }
 
 #[derive(Clone, Debug)]
@@ -176,8 +174,6 @@ fn resolve_style(
         line_height: scaled_line_height(style.line_height, scale)?,
         word_spacing: scaled_logical(style.word_spacing, scale, false, "word spacing")?,
         letter_spacing: scaled_logical(style.letter_spacing, scale, false, "letter spacing")?,
-        overflow_wrap: style.overflow_wrap,
-        wrap: style.wrap,
     })
 }
 

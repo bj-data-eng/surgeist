@@ -19,6 +19,8 @@ use super::paragraph::{ParagraphAnchor, ParagraphAnchorItem, ParagraphControlKin
 #[derive(Debug)]
 pub(crate) struct PreparedTables {
     pub(crate) profile: crate::engine::PreparationProfile,
+    pub(crate) words: Vec<super::hyphenation::WordData>,
+    pub(crate) hyphenation_cuts: Vec<super::hyphenation::CutData>,
     pub(crate) participants: Vec<ParticipantData>,
     pub(crate) units: Vec<UnitData>,
     pub(crate) atomics: Vec<AtomicData>,
@@ -110,8 +112,38 @@ pub(crate) struct AlternativeData {
     pub(crate) resolution: IndicationResolution,
     pub(crate) style: usize,
     pub(crate) opportunity: usize,
-    pub(crate) definition: super::paragraph::ParagraphReplacementDefinition,
+    pub(crate) definition: AlternativeDefinition,
+    pub(crate) hyphenation_cut: usize,
     pub(crate) insertion_anchor: usize,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum AlternativeDefinition {
+    Source {
+        origin: usize,
+        source: Range,
+    },
+    Control {
+        control: usize,
+        origin: Option<usize>,
+    },
+    Automatic {
+        cut: usize,
+        atom: usize,
+        origin: usize,
+    },
+}
+impl AlternativeDefinition {
+    fn manual(value: super::paragraph::ParagraphReplacementDefinition) -> Self {
+        match value {
+            super::paragraph::ParagraphReplacementDefinition::Source { origin, source } => {
+                Self::Source { origin, source }
+            }
+            super::paragraph::ParagraphReplacementDefinition::Control { control, origin } => {
+                Self::Control { control, origin }
+            }
+        }
+    }
 }
 
 /// Resolution provenance is retained with the canonical owning style row.
@@ -126,15 +158,13 @@ pub(crate) enum IndicationResolution {
 impl AlternativeData {
     fn control(&self) -> Option<usize> {
         match self.definition {
-            super::paragraph::ParagraphReplacementDefinition::Control { control, .. } => {
-                Some(control)
-            }
+            AlternativeDefinition::Control { control, .. } => Some(control),
             _ => None,
         }
     }
     fn replaced_source(&self) -> Range {
         match self.definition {
-            super::paragraph::ParagraphReplacementDefinition::Source { source, .. } => source,
+            AlternativeDefinition::Source { source, .. } => source,
             _ => Range::new(self.insertion_anchor, self.insertion_anchor),
         }
     }
@@ -258,6 +288,8 @@ pub(crate) fn prepare_tables(
     }
     let mut tables = PreparedTables {
         profile,
+        words: super::hyphenation::words(analyzed)?,
+        hyphenation_cuts: Vec::new(),
         participants: Vec::new(),
         units: Vec::new(),
         atomics: Vec::new(),
@@ -493,7 +525,9 @@ fn issue_opportunities(
             _ => None,
         })
         .collect();
-    for (index, boundary) in tables.boundaries.iter().enumerate().skip(1) {
+    for index in 1..tables.boundaries.len() {
+        let boundary_value = tables.boundaries[index];
+        let boundary = &boundary_value;
         let previous = tables.participants.get(boundary.participant - 1);
         let control = previous.and_then(|item| match *item {
             ParticipantData::Control(i) => {
@@ -554,6 +588,35 @@ fn issue_opportunities(
             _ => None,
         };
         let hyphenation = owner.is_some();
+        let mut cut = None;
+        if let Some((_, _, style)) = owner {
+            let word = analyzed.words.word_at(boundary.atom);
+            let preceding = if control.is_some() {
+                None
+            } else {
+                word.and_then(|w| {
+                    analyzed.words.rows()[w]
+                        .units
+                        .iter()
+                        .find(|unit| unit.end == boundary.atom)
+                        .cloned()
+                })
+            };
+            cut = Some(tables.hyphenation_cuts.len());
+            tables.hyphenation_cuts.push(super::hyphenation::CutData {
+                word,
+                boundary: index,
+                style,
+                preceding,
+                counts: analyzed.words.at(boundary.atom),
+                opportunity: None,
+                provenance: if control.is_some() {
+                    super::HyphenationProvenance::Control
+                } else {
+                    super::HyphenationProvenance::Source
+                },
+            });
+        }
         let mut alternatives = Vec::new();
         if let Some((definition, anchor, style)) = owner {
             let authored = analyzed.styles[style].style.authored();
@@ -573,46 +636,7 @@ fn issue_opportunities(
             if eligible {
                 let supplied = groups.get(&definition.owner()).copied();
                 let definition = supplied.map_or(definition, |row| row.definition);
-                let (texts, resolution) =
-                    if let Some(super::paragraph::ReplacementPresentation::ResolvedNative(texts)) =
-                        supplied.map(|row| &row.presentation)
-                    {
-                        (texts.clone(), IndicationResolution::ResolvedNative)
-                    } else {
-                        let (text, resolution) = match &authored.hyphenate_character {
-                            crate::HyphenateCharacter::String(text) => {
-                                (text.clone(), IndicationResolution::Specified)
-                            }
-                            crate::HyphenateCharacter::Auto => match &authored
-                                .native_hyphenation_convention
-                            {
-                                Some(convention) => (
-                                    convention.automatic_text().clone(),
-                                    IndicationResolution::Convention,
-                                ),
-                                None => {
-                                    let identity = catalogue.identity().clone();
-                                    let (text, primary) = crate::engine::shape::automatic_hyphen(
-                                        catalogue.query(),
-                                        &styles[style].style,
-                                        &identity,
-                                    )?;
-                                    (text, IndicationResolution::Primary(primary))
-                                }
-                            },
-                        };
-                        if !text.is_empty()
-                            && let Some(convention) = &authored.native_hyphenation_convention
-                            && convention.placement() != crate::HyphenationPlacement::LogicalBefore
-                        {
-                            return Err(crate::hyphenation::error(
-                                crate::HyphenationError::UnsupportedPlacement(
-                                    convention.placement(),
-                                ),
-                            ));
-                        }
-                        (vec![text], resolution)
-                    };
+                let (texts, resolution) = indication(catalogue, styles, authored, style, supplied)?;
                 alternatives = texts
                     .into_iter()
                     .map(|text| AlternativeData {
@@ -620,11 +644,37 @@ fn issue_opportunities(
                         resolution: resolution.clone(),
                         style,
                         opportunity: tables.opportunities.len(),
-                        definition,
+                        definition: AlternativeDefinition::manual(definition),
+                        hyphenation_cut: cut.expect("manual owner issued a cut"),
                         insertion_anchor: anchor,
                     })
                     .collect();
             }
+        }
+        // Resource cuts and authored cuts remain different provenance. Omitted
+        // SHY leaves two query endpoints; its authored identity wins that gap.
+        let automatic = if !hyphenation && !source_break {
+            automatic_cut(analyzed, tables, index)?
+        } else {
+            None
+        };
+        if let Some((automatic_cut, style, origin)) = automatic {
+            let authored = analyzed.styles[style].style.authored();
+            let (texts, resolution) = indication(catalogue, styles, authored, style, None)?;
+            alternatives.extend(texts.into_iter().map(|text| AlternativeData {
+                text,
+                resolution: resolution.clone(),
+                style,
+                opportunity: tables.opportunities.len(),
+                definition: AlternativeDefinition::Automatic {
+                    cut: automatic_cut,
+                    atom: boundary.atom,
+                    origin,
+                },
+                hyphenation_cut: automatic_cut,
+                insertion_anchor: analyzed.projection.atoms[boundary.atom - 1].source.end,
+            }));
+            cut = Some(automatic_cut);
         }
         let kind = if control == Some(&ParagraphControlKind::ForcedBreak) || source_break {
             Some(PreparedBreakKind::Forced)
@@ -680,8 +730,13 @@ fn issue_opportunities(
         } else {
             None
         };
+        let kind =
+            kind.or_else(|| (!alternatives.is_empty()).then_some(PreparedBreakKind::Discretionary));
         if let Some(kind) = kind {
             let opportunity = tables.opportunities.len();
+            if let Some(cut) = cut {
+                tables.hyphenation_cuts[cut].opportunity = Some(opportunity);
+            }
             let alternatives = alternatives
                 .into_iter()
                 .map(|mut row| {
@@ -705,6 +760,134 @@ fn issue_opportunities(
         alternatives: Vec::new(),
     });
     Ok(())
+}
+
+fn automatic_cut(
+    analyzed: &AnalyzedData,
+    tables: &mut PreparedTables,
+    boundary_index: usize,
+) -> crate::Result<Option<(usize, usize, usize)>> {
+    let boundary = tables.boundaries[boundary_index];
+    let Some(word_index) = analyzed.words.word_at(boundary.atom) else {
+        return Ok(None);
+    };
+    let lexical = &analyzed.words.rows()[word_index];
+    if boundary.atom == lexical.atoms.end {
+        return Ok(None);
+    }
+    let word = &tables.words[word_index];
+    let endpoint = boundary.atom - lexical.atoms.start;
+    let Some(&(byte, _)) = word.endpoints.get(endpoint) else {
+        return Ok(None);
+    };
+    let Ok(proposal) = word.proposals.binary_search_by_key(&byte, |(at, _)| *at) else {
+        return Ok(None);
+    };
+    let provenance = word.proposals[proposal].1;
+    if endpoint
+        .checked_sub(1)
+        .is_some_and(|i| word.endpoints[i].0 == byte)
+        || word
+            .endpoints
+            .get(endpoint + 1)
+            .is_some_and(|value| value.0 == byte)
+    {
+        return Ok(None);
+    }
+    let preceding = lexical
+        .units
+        .get(
+            lexical
+                .units
+                .partition_point(|unit| unit.end < boundary.atom),
+        )
+        .filter(|unit| unit.end == boundary.atom)
+        .cloned();
+    let Some(preceding) = preceding else {
+        return Ok(None);
+    };
+    let atom = preceding.end - 1;
+    let style = analyzed.analysis.infos[atom].1;
+    let source = analyzed.projection.atoms[atom].source;
+    let origin = analyzed
+        .paragraph
+        .origin_intersections(&analyzed.processed, source)
+        .filter(|row| !row.aggregate.is_empty())
+        .last()
+        .ok_or_else(|| crate::hyphenation::error(crate::HyphenationError::InvalidResourceMapping))?
+        .origin;
+    let counts = analyzed.words.at(boundary.atom);
+    let index = tables.hyphenation_cuts.len();
+    tables.hyphenation_cuts.push(super::hyphenation::CutData {
+        word: Some(word_index),
+        boundary: boundary_index,
+        provenance,
+        style,
+        preceding: Some(preceding),
+        counts,
+        opportunity: None,
+    });
+    let authored = analyzed.styles[style].style.authored();
+    let count_admitted = tables.profile == crate::engine::PreparationProfile::Standalone
+        || counts.is_some_and(|value| value.admits_initial());
+    if !count_admitted
+        || authored.hyphens != crate::Hyphens::Auto
+        || authored.wrap != crate::Wrap::Word
+        || analyzed.logical.relations[analyzed.logical.cuts[boundary.participant]]
+            .before_hard_separator
+    {
+        return Ok(None);
+    }
+    if analyzed.paragraph.base_direction.is_some() && !native_permission(analyzed, &boundary)? {
+        return Ok(None);
+    }
+    Ok(Some((index, style, origin)))
+}
+
+fn indication(
+    catalogue: &mut crate::catalogue::Catalogue,
+    styles: &[ResolvedStyleRun],
+    authored: &crate::Style,
+    style: usize,
+    supplied: Option<&super::paragraph::ParagraphReplacement>,
+) -> crate::Result<(Vec<crate::Text>, IndicationResolution)> {
+    let result = if let Some(super::paragraph::ReplacementPresentation::ResolvedNative(texts)) =
+        supplied.map(|row| &row.presentation)
+    {
+        (texts.clone(), IndicationResolution::ResolvedNative)
+    } else {
+        let (text, resolution) = match &authored.hyphenate_character {
+            crate::HyphenateCharacter::String(text) => {
+                (text.clone(), IndicationResolution::Specified)
+            }
+            crate::HyphenateCharacter::Auto => match &authored.native_hyphenation_convention {
+                Some(convention) => (
+                    convention.automatic_text().clone(),
+                    IndicationResolution::Convention,
+                ),
+                None => {
+                    let identity = catalogue.identity().clone();
+                    let (text, primary) = crate::engine::shape::automatic_hyphen(
+                        catalogue.query(),
+                        &styles[style].style,
+                        &identity,
+                    )?;
+                    (text, IndicationResolution::Primary(primary))
+                }
+            },
+        };
+        if !text.is_empty()
+            && let Some(convention) = &authored.native_hyphenation_convention
+            && convention.placement() != crate::HyphenationPlacement::LogicalBefore
+        {
+            return Err(crate::hyphenation::error(
+                crate::HyphenationError::UnsupportedPlacement(convention.placement()),
+            ));
+        }
+        (vec![text], resolution)
+    };
+
+    Ok(result)
 }
 
 fn native_permission(analyzed: &AnalyzedData, boundary: &BoundaryData) -> crate::Result<bool> {
@@ -932,7 +1115,7 @@ pub(crate) fn prepare_alternatives(
             inserted_atoms,
             original_atoms,
             base_insertion,
-        } = replacement_projection(analyzed, input)?;
+        } = replacement_projection(analyzed, tables, input)?;
         let (analysis, _) = crate::engine::analysis::analyze(
             &projection,
             &analyzed.styles,
@@ -976,10 +1159,13 @@ struct ReplacementProjection {
 
 fn replacement_projection(
     analyzed: &AnalyzedData,
+    tables: &PreparedTables,
     replacement: &AlternativeData,
 ) -> crate::Result<ReplacementProjection> {
     let original = &analyzed.projection;
-    let start = if let Some(control) = replacement.control() {
+    let start = if let AlternativeDefinition::Automatic { atom, .. } = replacement.definition {
+        atom
+    } else if let Some(control) = replacement.control() {
         let anchor = analyzed
             .paragraph
             .anchor_order
@@ -1067,6 +1253,16 @@ fn replacement_projection(
             }
         }
     }
+    if let AlternativeDefinition::Automatic { cut, .. } = replacement.definition {
+        let boundary = tables.boundaries[tables.hyphenation_cuts[cut].boundary];
+        for (order, anchor) in analyzed.paragraph.anchor_order.iter().enumerate() {
+            if let Some((participant, _)) = analyzed.logical.events.iter().enumerate().find(|(_, event)| {
+                event.atom == start && matches!(event.kind, crate::engine::analysis::wrapping::Event::Anchor(actual) if actual == *anchor)
+            }) {
+                projection.anchor_atoms[order] = Some(if participant < boundary.participant { inserted.start } else { inserted.end });
+            }
+        }
+    }
     let original_atoms = (0..start)
         .map(Some)
         .chain(inserted.clone().map(|_| None))
@@ -1088,7 +1284,6 @@ pub(crate) fn select_presentation(
     prepared: &crate::engine::PreparedData,
     request: &super::LineSelectionRequest,
 ) -> crate::Result<SelectedPresentation> {
-    use super::paragraph::ParagraphReplacementDefinition;
     let tables = &prepared.tables;
     let start = tables.boundaries[request.start.index];
     let end = tables.boundaries[request.end.index];
@@ -1105,18 +1300,14 @@ pub(crate) fn select_presentation(
         .enumerate()
     {
         let defining = match (definition, *participant) {
-            (
-                Some(ParagraphReplacementDefinition::Source { source, .. }),
-                ParticipantData::Text(i),
-            ) => {
+            (Some(AlternativeDefinition::Source { source, .. }), ParticipantData::Text(i)) => {
                 !tables.units[i].deleted
                     && tables.units[i].source.start <= source.start
                     && tables.units[i].source.end >= source.end
             }
-            (
-                Some(ParagraphReplacementDefinition::Control { control, .. }),
-                ParticipantData::Control(i),
-            ) => tables.controls[i].occurrence == control,
+            (Some(AlternativeDefinition::Control { control, .. }), ParticipantData::Control(i)) => {
+                tables.controls[i].occurrence == control
+            }
             _ => false,
         };
         // Source-defined SHY owns its deleted authored interval even when its
@@ -1138,55 +1329,21 @@ pub(crate) fn select_presentation(
             )?;
         }
         if defining {
-            let variant = variant.expect("a defining replacement has a captured variant");
-            let row = &tables.alternatives[alternative.expect("selected alternative")];
-            let processed = prepared
-                .analyzed
-                .processed
-                .project(row.insertion_anchor, crate::Affinity::After);
-            if variant.inserted_atoms.is_empty() {
-                push_presentation_unit(
-                    &mut output,
-                    projection,
-                    &[],
-                    UnitCapture {
-                        source: Range::new(row.insertion_anchor, row.insertion_anchor),
-                        processed: Range::new(processed, processed),
-                        participant: None,
-                        kind: PresentationUnitKind::Replacement {
-                            alternative: variant.alternative,
-                        },
-                        level: match *participant {
-                            ParticipantData::Text(i) => tables.units[i].level,
-                            ParticipantData::Control(i) => {
-                                analysis.control_levels[tables.controls[i].occurrence]
-                            }
-                            ParticipantData::Atomic(_) => {
-                                unreachable!("replacement definitions are text or controls")
-                            }
-                        },
-                        bidi_class: None,
-                    },
-                )?;
-            } else {
-                for index in variant.inserted_atoms.clone() {
-                    push_presentation_unit(
-                        &mut output,
-                        projection,
-                        &[index],
-                        UnitCapture {
-                            source: Range::new(row.insertion_anchor, row.insertion_anchor),
-                            processed: Range::new(processed, processed),
-                            participant: None,
-                            kind: PresentationUnitKind::Replacement {
-                                alternative: variant.alternative,
-                            },
-                            level: analysis.levels[index],
-                            bidi_class: Some(analysis.infos[index].0.bidi_class),
-                        },
-                    )?;
+            let level = match *participant {
+                ParticipantData::Text(i) => tables.units[i].level,
+                ParticipantData::Control(i) => {
+                    analysis.control_levels[tables.controls[i].occurrence]
                 }
-            }
+                ParticipantData::Atomic(_) => {
+                    unreachable!("manual definitions are text or controls")
+                }
+            };
+            push_replacement(
+                &mut output,
+                prepared,
+                variant.expect("captured selected alternative"),
+                level,
+            )?;
         }
         match *participant {
             ParticipantData::Text(i) if !defining => {
@@ -1285,6 +1442,14 @@ pub(crate) fn select_presentation(
             }
         }
     }
+    if matches!(definition, Some(AlternativeDefinition::Automatic { .. })) {
+        push_replacement(
+            &mut output,
+            prepared,
+            variant.expect("captured automatic indication"),
+            analysis.base_level,
+        )?;
+    }
     let PresentationOutput {
         atoms,
         indices,
@@ -1362,6 +1527,45 @@ pub(crate) fn select_presentation(
         assignments,
         mapping: std::sync::Arc::new(SelectedMapping { pieces }),
     })
+}
+
+fn push_replacement(
+    output: &mut PresentationOutput,
+    prepared: &crate::engine::PreparedData,
+    variant: &PreparedAlternativeShape,
+    empty_level: u8,
+) -> crate::Result<()> {
+    let row = &prepared.tables.alternatives[variant.alternative];
+    let processed = prepared
+        .analyzed
+        .processed
+        .project(row.insertion_anchor, crate::Affinity::After);
+    let capture = |level, bidi_class| UnitCapture {
+        source: Range::new(row.insertion_anchor, row.insertion_anchor),
+        processed: Range::new(processed, processed),
+        participant: None,
+        kind: PresentationUnitKind::Replacement {
+            alternative: variant.alternative,
+        },
+        level,
+        bidi_class,
+    };
+    if variant.inserted_atoms.is_empty() {
+        push_presentation_unit(output, &variant.projection, &[], capture(empty_level, None))?;
+    } else {
+        for atom in variant.inserted_atoms.clone() {
+            push_presentation_unit(
+                output,
+                &variant.projection,
+                &[atom],
+                capture(
+                    variant.analysis.levels[atom],
+                    Some(variant.analysis.infos[atom].0.bidi_class),
+                ),
+            )?;
+        }
+    }
+    Ok(())
 }
 
 #[derive(Default)]
@@ -1444,7 +1648,7 @@ fn push_presentation_unit(
 pub(crate) fn selected_origin_intersections(
     selected: &super::selection::SelectedData,
 ) -> Vec<super::paragraph::FragmentAssociation> {
-    use super::paragraph::{FragmentAssociation, FragmentOwner, ParagraphReplacementDefinition};
+    use super::paragraph::{FragmentAssociation, FragmentOwner};
     let paragraph = &selected.prepared.analyzed.paragraph;
     let processed = &selected.prepared.analyzed.processed;
     let mut fragments = Vec::new();
@@ -1457,8 +1661,9 @@ pub(crate) fn selected_origin_intersections(
             PresentationUnitKind::Replacement { alternative } => {
                 let row = &selected.prepared.tables.alternatives[alternative];
                 let origin = match row.definition {
-                    ParagraphReplacementDefinition::Source { origin, .. } => Some(origin),
-                    ParagraphReplacementDefinition::Control { origin, .. } => origin,
+                    AlternativeDefinition::Source { origin, .. } => Some(origin),
+                    AlternativeDefinition::Control { origin, .. } => origin,
+                    AlternativeDefinition::Automatic { origin, .. } => Some(origin),
                 };
                 let source = origin.map(|origin| {
                     let row = &paragraph.origins[origin];

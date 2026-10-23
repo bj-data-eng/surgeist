@@ -82,9 +82,20 @@ pub(super) fn between(
                         else {
                             return false;
                         };
-                        let defining = match line.finalized.selected.prepared.tables.alternatives[alternative].definition {
-                            crate::protocol::paragraph::ParagraphReplacementDefinition::Source { source, .. } => source,
-                            crate::protocol::paragraph::ParagraphReplacementDefinition::Control { .. } => crate::Range::new(anchor, anchor),
+                        let defining = match line.finalized.selected.prepared.tables.alternatives
+                            [alternative]
+                            .definition
+                        {
+                            crate::protocol::prepared::AlternativeDefinition::Source {
+                                source,
+                                ..
+                            } => source,
+                            crate::protocol::prepared::AlternativeDefinition::Control {
+                                ..
+                            }
+                            | crate::protocol::prepared::AlternativeDefinition::Automatic {
+                                ..
+                            } => crate::Range::new(anchor, anchor),
                         };
                         overlaps(cluster.presentation, piece.presentation)
                             && (overlaps(defining, range) || range.contains(anchor))

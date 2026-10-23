@@ -1,4 +1,6 @@
 //! Complete processed lexical words and operation-specific CSS counting units.
+pub(crate) mod en_us;
+
 use std::ops::Range;
 
 use icu_properties::{
@@ -15,9 +17,9 @@ pub(crate) struct Words {
     rows: Vec<Word>,
     stops: Vec<usize>,
 }
-struct Word {
-    atoms: Range<usize>,
-    units: Vec<Range<usize>>,
+pub(crate) struct Word {
+    pub(crate) atoms: Range<usize>,
+    pub(crate) units: Vec<Range<usize>>,
     prefix: Vec<usize>,
 }
 
@@ -34,6 +36,18 @@ impl CutCounts {
 }
 
 impl Words {
+    pub(crate) fn rows(&self) -> &[Word] {
+        &self.rows
+    }
+
+    pub(crate) fn word_at(&self, atom: usize) -> Option<usize> {
+        let index = self.rows.partition_point(|word| word.atoms.end < atom);
+        self.rows
+            .get(index)
+            .filter(|word| word.atoms.start < atom && atom <= word.atoms.end)
+            .map(|_| index)
+    }
+
     pub(crate) fn new(
         projection: &SourceProjection,
         graphemes: &[Range<usize>],

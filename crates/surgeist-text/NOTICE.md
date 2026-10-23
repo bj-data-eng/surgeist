@@ -50,6 +50,21 @@ This product depends on the maintained Harfrust source in this repository:
 
 Text consumes its safe shaping interface and explicit completion/refusal status.
 
+### hypher 0.1.8
+
+This product depends on Hypher, distributed by Laurenz:
+
+* License: [MIT](licenses/hypher/LICENSE-MIT) or
+  [Apache License 2.0](licenses/hypher/LICENSE-APACHE)
+* Homepage: [Hypher](https://github.com/typst/hypher)
+* American-English data: [copyright and permission notice](licenses/hypher/DATA-NOTICE.txt)
+
+Only the allocation and English features are enabled. The American-English
+2005-05-30 patterns and source exceptions carry Gerard D.C. Kuiken's separate
+copyright and notice-preserving permission, retained with this distribution.
+Text owns checked source correspondence and exception integration; this resource
+does not establish other English dialects or languages.
+
 ### icu_normalizer 2.2.0
 
 This product depends on ICU4X normalization, distributed by the ICU4X Project Developers:

@@ -1,18 +1,17 @@
 // Copyright 2021 the Parley Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Greedy standalone policy adapted from Parley 0.9 `layout/line_break.rs`.
-//! Preliminary rows nominate only real eligible endpoints. Their actual fit is
-//! measured by the selected-line finalizer. Progress is a mixed-item endpoint, including zero-source
-//! atomic occurrences; no mutable paragraph or guessed convergence count exists.
-
-use std::sync::Arc;
-
-use super::super::{
-    BreakKind, FinalizedLine, LineSelection, PreparedData, analysis::Boundary, shape::ShapeContext,
+//! The raw chooser retains its own ordinary/emergency policy and metric profile.
+//! Every candidate uses the same selected-line finalizer and genuine mixed cuts.
+use super::super::{FinalizedLine, PreparedData, analysis::Boundary, shape::ShapeContext};
+use super::{data::*, finalize_standalone, placement};
+use crate::protocol::prepared::AlternativeDefinition;
+use crate::protocol::selection::standalone_request;
+use crate::protocol::{
+    PreparedAlternative, PreparedBreakKind, PreparedOpportunity, PreparedTermination,
 };
-use super::{data::*, finalize_standalone, finite, placement};
-use crate::{InlineBoxKind, OverflowWrap, Range, Result, TextNumericPhase, ValidatedOptions, Wrap};
+use crate::{Result, ValidatedOptions, Wrap};
+use std::sync::Arc;
 
 pub(super) fn layout(
     prepared: Arc<PreparedData>,
@@ -22,364 +21,301 @@ pub(super) fn layout(
     let authored = options.authored();
     let mut lines = Vec::new();
     let mut start = 0;
-    let mut source_start = 0;
     let mut paragraph_start = true;
     loop {
         let scope = lines.is_empty() || (authored.indent.each_line && paragraph_start);
         let enabled =
             authored.indent.first_line || authored.indent.each_line || authored.indent.hanging;
         let indent = if enabled && (scope ^ authored.indent.hanging) {
-            finite(
-                "text indent",
-                TextNumericPhase::Finalization,
-                authored.indent.amount,
-            )?
+            authored.indent.amount
         } else {
             0.0
         };
-        let line = choose(&prepared, start, source_start, indent, options, scratch)?;
-        let end = line.selection.items.end;
-        source_start = line.selection.source.end;
-        paragraph_start = line.selection.break_kind == BreakKind::Explicit;
-        let done = line.selection.break_kind == BreakKind::End;
+        let line = choose(&prepared, start, indent, options, scratch)?;
+        let request = &line.selected.request;
+        start = request.end.index;
+        paragraph_start = request.context.end == crate::LineEnd::Forced;
+        let done = request.context.end == crate::LineEnd::Paragraph;
         lines.push(line);
         if done {
             break;
         }
-        start = end;
     }
-    // An unconstrained paragraph still has one real shared alignment width.
-    // Boundary selection does not depend on that later alignment choice. Re-run
-    // the very same finalizer with complete context; never mutate prepared rows.
     if authored.width.is_none() {
         let width = lines
             .iter()
             .map(|line| {
-                let metrics = line.finalized.data.metrics;
-                (metrics.advance + line.selection.indent.max(0.0) - metrics.trailing_whitespace)
+                (line.data.metrics.advance + line.selected.request.context.indent.max(0.0)
+                    - line.data.metrics.trailing_whitespace)
                     .max(0.0)
             })
             .fold(0.0, f64::max);
         let mut resolved = Vec::with_capacity(lines.len());
         for line in lines {
-            let mut selection = line.selection;
-            selection.available = Some(width);
-            resolved.push(ChosenLine {
-                finalized: finalize_standalone(
-                    Arc::clone(&prepared),
-                    selection.clone(),
-                    authored.quantize,
-                    scratch,
-                )?,
-                selection,
-            });
+            let mut request = line.selected.request.clone();
+            request.context.available_inline = Some(width);
+            resolved.push(finalize_standalone(
+                Arc::clone(&prepared),
+                request,
+                authored.quantize,
+                scratch,
+            )?);
         }
         lines = resolved;
     }
-    placement::place(
-        lines
-            .into_iter()
-            .map(|line| Arc::new(line.finalized))
-            .collect(),
+    placement::place(lines.into_iter().map(Arc::new).collect())
+}
+
+fn fits(line: &FinalizedLine, width: Option<f64>) -> Result<bool> {
+    let Some(width) = width else { return Ok(true) };
+    let available = super::finite(
+        "raw available span",
+        crate::TextNumericPhase::Finalization,
+        width - line.selected.request.context.indent,
+    )?;
+    let measure = line
+        .data
+        .measurements
+        .as_ref()
+        .expect("finalized raw measures")
+        .alignment();
+    Ok(measure.advance() <= available && raw_occupied(line)? <= available)
+}
+
+fn raw_occupied(line: &FinalizedLine) -> Result<f64> {
+    let mut start = line.data.metrics.offset;
+    let mut end = start;
+    for row in &line.data.clusters {
+        if matches!(
+            row.disposition,
+            crate::SpacingSlotDisposition::Retained { trailing: true }
+        ) {
+            continue;
+        }
+        start = start.min(row.x.min(row.x + row.advance));
+        end = end.max(row.x.max(row.x + row.advance));
+    }
+    for row in &line.data.boxes {
+        if let FinalizedBoxGeometry::InFlow { flow, .. } = row.geometry {
+            start = start.min(row.slot.x + flow.occupied_start);
+            end = end.max(row.slot.x + flow.occupied_end);
+        }
+    }
+    super::finite(
+        "raw occupied span",
+        crate::TextNumericPhase::Finalization,
+        end - start,
     )
 }
 
-/// Only actual break candidates are ever sent to the shaping finalizer.
-/// Preliminary advances nominate the existing greedy endpoint; they never
-/// supply committed geometry or establish that a selected line fits.
-fn choose(
+fn trial(
     prepared: &Arc<PreparedData>,
     start: usize,
-    source_start: usize,
+    termination: PreparedTermination,
+    alternative: Option<PreparedAlternative>,
     indent: f64,
     options: ValidatedOptions,
     scratch: &mut ShapeContext,
-) -> Result<ChosenLine> {
-    let mut nomination = nominate(prepared, start, indent, options)?;
-    if nomination.end == prepared.shaped.items.len() && nomination.kind != BreakKind::Explicit {
-        nomination.kind = BreakKind::End;
-    }
-    loop {
-        let selection = select(
+) -> Result<FinalizedLine> {
+    let request = standalone_request(
+        Arc::clone(prepared),
+        start,
+        termination,
+        alternative,
+        options.authored().width,
+        indent,
+        options.authored().alignment,
+    )?;
+    finalize_standalone(
+        Arc::clone(prepared),
+        request,
+        options.authored().quantize,
+        scratch,
+    )
+}
+
+fn automatic_allowed(
+    prepared: &Arc<PreparedData>,
+    alternative: usize,
+    indent: f64,
+    options: ValidatedOptions,
+    scratch: &mut ShapeContext,
+) -> Result<bool> {
+    let AlternativeDefinition::Automatic { cut, .. } =
+        prepared.tables.alternatives[alternative].definition
+    else {
+        return Ok(true);
+    };
+    let word = prepared.tables.hyphenation_cuts[cut]
+        .word
+        .expect("automatic cut has a lexical owner");
+    let handle = crate::PreparedWord {
+        prepared: Arc::clone(prepared),
+        index: word,
+    };
+    for portion in handle.view().portions()? {
+        if !portion.has_manual_partition()
+            || prepared.tables.hyphenation_cuts[cut].boundary <= portion.start
+            || prepared.tables.hyphenation_cuts[cut].boundary > portion.end
+        {
+            continue;
+        }
+        let line = trial(
             prepared,
-            start,
-            nomination.end,
-            source_start,
+            portion.start,
+            PreparedTermination::Measurement(portion.clone()),
+            portion.alternative(),
             indent,
-            nomination.kind,
             options,
-        );
-        let line = finalize_standalone(
-            Arc::clone(prepared),
-            selection.clone(),
-            options.authored().quantize,
             scratch,
         )?;
-        let fits = options.authored().width.is_none_or(|width| {
-            line.data.metrics.advance - line.data.metrics.trailing_whitespace <= width - indent
-        });
-        if fits
-            || nomination.unwrapped
-            || initial_atomic_overflow(prepared, &line, nomination.initial_box)
-        {
-            return Ok(ChosenLine {
-                finalized: line,
-                selection,
-            });
-        }
-        // These are source-eligible endpoints, not receipts for previously
-        // shaped prefixes. Each retry strictly decreases the actual endpoint,
-        // so no complete candidate/context is revisited and no pass cap exists.
-        nomination.regular.retain(|end| *end < nomination.end);
-        nomination.emergency.retain(|end| *end < nomination.end);
-        if let Some(end) = nomination
-            .regular
-            .pop()
-            .or_else(|| nomination.emergency.pop())
-        {
-            nomination.end = end;
-            nomination.kind = BreakKind::Soft;
-            nomination.initial_box = None;
-        } else {
-            // No earlier permitted boundary exists in this first fragment.
-            // Existing standalone policy deliberately accepts its overflow.
-            return Ok(ChosenLine {
-                finalized: line,
-                selection,
-            });
+        if fits(&line, options.authored().width)? {
+            return Ok(false);
         }
     }
+    Ok(true)
 }
 
-/// Transient private chooser state; only the finalized selected owner is published.
-struct ChosenLine {
-    finalized: FinalizedLine,
-    selection: LineSelection,
-}
-
-struct Nomination {
-    end: usize,
-    kind: BreakKind,
-    regular: Vec<usize>,
-    emergency: Vec<usize>,
-    initial_box: Option<usize>,
-    unwrapped: bool,
-}
-
-fn nominate(
-    prepared: &PreparedData,
+fn choose(
+    prepared: &Arc<PreparedData>,
     start: usize,
     indent: f64,
     options: ValidatedOptions,
-) -> Result<Nomination> {
-    let items = &prepared.shaped.items;
-    let mut result = Nomination {
-        end: items.len(),
-        kind: BreakKind::End,
-        regular: Vec::new(),
-        emergency: Vec::new(),
-        initial_box: None,
-        unwrapped: false,
-    };
-    if options.authored().width.is_none() {
-        if let Some(offset) = items[start..].iter().position(|item| matches!(*item,
-            ShapedItem::TextCluster(index) if prepared.shaped.clusters[index].whitespace==Whitespace::Newline)) {
-            result.end=start+offset+1;
-            result.kind=BreakKind::Explicit;
+    scratch: &mut ShapeContext,
+) -> Result<FinalizedLine> {
+    let tables = &prepared.tables;
+    let mut ordinary = None;
+    let mut first = None;
+    let mut emergency = None;
+    let mut emergency_first = None;
+    for (index, offer) in tables.opportunities.iter().enumerate() {
+        let boundary = tables.boundaries[offer.boundary];
+        if boundary.participant < tables.boundaries[start].participant
+            || (boundary.participant == tables.boundaries[start].participant
+                && offer.kind != PreparedBreakKind::ParagraphEnd)
+        {
+            continue;
         }
-        return Ok(result);
-    }
-    let available = finite(
-        "standalone available span",
-        TextNumericPhase::Finalization,
-        options.authored().width.unwrap() - indent,
-    )?;
-    let mut cursor = start;
-    let mut advance = 0.0;
-    let mut previous_wrap = Wrap::Word;
-    let mut any_text = false;
-    let mut any_wrapped_text = false;
-    while cursor < items.len() {
-        let mut end = cursor + 1;
-        match items[cursor] {
-            ShapedItem::Anchor { .. } => {}
-            ShapedItem::InlineBox { occurrence, .. } => {
-                let item = prepared.analyzed.processed.source().boxes()[occurrence];
-                let delta = if item.kind() == InlineBoxKind::InFlow {
-                    item.size().width
-                } else {
-                    0.0
-                };
-                let next = finite(
-                    "standalone preliminary atomic advance",
-                    TextNumericPhase::Finalization,
-                    advance + delta,
-                )?;
-                if next <= available || previous_wrap != Wrap::Word {
-                    advance = next;
-                    // Cached standalone policy permits a break after either
-                    // box kind. OutOfFlow still contributes no width and is
-                    // not an analysis/shaping barrier.
-                    record(&mut result.regular, end, start);
-                } else {
-                    if advance == 0.0 {
-                        result.end = end;
-                        result.initial_box = Some(occurrence);
-                    } else {
-                        result.end = cursor;
-                    }
-                    result.kind = BreakKind::Soft;
-                    return Ok(result);
-                }
-            }
-            ShapedItem::TextCluster(index) => {
-                let cluster = &prepared.shaped.clusters[index];
-                let style = &prepared.styles[cluster.style].style;
-                let wrapping = previous_wrap == Wrap::Word;
-                previous_wrap = style.wrap;
-                any_text = true;
-                any_wrapped_text |= style.wrap == Wrap::Word;
-                if wrapping
-                    && !cluster.ligature_component
-                    && advance != 0.0
-                    && has_soft_opportunity(prepared, cursor)
-                {
-                    if cluster.boundary == Boundary::Line {
-                        record(&mut result.regular, cursor, start);
-                    } else if style.overflow_wrap != OverflowWrap::Normal {
-                        record(&mut result.emergency, cursor, start);
-                    }
-                }
-                if cluster.whitespace == Whitespace::Newline {
-                    result.end = end;
-                    result.kind = BreakKind::Explicit;
-                    result.unwrapped = any_text && !any_wrapped_text;
-                    return Ok(result);
-                }
-                let mut delta = cluster.advance;
-                if cluster.ligature_start {
-                    while end < items.len() {
-                        let ShapedItem::TextCluster(next) = items[end] else {
-                            break;
-                        };
-                        let next = &prepared.shaped.clusters[next];
-                        if !next.ligature_component || next.content != cluster.content {
-                            break;
+        let mandatory = matches!(
+            offer.kind,
+            PreparedBreakKind::Forced | PreparedBreakKind::ParagraphEnd
+        );
+        if !mandatory
+            && (boundary.participant == tables.participants.len()
+                || !tables.participants[tables.boundaries[start].participant..boundary.participant]
+                    .iter()
+                    .any(|participant| match *participant {
+                        crate::protocol::prepared::ParticipantData::Text(i) => {
+                            !tables.units[i].atoms.is_empty()
                         }
-                        delta = finite(
-                            "standalone preliminary ligature advance",
-                            TextNumericPhase::Finalization,
-                            delta + next.advance,
-                        )?;
-                        end += 1;
-                    }
+                        crate::protocol::prepared::ParticipantData::Atomic(i) => {
+                            prepared.analyzed.processed.source().boxes()
+                                [tables.atomics[i].occurrence]
+                                .kind()
+                                == crate::InlineBoxKind::InFlow
+                        }
+                        crate::protocol::prepared::ParticipantData::Control(_) => false,
+                    }))
+        {
+            continue;
+        }
+        if options.authored().width.is_none() && !mandatory {
+            continue;
+        }
+        let previous = boundary.atom.checked_sub(1);
+        let wrapping = previous.is_none_or(|atom| {
+            prepared.analyzed.styles[prepared.analyzed.analysis.infos[atom].1]
+                .style
+                .authored()
+                .wrap
+                == Wrap::Word
+        });
+        if !wrapping && !mandatory {
+            continue;
+        }
+        let atomic = tables
+            .participants
+            .get(boundary.participant)
+            .is_some_and(|row| {
+                matches!(row, crate::protocol::prepared::ParticipantData::Atomic(_))
+            })
+            || boundary.participant.checked_sub(1).is_some_and(|i| {
+                matches!(
+                    tables.participants[i],
+                    crate::protocol::prepared::ParticipantData::Atomic(_)
+                )
+            });
+        let is_emergency = offer.kind == PreparedBreakKind::Allowed
+            && offer.alternatives.is_empty()
+            && !atomic
+            && boundary.atom < prepared.analyzed.analysis.infos.len()
+            && prepared.analyzed.analysis.infos[boundary.atom].0.boundary < Boundary::Line;
+        let variants = (offer.kind != PreparedBreakKind::Discretionary)
+            .then_some(None)
+            .into_iter()
+            .chain(offer.alternatives.iter().copied().map(Some));
+        for variant in variants {
+            if let Some(alternative) = variant
+                && !automatic_allowed(prepared, alternative, indent, options, scratch)?
+            {
+                continue;
+            }
+            let line = trial(
+                prepared,
+                start,
+                PreparedTermination::Ordinary(PreparedOpportunity {
+                    prepared: Arc::clone(prepared),
+                    index,
+                }),
+                variant.map(|index| PreparedAlternative {
+                    prepared: Arc::clone(prepared),
+                    index,
+                }),
+                indent,
+                options,
+                scratch,
+            )?;
+            let actual_fit = fits(&line, options.authored().width)?;
+            if is_emergency {
+                if actual_fit {
+                    emergency = Some(line);
+                } else if emergency_first.is_none() {
+                    emergency_first = Some(line);
                 }
-                let next = finite(
-                    "standalone preliminary text advance",
-                    TextNumericPhase::Finalization,
-                    advance + delta,
-                )?;
-                if next <= available || !wrapping {
-                    advance = next;
-                } else if cluster.whitespace.is_space_or_nbsp() {
-                    result.end = end;
-                    result.kind = BreakKind::Soft;
-                    return Ok(result);
-                } else if let Some(&end) = result.regular.last().or_else(|| result.emergency.last())
-                {
-                    result.end = end;
-                    result.kind = BreakKind::Soft;
-                    return Ok(result);
-                } else {
-                    advance = next;
+            } else {
+                if actual_fit {
+                    ordinary = Some(line);
+                } else if first.is_none() {
+                    first = Some(line);
                 }
             }
+            if actual_fit {
+                break;
+            }
         }
-        cursor = end;
+        if mandatory {
+            break;
+        }
     }
-    result.unwrapped = any_text && !any_wrapped_text;
-    Ok(result)
-}
-
-/// The same prepared inventory owns disappearing-SHY eligibility and its
-/// resolved indication. The chooser cannot turn a suppressed SHY into Allowed.
-fn has_soft_opportunity(prepared: &PreparedData, item: usize) -> bool {
-    prepared.tables.soft_preliminary_items.contains(&item)
-}
-
-fn record(endpoints: &mut Vec<usize>, end: usize, start: usize) {
-    if end > start && endpoints.last() != Some(&end) {
-        endpoints.push(end);
-    }
-}
-
-fn initial_atomic_overflow(
-    prepared: &PreparedData,
-    line: &FinalizedLine,
-    occurrence: Option<usize>,
-) -> bool {
-    let Some(occurrence) = occurrence else {
-        return false;
-    };
-    let text: f64 = line
-        .data
-        .clusters
-        .iter()
-        .map(|cluster| cluster.advance)
-        .sum();
-    let other_boxes: f64 = line
-        .data
-        .boxes
-        .iter()
-        .filter(|item| item.occurrence != occurrence)
-        .filter(|item| {
-            prepared.analyzed.processed.source().boxes()[item.occurrence].kind()
-                == InlineBoxKind::InFlow
+    ordinary
+        .or(emergency)
+        .or(emergency_first)
+        .or(first)
+        .ok_or_else(|| {
+            crate::Error::new(
+                crate::ErrorCode::LayoutFailed,
+                "raw inventory has no terminating candidate",
+            )
         })
-        .map(|item| item.flow_advance())
-        .sum();
-    text + other_boxes == 0.0
-}
-
-fn select(
-    prepared: &PreparedData,
-    start: usize,
-    end: usize,
-    source_start: usize,
-    indent: f64,
-    kind: BreakKind,
-    options: ValidatedOptions,
-) -> LineSelection {
-    let mut source_end = source_start;
-    for item in &prepared.shaped.items[start..end] {
-        match *item {
-            ShapedItem::Anchor { .. } => {}
-            ShapedItem::TextCluster(index) => {
-                source_end = source_end.max(prepared.shaped.clusters[index].source.end);
-            }
-            ShapedItem::InlineBox { occurrence, .. } => {
-                source_end = source_end
-                    .max(prepared.analyzed.processed.source().boxes()[occurrence].index());
-            }
-        }
-    }
-    if kind == BreakKind::End {
-        source_end = prepared.analyzed.processed.source().text().len();
-    }
-    LineSelection {
-        items: start..end,
-        source: Range::new(source_start, source_end),
-        break_kind: kind,
-        available: options.authored().width,
-        indent,
-        alignment: options.authored().alignment,
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Font, FontCatalogueMode, Source, Style, System, SystemOptions};
+    use crate::{
+        Font, FontCatalogueMode, InlineBoxKind, OverflowWrap, Range, Source, Style, System,
+        SystemOptions,
+    };
 
     fn system() -> (System, Style) {
         let mut system = System::new(SystemOptions {

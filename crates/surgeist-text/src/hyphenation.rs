@@ -1,16 +1,16 @@
-//! Explicit native hyphenation inputs; no language dictionary is inferred.
+//! Native hyphenation policy and indication inputs with bounded en-US resources.
 
 use crate::{Error, ErrorCode, ErrorDetail, Result, Text};
 
-/// Whether genuine authored hyphenation points may be used.
+/// Whether authored and resource-qualified automatic hyphenation points may be used.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum Hyphens {
     /// Suppress genuine hyphenation points, retaining independent breaks.
     None,
     /// Use actual authored SHY/discretionary controls.
     Manual,
-    /// Also permits automatic points once a real resource owner supplies them.
-    /// This increment generates no dictionary-derived points.
+    /// Also permits the pinned en-US resource over a complete qualified word.
+    /// Other languages/regions/variants receive no implicit coverage.
     Auto,
 }
 
@@ -41,6 +41,9 @@ pub struct NativeHyphenationConvention {
 /// Invalid input, missing resource, or unsupported indication placement.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HyphenationError {
+    InvalidResourceMapping,
+    ResourceLengthOverflow,
+    ResourceStorage,
     InvalidConvention,
     InvalidConventionBinding,
     EmptyNativeAlternatives,
@@ -51,11 +54,14 @@ pub enum HyphenationError {
 pub(crate) fn error(reason: HyphenationError) -> Error {
     Error::new(
         match reason {
+            HyphenationError::InvalidResourceMapping
+            | HyphenationError::ResourceStorage
+            | HyphenationError::ResourceLengthOverflow => ErrorCode::LayoutFailed,
             HyphenationError::MissingPrimaryFont => ErrorCode::NoUsableFontFace,
             HyphenationError::UnsupportedPlacement(_) => ErrorCode::UnsupportedFeature,
             _ => ErrorCode::InvalidStyle,
         },
-        "hyphenation indication admission failed",
+        "hyphenation admission failed",
     )
     .with_detail(ErrorDetail::Hyphenation { reason })
 }

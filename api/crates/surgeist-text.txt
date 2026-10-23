@@ -24,6 +24,13 @@ pub surgeist_text::BaselineShiftFact::Requested(surgeist_text::BaselineShift)
 pub enum surgeist_text::BidiLevelError
 pub surgeist_text::BidiLevelError::OutOfRange
 pub surgeist_text::BidiLevelError::OutOfRange::level: u8
+pub enum surgeist_text::ConditionalDisposition
+pub surgeist_text::ConditionalDisposition::AutoFitExhausted(surgeist_text::FinalizedLine)
+pub surgeist_text::ConditionalDisposition::AutoIntrinsicRefinement(surgeist_text::PreparedAlternative)
+pub surgeist_text::ConditionalDisposition::AutoManualPriority
+pub surgeist_text::ConditionalDisposition::AutoManualPriority::alternative: surgeist_text::PreparedAlternative
+pub surgeist_text::ConditionalDisposition::AutoManualPriority::portion: surgeist_text::FinalizedLine
+pub surgeist_text::ConditionalDisposition::Phantom(surgeist_text::FinalizedLine)
 pub enum surgeist_text::ConditionalPurpose
 pub surgeist_text::ConditionalPurpose::MinContent
 pub surgeist_text::ConditionalPurpose::Overflow
@@ -305,12 +312,27 @@ pub enum surgeist_text::HyphenationError
 pub surgeist_text::HyphenationError::EmptyNativeAlternatives
 pub surgeist_text::HyphenationError::InvalidConvention
 pub surgeist_text::HyphenationError::InvalidConventionBinding
+pub surgeist_text::HyphenationError::InvalidResourceMapping
 pub surgeist_text::HyphenationError::MissingPrimaryFont
+pub surgeist_text::HyphenationError::ResourceLengthOverflow
+pub surgeist_text::HyphenationError::ResourceStorage
 pub surgeist_text::HyphenationError::UnsupportedPlacement(surgeist_text::HyphenationPlacement)
 pub enum surgeist_text::HyphenationPlacement
 pub surgeist_text::HyphenationPlacement::BothSides
 pub surgeist_text::HyphenationPlacement::LogicalAfter
 pub surgeist_text::HyphenationPlacement::LogicalBefore
+pub enum surgeist_text::HyphenationProvenance
+pub surgeist_text::HyphenationProvenance::Control
+pub surgeist_text::HyphenationProvenance::Pattern
+pub surgeist_text::HyphenationProvenance::Source
+pub surgeist_text::HyphenationProvenance::SourceException
+pub surgeist_text::HyphenationProvenance::SourceException::entry: &'static str
+pub surgeist_text::HyphenationProvenance::TextCorrection
+pub surgeist_text::HyphenationProvenance::TextCorrection::entry: &'static str
+pub enum surgeist_text::HyphenationResource
+pub surgeist_text::HyphenationResource::EnUs2005
+pub surgeist_text::HyphenationResource::NonScalarSource
+pub surgeist_text::HyphenationResource::UnavailableLanguage
 pub enum surgeist_text::Hyphens
 pub surgeist_text::Hyphens::Auto
 pub surgeist_text::Hyphens::Manual
@@ -441,6 +463,8 @@ pub enum surgeist_text::PlaintextItem<'a>
 pub surgeist_text::PlaintextItem::InlineBox(surgeist_text::ProcessedInlineBox<'a>)
 pub surgeist_text::PlaintextItem::Text(surgeist_text::ProcessedText<'a>)
 pub enum surgeist_text::PreparedAlternativeDefinition
+pub surgeist_text::PreparedAlternativeDefinition::Automatic
+pub surgeist_text::PreparedAlternativeDefinition::Automatic::cut: surgeist_text::PreparedHyphenationCut
 pub surgeist_text::PreparedAlternativeDefinition::Control
 pub surgeist_text::PreparedAlternativeDefinition::Control::control: surgeist_text::PreparedControl
 pub surgeist_text::PreparedAlternativeDefinition::Control::origin: core::option::Option<surgeist_text::PreparedOrigin>
@@ -458,6 +482,7 @@ pub surgeist_text::PreparedParticipant::Control(surgeist_text::PreparedControl)
 pub surgeist_text::PreparedParticipant::Text(surgeist_text::PreparedUnit)
 pub enum surgeist_text::PreparedTermination
 pub surgeist_text::PreparedTermination::Conditional(surgeist_text::PreparedConditionalOpportunity)
+pub surgeist_text::PreparedTermination::Measurement(surgeist_text::PreparedWordPortion)
 pub surgeist_text::PreparedTermination::Ordinary(surgeist_text::PreparedOpportunity)
 pub enum surgeist_text::PresentationMappingKind
 pub surgeist_text::PresentationMappingKind::Deleted
@@ -570,6 +595,8 @@ pub surgeist_text::ProtocolError::InvalidPlacedPosition::position: usize
 pub surgeist_text::ProtocolError::InvalidReplacement
 pub surgeist_text::ProtocolError::InvalidReplacement::alternative: usize
 pub surgeist_text::ProtocolError::InvalidReplacement::source: surgeist_text::Range
+pub surgeist_text::ProtocolError::InvalidWordPortion
+pub surgeist_text::ProtocolError::MeasurementNotPlaceable
 pub surgeist_text::ProtocolError::MismatchedContext
 pub surgeist_text::ProtocolError::MismatchedContext::field: surgeist_text::ProtocolContextField
 pub surgeist_text::ProtocolError::MissingAlternative
@@ -618,6 +645,7 @@ pub surgeist_text::ProtocolHandleKind::Fragment
 pub surgeist_text::ProtocolHandleKind::Opportunity
 pub surgeist_text::ProtocolHandleKind::Origin
 pub surgeist_text::ProtocolHandleKind::Unit
+pub surgeist_text::ProtocolHandleKind::WordPortion
 pub enum surgeist_text::ShapingBoundary
 pub surgeist_text::ShapingBoundary::InlineBox
 pub surgeist_text::ShapingBoundary::SpanEnd
@@ -1252,6 +1280,18 @@ pub const fn surgeist_text::GlyphPlacement::id(self) -> u32
 pub const fn surgeist_text::GlyphPlacement::pen(self) -> f64
 pub const fn surgeist_text::GlyphPlacement::x(self) -> f32
 pub const fn surgeist_text::GlyphPlacement::y(self) -> f32
+pub struct surgeist_text::HyphenationCounts
+pub surgeist_text::HyphenationCounts::after: usize
+pub surgeist_text::HyphenationCounts::before: usize
+pub surgeist_text::HyphenationCounts::total: usize
+pub struct surgeist_text::HyphenationSourcePieceView<'a>
+impl surgeist_text::HyphenationSourcePieceView<'_>
+pub fn surgeist_text::HyphenationSourcePieceView<'_>::local(&self) -> surgeist_text::Range
+pub fn surgeist_text::HyphenationSourcePieceView<'_>::origin(&self) -> surgeist_text::PreparedOrigin
+pub fn surgeist_text::HyphenationSourcePieceView<'_>::processed_range(&self) -> surgeist_text::ProcessedRange
+pub fn surgeist_text::HyphenationSourcePieceView<'_>::source(&self) -> surgeist_text::Range
+impl core::fmt::Debug for surgeist_text::HyphenationSourcePieceView<'_>
+pub fn surgeist_text::HyphenationSourcePieceView<'_>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_text::Id(_)
 impl surgeist_text::Id
 pub const fn surgeist_text::Id::as_u64(self) -> u64
@@ -1552,6 +1592,7 @@ pub fn surgeist_text::PreparedAlternative::hash<H: core::hash::Hasher>(&self, st
 pub struct surgeist_text::PreparedAlternativeView<'a>
 impl surgeist_text::PreparedAlternativeView<'_>
 pub fn surgeist_text::PreparedAlternativeView<'_>::definition(&self) -> surgeist_text::PreparedAlternativeDefinition
+pub fn surgeist_text::PreparedAlternativeView<'_>::hyphenation_cut(&self) -> surgeist_text::PreparedHyphenationCut
 pub fn surgeist_text::PreparedAlternativeView<'_>::insertion_anchor(&self) -> surgeist_text::SourcePosition
 pub fn surgeist_text::PreparedAlternativeView<'_>::opportunity(&self) -> surgeist_text::PreparedOpportunity
 pub fn surgeist_text::PreparedAlternativeView<'_>::source_range(&self) -> core::option::Option<surgeist_text::Range>
@@ -1638,6 +1679,30 @@ pub fn surgeist_text::PreparedControlView<'_>::processed_position(&self) -> surg
 pub fn surgeist_text::PreparedControlView<'_>::source_position(&self) -> surgeist_text::SourcePosition
 impl core::fmt::Debug for surgeist_text::PreparedControlView<'_>
 pub fn surgeist_text::PreparedControlView<'_>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_text::PreparedHyphenationCut
+impl surgeist_text::PreparedHyphenationCut
+pub fn surgeist_text::PreparedHyphenationCut::prepared_text(&self) -> surgeist_text::PreparedText
+impl surgeist_text::PreparedHyphenationCut
+pub fn surgeist_text::PreparedHyphenationCut::view(&self) -> surgeist_text::PreparedHyphenationCutView<'_>
+impl core::cmp::Eq for surgeist_text::PreparedHyphenationCut
+impl core::cmp::PartialEq for surgeist_text::PreparedHyphenationCut
+pub fn surgeist_text::PreparedHyphenationCut::eq(&self, other: &Self) -> bool
+impl core::fmt::Debug for surgeist_text::PreparedHyphenationCut
+pub fn surgeist_text::PreparedHyphenationCut::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for surgeist_text::PreparedHyphenationCut
+pub fn surgeist_text::PreparedHyphenationCut::hash<H: core::hash::Hasher>(&self, state: &mut H)
+pub struct surgeist_text::PreparedHyphenationCutView<'a>
+impl surgeist_text::PreparedHyphenationCutView<'_>
+pub fn surgeist_text::PreparedHyphenationCutView<'_>::boundary(&self) -> surgeist_text::PreparedBoundary
+pub fn surgeist_text::PreparedHyphenationCutView<'_>::counts(&self) -> core::option::Option<surgeist_text::HyphenationCounts>
+pub fn surgeist_text::PreparedHyphenationCutView<'_>::handle(&self) -> surgeist_text::PreparedHyphenationCut
+pub fn surgeist_text::PreparedHyphenationCutView<'_>::opportunity(&self) -> core::option::Option<surgeist_text::PreparedOpportunity>
+pub fn surgeist_text::PreparedHyphenationCutView<'_>::preceding_source_pieces(&self) -> impl core::iter::traits::iterator::Iterator<Item = surgeist_text::HyphenationSourcePieceView<'_>>
+pub fn surgeist_text::PreparedHyphenationCutView<'_>::provenance(&self) -> surgeist_text::HyphenationProvenance
+pub fn surgeist_text::PreparedHyphenationCutView<'_>::style(&self) -> &surgeist_text::Style
+pub fn surgeist_text::PreparedHyphenationCutView<'_>::word(&self) -> core::option::Option<surgeist_text::PreparedWord>
+impl core::fmt::Debug for surgeist_text::PreparedHyphenationCutView<'_>
+pub fn surgeist_text::PreparedHyphenationCutView<'_>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_text::PreparedOpportunity
 impl surgeist_text::PreparedOpportunity
 pub fn surgeist_text::PreparedOpportunity::prepared_text(&self) -> surgeist_text::PreparedText
@@ -1705,7 +1770,10 @@ pub fn surgeist_text::PreparedText::preparation_options(&self) -> surgeist_text:
 pub fn surgeist_text::PreparedText::tab_reference(&self) -> core::option::Option<&surgeist_text::ParagraphTabReference>
 pub fn surgeist_text::PreparedText::terminal_edge(&self) -> surgeist_text::ParagraphTerminalEdge
 impl surgeist_text::PreparedText
-pub fn surgeist_text::PreparedText::conditional_opportunities(&self, start: &surgeist_text::PreparedBoundary, ceiling: &surgeist_text::PreparedOpportunity, purpose: surgeist_text::ConditionalPurpose, skipped_ordinary: &[surgeist_text::FinalizedLine]) -> surgeist_text::Result<alloc::vec::Vec<surgeist_text::PreparedConditionalOpportunity>>
+pub fn surgeist_text::PreparedText::conditional_opportunities(&self, start: &surgeist_text::PreparedBoundary, ceiling: &surgeist_text::PreparedOpportunity, purpose: surgeist_text::ConditionalPurpose, skipped_ordinary: &[surgeist_text::ConditionalDisposition]) -> surgeist_text::Result<alloc::vec::Vec<surgeist_text::PreparedConditionalOpportunity>>
+impl surgeist_text::PreparedText
+pub fn surgeist_text::PreparedText::hyphenation_cut_views(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::PreparedHyphenationCutView<'_>>
+pub fn surgeist_text::PreparedText::word_views(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::PreparedWordView<'_>>
 impl surgeist_text::PreparedText
 pub fn surgeist_text::PreparedText::select(&self, request: surgeist_text::LineSelectionRequest) -> surgeist_text::Result<surgeist_text::SelectedLine>
 impl core::cmp::Eq for surgeist_text::PreparedText
@@ -1744,6 +1812,37 @@ impl surgeist_text::PreparedUnitView<'_>
 pub fn surgeist_text::PreparedUnitView<'_>::handle(&self) -> surgeist_text::PreparedUnit
 impl core::fmt::Debug for surgeist_text::PreparedUnitView<'_>
 pub fn surgeist_text::PreparedUnitView<'_>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_text::PreparedWord
+impl surgeist_text::PreparedWord
+pub fn surgeist_text::PreparedWord::prepared_text(&self) -> surgeist_text::PreparedText
+impl surgeist_text::PreparedWord
+pub fn surgeist_text::PreparedWord::view(&self) -> surgeist_text::PreparedWordView<'_>
+impl core::cmp::Eq for surgeist_text::PreparedWord
+impl core::cmp::PartialEq for surgeist_text::PreparedWord
+pub fn surgeist_text::PreparedWord::eq(&self, other: &Self) -> bool
+impl core::fmt::Debug for surgeist_text::PreparedWord
+pub fn surgeist_text::PreparedWord::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for surgeist_text::PreparedWord
+pub fn surgeist_text::PreparedWord::hash<H: core::hash::Hasher>(&self, state: &mut H)
+pub struct surgeist_text::PreparedWordPortion
+impl surgeist_text::PreparedWordPortion
+pub fn surgeist_text::PreparedWordPortion::alternative(&self) -> core::option::Option<surgeist_text::PreparedAlternative>
+pub fn surgeist_text::PreparedWordPortion::end(&self) -> surgeist_text::PreparedBoundary
+pub fn surgeist_text::PreparedWordPortion::has_manual_partition(&self) -> bool
+pub fn surgeist_text::PreparedWordPortion::start(&self) -> surgeist_text::PreparedBoundary
+pub fn surgeist_text::PreparedWordPortion::word(&self) -> surgeist_text::PreparedWord
+pub struct surgeist_text::PreparedWordView<'a>
+impl surgeist_text::PreparedWordView<'_>
+pub fn surgeist_text::PreparedWordView<'_>::cuts(&self) -> impl core::iter::traits::iterator::Iterator<Item = surgeist_text::PreparedHyphenationCutView<'_>>
+pub fn surgeist_text::PreparedWordView<'_>::handle(&self) -> surgeist_text::PreparedWord
+pub fn surgeist_text::PreparedWordView<'_>::provenance(&self) -> core::option::Option<surgeist_text::HyphenationProvenance>
+pub fn surgeist_text::PreparedWordView<'_>::query(&self) -> core::option::Option<&str>
+pub fn surgeist_text::PreparedWordView<'_>::resource(&self) -> surgeist_text::HyphenationResource
+pub fn surgeist_text::PreparedWordView<'_>::source_pieces(&self) -> impl core::iter::traits::iterator::Iterator<Item = surgeist_text::HyphenationSourcePieceView<'_>>
+impl surgeist_text::PreparedWordView<'_>
+pub fn surgeist_text::PreparedWordView<'_>::portions(&self) -> surgeist_text::Result<alloc::vec::Vec<surgeist_text::PreparedWordPortion>>
+impl core::fmt::Debug for surgeist_text::PreparedWordView<'_>
+pub fn surgeist_text::PreparedWordView<'_>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_text::PresentationRange
 impl surgeist_text::PresentationRange
 pub const fn surgeist_text::PresentationRange::end(self) -> usize
@@ -1973,6 +2072,7 @@ pub fn surgeist_text::SourceRangeUnit<'a>::defining_source(&self) -> core::optio
 pub fn surgeist_text::SourceRangeUnit<'a>::expanded_intersections(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::PreparedOriginIntersectionView<'_>>
 pub fn surgeist_text::SourceRangeUnit<'a>::finalized_line(&self) -> surgeist_text::FinalizedLine
 pub fn surgeist_text::SourceRangeUnit<'a>::fragments(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::FinalizedFragment> + '_
+pub fn surgeist_text::SourceRangeUnit<'a>::hyphenation_cut(&self) -> core::option::Option<surgeist_text::PreparedHyphenationCut>
 pub fn surgeist_text::SourceRangeUnit<'a>::line_index(&self) -> usize
 pub fn surgeist_text::SourceRangeUnit<'a>::pieces(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::SourceRangePiece<'a>> + 'a
 pub fn surgeist_text::SourceRangeUnit<'a>::presentation_range(&self) -> surgeist_text::PresentationRange

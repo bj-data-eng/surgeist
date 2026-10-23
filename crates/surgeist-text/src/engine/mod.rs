@@ -12,7 +12,7 @@ use crate::protocol::{
     prepared::{PreparedAlternativeShape, PreparedTables, SelectedMapping},
     selection::SelectedData,
 };
-use crate::{Alignment, FontCatalogueIdentity, InlineBox, Point, Range};
+use crate::{FontCatalogueIdentity, InlineBox, Point, Range};
 
 pub(crate) mod analysis;
 mod bidi;
@@ -91,24 +91,6 @@ pub(crate) struct ShapingInput<'a> {
     pub(crate) font_catalogue: &'a FontCatalogueIdentity,
     pub(crate) paragraph: &'a ParagraphData,
     pub(crate) css_tabs: bool,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum BreakKind {
-    Soft,
-    Explicit,
-    End,
-}
-
-/// An actual standalone choice over immutable prepared mixed items.
-#[derive(Clone, Debug)]
-pub(crate) struct LineSelection {
-    pub(crate) items: IndexRange<usize>,
-    pub(crate) source: Range,
-    pub(crate) break_kind: BreakKind,
-    pub(crate) available: Option<f64>,
-    pub(crate) indent: f64,
-    pub(crate) alignment: Alignment,
 }
 
 /// A finalized line keeps the exact preparation and its independently produced

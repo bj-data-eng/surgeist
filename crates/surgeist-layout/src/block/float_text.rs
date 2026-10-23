@@ -182,10 +182,12 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
     {
         self.current = self.base.clone();
         self.tentative = self.accepted.clone();
-        let request = line.selected_line();
-        let request = request.request();
-        let start = request.start.view().participant_offset();
-        let end = request.end.view().participant_offset();
+        let portion_start = line
+            .selected_line()
+            .request()
+            .start
+            .view()
+            .participant_offset();
         let mut basis = Vec::new();
         let mut earlier_float_top = self.base.preceding_float_top();
         for (index, event) in self.events.iter().enumerate() {
@@ -198,6 +200,48 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
                 earlier_float_top = Some(earlier_float_top.map_or(top, |earlier| earlier.max(top)));
                 continue;
             }
+            let represented =
+                |request: &surgeist_text::LineSelectionRequest, seam: &TextSeam| match seam {
+                    TextSeam::BeforeParticipant(participant)
+                    | TextSeam::AfterParticipant(participant) => {
+                        request.participants.contains(participant)
+                    }
+                    TextSeam::Origin { origin, local } => {
+                        request
+                            .participants
+                            .iter()
+                            .any(|participant| match participant {
+                                PreparedParticipant::Text(unit) => {
+                                    unit.view().empty_origin().as_ref() == Some(origin)
+                                        || unit.view().origins().any(|row| {
+                                            row.origin() == *origin
+                                                && row.local_range().start <= local.get()
+                                                && local.get() <= row.local_range().end
+                                        })
+                                }
+                                _ => false,
+                            })
+                    }
+                };
+            // At an equal participant boundary the real originating seam,
+            // rather than the numeric tie, determines prefix ownership.
+            let original_request = line.selected_line();
+            let prefix = replay.preceding.as_ref().filter(|_| {
+                event.position < portion_start
+                    || event.position == portion_start
+                        && !event.inside
+                        && !represented(original_request.request(), &event.seam)
+            });
+            let (line, placed) =
+                prefix.map_or((line, replay.placed), |frame| (&frame.line, frame.placed));
+            let selected = line.selected_line();
+            let request = selected.request();
+            let start = request.start.view().participant_offset();
+            let end = if prefix.is_some() {
+                portion_start
+            } else {
+                request.end.view().participant_offset()
+            };
             let eligible = if event.inside {
                 start <= event.position && event.position < end
             } else {
@@ -208,31 +252,13 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
             if !eligible {
                 continue;
             }
-            let represented = |seam: &TextSeam| match seam {
-                TextSeam::BeforeParticipant(participant)
-                | TextSeam::AfterParticipant(participant) => {
-                    request.participants.contains(participant)
-                }
-                TextSeam::Origin { origin, local } => {
-                    request
-                        .participants
-                        .iter()
-                        .any(|participant| match participant {
-                            PreparedParticipant::Text(unit) => {
-                                unit.view().empty_origin().as_ref() == Some(origin)
-                                    || unit.view().origins().any(|row| {
-                                        row.origin() == *origin
-                                            && row.local_range().start <= local.get()
-                                            && local.get() <= row.local_range().end
-                                    })
-                            }
-                            _ => false,
-                        })
-                }
-            };
-            let observation = if represented(&event.seam) {
+            let observation = if represented(request, &event.seam) {
                 AcceptedFloatPrefix::Seam(event.seam.clone())
-            } else if let Some(seam) = event.following.as_ref().filter(|seam| represented(seam)) {
+            } else if let Some(seam) = event
+                .following
+                .as_ref()
+                .filter(|seam| represented(request, seam))
+            {
                 AcceptedFloatPrefix::Seam(seam.clone())
             } else if start == end
                 && event.position == end
@@ -261,7 +287,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
             }
             let mut pending = event.pending.clone();
             let encounter_floor = if preceding && replay.defer_preceding {
-                replay.logical.max(replay.placed) + line.feedback().line_height
+                replay.logical.max(placed) + line.feedback().line_height
             } else {
                 replay.source_floor
             };
@@ -276,7 +302,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
             let encounter_floor = (pending.block_start - self.cursor).to_f64();
             let line_end = self.cursor
                 + crate::text_layout::run::number::<S>(
-                    replay.logical.max(replay.placed) + line.feedback().line_height,
+                    replay.logical.max(placed) + line.feedback().line_height,
                 )
                 .map_err(|e| super::inline_run::text_run_error(container, e))?;
             let provider = ProviderBandContext {

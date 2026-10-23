@@ -25,13 +25,11 @@ use super::{
     PreparedBoundary, PreparedControl, PreparedOpportunity, PreparedOrigin, PreparedParticipant,
     PreparedText, PreparedUnit, PresentationRange, SelectedLine, SpacingSlot, SpacingSlotFeedback,
     SpacingSlotOwner,
-    paragraph::{
-        FragmentOwner, OriginIntersection, ParagraphControlKind, ParagraphOriginKind,
-        ParagraphReplacementDefinition,
-    },
+    paragraph::{FragmentOwner, OriginIntersection, ParagraphControlKind, ParagraphOriginKind},
     prepared::{
-        AlternativeData, AtomicData, BoundaryData, ControlData, OpportunityData, ParticipantData,
-        PreparedBreakKind, SelectedMappingKind, SelectedMappingPiece, UnitData,
+        AlternativeData, AlternativeDefinition, AtomicData, BoundaryData, ControlData,
+        OpportunityData, ParticipantData, PreparedBreakKind, SelectedMappingKind,
+        SelectedMappingPiece, UnitData,
     },
 };
 
@@ -563,6 +561,14 @@ impl PreparedOpportunityView<'_> {
 }
 
 impl PreparedAlternativeView<'_> {
+    /// Actual cut observation, including suppressed manual candidates elsewhere.
+    #[must_use]
+    pub fn hyphenation_cut(&self) -> super::PreparedHyphenationCut {
+        super::PreparedHyphenationCut {
+            prepared: Arc::clone(self.prepared),
+            index: self.data().hyphenation_cut,
+        }
+    }
     /// The actual owning opportunity, qualified by this preparation allocation.
     #[must_use]
     pub fn opportunity(&self) -> PreparedOpportunity {
@@ -576,8 +582,8 @@ impl PreparedAlternativeView<'_> {
     #[must_use]
     pub fn source_range(&self) -> Option<Range> {
         match self.data().definition {
-            ParagraphReplacementDefinition::Source { source, .. } => Some(source),
-            ParagraphReplacementDefinition::Control { .. } => None,
+            AlternativeDefinition::Source { source, .. } => Some(source),
+            AlternativeDefinition::Control { .. } | AlternativeDefinition::Automatic { .. } => None,
         }
     }
 
@@ -589,14 +595,14 @@ impl PreparedAlternativeView<'_> {
             index,
         };
         match self.data().definition {
-            ParagraphReplacementDefinition::Source {
+            AlternativeDefinition::Source {
                 origin: index,
                 source,
             } => PreparedAlternativeDefinition::Source {
                 origin: origin(index),
                 source,
             },
-            ParagraphReplacementDefinition::Control {
+            AlternativeDefinition::Control {
                 control,
                 origin: incident,
             } => PreparedAlternativeDefinition::Control {
@@ -606,6 +612,14 @@ impl PreparedAlternativeView<'_> {
                 },
                 origin: incident.map(origin),
             },
+            AlternativeDefinition::Automatic { cut, .. } => {
+                PreparedAlternativeDefinition::Automatic {
+                    cut: super::PreparedHyphenationCut {
+                        prepared: Arc::clone(self.prepared),
+                        index: cut,
+                    },
+                }
+            }
         }
     }
 
@@ -625,6 +639,9 @@ impl PreparedAlternativeView<'_> {
 /// Authentic definition of an issued replacement, without fabricated source text.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PreparedAlternativeDefinition {
+    Automatic {
+        cut: super::PreparedHyphenationCut,
+    },
     Source {
         origin: PreparedOrigin,
         source: Range,

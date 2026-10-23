@@ -61,12 +61,18 @@ uses the same selected-line and placement machinery.
    inventing a control or a font. A taken discretionary break requires its own issued alternative;
    an empty replacement is valid, and a natural end does not imply a hyphen.
    `Style::hyphens` defaults to `Manual`; `None` suppresses both bare SHY and
-   explicit hyphenation groups, while `Auto` currently adds no dictionary points.
+   explicit hyphenation groups and automatic points. `Auto` also permits the
+   exact [en-US resource](hyphenation-resources.md) over complete qualified
+   lexical words, with retained source-exception and correction provenance.
    Native preparation applies initial total/before/after limits of 5/2/2,
    including empty indications; see the canonical
    [count-unit policy](../../../docs/text-layout-contract.md#automatic-resources-word-custody-and-initial-limits).
    Raw `System::layout` and `layout_analyzed` retain their distinct unconstrained
-   count operation.
+   count operation. Borrow `word_views()` and `hyphenation_cut_views()` for
+   actual lexical/resource/count and source-piece observations. Automatic
+   alternatives carry `PreparedAlternativeDefinition::Automatic`, consuming no
+   authored interval. Their cut retains the preceding original EGC separately
+   from the generating mixed boundary and computed presentation.
    `ParagraphReplacement::style_driven` resolves the actual defining style;
    `resolved_native_logical_before` captures one nonempty ordered list (individual
    strings may be empty). A discretionary control owns its complete boxed Style.
@@ -80,8 +86,19 @@ uses the same selected-line and placement machinery.
    then resolves the chosen text. Missing primary fonts and known unsupported
    nonempty after/both-side placement return typed errors. Suppressed or empty
    indications do not consume those unused capabilities. Native conventions bind
-   the complete locale, including variants/extensions; no built-in language table,
-   CSS font-face unicode-range or dictionary support is claimed.
+   the complete locale, including variants/extensions. Indication conventions
+   have no built-in language table; broader hyphenation resources or CSS font-face
+   unicode-range support is not claimed.
+   Enabled choosers prefer admitted manual partitions before finite automatic
+   fallback. Measure exact `PreparedWordPortion`s through
+   `PreparedTermination::Measurement` in the actual otherwise-empty candidate
+   frame; these are not break offers and cannot be placed or used as phantom
+   receipts. Finite decisions retain actual float/indent/tab/resource context.
+   Min-content instead permits automatic refinement of those portions; maximum
+   remains unbroken. Conditional queries require complete earlier variant
+   dispositions, keeping actual phantom receipts separate from automatic
+   priority, fit-exhaustion and intrinsic dispositions. Text validates their
+   owners and roles; the consumer owns actual fit and recomputes on replay.
 4. `PreparedText::select` returns `SelectedLine`. Its slots identify actual selected
    presentation contributions, including replacement spaces. Finalize first with
    `SpacingAllocations::None`, or provide a complete slot table including zeros.

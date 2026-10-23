@@ -285,3 +285,145 @@ fn native_auto_without_shy_uses_actual_resource_cut_f32() {
 fn native_auto_without_shy_uses_actual_resource_cut_f64() {
     assert_choice::<f64>("associate", 80.0, 4, false);
 }
+
+fn configured(source: &str, indication: &str, overflow: OverflowWrap) -> PreparedParagraph {
+    let mut style = ahem_style(10.0, 10.0);
+    style.hyphens = Hyphens::Auto;
+    style.locale = Some("en-US".into());
+    style.hyphenate_character = HyphenateCharacter::String(Text::from(indication));
+    style.overflow_wrap = overflow;
+    PreparedParagraph::plain(1, Source::new(source), style)
+}
+
+#[test]
+fn automatic_manual_partition_excludes_unrelated_prefix_capacity_and_includes_indication() {
+    fn check<S: LayoutScalar>() {
+        for (source, indication, width, expected_cut, advance, automatic) in [
+            ("XX as\u{ad}sociate", "A", 80.0, 6, 60.0, false),
+            ("assoc\u{ad}iate", "AA", 60.0, 4, 60.0, true),
+        ] {
+            let paragraph = configured(source, indication, OverflowWrap::Normal);
+            let batch = compute::<S>(&paragraph, width);
+            let lines = finalized_lines(&batch, &paragraph);
+            assert_eq!(
+                lines[0]
+                    .selected_line()
+                    .request()
+                    .end
+                    .view()
+                    .source_before()
+                    .get(),
+                expected_cut
+            );
+            assert_eq!(lines[0].feedback().advance, advance);
+            let selection = lines[0].selected_line();
+            let alternative = selection.request().alternative.as_ref().unwrap();
+            assert_eq!(
+                alternative.view().text().code_units(),
+                indication.encode_utf16().collect::<Vec<_>>()
+            );
+            assert_eq!(
+                matches!(
+                    alternative.view().definition(),
+                    surgeist_text::PreparedAlternativeDefinition::Automatic { .. }
+                ),
+                automatic
+            );
+            assert_eq!(
+                batch.placed_text()[0].layout().source().text().code_units(),
+                source.encode_utf16().collect::<Vec<_>>()
+            );
+            assert!(
+                lines
+                    .iter()
+                    .flat_map(|line| line.run_views())
+                    .all(|run| run.face().bytes() == AHEM)
+            );
+        }
+    }
+    check::<f32>();
+    check::<f64>();
+}
+
+#[test]
+fn automatic_exhausted_variants_do_not_block_one_egc_emergency_lines() {
+    fn check<S: LayoutScalar>() {
+        for overflow in [OverflowWrap::Anywhere, OverflowWrap::BreakWord] {
+            let paragraph = configured("associate", "A", overflow);
+            let batch = compute::<S>(&paragraph, 10.0);
+            let lines = finalized_lines(&batch, &paragraph);
+            assert_eq!(lines.len(), 9);
+            for (index, line) in lines.iter().enumerate() {
+                let selection = line.selected_line();
+                assert_eq!(selection.request().start.view().source_after().get(), index);
+                assert_eq!(
+                    selection.request().end.view().source_before().get(),
+                    index + 1
+                );
+                assert!(selection.request().alternative.is_none());
+                assert_eq!(line.feedback().advance, 10.0);
+                assert_eq!(
+                    glyphs(line),
+                    expected_letters("associate", Range::new(index, index + 1))
+                );
+            }
+        }
+    }
+    check::<f32>();
+    check::<f64>();
+}
+
+#[test]
+fn automatic_intrinsic_refinement_is_distinct_from_finite_manual_priority() {
+    fn check<S: LayoutScalar>() {
+        for source in ["associate", "as\u{ad}sociate"] {
+            for (overflow, minimum) in [
+                (OverflowWrap::Normal, 50.0),
+                (OverflowWrap::BreakWord, 50.0),
+                (OverflowWrap::Anywhere, 10.0),
+            ] {
+                let paragraph = configured(source, "A", overflow);
+                let tree = PublicLayoutTreeOf::<S>::new()
+                    .children(0, [1])
+                    .children(1, [])
+                    .style(
+                        0,
+                        NodeInputOf {
+                            display: Display::Block,
+                            ..NodeInputOf::default()
+                        },
+                    )
+                    .input(1, paragraph.text_input(1));
+                let capture =
+                    TextLayoutInput::try_new(&tree, 0, vec![paragraph.binding(0)]).unwrap();
+                for (available, expected) in [
+                    (AvailableOf::MIN_CONTENT, minimum),
+                    (AvailableOf::MAX_CONTENT, 90.0),
+                ] {
+                    let request = LayoutRootRequestOf::viewport(Size::new(
+                        available,
+                        AvailableOf::MAX_CONTENT,
+                    ))
+                    .unwrap();
+                    let batch = compute_layout_with_text(&capture, 0, request).unwrap();
+                    let width = batch
+                        .final_entries()
+                        .iter()
+                        .find(|entry| entry.node() == 0)
+                        .unwrap()
+                        .output()
+                        .size
+                        .width
+                        .to_f64();
+                    assert_eq!(width, expected, "{source:?}/{overflow:?}/{available:?}");
+                    assert_eq!(
+                        batch.placed_text()[0].layout().source().text().code_units(),
+                        source.encode_utf16().collect::<Vec<_>>()
+                    );
+                }
+            }
+        }
+    }
+    check::<f32>();
+    check::<f64>();
+}

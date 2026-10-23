@@ -254,7 +254,7 @@ pub struct Style {
     pub wrap: Wrap,
     pub overflow_wrap: OverflowWrap,
     pub text_transform: TextTransform,
-    /// Defaults to Manual; Auto currently adds no dictionary-derived points.
+    /// Defaults to Manual; Auto also permits Text's qualified en-US resource.
     pub hyphens: crate::Hyphens,
     /// Exact indication or native convention/first-available-font resolution.
     pub hyphenate_character: crate::HyphenateCharacter,

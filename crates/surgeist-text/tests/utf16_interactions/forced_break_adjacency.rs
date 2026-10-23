@@ -426,7 +426,8 @@ fn optional_and_discretionary_owners_keep_permission_without_a_hard_neighbor() {
                     assert_eq!(defining, control);
                     assert!(origin.is_none());
                 }
-                PreparedAlternativeDefinition::Source { .. } => {
+                PreparedAlternativeDefinition::Automatic { .. }
+                | PreparedAlternativeDefinition::Source { .. } => {
                     panic!("a real native control must not acquire a fabricated source definition");
                 }
             }

@@ -5,8 +5,9 @@
 [Cargo.toml](../Cargo.toml) defines package `surgeist-text` version `0.1.0`, library
 name `surgeist_text`, and Rust edition 2024. No `rust-version` minimum is declared.
 The [owned engine](../src/engine/mod.rs) uses safe direct providers for Unicode
-analysis, font resolution, shaping and font tables. [Cargo.toml](../Cargo.toml)
-defines their exact versions; [source provenance](owned-engine-provenance.md)
+analysis, hyphenation resources, font resolution, shaping and font tables.
+[Cargo.toml](../Cargo.toml) defines their exact versions;
+[source provenance](owned-engine-provenance.md)
 records the adapted mechanisms and cached source identities. Parley is not a
 production dependency.
 
@@ -36,12 +37,29 @@ private implementation organization.
 | Font catalogue | `FontCatalogueMode`, issued `FontCatalogueIdentity`, `System::register_fonts` and `refresh_fonts` | [catalogue.rs](../src/catalogue.rs) |
 | Font resources and metrics | `FontData`, `FontFace`, `EffectiveFontInstance`, `FontMetrics`, `StrikeoutMetrics` | [font.rs](../src/font.rs), [font/metrics.rs](../src/font/metrics.rs) |
 | Borrowed readback | `RunView`, positioned `GlyphPlacement`, actual decorations | [views.rs](../src/views.rs) |
+| Prepared hyphenation | `PreparedWord`, `PreparedHyphenationCut`, borrowed views, `PreparedWordPortion`, `HyphenationResource`, `HyphenationProvenance` | [hyphenation.rs](../src/protocol/hyphenation.rs), [resource support](hyphenation-resources.md) |
 | Finalized logical prefixes | `TextSeam`, `FinalizedPrefixView`, `FinalizedSharedUnitView`, `FinalizedLine::prefix_at` | [prefix.rs](../src/protocol/prefix.rs), [composition guide](composed-lines.md) |
 | Placed original-source fragments | `SourceRangeFragments`, `SourceRangeUnit`, `SourceRangePiece`, `SourceRangeFragmentError`, `Layout::source_range_fragments` | [range_fragments.rs](../src/range_fragments.rs), [composition guide](composed-lines.md) |
 | Output and interaction | `Layout`, glyph runs, line/box facts, cursors, selections, movement | [layout.rs](../src/layout.rs) |
 | Ranges and edits | `Range`, `SourcePosition`, `SourceRange`, `Edit`, `TextEdit` | [range.rs](../src/range.rs), [edit.rs](../src/edit.rs) |
 | Cache identity | `Key`, `SourceKey`, `StyleKey`, `OptionsKey`, `FontGeneration`, `Stats` | [cache.rs](../src/cache.rs) |
 | Errors | `Error`, `ErrorCode`, `ErrorDetail`, `Result` | [error.rs](../src/error.rs) |
+
+## Prepared hyphenation
+
+`PreparedText::word_views` and `hyphenation_cut_views` expose preparation-owned
+observations of complete lexical words, resource applicability, cut provenance,
+counts and exact source pieces. The current automatic resource requires en-US
+on every genuine word contribution, compared without ASCII case distinctions;
+generic English and other locales have no automatic resource. See
+[resource support and attribution](hyphenation-resources.md).
+
+Word portions retain the admitted manual partition. A
+`PreparedTermination::Measurement` finalizes an issued portion through the same
+selected-line pipeline and cannot be placed. Consumers use
+`ConditionalDisposition` to account for earlier ordinary variants when requesting
+conditional cuts; actual fitting remains consumer-owned. The
+[composition guide](composed-lines.md) defines selection and placement use.
 
 ## Supplied mixed-line processing
 

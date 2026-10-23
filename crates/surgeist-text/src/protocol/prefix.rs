@@ -227,18 +227,19 @@ impl PrefixData {
                     .iter()
                     .position(|p| match (definition, p) {
                         (
-                            super::paragraph::ParagraphReplacementDefinition::Control {
-                                control,
-                                ..
-                            },
+                            super::prepared::AlternativeDefinition::Control { control, .. },
                             PreparedParticipant::Control(handle),
                         ) => selected.prepared.tables.controls[handle.index].occurrence == control,
                         (
-                            super::paragraph::ParagraphReplacementDefinition::Source {
-                                source, ..
-                            },
+                            super::prepared::AlternativeDefinition::Source { source, .. },
                             PreparedParticipant::Text(handle),
                         ) => selected.prepared.tables.units[handle.index].source == source,
+                        (
+                            super::prepared::AlternativeDefinition::Automatic { atom, .. },
+                            PreparedParticipant::Text(handle),
+                        ) => selected.prepared.tables.units[handle.index]
+                            .atoms
+                            .contains(&(atom - 1)),
                         _ => false,
                     })
             });

@@ -1703,3 +1703,248 @@ fn captured_review_zero_height_float_queries_keep_sides_clear_expiry_and_signed_
 
 #[path = "conditional_cache.rs"]
 mod conditional_cache;
+
+#[test]
+fn automatic_portion_retains_preceding_float_at_word_start_and_actual_fractional_frame() {
+    fn check<S: LayoutScalar>() {
+        let mut style = ahem_style(10.0, 10.0);
+        style.hyphens = text::Hyphens::Auto;
+        style.locale = Some("en-US".into());
+        style.hyphenate_character = text::HyphenateCharacter::String(text::Text::from("A"));
+        let mut prefix = style.clone();
+        prefix.line_height = text::LineHeight::Absolute(20.5);
+        let paragraph = PreparedParagraph::new(
+            vec![
+                ParagraphPart::text(10, Source::new("XX "), prefix),
+                ParagraphPart::text(11, Source::new("as\u{ad}sociate"), style.clone()),
+            ],
+            style,
+            text::ParagraphBaseDirection::LeftToRight,
+        );
+        let mut binding = paragraph.binding(2);
+        binding.nodes = vec![10, 30, 11];
+        let tree = float_tree::<S>(&binding, 80.0, Float::Left, 1).style(
+            30,
+            NodeInputOf {
+                display: Display::Block,
+                float: Float::Left,
+                size: Size::new(
+                    PreferredSizeOf::px(S::from_f64(60.0)),
+                    PreferredSizeOf::px(S::from_f64(4.0)),
+                ),
+                ..NodeInputOf::default()
+            },
+        );
+        let capture = TextLayoutInput::try_new(&tree, 2, vec![binding.clone()]).unwrap();
+        let batch = compute_layout_with_text(&capture, 2, request(80.0)).unwrap();
+        let layout = batch.placed_text()[0].layout();
+        assert_eq!(
+            layout.source().text().code_units(),
+            "XX as\u{ad}sociate".encode_utf16().collect::<Vec<_>>()
+        );
+        // The genuine prefix is 30px, so the 60px float cannot share its 80px
+        // row. A word-only probe must retain that prior source encounter.
+        assert_eq!(output(&batch, 30).location.y.to_f64(), 21.0);
+        assert_eq!(layout.lines()[0].range(), text::Range::new(0, 6));
+        assert_eq!(layout.lines()[0].baseline(), 13.0);
+        let first = batch
+            .final_inline_fragments()
+            .iter()
+            .find(|row| row.fragment().line_index() == 0)
+            .unwrap()
+            .fragment()
+            .finalized_fragment()
+            .finalized_line();
+        assert_eq!(first.feedback().advance, 60.0);
+        assert!(matches!(
+            first
+                .selected_line()
+                .request()
+                .alternative
+                .as_ref()
+                .unwrap()
+                .view()
+                .definition(),
+            text::PreparedAlternativeDefinition::Source { .. }
+        ));
+        let warm = compute_layout_with_text(&capture, 2, request(80.0)).unwrap();
+        assert_eq!(warm.final_entries(), batch.final_entries());
+    }
+    check::<f32>();
+    check::<f64>();
+}
+#[test]
+fn automatic_initial_manual_portion_retains_float_before_word_without_replaying_it_inside() {
+    fn check<S: LayoutScalar>() {
+        let mut style = ahem_style(10.0, 10.0);
+        style.hyphens = text::Hyphens::Auto;
+        style.locale = Some("en-US".into());
+        style.hyphenate_character = text::HyphenateCharacter::String(text::Text::from("A"));
+        let mut prefix = style.clone();
+        prefix.line_height = text::LineHeight::Absolute(20.5);
+        let paragraph = PreparedParagraph::new(
+            vec![
+                ParagraphPart::text(10, Source::new("XX "), prefix),
+                ParagraphPart::text(11, Source::new("assoc\u{ad}iate"), style.clone()),
+            ],
+            style,
+            text::ParagraphBaseDirection::LeftToRight,
+        );
+        let mut binding = paragraph.binding(2);
+        binding.nodes = vec![10, 30, 11];
+        let tree = float_tree::<S>(&binding, 80.0, Float::Left, 1).style(
+            30,
+            NodeInputOf {
+                display: Display::Block,
+                float: Float::Left,
+                size: Size::new(
+                    PreferredSizeOf::px(S::from_f64(60.0)),
+                    PreferredSizeOf::px(S::from_f64(4.0)),
+                ),
+                ..NodeInputOf::default()
+            },
+        );
+        let capture = TextLayoutInput::try_new(&tree, 2, vec![binding.clone()]).unwrap();
+        let batch = compute_layout_with_text(&capture, 2, request(80.0)).unwrap();
+        let layout = batch.placed_text()[0].layout();
+        assert_eq!(
+            layout.source().text().code_units(),
+            "XX assoc\u{ad}iate".encode_utf16().collect::<Vec<_>>()
+        );
+        // The full candidate's prefix30 defers the float, so the otherwise
+        // empty manual portion60 fits80 and excludes Auto4. The genuine
+        // Preserve SPACE still contributes to the encounter prefix even when
+        // its Soft line alignment contribution hangs.
+        assert_eq!(output(&batch, 30).location.y.to_f64(), 21.0);
+        assert_eq!(layout.lines()[0].range(), text::Range::new(0, 3));
+        assert_eq!(layout.lines()[0].baseline(), 13.0);
+        let first = batch
+            .final_inline_fragments()
+            .iter()
+            .find(|row| row.fragment().line_index() == 0)
+            .unwrap()
+            .fragment()
+            .finalized_fragment()
+            .finalized_line();
+        assert_eq!(first.feedback().advance, 30.0);
+        assert!(first.selected_line().request().alternative.is_none());
+        assert!(
+            layout
+                .lines()
+                .iter()
+                .any(|line| line.range() == text::Range::new(3, 9))
+        );
+        let warm = compute_layout_with_text(&capture, 2, request(80.0)).unwrap();
+        assert_eq!(warm.final_entries(), batch.final_entries());
+    }
+    check::<f32>();
+    check::<f64>();
+}
+
+#[test]
+fn automatic_internal_float_retries_changed_band_and_preserves_committed_results_on_refusal() {
+    fn check<S: LayoutScalar>() {
+        let mut style = ahem_style(10.0, 10.0);
+        style.hyphens = text::Hyphens::Auto;
+        style.locale = Some("en-US".into());
+        style.hyphenate_character = text::HyphenateCharacter::String(text::Text::from("A"));
+        let paragraph = PreparedParagraph::new(
+            vec![
+                ParagraphPart::text(10, Source::new("as\u{ad}s"), style.clone()),
+                ParagraphPart::text(11, Source::new("ociate"), style.clone()),
+            ],
+            style,
+            text::ParagraphBaseDirection::LeftToRight,
+        );
+        let mut binding = paragraph.binding(2);
+        binding.nodes = vec![10, 30, 11];
+        let float_input = |width, shape| NodeInputOf {
+            display: Display::Block,
+            float: Float::Left,
+            float_exclusion: if shape {
+                FloatExclusion::Shape
+            } else {
+                FloatExclusion::MarginBox
+            },
+            size: Size::new(
+                PreferredSizeOf::px(S::from_f64(width)),
+                PreferredSizeOf::px(S::from_f64(4.0)),
+            ),
+            ..NodeInputOf::default()
+        };
+        let tree =
+            float_tree::<S>(&binding, 80.0, Float::Left, 1).style(30, float_input(20.0, false));
+        let mut host = CachedHost::new(tree);
+        let cold = host.compute(&binding, &[]).unwrap();
+        assert_eq!(output(&cold, 2).size.width.to_f64(), 80.0);
+        assert_eq!(
+            cold.placed_text()[0].layout().lines()[0].range(),
+            text::Range::new(0, 5)
+        );
+        assert_eq!(output(&cold, 30).location.y, S::ZERO);
+        assert_eq!(
+            cold.placed_text()[0].layout().source().text().code_units(),
+            "as\u{ad}sociate".encode_utf16().collect::<Vec<_>>()
+        );
+        cold.apply_to(&mut host).unwrap();
+        host.hits.borrow_mut().clear();
+        let warm = host.compute(&binding, &[]).unwrap();
+        assert!(host.hits.borrow().contains(&30));
+        assert_eq!(warm.final_entries(), cold.final_entries());
+        host.tree
+            .insert_input(30, LayoutInputOf::box_input(float_input(40.0, false)));
+        let changed = host.compute(&binding, &[30]).unwrap();
+        assert_eq!(
+            changed.placed_text()[0].layout().lines()[0].range(),
+            text::Range::new(0, 3)
+        );
+        let fresh = CachedHost::new(host.tree.clone())
+            .compute(&binding, &[])
+            .unwrap();
+        assert_eq!(changed.final_entries(), fresh.final_entries());
+        changed.apply_to(&mut host).unwrap();
+        let old = host.published.clone().unwrap();
+        let caches = host.caches.clone();
+        host.tree
+            .insert_input(30, LayoutInputOf::box_input(float_input(40.0, true)));
+        host.fail_shape = true;
+        let error = host.compute(&binding, &[30]).unwrap_err();
+        assert!(matches!(
+            error.kind(),
+            LayoutErrorKindOf::Measurement("actual float shape refused")
+        ));
+        assert_eq!(host.caches, caches);
+        assert_eq!(
+            host.published.as_ref().unwrap().final_entries(),
+            old.final_entries()
+        );
+        assert_eq!(
+            host.published.as_ref().unwrap().final_inline_fragments(),
+            old.final_inline_fragments()
+        );
+        assert_eq!(
+            host.published.as_ref().unwrap().placed_text()[0]
+                .layout()
+                .positions()
+                .collect::<Vec<_>>(),
+            old.placed_text()[0]
+                .layout()
+                .positions()
+                .collect::<Vec<_>>()
+        );
+        host.fail_shape = false;
+        let candidate = host.compute(&binding, &[30]).unwrap();
+        host.reject_batch = true;
+        assert_eq!(
+            candidate.apply_to(&mut host),
+            Err("reject complete replacement")
+        );
+        assert_eq!(host.caches, caches);
+        assert_eq!(
+            host.published.as_ref().unwrap().final_entries(),
+            old.final_entries()
+        );
+    }
+    check::<f32>();
+    check::<f64>();
+}

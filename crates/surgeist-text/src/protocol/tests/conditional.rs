@@ -702,7 +702,7 @@ fn phantom_receipt_preserves_leading_original_custody_and_continuation() {
             &start,
             &ceiling,
             ConditionalPurpose::Overflow,
-            std::slice::from_ref(&phantom),
+            &[crate::ConditionalDisposition::Phantom(phantom.clone())],
         )
         .unwrap();
     assert_eq!(sources(&cuts), [2, 3, 4]);
@@ -791,7 +791,12 @@ fn phantom_receipts_cover_exact_same_offset_ordinals_and_recheck_strut_presence(
         .collect();
     let ceiling = &inventory[3];
     let cuts = prepared
-        .conditional_opportunities(&start, ceiling, ConditionalPurpose::Overflow, &receipts)
+        .conditional_opportunities(
+            &start,
+            ceiling,
+            ConditionalPurpose::Overflow,
+            &phantom_dispositions(&receipts),
+        )
         .unwrap();
     assert_eq!(sources(&cuts), [2, 3, 4]);
     assert_eq!(
@@ -801,7 +806,7 @@ fn phantom_receipts_cover_exact_same_offset_ordinals_and_recheck_strut_presence(
                 &start,
                 ceiling,
                 ConditionalPurpose::Overflow,
-                &receipts.clone()
+                &phantom_dispositions(&receipts.clone())
             )
             .unwrap()
     );
@@ -820,7 +825,12 @@ fn phantom_receipts_cover_exact_same_offset_ordinals_and_recheck_strut_presence(
     assert_eq!(
         cuts,
         prepared
-            .conditional_opportunities(&start, ceiling, ConditionalPurpose::Overflow, &other_trials)
+            .conditional_opportunities(
+                &start,
+                ceiling,
+                ConditionalPurpose::Overflow,
+                &phantom_dispositions(&other_trials)
+            )
             .unwrap()
     );
     for bad in [
@@ -839,7 +849,12 @@ fn phantom_receipts_cover_exact_same_offset_ordinals_and_recheck_strut_presence(
         assert!(matches!(
             reason(
                 &prepared
-                    .conditional_opportunities(&start, ceiling, ConditionalPurpose::Overflow, &bad)
+                    .conditional_opportunities(
+                        &start,
+                        ceiling,
+                        ConditionalPurpose::Overflow,
+                        &phantom_dispositions(&bad)
+                    )
                     .unwrap_err()
             ),
             ProtocolError::InvalidConditionalReceipt { .. }
@@ -862,7 +877,7 @@ fn phantom_receipts_cover_exact_same_offset_ordinals_and_recheck_strut_presence(
                     &start,
                     ceiling,
                     ConditionalPurpose::MinContent,
-                    &receipts
+                    &phantom_dispositions(&receipts)
                 )
                 .unwrap_err()
         ),
@@ -887,7 +902,7 @@ fn phantom_receipts_cover_exact_same_offset_ordinals_and_recheck_strut_presence(
             &start,
             ceiling,
             ConditionalPurpose::MinContent,
-            &minimum_receipts,
+            &phantom_dispositions(&minimum_receipts),
         )
         .unwrap();
     assert_eq!(sources(&minimum), [2, 3, 4]);
@@ -919,7 +934,7 @@ fn retained_zero_or_signed_text_cannot_be_a_phantom_receipt() {
                         &start,
                         &ceiling,
                         ConditionalPurpose::Overflow,
-                        &[receipt]
+                        &[crate::ConditionalDisposition::Phantom(receipt)]
                     )
                     .unwrap_err()
             ),
@@ -1010,7 +1025,7 @@ fn phantom_frontier_requires_every_real_discretionary_variant() {
                     &start,
                     &inventory[2],
                     ConditionalPurpose::Overflow,
-                    &receipts
+                    &phantom_dispositions(&receipts)
                 )
                 .unwrap_err()
         ),
@@ -1029,7 +1044,7 @@ fn phantom_frontier_requires_every_real_discretionary_variant() {
                     &start,
                     &inventory[2],
                     ConditionalPurpose::Overflow,
-                    &receipts
+                    &phantom_dispositions(&receipts)
                 )
                 .unwrap_err()
         ),
@@ -1642,4 +1657,12 @@ fn conditional_eligibility_is_not_created_by_atomic_or_control_occurrences() {
             PreparedBreakKind::ParagraphEnd
         ]
     );
+}
+
+fn phantom_dispositions(lines: &[FinalizedLine]) -> Vec<crate::ConditionalDisposition> {
+    lines
+        .iter()
+        .cloned()
+        .map(crate::ConditionalDisposition::Phantom)
+        .collect()
 }

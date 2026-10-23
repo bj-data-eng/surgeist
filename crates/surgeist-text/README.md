@@ -38,6 +38,11 @@ finalization produce immutable line-local output. `Layout::from_finalized_lines`
 validates one explicitly anchored line set without wrapping again. See the
 [composed protocol guide](docs/composed-lines.md).
 
+Automatic hyphenation has bounded en-US support through the pinned
+[resource and exceptions](docs/hyphenation-resources.md). Prepared word and cut
+views retain actual source custody; selected indication text remains presentation
+and does not enter plaintext.
+
 `System::registered_font_faces` lends actual registered resources without shaping
 a sample character or resolving a Style. Retained `FontData` can select an explicit
 unsynthesized instance and query same-instance f64 font/strikeout metrics under

@@ -12,6 +12,7 @@ use selection::SelectedData;
 
 mod conditional;
 pub(crate) mod finalized;
+mod hyphenation;
 pub(crate) mod measurements;
 pub(crate) mod paragraph;
 pub(crate) mod placement;
@@ -20,7 +21,11 @@ pub(crate) mod prepared;
 pub(crate) mod readback;
 pub(crate) mod selection;
 
-pub use conditional::{ConditionalPurpose, PreparedConditionalOpportunity};
+pub use conditional::{ConditionalDisposition, ConditionalPurpose, PreparedConditionalOpportunity};
+pub use hyphenation::{
+    HyphenationCounts, HyphenationProvenance, HyphenationResource, HyphenationSourcePieceView,
+    PreparedHyphenationCutView, PreparedWordPortion, PreparedWordView,
+};
 pub use measurements::{
     InlineMeasure, LineEdgeDisposition, LineEdgeOwner, LineEdgeSide, LineEdgeUnitView,
     LineMeasurements,
@@ -160,7 +165,9 @@ prepared_handle!(
     PreparedControl,
     PreparedBoundary,
     PreparedOpportunity,
-    PreparedAlternative
+    PreparedAlternative,
+    PreparedWord,
+    PreparedHyphenationCut
 );
 
 /// The complete logical mixed sequence, using distinct issued occurrence roles.
@@ -291,6 +298,8 @@ pub struct LineStrut {
 pub enum PreparedTermination {
     Ordinary(PreparedOpportunity),
     Conditional(PreparedConditionalOpportunity),
+    /// Exact lexical portion trial through the shared finalizer; never placeable.
+    Measurement(PreparedWordPortion),
 }
 
 /// Complete request; all capabilities and numerical/context facts are checked
@@ -481,6 +490,7 @@ pub struct AtomicSlotFeedback {
 /// Semantic capability kind used by an exact protocol admission diagnostic.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProtocolHandleKind {
+    WordPortion,
     Origin,
     Unit,
     Atomic,
@@ -509,6 +519,8 @@ pub enum ProtocolContextField {
 /// Actual invalid association or incomplete input; no caller ordinal issues a capability.
 #[derive(Clone, Debug, PartialEq)]
 pub enum ProtocolError {
+    InvalidWordPortion,
+    MeasurementNotPlaceable,
     /// Missing actual context for CSS Text Phase II: Trimming and Positioning.
     MissingPhaseTwoContext(PhaseTwoContext),
     /// The occurrence-qualified original seam is not represented by this line.

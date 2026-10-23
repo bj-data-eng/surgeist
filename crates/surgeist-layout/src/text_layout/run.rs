@@ -815,6 +815,20 @@ fn fragment_node<Node: Copy + Eq>(
                         .expect("capture admitted actual replacement source")
                         .node
                 }
+                surgeist_text::PreparedAlternativeDefinition::Automatic { cut } => {
+                    let origin = cut
+                        .view()
+                        .preceding_source_pieces()
+                        .last()
+                        .expect("automatic cut owns original EGC pieces")
+                        .origin();
+                    binding
+                        .origins
+                        .iter()
+                        .find(|row| row.origin == origin)
+                        .expect("capture admitted automatic cut owner")
+                        .node
+                }
                 surgeist_text::PreparedAlternativeDefinition::Control { control, .. } => {
                     binding
                         .controls

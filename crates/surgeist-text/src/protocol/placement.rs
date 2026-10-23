@@ -153,6 +153,12 @@ pub(crate) fn place_request(
     let mut stacked_height = 0.0_f64;
     for (ordinal, placement) in request.lines.into_iter().enumerate() {
         let selected = &placement.line.inner.selected;
+        if matches!(
+            selected.request.termination,
+            super::PreparedTermination::Measurement(_)
+        ) {
+            return Err(protocol_error(ProtocolError::MeasurementNotPlaceable));
+        }
         if !Arc::ptr_eq(&prepared, &selected.prepared) {
             return Err(protocol_error(ProtocolError::ForeignFinalizedLine {
                 line: ordinal,

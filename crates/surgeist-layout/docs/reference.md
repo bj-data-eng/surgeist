@@ -150,6 +150,17 @@ maximum sizing combines each actual line with its applicable float occupation
 before the final finite placement pass. Clearance and expired float cohorts
 remain distinct.
 
+Automatic hyphenation consumes Text's exact
+[en-US resource](../../surgeist-text/docs/hyphenation-resources.md) and issued
+word/cut ownership. Finite fitting preserves admitted manual partitions while
+measuring their residual portions through the same Text finalizer in the actual
+otherwise-empty candidate frame. Those trials retain preceding source-float
+encounters and never publish a line or child placement. Min-content instead
+allows automatic refinement within manual partitions; max-content stays
+unbroken. Neither operation infers fit failure from an absent finite width.
+Ordinary indication-inclusive trials precede nonhyphenating emergency cuts;
+automatic variant dispositions do not turn meaningful content into phantom flow.
+
 `TextJustification::Spaces` expands retained U+0020 slots using Text's finalized
 ownership and edge decisions. Layout distributes the remaining line capacity
 after subtracting Text's natural alignment measure to those slots, then finalizes

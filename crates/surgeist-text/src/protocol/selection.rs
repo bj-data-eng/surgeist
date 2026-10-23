@@ -51,7 +51,7 @@ impl PreparedText {
     }
 }
 
-fn select(
+pub(crate) fn select(
     prepared: &PreparedText,
     request: LineSelectionRequest,
     metric_policy: LineMetricPolicy,
@@ -150,6 +150,10 @@ fn select(
         }
         super::PreparedTermination::Conditional(termination) => {
             termination.validate(prepared, &request)?;
+            None
+        }
+        super::PreparedTermination::Measurement(portion) => {
+            portion.validate(prepared, &request)?;
             None
         }
     };
@@ -506,71 +510,44 @@ fn numeric(field: &'static str, category: TextNumericError, value: f64) -> crate
     crate::error::text_numeric_error(field, TextNumericPhase::Selection, category, value)
 }
 
-/// Lower only the characterized identity-processing standalone chooser. Native
-/// paragraph capture always supplies its actual issued boundaries directly.
-pub(crate) fn lower_standalone(
+/// Build the actual raw operation request at genuine issued mixed boundaries.
+/// Native callers supply their own allocations; raw boxes retain Source geometry.
+pub(crate) fn standalone_request(
     prepared: Arc<PreparedData>,
-    selection: crate::engine::LineSelection,
-    metric_policy: LineMetricPolicy,
-) -> Result<Arc<SelectedData>> {
-    use super::{
-        AtomicBoxAllocation, AtomicFlowAllocation, PreparedAtomic, PreparedBoundary,
-        PreparedOpportunity,
+    start: usize,
+    termination: super::PreparedTermination,
+    alternative: Option<super::PreparedAlternative>,
+    available: Option<f64>,
+    indent: f64,
+    alignment: crate::Alignment,
+) -> Result<LineSelectionRequest> {
+    use super::{AtomicBoxAllocation, AtomicFlowAllocation, PreparedAtomic, PreparedBoundary};
+    let end = match &termination {
+        super::PreparedTermination::Ordinary(offer) => offer.view().boundary().index,
+        super::PreparedTermination::Conditional(cut) => cut.boundary().index,
+        super::PreparedTermination::Measurement(portion) => portion.end,
     };
     let tables = &prepared.tables;
     let invalid = || {
         protocol_error(ProtocolError::InvalidBoundaryRange {
-            start: selection.items.start,
-            end: selection.items.end,
+            start,
+            end,
             participants: tables.participants.len(),
         })
     };
-    if prepared.analyzed.paragraph.base_direction.is_some() {
+    if tables.profile != crate::engine::PreparationProfile::Standalone {
         return Err(invalid());
     }
-    let start = tables
-        .boundaries
-        .iter()
-        .position(|row| row.preliminary_item == Some(selection.items.start))
-        .ok_or_else(invalid)?;
-    let end = tables
-        .boundaries
-        .iter()
-        .rposition(|row| row.preliminary_item == Some(selection.items.end))
-        .ok_or_else(invalid)?;
-    if tables.boundaries[start].source_after != selection.source.start
-        || tables.boundaries[end].source_before != selection.source.end
-    {
-        return Err(invalid());
-    }
-    let termination = tables
-        .opportunities
-        .iter()
-        .position(|row| {
-            row.boundary == end
-                && match selection.break_kind {
-                    crate::engine::BreakKind::Soft => matches!(
-                        row.kind,
-                        PreparedBreakKind::Allowed | PreparedBreakKind::Discretionary
-                    ),
-                    crate::engine::BreakKind::Explicit => row.kind == PreparedBreakKind::Forced,
-                    crate::engine::BreakKind::End => row.kind == PreparedBreakKind::ParagraphEnd,
-                }
-        })
-        .ok_or_else(|| protocol_error(ProtocolError::IllegalOpportunity { opportunity: end }))?;
-    let kind = tables.opportunities[termination].kind;
-    let alternative = if kind == PreparedBreakKind::Discretionary {
-        // The raw Source front has no native resolved groups or typed controls.
-        // Each surviving bare SHY resolves exactly one style-driven string.
-        let [index] = tables.opportunities[termination].alternatives.as_slice() else {
-            unreachable!("a raw style-driven SHY owns exactly one resolved indication")
-        };
-        Some(super::PreparedAlternative {
-            prepared: Arc::clone(&prepared),
-            index: *index,
-        })
-    } else {
-        None
+    let ending = match &termination {
+        super::PreparedTermination::Ordinary(offer) => match tables.opportunities[offer.index].kind
+        {
+            PreparedBreakKind::Allowed | PreparedBreakKind::Discretionary => LineEnd::Soft,
+            PreparedBreakKind::Forced => LineEnd::Forced,
+            PreparedBreakKind::ParagraphEnd => LineEnd::Paragraph,
+        },
+        super::PreparedTermination::Measurement(_) | super::PreparedTermination::Conditional(_) => {
+            LineEnd::Soft
+        }
     };
     let from = tables.boundaries[start].participant;
     let to = tables.boundaries[end].participant;
@@ -627,10 +604,7 @@ pub(crate) fn lower_standalone(
             index: end,
         },
         participants,
-        termination: super::PreparedTermination::Ordinary(PreparedOpportunity {
-            prepared: Arc::clone(&prepared),
-            index: termination,
-        }),
+        termination,
         alternative,
         context: LineContext {
             base_direction: if prepared.analyzed.analysis.base_level & 1 == 0 {
@@ -644,14 +618,10 @@ pub(crate) fn lower_standalone(
             } else {
                 LineStart::Continuation
             },
-            end: match kind {
-                PreparedBreakKind::Allowed | PreparedBreakKind::Discretionary => LineEnd::Soft,
-                PreparedBreakKind::Forced => LineEnd::Forced,
-                PreparedBreakKind::ParagraphEnd => LineEnd::Paragraph,
-            },
-            available_inline: selection.available,
-            indent: selection.indent,
-            alignment: selection.alignment,
+            end: ending,
+            available_inline: available,
+            indent,
+            alignment,
             tabs: TabContext::FontAdvance,
 
             spacing: SpacingPolicy::Spaces,
@@ -660,5 +630,5 @@ pub(crate) fn lower_standalone(
         controls: Vec::new(),
         line_strut: None,
     };
-    Ok(select(&handle, request, metric_policy)?.inner)
+    Ok(request)
 }

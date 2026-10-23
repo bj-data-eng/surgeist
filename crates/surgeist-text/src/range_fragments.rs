@@ -1,8 +1,8 @@
 //! Nonempty original-source observations over placed, selected grapheme units.
 use crate::protocol::{
     ProtocolError, ProtocolHandleKind,
-    paragraph::{FragmentOwner, OriginIntersection, ParagraphReplacementDefinition},
-    prepared::PresentationUnitKind,
+    paragraph::{FragmentOwner, OriginIntersection},
+    prepared::{AlternativeDefinition, PresentationUnitKind},
     protocol_error,
     readback::PreparedOriginIntersectionView,
 };
@@ -79,6 +79,7 @@ struct Unit<'a> {
     pieces: Vec<Piece<'a>>,
     alternative: Option<usize>,
     defining: Option<OriginIntersection>,
+    attributed_cut: Option<usize>,
     presentation: Range,
 }
 #[derive(Debug)]
@@ -147,6 +148,16 @@ impl<'a> SourceRangeUnit<'a> {
             .map(|association| PreparedOriginIntersectionView {
                 prepared: &self.layout.inner.prepared,
                 association,
+            })
+    }
+    /// Exact automatic source-attribution relation, separate from the
+    /// presentation unit's owners and any source replacement definition.
+    pub fn hyphenation_cut(&self) -> Option<crate::PreparedHyphenationCut> {
+        self.unit
+            .attributed_cut
+            .map(|index| crate::PreparedHyphenationCut {
+                prepared: Arc::clone(&self.layout.inner.prepared),
+                index,
             })
     }
     pub fn presentation_range(&self) -> PresentationRange {
@@ -597,13 +608,14 @@ impl Layout {
                         });
                 let defining = alternative.and_then(|index| {
                     match self.inner.prepared.tables.alternatives[index].definition {
-                        ParagraphReplacementDefinition::Source {
+                        AlternativeDefinition::Source {
                             origin: owner,
                             source,
                         } => intersections(self, source)
                             .into_iter()
                             .find(|piece| piece.origin == owner),
-                        ParagraphReplacementDefinition::Control { .. } => None,
+                        AlternativeDefinition::Control { .. }
+                        | AlternativeDefinition::Automatic { .. } => None,
                     }
                 });
                 if let Some(definition) = defining
@@ -616,6 +628,43 @@ impl Layout {
                             .filter(|piece| piece.origin == origin.index),
                     );
                 }
+                let attributed_cut = alternative.and_then(|index| {
+                    match self.inner.prepared.tables.alternatives[index].definition {
+                        AlternativeDefinition::Automatic { cut, .. } => Some(cut),
+                        _ => None,
+                    }
+                });
+                if let Some(cut) = attributed_cut {
+                    let row = &self.inner.prepared.tables.hyphenation_cuts[cut];
+                    let Some(atoms) = row.preceding.clone() else {
+                        return Err(crate::hyphenation::error(
+                            crate::HyphenationError::InvalidResourceMapping,
+                        ));
+                    };
+                    for atom in atoms {
+                        let source = self.inner.prepared.analyzed.projection.atoms[atom].source;
+                        if let Some(range) = overlap(source, aggregate) {
+                            selected.extend(
+                                intersections(self, range)
+                                    .into_iter()
+                                    .filter(|piece| piece.origin == origin.index),
+                            );
+                        }
+                    }
+                }
+                // One authentic source association may be reached both through
+                // the selected original row and automatic attribution in a shared
+                // EGC. Deduplicate that SAME occurrence/correspondence, never
+                // Range units, glyphs or geometry at equal numeric positions.
+                let mut associations = std::collections::HashSet::new();
+                selected.retain(|piece| {
+                    associations.insert((
+                        piece.origin,
+                        piece.aggregate,
+                        piece.local,
+                        piece.processed,
+                    ))
+                });
                 if selected.is_empty() {
                     continue;
                 }
@@ -726,6 +775,7 @@ impl Layout {
                     pieces,
                     alternative,
                     defining,
+                    attributed_cut,
                     presentation: extent,
                 });
             }
