@@ -567,3 +567,52 @@ fn rtl_allocated_conditional_space_reports_the_physical_start_edge() {
         [(9.0, 0.0), (2.0, 0.0), (0.0, 0.0), (0.0, 0.0), (0.0, 0.0)]
     );
 }
+
+#[test]
+fn partly_hanging_conditional_space_leaves_preceding_separator_terminal() {
+    let mut system = system();
+    controls(&mut system);
+    let base = Style {
+        size: 10.0,
+        white_space: WhiteSpace::Preserve,
+        ..style()
+    };
+    let mut source = Source::new("X\u{2003} \nY");
+    source.span(
+        Range::new(1, 2),
+        Style {
+            white_space: WhiteSpace::Collapse,
+            ..base.clone()
+        },
+    );
+    let p = prepare_source(&mut system, source, base);
+    let forced = ending(&p, PreparedBreakKind::Forced);
+    assert_eq!(forced.view().boundary().view().source_after().get(), 4);
+    let line = select(
+        &p,
+        first(&p),
+        forced.clone(),
+        25.0,
+        crate::Alignment::Center,
+    );
+    assert_eq!(line.feedback().advance, 30.0);
+    let rows = glyphs(&line, 3);
+    assert_eq!(
+        rows.iter().map(|r| (r.0, r.1, r.2)).collect::<Vec<_>>(),
+        [
+            (Range::new(0, 1), 58, 10.0),
+            (Range::new(1, 2), 247, 10.0),
+            (Range::new(2, 3), 3, 10.0)
+        ]
+    );
+    let observed = (
+        line.feedback().hanging_end,
+        rows.iter().map(|r| r.3).collect::<Vec<_>>(),
+    );
+    let next = continuation(&p, forced.view().boundary(), 25.0);
+    assert_eq!(glyphs(&next, 5), [(Range::new(4, 5), 59, 10.0, 7.5)]);
+    custody(&p, vec![line, next], &[88, 8195, 32, 10, 89]);
+    // SPACE20..30 partially hangs beyond25. It therefore counts as hanging,
+    // leaving EM SPACE terminal: exclusion10+5, alignment30-15, center shift5.
+    assert_eq!(observed, (15.0, vec![5.0, 15.0, 25.0]));
+}
