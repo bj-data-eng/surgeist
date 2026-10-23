@@ -1806,3 +1806,6 @@ mod float_continuation;
 
 #[path = "tests/float_encounters.rs"]
 mod float_encounters;
+
+#[path = "tests/hyphenation_zone.rs"]
+mod hyphenation_zone;
