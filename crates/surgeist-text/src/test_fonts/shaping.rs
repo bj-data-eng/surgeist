@@ -82,7 +82,7 @@ fn cmap(mappings: &[(u32, u32)]) -> Vec<u8> {
 }
 
 /// Fixed dot/Greek coverage over licensed Ahem for literal None baselines.
-/// No casing is performed here. Marks100/101/102 have zero raw advance and
+/// No casing is performed here. Marks100..104 have zero raw advance and
 /// existing nonempty outlines; mark-to-base anchors are (100,200)/(400,600).
 pub(crate) fn casing_ahem() -> Vec<u8> {
     let mappings = [
@@ -98,6 +98,8 @@ pub(crate) fn casing_ahem() -> Vec<u8> {
         (0x301, 102),
         (0x307, 100),
         (0x308, 101),
+        (0x313, 103),
+        (0x345, 104),
         (0x386, 154),
         (0x389, 165),
         (0x390, 110),
@@ -121,28 +123,37 @@ pub(crate) fn casing_ahem() -> Vec<u8> {
         (0x3c2, 84),
         (0x3c3, 85),
         (0x3ca, 109),
+        (0x1f00, 186),
+        (0x1f04, 187),
+        (0x1f08, 188),
+        (0x1f0c, 189),
+        (0x1f80, 190),
+        (0x1f84, 191),
+        (0x1f88, 192),
     ];
-    let bases = [36, 43, 53, 55, 75, 84, 85];
-    let mut gdef = words(&[1, 0, 12, 0, 0, 0, 2, 8]);
-    for base in bases {
-        gdef.extend(words(&[base, base, 1]));
+    let bases = [35, 36, 43, 53, 55, 67, 75, 84, 85, 191];
+    let mut classes = bases.map(|base| (base, base, 1)).to_vec();
+    classes.push((100, 104, 3));
+    classes.sort_unstable();
+    let mut gdef = words(&[1, 0, 12, 0, 0, 0, 2, offset(classes.len())]);
+    for (start, end, class) in classes {
+        gdef.extend(words(&[start, end, class]));
     }
-    gdef.extend(words(&[100, 102, 3]));
-    // MarkBasePos format1: three marks, one class, seven actual bases.
-    let mut subtable = words(&[1, 102, 112, 1, 12, 44]);
-    subtable.extend(words(&[3, 0, 14, 0, 20, 0, 26]));
-    for _ in 0..3 {
+    // MarkBasePos format1: five marks, one class, ten actual bases.
+    let mut subtable = words(&[1, 146, 160, 1, 12, 64]);
+    subtable.extend(words(&[5, 0, 22, 0, 28, 0, 34, 0, 40, 0, 46]));
+    for _ in 0..5 {
         subtable.extend(words(&[1, 100, 200]));
     }
-    subtable.extend(words(&[7, 16, 22, 28, 34, 40, 46, 52]));
+    subtable.extend(words(&[10, 22, 28, 34, 40, 46, 52, 58, 64, 70, 76]));
     for _ in bases {
         subtable.extend(words(&[1, 400, 600]));
     }
-    subtable.extend(words(&[1, 3, 100, 101, 102]));
-    subtable.extend(words(&[1, 7]));
+    subtable.extend(words(&[1, 5, 100, 101, 102, 103, 104]));
+    subtable.extend(words(&[1, 10]));
     subtable.extend(words(&bases));
     let mut hmtx = crate::test_fonts::table(AHEM, *b"hmtx").to_vec();
-    for glyph in [100, 101, 102] {
+    for glyph in [100, 101, 102, 103, 104] {
         hmtx[glyph * 4..glyph * 4 + 2].copy_from_slice(&0_u16.to_be_bytes());
     }
     replace_tables(

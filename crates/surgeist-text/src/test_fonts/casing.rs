@@ -12,6 +12,13 @@
 //! shaper selects those supported cmap forms. Dot/acute both have CCC230, so
 //! i+0307+0301 cannot compose across the intervening dot; 03AA has no canonical
 //! composition with acute. Original Source units remain unchanged in every case.
+//!
+//! Greek title-pair canonical facts: 1F80 -> 1F00 0345 -> 03B1 0313 0345,
+//! and 1F88 -> 1F08 0345 -> 0391 0313 0345. The combined literal source
+//! 1F80 0301 0313 normalizes to 1F84 0313 (1F84 -> 1F04 0345,
+//! 1F04 -> 1F00 0301); the independent target 1F08 0301 0399 normalizes to
+//! 1F0C 0399 (1F0C -> 1F08 0301). Both psili/acute are CCC230, while 0345
+//! is CCC240, so canonical ordering/composition can cross that later mark.
 
 use super::AHEM;
 use crate::test_fonts::{table, u16_at, u32_at};
@@ -28,7 +35,8 @@ fn casing_fixture_has_real_distinct_cmap_metrics_outlines_and_checksums() {
     let original = skrifa::FontRef::new(AHEM).unwrap();
     for cp in [
         0x130_u32, 0x301, 0x307, 0x308, 0x386, 0x390, 0x391, 0x399, 0x39f, 0x3a3, 0x3aa, 0x3ac,
-        0x3b9, 0x3bf, 0x3c2, 0x3c3,
+        0x3b9, 0x3bf, 0x3c2, 0x3c3, 0x313, 0x345, 0x1f00, 0x1f04, 0x1f08, 0x1f0c, 0x1f80, 0x1f84,
+        0x1f88,
     ] {
         assert!(original.charmap().map(cp).is_none());
     }
@@ -42,6 +50,8 @@ fn casing_fixture_has_real_distinct_cmap_metrics_outlines_and_checksums() {
         (0x301, 102),
         (0x307, 100),
         (0x308, 101),
+        (0x313, 103),
+        (0x345, 104),
         (0x386, 154),
         (0x389, 165),
         (0x390, 110),
@@ -65,10 +75,17 @@ fn casing_fixture_has_real_distinct_cmap_metrics_outlines_and_checksums() {
         (0x3c2, 84),
         (0x3c3, 85),
         (0x3ca, 109),
+        (0x1f00, 186),
+        (0x1f04, 187),
+        (0x1f08, 188),
+        (0x1f0c, 189),
+        (0x1f80, 190),
+        (0x1f84, 191),
+        (0x1f88, 192),
     ] {
         assert_eq!(font.charmap().map(cp).unwrap().to_u32(), glyph);
         let at = usize::try_from(glyph).unwrap();
-        let advance = if (100..=102).contains(&glyph) {
+        let advance = if (100..=104).contains(&glyph) {
             0
         } else {
             1000
@@ -154,7 +171,7 @@ fn baseline(bytes: Vec<u8>, text: &str, units: &[u16], expected: &[(u32, f32)], 
     for run in layout.run_views() {
         for glyph in run
             .glyphs()
-            .filter(|glyph| (100..=102).contains(&glyph.id()))
+            .filter(|glyph| (100..=104).contains(&glyph.id()))
         {
             // The fixture's actual GPOS: (400-100,600-200)/1000*10.
             assert_eq!(run.origin().x + glyph.pen() + f64::from(glyph.x()), 3.0);
@@ -296,4 +313,56 @@ fn greek_final_and_nonfinal_sigma_sources_and_targets_are_distinct_none_layouts(
             10.0 * glyphs.len() as f64,
         );
     }
+}
+
+#[test]
+fn greek_title_pair_and_its_canonical_decompositions_use_real_none_glyphs() {
+    baseline(
+        super::casing_ahem(),
+        "\u{1f80}",
+        &[0x1f80],
+        &[(190, 10.0)],
+        10.0,
+    );
+    baseline(
+        super::casing_ahem(),
+        "\u{1f88}",
+        &[0x1f88],
+        &[(192, 10.0)],
+        10.0,
+    );
+    baseline(
+        super::casing_ahem(),
+        "\u{3b1}\u{313}\u{345}",
+        &[0x3b1, 0x313, 0x345],
+        &[(190, 10.0)],
+        10.0,
+    );
+    baseline(
+        super::casing_ahem(),
+        "\u{391}\u{313}\u{345}",
+        &[0x391, 0x313, 0x345],
+        &[(192, 10.0)],
+        10.0,
+    );
+}
+
+#[test]
+fn combined_reorder_removal_source_and_target_have_real_none_font_coverage() {
+    // These are two independently supplied original strings. Only a later
+    // casing test can certify reordered emissions or removal-event custody.
+    baseline(
+        super::casing_ahem(),
+        "\u{1f80}\u{301}\u{313}",
+        &[0x1f80, 0x301, 0x313],
+        &[(191, 10.0), (103, 0.0)],
+        10.0,
+    );
+    baseline(
+        super::casing_ahem(),
+        "\u{1f08}\u{301}\u{399}",
+        &[0x1f08, 0x301, 0x399],
+        &[(189, 10.0), (43, 10.0)],
+        20.0,
+    );
 }
