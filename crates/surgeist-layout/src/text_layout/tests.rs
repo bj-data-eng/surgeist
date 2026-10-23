@@ -1769,3 +1769,6 @@ fn logical_line_allocation_keeps_actual_shape_float_sliver_f32() {
 fn logical_line_allocation_keeps_actual_shape_float_sliver_f64() {
     assert_logical_allocation_float_sliver::<f64>();
 }
+
+#[path = "tests/float_continuation.rs"]
+mod float_continuation;
