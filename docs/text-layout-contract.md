@@ -165,6 +165,37 @@ The standalone `System::layout` convenience path retains the currently supported
 
 The explicit native `TabContext::FontAdvance` policy uses the selected font's actual U+0009 glyph advance, preserving the standalone policy through the same finalizer. It does not approximate a tab with a space or implement CSS tab stops. `NoTabs` validates actual absence; requested `Stops` remains a precise unsupported capability until implemented. A taken discretionary opportunity requires its actual issued alternative, including an explicitly computed empty replacement; a natural paragraph end does not select a hyphen merely because the preceding source contains SHY. A source-defined replacement validates its real defining source occurrence. A control-defined replacement retains its exact control/opportunity/alternative owner and may have no text origin; incidental source-anchor provenance must be supplied and validated, never guessed from the numeric offset.
 
+For selected discretionary replacements, preserve original characters' joining
+decisions from the authentic unbroken processed source and its actual context
+barriers, as required by the pinned [word-break shaping rule](../references/css-text-4--WD-css-text-4-20260814--106c5cd086ab.md#word-break-shaping).
+Original and computed ownership alone does not introduce a shaping boundary.
+Otherwise-compatible presentation retains joint substitution and positioning,
+including genuine mixed graphemes, ligatures and cross-cluster adjustments.
+Cluster membership and dependencies observed before correcting joining do not
+certify that independently shaping those contributions would be equivalent.
+
+The maintained shaping provider owns the operation separating original joining
+analysis from emitted presentation. Text's private adapter supplies validated
+original-to-presentation correspondence; the provider preserves it through its
+own normalization before applying joining decisions, substitution and positioning.
+Decomposition, reordering and composition must retain sufficient correspondence;
+ambiguous association returns a precise refusal. Text does not implement another
+joining state machine, inject arbitrary feature masks, reuse captured glyphs or
+repair positioned advances afterward. Completion and refusal accounting cover
+the complete operation before any finalized result is published.
+
+For computed characters, derive joining behavior from the actual selected
+presentation; original contributions retain their independently determined source
+joining decisions. This is the adopted Surgeist policy for admitted computed
+replacements, rather than a CSS-prescribed algorithm for arbitrary strings.
+Preserved joining decisions do not require identical glyph IDs when legitimate
+contextual substitutions or ligatures change the emitted glyphs. Qualification
+distinguishes those decisions from unrelated glyph identity, exercises actual
+cross-boundary positioning and normalization, and preserves forced/disconnected
+barriers and failure atomicity. A precise capability refusal leaves the affected
+implementation requirement incomplete; it does not establish a shaping boundary
+or permit weaker mixed-interaction expectations.
+
 ### Float encounters inside shared text units
 
 A float remains a Layout-owned box at its original source-order occurrence. It
