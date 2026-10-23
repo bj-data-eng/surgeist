@@ -569,7 +569,7 @@ without an explicit paragraph direction. A direct Text consumer uses the same
 selected-line protocol; no second CSS formatter or compatibility lane is needed.
 Candidate provenance remains distinct from admitted selectable opportunities.
 
-Every enabled chooser must prefer actual eligible explicit conditional hyphens
+For finite fitting, prefer actual eligible explicit conditional hyphens
 before automatic fallback. An automatic cut is available only within a portion
 that still cannot fit an otherwise available line after that manual partition;
 failing the whole word or the space left after unrelated content is insufficient.
@@ -580,6 +580,20 @@ automatic fallback. Raw standalone layout also preserves this priority. Layout
 owns actual fit, float replay and committed-line state, while Text supplies the
 same word/cut authority. Rejected trials remain pure. Producer and consumers must
 deliver these semantics together before automatic offers become selectable.
+
+For MinContent, retain admitted manual boundaries and let eligible automatic cuts
+subdivide their residual portions through the existing intrinsic search. Resource,
+count, cut-owner, wrapping and actual finalized indication geometry still apply.
+This is Surgeist's explicit intrinsic interpretation of the hyphenation rule and
+[intrinsic sizing](../references/css-sizing-3--WD-css-sizing-3-20260904--ca0f1db3d5ad.md#intrinsic-sizes),
+not a finite overflow receipt or an unrestricted replacement of the manual
+partition. Purpose and partition/candidate identity govern admission and reuse;
+absent available width proves neither intrinsic purpose nor failure to fit.
+For example, `as` + SHY + `sociate` with 10px letters and a 10px indication has
+MinContent 50px through pieces 30/30/50, refining its manual 30/70 partition.
+MaxContent measures the unbroken word at 90px without selecting hyphenation
+alternatives. Independent `anywhere` versus `break-word` intrinsic rules remain
+unchanged. Finite fit exclusions cannot be replayed as intrinsic determinations.
 
 These are integration requirements, not a claim that automatic resource delivery
 or the complete hyphenation contribution is implemented.
