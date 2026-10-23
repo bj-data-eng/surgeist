@@ -153,12 +153,12 @@
 //! checked branches and enforce the complete composed subtree's 256-level ceiling.
 //! Color pairs remain contextual; image pairs may contain two `none` branches.
 //! Specified serialization shares the enclosing resource budget and preserves both
-//! branches. [`CssColorOperation`] selects color branches from an explicit
+//! branches. [`CssColorParse`] selects color branches from an explicit
 //! [`CssColorSchemeFact`]; consumers supply that fact and select image branches
 //! and resources.
 //! [`CssContrastColor::try_new`] retains one checked symbolic color input, enforcing
 //! the complete composed depth ceiling. Its input uses ordinary Standalone specified
-//! serialization under the enclosing budget. [`CssColorOperation`] resolves
+//! serialization under the enclosing budget. [`CssColorParse`] resolves
 //! admitted source and facts, then uses [`surgeist_color::Color::black_white_contrast`]
 //! to choose white or black; authored CSS retains the input unchanged.
 //! [`CssDeviceCmykColor::try_new`] retains four ordered, unbounded ink channels
@@ -1787,30 +1787,20 @@ mod color;
 mod dimension;
 mod utf16_value;
 pub use color::{
-    CssAuthoredColorAction, CssAuthoredColorActionDescription, CssAuthoredColorActionLayout,
-    CssAuthoredColorCheckpoint, CssAuthoredColorCleanupLayout,
-    CssAuthoredColorInitializationLayout, CssAuthoredColorNumericalActionLayout,
-    CssAuthoredColorNumericalInitializationLayout, CssAuthoredColorObservation,
-    CssAuthoredColorOperation, CssAuthoredColorOrdinaryLimits, CssAuthoredColorOutcome,
-    CssAuthoredColorRecovery, CssAuthoredColorResult, CssAuthoredColorSerialization,
-    CssAuthoredColorSerializationAction, CssAuthoredColorSerializationReceipt,
-    CssAuthoredColorStandardFailure, CssAuthoredColorTransformAction,
-    CssAuthoredColorTransformation, CssAuthoredUsedColorCheckpoint, CssColorAction,
-    CssColorActionDescription, CssColorActionLayout, CssColorBank, CssColorComponentPath,
-    CssColorFactError, CssColorFactIdentity, CssColorFactRead, CssColorFacts,
-    CssColorFailureCheckpoint, CssColorGrammarRequest, CssColorInitializationLayout, CssColorInput,
-    CssColorInputKind, CssColorInputRange, CssColorKernel, CssColorOperation,
-    CssColorOperationError, CssColorOperationOwner, CssColorOrdinaryError, CssColorOrdinaryLimits,
-    CssColorOrdinaryOutcome, CssColorOrdinaryResource, CssColorOrdinaryResult,
-    CssColorPaletteEntry, CssColorParseOutcome, CssColorPathBuffer,
-    CssColorPathCapacityObservation, CssColorPathHandle, CssColorPathInspectionLayout,
-    CssColorPathReservationLayout, CssColorPathReservationStatus, CssColorPathStep,
+    CssAuthoredColorOrdinaryLimits, CssAuthoredColorOutcome, CssAuthoredColorResult,
+    CssAuthoredColorStandardFailure, CssColorActionLayout, CssColorBank, CssColorComponentPath,
+    CssColorCompute, CssColorError, CssColorFactError, CssColorFactIdentity, CssColorFactRead,
+    CssColorFacts, CssColorFailureCheckpoint, CssColorGrammarRequest, CssColorInitializationLayout,
+    CssColorInput, CssColorInputKind, CssColorInputRange, CssColorKernel, CssColorOperationOwner,
+    CssColorOrdinaryError, CssColorOrdinaryLimits, CssColorOrdinaryOutcome,
+    CssColorOrdinaryResource, CssColorOrdinaryResult, CssColorPaletteEntry, CssColorParse,
+    CssColorParseAction, CssColorParseOutcome, CssColorParseStep, CssColorPathStep,
     CssColorProfileAvailability, CssColorProfileBinding, CssColorProfileConversion,
-    CssColorProfileConversionRecord, CssColorPropertyFacts, CssColorProtocolError,
-    CssColorSchemeFact, CssColorSlot, CssColorSlotKind, CssColorSourceDescriptor,
-    CssColorStandardFailure, CssColorStandardFailureKind, CssColorTransformAction,
-    CssColorTransformation, CssColorUnavailable, CssColorUnsupported, CssDeviceColorFact,
-    CssUsedColorCheckpoint, parse_used_color, resolve_authored_color,
+    CssColorProfileConversionRecord, CssColorPropertyFacts, CssColorReadFact, CssColorReadInput,
+    CssColorReadSlot, CssColorSchemeFact, CssColorSlot, CssColorSlotReceipt,
+    CssColorSourceDescriptor, CssColorStandardFailure, CssColorStandardFailureKind,
+    CssColorTransform, CssColorUnavailable, CssColorUnsupported, CssColorWriteSlot,
+    CssDeviceColorFact, CssUsedColorCheckpoint, parse_used_color, resolve_authored_color,
 };
 pub use utf16_value::{
     CssColorSchemeParseReport, CssPropertyValueSyntaxError, CssUtf16PropertyValueLimits,

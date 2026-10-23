@@ -5,10 +5,15 @@
 
 use super::grammar::GrammarRecord;
 use crate::numeric::bounded_decimal::DecimalDigit;
-use crate::tokenization::bounded::{InputCursor, InputKind, Request as InputRequest, Scalar};
+use crate::tokenization::bounded::{
+    Error as InputError, InputCursor, InputKind, Request as InputRequest, Scalar,
+};
 use crate::tokenization::tokenizer::{Record, Request as TokenRequest, Token, TokenCursor};
 
-/// A nonzero-sized allocation-free anchor, exclusively lent to one operation.
+/// A nonzero-sized allocation-free anchor, exclusively lent to one parse.
+///
+/// Every caller-owned [`CssColorSlot`] borrows it, so the owner begins another
+/// parse only after the earlier parse's records are dropped.
 pub struct CssColorOperationOwner {
     marker: u8,
     phase: std::cell::Cell<usize>,
@@ -19,22 +24,26 @@ impl Default for CssColorOperationOwner {
     }
 }
 impl CssColorOperationOwner {
+    #[must_use]
     pub const fn new() -> Self {
         Self {
             marker: 1,
             phase: std::cell::Cell::new(0),
         }
     }
-    pub(crate) fn begin(&mut self) -> Result<usize, CssColorProtocolError> {
+    /// Actual compiled anchor layout, admitted before construction.
+    #[must_use]
+    pub const fn layout_bytes() -> usize {
+        std::mem::size_of::<Self>()
+    }
+    pub(crate) fn begin(&mut self) -> Result<usize, ColorProtocolError> {
         self.advance_from(self.phase.get())
     }
-    pub(super) fn prepare_advance(&self, expected: usize) -> Result<usize, CssColorProtocolError> {
+    pub(super) fn prepare_advance(&self, expected: usize) -> Result<usize, ColorProtocolError> {
         if self.phase.get() != expected {
-            return Err(CssColorProtocolError::ForeignSlot);
+            return Err(ColorProtocolError::ForeignSlot);
         }
-        expected
-            .checked_add(1)
-            .ok_or(CssColorProtocolError::Overflow)
+        expected.checked_add(1).ok_or(ColorProtocolError::Overflow)
     }
     pub(super) fn commit_phase(&self, expected: usize, next: usize) {
         assert_eq!(
@@ -45,7 +54,7 @@ impl CssColorOperationOwner {
         assert_eq!(expected.checked_add(1), Some(next));
         self.phase.set(next);
     }
-    pub(super) fn advance_from(&self, expected: usize) -> Result<usize, CssColorProtocolError> {
+    pub(super) fn advance_from(&self, expected: usize) -> Result<usize, ColorProtocolError> {
         let next = self.prepare_advance(expected)?;
         self.commit_phase(expected, next);
         Ok(next)
@@ -56,7 +65,7 @@ impl CssColorOperationOwner {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum CssColorSlotKind {
+pub(crate) enum CssColorSlotKind {
     Scalar,
     NameUnit,
     NumberDigit,
@@ -185,6 +194,11 @@ impl Data<'_> {
 }
 
 /// One opaque caller-owned record qualified by the exact anchor and phase.
+///
+/// Only a CSS write action mints a record. The caller stores it in the bank
+/// that action names and lends it back when the parse reads that position. A
+/// record of another parse, bank or index is a defect in the driving code
+/// and panics, as slice indexing does.
 pub struct CssColorSlot<'owner> {
     pub(super) index: usize,
     pub(super) owner: &'owner CssColorOperationOwner,
@@ -208,14 +222,25 @@ impl<'owner> CssColorSlot<'owner> {
         }
     }
     /// Actual compiled record layout for admission of any of the three banks.
+    #[must_use]
     pub const fn record_bytes() -> usize {
         std::mem::size_of::<Self>()
     }
+    /// The bank this record was minted for.
+    #[must_use]
     pub const fn bank(&self) -> CssColorBank {
         self.bank
     }
-    pub const fn kind(&self) -> CssColorSlotKind {
+    pub(crate) const fn kind(&self) -> CssColorSlotKind {
         self.data.kind()
+    }
+    /// Whether the parse of `owner`'s `phase` minted this record.
+    pub(super) fn minted_by(&self, owner: &CssColorOperationOwner, phase: usize) -> bool {
+        std::ptr::eq(self.owner, owner) && self.phase == phase
+    }
+    /// The bank and index this record was minted for.
+    pub(super) const fn position(&self) -> (CssColorBank, usize) {
+        (self.bank, self.index)
     }
     pub(super) fn qualify(
         &self,
@@ -223,16 +248,16 @@ impl<'owner> CssColorSlot<'owner> {
         phase: usize,
         index: usize,
         bank: CssColorBank,
-    ) -> Result<(), CssColorProtocolError> {
+    ) -> Result<(), ColorProtocolError> {
         if !std::ptr::eq(self.owner, owner) || self.phase != phase || owner.current_phase() != phase
         {
-            return Err(CssColorProtocolError::ForeignSlot);
+            return Err(ColorProtocolError::ForeignSlot);
         }
         if self.bank != bank || self.bank != self.data.bank() {
-            return Err(CssColorProtocolError::WrongSlot);
+            return Err(ColorProtocolError::WrongSlot);
         }
         if index != self.index {
-            return Err(CssColorProtocolError::WrongIndex);
+            return Err(ColorProtocolError::WrongIndex);
         }
         Ok(())
     }
@@ -263,23 +288,23 @@ impl RecordTable<'_> {
         &self,
         index: usize,
         slot: &CssColorSlot<'_>,
-    ) -> Result<LexicalRecord, CssColorProtocolError> {
+    ) -> Result<LexicalRecord, ColorProtocolError> {
         self.qualify(index, slot)?;
         Ok(match slot.data {
             Data::NameUnit(value) => LexicalRecord::NameUnit(value),
             Data::NumberDigit { exponent, value } => LexicalRecord::NumberDigit { exponent, value },
             Data::Token(value) => LexicalRecord::Token(value),
-            _ => return Err(CssColorProtocolError::WrongSlot),
+            _ => return Err(ColorProtocolError::WrongSlot),
         })
     }
     pub(crate) fn qualify(
         &self,
         index: usize,
         slot: &CssColorSlot<'_>,
-    ) -> Result<(), CssColorProtocolError> {
+    ) -> Result<(), ColorProtocolError> {
         slot.qualify(self.owner, self.phase, index, CssColorBank::Algorithm)?;
         if index >= self.length {
-            return Err(CssColorProtocolError::WrongIndex);
+            return Err(ColorProtocolError::WrongIndex);
         }
         Ok(())
     }
@@ -287,7 +312,7 @@ impl RecordTable<'_> {
         &self,
         index: usize,
         slot: &CssColorSlot<'_>,
-    ) -> Result<NumberHeader, CssColorProtocolError> {
+    ) -> Result<NumberHeader, ColorProtocolError> {
         self.qualify(index, slot)?;
         let header = match slot.data {
             Data::Token(crate::tokenization::tokenizer::Token {
@@ -304,7 +329,7 @@ impl RecordTable<'_> {
                 layout: number.layout,
                 digits: number.digits,
             },
-            _ => return Err(CssColorProtocolError::WrongSlot),
+            _ => return Err(ColorProtocolError::WrongSlot),
         };
         if header.layout.mantissa_digits == 0
             || header.layout.fraction_digits > header.layout.mantissa_digits
@@ -316,7 +341,7 @@ impl RecordTable<'_> {
                 != Some(header.digits.end)
             || header.digits.end > self.length
         {
-            return Err(CssColorProtocolError::WrongIndex);
+            return Err(ColorProtocolError::WrongIndex);
         }
         Ok(header)
     }
@@ -324,7 +349,7 @@ impl RecordTable<'_> {
         &self,
         index: usize,
         slot: &CssColorSlot<'_>,
-    ) -> Result<Option<RecordRange>, CssColorProtocolError> {
+    ) -> Result<Option<RecordRange>, ColorProtocolError> {
         self.qualify(index, slot)?;
         let range = match slot.data {
             Data::Token(crate::tokenization::tokenizer::Token {
@@ -340,7 +365,7 @@ impl RecordTable<'_> {
             },
             Data::AuthoredName(name) => name.units,
             Data::Token(_) | Data::NameUnit(_) | Data::NumberDigit { .. } => return Ok(None),
-            _ => return Err(CssColorProtocolError::WrongSlot),
+            _ => return Err(ColorProtocolError::WrongSlot),
         };
         Ok(Some(range))
     }
@@ -368,9 +393,9 @@ impl<'owner> LexicalTable<'owner> {
         owner: &'owner CssColorOperationOwner,
         phase: usize,
         length: usize,
-    ) -> Result<Self, CssColorProtocolError> {
+    ) -> Result<Self, ColorProtocolError> {
         if phase == 0 || owner.current_phase() != phase {
-            return Err(CssColorProtocolError::ForeignSlot);
+            return Err(ColorProtocolError::ForeignSlot);
         }
         Ok(Self {
             owner,
@@ -389,13 +414,13 @@ impl<'owner> LexicalTable<'owner> {
         &self,
         index: usize,
         slot: &CssColorSlot<'_>,
-    ) -> Result<LexicalRecord, CssColorProtocolError> {
+    ) -> Result<LexicalRecord, ColorProtocolError> {
         slot.qualify(self.owner, self.phase, index, CssColorBank::Algorithm)?;
         if index >= self.length {
-            return Err(CssColorProtocolError::WrongIndex);
+            return Err(ColorProtocolError::WrongIndex);
         }
         Ok(match slot.data {
-            Data::Scalar(_) => return Err(CssColorProtocolError::WrongSlot),
+            Data::Scalar(_) => return Err(ColorProtocolError::WrongSlot),
             Data::NameUnit(value) => LexicalRecord::NameUnit(value),
             Data::NumberDigit { exponent, value } => LexicalRecord::NumberDigit { exponent, value },
             Data::Token(value) => LexicalRecord::Token(value),
@@ -414,13 +439,20 @@ impl<'owner> LexicalTable<'owner> {
             | Data::AuthoredNumericFrame(_)
             | Data::AuthoredColorFrame(_)
             | Data::AuthoredStagedComponent(_)
-            | Data::MixTask(_) => return Err(CssColorProtocolError::WrongSlot),
+            | Data::MixTask(_) => return Err(ColorProtocolError::WrongSlot),
         })
     }
 }
 
+/// An inconsistency the canonical machines detected while being driven.
+///
+/// The public typestate makes every call order and action kind static, so
+/// apart from [`Malformed`](Self::Malformed) each variant is a defect in the
+/// code driving a parse, never a property of CSS input. Public boundaries
+/// raise it as a panic (decision 5 of #1353); only the crate-private authored
+/// protocol reports it to CSS's own driver.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum CssColorProtocolError {
+pub(crate) enum ColorProtocolError {
     WrongAction,
     WrongIndex,
     WrongSlot,
@@ -429,9 +461,14 @@ pub enum CssColorProtocolError {
     Input,
     Terminal,
     EmptySlot,
+    /// The caller's original input is malformed for its declared encoding at
+    /// this original unit offset: input, not misuse.
+    Malformed {
+        offset: usize,
+    },
 }
 
-impl std::fmt::Display for CssColorProtocolError {
+impl std::fmt::Display for ColorProtocolError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
             Self::WrongAction => "color action does not match the pending request",
@@ -442,10 +479,23 @@ impl std::fmt::Display for CssColorProtocolError {
             Self::Input => "color input observation violates its declared encoding or record",
             Self::Terminal => "color operation has no completed result",
             Self::EmptySlot => "color transition has no caller-owned checkpoint",
+            Self::Malformed { offset } => {
+                return write!(f, "color input is malformed at unit {offset}");
+            }
         })
     }
 }
-impl std::error::Error for CssColorProtocolError {}
+impl ColorProtocolError {
+    /// Raises a defect in the code driving a parse, as slice indexing does.
+    ///
+    /// # Panics
+    ///
+    /// Always.
+    #[track_caller]
+    pub(crate) fn raise(self) -> ! {
+        panic!("CSS color protocol misuse: {self}")
+    }
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum ActionDescription {
@@ -481,6 +531,7 @@ enum Stage {
 pub(crate) struct LexicalOperation<'owner> {
     owner: &'owner CssColorOperationOwner,
     phase: usize,
+    length: usize,
     stage: Stage,
     scalar_count: usize,
     slot_count: usize,
@@ -490,13 +541,14 @@ impl<'owner> LexicalOperation<'owner> {
         owner: &'owner mut CssColorOperationOwner,
         kind: InputKind,
         length: usize,
-    ) -> Result<Self, CssColorProtocolError> {
+    ) -> Result<Self, ColorProtocolError> {
         // Reading the fixed anchor/header is part of the caller's start admission.
         let _ = owner.marker;
         let phase = owner.begin()?;
         Ok(Self {
             owner,
             phase,
+            length,
             stage: Stage::Input(InputCursor::new(kind, length)),
             scalar_count: 0,
             slot_count: 0,
@@ -543,23 +595,28 @@ impl<'owner> LexicalOperation<'owner> {
         }
     }
 
+    /// The anchor and phase that qualify every record this phase mints.
+    pub(crate) const fn qualifier(&self) -> (&'owner CssColorOperationOwner, usize) {
+        (self.owner, self.phase)
+    }
+
     /// Stop never consumes caller buffers or relabels them empty.
     pub(crate) fn abandon(&mut self) {
         self.stage = Stage::Stopped;
     }
 
     #[cfg(test)]
-    pub(crate) fn completed_length(&self) -> Result<usize, CssColorProtocolError> {
+    pub(crate) fn completed_length(&self) -> Result<usize, ColorProtocolError> {
         if matches!(self.stage, Stage::Done) {
             Ok(self.slot_count)
         } else {
-            Err(CssColorProtocolError::Terminal)
+            Err(ColorProtocolError::Terminal)
         }
     }
 
-    pub(crate) fn finish(self) -> Result<LexicalTable<'owner>, CssColorProtocolError> {
+    pub(crate) fn finish(self) -> Result<LexicalTable<'owner>, ColorProtocolError> {
         if !matches!(self.stage, Stage::Done) {
-            return Err(CssColorProtocolError::Terminal);
+            return Err(ColorProtocolError::Terminal);
         }
         Ok(LexicalTable {
             owner: self.owner,
@@ -573,10 +630,10 @@ impl<'owner> LexicalOperation<'owner> {
         &self,
         slot: &CssColorSlot<'_>,
         kind: CssColorSlotKind,
-    ) -> Result<(), CssColorProtocolError> {
+    ) -> Result<(), ColorProtocolError> {
         slot.qualify(self.owner, self.phase, slot.index, CssColorBank::Algorithm)?;
         if slot.kind() != kind {
-            return Err(CssColorProtocolError::WrongSlot);
+            return Err(ColorProtocolError::WrongSlot);
         }
         Ok(())
     }
@@ -594,70 +651,76 @@ impl<'owner> ColorAction<'_, 'owner> {
         self.description
     }
 
-    pub(crate) fn read_input(self, offset: usize, unit: u16) -> Result<(), CssColorProtocolError> {
+    pub(crate) fn read_input(self, offset: usize, unit: u16) -> Result<(), ColorProtocolError> {
         if self.description != (ActionDescription::ReadInput { offset }) {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         }
         let Stage::Input(cursor) = &mut self.operation.stage else {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         };
-        cursor.read(unit).map_err(|_| CssColorProtocolError::Input)
+        cursor.read(unit).map_err(|error| match error {
+            // A UTF-8 unit beyond a byte, or a byte no UTF-8 sequence admits.
+            InputError::WrongUnit | InputError::InvalidUtf8 => {
+                ColorProtocolError::Malformed { offset }
+            }
+            _ => ColorProtocolError::Input,
+        })
     }
 
     pub(crate) fn read_slot(
         self,
         index: usize,
         slot: &CssColorSlot<'_>,
-    ) -> Result<(), CssColorProtocolError> {
+    ) -> Result<(), ColorProtocolError> {
         if self.description
             != (ActionDescription::ReadSlot {
                 index,
                 kind: CssColorSlotKind::Scalar,
             })
         {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         }
         self.operation.qualify(slot, CssColorSlotKind::Scalar)?;
         if slot.index != index {
-            return Err(CssColorProtocolError::WrongIndex);
+            return Err(ColorProtocolError::WrongIndex);
         }
         let Data::Scalar(scalar) = slot.data else {
-            return Err(CssColorProtocolError::WrongSlot);
+            return Err(ColorProtocolError::WrongSlot);
         };
         let Stage::Tokens(cursor) = &mut self.operation.stage else {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         };
         cursor
             .read_scalar(index, scalar)
-            .map_err(|_| CssColorProtocolError::Input)
+            .map_err(|_| ColorProtocolError::Input)
     }
 
     /// Generates one fixed record, without advancing its pending append.
-    pub(crate) fn append_record(&mut self) -> Result<CssColorSlot<'owner>, CssColorProtocolError> {
+    pub(crate) fn append_record(&mut self) -> Result<CssColorSlot<'owner>, ColorProtocolError> {
         if self.issued {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         }
         if !matches!(self.description, ActionDescription::AppendSlot { .. }) {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         }
         self.operation
             .slot_count
             .checked_add(1)
-            .ok_or(CssColorProtocolError::Overflow)?;
+            .ok_or(ColorProtocolError::Overflow)?;
         let data = match &self.operation.stage {
             Stage::Input(cursor) => {
                 let InputRequest::Emit(scalar) = cursor.request() else {
-                    return Err(CssColorProtocolError::WrongAction);
+                    return Err(ColorProtocolError::WrongAction);
                 };
                 self.operation
                     .scalar_count
                     .checked_add(1)
-                    .ok_or(CssColorProtocolError::Overflow)?;
+                    .ok_or(ColorProtocolError::Overflow)?;
                 Data::Scalar(scalar)
             }
             Stage::Tokens(cursor) => {
                 let TokenRequest::Append { record, .. } = cursor.request() else {
-                    return Err(CssColorProtocolError::WrongAction);
+                    return Err(ColorProtocolError::WrongAction);
                 };
                 match record {
                     Record::NameUnit(value) => Data::NameUnit(value),
@@ -665,7 +728,7 @@ impl<'owner> ColorAction<'_, 'owner> {
                     Record::Token(value) => Data::Token(value),
                 }
             }
-            Stage::Done | Stage::Stopped => return Err(CssColorProtocolError::Terminal),
+            Stage::Done | Stage::Stopped => return Err(ColorProtocolError::Terminal),
         };
         self.issued = true;
         Ok(CssColorSlot::new(
@@ -677,64 +740,71 @@ impl<'owner> ColorAction<'_, 'owner> {
     }
 
     /// Acknowledges the actual recovered push after storage and logical admission.
-    pub(crate) fn appended(self, index: usize) -> Result<(), CssColorProtocolError> {
+    pub(crate) fn appended(self, index: usize) -> Result<(), ColorProtocolError> {
         if !self.issued {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         }
         if !matches!(self.description, ActionDescription::AppendSlot { index: expected, .. } if expected == index)
         {
-            return Err(CssColorProtocolError::WrongIndex);
+            return Err(ColorProtocolError::WrongIndex);
         }
         let slots = self
             .operation
             .slot_count
             .checked_add(1)
-            .ok_or(CssColorProtocolError::Overflow)?;
+            .ok_or(ColorProtocolError::Overflow)?;
         match &mut self.operation.stage {
             Stage::Input(cursor) => {
                 let scalars = self
                     .operation
                     .scalar_count
                     .checked_add(1)
-                    .ok_or(CssColorProtocolError::Overflow)?;
+                    .ok_or(ColorProtocolError::Overflow)?;
                 cursor
                     .emitted()
-                    .map_err(|_| CssColorProtocolError::WrongAction)?;
+                    .map_err(|_| ColorProtocolError::WrongAction)?;
                 self.operation.scalar_count = scalars;
             }
             Stage::Tokens(cursor) => cursor
                 .appended(index)
-                .map_err(|_| CssColorProtocolError::WrongAction)?,
-            Stage::Done | Stage::Stopped => return Err(CssColorProtocolError::Terminal),
+                .map_err(|_| ColorProtocolError::WrongAction)?,
+            Stage::Done | Stage::Stopped => return Err(ColorProtocolError::Terminal),
         }
         self.operation.slot_count = slots;
         Ok(())
     }
 
-    pub(crate) fn compute(self) -> Result<(), CssColorProtocolError> {
+    pub(crate) fn compute(self) -> Result<(), ColorProtocolError> {
         match (&mut self.operation.stage, self.description) {
             (Stage::Input(cursor), ActionDescription::ComputeInput) => match cursor.request() {
                 InputRequest::HeldUnit => cursor
                     .process_held()
-                    .map_err(|_| CssColorProtocolError::Input)?,
+                    .map_err(|_| ColorProtocolError::Input)?,
                 InputRequest::End => {
-                    if cursor.end().map_err(|_| CssColorProtocolError::Input)? {
+                    let ended = cursor.end().map_err(|error| match error {
+                        // The input ends inside a multi-unit UTF-8 sequence.
+                        InputError::InvalidUtf8 => ColorProtocolError::Malformed {
+                            offset: self.operation.length,
+                        },
+                        _ => ColorProtocolError::Input,
+                    })?;
+                    if ended {
                         self.operation.stage = Stage::Tokens(TokenCursor::new(
                             self.operation.scalar_count,
                             self.operation.slot_count,
                         ));
                     }
                 }
-                _ => return Err(CssColorProtocolError::WrongAction),
+                _ => return Err(ColorProtocolError::WrongAction),
             },
             (Stage::Tokens(cursor), ActionDescription::ComputeToken) => {
                 if cursor.request() == TokenRequest::Done {
                     self.operation.stage = Stage::Done;
                 } else {
-                    cursor.compute().map_err(|_| CssColorProtocolError::Input)?;
+                    cursor.compute().map_err(|_| ColorProtocolError::Input)?;
                 }
             }
-            _ => return Err(CssColorProtocolError::WrongAction),
+            _ => return Err(ColorProtocolError::WrongAction),
         }
         Ok(())
     }
@@ -759,7 +829,7 @@ mod tests {
         slots[index].bank = CssColorBank::Arithmetic;
         assert_eq!(
             table.observe(index, &slots[index]).unwrap_err(),
-            CssColorProtocolError::WrongSlot
+            ColorProtocolError::WrongSlot
         );
         slots[index].bank = CssColorBank::Algorithm;
         assert!(table.observe(index, &slots[index]).is_ok());
@@ -780,11 +850,11 @@ mod tests {
         assert_eq!(next, table.phase + 1);
         assert_eq!(
             table.observe(index, &slots[index]).unwrap_err(),
-            CssColorProtocolError::ForeignSlot
+            ColorProtocolError::ForeignSlot
         );
         assert_eq!(
             table.owner.advance_from(table.phase),
-            Err(CssColorProtocolError::ForeignSlot)
+            Err(ColorProtocolError::ForeignSlot)
         );
         // Refusal retains the actual caller slot. Its eventual physical release
         // is the caller owner's operation, not a CSS refund or relabeling.
@@ -881,15 +951,12 @@ mod tests {
         let read = second.next_action().description();
         assert_eq!(
             second.next_action().read_slot(0, &first_slots[0]),
-            Err(CssColorProtocolError::ForeignSlot)
+            Err(ColorProtocolError::ForeignSlot)
         );
         assert_eq!(second.next_action().description(), read);
         second.next_action().read_slot(0, &local).unwrap();
         second.abandon();
-        assert_eq!(
-            second.completed_length(),
-            Err(CssColorProtocolError::Terminal)
-        );
+        assert_eq!(second.completed_length(), Err(ColorProtocolError::Terminal));
         assert_eq!(
             second.next_action().description(),
             ActionDescription::Stopped

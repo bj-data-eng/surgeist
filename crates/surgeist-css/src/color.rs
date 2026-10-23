@@ -16,7 +16,6 @@ mod expression;
 mod facts;
 pub(crate) mod keywords;
 mod literal;
-mod numerical;
 mod operation;
 mod ordinary;
 mod protocol;
@@ -25,9 +24,8 @@ mod syntax_pass;
 mod work;
 pub use bounded::*;
 pub use ordinary::*;
-pub use protocol::{
-    CssColorBank, CssColorOperationOwner, CssColorProtocolError, CssColorSlot, CssColorSlotKind,
-};
+pub(crate) use protocol::ColorProtocolError;
+pub use protocol::{CssColorBank, CssColorOperationOwner, CssColorSlot};
 pub use work::CssColorKernel;
 pub(crate) mod channels;
 mod device;

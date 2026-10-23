@@ -2,7 +2,7 @@
 
 use super::decimal::{GradScale, NumberAction, NumberConversion, ScaleAction};
 use super::protocol::{
-    CssColorProtocolError, CssColorSlot, Data, LexicalRecord, LexicalTable, RecordTable,
+    ColorProtocolError, CssColorSlot, Data, LexicalRecord, LexicalTable, RecordTable,
 };
 use super::tokens::ClassifiedToken;
 use crate::numeric::bounded_decimal::DecimalOutcome;
@@ -195,7 +195,7 @@ mod tests {
         let other_slots = lexical(&mut foreign, b"34");
         assert!(matches!(
             LiteralConversion::start(&table, token, &other_slots[token.index], table.length()),
-            Err(CssColorProtocolError::ForeignSlot)
+            Err(ColorProtocolError::ForeignSlot)
         ));
         let mut cursor =
             LiteralConversion::start(&table, token, &slots[token.index], table.length()).unwrap();
@@ -204,12 +204,12 @@ mod tests {
         };
         assert_eq!(
             cursor.read(index, &other_slots[index]),
-            Err(CssColorProtocolError::ForeignSlot)
+            Err(ColorProtocolError::ForeignSlot)
         );
         assert_eq!(cursor.action(), LiteralAction::ReadSource { index });
         cursor.abandon();
         assert_eq!(cursor.action(), LiteralAction::Stopped);
-        assert_eq!(cursor.compute(), Err(CssColorProtocolError::WrongAction));
+        assert_eq!(cursor.compute(), Err(ColorProtocolError::WrongAction));
     }
 }
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -252,21 +252,21 @@ impl<'owner> LiteralConversion<'owner> {
         token: ClassifiedToken,
         header: &CssColorSlot<'_>,
         scratch_base: usize,
-    ) -> Result<Self, CssColorProtocolError> {
+    ) -> Result<Self, ColorProtocolError> {
         let LexicalRecord::Token(actual) = table.observe(token.index, header)? else {
-            return Err(CssColorProtocolError::WrongSlot);
+            return Err(ColorProtocolError::WrongSlot);
         };
         if actual != token.token {
-            return Err(CssColorProtocolError::WrongSlot);
+            return Err(ColorProtocolError::WrongSlot);
         }
         let crate::tokenization::tokenizer::TokenKind::Number { kind, .. } = actual.kind else {
-            return Err(CssColorProtocolError::Input);
+            return Err(ColorProtocolError::Input);
         };
         if kind == NumberKind::Dimension && token.unit.is_none() {
-            return Err(CssColorProtocolError::Input);
+            return Err(ColorProtocolError::Input);
         }
         if kind != NumberKind::Dimension && token.unit.is_some() {
-            return Err(CssColorProtocolError::Input);
+            return Err(ColorProtocolError::Input);
         }
         Self::start_input(
             table.records(),
@@ -284,10 +284,10 @@ impl<'owner> LiteralConversion<'owner> {
         index: usize,
         header: &CssColorSlot<'_>,
         scratch_base: usize,
-    ) -> Result<Self, CssColorProtocolError> {
+    ) -> Result<Self, ColorProtocolError> {
         table.qualify(index, header)?;
         let Data::AuthoredNumber(number) = header.data else {
-            return Err(CssColorProtocolError::WrongSlot);
+            return Err(ColorProtocolError::WrongSlot);
         };
         Self::start_input(
             *table,
@@ -305,7 +305,7 @@ impl<'owner> LiteralConversion<'owner> {
         input: LiteralInput,
         header: &CssColorSlot<'_>,
         scratch_base: usize,
-    ) -> Result<Self, CssColorProtocolError> {
+    ) -> Result<Self, ColorProtocolError> {
         let decimal = NumberConversion::start(&table, input.index, header, scratch_base)?;
         Ok(Self {
             table,
@@ -342,7 +342,7 @@ impl<'owner> LiteralConversion<'owner> {
         &mut self,
         index: usize,
         slot: &CssColorSlot<'_>,
-    ) -> Result<(), CssColorProtocolError> {
+    ) -> Result<(), ColorProtocolError> {
         let action = self.action();
         match &mut self.stage {
             Stage::Decimal(decimal) | Stage::Scaled(decimal) => match action {
@@ -355,7 +355,7 @@ impl<'owner> LiteralConversion<'owner> {
                 LiteralAction::ReadScratch { index: expected } if expected == index => {
                     decimal.read_scratch(index, slot)
                 }
-                _ => Err(CssColorProtocolError::WrongAction),
+                _ => Err(ColorProtocolError::WrongAction),
             },
             Stage::Scale(scale) if action == (LiteralAction::ReadSource { index }) => {
                 scale.read(index, slot)
@@ -365,46 +365,39 @@ impl<'owner> LiteralConversion<'owner> {
                 self.stage = Stage::Scale(scale);
                 Ok(())
             }
-            _ => Err(CssColorProtocolError::WrongAction),
+            _ => Err(ColorProtocolError::WrongAction),
         }
     }
-    pub(crate) fn record(
-        &self,
-        index: usize,
-    ) -> Result<CssColorSlot<'owner>, CssColorProtocolError> {
+    pub(crate) fn record(&self, index: usize) -> Result<CssColorSlot<'owner>, ColorProtocolError> {
         if !matches!(self.action(), LiteralAction::Append { index: i } | LiteralAction::Replace { index: i } if i == index)
         {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         }
-        index
-            .checked_add(1)
-            .ok_or(CssColorProtocolError::Overflow)?;
+        index.checked_add(1).ok_or(ColorProtocolError::Overflow)?;
         match &self.stage {
             Stage::Decimal(decimal) | Stage::Scaled(decimal) => decimal.scratch_record(index),
             Stage::Scale(scale) => scale.record(index),
-            _ => Err(CssColorProtocolError::WrongAction),
+            _ => Err(ColorProtocolError::WrongAction),
         }
     }
     pub(crate) fn written(
         &mut self,
         index: usize,
         slot: &CssColorSlot<'_>,
-    ) -> Result<(), CssColorProtocolError> {
+    ) -> Result<(), ColorProtocolError> {
         let action = self.action();
-        let end = index
-            .checked_add(1)
-            .ok_or(CssColorProtocolError::Overflow)?;
+        let end = index.checked_add(1).ok_or(ColorProtocolError::Overflow)?;
         if matches!(action, LiteralAction::Append { index: i } if i == index)
             && index != self.scratch_end
         {
-            return Err(CssColorProtocolError::WrongIndex);
+            return Err(ColorProtocolError::WrongIndex);
         }
         match &mut self.stage {
             Stage::Decimal(decimal) | Stage::Scaled(decimal) => {
                 decimal.scratch_written(index, slot)?
             }
             Stage::Scale(scale) => scale.appended(index, slot)?,
-            _ => return Err(CssColorProtocolError::WrongAction),
+            _ => return Err(ColorProtocolError::WrongAction),
         }
         self.scratch_end = self.scratch_end.max(end);
         Ok(())
@@ -428,9 +421,9 @@ impl<'owner> LiteralConversion<'owner> {
             _ => super::CssColorKernel::Transition,
         }
     }
-    pub(crate) fn compute(&mut self) -> Result<(), CssColorProtocolError> {
+    pub(crate) fn compute(&mut self) -> Result<(), ColorProtocolError> {
         if self.action() != LiteralAction::Compute {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         }
         let scaled = matches!(self.stage, Stage::Scaled(_));
         let outcome = match &mut self.stage {
@@ -452,7 +445,7 @@ impl<'owner> LiteralConversion<'owner> {
                     return scale.compute();
                 }
             }
-            _ => return Err(CssColorProtocolError::WrongAction),
+            _ => return Err(ColorProtocolError::WrongAction),
         }
         .expect("selected completed numeric child");
         if !scaled

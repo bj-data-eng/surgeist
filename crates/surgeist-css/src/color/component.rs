@@ -11,7 +11,7 @@ use super::expression::{
 use super::grammar::{ComponentRole, FunctionRecipe, ProfileSpace, RawComponent};
 use super::keywords::{ColorFunction as F, Word};
 use super::literal::{LiteralAction, LiteralConversion};
-use super::protocol::{CssColorBank, CssColorProtocolError, CssColorSlot, LexicalTable};
+use super::protocol::{ColorProtocolError, CssColorBank, CssColorSlot, LexicalTable};
 use super::tokens::{ClassifiedToken, TokenAction, TokenReader};
 use crate::numeric::bounded_expression::FailureKind;
 use crate::tokenization::tokenizer::{NameKind, TokenKind};
@@ -49,9 +49,9 @@ impl ComponentContext {
         recipe: FunctionRecipe,
         role: ComponentRole,
         ordinal: usize,
-    ) -> Result<Self, CssColorProtocolError> {
+    ) -> Result<Self, ColorProtocolError> {
         if recipe.syntax == CssColorSyntax::Legacy && recipe.origin.is_some() {
-            return Err(CssColorProtocolError::WrongSlot);
+            return Err(ColorProtocolError::WrongSlot);
         }
         let relative = recipe.origin.is_some();
         let environment = match recipe.function {
@@ -75,22 +75,22 @@ impl ComponentContext {
                     },
                 ),
                 Some(ProfileSpace::Custom { .. }) => None,
-                None => return Err(CssColorProtocolError::WrongSlot),
+                None => return Err(ColorProtocolError::WrongSlot),
             },
             F::DeviceCmyk | F::Mix => None,
-            F::LightDark | F::Contrast => return Err(CssColorProtocolError::WrongSlot),
+            F::LightDark | F::Contrast => return Err(ColorProtocolError::WrongSlot),
         };
         let variables = if !relative {
             Variables::None
         } else if let Some(environment) = environment {
             if !environment.is_consistent() {
-                return Err(CssColorProtocolError::WrongSlot);
+                return Err(ColorProtocolError::WrongSlot);
             }
             Variables::Relative(environment)
         } else if matches!(recipe.space, Some(ProfileSpace::Custom { .. })) {
             Variables::Profile
         } else {
-            return Err(CssColorProtocolError::WrongSlot);
+            return Err(ColorProtocolError::WrongSlot);
         };
         let expectation = match role {
             ComponentRole::Weight if recipe.function == F::Mix => Expectation::Percentage,
@@ -117,7 +117,7 @@ impl ComponentContext {
                     Expectation::NumberPercentage
                 }
             }
-            _ => return Err(CssColorProtocolError::WrongSlot),
+            _ => return Err(ColorProtocolError::WrongSlot),
         };
         Ok(Self {
             expectation,
@@ -256,7 +256,7 @@ impl CheckedScalar {
     pub(crate) fn component<'owner>(
         self,
         input: &super::grammar::GrammarInput<'owner>,
-    ) -> Result<CheckedComponent<'owner>, CssColorProtocolError> {
+    ) -> Result<CheckedComponent<'owner>, ColorProtocolError> {
         Ok(match self {
             Self::Literal(value) => CheckedComponent::Literal(value),
             Self::Variable { token, binding } => CheckedComponent::Variable { token, binding },
@@ -331,9 +331,9 @@ impl<'owner> ComponentSyntax<'owner> {
         context: ComponentContext,
         scratch_end: usize,
         expression_end: usize,
-    ) -> Result<Self, CssColorProtocolError> {
+    ) -> Result<Self, ColorProtocolError> {
         if scratch_end < lexical.length() {
-            return Err(CssColorProtocolError::WrongIndex);
+            return Err(ColorProtocolError::WrongIndex);
         }
         let token = raw.source_token()?;
         let reader = TokenReader::start_at(lexical, token.index)?;
@@ -418,9 +418,9 @@ impl<'owner> ComponentSyntax<'owner> {
         bank: CssColorBank,
         index: usize,
         slot: &CssColorSlot<'_>,
-    ) -> Result<(), CssColorProtocolError> {
+    ) -> Result<(), ColorProtocolError> {
         if self.action() != (ComponentAction::Read { bank, index }) {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         }
         slot.qualify(self.lexical.owner, self.lexical.phase, index, bank)?;
         match &mut self.state {
@@ -433,7 +433,7 @@ impl<'owner> ComponentSyntax<'owner> {
                         slot,
                         self.scratch_end,
                     )?),
-                    RawComponent::Authored { .. } => return Err(CssColorProtocolError::WrongSlot),
+                    RawComponent::Authored { .. } => return Err(ColorProtocolError::WrongSlot),
                     RawComponent::Math { .. } => State::Math(NumericGrammar::start(
                         &self.lexical,
                         *token,
@@ -451,24 +451,24 @@ impl<'owner> ComponentSyntax<'owner> {
                     cursor.read_number(index, slot)
                 }
                 NumericAction::ReadExpression { .. } => cursor.read_expression(index, slot),
-                _ => Err(CssColorProtocolError::WrongAction),
+                _ => Err(ColorProtocolError::WrongAction),
             },
-            _ => Err(CssColorProtocolError::WrongAction),
+            _ => Err(ColorProtocolError::WrongAction),
         }
     }
     pub(crate) fn record(
         &self,
         bank: CssColorBank,
         index: usize,
-    ) -> Result<CssColorSlot<'owner>, CssColorProtocolError> {
+    ) -> Result<CssColorSlot<'owner>, ColorProtocolError> {
         if !matches!(self.action(), ComponentAction::Append { bank: b, index: i } | ComponentAction::Replace { bank: b, index: i } if bank == b && index == i)
         {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         }
         match &self.state {
             State::Literal(cursor) => cursor.record(index),
             State::Math(cursor) => cursor.record(index),
-            _ => Err(CssColorProtocolError::WrongAction),
+            _ => Err(ColorProtocolError::WrongAction),
         }
     }
     pub(crate) fn written(
@@ -476,11 +476,11 @@ impl<'owner> ComponentSyntax<'owner> {
         bank: CssColorBank,
         index: usize,
         slot: &CssColorSlot<'_>,
-    ) -> Result<(), CssColorProtocolError> {
+    ) -> Result<(), ColorProtocolError> {
         let expected = self.record(bank, index)?;
         slot.qualify(self.lexical.owner, self.lexical.phase, index, bank)?;
         if expected.bank() != bank {
-            return Err(CssColorProtocolError::WrongSlot);
+            return Err(ColorProtocolError::WrongSlot);
         }
         match &mut self.state {
             State::Literal(cursor) => {
@@ -491,12 +491,11 @@ impl<'owner> ComponentSyntax<'owner> {
                 cursor.written(index, slot)?;
                 self.scratch_end = cursor.scratch_end();
                 if bank == CssColorBank::Arithmetic {
-                    self.expression_end = index
-                        .checked_add(1)
-                        .ok_or(CssColorProtocolError::Overflow)?;
+                    self.expression_end =
+                        index.checked_add(1).ok_or(ColorProtocolError::Overflow)?;
                 }
             }
-            _ => return Err(CssColorProtocolError::WrongAction),
+            _ => return Err(ColorProtocolError::WrongAction),
         }
         Ok(())
     }
@@ -520,9 +519,9 @@ impl<'owner> ComponentSyntax<'owner> {
             _ => super::CssColorKernel::Transition,
         }
     }
-    pub(crate) fn compute(&mut self) -> Result<(), CssColorProtocolError> {
+    pub(crate) fn compute(&mut self) -> Result<(), ColorProtocolError> {
         if self.action() != ComponentAction::Compute {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         }
         match &mut self.state {
             State::Token(reader) if reader.action() == TokenAction::Classify => reader.classify(),
@@ -530,7 +529,7 @@ impl<'owner> ComponentSyntax<'owner> {
                 let token = reader.current()?;
                 let expected = self.raw.source_token()?;
                 if token != expected {
-                    return Err(CssColorProtocolError::WrongSlot);
+                    return Err(ColorProtocolError::WrongSlot);
                 }
                 match self.raw {
                     RawComponent::Math { .. } => self.state = State::Header(token),
@@ -611,7 +610,7 @@ impl<'owner> ComponentSyntax<'owner> {
                     if let Some(domain) = self.context.domain(ty) {
                         let table = cursor.finish()?;
                         if table.source_last_token()? != end || table.closed != closed {
-                            return Err(CssColorProtocolError::WrongSlot);
+                            return Err(ColorProtocolError::WrongSlot);
                         }
                         self.state = State::Done(CheckedComponent::Expression { table, domain });
                     } else {
@@ -637,13 +636,13 @@ impl<'owner> ComponentSyntax<'owner> {
                 },
                 _ => cursor.compute(),
             },
-            _ => Err(CssColorProtocolError::WrongAction),
+            _ => Err(ColorProtocolError::WrongAction),
         }
     }
-    pub(crate) fn finish(&self) -> Result<CheckedComponent<'owner>, CssColorProtocolError> {
+    pub(crate) fn finish(&self) -> Result<CheckedComponent<'owner>, ColorProtocolError> {
         match self.state {
             State::Done(component) => Ok(component),
-            _ => Err(CssColorProtocolError::Terminal),
+            _ => Err(ColorProtocolError::Terminal),
         }
     }
     pub(crate) const fn scratch_end(&self) -> usize {
@@ -823,7 +822,7 @@ mod tests {
             });
             cursor.abandon();
             assert_eq!(cursor.action(), ComponentAction::Stopped);
-            assert_eq!(cursor.finish().err(), Some(CssColorProtocolError::Terminal));
+            assert_eq!(cursor.finish().err(), Some(ColorProtocolError::Terminal));
         }
         Ok(output)
     }

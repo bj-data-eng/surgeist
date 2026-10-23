@@ -78,19 +78,19 @@ fn link_facts(error: &(dyn StdError + 'static)) -> Vec<String> {
             ),
         }];
     }
-    if let Some(error) = error.downcast_ref::<CssColorOperationError>() {
+    if let Some(error) = error.downcast_ref::<CssColorError>() {
         return vec![match error {
-            CssColorOperationError::Unavailable(unavailable) => format!(
+            CssColorError::Unavailable(unavailable) => format!(
                 "variant=Unavailable fact={}",
                 super::color::unavailable_name(unavailable)
             ),
-            CssColorOperationError::Unsupported(unsupported) => format!(
+            CssColorError::Unsupported(unsupported) => format!(
                 "variant=Unsupported feature={}",
                 super::color::unsupported_name(unsupported)
             ),
             other => format!(
                 "variant={}",
-                variant!(other, CssColorOperationError, [Facts, Protocol])
+                variant!(other, CssColorError, [Facts, MalformedInput])
             ),
         }];
     }

@@ -4,8 +4,8 @@ use surgeist_color::{
     Color, ColorSpace, PredefinedColorSpace, SerializationRequest, Transformation,
 };
 use surgeist_css::{
-    CssColorFactIdentity, CssColorFacts, CssColorGrammarRequest, CssColorInput,
-    CssColorOperationError, CssColorOrdinaryError, CssColorOrdinaryLimits, CssColorOrdinaryOutcome,
+    CssColorError, CssColorFactIdentity, CssColorFacts, CssColorGrammarRequest, CssColorInput,
+    CssColorOrdinaryError, CssColorOrdinaryLimits, CssColorOrdinaryOutcome,
     CssColorOrdinaryResource, CssColorPaletteEntry, CssColorPropertyFacts, CssColorSchemeFact,
     CssColorStandardFailureKind, CssColorUnavailable, CssDeviceColorFact, CssSystemColor,
     parse_used_color,
@@ -192,9 +192,9 @@ fn initial_current_color_reaches_canvas_text_and_only_the_selected_scheme_child(
     .unwrap();
     assert_eq!(
         error,
-        CssColorOrdinaryError::Operation(CssColorOperationError::Unavailable(
-            CssColorUnavailable::Palette(CssSystemColor::CanvasText)
-        ))
+        CssColorOrdinaryError::Operation(CssColorError::Unavailable(CssColorUnavailable::Palette(
+            CssSystemColor::CanvasText
+        )))
     );
     assert_eq!(
         value("light-dark(red, currentcolor)", &missing).srgb_bytes(),
@@ -274,11 +274,86 @@ fn standard_invalidity_cannot_be_confused_with_logical_admission_or_reached_fact
     .unwrap();
     assert_eq!(
         error,
-        CssColorOrdinaryError::Operation(CssColorOperationError::Unavailable(
+        CssColorOrdinaryError::Operation(CssColorError::Unavailable(
             CssColorUnavailable::CurrentColor
         ))
     );
     assert!(std::error::Error::source(&error).is_some());
+}
+
+#[test]
+fn malformed_utf8_input_is_a_semantic_color_error_at_its_original_unit() {
+    // Encoding §4.1 UTF-8 decoder: 0xFF is never a valid byte, and an input
+    // ending inside a two-byte sequence is malformed. The declared UTF-8
+    // source is the caller's data, not misuse of the controlled protocol.
+    // The offset is the unit whose observation proved the input malformed, or
+    // the input length when the input ends inside a sequence. The decoder
+    // bounds the byte after 0xE0, 0xED, 0xF0 and 0xF4 (A0..BF, 80..9F, 90..BF,
+    // 80..8F), so an overlong form, a surrogate or a code point above
+    // U+10FFFF is already malformed at that second byte.
+    let facts = absent_facts();
+    let cases = [
+        (b"r\xffd".as_slice(), 1),
+        (b"r\xc3".as_slice(), 2),
+        (b"\xe0\x80\x80".as_slice(), 1),
+        (b"\xed\xa0\x80".as_slice(), 1),
+        (b"\xf0\x80\x80\x80".as_slice(), 1),
+        (b"\xf4\x90\x80\x80".as_slice(), 1),
+    ];
+    let actual = cases.map(|(input, _)| {
+        let error = parse_used_color(
+            CssColorInput::Utf8(input),
+            CssColorGrammarRequest::WholeColor,
+            &facts,
+            facts.identity(),
+            limits(),
+        )
+        .err()
+        .expect("malformed UTF-8 has no used color");
+        (input, error)
+    });
+    let expected = cases.map(|(input, offset)| {
+        (
+            input,
+            CssColorOrdinaryError::Operation(CssColorError::MalformedInput { offset }),
+        )
+    });
+    assert_eq!(actual, expected);
+}
+
+#[test]
+fn utf8_sequences_just_inside_each_second_byte_bound_decode() {
+    // Encoding §4.1 UTF-8 decoder: A0 after E0, 9F after ED, 90 after F0 and
+    // 8F after F4 are the edge bytes the bounds admit (U+0800, U+D7FF,
+    // U+10000 and U+10FFFF). Each decodes to one non-ASCII identifier code
+    // point, which is not a color: a standard grammar failure, never input
+    // malformation.
+    let facts = absent_facts();
+    for input in [
+        b"\xe0\xa0\x80".as_slice(),
+        b"\xed\x9f\xbf".as_slice(),
+        b"\xf0\x90\x80\x80".as_slice(),
+        b"\xf4\x8f\xbf\xbf".as_slice(),
+    ] {
+        let result = parse_used_color(
+            CssColorInput::Utf8(input),
+            CssColorGrammarRequest::WholeColor,
+            &facts,
+            facts.identity(),
+            limits(),
+        )
+        .unwrap_or_else(|error| panic!("{input:?}: {error:?}"));
+        assert!(
+            matches!(
+                result.outcome(),
+                CssColorOrdinaryOutcome::StandardFailure(failure)
+                    if failure.kind == CssColorStandardFailureKind::ColorGrammar
+            ),
+            "{input:?}: {:?}",
+            result.outcome()
+        );
+        assert_eq!(result.source().consumed.end, input.len(), "{input:?}");
+    }
 }
 
 #[test]

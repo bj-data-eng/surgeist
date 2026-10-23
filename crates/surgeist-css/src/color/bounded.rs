@@ -1,12 +1,12 @@
-//! Public specialized continuation over one canonical CSS color operation.
+//! Public typestate continuation over one canonical CSS color parse.
 //!
 //! The consumer owns input, all three real storage banks and its controller.
-//! An action describes one finite observation/update. Nothing allocates,
-//! releases capacity, executes abandoned work or publishes partial output here.
+//! Each step yields exactly one typed action whose single completion returns
+//! the parse. Nothing allocates, releases capacity, executes abandoned work or
+//! publishes partial output here.
 
-use super::numerical::NumericalComputation;
 use super::operation as core;
-use super::protocol::{CssColorBank, CssColorOperationOwner, CssColorProtocolError, CssColorSlot};
+use super::protocol::{ColorProtocolError, CssColorBank, CssColorOperationOwner, CssColorSlot};
 use super::{Color, CssColorFactIdentity, CssColorFacts, CssColorKernel};
 use surgeist_color::Transformation;
 
@@ -21,6 +21,12 @@ impl CssColorInputKind {
         match self {
             Self::Utf8 => crate::tokenization::bounded::InputKind::Utf8,
             Self::Utf16 => crate::tokenization::bounded::InputKind::Utf16,
+        }
+    }
+    fn from_native(kind: crate::tokenization::bounded::InputKind) -> Self {
+        match kind {
+            crate::tokenization::bounded::InputKind::Utf8 => Self::Utf8,
+            crate::tokenization::bounded::InputKind::Utf16 => Self::Utf16,
         }
     }
 }
@@ -72,120 +78,164 @@ pub enum CssColorFactError {
     DuplicateConversion,
     InvalidDevice,
 }
-/// Semantic or caller protocol failure. Resource/cancellation stays with the
-/// original consumer's controller and is not reconstructed as this error.
-/// Colour numerics are total, so no numerical failure exists.
+/// A reached semantic failure of one color parse.
+///
+/// Resource refusal and cancellation stay with the consumer's controller and
+/// are not reconstructed as this error. Colour numerics are total, so no
+/// numerical failure exists, and protocol misuse is static or a documented
+/// panic, so no protocol failure exists either.
 #[derive(Debug, Eq, PartialEq)]
-pub enum CssColorOperationError {
-    Protocol(CssColorProtocolError),
+pub enum CssColorError {
     Unavailable(CssColorUnavailable),
     Unsupported(CssColorUnsupported),
     Facts(CssColorFactError),
+    /// The original input is malformed for its declared encoding. `offset`
+    /// is the original unit whose observation proved it, or the input length
+    /// when the input ends inside a multi-unit sequence.
+    MalformedInput {
+        offset: usize,
+    },
 }
-impl std::fmt::Display for CssColorOperationError {
+impl std::fmt::Display for CssColorError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Protocol(error) => std::fmt::Display::fmt(error, f),
             Self::Unavailable(fact) => write!(f, "reached color fact is unavailable: {fact:?}"),
             Self::Unsupported(capability) => {
                 write!(f, "reached color capability is unsupported: {capability:?}")
             }
             Self::Facts(error) => write!(f, "invalid color fact envelope: {error:?}"),
+            Self::MalformedInput { offset } => write!(
+                f,
+                "color input is malformed for its declared encoding at unit {offset}"
+            ),
         }
     }
 }
-impl std::error::Error for CssColorOperationError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::Protocol(error) => Some(error),
-            _ => None,
+impl std::error::Error for CssColorError {}
+
+/// Classifies a canonical-core failure as a reached semantic failure, or
+/// returns the protocol inconsistency that a defect in the driver produced.
+pub(super) fn classify(error: core::Error) -> Result<CssColorError, ColorProtocolError> {
+    use super::{
+        component_value::Error as V,
+        device::DeviceError as D,
+        interpolate::Error as I,
+        palette::PaletteError as P,
+        profile::{ComponentNameError as N, ProfileError as H},
+        profile_conversion::Error as C,
+        resolution::Error as R,
+    };
+    match error {
+        core::Error::Protocol(ColorProtocolError::Malformed { offset }) => {
+            Ok(CssColorError::MalformedInput { offset })
         }
+        core::Error::Protocol(error) => Err(error),
+        core::Error::Resolution(error) => Ok(match error {
+            R::Protocol(error)
+            | R::Component(V::Protocol(error))
+            | R::Profile(H::Protocol(error))
+            | R::ProfileComponent(N::Protocol(error))
+            | R::Conversion(C::Protocol(error)) => return Err(error),
+            R::MissingScheme => CssColorError::Unavailable(CssColorUnavailable::Scheme),
+            R::ForeignFacts
+            | R::Palette(P::ForeignFacts)
+            | R::Profile(H::ForeignFacts)
+            | R::ProfileComponent(N::ForeignFacts)
+            | R::Conversion(C::ForeignFacts)
+            | R::Device(D::ForeignFacts) => CssColorError::Facts(CssColorFactError::Foreign),
+            R::Palette(P::MissingCurrent) => {
+                CssColorError::Unavailable(CssColorUnavailable::CurrentColor)
+            }
+            R::Palette(P::MissingPalette(keyword)) => {
+                CssColorError::Unavailable(CssColorUnavailable::Palette(keyword))
+            }
+            R::Palette(P::Duplicate(keyword)) => {
+                CssColorError::Facts(CssColorFactError::DuplicatePalette(keyword))
+            }
+            R::Profile(H::Missing) | R::ProfileComponent(N::Unavailable) => {
+                CssColorError::Unavailable(CssColorUnavailable::Profile)
+            }
+            R::Profile(H::Duplicate { first, second }) => {
+                CssColorError::Facts(CssColorFactError::DuplicateProfile { first, second })
+            }
+            R::Profile(H::InvalidMetadata)
+            | R::ProfileComponent(N::InvalidMetadata)
+            | R::Conversion(C::InvalidMetadata) => {
+                CssColorError::Facts(CssColorFactError::InvalidProfileMetadata)
+            }
+            R::Conversion(C::Unavailable) => {
+                CssColorError::Unavailable(CssColorUnavailable::ProfileConversion)
+            }
+            R::Conversion(C::Unsupported) => {
+                CssColorError::Unsupported(CssColorUnsupported::ProfileConversion)
+            }
+            R::ReverseProfileUnsupported | R::Component(V::ReverseCustomOrigin { .. }) => {
+                CssColorError::Unsupported(CssColorUnsupported::ReverseProfile)
+            }
+            R::Conversion(C::DuplicateConversion) => {
+                CssColorError::Facts(CssColorFactError::DuplicateConversion)
+            }
+            R::Device(D::Unavailable) => CssColorError::Unavailable(CssColorUnavailable::Device),
+            R::Device(D::ConversionMismatch | D::InvalidFacts) => {
+                CssColorError::Facts(CssColorFactError::InvalidDevice)
+            }
+            R::CustomInterpolationUnsupported => {
+                CssColorError::Unsupported(CssColorUnsupported::CustomInterpolation)
+            }
+            R::Component(V::UnitBasis { unit, .. }) => {
+                CssColorError::Unsupported(CssColorUnsupported::ContextualUnit(unit))
+            }
+            // The canonical core converts these standard-invalid branches
+            // into a standard-failure outcome before any error leaves it.
+            R::Channel(super::channels::Error::Grammar) => {
+                panic!("the core converts an invalid resolved channel into a standard failure")
+            }
+            R::Interpolation(I::InvalidWeight) => {
+                panic!("the core converts an invalid mix weight into a standard failure")
+            }
+            R::Conversion(C::InvalidColor) => {
+                panic!("the core converts an invalid profile color into a standard failure")
+            }
+            R::ProfileComponent(N::UnknownChannel | N::InvalidProfile) => {
+                panic!("the core converts an invalid profile component into a standard failure")
+            }
+            R::Interpolation(I::Overflow) => {
+                panic!("the core reports a mix counter overflow as a protocol overflow")
+            }
+            // Grammar and syntax validation precede resolution.
+            R::Interpolation(I::Empty) => {
+                panic!("a grammar-checked color-mix() has at least one component")
+            }
+            R::Profile(H::InvalidName) => {
+                panic!("a grammar-checked custom profile name is a dashed identifier")
+            }
+            R::Component(V::Channel(_)) => {
+                panic!("a grammar-checked relative channel keyword names a channel of its space")
+            }
+            R::Component(V::MissingOrigin) => {
+                panic!("a relative channel is resolved only after its origin is bound")
+            }
+            // The core issues only the pending action of a live sub-machine.
+            R::Palette(P::WrongAction) | R::Device(D::WrongAction) => {
+                panic!("the core completes only the fact read its sub-machine requested")
+            }
+            R::Palette(P::Stopped)
+            | R::Profile(H::Stopped)
+            | R::ProfileComponent(N::Stopped)
+            | R::Conversion(C::Stopped)
+            | R::Device(D::Stopped) => {
+                panic!("the core never advances a stopped resolution sub-machine")
+            }
+        }),
     }
 }
-impl From<CssColorProtocolError> for CssColorOperationError {
-    fn from(error: CssColorProtocolError) -> Self {
-        Self::Protocol(error)
-    }
-}
-impl From<core::Error> for CssColorOperationError {
-    fn from(error: core::Error) -> Self {
-        use super::{
-            component_value::Error as V,
-            device::DeviceError as D,
-            interpolate::Error as I,
-            palette::PaletteError as P,
-            profile::{ComponentNameError as N, ProfileError as H},
-            profile_conversion::Error as C,
-            resolution::Error as R,
-        };
-        match error {
-            core::Error::Protocol(error)
-            | core::Error::Resolution(
-                R::Protocol(error)
-                | R::Component(V::Protocol(error))
-                | R::Profile(H::Protocol(error))
-                | R::ProfileComponent(N::Protocol(error))
-                | R::Conversion(C::Protocol(error)),
-            ) => Self::Protocol(error),
-            core::Error::Resolution(error) => match error {
-                R::MissingScheme => Self::Unavailable(CssColorUnavailable::Scheme),
-                R::ForeignFacts
-                | R::Palette(P::ForeignFacts)
-                | R::Profile(H::ForeignFacts)
-                | R::ProfileComponent(N::ForeignFacts)
-                | R::Conversion(C::ForeignFacts)
-                | R::Device(D::ForeignFacts) => Self::Facts(CssColorFactError::Foreign),
-                R::Palette(P::MissingCurrent) => {
-                    Self::Unavailable(CssColorUnavailable::CurrentColor)
-                }
-                R::Palette(P::MissingPalette(keyword)) => {
-                    Self::Unavailable(CssColorUnavailable::Palette(keyword))
-                }
-                R::Palette(P::Duplicate(keyword)) => {
-                    Self::Facts(CssColorFactError::DuplicatePalette(keyword))
-                }
-                R::Profile(H::Missing) | R::ProfileComponent(N::Unavailable) => {
-                    Self::Unavailable(CssColorUnavailable::Profile)
-                }
-                R::Profile(H::Duplicate { first, second }) => {
-                    Self::Facts(CssColorFactError::DuplicateProfile { first, second })
-                }
-                R::Profile(H::InvalidMetadata)
-                | R::ProfileComponent(N::InvalidMetadata)
-                | R::Conversion(C::InvalidMetadata) => {
-                    Self::Facts(CssColorFactError::InvalidProfileMetadata)
-                }
-                R::Conversion(C::Unavailable) => {
-                    Self::Unavailable(CssColorUnavailable::ProfileConversion)
-                }
-                R::Conversion(C::Unsupported) => {
-                    Self::Unsupported(CssColorUnsupported::ProfileConversion)
-                }
-                R::ReverseProfileUnsupported | R::Component(V::ReverseCustomOrigin { .. }) => {
-                    Self::Unsupported(CssColorUnsupported::ReverseProfile)
-                }
-                R::Conversion(C::DuplicateConversion) => {
-                    Self::Facts(CssColorFactError::DuplicateConversion)
-                }
-                R::Device(D::Unavailable) => Self::Unavailable(CssColorUnavailable::Device),
-                R::Device(D::ConversionMismatch | D::InvalidFacts) => {
-                    Self::Facts(CssColorFactError::InvalidDevice)
-                }
-                R::CustomInterpolationUnsupported => {
-                    Self::Unsupported(CssColorUnsupported::CustomInterpolation)
-                }
-                R::Component(V::UnitBasis { unit, .. }) => {
-                    Self::Unsupported(CssColorUnsupported::ContextualUnit(unit))
-                }
-                R::Interpolation(I::Overflow) => {
-                    unreachable!("a mix counter overflow leaves the core as a protocol overflow")
-                }
-                // These are refused dynamic call orders or standard-invalid
-                // branches already converted by the canonical core. They cannot
-                // manufacture a second fallback interpretation at this boundary.
-                _ => Self::Protocol(CssColorProtocolError::WrongAction),
-            },
-        }
+/// A reached semantic failure; a protocol inconsistency is a defect in the
+/// code driving the parse and panics (decision 5 of #1353).
+#[track_caller]
+fn reached(error: core::Error) -> CssColorError {
+    match classify(error) {
+        Ok(error) => error,
+        Err(defect) => defect.raise(),
     }
 }
 /// One actual fixed fact observation, not a hidden array lookup/scan.
@@ -207,25 +257,32 @@ pub enum CssColorFactRead {
     DeviceHeader,
     DeviceChannel { index: usize },
 }
-/// The precise action to admit before the guard's completion method.
+/// The canonical core's pending work, classified once for every driver: the
+/// public parse and the crate-private authored protocol share it.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum CssColorActionDescription {
-    ReadInput { offset: usize },
-    ReadSlot { bank: CssColorBank, index: usize },
-    AppendSlot { bank: CssColorBank, index: usize },
-    UpdateSlot { bank: CssColorBank, index: usize },
+pub(super) enum Pending {
+    ReadInput {
+        offset: usize,
+    },
+    ReadSlot {
+        bank: CssColorBank,
+        index: usize,
+    },
+    AppendSlot {
+        bank: CssColorBank,
+        index: usize,
+    },
+    UpdateSlot {
+        bank: CssColorBank,
+        index: usize,
+    },
     ReadFact(CssColorFactRead),
-    ReadNumericalDigit { index: usize },
-    AppendNumericalDigit { index: usize },
-    UpdateNumericalDigit { index: usize },
     Compute(CssColorKernel),
-    EmitUnit { unit: u8 },
-    UsedReady,
-    StandardFailed,
-    Serialized,
+    /// A used value or a standard failure is ready.
+    Complete,
     Stopped,
 }
-pub(super) fn description(cursor: &core::ColorOperation<'_, '_>) -> CssColorActionDescription {
+pub(super) fn pending(cursor: &core::ColorOperation<'_, '_>) -> Pending {
     use super::{
         device::DeviceAction as D,
         palette::PaletteAction as P,
@@ -236,18 +293,17 @@ pub(super) fn description(cursor: &core::ColorOperation<'_, '_>) -> CssColorActi
     use core::{Action as A, StorageAction as S};
     if let Some(storage) = cursor.action().storage() {
         return match storage {
-            S::Read { bank, index } => CssColorActionDescription::ReadSlot { bank, index },
-            S::Append { bank, index } => CssColorActionDescription::AppendSlot { bank, index },
-            S::Replace { bank, index } => CssColorActionDescription::UpdateSlot { bank, index },
+            S::Read { bank, index } => Pending::ReadSlot { bank, index },
+            S::Append { bank, index } => Pending::AppendSlot { bank, index },
+            S::Replace { bank, index } => Pending::UpdateSlot { bank, index },
         };
     }
     let fact = match cursor.action() {
         A::Lexical(super::protocol::ActionDescription::ReadInput { offset }) => {
-            return CssColorActionDescription::ReadInput { offset };
+            return Pending::ReadInput { offset };
         }
-        A::UsedReady => return CssColorActionDescription::UsedReady,
-        A::StandardFailed => return CssColorActionDescription::StandardFailed,
-        A::Stopped => return CssColorActionDescription::Stopped,
+        A::UsedReady | A::StandardFailed => return Pending::Complete,
+        A::Stopped => return Pending::Stopped,
         A::Resolution(R::ReadScheme) => Some(CssColorFactRead::Scheme),
         A::Resolution(R::Palette(P::ReadProperties)) => Some(CssColorFactRead::Properties),
         A::Resolution(R::Palette(P::ReadLength)) => Some(CssColorFactRead::PaletteLength),
@@ -294,10 +350,8 @@ pub(super) fn description(cursor: &core::ColorOperation<'_, '_>) -> CssColorActi
         }
         _ => None,
     };
-    fact.or_else(|| cursor.additional_fact_read()).map_or_else(
-        || CssColorActionDescription::Compute(cursor.kernel()),
-        CssColorActionDescription::ReadFact,
-    )
+    fact.or_else(|| cursor.additional_fact_read())
+        .map_or_else(|| Pending::Compute(cursor.kernel()), Pending::ReadFact)
 }
 /// Actual fixed records/units which a fact action can inspect. Zero entries
 /// are absent observations. These are compiled record layouts, not lengths of
@@ -352,8 +406,8 @@ pub struct CssColorActionLayout {
     pub numerical_write_bytes: usize,
     pub kernel: CssColorKernel,
 }
-fn layout(
-    description: CssColorActionDescription,
+pub(super) fn layout(
+    pending: Pending,
     kind: CssColorInputKind,
     kernel: CssColorKernel,
 ) -> CssColorActionLayout {
@@ -368,25 +422,21 @@ fn layout(
         output_unit_bytes: 0,
         kernel,
     };
-    match description {
-        CssColorActionDescription::ReadInput { .. } => {
+    match pending {
+        Pending::ReadInput { .. } => {
             layout.input_unit_bytes = match kind {
                 CssColorInputKind::Utf8 => size_of::<u8>(),
                 CssColorInputKind::Utf16 => size_of::<u16>(),
             }
         }
-        CssColorActionDescription::ReadSlot { .. } => {
-            layout.slot_read_bytes = CssColorSlot::record_bytes()
-        }
-        CssColorActionDescription::AppendSlot { .. }
-        | CssColorActionDescription::UpdateSlot { .. } => {
+        Pending::ReadSlot { .. } => layout.slot_read_bytes = CssColorSlot::record_bytes(),
+        Pending::AppendSlot { .. } | Pending::UpdateSlot { .. } => {
             // Generated opaque payload plus actual stored acknowledgement.
             layout.slot_write_bytes = CssColorSlot::record_bytes();
             layout.slot_read_bytes = CssColorSlot::record_bytes();
         }
-        CssColorActionDescription::ReadFact(fact) => layout.fact_records = fact.record_layouts(),
-        CssColorActionDescription::EmitUnit { .. } => layout.output_unit_bytes = size_of::<u8>(),
-        _ => {}
+        Pending::ReadFact(fact) => layout.fact_records = fact.record_layouts(),
+        Pending::Compute(_) | Pending::Complete | Pending::Stopped => {}
     }
     layout
 }
@@ -398,199 +448,609 @@ pub struct CssColorInitializationLayout {
     pub register_bytes: usize,
     pub fact_identity_bytes: usize,
 }
-/// Fixed continuation. It never takes the original input or caller banks.
-pub struct CssColorOperation<'owner, 'facts> {
+/// The pending parse of one color. It never contains a completed outcome.
+///
+/// [`step`](Self::step) consumes the parse and yields either its single next
+/// action or its outcome; the action's one completion method returns the
+/// parse. A semantic failure ([`CssColorError`]) consumes it, and dropping a
+/// parse or an action abandons it. Caller slots stay caller-owned and are
+/// released by the caller; nothing executes abandoned work or refunds storage.
+/// The outcome no longer borrows the owner, so the owner can serve another
+/// parse once the caller has dropped the earlier parse's records.
+///
+/// ```
+/// use surgeist_css::{
+///     CssColorBank, CssColorFactIdentity, CssColorFacts, CssColorGrammarRequest,
+///     CssColorInputKind, CssColorOperationOwner, CssColorParse, CssColorParseAction,
+///     CssColorParseOutcome, CssColorParseStep, CssColorPropertyFacts, CssColorSchemeFact,
+///     CssDeviceColorFact,
+/// };
+/// let facts = CssColorFacts::new(
+///     CssColorFactIdentity::new(1, 1),
+///     CssColorPropertyFacts::Unavailable,
+///     CssColorSchemeFact::Unavailable,
+///     &[],
+///     &[],
+///     &[],
+///     CssDeviceColorFact::Unknown,
+/// );
+/// let ordinal = |bank| match bank {
+///     CssColorBank::Algorithm => 0,
+///     CssColorBank::Arithmetic => 1,
+///     CssColorBank::Evaluation => 2,
+/// };
+/// let input = b"red";
+/// let mut owner = CssColorOperationOwner::new();
+/// let mut banks: [Vec<_>; 3] = Default::default();
+/// let mut parse = CssColorParse::start(
+///     &mut owner,
+///     CssColorInputKind::Utf8,
+///     input.len(),
+///     CssColorGrammarRequest::WholeColor,
+///     &facts,
+///     facts.identity(),
+/// )?;
+/// let outcome = loop {
+///     let action = match parse.step() {
+///         CssColorParseStep::Complete(outcome) => break outcome,
+///         CssColorParseStep::Pending(action) => action,
+///     };
+///     // A consumer admits `action.layout()` here; refusal drops the action.
+///     parse = match action {
+///         CssColorParseAction::ReadInput(read) => {
+///             let unit = u16::from(input[read.offset()]);
+///             read.read(unit)?
+///         }
+///         CssColorParseAction::ReadSlot(read) => {
+///             let slot = &banks[ordinal(read.bank())][read.index()];
+///             read.read(slot)?
+///         }
+///         CssColorParseAction::AppendSlot(write) => {
+///             let target = &mut banks[ordinal(write.bank())];
+///             let (record, receipt) = write.record();
+///             target.push(record);
+///             receipt.stored(&target[target.len() - 1])
+///         }
+///         CssColorParseAction::UpdateSlot(write) => {
+///             let index = write.index();
+///             let target = &mut banks[ordinal(write.bank())];
+///             let (record, receipt) = write.record();
+///             target[index] = record;
+///             receipt.stored(&target[index])
+///         }
+///         CssColorParseAction::ReadFact(read) => read.read()?,
+///         CssColorParseAction::Compute(compute) => compute.compute()?,
+///     };
+/// };
+/// // Dropping the records frees the owner while the outcome lives on.
+/// drop(banks);
+/// let next = CssColorParse::start(
+///     &mut owner,
+///     CssColorInputKind::Utf8,
+///     0,
+///     CssColorGrammarRequest::WholeColor,
+///     &facts,
+///     facts.identity(),
+/// )?;
+/// drop(next);
+/// let CssColorParseOutcome::Used(checkpoint) = outcome else {
+///     panic!("red is a used color")
+/// };
+/// assert_eq!(checkpoint.value().srgb_bytes(), Some([255, 0, 0]));
+/// # Ok::<(), surgeist_css::CssColorError>(())
+/// ```
+///
+/// Misuse that the typestate rejects at compile time (#1353, 5.6):
+///
+/// A parse is consumed by its step (CF1):
+/// ```compile_fail,E0382
+/// fn step_twice(parse: surgeist_css::CssColorParse<'_, '_>) {
+///     let _ = parse.step();
+///     let _ = parse.step();
+/// }
+/// ```
+/// A checkpoint is consumed by its transformation (CF2):
+/// ```compile_fail,E0382
+/// use surgeist_color::{OperationOwner, Transformation};
+/// fn reuse(checkpoint: surgeist_css::CssUsedColorCheckpoint<'_>, owner: &mut OperationOwner) {
+///     let _ = checkpoint.transform(owner, Transformation::ForceOpaqueAlpha);
+///     let _ = checkpoint.value();
+/// }
+/// ```
+/// No outcome is taken from a pending parse (CF3):
+/// ```compile_fail,E0599
+/// use surgeist_css::CssColorParse;
+/// fn take(parse: CssColorParse<'_, '_>) {
+///     let _ = CssColorParse::take(&mut Some(parse));
+/// }
+/// ```
+/// An abandoned parse cannot step (CF4):
+/// ```compile_fail,E0382
+/// fn abandoned(parse: surgeist_css::CssColorParse<'_, '_>) {
+///     drop(parse);
+///     let _ = parse.step();
+/// }
+/// ```
+/// Each action exposes only its own completion (CF5):
+/// ```compile_fail,E0599
+/// fn wrong_completion(compute: surgeist_css::CssColorCompute<'_, '_>) {
+///     let _ = compute.read(0);
+/// }
+/// ```
+/// One write mints one record (CF6):
+/// ```compile_fail,E0382
+/// fn mint_twice(write: surgeist_css::CssColorWriteSlot<'_, '_>) {
+///     let _ = write.record();
+///     let _ = write.record();
+/// }
+/// ```
+/// A transformation computes once (CF7):
+/// ```compile_fail,E0382
+/// fn compute_twice(transform: surgeist_css::CssColorTransform<'_, '_>) {
+///     let _ = transform.compute();
+///     let _ = transform.compute();
+/// }
+/// ```
+/// Only a used checkpoint transforms (CF8):
+/// ```compile_fail,E0599
+/// use surgeist_color::{OperationOwner, Transformation};
+/// fn failed(checkpoint: surgeist_css::CssColorFailureCheckpoint<'_>, owner: &mut OperationOwner) {
+///     let _ = checkpoint.transform(owner, Transformation::ForceOpaqueAlpha);
+/// }
+/// ```
+/// A record keeps its owner from starting another parse (CF9):
+/// ```compile_fail,E0499
+/// use surgeist_css::{
+///     CssColorFacts, CssColorGrammarRequest, CssColorInputKind, CssColorOperationOwner,
+///     CssColorParse, CssColorParseAction, CssColorParseStep,
+/// };
+/// fn second<'f>(owner: &mut CssColorOperationOwner, facts: &'f CssColorFacts<'f>) {
+///     let first = CssColorParse::start(
+///         owner,
+///         CssColorInputKind::Utf8,
+///         1,
+///         CssColorGrammarRequest::WholeColor,
+///         facts,
+///         facts.identity(),
+///     )
+///     .unwrap();
+///     let CssColorParseStep::Pending(CssColorParseAction::AppendSlot(write)) = first.step() else {
+///         return;
+///     };
+///     let (slot, receipt) = write.record();
+///     drop(receipt);
+///     let _second = CssColorParse::start(
+///         owner,
+///         CssColorInputKind::Utf8,
+///         1,
+///         CssColorGrammarRequest::WholeColor,
+///         facts,
+///         facts.identity(),
+///     );
+///     drop(slot);
+/// }
+/// ```
+/// Only CSS mints a record (CF10):
+/// ```compile_fail,E0451
+/// let _ = surgeist_css::CssColorSlot { index: 0 };
+/// ```
+/// A record cannot outlive its owner (CF16):
+/// ```compile_fail,E0597
+/// use surgeist_css::{
+///     CssColorFactIdentity, CssColorFacts, CssColorGrammarRequest, CssColorInputKind,
+///     CssColorOperationOwner, CssColorParse, CssColorParseAction, CssColorParseStep,
+///     CssColorPropertyFacts, CssColorSchemeFact, CssDeviceColorFact,
+/// };
+/// let facts = CssColorFacts::new(
+///     CssColorFactIdentity::new(1, 1),
+///     CssColorPropertyFacts::Unavailable,
+///     CssColorSchemeFact::Unavailable,
+///     &[],
+///     &[],
+///     &[],
+///     CssDeviceColorFact::Unknown,
+/// );
+/// let slot = {
+///     let mut owner = CssColorOperationOwner::new();
+///     let parse = CssColorParse::start(
+///         &mut owner,
+///         CssColorInputKind::Utf8,
+///         1,
+///         CssColorGrammarRequest::WholeColor,
+///         &facts,
+///         facts.identity(),
+///     )
+///     .unwrap();
+///     let CssColorParseStep::Pending(CssColorParseAction::ReadInput(read)) = parse.step() else {
+///         panic!("a parse reads its input first")
+///     };
+///     let parse = read.read(u16::from(b'r')).unwrap();
+///     let CssColorParseStep::Pending(CssColorParseAction::AppendSlot(write)) = parse.step() else {
+///         panic!("a read unit is stored")
+///     };
+///     write.record().0
+/// };
+/// let _ = slot.bank();
+/// ```
+pub struct CssColorParse<'owner, 'facts> {
     cursor: core::ColorOperation<'owner, 'facts>,
 }
-impl<'owner, 'facts> CssColorOperation<'owner, 'facts> {
+impl<'owner, 'facts> CssColorParse<'owner, 'facts> {
     /// Fixed metadata admission precedes this call; no array/input is scanned.
-    pub fn parse_used(
+    ///
+    /// # Errors
+    ///
+    /// [`CssColorFactError::Foreign`] when `facts` is not the envelope named
+    /// by `expected`.
+    ///
+    /// # Panics
+    ///
+    /// If `owner` has already begun `usize::MAX` parses; no input reaches
+    /// that count.
+    pub fn start(
         owner: &'owner mut CssColorOperationOwner,
         kind: CssColorInputKind,
         length: usize,
         request: CssColorGrammarRequest,
         facts: &'facts CssColorFacts<'facts>,
         expected: CssColorFactIdentity,
-    ) -> Result<Self, CssColorOperationError> {
+    ) -> Result<Self, CssColorError> {
         if facts.identity != expected {
-            return Err(CssColorOperationError::Facts(CssColorFactError::Foreign));
+            return Err(CssColorError::Facts(CssColorFactError::Foreign));
         }
-        Ok(Self {
-            cursor: core::ColorOperation::start(
-                owner,
-                kind.native(),
-                length,
-                request.native(),
-                facts,
-                expected,
-            )?,
-        })
+        match core::ColorOperation::start(
+            owner,
+            kind.native(),
+            length,
+            request.native(),
+            facts,
+            expected,
+        ) {
+            Ok(cursor) => Ok(Self { cursor }),
+            Err(defect) => defect.raise(),
+        }
     }
     /// Fixed owner/header reads for initialization, separate from the
     /// continuation's own compiled register allocation. No array is traversed.
     #[must_use]
     pub const fn initialization_layout() -> CssColorInitializationLayout {
         CssColorInitializationLayout {
-            owner_bytes: std::mem::size_of::<CssColorOperationOwner>(),
+            owner_bytes: CssColorOperationOwner::layout_bytes(),
             register_bytes: Self::register_bytes(),
             fact_identity_bytes: std::mem::size_of::<CssColorFactIdentity>(),
         }
-    }
-    /// Fixed cached planning only. The adapter admits this header observation.
-    #[must_use]
-    pub fn action(&self) -> CssColorActionDescription {
-        description(&self.cursor)
     }
     /// Actual compiled fixed continuation layout, admitted before initialization.
     #[must_use]
     pub const fn register_bytes() -> usize {
         std::mem::size_of::<Self>()
     }
-    /// Actual compiled outstanding guard layout, admitted before next_action.
+    /// Actual compiled layout of one outstanding action, which owns the parse.
     #[must_use]
     pub const fn action_bytes() -> usize {
-        std::mem::size_of::<CssColorAction<'_, '_, '_>>()
+        std::mem::size_of::<CssColorParseAction<'_, '_>>()
     }
     /// The exact acknowledged logical extent; capacity remains caller-owned.
     #[must_use]
     pub const fn bank_length(&self, bank: CssColorBank) -> usize {
         self.cursor.bank_length(bank)
     }
-    /// Exclusive finite action; dropping it keeps the actual request pending.
-    pub fn next_action(&mut self) -> CssColorAction<'_, 'owner, 'facts> {
-        let description = self.action();
-        CssColorAction {
-            operation: self,
-            description,
-            issued: false,
-        }
-    }
-    /// Abandon never executes pending work or refunds/releases caller storage.
-    pub fn abandon(&mut self) {
-        self.cursor.abandon();
-    }
-    /// Extract only a complete fixed checkpoint; no scratch index escapes.
-    pub fn take(
-        slot: &mut Option<Self>,
-    ) -> Result<CssColorParseOutcome<'owner, 'facts>, CssColorProtocolError> {
-        let operation = slot.as_ref().ok_or(CssColorProtocolError::EmptySlot)?;
-        if !matches!(
-            operation.cursor.action(),
-            core::Action::UsedReady | core::Action::StandardFailed
-        ) {
-            return Err(CssColorProtocolError::Terminal);
-        }
-        let operation = slot
-            .take()
-            .expect("shared preflight proved a completed parse");
-        Ok(match operation.cursor.take()? {
-            core::ParseOutcome::Used(checkpoint) => {
-                CssColorParseOutcome::Used(CssUsedColorCheckpoint { checkpoint })
+    /// Consumes the parse and yields its next action or its outcome.
+    pub fn step(self) -> CssColorParseStep<'owner, 'facts> {
+        let pending = pending(&self.cursor);
+        let parse = self;
+        CssColorParseStep::Pending(match pending {
+            Pending::ReadInput { offset } => {
+                CssColorParseAction::ReadInput(CssColorReadInput { parse, offset })
             }
-            core::ParseOutcome::StandardFailure(checkpoint) => {
-                CssColorParseOutcome::StandardFailure(CssColorFailureCheckpoint { checkpoint })
+            Pending::ReadSlot { bank, index } => {
+                CssColorParseAction::ReadSlot(CssColorReadSlot { parse, bank, index })
             }
+            Pending::AppendSlot { bank, index } => {
+                CssColorParseAction::AppendSlot(CssColorWriteSlot { parse, bank, index })
+            }
+            Pending::UpdateSlot { bank, index } => {
+                CssColorParseAction::UpdateSlot(CssColorWriteSlot { parse, bank, index })
+            }
+            Pending::ReadFact(fact) => {
+                CssColorParseAction::ReadFact(CssColorReadFact { parse, fact })
+            }
+            Pending::Compute(kernel) => {
+                CssColorParseAction::Compute(CssColorCompute { parse, kernel })
+            }
+            Pending::Complete => {
+                return CssColorParseStep::Complete(match parse.cursor.take() {
+                    Ok(core::ParseOutcome::Used(checkpoint)) => {
+                        CssColorParseOutcome::Used(CssUsedColorCheckpoint { checkpoint })
+                    }
+                    Ok(core::ParseOutcome::StandardFailure(checkpoint)) => {
+                        CssColorParseOutcome::StandardFailure(CssColorFailureCheckpoint {
+                            checkpoint,
+                        })
+                    }
+                    Err(defect) => defect.raise(),
+                });
+            }
+            Pending::Stopped => ColorProtocolError::Terminal.raise(),
         })
     }
-}
-/// Only one action can borrow a color operation at a time.
-pub struct CssColorAction<'step, 'owner, 'facts> {
-    operation: &'step mut CssColorOperation<'owner, 'facts>,
-    description: CssColorActionDescription,
-    issued: bool,
-}
-impl<'owner> CssColorAction<'_, 'owner, '_> {
-    #[must_use]
-    pub const fn description(&self) -> CssColorActionDescription {
-        self.description
-    }
-    #[must_use]
-    pub fn layout(&self) -> CssColorActionLayout {
+    fn layout(&self, pending: Pending) -> CssColorActionLayout {
         layout(
-            self.description,
-            match self.operation.cursor.input_kind() {
-                crate::tokenization::bounded::InputKind::Utf8 => CssColorInputKind::Utf8,
-                crate::tokenization::bounded::InputKind::Utf16 => CssColorInputKind::Utf16,
-            },
-            self.operation.cursor.kernel(),
+            pending,
+            CssColorInputKind::from_native(self.cursor.input_kind()),
+            self.cursor.kernel(),
         )
     }
-    pub fn read_input(self, offset: usize, unit: u16) -> Result<(), CssColorOperationError> {
-        if self.description != (CssColorActionDescription::ReadInput { offset }) {
-            return Err(CssColorProtocolError::WrongAction.into());
-        }
-        self.operation
-            .cursor
-            .read_input(offset, unit)
-            .map_err(Into::into)
-    }
-    pub fn read_slot(
-        self,
+    /// Panics unless the parse minted `slot` for exactly `bank` and `index`.
+    #[track_caller]
+    fn require_record(
+        &self,
+        slot: &CssColorSlot<'_>,
         bank: CssColorBank,
         index: usize,
-        slot: &CssColorSlot<'_>,
-    ) -> Result<(), CssColorOperationError> {
-        if self.description != (CssColorActionDescription::ReadSlot { bank, index }) {
-            return Err(CssColorProtocolError::WrongAction.into());
-        }
-        self.operation
+        verb: &str,
+    ) {
+        let minted = self
             .cursor
-            .read_slot(bank, index, slot)
-            .map_err(Into::into)
+            .qualifier()
+            .is_some_and(|(owner, phase)| slot.minted_by(owner, phase));
+        assert!(minted, "the color record belongs to another parse");
+        let (actual_bank, actual_index) = slot.position();
+        assert!(
+            (actual_bank, actual_index) == (bank, index),
+            "the color record minted for {actual_bank:?} index {actual_index} was {verb} {bank:?} index {index}"
+        );
     }
-    /// Mint one fixed pending payload. Generate only after the write/reserve
-    /// admission. Advancing still requires acknowledgement of actual storage.
-    pub fn record(&mut self) -> Result<CssColorSlot<'owner>, CssColorOperationError> {
-        if self.issued {
-            return Err(CssColorProtocolError::WrongAction.into());
+}
+/// The parse's next action, or its completed outcome.
+#[expect(
+    clippy::large_enum_variant,
+    reason = "A pending action owns the fixed-register parse inline, admitted as action_bytes; boxing it introduces an unadmitted heap allocation"
+)]
+pub enum CssColorParseStep<'owner, 'facts> {
+    Pending(CssColorParseAction<'owner, 'facts>),
+    Complete(CssColorParseOutcome<'facts>),
+}
+/// Exactly one finite action; the guard owns the parse until its completion.
+pub enum CssColorParseAction<'owner, 'facts> {
+    ReadInput(CssColorReadInput<'owner, 'facts>),
+    ReadSlot(CssColorReadSlot<'owner, 'facts>),
+    AppendSlot(CssColorWriteSlot<'owner, 'facts>),
+    UpdateSlot(CssColorWriteSlot<'owner, 'facts>),
+    ReadFact(CssColorReadFact<'owner, 'facts>),
+    Compute(CssColorCompute<'owner, 'facts>),
+}
+impl<'owner, 'facts> CssColorParseAction<'owner, 'facts> {
+    /// The payload this action observes or writes, admitted before completion.
+    #[must_use]
+    pub fn layout(&self) -> CssColorActionLayout {
+        match self {
+            Self::ReadInput(read) => read.parse.layout(Pending::ReadInput {
+                offset: read.offset,
+            }),
+            Self::ReadSlot(read) => read.parse.layout(Pending::ReadSlot {
+                bank: read.bank,
+                index: read.index,
+            }),
+            Self::AppendSlot(write) => write.parse.layout(Pending::AppendSlot {
+                bank: write.bank,
+                index: write.index,
+            }),
+            Self::UpdateSlot(write) => write.parse.layout(Pending::UpdateSlot {
+                bank: write.bank,
+                index: write.index,
+            }),
+            Self::ReadFact(read) => read.parse.layout(Pending::ReadFact(read.fact)),
+            Self::Compute(compute) => compute.parse.layout(Pending::Compute(compute.kernel)),
         }
-        let (bank, index) = match self.description {
-            CssColorActionDescription::AppendSlot { bank, index }
-            | CssColorActionDescription::UpdateSlot { bank, index } => (bank, index),
-            _ => return Err(CssColorProtocolError::WrongAction.into()),
+    }
+    /// Declines the action without effect (consumer refusal); the parse stays pending.
+    #[must_use]
+    pub fn into_parse(self) -> CssColorParse<'owner, 'facts> {
+        match self {
+            Self::ReadInput(CssColorReadInput { parse, .. })
+            | Self::ReadSlot(CssColorReadSlot { parse, .. })
+            | Self::AppendSlot(CssColorWriteSlot { parse, .. })
+            | Self::UpdateSlot(CssColorWriteSlot { parse, .. })
+            | Self::ReadFact(CssColorReadFact { parse, .. })
+            | Self::Compute(CssColorCompute { parse, .. }) => parse,
+        }
+    }
+}
+/// One original input unit read at a fixed offset.
+pub struct CssColorReadInput<'owner, 'facts> {
+    parse: CssColorParse<'owner, 'facts>,
+    offset: usize,
+}
+impl<'owner, 'facts> CssColorReadInput<'owner, 'facts> {
+    /// The original unit offset to read; it is below the declared length.
+    #[must_use]
+    pub const fn offset(&self) -> usize {
+        self.offset
+    }
+    /// Supplies the original unit at [`offset`](Self::offset).
+    ///
+    /// # Errors
+    ///
+    /// [`CssColorError::MalformedInput`] when the unit proves the input
+    /// malformed for its declared encoding.
+    pub fn read(self, unit: u16) -> Result<CssColorParse<'owner, 'facts>, CssColorError> {
+        let mut parse = self.parse;
+        match parse.cursor.read_input(self.offset, unit) {
+            Ok(()) => Ok(parse),
+            Err(error) => Err(reached(error)),
+        }
+    }
+}
+/// One caller-owned record read back from a fixed bank position.
+pub struct CssColorReadSlot<'owner, 'facts> {
+    parse: CssColorParse<'owner, 'facts>,
+    bank: CssColorBank,
+    index: usize,
+}
+impl<'owner, 'facts> CssColorReadSlot<'owner, 'facts> {
+    #[must_use]
+    pub const fn bank(&self) -> CssColorBank {
+        self.bank
+    }
+    #[must_use]
+    pub const fn index(&self) -> usize {
+        self.index
+    }
+    /// Lends the record stored at [`bank`](Self::bank) and [`index`](Self::index).
+    ///
+    /// # Errors
+    ///
+    /// A reached unavailable, unsupported or malformed-fact failure.
+    ///
+    /// # Panics
+    ///
+    /// If `slot` is not the record this parse stored at `bank`/`index`.
+    #[track_caller]
+    pub fn read(
+        self,
+        slot: &CssColorSlot<'_>,
+    ) -> Result<CssColorParse<'owner, 'facts>, CssColorError> {
+        self.parse
+            .require_record(slot, self.bank, self.index, "read as");
+        let mut parse = self.parse;
+        match parse.cursor.read_slot(self.bank, self.index, slot) {
+            Ok(()) => Ok(parse),
+            Err(error) => Err(reached(error)),
+        }
+    }
+}
+/// One record to append at, or replace in, a fixed bank position.
+pub struct CssColorWriteSlot<'owner, 'facts> {
+    parse: CssColorParse<'owner, 'facts>,
+    bank: CssColorBank,
+    index: usize,
+}
+impl<'owner, 'facts> CssColorWriteSlot<'owner, 'facts> {
+    #[must_use]
+    pub const fn bank(&self) -> CssColorBank {
+        self.bank
+    }
+    #[must_use]
+    pub const fn index(&self) -> usize {
+        self.index
+    }
+    /// Mints the record to store at [`bank`](Self::bank)/[`index`](Self::index).
+    ///
+    /// Generate only after the write/reserve admission. Advancing still
+    /// requires the receipt's acknowledgement of the actual storage.
+    #[must_use]
+    pub fn record(self) -> (CssColorSlot<'owner>, CssColorSlotReceipt<'owner, 'facts>) {
+        let mut parse = self.parse;
+        let record = match parse.cursor.pending_record(self.bank, self.index) {
+            Ok(record) => record,
+            Err(error) => match classify(error) {
+                Err(defect) => defect.raise(),
+                Ok(error) => panic!("minting a color record reached {error}"),
+            },
         };
-        let record = self.operation.cursor.pending_record(bank, index)?;
-        self.issued = true;
-        Ok(record)
+        (
+            record,
+            CssColorSlotReceipt {
+                parse,
+                bank: self.bank,
+                index: self.index,
+            },
+        )
     }
-    pub fn written(
-        self,
-        bank: CssColorBank,
-        index: usize,
-        slot: &CssColorSlot<'_>,
-    ) -> Result<(), CssColorOperationError> {
-        if !self.issued
-            || !matches!(self.description,CssColorActionDescription::AppendSlot {bank: b,index:i}|CssColorActionDescription::UpdateSlot {bank:b,index:i} if bank==b&&index==i)
-        {
-            return Err(CssColorProtocolError::WrongAction.into());
+}
+/// The pending acknowledgement of one minted record's storage.
+pub struct CssColorSlotReceipt<'owner, 'facts> {
+    parse: CssColorParse<'owner, 'facts>,
+    bank: CssColorBank,
+    index: usize,
+}
+impl<'owner, 'facts> CssColorSlotReceipt<'owner, 'facts> {
+    /// Acknowledges that `stored` now holds the minted record at its position.
+    ///
+    /// # Panics
+    ///
+    /// If `stored` is not the record minted by the matching
+    /// [`record`](CssColorWriteSlot::record).
+    #[track_caller]
+    pub fn stored(self, stored: &CssColorSlot<'_>) -> CssColorParse<'owner, 'facts> {
+        self.parse
+            .require_record(stored, self.bank, self.index, "stored as");
+        let mut parse = self.parse;
+        if let Err(error) = parse.cursor.written(self.bank, self.index, stored) {
+            match classify(error) {
+                Err(defect) => defect.raise(),
+                Ok(error) => panic!("storing a color record reached {error}"),
+            }
         }
-        self.operation
-            .cursor
-            .written(bank, index, slot)
-            .map_err(Into::into)
+        parse
     }
-    pub fn compute(self) -> Result<(), CssColorOperationError> {
-        if !matches!(
-            self.description,
-            CssColorActionDescription::Compute(_) | CssColorActionDescription::ReadFact(_)
-        ) {
-            return Err(CssColorProtocolError::WrongAction.into());
+    /// Storage refused: the minted record is discarded and the parse waits at
+    /// the same write.
+    #[must_use]
+    pub fn into_parse(self) -> CssColorParse<'owner, 'facts> {
+        self.parse
+    }
+}
+/// One fixed observation of the supplied fact envelope.
+pub struct CssColorReadFact<'owner, 'facts> {
+    parse: CssColorParse<'owner, 'facts>,
+    fact: CssColorFactRead,
+}
+impl<'owner, 'facts> CssColorReadFact<'owner, 'facts> {
+    #[must_use]
+    pub const fn fact(&self) -> CssColorFactRead {
+        self.fact
+    }
+    /// Observes [`fact`](Self::fact) in the parse's own envelope.
+    ///
+    /// # Errors
+    ///
+    /// A reached unavailable, unsupported or malformed-fact failure.
+    pub fn read(self) -> Result<CssColorParse<'owner, 'facts>, CssColorError> {
+        let mut parse = self.parse;
+        match parse.cursor.compute() {
+            Ok(()) => Ok(parse),
+            Err(error) => Err(reached(error)),
         }
-        self.operation.cursor.compute().map_err(Into::into)
+    }
+}
+/// One fixed-register kernel transition.
+pub struct CssColorCompute<'owner, 'facts> {
+    parse: CssColorParse<'owner, 'facts>,
+    kernel: CssColorKernel,
+}
+impl<'owner, 'facts> CssColorCompute<'owner, 'facts> {
+    #[must_use]
+    pub const fn kernel(&self) -> CssColorKernel {
+        self.kernel
+    }
+    /// Executes [`kernel`](Self::kernel).
+    ///
+    /// # Errors
+    ///
+    /// A reached unavailable, unsupported, malformed-fact or malformed-input
+    /// failure.
+    pub fn compute(self) -> Result<CssColorParse<'owner, 'facts>, CssColorError> {
+        let mut parse = self.parse;
+        match parse.cursor.compute() {
+            Ok(()) => Ok(parse),
+            Err(error) => Err(reached(error)),
+        }
     }
 }
 /// Standard failure is the only parse result that admits an explicit fallback.
-pub enum CssColorParseOutcome<'owner, 'facts> {
-    Used(CssUsedColorCheckpoint<'owner, 'facts>),
-    StandardFailure(CssColorFailureCheckpoint<'owner, 'facts>),
+pub enum CssColorParseOutcome<'facts> {
+    Used(CssUsedColorCheckpoint<'facts>),
+    StandardFailure(CssColorFailureCheckpoint<'facts>),
 }
 /// Fixed used value plus original source/fact qualification, no recipe backing.
-pub struct CssUsedColorCheckpoint<'owner, 'facts> {
-    pub(super) checkpoint: core::UsedCheckpoint<'owner, 'facts>,
+pub struct CssUsedColorCheckpoint<'facts> {
+    pub(super) checkpoint: core::UsedCheckpoint<'facts>,
 }
 /// Actual standard-invalid branch, distinct from reached capability failure.
-pub struct CssColorFailureCheckpoint<'owner, 'facts> {
-    checkpoint: core::FailureCheckpoint<'owner, 'facts>,
+pub struct CssColorFailureCheckpoint<'facts> {
+    checkpoint: core::FailureCheckpoint<'facts>,
 }
 /// The canonical reason and original input range for standard failure.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -626,7 +1086,7 @@ fn failure(value: core::StandardFailure) -> CssColorStandardFailure {
         },
     }
 }
-impl<'owner, 'facts> CssUsedColorCheckpoint<'owner, 'facts> {
+impl<'facts> CssUsedColorCheckpoint<'facts> {
     #[must_use]
     pub const fn value(&self) -> Color {
         self.checkpoint.value()
@@ -638,6 +1098,10 @@ impl<'owner, 'facts> CssUsedColorCheckpoint<'owner, 'facts> {
             start: range.start,
             end: range.end,
         }
+    }
+    #[must_use]
+    pub fn source(&self) -> CssColorSourceDescriptor {
+        source(self.checkpoint.context())
     }
     #[must_use]
     pub const fn fact_identity(&self) -> CssColorFactIdentity {
@@ -654,15 +1118,39 @@ impl<'owner, 'facts> CssUsedColorCheckpoint<'owner, 'facts> {
     pub fn standard_failure(&self) -> Option<CssColorStandardFailure> {
         self.checkpoint.standard_failure().map(failure)
     }
+    /// Starts one admitted, total numerical transformation over `owner`.
+    ///
+    /// # Panics
+    ///
+    /// If `owner` has already begun `usize::MAX` operations.
+    #[must_use]
+    pub fn transform<'num>(
+        self,
+        owner: &'num mut surgeist_color::OperationOwner,
+        transformation: Transformation,
+    ) -> CssColorTransform<'num, 'facts> {
+        let computation = surgeist_color::Computation::new(
+            owner,
+            surgeist_color::NumericalRequest::Transform {
+                value: self.value(),
+                transformation,
+            },
+        );
+        CssColorTransform {
+            checkpoint: self.checkpoint,
+            computation,
+        }
+    }
 }
-impl<'owner, 'facts> CssColorFailureCheckpoint<'owner, 'facts> {
+impl<'facts> CssColorFailureCheckpoint<'facts> {
     #[must_use]
     pub fn failure(&self) -> CssColorStandardFailure {
         failure(self.checkpoint.failure())
     }
     /// Consumer policy supplies the already checked value; no unavailable,
-    /// numerical, protocol or resource failure has this transition.
-    pub fn fallback(self, value: Color) -> CssUsedColorCheckpoint<'owner, 'facts> {
+    /// unsupported, malformed-fact or resource failure has this transition.
+    #[must_use]
+    pub fn fallback(self, value: Color) -> CssUsedColorCheckpoint<'facts> {
         CssUsedColorCheckpoint {
             checkpoint: self.checkpoint.fallback(value),
         }
@@ -678,12 +1166,9 @@ pub struct CssColorSourceDescriptor {
     pub consumed: CssColorInputRange,
     pub facts: CssColorFactIdentity,
 }
-fn source(context: &core::CheckpointContext<'_, '_>) -> CssColorSourceDescriptor {
+fn source(context: &core::CheckpointContext<'_>) -> CssColorSourceDescriptor {
     CssColorSourceDescriptor {
-        kind: match context.input_kind {
-            crate::tokenization::bounded::InputKind::Utf8 => CssColorInputKind::Utf8,
-            crate::tokenization::bounded::InputKind::Utf16 => CssColorInputKind::Utf16,
-        },
+        kind: CssColorInputKind::from_native(context.input_kind),
         length: context.input_length,
         request: match context.request {
             core::GrammarRequest::PrefixColor => CssColorGrammarRequest::PrefixColor,
@@ -696,119 +1181,55 @@ fn source(context: &core::CheckpointContext<'_, '_>) -> CssColorSourceDescriptor
         facts: context.expected,
     }
 }
-/// Numerical actions observe no CSS input encoding, grammar bank or fact table.
-pub(super) fn numerical_layout(
-    description: CssColorActionDescription,
-    numerical: surgeist_color::ActionLayout,
-) -> CssColorActionLayout {
-    CssColorActionLayout {
-        input_unit_bytes: 0,
-        slot_read_bytes: 0,
-        slot_write_bytes: 0,
-        fact_records: [0; 3],
-        output_unit_bytes: numerical.output_bytes,
-        numerical_read_bytes: numerical.read_bytes,
-        numerical_write_bytes: numerical.write_bytes,
-        kernel: match description {
-            CssColorActionDescription::Compute(kernel) => kernel,
-            _ => CssColorKernel::Transition,
-        },
-    }
-}
 
-pub struct CssColorTransformation<'css, 'num, 'facts> {
-    checkpoint: core::UsedCheckpoint<'css, 'facts>,
-    numerical: NumericalComputation<'num>,
+/// One pending total numerical transformation of a used checkpoint.
+///
+/// It wraps [`surgeist_color::Computation`], so it has no error. The
+/// checkpoint's value can only come from CSS resolution, an explicit fallback
+/// on a standard failure, or a CSS-issued transformation.
+pub struct CssColorTransform<'num, 'facts> {
+    checkpoint: core::UsedCheckpoint<'facts>,
+    computation: surgeist_color::Computation<'num>,
 }
-impl<'css, 'num, 'facts> CssColorTransformation<'css, 'num, 'facts> {
+impl<'facts> CssColorTransform<'_, 'facts> {
+    /// Actual compiled continuation layout, admitted before construction.
+    #[must_use]
     pub const fn register_bytes() -> usize {
         std::mem::size_of::<Self>()
     }
-    pub const fn action_bytes() -> usize {
-        std::mem::size_of::<CssColorTransformAction<'_, '_, '_, '_>>()
+    /// The fixed kernel [`compute`](Self::compute) executes.
+    #[must_use]
+    pub const fn kernel(&self) -> surgeist_color::Kernel {
+        self.computation.kernel()
     }
-    pub fn action(&self) -> CssColorActionDescription {
-        self.numerical.description()
+    /// The payload the computation observes, admitted before it executes.
+    #[must_use]
+    pub const fn layout(&self) -> CssColorActionLayout {
+        let numerical = self.computation.layout();
+        CssColorActionLayout {
+            input_unit_bytes: 0,
+            slot_read_bytes: 0,
+            slot_write_bytes: 0,
+            fact_records: [0; 3],
+            output_unit_bytes: numerical.output_bytes,
+            numerical_read_bytes: numerical.read_bytes,
+            numerical_write_bytes: numerical.write_bytes,
+            kernel: CssColorKernel::Numerical(self.computation.kernel()),
+        }
     }
-    pub fn next_action(&mut self) -> CssColorTransformAction<'_, 'css, 'num, 'facts> {
-        CssColorTransformAction { operation: self }
+    /// Executes the kernel; the transformed value becomes the checkpoint's value.
+    #[must_use]
+    pub fn compute(self) -> CssUsedColorCheckpoint<'facts> {
+        let mut checkpoint = self.checkpoint;
+        checkpoint.value = self.computation.compute();
+        CssUsedColorCheckpoint { checkpoint }
     }
-    pub fn abandon(&mut self) {
-        self.numerical.abandon();
-    }
-    /// Commits only a computed value; a refusal keeps the transformation.
-    pub fn take(
-        slot: &mut Option<Self>,
-    ) -> Result<CssUsedColorCheckpoint<'css, 'facts>, CssColorOperationError> {
-        let actual = slot.as_mut().ok_or(CssColorProtocolError::EmptySlot)?;
-        let value = actual.numerical.value()?;
-        let mut actual = slot.take().expect("preflight kept wrapper");
-        actual.checkpoint.value = value;
-        Ok(CssUsedColorCheckpoint {
-            checkpoint: actual.checkpoint,
-        })
-    }
-    /// Returns the untransformed checkpoint without committing any result.
-    pub fn recover(
-        slot: &mut Option<Self>,
-    ) -> Result<CssUsedColorCheckpoint<'css, 'facts>, CssColorProtocolError> {
-        let actual = slot.take().ok_or(CssColorProtocolError::EmptySlot)?;
-        Ok(CssUsedColorCheckpoint {
-            checkpoint: actual.checkpoint,
-        })
-    }
-}
-pub struct CssColorTransformAction<'step, 'css, 'num, 'facts> {
-    operation: &'step mut CssColorTransformation<'css, 'num, 'facts>,
-}
-impl CssColorTransformAction<'_, '_, '_, '_> {
-    pub fn description(&self) -> CssColorActionDescription {
-        self.operation.action()
-    }
-    pub fn layout(&self) -> CssColorActionLayout {
-        let d = self.description();
-        layout(
-            d,
-            CssColorInputKind::Utf8,
-            match d {
-                CssColorActionDescription::Compute(k) => k,
-                _ => CssColorKernel::Transition,
-            },
-        )
-    }
-    pub fn compute(self) -> Result<(), CssColorOperationError> {
-        self.operation.numerical.compute().map_err(Into::into)
-    }
-}
-impl<'css, 'facts> CssUsedColorCheckpoint<'css, 'facts> {
-    pub fn source(&self) -> CssColorSourceDescriptor {
-        source(self.checkpoint.context())
-    }
-    pub fn transform<'num>(
-        slot: &mut Option<Self>,
-        numerical_owner: &'num mut surgeist_color::OperationOwner,
-        transformation: Transformation,
-    ) -> Result<CssColorTransformation<'css, 'num, 'facts>, CssColorOperationError> {
-        let checkpoint = slot.as_ref().ok_or(CssColorProtocolError::EmptySlot)?;
-        let context = checkpoint.checkpoint.context();
-        let next = context.owner.prepare_advance(context.phase)?;
-        let numerical = surgeist_color::Computation::new(
-            numerical_owner,
-            surgeist_color::NumericalRequest::Transform {
-                value: checkpoint.value(),
-                transformation,
-            },
-        );
-        context.owner.commit_phase(context.phase, next);
-        let mut checkpoint = slot
-            .take()
-            .expect("shared preflight proved Some")
-            .checkpoint;
-        checkpoint.context.phase = next;
-        Ok(CssColorTransformation {
-            checkpoint,
-            numerical: NumericalComputation::Pending(numerical),
-        })
+    /// Declines the transformation; the original checkpoint is returned unchanged.
+    #[must_use]
+    pub fn into_checkpoint(self) -> CssUsedColorCheckpoint<'facts> {
+        CssUsedColorCheckpoint {
+            checkpoint: self.checkpoint,
+        }
     }
 }
 
@@ -834,82 +1255,107 @@ mod tests {
             CssColorBank::Evaluation => 2,
         }
     }
-    fn parse<'owner, 'facts>(
+    fn start<'owner, 'facts>(
         owner: &'owner mut CssColorOperationOwner,
-        input: &str,
+        kind: CssColorInputKind,
+        length: usize,
         facts: &'facts CssColorFacts<'facts>,
-    ) -> Result<(CssColorParseOutcome<'owner, 'facts>, usize), CssColorOperationError> {
-        let mut operation = CssColorOperation::parse_used(
+    ) -> CssColorParse<'owner, 'facts> {
+        CssColorParse::start(
             owner,
-            CssColorInputKind::Utf8,
-            input.len(),
+            kind,
+            length,
             CssColorGrammarRequest::WholeColor,
             facts,
-            facts.identity,
-        )?;
+            facts.identity(),
+        )
+        .unwrap()
+    }
+    /// Services every action with ordinary vectors; `observe` sees each
+    /// pending action before its completion.
+    fn drive<'owner, 'facts>(
+        mut parse: CssColorParse<'owner, 'facts>,
+        input: &[u16],
+        banks: &mut [Vec<CssColorSlot<'owner>>; 3],
+        mut observe: impl FnMut(&CssColorParseAction<'owner, 'facts>),
+    ) -> Result<CssColorParseOutcome<'facts>, CssColorError> {
+        loop {
+            let action = match parse.step() {
+                CssColorParseStep::Complete(outcome) => return Ok(outcome),
+                CssColorParseStep::Pending(action) => action,
+            };
+            observe(&action);
+            parse = match action {
+                CssColorParseAction::ReadInput(read) => {
+                    let unit = input[read.offset()];
+                    read.read(unit)?
+                }
+                CssColorParseAction::ReadSlot(read) => {
+                    let slot = &banks[bank(read.bank())][read.index()];
+                    read.read(slot)?
+                }
+                CssColorParseAction::AppendSlot(write) => {
+                    let target = &mut banks[bank(write.bank())];
+                    assert_eq!(write.index(), target.len());
+                    let (record, receipt) = write.record();
+                    target.push(record);
+                    receipt.stored(&target[target.len() - 1])
+                }
+                CssColorParseAction::UpdateSlot(write) => {
+                    let index = write.index();
+                    let target = &mut banks[bank(write.bank())];
+                    let (record, receipt) = write.record();
+                    target[index] = record;
+                    receipt.stored(&target[index])
+                }
+                CssColorParseAction::ReadFact(read) => read.read()?,
+                CssColorParseAction::Compute(compute) => compute.compute()?,
+            };
+        }
+    }
+    fn units(input: &str) -> Vec<u16> {
+        input.bytes().map(u16::from).collect()
+    }
+    fn parse<'facts>(
+        owner: &mut CssColorOperationOwner,
+        input: &str,
+        facts: &'facts CssColorFacts<'facts>,
+    ) -> Result<(CssColorParseOutcome<'facts>, usize), CssColorError> {
+        let parse = start(owner, CssColorInputKind::Utf8, input.len(), facts);
         let mut banks: [Vec<_>; 3] = std::array::from_fn(|_| Vec::new());
         let mut folds = 0;
-        loop {
-            let mut action = operation.next_action();
+        let outcome = drive(parse, &units(input), &mut banks, |action| {
             let actual = action.layout();
-            match action.description() {
-                CssColorActionDescription::ReadInput { .. } => {
-                    assert_eq!(actual.input_unit_bytes, std::mem::size_of::<u8>())
+            match action {
+                CssColorParseAction::ReadInput(_) => {
+                    assert_eq!(actual.input_unit_bytes, std::mem::size_of::<u8>());
                 }
-                CssColorActionDescription::ReadSlot { .. } => {
-                    assert_eq!(actual.slot_read_bytes, CssColorSlot::record_bytes())
+                CssColorParseAction::ReadSlot(_) => {
+                    assert_eq!(actual.slot_read_bytes, CssColorSlot::record_bytes());
                 }
-                CssColorActionDescription::AppendSlot { .. }
-                | CssColorActionDescription::UpdateSlot { .. } => {
+                CssColorParseAction::AppendSlot(_) | CssColorParseAction::UpdateSlot(_) => {
                     assert_eq!(actual.slot_read_bytes, CssColorSlot::record_bytes());
                     assert_eq!(actual.slot_write_bytes, CssColorSlot::record_bytes());
                 }
-                CssColorActionDescription::ReadFact(fact) => {
-                    assert_eq!(actual.fact_records, fact.record_layouts())
+                CssColorParseAction::ReadFact(read) => {
+                    assert_eq!(actual.fact_records, read.fact().record_layouts());
                 }
-                CssColorActionDescription::Compute(kernel) => assert_eq!(actual.kernel, kernel),
-                _ => {}
+                CssColorParseAction::Compute(compute) => {
+                    assert_eq!(actual.kernel, compute.kernel());
+                    folds += compute.kernel().variadic_fold_count();
+                }
             }
-            match action.description() {
-                CssColorActionDescription::ReadInput { offset } => {
-                    action.read_input(offset, u16::from(input.as_bytes()[offset]))?
-                }
-                CssColorActionDescription::ReadSlot { bank: which, index } => {
-                    action.read_slot(which, index, &banks[bank(which)][index])?
-                }
-                CssColorActionDescription::AppendSlot { bank: which, index } => {
-                    assert_eq!(index, banks[bank(which)].len());
-                    let record = action.record()?;
-                    banks[bank(which)].push(record);
-                    action.written(which, index, &banks[bank(which)][index])?;
-                }
-                CssColorActionDescription::UpdateSlot { bank: which, index } => {
-                    banks[bank(which)][index] = action.record()?;
-                    action.written(which, index, &banks[bank(which)][index])?;
-                }
-                CssColorActionDescription::Compute(kernel) => {
-                    folds += kernel.variadic_fold_count();
-                    action.compute()?;
-                }
-                CssColorActionDescription::ReadFact(_) => action.compute()?,
-                CssColorActionDescription::UsedReady
-                | CssColorActionDescription::StandardFailed => {
-                    break;
-                }
-                other => panic!("unexpected parse action {other:?}"),
-            }
-        }
-        let outcome = CssColorOperation::take(&mut Some(operation))?;
+        });
         // This ordinary owner clears its vectors. It does not simulate real
         // HTML capacity/ticket cleanup or claim foreign-controller admission.
         banks.iter_mut().for_each(Vec::clear);
         drop(banks);
-        Ok((outcome, folds))
+        Ok((outcome?, folds))
     }
     /// Serializes a checkpoint's value as consumers do, through Color's own
     /// serialization, and keeps the checkpoint's source and failure.
     fn serialize(
-        checkpoint: CssUsedColorCheckpoint<'_, '_>,
+        checkpoint: CssUsedColorCheckpoint<'_>,
         owner: &mut surgeist_color::OperationOwner,
         request: surgeist_color::SerializationRequest,
     ) -> (
@@ -962,33 +1408,27 @@ mod tests {
         )
     }
     #[test]
-    fn refused_parse_take_and_external_numerical_owner_reuse_preserve_source() {
+    fn a_declined_action_keeps_the_parse_pending_and_owner_reuse_preserves_source() {
         let facts = facts();
         let mut css_owner = CssColorOperationOwner::new();
         {
-            let mut operation = Some(
-                CssColorOperation::parse_used(
-                    &mut css_owner,
-                    CssColorInputKind::Utf8,
-                    3,
-                    CssColorGrammarRequest::WholeColor,
-                    &facts,
-                    facts.identity(),
-                )
-                .unwrap(),
+            let parse = start(&mut css_owner, CssColorInputKind::Utf8, 3, &facts);
+            let CssColorParseStep::Pending(action) = parse.step() else {
+                panic!("a parse reads its input first")
+            };
+            let pending = action.layout();
+            // Declining performs no observation or transition.
+            let parse = action.into_parse();
+            let CssColorParseStep::Pending(CssColorParseAction::ReadInput(read)) = parse.step()
+            else {
+                panic!("the same read remains pending")
+            };
+            assert_eq!(read.offset(), 0);
+            assert_eq!(
+                CssColorParseAction::ReadInput(read).layout(),
+                pending,
+                "declining changes nothing"
             );
-            let pending = operation.as_ref().unwrap().action();
-            assert!(matches!(
-                CssColorOperation::take(&mut operation),
-                Err(CssColorProtocolError::Terminal)
-            ));
-            assert_eq!(operation.as_ref().unwrap().action(), pending);
-            operation.as_mut().unwrap().abandon();
-            assert!(matches!(
-                CssColorOperation::take(&mut operation),
-                Err(CssColorProtocolError::Terminal)
-            ));
-            assert!(operation.is_some());
         }
         let (outcome, _) = parse(&mut css_owner, "red", &facts).unwrap();
         let CssColorParseOutcome::Used(checkpoint) = outcome else {
@@ -996,19 +1436,9 @@ mod tests {
         };
         let source = checkpoint.source();
         let mut numerical_owner = surgeist_color::OperationOwner::new();
-        let mut slot = Some(checkpoint);
-        let mut transform = Some(
-            CssUsedColorCheckpoint::transform(
-                &mut slot,
-                &mut numerical_owner,
-                Transformation::ForceOpaqueAlpha,
-            )
-            .unwrap(),
-        );
-        assert!(CssColorTransformation::take(&mut transform).is_err());
-        assert!(transform.is_some());
-        transform.as_mut().unwrap().next_action().compute().unwrap();
-        let checkpoint = CssColorTransformation::take(&mut transform).unwrap();
+        let transform =
+            checkpoint.transform(&mut numerical_owner, Transformation::ForceOpaqueAlpha);
+        let checkpoint = transform.compute();
         assert_eq!(checkpoint.source(), source);
         let (output, _, receipt_source, _) = serialize(
             checkpoint,
@@ -1034,8 +1464,7 @@ mod tests {
 
     #[test]
     fn public_guard_drives_actual_banks_and_exposes_three_folds_per_argument() {
-        let mut numerical_owner_0 = surgeist_color::OperationOwner::new();
-
+        let mut numerical_owner = surgeist_color::OperationOwner::new();
         let facts = facts();
         let mut owner = CssColorOperationOwner::new();
         let (outcome, folds) = parse(&mut owner, "rgb(calc(min(3, 2, 1)) 0 0)", &facts).unwrap();
@@ -1055,7 +1484,7 @@ mod tests {
         assert_eq!(
             serialize(
                 checkpoint,
-                &mut numerical_owner_0,
+                &mut numerical_owner,
                 surgeist_color::SerializationRequest::Css
             ),
             ("rgb(1, 0, 0)".to_owned(), value, Some(source), None)
@@ -1065,7 +1494,6 @@ mod tests {
     fn public_checkpoint_transformation_retains_the_fallback_reason() {
         let mut numerical_owner_2 = surgeist_color::OperationOwner::new();
         let mut numerical_owner_1 = surgeist_color::OperationOwner::new();
-
         let facts = facts();
         let mut owner = CssColorOperationOwner::new();
         let (outcome, _) = parse(&mut owner, "rgb(1deg 0 0)", &facts).unwrap();
@@ -1074,23 +1502,13 @@ mod tests {
         };
         let expected = failed.failure();
         let checkpoint = failed.fallback(Color::opaque_black());
-        let mut slot = Some(checkpoint);
-        assert_eq!(slot.as_ref().unwrap().standard_failure(), Some(expected));
-        let mut transform = CssUsedColorCheckpoint::transform(
-            &mut slot,
-            &mut numerical_owner_1,
-            Transformation::ForceOpaqueAlpha,
-        )
-        .unwrap();
-        assert!(slot.is_none());
-        assert_eq!(
-            transform.next_action().description(),
-            CssColorActionDescription::Compute(CssColorKernel::Numerical(
-                surgeist_color::Kernel::Transform(Transformation::ForceOpaqueAlpha)
-            ))
-        );
-        transform.next_action().compute().unwrap();
-        let checkpoint = CssColorTransformation::take(&mut Some(transform)).unwrap();
+        assert_eq!(checkpoint.standard_failure(), Some(expected));
+        let transform =
+            checkpoint.transform(&mut numerical_owner_1, Transformation::ForceOpaqueAlpha);
+        let kernel = surgeist_color::Kernel::Transform(Transformation::ForceOpaqueAlpha);
+        assert_eq!(transform.kernel(), kernel);
+        assert_eq!(transform.layout().kernel, CssColorKernel::Numerical(kernel));
+        let checkpoint = transform.compute();
         let source = checkpoint.source();
         let value = checkpoint.value();
         assert_eq!(
@@ -1147,11 +1565,7 @@ mod tests {
             let error = parse(&mut owner, input, &facts)
                 .err()
                 .expect("actual reached capability");
-            assert_eq!(
-                error,
-                CssColorOperationError::Unsupported(expected),
-                "{input}"
-            );
+            assert_eq!(error, CssColorError::Unsupported(expected), "{input}");
         }
         let unknown = [CssColorProfileBinding::new(
             &name,
@@ -1173,104 +1587,73 @@ mod tests {
         let mut owner = CssColorOperationOwner::new();
         assert!(matches!(
             parse(&mut owner, "color-mix(in --p, red, blue)", &facts),
-            Err(CssColorOperationError::Unavailable(
+            Err(CssColorError::Unavailable(
                 CssColorUnavailable::ProfileConversion
             ))
         ));
     }
     #[test]
-    fn foreign_pending_record_and_wrong_reply_cannot_advance_public_guard() {
+    fn refused_storage_waits_at_the_same_write_and_records_name_their_bank() {
         let facts = facts();
         let mut owner = CssColorOperationOwner::new();
-        let mut other = CssColorOperationOwner::new();
-        let mut first = CssColorOperation::parse_used(
-            &mut owner,
-            CssColorInputKind::Utf8,
-            1,
-            CssColorGrammarRequest::WholeColor,
-            &facts,
-            facts.identity,
-        )
-        .unwrap();
-        let mut second = CssColorOperation::parse_used(
-            &mut other,
-            CssColorInputKind::Utf8,
-            1,
-            CssColorGrammarRequest::WholeColor,
-            &facts,
-            facts.identity,
-        )
-        .unwrap();
-        first.next_action().read_input(0, 114).unwrap();
-        second.next_action().read_input(0, 114).unwrap();
-        let foreign = first.next_action().record().unwrap();
-        let pending = second.action();
-        assert_eq!(
-            second.next_action().read_input(0, 114),
-            Err(CssColorOperationError::Protocol(
-                CssColorProtocolError::WrongAction
-            ))
-        );
-        assert_eq!(second.action(), pending);
-        let mut action = second.next_action();
-        let local = action.record().unwrap();
-        assert_eq!(
-            action.written(CssColorBank::Algorithm, 0, &foreign),
-            Err(CssColorOperationError::Protocol(
-                CssColorProtocolError::WrongSlot
-            ))
-        );
-        assert_eq!(second.action(), pending);
-        assert_eq!(second.bank_length(CssColorBank::Algorithm), 0);
-        let mut action = second.next_action();
-        let recovered = action.record().unwrap();
-        action
-            .written(CssColorBank::Algorithm, 0, &recovered)
-            .unwrap();
-        assert_eq!(second.bank_length(CssColorBank::Algorithm), 1);
-        assert_eq!(
-            local.kind(),
-            super::super::protocol::CssColorSlotKind::Scalar
-        );
-        second.abandon();
-        assert!(CssColorOperation::take(&mut Some(second)).is_err());
-        first.abandon();
-        assert!(CssColorOperation::take(&mut Some(first)).is_err());
+        let parse = start(&mut owner, CssColorInputKind::Utf8, 1, &facts);
+        let CssColorParseStep::Pending(CssColorParseAction::ReadInput(read)) = parse.step() else {
+            panic!("a parse reads its input first")
+        };
+        let parse = read.read(u16::from(b'r')).unwrap();
+        let CssColorParseStep::Pending(CssColorParseAction::AppendSlot(write)) = parse.step()
+        else {
+            panic!("a read unit is stored")
+        };
+        assert_eq!((write.bank(), write.index()), (CssColorBank::Algorithm, 0));
+        let (refused, receipt) = write.record();
+        assert_eq!(refused.bank(), CssColorBank::Algorithm);
+        // Storage refused: the minted record stays unstored.
+        let parse = receipt.into_parse();
+        assert_eq!(parse.bank_length(CssColorBank::Algorithm), 0);
+        let CssColorParseStep::Pending(CssColorParseAction::AppendSlot(write)) = parse.step()
+        else {
+            panic!("the same write remains pending")
+        };
+        assert_eq!((write.bank(), write.index()), (CssColorBank::Algorithm, 0));
+        let (record, receipt) = write.record();
+        let bank = [record];
+        let parse = receipt.stored(&bank[0]);
+        assert_eq!(parse.bank_length(CssColorBank::Algorithm), 1);
     }
     #[test]
     fn fixed_initialization_and_utf16_observation_are_exposed_before_action() {
         let facts = facts();
         let mut owner = CssColorOperationOwner::new();
-        let layout = CssColorOperation::initialization_layout();
+        let layout = CssColorParse::initialization_layout();
         assert_eq!(
             layout.owner_bytes,
             std::mem::size_of::<CssColorOperationOwner>()
         );
+        assert_eq!(layout.owner_bytes, CssColorOperationOwner::layout_bytes());
         assert_eq!(
             layout.register_bytes,
-            std::mem::size_of::<CssColorOperation<'_, '_>>()
+            std::mem::size_of::<CssColorParse<'_, '_>>()
         );
         assert_eq!(
             layout.fact_identity_bytes,
             std::mem::size_of::<CssColorFactIdentity>()
         );
         assert_eq!(
-            CssColorOperation::action_bytes(),
-            std::mem::size_of::<CssColorAction<'_, '_, '_>>()
+            CssColorParse::action_bytes(),
+            std::mem::size_of::<CssColorParseAction<'_, '_>>()
         );
         eprintln!(
-            "compiled CSS color owner={} slot={} operation={} operation_action={} checkpoint={} checkpoint_option={} transformation={} transformation_option={}",
+            "compiled CSS color owner={} slot={} parse={} parse_action={} checkpoint={} transform={}",
             std::mem::size_of::<CssColorOperationOwner>(),
             CssColorSlot::record_bytes(),
-            CssColorOperation::register_bytes(),
-            CssColorOperation::action_bytes(),
-            std::mem::size_of::<CssUsedColorCheckpoint<'_, '_>>(),
-            std::mem::size_of::<Option<CssUsedColorCheckpoint<'_, '_>>>(),
-            CssColorTransformation::register_bytes(),
-            std::mem::size_of::<Option<CssColorTransformation<'_, '_, '_>>>()
+            CssColorParse::register_bytes(),
+            CssColorParse::action_bytes(),
+            std::mem::size_of::<CssUsedColorCheckpoint<'_>>(),
+            CssColorTransform::register_bytes(),
         );
         let expected = CssColorFactIdentity::new(90, 91);
-        let refused = CssColorOperation::parse_used(
+        let refused = CssColorParse::start(
             &mut owner,
             CssColorInputKind::Utf16,
             3,
@@ -1281,31 +1664,22 @@ mod tests {
         .err();
         assert_eq!(
             refused,
-            Some(CssColorOperationError::Facts(CssColorFactError::Foreign))
+            Some(CssColorError::Facts(CssColorFactError::Foreign))
         );
         assert_eq!(owner.current_phase(), 0);
-        let mut operation = CssColorOperation::parse_used(
-            &mut owner,
-            CssColorInputKind::Utf16,
-            3,
-            CssColorGrammarRequest::WholeColor,
-            &facts,
-            facts.identity(),
-        )
-        .unwrap();
-        let pending = operation.action();
-        assert_eq!(pending, CssColorActionDescription::ReadInput { offset: 0 });
-        {
-            let action = operation.next_action();
-            assert_eq!(action.layout().input_unit_bytes, std::mem::size_of::<u16>());
-            assert_eq!(action.layout().slot_read_bytes, 0);
-            assert_eq!(action.layout().slot_write_bytes, 0);
-            assert_eq!(action.layout().fact_records, [0; 3]);
-            // Dropping the guard executes no observation or transition.
-        }
-        assert_eq!(operation.action(), pending);
-        operation.abandon();
-        assert_eq!(operation.action(), CssColorActionDescription::Stopped);
+        let parse = start(&mut owner, CssColorInputKind::Utf16, 3, &facts);
+        let CssColorParseStep::Pending(action) = parse.step() else {
+            panic!("pending input")
+        };
+        let observed = action.layout();
+        assert_eq!(observed.input_unit_bytes, std::mem::size_of::<u16>());
+        assert_eq!(observed.slot_read_bytes, 0);
+        assert_eq!(observed.slot_write_bytes, 0);
+        assert_eq!(observed.fact_records, [0; 3]);
+        let CssColorParseAction::ReadInput(read) = action else {
+            panic!("the first action reads input")
+        };
+        assert_eq!(read.offset(), 0);
     }
 
     #[test]
@@ -1313,57 +1687,19 @@ mod tests {
         let facts = facts();
         let mut owner = CssColorOperationOwner::new();
         let text = "color-mix(in srgb, contrast-color(black) 25%, black 25%, white 50%)";
-        let mut operation = CssColorOperation::parse_used(
-            &mut owner,
-            CssColorInputKind::Utf8,
-            text.len(),
-            CssColorGrammarRequest::WholeColor,
-            &facts,
-            facts.identity(),
-        )
-        .unwrap();
+        let parse = start(&mut owner, CssColorInputKind::Utf8, text.len(), &facts);
         let mut banks: [Vec<_>; 3] = std::array::from_fn(|_| Vec::new());
         let mut contrast = 0;
         let mut interpolation = 0;
-        loop {
-            let mut action = operation.next_action();
-            let layout = action.layout();
-            match action.description() {
-                CssColorActionDescription::ReadInput { offset } => action
-                    .read_input(offset, u16::from(text.as_bytes()[offset]))
-                    .unwrap(),
-                CssColorActionDescription::ReadSlot { bank: which, index } => action
-                    .read_slot(which, index, &banks[bank(which)][index])
-                    .unwrap(),
-                CssColorActionDescription::AppendSlot { bank: which, index } => {
-                    assert_eq!(index, banks[bank(which)].len());
-                    banks[bank(which)].push(action.record().unwrap());
-                    action
-                        .written(which, index, &banks[bank(which)][index])
-                        .unwrap();
-                }
-                CssColorActionDescription::UpdateSlot { bank: which, index } => {
-                    banks[bank(which)][index] = action.record().unwrap();
-                    action
-                        .written(which, index, &banks[bank(which)][index])
-                        .unwrap();
-                }
-                CssColorActionDescription::Compute(kernel) => {
-                    assert_eq!(layout.kernel, kernel);
-                    contrast += usize::from(kernel == CssColorKernel::Contrast);
-                    interpolation += usize::from(kernel == CssColorKernel::Interpolation);
-                    action.compute().unwrap();
-                }
-                CssColorActionDescription::ReadFact(_) => action.compute().unwrap(),
-                CssColorActionDescription::UsedReady => {
-                    break;
-                }
-                other => panic!("unexpected {other:?}"),
+        let outcome = drive(parse, &units(text), &mut banks, |action| {
+            if let CssColorParseAction::Compute(compute) = action {
+                assert_eq!(action.layout().kernel, compute.kernel());
+                contrast += usize::from(compute.kernel() == CssColorKernel::Contrast);
+                interpolation += usize::from(compute.kernel() == CssColorKernel::Interpolation);
             }
-        }
-        let CssColorParseOutcome::Used(value) =
-            CssColorOperation::take(&mut Some(operation)).unwrap()
-        else {
+        })
+        .unwrap();
+        let CssColorParseOutcome::Used(value) = outcome else {
             panic!("valid intrinsic operation")
         };
         banks.iter_mut().for_each(Vec::clear);
@@ -1382,7 +1718,6 @@ mod tests {
     fn relative_and_mix_cylindrical_results_preserve_the_color5_serialization_family() {
         let mut numerical_owner_1 = surgeist_color::OperationOwner::new();
         let mut numerical_owner_0 = surgeist_color::OperationOwner::new();
-
         let facts = facts();
         for text in [
             "hsl(from red h s l)",
@@ -1432,90 +1767,21 @@ mod tests {
     }
 
     #[test]
-    fn every_real_bank_refuses_wrong_replies_and_retired_slots_cannot_cross_phase() {
-        let mut numerical_owner_0 = surgeist_color::OperationOwner::new();
-
+    fn an_arithmetic_parse_reads_every_real_bank() {
+        let mut numerical_owner = surgeist_color::OperationOwner::new();
         let facts = facts();
         let mut owner = CssColorOperationOwner::new();
         let text = "rgb(calc(1 + 2) 0 0)";
-        let mut operation = CssColorOperation::parse_used(
-            &mut owner,
-            CssColorInputKind::Utf8,
-            text.len(),
-            CssColorGrammarRequest::WholeColor,
-            &facts,
-            facts.identity(),
-        )
-        .unwrap();
+        let parse = start(&mut owner, CssColorInputKind::Utf8, text.len(), &facts);
         let mut banks: [Vec<_>; 3] = std::array::from_fn(|_| Vec::new());
         let mut read_banks = [false; 3];
-        loop {
-            let pending = operation.action();
-            let mut action = operation.next_action();
-            match pending {
-                CssColorActionDescription::ReadInput { offset } => action
-                    .read_input(offset, u16::from(text.as_bytes()[offset]))
-                    .unwrap(),
-                CssColorActionDescription::ReadSlot { bank: which, index } => {
-                    let other = match which {
-                        CssColorBank::Algorithm => CssColorBank::Arithmetic,
-                        _ => CssColorBank::Algorithm,
-                    };
-                    assert_eq!(
-                        action.read_slot(other, index, &banks[bank(which)][index]),
-                        Err(CssColorOperationError::Protocol(
-                            CssColorProtocolError::WrongAction
-                        ))
-                    );
-                    assert_eq!(operation.action(), pending);
-                    assert_eq!(
-                        operation.next_action().read_slot(
-                            which,
-                            index + 1,
-                            &banks[bank(which)][index]
-                        ),
-                        Err(CssColorOperationError::Protocol(
-                            CssColorProtocolError::WrongAction
-                        ))
-                    );
-                    assert_eq!(operation.action(), pending);
-                    operation
-                        .next_action()
-                        .read_slot(which, index, &banks[bank(which)][index])
-                        .unwrap();
-                    read_banks[bank(which)] = true;
-                }
-                CssColorActionDescription::AppendSlot { bank: which, index } => {
-                    assert_eq!(index, banks[bank(which)].len());
-                    let record = action.record().unwrap();
-                    assert_eq!(record.bank(), which);
-                    assert!(matches!(
-                        action.record(),
-                        Err(CssColorOperationError::Protocol(
-                            CssColorProtocolError::WrongAction
-                        ))
-                    ));
-                    banks[bank(which)].push(record);
-                    action
-                        .written(which, index, &banks[bank(which)][index])
-                        .unwrap();
-                }
-                CssColorActionDescription::UpdateSlot { bank: which, index } => {
-                    banks[bank(which)][index] = action.record().unwrap();
-                    action
-                        .written(which, index, &banks[bank(which)][index])
-                        .unwrap();
-                }
-                CssColorActionDescription::Compute(_) | CssColorActionDescription::ReadFact(_) => {
-                    action.compute().unwrap()
-                }
-                CssColorActionDescription::UsedReady => break,
-                other => panic!("unexpected parse action {other:?}"),
+        let outcome = drive(parse, &units(text), &mut banks, |action| {
+            if let CssColorParseAction::ReadSlot(read) = action {
+                read_banks[bank(read.bank())] = true;
             }
-        }
-        let CssColorParseOutcome::Used(checkpoint) =
-            CssColorOperation::take(&mut Some(operation)).unwrap()
-        else {
+        })
+        .unwrap();
+        let CssColorParseOutcome::Used(checkpoint) = outcome else {
             panic!("valid intrinsic arithmetic")
         };
         assert_eq!(read_banks, [true; 3]);
@@ -1528,7 +1794,7 @@ mod tests {
         assert_eq!(
             serialize(
                 checkpoint,
-                &mut numerical_owner_0,
+                &mut numerical_owner,
                 surgeist_color::SerializationRequest::Css
             )
             .0,
@@ -1538,7 +1804,7 @@ mod tests {
     }
 
     #[test]
-    fn computed_but_untaken_transformation_recovers_the_original_checkpoint() {
+    fn a_declined_transformation_returns_the_original_checkpoint() {
         let facts = facts();
         let mut owner = CssColorOperationOwner::new();
         let (outcome, _) = parse(&mut owner, "rgb(100% 0 0 / .5)", &facts).unwrap();
@@ -1548,34 +1814,20 @@ mod tests {
         let original = checkpoint.value();
         let source = checkpoint.source();
         assert_eq!(original.srgb_bytes(), None);
-        let mut slot = Some(checkpoint);
         let mut numerical_owner = surgeist_color::OperationOwner::new();
-        let mut transform = CssUsedColorCheckpoint::transform(
-            &mut slot,
-            &mut numerical_owner,
-            Transformation::QuantizeSrgb,
-        )
-        .unwrap();
-        transform.next_action().compute().unwrap();
-        transform.abandon();
-        let recovered = CssColorTransformation::recover(&mut Some(transform)).unwrap();
-        // Numerical computation alone does not publish a checkpoint. Only a
-        // successful take commits its result; abandonment preserves the input.
-        assert!(recovered.value().identical(original));
-        assert_eq!(recovered.value().srgb_bytes(), None);
-        assert_eq!(recovered.value().alpha(), Some(0.5));
-        assert_eq!(recovered.source(), source);
-        assert!(std::ptr::eq(recovered.facts(), &facts));
+        let transform = checkpoint.transform(&mut numerical_owner, Transformation::QuantizeSrgb);
+        let declined = transform.into_checkpoint();
+        // Only computing commits a transformation; declining keeps the input.
+        assert!(declined.value().identical(original));
+        assert_eq!(declined.value().srgb_bytes(), None);
+        assert_eq!(declined.value().alpha(), Some(0.5));
+        assert_eq!(declined.source(), source);
+        assert!(std::ptr::eq(declined.facts(), &facts));
     }
 
     #[test]
-    fn caller_checkpoint_slots_keep_refused_and_pending_owners_and_recover_committed_values() {
-        let mut numerical_owner_7 = surgeist_color::OperationOwner::new();
-        let mut numerical_owner_5 = surgeist_color::OperationOwner::new();
-        let mut numerical_owner_4 = surgeist_color::OperationOwner::new();
-        let mut numerical_owner_3 = surgeist_color::OperationOwner::new();
-        let mut numerical_owner_2 = surgeist_color::OperationOwner::new();
-
+    fn transformations_commit_computed_values_and_keep_the_source_context() {
+        let mut numerical_owner = surgeist_color::OperationOwner::new();
         let facts = facts();
         let mut owner = CssColorOperationOwner::new();
         let (outcome, _) = parse(&mut owner, "rgba(255 0 0 / .5)", &facts).unwrap();
@@ -1583,75 +1835,24 @@ mod tests {
             panic!("valid resolved color")
         };
         let source = checkpoint.source();
-        let original = checkpoint.value();
-        let mut slot = Some(checkpoint);
-        assert_eq!(slot.as_ref().unwrap().value(), original);
-        assert!(std::ptr::eq(slot.as_ref().unwrap().facts(), &facts));
-        let transformation = CssUsedColorCheckpoint::transform(
-            &mut slot,
-            &mut numerical_owner_2,
-            Transformation::ForceOpaqueAlpha,
-        )
-        .unwrap();
-        assert!(slot.is_none());
-        assert_eq!(
-            CssUsedColorCheckpoint::transform(
-                &mut slot,
-                &mut numerical_owner_3,
-                Transformation::ForceOpaqueAlpha,
-            )
-            .err(),
-            Some(CssColorOperationError::Protocol(
-                CssColorProtocolError::EmptySlot
-            ))
-        );
-        let mut transform = Some(transformation);
-        let pending = transform.as_ref().unwrap().action();
-        assert_eq!(
-            CssColorTransformation::take(&mut transform).err(),
-            Some(CssColorOperationError::Protocol(
-                CssColorProtocolError::Terminal
-            ))
-        );
-        assert_eq!(transform.as_ref().unwrap().action(), pending);
-        transform.as_mut().unwrap().next_action().compute().unwrap();
-        let checkpoint = CssColorTransformation::take(&mut transform).unwrap();
-        assert!(transform.is_none());
-        assert_eq!(
-            CssColorTransformation::take(&mut transform).err(),
-            Some(CssColorOperationError::Protocol(
-                CssColorProtocolError::EmptySlot
-            ))
-        );
+        assert!(std::ptr::eq(checkpoint.facts(), &facts));
+        let checkpoint = checkpoint
+            .transform(&mut numerical_owner, Transformation::ForceOpaqueAlpha)
+            .compute();
         assert_eq!(checkpoint.value().alpha(), Some(1.0));
         assert_eq!(checkpoint.source(), source);
-        let mut slot = Some(checkpoint);
-        // Computation remains unpublished until take; abandonment recovers
-        // the previous committed floating checkpoint and its source context.
-        let mut transform = CssUsedColorCheckpoint::transform(
-            &mut slot,
-            &mut numerical_owner_4,
-            Transformation::QuantizeSrgb,
-        )
-        .unwrap();
-        transform.next_action().compute().unwrap();
-        transform.abandon();
-        let mut transform = Some(transform);
-        assert_eq!(
-            CssColorTransformation::take(&mut transform).err(),
-            Some(CssColorOperationError::Protocol(
-                CssColorProtocolError::Terminal
-            ))
-        );
-        let checkpoint = CssColorTransformation::recover(&mut transform).unwrap();
-        assert_eq!(checkpoint.value().srgb_bytes(), None); // Untaken quantization does not commit byte backing.
+        let checkpoint = checkpoint
+            .transform(&mut numerical_owner, Transformation::QuantizeSrgb)
+            .into_checkpoint();
+        // A declined quantization does not commit byte backing.
+        assert_eq!(checkpoint.value().srgb_bytes(), None);
         assert_eq!(checkpoint.value().alpha(), Some(1.0));
         assert_eq!(checkpoint.value().alpha_byte(), None);
         assert_eq!(checkpoint.source(), source);
         assert_eq!(
             serialize(
                 checkpoint,
-                &mut numerical_owner_5,
+                &mut numerical_owner,
                 surgeist_color::SerializationRequest::HtmlCompatible
             )
             .0,
@@ -1670,19 +1871,16 @@ mod tests {
         };
         let before = checkpoint.value();
         let source = checkpoint.source();
-        let mut slot = Some(checkpoint);
-        let mut transform = CssUsedColorCheckpoint::transform(
-            &mut slot,
-            &mut numerical_owner_7,
-            Transformation::Convert(crate::ColorSpace::Predefined(
-                crate::PredefinedColorSpace::XyzD65,
-            )),
-        )
-        .unwrap();
         // XYZ Z is 1.089 times the shared channel, beyond binary64: the
         // conversion takes the closest finite value instead of failing.
-        assert_eq!(transform.next_action().compute(), Ok(()));
-        let checkpoint = CssColorTransformation::take(&mut Some(transform)).unwrap();
+        let checkpoint = checkpoint
+            .transform(
+                &mut numerical_owner,
+                Transformation::Convert(crate::ColorSpace::Predefined(
+                    crate::PredefinedColorSpace::XyzD65,
+                )),
+            )
+            .compute();
         assert_eq!(checkpoint.value().channels()[2], Some(f64::MAX));
         assert!(!checkpoint.value().identical(before));
         assert_eq!(checkpoint.source(), source);
@@ -1695,85 +1893,13 @@ mod tests {
         for abandon in [false, true] {
             let mut owner = CssColorOperationOwner::new();
             let text = "hsl(0 100% 50%)";
-            let mut operation = CssColorOperation::parse_used(
-                &mut owner,
-                CssColorInputKind::Utf8,
-                text.len(),
-                CssColorGrammarRequest::WholeColor,
-                &facts,
-                facts.identity(),
-            )
-            .unwrap();
+            let input = units(text);
+            let mut parse = start(&mut owner, CssColorInputKind::Utf8, text.len(), &facts);
             let mut banks: [Vec<_>; 3] = std::array::from_fn(|_| Vec::new());
             let mut conversion = false;
             loop {
-                let pending = operation.action();
-                if pending == CssColorActionDescription::Compute(CssColorKernel::ColorConversion) {
-                    conversion = true;
-                    {
-                        let action = operation.next_action();
-                        let layout = action.layout();
-                        assert_eq!(layout.kernel, CssColorKernel::ColorConversion);
-                        assert_eq!(layout.input_unit_bytes, 0);
-                        assert_eq!(layout.slot_read_bytes, 0);
-                        assert_eq!(layout.slot_write_bytes, 0);
-                        assert_eq!(layout.output_unit_bytes, 0);
-                        assert_eq!(layout.fact_records, [0; 3]);
-                        // The caller withholds admission. Dropping this actual
-                        // guard must neither convert nor publish the value.
-                    }
-                    assert_eq!(operation.action(), pending);
-                    assert_eq!(
-                        operation.next_action().read_input(0, 0),
-                        Err(CssColorOperationError::Protocol(
-                            CssColorProtocolError::WrongAction
-                        ))
-                    );
-                    assert_eq!(operation.action(), pending);
-                    if abandon {
-                        // CSS cancellation is the original caller's explicit
-                        // abandon, not a second ledger or invented HTML ticket.
-                        let lengths = banks.each_ref().map(Vec::len);
-                        assert!(lengths[0] > 0);
-                        operation.abandon();
-                        assert_eq!(operation.action(), CssColorActionDescription::Stopped);
-                        assert_eq!(banks.each_ref().map(Vec::len), lengths);
-                        assert!(matches!(
-                            CssColorOperation::take(&mut Some(operation)),
-                            Err(CssColorProtocolError::Terminal)
-                        ));
-                        break;
-                    }
-                }
-                let mut action = operation.next_action();
-                match pending {
-                    CssColorActionDescription::ReadInput { offset } => action
-                        .read_input(offset, u16::from(text.as_bytes()[offset]))
-                        .unwrap(),
-                    CssColorActionDescription::ReadSlot { bank: which, index } => action
-                        .read_slot(which, index, &banks[bank(which)][index])
-                        .unwrap(),
-                    CssColorActionDescription::AppendSlot { bank: which, index } => {
-                        assert_eq!(index, banks[bank(which)].len());
-                        banks[bank(which)].push(action.record().unwrap());
-                        action
-                            .written(which, index, &banks[bank(which)][index])
-                            .unwrap();
-                    }
-                    CssColorActionDescription::UpdateSlot { bank: which, index } => {
-                        banks[bank(which)][index] = action.record().unwrap();
-                        action
-                            .written(which, index, &banks[bank(which)][index])
-                            .unwrap();
-                    }
-                    CssColorActionDescription::ReadFact(_)
-                    | CssColorActionDescription::Compute(_) => action.compute().unwrap(),
-                    CssColorActionDescription::UsedReady => {
-                        let CssColorParseOutcome::Used(value) =
-                            CssColorOperation::take(&mut Some(operation)).unwrap()
-                        else {
-                            panic!("used checkpoint")
-                        };
+                let action = match parse.step() {
+                    CssColorParseStep::Complete(CssColorParseOutcome::Used(value)) => {
                         assert_eq!(
                             value.value().space(),
                             crate::ColorSpace::Predefined(crate::PredefinedColorSpace::Srgb)
@@ -1787,8 +1913,65 @@ mod tests {
                         assert!(std::ptr::eq(value.facts(), &facts));
                         break;
                     }
-                    other => panic!("unexpected parse action {other:?}"),
+                    CssColorParseStep::Complete(_) => panic!("used checkpoint"),
+                    CssColorParseStep::Pending(action) => action,
+                };
+                if let CssColorParseAction::Compute(compute) = &action
+                    && compute.kernel() == CssColorKernel::ColorConversion
+                {
+                    conversion = true;
+                    let layout = action.layout();
+                    assert_eq!(layout.kernel, CssColorKernel::ColorConversion);
+                    assert_eq!(layout.input_unit_bytes, 0);
+                    assert_eq!(layout.slot_read_bytes, 0);
+                    assert_eq!(layout.slot_write_bytes, 0);
+                    assert_eq!(layout.output_unit_bytes, 0);
+                    assert_eq!(layout.fact_records, [0; 3]);
+                    if abandon {
+                        // The caller withholds admission and abandons the action
+                        // with its parse; the caller-owned banks keep their
+                        // records until the caller releases them.
+                        let lengths = banks.each_ref().map(Vec::len);
+                        assert!(lengths[0] > 0);
+                        let _abandoned = action;
+                        assert_eq!(banks.each_ref().map(Vec::len), lengths);
+                        break;
+                    }
+                    // Declining instead keeps the conversion pending.
+                    let CssColorParseStep::Pending(CssColorParseAction::Compute(again)) =
+                        action.into_parse().step()
+                    else {
+                        panic!("the conversion remains pending")
+                    };
+                    assert_eq!(again.kernel(), CssColorKernel::ColorConversion);
+                    parse = again.compute().unwrap();
+                    continue;
                 }
+                parse = match action {
+                    CssColorParseAction::ReadInput(read) => {
+                        let unit = input[read.offset()];
+                        read.read(unit).unwrap()
+                    }
+                    CssColorParseAction::ReadSlot(read) => {
+                        let slot = &banks[bank(read.bank())][read.index()];
+                        read.read(slot).unwrap()
+                    }
+                    CssColorParseAction::AppendSlot(write) => {
+                        let target = &mut banks[bank(write.bank())];
+                        let (record, receipt) = write.record();
+                        target.push(record);
+                        receipt.stored(&target[target.len() - 1])
+                    }
+                    CssColorParseAction::UpdateSlot(write) => {
+                        let index = write.index();
+                        let target = &mut banks[bank(write.bank())];
+                        let (record, receipt) = write.record();
+                        target[index] = record;
+                        receipt.stored(&target[index])
+                    }
+                    CssColorParseAction::ReadFact(read) => read.read().unwrap(),
+                    CssColorParseAction::Compute(compute) => compute.compute().unwrap(),
+                };
             }
             banks.iter_mut().for_each(Vec::clear);
             drop(banks);
@@ -1796,6 +1979,81 @@ mod tests {
                 conversion,
                 "actual root conversion must be admitted before Used"
             );
+        }
+    }
+
+    /// Services `parse` until it requests a slot read, keeping its records.
+    fn until_slot_read<'owner, 'facts>(
+        mut parse: CssColorParse<'owner, 'facts>,
+        input: &[u8],
+        banks: &mut [Vec<CssColorSlot<'owner>>; 3],
+    ) -> CssColorReadSlot<'owner, 'facts> {
+        loop {
+            let CssColorParseStep::Pending(action) = parse.step() else {
+                panic!("a lexical parse reads its scalars back")
+            };
+            parse = match action {
+                CssColorParseAction::ReadInput(read) => {
+                    let unit = u16::from(input[read.offset()]);
+                    read.read(unit).unwrap()
+                }
+                CssColorParseAction::ReadSlot(read) => return read,
+                CssColorParseAction::AppendSlot(write) => {
+                    let target = &mut banks[bank(write.bank())];
+                    let (record, receipt) = write.record();
+                    target.push(record);
+                    receipt.stored(&target[target.len() - 1])
+                }
+                CssColorParseAction::Compute(compute) => compute.compute().unwrap(),
+                _ => panic!("unexpected lexical action"),
+            };
+        }
+    }
+    #[test]
+    #[should_panic(expected = "belongs to another parse")]
+    fn reading_a_slot_minted_by_another_parse_panics() {
+        // P1 (#1353, 5.6): a record of another parse is a driver defect.
+        let facts = facts();
+        let mut first_owner = CssColorOperationOwner::new();
+        let mut second_owner = CssColorOperationOwner::new();
+        let first = start(&mut first_owner, CssColorInputKind::Utf8, 3, &facts);
+        let second = start(&mut second_owner, CssColorInputKind::Utf8, 3, &facts);
+        let mut first_banks: [Vec<_>; 3] = std::array::from_fn(|_| Vec::new());
+        let mut second_banks: [Vec<_>; 3] = std::array::from_fn(|_| Vec::new());
+        let _ = until_slot_read(first, b"red", &mut first_banks);
+        let read = until_slot_read(second, b"red", &mut second_banks);
+        let foreign = &first_banks[bank(read.bank())][read.index()];
+        let _ = read.read(foreign);
+    }
+    #[test]
+    #[should_panic(expected = "was stored as Algorithm index 1")]
+    fn storing_a_record_at_the_wrong_index_panics() {
+        // P2 (#1353, 5.6): acknowledging the record of index 0 as the storage
+        // of the record minted for index 1 is a driver defect.
+        let facts = facts();
+        let mut owner = CssColorOperationOwner::new();
+        let mut parse = start(&mut owner, CssColorInputKind::Utf8, 3, &facts);
+        let mut banks: [Vec<_>; 3] = std::array::from_fn(|_| Vec::new());
+        loop {
+            let CssColorParseStep::Pending(action) = parse.step() else {
+                panic!("the input is stored before completion")
+            };
+            parse = match action {
+                CssColorParseAction::ReadInput(read) => {
+                    let unit = u16::from(b"red"[read.offset()]);
+                    read.read(unit).unwrap()
+                }
+                CssColorParseAction::AppendSlot(write) => {
+                    let index = write.index();
+                    let target = &mut banks[bank(write.bank())];
+                    let (record, receipt) = write.record();
+                    target.push(record);
+                    let stored = &target[index.saturating_sub(1)];
+                    receipt.stored(stored)
+                }
+                CssColorParseAction::Compute(compute) => compute.compute().unwrap(),
+                _ => panic!("unexpected lexical action"),
+            };
         }
     }
 }

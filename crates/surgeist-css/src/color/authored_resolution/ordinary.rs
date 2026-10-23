@@ -57,6 +57,43 @@ fn resource(bank: CssColorBank) -> CssColorOrdinaryResource {
         CssColorBank::Evaluation => CssColorOrdinaryResource::EvaluationRecords,
     }
 }
+/// One failure of the ordinary loop: its own resource refusal, or a failure
+/// of the operation it drives.
+enum Failure {
+    Ordinary(CssColorOrdinaryError),
+    Authored(AuthoredError),
+}
+impl From<CssColorOrdinaryError> for Failure {
+    fn from(error: CssColorOrdinaryError) -> Self {
+        Self::Ordinary(error)
+    }
+}
+impl From<AuthoredError> for Failure {
+    fn from(error: AuthoredError) -> Self {
+        Self::Authored(error)
+    }
+}
+impl From<ColorProtocolError> for Failure {
+    fn from(error: ColorProtocolError) -> Self {
+        Self::Authored(error.into())
+    }
+}
+impl Failure {
+    fn into_ordinary(self) -> CssColorOrdinaryError {
+        match self {
+            Self::Ordinary(error) => error,
+            Self::Authored(error) => ordinary(error),
+        }
+    }
+}
+/// A reached semantic failure. This loop is the operation's only driver, so a
+/// protocol inconsistency is a defect in it and panics (#1353 decision 5).
+fn ordinary(error: AuthoredError) -> CssColorOrdinaryError {
+    match error {
+        AuthoredError::Color(error) => error.into(),
+        AuthoredError::Protocol(defect) => defect.raise(),
+    }
+}
 fn maximum(limits: CssAuthoredColorOrdinaryLimits, bank: CssColorBank) -> usize {
     match bank {
         CssColorBank::Algorithm => limits.algorithm_records,
@@ -77,11 +114,12 @@ pub fn resolve_authored_color<'authored, 'facts>(
     let mut owner = CssColorOperationOwner::new();
     let mut path = CssColorPathBuffer::new();
     let mut banks: [Vec<_>; 3] = std::array::from_fn(|_| Vec::new());
-    let mut operation = Some(CssAuthoredColorOperation::resolve_authored(
-        &mut owner, root, facts, expected, &mut path,
-    )?);
+    let mut operation = Some(
+        CssAuthoredColorOperation::resolve_authored(&mut owner, root, facts, expected, &mut path)
+            .map_err(ordinary)?,
+    );
     let mut actions = 0usize;
-    let execution = (|| {
+    let execution: Result<(), Failure> = (|| {
         loop {
             let op = operation
                 .as_mut()
@@ -89,9 +127,7 @@ pub fn resolve_authored_color<'authored, 'facts>(
             if op.action() == A::Ready {
                 break;
             }
-            let required = actions
-                .checked_add(1)
-                .ok_or(CssColorProtocolError::Overflow)?;
+            let required = actions.checked_add(1).ok_or(ColorProtocolError::Overflow)?;
             admit(CssColorOrdinaryResource::Actions, required, limits.actions)?;
             actions = required;
             let mut action = op.next_action();
@@ -101,25 +137,21 @@ pub fn resolve_authored_color<'authored, 'facts>(
                 A::ReadSite { index } => action.read_slot(
                     CssColorBank::Algorithm,
                     index,
-                    banks[0]
-                        .get(index)
-                        .ok_or(CssColorProtocolError::WrongIndex)?,
+                    banks[0].get(index).ok_or(ColorProtocolError::WrongIndex)?,
                 )?,
                 A::ReadSlot { bank, index } => action.read_slot(
                     bank,
                     index,
                     banks[ordinal(bank)]
                         .get(index)
-                        .ok_or(CssColorProtocolError::WrongIndex)?,
+                        .ok_or(ColorProtocolError::WrongIndex)?,
                 )?,
                 A::AppendSlot { bank, index } => {
                     let slots = &mut banks[ordinal(bank)];
                     if slots.len() != index {
-                        return Err(CssColorProtocolError::WrongIndex.into());
+                        return Err(ColorProtocolError::WrongIndex.into());
                     }
-                    let required = index
-                        .checked_add(1)
-                        .ok_or(CssColorProtocolError::Overflow)?;
+                    let required = index.checked_add(1).ok_or(ColorProtocolError::Overflow)?;
                     admit(resource(bank), required, maximum(limits, bank))?;
                     let result = slots.try_reserve_exact(1);
                     // A failed allocator attempt wins over any later observation
@@ -127,7 +159,8 @@ pub fn resolve_authored_color<'authored, 'facts>(
                     if result.is_err() {
                         return Err(CssColorOrdinaryError::Allocation {
                             resource: resource(bank),
-                        });
+                        }
+                        .into());
                     }
                     admit(resource(bank), slots.capacity(), maximum(limits, bank))?;
                     slots.push(action.record()?);
@@ -136,7 +169,7 @@ pub fn resolve_authored_color<'authored, 'facts>(
                 A::UpdateSlot { bank, index } => {
                     let slot = banks[ordinal(bank)]
                         .get_mut(index)
-                        .ok_or(CssColorProtocolError::WrongIndex)?;
+                        .ok_or(ColorProtocolError::WrongIndex)?;
                     *slot = action.record()?;
                     action.written(bank, index, slot)?;
                 }
@@ -163,7 +196,7 @@ pub fn resolve_authored_color<'authored, 'facts>(
                         };
                     action.capacity_observed()?;
                     if let Some(error) = failure {
-                        return Err(error);
+                        return Err(error.into());
                     }
                 }
                 A::AppendPath(_) => action.append_path()?,
@@ -171,13 +204,13 @@ pub fn resolve_authored_color<'authored, 'facts>(
                 A::PrepareSite => action.prepare_site()?,
                 A::RestoreSite => action.restore_site()?,
                 A::Compute(_) | A::ReadFact(_) => action.compute()?,
-                _ => return Err(CssColorProtocolError::Terminal.into()),
+                _ => return Err(ColorProtocolError::Terminal.into()),
             }
         }
         Ok(())
     })();
     let result = match execution {
-        Ok(()) => CssAuthoredColorOperation::take(&mut operation).map_err(Into::into),
+        Ok(()) => CssAuthoredColorOperation::take(&mut operation).map_err(Failure::from),
         Err(error) => {
             operation
                 .as_mut()
@@ -198,7 +231,7 @@ pub fn resolve_authored_color<'authored, 'facts>(
     path.cleanup()
         .expect("all reservation effects were observed");
     drop(path);
-    let checkpoint = result?;
+    let checkpoint = result.map_err(Failure::into_ordinary)?;
     let (root, facts, outcome) = checkpoint.into_parts();
     Ok(CssAuthoredColorResult {
         root,

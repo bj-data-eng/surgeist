@@ -8,8 +8,8 @@ use super::super::{
     },
     keywords::ColorFunction as F,
     protocol::{
-        CssColorBank, CssColorOperationOwner, CssColorProtocolError, CssColorSlot, Data,
-        RecordRange, RecordTable,
+        ColorProtocolError, CssColorBank, CssColorOperationOwner, CssColorSlot, Data, RecordRange,
+        RecordTable,
     },
     syntax_pass::ValidatedGrammar,
 };
@@ -325,7 +325,7 @@ impl<'css> Lowering<'css> {
             State::Done { .. } => Action::Done,
         }
     }
-    pub(super) fn input_bytes(&self) -> Result<usize, CssColorProtocolError> {
+    pub(super) fn input_bytes(&self) -> Result<usize, ColorProtocolError> {
         Ok(match &self.state {
             State::Color(_) => operands::header_bytes(),
             State::Payload { header, .. } => header.node.local_bytes(),
@@ -349,11 +349,11 @@ impl<'css> Lowering<'css> {
         data: Data<'css>,
         replace: Option<usize>,
         commit: Commit<'css>,
-    ) -> Result<(), CssColorProtocolError> {
+    ) -> Result<(), ColorProtocolError> {
         if replace.is_none() {
             self.algorithm_end
                 .checked_add(1)
-                .ok_or(CssColorProtocolError::Overflow)?;
+                .ok_or(ColorProtocolError::Overflow)?;
         }
         self.state = State::Pending {
             data,
@@ -368,7 +368,7 @@ impl<'css> Lowering<'css> {
         site: usize,
         kind: RecipeKind,
         closed: bool,
-    ) -> Result<(), CssColorProtocolError> {
+    ) -> Result<(), ColorProtocolError> {
         self.pending(
             Data::Grammar(GrammarRecord::Recipe(Recipe {
                 kind,
@@ -383,7 +383,7 @@ impl<'css> Lowering<'css> {
             },
         )
     }
-    pub(super) fn read_authored(&mut self) -> Result<(), CssColorProtocolError> {
+    pub(super) fn read_authored(&mut self) -> Result<(), ColorProtocolError> {
         match &mut self.state {
             State::Color(input) => {
                 let input = *input;
@@ -480,12 +480,10 @@ impl<'css> Lowering<'css> {
                 let byte = *digits
                     .as_bytes()
                     .get(*offset)
-                    .ok_or(CssColorProtocolError::WrongIndex)?;
-                let next = offset
-                    .checked_add(1)
-                    .ok_or(CssColorProtocolError::Overflow)?;
+                    .ok_or(ColorProtocolError::WrongIndex)?;
+                let next = offset.checked_add(1).ok_or(ColorProtocolError::Overflow)?;
                 if !super::super::hex::write_digit(bytes, digits.len(), *offset, char::from(byte)) {
-                    return Err(CssColorProtocolError::Input);
+                    return Err(ColorProtocolError::Input);
                 }
                 *offset = next;
                 Ok(())
@@ -500,7 +498,7 @@ impl<'css> Lowering<'css> {
                         self.state = State::Frame(frame);
                         return Ok(());
                     }
-                    return Err(CssColorProtocolError::WrongSlot);
+                    return Err(ColorProtocolError::WrongSlot);
                 };
                 frame.expected = Some(operand);
                 if let Operand::Color(child) = operand {
@@ -521,7 +519,7 @@ impl<'css> Lowering<'css> {
                     let depth = frame
                         .depth
                         .checked_add(1)
-                        .ok_or(CssColorProtocolError::Overflow)?;
+                        .ok_or(ColorProtocolError::Overflow)?;
                     self.state = State::Scalar {
                         frame,
                         cursor: ScalarLowering::start(
@@ -564,10 +562,10 @@ impl<'css> Lowering<'css> {
                     } else if let Some(profile) = interpolation.custom_profile() {
                         self.state = State::InterpolationProfile { frame, profile };
                     } else {
-                        return Err(CssColorProtocolError::WrongSlot);
+                        return Err(ColorProtocolError::WrongSlot);
                     }
                 } else {
-                    return Err(CssColorProtocolError::WrongSlot);
+                    return Err(ColorProtocolError::WrongSlot);
                 }
                 Ok(())
             }
@@ -588,7 +586,7 @@ impl<'css> Lowering<'css> {
             }
             State::Name { writer, .. } => writer.read_byte(),
             State::Scalar { cursor, .. } => cursor.read_authored(),
-            _ => Err(CssColorProtocolError::WrongAction),
+            _ => Err(ColorProtocolError::WrongAction),
         }
     }
     pub(super) fn read(
@@ -596,9 +594,9 @@ impl<'css> Lowering<'css> {
         bank: CssColorBank,
         index: usize,
         slot: &CssColorSlot<'css>,
-    ) -> Result<(), CssColorProtocolError> {
+    ) -> Result<(), ColorProtocolError> {
         if self.action() != (Action::Read { bank, index }) {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         }
         slot.qualify(self.owner, self.phase, index, bank)?;
         match &mut self.state {
@@ -609,14 +607,14 @@ impl<'css> Lowering<'css> {
                 root,
             } => {
                 if index != *expected {
-                    return Err(CssColorProtocolError::WrongIndex);
+                    return Err(ColorProtocolError::WrongIndex);
                 }
                 let Data::AuthoredColorFrame(mut frame) = slot.data else {
-                    return Err(CssColorProtocolError::WrongSlot);
+                    return Err(ColorProtocolError::WrongSlot);
                 };
                 if !matches!(frame.expected,Some(Operand::Color(expected)) if std::ptr::eq(expected,*color))
                 {
-                    return Err(CssColorProtocolError::WrongSlot);
+                    return Err(ColorProtocolError::WrongSlot);
                 }
                 let root = *root;
                 match frame.stage {
@@ -640,7 +638,7 @@ impl<'css> Lowering<'css> {
                         frame.mix_color = Some(root);
                         frame.stage = Stage::MixWeight;
                     }
-                    _ => return Err(CssColorProtocolError::WrongSlot),
+                    _ => return Err(ColorProtocolError::WrongSlot),
                 }
                 frame.expected = None;
                 self.position = Position {
@@ -655,10 +653,10 @@ impl<'css> Lowering<'css> {
                 let frame = *frame;
                 let new = *new;
                 let Data::AuthoredStagedComponent(mut staged) = slot.data else {
-                    return Err(CssColorProtocolError::WrongSlot);
+                    return Err(ColorProtocolError::WrongSlot);
                 };
                 if staged.next.is_some() {
-                    return Err(CssColorProtocolError::WrongSlot);
+                    return Err(ColorProtocolError::WrongSlot);
                 }
                 staged.next = Some(new);
                 self.pending(
@@ -670,10 +668,10 @@ impl<'css> Lowering<'css> {
             State::Flush { frame, .. } => {
                 let mut frame = *frame;
                 let Data::AuthoredStagedComponent(staged) = slot.data else {
-                    return Err(CssColorProtocolError::WrongSlot);
+                    return Err(ColorProtocolError::WrongSlot);
                 };
                 if staged.payload.ordinal != frame.ordinal {
-                    return Err(CssColorProtocolError::WrongSlot);
+                    return Err(ColorProtocolError::WrongSlot);
                 }
                 frame.flush_next = staged.next;
                 self.pending(
@@ -684,12 +682,12 @@ impl<'css> Lowering<'css> {
                     Commit::Component(frame),
                 )
             }
-            _ => Err(CssColorProtocolError::WrongAction),
+            _ => Err(ColorProtocolError::WrongAction),
         }
     }
-    fn pending_site(&self) -> Result<SiteRecord<'css>, CssColorProtocolError> {
+    fn pending_site(&self) -> Result<SiteRecord<'css>, ColorProtocolError> {
         let State::Site { input, .. } = self.state else {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         };
         Ok(SiteRecord {
             operand: Operand::Color(input.color),
@@ -703,17 +701,17 @@ impl<'css> Lowering<'css> {
         &self,
         bank: CssColorBank,
         index: usize,
-    ) -> Result<CssColorSlot<'css>, CssColorProtocolError> {
+    ) -> Result<CssColorSlot<'css>, ColorProtocolError> {
         if !matches!(self.action(),Action::Append {bank:b,index:i}|Action::Replace {bank:b,index:i} if b==bank && i==index)
         {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         }
         let data = match &self.state {
             State::Site { .. } => Data::AuthoredSite(self.pending_site()?),
             State::Pending { data, .. } => *data,
             State::Name { writer, .. } => return writer.record(index),
             State::Scalar { cursor, .. } => return cursor.record(bank, index),
-            _ => return Err(CssColorProtocolError::WrongAction),
+            _ => return Err(ColorProtocolError::WrongAction),
         };
         Ok(CssColorSlot::new(self.owner, self.phase, index, data))
     }
@@ -722,10 +720,10 @@ impl<'css> Lowering<'css> {
         bank: CssColorBank,
         index: usize,
         slot: &CssColorSlot<'_>,
-    ) -> Result<(), CssColorProtocolError> {
+    ) -> Result<(), ColorProtocolError> {
         if !matches!(self.action(),Action::Append {bank:b,index:i}|Action::Replace {bank:b,index:i} if b==bank && i==index)
         {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         }
         slot.qualify(self.owner, self.phase, index, bank)?;
         match &mut self.state {
@@ -744,15 +742,15 @@ impl<'css> Lowering<'css> {
         }
         if let State::Site { input, header } = self.state {
             let Data::AuthoredSite(actual) = slot.data else {
-                return Err(CssColorProtocolError::WrongSlot);
+                return Err(ColorProtocolError::WrongSlot);
             };
             if !self.pending_site()?.identical(actual) {
-                return Err(CssColorProtocolError::WrongSlot);
+                return Err(ColorProtocolError::WrongSlot);
             }
             self.algorithm_end = self
                 .algorithm_end
                 .checked_add(1)
-                .ok_or(CssColorProtocolError::Overflow)?;
+                .ok_or(ColorProtocolError::Overflow)?;
             self.state = State::Payload {
                 input,
                 header,
@@ -766,16 +764,16 @@ impl<'css> Lowering<'css> {
             commit,
         } = self.state
         else {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         };
         if !same_data(data, slot.data) {
-            return Err(CssColorProtocolError::WrongSlot);
+            return Err(ColorProtocolError::WrongSlot);
         }
         if replace.is_none() {
             self.algorithm_end = self
                 .algorithm_end
                 .checked_add(1)
-                .ok_or(CssColorProtocolError::Overflow)?;
+                .ok_or(ColorProtocolError::Overflow)?;
         }
         match commit {
             Commit::Suspend {
@@ -787,7 +785,7 @@ impl<'css> Lowering<'css> {
                 let depth = frame
                     .depth
                     .checked_add(1)
-                    .ok_or(CssColorProtocolError::Overflow)?;
+                    .ok_or(ColorProtocolError::Overflow)?;
                 self.position = Position {
                     site: self.algorithm_end,
                     depth,
@@ -833,7 +831,7 @@ impl<'css> Lowering<'css> {
                 frame.ordinal = frame
                     .ordinal
                     .checked_add(1)
-                    .ok_or(CssColorProtocolError::Overflow)?;
+                    .ok_or(ColorProtocolError::Overflow)?;
                 self.state = State::Frame(frame);
             }
             Commit::Component(mut frame) => {
@@ -842,7 +840,7 @@ impl<'css> Lowering<'css> {
                 frame.ordinal = frame
                     .ordinal
                     .checked_add(1)
-                    .ok_or(CssColorProtocolError::Overflow)?;
+                    .ok_or(ColorProtocolError::Overflow)?;
                 self.state = State::Frame(frame);
             }
             Commit::Alpha(mut frame) => {
@@ -860,7 +858,7 @@ impl<'css> Lowering<'css> {
                 frame.ordinal = frame
                     .ordinal
                     .checked_add(1)
-                    .ok_or(CssColorProtocolError::Overflow)?;
+                    .ok_or(ColorProtocolError::Overflow)?;
                 frame.mix_color = None;
                 frame.mix_weight = None;
                 frame.stage = Stage::MixColor;
@@ -875,9 +873,9 @@ impl<'css> Lowering<'css> {
             _ => crate::color::CssColorKernel::Transition,
         }
     }
-    pub(super) fn compute(&mut self) -> Result<(), CssColorProtocolError> {
+    pub(super) fn compute(&mut self) -> Result<(), ColorProtocolError> {
         if self.action() != Action::Compute {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         }
         match &mut self.state {
             State::Hex {
@@ -932,12 +930,12 @@ impl<'css> Lowering<'css> {
                     depth: frame.depth,
                     edge: None,
                 };
-                let operand = frame.expected.ok_or(CssColorProtocolError::WrongSlot)?;
+                let operand = frame.expected.ok_or(ColorProtocolError::WrongSlot)?;
                 let edge = match frame.stage {
                     Stage::Channels => CssColorPathStep::Channel(frame.ordinal),
                     Stage::Alpha => CssColorPathStep::Alpha,
                     Stage::MixWeight => CssColorPathStep::MixWeight(frame.ordinal),
-                    _ => return Err(CssColorProtocolError::WrongSlot),
+                    _ => return Err(ColorProtocolError::WrongSlot),
                 };
                 let role = role(frame.recipe, edge, operand);
                 let context = ComponentContext::for_recipe(frame.recipe, role, frame.ordinal)?;
@@ -978,16 +976,16 @@ impl<'css> Lowering<'css> {
                         let slot = frame
                             .fixed
                             .get_mut(frame.ordinal)
-                            .ok_or(CssColorProtocolError::WrongIndex)?;
+                            .ok_or(ColorProtocolError::WrongIndex)?;
                         *slot = Some(payload);
                         frame.ordinal = frame
                             .ordinal
                             .checked_add(1)
-                            .ok_or(CssColorProtocolError::Overflow)?;
+                            .ok_or(ColorProtocolError::Overflow)?;
                         self.state = State::Frame(frame);
                         Ok(())
                     }
-                    _ => Err(CssColorProtocolError::WrongSlot),
+                    _ => Err(ColorProtocolError::WrongSlot),
                 }
             }
             State::Frame(frame) => {
@@ -1063,7 +1061,7 @@ impl<'css> Lowering<'css> {
                         Data::Grammar(GrammarRecord::Mix(MixRecord {
                             previous: frame.recipe.mix,
                             ordinal: frame.ordinal,
-                            color: frame.mix_color.ok_or(CssColorProtocolError::WrongSlot)?,
+                            color: frame.mix_color.ok_or(ColorProtocolError::WrongSlot)?,
                             weight: frame.mix_weight,
                         })),
                         None,
@@ -1099,12 +1097,12 @@ impl<'css> Lowering<'css> {
                         if frame.input.profile.is_some() {
                             self.state = State::Flush {
                                 frame,
-                                index: frame.flush_next.ok_or(CssColorProtocolError::WrongSlot)?,
+                                index: frame.flush_next.ok_or(ColorProtocolError::WrongSlot)?,
                             };
                             Ok(())
                         } else {
-                            let payload = frame.fixed[frame.ordinal]
-                                .ok_or(CssColorProtocolError::WrongSlot)?;
+                            let payload =
+                                frame.fixed[frame.ordinal].ok_or(ColorProtocolError::WrongSlot)?;
                             self.pending(
                                 Data::Grammar(GrammarRecord::Component(
                                     payload.record(frame.recipe.components),
@@ -1146,12 +1144,12 @@ impl<'css> Lowering<'css> {
                     ),
                 }
             }
-            _ => Err(CssColorProtocolError::WrongAction),
+            _ => Err(ColorProtocolError::WrongAction),
         }
     }
-    pub(super) fn finish(&self) -> Result<ValidatedGrammar<'css>, CssColorProtocolError> {
+    pub(super) fn finish(&self) -> Result<ValidatedGrammar<'css>, ColorProtocolError> {
         let State::Done { root } = self.state else {
-            return Err(CssColorProtocolError::Terminal);
+            return Err(ColorProtocolError::Terminal);
         };
         Ok(ValidatedGrammar {
             table: GrammarTable {

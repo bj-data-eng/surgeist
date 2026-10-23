@@ -59,7 +59,7 @@ pub enum CssColorOrdinaryResource {
 }
 #[derive(Debug, Eq, PartialEq)]
 pub enum CssColorOrdinaryError {
-    Operation(CssColorOperationError),
+    Operation(CssColorError),
     Limit {
         resource: CssColorOrdinaryResource,
         required: usize,
@@ -93,14 +93,9 @@ impl std::error::Error for CssColorOrdinaryError {
         }
     }
 }
-impl From<CssColorOperationError> for CssColorOrdinaryError {
-    fn from(error: CssColorOperationError) -> Self {
+impl From<CssColorError> for CssColorOrdinaryError {
+    fn from(error: CssColorError) -> Self {
         Self::Operation(error)
-    }
-}
-impl From<CssColorProtocolError> for CssColorOrdinaryError {
-    fn from(error: CssColorProtocolError) -> Self {
-        CssColorOperationError::Protocol(error).into()
     }
 }
 /// A fixed source-qualified outcome after all ordinary scratch is retired.
@@ -174,10 +169,71 @@ fn admit(
 fn action_count(count: &mut usize, maximum: usize) -> Result<(), CssColorOrdinaryError> {
     let required = count
         .checked_add(1)
-        .ok_or(CssColorProtocolError::Overflow)?;
+        .expect("an ordinary parse admits at most usize::MAX actions");
     admit(CssColorOrdinaryResource::Actions, required, maximum)?;
     *count = required;
     Ok(())
+}
+/// Services every action through the ordinary local banks. A refusal drops
+/// the pending action, which abandons the parse.
+fn drive<'owner, 'facts>(
+    mut parse: CssColorParse<'owner, 'facts>,
+    input: CssColorInput<'_>,
+    banks: &mut [Vec<CssColorSlot<'owner>>; 3],
+    limits: CssColorOrdinaryLimits,
+) -> Result<CssColorParseOutcome<'facts>, CssColorOrdinaryError> {
+    let mut actions = 0;
+    loop {
+        let action = match parse.step() {
+            CssColorParseStep::Complete(outcome) => return Ok(outcome),
+            CssColorParseStep::Pending(action) => action,
+        };
+        action_count(&mut actions, limits.actions)?;
+        parse = match action {
+            CssColorParseAction::ReadInput(read) => {
+                let unit = input
+                    .unit(read.offset())
+                    .expect("a parse reads only offsets below its declared length");
+                read.read(unit)?
+            }
+            CssColorParseAction::ReadSlot(read) => {
+                let slot = banks[ordinal(read.bank())]
+                    .get(read.index())
+                    .expect("a parse reads only records it stored");
+                read.read(slot)?
+            }
+            CssColorParseAction::AppendSlot(write) => {
+                let (bank, index) = (write.bank(), write.index());
+                let target = &mut banks[ordinal(bank)];
+                assert_eq!(index, target.len(), "a parse appends at its bank's end");
+                // Logical/write/allocation admission precedes generation and
+                // push; acknowledgement follows actual ownership transfer.
+                let required = index
+                    .checked_add(1)
+                    .expect("an appended index is below usize::MAX");
+                admit(resource(bank), required, allowed(limits, bank))?;
+                target
+                    .try_reserve(1)
+                    .map_err(|_| CssColorOrdinaryError::Allocation {
+                        resource: resource(bank),
+                    })?;
+                let (record, receipt) = write.record();
+                target.push(record);
+                receipt.stored(&target[index])
+            }
+            CssColorParseAction::UpdateSlot(write) => {
+                let (bank, index) = (write.bank(), write.index());
+                let old = banks[ordinal(bank)]
+                    .get_mut(index)
+                    .expect("a parse replaces only records it stored");
+                let (record, receipt) = write.record();
+                *old = record;
+                receipt.stored(old)
+            }
+            CssColorParseAction::ReadFact(read) => read.read()?,
+            CssColorParseAction::Compute(compute) => compute.compute()?,
+        };
+    }
 }
 /// Parse to a fixed used value without planning, admitting or creating output.
 /// Every finite action uses the canonical operation and the original source.
@@ -194,7 +250,7 @@ pub fn parse_used_color<'source, 'facts>(
         limits.input_units,
     )?;
     let mut owner = CssColorOperationOwner::new();
-    let mut operation = CssColorOperation::parse_used(
+    let parse = CssColorParse::start(
         &mut owner,
         input.kind(),
         input.len(),
@@ -203,70 +259,14 @@ pub fn parse_used_color<'source, 'facts>(
         expected,
     )?;
     let mut banks: [Vec<_>; 3] = std::array::from_fn(|_| Vec::new());
-    let mut actions = 0;
-    let execution = (|| {
-        loop {
-            match operation.action() {
-                CssColorActionDescription::UsedReady
-                | CssColorActionDescription::StandardFailed => break,
-                _ => {}
-            }
-            action_count(&mut actions, limits.actions)?;
-            let mut action = operation.next_action();
-            match action.description() {
-                CssColorActionDescription::ReadInput { offset } => action.read_input(
-                    offset,
-                    input
-                        .unit(offset)
-                        .ok_or(CssColorProtocolError::WrongIndex)?,
-                )?,
-                CssColorActionDescription::ReadSlot { bank, index } => action.read_slot(
-                    bank,
-                    index,
-                    banks[ordinal(bank)]
-                        .get(index)
-                        .ok_or(CssColorProtocolError::WrongIndex)?,
-                )?,
-                CssColorActionDescription::AppendSlot { bank, index } => {
-                    if index != banks[ordinal(bank)].len() {
-                        return Err(CssColorProtocolError::WrongIndex.into());
-                    }
-                    // Logical/write/allocation admission precedes generation and
-                    // push; acknowledgement follows actual ownership transfer.
-                    let required = index
-                        .checked_add(1)
-                        .ok_or(CssColorProtocolError::Overflow)?;
-                    admit(resource(bank), required, allowed(limits, bank))?;
-                    banks[ordinal(bank)].try_reserve(1).map_err(|_| {
-                        CssColorOrdinaryError::Allocation {
-                            resource: resource(bank),
-                        }
-                    })?;
-                    let record = action.record()?;
-                    banks[ordinal(bank)].push(record);
-                    action.written(bank, index, &banks[ordinal(bank)][index])?;
-                }
-                CssColorActionDescription::UpdateSlot { bank, index } => {
-                    let old = banks[ordinal(bank)]
-                        .get_mut(index)
-                        .ok_or(CssColorProtocolError::WrongIndex)?;
-                    *old = action.record()?;
-                    action.written(bank, index, old)?;
-                }
-                CssColorActionDescription::Compute(_) | CssColorActionDescription::ReadFact(_) => {
-                    action.compute()?
-                }
-                _ => return Err(CssColorProtocolError::WrongAction.into()),
-            }
+    let parsed = match drive(parse, input, &mut banks, limits) {
+        Ok(parsed) => parsed,
+        Err(error) => {
+            banks.iter_mut().for_each(Vec::clear);
+            return Err(error);
         }
-        Ok(())
-    })();
-    if let Err(error) = execution {
-        operation.abandon();
-        banks.iter_mut().for_each(Vec::clear);
-        return Err(error);
-    }
-    let (source, outcome) = match CssColorOperation::take(&mut Some(operation))? {
+    };
+    let (source, outcome) = match parsed {
         CssColorParseOutcome::Used(checkpoint) => (
             checkpoint.source(),
             CssColorOrdinaryOutcome::Used(checkpoint.value()),

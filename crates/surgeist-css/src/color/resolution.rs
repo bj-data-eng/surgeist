@@ -20,7 +20,7 @@ use super::profile::{
 use super::profile_conversion::{
     ConversionAction, InputAction, ProfileConversionLookup, ProfileInputBuilder,
 };
-use super::protocol::{CssColorBank, CssColorProtocolError, CssColorSlot, Data};
+use super::protocol::{ColorProtocolError, CssColorBank, CssColorSlot, Data};
 use super::relative::Binding;
 use super::syntax_pass::ValidatedGrammar;
 use crate::{
@@ -30,7 +30,7 @@ use crate::{
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum Error {
-    Protocol(CssColorProtocolError),
+    Protocol(ColorProtocolError),
     Component(super::component_value::Error),
     Channel(channels::Error),
     Palette(super::palette::PaletteError),
@@ -44,8 +44,8 @@ pub(crate) enum Error {
     CustomInterpolationUnsupported,
     ReverseProfileUnsupported,
 }
-impl From<CssColorProtocolError> for Error {
-    fn from(error: CssColorProtocolError) -> Self {
+impl From<ColorProtocolError> for Error {
+    fn from(error: ColorProtocolError) -> Self {
         Self::Protocol(error)
     }
 }
@@ -215,29 +215,29 @@ impl Frame {
             _ => None,
         }
     }
-    fn custom(&self) -> Result<&Custom, CssColorProtocolError> {
+    fn custom(&self) -> Result<&Custom, ColorProtocolError> {
         match &self.state {
             FrameState::CustomAlpha(v) | FrameState::CustomInputs(v) => Ok(v),
-            _ => Err(CssColorProtocolError::WrongSlot),
+            _ => Err(ColorProtocolError::WrongSlot),
         }
     }
-    fn mix_weights(&self) -> Result<&MixWeights, CssColorProtocolError> {
+    fn mix_weights(&self) -> Result<&MixWeights, ColorProtocolError> {
         match &self.state {
             FrameState::MixBuild(v) | FrameState::MixWeights(v) => Ok(v),
-            _ => Err(CssColorProtocolError::WrongSlot),
+            _ => Err(ColorProtocolError::WrongSlot),
         }
     }
-    fn mix_weights_mut(&mut self) -> Result<&mut MixWeights, CssColorProtocolError> {
+    fn mix_weights_mut(&mut self) -> Result<&mut MixWeights, ColorProtocolError> {
         match &mut self.state {
             FrameState::MixBuild(v) | FrameState::MixWeights(v) => Ok(v),
-            _ => Err(CssColorProtocolError::WrongSlot),
+            _ => Err(ColorProtocolError::WrongSlot),
         }
     }
-    fn set_next(&mut self, next: Option<usize>) -> Result<(), CssColorProtocolError> {
+    fn set_next(&mut self, next: Option<usize>) -> Result<(), ColorProtocolError> {
         match &mut self.state {
             FrameState::MixBuild(v) | FrameState::MixWeights(v) => v.next = next,
             FrameState::MixColors(v) => v.next = next,
-            _ => return Err(CssColorProtocolError::WrongSlot),
+            _ => return Err(ColorProtocolError::WrongSlot),
         }
         Ok(())
     }
@@ -418,8 +418,8 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
             State::Dispatch | State::Return(_) => Action::Compute,
         }
     }
-    fn fixed_frame(&self) -> Result<Frame, CssColorProtocolError> {
-        self.frame.ok_or(CssColorProtocolError::WrongAction)
+    fn fixed_frame(&self) -> Result<Frame, ColorProtocolError> {
+        self.frame.ok_or(ColorProtocolError::WrongAction)
     }
     fn complete_cylindrical(value: Color) -> bool {
         matches!(value.space(), Space::Hsl | Space::Hwb)
@@ -436,11 +436,11 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
         algorithm_end: usize,
     ) -> Result<(), Error> {
         if child < self.grammar.table.start || child >= self.grammar.table.end {
-            return Err(CssColorProtocolError::WrongIndex.into());
+            return Err(ColorProtocolError::WrongIndex.into());
         }
         algorithm_end
             .checked_add(1)
-            .ok_or(CssColorProtocolError::Overflow)?;
+            .ok_or(ColorProtocolError::Overflow)?;
         let mut frame = self.fixed_frame()?;
         frame.state = after;
         self.state = State::PendingFrame {
@@ -456,10 +456,10 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
         slot: &CssColorSlot<'_>,
     ) -> Result<(), Error> {
         if self.action() != (Action::ReadRecipe { index }) {
-            return Err(CssColorProtocolError::WrongAction.into());
+            return Err(ColorProtocolError::WrongAction.into());
         }
         let GrammarRecord::Recipe(recipe) = self.grammar.table.record(index, slot)? else {
-            return Err(CssColorProtocolError::WrongSlot.into());
+            return Err(ColorProtocolError::WrongSlot.into());
         };
         if index == self.grammar.table.root && self.parent.is_none() {
             self.source = Some(recipe.site);
@@ -496,10 +496,10 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
             value,
         } = self.state
         else {
-            return Err(CssColorProtocolError::WrongAction.into());
+            return Err(ColorProtocolError::WrongAction.into());
         };
         if index != expected {
-            return Err(CssColorProtocolError::WrongIndex.into());
+            return Err(ColorProtocolError::WrongIndex.into());
         }
         slot.qualify(
             self.grammar.table.input.records().owner,
@@ -508,7 +508,7 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
             CssColorBank::Algorithm,
         )?;
         let Data::Resolution(frame) = slot.data else {
-            return Err(CssColorProtocolError::WrongSlot.into());
+            return Err(ColorProtocolError::WrongSlot.into());
         };
         let mut frame = frame;
         frame.state = match frame.state {
@@ -519,7 +519,7 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
                 colors.current = MixCurrent::Returned { value, weight };
                 FrameState::MixColors(colors)
             }
-            _ => return Err(CssColorProtocolError::WrongSlot.into()),
+            _ => return Err(ColorProtocolError::WrongSlot.into()),
         };
         self.reached = Some(frame.site);
         self.parent = frame.parent;
@@ -542,7 +542,7 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
                 task,
                 index: expected,
             } if index == expected => Data::MixTask(task),
-            _ => return Err(CssColorProtocolError::WrongAction.into()),
+            _ => return Err(ColorProtocolError::WrongAction.into()),
         };
         Ok(CssColorSlot::new(
             self.grammar.table.input.records().owner,
@@ -565,10 +565,10 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
                 index: expected,
             } if index == expected => {
                 let Data::Resolution(actual) = slot.data else {
-                    return Err(CssColorProtocolError::WrongSlot.into());
+                    return Err(ColorProtocolError::WrongSlot.into());
                 };
                 if !frame.identical(actual) {
-                    return Err(CssColorProtocolError::WrongSlot.into());
+                    return Err(ColorProtocolError::WrongSlot.into());
                 }
                 self.frame = None;
                 self.parent = Some(index);
@@ -579,10 +579,10 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
                 index: expected,
             } if index == expected => {
                 let Data::MixTask(actual) = slot.data else {
-                    return Err(CssColorProtocolError::WrongSlot.into());
+                    return Err(ColorProtocolError::WrongSlot.into());
                 };
                 if task != actual {
-                    return Err(CssColorProtocolError::WrongSlot.into());
+                    return Err(ColorProtocolError::WrongSlot.into());
                 }
                 let mut frame = self.fixed_frame()?;
                 frame.mix_weights_mut()?.head = Some(index);
@@ -599,18 +599,18 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
                 index: expected,
             } if index == expected => {
                 let Data::MixTask(actual) = slot.data else {
-                    return Err(CssColorProtocolError::WrongSlot.into());
+                    return Err(ColorProtocolError::WrongSlot.into());
                 };
                 if actual != task {
-                    return Err(CssColorProtocolError::WrongSlot.into());
+                    return Err(ColorProtocolError::WrongSlot.into());
                 }
                 self.frame
                     .as_mut()
-                    .ok_or(CssColorProtocolError::WrongAction)?
+                    .ok_or(ColorProtocolError::WrongAction)?
                     .set_next(task.next)?;
                 self.state = State::Dispatch;
             }
-            _ => return Err(CssColorProtocolError::WrongAction.into()),
+            _ => return Err(ColorProtocolError::WrongAction.into()),
         }
         Ok(())
     }
@@ -621,20 +621,20 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
         algorithm_end: usize,
     ) -> Result<(), Error> {
         if self.action() != (Action::ReadMix { index }) {
-            return Err(CssColorProtocolError::WrongAction.into());
+            return Err(ColorProtocolError::WrongAction.into());
         }
         let GrammarRecord::Mix(member) = self.grammar.table.record(index, slot)? else {
-            return Err(CssColorProtocolError::WrongSlot.into());
+            return Err(ColorProtocolError::WrongSlot.into());
         };
         let frame = self.fixed_frame()?;
         if member.ordinal >= frame.recipe.mix_count
             || member.previous.is_some_and(|previous| previous >= index)
         {
-            return Err(CssColorProtocolError::WrongSlot.into());
+            return Err(ColorProtocolError::WrongSlot.into());
         }
         algorithm_end
             .checked_add(1)
-            .ok_or(CssColorProtocolError::Overflow)?;
+            .ok_or(ColorProtocolError::Overflow)?;
         self.state = State::PendingTask {
             task: MixTask {
                 next: frame.mix_weights()?.head,
@@ -665,7 +665,7 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
     ) -> Result<(), Error> {
         let cursor = match &mut self.state {
             State::Component(cursor) | State::CustomComponent { cursor, .. } => cursor,
-            _ => return Err(CssColorProtocolError::WrongAction.into()),
+            _ => return Err(ColorProtocolError::WrongAction.into()),
         };
         cursor
             .read_component(index, slot)
@@ -685,7 +685,7 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
     ) -> Result<(), Error> {
         let cursor = match &mut self.state {
             State::Component(cursor) | State::CustomComponent { cursor, .. } => cursor,
-            _ => return Err(CssColorProtocolError::WrongAction.into()),
+            _ => return Err(ColorProtocolError::WrongAction.into()),
         };
         cursor.read(bank, index, slot).map_err(Error::Component)?;
         if let Some(record) = cursor.authored_site() {
@@ -696,7 +696,7 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
     pub(crate) fn component_record(&self, index: usize) -> Result<CssColorSlot<'owner>, Error> {
         let cursor = match &self.state {
             State::Component(cursor) | State::CustomComponent { cursor, .. } => cursor,
-            _ => return Err(CssColorProtocolError::WrongAction.into()),
+            _ => return Err(ColorProtocolError::WrongAction.into()),
         };
         cursor.record(index).map_err(Error::Component)
     }
@@ -707,7 +707,7 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
     ) -> Result<(), Error> {
         let cursor = match &mut self.state {
             State::Component(cursor) | State::CustomComponent { cursor, .. } => cursor,
-            _ => return Err(CssColorProtocolError::WrongAction.into()),
+            _ => return Err(ColorProtocolError::WrongAction.into()),
         };
         cursor.written(index, slot).map_err(Error::Component)
     }
@@ -721,10 +721,10 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
             custom_mix,
         } = self.state
         else {
-            return Err(CssColorProtocolError::WrongAction.into());
+            return Err(ColorProtocolError::WrongAction.into());
         };
         if index != expected {
-            return Err(CssColorProtocolError::WrongIndex.into());
+            return Err(ColorProtocolError::WrongIndex.into());
         }
         let cursor = ProfileLookup::start(
             &self.grammar.table.input.records(),
@@ -749,7 +749,7 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
             State::ProfileName(cursor) => cursor
                 .read_source(index, slot)
                 .map_err(Error::ProfileComponent),
-            _ => Err(CssColorProtocolError::WrongAction.into()),
+            _ => Err(ColorProtocolError::WrongAction.into()),
         }
     }
     pub(crate) fn read_profile_name_token(
@@ -758,7 +758,7 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
         slot: &CssColorSlot<'_>,
     ) -> Result<(), Error> {
         if !matches!(self.state, State::ProfileNameToken(expected) if expected == index) {
-            return Err(CssColorProtocolError::WrongAction.into());
+            return Err(ColorProtocolError::WrongAction.into());
         }
         let selection = self.fixed_frame()?.custom()?.selection;
         self.state = State::ProfileName(
@@ -775,7 +775,7 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
     }
     pub(crate) fn profile_input_record(&self, index: usize) -> Result<CssColorSlot<'owner>, Error> {
         let State::CustomBuilder(cursor) = &self.state else {
-            return Err(CssColorProtocolError::WrongAction.into());
+            return Err(ColorProtocolError::WrongAction.into());
         };
         cursor.record(index).map_err(Error::Conversion)
     }
@@ -785,7 +785,7 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
         slot: &CssColorSlot<'_>,
     ) -> Result<(), Error> {
         let State::CustomBuilder(cursor) = &mut self.state else {
-            return Err(CssColorProtocolError::WrongAction.into());
+            return Err(ColorProtocolError::WrongAction.into());
         };
         cursor.appended(index, slot).map_err(Error::Conversion)
     }
@@ -796,7 +796,7 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
         slot: &CssColorSlot<'_>,
     ) -> Result<(), Error> {
         let State::Conversion(cursor) = &mut self.state else {
-            return Err(CssColorProtocolError::WrongAction.into());
+            return Err(ColorProtocolError::WrongAction.into());
         };
         cursor
             .read_input(index, ordinal, slot)
@@ -804,7 +804,7 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
     }
     pub(crate) fn read_scheme(&mut self) -> Result<(), Error> {
         if self.action() != Action::ReadScheme {
-            return Err(CssColorProtocolError::WrongAction.into());
+            return Err(ColorProtocolError::WrongAction.into());
         }
         let selected = self
             .facts
@@ -813,12 +813,9 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
                 super::facts::SchemeError::ForeignFacts => Error::ForeignFacts,
                 super::facts::SchemeError::Unavailable => Error::MissingScheme,
             })?;
-        let frame = self
-            .frame
-            .as_mut()
-            .ok_or(CssColorProtocolError::WrongAction)?;
+        let frame = self.frame.as_mut().ok_or(ColorProtocolError::WrongAction)?;
         if !matches!(frame.state, FrameState::WrapperScheme) {
-            return Err(CssColorProtocolError::WrongSlot.into());
+            return Err(ColorProtocolError::WrongSlot.into());
         }
         frame.state = FrameState::WrapperSelected(selected);
         self.state = State::Dispatch;
@@ -831,7 +828,7 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
         evaluation_end: usize,
     ) -> Result<(), Error> {
         if self.action() != (Action::ReadTask { index }) {
-            return Err(CssColorProtocolError::WrongAction.into());
+            return Err(ColorProtocolError::WrongAction.into());
         }
         slot.qualify(
             self.grammar.table.input.records().owner,
@@ -840,7 +837,7 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
             CssColorBank::Algorithm,
         )?;
         let Data::MixTask(task) = slot.data else {
-            return Err(CssColorProtocolError::WrongSlot.into());
+            return Err(ColorProtocolError::WrongSlot.into());
         };
         if let Some(percentage) = self.pending_percentage {
             let mut updated = task;
@@ -852,10 +849,7 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
             };
             return Ok(());
         }
-        let frame = self
-            .frame
-            .as_mut()
-            .ok_or(CssColorProtocolError::WrongAction)?;
+        let frame = self.frame.as_mut().ok_or(ColorProtocolError::WrongAction)?;
 
         match &mut frame.state {
             FrameState::MixWeights(weights) => {
@@ -881,7 +875,7 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
                 };
                 self.state = State::Dispatch;
             }
-            _ => return Err(CssColorProtocolError::WrongSlot.into()),
+            _ => return Err(ColorProtocolError::WrongSlot.into()),
         }
         Ok(())
     }
@@ -1003,7 +997,7 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
                     }
                 }
                 if cursor.action() != ComponentAction::Done {
-                    return Err(CssColorProtocolError::WrongAction.into());
+                    return Err(ColorProtocolError::WrongAction.into());
                 }
                 let value = cursor.finish()?;
                 let state = std::mem::replace(&mut self.state, State::Stopped);
@@ -1014,7 +1008,7 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
                 {
                     cursor.abandon();
                     let InputAction::ReadComponent { ordinal } = builder.action() else {
-                        return Err(CssColorProtocolError::WrongAction.into());
+                        return Err(ColorProtocolError::WrongAction.into());
                     };
                     builder
                         .component(ordinal, value)
@@ -1031,7 +1025,7 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
                 match &mut frame.state {
                     FrameState::Channels(coordinates) => {
                         if coordinates.ordinal >= 4 {
-                            return Err(CssColorProtocolError::WrongIndex.into());
+                            return Err(ColorProtocolError::WrongIndex.into());
                         }
                         coordinates.components[coordinates.ordinal] = value;
                         coordinates.ordinal += 1;
@@ -1052,14 +1046,14 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
                             .summary
                             .observe(Some(value.value))
                             .map_err(Error::Interpolation)?;
-                        let index = weights.next.ok_or(CssColorProtocolError::WrongSlot)?;
+                        let index = weights.next.ok_or(ColorProtocolError::WrongSlot)?;
                         // A second fixed read joins the percentage to its actual task.
                         self.frame = Some(frame);
                         self.state = State::TaskRead(index);
                         self.pending_percentage = Some(value.value);
                         return Ok(());
                     }
-                    _ => return Err(CssColorProtocolError::WrongAction.into()),
+                    _ => return Err(ColorProtocolError::WrongAction.into()),
                 }
                 self.frame = Some(frame);
                 self.state = State::Dispatch;
@@ -1076,15 +1070,12 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
                                 Err(Error::CustomInterpolationUnsupported)
                             }
                             Err(error) => Err(Error::Conversion(error)),
-                            Ok(()) => Err(CssColorProtocolError::WrongAction.into()),
+                            Ok(()) => Err(ColorProtocolError::WrongAction.into()),
                         };
                     }
-                    let frame = self
-                        .frame
-                        .as_mut()
-                        .ok_or(CssColorProtocolError::WrongAction)?;
+                    let frame = self.frame.as_mut().ok_or(ColorProtocolError::WrongAction)?;
                     let FrameState::Profile(origin) = frame.state else {
-                        return Err(CssColorProtocolError::WrongSlot.into());
+                        return Err(ColorProtocolError::WrongSlot.into());
                     };
                     frame.state = FrameState::CustomAlpha(Custom {
                         origin,
@@ -1108,7 +1099,7 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
                             Err(Error::ReverseProfileUnsupported)
                         }
                         Err(error) => Err(Error::Conversion(error)),
-                        Ok(()) => Err(CssColorProtocolError::WrongAction.into()),
+                        Ok(()) => Err(ColorProtocolError::WrongAction.into()),
                     };
                 } else {
                     cursor
@@ -1153,7 +1144,7 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
                             Space::Predefined(Predefined::XyzD50),
                         ));
                     }
-                    _ => return Err(CssColorProtocolError::WrongAction.into()),
+                    _ => return Err(ColorProtocolError::WrongAction.into()),
                 }
                 return Ok(());
             }
@@ -1176,7 +1167,7 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
                 return Ok(());
             }
             State::Dispatch => {}
-            _ => return Err(CssColorProtocolError::WrongAction.into()),
+            _ => return Err(ColorProtocolError::WrongAction.into()),
         }
         let mut frame = self.fixed_frame()?;
         if matches!(frame.site, Site::Authored { .. }) {
@@ -1204,12 +1195,12 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
                 }
                 F::Contrast => {
                     return self.descend(
-                        frame.recipe.children[0].ok_or(CssColorProtocolError::WrongSlot)?,
+                        frame.recipe.children[0].ok_or(ColorProtocolError::WrongSlot)?,
                         FrameState::WrapperChild,
                         algorithm_end,
                     );
                 }
-                _ => return Err(CssColorProtocolError::WrongSlot.into()),
+                _ => return Err(ColorProtocolError::WrongSlot.into()),
             },
             FrameState::WrapperSelected(ordinal) => {
                 return self.descend(
@@ -1219,7 +1210,7 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
                         .get(ordinal)
                         .copied()
                         .flatten()
-                        .ok_or(CssColorProtocolError::WrongSlot)?,
+                        .ok_or(ColorProtocolError::WrongSlot)?,
                     FrameState::WrapperChild,
                     algorithm_end,
                 );
@@ -1267,7 +1258,7 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
             }
             FrameState::Profile(_) => {
                 let Some(ProfileSpace::Custom { token, .. }) = frame.recipe.space else {
-                    return Err(CssColorProtocolError::WrongSlot.into());
+                    return Err(ColorProtocolError::WrongSlot.into());
                 };
                 self.state = State::ProfileToken {
                     index: token,
@@ -1301,7 +1292,7 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
             FrameState::Finish(coordinates) => {
                 let value = match frame.recipe.function {
                     F::Alpha => super::relative::alpha_only(
-                        coordinates.origin.ok_or(CssColorProtocolError::WrongSlot)?,
+                        coordinates.origin.ok_or(ColorProtocolError::WrongSlot)?,
                         coordinates.alpha,
                     )
                     .map_err(Error::Channel)?,
@@ -1367,8 +1358,7 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
                     summary: WeightSummary::default(),
                 });
                 self.frame = Some(frame);
-                self.state =
-                    State::MixRead(frame.recipe.mix.ok_or(CssColorProtocolError::WrongSlot)?);
+                self.state = State::MixRead(frame.recipe.mix.ok_or(ColorProtocolError::WrongSlot)?);
                 return Ok(());
             }
             FrameState::MixBuild(mut weights) => {
@@ -1384,8 +1374,8 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
                 let method = match frame.recipe.interpolation {
                     Some(Interpolation::Standard(method)) => method,
                     None => crate::CssColorInterpolationMethod::try_new(Space::Oklab, None)
-                        .map_err(|_| CssColorProtocolError::WrongSlot)?,
-                    _ => return Err(CssColorProtocolError::WrongSlot.into()),
+                        .map_err(|_| ColorProtocolError::WrongSlot)?,
+                    _ => return Err(ColorProtocolError::WrongSlot.into()),
                 };
                 frame.state = FrameState::MixColors(MixColors {
                     head: weights.head,
@@ -1425,44 +1415,42 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
                     return Ok(());
                 }
             },
-            _ => return Err(CssColorProtocolError::WrongAction.into()),
+            _ => return Err(ColorProtocolError::WrongAction.into()),
         }
         self.frame = Some(frame);
         self.state = State::Dispatch;
         Ok(())
     }
-    pub(crate) fn reached_site(&self) -> Result<Site, CssColorProtocolError> {
+    pub(crate) fn reached_site(&self) -> Result<Site, ColorProtocolError> {
         if matches!(self.state, State::Dispatch) {
             self.frame
                 .map(|frame| frame.site)
-                .ok_or(CssColorProtocolError::WrongSlot)
+                .ok_or(ColorProtocolError::WrongSlot)
         } else {
-            self.reached.ok_or(CssColorProtocolError::WrongSlot)
+            self.reached.ok_or(ColorProtocolError::WrongSlot)
         }
     }
-    pub(crate) fn consumed_site(&self) -> Result<Site, CssColorProtocolError> {
+    pub(crate) fn consumed_site(&self) -> Result<Site, ColorProtocolError> {
         if matches!(self.state, State::Done(_)) {
-            self.source.ok_or(CssColorProtocolError::WrongSlot)
+            self.source.ok_or(ColorProtocolError::WrongSlot)
         } else {
-            Err(CssColorProtocolError::Terminal)
+            Err(ColorProtocolError::Terminal)
         }
     }
     pub(crate) fn consumed_source(
         &self,
-    ) -> Result<crate::tokenization::tokenizer::Span, CssColorProtocolError> {
+    ) -> Result<crate::tokenization::tokenizer::Span, ColorProtocolError> {
         if matches!(self.state, State::Done(_)) {
-            self.source
-                .ok_or(CssColorProtocolError::WrongSlot)?
-                .source()
+            self.source.ok_or(ColorProtocolError::WrongSlot)?.source()
         } else {
-            Err(CssColorProtocolError::Terminal)
+            Err(ColorProtocolError::Terminal)
         }
     }
-    pub(crate) fn finish(&self) -> Result<Color, CssColorProtocolError> {
+    pub(crate) fn finish(&self) -> Result<Color, ColorProtocolError> {
         if let State::Done(value) = self.state {
             Ok(value)
         } else {
-            Err(CssColorProtocolError::Terminal)
+            Err(ColorProtocolError::Terminal)
         }
     }
     pub(crate) fn abandon(&mut self) {
@@ -1479,7 +1467,7 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
         self.state = State::Stopped;
     }
 }
-fn environment(recipe: FunctionRecipe) -> Result<Environment, CssColorProtocolError> {
+fn environment(recipe: FunctionRecipe) -> Result<Environment, ColorProtocolError> {
     Ok(match recipe.function {
         F::Rgb => Environment::Rgb,
         F::Hsl => Environment::Hsl,
@@ -1497,9 +1485,9 @@ fn environment(recipe: FunctionRecipe) -> Result<Environment, CssColorProtocolEr
                     Environment::PredefinedRgb(space)
                 }
             }
-            _ => return Err(CssColorProtocolError::WrongSlot),
+            _ => return Err(ColorProtocolError::WrongSlot),
         },
-        _ => return Err(CssColorProtocolError::WrongSlot),
+        _ => return Err(ColorProtocolError::WrongSlot),
     })
 }
 
@@ -1539,24 +1527,24 @@ mod tests {
                         CssColorSlot::new(&foreign, record.phase, index, record.data);
                     assert_eq!(
                         cursor.read_parent(index, &foreign_record),
-                        Err(Error::Protocol(CssColorProtocolError::ForeignSlot))
+                        Err(Error::Protocol(ColorProtocolError::ForeignSlot))
                     );
                     assert_eq!(cursor.action(), pending);
                     let wrong =
                         CssColorSlot::new(record.owner, record.phase, index, Data::NameUnit('x'));
                     assert_eq!(
                         cursor.read_parent(index, &wrong),
-                        Err(Error::Protocol(CssColorProtocolError::WrongSlot))
+                        Err(Error::Protocol(ColorProtocolError::WrongSlot))
                     );
                     assert_eq!(cursor.action(), pending);
                     assert_eq!(
                         cursor.read_parent(index + 1, record),
-                        Err(Error::Protocol(CssColorProtocolError::WrongIndex))
+                        Err(Error::Protocol(ColorProtocolError::WrongIndex))
                     );
                     assert_eq!(cursor.action(), pending);
                     if cancel_at == Some(suspensions) {
                         cursor.abandon();
-                        break Err(Error::Protocol(CssColorProtocolError::Terminal));
+                        break Err(Error::Protocol(ColorProtocolError::Terminal));
                     }
                     suspensions += 1;
                     cursor.read_parent(index, record)
@@ -1577,7 +1565,7 @@ mod tests {
                             CssColorSlot::new(&foreign, record.phase, index, record.data);
                         assert_eq!(
                             cursor.written(index, &foreign_record),
-                            Err(Error::Protocol(CssColorProtocolError::ForeignSlot))
+                            Err(Error::Protocol(ColorProtocolError::ForeignSlot))
                         );
                         assert_eq!(cursor.action(), pending);
                         let wrong = CssColorSlot::new(
@@ -1588,7 +1576,7 @@ mod tests {
                         );
                         assert_eq!(
                             cursor.written(index, &wrong),
-                            Err(Error::Protocol(CssColorProtocolError::WrongSlot))
+                            Err(Error::Protocol(ColorProtocolError::WrongSlot))
                         );
                         assert_eq!(cursor.action(), pending);
                         let Data::Resolution(mut changed) = record.data else {
@@ -1603,12 +1591,12 @@ mod tests {
                         );
                         assert_eq!(
                             cursor.written(index, &changed),
-                            Err(Error::Protocol(CssColorProtocolError::WrongSlot))
+                            Err(Error::Protocol(ColorProtocolError::WrongSlot))
                         );
                         assert_eq!(cursor.action(), pending);
                         if cancel_at == Some(suspensions) {
                             cursor.abandon();
-                            break Err(Error::Protocol(CssColorProtocolError::Terminal));
+                            break Err(Error::Protocol(ColorProtocolError::Terminal));
                         }
                         suspensions += 1;
                     }
@@ -1680,7 +1668,7 @@ mod tests {
         };
         cursor.abandon();
         assert_eq!(cursor.action(), Action::Stopped);
-        assert_eq!(cursor.finish(), Err(CssColorProtocolError::Terminal));
+        assert_eq!(cursor.finish(), Err(ColorProtocolError::Terminal));
         result
     }
     fn facts(scheme: CssColorSchemeFact, device: CssDeviceColorFact<'_>) -> CssColorFacts<'_> {
@@ -1862,7 +1850,7 @@ mod tests {
         for suspension in 0..4 {
             assert_eq!(
                 resolve_suspending(relative, &facts, Some(suspension)),
-                Err(Error::Protocol(CssColorProtocolError::Terminal))
+                Err(Error::Protocol(ColorProtocolError::Terminal))
             );
         }
         let relative = resolve_suspending(relative, &facts, Some(4)).unwrap();
@@ -1895,7 +1883,7 @@ mod tests {
         for suspension in 0..10 {
             assert_eq!(
                 resolve_suspending(input, &facts, Some(suspension)),
-                Err(Error::Protocol(CssColorProtocolError::Terminal))
+                Err(Error::Protocol(ColorProtocolError::Terminal))
             );
         }
         let recovered = resolve_suspending(input, &facts, Some(10)).unwrap();

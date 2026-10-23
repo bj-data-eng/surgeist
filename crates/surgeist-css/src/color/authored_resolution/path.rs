@@ -1,6 +1,6 @@
 //! One caller-owned contiguous path allocation with explicit reservation effects.
 
-use super::super::protocol::{CssColorOperationOwner, CssColorProtocolError};
+use super::super::protocol::{ColorProtocolError, CssColorOperationOwner};
 use crate::CssValueOrigin;
 use std::mem::{size_of, take};
 
@@ -39,12 +39,12 @@ fn capacity_bytes(capacity: usize) -> usize {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum CssColorPathReservationStatus {
+pub(crate) enum CssColorPathReservationStatus {
     Reserved,
     AllocationFailed,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct CssColorPathCapacityObservation {
+pub(crate) struct CssColorPathCapacityObservation {
     epoch: usize,
     revision: usize,
     old_len: usize,
@@ -55,26 +55,24 @@ pub struct CssColorPathCapacityObservation {
     status: CssColorPathReservationStatus,
 }
 impl CssColorPathCapacityObservation {
-    pub const fn old_len(self) -> usize {
+    #[cfg(test)]
+    pub(crate) const fn old_len(self) -> usize {
         self.old_len
     }
-    pub const fn old_capacity(self) -> usize {
+    #[cfg(test)]
+    pub(crate) const fn old_capacity(self) -> usize {
         self.old_capacity
     }
-    pub const fn required_len(self) -> usize {
+    #[cfg(test)]
+    pub(crate) const fn required_len(self) -> usize {
         self.required_len
     }
-    pub const fn actual_len(self) -> usize {
+    #[cfg(test)]
+    pub(crate) const fn actual_len(self) -> usize {
         self.actual_len
     }
     pub const fn actual_capacity(self) -> usize {
         self.actual_capacity
-    }
-    pub fn old_capacity_bytes(self) -> usize {
-        capacity_bytes(self.old_capacity)
-    }
-    pub fn actual_capacity_bytes(self) -> usize {
-        capacity_bytes(self.actual_capacity)
     }
     pub const fn status(self) -> CssColorPathReservationStatus {
         self.status
@@ -82,7 +80,7 @@ impl CssColorPathCapacityObservation {
 }
 
 /// The allocation has no retained anchor/root/fact borrow, including after cleanup.
-pub struct CssColorPathBuffer {
+pub(crate) struct CssColorPathBuffer {
     steps: Vec<CssColorPathStep>,
     epoch: usize,
     observation: Option<CssColorPathCapacityObservation>,
@@ -100,20 +98,15 @@ impl CssColorPathBuffer {
             observation: None,
         }
     }
-    pub fn len(&self) -> usize {
+    #[cfg(test)]
+    pub(crate) fn len(&self) -> usize {
         self.steps.len()
-    }
-    pub fn is_empty(&self) -> bool {
-        self.steps.is_empty()
     }
     pub fn capacity(&self) -> usize {
         self.steps.capacity()
     }
     pub fn capacity_bytes(&self) -> usize {
         capacity_bytes(self.capacity())
-    }
-    pub const fn header_bytes() -> usize {
-        size_of::<Self>()
     }
     /// Fixed observation of this buffer's own outstanding recovered reservation.
     /// The caller admits this header read and accounts its actual capacity delta
@@ -124,18 +117,18 @@ impl CssColorPathBuffer {
     /// Acknowledges only this buffer's stored recovered reservation. It performs
     /// no allocation, path extension, producer work, or first-stop replacement.
     /// An absent or already acknowledged observation refuses without mutation.
-    pub fn capacity_observed(&mut self) -> Result<(), CssColorProtocolError> {
+    pub fn capacity_observed(&mut self) -> Result<(), ColorProtocolError> {
         if self.observation.is_none() {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         }
         self.observation = None;
         Ok(())
     }
     /// Caller admission precedes this fixed header mutation; Copy steps have no
     /// payload destructors. Capacity and epoch remain owned by the caller.
-    pub fn cleanup(&mut self) -> Result<(), CssColorProtocolError> {
+    pub fn cleanup(&mut self) -> Result<(), ColorProtocolError> {
         if self.observation.is_some() {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         }
         self.steps.clear();
         Ok(())
@@ -143,7 +136,7 @@ impl CssColorPathBuffer {
 }
 
 #[derive(Clone, Copy)]
-pub struct CssColorPathHandle<'css> {
+pub(crate) struct CssColorPathHandle<'css> {
     owner: &'css CssColorOperationOwner,
     phase: usize,
     epoch: usize,
@@ -176,14 +169,15 @@ impl CssColorPathHandle<'_> {
     }
 }
 
+#[cfg(test)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct CssColorPathInspectionLayout {
+pub(crate) struct CssColorPathInspectionLayout {
     pub handle_bytes: usize,
     pub path_header_bytes: usize,
     pub step_read_bytes: usize,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct CssColorPathReservationLayout {
+pub(crate) struct CssColorPathReservationLayout {
     pub header_bytes: usize,
     pub observation_bytes: usize,
     pub step_bytes: usize,
@@ -208,16 +202,16 @@ impl<'path, 'css> PathState<'path, 'css> {
     pub(super) fn initialize(
         owner: &'css mut CssColorOperationOwner,
         buffer: &'path mut CssColorPathBuffer,
-    ) -> Result<Self, CssColorProtocolError> {
+    ) -> Result<Self, ColorProtocolError> {
         if !buffer.steps.is_empty() || buffer.observation.is_some() {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         }
         let phase = owner.current_phase();
         let next_phase = owner.prepare_advance(phase)?;
         let next_epoch = buffer
             .epoch
             .checked_add(1)
-            .ok_or(CssColorProtocolError::Overflow)?;
+            .ok_or(ColorProtocolError::Overflow)?;
         owner.commit_phase(phase, next_phase);
         buffer.epoch = next_epoch;
         Ok(Self {
@@ -228,6 +222,7 @@ impl<'path, 'css> PathState<'path, 'css> {
             prepared: None,
         })
     }
+    #[cfg(test)]
     pub(super) fn retained_layout(&self) -> (usize, usize, usize) {
         match &self.prepared {
             Some(site) => (
@@ -262,16 +257,18 @@ impl<'path, 'css> PathState<'path, 'css> {
             length: self.steps().len(),
         }
     }
-    fn qualify(&self, handle: CssColorPathHandle<'css>) -> Result<(), CssColorProtocolError> {
+    #[cfg(test)]
+    fn qualify(&self, handle: CssColorPathHandle<'css>) -> Result<(), ColorProtocolError> {
         if handle != self.handle() || self.owner.current_phase() != self.phase {
-            return Err(CssColorProtocolError::ForeignSlot);
+            return Err(ColorProtocolError::ForeignSlot);
         }
         Ok(())
     }
+    #[cfg(test)]
     pub(super) fn inspection_layout(
         &self,
         handle: CssColorPathHandle<'css>,
-    ) -> Result<CssColorPathInspectionLayout, CssColorProtocolError> {
+    ) -> Result<CssColorPathInspectionLayout, ColorProtocolError> {
         self.qualify(handle)?;
         Ok(CssColorPathInspectionLayout {
             handle_bytes: size_of::<CssColorPathHandle<'_>>(),
@@ -283,31 +280,32 @@ impl<'path, 'css> PathState<'path, 'css> {
             step_read_bytes: handle
                 .length
                 .checked_mul(size_of::<CssColorPathStep>())
-                .ok_or(CssColorProtocolError::Overflow)?,
+                .ok_or(ColorProtocolError::Overflow)?,
         })
     }
+    #[cfg(test)]
     pub(super) fn view(
         &self,
         handle: CssColorPathHandle<'css>,
-    ) -> Result<&[CssColorPathStep], CssColorProtocolError> {
+    ) -> Result<&[CssColorPathStep], ColorProtocolError> {
         self.qualify(handle)?;
         Ok(self.steps())
     }
     pub(super) fn reservation_layout(
         &self,
-    ) -> Result<CssColorPathReservationLayout, CssColorProtocolError> {
+    ) -> Result<CssColorPathReservationLayout, ColorProtocolError> {
         if self.prepared.is_some() || self.buffer.observation.is_some() {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         }
         let required_len = self
             .buffer
             .steps
             .len()
             .checked_add(1)
-            .ok_or(CssColorProtocolError::Overflow)?;
+            .ok_or(ColorProtocolError::Overflow)?;
         let requested_capacity_bytes = required_len
             .checked_mul(size_of::<CssColorPathStep>())
-            .ok_or(CssColorProtocolError::Overflow)?;
+            .ok_or(ColorProtocolError::Overflow)?;
         Ok(CssColorPathReservationLayout {
             header_bytes: size_of::<CssColorPathBuffer>(),
             observation_bytes: size_of::<CssColorPathCapacityObservation>(),
@@ -319,7 +317,7 @@ impl<'path, 'css> PathState<'path, 'css> {
     }
     pub(super) fn reserve(
         &mut self,
-    ) -> Result<CssColorPathCapacityObservation, CssColorProtocolError> {
+    ) -> Result<CssColorPathCapacityObservation, ColorProtocolError> {
         let layout = self.reservation_layout()?;
         let old_len = self.buffer.steps.len();
         let old_capacity = self.buffer.steps.capacity();
@@ -349,43 +347,43 @@ impl<'path, 'css> PathState<'path, 'css> {
     }
     pub(super) fn capacity_observed(
         &mut self,
-    ) -> Result<CssColorPathReservationStatus, CssColorProtocolError> {
+    ) -> Result<CssColorPathReservationStatus, ColorProtocolError> {
         let observation = self
             .buffer
             .observation
-            .ok_or(CssColorProtocolError::WrongAction)?;
+            .ok_or(ColorProtocolError::WrongAction)?;
         if observation.revision != self.revision {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         }
         self.buffer.capacity_observed()?;
         Ok(observation.status)
     }
-    pub(super) fn append(&mut self, step: CssColorPathStep) -> Result<(), CssColorProtocolError> {
+    pub(super) fn append(&mut self, step: CssColorPathStep) -> Result<(), ColorProtocolError> {
         if self.prepared.is_some()
             || self.buffer.observation.is_some()
             || self.buffer.steps.len() == self.buffer.steps.capacity()
         {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         }
         let revision = self
             .revision
             .checked_add(1)
-            .ok_or(CssColorProtocolError::Overflow)?;
+            .ok_or(ColorProtocolError::Overflow)?;
         self.buffer.steps.push(step);
         self.revision = revision;
         Ok(())
     }
-    pub(super) fn truncate(&mut self, length: usize) -> Result<(), CssColorProtocolError> {
+    pub(super) fn truncate(&mut self, length: usize) -> Result<(), ColorProtocolError> {
         if self.prepared.is_some()
             || self.buffer.observation.is_some()
             || length > self.buffer.steps.len()
         {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         }
         let revision = self
             .revision
             .checked_add(1)
-            .ok_or(CssColorProtocolError::Overflow)?;
+            .ok_or(ColorProtocolError::Overflow)?;
         self.buffer.steps.truncate(length);
         self.revision = revision;
         Ok(())
@@ -394,14 +392,14 @@ impl<'path, 'css> PathState<'path, 'css> {
         &mut self,
         site: usize,
         origin: Option<&CssValueOrigin>,
-    ) -> Result<(), CssColorProtocolError> {
+    ) -> Result<(), ColorProtocolError> {
         if self.prepared.is_some() || self.buffer.observation.is_some() {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         }
         let revision = self
             .revision
             .checked_add(1)
-            .ok_or(CssColorProtocolError::Overflow)?;
+            .ok_or(ColorProtocolError::Overflow)?;
         let origin = origin.cloned();
         self.prepared = Some(PreparedSite {
             path: CssColorComponentPath {
@@ -413,15 +411,15 @@ impl<'path, 'css> PathState<'path, 'css> {
         self.revision = revision;
         Ok(())
     }
-    pub(super) fn restore(&mut self) -> Result<(), CssColorProtocolError> {
+    pub(super) fn restore(&mut self) -> Result<(), ColorProtocolError> {
         let revision = self
             .revision
             .checked_add(1)
-            .ok_or(CssColorProtocolError::Overflow)?;
+            .ok_or(ColorProtocolError::Overflow)?;
         let site = self
             .prepared
             .take()
-            .ok_or(CssColorProtocolError::WrongAction)?;
+            .ok_or(ColorProtocolError::WrongAction)?;
         self.buffer.steps = site.path.steps;
         self.revision = revision;
         Ok(())
@@ -460,8 +458,9 @@ mod tests {
     use super::*;
     #[test]
     fn foreign_fact_preflight_does_not_change_phase_epoch_or_capacity() {
+        use super::super::AuthoredError;
         use crate::color::{
-            CssColorFactError, CssColorFactIdentity, CssColorFacts, CssColorOperationError,
+            CssColorError, CssColorFactError, CssColorFactIdentity, CssColorFacts,
             CssColorPropertyFacts, CssColorSchemeFact, CssDeviceColorFact,
         };
         let mut owner = CssColorOperationOwner::new();
@@ -487,7 +486,9 @@ mod tests {
         );
         assert!(matches!(
             result,
-            Err(CssColorOperationError::Facts(CssColorFactError::Foreign))
+            Err(AuthoredError::Color(CssColorError::Facts(
+                CssColorFactError::Foreign
+            )))
         ));
         drop(result);
         assert_eq!(owner.current_phase(), phase);

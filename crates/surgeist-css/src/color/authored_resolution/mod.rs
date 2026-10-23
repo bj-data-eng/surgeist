@@ -8,16 +8,23 @@ mod position;
 mod scalar;
 pub(super) mod site;
 mod spelling;
-pub use path::{
-    CssColorComponentPath, CssColorPathBuffer, CssColorPathCapacityObservation, CssColorPathHandle,
-    CssColorPathInspectionLayout, CssColorPathReservationLayout, CssColorPathReservationStatus,
-    CssColorPathStep,
+#[cfg(test)]
+pub(crate) use path::CssColorPathInspectionLayout;
+pub use path::{CssColorComponentPath, CssColorPathStep};
+pub(crate) use path::{
+    CssColorPathBuffer, CssColorPathCapacityObservation, CssColorPathHandle,
+    CssColorPathReservationLayout, CssColorPathReservationStatus,
 };
 pub(crate) use spelling::authored_hue_degrees;
 
 mod controlled;
-pub use controlled::*;
+pub(crate) use controlled::{
+    AuthoredError, CssAuthoredColorActionDescription, CssAuthoredColorOperation,
+};
+#[cfg(test)]
+pub(crate) use controlled::{CssAuthoredColorCleanupLayout, CssAuthoredColorObservation};
+pub use controlled::{CssAuthoredColorOutcome, CssAuthoredColorStandardFailure};
 mod ordinary;
 pub use ordinary::*;
-mod numerical;
-pub use numerical::*;
+#[cfg(test)]
+mod tests;

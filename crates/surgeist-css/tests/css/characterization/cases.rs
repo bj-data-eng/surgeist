@@ -1611,7 +1611,6 @@ const ERROR_CASES: &[(&str, &str)] = &[
     ("color-ordinary-limit", "error"),
     ("color-ordinary-operation", "error"),
     ("color-profile-value", "error"),
-    ("color-protocol", "error"),
     ("color-scalar", "error"),
     ("color-scheme-construction", "error"),
     ("component-value", "error"),

@@ -1,7 +1,7 @@
 //! Finite qualified token/header and decoded-name observations for color grammar.
 
 use super::keywords::{Word, word};
-use super::protocol::{CssColorProtocolError, CssColorSlot, LexicalRecord, LexicalTable};
+use super::protocol::{ColorProtocolError, CssColorSlot, LexicalRecord, LexicalTable};
 use crate::tokenization::tokenizer::{Span, Token, TokenKind};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -69,9 +69,9 @@ impl<'owner> TokenReader<'owner> {
     pub(crate) fn start_at(
         table: &LexicalTable<'owner>,
         index: usize,
-    ) -> Result<Self, CssColorProtocolError> {
+    ) -> Result<Self, ColorProtocolError> {
         if index < table.first_token_record() || index >= table.length() {
-            return Err(CssColorProtocolError::WrongIndex);
+            return Err(ColorProtocolError::WrongIndex);
         }
         let mut reader = Self::start(table);
         reader.next = index;
@@ -81,19 +81,19 @@ impl<'owner> TokenReader<'owner> {
         table: &LexicalTable<'owner>,
         token: ClassifiedToken,
         header: &CssColorSlot<'_>,
-    ) -> Result<Self, CssColorProtocolError> {
+    ) -> Result<Self, ColorProtocolError> {
         let LexicalRecord::Token(actual) = table.observe(token.index, header)? else {
-            return Err(CssColorProtocolError::WrongSlot);
+            return Err(ColorProtocolError::WrongSlot);
         };
         if actual != token.token {
-            return Err(CssColorProtocolError::WrongSlot);
+            return Err(ColorProtocolError::WrongSlot);
         }
         let next = token
             .index
             .checked_add(1)
-            .ok_or(CssColorProtocolError::Overflow)?;
+            .ok_or(ColorProtocolError::Overflow)?;
         if next > table.length() {
-            return Err(CssColorProtocolError::WrongIndex);
+            return Err(ColorProtocolError::WrongIndex);
         }
         let mut reader = Self::start(table);
         reader.next = next;
@@ -116,14 +116,14 @@ impl<'owner> TokenReader<'owner> {
         &mut self,
         index: usize,
         record: &CssColorSlot<'_>,
-    ) -> Result<(), CssColorProtocolError> {
+    ) -> Result<(), ColorProtocolError> {
         match self.action() {
             TokenAction::ReadRecord { index: expected } if index == expected => {
                 let observed = self.table.observe(index, record)?;
                 let next = self
                     .next
                     .checked_add(1)
-                    .ok_or(CssColorProtocolError::Overflow)?;
+                    .ok_or(ColorProtocolError::Overflow)?;
                 if let LexicalRecord::Token(token) = observed {
                     let name = match token.kind {
                         TokenKind::Name { units, .. } => Some(units),
@@ -141,7 +141,7 @@ impl<'owner> TokenReader<'owner> {
                     if name
                         .is_some_and(|name| name.end > self.table.length() || name.start > name.end)
                     {
-                        return Err(CssColorProtocolError::WrongIndex);
+                        return Err(ColorProtocolError::WrongIndex);
                     }
                     self.token = Some(token);
                     self.token_index = index;
@@ -162,7 +162,7 @@ impl<'owner> TokenReader<'owner> {
             }
             TokenAction::ReadName { index: expected } if index == expected => {
                 let LexicalRecord::NameUnit(unit) = self.table.observe(index, record)? else {
-                    return Err(CssColorProtocolError::WrongSlot);
+                    return Err(ColorProtocolError::WrongSlot);
                 };
                 let position = index - self.name.start;
                 if position == 0 {
@@ -179,13 +179,13 @@ impl<'owner> TokenReader<'owner> {
                 }
                 self.name_index += 1;
             }
-            _ => return Err(CssColorProtocolError::WrongAction),
+            _ => return Err(ColorProtocolError::WrongAction),
         }
         Ok(())
     }
-    pub(crate) fn classify(&mut self) -> Result<(), CssColorProtocolError> {
+    pub(crate) fn classify(&mut self) -> Result<(), ColorProtocolError> {
         if self.action() != TokenAction::Classify {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         }
         self.dashed &= self.name.end - self.name.start >= 2;
         // The fixed cache holds only ASCII, and its maximum24 is independent of
@@ -211,13 +211,13 @@ impl<'owner> TokenReader<'owner> {
         self.state = State::Yield;
         Ok(())
     }
-    pub(crate) fn current(&self) -> Result<ClassifiedToken, CssColorProtocolError> {
+    pub(crate) fn current(&self) -> Result<ClassifiedToken, ColorProtocolError> {
         if !matches!(self.state, State::Yield) {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         }
         Ok(ClassifiedToken {
             index: self.token_index,
-            token: self.token.ok_or(CssColorProtocolError::WrongSlot)?,
+            token: self.token.ok_or(ColorProtocolError::WrongSlot)?,
             word: self.word,
             dashed: self.dashed,
             unit: self.unit,
@@ -228,9 +228,9 @@ impl<'owner> TokenReader<'owner> {
     pub(crate) fn relative_channel(
         &self,
         environment: crate::CssRelativeColorEnvironment,
-    ) -> Result<Option<crate::CssRelativeColorChannel>, CssColorProtocolError> {
+    ) -> Result<Option<crate::CssRelativeColorChannel>, ColorProtocolError> {
         if !matches!(self.state, State::Yield) {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         }
         Ok(if self.word_possible {
             crate::syntax::color::numeric_relative_channel(
@@ -242,9 +242,9 @@ impl<'owner> TokenReader<'owner> {
             None
         })
     }
-    pub(crate) fn consumed(&mut self) -> Result<(), CssColorProtocolError> {
+    pub(crate) fn consumed(&mut self) -> Result<(), ColorProtocolError> {
         if !matches!(self.state, State::Yield) {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         }
         self.token = None;
         self.state = if self.next == self.table.length() {
@@ -330,6 +330,6 @@ mod tests {
         );
         assert_eq!(observed[4].word, Word::Named([250, 250, 210]));
         reader.abandon();
-        assert_eq!(reader.current(), Err(CssColorProtocolError::WrongAction));
+        assert_eq!(reader.current(), Err(ColorProtocolError::WrongAction));
     }
 }

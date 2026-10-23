@@ -12,7 +12,7 @@ use super::grammar::{
 };
 use super::keywords::ColorFunction as F;
 use super::protocol::{
-    CssColorBank, CssColorOperationOwner, CssColorProtocolError, CssColorSlot, Data, LexicalTable,
+    ColorProtocolError, CssColorBank, CssColorOperationOwner, CssColorSlot, Data, LexicalTable,
 };
 use super::syntax_pass::{SyntaxAction, SyntaxPass};
 use crate::error::ErrorKind;
@@ -94,23 +94,21 @@ impl<'a, 'owner> Events<'a, 'owner> {
         &mut self,
         data: Data<'owner>,
         original: Option<&'a CssComponentValue>,
-    ) -> std::result::Result<usize, CssColorProtocolError> {
+    ) -> std::result::Result<usize, ColorProtocolError> {
         let index = self.slots.len();
-        index
-            .checked_add(1)
-            .ok_or(CssColorProtocolError::Overflow)?;
+        index.checked_add(1).ok_or(ColorProtocolError::Overflow)?;
         self.slots
             .try_reserve(1)
-            .map_err(|_| CssColorProtocolError::Overflow)?;
+            .map_err(|_| ColorProtocolError::Overflow)?;
         self.originals
             .try_reserve(1)
-            .map_err(|_| CssColorProtocolError::Overflow)?;
+            .map_err(|_| ColorProtocolError::Overflow)?;
         self.paths
             .try_reserve(1)
-            .map_err(|_| CssColorProtocolError::Overflow)?;
+            .map_err(|_| ColorProtocolError::Overflow)?;
         self.closing
             .try_reserve(1)
-            .map_err(|_| CssColorProtocolError::Overflow)?;
+            .map_err(|_| ColorProtocolError::Overflow)?;
         self.slots
             .push(CssColorSlot::new(self.owner, self.phase, index, data));
         self.originals.push(original);
@@ -118,7 +116,7 @@ impl<'a, 'owner> Events<'a, 'owner> {
         self.closing.push(false);
         Ok(index)
     }
-    fn name(&mut self, value: &str) -> std::result::Result<Span, CssColorProtocolError> {
+    fn name(&mut self, value: &str) -> std::result::Result<Span, ColorProtocolError> {
         let start = self.slots.len();
         for unit in value.chars() {
             self.append(Data::NameUnit(unit), None)?;
@@ -133,7 +131,7 @@ impl<'a, 'owner> Events<'a, 'owner> {
         value: CssNumericTokenRef<'_>,
         kind: NumberKind,
         unit: &str,
-    ) -> std::result::Result<TokenKind, CssColorProtocolError> {
+    ) -> std::result::Result<TokenKind, ColorProtocolError> {
         use crate::tokenization::number::{NumberCursor, Part, Step};
         let spelling = value.representation().as_bytes();
         let start = self.slots.len();
@@ -149,7 +147,7 @@ impl<'a, 'owner> Events<'a, 'owner> {
             });
             match cursor
                 .step(window)
-                .map_err(|_| CssColorProtocolError::Overflow)?
+                .map_err(|_| ColorProtocolError::Overflow)?
             {
                 Step::Consume(part) => {
                     match part {
@@ -173,16 +171,14 @@ impl<'a, 'owner> Events<'a, 'owner> {
                         }
                         Part::Sign | Part::Point | Part::Exponent | Part::ExponentSign => {}
                     }
-                    offset = offset
-                        .checked_add(1)
-                        .ok_or(CssColorProtocolError::Overflow)?;
+                    offset = offset.checked_add(1).ok_or(ColorProtocolError::Overflow)?;
                 }
                 Step::Transition => {}
                 Step::Done(layout) => break layout,
             }
         };
         if offset != spelling.len() {
-            return Err(CssColorProtocolError::Input);
+            return Err(ColorProtocolError::Input);
         }
         let digits = Span {
             start,
@@ -201,15 +197,13 @@ impl<'a, 'owner> Events<'a, 'owner> {
         kind: TokenKind,
         original: &'a CssComponentValue,
         path: &[usize],
-    ) -> std::result::Result<(), CssColorProtocolError> {
+    ) -> std::result::Result<(), ColorProtocolError> {
         let start = self.slots.len();
-        let end = start
-            .checked_add(1)
-            .ok_or(CssColorProtocolError::Overflow)?;
+        let end = start.checked_add(1).ok_or(ColorProtocolError::Overflow)?;
         let mut retained = Vec::new();
         retained
             .try_reserve(path.len())
-            .map_err(|_| CssColorProtocolError::Overflow)?;
+            .map_err(|_| ColorProtocolError::Overflow)?;
         retained.extend_from_slice(path);
         self.append(
             Data::Token(Token {
@@ -224,7 +218,7 @@ impl<'a, 'owner> Events<'a, 'owner> {
     fn project(
         &mut self,
         root: &'a CssComponentValue,
-    ) -> std::result::Result<(), CssColorProtocolError> {
+    ) -> std::result::Result<(), ColorProtocolError> {
         enum Visit<'a> {
             Item(&'a CssComponentValue),
             Items(&'a [CssComponentValue], usize),
@@ -234,7 +228,7 @@ impl<'a, 'owner> Events<'a, 'owner> {
         let mut pending = Vec::new();
         pending
             .try_reserve(1)
-            .map_err(|_| CssColorProtocolError::Overflow)?;
+            .map_err(|_| ColorProtocolError::Overflow)?;
         pending.push(Visit::Item(root));
         while let Some(visit) = pending.pop() {
             match visit {
@@ -242,15 +236,13 @@ impl<'a, 'owner> Events<'a, 'owner> {
                     if let Some((first, rest)) = items.split_first() {
                         pending
                             .try_reserve(2)
-                            .map_err(|_| CssColorProtocolError::Overflow)?;
+                            .map_err(|_| ColorProtocolError::Overflow)?;
                         pending.push(Visit::Items(
                             rest,
-                            index
-                                .checked_add(1)
-                                .ok_or(CssColorProtocolError::Overflow)?,
+                            index.checked_add(1).ok_or(ColorProtocolError::Overflow)?,
                         ));
                         path.try_reserve(1)
-                            .map_err(|_| CssColorProtocolError::Overflow)?;
+                            .map_err(|_| ColorProtocolError::Overflow)?;
                         path.push(index);
                         pending.push(Visit::Item(first));
                     }
@@ -264,7 +256,7 @@ impl<'a, 'owner> Events<'a, 'owner> {
                         let mut retained = Vec::new();
                         retained
                             .try_reserve_exact(path.len())
-                            .map_err(|_| CssColorProtocolError::Overflow)?;
+                            .map_err(|_| ColorProtocolError::Overflow)?;
                         retained.extend_from_slice(&path);
                         self.eof = Some(EndSite { path: retained });
                     }
@@ -276,7 +268,7 @@ impl<'a, 'owner> Events<'a, 'owner> {
                             let units = self.name(function.name())?;
                             pending
                                 .try_reserve(2)
-                                .map_err(|_| CssColorProtocolError::Overflow)?;
+                                .map_err(|_| ColorProtocolError::Overflow)?;
                             pending.push(Visit::Close(
                                 item,
                                 ')',
@@ -299,7 +291,7 @@ impl<'a, 'owner> Events<'a, 'owner> {
                             };
                             pending
                                 .try_reserve(2)
-                                .map_err(|_| CssColorProtocolError::Overflow)?;
+                                .map_err(|_| ColorProtocolError::Overflow)?;
                             pending.push(Visit::Close(
                                 item,
                                 close,
@@ -347,7 +339,7 @@ impl<'a, 'owner> Events<'a, 'owner> {
                                 units: self.name(value)?,
                                 closed: true,
                             },
-                            CssValueTokenRef::Url(_) => return Err(CssColorProtocolError::Input),
+                            CssValueTokenRef::Url(_) => return Err(ColorProtocolError::Input),
                         },
                     };
                     self.token(kind, item, &path)?;
@@ -375,7 +367,7 @@ pub(crate) fn construct_component(
         ))
     };
     let protocol = |error| {
-        if error == CssColorProtocolError::Overflow {
+        if error == ColorProtocolError::Overflow {
             capacity()
         } else {
             invalid_color(None)

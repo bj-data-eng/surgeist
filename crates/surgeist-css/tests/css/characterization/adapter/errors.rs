@@ -102,12 +102,6 @@ fn facts(case: &str, observation: &mut Observation) -> Vec<String> {
             CssColorProfileDescriptorKind::RenderingIntent,
             values("banana"),
         )),
-        "color-protocol" => {
-            let error = CssColorOperation::take(&mut None)
-                .err()
-                .expect("an empty slot is a protocol error");
-            chain(&error)
-        }
         "color-scalar" => failed(CssColorMixPercentage::try_from_component(token("150%"))),
         "color-scheme-construction" => failed(CssColorScheme::try_new(vec![], false)),
         "component-value" => failed(CssIdent::try_new("")),

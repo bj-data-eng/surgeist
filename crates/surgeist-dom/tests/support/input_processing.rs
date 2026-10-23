@@ -6,8 +6,8 @@ use surgeist_color::{
     ActionLayout, DigitSlot, OperationOwner, Serialization, SerializationReceipt,
 };
 use surgeist_css::{
-    CssColorActionDescription as Action, CssColorActionLayout, CssColorFacts, CssColorOperation,
-    CssColorParseOutcome, CssColorSlot, CssColorTransformation, CssUsedColorCheckpoint,
+    CssColorActionLayout, CssColorFacts, CssColorParse, CssColorParseOutcome, CssColorSlot,
+    CssColorTransform, CssUsedColorCheckpoint,
 };
 use surgeist_dom::{DocumentString, DomError};
 use surgeist_html::HtmlInputColorSerialization;
@@ -58,21 +58,18 @@ pub fn color_limits(updates: u64) -> (usize, u64) {
         .checked_mul(4 * 64 * boundary + 4 * boundary + 64 * 64)
         .unwrap();
     let register = [
-        CssColorOperation::register_bytes(),
-        CssColorTransformation::register_bytes(),
+        CssColorParse::register_bytes(),
+        CssColorTransform::register_bytes(),
         Serialization::register_bytes(),
     ]
     .into_iter()
     .max()
     .unwrap();
-    let guard = [
-        CssColorOperation::action_bytes(),
-        CssColorTransformation::action_bytes(),
-        Serialization::action_bytes(),
-    ]
-    .into_iter()
-    .max()
-    .unwrap();
+    // A transformation has no separate action guard.
+    let guard = [CssColorParse::action_bytes(), Serialization::action_bytes()]
+        .into_iter()
+        .max()
+        .unwrap();
     let growth_header = [
         size_of::<Vec<CssColorSlot<'_>>>() + size_of::<std::vec::Drain<'_, CssColorSlot<'_>>>(),
         size_of::<Vec<DigitSlot<'_>>>() + size_of::<std::vec::Drain<'_, DigitSlot<'_>>>(),
@@ -95,35 +92,31 @@ pub fn color_limits(updates: u64) -> (usize, u64) {
     let digits = extent(4 * 309, size_of::<DigitSlot<'_>>()).unwrap();
     let output = extent(4 * (309 + 3) + 64, size_of::<u16>()).unwrap();
     let serialize_capacity = sum(&[digits, output, digits.max(output)]).unwrap();
-    let initialization = CssColorOperation::initialization_layout();
+    let initialization = CssColorParse::initialization_layout();
     let base = sum(&[
         ledger_frame_bytes(),
         initialization.owner_bytes,
         initialization.fact_identity_bytes,
         OperationOwner::layout_bytes(),
         size_of::<CssColorFacts<'_>>(),
-        size_of::<Option<CssUsedColorCheckpoint<'_, '_>>>(),
+        size_of::<CssUsedColorCheckpoint<'_>>(),
         size_of::<HtmlInputColorSerialization>(),
         size_of::<DocumentString>(),
     ])
     .unwrap();
-    let action = sum(&[size_of::<Action>(), size_of::<CssColorActionLayout>()]).unwrap();
+    // A typed action is its own description; it is observed with its layout.
+    let action = size_of::<CssColorActionLayout>();
     let parse = sum(&[
-        size_of::<Option<CssColorOperation<'_, '_>>>(),
+        size_of::<CssColorParse<'_, '_>>(),
         size_of::<[Vec<CssColorSlot<'_>>; 3]>(),
-        size_of::<CssColorParseOutcome<'_, '_>>(),
-        CssColorOperation::action_bytes(),
+        size_of::<CssColorParseOutcome<'_>>(),
+        CssColorParse::action_bytes(),
         action,
         growth_header,
         parse_capacity,
     ])
     .unwrap();
-    let transform = sum(&[
-        size_of::<Option<CssColorTransformation<'_, '_, '_>>>(),
-        CssColorTransformation::action_bytes(),
-        action,
-    ])
-    .unwrap();
+    let transform = sum(&[CssColorTransform::register_bytes(), action]).unwrap();
     // A Color action is its own description; it is observed with its layout.
     let numerical_action = size_of::<ActionLayout>();
     let serialize = sum(&[
@@ -146,7 +139,6 @@ pub fn color_limits(updates: u64) -> (usize, u64) {
     let cost = sum(&[
         2 * register,
         guard,
-        size_of::<Action>(),
         size_of::<CssColorActionLayout>(),
         1,
         2 * CssColorSlot::record_bytes(),

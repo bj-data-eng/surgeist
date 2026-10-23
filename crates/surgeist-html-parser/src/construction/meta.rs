@@ -645,7 +645,7 @@ fn theme_color(
         input,
         &mut owner,
         &facts,
-        |_, error| css_color::source_processing(error),
+        css_color::source_processing,
         0,
         #[cfg(test)]
         || {},

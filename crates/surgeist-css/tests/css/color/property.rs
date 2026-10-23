@@ -15,8 +15,8 @@
 
 use surgeist_color::Color;
 use surgeist_css::{
-    CssAuthoredColorOrdinaryLimits, CssAuthoredColorOutcome, CssColorFactIdentity, CssColorFacts,
-    CssColorGrammarRequest, CssColorInput, CssColorOperationError, CssColorOrdinaryError,
+    CssAuthoredColorOrdinaryLimits, CssAuthoredColorOutcome, CssColorError, CssColorFactIdentity,
+    CssColorFacts, CssColorGrammarRequest, CssColorInput, CssColorOrdinaryError,
     CssColorOrdinaryLimits, CssColorOrdinaryOutcome, CssColorPaletteEntry, CssColorPropertyFacts,
     CssColorSchemeFact, CssDeviceColorFact, CssImportance, CssKnownProperty,
     CssKnownPropertyValueRef, CssPropertyNameRef, CssSystemColor, parse_property_value_text,
@@ -422,9 +422,7 @@ impl Outcome {
 fn classify(error: &CssColorOrdinaryError) -> Outcome {
     match error {
         CssColorOrdinaryError::Operation(
-            CssColorOperationError::Unavailable(_)
-            | CssColorOperationError::Unsupported(_)
-            | CssColorOperationError::Facts(_),
+            CssColorError::Unavailable(_) | CssColorError::Unsupported(_) | CssColorError::Facts(_),
         ) => Outcome::Expected(error.to_string()),
         other => Outcome::Unexpected(other.to_string()),
     }

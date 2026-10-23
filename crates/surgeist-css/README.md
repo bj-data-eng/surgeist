@@ -318,8 +318,8 @@ For an existing checked `CssColor`, use `resolve_authored_color` with the same
 explicit facts. Its `CssAuthoredColorResult` borrows the original value and facts;
 the outcome contains a numerical color or the actual standard-failure cause.
 `CssAuthoredColorOrdinaryLimits` bounds the three logical record banks, path
-steps and actions. The controlled `CssAuthoredColorOperation` services the same
-resolver with caller-owned banks and a `CssColorPathBuffer`, preserving Parsed,
+steps and actions. Internally a crate-private controlled operation services the
+same resolver with local banks and a path buffer, preserving Parsed,
 Programmatic and ImplicitClosure origins without serialization or reparsing.
 Colour numerics are total, so resolution has no numerical error. See the
 [public authored-resolution examples](tests/css/color/color_authored_resolution.rs).
@@ -363,23 +363,27 @@ pinned nonnormative byte-236 example disagrees with that algorithm. CSS retains
 authored exact-decimal formatting and specified serialization, preserving their
 existing precision contract.
 
-For a consumer with an existing controller, `CssColorOperation::parse_used`
-lends one `CssColorActionDescription` at a time. The consumer admits and polls
-before servicing each source read, fact read, bank read/write or fixed compute
-using the actual `CssColorActionLayout` and compiled register sizes. It owns the
-Algorithm, Arithmetic and Evaluation vectors and their real capacity, copy and
-release events. Opaque CSS slots are checked against the bank, exclusive
-`CssColorOperationOwner`, phase and ordinal. `CssColorOperation::take` accepts
-`&mut Option<Self>` and removes only a completed used or standard-failure
-outcome; refusal preserves the operation. Dropping an action leaves it pending;
-`abandon` does not dispose caller storage. The anchor is not a second resource
-controller.
+For a consumer with an existing controller, `CssColorParse::start` begins one
+typestate parse. Each `step` consumes the parse and yields either one typed
+`CssColorParseAction` or the completed `CssColorParseOutcome`. The consumer
+admits and polls before servicing each source read, fact read, bank read/write
+or fixed compute using the action's actual `CssColorActionLayout` and compiled
+register sizes; each action exposes only its own completion, which returns the
+parse. It owns the Algorithm, Arithmetic and Evaluation vectors and their real
+capacity, copy and release events. A write mints a `CssColorSlot` and a receipt
+whose `stored` acknowledges the actual storage. Lending a record of another
+parse, bank or index is a defect in the driving code and panics, as slice
+indexing does. `into_parse` declines an action without effect; dropping a parse
+or an action abandons it and does not dispose caller storage. Records borrow
+the exclusive `CssColorOperationOwner`, so it starts another parse only after
+they are dropped; the outcome borrows no owner. The anchor is not a second
+resource controller.
 
-Retire actual CSS scratch through its original owner before moving a used
-checkpoint to a transformation; bank disposal is the consumer's policy. Keep a
-separate `surgeist_color::OperationOwner` stack local for the numerical
-continuation. `CssUsedColorCheckpoint::transform` lends that anchor to Color's
-computation. CSS does not wrap serialization: the consumer serializes
+Retire actual CSS scratch before or after transforming a used checkpoint; bank
+disposal is the consumer's policy. Keep a separate
+`surgeist_color::OperationOwner` stack local for the numerical continuation.
+`CssUsedColorCheckpoint::transform` consumes the checkpoint and lends that
+anchor to Color's computation. CSS does not wrap serialization: the consumer serializes
 `checkpoint.value()` with `surgeist_color::Serialization` directly and keeps the
 checkpoint's `standard_failure()` and `source()` for publication. That
 serializer's own typed actions lend a fourth, consumer-owned bank of Color
@@ -387,15 +391,15 @@ serializer's own typed actions lend a fourth, consumer-owned bank of Color
 admitted unit at a time. Digit records borrow the numerical anchor, so it
 cannot be reused while any of them lives.
 
-Transformation `take(&mut Option<Self>)` removes only a completed success. A
-computed result becomes the checkpoint's committed value only at successful
-take. Refused take leaves the wrapper intact; `recover` removes it and returns
-its original committed checkpoint, including source, facts and
-standard-failure context. Recovery does not complete pending work or restart a
-cancelled controller. A standard-failure checkpoint can accept an
-explicitly checked caller fallback while retaining that context. Unavailable,
-unsupported, malformed-fact and protocol errors remain distinct from standard
-invalidity. A channel value beyond binary64, including a top-level infinite
+A `CssColorTransform` is total: `compute` makes the transformed value the
+checkpoint's value, and `into_checkpoint` declines it and returns the original
+checkpoint, including source, facts and standard-failure context. Declining does
+not complete pending work or restart a cancelled controller. A standard-failure
+checkpoint can accept an explicitly checked caller fallback while retaining that
+context. Unavailable, unsupported, malformed-fact and malformed-input
+`CssColorError`s remain distinct from standard invalidity; the parse's
+compile-time and panic misuse contracts are listed on `CssColorParse`. A channel
+value beyond binary64, including a top-level infinite
 calculation, is the closest supported finite value, so no numerical error
 exists. Resource
 refusal and cancellation belong to the original controlled consumer. See the

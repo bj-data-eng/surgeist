@@ -355,19 +355,21 @@ fn color_utf16_reference_default_and_generated_history_keep_distinct_actual_valu
 // reserve/copy allowance is included in per-action compiled slot/layout cost.
 fn matrix_limits() -> HtmlParseLimits {
     use surgeist_color::Serialization;
-    use surgeist_css::{CssColorOperation, CssColorSlot, CssColorTransformation};
+    use surgeist_css::{CssColorParse, CssColorSlot, CssColorTransform, CssUsedColorCheckpoint};
     let register = [
-        CssColorOperation::register_bytes(),
+        CssColorParse::register_bytes(),
         Serialization::register_bytes(),
-        CssColorTransformation::register_bytes(),
+        CssColorTransform::register_bytes(),
     ]
     .into_iter()
     .max()
     .unwrap() as u64;
+    // A transformation has no separate action: its frame charges only the
+    // register and the resulting checkpoint.
     let guard = [
-        CssColorOperation::action_bytes(),
+        CssColorParse::action_bytes(),
         Serialization::action_bytes(),
-        CssColorTransformation::action_bytes(),
+        std::mem::size_of::<CssUsedColorCheckpoint<'_>>(),
     ]
     .into_iter()
     .max()

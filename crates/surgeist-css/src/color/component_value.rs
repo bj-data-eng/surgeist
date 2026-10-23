@@ -6,13 +6,13 @@
 use super::channels::{Component, Domain, Error as ChannelError};
 use super::component::CheckedComponent;
 use super::expression::{EvaluationAction, Number, NumericEvaluation, Variable};
-use super::protocol::{CssColorBank, CssColorProtocolError, CssColorSlot};
+use super::protocol::{ColorProtocolError, CssColorBank, CssColorSlot};
 use super::relative::Binding;
 use super::syntax_pass::ValidatedGrammar;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum Error {
-    Protocol(CssColorProtocolError),
+    Protocol(ColorProtocolError),
     MissingOrigin,
     Channel(ChannelError),
     /// Metadata/name qualification is still owned by the reached profile
@@ -26,8 +26,8 @@ pub(crate) enum Error {
         unit: crate::CssNumericUnit,
     },
 }
-impl From<CssColorProtocolError> for Error {
-    fn from(error: CssColorProtocolError) -> Self {
+impl From<ColorProtocolError> for Error {
+    fn from(error: ColorProtocolError) -> Self {
         Self::Protocol(error)
     }
 }
@@ -70,9 +70,9 @@ impl<'owner> ComponentValue<'owner> {
         index: usize,
         evaluation_start: usize,
         binding: Option<Binding>,
-    ) -> Result<Self, CssColorProtocolError> {
+    ) -> Result<Self, ColorProtocolError> {
         if index < grammar.table.start || index >= grammar.table.end {
-            return Err(CssColorProtocolError::WrongIndex);
+            return Err(ColorProtocolError::WrongIndex);
         }
         Ok(Self {
             grammar: ValidatedGrammar {
@@ -117,18 +117,18 @@ impl<'owner> ComponentValue<'owner> {
         slot: &CssColorSlot<'_>,
     ) -> Result<(), Error> {
         if self.action() != (Action::ReadComponent { index }) {
-            return Err(CssColorProtocolError::WrongAction.into());
+            return Err(ColorProtocolError::WrongAction.into());
         }
         let record = self.grammar.component(index, slot)?;
         let component = record
             .checked
-            .ok_or(CssColorProtocolError::WrongSlot)?
+            .ok_or(ColorProtocolError::WrongSlot)?
             .component(&self.grammar.table.input)?;
         if self
             .binding
             .is_some_and(|binding| !record.context.accepts_binding(binding))
         {
-            return Err(CssColorProtocolError::WrongSlot.into());
+            return Err(ColorProtocolError::WrongSlot.into());
         }
         self.state = match component {
             CheckedComponent::Literal(value) => State::Done(value),
@@ -150,7 +150,7 @@ impl<'owner> ComponentValue<'owner> {
         slot: &CssColorSlot<'_>,
     ) -> Result<(), Error> {
         if self.action() != (Action::Read { bank, index }) {
-            return Err(CssColorProtocolError::WrongAction.into());
+            return Err(ColorProtocolError::WrongAction.into());
         }
         slot.qualify(
             self.grammar.table.input.records().owner,
@@ -159,7 +159,7 @@ impl<'owner> ComponentValue<'owner> {
             bank,
         )?;
         let State::Evaluation { cursor, .. } = &mut self.state else {
-            return Err(CssColorProtocolError::WrongAction.into());
+            return Err(ColorProtocolError::WrongAction.into());
         };
         match cursor.action() {
             EvaluationAction::ReadExpression { .. } => cursor.read_expression(index, slot)?,
@@ -167,7 +167,7 @@ impl<'owner> ComponentValue<'owner> {
             EvaluationAction::ReadPrevious { .. } | EvaluationAction::ReadOperand { .. } => {
                 cursor.read_value(index, slot)?
             }
-            _ => return Err(CssColorProtocolError::WrongAction.into()),
+            _ => return Err(ColorProtocolError::WrongAction.into()),
         }
         Ok(())
     }
@@ -179,13 +179,13 @@ impl<'owner> ComponentValue<'owner> {
     }
     pub(crate) fn record(&self, index: usize) -> Result<CssColorSlot<'owner>, Error> {
         let State::Evaluation { cursor, .. } = &self.state else {
-            return Err(CssColorProtocolError::WrongAction.into());
+            return Err(ColorProtocolError::WrongAction.into());
         };
         Ok(cursor.record(index)?)
     }
     pub(crate) fn written(&mut self, index: usize, slot: &CssColorSlot<'_>) -> Result<(), Error> {
         let State::Evaluation { cursor, .. } = &mut self.state else {
-            return Err(CssColorProtocolError::WrongAction.into());
+            return Err(ColorProtocolError::WrongAction.into());
         };
         cursor.written(index, slot)?;
         Ok(())
@@ -202,7 +202,7 @@ impl<'owner> ComponentValue<'owner> {
     }
     pub(crate) fn compute(&mut self) -> Result<(), Error> {
         if self.action() != Action::Compute {
-            return Err(CssColorProtocolError::WrongAction.into());
+            return Err(ColorProtocolError::WrongAction.into());
         }
         match &mut self.state {
             State::Variable { token, binding } => {
@@ -256,16 +256,16 @@ impl<'owner> ComponentValue<'owner> {
                     cursor.compute()?;
                     Ok(())
                 }
-                _ => Err(CssColorProtocolError::WrongAction.into()),
+                _ => Err(ColorProtocolError::WrongAction.into()),
             },
-            _ => Err(CssColorProtocolError::WrongAction.into()),
+            _ => Err(ColorProtocolError::WrongAction.into()),
         }
     }
-    pub(crate) fn finish(&self) -> Result<Component, CssColorProtocolError> {
+    pub(crate) fn finish(&self) -> Result<Component, ColorProtocolError> {
         if let State::Done(value) = self.state {
             Ok(value)
         } else {
-            Err(CssColorProtocolError::Terminal)
+            Err(ColorProtocolError::Terminal)
         }
     }
     pub(crate) fn abandon(&mut self) {
@@ -463,7 +463,7 @@ mod tests {
                 &mut values,
                 Some(wrong)
             ),
-            Err(Error::Protocol(CssColorProtocolError::WrongSlot))
+            Err(Error::Protocol(ColorProtocolError::WrongSlot))
         );
         assert_eq!(
             evaluate(
@@ -509,7 +509,7 @@ mod tests {
         let mut cursor = ComponentValue::start(&fixture.grammar, index, 0, None).unwrap();
         assert_eq!(
             cursor.read_component(index, &foreign.slots[index]),
-            Err(Error::Protocol(CssColorProtocolError::ForeignSlot))
+            Err(Error::Protocol(ColorProtocolError::ForeignSlot))
         );
         assert_eq!(cursor.action(), Action::ReadComponent { index });
         cursor.read_component(index, &fixture.slots[index]).unwrap();

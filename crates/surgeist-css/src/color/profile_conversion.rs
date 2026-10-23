@@ -6,13 +6,13 @@ use super::facts::{
     CssColorFactIdentity, CssColorFacts, CssColorProfileAvailability, CssColorProfileConversion,
 };
 use super::profile::ProfileSelection;
-use super::protocol::{CssColorProtocolError, CssColorSlot, Data, RecordTable};
+use super::protocol::{ColorProtocolError, CssColorSlot, Data, RecordTable};
 use crate::{ColorSpace, color::protocol::RecordRange};
 use surgeist_color::UnitInterval;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum Error {
-    Protocol(CssColorProtocolError),
+    Protocol(ColorProtocolError),
     ForeignFacts,
     InvalidMetadata,
     InvalidColor,
@@ -87,7 +87,7 @@ impl ProfileInputs<'_> {
         )
         .map_err(Error::Protocol)?;
         if self.index(ordinal) != Some(slot.index) || slot.index >= self.span.end {
-            return Err(Error::Protocol(CssColorProtocolError::WrongIndex));
+            return Err(Error::Protocol(ColorProtocolError::WrongIndex));
         }
         let Data::ProfileChannel {
             resource,
@@ -95,10 +95,10 @@ impl ProfileInputs<'_> {
             value,
         } = slot.data
         else {
-            return Err(Error::Protocol(CssColorProtocolError::WrongSlot));
+            return Err(Error::Protocol(ColorProtocolError::WrongSlot));
         };
         if resource != self.selection.resource || actual != ordinal {
-            return Err(Error::Protocol(CssColorProtocolError::WrongSlot));
+            return Err(Error::Protocol(ColorProtocolError::WrongSlot));
         }
         Ok(value)
     }
@@ -143,7 +143,7 @@ impl<'owner, 'facts> ProfileInputBuilder<'owner, 'facts> {
             return Err(Error::InvalidColor);
         }
         if base < table.length || base.checked_add(selection.parameter_count).is_none() {
-            return Err(Error::Protocol(CssColorProtocolError::Overflow));
+            return Err(Error::Protocol(ColorProtocolError::Overflow));
         }
         Ok(Self {
             table: *table,
@@ -177,7 +177,7 @@ impl<'owner, 'facts> ProfileInputBuilder<'owner, 'facts> {
     }
     pub(crate) fn read_header(&mut self) -> Result<(), Error> {
         if self.action() != InputAction::ReadHeader {
-            return Err(Error::Protocol(CssColorProtocolError::WrongAction));
+            return Err(Error::Protocol(ColorProtocolError::WrongAction));
         }
         if let Err(error) = checked_header(self.facts, self.selection) {
             if error == Error::ForeignFacts {
@@ -193,14 +193,14 @@ impl<'owner, 'facts> ProfileInputBuilder<'owner, 'facts> {
             return Err(Error::ForeignFacts);
         }
         if self.action() != (InputAction::ReadComponent { ordinal }) {
-            return Err(Error::Protocol(CssColorProtocolError::WrongAction));
+            return Err(Error::Protocol(ColorProtocolError::WrongAction));
         }
         let value = match channels::scalar(component, 1.0) {
             Ok(value) => value.map(|value| value.clamp(0.0, 1.0)),
             Err(_) => return self.fail(Error::InvalidColor),
         };
         let Some(next) = self.input.checked_add(1) else {
-            return self.fail(Error::Protocol(CssColorProtocolError::Overflow));
+            return self.fail(Error::Protocol(ColorProtocolError::Overflow));
         };
         self.input = next;
         if self.output < self.selection.parameter_count {
@@ -223,14 +223,14 @@ impl<'owner, 'facts> ProfileInputBuilder<'owner, 'facts> {
     }
     pub(crate) fn record(&self, index: usize) -> Result<CssColorSlot<'owner>, Error> {
         if self.action() != (InputAction::Append { index }) {
-            return Err(Error::Protocol(CssColorProtocolError::WrongAction));
+            return Err(Error::Protocol(ColorProtocolError::WrongAction));
         }
         self.output
             .checked_add(1)
-            .ok_or(Error::Protocol(CssColorProtocolError::Overflow))?;
+            .ok_or(Error::Protocol(ColorProtocolError::Overflow))?;
         index
             .checked_add(1)
-            .ok_or(Error::Protocol(CssColorProtocolError::Overflow))?;
+            .ok_or(Error::Protocol(ColorProtocolError::Overflow))?;
         Ok(CssColorSlot::new(
             self.table.owner,
             self.table.phase,
@@ -244,7 +244,7 @@ impl<'owner, 'facts> ProfileInputBuilder<'owner, 'facts> {
     }
     pub(crate) fn appended(&mut self, index: usize, slot: &CssColorSlot<'_>) -> Result<(), Error> {
         if self.action() != (InputAction::Append { index }) {
-            return Err(Error::Protocol(CssColorProtocolError::WrongAction));
+            return Err(Error::Protocol(ColorProtocolError::WrongAction));
         }
         slot.qualify(
             self.table.owner,
@@ -254,7 +254,7 @@ impl<'owner, 'facts> ProfileInputBuilder<'owner, 'facts> {
         )
         .map_err(Error::Protocol)?;
         if slot.index != index {
-            return Err(Error::Protocol(CssColorProtocolError::WrongIndex));
+            return Err(Error::Protocol(ColorProtocolError::WrongIndex));
         }
         let Data::ProfileChannel {
             resource,
@@ -262,18 +262,18 @@ impl<'owner, 'facts> ProfileInputBuilder<'owner, 'facts> {
             value,
         } = slot.data
         else {
-            return Err(Error::Protocol(CssColorProtocolError::WrongSlot));
+            return Err(Error::Protocol(ColorProtocolError::WrongSlot));
         };
         if resource != self.selection.resource
             || ordinal != self.output
             || value.map(f64::to_bits) != self.pending.map(f64::to_bits)
         {
-            return Err(Error::Protocol(CssColorProtocolError::WrongSlot));
+            return Err(Error::Protocol(ColorProtocolError::WrongSlot));
         }
         let next = self
             .output
             .checked_add(1)
-            .ok_or(Error::Protocol(CssColorProtocolError::Overflow))?;
+            .ok_or(Error::Protocol(ColorProtocolError::Overflow))?;
         self.output = next;
         self.after_input();
         Ok(())
@@ -405,7 +405,7 @@ impl<'owner, 'facts> ProfileConversionLookup<'owner, 'facts> {
             return Err(Error::ForeignFacts);
         }
         if self.action() != (ConversionAction::ReadInput { index, ordinal }) {
-            return Err(Error::Protocol(CssColorProtocolError::WrongAction));
+            return Err(Error::Protocol(ColorProtocolError::WrongAction));
         }
         self.value = self.inputs.read(ordinal, slot)?.unwrap_or(0.0);
         self.state = ConversionState::Channel;
@@ -416,7 +416,7 @@ impl<'owner, 'facts> ProfileConversionLookup<'owner, 'facts> {
             return Err(Error::ForeignFacts);
         }
         if action != self.action() {
-            return Err(Error::Protocol(CssColorProtocolError::WrongAction));
+            return Err(Error::Protocol(ColorProtocolError::WrongAction));
         }
         match action {
             ConversionAction::ReadLength => {
@@ -487,7 +487,7 @@ impl<'owner, 'facts> ProfileConversionLookup<'owner, 'facts> {
                     self.state = ConversionState::Finish;
                 } else {
                     let Some(next) = self.channel.checked_add(1) else {
-                        return self.fail(Error::Protocol(CssColorProtocolError::Overflow));
+                        return self.fail(Error::Protocol(ColorProtocolError::Overflow));
                     };
                     self.channel = next;
                     self.state = if next == self.inputs.length() {
@@ -505,7 +505,7 @@ impl<'owner, 'facts> ProfileConversionLookup<'owner, 'facts> {
                     self.selected = Some(self.conversion);
                 }
                 let Some(next) = self.conversion.checked_add(1) else {
-                    return self.fail(Error::Protocol(CssColorProtocolError::Overflow));
+                    return self.fail(Error::Protocol(ColorProtocolError::Overflow));
                 };
                 self.conversion = next;
                 self.state = if next < self.conversions {
@@ -531,7 +531,7 @@ impl<'owner, 'facts> ProfileConversionLookup<'owner, 'facts> {
                 });
                 self.state = ConversionState::Done;
             }
-            _ => return Err(Error::Protocol(CssColorProtocolError::WrongAction)),
+            _ => return Err(Error::Protocol(ColorProtocolError::WrongAction)),
         }
         Ok(())
     }
@@ -985,14 +985,14 @@ mod tests {
         let foreign = other_builder.record(index).unwrap();
         assert_eq!(
             builder.appended(index, &foreign),
-            Err(Error::Protocol(CssColorProtocolError::ForeignSlot))
+            Err(Error::Protocol(ColorProtocolError::ForeignSlot))
         );
         assert_eq!(builder.action(), action);
         builder.appended(index, &local).unwrap();
         let input = builder.finish().unwrap();
         assert_eq!(
             input.read(0, &foreign),
-            Err(Error::Protocol(CssColorProtocolError::ForeignSlot))
+            Err(Error::Protocol(ColorProtocolError::ForeignSlot))
         );
         assert_eq!(input.read(0, &local), Ok(Some(0.25)));
         let mut cursor = ProfileConversionLookup::start(&input, &facts, srgb().space());

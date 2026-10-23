@@ -7,15 +7,15 @@ use surgeist_color::{
     SerializationStep, Transformation,
 };
 use surgeist_css::{
-    CssAuthoredColorOrdinaryLimits, CssAuthoredColorOutcome, CssColorActionDescription as Action,
-    CssColorBank, CssColorFactIdentity, CssColorFacts, CssColorGrammarRequest, CssColorInput,
-    CssColorInputKind, CssColorOperation, CssColorOperationError, CssColorOperationOwner,
-    CssColorOrdinaryError, CssColorOrdinaryLimits, CssColorOrdinaryOutcome,
-    CssColorOrdinaryResource, CssColorPaletteEntry, CssColorParseOutcome, CssColorPropertyFacts,
-    CssColorSchemeFact, CssColorSlot, CssColorStandardFailure, CssColorStandardFailureKind,
-    CssColorTransformation, CssColorUnavailable, CssColorUnsupported, CssDeviceColorFact,
-    CssImportance, CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef,
-    CssUsedColorCheckpoint, parse_property_value_text, parse_used_color, resolve_authored_color,
+    CssAuthoredColorOrdinaryLimits, CssAuthoredColorOutcome, CssColorBank, CssColorError,
+    CssColorFactIdentity, CssColorFacts, CssColorGrammarRequest, CssColorInput, CssColorInputKind,
+    CssColorOperationOwner, CssColorOrdinaryError, CssColorOrdinaryLimits, CssColorOrdinaryOutcome,
+    CssColorOrdinaryResource, CssColorPaletteEntry, CssColorParse, CssColorParseAction,
+    CssColorParseOutcome, CssColorParseStep, CssColorPropertyFacts, CssColorSchemeFact,
+    CssColorSlot, CssColorStandardFailure, CssColorStandardFailureKind, CssColorTransform,
+    CssColorUnavailable, CssColorUnsupported, CssDeviceColorFact, CssImportance, CssKnownProperty,
+    CssKnownPropertyValueRef, CssPropertyNameRef, CssUsedColorCheckpoint,
+    parse_property_value_text, parse_used_color, resolve_authored_color,
 };
 
 use super::{Observation, emitted, error_chain};
@@ -318,63 +318,75 @@ struct ActionCounts {
     read_fact: usize,
 }
 
-/// Services every parse action until the operation is ready or failed.
-fn drive_parse<'owner>(
-    operation: &mut CssColorOperation<'owner, '_>,
+const BANKS: [CssColorBank; 3] = [
+    CssColorBank::Algorithm,
+    CssColorBank::Arithmetic,
+    CssColorBank::Evaluation,
+];
+
+/// The number of computations one transformation takes. The consuming
+/// typestate exposes exactly one `compute` per transform, so the `computes=`
+/// field records that guarantee; it is not a count the adapter observes.
+const TRANSFORM_COMPUTES: usize = 1;
+
+/// Completes a transformation with its single computation.
+fn drive_transformation<'facts>(
+    transformation: CssColorTransform<'_, 'facts>,
+) -> CssUsedColorCheckpoint<'facts> {
+    transformation.compute()
+}
+
+/// Services every parse action; returns the outcome and the parse's final
+/// acknowledged bank lengths, read before the completing step.
+fn drive_parse<'owner, 'facts>(
+    mut parse: CssColorParse<'owner, 'facts>,
     input: &[u16],
     banks: &mut [Vec<CssColorSlot<'owner>>; 3],
     counts: &mut ActionCounts,
-) -> Result<(), CssColorOperationError> {
-    while !matches!(
-        operation.action(),
-        Action::UsedReady | Action::StandardFailed
-    ) {
-        let mut action = operation.next_action();
-        match action.description() {
-            Action::ReadInput { offset } => {
+) -> Result<(CssColorParseOutcome<'facts>, [usize; 3]), CssColorError> {
+    loop {
+        let lengths = BANKS.map(|bank| parse.bank_length(bank));
+        let action = match parse.step() {
+            CssColorParseStep::Complete(outcome) => return Ok((outcome, lengths)),
+            CssColorParseStep::Pending(action) => action,
+        };
+        parse = match action {
+            CssColorParseAction::ReadInput(read) => {
                 counts.read_input += 1;
-                action.read_input(offset, input[offset])?;
+                let unit = input[read.offset()];
+                read.read(unit)?
             }
-            Action::ReadSlot { bank, index } => {
+            CssColorParseAction::ReadSlot(read) => {
                 counts.read_slot += 1;
-                action.read_slot(bank, index, &banks[ordinal(bank)][index])?;
+                let slot = &banks[ordinal(read.bank())][read.index()];
+                read.read(slot)?
             }
-            Action::AppendSlot { bank, index } => {
+            CssColorParseAction::AppendSlot(write) => {
                 counts.append_slot += 1;
-                assert_eq!(index, banks[ordinal(bank)].len(), "append at the bank end");
-                let record = action.record()?;
-                banks[ordinal(bank)].push(record);
-                action.written(bank, index, &banks[ordinal(bank)][index])?;
+                let target = &mut banks[ordinal(write.bank())];
+                assert_eq!(write.index(), target.len(), "append at the bank end");
+                let (record, receipt) = write.record();
+                target.push(record);
+                receipt.stored(&target[target.len() - 1])
             }
-            Action::UpdateSlot { bank, index } => {
+            CssColorParseAction::UpdateSlot(write) => {
                 counts.update_slot += 1;
-                banks[ordinal(bank)][index] = action.record()?;
-                action.written(bank, index, &banks[ordinal(bank)][index])?;
+                let index = write.index();
+                let target = &mut banks[ordinal(write.bank())];
+                let (record, receipt) = write.record();
+                target[index] = record;
+                receipt.stored(&target[index])
             }
-            Action::Compute(_) => {
+            CssColorParseAction::Compute(compute) => {
                 counts.compute += 1;
-                action.compute()?;
+                compute.compute()?
             }
-            Action::ReadFact(_) => {
+            CssColorParseAction::ReadFact(read) => {
                 counts.read_fact += 1;
-                action.compute()?;
+                read.read()?
             }
-            _ => panic!("unexpected colour parse action"),
-        }
+        };
     }
-    Ok(())
-}
-
-/// Services every transformation action; returns the number computed.
-fn drive_transformation(
-    transformation: &mut CssColorTransformation<'_, '_, '_>,
-) -> Result<usize, CssColorOperationError> {
-    let mut computed = 0;
-    while transformation.action() != Action::UsedReady {
-        computed += 1;
-        transformation.next_action().compute()?;
-    }
-    Ok(computed)
 }
 
 /// Services every action of Color's serialization of the checkpoint value,
@@ -435,7 +447,7 @@ fn protocol(
     let mut owner = CssColorOperationOwner::new();
     let mut counts = ActionCounts::default();
     let mut banks: [Vec<CssColorSlot<'_>>; 3] = std::array::from_fn(|_| Vec::new());
-    let mut operation = match CssColorOperation::parse_used(
+    let parse = match CssColorParse::start(
         &mut owner,
         CssColorInputKind::Utf16,
         input.len(),
@@ -443,14 +455,14 @@ fn protocol(
         facts,
         facts.identity(),
     ) {
-        Ok(operation) => operation,
+        Ok(parse) => parse,
         Err(error) => {
             observation.shape = "err".to_owned();
             observation.add_fact(format!("start-error={}", error_chain(&error)));
             return observation;
         }
     };
-    let driven = drive_parse(&mut operation, input, &mut banks, &mut counts);
+    let driven = drive_parse(parse, input, &mut banks, &mut counts);
     observation.add_fact(format!(
         "parse-actions:read-input={},read-slot={},append-slot={},update-slot={},compute={},read-fact={}",
         counts.read_input,
@@ -460,30 +472,18 @@ fn protocol(
         counts.compute,
         counts.read_fact
     ));
-    if let Err(error) = driven {
-        operation.abandon();
-        observation.shape = "err".to_owned();
-        observation.add_fact(format!("parse-error={}", error_chain(&error)));
-        return observation;
-    }
-    let lengths = [
-        CssColorBank::Algorithm,
-        CssColorBank::Arithmetic,
-        CssColorBank::Evaluation,
-    ]
-    .map(|bank| operation.bank_length(bank));
+    let (outcome, lengths) = match driven {
+        Ok(driven) => driven,
+        Err(error) => {
+            observation.shape = "err".to_owned();
+            observation.add_fact(format!("parse-error={}", error_chain(&error)));
+            return observation;
+        }
+    };
     observation.add_fact(format!(
         "banks=algorithm:{},arithmetic:{},evaluation:{}",
         lengths[0], lengths[1], lengths[2]
     ));
-    let outcome = match CssColorOperation::take(&mut Some(operation)) {
-        Ok(outcome) => outcome,
-        Err(error) => {
-            observation.shape = "err".to_owned();
-            observation.add_fact(format!("take-error={}", error_chain(&error)));
-            return observation;
-        }
-    };
     let checkpoint = match outcome {
         CssColorParseOutcome::Used(checkpoint) => {
             observation.shape = "used".to_owned();
@@ -498,48 +498,18 @@ fn protocol(
     observation.add_fact(format!("parsed={}", color_bits(checkpoint.value())));
     banks.iter_mut().for_each(Vec::clear);
     let mut numerical_owner = OperationOwner::new();
-    let mut slot = Some(checkpoint);
+    let mut checkpoint = checkpoint;
     for transformation in transformations {
         let name = transformation_name(*transformation);
-        let mut actual = match CssUsedColorCheckpoint::transform(
-            &mut slot,
-            &mut numerical_owner,
-            *transformation,
-        ) {
-            Ok(actual) => actual,
-            Err(error) => {
-                observation.shape = "err".to_owned();
-                observation.add_fact(format!("{name}-error={}", error_chain(&error)));
-                return observation;
-            }
-        };
-        let computed = match drive_transformation(&mut actual) {
-            Ok(computed) => computed,
-            Err(error) => {
-                actual.abandon();
-                observation.shape = "err".to_owned();
-                observation.add_fact(format!("{name}-error={}", error_chain(&error)));
-                return observation;
-            }
-        };
-        match CssColorTransformation::take(&mut Some(actual)) {
-            Ok(value) => {
-                observation.add_fact(format!(
-                    "{name}:computes={computed} -> {}",
-                    color_bits(value.value())
-                ));
-                slot = Some(value);
-            }
-            Err(error) => {
-                observation.shape = "err".to_owned();
-                observation.add_fact(format!("{name}-error={}", error_chain(&error)));
-                return observation;
-            }
-        }
+        checkpoint =
+            drive_transformation(checkpoint.transform(&mut numerical_owner, *transformation));
+        observation.add_fact(format!(
+            "{name}:computes={TRANSFORM_COMPUTES} -> {}",
+            color_bits(checkpoint.value())
+        ));
     }
     // CSS does not wrap serialization: the consumer serializes the checkpoint
     // value with Color and keeps the checkpoint's standard failure.
-    let checkpoint = slot.expect("the last transformation returned its checkpoint");
     let failure = checkpoint.standard_failure();
     let mut digits = Vec::new();
     let mut text = String::new();
@@ -665,12 +635,14 @@ fn failure_kind(kind: CssColorStandardFailureKind) -> &'static str {
 fn ordinary_error(error: &CssColorOrdinaryError) -> String {
     let category = match error {
         CssColorOrdinaryError::Operation(operation) => match operation {
-            CssColorOperationError::Facts(_) => "operation:facts".to_owned(),
-            CssColorOperationError::Protocol(_) => "operation:protocol".to_owned(),
-            CssColorOperationError::Unavailable(unavailable) => {
+            CssColorError::Facts(_) => "operation:facts".to_owned(),
+            CssColorError::MalformedInput { offset } => {
+                format!("operation:malformed-input:offset={offset}")
+            }
+            CssColorError::Unavailable(unavailable) => {
                 format!("operation:unavailable:{}", unavailable_name(unavailable))
             }
-            CssColorOperationError::Unsupported(unsupported) => {
+            CssColorError::Unsupported(unsupported) => {
                 format!("operation:unsupported:{}", unsupported_name(unsupported))
             }
             #[allow(unreachable_patterns)]

@@ -9,13 +9,12 @@ use super::css_color::{action_layout, frame, numerical_layout};
 use super::*;
 use provenance::{ColorComputation, ColorValueSource, InputValueComputation};
 use surgeist_css::{
-    CssColorActionDescription as Action, CssColorFactIdentity, CssColorFacts,
-    CssColorOperationError, CssColorOperationOwner, CssColorParseOutcome, CssColorPropertyFacts,
-    CssColorSchemeFact, CssColorStandardFailure, CssColorTransformation, CssDeviceColorFact,
-    CssUsedColorCheckpoint,
+    CssColorError, CssColorFactIdentity, CssColorFacts, CssColorOperationOwner,
+    CssColorParseOutcome, CssColorPropertyFacts, CssColorSchemeFact, CssColorStandardFailure,
+    CssColorTransform, CssDeviceColorFact, CssUsedColorCheckpoint,
 };
 #[cfg(test)]
-use surgeist_css::{CssColorOperation, CssColorSlot};
+use surgeist_css::{CssColorParse, CssColorSlot};
 
 use surgeist_color::{
     Color, ColorSpace, DigitSlot, OperationOwner, PredefinedColorSpace, Serialization,
@@ -27,56 +26,32 @@ use surgeist_color::{
 pub(super) const fn environment_identity() -> CssColorFactIdentity {
     CssColorFactIdentity::new(0x4854_4d4c_434f_4c52, 1)
 }
-fn css_error(c: &mut ParseControl, error: impl Into<CssColorOperationError>) -> SessionError {
-    c.stop_color_processing(error.into()).into()
+fn css_error(c: &mut ParseControl, error: CssColorError) -> SessionError {
+    c.stop_color_processing(error).into()
 }
 fn integrity(c: &mut ParseControl) -> SessionError {
     c.fail_invariant(crate::parser::control::Invariant::InputCursorState)
         .into()
 }
-fn transform<'a, 'f>(
+/// One total transformation; a refused admission drops it, which declines it.
+fn transform<'f>(
     c: &mut ParseControl,
-    checkpoint: &mut Option<CssUsedColorCheckpoint<'a, 'f>>,
+    checkpoint: CssUsedColorCheckpoint<'f>,
     numerical_owner: &mut OperationOwner,
     effect: Transformation,
-) -> Result<(), SessionError> {
-    frame(c, CssColorTransformation::register_bytes(), 0)?;
-    let transformation = CssUsedColorCheckpoint::transform(checkpoint, numerical_owner, effect)
-        .map_err(|error| css_error(c, error))?;
-    let mut transformation = Some(transformation);
-    let execution = (|| {
-        loop {
-            frame(
-                c,
-                CssColorTransformation::register_bytes(),
-                CssColorTransformation::action_bytes(),
-            )?;
-            let actual = transformation.as_mut().ok_or_else(|| integrity(c))?;
-            if actual.action() == Action::UsedReady {
-                break;
-            }
-            let action = actual.next_action();
-            action_layout(c, action.layout())?;
-            action.compute().map_err(|error| css_error(c, error))?;
-            #[cfg(test)]
-            tests::interrupt_at(tests::ColorCancelPoint::TransformCompute);
-        }
-        frame(
-            c,
-            CssColorTransformation::register_bytes(),
-            mem::size_of::<CssUsedColorCheckpoint<'_, '_>>(),
-        )?;
-        let value = CssColorTransformation::take(&mut transformation)
-            .map_err(|error| css_error(c, error))?;
-        *checkpoint = Some(value);
-        Ok(())
-    })();
-    if execution.is_err()
-        && let Some(actual) = transformation.as_mut()
-    {
-        actual.abandon();
-    }
-    execution
+) -> Result<CssUsedColorCheckpoint<'f>, SessionError> {
+    frame(c, CssColorTransform::register_bytes(), 0)?;
+    let transformation = checkpoint.transform(numerical_owner, effect);
+    action_layout(c, transformation.layout())?;
+    let checkpoint = transformation.compute();
+    #[cfg(test)]
+    tests::interrupt_at(tests::ColorCancelPoint::TransformCompute);
+    frame(
+        c,
+        CssColorTransform::register_bytes(),
+        mem::size_of::<CssUsedColorCheckpoint<'_>>(),
+    )?;
+    Ok(checkpoint)
 }
 
 /// Complete synchronous servicing; only final UTF16 output escapes. CSS phase
@@ -110,14 +85,13 @@ fn execute(
             #[cfg(test)]
             || tests::interrupt_at(tests::ColorCancelPoint::ParseSlotCommit),
         )?;
-        let checkpoint = match parsed {
+        let mut checkpoint = match parsed {
             CssColorParseOutcome::Used(value) => value,
             CssColorParseOutcome::StandardFailure(failure) => {
                 let [red, green, blue] = crate::input_color_standard_failure_fallback().channels();
                 failure.fallback(Color::from_srgba8([red, green, blue, 255]))
             }
         };
-        let mut checkpoint = Some(checkpoint);
         let mut sequence = crate::HtmlInputColorSerialization::new(alpha, space);
         loop {
             payload_write::<crate::HtmlInputColorSerialization>(c, 1)?;
@@ -136,11 +110,10 @@ fn execute(
                 crate::HtmlInputColorEffect::QuantizeSrgb => Transformation::QuantizeSrgb,
                 crate::HtmlInputColorEffect::ColorFunction => Transformation::ColorFunction,
             };
-            transform(c, &mut checkpoint, &mut numerical_owner, effect)?;
+            checkpoint = transform(c, checkpoint, &mut numerical_owner, effect)?;
         }
         // CSS does not wrap serialization: the checkpoint keeps its standard
         // failure for publication, and Color serializes its value directly.
-        let checkpoint = checkpoint.take().ok_or_else(|| integrity(c))?;
         let failure = checkpoint.standard_failure();
         frame(
             c,
@@ -450,17 +423,19 @@ mod tests {
     // the managed alpha change/removal and subsequent reset below.
     fn color_limits() -> crate::HtmlParseLimits {
         let register = [
-            CssColorOperation::register_bytes(),
+            CssColorParse::register_bytes(),
             Serialization::register_bytes(),
-            CssColorTransformation::register_bytes(),
+            CssColorTransform::register_bytes(),
         ]
         .into_iter()
         .max()
         .unwrap() as u64;
+        // A transformation has no separate action: its frame charges only
+        // the register and the resulting checkpoint.
         let guard = [
-            CssColorOperation::action_bytes(),
+            CssColorParse::action_bytes(),
             Serialization::action_bytes(),
-            CssColorTransformation::action_bytes(),
+            mem::size_of::<CssUsedColorCheckpoint<'_>>(),
         ]
         .into_iter()
         .max()
@@ -1061,13 +1036,13 @@ mod tests {
     }
     #[test]
     fn color_initial_header_one_short_and_cancel_preserve_first_stop_before_input() {
-        let layout = CssColorOperation::initialization_layout();
+        let layout = CssColorParse::initialization_layout();
         let guard = layout.owner_bytes
             + layout.fact_identity_bytes
             + mem::size_of::<CssColorFacts<'_>>()
             + mem::size_of::<Banks<'_>>()
             + mem::size_of::<OperationOwner>()
-            + mem::size_of::<fn(&mut ParseControl, CssColorOperationError) -> SessionError>();
+            + mem::size_of::<fn(&mut ParseControl, CssColorError) -> SessionError>();
         let first_header = (2 * layout.register_bytes + guard + 3) as u64;
         let limits = crate::parser::tree_builder::tests::limits(1000)
             .into_builder()
@@ -1551,7 +1526,7 @@ mod tests {
                 layout.current,
                 layout.high_water,
             ),
-            (368_931, 1440, 9472)
+            (446_718, 1440, 9472)
         );
         output.release(&mut c).unwrap();
     }

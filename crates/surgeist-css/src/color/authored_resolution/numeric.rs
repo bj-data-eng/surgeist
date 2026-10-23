@@ -6,8 +6,7 @@ use super::super::{
     },
     literal::{LiteralAction, LiteralConversion},
     protocol::{
-        CssColorBank, CssColorOperationOwner, CssColorProtocolError, CssColorSlot, Data,
-        RecordTable,
+        ColorProtocolError, CssColorBank, CssColorOperationOwner, CssColorSlot, Data, RecordTable,
     },
 };
 use super::CssColorPathStep;
@@ -275,7 +274,7 @@ impl<'css> NumericLowering<'css> {
             State::Frame(_) => Action::Compute,
         }
     }
-    pub(super) fn input_bytes(&self) -> Result<usize, CssColorProtocolError> {
+    pub(super) fn input_bytes(&self) -> Result<usize, ColorProtocolError> {
         Ok(match &self.state {
             State::Header { .. } => tree::header_bytes(),
             State::Child(frame) => tree::child_bytes(frame.header.kind),
@@ -284,7 +283,7 @@ impl<'css> NumericLowering<'css> {
             State::ProfileName { .. } => std::mem::size_of::<crate::CssColorProfileComponentName>(),
             State::Unit { unit, .. } => std::mem::size_of::<crate::CssComponentValue>()
                 .checked_add(unit.map_or(0, str::len))
-                .ok_or(CssColorProtocolError::Overflow)?,
+                .ok_or(ColorProtocolError::Overflow)?,
             State::Number { .. } | State::Name { .. }
                 if matches!(self.action(), Action::ReadByte { .. }) =>
             {
@@ -298,17 +297,17 @@ impl<'css> NumericLowering<'css> {
         data: Data<'css>,
         bank: CssColorBank,
         commit: Commit<'css>,
-    ) -> Result<(), CssColorProtocolError> {
+    ) -> Result<(), ColorProtocolError> {
         let end = if bank == CssColorBank::Algorithm {
             self.algorithm_end
         } else {
             self.arithmetic_end
         };
-        end.checked_add(1).ok_or(CssColorProtocolError::Overflow)?;
+        end.checked_add(1).ok_or(ColorProtocolError::Overflow)?;
         self.state = State::Pending { data, bank, commit };
         Ok(())
     }
-    pub(super) fn read_authored(&mut self) -> Result<(), CssColorProtocolError> {
+    pub(super) fn read_authored(&mut self) -> Result<(), ColorProtocolError> {
         match &mut self.state {
             State::Header {
                 node,
@@ -360,7 +359,7 @@ impl<'css> NumericLowering<'css> {
             State::Child(frame) => {
                 let mut frame = *frame;
                 let child =
-                    tree::child(frame.node, frame.next).ok_or(CssColorProtocolError::WrongIndex)?;
+                    tree::child(frame.node, frame.next).ok_or(ColorProtocolError::WrongIndex)?;
                 frame.child = child.expression;
                 frame.operator = child.operator;
                 frame.operator_origin = None;
@@ -376,14 +375,14 @@ impl<'css> NumericLowering<'css> {
             State::Syntax(frame) => {
                 let mut frame = *frame;
                 if frame.syntax_next >= frame.header.syntax_len {
-                    return Err(CssColorProtocolError::WrongIndex);
+                    return Err(ColorProtocolError::WrongIndex);
                 }
                 let item = tree::syntax_item(frame.node, frame.syntax_next)
-                    .ok_or(CssColorProtocolError::WrongIndex)?;
+                    .ok_or(ColorProtocolError::WrongIndex)?;
                 frame.syntax_next = frame
                     .syntax_next
                     .checked_add(1)
-                    .ok_or(CssColorProtocolError::Overflow)?;
+                    .ok_or(ColorProtocolError::Overflow)?;
                 if matches!(
                     frame.header.kind,
                     tree::Kind::Function {
@@ -402,7 +401,7 @@ impl<'css> NumericLowering<'css> {
                         }
                         CssComponentValueRef::Token(CssValueTokenRef::Whitespace(_))
                         | CssComponentValueRef::Comment(_) => self.state = State::Syntax(frame),
-                        _ => return Err(CssColorProtocolError::WrongSlot),
+                        _ => return Err(ColorProtocolError::WrongSlot),
                     }
                     return Ok(());
                 }
@@ -493,7 +492,7 @@ impl<'css> NumericLowering<'css> {
             }
             State::Number { writer, .. } => writer.read_byte(),
             State::Name { writer, .. } => writer.read_byte(),
-            _ => Err(CssColorProtocolError::WrongAction),
+            _ => Err(ColorProtocolError::WrongAction),
         }
     }
     pub(super) fn read(
@@ -501,9 +500,9 @@ impl<'css> NumericLowering<'css> {
         bank: CssColorBank,
         index: usize,
         slot: &CssColorSlot<'css>,
-    ) -> Result<(), CssColorProtocolError> {
+    ) -> Result<(), ColorProtocolError> {
         if self.action() != (Action::Read { bank, index }) {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         }
         slot.qualify(self.owner, self.phase, index, bank)?;
         match &mut self.state {
@@ -531,16 +530,16 @@ impl<'css> NumericLowering<'css> {
                 root,
             } => {
                 if index != *expected {
-                    return Err(CssColorProtocolError::WrongIndex);
+                    return Err(ColorProtocolError::WrongIndex);
                 }
                 let Data::AuthoredNumericFrame(frame) = slot.data else {
-                    return Err(CssColorProtocolError::WrongSlot);
+                    return Err(ColorProtocolError::WrongSlot);
                 };
                 if !frame
                     .child
                     .is_some_and(|expected| tree::same(expected, *child))
                 {
-                    return Err(CssColorProtocolError::WrongSlot);
+                    return Err(ColorProtocolError::WrongSlot);
                 }
                 let root = *root;
                 self.position = Position {
@@ -554,17 +553,17 @@ impl<'css> NumericLowering<'css> {
                     Commit::Return { frame, root },
                 )
             }
-            _ => Err(CssColorProtocolError::WrongAction),
+            _ => Err(ColorProtocolError::WrongAction),
         }
     }
     pub(super) fn record(
         &self,
         bank: CssColorBank,
         index: usize,
-    ) -> Result<CssColorSlot<'css>, CssColorProtocolError> {
+    ) -> Result<CssColorSlot<'css>, ColorProtocolError> {
         if !matches!(self.action(),Action::Append {bank:b,index:i}|Action::Replace {bank:b,index:i} if b==bank && i==index)
         {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         }
         match &self.state {
             State::Number { writer, .. } => writer.record(index),
@@ -573,7 +572,7 @@ impl<'css> NumericLowering<'css> {
             State::Pending { data, .. } => {
                 Ok(CssColorSlot::new(self.owner, self.phase, index, *data))
             }
-            _ => Err(CssColorProtocolError::WrongAction),
+            _ => Err(ColorProtocolError::WrongAction),
         }
     }
     pub(super) fn written(
@@ -581,11 +580,11 @@ impl<'css> NumericLowering<'css> {
         bank: CssColorBank,
         index: usize,
         slot: &CssColorSlot<'_>,
-    ) -> Result<(), CssColorProtocolError> {
+    ) -> Result<(), ColorProtocolError> {
         let action = self.action();
         if !matches!(action,Action::Append {bank:b,index:i}|Action::Replace {bank:b,index:i} if b==bank && i==index)
         {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         }
         slot.qualify(self.owner, self.phase, index, bank)?;
         match &mut self.state {
@@ -607,21 +606,21 @@ impl<'css> NumericLowering<'css> {
             _ => {}
         }
         let State::Pending { data, commit, .. } = self.state else {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         };
         if !same_data(data, slot.data) {
-            return Err(CssColorProtocolError::WrongSlot);
+            return Err(ColorProtocolError::WrongSlot);
         }
         if bank == CssColorBank::Algorithm {
             self.algorithm_end = self
                 .algorithm_end
                 .checked_add(1)
-                .ok_or(CssColorProtocolError::Overflow)?;
+                .ok_or(ColorProtocolError::Overflow)?;
         } else {
             self.arithmetic_end = self
                 .arithmetic_end
                 .checked_add(1)
-                .ok_or(CssColorProtocolError::Overflow)?;
+                .ok_or(ColorProtocolError::Overflow)?;
         }
         match commit {
             Commit::Site { frame } => self.pending(
@@ -665,11 +664,11 @@ impl<'css> NumericLowering<'css> {
                 }
             }
             Commit::Suspend { frame, index } => {
-                let child = frame.child.ok_or(CssColorProtocolError::WrongSlot)?;
+                let child = frame.child.ok_or(ColorProtocolError::WrongSlot)?;
                 let depth = frame
                     .depth
                     .checked_add(1)
-                    .ok_or(CssColorProtocolError::Overflow)?;
+                    .ok_or(ColorProtocolError::Overflow)?;
                 let edge = Some(CssColorPathStep::ExpressionOperand(frame.next));
                 self.position = Position {
                     site: self.algorithm_end,
@@ -690,7 +689,7 @@ impl<'css> NumericLowering<'css> {
                 frame.next = frame
                     .next
                     .checked_add(1)
-                    .ok_or(CssColorProtocolError::Overflow)?;
+                    .ok_or(ColorProtocolError::Overflow)?;
                 frame.child = None;
                 frame.child_read = false;
                 self.state = State::Frame(frame);
@@ -698,11 +697,7 @@ impl<'css> NumericLowering<'css> {
         }
         Ok(())
     }
-    fn leaf(
-        &mut self,
-        frame: Frame<'css>,
-        value: NumericLeaf,
-    ) -> Result<(), CssColorProtocolError> {
+    fn leaf(&mut self, frame: Frame<'css>, value: NumericLeaf) -> Result<(), ColorProtocolError> {
         self.pending(
             Data::NumericLeaf(value),
             CssColorBank::Algorithm,
@@ -712,11 +707,7 @@ impl<'css> NumericLowering<'css> {
             },
         )
     }
-    fn link(
-        &mut self,
-        frame: Frame<'css>,
-        child: Option<usize>,
-    ) -> Result<(), CssColorProtocolError> {
+    fn link(&mut self, frame: Frame<'css>, child: Option<usize>) -> Result<(), ColorProtocolError> {
         let root = self.arithmetic_end;
         let record = match frame.header.kind {
             tree::Kind::Group => {
@@ -731,29 +722,29 @@ impl<'css> NumericLowering<'css> {
             tree::Kind::Sum { .. } => engine::authored::term(
                 frame.last,
                 frame.next,
-                child.ok_or(CssColorProtocolError::WrongSlot)?,
+                child.ok_or(ColorProtocolError::WrongSlot)?,
                 match frame.operator {
                     tree::Operator::Sum(op) => Some(op),
                     tree::Operator::None => None,
-                    _ => return Err(CssColorProtocolError::WrongSlot),
+                    _ => return Err(ColorProtocolError::WrongSlot),
                 },
                 frame.operator_site,
             ),
             tree::Kind::Product { .. } => engine::authored::factor(
                 frame.last,
                 frame.next,
-                child.ok_or(CssColorProtocolError::WrongSlot)?,
+                child.ok_or(ColorProtocolError::WrongSlot)?,
                 match frame.operator {
                     tree::Operator::Product(op) => Some(op),
                     tree::Operator::None => None,
-                    _ => return Err(CssColorProtocolError::WrongSlot),
+                    _ => return Err(ColorProtocolError::WrongSlot),
                 },
                 frame.operator_site,
             ),
             tree::Kind::Function { .. } => {
                 engine::authored::argument(frame.last, frame.next, child)
             }
-            _ => return Err(CssColorProtocolError::WrongSlot),
+            _ => return Err(ColorProtocolError::WrongSlot),
         };
         self.pending(
             Data::Expression(ExpressionRecord::authored(record)),
@@ -767,9 +758,9 @@ impl<'css> NumericLowering<'css> {
             _ => crate::color::CssColorKernel::Transition,
         }
     }
-    pub(super) fn compute(&mut self) -> Result<(), CssColorProtocolError> {
+    pub(super) fn compute(&mut self) -> Result<(), ColorProtocolError> {
         if self.action() != Action::Compute {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         }
         match &mut self.state {
             State::Number { frame, writer } => {
@@ -860,11 +851,11 @@ impl<'css> NumericLowering<'css> {
                         Ok(())
                     }
                     tree::Kind::Size | tree::Kind::TreeCounting => {
-                        Err(CssColorProtocolError::WrongSlot)
+                        Err(ColorProtocolError::WrongSlot)
                     }
-                    tree::Kind::Value(_) => Err(CssColorProtocolError::WrongAction),
+                    tree::Kind::Value(_) => Err(ColorProtocolError::WrongAction),
                     _ if frame.next == frame.children() => {
-                        let last = frame.last.ok_or(CssColorProtocolError::WrongSlot)?;
+                        let last = frame.last.ok_or(ColorProtocolError::WrongSlot)?;
                         let kind = match frame.header.kind {
                             tree::Kind::Group => engine::NodeKind::Group { child: last },
                             tree::Kind::Sum { len } => engine::NodeKind::Sum { last, count: len },
@@ -915,10 +906,10 @@ impl<'css> NumericLowering<'css> {
                     }
                 }
             }
-            _ => Err(CssColorProtocolError::WrongAction),
+            _ => Err(ColorProtocolError::WrongAction),
         }
     }
-    pub(super) fn finish(&self) -> Result<ExpressionDescriptor, CssColorProtocolError> {
+    pub(super) fn finish(&self) -> Result<ExpressionDescriptor, ColorProtocolError> {
         let State::Done {
             root,
             ty,
@@ -926,7 +917,7 @@ impl<'css> NumericLowering<'css> {
             closed,
         } = self.state
         else {
-            return Err(CssColorProtocolError::Terminal);
+            return Err(ColorProtocolError::Terminal);
         };
         ExpressionDescriptor::authored(
             self.arithmetic_start,

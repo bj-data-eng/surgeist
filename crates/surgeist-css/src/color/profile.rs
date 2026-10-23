@@ -1,16 +1,14 @@
 //! Exact reached profile-key matching over real decoded/fact units.
 
 use super::facts::{CssColorFactIdentity, CssColorFacts, CssColorProfileAvailability};
-use super::protocol::{
-    CssColorProtocolError, CssColorSlot, LexicalRecord, RecordRange, RecordTable,
-};
+use super::protocol::{ColorProtocolError, CssColorSlot, LexicalRecord, RecordRange, RecordTable};
 use crate::CssColorProfileRenderingIntent;
 #[cfg(test)]
 use crate::tokenization::tokenizer::{NameKind, TokenKind};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum ProfileError {
-    Protocol(CssColorProtocolError),
+    Protocol(ColorProtocolError),
     ForeignFacts,
     InvalidName,
     InvalidMetadata,
@@ -84,14 +82,14 @@ impl NameComparison {
             ComparisonAction::ReadSource { index: self.source }
         }
     }
-    fn source(&mut self, index: usize, value: char) -> Result<(), CssColorProtocolError> {
+    fn source(&mut self, index: usize, value: char) -> Result<(), ColorProtocolError> {
         if self.action() != (ComparisonAction::ReadSource { index }) {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         }
         let next = self
             .source
             .checked_add(1)
-            .ok_or(CssColorProtocolError::Overflow)?;
+            .ok_or(ColorProtocolError::Overflow)?;
         self.encoded_length = value.encode_utf8(&mut self.encoded).len();
         self.encoded_index = 0;
         self.source = next;
@@ -102,9 +100,9 @@ impl NameComparison {
         }
         Ok(())
     }
-    fn fact(&mut self, index: usize, value: u8) -> Result<(), CssColorProtocolError> {
+    fn fact(&mut self, index: usize, value: u8) -> Result<(), ColorProtocolError> {
         if self.action() != (ComparisonAction::ReadFactByte { index }) {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         }
         if value != self.encoded[self.encoded_index] {
             self.matches = false;
@@ -113,7 +111,7 @@ impl NameComparison {
             let next = self
                 .fact_byte
                 .checked_add(1)
-                .ok_or(CssColorProtocolError::Overflow)?;
+                .ok_or(ColorProtocolError::Overflow)?;
             self.fact_byte = next;
             self.encoded_index += 1;
             if self.encoded_index == self.encoded_length {
@@ -232,14 +230,14 @@ impl<'owner, 'facts> ProfileLookup<'owner, 'facts> {
         self.qualification()?;
         if !matches!(self.action(), ProfileAction::ReadPrefix { index: expected } | ProfileAction::ReadSource { index: expected } if expected == index)
         {
-            return Err(ProfileError::Protocol(CssColorProtocolError::WrongAction));
+            return Err(ProfileError::Protocol(ColorProtocolError::WrongAction));
         }
         let LexicalRecord::NameUnit(unit) = self
             .table
             .observe(index, slot)
             .map_err(ProfileError::Protocol)?
         else {
-            return Err(ProfileError::Protocol(CssColorProtocolError::WrongSlot));
+            return Err(ProfileError::Protocol(ColorProtocolError::WrongSlot));
         };
         if matches!(self.state, State::Prefix) {
             if unit != '-' {
@@ -253,7 +251,7 @@ impl<'owner, 'facts> ProfileLookup<'owner, 'facts> {
         } else {
             self.comparison
                 .as_mut()
-                .ok_or(ProfileError::Protocol(CssColorProtocolError::WrongAction))?
+                .ok_or(ProfileError::Protocol(ColorProtocolError::WrongAction))?
                 .source(index, unit)
                 .map_err(ProfileError::Protocol)?;
             self.state = State::FactByte;
@@ -265,7 +263,7 @@ impl<'owner, 'facts> ProfileLookup<'owner, 'facts> {
     pub(crate) fn step(&mut self, action: ProfileAction) -> Result<(), ProfileError> {
         self.qualification()?;
         if action != self.action() {
-            return Err(ProfileError::Protocol(CssColorProtocolError::WrongAction));
+            return Err(ProfileError::Protocol(ColorProtocolError::WrongAction));
         }
         match action {
             ProfileAction::ReadLength => {
@@ -281,7 +279,7 @@ impl<'owner, 'facts> ProfileLookup<'owner, 'facts> {
                     .facts
                     .profiles
                     .get(binding)
-                    .ok_or(ProfileError::Protocol(CssColorProtocolError::WrongIndex))?;
+                    .ok_or(ProfileError::Protocol(ColorProtocolError::WrongIndex))?;
                 self.comparison =
                     Some(NameComparison::start(self.name, header.name.as_str().len()));
                 self.state = State::Source;
@@ -291,16 +289,16 @@ impl<'owner, 'facts> ProfileLookup<'owner, 'facts> {
                     .facts
                     .profiles
                     .get(binding)
-                    .ok_or(ProfileError::Protocol(CssColorProtocolError::WrongIndex))?;
+                    .ok_or(ProfileError::Protocol(ColorProtocolError::WrongIndex))?;
                 let byte = *header
                     .name
                     .as_str()
                     .as_bytes()
                     .get(index)
-                    .ok_or(ProfileError::Protocol(CssColorProtocolError::WrongIndex))?;
+                    .ok_or(ProfileError::Protocol(ColorProtocolError::WrongIndex))?;
                 self.comparison
                     .as_mut()
-                    .ok_or(ProfileError::Protocol(CssColorProtocolError::WrongAction))?
+                    .ok_or(ProfileError::Protocol(ColorProtocolError::WrongAction))?
                     .fact(index, byte)
                     .map_err(ProfileError::Protocol)?;
                 self.state = State::Source;
@@ -335,7 +333,7 @@ impl<'owner, 'facts> ProfileLookup<'owner, 'facts> {
                     .facts
                     .profiles
                     .get(binding)
-                    .ok_or(ProfileError::Protocol(CssColorProtocolError::WrongIndex))?;
+                    .ok_or(ProfileError::Protocol(ColorProtocolError::WrongIndex))?;
                 if header.availability == CssColorProfileAvailability::Loaded
                     && header.parameter_count == 0
                 {
@@ -353,7 +351,7 @@ impl<'owner, 'facts> ProfileLookup<'owner, 'facts> {
                 });
                 self.state = State::Done;
             }
-            _ => return Err(ProfileError::Protocol(CssColorProtocolError::WrongAction)),
+            _ => return Err(ProfileError::Protocol(ColorProtocolError::WrongAction)),
         }
         Ok(())
     }
@@ -380,7 +378,7 @@ pub(crate) enum ComponentNameAction {
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum ComponentNameError {
-    Protocol(CssColorProtocolError),
+    Protocol(ColorProtocolError),
     ForeignFacts,
     InvalidMetadata,
     Unavailable,
@@ -477,7 +475,7 @@ impl<'owner, 'facts> ProfileComponentLookup<'owner, 'facts> {
         self.qualification()?;
         if self.action() != (ComponentNameAction::ReadSource { index }) {
             return Err(ComponentNameError::Protocol(
-                CssColorProtocolError::WrongAction,
+                ColorProtocolError::WrongAction,
             ));
         }
         let LexicalRecord::NameUnit(value) = self
@@ -485,14 +483,12 @@ impl<'owner, 'facts> ProfileComponentLookup<'owner, 'facts> {
             .observe(index, slot)
             .map_err(ComponentNameError::Protocol)?
         else {
-            return Err(ComponentNameError::Protocol(
-                CssColorProtocolError::WrongSlot,
-            ));
+            return Err(ComponentNameError::Protocol(ColorProtocolError::WrongSlot));
         };
         self.comparison
             .as_mut()
             .ok_or(ComponentNameError::Protocol(
-                CssColorProtocolError::WrongAction,
+                ColorProtocolError::WrongAction,
             ))?
             .source(index, value)
             .map_err(ComponentNameError::Protocol)
@@ -501,7 +497,7 @@ impl<'owner, 'facts> ProfileComponentLookup<'owner, 'facts> {
         self.qualification()?;
         if action != self.action() {
             return Err(ComponentNameError::Protocol(
-                CssColorProtocolError::WrongAction,
+                ColorProtocolError::WrongAction,
             ));
         }
         match action {
@@ -559,7 +555,7 @@ impl<'owner, 'facts> ProfileComponentLookup<'owner, 'facts> {
                 self.comparison
                     .as_mut()
                     .ok_or(ComponentNameError::Protocol(
-                        CssColorProtocolError::WrongAction,
+                        ColorProtocolError::WrongAction,
                     ))?
                     .fact(index, value)
                     .map_err(ComponentNameError::Protocol)?;
@@ -575,9 +571,8 @@ impl<'owner, 'facts> ProfileComponentLookup<'owner, 'facts> {
                         return self.fail(ComponentNameError::UnknownChannel);
                     }
                     let Some(next) = self.ordinal.checked_add(1) else {
-                        return self.fail(ComponentNameError::Protocol(
-                            CssColorProtocolError::Overflow,
-                        ));
+                        return self
+                            .fail(ComponentNameError::Protocol(ColorProtocolError::Overflow));
                     };
                     if next == self.selection.named_count {
                         return self.fail(ComponentNameError::UnknownChannel);
@@ -588,7 +583,7 @@ impl<'owner, 'facts> ProfileComponentLookup<'owner, 'facts> {
             }
             _ => {
                 return Err(ComponentNameError::Protocol(
-                    CssColorProtocolError::WrongAction,
+                    ColorProtocolError::WrongAction,
                 ));
             }
         }

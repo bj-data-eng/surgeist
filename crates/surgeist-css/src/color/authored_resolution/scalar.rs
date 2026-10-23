@@ -6,8 +6,7 @@ use super::super::{
     expression::{OperandReference, Variable},
     literal::{LiteralAction, LiteralConversion},
     protocol::{
-        CssColorBank, CssColorOperationOwner, CssColorProtocolError, CssColorSlot, Data,
-        RecordTable,
+        ColorProtocolError, CssColorBank, CssColorOperationOwner, CssColorSlot, Data, RecordTable,
     },
 };
 use super::position::Position;
@@ -162,7 +161,7 @@ impl<'css> ScalarLowering<'css> {
             State::Failed(f) => Action::Failed(*f),
         }
     }
-    pub(super) fn input_bytes(&self) -> Result<usize, CssColorProtocolError> {
+    pub(super) fn input_bytes(&self) -> Result<usize, ColorProtocolError> {
         Ok(match &self.state {
             State::Header => self.operand.header_bytes(),
             State::Payload { bytes } => *bytes,
@@ -177,7 +176,7 @@ impl<'css> ScalarLowering<'css> {
             _ => 0,
         })
     }
-    pub(super) fn read_authored(&mut self) -> Result<(), CssColorProtocolError> {
+    pub(super) fn read_authored(&mut self) -> Result<(), ColorProtocolError> {
         match &mut self.state {
             State::Header => {
                 let bytes = self.operand.scalar_bytes()?;
@@ -195,7 +194,7 @@ impl<'css> ScalarLowering<'css> {
                 };
                 self.algorithm_end
                     .checked_add(1)
-                    .ok_or(CssColorProtocolError::Overflow)?;
+                    .ok_or(ColorProtocolError::Overflow)?;
                 self.state = State::Site {
                     value,
                     record: SiteRecord {
@@ -213,7 +212,7 @@ impl<'css> ScalarLowering<'css> {
                     self.owner,
                     self.phase,
                     name.as_str(),
-                    self.site.ok_or(CssColorProtocolError::WrongSlot)?,
+                    self.site.ok_or(ColorProtocolError::WrongSlot)?,
                     self.algorithm_end,
                 ));
                 Ok(())
@@ -230,7 +229,7 @@ impl<'css> ScalarLowering<'css> {
                     *numeric,
                     *unit,
                     *percentage,
-                    self.site.ok_or(CssColorProtocolError::WrongSlot)?,
+                    self.site.ok_or(ColorProtocolError::WrongSlot)?,
                     self.algorithm_end,
                 ));
                 Ok(())
@@ -238,7 +237,7 @@ impl<'css> ScalarLowering<'css> {
             State::Number(writer) => writer.read_byte(),
             State::Name(writer) => writer.read_byte(),
             State::Numeric(cursor) => cursor.read_authored(),
-            _ => Err(CssColorProtocolError::WrongAction),
+            _ => Err(ColorProtocolError::WrongAction),
         }
     }
     pub(super) fn read(
@@ -246,9 +245,9 @@ impl<'css> ScalarLowering<'css> {
         bank: CssColorBank,
         index: usize,
         slot: &CssColorSlot<'css>,
-    ) -> Result<(), CssColorProtocolError> {
+    ) -> Result<(), ColorProtocolError> {
         if self.action() != (Action::Read { bank, index }) {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         }
         slot.qualify(self.owner, self.phase, index, bank)?;
         match &mut self.state {
@@ -268,17 +267,17 @@ impl<'css> ScalarLowering<'css> {
             }
             State::Convert(cursor) => cursor.read(index, slot),
             State::Numeric(cursor) => cursor.read(bank, index, slot),
-            _ => Err(CssColorProtocolError::WrongAction),
+            _ => Err(ColorProtocolError::WrongAction),
         }
     }
     pub(super) fn record(
         &self,
         bank: CssColorBank,
         index: usize,
-    ) -> Result<CssColorSlot<'css>, CssColorProtocolError> {
+    ) -> Result<CssColorSlot<'css>, ColorProtocolError> {
         if !matches!(self.action(),Action::Append {bank:b,index:i}|Action::Replace {bank:b,index:i} if b==bank && i==index)
         {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         }
         match &self.state {
             State::Site { record, .. } => Ok(CssColorSlot::new(
@@ -291,7 +290,7 @@ impl<'css> ScalarLowering<'css> {
             State::Name(writer) => writer.record(index),
             State::Convert(cursor) => cursor.record(index),
             State::Numeric(cursor) => cursor.record(bank, index),
-            _ => Err(CssColorProtocolError::WrongAction),
+            _ => Err(ColorProtocolError::WrongAction),
         }
     }
     pub(super) fn written(
@@ -299,24 +298,24 @@ impl<'css> ScalarLowering<'css> {
         bank: CssColorBank,
         index: usize,
         slot: &CssColorSlot<'_>,
-    ) -> Result<(), CssColorProtocolError> {
+    ) -> Result<(), ColorProtocolError> {
         if !matches!(self.action(),Action::Append {bank:b,index:i}|Action::Replace {bank:b,index:i} if b==bank && i==index)
         {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         }
         slot.qualify(self.owner, self.phase, index, bank)?;
         match &mut self.state {
             State::Site { value, record } => {
                 let Data::AuthoredSite(actual) = slot.data else {
-                    return Err(CssColorProtocolError::WrongSlot);
+                    return Err(ColorProtocolError::WrongSlot);
                 };
                 if !record.identical(actual) {
-                    return Err(CssColorProtocolError::WrongSlot);
+                    return Err(ColorProtocolError::WrongSlot);
                 }
                 self.algorithm_end = self
                     .algorithm_end
                     .checked_add(1)
-                    .ok_or(CssColorProtocolError::Overflow)?;
+                    .ok_or(ColorProtocolError::Overflow)?;
                 self.site = Some(index);
                 self.state = State::Value(*value);
                 Ok(())
@@ -342,7 +341,7 @@ impl<'css> ScalarLowering<'css> {
                 self.arithmetic_end = cursor.arithmetic_end();
                 Ok(())
             }
-            _ => Err(CssColorProtocolError::WrongAction),
+            _ => Err(ColorProtocolError::WrongAction),
         }
     }
     pub(super) fn kernel(&self) -> crate::color::CssColorKernel {
@@ -352,18 +351,18 @@ impl<'css> ScalarLowering<'css> {
             _ => crate::color::CssColorKernel::Transition,
         }
     }
-    pub(super) fn compute(&mut self) -> Result<(), CssColorProtocolError> {
+    pub(super) fn compute(&mut self) -> Result<(), ColorProtocolError> {
         if self.action() != Action::Compute {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         }
-        let site = self.site.ok_or(CssColorProtocolError::WrongSlot)?;
+        let site = self.site.ok_or(ColorProtocolError::WrongSlot)?;
         match &mut self.state {
             State::Value(value) => {
                 match *value {
                     Scalar::Missing { .. } => {
                         self.state = State::Done(CheckedScalar::Literal(Component::MISSING))
                     }
-                    Scalar::Literal { .. } => return Err(CssColorProtocolError::WrongAction),
+                    Scalar::Literal { .. } => return Err(ColorProtocolError::WrongAction),
                     Scalar::Variable { channel, .. } => {
                         self.state = State::Done(CheckedScalar::Variable {
                             token: OperandReference::Authored { index: site, site },
@@ -444,14 +443,14 @@ impl<'css> ScalarLowering<'css> {
                     cursor.compute()
                 }
             }
-            _ => Err(CssColorProtocolError::WrongAction),
+            _ => Err(ColorProtocolError::WrongAction),
         }
     }
-    pub(super) fn finish(&self) -> Result<(usize, CheckedScalar), CssColorProtocolError> {
+    pub(super) fn finish(&self) -> Result<(usize, CheckedScalar), ColorProtocolError> {
         let State::Done(value) = self.state else {
-            return Err(CssColorProtocolError::Terminal);
+            return Err(ColorProtocolError::Terminal);
         };
-        Ok((self.site.ok_or(CssColorProtocolError::WrongSlot)?, value))
+        Ok((self.site.ok_or(ColorProtocolError::WrongSlot)?, value))
     }
     pub(super) fn position(&self) -> Position {
         match &self.state {

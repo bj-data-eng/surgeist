@@ -189,7 +189,6 @@ pub enum DomMetaError {
     ContentSecurityPolicyUnsupported,
     /// Media beyond HTML's empty/ASCII-whitespace match needs actual matching facts.
     ThemeColorMediaUnavailable,
-    ThemeColorProtocol(surgeist_css::CssColorProtocolError),
     ThemeColorUnavailable(surgeist_css::CssColorUnavailable),
     ThemeColorUnsupported(surgeist_css::CssColorUnsupported),
     ThemeColorFacts(surgeist_css::CssColorFactError),

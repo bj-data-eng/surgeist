@@ -2,7 +2,7 @@
 
 use super::super::grammar::Leaf;
 use super::super::keywords::ColorFunction as F;
-use super::super::protocol::CssColorProtocolError;
+use super::super::protocol::ColorProtocolError;
 use super::CssColorPathStep;
 use crate::syntax::color::operands::{self, ColorNode, Scalar};
 use crate::*;
@@ -46,24 +46,24 @@ impl<'a> Operand<'a> {
     }
     /// The enum/local wrapper has already been observed. Literal projection's
     /// boxed original component remains a separately admitted payload read.
-    pub(super) fn scalar_bytes(self) -> Result<usize, CssColorProtocolError> {
+    pub(super) fn scalar_bytes(self) -> Result<usize, ColorProtocolError> {
         Ok(match self {
             Self::Component(value) => operands::component_bytes(value),
             Self::Hue(value) => operands::hue_bytes(value),
             Self::Relative(value) => operands::relative_bytes(value),
             Self::Profile(value) => operands::profile_bytes(value),
             Self::Weight(value) => operands::weight_bytes(value),
-            _ => return Err(CssColorProtocolError::WrongSlot),
+            _ => return Err(ColorProtocolError::WrongSlot),
         })
     }
-    pub(super) fn scalar(self) -> Result<Scalar<'a>, CssColorProtocolError> {
+    pub(super) fn scalar(self) -> Result<Scalar<'a>, ColorProtocolError> {
         Ok(match self {
             Self::Component(value) => operands::component(value),
             Self::Hue(value) => operands::hue(value),
             Self::Relative(value) => operands::relative(value),
             Self::Profile(value) => operands::profile(value),
             Self::Weight(value) => operands::weight(value),
-            _ => return Err(CssColorProtocolError::WrongSlot),
+            _ => return Err(ColorProtocolError::WrongSlot),
         })
     }
 }
@@ -323,7 +323,7 @@ pub(super) fn child(node: ColorNode<'_>, edge: CssColorPathStep) -> Option<Opera
 pub(super) fn child_bytes(
     node: ColorNode<'_>,
     edge: CssColorPathStep,
-) -> Result<usize, CssColorProtocolError> {
+) -> Result<usize, ColorProtocolError> {
     let element = match (node, edge) {
         (
             ColorNode::ColorMix(_),
@@ -337,5 +337,5 @@ pub(super) fn child_bytes(
     };
     node.local_bytes()
         .checked_add(element)
-        .ok_or(CssColorProtocolError::Overflow)
+        .ok_or(ColorProtocolError::Overflow)
 }

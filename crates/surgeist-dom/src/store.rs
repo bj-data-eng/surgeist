@@ -349,7 +349,6 @@ pub enum DomError {
         limit: u64,
     },
     InputNumeric(surgeist_html::bounded::RangeNumericError),
-    InputColorProtocol(surgeist_css::CssColorProtocolError),
     InputColorUnavailable(surgeist_css::CssColorUnavailable),
     InputColorUnsupported(surgeist_css::CssColorUnsupported),
     InputColorFacts(surgeist_css::CssColorFactError),
