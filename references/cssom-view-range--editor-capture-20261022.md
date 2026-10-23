@@ -30,17 +30,18 @@ Note: The [DOMRect](https://drafts.csswg.org/geometry-1/#domrect) objects return
 Tests
 
 - [range-bounding-client-rect-with-nested-text.html](https://wpt.fyi/results/css/cssom-view/range-bounding-client-rect-with-nested-text.html) [(live test)](http://wpt.live/css/cssom-view/range-bounding-client-rect-with-nested-text.html) [(source)](https://github.com/web-platform-tests/wpt/blob/master/css/cssom-view/range-bounding-client-rect-with-nested-text.html)
+
 - [range-client-rects-surrogate-indexing.html](https://wpt.fyi/results/css/cssom-view/range-client-rects-surrogate-indexing.html) [(live test)](http://wpt.live/css/cssom-view/range-client-rects-surrogate-indexing.html) [(source)](https://github.com/web-platform-tests/wpt/blob/master/css/cssom-view/range-client-rects-surrogate-indexing.html)
 
 The `getBoundingClientRect()` method, when invoked, must return the result of the following algorithm:
 
 1. Let list be the result of invoking [getClientRects()](https://drafts.csswg.org/cssom-view/#dom-range-getclientrects) on the same range this method was invoked on.
 
-- If list is empty return a [DOMRect](https://drafts.csswg.org/geometry-1/#domrect) object whose [x](https://drafts.csswg.org/geometry-1/#dom-domrect-x), [y](https://drafts.csswg.org/geometry-1/#dom-domrect-y), [width](https://drafts.csswg.org/geometry-1/#dom-domrect-width) and [height](https://drafts.csswg.org/geometry-1/#dom-domrect-height) members are zero.
+2. If list is empty return a [DOMRect](https://drafts.csswg.org/geometry-1/#domrect) object whose [x](https://drafts.csswg.org/geometry-1/#dom-domrect-x), [y](https://drafts.csswg.org/geometry-1/#dom-domrect-y), [width](https://drafts.csswg.org/geometry-1/#dom-domrect-width) and [height](https://drafts.csswg.org/geometry-1/#dom-domrect-height) members are zero.
 
-- If all rectangles in list have zero width or height, return the first rectangle in list.
+3. If all rectangles in list have zero width or height, return the first rectangle in list.
 
-- Otherwise, return a [DOMRect](https://drafts.csswg.org/geometry-1/#domrect) object describing the smallest rectangle that includes all of the rectangles in list of which the height or width is not zero.
+4. Otherwise, return a [DOMRect](https://drafts.csswg.org/geometry-1/#domrect) object describing the smallest rectangle that includes all of the rectangles in list of which the height or width is not zero.
 
 Note: The [DOMRect](https://drafts.csswg.org/geometry-1/#domrect) object returned by [getBoundingClientRect()](https://drafts.csswg.org/cssom-view/#dom-range-getboundingclientrect) is not [live](https://html.spec.whatwg.org/multipage/infrastructure.html#live).
 
