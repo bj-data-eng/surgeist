@@ -534,6 +534,27 @@ a claim of standards consensus or universal browser agreement. The initial zone
 is zero, successive-line limit is unbounded and last-line exclusion is none.
 Nondefault limits and broader resource coverage remain separate requirements.
 
+For native character limits, Text consumes a computed total/before/after triple
+on the governing `Style`, retaining `auto` or a nonnegative count in each slot.
+The consuming style adapter owns expansion of the specified CSS values and
+checked integer conversion: one value becomes `(total, auto, auto)`, two become
+`(total, before, before)`, and three remain distinct. Text does not parse that
+grammar or wrap or saturate unrepresentable external integers. Native preparation
+resolves each `auto` independently to the selected 5/2/2 fallback. Preserve the
+symbolic triple in captured style and cache identity even when explicit numbers
+have the same used values.
+
+Apply the actual cut owner's limits against the single complete-word count map;
+a preparation-wide override cannot represent different governing styles within
+one word. Compare all three minima independently, without adding them, clamping
+them to word length or allocating by their values. Zero removes only that numeric
+restriction; it supplies no lexical word, count observation or eligible cut.
+For example, `ab` + SHY + `cd` fails the initial total minimum of 5, while an
+explicit 4/2/2 triple permits count admission, subject to the remaining checks.
+Keep admission before indication-resource and placement resolution. The raw
+unconstrained operation remains an actual operation distinction, rather than a
+synthetic zero triple or an interpretation of `auto` as disabling limits.
+
 Compute total, before and after from one complete-word extended-grapheme map,
 using the selected Unicode rules across transparent origin/style boundaries and
 retaining actual source correspondence. Do not delete formatting controls and
