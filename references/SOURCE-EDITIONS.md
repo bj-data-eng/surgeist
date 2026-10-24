@@ -1359,3 +1359,27 @@ recursive compatibility normalization. The
 private table and its reproducibility check. This selection does not change the
 Unicode editions used by ICU casing, segmentation or other property providers.
 The [Unicode 18 notice](../licenses/unicode/18.0.0/NOTICE.md) applies.
+
+## Text math-auto mapping data
+
+The pinned CSS Text 4 math-auto rule delegates to
+[MathML Core section 4.2](https://www.w3.org/TR/2025/CR-mathml-core-20250624/#math-auto-transform),
+W3C Candidate Recommendation Snapshot 24 June 2025, and its referenced
+[Appendix C.1](https://www.w3.org/TR/2025/CR-mathml-core-20250624/#italic-mappings).
+The complete official HTML has SHA-256
+`f61ebea74ba54c489646e6969983ef977f448c26602edff75ec4e3ba77216373`.
+The [unchanged table excerpt](../crates/surgeist-text/data/MathMLCore-20250624-italic-mappings.html)
+has SHA-256 `cdf7adc6b280864a1080ae523209bb285d9d13baf4ae3c1014eacb09eb7d9ab7`.
+Its 112 directed pairs select the specified italic targets, including U+210E
+for h; they do not invert all Unicode font decompositions or normalize text.
+The [offline generator](../crates/surgeist-text/tools/math-auto/README.md) owns
+the private numeric table. The source's 2025 W3C copyright and full applicable
+license are retained in [Text's notice](../crates/surgeist-text/NOTICE.md#mathml-core-italic-mapping).
+
+The [native cardinality determination](https://github.com/bj-data-eng/surgeist/issues/63#issuecomment-6378219209)
+selects complete original Text-node content for eligibility and substitutes
+only its surviving post-Phase-I contribution. That interpretation resolves a
+source precision gap as native policy, separately from the pinned table and
+the actual MathML default-style adapter. The
+[Text/Layout contract](../docs/text-layout-contract.md#text-transformations-and-correspondence)
+owns the execution boundary.

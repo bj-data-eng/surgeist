@@ -350,6 +350,26 @@ The 1991–2026 copyright and permission text is retained separately from the
 older Unicode companion's legal material. The normative UAX #9 revision 52
 report remains an external citation with metadata only in the public references.
 
+### W3C MathML Core italic mapping
+
+`surgeist-text` includes an unchanged Appendix C.1 table excerpt from
+Mathematical Markup Language (MathML) Core, W3C Candidate Recommendation
+Snapshot 24 June 2025, and a generated numeric mapping derived from it.
+[Copyright](https://www.w3.org/policies/#copyright) © 2025
+[World Wide Web Consortium](https://www.w3.org/). W3C®
+[liability](https://www.w3.org/policies/#Legal_Disclaimer),
+[trademark](https://www.w3.org/policies/#W3C_Trademarks) and
+[permissive document license](https://www.w3.org/copyright/software-license-2023/)
+rules apply.
+
+* License: [W3C Software and Document License, 2023](crates/surgeist-text/licenses/w3c/software-license-2023.txt)
+* Original: [MathML Core, Appendix C.1](https://www.w3.org/TR/2025/CR-mathml-core-20250624/#italic-mappings)
+* Exact source and adaptation: [mapping guide](crates/surgeist-text/tools/math-auto/README.md)
+
+The excerpt preserves the original HTML bytes; the generated Rust represents
+its original/italic columns as sorted numeric pairs. This attribution covers
+the mapping material, separately from the reference-document bundle below.
+
 ### W3C reference documents and CSSWG source witnesses
 
 The checkout includes reformatted W3C documents and readable generated renderings
