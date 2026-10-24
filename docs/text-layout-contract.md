@@ -109,6 +109,26 @@ language rules in their actual writing system rather than copy script-blind
 provider dispatch. For example, explicit `tr-Arab` does not request Latin
 Turkic casing; the paired data's bare `crh` and explicit `crh-Latn` differ.
 
+Math-auto is an exclusive computed alternative to the combinable case, width
+and kana operations. Use the pinned
+[MathML Core mapping](https://www.w3.org/TR/2025/CR-mathml-core-20250624/#math-auto-transform)
+and its referenced Appendix C.1. The
+[native cardinality determination](https://github.com/bj-data-eng/surgeist/issues/63#issuecomment-6378219209)
+tests complete original Text-node content for one listed character, then maps
+its actual surviving contribution after Phase I. Original `SPACE c SPACE`
+remains ineligible even if genuine Discard leaves only `c`. Keep distinct nodes
+distinct, and do not manufacture eligibility by splitting an origin, selecting
+a substring or trimming aggregate element text. This original-cardinality
+choice resolves a source precision gap as native policy.
+
+Execution requires truthful complete-node content and its association with the
+captured original contributions. Missing grouping is a typed missing-context
+refusal, not successful identity transformation. Unmapped complete content
+remains unchanged; no normalization or isolated-unit repair can invent a mapping.
+An explicit computed math-auto request has no inferred namespace or font-style
+gate. The actual `mi` default and `mathvariant=normal` hint belong to their
+producer adapter, separately from Text executing a normalized native capture.
+
 The [native expansion-interior determination](https://github.com/bj-data-eng/surgeist/issues/63#issuecomment-6375717099)
 preserves the actual presentation boundary in `ß → S|S`. Its immutable placed
 position retains correspondence and output subposition. Interior upstream/trailing
