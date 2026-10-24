@@ -36,6 +36,8 @@ mod logical_after;
 mod manual_css_minima;
 #[path = "tests/negative_tabs.rs"]
 mod negative_tabs;
+#[path = "tests/scope_continuation.rs"]
+mod scope_continuation;
 #[path = "tests/tab_stops.rs"]
 mod tab_stops;
 #[path = "tests/wbr.rs"]
