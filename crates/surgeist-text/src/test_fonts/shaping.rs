@@ -10,8 +10,15 @@ const AHEM: &[u8] = include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf");
 mod casing;
 #[path = "kana.rs"]
 mod kana;
+#[path = "math.rs"]
+mod math;
 #[path = "width.rs"]
 mod width;
+
+/// Repository-authored cmap/metrics over the retained licensed Ahem outlines.
+pub(crate) fn math_ahem() -> Vec<u8> {
+    math::fixture()
+}
 
 fn words(values: &[u16]) -> Vec<u8> {
     values
