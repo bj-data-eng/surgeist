@@ -10,6 +10,8 @@ const AHEM: &[u8] = include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf");
 mod casing;
 #[path = "kana.rs"]
 mod kana;
+#[path = "width.rs"]
+mod width;
 
 fn words(values: &[u16]) -> Vec<u8> {
     values
@@ -79,6 +81,65 @@ fn cmap(mappings: &[(u32, u32)]) -> Vec<u8> {
         output.extend(glyph.to_be_bytes());
     }
     output
+}
+
+/// Literal source/target coverage for width tests; no text transformation.
+/// Advances are explicitly authored at UPEM1000, independently of ink bounds.
+/// SPACE3 and IDEOGRAPHIC SPACE1 retain blank outlines; kana mark100 has
+/// zero advance. All other glyphs retain licensed Ahem's existing outlines.
+pub(crate) fn width_ahem() -> Vec<u8> {
+    let mappings = [
+        (0x20, 3),
+        (0x21, 4),
+        (0x41, 35),
+        (0x53, 53),
+        (0x73, 85),
+        (0xa2, 97),
+        (0xdf, 134),
+        (0x3000, 1),
+        (0x3099, 100),
+        (0x30a1, 67),
+        (0x30a2, 36),
+        (0x30ab, 38),
+        (0x30ac, 37),
+        (0x3131, 71),
+        (0x3164, 70),
+        (0xff01, 72),
+        (0xff21, 36),
+        (0xff33, 58),
+        (0xff53, 86),
+        (0xff67, 82),
+        (0xff71, 35),
+        (0xff76, 82),
+        (0xff9e, 83),
+        (0xffa0, 68),
+        (0xffa1, 69),
+        (0xffe0, 73),
+    ];
+    let mut hmtx = crate::test_fonts::table(AHEM, *b"hmtx").to_vec();
+    for (glyph, advance) in [
+        (1, 2000_u16),
+        (3, 500),
+        (35, 1000),
+        (36, 2000),
+        (37, 1800),
+        (38, 1000),
+        (58, 1500),
+        (67, 800),
+        (68, 900),
+        (69, 1100),
+        (70, 1700),
+        (71, 1900),
+        (72, 1400),
+        (73, 1600),
+        (82, 600),
+        (83, 400),
+        (86, 1250),
+        (100, 0),
+    ] {
+        hmtx[glyph * 4..glyph * 4 + 2].copy_from_slice(&advance.to_be_bytes());
+    }
+    replace_tables(AHEM, vec![(*b"cmap", cmap(&mappings)), (*b"hmtx", hmtx)])
 }
 
 /// Fixed dot/Greek coverage over licensed Ahem for literal None baselines.
