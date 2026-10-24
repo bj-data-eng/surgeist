@@ -100,7 +100,7 @@ impl LogicalParagraph {
         analysis: &Analysis,
     ) -> crate::Result<Self> {
         use icu_properties::{CodePointMapData, props::LineBreak};
-        let events = events(processed, paragraph, projection);
+        let events = events(processed, paragraph, projection, styles);
         let influences: Vec<_> = events
             .iter()
             .enumerate()
@@ -299,11 +299,12 @@ pub(crate) fn events(
     processed: &ProcessedSource,
     paragraph: &ParagraphData,
     projection: &SourceProjection,
+    styles: &[AnalyzedStyleRun],
 ) -> Vec<LogicalEvent> {
     if let Some(map) = &projection.transform {
         return map.logical_events(paragraph, processed.source());
     }
-    transform_events(processed, paragraph, projection)
+    transform_events(processed, paragraph, projection, styles)
 }
 
 /// Wbr expansion needs its real scalar seam before typography reconstruction.
@@ -311,8 +312,9 @@ pub(crate) fn transform_events(
     processed: &ProcessedSource,
     paragraph: &ParagraphData,
     projection: &SourceProjection,
+    styles: &[AnalyzedStyleRun],
 ) -> Vec<LogicalEvent> {
-    capture_events(processed, paragraph, projection, false)
+    capture_events(processed, paragraph, projection, styles, false)
 }
 
 /// Original scalar seams and actual anchor order used only for separator
@@ -321,14 +323,16 @@ pub(crate) fn separator_events(
     processed: &ProcessedSource,
     paragraph: &ParagraphData,
     projection: &SourceProjection,
+    styles: &[AnalyzedStyleRun],
 ) -> Vec<LogicalEvent> {
-    capture_events(processed, paragraph, projection, true)
+    capture_events(processed, paragraph, projection, styles, true)
 }
 
 fn capture_events(
     processed: &ProcessedSource,
     paragraph: &ParagraphData,
     projection: &SourceProjection,
+    styles: &[AnalyzedStyleRun],
     scalar_seams: bool,
 ) -> Vec<LogicalEvent> {
     use crate::processing::MappingKind;
@@ -350,10 +354,30 @@ fn capture_events(
     );
     cuts.sort_unstable();
     cuts.dedup();
+    // Lexical correspondence may coalesce adjacent collapsed SPACE originals.
+    // Keep their actual source-style owners' seams before the transformation
+    // map records custody, so an interior owner's local gate remains callable.
+    // Other deletion causes retain their existing native/anchor partition.
+    let mut collapsed_cuts = cuts.clone();
+    collapsed_cuts.extend(
+        styles
+            .iter()
+            .filter_map(AnalyzedStyleRun::source_range)
+            .flat_map(|range| [range.start, range.end]),
+    );
+    collapsed_cuts.sort_unstable();
+    collapsed_cuts.dedup();
     for piece in processed.operations() {
         if !matches!(piece.kind, MappingKind::Delete(_)) {
             continue;
         }
+        let cuts = if piece.kind
+            == MappingKind::Delete(crate::processing::DeletionCause::CollapsedSpace)
+        {
+            &collapsed_cuts
+        } else {
+            &cuts
+        };
         for piece_range in paragraph.intersections(piece.source) {
             let first = cuts.partition_point(|at| *at <= piece_range.start);
             let last = cuts.partition_point(|at| *at < piece_range.end);

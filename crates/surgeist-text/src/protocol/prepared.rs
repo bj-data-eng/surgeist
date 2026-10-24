@@ -88,6 +88,9 @@ pub(crate) struct BoundaryData {
     pub(crate) relation_cut: usize,
     pub(crate) source_before: usize,
     pub(crate) source_after: usize,
+    /// Actual collapsed-follower gate at this cut. Transparent custody retains
+    /// it; a new influencing participant ends that side's local authority.
+    pub(crate) collapsed_space_wrap: Option<crate::Wrap>,
     /// Exact old chooser endpoint, only when a real preliminary item boundary.
     pub(crate) preliminary_item: Option<usize>,
 }
@@ -338,6 +341,7 @@ pub(crate) fn prepare_tables(
     let mut item_count = 0;
     let mut owned_source = paragraph.extent(&analyzed.processed).start;
     let mut atom_cursor = 0;
+    let mut collapsed_space_wrap = None;
     tables.boundaries.push(BoundaryData {
         participant: 0,
         atom: 0,
@@ -347,6 +351,7 @@ pub(crate) fn prepare_tables(
             .project(owned_source, crate::Affinity::Before),
         source_before: owned_source,
         source_after: owned_source,
+        collapsed_space_wrap: None,
         preliminary_item: Some(0),
     });
     let mut events = analyzed.logical.events.iter().copied().peekable();
@@ -366,6 +371,7 @@ pub(crate) fn prepare_tables(
         let mut preliminary = None;
         match event {
             Event::Text(index) => {
+                collapsed_space_wrap = None;
                 let value = &projection.atoms[index];
                 let cluster = cluster_for_atom[index].map(|index| &shaped.clusters[index]);
                 let metrics = cluster
@@ -400,6 +406,9 @@ pub(crate) fn prepare_tables(
                 preliminary = item;
             }
             Event::Deleted(range, at) => {
+                if let Some(wrap) = collapsed_follower_wrap(analyzed, range) {
+                    collapsed_space_wrap = Some(wrap);
+                }
                 let unit = tables.units.len();
                 tables.units.push(UnitData {
                     empty_origin: None,
@@ -452,6 +461,9 @@ pub(crate) fn prepare_tables(
                 item: ParagraphAnchorItem::Atomic(occurrence),
                 affinity,
             }) => {
+                if source.boxes()[occurrence].kind() == crate::InlineBoxKind::InFlow {
+                    collapsed_space_wrap = None;
+                }
                 let row = tables.atomics.len();
                 tables.atomics.push(AtomicData {
                     occurrence,
@@ -470,6 +482,14 @@ pub(crate) fn prepare_tables(
             }) => {
                 let row = tables.control_rows[occurrence];
                 let control = &paragraph.controls[occurrence];
+                if matches!(
+                    control.kind,
+                    ParagraphControlKind::ForcedBreak
+                        | ParagraphControlKind::OptionalBreak { .. }
+                        | ParagraphControlKind::DiscretionaryBreak { .. }
+                ) {
+                    collapsed_space_wrap = None;
+                }
                 tables.controls[row] = ControlData {
                     occurrence,
                     source: control.at,
@@ -525,6 +545,7 @@ pub(crate) fn prepare_tables(
                 processed,
                 source_before: owned_source,
                 source_after: events.peek().map_or(owned_source, |event| event.source),
+                collapsed_space_wrap,
                 preliminary_item: (item_count == item_prefix && !shared_ligature)
                     .then_some(item_prefix),
             });
@@ -974,7 +995,16 @@ fn atomic_permission(
     if !relation.neighbors_permit {
         return Ok(Some(false));
     }
-    if relation.space_permits {
+    let local_space_permits = match (relation.before, relation.after) {
+        (
+            Some(crate::engine::analysis::wrapping::Influence::Text { .. }),
+            Some(crate::engine::analysis::wrapping::Influence::Atomic { .. }),
+        ) => boundary
+            .collapsed_space_wrap
+            .map_or(relation.space_permits, |wrap| wrap == crate::Wrap::Word),
+        _ => relation.space_permits,
+    };
+    if local_space_permits {
         return Ok(Some(true));
     }
     native_permission(analyzed, boundary).map(Some)
@@ -1097,6 +1127,11 @@ fn standalone_opportunity(
 }
 
 fn wrapping_allowed(analyzed: &AnalyzedData, boundary: &BoundaryData) -> crate::Result<bool> {
+    if analyzed.paragraph.base_direction.is_some()
+        && let Some(wrap) = boundary.collapsed_space_wrap
+    {
+        return Ok(wrap == crate::Wrap::Word);
+    }
     if let Some(previous) = boundary.atom.checked_sub(1)
         && matches!(analyzed.projection.atoms[previous].code_point, 0x20 | 0xad)
     {
@@ -1129,6 +1164,30 @@ fn wrapping_allowed(analyzed: &AnalyzedData, boundary: &BoundaryData) -> crate::
                 .map_or(0, |info| info.1),
         )
         .is_some_and(|run| run.style.authored().wrap == crate::Wrap::Word))
+}
+
+/// Retain the executed lexical cause rather than treating every deleted source
+/// range as a disappeared SPACE or borrowing the preceding processed atom.
+fn collapsed_follower_wrap(analyzed: &AnalyzedData, source: Range) -> Option<crate::Wrap> {
+    let operations = analyzed.processed.operations();
+    let piece =
+        operations.get(operations.partition_point(|piece| piece.source.end <= source.start))?;
+    if piece.source.start > source.start
+        || source.end > piece.source.end
+        || piece.kind
+            != crate::processing::MappingKind::Delete(
+                crate::processing::DeletionCause::CollapsedSpace,
+            )
+    {
+        return None;
+    }
+    let at = source.end.checked_sub(1)?;
+    Some(
+        analyzed.styles[crate::engine::resolve::source_style(&analyzed.styles, at)]
+            .style
+            .authored()
+            .wrap,
+    )
 }
 
 /// The containing style owns a native SPACE opportunity only when that SPACE

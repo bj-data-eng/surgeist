@@ -51,7 +51,8 @@ pub(super) fn apply(
     }) {
         return Ok(input);
     }
-    let events = crate::engine::analysis::wrapping::separator_events(processed, paragraph, &input);
+    let events =
+        crate::engine::analysis::wrapping::separator_events(processed, paragraph, &input, styles);
     let seams = connection_seams(&input, &events, paragraph)?;
     let adjacency = forced_adjacency(&input, &events, processed.source(), paragraph, &seams)?;
     let mut adjacent = Vec::new();
@@ -418,7 +419,8 @@ pub(super) fn wbr(
     {
         return Ok((input, events));
     }
-    let events = crate::engine::analysis::wrapping::separator_events(processed, paragraph, &input);
+    let events =
+        crate::engine::analysis::wrapping::separator_events(processed, paragraph, &input, styles);
     let seams = connection_seams(&input, &events, paragraph)?;
     let adjacent = forced_adjacency(&input, &events, processed.source(), paragraph, &seams)?;
     let mut control_styles = Vec::new();

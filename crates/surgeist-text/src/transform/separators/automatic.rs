@@ -280,7 +280,8 @@ pub(crate) fn proposals(
     }) {
         return Ok(Vec::new());
     }
-    let events = crate::engine::analysis::wrapping::separator_events(processed, paragraph, input);
+    let events =
+        crate::engine::analysis::wrapping::separator_events(processed, paragraph, input, styles);
     let mut stops = input.barrier_atoms.clone();
     stops.extend([0, input.atoms.len()]);
     for (atom, value) in input.atoms.iter().enumerate() {

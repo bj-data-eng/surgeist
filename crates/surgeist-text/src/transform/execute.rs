@@ -193,7 +193,7 @@ pub(super) fn apply(
     paragraph: &ParagraphData,
 ) -> Result<(SourceProjection, Arc<TransformMap>)> {
     let captured =
-        crate::engine::analysis::wrapping::transform_events(processed, paragraph, &input);
+        crate::engine::analysis::wrapping::transform_events(processed, paragraph, &input, styles);
     let mut map = TransformMap::identity(&input, styles, processed, paragraph, captured.clone());
     let proposals =
         super::separators::automatic::proposals(&input, styles, processed, paragraph, &mut map)?;

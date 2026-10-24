@@ -215,6 +215,111 @@ fn one_origin_collapsed_followers_keep_distinct_style_span_gates() {
 }
 
 #[test]
+fn contextual_style_span_gate_survives_casing_and_genuine_wbr_expansion() {
+    let style = |wrap| text::Style {
+        font: text::Font::new().family("Ahem"),
+        size: 10.0,
+        line_height: text::LineHeight::Absolute(10.0),
+        white_space: text::WhiteSpace::Collapse,
+        wrap,
+        text_transform: text::TextTransform::Set(
+            text::TextTransformSet::none().with_case(text::CaseTransform::Uppercase),
+        ),
+        ..text::Style::default()
+    };
+    let mut source = text::Source::new("a   b");
+    source.span(text::Range::new(0, 2), style(text::Wrap::None));
+    source.span(text::Range::new(2, 3), style(text::Wrap::Word));
+    source.span(text::Range::new(3, 5), style(text::Wrap::None));
+    let origin = text::ParagraphOrigin {
+        text_node: None,
+        source: source.clone(),
+        local: text::Range::new(0, 5),
+        aggregate: text::Range::new(0, 5),
+        kind: text::ParagraphOriginKind::Authored,
+    };
+    use text::SourceProcessingEvent as E;
+    let processed = std::sync::Arc::new(
+        text::process_contextual_source(text::ContextualSourceInput {
+            source,
+            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
+            envelope: text::SourceProcessingEnvelope::Complete,
+            origins: vec![origin],
+            connections: vec![],
+            controls: vec![text::ParagraphControl {
+                at: 5,
+                kind: text::ParagraphControlKind::Wbr {
+                    style: Box::new(text::Style {
+                        white_space: text::WhiteSpace::Preserve,
+                        word_space_transform: text::WordSpaceTransform::Space,
+                        ..style(text::Wrap::None)
+                    }),
+                },
+            }],
+            boundary_policies: vec![],
+            replacements: vec![],
+            scopes: vec![text::SourceProcessingScope::Block {
+                topology: text::SourceProcessingTopology::Unknown,
+                trim: text::WhiteSpaceTrim::default(),
+                base_style: style(text::Wrap::None),
+                used_direction: text::ParagraphBaseDirection::LeftToRight,
+            }],
+            paragraphs: vec![text::SourceProcessingParagraph {
+                base_direction: text::ParagraphBaseDirection::LeftToRight,
+                paragraph_strut: text::ParagraphStrut::DefaultFont,
+            }],
+            events: vec![
+                E::EnterScope(0),
+                E::EnterParagraph(0),
+                E::Origin {
+                    origin: 0,
+                    affinity: text::Affinity::After,
+                },
+                E::Control {
+                    control: 0,
+                    affinity: text::Affinity::After,
+                },
+                E::ExitParagraph(0),
+                E::ExitScope(0),
+            ],
+        })
+        .unwrap(),
+    );
+    let analyzed =
+        text::AnalyzedSource::from_processed_paragraph(processed.paragraphs().next().unwrap())
+            .unwrap();
+    assert_eq!(analyzed.source().text(), &text::Text::from("a   b"));
+    assert_eq!(
+        analyzed.processed_source().processed_text(),
+        &text::Text::from("a b")
+    );
+    let mut system = text::System::new(text::SystemOptions {
+        font_catalogue: text::FontCatalogueMode::RegisteredOnly,
+    })
+    .unwrap();
+    system
+        .register_fonts(include_bytes!("fixtures/fonts/ahem/Ahem.ttf").to_vec())
+        .unwrap();
+    let prepared = system
+        .prepare(&analyzed, text::PreparationOptions::default())
+        .unwrap();
+    // Actual source-less wbr expansion is a preserved Ahem SPACE at the end;
+    // it rebuilds the transformation stream without owning any original unit.
+    assert!(
+        prepared.unit_views().any(|unit| {
+            unit.source_range() == text::Range::new(5, 5) && unit.advance() == 10.0
+        })
+    );
+    let space_cuts: Vec<_> = prepared
+        .opportunity_views()
+        .filter(|offer| offer.kind() == text::PreparedBreakKind::Allowed)
+        .map(|offer| offer.boundary().view().source_after().get())
+        .filter(|cut| (2..=4).contains(cut))
+        .collect();
+    assert_eq!(space_cuts, [3]);
+}
+
+#[test]
 fn disappeared_local_space_gate_and_atomic_ancestor_permission_remain_independent() {
     let observed: Vec<_> = [
         (text::Wrap::None, text::Wrap::Word, text::Wrap::None),
